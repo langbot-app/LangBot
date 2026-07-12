@@ -7,6 +7,7 @@ metadata:
     zh_Hans: 智谱 AI
   icon: zhipuai.svg
 spec:
+  litellm_provider: openai
   config:
   - name: base_url
     label:
@@ -22,8 +23,11 @@ spec:
     type: integer
     required: true
     default: 120
+  alias: "zhipu zhipuai 智谱 智谱AI 智谱清言 glm GLM chatglm 清言 bigmodel embedding-3 rerank"
   support_type:
   - llm
+  - text-embedding
+  - rerank
   provider_category: manufacturer
 execution:
   python:

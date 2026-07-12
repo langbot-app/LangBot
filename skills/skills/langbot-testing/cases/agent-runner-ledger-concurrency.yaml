@@ -1,0 +1,41 @@
+id: agent-runner-ledger-concurrency
+title: "AgentRunner run ledger concurrency and auth pytest probe"
+mode: probe
+area: release
+type: regression
+priority: p0
+risk: high
+ci_eligible: true
+tags:
+  - agent-runner
+  - probe
+  - pytest
+  - run-ledger
+  - concurrency
+skills:
+  - langbot-testing
+env:
+automation: skills/langbot-testing/probes/agent-runner-ledger-concurrency.mjs
+preconditions:
+  - "This Host pytest probe can be slow in the current multi-repo dev environment; keep it in the release gate, but do not treat a timeout as a browser E2E failure without checking pytest logs."
+steps:
+  - "Run `rtk bin/lbs test run agent-runner-ledger-concurrency --dry-run` first; remove `--dry-run` only after `agent-runner-async-db-readiness` is pass."
+  - "Automation resolves LANGBOT_REPO, defaulting to ../LangBot when the env var is unset."
+  - "Automation runs selected high-value tests from test_run_ledger_store.py and test_run_ledger_api_auth.py."
+checks:
+  - "automation-result.json status is pass."
+  - "pytest exit status is 0 for selected run ledger claim, lease, status, token, ownership, and active-claim tests."
+  - "pytest-stdout.log and pytest-stderr.log are written under LBS_EVIDENCE_DIR."
+evidence_required:
+  - filesystem
+diagnostics:
+  - "env_issue means LANGBOT_REPO/default ../LangBot did not resolve, rtk/uv was unavailable, or the expected test files are missing."
+  - "fail means one of the selected LangBot run ledger pytest targets failed or timed out."
+success_patterns:
+  - "pytest passed"
+failure_patterns:
+  - "pytest exited with status"
+  - "pytest timed out"
+  - "Failed to start pytest command"
+troubleshooting:
+  - aiosqlite-connect-hangs

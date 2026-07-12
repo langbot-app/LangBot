@@ -191,45 +191,47 @@ export default function BotDetailContent({ id }: { id: string }) {
           onValueChange={setActiveTab}
           className="flex flex-1 flex-col min-h-0"
         >
-          <TabsList className="shrink-0">
-            <TabsTrigger value="config" className="gap-1.5">
-              <Settings className="size-3.5" />
-              {t('bots.configuration')}
-            </TabsTrigger>
-            <TabsTrigger value="logs" className="gap-1.5">
-              <FileText className="size-3.5" />
-              {t('bots.logs')}
-            </TabsTrigger>
-            <TabsTrigger value="sessions" className="gap-1.5">
-              <Users className="size-3.5" />
-              {t('bots.sessionMonitor.title')}
-              {activeTab === 'sessions' && (
-                <button
-                  type="button"
-                  className="inline-flex items-center justify-center ml-0.5"
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    e.preventDefault();
-                    if (isRefreshingSessions) return;
-                    setIsRefreshingSessions(true);
-                    const minDelay = new Promise((r) => setTimeout(r, 500));
-                    Promise.all([
-                      sessionMonitorRef.current?.refreshSessions(),
-                      minDelay,
-                    ]).finally(() => setIsRefreshingSessions(false));
-                  }}
-                >
-                  <RefreshCw
-                    className={cn(
-                      'size-3 text-muted-foreground hover:text-foreground transition-colors',
-                      isRefreshingSessions && 'animate-spin',
-                    )}
-                  />
-                </button>
-              )}
-            </TabsTrigger>
-          </TabsList>
+          <div className="flex shrink-0 items-center gap-1">
+            <TabsList>
+              <TabsTrigger value="config" className="gap-1.5">
+                <Settings className="size-3.5" />
+                {t('bots.configuration')}
+              </TabsTrigger>
+              <TabsTrigger value="logs" className="gap-1.5">
+                <FileText className="size-3.5" />
+                {t('bots.logs')}
+              </TabsTrigger>
+              <TabsTrigger value="sessions" className="gap-1.5">
+                <Users className="size-3.5" />
+                {t('bots.sessionMonitor.title')}
+              </TabsTrigger>
+            </TabsList>
+            {activeTab === 'sessions' && (
+              <button
+                type="button"
+                aria-label={t('bots.sessionMonitor.refresh')}
+                title={t('bots.sessionMonitor.refresh')}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+                disabled={isRefreshingSessions}
+                onClick={() => {
+                  if (isRefreshingSessions) return;
+                  setIsRefreshingSessions(true);
+                  const minDelay = new Promise((r) => setTimeout(r, 500));
+                  Promise.all([
+                    sessionMonitorRef.current?.refreshSessions(),
+                    minDelay,
+                  ]).finally(() => setIsRefreshingSessions(false));
+                }}
+              >
+                <RefreshCw
+                  className={cn(
+                    'size-3.5',
+                    isRefreshingSessions && 'animate-spin',
+                  )}
+                />
+              </button>
+            )}
+          </div>
 
           {/* Tab: Configuration */}
           <TabsContent

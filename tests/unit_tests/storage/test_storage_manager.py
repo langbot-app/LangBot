@@ -31,7 +31,7 @@ class TestStorageMgr:
 
         storage_mgr = StorageMgr(mock_app)
 
-        with patch.object(LocalStorageProvider, "initialize", new_callable=AsyncMock):
+        with patch.object(LocalStorageProvider, 'initialize', new_callable=AsyncMock):
             await storage_mgr.initialize()
             assert isinstance(storage_mgr.storage_provider, LocalStorageProvider)
             mock_app.logger.info.assert_called()
@@ -41,12 +41,12 @@ class TestStorageMgr:
         """Should use local storage when explicitly configured."""
         mock_app = Mock()
         mock_app.instance_config = Mock()
-        mock_app.instance_config.data = {"storage": {"use": "local"}}
+        mock_app.instance_config.data = {'storage': {'use': 'local'}}
         mock_app.logger = Mock()
 
         storage_mgr = StorageMgr(mock_app)
 
-        with patch.object(LocalStorageProvider, "initialize", new_callable=AsyncMock):
+        with patch.object(LocalStorageProvider, 'initialize', new_callable=AsyncMock):
             await storage_mgr.initialize()
             assert isinstance(storage_mgr.storage_provider, LocalStorageProvider)
 
@@ -55,14 +55,12 @@ class TestStorageMgr:
         """Should use S3 storage when configured."""
         mock_app = Mock()
         mock_app.instance_config = Mock()
-        mock_app.instance_config.data = {
-            "storage": {"use": "s3", "s3": {"endpoint_url": "https://s3.amazonaws.com"}}
-        }
+        mock_app.instance_config.data = {'storage': {'use': 's3', 's3': {'endpoint_url': 'https://s3.amazonaws.com'}}}
         mock_app.logger = Mock()
 
         storage_mgr = StorageMgr(mock_app)
 
-        with patch.object(S3StorageProvider, "initialize", new_callable=AsyncMock):
+        with patch.object(S3StorageProvider, 'initialize', new_callable=AsyncMock):
             await storage_mgr.initialize()
             assert isinstance(storage_mgr.storage_provider, S3StorageProvider)
 
@@ -71,12 +69,12 @@ class TestStorageMgr:
         """Should default to local storage for invalid storage type."""
         mock_app = Mock()
         mock_app.instance_config = Mock()
-        mock_app.instance_config.data = {"storage": {"use": "invalid_type"}}
+        mock_app.instance_config.data = {'storage': {'use': 'invalid_type'}}
         mock_app.logger = Mock()
 
         storage_mgr = StorageMgr(mock_app)
 
-        with patch.object(LocalStorageProvider, "initialize", new_callable=AsyncMock):
+        with patch.object(LocalStorageProvider, 'initialize', new_callable=AsyncMock):
             await storage_mgr.initialize()
             assert isinstance(storage_mgr.storage_provider, LocalStorageProvider)
 
@@ -90,9 +88,7 @@ class TestStorageMgr:
 
         storage_mgr = StorageMgr(mock_app)
 
-        with patch.object(
-            LocalStorageProvider, "initialize", new_callable=AsyncMock
-        ) as mock_init:
+        with patch.object(LocalStorageProvider, 'initialize', new_callable=AsyncMock) as mock_init:
             await storage_mgr.initialize()
             mock_init.assert_called_once()
 
@@ -105,8 +101,8 @@ class TestStorageProviderBase:
         mock_app = Mock()
 
         # Use LocalStorageProvider as concrete implementation
-        with patch("os.path.exists", return_value=True):
-            with patch("os.makedirs"):
+        with patch('os.path.exists', return_value=True):
+            with patch('os.makedirs'):
                 provider = LocalStorageProvider(mock_app)
                 assert provider.ap == mock_app
 
@@ -115,12 +111,12 @@ class TestStorageProviderBase:
         """Provider base initialize should be callable and do nothing."""
         mock_app = Mock()
 
-        with patch("os.path.exists", return_value=True):
-            with patch("os.makedirs"):
+        with patch('os.path.exists', return_value=True):
+            with patch('os.makedirs'):
                 provider = LocalStorageProvider(mock_app)
                 # Initialize should not raise
                 await provider.initialize()
 
 
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+if __name__ == '__main__':
+    pytest.main([__file__, '-v'])

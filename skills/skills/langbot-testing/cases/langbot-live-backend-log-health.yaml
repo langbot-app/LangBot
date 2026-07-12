@@ -1,0 +1,45 @@
+id: langbot-live-backend-log-health
+title: "LangBot live backend log health probe"
+mode: probe
+area: reliability
+type: reliability
+priority: p1
+risk: medium
+ci_eligible: false
+tags:
+  - reliability
+  - live-backend
+  - backend-log
+  - metrics
+skills:
+  - langbot-testing
+env:
+  - LANGBOT_BACKEND_URL
+automation: skills/langbot-testing/probes/langbot-live-backend-log-health.mjs
+metrics_thresholds_json: '{"fail_count":{"max":0}}'
+load_profile_json: '{"lookback_seconds":300,"log_source":"LANGBOT_BACKEND_LOG or latest LANGBOT_REPO/data/logs/langbot-*.log"}'
+steps:
+  - "Confirm the selected LangBot backend log belongs to the intended test target."
+  - "Run `rtk bin/lbs test run langbot-live-backend-log-health --dry-run` first; remove `--dry-run` after checking evidence directory and log source."
+  - "Automation scans the recent backend log window for fail-severity runtime findings such as Traceback, ImportError, ERROR, unclosed sessions, and unawaited coroutines."
+checks:
+  - "automation-result.json status is pass only when fail_count is 0."
+  - "metrics_summary includes scanned_line_count, fail_count, warning_count, and finding_count."
+  - "findings.json and scanned-backend.log are written under LBS_EVIDENCE_DIR."
+evidence_required:
+  - metrics
+  - backend_log
+  - filesystem
+diagnostics:
+  - "Set LANGBOT_BACKEND_LOG to an explicit log path when the latest log file is not the run target."
+  - "Set LANGBOT_BACKEND_LOG_SINCE or LANGBOT_BACKEND_LOG_LOOKBACK_SECONDS to control the scan window."
+  - "This probe measures runtime log health; it does not prove user-facing Debug Chat, plugin, model, or RAG behavior."
+success_patterns:
+  - "Live backend log health passed"
+failure_patterns:
+  - "Traceback"
+  - "ImportError"
+  - "ERROR"
+  - "unclosed"
+troubleshooting:
+  - socks-proxy-without-socksio

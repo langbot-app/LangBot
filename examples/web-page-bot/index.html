@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>LangBot Page Bot · Embed Demo</title>
+<style>
+  :root {
+    --bg: #f7f8fa; --panel: #ffffff; --line: #e8eaed; --ink: #1f2329;
+    --mut: #8a909a; --brand: #2563eb; --brand-soft: #eef3ff;
+    --ok: #16a34a; --bad: #dc2626; --code: #f3f4f6;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 14px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+      "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  .top {
+    height: 52px; background: var(--panel); border-bottom: 1px solid var(--line);
+    display: flex; align-items: center; gap: 10px; padding: 0 18px;
+  }
+  .logo {
+    width: 26px; height: 26px; border-radius: 7px; background: var(--brand);
+    display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 14px;
+  }
+  .top b { font-size: 15px; }
+  .top .ver { font-size: 12px; color: var(--mut); }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 28px 18px 80px; }
+  .hero h1 { margin: 8px 0 6px; font-size: 22px; }
+  .hero p { margin: 0 0 4px; color: var(--mut); }
+  .card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    padding: 20px; margin-top: 20px;
+  }
+  .card h3 {
+    margin: 0 0 14px; font-size: 14px; font-weight: 600; color: #4b5563;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .card h3 .num {
+    width: 20px; height: 20px; border-radius: 50%; background: var(--brand-soft);
+    color: var(--brand); display: grid; place-items: center; font-size: 12px; font-weight: 700;
+  }
+  .field { margin-bottom: 14px; }
+  .field:last-child { margin-bottom: 0; }
+  .field label { display: block; font-size: 12px; color: var(--mut); margin-bottom: 5px; }
+  .field input {
+    width: 100%; border: 1px solid var(--line); border-radius: 9px;
+    padding: 10px 12px; font-size: 14px; outline: none; font-family: inherit;
+  }
+  .field input:focus { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
+  .hint { font-size: 12px; color: var(--mut); margin-top: 5px; }
+  .hint code { background: var(--code); border-radius: 5px; padding: 1px 5px; font-size: 11px; }
+  .actions { display: flex; gap: 10px; margin-top: 18px; align-items: center; }
+  button {
+    border: 0; border-radius: 9px; padding: 10px 18px; font-size: 14px;
+    font-weight: 500; cursor: pointer; font-family: inherit;
+  }
+  .btn-primary { background: var(--brand); color: #fff; }
+  .btn-primary:disabled { opacity: .5; cursor: default; }
+  .btn-ghost { background: #fff; border: 1px solid var(--line); color: #4b5563; }
+  .status { font-size: 13px; color: var(--mut); }
+  .status .ok { color: var(--ok); }
+  .status .bad { color: var(--bad); }
+  pre {
+    background: #0f172a; color: #e2e8f0; border-radius: 10px; padding: 14px 16px;
+    overflow: auto; font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace;
+    margin: 0;
+  }
+  .snippet-row { position: relative; }
+  .snippet-row .copy {
+    position: absolute; top: 10px; right: 10px; background: rgba(255,255,255,.12);
+    color: #fff; border: 0; border-radius: 7px; padding: 5px 10px; font-size: 12px; cursor: pointer;
+  }
+  ul.steps { margin: 0; padding-left: 18px; color: #4b5563; }
+  ul.steps li { margin-bottom: 6px; }
+</style>
+</head>
+<body>
+<div class="top">
+  <div class="logo">L</div>
+  <b>Page Bot · Embed Demo</b>
+  <span class="ver">examples/web-page-bot</span>
+</div>
+
+<div class="wrap">
+  <div class="hero">
+    <h1>Try the LangBot Page Bot widget</h1>
+    <p>Point this page at a running LangBot instance and a <strong>Page Bot</strong> you created,</p>
+    <p>then load the live embed widget below to chat with it — exactly as your site visitors would.</p>
+  </div>
+
+  <div class="card">
+    <h3><span class="num">1</span> Connect your Page Bot</h3>
+    <div class="field">
+      <label for="base">LangBot base URL</label>
+      <input id="base" placeholder="http://localhost:5300" value="http://localhost:5300" />
+      <div class="hint">The address where your LangBot instance is reachable from this browser. No trailing slash.</div>
+    </div>
+    <div class="field">
+      <label for="uuid">Page Bot UUID</label>
+      <input id="uuid" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
+      <div class="hint">Create a bot with the <code>Page Bot</code> adapter in the WebUI, then copy its UUID from the embed code.</div>
+    </div>
+    <div class="field">
+      <label for="title">Widget title (optional)</label>
+      <input id="title" placeholder="LangBot" value="LangBot" />
+    </div>
+    <div class="actions">
+      <button id="load" class="btn-primary">Load widget</button>
+      <button id="unload" class="btn-ghost">Remove widget</button>
+      <span class="status" id="status">Not loaded.</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3><span class="num">2</span> The embed snippet</h3>
+    <p style="margin:0 0 12px;color:var(--mut)">This is exactly what you paste into your own site (before <code>&lt;/body&gt;</code>). It updates as you edit the fields above.</p>
+    <div class="snippet-row">
+      <button class="copy" id="copy">Copy</button>
+      <pre id="snippet">&lt;script data-title="LangBot" src="http://localhost:5300/api/v1/embed/&lt;bot-uuid&gt;/widget.js"&gt;&lt;/script&gt;</pre>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3><span class="num">3</span> How it works</h3>
+    <ul class="steps">
+      <li>The <code>&lt;script&gt;</code> tag pulls <code>widget.js</code> from your LangBot instance, pre-configured for that bot UUID.</li>
+      <li>A floating chat bubble appears in the bottom-right corner of the page.</li>
+      <li>Messages travel over a WebSocket to the bot's bound pipeline; replies stream back into the bubble.</li>
+      <li>Title, bubble icon, language and optional Cloudflare Turnstile protection are all set in the bot's config — no page changes needed.</li>
+    </ul>
+  </div>
+</div>
+
+<script>
+  var $ = function (s) { return document.querySelector(s); };
+  var baseEl = $("#base"), uuidEl = $("#uuid"), titleEl = $("#title"),
+      statusEl = $("#status"), snippetEl = $("#snippet");
+  var WIDGET_ID = "langbot-embed-demo-script";
+
+  function clean(v) { return (v || "").trim().replace(/\/+$/, ""); }
+
+  function buildSrc() {
+    var base = clean(baseEl.value) || "http://localhost:5300";
+    var uuid = uuidEl.value.trim() || "<bot-uuid>";
+    return base + "/api/v1/embed/" + uuid + "/widget.js";
+  }
+
+  function refreshSnippet() {
+    var title = titleEl.value.trim() || "LangBot";
+    var src = buildSrc();
+    snippetEl.textContent =
+      '<script data-title="' + title + '" src="' + src + '"><\/script>';
+  }
+
+  function setStatus(html) { statusEl.innerHTML = html; }
+
+  function removeWidget() {
+    var old = document.getElementById(WIDGET_ID);
+    if (old) old.remove();
+    // The widget injects its own DOM (bubble + panel). Clear the common containers it creates.
+    document.querySelectorAll('[id^="langbot-"]').forEach(function (n) {
+      if (n.id !== WIDGET_ID) n.remove();
+    });
+  }
+
+  function loadWidget() {
+    var uuid = uuidEl.value.trim();
+    var uuidRe = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+    if (!uuidRe.test(uuid)) {
+      setStatus('<span class="bad">Enter a valid bot UUID first.</span>');
+      return;
+    }
+    removeWidget();
+    var s = document.createElement("script");
+    s.id = WIDGET_ID;
+    s.setAttribute("data-title", titleEl.value.trim() || "LangBot");
+    s.src = buildSrc();
+    s.onload = function () {
+      setStatus('<span class="ok">Widget loaded — look bottom-right.</span>');
+    };
+    s.onerror = function () {
+      setStatus('<span class="bad">Failed to load widget.js — check the base URL and that the bot is enabled.</span>');
+    };
+    document.body.appendChild(s);
+    setStatus("Loading…");
+  }
+
+  $("#load").onclick = loadWidget;
+  $("#unload").onclick = function () {
+    removeWidget();
+    setStatus("Widget removed.");
+  };
+  $("#copy").onclick = function () {
+    navigator.clipboard.writeText(snippetEl.textContent).then(function () {
+      var b = $("#copy"); b.textContent = "Copied"; setTimeout(function () { b.textContent = "Copy"; }, 1200);
+    });
+  };
+  [baseEl, uuidEl, titleEl].forEach(function (el) { el.addEventListener("input", refreshSnippet); });
+  refreshSnippet();
+</script>
+</body>
+</html>

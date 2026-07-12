@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import base64
+import io
 import quart
 import re
 import httpx
 import uuid
 import os
+import zipfile
+import yaml
+from urllib.parse import urlparse
 import posixpath
 import sqlalchemy
 
@@ -53,6 +57,97 @@ def _get_request_origin() -> str:
 
 @group.group_class('plugins', '/api/v1/plugins')
 class PluginsRouterGroup(group.RouterGroup):
+    @staticmethod
+    def _normalize_archive_path(path: str) -> str:
+        normalized = str(path or '').replace('\\', '/').strip('/')
+        return posixpath.normpath(normalized) if normalized else ''
+
+    @classmethod
+    def _component_source_path(cls, entry) -> str:
+        if isinstance(entry, dict):
+            return cls._normalize_archive_path(entry.get('path') or '')
+        return cls._normalize_archive_path(str(entry or ''))
+
+    @classmethod
+    def _count_component_configs(cls, component_config, archive_names: list[str]) -> int:
+        normalized_names = [cls._normalize_archive_path(name) for name in archive_names]
+        component_files: set[str] = set()
+
+        if isinstance(component_config, list):
+            return len(component_config)
+        if not isinstance(component_config, dict):
+            return 1 if component_config else 0
+
+        for entry in component_config.get('fromFiles') or []:
+            source_path = cls._component_source_path(entry)
+            if source_path and source_path in normalized_names:
+                component_files.add(source_path)
+
+        for entry in component_config.get('fromDirs') or []:
+            source_dir = cls._component_source_path(entry).rstrip('/')
+            if not source_dir:
+                continue
+            prefix = f'{source_dir}/'
+            for archive_name in normalized_names:
+                if not archive_name.startswith(prefix):
+                    continue
+                if archive_name.lower().endswith(('.yaml', '.yml')):
+                    component_files.add(archive_name)
+
+        if component_files:
+            return len(component_files)
+
+        return 1 if any(key in component_config for key in ('path', 'name', 'kind')) else 0
+
+    @classmethod
+    def _count_plugin_components(cls, components, archive_names: list[str]) -> dict[str, int]:
+        if not isinstance(components, dict):
+            return {}
+
+        component_counts: dict[str, int] = {}
+        for kind, component_config in components.items():
+            count = cls._count_component_configs(component_config, archive_names)
+            if count > 0:
+                component_counts[str(kind)] = count
+        return component_counts
+
+    @staticmethod
+    def _parse_github_repo_url(repo_url: str) -> dict | None:
+        raw_url = str(repo_url or '').strip()
+        if not raw_url:
+            return None
+
+        if not re.match(r'^[a-zA-Z][a-zA-Z0-9+.-]*://', raw_url):
+            raw_url = f'https://{raw_url}'
+
+        parsed = urlparse(raw_url)
+        if parsed.netloc.lower() not in ('github.com', 'www.github.com'):
+            return None
+
+        parts = [part for part in parsed.path.strip('/').split('/') if part]
+        if len(parts) < 2:
+            return None
+
+        owner = parts[0]
+        repo = parts[1]
+        if repo.endswith('.git'):
+            repo = repo[:-4]
+        if not owner or not repo:
+            return None
+
+        ref = ''
+        subdir = ''
+        if len(parts) >= 4 and parts[2] in ('tree', 'blob'):
+            ref = parts[3]
+            subdir = '/'.join(parts[4:]).strip('/')
+
+        return {
+            'owner': owner,
+            'repo': repo,
+            'ref': ref,
+            'subdir': subdir,
+        }
+
     async def _check_extensions_limit(self) -> str | None:
         """Check if extensions limit is reached. Returns error response if limit exceeded, None otherwise."""
         limitation = self.ap.instance_config.data.get('system', {}).get('limitation', {})
@@ -177,6 +272,20 @@ class PluginsRouterGroup(group.RouterGroup):
             return self.success(data={'readme': readme})
 
         @self.route(
+            '/<author>/<plugin_name>/logs',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+        )
+        async def _(author: str, plugin_name: str) -> quart.Response:
+            try:
+                limit = int(quart.request.args.get('limit', 200))
+            except (TypeError, ValueError):
+                limit = 200
+            level = quart.request.args.get('level') or None
+            logs = await self.ap.plugin_connector.get_plugin_logs(author, plugin_name, limit=limit, level=level)
+            return self.success(data={'logs': logs})
+
+        @self.route(
             '/<author>/<plugin_name>/icon',
             methods=['GET'],
             auth_type=group.AuthType.NONE,
@@ -254,17 +363,37 @@ class PluginsRouterGroup(group.RouterGroup):
             data = await quart.request.json
             repo_url = data.get('repo_url', '')
 
-            # Parse GitHub repository URL to extract owner and repo
-            # Supports: https://github.com/owner/repo or github.com/owner/repo
-            pattern = r'github\.com/([^/]+)/([^/]+?)(?:\.git)?(?:/.*)?$'
-            match = re.search(pattern, repo_url)
-
-            if not match:
+            parsed_repo = self._parse_github_repo_url(repo_url)
+            if not parsed_repo:
                 return self.http_status(400, -1, 'Invalid GitHub repository URL')
 
-            owner, repo = match.groups()
+            owner = parsed_repo['owner']
+            repo = parsed_repo['repo']
+            requested_ref = parsed_repo['ref']
+            requested_subdir = parsed_repo['subdir']
 
             try:
+                if requested_ref:
+                    return self.success(
+                        data={
+                            'releases': [
+                                {
+                                    'id': 0,
+                                    'tag_name': requested_ref,
+                                    'name': requested_ref,
+                                    'published_at': '',
+                                    'prerelease': False,
+                                    'draft': False,
+                                    'source_type': 'branch',
+                                    'archive_url': f'https://api.github.com/repos/{owner}/{repo}/zipball/{requested_ref}',
+                                }
+                            ],
+                            'owner': owner,
+                            'repo': repo,
+                            'source_subdir': requested_subdir,
+                        }
+                    )
+
                 # Fetch releases from GitHub API
                 url = f'https://api.github.com/repos/{owner}/{repo}/releases'
                 async with httpx.AsyncClient(
@@ -290,7 +419,14 @@ class PluginsRouterGroup(group.RouterGroup):
                         }
                     )
 
-                return self.success(data={'releases': formatted_releases, 'owner': owner, 'repo': repo})
+                return self.success(
+                    data={
+                        'releases': formatted_releases,
+                        'owner': owner,
+                        'repo': repo,
+                        'source_subdir': requested_subdir,
+                    }
+                )
             except httpx.RequestError as e:
                 return self.http_status(500, -1, f'Failed to fetch releases: {str(e)}')
 
@@ -444,6 +580,62 @@ class PluginsRouterGroup(group.RouterGroup):
             )
 
             return self.success(data={'task_id': wrapper.id})
+
+        @self.route('/install/local/preview', methods=['POST'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
+        async def _() -> str:
+            file = (await quart.request.files).get('file')
+            if file is None:
+                return self.http_status(400, -1, 'file is required')
+
+            file_bytes = file.read()
+            try:
+                with zipfile.ZipFile(io.BytesIO(file_bytes)) as zf:
+                    names = [name for name in zf.namelist() if not name.endswith('/')]
+                    manifest_name = next(
+                        (
+                            name
+                            for name in names
+                            if name.replace('\\', '/').strip('/').lower() in ('manifest.yaml', 'manifest.yml')
+                        ),
+                        None,
+                    )
+                    if manifest_name is None:
+                        return self.http_status(400, -1, 'manifest.yaml is required')
+
+                    manifest = yaml.safe_load(zf.read(manifest_name).decode('utf-8')) or {}
+                    requirements: list[str] = []
+                    requirements_name = next(
+                        (name for name in names if name.replace('\\', '/').strip('/').lower() == 'requirements.txt'),
+                        None,
+                    )
+                    if requirements_name is not None:
+                        requirements = [
+                            line.strip()
+                            for line in zf.read(requirements_name).decode('utf-8', errors='ignore').splitlines()
+                            if line.strip() and not line.strip().startswith('#')
+                        ]
+
+                    spec = manifest.get('spec') or {}
+                    components = spec.get('components') or {}
+                    component_counts = self._count_plugin_components(components, names)
+                    component_types = list(component_counts.keys())
+
+                    return self.success(
+                        data={
+                            'filename': file.filename or 'local plugin',
+                            'size': len(file_bytes),
+                            'manifest': manifest,
+                            'metadata': manifest.get('metadata') or {},
+                            'component_types': component_types,
+                            'component_counts': component_counts,
+                            'requirements': requirements,
+                            'file_count': len(names),
+                        }
+                    )
+            except zipfile.BadZipFile:
+                return self.http_status(400, -1, 'invalid .lbpkg file')
+            except Exception as exc:
+                return self.http_status(500, -1, f'Failed to preview plugin package: {exc}')
 
         @self.route('/config-files', methods=['POST'], auth_type=group.AuthType.USER_TOKEN)
         async def _() -> str:

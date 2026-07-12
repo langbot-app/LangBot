@@ -92,18 +92,50 @@ export function useMonitoringData(filterState: FilterState) {
         limit: 50,
       });
 
+      const overview = response?.overview ?? {
+        total_messages: 0,
+        llm_calls: 0,
+        embedding_calls: 0,
+        model_calls: 0,
+        success_rate: 100,
+        active_sessions: 0,
+      };
+      const messages = Array.isArray(response?.messages)
+        ? response.messages
+        : [];
+      const llmCalls = Array.isArray(response?.llmCalls)
+        ? response.llmCalls
+        : [];
+      const toolCalls = Array.isArray(response?.toolCalls)
+        ? response.toolCalls
+        : [];
+      const embeddingCalls = Array.isArray(response?.embeddingCalls)
+        ? response.embeddingCalls
+        : [];
+      const sessions = Array.isArray(response?.sessions)
+        ? response.sessions
+        : [];
+      const errors = Array.isArray(response?.errors) ? response.errors : [];
+      const totalCount = response?.totalCount ?? {
+        messages: messages.length,
+        llmCalls: llmCalls.length,
+        toolCalls: toolCalls.length,
+        embeddingCalls: embeddingCalls.length,
+        sessions: sessions.length,
+        errors: errors.length,
+      };
+
       // Transform the response to match MonitoringData interface
       const transformedData: MonitoringData = {
         overview: {
-          totalMessages: response.overview.total_messages,
-          llmCalls: response.overview.llm_calls,
-          embeddingCalls: response.overview.embedding_calls || 0,
-          modelCalls:
-            response.overview.model_calls || response.overview.llm_calls,
-          successRate: response.overview.success_rate,
-          activeSessions: response.overview.active_sessions,
+          totalMessages: overview.total_messages,
+          llmCalls: overview.llm_calls,
+          embeddingCalls: overview.embedding_calls || 0,
+          modelCalls: overview.model_calls || overview.llm_calls,
+          successRate: overview.success_rate,
+          activeSessions: overview.active_sessions,
         },
-        messages: response.messages.map(
+        messages: messages.map(
           (msg: {
             id: string;
             timestamp: string;
@@ -117,8 +149,10 @@ export function useMonitoringData(filterState: FilterState) {
             level: string;
             platform?: string;
             user_id?: string;
+            user_name?: string;
             runner_name?: string;
             variables?: string;
+            role?: string;
           }) => ({
             id: msg.id,
             timestamp: parseUTCTimestamp(msg.timestamp),
@@ -132,11 +166,13 @@ export function useMonitoringData(filterState: FilterState) {
             level: msg.level as 'info' | 'warning' | 'error' | 'debug',
             platform: msg.platform,
             userId: msg.user_id,
+            userName: msg.user_name,
             runnerName: msg.runner_name,
             variables: msg.variables,
+            role: msg.role,
           }),
         ),
-        llmCalls: response.llmCalls.map(
+        llmCalls: llmCalls.map(
           (call: {
             id: string;
             timestamp: string;
@@ -151,6 +187,7 @@ export function useMonitoringData(filterState: FilterState) {
             bot_name: string;
             pipeline_id: string;
             pipeline_name: string;
+            session_id?: string;
             error_message?: string;
             message_id?: string;
           }) => ({
@@ -169,11 +206,47 @@ export function useMonitoringData(filterState: FilterState) {
             botName: call.bot_name,
             pipelineId: call.pipeline_id,
             pipelineName: call.pipeline_name,
+            sessionId: call.session_id,
             errorMessage: call.error_message,
             messageId: call.message_id,
           }),
         ),
-        embeddingCalls: (response.embeddingCalls || []).map(
+        toolCalls: toolCalls.map(
+          (call: {
+            id: string;
+            timestamp: string;
+            tool_name: string;
+            tool_source: string;
+            duration: number;
+            status: string;
+            bot_id: string;
+            bot_name: string;
+            pipeline_id: string;
+            pipeline_name: string;
+            session_id?: string;
+            message_id?: string;
+            arguments?: string;
+            result?: string;
+            error_message?: string;
+          }) => ({
+            id: call.id,
+            timestamp: parseUTCTimestamp(call.timestamp),
+            toolName: call.tool_name,
+            toolSource: call.tool_source,
+            duration: call.duration,
+            status: call.status as 'success' | 'error',
+            botId: call.bot_id,
+            botName: call.bot_name,
+            pipelineId: call.pipeline_id,
+            pipelineName: call.pipeline_name,
+            sessionId: call.session_id,
+            messageId: call.message_id,
+            arguments: call.arguments,
+            result: call.result,
+            errorMessage: call.error_message,
+          }),
+        ),
+        embeddingCalls: embeddingCalls.map(
           (call: {
             id: string;
             timestamp: string;
@@ -208,7 +281,7 @@ export function useMonitoringData(filterState: FilterState) {
         ),
         // Create merged modelCalls array from llmCalls and embeddingCalls
         modelCalls: [] as ModelCall[], // Will be populated after transform
-        sessions: response.sessions.map(
+        sessions: sessions.map(
           (session: {
             session_id: string;
             bot_id: string;
@@ -236,7 +309,7 @@ export function useMonitoringData(filterState: FilterState) {
             userId: session.user_id,
           }),
         ),
-        errors: response.errors.map(
+        errors: errors.map(
           (error: {
             id: string;
             timestamp: string;
@@ -264,11 +337,12 @@ export function useMonitoringData(filterState: FilterState) {
           }),
         ),
         totalCount: {
-          messages: response.totalCount.messages,
-          llmCalls: response.totalCount.llmCalls,
-          embeddingCalls: response.totalCount.embeddingCalls || 0,
-          sessions: response.totalCount.sessions,
-          errors: response.totalCount.errors,
+          messages: totalCount.messages,
+          llmCalls: totalCount.llmCalls,
+          toolCalls: totalCount.toolCalls ?? toolCalls.length,
+          embeddingCalls: totalCount.embeddingCalls || 0,
+          sessions: totalCount.sessions,
+          errors: totalCount.errors,
         },
       };
 
@@ -289,6 +363,7 @@ export function useMonitoringData(filterState: FilterState) {
           botName: call.botName,
           pipelineId: call.pipelineId,
           pipelineName: call.pipelineName,
+          sessionId: call.sessionId,
         }),
       );
 

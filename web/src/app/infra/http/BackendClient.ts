@@ -15,6 +15,7 @@ import {
   ApiRespPlugins,
   ApiRespPlugin,
   ApiRespPluginConfig,
+  ApiRespExtensions,
   AsyncTaskCreatedResp,
   ApiRespSystemInfo,
   ApiRespAsyncTasks,
@@ -35,8 +36,12 @@ import {
   ApiRespProviderRerankModel,
   RerankModel,
   ApiRespPluginSystemStatus,
+  ApiRespBoxStatus,
+  BoxSessionInfo,
   ApiRespMCPServers,
   ApiRespMCPServer,
+  ApiRespMCPResources,
+  ApiRespMCPResourceContents,
   MCPServer,
   ApiRespModelProviders,
   ApiRespModelProvider,
@@ -47,8 +52,13 @@ import {
   RagMigrationStatusResp,
   ApiRespTools,
   ApiRespToolDetail,
+  Skill,
+  ApiRespSkills,
+  ApiRespSkill,
 } from '@/app/infra/entities/api';
 import { Plugin } from '@/app/infra/entities/plugin';
+import type { PluginLogEntry } from '@/app/infra/entities/plugin';
+import type { I18nObject } from '@/app/infra/entities/common';
 import { GetBotLogsRequest } from '@/app/infra/http/requestParam/bots/GetBotLogsRequest';
 import { GetBotLogsResponse } from '@/app/infra/http/requestParam/bots/GetBotLogsResponse';
 
@@ -260,10 +270,23 @@ export class BackendClient extends BaseHttpClient {
   public getPipelineExtensions(uuid: string): Promise<{
     enable_all_plugins: boolean;
     enable_all_mcp_servers: boolean;
+    enable_all_skills: boolean;
+    mcp_resource_agent_read_enabled: boolean;
     bound_plugins: Array<{ author: string; name: string }>;
     available_plugins: Plugin[];
     bound_mcp_servers: string[];
     available_mcp_servers: MCPServer[];
+    bound_mcp_resources: Array<{
+      server_uuid?: string;
+      server_name?: string;
+      uri: string;
+      mode?: string;
+      enabled?: boolean;
+      max_bytes?: number;
+      max_tokens?: number;
+    }>;
+    bound_skills: string[];
+    available_skills: Skill[];
   }> {
     return this.get(`/api/v1/pipelines/${uuid}/extensions`);
   }
@@ -274,13 +297,34 @@ export class BackendClient extends BaseHttpClient {
     bound_mcp_servers: string[],
     enable_all_plugins: boolean = true,
     enable_all_mcp_servers: boolean = true,
+    bound_skills: string[] = [],
+    enable_all_skills: boolean = true,
+    bound_mcp_resources?: Array<{
+      server_uuid?: string;
+      server_name?: string;
+      uri: string;
+      mode?: string;
+      enabled?: boolean;
+      max_bytes?: number;
+      max_tokens?: number;
+    }>,
+    mcp_resource_agent_read_enabled?: boolean,
   ): Promise<object> {
-    return this.put(`/api/v1/pipelines/${uuid}/extensions`, {
+    const payload: Record<string, unknown> = {
       bound_plugins,
       bound_mcp_servers,
       enable_all_plugins,
       enable_all_mcp_servers,
-    });
+      bound_skills,
+      enable_all_skills,
+    };
+    if (bound_mcp_resources !== undefined) {
+      payload.bound_mcp_resources = bound_mcp_resources;
+    }
+    if (mcp_resource_agent_read_enabled !== undefined) {
+      payload.mcp_resource_agent_read_enabled = mcp_resource_agent_read_enabled;
+    }
+    return this.put(`/api/v1/pipelines/${uuid}/extensions`, payload);
   }
 
   // ============ WebSocket Chat API ============
@@ -377,6 +421,27 @@ export class BackendClient extends BaseHttpClient {
 
   public deleteBot(uuid: string): Promise<object> {
     return this.delete(`/api/v1/platform/bots/${uuid}`);
+  }
+
+  public getBotAdmins(botId: string): Promise<{
+    admins: Array<{ id: number; launcher_type: string; launcher_id: string }>;
+  }> {
+    return this.get(`/api/v1/platform/bots/${botId}/admins`);
+  }
+
+  public addBotAdmin(
+    botId: string,
+    launcher_type: string,
+    launcher_id: string,
+  ): Promise<{ id: number }> {
+    return this.post(`/api/v1/platform/bots/${botId}/admins`, {
+      launcher_type,
+      launcher_id,
+    });
+  }
+
+  public deleteBotAdmin(botId: string, adminId: number): Promise<object> {
+    return this.delete(`/api/v1/platform/bots/${botId}/admins/${adminId}`);
   }
 
   public getBotLogs(
@@ -531,6 +596,11 @@ export class BackendClient extends BaseHttpClient {
     return this.get(`/api/v1/knowledge/parsers${params}`);
   }
 
+  // ============ Extensions API ============
+  public getExtensions(): Promise<ApiRespExtensions> {
+    return this.get('/api/v1/extensions');
+  }
+
   // ============ Plugins API ============
   public getPlugins(): Promise<ApiRespPlugins> {
     return this.get('/api/v1/plugins');
@@ -582,6 +652,37 @@ export class BackendClient extends BaseHttpClient {
   ): Promise<{ readme: string }> {
     return this.get(
       `/api/v1/plugins/${author}/${name}/readme?language=${language}`,
+    );
+  }
+
+  public getPluginLogs(
+    author: string,
+    name: string,
+    limit: number = 200,
+    level?: string,
+  ): Promise<{ logs: PluginLogEntry[] }> {
+    const params = new URLSearchParams();
+    params.set('limit', String(limit));
+    if (level) {
+      params.set('level', level);
+    }
+    return this.get(
+      `/api/v1/plugins/${author}/${name}/logs?${params.toString()}`,
+    );
+  }
+
+  public getMcpServerLogs(
+    serverName: string,
+    limit: number = 200,
+    level?: string,
+  ): Promise<{ logs: PluginLogEntry[] }> {
+    const params = new URLSearchParams();
+    params.set('limit', String(limit));
+    if (level) {
+      params.set('level', level);
+    }
+    return this.get(
+      `/api/v1/mcp/servers/${encodeURIComponent(serverName)}/logs?${params.toString()}`,
     );
   }
 
@@ -653,9 +754,12 @@ export class BackendClient extends BaseHttpClient {
       published_at: string;
       prerelease: boolean;
       draft: boolean;
+      source_type?: 'release' | 'tag' | 'branch';
+      archive_url?: string;
     }>;
     owner: string;
     repo: string;
+    source_subdir?: string;
   }> {
     return this.post('/api/v1/plugins/github/releases', { repo_url: repoUrl });
   }
@@ -664,6 +768,9 @@ export class BackendClient extends BaseHttpClient {
     owner: string,
     repo: string,
     releaseId: number,
+    releaseTag?: string,
+    sourceType?: 'release' | 'tag' | 'branch',
+    archiveUrl?: string,
   ): Promise<{
     assets: Array<{
       id: number;
@@ -677,6 +784,9 @@ export class BackendClient extends BaseHttpClient {
       owner,
       repo,
       release_id: releaseId,
+      release_tag: releaseTag,
+      source_type: sourceType,
+      archive_url: archiveUrl,
     });
   }
 
@@ -684,6 +794,83 @@ export class BackendClient extends BaseHttpClient {
     const formData = new FormData();
     formData.append('file', file);
     return this.postFile('/api/v1/plugins/install/local', formData);
+  }
+
+  public previewPluginInstallFromLocal(file: File): Promise<{
+    filename: string;
+    size: number;
+    manifest: Record<string, unknown>;
+    metadata: {
+      author?: string;
+      name?: string;
+      version?: string;
+      label?: I18nObject;
+      description?: I18nObject;
+      repository?: string;
+    };
+    component_types: string[];
+    component_counts: Record<string, number>;
+    requirements: string[];
+    file_count: number;
+  }> {
+    const formData = new FormData();
+    formData.append('file', file);
+    return this.postFile('/api/v1/plugins/install/local/preview', formData);
+  }
+
+  // ============ Skill Install API ============
+  public installSkillFromGithub(
+    assetUrl: string,
+    owner: string,
+    repo: string,
+    releaseTag: string,
+    sourcePaths?: string[],
+    sourceSubdir?: string,
+  ): Promise<ApiRespSkills> {
+    return this.post('/api/v1/skills/install/github', {
+      asset_url: assetUrl,
+      owner,
+      repo,
+      release_tag: releaseTag,
+      source_paths: sourcePaths,
+      source_subdir: sourceSubdir,
+    });
+  }
+
+  public previewSkillInstallFromGithub(
+    assetUrl: string,
+    owner: string,
+    repo: string,
+    releaseTag: string,
+    sourceSubdir?: string,
+  ): Promise<{ skills: Skill[] }> {
+    return this.post('/api/v1/skills/install/github/preview', {
+      asset_url: assetUrl,
+      owner,
+      repo,
+      release_tag: releaseTag,
+      source_subdir: sourceSubdir,
+    });
+  }
+
+  public previewSkillInstallFromUpload(
+    file: File,
+  ): Promise<{ skills: Skill[] }> {
+    const formData = new FormData();
+    formData.append('file', file);
+    return this.postFile('/api/v1/skills/install/upload/preview', formData);
+  }
+
+  public installSkillFromUpload(
+    file: File,
+    sourcePaths?: string[],
+  ): Promise<ApiRespSkills> {
+    const formData = new FormData();
+    formData.append('file', file);
+    for (const sourcePath of sourcePaths || []) {
+      formData.append('source_paths', sourcePath);
+    }
+    return this.postFile('/api/v1/skills/install/upload', formData);
   }
 
   public installPluginFromMarketplace(
@@ -722,8 +909,11 @@ export class BackendClient extends BaseHttpClient {
 
   // ========== Tools ==========
 
-  public getTools(): Promise<ApiRespTools> {
-    return this.get('/api/v1/tools');
+  public getTools(pipelineId?: string): Promise<ApiRespTools> {
+    return this.get(
+      '/api/v1/tools',
+      pipelineId ? { pipeline_uuid: pipelineId } : undefined,
+    );
   }
 
   public getToolDetail(toolName: string): Promise<ApiRespToolDetail> {
@@ -731,7 +921,7 @@ export class BackendClient extends BaseHttpClient {
   }
 
   public getMCPServer(serverName: string): Promise<ApiRespMCPServer> {
-    return this.get(`/api/v1/mcp/servers/${serverName}`);
+    return this.get(`/api/v1/mcp/servers/${encodeURIComponent(serverName)}`);
   }
 
   public createMCPServer(server: MCPServer): Promise<AsyncTaskCreatedResp> {
@@ -742,18 +932,21 @@ export class BackendClient extends BaseHttpClient {
     serverName: string,
     server: Partial<MCPServer>,
   ): Promise<AsyncTaskCreatedResp> {
-    return this.put(`/api/v1/mcp/servers/${serverName}`, server);
+    return this.put(
+      `/api/v1/mcp/servers/${encodeURIComponent(serverName)}`,
+      server,
+    );
   }
 
   public deleteMCPServer(serverName: string): Promise<AsyncTaskCreatedResp> {
-    return this.delete(`/api/v1/mcp/servers/${serverName}`);
+    return this.delete(`/api/v1/mcp/servers/${encodeURIComponent(serverName)}`);
   }
 
   public toggleMCPServer(
     serverName: string,
     target_enabled: boolean,
   ): Promise<AsyncTaskCreatedResp> {
-    return this.put(`/api/v1/mcp/servers/${serverName}`, {
+    return this.put(`/api/v1/mcp/servers/${encodeURIComponent(serverName)}`, {
       enable: target_enabled,
     });
   }
@@ -762,7 +955,10 @@ export class BackendClient extends BaseHttpClient {
     serverName: string,
     serverData: object,
   ): Promise<AsyncTaskCreatedResp> {
-    return this.post(`/api/v1/mcp/servers/${serverName}/test`, serverData);
+    return this.post(
+      `/api/v1/mcp/servers/${encodeURIComponent(serverName)}/test`,
+      serverData,
+    );
   }
 
   public installMCPServerFromGithub(
@@ -775,6 +971,28 @@ export class BackendClient extends BaseHttpClient {
     source: object,
   ): Promise<AsyncTaskCreatedResp> {
     return this.post('/api/v1/mcp/servers', { source });
+  }
+
+  public getMCPServerResources(
+    serverName: string,
+  ): Promise<ApiRespMCPResources> {
+    return this.get(
+      `/api/v1/mcp/servers/${encodeURIComponent(serverName)}/resources`,
+    );
+  }
+
+  public readMCPServerResource(
+    serverName: string,
+    uri: string,
+    maxBytes?: number,
+  ): Promise<ApiRespMCPResourceContents> {
+    return this.post(
+      `/api/v1/mcp/servers/${encodeURIComponent(serverName)}/resources/read`,
+      {
+        uri,
+        max_bytes: maxBytes,
+      },
+    );
   }
 
   // ============ System API ============
@@ -837,6 +1055,14 @@ export class BackendClient extends BaseHttpClient {
     plugin_debug_key: string;
   }> {
     return this.get('/api/v1/plugins/debug-info');
+  }
+
+  public getBoxStatus(): Promise<ApiRespBoxStatus> {
+    return this.get('/api/v1/box/status');
+  }
+
+  public getBoxSessions(): Promise<BoxSessionInfo[]> {
+    return this.get('/api/v1/box/sessions');
   }
 
   // ============ User API ============
@@ -988,8 +1214,10 @@ export class BackendClient extends BaseHttpClient {
       level: string;
       platform?: string;
       user_id?: string;
+      user_name?: string;
       runner_name?: string;
       variables?: string;
+      role?: string;
     }>;
     llmCalls: Array<{
       id: string;
@@ -1005,8 +1233,26 @@ export class BackendClient extends BaseHttpClient {
       bot_name: string;
       pipeline_id: string;
       pipeline_name: string;
+      session_id?: string;
       error_message?: string;
       message_id?: string;
+    }>;
+    toolCalls: Array<{
+      id: string;
+      timestamp: string;
+      tool_name: string;
+      tool_source: string;
+      duration: number;
+      status: string;
+      bot_id: string;
+      bot_name: string;
+      pipeline_id: string;
+      pipeline_name: string;
+      session_id?: string;
+      message_id?: string;
+      arguments?: string;
+      result?: string;
+      error_message?: string;
     }>;
     embeddingCalls: Array<{
       id: string;
@@ -1052,6 +1298,7 @@ export class BackendClient extends BaseHttpClient {
     totalCount: {
       messages: number;
       llmCalls: number;
+      toolCalls?: number;
       embeddingCalls: number;
       sessions: number;
       errors: number;
@@ -1105,6 +1352,68 @@ export class BackendClient extends BaseHttpClient {
     return this.get(`/api/v1/monitoring/overview?${queryParams.toString()}`);
   }
 
+  public getTokenStatistics(params: {
+    botId?: string[];
+    pipelineId?: string[];
+    startTime?: string;
+    endTime?: string;
+    bucket?: 'hour' | 'day';
+  }): Promise<{
+    summary: {
+      total_calls: number;
+      success_calls: number;
+      error_calls: number;
+      total_input_tokens: number;
+      total_output_tokens: number;
+      total_tokens: number;
+      total_cost: number;
+      avg_tokens_per_call: number;
+      avg_duration_ms: number;
+      avg_tokens_per_second: number;
+      zero_token_success_calls: number;
+    };
+    by_model: Array<{
+      model_name: string;
+      calls: number;
+      error_calls: number;
+      input_tokens: number;
+      output_tokens: number;
+      total_tokens: number;
+      cost: number;
+      avg_tokens_per_call: number;
+      avg_duration_ms: number;
+    }>;
+    timeseries: Array<{
+      bucket: string;
+      input_tokens: number;
+      output_tokens: number;
+      total_tokens: number;
+      calls: number;
+    }>;
+    bucket: string;
+  }> {
+    const queryParams = new URLSearchParams();
+    if (params.botId) {
+      params.botId.forEach((id) => queryParams.append('botId', id));
+    }
+    if (params.pipelineId) {
+      params.pipelineId.forEach((id) => queryParams.append('pipelineId', id));
+    }
+    if (params.startTime) {
+      queryParams.append('startTime', params.startTime);
+    }
+    if (params.endTime) {
+      queryParams.append('endTime', params.endTime);
+    }
+    if (params.bucket) {
+      queryParams.append('bucket', params.bucket);
+    }
+
+    return this.get(
+      `/api/v1/monitoring/token-statistics?${queryParams.toString()}`,
+    );
+  }
+
   // ============ Survey API ============
   public getSurveyPending(): Promise<{
     survey: {
@@ -1132,6 +1441,109 @@ export class BackendClient extends BaseHttpClient {
 
   public dismissSurvey(surveyId: string): Promise<object> {
     return this.post('/api/v1/survey/dismiss', { survey_id: surveyId });
+  }
+
+  public submitFeedback(data: {
+    content: string;
+    attachments?: Array<{
+      name: string;
+      mime_type: string;
+      data_url: string;
+    }>;
+  }): Promise<object> {
+    return this.post('/api/v1/survey/feedback', data);
+  }
+
+  // ============ Skills API ============
+
+  public getSkills(): Promise<ApiRespSkills> {
+    return this.get('/api/v1/skills');
+  }
+
+  public getSkill(name: string): Promise<ApiRespSkill> {
+    return this.get(`/api/v1/skills/${name}`);
+  }
+
+  public createSkill(
+    skill: Omit<Skill, 'name'> & { name: string },
+  ): Promise<ApiRespSkill> {
+    return this.post('/api/v1/skills', skill);
+  }
+
+  public updateSkill(
+    name: string,
+    skill: Partial<Skill>,
+  ): Promise<ApiRespSkill> {
+    return this.put(`/api/v1/skills/${name}`, skill);
+  }
+
+  public deleteSkill(name: string): Promise<object> {
+    return this.delete(`/api/v1/skills/${name}`);
+  }
+
+  public previewSkill(name: string): Promise<{ instructions: string }> {
+    return this.get(`/api/v1/skills/${name}/preview`);
+  }
+
+  public getSkillIndex(pipelineUuid?: string): Promise<{ index: string }> {
+    const params = pipelineUuid ? { pipeline_uuid: pipelineUuid } : {};
+    return this.get('/api/v1/skills/index', params);
+  }
+
+  public scanSkillDirectory(path: string): Promise<{
+    package_root: string;
+    name: string;
+    display_name?: string;
+    description: string;
+    instructions: string;
+  }> {
+    return this.get('/api/v1/skills/scan', { path });
+  }
+
+  public listSkillFiles(
+    skillName: string,
+    path: string = '.',
+    includeHidden: boolean = false,
+  ): Promise<{
+    skill: { name: string };
+    base_path: string;
+    entries: Array<{
+      path: string;
+      name: string;
+      is_dir: boolean;
+      size: number | null;
+    }>;
+    truncated: boolean;
+  }> {
+    return this.get(`/api/v1/skills/${skillName}/files`, {
+      path,
+      include_hidden: includeHidden,
+    });
+  }
+
+  public readSkillFile(
+    skillName: string,
+    filePath: string,
+  ): Promise<{
+    skill: { name: string };
+    path: string;
+    content: string;
+  }> {
+    return this.get(`/api/v1/skills/${skillName}/files/${filePath}`);
+  }
+
+  public writeSkillFile(
+    skillName: string,
+    filePath: string,
+    content: string,
+  ): Promise<{
+    skill: { name: string };
+    path: string;
+    bytes_written: number;
+  }> {
+    return this.put(`/api/v1/skills/${skillName}/files/${filePath}`, {
+      content,
+    });
   }
 }
 

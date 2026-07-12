@@ -67,7 +67,11 @@ def make_pipeline_config(**overrides):
     for key, value in overrides.items():
         if key in base_config and isinstance(base_config[key], dict) and isinstance(value, dict):
             for sub_key, sub_value in value.items():
-                if sub_key in base_config[key] and isinstance(base_config[key][sub_key], dict) and isinstance(sub_value, dict):
+                if (
+                    sub_key in base_config[key]
+                    and isinstance(base_config[key][sub_key], dict)
+                    and isinstance(sub_value, dict)
+                ):
                     base_config[key][sub_key].update(sub_value)
                 else:
                     base_config[key][sub_key] = sub_value
@@ -141,7 +145,7 @@ class TestPreContentFilter:
 
         await stage.initialize(pipeline_config)
 
-        query = text_query("hello world")
+        query = text_query('hello world')
         query.pipeline_config = pipeline_config
 
         result = await stage.process(query, 'PreContentFilterStage')
@@ -163,7 +167,7 @@ class TestPreContentFilter:
         await stage.initialize(pipeline_config)
 
         # Empty message chain
-        query = text_query("")
+        query = text_query('')
         query.message_chain = platform_message.MessageChain([])
         query.pipeline_config = pipeline_config
 
@@ -185,7 +189,7 @@ class TestPreContentFilter:
 
         await stage.initialize(pipeline_config)
 
-        query = text_query("   ")  # Only whitespace
+        query = text_query('   ')  # Only whitespace
         query.pipeline_config = pipeline_config
 
         result = await stage.process(query, 'PreContentFilterStage')
@@ -234,7 +238,7 @@ class TestPreContentFilter:
 
         await stage.initialize(pipeline_config)
 
-        query = text_query("hello world")
+        query = text_query('hello world')
         query.pipeline_config = pipeline_config
 
         result = await stage.process(query, 'PreContentFilterStage')
@@ -266,7 +270,7 @@ class TestContentIgnoreFilter:
 
         await stage.initialize(pipeline_config)
 
-        query = text_query("/help me")
+        query = text_query('/help me')
         query.pipeline_config = pipeline_config
 
         result = await stage.process(query, 'PreContentFilterStage')
@@ -294,7 +298,7 @@ class TestContentIgnoreFilter:
 
         await stage.initialize(pipeline_config)
 
-        query = text_query("http://example.com")
+        query = text_query('http://example.com')
         query.pipeline_config = pipeline_config
 
         result = await stage.process(query, 'PreContentFilterStage')
@@ -322,7 +326,7 @@ class TestContentIgnoreFilter:
 
         await stage.initialize(pipeline_config)
 
-        query = text_query("normal message")
+        query = text_query('normal message')
         query.pipeline_config = pipeline_config
 
         result = await stage.process(query, 'PreContentFilterStage')
@@ -343,7 +347,7 @@ class TestContentIgnoreFilter:
 
         await stage.initialize(pipeline_config)
 
-        query = text_query("/help me")
+        query = text_query('/help me')
         query.pipeline_config = pipeline_config
 
         result = await stage.process(query, 'PreContentFilterStage')
@@ -368,12 +372,10 @@ class TestPostContentFilter:
 
         await stage.initialize(pipeline_config)
 
-        query = text_query("hello")
+        query = text_query('hello')
         query.pipeline_config = pipeline_config
         # Add a response message
-        query.resp_messages = [
-            provider_message.Message(role='assistant', content='Hello back!')
-        ]
+        query.resp_messages = [provider_message.Message(role='assistant', content='Hello back!')]
 
         result = await stage.process(query, 'PostContentFilterStage')
 
@@ -398,11 +400,9 @@ class TestPostContentFilter:
 
         await stage.initialize(pipeline_config)
 
-        query = text_query("hello")
+        query = text_query('hello')
         query.pipeline_config = pipeline_config
-        query.resp_messages = [
-            provider_message.Message(role='assistant', content='Response')
-        ]
+        query.resp_messages = [provider_message.Message(role='assistant', content='Response')]
 
         result = await stage.process(query, 'PostContentFilterStage')
 
@@ -422,7 +422,7 @@ class TestPostContentFilter:
 
         await stage.initialize(pipeline_config)
 
-        query = text_query("hello")
+        query = text_query('hello')
         query.pipeline_config = pipeline_config
         # Non-string content - use model_construct to bypass validation
         # The actual content type could be a list of ContentElement objects
@@ -450,11 +450,9 @@ class TestPostContentFilter:
 
         await stage.initialize(pipeline_config)
 
-        query = text_query("hello")
+        query = text_query('hello')
         query.pipeline_config = pipeline_config
-        query.resp_messages = [
-            provider_message.Message(role='assistant', content='')
-        ]
+        query.resp_messages = [provider_message.Message(role='assistant', content='')]
 
         result = await stage.process(query, 'PostContentFilterStage')
 
@@ -476,7 +474,7 @@ class TestContentFilterStageInvalidName:
 
         await stage.initialize(pipeline_config)
 
-        query = text_query("hello")
+        query = text_query('hello')
         query.pipeline_config = pipeline_config
 
         with pytest.raises(ValueError, match='未知的 stage_inst_name'):
@@ -506,7 +504,7 @@ class TestContentIgnoreFilterDirect:
 
         await stage.initialize(pipeline_config)
 
-        query = text_query("normal message without prefix")
+        query = text_query('normal message without prefix')
         query.pipeline_config = pipeline_config
 
         result = await stage.process(query, 'PreContentFilterStage')

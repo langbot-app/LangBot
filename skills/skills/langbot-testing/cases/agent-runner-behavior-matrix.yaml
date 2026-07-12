@@ -1,0 +1,34 @@
+id: agent-runner-behavior-matrix
+title: "AgentRunner deterministic behavior matrix probe"
+mode: probe
+area: release
+type: regression
+priority: p0
+risk: high
+ci_eligible: true
+tags:
+  - agent-runner
+  - probe
+  - deterministic-runner
+  - protocol
+skills:
+  - langbot-testing
+env:
+automation: skills/langbot-testing/probes/agent-runner-behavior-matrix.mjs
+steps:
+  - "Run `rtk bin/lbs test run agent-runner-behavior-matrix --dry-run` first; remove `--dry-run` after checking the planned evidence directory."
+  - "Automation reads fixtures/agent-runner/qa-runner-behaviors.json and validates each result sequence through the Host AgentResultNormalizer."
+checks:
+  - "automation-result.json status is pass."
+  - "probe-stdout.log contains QA_RUNNER_BEHAVIOR_MATRIX_OK."
+  - "The matrix covers ok, stream_ok, empty_output, malformed_result, and controlled_failure."
+evidence_required:
+  - filesystem
+diagnostics:
+  - "fail means the deterministic behavior fixture and Host result normalization disagree."
+success_patterns:
+  - "QA_RUNNER_BEHAVIOR_MATRIX_OK"
+failure_patterns:
+  - "AssertionError"
+  - "RunnerProtocolError"
+  - "behavior matrix exited"

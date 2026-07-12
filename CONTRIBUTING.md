@@ -14,6 +14,12 @@
 - 在 PR 和 Commit Message 中请使用全英文
 - 对于中文用户，issue 中可以使用中文
 
+### 贡献者许可协议（CLA）
+
+为了保护项目和每一位贡献者，我们要求所有代码贡献者签署[贡献者许可协议（CLA）](./CLA.md)。这是 Apache、Google、Grafana 等主流开源项目的标准做法：您保留自己代码的全部版权，仅授予项目使用、分发您贡献的许可。
+
+签署只需 10 秒：首次提交 PR 时，机器人会自动评论提示，按提示回复一句话即完成签署，此后对本组织所有仓库永久有效。历史贡献不受影响。
+
 <hr/>
 
 ## Guidelines
@@ -29,3 +35,9 @@
 
 - Use English in PRs and Commit Messages
 - For English users, you can use English in issues
+
+### Contributor License Agreement (CLA)
+
+To protect the project and every contributor, we require all code contributors to sign our [Contributor License Agreement](./CLA.md). This is standard practice in major open source projects such as Apache, Google, and Grafana: you keep full copyright of your code — the CLA only grants us a license to use and distribute your contribution.
+
+Signing takes 10 seconds: when you open your first PR, a bot will guide you to reply with a single comment. One signature covers all repositories in this organization, permanently. Past contributions are not affected.

@@ -1,0 +1,38 @@
+id: agent-runner-release-gate
+title: "Agent runner externalization release gate"
+description: "Release gate for runner externalization: pytest probes, environment preflight, fixture registration, local-agent capability paths, and ACP external harness execution."
+type: release_gate
+priority: p0
+tags:
+  - agent-runner
+  - release-gate
+  - local-agent
+  - external-runner
+cases:
+  - agent-runner-fixture-contract
+  - agent-runner-behavior-matrix
+  - agent-runner-ledger-invariants
+  - agent-runner-async-db-readiness
+  - agent-runner-ledger-stress
+  - agent-runner-ledger-contention
+  - agent-runner-ledger-concurrency
+  - agent-runner-runtime-chaos
+  - agent-runner-live-install
+  - agent-runner-qa-debug-chat
+  - agent-runner-release-preflight
+  - webui-login-state
+  - pipeline-debug-chat
+  - qa-plugin-smoke-live-install
+  - plugin-e2e-smoke
+  - langrag-kb-retrieve
+  - local-agent-basic-debug-chat
+  - local-agent-effective-prompt-debug-chat
+  - local-agent-context-compaction-debug-chat
+  - local-agent-rag-debug-chat
+  - local-agent-plugin-tool-call-debug-chat
+  - mcp-stdio-register
+  - mcp-stdio-tool-call
+  - local-agent-nonstreaming-debug-chat
+  - local-agent-multimodal-debug-chat
+  - local-agent-rag-multimodal-debug-chat
+  - acp-agent-runner-debug-chat

@@ -19,6 +19,18 @@ spec:
     en: https://link.langbot.app/en/platforms/qqofficial
     ja: https://link.langbot.app/ja/platforms/qqofficial
   config:
+    - name: __system.outbound_ips
+      label:
+        en_US: IP Whitelist
+        zh_Hans: IP 白名单
+        zh_Hant: IP 白名單
+      description:
+        en_US: Add these outbound IPs of the LangBot server to the IP whitelist in the development settings of the QQ Open Platform
+        zh_Hans: 请将这些 LangBot 服务器的出网 IP 添加到 QQ 开放平台开发设置中的 IP 白名单
+        zh_Hant: 請將這些 LangBot 伺服器的出網 IP 加入 QQ 開放平台開發設定中的 IP 白名單
+      type: array[string]
+      required: false
+      default: []
     - name: one-click-bind
       label:
         en_US: One-Click QR Binding

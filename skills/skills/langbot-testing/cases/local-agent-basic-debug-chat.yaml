@@ -1,0 +1,71 @@
+id: local-agent-basic-debug-chat
+title: "Local Agent Debug Chat returns a deterministic streaming response"
+mode: agent-browser
+area: pipeline
+type: smoke
+priority: p0
+risk: medium
+ci_eligible: false
+tags:
+  - local-agent
+  - pipeline
+  - streaming
+skills:
+  - langbot-env-setup
+  - langbot-testing
+env:
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_LOCAL_AGENT_PIPELINE_URL
+  - LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+automation: scripts/e2e/pipeline-debug-chat.mjs
+automation_env:
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BROWSER_PROFILE
+  - LANGBOT_CHROMIUM_EXECUTABLE
+  - LANGBOT_LOCAL_AGENT_PIPELINE_URL
+  - LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+automation_pipeline_url_env: LANGBOT_LOCAL_AGENT_PIPELINE_URL
+automation_pipeline_name_env: LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+automation_prompt: "请只回复 OK，用于前端调试测试。"
+automation_expected_text: "OK"
+setup_automation:
+  - "node:scripts/e2e/ensure-local-agent-pipeline.mjs --write-env"
+setup_provides_env:
+  - LANGBOT_LOCAL_AGENT_PIPELINE_URL
+  - LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+steps:
+  - "Open LANGBOT_FRONTEND_URL."
+  - "Navigate to Pipelines and open the target local-agent pipeline."
+  - "Open Configuration > AI."
+  - "Use runner Default or the pluginized langbot/local-agent runner."
+  - "Select a model that is known to answer Debug Chat in the current environment."
+  - "Clear Knowledge Bases unless this run intentionally combines RAG with the smoke path."
+  - "Save the pipeline."
+  - "Open Debug Chat."
+  - "Ensure the stream switch is enabled when the UI exposes it."
+  - "Send: 请只回复 OK，用于前端调试测试。"
+checks:
+  - "UI: The user message appears in Debug Chat."
+  - "UI: A Bot message appears and contains OK."
+  - "Console: No unexpected frontend runtime errors appear during the send/receive path."
+  - "Logs: Backend logs show the debug chat request completed on the streaming path instead of timing out in plugin/runtime calls."
+evidence_required:
+  - ui
+  - screenshot
+  - console
+  - backend_log
+diagnostics:
+  - "Provider errors such as model_not_found or no available channel mean the selected model is unavailable; switch to a known-good model before diagnosing local-agent."
+  - "Use GET /api/v1/pipelines/{uuid} only to confirm the saved runner and model config."
+success_patterns:
+  - "Processing request from person_websocket"
+  - "Streaming completed"
+failure_patterns:
+  - "Action invoke_llm_stream call timed out"
+  - "Task exception was never retrieved"
+  - "survey widget blocks debug chat"
+troubleshooting:
+  - plugin-runtime-timeout
+  - proxy-env-mismatch
+  - survey-widget-blocks-debug-chat

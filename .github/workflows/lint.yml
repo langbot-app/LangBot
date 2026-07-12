@@ -29,7 +29,7 @@ jobs:
         run: uv sync --dev
 
       - name: Run ruff check
-        run: uv run ruff check src
+        run: uv run ruff check src/langbot/ tests/ --output-format=concise
 
       - name: Run ruff format
         run: uv run ruff format src --check

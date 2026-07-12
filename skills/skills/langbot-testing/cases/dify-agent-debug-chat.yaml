@@ -1,0 +1,51 @@
+id: dify-agent-debug-chat
+title: "Dify AgentRunner returns a response through Pipeline Debug Chat"
+mode: agent-browser
+area: pipeline
+type: provider
+priority: p2
+risk: medium
+ci_eligible: false
+tags:
+  - dify
+  - agent-runner
+  - pipeline
+skills:
+  - langbot-env-setup
+  - langbot-testing
+env:
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BACKEND_URL
+preconditions:
+  - "A Dify app Service API key is available from the active secret source and must not be printed in reports."
+  - "The target pipeline is safe to modify for Dify runner configuration."
+steps:
+  - "Ensure a Dify app Service API key is available from the active secret source."
+  - "Open LANGBOT_FRONTEND_URL."
+  - "Navigate to Pipelines and open the target pipeline."
+  - "Open Configuration > AI."
+  - "Select runner Dify."
+  - "Set Base URL, App Type, API Key, Base Prompt, and Timeout according to references/dify-agent-runner.md."
+  - "Save the pipeline."
+  - "Open Debug Chat."
+  - "Send a prompt asking the bot to reply exactly with a unique sentinel, for example LANGBOT_DIFY_OK_<date>."
+checks:
+  - "UI: The runner selector and runner config identify Dify, not a generic Default label."
+  - "UI: Debug Chat shows a Bot message containing the sentinel."
+  - "History/log validation: The sentinel is present in an assistant/bot message, not only in the echoed User message."
+  - "Logs: Backend logs show Dify /chat-messages returned HTTP 200 and Conversation(0) Streaming completed."
+  - "Console: No unexpected frontend errors appear during runner configuration or Debug Chat."
+  - "Secret safety: No Dify API key, JWT, or browser token is printed in reports."
+evidence_required:
+  - ui
+  - console
+  - backend_log
+diagnostics:
+  - "Use direct Dify streaming API only to distinguish invalid Dify credentials from LangBot runner failures."
+  - "If direct Dify blocking mode fails for an Agent Chat app, retry streaming before treating credentials as invalid."
+  - "Use GET /api/v1/pipelines/{uuid} only to confirm saved runner_config."
+troubleshooting:
+  - agent-runner-actor-context-fields
+  - ambiguous-runner-default-label
+  - plugin-runtime-timeout
+  - proxy-env-mismatch

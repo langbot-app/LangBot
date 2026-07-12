@@ -1,0 +1,25 @@
+apiVersion: langbot/v1
+kind: Plugin
+metadata:
+  author: qa
+  name: agent-runner
+  repository: https://example.invalid/langbot/qa-agent-runner
+  version: 0.1.0
+  description:
+    en_US: Deterministic AgentRunner fixture for LangBot QA.
+    zh_Hans: LangBot QA 使用的确定性 AgentRunner 夹具。
+  label:
+    en_US: QA AgentRunner
+    zh_Hans: QA AgentRunner
+  icon: assets/icon.svg
+spec:
+  config: []
+  components:
+    AgentRunner:
+      fromDirs:
+        - path: components/agent_runner/
+          maxDepth: 1
+execution:
+  python:
+    path: main.py
+    attr: QAAgentRunnerPlugin

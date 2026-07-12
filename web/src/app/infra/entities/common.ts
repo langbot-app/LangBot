@@ -21,7 +21,7 @@ export interface ComponentManifest {
     version?: string;
     author?: string;
   };
-  spec: Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+  spec: Record<string, any>;
 }
 
 export interface CustomApiError {

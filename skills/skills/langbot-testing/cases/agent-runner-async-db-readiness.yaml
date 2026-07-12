@@ -1,0 +1,34 @@
+id: agent-runner-async-db-readiness
+title: "AgentRunner async DB readiness probe"
+mode: probe
+area: release
+type: smoke
+priority: p0
+risk: high
+ci_eligible: true
+tags:
+  - agent-runner
+  - probe
+  - async-db
+  - aiosqlite
+skills:
+  - langbot-testing
+env:
+automation: skills/langbot-testing/probes/agent-runner-async-db-readiness.mjs
+steps:
+  - "Run `rtk bin/lbs test run agent-runner-async-db-readiness --dry-run` first; remove `--dry-run` after checking the planned evidence directory."
+  - "Automation checks whether a direct aiosqlite in-memory connection can create a table within the readiness timeout."
+checks:
+  - "automation-result.json status is pass or env_issue."
+  - "pass means async SQLite tests are worth running."
+  - "env_issue means async SQLite-dependent Host pytest probes should be classified as environment-limited until fixed."
+evidence_required:
+  - filesystem
+diagnostics:
+  - "If this probe returns env_issue, run agent-runner-ledger-invariants for fast ledger coverage and skip async ledger pytest as a release blocker in this environment."
+success_patterns:
+  - "AIOSQLITE_READY"
+failure_patterns:
+  - "aiosqlite readiness timed out"
+troubleshooting:
+  - aiosqlite-connect-hangs

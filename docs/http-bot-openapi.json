@@ -1,0 +1,198 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "LangBot HTTP Bot Adapter",
+    "version": "1.0.0",
+    "description": "Server-to-server HTTP integration for a LangBot pipeline. Inbound messages are POSTed to the unified webhook route; replies are delivered to a configured callback URL (one POST per reply part). All requests are HMAC-SHA256 signed. See docs/platforms/http-bot.md."
+  },
+  "paths": {
+    "/bots/{bot_uuid}": {
+      "post": {
+        "summary": "Push a message into the pipeline (fire-and-collect)",
+        "description": "Returns 202 immediately. Replies arrive asynchronously on the configured callback URL. Reuse the same session_id within the aggregation window to merge multiple messages into one turn (N->1).",
+        "parameters": [
+          { "$ref": "#/components/parameters/BotUuid" },
+          { "$ref": "#/components/parameters/Timestamp" },
+          { "$ref": "#/components/parameters/Signature" },
+          { "$ref": "#/components/parameters/Idempotency" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/InboundMessage" } } }
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted (queued for the pipeline)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AcceptedResponse" } } }
+          },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "409": { "$ref": "#/components/responses/Error" },
+          "413": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/bots/{bot_uuid}/sync": {
+      "post": {
+        "summary": "Push a message and wait for the collapsed reply",
+        "description": "Blocking convenience mode. Waits for is_final and returns all reply parts collapsed into one array. Lossy (no sequence/streaming). One in-flight sync per session_id.",
+        "parameters": [
+          { "$ref": "#/components/parameters/BotUuid" },
+          { "$ref": "#/components/parameters/Timestamp" },
+          { "$ref": "#/components/parameters/Signature" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/InboundMessage" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "The collapsed reply",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SyncResponse" } } }
+          },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/bots/{bot_uuid}/reset": {
+      "post": {
+        "summary": "Reset a session's conversation",
+        "parameters": [
+          { "$ref": "#/components/parameters/BotUuid" },
+          { "$ref": "#/components/parameters/Timestamp" },
+          { "$ref": "#/components/parameters/Signature" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["session_id"],
+                "properties": {
+                  "session_id": { "type": "string" },
+                  "session_type": { "type": "string", "enum": ["person", "group"] }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Reset done" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    }
+  },
+  "components": {
+    "parameters": {
+      "BotUuid": {
+        "name": "bot_uuid", "in": "path", "required": true,
+        "schema": { "type": "string", "format": "uuid" }
+      },
+      "Timestamp": {
+        "name": "X-LB-Timestamp", "in": "header", "required": true,
+        "description": "Unix seconds; rejected if more than +/-300s from server time.",
+        "schema": { "type": "string" }
+      },
+      "Signature": {
+        "name": "X-LB-Signature", "in": "header", "required": true,
+        "description": "sha256=<hex> of HMAC-SHA256(secret, \"{timestamp}.\" + raw_body).",
+        "schema": { "type": "string" }
+      },
+      "Idempotency": {
+        "name": "X-LB-Idempotency-Key", "in": "header", "required": false,
+        "description": "Dedup key; a repeat within the dedup window returns 409.",
+        "schema": { "type": "string" }
+      }
+    },
+    "schemas": {
+      "Segment": {
+        "type": "object",
+        "required": ["type"],
+        "properties": {
+          "type": { "type": "string", "enum": ["Plain", "Image", "Voice", "File", "At", "Quote"] },
+          "text": { "type": "string", "description": "For type=Plain." },
+          "url": { "type": "string", "description": "For media types." },
+          "base64": { "type": "string", "description": "For media types (data URI or raw base64)." }
+        }
+      },
+      "InboundMessage": {
+        "type": "object",
+        "required": ["session_id", "message"],
+        "properties": {
+          "session_id": { "type": "string", "description": "Caller-defined; maps 1:1 to a LangBot session." },
+          "session_type": { "type": "string", "enum": ["person", "group"], "default": "person" },
+          "sender": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "name": { "type": "string" },
+              "group_name": { "type": "string", "description": "For session_type=group." }
+            }
+          },
+          "message": { "type": "array", "items": { "$ref": "#/components/schemas/Segment" } }
+        }
+      },
+      "AcceptedResponse": {
+        "type": "object",
+        "properties": {
+          "code": { "type": "integer", "example": 0 },
+          "msg": { "type": "string", "example": "accepted" },
+          "data": {
+            "type": "object",
+            "properties": {
+              "session_id": { "type": "string" },
+              "accepted_message_id": { "type": "string", "example": "in_01H..." },
+              "aggregating": { "type": "boolean" }
+            }
+          }
+        }
+      },
+      "SyncResponse": {
+        "type": "object",
+        "properties": {
+          "code": { "type": "integer", "example": 0 },
+          "msg": { "type": "string", "example": "ok" },
+          "data": {
+            "type": "object",
+            "properties": {
+              "session_id": { "type": "string" },
+              "reply_to": { "type": "string" },
+              "message": { "type": "array", "items": { "$ref": "#/components/schemas/Segment" } }
+            }
+          }
+        }
+      },
+      "Callback": {
+        "type": "object",
+        "description": "Delivered by LangBot to your callback_url, one POST per reply part. Signed with the outbound secret.",
+        "properties": {
+          "session_id": { "type": "string" },
+          "reply_to": { "type": "string", "description": "The accepted_message_id this answers." },
+          "sequence": { "type": "integer", "description": "1-based ordinal within the turn." },
+          "is_final": { "type": "boolean", "description": "True on the last part of the turn." },
+          "stream": { "type": "boolean" },
+          "message": { "type": "array", "items": { "$ref": "#/components/schemas/Segment" } },
+          "timestamp": { "type": "string", "format": "date-time" }
+        }
+      },
+      "ErrorEnvelope": {
+        "type": "object",
+        "properties": {
+          "code": { "type": "integer", "example": 40101 },
+          "msg": { "type": "string", "example": "invalid signature: signature_mismatch" },
+          "data": { "nullable": true }
+        }
+      }
+    },
+    "responses": {
+      "Error": {
+        "description": "Error envelope",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+      }
+    }
+  }
+}

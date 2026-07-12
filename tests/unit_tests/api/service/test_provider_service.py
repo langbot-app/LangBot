@@ -245,12 +245,14 @@ class TestModelProviderServiceCreateProvider:
         service = ModelProviderService(ap)
 
         # Execute
-        provider_uuid = await service.create_provider({
-            'name': 'New Provider',
-            'requester': 'openai',
-            'base_url': 'https://api.openai.com',
-            'api_keys': ['key'],
-        })
+        provider_uuid = await service.create_provider(
+            {
+                'name': 'New Provider',
+                'requester': 'openai',
+                'base_url': 'https://api.openai.com',
+                'api_keys': ['key'],
+            }
+        )
 
         # Verify - UUID is generated
         assert provider_uuid is not None
@@ -274,12 +276,14 @@ class TestModelProviderServiceCreateProvider:
         service = ModelProviderService(ap)
 
         # Execute
-        result_uuid = await service.create_provider({
-            'name': 'Runtime Provider',
-            'requester': 'openai',
-            'base_url': 'https://api.openai.com',
-            'api_keys': ['key'],
-        })
+        result_uuid = await service.create_provider(
+            {
+                'name': 'Runtime Provider',
+                'requester': 'openai',
+                'base_url': 'https://api.openai.com',
+                'api_keys': ['key'],
+            }
+        )
 
         # Verify - provider added to runtime dict and UUID generated
         ap.model_mgr.load_provider.assert_called_once()
@@ -302,10 +306,13 @@ class TestModelProviderServiceUpdateProvider:
         service = ModelProviderService(ap)
 
         # Execute
-        await service.update_provider('existing-uuid', {
-            'uuid': 'should-be-removed',  # Will be removed
-            'name': 'Updated Name',
-        })
+        await service.update_provider(
+            'existing-uuid',
+            {
+                'uuid': 'should-be-removed',  # Will be removed
+                'name': 'Updated Name',
+            },
+        )
 
         # Verify - reload called
         ap.model_mgr.reload_provider.assert_called_once_with('existing-uuid')
@@ -364,6 +371,7 @@ class TestModelProviderServiceDeleteProvider:
         rerank_result.first = Mock(return_value=None)
 
         call_count = 0
+
         async def mock_execute(query):
             nonlocal call_count
             call_count += 1
@@ -396,6 +404,7 @@ class TestModelProviderServiceDeleteProvider:
         rerank_result.first = Mock(return_value=Mock(spec=RerankModel))  # Has rerank model
 
         call_count = 0
+
         async def mock_execute(query):
             nonlocal call_count
             call_count += 1
@@ -454,6 +463,7 @@ class TestModelProviderServiceGetProviderModelCounts:
         rerank_result.scalar = Mock(return_value=1)
 
         call_count = 0
+
         async def mock_execute(query):
             nonlocal call_count
             call_count += 1
@@ -637,9 +647,7 @@ class TestModelProviderServiceUpdateSpaceModelProviderApiKeys:
         await service.update_space_model_provider_api_keys('space-api-key')
 
         # Verify - update and reload called for Space provider UUID
-        ap.model_mgr.reload_provider.assert_called_once_with(
-            '00000000-0000-0000-0000-000000000000'
-        )
+        ap.model_mgr.reload_provider.assert_called_once_with('00000000-0000-0000-0000-000000000000')
 
 
 class TestModelProviderServiceScanProviderModels:
@@ -795,9 +803,7 @@ class TestModelProviderServiceScanProviderModels:
         runtime_provider.token_mgr = Mock()
         runtime_provider.token_mgr.get_token = Mock(return_value='token')
         runtime_provider.token_mgr.tokens = ['token']
-        runtime_provider.requester.scan_models = AsyncMock(
-            side_effect=NotImplementedError('scan not supported')
-        )
+        runtime_provider.requester.scan_models = AsyncMock(side_effect=NotImplementedError('scan not supported'))
         ap.model_mgr.load_provider = AsyncMock(return_value=runtime_provider)
 
         service = ModelProviderService(ap)
@@ -848,9 +854,7 @@ class TestModelProviderServiceScanProviderModels:
         ap.model_mgr.load_provider = AsyncMock(return_value=runtime_provider)
 
         # Mock existing LLM model
-        ap.llm_model_service.get_llm_models_by_provider = AsyncMock(
-            return_value=[{'name': 'Existing Model'}]
-        )
+        ap.llm_model_service.get_llm_models_by_provider = AsyncMock(return_value=[{'name': 'Existing Model'}])
         ap.embedding_models_service.get_embedding_models_by_provider = AsyncMock(return_value=[])
 
         service = ModelProviderService(ap)

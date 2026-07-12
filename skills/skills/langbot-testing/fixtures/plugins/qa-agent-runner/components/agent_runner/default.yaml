@@ -1,0 +1,30 @@
+apiVersion: langbot/v1
+kind: AgentRunner
+metadata:
+  name: default
+  label:
+    en_US: QA Deterministic Runner
+    zh_Hans: QA 确定性 Runner
+  description:
+    en_US: Deterministic runner fixture that returns stable QA sentinel output.
+    zh_Hans: 返回稳定 QA 哨兵输出的确定性 runner 夹具。
+spec:
+  capabilities:
+    streaming: true
+    tool_calling: false
+    knowledge_retrieval: false
+    multimodal_input: false
+    skill_authoring: false
+    interrupt: false
+  permissions:
+    models: []
+    tools: []
+    knowledge_bases: []
+    history: []
+    events: []
+    storage: []
+  config: []
+execution:
+  python:
+    path: default.py
+    attr: DefaultAgentRunner

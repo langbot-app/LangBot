@@ -48,6 +48,7 @@ coverage.xml
 .coverage
 src/langbot/web/
 testsdk/
+.qa/
 
 # Build artifacts
 /dist

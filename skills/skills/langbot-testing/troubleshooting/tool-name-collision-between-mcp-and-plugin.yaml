@@ -1,0 +1,25 @@
+id: tool-name-collision-between-mcp-and-plugin
+title: "MCP and plugin expose the same tool name"
+date: 2026-05-21
+symptoms:
+  - "An MCP tool-call case completes, but the returned sentinel has a plugin prefix instead of the MCP prefix."
+  - "The prompt asks for the MCP fixture tool, but the bot returns qa-plugin-smoke:<input>."
+  - "GET /api/v1/tools or the runner tool list contains multiple tools with the same visible name."
+patterns:
+  - "qa-plugin-smoke:mcp-ok-local-agent"
+  - "multiple tools with the same visible name"
+  - "duplicate tool name"
+  - "qa/plugin-smoke"
+likely_causes:
+  - "A stale MCP registration still exposes the old qa_echo fixture name while qa-plugin-smoke is installed."
+  - "The model selects the plugin tool because both tools have the same call name or similar descriptions."
+  - "The test prompt names an ambiguous tool, so the browser result cannot prove which provider executed the tool unless the returned sentinel is checked."
+fix_steps:
+  - "Use unique tool names across simultaneous test fixtures. The current MCP fixture should expose qa_mcp_echo, not qa_echo."
+  - "When testing MCP, require the bot response to contain the MCP-specific sentinel qa_mcp_echo:<input>, not qa-plugin-smoke:<input>."
+  - "When testing plugin tools, prefer qa_plugin_echo or another plugin-only tool name that cannot be confused with the MCP fixture."
+  - "Refresh the MCP server registration or restart the backend if /api/v1/tools still shows the old qa_echo MCP fixture."
+verification: "The MCP case passes only when the bot-visible response contains the MCP fixture sentinel and the plugin-only sentinel is absent for the same input."
+related_cases:
+  - mcp-stdio-tool-call
+  - local-agent-plugin-tool-call-debug-chat

@@ -393,14 +393,16 @@ class TestSpaceServiceRefreshToken:
         # Mock HTTP response
         mock_response = MagicMock()
         mock_response.status = 200
-        mock_response.json = AsyncMock(return_value={
-            'code': 0,
-            'data': {
-                'access_token': 'new_access_token',
-                'refresh_token': 'new_refresh_token',
-                'expires_in': 3600,
+        mock_response.json = AsyncMock(
+            return_value={
+                'code': 0,
+                'data': {
+                    'access_token': 'new_access_token',
+                    'refresh_token': 'new_refresh_token',
+                    'expires_in': 3600,
+                },
             }
-        })
+        )
 
         with patch('langbot.pkg.api.http.service.space.httpclient.get_session') as mock_session:
             mock_session_obj = MagicMock()
@@ -429,10 +431,12 @@ class TestSpaceServiceRefreshToken:
         # Mock HTTP response with error
         mock_response = MagicMock()
         mock_response.status = 200
-        mock_response.json = AsyncMock(return_value={
-            'code': 1,
-            'msg': 'Invalid refresh token',
-        })
+        mock_response.json = AsyncMock(
+            return_value={
+                'code': 1,
+                'msg': 'Invalid refresh token',
+            }
+        )
         mock_response.text = AsyncMock(return_value='{"code":1,"msg":"Invalid refresh token"}')
 
         with patch('langbot.pkg.api.http.service.space.httpclient.get_session') as mock_session:
@@ -489,14 +493,16 @@ class TestSpaceServiceExchangeOAuthCode:
         # Mock HTTP response
         mock_response = MagicMock()
         mock_response.status = 200
-        mock_response.json = AsyncMock(return_value={
-            'code': 0,
-            'data': {
-                'access_token': 'new_access_token',
-                'refresh_token': 'new_refresh_token',
-                'expires_in': 3600,
+        mock_response.json = AsyncMock(
+            return_value={
+                'code': 0,
+                'data': {
+                    'access_token': 'new_access_token',
+                    'refresh_token': 'new_refresh_token',
+                    'expires_in': 3600,
+                },
             }
-        })
+        )
 
         with patch('langbot.pkg.api.http.service.space.httpclient.get_session') as mock_session:
             mock_session_obj = MagicMock()
@@ -555,13 +561,15 @@ class TestSpaceServiceGetUserInfoRaw:
         # Mock HTTP response
         mock_response = MagicMock()
         mock_response.status = 200
-        mock_response.json = AsyncMock(return_value={
-            'code': 0,
-            'data': {
-                'email': 'test@example.com',
-                'credits': 100,
+        mock_response.json = AsyncMock(
+            return_value={
+                'code': 0,
+                'data': {
+                    'email': 'test@example.com',
+                    'credits': 100,
+                },
             }
-        })
+        )
 
         with patch('langbot.pkg.api.http.service.space.httpclient.get_session') as mock_session:
             mock_session_obj = MagicMock()
@@ -669,27 +677,29 @@ class TestSpaceServiceGetModels:
         # Mock HTTP response with proper model data matching SpaceModel schema
         mock_response = MagicMock()
         mock_response.status = 200
-        mock_response.json = AsyncMock(return_value={
-            'code': 0,
-            'data': {
-                'models': [
-                    {
-                        'uuid': 'uuid-1',
-                        'model_id': 'model-1',
-                        'provider': 'provider-1',
-                        'category': 'chat',
-                        'status': 'active',
-                    },
-                    {
-                        'uuid': 'uuid-2',
-                        'model_id': 'model-2',
-                        'provider': 'provider-2',
-                        'category': 'chat',
-                        'status': 'active',
-                    },
-                ]
+        mock_response.json = AsyncMock(
+            return_value={
+                'code': 0,
+                'data': {
+                    'models': [
+                        {
+                            'uuid': 'uuid-1',
+                            'model_id': 'model-1',
+                            'provider': 'provider-1',
+                            'category': 'chat',
+                            'status': 'active',
+                        },
+                        {
+                            'uuid': 'uuid-2',
+                            'model_id': 'model-2',
+                            'provider': 'provider-2',
+                            'category': 'chat',
+                            'status': 'active',
+                        },
+                    ]
+                },
             }
-        })
+        )
 
         with patch('langbot.pkg.api.http.service.space.httpclient.get_session') as mock_session:
             mock_session_obj = MagicMock()

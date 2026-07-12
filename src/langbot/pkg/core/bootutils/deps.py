@@ -42,6 +42,7 @@ required_deps = {
     'telegramify_markdown': 'telegramify-markdown',
     'slack_sdk': 'slack_sdk',
     'asyncpg': 'asyncpg',
+    'litellm': 'litellm',
 }
 
 

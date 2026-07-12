@@ -12,6 +12,12 @@ from __future__ import annotations
 import pytest
 from unittest.mock import AsyncMock, Mock
 
+# Preload pipelinemgr so the pipeline.stage module is fully initialised before
+# any individual stage test (e.g. preproc, longtext) tries to import it. Without
+# this, running a stage test in isolation triggers a circular-import error:
+#   stage.py → core.app → pipelinemgr → stage.stage_class (not yet bound).
+import langbot.pkg.pipeline.pipelinemgr  # noqa: F401
+
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
@@ -34,6 +40,9 @@ class MockApplication:
         self.query_pool = self._create_mock_query_pool()
         self.instance_config = self._create_mock_instance_config()
         self.task_mgr = self._create_mock_task_manager()
+        # Skill manager is optional; PreProcessor only touches it for the
+        # local-agent runner. None keeps the skill-binding branch inert.
+        self.skill_mgr = None
 
     def _create_mock_logger(self):
         logger = Mock()

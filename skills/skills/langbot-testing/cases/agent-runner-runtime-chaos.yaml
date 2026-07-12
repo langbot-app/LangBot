@@ -1,0 +1,38 @@
+id: agent-runner-runtime-chaos
+title: "AgentRunner SDK runtime chaos pytest probe"
+mode: probe
+area: release
+type: regression
+priority: p0
+risk: high
+ci_eligible: true
+tags:
+  - agent-runner
+  - probe
+  - pytest
+  - runtime
+  - sdk
+skills:
+  - langbot-testing
+env:
+automation: skills/langbot-testing/probes/agent-runner-runtime-chaos.mjs
+steps:
+  - "Run `rtk bin/lbs test run agent-runner-runtime-chaos --dry-run` first; remove `--dry-run` after checking the SDK repo target and evidence directory."
+  - "Automation resolves LANGBOT_PLUGIN_SDK_REPO, defaulting to ../langbot-plugin-sdk when the env var is unset."
+  - "Automation runs the existing SDK pytest files tests/runtime/plugin/test_mgr_agent_runner.py and tests/runtime/test_pull_api_handlers.py."
+checks:
+  - "automation-result.json status is pass."
+  - "pytest exit status is 0 for the existing AgentRunner runtime and pull API handler tests."
+  - "pytest-stdout.log and pytest-stderr.log are written under LBS_EVIDENCE_DIR."
+evidence_required:
+  - filesystem
+diagnostics:
+  - "This probe does not open the WebUI; it runs SDK pytest targets directly."
+  - "env_issue means LANGBOT_PLUGIN_SDK_REPO/default ../langbot-plugin-sdk did not resolve, rtk/uv was unavailable, or the expected test files are missing."
+  - "fail means the existing SDK runtime pytest target failed or timed out."
+success_patterns:
+  - "pytest passed"
+failure_patterns:
+  - "pytest exited with status"
+  - "pytest timed out"
+  - "Failed to start pytest command"

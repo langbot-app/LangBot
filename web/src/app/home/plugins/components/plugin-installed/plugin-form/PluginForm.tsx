@@ -4,10 +4,16 @@ import { Plugin } from '@/app/infra/entities/plugin';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import DynamicFormComponent from '@/app/home/components/dynamic-form/DynamicFormComponent';
 import { Button } from '@/components/ui/button';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
 import { toast } from 'sonner';
-import { extractI18nObject } from '@/i18n/I18nProvider';
 import { useTranslation } from 'react-i18next';
-import PluginComponentList from '@/app/home/plugins/components/plugin-installed/PluginComponentList';
 
 export default function PluginForm({
   pluginAuthor,
@@ -36,7 +42,6 @@ export default function PluginForm({
       setPluginConfig(res);
 
       // 提取初始配置中的所有文件 key
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const extractFileKeys = (obj: any): string[] => {
         const keys: string[] = [];
         if (obj && typeof obj === 'object') {
@@ -71,7 +76,6 @@ export default function PluginForm({
       );
 
       // 提取最终保存的配置中的所有文件 key
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const extractFileKeys = (obj: any): string[] => {
         const keys: string[] = [];
         if (obj && typeof obj === 'object') {
@@ -137,65 +141,34 @@ export default function PluginForm({
   }
 
   return (
-    <div>
-      <div className="space-y-2">
-        <div className="text-lg font-medium">
-          {extractI18nObject(pluginInfo.manifest.manifest.metadata.label)}
-        </div>
-        <div className="text-sm text-gray-500 pb-2">
-          {extractI18nObject(
-            pluginInfo.manifest.manifest.metadata.description ?? {
-              en_US: '',
-              zh_Hans: '',
-            },
+    <div className="min-w-0 max-w-full space-y-4">
+      <Card className="min-w-0 overflow-x-hidden">
+        <CardHeader>
+          <CardTitle>{t('plugins.pluginConfig')}</CardTitle>
+          <CardDescription>{t('plugins.saveConfig')}</CardDescription>
+        </CardHeader>
+        <CardContent className="min-w-0 overflow-x-hidden">
+          {pluginInfo.manifest.manifest.spec.config.length > 0 ? (
+            <DynamicFormComponent
+              itemConfigList={pluginInfo.manifest.manifest.spec.config}
+              initialValues={pluginConfig.config as Record<string, object>}
+              onSubmit={(values) => {
+                // 只保存表单值的引用,不触发状态更新
+                currentFormValues.current = values;
+              }}
+              onFileUploaded={(fileKey) => {
+                // 追踪上传的文件
+                uploadedFileKeys.current.add(fileKey);
+              }}
+            />
+          ) : (
+            <div className="text-sm text-muted-foreground">
+              {t('plugins.pluginNoConfig')}
+            </div>
           )}
-        </div>
-
-        <div className="mb-4 flex flex-row items-center justify-start gap-[0.4rem]">
-          <PluginComponentList
-            components={(() => {
-              const componentKindCount: Record<string, number> = {};
-              for (const component of pluginInfo.components) {
-                const kind = component.manifest.manifest.kind;
-                if (componentKindCount[kind]) {
-                  componentKindCount[kind]++;
-                } else {
-                  componentKindCount[kind] = 1;
-                }
-              }
-              return componentKindCount;
-            })()}
-            showComponentName={true}
-            showTitle={false}
-            useBadge={true}
-            t={t}
-          />
-        </div>
-
+        </CardContent>
         {pluginInfo.manifest.manifest.spec.config.length > 0 && (
-          <DynamicFormComponent
-            itemConfigList={pluginInfo.manifest.manifest.spec.config}
-            initialValues={pluginConfig.config as Record<string, object>}
-            onSubmit={(values) => {
-              // 只保存表单值的引用,不触发状态更新
-              currentFormValues.current = values;
-            }}
-            onFileUploaded={(fileKey) => {
-              // 追踪上传的文件
-              uploadedFileKeys.current.add(fileKey);
-            }}
-          />
-        )}
-        {pluginInfo.manifest.manifest.spec.config.length === 0 && (
-          <div className="text-sm text-gray-500">
-            {t('plugins.pluginNoConfig')}
-          </div>
-        )}
-      </div>
-
-      {pluginInfo.manifest.manifest.spec.config.length > 0 && (
-        <div className="sticky bottom-0 left-0 right-0 bg-background border-t p-4 mt-4">
-          <div className="flex justify-end gap-2">
+          <CardFooter className="justify-end">
             <Button
               type="submit"
               onClick={() => handleSubmit()}
@@ -203,9 +176,9 @@ export default function PluginForm({
             >
               {isSaving ? t('plugins.saving') : t('plugins.saveConfig')}
             </Button>
-          </div>
-        </div>
-      )}
+          </CardFooter>
+        )}
+      </Card>
     </div>
   );
 }

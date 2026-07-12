@@ -49,7 +49,7 @@ class TestPendingMessage:
         """PendingMessage should be created with correct fields."""
         aggregator = get_aggregator_module()
 
-        chain = text_chain("hello")
+        chain = text_chain('hello')
         event = friend_message_event(chain)
         adapter = mock_adapter()
 
@@ -88,7 +88,7 @@ class TestSessionBuffer:
         """SessionBuffer should accept initial messages."""
         aggregator = get_aggregator_module()
 
-        chain = text_chain("hello")
+        chain = text_chain('hello')
         event = friend_message_event(chain)
         adapter = mock_adapter()
 
@@ -309,7 +309,7 @@ class TestMessageAggregatorAddMessage:
         app = make_aggregator_app()
         agg = aggregator.MessageAggregator(app)
 
-        chain = text_chain("hello")
+        chain = text_chain('hello')
         event = friend_message_event(chain)
         adapter = mock_adapter()
 
@@ -348,7 +348,7 @@ class TestMessageAggregatorAddMessage:
 
         agg = aggregator.MessageAggregator(app)
 
-        chain = text_chain("hello")
+        chain = text_chain('hello')
         event = friend_message_event(chain)
         adapter = mock_adapter()
 
@@ -387,7 +387,7 @@ class TestMessageAggregatorAddMessage:
 
         agg = aggregator.MessageAggregator(app)
 
-        chain = text_chain("hello")
+        chain = text_chain('hello')
         event = friend_message_event(chain)
         adapter = mock_adapter()
 
@@ -419,7 +419,7 @@ class TestMessageAggregatorMerge:
         app = make_aggregator_app()
         agg = aggregator.MessageAggregator(app)
 
-        chain = text_chain("hello")
+        chain = text_chain('hello')
         event = friend_message_event(chain)
         adapter = mock_adapter()
 
@@ -445,8 +445,8 @@ class TestMessageAggregatorMerge:
         app = make_aggregator_app()
         agg = aggregator.MessageAggregator(app)
 
-        chain1 = text_chain("hello")
-        chain2 = text_chain("world")
+        chain1 = text_chain('hello')
+        chain2 = text_chain('world')
         event = friend_message_event(chain1)
         adapter = mock_adapter()
 
@@ -476,8 +476,8 @@ class TestMessageAggregatorMerge:
 
         # Should contain both messages with separator
         merged_str = str(merged.message_chain)
-        assert "hello" in merged_str
-        assert "world" in merged_str
+        assert 'hello' in merged_str
+        assert 'world' in merged_str
 
     def test_merge_messages_preserves_routed_by_rule_if_any_input_matches(self):
         """Merged PendingMessage should keep routed_by_rule when any input was rule-routed."""
@@ -486,8 +486,8 @@ class TestMessageAggregatorMerge:
         app = make_aggregator_app()
         agg = aggregator.MessageAggregator(app)
 
-        chain1 = text_chain("first")
-        chain2 = text_chain("second")
+        chain1 = text_chain('first')
+        chain2 = text_chain('second')
         event = friend_message_event(chain1)
         adapter = mock_adapter()
 
@@ -545,7 +545,7 @@ class TestMessageAggregatorFlush:
         app = make_aggregator_app()
         agg = aggregator.MessageAggregator(app)
 
-        chain = text_chain("hello")
+        chain = text_chain('hello')
         event = friend_message_event(chain)
         adapter = mock_adapter()
 
@@ -597,7 +597,7 @@ class TestMessageAggregatorFlushAll:
         app = make_aggregator_app()
         agg = aggregator.MessageAggregator(app)
 
-        chain = text_chain("hello")
+        chain = text_chain('hello')
         event = friend_message_event(chain)
         adapter = mock_adapter()
 

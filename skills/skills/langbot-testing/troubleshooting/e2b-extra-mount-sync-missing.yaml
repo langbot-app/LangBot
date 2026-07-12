@@ -1,0 +1,23 @@
+id: e2b-extra-mount-sync-missing
+title: "Activated skill files are missing or not written back on E2B"
+date: 2026-05-18
+symptoms:
+  - "register_skill succeeds but the activated skill cannot be used from /workspace/.skills/<skill-name>."
+  - "A file written inside /workspace/.skills/<skill-name> does not appear in the Box-managed skill store."
+  - "The same activate-and-exec flow works on Docker or nsjail but fails on E2B."
+patterns:
+  - "No such file or directory: /workspace/.skills"
+  - "Skill file not found after activated skill exec"
+  - "E2B command runs under /home/user/workspace while LangBot paths use /workspace"
+likely_causes:
+  - "Public E2B does not provide host bind mounts, so LangBot must upload and download mounted directories."
+  - "Only the main workspace mount was synced, while activated skills are passed as extra_mounts."
+  - "Writeback from writable extra_mounts was not downloaded after command completion."
+fix_steps:
+  - "Sync the main host_path and each extra_mount into the adapted E2B path before command execution."
+  - "After command execution, sync writable host_path and writable extra_mounts back to host storage."
+  - "Rewrite logical /workspace command paths to E2B's internal writable path only at execution time."
+  - "Keep session metadata mount_path as LangBot's logical path, not the E2B-internal path."
+verification: "Run sandbox-skill-authoring-e2e with BOX_BACKEND=e2b and confirm activated_writeback.txt is readable from the registered skill package after the second exec."
+related_cases:
+  - sandbox-skill-authoring-e2e

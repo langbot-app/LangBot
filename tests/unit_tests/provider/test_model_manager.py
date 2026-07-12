@@ -494,6 +494,7 @@ async def test_model_manager_init_temporary_runtime_llm_model(fake_requester_reg
             'api_keys': ['temp-key'],
         },
         'abilities': ['func_call'],
+        'context_length': 128000,
         'extra_args': {'temperature': 0.5},
     }
 
@@ -501,6 +502,9 @@ async def test_model_manager_init_temporary_runtime_llm_model(fake_requester_reg
 
     assert runtime_model.model_entity.uuid == 'temp-model-uuid'
     assert runtime_model.model_entity.name == 'TempModel'
+    assert runtime_model.model_entity.context_length == 128000
+    assert runtime_model.model_entity.extra_args == {'temperature': 0.5}
+    assert 'context_length' not in runtime_model.model_entity.extra_args
     assert runtime_model.provider.provider_entity.uuid == 'temp-provider-uuid'
     assert runtime_model.provider.token_mgr.tokens == ['temp-key']
 
@@ -631,7 +635,9 @@ async def test_model_manager_reload_provider_not_found(fake_requester_registry):
 
 
 @pytest.mark.asyncio
-async def test_model_manager_load_llm_model_with_provider(fake_requester_registry, fake_persistence_data, runtime_provider):
+async def test_model_manager_load_llm_model_with_provider(
+    fake_requester_registry, fake_persistence_data, runtime_provider
+):
     """Test ModelManager.load_llm_model_with_provider creates RuntimeLLMModel."""
     model_mgr = fake_requester_registry
 
@@ -644,7 +650,9 @@ async def test_model_manager_load_llm_model_with_provider(fake_requester_registr
 
 
 @pytest.mark.asyncio
-async def test_model_manager_load_llm_model_with_provider_from_row(fake_requester_registry, fake_persistence_data, runtime_provider):
+async def test_model_manager_load_llm_model_with_provider_from_row(
+    fake_requester_registry, fake_persistence_data, runtime_provider
+):
     """Test ModelManager.load_llm_model_with_provider handles Row objects."""
     model_mgr = fake_requester_registry
 
@@ -657,7 +665,9 @@ async def test_model_manager_load_llm_model_with_provider_from_row(fake_requeste
 
 
 @pytest.mark.asyncio
-async def test_model_manager_load_embedding_model_with_provider(fake_requester_registry, fake_persistence_data, runtime_provider):
+async def test_model_manager_load_embedding_model_with_provider(
+    fake_requester_registry, fake_persistence_data, runtime_provider
+):
     """Test ModelManager.load_embedding_model_with_provider creates RuntimeEmbeddingModel."""
     model_mgr = fake_requester_registry
 

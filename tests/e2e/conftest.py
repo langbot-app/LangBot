@@ -92,7 +92,7 @@ def e2e_client(e2e_port, langbot_process):
 
     base_url = f'http://127.0.0.1:{e2e_port}'
 
-    with httpx.Client(base_url=base_url, timeout=10.0) as client:
+    with httpx.Client(base_url=base_url, timeout=10.0, trust_env=False) as client:
         yield client
 
 

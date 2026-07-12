@@ -43,6 +43,7 @@ class TestableRequester(requester.ProviderAPIRequester):
         remove_think=False,
     ):
         import langbot_plugin.api.entities.builtin.provider.message as provider_message
+
         return provider_message.Message(
             role='assistant',
             content=[provider_message.ContentElement(type='text', text='Testable response')],
@@ -289,7 +290,9 @@ async def test_runtime_provider_invoke_llm_delegates(runtime_provider, runtime_l
         current_stage_name=None,
     )
 
-    messages = [provider_message.Message(role='user', content=[provider_message.ContentElement(type='text', text='Hello')])]
+    messages = [
+        provider_message.Message(role='user', content=[provider_message.ContentElement(type='text', text='Hello')])
+    ]
 
     result = await provider.invoke_llm(query, runtime_llm_model, messages)
 
@@ -330,7 +333,9 @@ async def test_runtime_provider_invoke_llm_stream_yields_chunks(runtime_provider
         current_stage_name=None,
     )
 
-    messages = [provider_message.Message(role='user', content=[provider_message.ContentElement(type='text', text='Hello')])]
+    messages = [
+        provider_message.Message(role='user', content=[provider_message.ContentElement(type='text', text='Hello')])
+    ]
 
     chunks = []
     async for chunk in provider.invoke_llm_stream(query, runtime_llm_model, messages):
@@ -576,7 +581,9 @@ async def test_runtime_provider_invoke_llm_propagates_error(mock_app_for_modelmg
         current_stage_name=None,
     )
 
-    messages = [provider_message.Message(role='user', content=[provider_message.ContentElement(type='text', text='Hello')])]
+    messages = [
+        provider_message.Message(role='user', content=[provider_message.ContentElement(type='text', text='Hello')])
+    ]
 
     with pytest.raises(RequesterError):
         await provider.invoke_llm(query, model, messages)

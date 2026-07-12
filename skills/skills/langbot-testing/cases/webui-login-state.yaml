@@ -1,0 +1,41 @@
+id: webui-login-state
+title: "Configured frontend opens with authenticated LangBot WebUI state"
+mode: agent-browser
+area: auth
+type: smoke
+priority: p0
+risk: low
+ci_eligible: false
+tags:
+  - smoke
+  - auth
+skills:
+  - langbot-env-setup
+  - langbot-testing
+env:
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_BROWSER_PROFILE
+automation: scripts/e2e/webui-login-state.mjs
+automation_env:
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BROWSER_PROFILE
+  - LANGBOT_CHROMIUM_EXECUTABLE
+steps:
+  - "Open LANGBOT_FRONTEND_URL with the configured browser-control path."
+  - "Confirm the page is not stuck on /login."
+  - "Check that the sidebar or dashboard shows a logged-in user."
+  - "If login is missing, use langbot-env-setup OAuth browser profile guidance."
+checks:
+  - "UI: The WebUI shows LangBot navigation such as Dashboard, Bots, Pipelines, or Knowledge."
+  - "UI: The page is not stuck on /login after the configured profile is loaded."
+  - "Console: No unexpected frontend errors appear during initial load."
+  - "Secret safety: The agent does not print token values while checking auth state."
+evidence_required:
+  - ui
+  - screenshot
+  - console
+diagnostics:
+  - "If the page stays on /login, inspect only localStorage key names and origin mismatch; do not print token values."
+troubleshooting:
+  - proxy-env-mismatch

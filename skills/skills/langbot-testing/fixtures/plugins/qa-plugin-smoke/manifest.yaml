@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: Plugin
+metadata:
+  author: qa
+  name: plugin-smoke
+  repository: https://example.invalid/langbot/qa-plugin-smoke
+  version: 0.1.0
+  description:
+    en_US: Local fixture plugin for LangBot plugin e2e smoke tests.
+    zh_Hans: LangBot 插件端到端冒烟测试用本地夹具插件。
+  label:
+    en_US: QA Plugin Smoke
+    zh_Hans: QA 插件冒烟测试
+  icon: assets/icon.svg
+spec:
+  config: []
+  components:
+    EventListener:
+      fromDirs:
+        - path: components/events/
+          maxDepth: 1
+    Tool:
+      fromDirs:
+        - path: components/tools/
+          maxDepth: 1
+    Page:
+      fromDirs:
+        - path: components/pages/
+          maxDepth: 2
+execution:
+  python:
+    path: main.py
+    attr: PluginSmoke

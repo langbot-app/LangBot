@@ -5,7 +5,7 @@
 
 <div align="center">
 
-<a href="https://www.producthunt.com/products/langbot?utm_source=badge-follow&utm_medium=badge&utm_source=badge-langbot" target="_blank"><img src="https://api.producthunt.com/widgets/embed-image/v1/follow.svg?product_id=1077185&theme=light" alt="LangBot - Production&#0045;grade&#0032;IM&#0032;bot&#0032;made&#0032;easy&#0046; | Product Hunt" style="width: 250px; height: 54px;" width="250" height="54" /></a>
+<a href="https://www.producthunt.com/products/langbot/launches/langbot?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-langbot" target="_blank" rel="noopener noreferrer"><img alt="LangBot - Easy-to-use global IM bot platform designed for the LLM era | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=979554&amp;theme=light&amp;t=1782822143403"></a>
 
 <h3>Plataforma de grado de producción para construir bots de mensajería instantánea con agentes de IA.</h3>
 <h4>Construya, depure y despliegue bots de IA rápidamente en Slack, Discord, Telegram, WeChat y más.</h4>
@@ -35,9 +35,13 @@
 
 LangBot es una **plataforma de código abierto y grado de producción** para construir bots de mensajería instantánea impulsados por IA. Conecta modelos de lenguaje de gran escala (LLMs) con cualquier plataforma de chat, permitiéndole crear agentes inteligentes que pueden conversar, ejecutar tareas e integrarse con sus flujos de trabajo existentes.
 
+<p align="center">
+<img src="res/dashboard-overview.png" alt="Panel de gestión web de LangBot — monitoreo en tiempo real de volumen de mensajes, llamadas a modelos, tasa de éxito y sesiones activas" width="720"/>
+</p>
+
 ### Capacidades Clave
 
-- **Conversaciones e Agentes IA** — Diálogos de múltiples turnos, llamadas a herramientas, soporte multimodal, salida en streaming. RAG (base de conocimientos) incorporado con integración profunda con [Dify](https://dify.ai), [Coze](https://coze.com), [n8n](https://n8n.io), [Langflow](https://langflow.org).
+- **Conversaciones e Agentes IA** — Diálogos de múltiples turnos, llamadas a herramientas, soporte multimodal, salida en streaming. RAG (base de conocimientos) incorporado con integración profunda con [Dify](https://dify.ai), [Coze](https://coze.com), [n8n](https://n8n.io), [Langflow](https://langflow.org), [Deerflow](https://deerflow.tech)、[Weknora](https://weknora.weixin.qq.com).
 - **Soporte Universal de Plataformas de MI** — Un solo código base para Discord, Telegram, Slack, LINE, QQ, WeChat, WeCom, Lark, DingTalk, KOOK.
 - **Listo para Producción** — Control de acceso, limitación de velocidad, filtrado de palabras sensibles, monitoreo completo y manejo de excepciones. De confianza para empresas.
 - **Ecosistema de Plugins** — Cientos de plugins, arquitectura basada en eventos, extensiones de componentes y soporte del [protocolo MCP](https://modelcontextprotocol.io/).
@@ -46,9 +50,15 @@ LangBot es una **plataforma de código abierto y grado de producción** para con
 
 [→ Conocer más sobre todas las funcionalidades](https://link.langbot.app/en/docs/features)
 
-📍 Guías prácticas: [desplegar un bot de IA multiplataforma en 5 minutos](https://blog.langbot.app/en/blog/deploy-ai-bot-in-5-minutes/), [conectar DeepSeek a WeChat, Discord y Telegram](https://blog.langbot.app/en/blog/connect-deepseek-to-wechat/), [ejecutar un Dify Agent en Discord, Telegram y Slack](https://blog.langbot.app/en/blog/dify-agent-discord-telegram-slack/) y [crear un chatbot con n8n](https://blog.langbot.app/en/blog/n8n-multi-platform-ai-chatbot/).
+📍 Guías prácticas: [desplegar un bot de IA multiplataforma en 5 minutos](https://langbot.app/en/blog/deploy-ai-bot-in-5-minutes/), [conectar DeepSeek a WeChat, Discord y Telegram](https://langbot.app/en/blog/connect-deepseek-to-wechat/), [ejecutar un Dify Agent en Discord, Telegram y Slack](https://langbot.app/en/blog/dify-agent-discord-telegram-slack/) y [crear un chatbot con n8n](https://langbot.app/en/blog/n8n-multi-platform-ai-chatbot/).
 
 ---
+
+## 😎 Manténgase Actualizado
+
+Haga clic en los botones Star y Watch en la esquina superior derecha del repositorio para obtener las últimas actualizaciones.
+
+![star gif](https://langbot.app/star.gif)
 
 ## Inicio Rápido
 
@@ -69,7 +79,7 @@ uvx langbot
 ```bash
 git clone https://github.com/langbot-app/LangBot
 cd LangBot/docker
-docker compose up -d
+docker compose --profile all up -d
 ```
 
 ### Despliegue en la Nube con un Clic
@@ -77,7 +87,7 @@ docker compose up -d
 [![Deploy on Zeabur](https://zeabur.com/button.svg)](https://zeabur.com/en-US/templates/ZKTBDH)
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.app/template/yRrAyL?referralCode=vogKPF)
 
-**Más opciones:** [Docker](https://link.langbot.app/en/docs/docker) · [Manual](https://link.langbot.app/en/docs/manual-deploy) · [BTPanel](https://link.langbot.app/en/docs/bt-panel) · [Kubernetes](./docker/README_K8S.md)
+**Más opciones:** [Docker](https://link.langbot.app/en/docs/docker) · [Manual](https://link.langbot.app/en/docs/manual-deploy) · [BTPanel](https://link.langbot.app/en/docs/bt-panel) · [Kubernetes](https://docs.langbot.app/en/deploy/langbot/kubernetes)
 
 ---
 
@@ -125,7 +135,7 @@ docker compose up -d
 | [PPIO](https://ppinfra.com/user/register?invited_by=QJKFYD&utm_source=github_langbot) | Plataforma GPU | ✅ |
 | [ShengSuanYun](https://www.shengsuanyun.com/?from=CH_KYIPP758) | Plataforma GPU | ✅ |
 | [接口 AI](https://jiekou.ai/) | Pasarela | ✅ |
-| [302.AI](https://share.302.ai/SuTG99) | Pasarela | ✅ |
+| [302.AI](https://share.302ai.cn/SuTG99) | Pasarela | ✅ |
 | [Qiniu](https://www.qiniu.com/ai/agent) | Pasarela | ✅ |
 
 [→ Ver todas las integraciones](https://link.langbot.app/en/docs/features)
@@ -150,6 +160,17 @@ docker compose up -d
 - Contraseña: `langbot123456`
 
 *Nota: Entorno de demostración público. No ingrese información confidencial.*
+
+## Diseñado para Agentes de IA 🤖
+
+LangBot es **agent-friendly por diseño** —— tus agentes de codificación (Claude Code, Codex, Copilot, Cursor, …) pueden operar, extender y desplegar LangBot con soporte de primera clase:
+
+- **Servidor MCP** —— LangBot expone un endpoint integrado de [Model Context Protocol](https://modelcontextprotocol.io/) en `/mcp`, replicando la API HTTP para que un agente gestione bots, pipelines, plugins y modelos de forma programática. Autentícate con la misma API key (configura una clave global en `config.yaml` o usa una clave por usuario) —— sin flujo de login. Configúralo en la pestaña **API & MCP** del panel web.
+- **Skills en el repositorio** —— El directorio [`skills/`](skills/) es la **única fuente de verdad** para trabajar con LangBot: desarrollo de plugins, desarrollo del core, pruebas end-to-end, despliegue y operación de los servidores MCP de LangBot / LangBot Space. Apunta tu agente a este directorio y sabrá cómo construir.
+- **AGENTS.md** —— Cada repo incluye un [`AGENTS.md`](AGENTS.md) (enlazado simbólicamente a `CLAUDE.md`) que describe la arquitectura, las convenciones y la regla de que los cambios en la API deben mantener sincronizados el servidor MCP y los skills.
+- **`llms.txt`** —— El contexto del proyecto legible por máquina para LLMs está publicado en el sitio web.
+
+> **Nube / Marketplace:** [LangBot Space](https://space.langbot.app) también expone un servidor MCP para que los agentes busquen e inspeccionen el marketplace de plugins / MCP / skills, autenticados con un Personal Access Token.
 
 ---
 

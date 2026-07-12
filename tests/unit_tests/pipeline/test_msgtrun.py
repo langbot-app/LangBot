@@ -115,7 +115,7 @@ class TestRoundTruncatorProcess:
         await stage.initialize(pipeline_config)
 
         # Create query with 3 messages (within limit)
-        query = text_query("current message")
+        query = text_query('current message')
         query.pipeline_config = pipeline_config
         query.messages = [
             provider_message.Message(role='user', content='message 1'),
@@ -154,7 +154,7 @@ class TestRoundTruncatorProcess:
 
         # Create query with many messages exceeding limit
         # 7 messages = 3 full rounds + 1 current user
-        query = text_query("current message")
+        query = text_query('current message')
         query.pipeline_config = pipeline_config
         query.messages = [
             provider_message.Message(role='user', content='message 1'),
@@ -194,7 +194,7 @@ class TestRoundTruncatorProcess:
 
         await stage.initialize(pipeline_config)
 
-        query = text_query("hello")
+        query = text_query('hello')
         query.pipeline_config = pipeline_config
         query.messages = []
 
@@ -216,7 +216,7 @@ class TestRoundTruncatorProcess:
 
         await stage.initialize(pipeline_config)
 
-        query = text_query("hello")
+        query = text_query('hello')
         query.pipeline_config = pipeline_config
         query.messages = [
             provider_message.Message(role='user', content='hello'),
@@ -240,7 +240,7 @@ class TestRoundTruncatorProcess:
 
         await stage.initialize(pipeline_config)
 
-        query = text_query("current")
+        query = text_query('current')
         query.pipeline_config = pipeline_config
         query.messages = [
             provider_message.Message(role='user', content='user1'),
@@ -274,7 +274,7 @@ class TestRoundTruncatorProcess:
 
         await stage.initialize(pipeline_config)
 
-        query = text_query("current")
+        query = text_query('current')
         query.pipeline_config = pipeline_config
         query.messages = [
             provider_message.Message(role='user', content='old1'),
@@ -305,7 +305,7 @@ class TestRoundTruncatorDirect:
                 trun = trun_cls(app)
                 break
 
-        query = text_query("hello")
+        query = text_query('hello')
         query.pipeline_config = make_truncate_config(max_round=3)
         query.messages = [
             provider_message.Message(role='user', content='m1'),

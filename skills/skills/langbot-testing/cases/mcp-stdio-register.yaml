@@ -1,0 +1,59 @@
+id: mcp-stdio-register
+title: "MCP stdio fixture is registered and exposes qa_mcp_echo"
+mode: agent-browser
+area: mcp
+type: smoke
+priority: p1
+risk: medium
+ci_eligible: false
+tags:
+  - mcp
+  - tools
+  - fixture
+  - preflight
+skills:
+  - langbot-env-setup
+  - langbot-testing
+env:
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BACKEND_URL
+automation: scripts/e2e/mcp-stdio-register.mjs
+automation_env:
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_BROWSER_PROFILE
+  - LANGBOT_CHROMIUM_EXECUTABLE
+preconditions:
+  - "The active LangBot instance is safe to create or update the qa-local-stdio MCP server."
+  - "box.local.allowed_mount_roots allows the bundled MCP fixture path when Box runs stdio MCP servers."
+  - "The bundled dependency-free fixture skills/langbot-testing/fixtures/mcp/qa_mcp_echo_server.py exists."
+steps:
+  - "Open LANGBOT_FRONTEND_URL with the configured browser profile."
+  - "Use the browser token to upsert MCP server qa-local-stdio in stdio mode."
+  - "Point the server command to python with the bundled qa_mcp_echo_server.py fixture path."
+  - "Poll /api/v1/tools and /api/v1/mcp/servers/qa-local-stdio until qa_mcp_echo is visible."
+checks:
+  - "API diagnostic: qa-local-stdio runtime_status is connected."
+  - "API diagnostic: runtime_tool_names includes qa_mcp_echo."
+  - "API diagnostic: /api/v1/tools includes qa_mcp_echo."
+  - "Console and network logs contain no unexpected frontend/runtime failures."
+evidence_required:
+  - screenshot
+  - console
+  - network
+  - api_diagnostic
+diagnostics:
+  - "If the server does not connect, run node scripts/e2e/mcp-stdio-fixture.mjs to validate the fixture outside LangBot first."
+  - "If /api/v1/tools keeps showing an old MCP name, rerun this case after restarting LangBot so the server registry is fresh."
+  - "If Box reports an allowed mount root error, update the local LangBot data config rather than changing shared test assets."
+success_patterns:
+  - "MCP server qa-local-stdio is connected and exposes qa_mcp_echo"
+failure_patterns:
+  - "MCP fixture not found"
+  - "Browser profile has no localStorage token"
+  - "did not expose qa_mcp_echo"
+troubleshooting:
+  - mcp-stdio-args-not-applied
+  - backend-not-listening
+  - plugin-runtime-timeout
+  - proxy-env-mismatch

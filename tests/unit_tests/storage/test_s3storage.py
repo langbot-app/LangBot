@@ -8,6 +8,7 @@ Tests cover:
 
 Uses moto library to mock AWS S3 service.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -44,8 +45,10 @@ def mock_app_with_s3_config():
 def s3_mock():
     """Set up moto S3 mock context."""
     from moto import mock_aws
+
     with mock_aws():
         import boto3
+
         # Create bucket for tests that need pre-existing bucket
         s3 = boto3.client('s3', region_name='us-east-1')
         yield s3

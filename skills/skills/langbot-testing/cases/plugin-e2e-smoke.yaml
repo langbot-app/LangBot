@@ -1,0 +1,57 @@
+id: plugin-e2e-smoke
+title: "Plugin system installs a local plugin and exposes tool/page APIs"
+mode: agent-browser
+area: plugin
+type: smoke
+priority: p1
+risk: medium
+ci_eligible: false
+tags:
+  - plugin
+  - runtime
+  - local-install
+  - e2e
+skills:
+  - langbot-env-setup
+  - langbot-testing
+env:
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_REPO
+preconditions:
+  - "LangBot is started from the target worktree with the SDK under test installed."
+  - "The active instance is a local test instance where installing or updating the qa-plugin-smoke fixture is acceptable."
+steps:
+  - "Ensure LangBot was started from the target worktree with the SDK under test installed, and use uv run --no-sync so uv does not resync langbot-plugin from the lockfile."
+  - "Build the fixture plugin at skills/langbot-testing/fixtures/plugins/qa-plugin-smoke using the same local SDK under test."
+  - "Open LANGBOT_FRONTEND_URL."
+  - "Log in or initialize a local test account if the clean test instance is not initialized."
+  - "Navigate to Plugins."
+  - "Install a local plugin package using the generated qa-plugin-smoke zip file."
+  - "Wait for the plugin installation task to finish."
+  - "Confirm the installed plugin list shows QA Plugin Smoke with initialized or running status."
+  - "Open the plugin detail and confirm the qa_echo Tool, qa_plugin_echo Tool, Prompt Probe EventListener, and Smoke Page components are visible."
+  - "Open the Smoke Page from the plugin extension page entry if the UI exposes it."
+  - "Use the page or API diagnostic to call endpoint /ping and confirm the response sentinel qa-plugin-smoke-page."
+checks:
+  - "UI: The plugin installation task finishes successfully and the plugin card appears."
+  - "UI: Plugin detail shows qa_echo, qa_plugin_echo, Prompt Probe, and Smoke Page components."
+  - "UI: The plugin extension page renders without a blank iframe or runtime error when reachable from the sidebar."
+  - "API diagnostic: /api/v1/plugins contains qa/plugin-smoke with status initialized."
+  - "API diagnostic: /api/v1/tools contains qa_echo and qa_plugin_echo from qa/plugin-smoke."
+  - "API diagnostic: /api/v1/plugins/qa/plugin-smoke/page-api with page_id smoke and endpoint /ping returns qa-plugin-smoke-page."
+  - "Logs: Backend logs show Connected to plugin runtime and no plugin action timeout during install/list/page-api."
+  - "Console: No unexpected frontend errors appear during plugin install or detail navigation."
+evidence_required:
+  - ui
+  - console
+  - backend_log
+  - api_diagnostic
+diagnostics:
+  - "Before trusting results, confirm Python imports langbot_plugin from the local SDK source path, not site-packages from PyPI."
+  - "If uv run changes the installed SDK back to the lockfile package, reinstall the local SDK and rerun commands with uv run --no-sync."
+  - "If local install stalls, inspect /api/v1/system/tasks/<task_id> and backend logs."
+troubleshooting:
+  - plugin-runtime-timeout
+  - marketplace-network-flaky
+  - uv-run-resyncs-local-sdk

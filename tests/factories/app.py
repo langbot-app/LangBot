@@ -15,7 +15,7 @@ class FakeApp:
     def __init__(
         self,
         *,
-        command_prefix: list[str] = ["/", "!"],
+        command_prefix: list[str] = ['/', '!'],
         command_enable: bool = True,
         pipeline_concurrency: int = 10,
         admins: list[str] | None = None,
@@ -40,6 +40,8 @@ class FakeApp:
         self.telemetry = self._create_mock_telemetry()
         self.survey = None
         self.cmd_mgr = self._create_mock_cmd_mgr()
+        self.skill_mgr = self._create_mock_skill_mgr()
+        self.pipeline_service = self._create_mock_pipeline_service()
 
         # Apply any extra attributes for specific test scenarios
         for name, value in extra_attrs.items():
@@ -98,9 +100,9 @@ class FakeApp:
     ):
         instance_config = Mock()
         instance_config.data = {
-            "command": {"prefix": command_prefix, "enable": command_enable},
-            "concurrency": {"pipeline": pipeline_concurrency},
-            "admins": admins,
+            'command': {'prefix': command_prefix, 'enable': command_enable},
+            'concurrency': {'pipeline': pipeline_concurrency},
+            'admins': admins,
         }
         return instance_config
 
@@ -118,6 +120,20 @@ class FakeApp:
         cmd_mgr = AsyncMock()
         cmd_mgr.execute = AsyncMock()
         return cmd_mgr
+
+    def _create_mock_skill_mgr(self):
+        """Mock SkillManager that returns no skill index addition by default."""
+        skill_mgr = Mock()
+        skill_mgr.skills = {}
+        skill_mgr.build_skill_aware_prompt_addition = Mock(return_value='')
+        skill_mgr.get_skill_index = Mock(return_value=[])
+        return skill_mgr
+
+    def _create_mock_pipeline_service(self):
+        """Mock PipelineService.get_pipeline returning empty extensions prefs."""
+        pipeline_service = AsyncMock()
+        pipeline_service.get_pipeline = AsyncMock(return_value={'extensions_preferences': {}})
+        return pipeline_service
 
     def capture_message(self, message):
         """Capture an outbound message for test assertions."""

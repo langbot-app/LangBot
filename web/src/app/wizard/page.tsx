@@ -86,7 +86,7 @@ export default function WizardPage() {
   const [selectedAdapter, setSelectedAdapter] = useState<string | null>(null);
   const [selectedRunner, setSelectedRunner] = useState<string | null>(null);
   const [botName, setBotName] = useState('');
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+
   const [botDescription, _setBotDescription] = useState('');
   const [adapterConfig, setAdapterConfig] = useState<Record<string, unknown>>(
     {},
@@ -947,6 +947,7 @@ function StepBotConfig({
                     is_wizard: true,
                     webhook_url: webhookUrl,
                     extra_webhook_url: extraWebhookUrl,
+                    outbound_ips: systemInfo.outbound_ips,
                   }}
                 />
               </CardContent>

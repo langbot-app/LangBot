@@ -2,11 +2,16 @@ from __future__ import annotations
 
 import abc
 import typing
+from typing import TYPE_CHECKING
 
+from langbot_plugin.api.definition.components.manifest import ComponentManifest
 from langbot_plugin.api.entities.events import pipeline_query
-
-from ...core import app
 import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
+
+if TYPE_CHECKING:
+    from ...core import app
+
+ToolLookupResult = resource_tool.LLMTool | ComponentManifest
 
 
 preregistered_loaders: list[typing.Type[ToolLoader]] = []
@@ -40,6 +45,13 @@ class ToolLoader(abc.ABC):
     async def get_tools(self, bound_plugins: list[str] | None = None) -> list[resource_tool.LLMTool]:
         """获取所有工具"""
         pass
+
+    async def get_tool(self, name: str) -> ToolLookupResult | None:
+        """Get one tool by name."""
+        for tool in await self.get_tools():
+            if tool.name == name:
+                return tool
+        return None
 
     @abc.abstractmethod
     async def has_tool(self, name: str) -> bool:

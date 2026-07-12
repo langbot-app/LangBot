@@ -1,0 +1,67 @@
+id: local-agent-effective-prompt-debug-chat
+title: "Local Agent consumes host effective prompt after PromptPreProcessing"
+mode: agent-browser
+area: pipeline
+type: regression
+priority: p1
+risk: high
+ci_eligible: false
+tags:
+  - local-agent
+  - prompt
+  - plugin
+  - pipeline
+skills:
+  - langbot-env-setup
+  - langbot-testing
+env:
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_LOCAL_AGENT_PIPELINE_URL
+  - LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+automation: scripts/e2e/pipeline-debug-chat.mjs
+automation_env:
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BROWSER_PROFILE
+  - LANGBOT_CHROMIUM_EXECUTABLE
+  - LANGBOT_LOCAL_AGENT_PIPELINE_URL
+  - LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+automation_pipeline_url_env: LANGBOT_LOCAL_AGENT_PIPELINE_URL
+automation_pipeline_name_env: LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+automation_prompt: "qa-effective-prompt"
+automation_expected_text: "PROMPT_PREPROCESS_OK"
+automation_response_timeout_ms: "180000"
+setup_automation:
+  - "node:scripts/e2e/ensure-local-agent-pipeline.mjs --write-env"
+  - "case:qa-plugin-smoke-live-install"
+setup_provides_env:
+  - LANGBOT_LOCAL_AGENT_PIPELINE_URL
+  - LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+preconditions:
+  - "The target pipeline is safe to modify and can bind the fixture plugin through Extensions."
+steps:
+  - "Install or enable the bundled qa-plugin-smoke fixture plugin."
+  - "Confirm the fixture plugin is bound to the target pipeline through Extensions."
+  - "Open the target local-agent pipeline."
+  - "Open Configuration > AI."
+  - "Use runner Default or the pluginized langbot/local-agent runner."
+  - "Select a model that is known to follow system prompts in Debug Chat."
+  - "Save the pipeline."
+  - "Open Debug Chat."
+  - "Send: qa-effective-prompt"
+checks:
+  - "UI: A Bot message appears and contains PROMPT_PREPROCESS_OK."
+  - "Logs: PromptPreProcessing runs for the fixture plugin before the local-agent runner invokes the model."
+  - "Logs: Backend completes the debug-chat request without plugin/runtime timeout."
+  - "Console: No unexpected frontend runtime errors appear during configuration or chat."
+evidence_required:
+  - ui
+  - console
+  - backend_log
+diagnostics:
+  - "If the bot does not return PROMPT_PREPROCESS_OK, verify the fixture plugin is installed, enabled, and bound to the pipeline before diagnosing ctx.adapter.extra.prompt."
+  - "If the plugin event runs but the answer ignores the sentinel, inspect whether the runner is using ctx.adapter.extra.prompt instead of static runner config prompt."
+troubleshooting:
+  - plugin-runtime-timeout
+  - proxy-env-mismatch
+  - survey-widget-blocks-debug-chat

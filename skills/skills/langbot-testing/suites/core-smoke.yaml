@@ -1,0 +1,13 @@
+id: core-smoke
+title: "Core browser smoke suite"
+description: "Fast browser-first checks for login state, Pipeline Debug Chat, and the basic local-agent runner path."
+type: smoke
+priority: p0
+tags:
+  - smoke
+  - browser
+  - p0
+cases:
+  - webui-login-state
+  - pipeline-debug-chat
+  - local-agent-basic-debug-chat

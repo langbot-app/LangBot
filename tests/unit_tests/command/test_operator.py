@@ -197,6 +197,7 @@ class TestCommandOperatorBase:
         op = TestOperator(None)
         # Should not raise
         import asyncio
+
         asyncio.get_event_loop().run_until_complete(op.initialize())
 
     def test_execute_is_abstract(self):

@@ -3,6 +3,7 @@
 Tests cover:
 - _parse_plugin_id() parsing and validation
 """
+
 from __future__ import annotations
 
 import pytest

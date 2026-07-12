@@ -27,6 +27,68 @@ def compiled_params(statement):
     return statement.compile().params
 
 
+class TestRagRerankAction:
+    """Tests for RAG rerank action handler."""
+
+    @pytest.fixture
+    def app(self):
+        mock_app = Mock()
+        mock_app.model_mgr = Mock()
+        mock_app.logger = Mock()
+        return mock_app
+
+    @pytest.mark.asyncio
+    async def test_invokes_rerank_model_and_sorts_scores(self, app):
+        """Rerank action uses the selected model and returns top scores."""
+        provider = Mock()
+        provider.invoke_rerank = AsyncMock(
+            return_value=[
+                {'index': 0, 'relevance_score': 0.2},
+                {'index': 1, 'relevance_score': 0.9},
+            ]
+        )
+        rerank_model = SimpleNamespace(provider=provider)
+        app.model_mgr.get_rerank_model_by_uuid = AsyncMock(return_value=rerank_model)
+        runtime_handler = make_handler(app)
+
+        response = await runtime_handler.actions[PluginToRuntimeAction.INVOKE_RERANK.value](
+            {
+                'rerank_model_uuid': 'rerank-1',
+                'query': 'hello',
+                'documents': ['a', 'b'],
+                'top_k': 1,
+                'extra_args': {'return_documents': False},
+            }
+        )
+
+        assert response.code == 0
+        assert response.data['results'] == [{'index': 1, 'relevance_score': 0.9}]
+        app.model_mgr.get_rerank_model_by_uuid.assert_awaited_once_with('rerank-1')
+        provider.invoke_rerank.assert_awaited_once_with(
+            model=rerank_model,
+            query='hello',
+            documents=['a', 'b'],
+            extra_args={'return_documents': False},
+        )
+
+    @pytest.mark.asyncio
+    async def test_returns_error_when_rerank_model_missing(self, app):
+        """Missing rerank model returns an action error."""
+        app.model_mgr.get_rerank_model_by_uuid = AsyncMock(side_effect=ValueError('not found'))
+        runtime_handler = make_handler(app)
+
+        response = await runtime_handler.actions[PluginToRuntimeAction.INVOKE_RERANK.value](
+            {
+                'rerank_model_uuid': 'missing',
+                'query': 'hello',
+                'documents': ['a'],
+            }
+        )
+
+        assert response.code != 0
+        assert 'Rerank model with rerank_model_uuid missing not found' in response.message
+
+
 class TestInitializePluginSettings:
     """Tests for initialize_plugin_settings action handler."""
 
@@ -47,12 +109,14 @@ class TestInitializePluginSettings:
             Mock(),
         ]
 
-        response = await runtime_handler.actions[RuntimeToLangBotAction.INITIALIZE_PLUGIN_SETTINGS.value]({
-            'plugin_author': 'test-author',
-            'plugin_name': 'test-plugin',
-            'install_source': 'local',
-            'install_info': {'path': '/test'},
-        })
+        response = await runtime_handler.actions[RuntimeToLangBotAction.INITIALIZE_PLUGIN_SETTINGS.value](
+            {
+                'plugin_author': 'test-author',
+                'plugin_name': 'test-plugin',
+                'install_source': 'local',
+                'install_info': {'path': '/test'},
+            }
+        )
 
         assert response.code == 0
         assert app.persistence_mgr.execute_async.await_count == 2
@@ -82,12 +146,14 @@ class TestInitializePluginSettings:
             Mock(),
         ]
 
-        response = await runtime_handler.actions[RuntimeToLangBotAction.INITIALIZE_PLUGIN_SETTINGS.value]({
-            'plugin_author': 'test-author',
-            'plugin_name': 'test-plugin',
-            'install_source': 'github',
-            'install_info': {'repo': 'author/name'},
-        })
+        response = await runtime_handler.actions[RuntimeToLangBotAction.INITIALIZE_PLUGIN_SETTINGS.value](
+            {
+                'plugin_author': 'test-author',
+                'plugin_name': 'test-plugin',
+                'install_source': 'github',
+                'install_info': {'repo': 'author/name'},
+            }
+        )
 
         assert response.code == 0
         assert app.persistence_mgr.execute_async.await_count == 3
@@ -161,9 +227,7 @@ class TestSetBinaryStorage:
         runtime_handler = make_handler(app)
         app.persistence_mgr.execute_async.return_value = make_result(SimpleNamespace(value=b'old'))
 
-        response = await runtime_handler.actions[RuntimeToLangBotAction.SET_BINARY_STORAGE.value](
-            self.payload(b'new')
-        )
+        response = await runtime_handler.actions[RuntimeToLangBotAction.SET_BINARY_STORAGE.value](self.payload(b'new'))
 
         assert response.code == 0
         assert app.persistence_mgr.execute_async.await_count == 2
@@ -203,9 +267,7 @@ class TestSetBinaryStorage:
         runtime_handler = make_handler(app)
         app.instance_config.data['plugin']['binary_storage']['max_value_bytes'] = 0
 
-        response = await runtime_handler.actions[RuntimeToLangBotAction.SET_BINARY_STORAGE.value](
-            self.payload(b'x')
-        )
+        response = await runtime_handler.actions[RuntimeToLangBotAction.SET_BINARY_STORAGE.value](self.payload(b'x'))
 
         assert response.code != 0
         assert '1 > 0 bytes' in response.message
@@ -228,10 +290,12 @@ class TestGetPluginSettings:
         runtime_handler = make_handler(app)
         app.persistence_mgr.execute_async.return_value = make_result()
 
-        response = await runtime_handler.actions[RuntimeToLangBotAction.GET_PLUGIN_SETTINGS.value]({
-            'plugin_author': 'test-author',
-            'plugin_name': 'test-plugin',
-        })
+        response = await runtime_handler.actions[RuntimeToLangBotAction.GET_PLUGIN_SETTINGS.value](
+            {
+                'plugin_author': 'test-author',
+                'plugin_name': 'test-plugin',
+            }
+        )
 
         assert response.code == 0
         assert response.data == {
@@ -255,10 +319,12 @@ class TestGetPluginSettings:
         )
         app.persistence_mgr.execute_async.return_value = make_result(setting)
 
-        response = await runtime_handler.actions[RuntimeToLangBotAction.GET_PLUGIN_SETTINGS.value]({
-            'plugin_author': 'test-author',
-            'plugin_name': 'test-plugin',
-        })
+        response = await runtime_handler.actions[RuntimeToLangBotAction.GET_PLUGIN_SETTINGS.value](
+            {
+                'plugin_author': 'test-author',
+                'plugin_name': 'test-plugin',
+            }
+        )
 
         assert response.code == 0
         assert response.data == {
@@ -286,11 +352,13 @@ class TestGetBinaryStorage:
         runtime_handler = make_handler(app)
         app.persistence_mgr.execute_async.return_value = make_result(SimpleNamespace(value=b'test binary content'))
 
-        response = await runtime_handler.actions[RuntimeToLangBotAction.GET_BINARY_STORAGE.value]({
-            'key': 'test-key',
-            'owner_type': 'plugin',
-            'owner': 'test-owner',
-        })
+        response = await runtime_handler.actions[RuntimeToLangBotAction.GET_BINARY_STORAGE.value](
+            {
+                'key': 'test-key',
+                'owner_type': 'plugin',
+                'owner': 'test-owner',
+            }
+        )
 
         assert response.code == 0
         assert response.data == {
@@ -303,11 +371,13 @@ class TestGetBinaryStorage:
         runtime_handler = make_handler(app)
         app.persistence_mgr.execute_async.return_value = make_result()
 
-        response = await runtime_handler.actions[RuntimeToLangBotAction.GET_BINARY_STORAGE.value]({
-            'key': 'test-key',
-            'owner_type': 'plugin',
-            'owner': 'test-owner',
-        })
+        response = await runtime_handler.actions[RuntimeToLangBotAction.GET_BINARY_STORAGE.value](
+            {
+                'key': 'test-key',
+                'owner_type': 'plugin',
+                'owner': 'test-owner',
+            }
+        )
 
         assert response.code != 0
         assert 'Storage with key test-key not found' in response.message
@@ -329,9 +399,11 @@ class TestHandlerQueryLookup:
         """Query-bound actions return error when query_id is not cached."""
         runtime_handler = make_handler(app)
 
-        response = await runtime_handler.actions[PluginToRuntimeAction.GET_BOT_UUID.value]({
-            'query_id': 'nonexistent-query',
-        })
+        response = await runtime_handler.actions[PluginToRuntimeAction.GET_BOT_UUID.value](
+            {
+                'query_id': 'nonexistent-query',
+            }
+        )
 
         assert response.code != 0
         assert 'nonexistent-query' in response.message
@@ -343,9 +415,11 @@ class TestHandlerQueryLookup:
         query = SimpleNamespace(variables={}, bot_uuid='test-bot-uuid')
         app.query_pool.cached_queries['existing-query'] = query
 
-        response = await runtime_handler.actions[PluginToRuntimeAction.GET_BOT_UUID.value]({
-            'query_id': 'existing-query',
-        })
+        response = await runtime_handler.actions[PluginToRuntimeAction.GET_BOT_UUID.value](
+            {
+                'query_id': 'existing-query',
+            }
+        )
 
         assert response.code == 0
         assert response.data == {'bot_uuid': 'test-bot-uuid'}

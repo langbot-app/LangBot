@@ -1,3 +1,5 @@
 """LangBot - Production-grade platform for building agentic IM bots"""
 
-__version__ = '4.9.7'
+from importlib.metadata import version
+
+__version__ = version('langbot')

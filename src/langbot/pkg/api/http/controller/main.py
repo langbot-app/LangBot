@@ -17,6 +17,7 @@ from .groups import platform as groups_platform
 from .groups import pipelines as groups_pipelines
 from .groups import knowledge as groups_knowledge
 from .groups import resources as groups_resources
+from ...mcp.mount import MCPMount
 
 importutil.import_modules_in_pkg(groups)
 importutil.import_modules_in_pkg(groups_provider)
@@ -39,6 +40,10 @@ class HTTPController:
         # Set maximum content length to prevent large file uploads
         self.quart_app.config['MAX_CONTENT_LENGTH'] = group.MAX_FILE_SIZE
 
+        # MCP server (mounted at /mcp, see ..mcp.mount). Built lazily in
+        # initialize() so the service layer is ready.
+        self.mcp_mount: MCPMount | None = None
+
     async def initialize(self) -> None:
         # Register custom error handler for file size limit
         @self.quart_app.errorhandler(RequestEntityTooLarge)
@@ -52,6 +57,12 @@ class HTTPController:
 
         await self.register_routes()
 
+        # Build the MCP server and start its session-manager lifespan in the
+        # background so the streamable-HTTP transport is ready to serve.
+        self.mcp_mount = MCPMount(self.ap)
+        await self.mcp_mount.start_session_manager()
+        self.ap.logger.info('LangBot MCP server mounted at /mcp (API-key authenticated).')
+
     async def run(self) -> None:
         if True:
 
@@ -61,7 +72,7 @@ class HTTPController:
 
             async def exception_handler(*args, **kwargs):
                 try:
-                    await self.quart_app.run_task(*args, **kwargs)
+                    await self._run_task(*args, **kwargs)
                 except Exception as e:
                     self.ap.logger.error(f'Failed to start HTTP service: {e}')
 
@@ -76,6 +87,28 @@ class HTTPController:
             )
 
             # await asyncio.sleep(5)
+
+    async def _run_task(self, host: str, port: int, shutdown_trigger) -> None:
+        """Serve the Quart app, fronted by the MCP dispatcher at /mcp.
+
+        Mirrors Quart.run_task() but wraps the ASGI app so MCP requests are
+        intercepted before Quart's router. Falls back to plain Quart if the
+        MCP mount failed to build for any reason.
+        """
+        from hypercorn.config import Config as HyperConfig
+        from hypercorn.asyncio import serve as hypercorn_serve
+
+        config = HyperConfig()
+        config.access_log_format = '%(h)s %(r)s %(s)s %(b)s %(D)s'
+        config.accesslog = '-'
+        config.bind = [f'{host}:{port}']
+        config.errorlog = config.accesslog
+
+        asgi_app = self.quart_app
+        if self.mcp_mount is not None:
+            asgi_app = self.mcp_mount.wrap(self.quart_app)
+
+        await hypercorn_serve(asgi_app, config, shutdown_trigger=shutdown_trigger)
 
     async def register_routes(self) -> None:
         @self.quart_app.route('/healthz')

@@ -3,6 +3,20 @@ import sqlalchemy
 from .base import Base
 
 
+class BotAdmin(Base):
+    """Bot admin — a launcher that has admin privilege for a specific bot's commands"""
+
+    __tablename__ = 'bot_admins'
+
+    id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True, autoincrement=True)
+    bot_uuid = sqlalchemy.Column(sqlalchemy.String(255), nullable=False)
+    launcher_type = sqlalchemy.Column(sqlalchemy.String(64), nullable=False)
+    launcher_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=False)
+    created_at = sqlalchemy.Column(sqlalchemy.DateTime, nullable=False, server_default=sqlalchemy.func.now())
+
+    __table_args__ = (sqlalchemy.UniqueConstraint('bot_uuid', 'launcher_type', 'launcher_id', name='uq_bot_admin'),)
+
+
 class Bot(Base):
     """Bot"""
 

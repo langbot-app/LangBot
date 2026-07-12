@@ -132,9 +132,7 @@ class TestApiKeyServiceCreateApiKey:
         with patch('langbot.pkg.api.http.service.apikey.secrets.token_urlsafe', return_value='fixed-token'):
             result = await service.create_api_key('New Key', 'Test description')
 
-        assert insert_params == [
-            {'name': 'New Key', 'key': 'lbk_fixed-token', 'description': 'Test description'}
-        ]
+        assert insert_params == [{'name': 'New Key', 'key': 'lbk_fixed-token', 'description': 'Test description'}]
         assert result['key'].startswith('lbk_')
         assert result['key'] == 'lbk_fixed-token'
         assert result['name'] == 'New Key'
@@ -257,16 +255,22 @@ class TestApiKeyServiceGetApiKey:
 class TestApiKeyServiceVerifyApiKey:
     """Tests for verify_api_key method."""
 
+    @staticmethod
+    def _make_ap(db_key=None, global_api_key=''):
+        """Build a mock Application with persistence + instance_config."""
+        ap = SimpleNamespace()
+        ap.persistence_mgr = SimpleNamespace()
+        mock_result = Mock()
+        mock_result.first = Mock(return_value=db_key)
+        ap.persistence_mgr.execute_async = AsyncMock(return_value=mock_result)
+        ap.instance_config = SimpleNamespace(data={'api': {'global_api_key': global_api_key}})
+        return ap
+
     async def test_verify_api_key_valid(self):
         """Returns True for valid API key."""
         # Setup
-        ap = SimpleNamespace()
-        ap.persistence_mgr = SimpleNamespace()
-
         key = Mock(spec=ApiKey)
-        mock_result = Mock()
-        mock_result.first = Mock(return_value=key)
-        ap.persistence_mgr.execute_async = AsyncMock(return_value=mock_result)
+        ap = self._make_ap(db_key=key)
 
         service = ApiKeyService(ap)
 
@@ -279,12 +283,7 @@ class TestApiKeyServiceVerifyApiKey:
     async def test_verify_api_key_invalid(self):
         """Returns False for invalid API key."""
         # Setup
-        ap = SimpleNamespace()
-        ap.persistence_mgr = SimpleNamespace()
-
-        mock_result = Mock()
-        mock_result.first = Mock(return_value=None)
-        ap.persistence_mgr.execute_async = AsyncMock(return_value=mock_result)
+        ap = self._make_ap(db_key=None)
 
         service = ApiKeyService(ap)
 
@@ -297,12 +296,7 @@ class TestApiKeyServiceVerifyApiKey:
     async def test_verify_api_key_empty_string(self):
         """Returns False for empty key string."""
         # Setup
-        ap = SimpleNamespace()
-        ap.persistence_mgr = SimpleNamespace()
-
-        mock_result = Mock()
-        mock_result.first = Mock(return_value=None)
-        ap.persistence_mgr.execute_async = AsyncMock(return_value=mock_result)
+        ap = self._make_ap(db_key=None)
 
         service = ApiKeyService(ap)
 
@@ -315,12 +309,7 @@ class TestApiKeyServiceVerifyApiKey:
     async def test_verify_api_key_unknown_key(self):
         """Returns False when the key is not present in persistence."""
         # Setup
-        ap = SimpleNamespace()
-        ap.persistence_mgr = SimpleNamespace()
-
-        mock_result = Mock()
-        mock_result.first = Mock(return_value=None)
-        ap.persistence_mgr.execute_async = AsyncMock(return_value=mock_result)
+        ap = self._make_ap(db_key=None)
 
         service = ApiKeyService(ap)
 
@@ -328,6 +317,70 @@ class TestApiKeyServiceVerifyApiKey:
         result = await service.verify_api_key('unknown_key')
 
         # Verify
+        assert result is False
+
+    async def test_verify_global_api_key_match(self):
+        """Returns True when key matches the config.yaml global API key (no DB lookup)."""
+        # Setup: no DB record, but a global key is configured
+        ap = self._make_ap(db_key=None, global_api_key='my-global-secret')
+
+        service = ApiKeyService(ap)
+
+        # Execute
+        result = await service.verify_api_key('my-global-secret')
+
+        # Verify: accepted purely on config match
+        assert result is True
+        # DB should not have been consulted for the global-key path
+        ap.persistence_mgr.execute_async.assert_not_called()
+
+    async def test_verify_global_api_key_no_prefix_required(self):
+        """Global API key is accepted even without the lbk_ prefix."""
+        ap = self._make_ap(db_key=None, global_api_key='plainsecret123')
+
+        service = ApiKeyService(ap)
+
+        result = await service.verify_api_key('plainsecret123')
+
+        assert result is True
+
+    async def test_verify_global_api_key_mismatch_falls_back_to_db(self):
+        """A non-matching key still falls through to the DB lookup."""
+        # Global key set, but request uses a different lbk_ key that IS in DB
+        key = Mock(spec=ApiKey)
+        ap = self._make_ap(db_key=key, global_api_key='my-global-secret')
+
+        service = ApiKeyService(ap)
+
+        result = await service.verify_api_key('lbk_db_key')
+
+        assert result is True
+        ap.persistence_mgr.execute_async.assert_called_once()
+
+    async def test_verify_empty_global_api_key_disabled(self):
+        """An empty global_api_key must never authenticate an empty/blank request."""
+        ap = self._make_ap(db_key=None, global_api_key='')
+
+        service = ApiKeyService(ap)
+
+        # Empty request key is rejected, and a blank global key never matches
+        assert await service.verify_api_key('') is False
+        assert await service.verify_api_key('   ') is False
+
+    async def test_verify_api_key_missing_global_config_key(self):
+        """Works even when api.global_api_key is absent (existing installs)."""
+        # instance_config without the global_api_key field at all
+        ap = SimpleNamespace()
+        ap.persistence_mgr = SimpleNamespace()
+        mock_result = Mock()
+        mock_result.first = Mock(return_value=None)
+        ap.persistence_mgr.execute_async = AsyncMock(return_value=mock_result)
+        ap.instance_config = SimpleNamespace(data={'api': {}})
+
+        service = ApiKeyService(ap)
+
+        result = await service.verify_api_key('lbk_some_key')
+
         assert result is False
 
 

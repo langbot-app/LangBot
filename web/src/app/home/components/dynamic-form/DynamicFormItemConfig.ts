@@ -3,6 +3,7 @@ import {
   DynamicFormItemType,
   IDynamicFormItemOption,
   IShowIfCondition,
+  SYSTEM_FIELD_PREFIX,
 } from '@/app/infra/entities/form/dynamic';
 import { I18nObject } from '@/app/infra/entities/common';
 
@@ -54,14 +55,25 @@ export function parseDynamicFormItemType(value: string): DynamicFormItemType {
 
 export function getDefaultValues(
   itemConfigList: IDynamicFormItemSchema[],
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Record<string, any> {
   return itemConfigList.reduce(
     (acc, item) => {
+      // `__system.*` fields are display-only (resolved from systemContext);
+      // their placeholder defaults must not leak into the config values.
+      if (item.name.startsWith(SYSTEM_FIELD_PREFIX)) {
+        return acc;
+      }
       acc[item.name] = item.default;
+      if (item.type === DynamicFormItemType.RICH_TOOLS_SELECTOR) {
+        acc['enable-all-tools'] = true;
+      }
+      if (item.type === DynamicFormItemType.RESOURCES_SELECTOR) {
+        acc['mcp-resources'] = [];
+        acc['mcp-resource-agent-read-enabled'] = true;
+      }
       return acc;
     },
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     {} as Record<string, any>,
   );
 }

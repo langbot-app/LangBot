@@ -46,6 +46,30 @@ class MonitoringRouterGroup(group.RouterGroup):
 
             return self.success(data=metrics)
 
+        @self.route('/token-statistics', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
+        async def get_token_statistics() -> str:
+            """Get detailed token usage statistics (summary, per-model, timeseries)."""
+            bot_ids = quart.request.args.getlist('botId')
+            pipeline_ids = quart.request.args.getlist('pipelineId')
+            start_time_str = quart.request.args.get('startTime')
+            end_time_str = quart.request.args.get('endTime')
+            bucket = quart.request.args.get('bucket', 'hour')
+            if bucket not in ('hour', 'day'):
+                bucket = 'hour'
+
+            start_time = parse_iso_datetime(start_time_str)
+            end_time = parse_iso_datetime(end_time_str)
+
+            stats = await self.ap.monitoring_service.get_token_statistics(
+                bot_ids=bot_ids if bot_ids else None,
+                pipeline_ids=pipeline_ids if pipeline_ids else None,
+                start_time=start_time,
+                end_time=end_time,
+                bucket=bucket,
+            )
+
+            return self.success(data=stats)
+
         @self.route('/messages', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
         async def get_messages() -> str:
             """Get message logs"""
@@ -108,6 +132,39 @@ class MonitoringRouterGroup(group.RouterGroup):
             return self.success(
                 data={
                     'llm_calls': llm_calls,
+                    'total': total,
+                    'limit': limit,
+                    'offset': offset,
+                }
+            )
+
+        @self.route('/tool-calls', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
+        async def get_tool_calls() -> str:
+            """Get tool call records"""
+            bot_ids = quart.request.args.getlist('botId')
+            pipeline_ids = quart.request.args.getlist('pipelineId')
+            session_ids = quart.request.args.getlist('sessionId')
+            start_time_str = quart.request.args.get('startTime')
+            end_time_str = quart.request.args.get('endTime')
+            limit = int(quart.request.args.get('limit', 100))
+            offset = int(quart.request.args.get('offset', 0))
+
+            start_time = parse_iso_datetime(start_time_str)
+            end_time = parse_iso_datetime(end_time_str)
+
+            tool_calls, total = await self.ap.monitoring_service.get_tool_calls(
+                bot_ids=bot_ids if bot_ids else None,
+                pipeline_ids=pipeline_ids if pipeline_ids else None,
+                session_ids=session_ids if session_ids else None,
+                start_time=start_time,
+                end_time=end_time,
+                limit=limit,
+                offset=offset,
+            )
+
+            return self.success(
+                data={
+                    'tool_calls': tool_calls,
                     'total': total,
                     'limit': limit,
                     'offset': offset,
@@ -260,6 +317,16 @@ class MonitoringRouterGroup(group.RouterGroup):
                 offset=0,
             )
 
+            # Get tool calls
+            tool_calls, tool_calls_total = await self.ap.monitoring_service.get_tool_calls(
+                bot_ids=bot_ids if bot_ids else None,
+                pipeline_ids=pipeline_ids if pipeline_ids else None,
+                start_time=start_time,
+                end_time=end_time,
+                limit=limit,
+                offset=0,
+            )
+
             # Get sessions
             sessions, sessions_total = await self.ap.monitoring_service.get_sessions(
                 bot_ids=bot_ids if bot_ids else None,
@@ -294,12 +361,14 @@ class MonitoringRouterGroup(group.RouterGroup):
                     'overview': overview,
                     'messages': messages,
                     'llmCalls': llm_calls,
+                    'toolCalls': tool_calls,
                     'embeddingCalls': embedding_calls,
                     'sessions': sessions,
                     'errors': errors,
                     'totalCount': {
                         'messages': messages_total,
                         'llmCalls': llm_calls_total,
+                        'toolCalls': tool_calls_total,
                         'embeddingCalls': embedding_calls_total,
                         'sessions': sessions_total,
                         'errors': errors_total,

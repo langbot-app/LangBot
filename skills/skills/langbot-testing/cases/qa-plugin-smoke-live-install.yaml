@@ -1,0 +1,44 @@
+id: qa-plugin-smoke-live-install
+title: "QA plugin smoke package installs and exposes tools"
+mode: probe
+area: plugin
+type: regression
+priority: p1
+risk: medium
+ci_eligible: false
+tags:
+  - plugin
+  - local-install
+  - fixture
+skills:
+  - langbot-env-setup
+  - langbot-testing
+env:
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_REPO
+  - LANGBOT_E2E_LOGIN_USER
+automation: scripts/e2e/install-qa-plugin-smoke.mjs
+automation_plugin_package: "skills/langbot-testing/fixtures/plugins/qa-plugin-smoke/dist/qa-plugin-smoke-0.1.0.lbpkg"
+automation_expected_plugin_id: "qa/plugin-smoke"
+automation_expected_tool: "qa_plugin_echo"
+steps:
+  - "Run `rtk bin/lbs test run qa-plugin-smoke-live-install --dry-run` first; remove `--dry-run` only after readiness points at a local test LangBot instance."
+  - "Automation authenticates the local test user, uploads the QA plugin smoke .lbpkg package when missing, waits for install, and checks tool exposure."
+checks:
+  - "automation-result.json status is pass."
+  - "/api/v1/plugins lists qa/plugin-smoke after install."
+  - "/api/v1/tools lists qa_plugin_echo after install."
+evidence_required:
+  - api_diagnostic
+  - filesystem
+diagnostics:
+  - "This prepares prompt/tool/steering cases that depend on qa-plugin-smoke. It does not prove the model can call the tools."
+  - "If install fails during dependencies, inspect plugin runtime logs and plugin-dependency-install-offline."
+success_patterns:
+  - "qa/plugin-smoke is installed."
+failure_patterns:
+  - "Plugin install task did not complete successfully"
+  - "qa_plugin_echo is not listed"
+troubleshooting:
+  - plugin-runtime-timeout
+  - plugin-dependency-install-offline

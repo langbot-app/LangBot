@@ -201,7 +201,7 @@ class AsyncDifyServiceClient:
                     'file': file,
                 },
                 data={
-                    'user': (None, user),
+                    'user': user,
                 },
             )
 

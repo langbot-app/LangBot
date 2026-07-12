@@ -20,6 +20,7 @@ pytestmark = pytest.mark.integration
 
 # ============== FIXTURE FOR SYS.MODULES ISOLATION ==============
 
+
 @pytest.fixture(scope='module')
 def mock_circular_import_chain():
     """
@@ -69,6 +70,7 @@ def mock_circular_import_chain():
 
 # ============== FAKE APPLICATION FOR API TESTS ==============
 
+
 @pytest.fixture
 def fake_api_app():
     """
@@ -79,12 +81,14 @@ def fake_api_app():
     app = FakeApp()
 
     # API-specific config
-    app.instance_config.data.update({
-        'api': {'port': 5300},
-        'plugin': {'enable_marketplace': True},
-        'space': {'url': 'https://space.langbot.app'},
-        'system': {'allow_modify_login_info': True, 'limitation': {}},
-    })
+    app.instance_config.data.update(
+        {
+            'api': {'port': 5300},
+            'plugin': {'enable_marketplace': True},
+            'space': {'url': 'https://space.langbot.app'},
+            'system': {'allow_modify_login_info': True, 'limitation': {}},
+        }
+    )
 
     # API-specific services
     app.user_service = Mock()
@@ -118,6 +122,7 @@ def fake_api_app():
 
 # ============== QUART TEST CLIENT FIXTURE ==============
 
+
 @pytest.fixture
 async def quart_test_client(fake_api_app, http_controller_cls):
     """
@@ -134,6 +139,7 @@ async def quart_test_client(fake_api_app, http_controller_cls):
 
 
 # ============== API SMOKE TESTS ==============
+
 
 @pytest.mark.usefixtures('mock_circular_import_chain')
 class TestHealthEndpoint:
@@ -222,8 +228,7 @@ class TestProtectedEndpoints:
         Protected endpoint returns 401 with invalid token.
         """
         response = await quart_test_client.get(
-            '/api/v1/user/check-token',
-            headers={'Authorization': 'Bearer invalid_token'}
+            '/api/v1/user/check-token', headers={'Authorization': 'Bearer invalid_token'}
         )
 
         assert response.status_code == 401
@@ -254,10 +259,7 @@ class TestInvalidPayload:
         """
         POST with wrong JSON structure returns stable error.
         """
-        response = await quart_test_client.post(
-            '/api/v1/user/auth',
-            json={'wrong_field': 'value'}
-        )
+        response = await quart_test_client.post('/api/v1/user/auth', json={'wrong_field': 'value'})
 
         # Should return error with stable JSON structure
         assert response.status_code in (400, 500, 401)

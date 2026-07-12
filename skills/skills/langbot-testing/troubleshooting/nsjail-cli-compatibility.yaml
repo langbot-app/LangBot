@@ -1,0 +1,29 @@
+id: nsjail-cli-compatibility
+title: "Installed nsjail CLI rejects generated sandbox arguments"
+date: 2026-05-18
+symptoms:
+  - "Box status reports nsjail as available, but every command exits before the user command runs."
+  - "Direct nsjail --help works, but LangBot exec fails."
+  - "On WSL, cgroup v2 warnings appear before falling back to rlimits."
+patterns:
+  - "nsjail: unrecognized option '--clone_newuser'"
+  - "nsjail: unrecognized option '--clone_newnet'"
+  - "nsjail: unrecognized option '--rw_bind'"
+  - "execve('sh') failed: No such file or directory"
+  - "Failed to mount mandatory point: '/workspace'"
+  - "createCgroup() ... failed"
+likely_causes:
+  - "The installed nsjail version enables clone namespaces by default and exposes only disable flags."
+  - "The installed nsjail uses --bindmount for read-write bind mounts, not --rw_bind."
+  - "A bare chroot at / cannot create mount targets for /workspace."
+  - "The command uses sh instead of /bin/sh inside the chroot."
+  - "cgroup v2 exists but is not writable by the LangBot user."
+fix_steps:
+  - "Generate no positive --clone_new* flags; use --disable_clone_newnet only when network is requested."
+  - "Use --bindmount for read-write mounts and --bindmount_ro for read-only mounts."
+  - "Create a per-session chroot root and pre-create mount target directories such as /workspace, /tmp, /home, and activated skill paths."
+  - "Execute commands through /bin/sh -lc."
+  - "Check cgroup v2 writability before using cgroup flags; warn and use rlimits when not writable."
+verification: "Run sandbox-skill-authoring-e2e with BOX_BACKEND=nsjail. The model should complete exec, register_skill, activate, and activated skill exec without nsjail argument errors."
+related_cases:
+  - sandbox-skill-authoring-e2e

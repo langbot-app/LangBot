@@ -5,6 +5,7 @@ Tests cover:
 - _build_milvus_expr: Milvus boolean expression string conversion
 - _build_pg_conditions: PostgreSQL SQLAlchemy conditions conversion
 """
+
 from __future__ import annotations
 
 from importlib import import_module
@@ -122,11 +123,13 @@ class TestQdrantFilterConversion:
         """Multiple conditions are combined in must/must_not."""
         qdrant_module = get_qdrant_module()
 
-        result = qdrant_module._build_qdrant_filter({
-            'file_id': 'abc',
-            'status': {'$ne': 'deleted'},
-            'created_at': {'$gte': 100},
-        })
+        result = qdrant_module._build_qdrant_filter(
+            {
+                'file_id': 'abc',
+                'status': {'$ne': 'deleted'},
+                'created_at': {'$gte': 100},
+            }
+        )
 
         assert len(result.must) == 2  # file_id eq + created_at gte
         assert len(result.must_not) == 1  # status ne
@@ -198,10 +201,12 @@ class TestMilvusFilterConversion:
         """Multiple conditions are joined with 'and'."""
         milvus_module = get_milvus_module()
 
-        result = milvus_module._build_milvus_expr({
-            'file_id': 'abc',
-            'chunk_uuid': {'$ne': 'def'},
-        })
+        result = milvus_module._build_milvus_expr(
+            {
+                'file_id': 'abc',
+                'chunk_uuid': {'$ne': 'def'},
+            }
+        )
         assert 'and' in result
         assert 'file_id == "abc"' in result
         assert 'chunk_uuid != "def"' in result
@@ -272,6 +277,7 @@ class TestPgVectorFilterConversion:
         assert len(result) == 1
         # Verify it's a SQLAlchemy BinaryExpression
         from sqlalchemy.sql.expression import BinaryExpression
+
         assert isinstance(result[0], BinaryExpression)
 
     def test_ne_operator_creates_inequality_condition(self):
@@ -321,10 +327,12 @@ class TestPgVectorFilterConversion:
         """Multiple conditions return list of conditions."""
         pgvector_module = get_pgvector_module()
 
-        result = pgvector_module._build_pg_conditions({
-            'file_id': 'abc',
-            'chunk_uuid': {'$ne': 'def'},
-        })
+        result = pgvector_module._build_pg_conditions(
+            {
+                'file_id': 'abc',
+                'chunk_uuid': {'$ne': 'def'},
+            }
+        )
 
         assert len(result) == 2
 
@@ -349,11 +357,13 @@ class TestPgVectorFilterConversion:
         """Only supported fields (text, file_id, chunk_uuid) are kept."""
         pgvector_module = get_pgvector_module()
 
-        result = pgvector_module._build_pg_conditions({
-            'text': {'$ne': ''},
-            'file_id': 'abc',
-            'chunk_uuid': {'$in': ['x', 'y']},
-            'unsupported': 'value',
-        })
+        result = pgvector_module._build_pg_conditions(
+            {
+                'text': {'$ne': ''},
+                'file_id': 'abc',
+                'chunk_uuid': {'$in': ['x', 'y']},
+                'unsupported': 'value',
+            }
+        )
 
         assert len(result) == 3  # Only supported fields

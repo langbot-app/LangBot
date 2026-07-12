@@ -4,6 +4,7 @@ Tests cover:
 - _make_rag_error_response() helper function
 - RuntimeConnectionHandler cleanup_plugin_data method
 """
+
 from __future__ import annotations
 
 import pytest
@@ -23,7 +24,7 @@ class TestMakeRagErrorResponse:
         """Test basic error response creation."""
         handler = get_handler_module()
 
-        error = ValueError("test error message")
+        error = ValueError('test error message')
         result = handler._make_rag_error_response(error, 'TestError')
 
         # ActionResponse.error() returns code=1 (error status)
@@ -36,7 +37,7 @@ class TestMakeRagErrorResponse:
         """Test that error type is included in message."""
         handler = get_handler_module()
 
-        error = RuntimeError("something went wrong")
+        error = RuntimeError('something went wrong')
         result = handler._make_rag_error_response(error, 'VectorStoreError')
 
         assert '[VectorStoreError/RuntimeError]' in result.message
@@ -45,7 +46,7 @@ class TestMakeRagErrorResponse:
         """Test that extra context fields are included."""
         handler = get_handler_module()
 
-        error = Exception("embedding failed")
+        error = Exception('embedding failed')
         result = handler._make_rag_error_response(
             error,
             'EmbeddingError',
@@ -71,7 +72,7 @@ class TestMakeRagErrorResponse:
         """Test multiple context fields are comma separated."""
         handler = get_handler_module()
 
-        error = IOError("file not found")
+        error = IOError('file not found')
         result = handler._make_rag_error_response(
             error,
             'FileServiceError',
@@ -119,9 +120,7 @@ class TestCleanupPluginData:
         handler_instance = Mock(spec=handler_module.RuntimeConnectionHandler)
         handler_instance.ap = mock_app
 
-        await handler_module.RuntimeConnectionHandler.cleanup_plugin_data(
-            handler_instance, 'author', 'plugin-name'
-        )
+        await handler_module.RuntimeConnectionHandler.cleanup_plugin_data(handler_instance, 'author', 'plugin-name')
 
         # Should have at least 2 calls: one for settings, one for binary storage
         assert mock_app.persistence_mgr.execute_async.call_count >= 2

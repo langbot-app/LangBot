@@ -64,6 +64,8 @@ export interface File extends MessageComponent {
   name?: string;
   size?: number;
   url?: string;
+  path?: string;
+  base64?: string;
 }
 
 // Unknown component

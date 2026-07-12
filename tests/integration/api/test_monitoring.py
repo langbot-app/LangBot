@@ -46,6 +46,7 @@ def mock_circular_import_chain():
         clear=clear,
     ):
         import langbot.pkg.api.http.controller.groups.monitoring as _monitoring  # noqa: E402, F401
+
         yield
 
 
@@ -54,10 +55,12 @@ def fake_monitoring_app():
     """Create FakeApp with monitoring services (module scope)."""
     app = FakeApp()
 
-    app.instance_config.data.update({
-        'api': {'port': 5300},
-        'system': {'allow_modify_login_info': True, 'limitation': {}},
-    })
+    app.instance_config.data.update(
+        {
+            'api': {'port': 5300},
+            'system': {'allow_modify_login_info': True, 'limitation': {}},
+        }
+    )
 
     # Auth services - USER_TOKEN auth requires jwt verification AND get_user_by_email
     app.user_service = Mock()
@@ -67,40 +70,35 @@ def fake_monitoring_app():
 
     # Monitoring service
     app.monitoring_service = Mock()
-    app.monitoring_service.get_overview_metrics = AsyncMock(return_value={
-        'total_messages': 100,
-        'total_llm_calls': 50,
-        'total_sessions': 20,
-        'active_sessions': 5,
-        'total_errors': 2,
-    })
-    app.monitoring_service.get_messages = AsyncMock(return_value=(
-        [{'id': 'msg-1', 'content': 'test'}], 100
-    ))
-    app.monitoring_service.get_llm_calls = AsyncMock(return_value=(
-        [{'id': 'llm-1'}], 50
-    ))
-    app.monitoring_service.get_embedding_calls = AsyncMock(return_value=(
-        [{'id': 'emb-1'}], 10
-    ))
-    app.monitoring_service.get_sessions = AsyncMock(return_value=(
-        [{'session_id': 'sess-1'}], 20
-    ))
-    app.monitoring_service.get_errors = AsyncMock(return_value=(
-        [{'id': 'err-1'}], 2
-    ))
-    app.monitoring_service.get_session_analysis = AsyncMock(return_value={
-        'found': True,
-        'session_id': 'sess-1',
-    })
-    app.monitoring_service.get_message_details = AsyncMock(return_value={
-        'found': True,
-        'message_id': 'msg-1',
-    })
+    app.monitoring_service.get_overview_metrics = AsyncMock(
+        return_value={
+            'total_messages': 100,
+            'total_llm_calls': 50,
+            'total_sessions': 20,
+            'active_sessions': 5,
+            'total_errors': 2,
+        }
+    )
+    app.monitoring_service.get_messages = AsyncMock(return_value=([{'id': 'msg-1', 'content': 'test'}], 100))
+    app.monitoring_service.get_llm_calls = AsyncMock(return_value=([{'id': 'llm-1'}], 50))
+    app.monitoring_service.get_tool_calls = AsyncMock(return_value=([{'id': 'tool-1'}], 5))
+    app.monitoring_service.get_embedding_calls = AsyncMock(return_value=([{'id': 'emb-1'}], 10))
+    app.monitoring_service.get_sessions = AsyncMock(return_value=([{'session_id': 'sess-1'}], 20))
+    app.monitoring_service.get_errors = AsyncMock(return_value=([{'id': 'err-1'}], 2))
+    app.monitoring_service.get_session_analysis = AsyncMock(
+        return_value={
+            'found': True,
+            'session_id': 'sess-1',
+        }
+    )
+    app.monitoring_service.get_message_details = AsyncMock(
+        return_value={
+            'found': True,
+            'message_id': 'msg-1',
+        }
+    )
     app.monitoring_service.get_feedback_stats = AsyncMock(return_value={'like_count': 10})
-    app.monitoring_service.get_feedback_list = AsyncMock(return_value=(
-        [{'feedback_id': 'fb-1'}], 12
-    ))
+    app.monitoring_service.get_feedback_list = AsyncMock(return_value=([{'feedback_id': 'fb-1'}], 12))
     app.monitoring_service.export_messages = AsyncMock(return_value=[{'id': 'msg-1'}])
     app.monitoring_service.export_llm_calls = AsyncMock(return_value=[{'id': 'llm-1'}])
     app.monitoring_service.export_errors = AsyncMock(return_value=[{'id': 'err-1'}])
@@ -130,8 +128,7 @@ class TestMonitoringOverviewEndpoint:
     async def test_get_overview_success(self, quart_test_client):
         """GET /api/v1/monitoring/overview returns metrics."""
         response = await quart_test_client.get(
-            '/api/v1/monitoring/overview',
-            headers={'Authorization': 'Bearer test_token'}
+            '/api/v1/monitoring/overview', headers={'Authorization': 'Bearer test_token'}
         )
 
         assert response.status_code == 200
@@ -147,8 +144,7 @@ class TestMonitoringMessagesEndpoint:
     async def test_get_messages_success(self, quart_test_client):
         """GET /api/v1/monitoring/messages returns message list."""
         response = await quart_test_client.get(
-            '/api/v1/monitoring/messages',
-            headers={'Authorization': 'Bearer test_token'}
+            '/api/v1/monitoring/messages', headers={'Authorization': 'Bearer test_token'}
         )
 
         assert response.status_code == 200
@@ -165,8 +161,7 @@ class TestMonitoringLLMCallsEndpoint:
     async def test_get_llm_calls_success(self, quart_test_client):
         """GET /api/v1/monitoring/llm-calls."""
         response = await quart_test_client.get(
-            '/api/v1/monitoring/llm-calls',
-            headers={'Authorization': 'Bearer test_token'}
+            '/api/v1/monitoring/llm-calls', headers={'Authorization': 'Bearer test_token'}
         )
 
         assert response.status_code == 200
@@ -180,8 +175,7 @@ class TestMonitoringEmbeddingCallsEndpoint:
     async def test_get_embedding_calls_success(self, quart_test_client):
         """GET /api/v1/monitoring/embedding-calls."""
         response = await quart_test_client.get(
-            '/api/v1/monitoring/embedding-calls',
-            headers={'Authorization': 'Bearer test_token'}
+            '/api/v1/monitoring/embedding-calls', headers={'Authorization': 'Bearer test_token'}
         )
 
         assert response.status_code == 200
@@ -195,8 +189,7 @@ class TestMonitoringSessionsEndpoint:
     async def test_get_sessions_success(self, quart_test_client):
         """GET /api/v1/monitoring/sessions."""
         response = await quart_test_client.get(
-            '/api/v1/monitoring/sessions',
-            headers={'Authorization': 'Bearer test_token'}
+            '/api/v1/monitoring/sessions', headers={'Authorization': 'Bearer test_token'}
         )
 
         assert response.status_code == 200
@@ -210,8 +203,7 @@ class TestMonitoringErrorsEndpoint:
     async def test_get_errors_success(self, quart_test_client):
         """GET /api/v1/monitoring/errors."""
         response = await quart_test_client.get(
-            '/api/v1/monitoring/errors',
-            headers={'Authorization': 'Bearer test_token'}
+            '/api/v1/monitoring/errors', headers={'Authorization': 'Bearer test_token'}
         )
 
         assert response.status_code == 200
@@ -225,8 +217,7 @@ class TestMonitoringAllDataEndpoint:
     async def test_get_all_data_success(self, quart_test_client):
         """GET /api/v1/monitoring/data returns all data."""
         response = await quart_test_client.get(
-            '/api/v1/monitoring/data',
-            headers={'Authorization': 'Bearer test_token'}
+            '/api/v1/monitoring/data', headers={'Authorization': 'Bearer test_token'}
         )
 
         assert response.status_code == 200
@@ -242,8 +233,7 @@ class TestMonitoringDetailsEndpoints:
     async def test_get_session_analysis(self, quart_test_client):
         """GET /api/v1/monitoring/sessions/{id}/analysis."""
         response = await quart_test_client.get(
-            '/api/v1/monitoring/sessions/sess-1/analysis',
-            headers={'Authorization': 'Bearer test_token'}
+            '/api/v1/monitoring/sessions/sess-1/analysis', headers={'Authorization': 'Bearer test_token'}
         )
 
         assert response.status_code == 200
@@ -252,8 +242,7 @@ class TestMonitoringDetailsEndpoints:
     async def test_get_message_details(self, quart_test_client):
         """GET /api/v1/monitoring/messages/{id}/details."""
         response = await quart_test_client.get(
-            '/api/v1/monitoring/messages/msg-1/details',
-            headers={'Authorization': 'Bearer test_token'}
+            '/api/v1/monitoring/messages/msg-1/details', headers={'Authorization': 'Bearer test_token'}
         )
 
         assert response.status_code == 200
@@ -267,8 +256,7 @@ class TestMonitoringFeedbackEndpoints:
     async def test_get_feedback_stats(self, quart_test_client):
         """GET /api/v1/monitoring/feedback/stats."""
         response = await quart_test_client.get(
-            '/api/v1/monitoring/feedback/stats',
-            headers={'Authorization': 'Bearer test_token'}
+            '/api/v1/monitoring/feedback/stats', headers={'Authorization': 'Bearer test_token'}
         )
 
         assert response.status_code == 200
@@ -277,8 +265,7 @@ class TestMonitoringFeedbackEndpoints:
     async def test_get_feedback_list(self, quart_test_client):
         """GET /api/v1/monitoring/feedback."""
         response = await quart_test_client.get(
-            '/api/v1/monitoring/feedback',
-            headers={'Authorization': 'Bearer test_token'}
+            '/api/v1/monitoring/feedback', headers={'Authorization': 'Bearer test_token'}
         )
 
         assert response.status_code == 200
@@ -292,8 +279,7 @@ class TestMonitoringExportEndpoint:
     async def test_export_messages(self, quart_test_client):
         """GET export?type=messages returns CSV."""
         response = await quart_test_client.get(
-            '/api/v1/monitoring/export?type=messages',
-            headers={'Authorization': 'Bearer test_token'}
+            '/api/v1/monitoring/export?type=messages', headers={'Authorization': 'Bearer test_token'}
         )
 
         assert response.status_code == 200
@@ -303,8 +289,7 @@ class TestMonitoringExportEndpoint:
     async def test_export_llm_calls(self, quart_test_client):
         """GET export?type=llm-calls returns CSV."""
         response = await quart_test_client.get(
-            '/api/v1/monitoring/export?type=llm-calls',
-            headers={'Authorization': 'Bearer test_token'}
+            '/api/v1/monitoring/export?type=llm-calls', headers={'Authorization': 'Bearer test_token'}
         )
 
         assert response.status_code == 200
@@ -313,8 +298,7 @@ class TestMonitoringExportEndpoint:
     async def test_export_sessions(self, quart_test_client):
         """GET export?type=sessions returns CSV."""
         response = await quart_test_client.get(
-            '/api/v1/monitoring/export?type=sessions',
-            headers={'Authorization': 'Bearer test_token'}
+            '/api/v1/monitoring/export?type=sessions', headers={'Authorization': 'Bearer test_token'}
         )
 
         assert response.status_code == 200
@@ -323,8 +307,7 @@ class TestMonitoringExportEndpoint:
     async def test_export_feedback(self, quart_test_client):
         """GET export?type=feedback returns CSV."""
         response = await quart_test_client.get(
-            '/api/v1/monitoring/export?type=feedback',
-            headers={'Authorization': 'Bearer test_token'}
+            '/api/v1/monitoring/export?type=feedback', headers={'Authorization': 'Bearer test_token'}
         )
 
         assert response.status_code == 200

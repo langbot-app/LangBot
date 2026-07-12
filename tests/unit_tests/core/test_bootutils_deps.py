@@ -27,6 +27,7 @@ class TestCheckDeps:
                 from langbot.pkg.core.bootutils.deps import check_deps
 
                 import asyncio
+
                 result = asyncio.get_event_loop().run_until_complete(check_deps())
 
                 assert result == []
@@ -46,6 +47,7 @@ class TestCheckDeps:
                 from langbot.pkg.core.bootutils.deps import check_deps
 
                 import asyncio
+
                 result = asyncio.get_event_loop().run_until_complete(check_deps())
 
                 assert 'requests' in result
@@ -61,6 +63,7 @@ class TestCheckDeps:
                 from langbot.pkg.core.bootutils.deps import check_deps, required_deps
 
                 import asyncio
+
                 result = asyncio.get_event_loop().run_until_complete(check_deps())
 
                 # Should include all required_deps keys
@@ -107,6 +110,7 @@ class TestPrecheckPluginDeps:
         with patch('os.path.exists', return_value=False):
             with patch('langbot.pkg.core.bootutils.deps.pkgmgr.install_requirements') as mock_install:
                 import asyncio
+
                 asyncio.get_event_loop().run_until_complete(precheck_plugin_deps())
 
                 mock_install.assert_not_called()
@@ -129,6 +133,7 @@ class TestPrecheckPluginDeps:
                 with patch('os.listdir', side_effect=mock_listdir):
                     with patch('langbot.pkg.core.bootutils.deps.pkgmgr.install_requirements') as mock_install:
                         import asyncio
+
                         asyncio.get_event_loop().run_until_complete(precheck_plugin_deps())
 
         mock_install.assert_called_once_with('plugins/plugin1/requirements.txt', extra_params=[])
