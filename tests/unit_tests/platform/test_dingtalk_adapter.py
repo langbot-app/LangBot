@@ -12,6 +12,7 @@ from langbot.pkg.platform.sources.dingtalk import (
     _dingtalk_completed_input_lines,
     _dingtalk_extract_component_inputs,
     _dingtalk_form_component_params,
+    _dingtalk_missing_completed_input_lines,
     _dingtalk_pending_input_defs,
 )
 
@@ -64,6 +65,17 @@ def test_dingtalk_extract_input_and_select_together():
     assert inputs == {'input': 'looks good', 'select': 'A'}
 
 
+def test_dingtalk_extract_component_inputs_strips_card_line_endings():
+    inputs = _dingtalk_extract_component_inputs(
+        {
+            'inputResult': {'value': '回复我测试\r\n'},
+            'selectResult': {'value': '1\r'},
+        }
+    )
+
+    assert inputs == {'input': '回复我测试', 'select': '1'}
+
+
 def test_dingtalk_pending_input_defs_includes_file_fields():
     pending = _dingtalk_pending_input_defs(
         {
@@ -94,6 +106,28 @@ def test_dingtalk_completed_input_lines_include_text_and_select_values():
     )
 
     assert lines == ['✅ comment：looks good', '✅ choice：B']
+
+
+def test_dingtalk_completed_inputs_are_not_repeated_when_already_interleaved():
+    form_data = {
+        'all_input_defs': [
+            {'output_variable_name': 'us_input', 'type': 'paragraph'},
+            {'output_variable_name': 'xiala', 'type': 'select'},
+        ],
+        'inputs': {'us_input': '回复我测试\r', 'xiala': '1'},
+    }
+    form_content = '你好\n请输入你的问题\n✅ us_input：回复我测试\n请选择你的答案\n✅ xiala：1'
+
+    assert _dingtalk_missing_completed_input_lines(form_data, form_content) == []
+
+
+def test_dingtalk_completed_inputs_are_appended_when_template_does_not_render_them():
+    form_data = {
+        'all_input_defs': [{'output_variable_name': 'comment', 'type': 'paragraph'}],
+        'inputs': {'comment': 'ready'},
+    }
+
+    assert _dingtalk_missing_completed_input_lines(form_data, 'Please review') == ['✅ comment：ready']
 
 
 def test_dingtalk_clean_form_content_uses_all_input_defs():

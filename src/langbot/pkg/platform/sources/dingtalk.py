@@ -301,6 +301,16 @@ def _dingtalk_completed_input_lines(form_data: dict) -> list[str]:
     return lines
 
 
+def _dingtalk_missing_completed_input_lines(form_data: dict, form_content: str) -> list[str]:
+    """Return completed values that are not already rendered in the form body."""
+    rendered_lines = {
+        line.strip()
+        for line in re.split(r'<br\s*/?>|\r?\n', str(form_content or ''), flags=re.IGNORECASE)
+        if line.strip()
+    }
+    return [line for line in _dingtalk_completed_input_lines(form_data) if line.strip() not in rendered_lines]
+
+
 def _dingtalk_supports_native_field(form_data: dict) -> bool:
     current_name = str(form_data.get('_current_input_field') or '').strip()
     if not current_name or form_data.get('_action_select_only'):
@@ -439,6 +449,8 @@ def _dingtalk_extract_component_inputs(params: dict) -> dict:
         elif input_result not in (None, ''):
             input_value = input_result
     if input_value not in (None, ''):
+        if isinstance(input_value, str):
+            input_value = input_value.strip()
         result['input'] = input_value
 
     select_value = params.get('select')
@@ -451,6 +463,8 @@ def _dingtalk_extract_component_inputs(params: dict) -> dict:
     if isinstance(select_value, dict):
         select_value = select_value.get('value') or select_value.get('label') or select_value.get('index')
     if select_value not in (None, ''):
+        if isinstance(select_value, str):
+            select_value = select_value.strip()
         result['select'] = select_value
 
     return result
@@ -948,9 +962,9 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             parts.append(f'**{node_title}**')
         if form_content:
             parts.append(_dingtalk_card_markdown(form_content))
-        completed_lines = _dingtalk_completed_input_lines(form_data)
-        if completed_lines and not all(line in form_content for line in completed_lines):
-            parts.append('<hr>' + '<br>'.join(completed_lines))
+        missing_completed_lines = _dingtalk_missing_completed_input_lines(form_data, form_content)
+        if missing_completed_lines:
+            parts.append('<hr>' + '<br>'.join(missing_completed_lines))
         input_hint_lines = [] if native_field else _dingtalk_input_hint_lines(form_data)
         if input_hint_lines:
             parts.append('Fill these fields in chat before choosing an action:<br>' + '<br>'.join(input_hint_lines))
@@ -1048,9 +1062,9 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             parts.append(f'**{node_title}**')
         if form_content:
             parts.append(_dingtalk_card_markdown(form_content))
-        completed_lines = _dingtalk_completed_input_lines(form_data)
-        if completed_lines and not all(line in form_content for line in completed_lines):
-            parts.append('<hr>' + '<br>'.join(completed_lines))
+        missing_completed_lines = _dingtalk_missing_completed_input_lines(form_data, form_content)
+        if missing_completed_lines:
+            parts.append('<hr>' + '<br>'.join(missing_completed_lines))
         input_hint_lines = [] if native_field else _dingtalk_input_hint_lines(form_data)
         if input_hint_lines:
             parts.append('Fill these fields in chat before choosing an action:<br>' + '<br>'.join(input_hint_lines))
@@ -1486,14 +1500,15 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             parts.append(f'**{node_title}**')
         if form_content:
             parts.append(_dingtalk_card_markdown(form_content))
-        completed_lines = _dingtalk_completed_input_lines(
+        missing_completed_lines = _dingtalk_missing_completed_input_lines(
             {
                 'input_defs': input_defs or [],
                 'inputs': inputs or {},
-            }
+            },
+            form_content,
         )
-        if completed_lines and not all(line in form_content for line in completed_lines):
-            parts.append('<hr>' + '<br>'.join(completed_lines))
+        if missing_completed_lines:
+            parts.append('<hr>' + '<br>'.join(missing_completed_lines))
         parts.append(f'<hr>✅ {action_title}')
         content = '<br><br>'.join(parts)
         if self.ap is not None:
