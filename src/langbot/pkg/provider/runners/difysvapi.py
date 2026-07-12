@@ -74,6 +74,8 @@ def _prune_pending_forms(now: float | None = None) -> None:
 
 def _set_pending_form(session_key: PendingFormKey, form_data: dict[str, typing.Any]) -> None:
     _prune_pending_forms()
+    if isinstance(session_key, tuple) and len(session_key) > 1:
+        form_data['pipeline_uuid'] = session_key[1]
     stored = dict(form_data)
     expiration_time = stored.get('expiration_time')
     try:
@@ -514,6 +516,7 @@ def _field_input_form_data(pending_form: dict[str, typing.Any], field: dict[str,
         'node_title': pending_form.get('node_title', ''),
         'workflow_run_id': pending_form.get('workflow_run_id', ''),
         'form_token': pending_form.get('form_token', ''),
+        'pipeline_uuid': pending_form.get('pipeline_uuid', ''),
         '_current_input_field': _field_name(field),
     }
 
@@ -533,6 +536,7 @@ def _action_select_form_data(pending_form: dict[str, typing.Any]) -> dict[str, t
         'node_title': pending_form.get('node_title', ''),
         'workflow_run_id': pending_form.get('workflow_run_id', ''),
         'form_token': pending_form.get('form_token', ''),
+        'pipeline_uuid': pending_form.get('pipeline_uuid', ''),
         '_action_select_only': True,
     }
 
@@ -1341,6 +1345,8 @@ class DifyServiceAPIRunner(runner.RequestRunner):
             if form:
                 return form
 
+        if form_token or workflow_run_id or w_suffix:
+            return None
         return _get_latest_pending_form(session_key)
 
     def _merge_pending_form_action(self, session_key: PendingFormKey, form_action: dict | None) -> dict | None:
@@ -1351,6 +1357,10 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         merged_action = dict(form_action)
         merged_action.pop('w_suffix', None)
         pending_form = self._resolve_pending_form(session_key, form_action)
+        if pending_form is None and any(
+            form_action.get(identifier) for identifier in ('form_token', 'workflow_run_id', 'w_suffix')
+        ):
+            return None
         if pending_form:
             merged_action['form_token'] = merged_action.get('form_token') or pending_form.get('form_token', '')
             merged_action['workflow_run_id'] = merged_action.get('workflow_run_id') or pending_form.get(
@@ -1771,6 +1781,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                         'node_title': node_title,
                         'workflow_run_id': workflow_run_id,
                         'form_token': reason.get('form_token', ''),
+                        'pipeline_uuid': form_snapshot.get('pipeline_uuid', ''),
                     }
                     human_input_yielded = True
 
@@ -2010,6 +2021,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                         'node_title': paused_node_title,
                         'workflow_run_id': new_run_id,
                         'form_token': reason.get('form_token', ''),
+                        'pipeline_uuid': form_snapshot.get('pipeline_uuid', ''),
                     }
                     # Ensure the final chunk has non-empty content so
                     # ResponseWrapper (which skips empty-content chunks) lets it
@@ -2208,6 +2220,7 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                             'node_title': node_title,
                             'workflow_run_id': workflow_run_id,
                             'form_token': reason.get('form_token', ''),
+                            'pipeline_uuid': form_snapshot.get('pipeline_uuid', ''),
                         }
                         human_input_yielded = True
 

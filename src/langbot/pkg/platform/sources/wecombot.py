@@ -838,6 +838,7 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                         'node_title': form.get('node_title', ''),
                         'workflow_run_id': form.get('workflow_run_id', ''),
                         'form_token': form.get('form_token', ''),
+                        'pipeline_uuid': form.get('pipeline_uuid', ''),
                         '_action_select_only': True,
                     }
                     target_chat_id = session.chat_id or session.user_id or ''
@@ -924,11 +925,11 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             return
 
         bot_uuid = ''
-        pipeline_uuid = None
+        pipeline_uuid = form.get('pipeline_uuid') or None
         for bot in self.ap.platform_mgr.bots:
             if bot.adapter is self:
                 bot_uuid = bot.bot_entity.uuid
-                pipeline_uuid = bot.bot_entity.use_pipeline_uuid
+                pipeline_uuid = pipeline_uuid or bot.bot_entity.use_pipeline_uuid
                 break
 
         try:

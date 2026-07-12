@@ -1108,11 +1108,11 @@ class QQOfficialAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
             return
 
         bot_uuid = ''
-        pipeline_uuid = None
+        pipeline_uuid = form_data.get('pipeline_uuid') or None
         for bot in self.ap.platform_mgr.bots:
             if bot.adapter is self:
                 bot_uuid = bot.bot_entity.uuid
-                pipeline_uuid = bot.bot_entity.use_pipeline_uuid
+                pipeline_uuid = pipeline_uuid or bot.bot_entity.use_pipeline_uuid
                 break
 
         try:

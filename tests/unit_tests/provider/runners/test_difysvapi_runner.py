@@ -291,8 +291,46 @@ class TestDifyHumanInputForms:
         assert difysvapi._get_latest_pending_form(key_a)['workflow_run_id'] == 'run-a'
         assert difysvapi._get_latest_pending_form(key_b)['workflow_run_id'] == 'run-b'
         assert difysvapi._get_latest_pending_form(key_c)['workflow_run_id'] == 'run-c'
+        assert difysvapi._get_latest_pending_form(key_a)['pipeline_uuid'] == 'pipeline-a'
+        assert difysvapi._get_latest_pending_form(key_c)['pipeline_uuid'] == 'pipeline-b'
         assert difysvapi._dify_user_from_query(query_a) == difysvapi._dify_user_from_query(query_b)
         assert difysvapi._dify_user_from_query(query_a) == difysvapi._dify_user_from_query(query_c)
+        difysvapi._PENDING_FORMS.clear()
+
+    def test_interactive_form_data_preserves_pipeline_uuid(self):
+        from langbot.pkg.provider.runners import difysvapi
+
+        pending_form = {
+            'pipeline_uuid': 'pipeline-routed',
+            'form_token': 'token-1',
+            'workflow_run_id': 'run-1',
+            'input_defs': [{'output_variable_name': 'comment', 'type': 'paragraph'}],
+            'actions': [{'id': 'approve', 'title': 'Approve'}],
+        }
+
+        field_form = difysvapi._field_input_form_data(pending_form, pending_form['input_defs'][0])
+        action_form = difysvapi._action_select_form_data(pending_form)
+
+        assert field_form['pipeline_uuid'] == 'pipeline-routed'
+        assert action_form['pipeline_uuid'] == 'pipeline-routed'
+
+    def test_explicit_stale_form_identifiers_do_not_fall_back_to_latest(self):
+        from langbot.pkg.provider.runners import difysvapi
+
+        runner = self._create_runner()
+        session_key = 'person_user-1'
+        difysvapi._PENDING_FORMS.clear()
+        difysvapi._set_pending_form(
+            session_key,
+            {'form_token': 'current-token', 'workflow_run_id': 'current-run'},
+        )
+
+        assert runner._resolve_pending_form(session_key, {'form_token': 'stale-token'}) is None
+        assert runner._resolve_pending_form(session_key, {'workflow_run_id': 'stale-run'}) is None
+        assert runner._resolve_pending_form(session_key, {'w_suffix': 'stale-suffix'}) is None
+        assert runner._merge_pending_form_action(session_key, {'form_token': 'stale-token'}) is None
+        assert runner._resolve_pending_form(session_key, {})['form_token'] == 'current-token'
+
         difysvapi._PENDING_FORMS.clear()
 
     def test_format_human_input_text_includes_field_help(self):

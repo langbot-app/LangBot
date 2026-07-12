@@ -73,6 +73,21 @@ def test_telegram_form_callback_cache_prunes_expired_entries():
     assert adapter._form_action_titles == {}
 
 
+def test_telegram_form_callback_cache_preserves_pipeline_uuid():
+    adapter = TelegramAdapter.model_construct()
+    adapter._form_action_titles = {}
+    adapter._cache_form_action_titles(
+        {'callback-a': 'Approve'},
+        pipeline_uuid='pipeline-routed',
+        now=100.0,
+    )
+
+    assert adapter._take_form_action_context('callback-a', now=101.0) == (
+        'Approve',
+        'pipeline-routed',
+    )
+
+
 @pytest.mark.asyncio
 async def test_telegram_select_field_sends_two_column_inline_keyboard():
     bot = MagicMock()

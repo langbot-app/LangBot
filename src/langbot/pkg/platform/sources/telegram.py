@@ -263,37 +263,46 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     ] = {}
 
     _FORM_ACTION_CACHE_TTL = 30 * 60
-    # callback_data -> (display title, expiration monotonic time, form group id)
-    _form_action_titles: typing.Dict[str, tuple[str, float, str]] = {}
+    # callback_data -> (display title, pipeline UUID, expiration time, form group id)
+    _form_action_titles: typing.Dict[str, tuple[str, str, float, str]] = {}
 
     def _prune_form_action_titles(self, now: float | None = None) -> None:
         now = time.monotonic() if now is None else now
-        expired = [key for key, (_, expires_at, _) in self._form_action_titles.items() if expires_at <= now]
+        expired = [key for key, (_, _, expires_at, _) in self._form_action_titles.items() if expires_at <= now]
         for key in expired:
             self._form_action_titles.pop(key, None)
 
-    def _cache_form_action_titles(self, mappings: dict[str, str], now: float | None = None) -> None:
+    def _cache_form_action_titles(
+        self,
+        mappings: dict[str, str],
+        pipeline_uuid: str = '',
+        now: float | None = None,
+    ) -> None:
         now = time.monotonic() if now is None else now
         self._prune_form_action_titles(now)
         group_id = uuid.uuid4().hex
         expires_at = now + self._FORM_ACTION_CACHE_TTL
         self._form_action_titles.update(
-            {callback_data: (title, expires_at, group_id) for callback_data, title in mappings.items()}
+            {callback_data: (title, pipeline_uuid, expires_at, group_id) for callback_data, title in mappings.items()}
         )
 
-    def _take_form_action_title(self, callback_data: str, now: float | None = None) -> str | None:
+    def _take_form_action_context(self, callback_data: str, now: float | None = None) -> tuple[str, str] | None:
         """Consume a callback and invalidate every button from the same form."""
         self._prune_form_action_titles(now)
         entry = self._form_action_titles.get(callback_data)
         if entry is None:
             return None
-        title, _, group_id = entry
+        title, pipeline_uuid, _, group_id = entry
         group_keys = [
-            key for key, (_, _, cached_group_id) in self._form_action_titles.items() if cached_group_id == group_id
+            key for key, (_, _, _, cached_group_id) in self._form_action_titles.items() if cached_group_id == group_id
         ]
         for key in group_keys:
             self._form_action_titles.pop(key, None)
-        return title
+        return title, pipeline_uuid
+
+    def _take_form_action_title(self, callback_data: str, now: float | None = None) -> str | None:
+        context = self._take_form_action_context(callback_data, now)
+        return context[0] if context else None
 
     def __init__(self, config: dict, logger: abstract_platform_logger.AbstractEventLogger):
         async def telegram_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -330,10 +339,11 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                     w_suffix = data.get('w', '')
                     session_key = data.get('session_key') or data.get('s', '')
                     callback_action = _telegram_form_action_from_callback(data)
-                    action_title = self._take_form_action_title(query.data) if callback_action is not None else None
-                    if callback_action is None or action_title is None:
+                    action_context = self._take_form_action_context(query.data) if callback_action is not None else None
+                    if callback_action is None or action_context is None:
                         await self.logger.warning(f'Invalid or stale Telegram form callback: {query.data!r}')
                         return
+                    action_title, pipeline_uuid = action_context
                     # Show selected action feedback by editing the original message
                     try:
                         original_text = query.message.text or ''
@@ -362,11 +372,10 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
                     # Find bot_uuid and pipeline_uuid
                     bot_uuid = ''
-                    pipeline_uuid = None
                     for b in self.ap.platform_mgr.bots:
                         if b.adapter is self:
                             bot_uuid = b.bot_entity.uuid
-                            pipeline_uuid = b.bot_entity.use_pipeline_uuid
+                            pipeline_uuid = pipeline_uuid or b.bot_entity.use_pipeline_uuid
                             break
 
                     form_action_data = {
@@ -732,7 +741,10 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 'text': '\n\n'.join(text_lines),
             }
         elif keyboard:
-            self._cache_form_action_titles(pending_title_mappings)
+            self._cache_form_action_titles(
+                pending_title_mappings,
+                str(form_data.get('pipeline_uuid') or ''),
+            )
             reply_markup = InlineKeyboardMarkup(keyboard)
             args = {
                 'chat_id': chat_id,

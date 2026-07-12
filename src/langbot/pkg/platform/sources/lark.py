@@ -1074,11 +1074,11 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
                     # Find the bot entity to get bot_uuid and pipeline_uuid
                     bot_uuid = ''
-                    pipeline_uuid = None
+                    pipeline_uuid = action_value_obj.get('pipeline_uuid') or None
                     for bot in self.ap.platform_mgr.bots:
                         if bot.adapter is self:
                             bot_uuid = bot.bot_entity.uuid
-                            pipeline_uuid = bot.bot_entity.use_pipeline_uuid
+                            pipeline_uuid = pipeline_uuid or bot.bot_entity.use_pipeline_uuid
                             break
 
                     form_action_data = {
@@ -2396,6 +2396,7 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         actions = form_data.get('actions', [])
         form_token = form_data.get('form_token', '')
         workflow_run_id = form_data.get('workflow_run_id', '')
+        pipeline_uuid = form_data.get('pipeline_uuid', '')
         node_title = form_data.get('node_title', '') or 'Human Input Required'
         form_content = form_data.get('form_content', '')
         input_defs = _lark_form_input_defs(form_data)
@@ -2459,6 +2460,7 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                             'form_action': True,
                             'form_token': form_token,
                             'workflow_run_id': workflow_run_id,
+                            'pipeline_uuid': pipeline_uuid,
                             'action_id': action_id,
                             'session_key': session_key,
                             'card_id': card_id,
@@ -2940,11 +2942,11 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                             )
 
                         bot_uuid = ''
-                        pipeline_uuid = None
+                        pipeline_uuid = action_value_obj.get('pipeline_uuid') or None
                         for bot in self.ap.platform_mgr.bots:
                             if bot.adapter is self:
                                 bot_uuid = bot.bot_entity.uuid
-                                pipeline_uuid = bot.bot_entity.use_pipeline_uuid
+                                pipeline_uuid = pipeline_uuid or bot.bot_entity.use_pipeline_uuid
                                 break
 
                         await self.ap.query_pool.add_query(

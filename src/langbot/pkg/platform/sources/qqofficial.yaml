@@ -37,9 +37,9 @@ spec:
         zh_Hans: 一键扫码绑定
         zh_Hant: 一鍵掃碼綁定
       description:
-        en_US: Scan QR code with mobile QQ to auto-fill AppID and Secret (Token still needs to be filled manually)
-        zh_Hans: 使用手机 QQ 扫码绑定，自动填写 AppID 和密钥（Token 仍需手动填写）
-        zh_Hant: 使用手機 QQ 掃碼綁定，自動填寫 AppID 和密鑰（Token 仍需手動填寫）
+        en_US: Scan QR code with mobile QQ to auto-fill AppID and Secret (Token is not used and can be left blank)
+        zh_Hans: 使用手机 QQ 扫码绑定，自动填写 AppID 和密钥（当前未使用 Token，可留空）
+        zh_Hant: 使用手機 QQ 掃碼綁定，自動填寫 AppID 和密鑰（目前未使用 Token，可留空）
       type: qr-code-login
       login_platform: qqofficial
       required: false

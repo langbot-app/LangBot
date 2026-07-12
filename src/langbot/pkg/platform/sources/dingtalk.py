@@ -939,6 +939,7 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             'sender_user_id': sender_user_id,
             'form_token': form_data.get('form_token', ''),
             'workflow_run_id': form_data.get('workflow_run_id', ''),
+            'pipeline_uuid': form_data.get('pipeline_uuid', ''),
             'actions': actions if should_show_actions else [],
             'all_actions': actions,
             'node_title': node_title,
@@ -1046,6 +1047,7 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             'sender_user_id': sender_user_id,
             'form_token': form_data.get('form_token', ''),
             'workflow_run_id': form_data.get('workflow_run_id', ''),
+            'pipeline_uuid': form_data.get('pipeline_uuid', ''),
             'actions': actions if should_show_actions else [],
             'all_actions': actions,
             'node_title': node_title,
@@ -1318,12 +1320,12 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             )
 
         bot_uuid = ''
-        pipeline_uuid = None
+        pipeline_uuid = state.get('pipeline_uuid') or None
         if self.ap is not None:
             for bot in self.ap.platform_mgr.bots:
                 if bot.adapter is self:
                     bot_uuid = bot.bot_entity.uuid
-                    pipeline_uuid = bot.bot_entity.use_pipeline_uuid
+                    pipeline_uuid = pipeline_uuid or bot.bot_entity.use_pipeline_uuid
                     break
 
             try:
@@ -1451,11 +1453,11 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             return
 
         bot_uuid = ''
-        pipeline_uuid = None
+        pipeline_uuid = state.get('pipeline_uuid') or None
         for bot in self.ap.platform_mgr.bots:
             if bot.adapter is self:
                 bot_uuid = bot.bot_entity.uuid
-                pipeline_uuid = bot.bot_entity.use_pipeline_uuid
+                pipeline_uuid = pipeline_uuid or bot.bot_entity.use_pipeline_uuid
                 break
         try:
             await self.ap.query_pool.add_query(
