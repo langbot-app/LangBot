@@ -119,7 +119,7 @@ class ValkeySearchVectorDatabase(VectorDatabase):
     def __init__(self, ap: app.Application):
         if not VALKEY_SEARCH_AVAILABLE:
             raise ImportError(
-                "valkey-glide is not installed or is unavailable on this platform. "
+                'valkey-glide is not installed or is unavailable on this platform. '
                 "On Linux or macOS, install it with: pip install 'valkey-glide>=2.4.1,<3.0.0'"
             )
 
