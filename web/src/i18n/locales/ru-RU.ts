@@ -1038,14 +1038,14 @@ const ruRU = {
       selectSkills: 'Выбрать навыки',
       noSkillsAvailable: 'Нет доступных навыков',
       mcpServersScopeTooltip:
-        'Здесь задаётся только привязка MCP-серверов к конвейеру. Конкретные MCP-инструменты и ресурсы выбираются в AI Feature > Local Agent.',
+        'Здесь задаётся только привязка MCP-серверов к конвейеру. Конкретные MCP-инструменты и ресурсы выбираются в AI Feature > Agent Runner.',
       enableAllMCPServersTooltip:
         'Если включено, все настроенные и включённые MCP-серверы станут кандидатами для инструментов и ресурсов MCP в AI Feature.',
     },
-    localAgent: {
+    agentRunner: {
       toolsTitle: 'Инструменты',
       toolsDescription:
-        'Выберите инструменты плагинов, MCP и встроенные инструменты для этого Local Agent.',
+        'Выберите инструменты плагинов, MCP и встроенные инструменты для этого Agent Runner.',
       toolsScopeTooltip:
         'MCP-инструменты берутся только из MCP-серверов, привязанных в Расширениях. Чтобы добавить источник, сначала привяжите там сервер.',
       enableAllTools: 'Включить все инструменты',
@@ -1063,7 +1063,7 @@ const ruRU = {
       selectTools: 'Выбрать инструменты',
       resourcesTitle: 'Ресурсы',
       resourcesDescription:
-        'Выберите MCP-ресурсы и базы знаний для этого Local Agent.',
+        'Выберите MCP-ресурсы и базы знаний для этого Agent Runner.',
       knowledgeBases: 'Базы знаний',
       mcpResources: 'MCP-ресурсы',
       mcpResourcesScopeTooltip:
@@ -1686,11 +1686,6 @@ const ruRU = {
       title: 'Выберите ИИ-движок',
       description:
         'Выберите ИИ-движок, который будет управлять интеллектом вашего бота.',
-    },
-    spaceBanner: {
-      message:
-        'Подключитесь к LangBot Space для бесплатных пробных кредитов и мгновенной настройки!',
-      action: 'Авторизация через Space',
     },
     config: {
       botInfo: 'Информация о боте',

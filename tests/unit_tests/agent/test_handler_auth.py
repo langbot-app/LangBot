@@ -421,7 +421,7 @@ class TestRetrieveKnowledgeBaseAuthorization:
         # When no run_id, the handler checks against pipeline's configured KBs
         # This is the unscoped path for regular plugin calls
 
-        from langbot.pkg.agent.runner.config_migration import ConfigMigration
+        from langbot.pkg.agent.runner.config_resolver import RunnerConfigResolver
 
         # Simulate pipeline config
         pipeline_config = {
@@ -437,10 +437,10 @@ class TestRetrieveKnowledgeBaseAuthorization:
             },
         }
 
-        runner_id = ConfigMigration.resolve_runner_id(pipeline_config)
+        runner_id = RunnerConfigResolver.resolve_runner_id(pipeline_config)
         assert runner_id == 'plugin:test/runner/default'
 
-        runner_config = ConfigMigration.resolve_runner_config(pipeline_config, runner_id)
+        runner_config = RunnerConfigResolver.resolve_runner_config(pipeline_config, runner_id)
         allowed_kbs = runner_config.get('knowledge-bases', [])
         assert 'kb_001' in allowed_kbs
         assert 'kb_999' not in allowed_kbs
@@ -534,12 +534,12 @@ class TestRETRIEVEKNOWLEDGEBASEBugFix:
     without first resolving the runner_id, causing issues when non-local-agent runners
     were used.
 
-    Fix: Now uses ConfigMigration.resolve_runner_id first, then resolve_runner_config.
+    Fix: Now uses RunnerConfigResolver.resolve_runner_id first, then resolve_runner_config.
     """
 
     def test_retrieve_kb_fix_local_agent_runner(self):
         """Fix should work for local-agent runner."""
-        from langbot.pkg.agent.runner.config_migration import ConfigMigration
+        from langbot.pkg.agent.runner.config_resolver import RunnerConfigResolver
 
         pipeline_config = {
             'ai': {
@@ -554,15 +554,15 @@ class TestRETRIEVEKNOWLEDGEBASEBugFix:
             },
         }
 
-        runner_id = ConfigMigration.resolve_runner_id(pipeline_config)
-        runner_config = ConfigMigration.resolve_runner_config(pipeline_config, runner_id)
+        runner_id = RunnerConfigResolver.resolve_runner_id(pipeline_config)
+        runner_config = RunnerConfigResolver.resolve_runner_config(pipeline_config, runner_id)
         allowed_kbs = runner_config.get('knowledge-bases', [])
 
         assert 'kb_001' in allowed_kbs
 
     def test_retrieve_kb_fix_other_runner(self):
         """Fix should work for non-local-agent runners."""
-        from langbot.pkg.agent.runner.config_migration import ConfigMigration
+        from langbot.pkg.agent.runner.config_resolver import RunnerConfigResolver
 
         pipeline_config = {
             'ai': {
@@ -577,15 +577,15 @@ class TestRETRIEVEKNOWLEDGEBASEBugFix:
             },
         }
 
-        runner_id = ConfigMigration.resolve_runner_id(pipeline_config)
-        runner_config = ConfigMigration.resolve_runner_config(pipeline_config, runner_id)
+        runner_id = RunnerConfigResolver.resolve_runner_id(pipeline_config)
+        runner_config = RunnerConfigResolver.resolve_runner_config(pipeline_config, runner_id)
         allowed_kbs = runner_config.get('knowledge-bases', [])
 
         assert 'kb_custom' in allowed_kbs
 
     def test_retrieve_kb_does_not_read_old_runner_format(self):
         """The 4.x authorization path ignores legacy Pipeline runner fields."""
-        from langbot.pkg.agent.runner.config_migration import ConfigMigration
+        from langbot.pkg.agent.runner.config_resolver import RunnerConfigResolver
 
         pipeline_config = {
             'ai': {
@@ -598,8 +598,8 @@ class TestRETRIEVEKNOWLEDGEBASEBugFix:
             },
         }
 
-        runner_id = ConfigMigration.resolve_runner_id(pipeline_config)
-        runner_config = ConfigMigration.resolve_runner_config(pipeline_config, runner_id)
+        runner_id = RunnerConfigResolver.resolve_runner_id(pipeline_config)
+        runner_config = RunnerConfigResolver.resolve_runner_config(pipeline_config, runner_id)
         assert runner_id is None
         assert runner_config == {}
 
@@ -922,7 +922,7 @@ class TestNoRunIdBackwardCompatPath:
     @pytest.mark.asyncio
     async def test_retrieve_knowledge_base_no_run_id_pipeline_check(self):
         """RETRIEVE_KNOWLEDGE_BASE: no run_id uses pipeline config check."""
-        from langbot.pkg.agent.runner.config_migration import ConfigMigration
+        from langbot.pkg.agent.runner.config_resolver import RunnerConfigResolver
 
         # When no run_id, handler.py lines 897-914 check pipeline config
         pipeline_config = {
@@ -938,8 +938,8 @@ class TestNoRunIdBackwardCompatPath:
             },
         }
 
-        runner_id = ConfigMigration.resolve_runner_id(pipeline_config)
-        runner_config = ConfigMigration.resolve_runner_config(pipeline_config, runner_id)
+        runner_id = RunnerConfigResolver.resolve_runner_id(pipeline_config)
+        runner_config = RunnerConfigResolver.resolve_runner_config(pipeline_config, runner_id)
         allowed_kb_uuids = runner_config.get('knowledge-bases', [])
 
         # kb_001 should be allowed

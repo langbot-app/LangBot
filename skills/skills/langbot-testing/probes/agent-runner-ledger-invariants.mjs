@@ -127,13 +127,18 @@ async function main() {
   const evidenceDir = resolve(env.LBS_EVIDENCE_DIR || join(root, "reports", "evidence", runId));
   await mkdir(evidenceDir, { recursive: true });
   const startedAt = new Date();
-  const langbotRepo = resolveFromRoot(root, env.LANGBOT_REPO || "../LangBot");
-  const sdkSrc = resolveFromRoot(root, env.LANGBOT_PLUGIN_SDK_REPO || "../langbot-plugin-sdk/src");
+  const langbotRepo = resolveFromRoot(root, env.LANGBOT_REPO || "..");
+  const sdkRepo = resolveFromRoot(root, env.LANGBOT_PLUGIN_SDK_REPO || "../../langbot-plugin-sdk");
+  const sdkSrc = resolve(sdkRepo, "src");
   const stdoutLog = join(evidenceDir, "probe-stdout.log");
   const stderrLog = join(evidenceDir, "probe-stderr.log");
   const automationResultJson = join(evidenceDir, "automation-result.json");
   const resultJson = join(evidenceDir, "result.json");
-  const command = { executable: "rtk", args: ["uv", "run", "python", "-c", probeScript], cwd: langbotRepo };
+  const command = {
+    executable: "rtk",
+    args: [resolve(langbotRepo, ".venv/bin/python"), "-c", probeScript],
+    cwd: langbotRepo,
+  };
   const timeoutMs = Number(env.LANGBOT_AGENT_RUNNER_PROBE_TIMEOUT_MS || "30000");
   const result = {
     source: "automation",

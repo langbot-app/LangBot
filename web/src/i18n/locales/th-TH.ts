@@ -1013,14 +1013,14 @@ const thTH = {
       selectSkills: 'เลือกสกิล',
       noSkillsAvailable: 'ไม่มีสกิลที่พร้อมใช้งาน',
       mcpServersScopeTooltip:
-        'ส่วนนี้ใช้ควบคุมว่า Pipeline ผูกกับเซิร์ฟเวอร์ MCP ใดเท่านั้น ส่วนเครื่องมือและทรัพยากร MCP รายตัวให้เลือกใน AI Feature > Local Agent',
+        'ส่วนนี้ใช้ควบคุมว่า Pipeline ผูกกับเซิร์ฟเวอร์ MCP ใดเท่านั้น ส่วนเครื่องมือและทรัพยากร MCP รายตัวให้เลือกใน AI Feature > Agent Runner',
       enableAllMCPServersTooltip:
         'เมื่อเปิดใช้ เซิร์ฟเวอร์ MCP ที่ตั้งค่าและเปิดใช้งานทั้งหมดจะเป็นตัวเลือกสำหรับเครื่องมือและทรัพยากร MCP ใน AI Feature',
     },
-    localAgent: {
+    agentRunner: {
       toolsTitle: 'เครื่องมือ',
       toolsDescription:
-        'เลือกเครื่องมือจากปลั๊กอิน MCP และเครื่องมือในตัวสำหรับ Local Agent นี้',
+        'เลือกเครื่องมือจากปลั๊กอิน MCP และเครื่องมือในตัวสำหรับ Agent Runner นี้',
       toolsScopeTooltip:
         'เครื่องมือ MCP จะแสดงจากเซิร์ฟเวอร์ MCP ที่ผูกไว้ในส่วนขยายเท่านั้น หากต้องการเพิ่มแหล่งเครื่องมือ ให้ไปผูกเซิร์ฟเวอร์ที่นั่นก่อน',
       enableAllTools: 'เปิดใช้เครื่องมือทั้งหมด',
@@ -1038,7 +1038,7 @@ const thTH = {
       selectTools: 'เลือกเครื่องมือ',
       resourcesTitle: 'ทรัพยากร',
       resourcesDescription:
-        'เลือกทรัพยากร MCP และคลังความรู้สำหรับ Local Agent นี้',
+        'เลือกทรัพยากร MCP และคลังความรู้สำหรับ Agent Runner นี้',
       knowledgeBases: 'คลังความรู้',
       mcpResources: 'ทรัพยากร MCP',
       mcpResourcesScopeTooltip:
@@ -1651,11 +1651,6 @@ const thTH = {
     aiEngine: {
       title: 'เลือกเครื่องมือ AI',
       description: 'เลือกเครื่องมือ AI ที่จะขับเคลื่อนความฉลาดของ Bot',
-    },
-    spaceBanner: {
-      message:
-        'เชื่อมต่อกับ LangBot Space เพื่อรับเครดิตทดลองใช้โมเดลฟรีและตั้งค่าทันทีโดยไม่ต้องกำหนดค่า!',
-      action: 'ยืนยันสิทธิ์กับ Space',
     },
     config: {
       botInfo: 'ข้อมูล Bot',

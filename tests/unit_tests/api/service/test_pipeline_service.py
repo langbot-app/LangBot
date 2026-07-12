@@ -231,6 +231,63 @@ class TestPipelineServiceCreatePipeline:
         with pytest.raises(ValueError, match='Maximum number of pipelines'):
             await service.create_pipeline({'name': 'New Pipeline'})
 
+    @pytest.mark.parametrize('invalid_preferences', [None, [], 'all', 0, False])
+    async def test_create_pipeline_rejects_non_object_extension_preferences(
+        self,
+        invalid_preferences,
+    ):
+        service = PipelineService(SimpleNamespace())
+
+        with pytest.raises(ValueError, match='extensions_preferences must be an object'):
+            await service.create_pipeline(
+                {
+                    'name': 'Invalid Pipeline',
+                    'extensions_preferences': invalid_preferences,
+                }
+            )
+
+    @pytest.mark.parametrize('invalid_value', [0, None, 'false'])
+    async def test_create_pipeline_rejects_non_boolean_runner_security_field(self, invalid_value):
+        service = PipelineService(SimpleNamespace())
+        runner_id = 'plugin:test/runner/default'
+
+        with pytest.raises(ValueError, match='enable-all-tools.*boolean'):
+            await service.create_pipeline(
+                {
+                    'name': 'Invalid Pipeline',
+                    'config': {
+                        'ai': {
+                            'runner': {'id': runner_id},
+                            'runner_config': {runner_id: {'enable-all-tools': invalid_value}},
+                        }
+                    },
+                }
+            )
+
+    @pytest.mark.parametrize('invalid_value', [0, None, 'false'])
+    async def test_create_pipeline_rejects_non_boolean_mcp_resource_enabled(self, invalid_value):
+        service = PipelineService(SimpleNamespace())
+        runner_id = 'plugin:test/runner/default'
+
+        with pytest.raises(ValueError, match=r'mcp-resources\[0\]\.enabled.*boolean'):
+            await service.create_pipeline(
+                {
+                    'name': 'Invalid Pipeline',
+                    'config': {
+                        'ai': {
+                            'runner': {'id': runner_id},
+                            'runner_config': {
+                                runner_id: {
+                                    'mcp-resources': [
+                                        {'uri': 'file:///README.md', 'enabled': invalid_value},
+                                    ]
+                                }
+                            },
+                        }
+                    },
+                }
+            )
+
     async def test_create_pipeline_no_limit(self):
         """Creates pipeline without limit when max_pipelines=-1."""
         # Setup
@@ -386,6 +443,43 @@ class TestPipelineServiceUpdatePipeline:
         assert 'should-be-removed' not in update_params.values()
         assert ['should-be-removed'] not in update_params.values()
         assert not any(value is True for value in update_params.values())
+
+    @pytest.mark.parametrize('invalid_preferences', [None, [], 'all', 0, False])
+    async def test_update_pipeline_rejects_non_object_extension_preferences_before_write(
+        self,
+        invalid_preferences,
+    ):
+        ap = SimpleNamespace(persistence_mgr=SimpleNamespace(execute_async=AsyncMock()))
+        service = PipelineService(ap)
+
+        with pytest.raises(ValueError, match='extensions_preferences must be an object'):
+            await service.update_pipeline(
+                'test-uuid',
+                {'extensions_preferences': invalid_preferences},
+            )
+
+        ap.persistence_mgr.execute_async.assert_not_awaited()
+
+    @pytest.mark.parametrize('invalid_value', [0, None, 'false'])
+    async def test_update_pipeline_rejects_non_boolean_runner_security_field_before_write(self, invalid_value):
+        ap = SimpleNamespace(persistence_mgr=SimpleNamespace(execute_async=AsyncMock()))
+        service = PipelineService(ap)
+        runner_id = 'plugin:test/runner/default'
+
+        with pytest.raises(ValueError, match='mcp-resource-agent-read-enabled.*boolean'):
+            await service.update_pipeline(
+                'test-uuid',
+                {
+                    'config': {
+                        'ai': {
+                            'runner': {'id': runner_id},
+                            'runner_config': {runner_id: {'mcp-resource-agent-read-enabled': invalid_value}},
+                        }
+                    }
+                },
+            )
+
+        ap.persistence_mgr.execute_async.assert_not_awaited()
 
     async def test_update_pipeline_name_does_not_rewrite_bot_routes(self):
         """Bot event bindings remain independent from pipeline display names."""
@@ -624,6 +718,98 @@ class TestPipelineServiceUpdatePipelineExtensions:
         with pytest.raises(ValueError, match='Pipeline nonexistent-uuid not found'):
             await service.update_pipeline_extensions('nonexistent-uuid', [])
 
+    @pytest.mark.parametrize(
+        ('field', 'invalid_value'),
+        [
+            ('bound_plugins', 'author/plugin'),
+            ('bound_plugins', [{'author': 'author'}]),
+            ('bound_mcp_servers', 'server-1'),
+            ('bound_mcp_servers', ['server-1', 2]),
+            ('bound_skills', 'skill-1'),
+            ('bound_skills', ['skill-1', None]),
+            ('bound_mcp_resources', {'uri': 'file:///README.md'}),
+            ('bound_mcp_resources', [{'uri': 'file:///README.md'}, 'bad']),
+        ],
+    )
+    async def test_update_extensions_rejects_malformed_binding_lists_before_query(
+        self,
+        field,
+        invalid_value,
+    ):
+        ap = SimpleNamespace(persistence_mgr=SimpleNamespace(execute_async=AsyncMock()))
+        service = PipelineService(ap)
+        kwargs = {field: invalid_value}
+        if field != 'bound_plugins':
+            kwargs['bound_plugins'] = []
+
+        with pytest.raises(ValueError, match=field):
+            await service.update_pipeline_extensions('test-uuid', **kwargs)
+
+        ap.persistence_mgr.execute_async.assert_not_awaited()
+
+    @pytest.mark.parametrize('invalid_value', [0, 'false'])
+    async def test_update_extensions_rejects_non_boolean_resource_read_before_query(self, invalid_value):
+        ap = SimpleNamespace(persistence_mgr=SimpleNamespace(execute_async=AsyncMock()))
+        service = PipelineService(ap)
+
+        with pytest.raises(ValueError, match='mcp_resource_agent_read_enabled.*boolean'):
+            await service.update_pipeline_extensions(
+                'test-uuid',
+                [],
+                mcp_resource_agent_read_enabled=invalid_value,
+            )
+
+        ap.persistence_mgr.execute_async.assert_not_awaited()
+
+    @pytest.mark.parametrize(
+        'field',
+        [
+            'enable_all_plugins',
+            'enable_all_mcp_servers',
+            'enable_all_skills',
+        ],
+    )
+    @pytest.mark.parametrize('invalid_value', [0, None, 'false'])
+    async def test_update_extensions_rejects_non_boolean_enable_all_flags_before_query(
+        self,
+        field,
+        invalid_value,
+    ):
+        ap = SimpleNamespace(persistence_mgr=SimpleNamespace(execute_async=AsyncMock()))
+        service = PipelineService(ap)
+
+        with pytest.raises(ValueError, match=rf'{field}.*boolean'):
+            await service.update_pipeline_extensions(
+                'test-uuid',
+                [],
+                **{field: invalid_value},
+            )
+
+        ap.persistence_mgr.execute_async.assert_not_awaited()
+
+    @pytest.mark.parametrize('invalid_value', [0, None, 'false'])
+    async def test_update_extensions_rejects_non_boolean_attachment_enabled_before_query(
+        self,
+        invalid_value,
+    ):
+        ap = SimpleNamespace(persistence_mgr=SimpleNamespace(execute_async=AsyncMock()))
+        service = PipelineService(ap)
+
+        with pytest.raises(ValueError, match=r'bound_mcp_resources.*enabled.*boolean'):
+            await service.update_pipeline_extensions(
+                'test-uuid',
+                [],
+                bound_mcp_resources=[
+                    {
+                        'server_uuid': 'server-1',
+                        'uri': 'file:///README.md',
+                        'enabled': invalid_value,
+                    }
+                ],
+            )
+
+        ap.persistence_mgr.execute_async.assert_not_awaited()
+
     async def test_update_extensions_sets_plugins(self):
         """Updates plugins in extensions_preferences."""
         # Setup
@@ -667,7 +853,7 @@ class TestPipelineServiceUpdatePipelineExtensions:
         )
 
         # Execute
-        bound_plugins = [{'plugin_uuid': 'plugin-1'}]
+        bound_plugins = [{'author': 'test', 'name': 'plugin-1'}]
         await service.update_pipeline_extensions(
             'test-uuid',
             bound_plugins=bound_plugins,

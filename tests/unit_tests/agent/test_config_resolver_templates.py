@@ -1,10 +1,10 @@
-"""Tests for persisted AgentRunner config shape."""
+"""Tests for persisted AgentRunner config templates."""
 
 from __future__ import annotations
 
 import json
 
-from langbot.pkg.agent.runner.config_migration import ConfigMigration
+from langbot.pkg.agent.runner.config_resolver import RunnerConfigResolver
 
 
 class TestDefaultPipelineConfig:
@@ -35,7 +35,7 @@ class TestResolveRunnerId:
                 'runner': {'id': 'plugin:test/my-runner/default'},
             },
         }
-        runner_id = ConfigMigration.resolve_runner_id(config)
+        runner_id = RunnerConfigResolver.resolve_runner_id(config)
         assert runner_id == 'plugin:test/my-runner/default'
 
     def test_old_runner_field_is_not_supported(self):
@@ -44,7 +44,7 @@ class TestResolveRunnerId:
                 'runner': {'runner': 'local-agent'},
             },
         }
-        runner_id = ConfigMigration.resolve_runner_id(config)
+        runner_id = RunnerConfigResolver.resolve_runner_id(config)
         assert runner_id is None
 
 
@@ -59,7 +59,7 @@ class TestResolveRunnerConfig:
                 },
             },
         }
-        runner_config = ConfigMigration.resolve_runner_config(config, 'plugin:langbot-team/LocalAgent/default')
+        runner_config = RunnerConfigResolver.resolve_runner_config(config, 'plugin:langbot-team/LocalAgent/default')
         assert runner_config['custom-option'] == 20
 
     def test_old_runner_block_is_not_supported(self):
@@ -68,5 +68,5 @@ class TestResolveRunnerConfig:
                 'local-agent': {'custom-option': 20},
             },
         }
-        runner_config = ConfigMigration.resolve_runner_config(config, 'plugin:langbot-team/LocalAgent/default')
+        runner_config = RunnerConfigResolver.resolve_runner_config(config, 'plugin:langbot-team/LocalAgent/default')
         assert runner_config == {}

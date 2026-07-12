@@ -14,7 +14,8 @@ import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.events as events
 from ..utils import importutil
 from .config_coercion import coerce_pipeline_config
-from ..agent.runner.config_migration import ConfigMigration
+from ..agent.runner.config_resolver import RunnerConfigResolver
+from .extension_preferences import normalize_extension_preferences
 
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
@@ -92,14 +93,16 @@ class RuntimePipeline:
         self.stage_containers = stage_containers
 
         # Extract bound plugins and MCP servers from extensions_preferences
-        extensions_prefs = pipeline_entity.extensions_preferences or {}
-        self.enable_all_plugins = extensions_prefs.get('enable_all_plugins', True)
-        self.enable_all_mcp_servers = extensions_prefs.get('enable_all_mcp_servers', True)
+        extensions_prefs = normalize_extension_preferences(pipeline_entity.extensions_preferences)
+        self.enable_all_plugins = extensions_prefs.get('enable_all_plugins', True) is True
+        self.enable_all_mcp_servers = extensions_prefs.get('enable_all_mcp_servers', True) is True
         pipeline_config = pipeline_entity.config or {}
         runner_config: dict[str, typing.Any] = {}
-        runner_id = ConfigMigration.resolve_runner_id(pipeline_config) if isinstance(pipeline_config, dict) else None
+        runner_id = (
+            RunnerConfigResolver.resolve_runner_id(pipeline_config) if isinstance(pipeline_config, dict) else None
+        )
         if runner_id:
-            resolved_runner_config = ConfigMigration.resolve_runner_config(pipeline_config, runner_id)
+            resolved_runner_config = RunnerConfigResolver.resolve_runner_config(pipeline_config, runner_id)
             if isinstance(resolved_runner_config, dict):
                 runner_config = resolved_runner_config
 
@@ -107,24 +110,26 @@ class RuntimePipeline:
             'mcp-resources',
             extensions_prefs.get('mcp_resources', []),
         )
-        self.mcp_resource_agent_read_enabled = runner_config.get(
-            'mcp-resource-agent-read-enabled',
-            extensions_prefs.get('mcp_resource_agent_read_enabled', True),
+        self.mcp_resource_agent_read_enabled = (
+            runner_config.get(
+                'mcp-resource-agent-read-enabled',
+                extensions_prefs.get('mcp_resource_agent_read_enabled', True),
+            )
+            is True
         )
 
         if self.enable_all_plugins:
             # None indicates to use all available plugins
             self.bound_plugins = None
         else:
-            plugin_list = extensions_prefs.get('plugins', [])
-            self.bound_plugins = [f'{p["author"]}/{p["name"]}' for p in plugin_list] if plugin_list else []
+            plugin_list = extensions_prefs['plugins']
+            self.bound_plugins = [f'{p["author"]}/{p["name"]}' for p in plugin_list]
 
         if self.enable_all_mcp_servers:
             # None indicates to use all available MCP servers
             self.bound_mcp_servers = None
         else:
-            mcp_server_list = extensions_prefs.get('mcp_servers', [])
-            self.bound_mcp_servers = mcp_server_list if mcp_server_list else []
+            self.bound_mcp_servers = extensions_prefs['mcp_servers']
 
     async def run(self, query: pipeline_query.Query):
         query.pipeline_config = self.pipeline_entity.config
@@ -296,9 +301,9 @@ class RuntimePipeline:
         # Get runner name from pipeline config
         runner_name = None
         if query.pipeline_config:
-            from ..agent.runner.config_migration import ConfigMigration
+            from ..agent.runner.config_resolver import RunnerConfigResolver
 
-            runner_name = ConfigMigration.resolve_runner_id(query.pipeline_config)
+            runner_name = RunnerConfigResolver.resolve_runner_id(query.pipeline_config)
 
         # Record query start and store message_id
         message_id = ''

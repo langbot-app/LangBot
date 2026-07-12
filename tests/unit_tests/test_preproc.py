@@ -102,7 +102,7 @@ def _make_app(*, skill_service) -> SimpleNamespace:
     session = Session(launcher_type=LauncherTypes.PERSON, launcher_id='launcher-1', sender_id='sender-1')
     conversation = _make_conversation()
     model = SimpleNamespace(model_entity=SimpleNamespace(uuid='model-1', abilities={'func_call'}))
-    tool_mgr = SimpleNamespace(get_all_tools=AsyncMock(return_value=[]))
+    tool_mgr = SimpleNamespace(get_resolved_tool_catalog=AsyncMock(return_value=[]))
 
     return SimpleNamespace(
         sess_mgr=SimpleNamespace(
@@ -159,9 +159,10 @@ async def test_preproc_loads_host_tools_for_runner():
     result = await stage.process(_make_query(), 'PreProcessor')
 
     assert result.result_type == entities_module.ResultType.CONTINUE
-    app.tool_mgr.get_all_tools.assert_awaited_once_with(
+    app.tool_mgr.get_resolved_tool_catalog.assert_awaited_once_with(
         None,
         None,
+        include_skill_authoring=True,
         include_mcp_resource_tools=True,
     )
 
@@ -172,10 +173,20 @@ async def test_preproc_puts_host_skill_tools_into_query_scope():
     preproc_module, entities_module = _import_preproc_modules()
 
     app = _make_app(skill_service=SimpleNamespace())
-    app.tool_mgr.get_all_tools = AsyncMock(
+    app.tool_mgr.get_resolved_tool_catalog = AsyncMock(
         return_value=[
-            SimpleNamespace(name='activate'),
-            SimpleNamespace(name='register_skill'),
+            {
+                'name': 'activate',
+                'source': 'skill',
+                'description': 'Activate a skill',
+                'parameters': {},
+            },
+            {
+                'name': 'register_skill',
+                'source': 'skill',
+                'description': 'Register a skill',
+                'parameters': {},
+            },
         ]
     )
     query = _make_query()
@@ -184,9 +195,10 @@ async def test_preproc_puts_host_skill_tools_into_query_scope():
     result = await stage.process(query, 'PreProcessor')
 
     assert result.result_type == entities_module.ResultType.CONTINUE
-    app.tool_mgr.get_all_tools.assert_awaited_once_with(
+    app.tool_mgr.get_resolved_tool_catalog.assert_awaited_once_with(
         None,
         None,
+        include_skill_authoring=True,
         include_mcp_resource_tools=True,
     )
     assert [tool.name for tool in query.use_funcs] == ['activate', 'register_skill']
@@ -203,9 +215,10 @@ async def test_preproc_loads_host_tools_regardless_of_skill_service():
     result = await stage.process(_make_query(), 'PreProcessor')
 
     assert result.result_type == entities_module.ResultType.CONTINUE
-    app.tool_mgr.get_all_tools.assert_awaited_once_with(
+    app.tool_mgr.get_resolved_tool_catalog.assert_awaited_once_with(
         None,
         None,
+        include_skill_authoring=True,
         include_mcp_resource_tools=True,
     )
 
@@ -222,9 +235,10 @@ async def test_preproc_disables_mcp_resource_tools_when_agent_reading_is_disable
     result = await stage.process(query, 'PreProcessor')
 
     assert result.result_type == entities_module.ResultType.CONTINUE
-    app.tool_mgr.get_all_tools.assert_awaited_once_with(
+    app.tool_mgr.get_resolved_tool_catalog.assert_awaited_once_with(
         None,
         None,
+        include_skill_authoring=True,
         include_mcp_resource_tools=False,
     )
 

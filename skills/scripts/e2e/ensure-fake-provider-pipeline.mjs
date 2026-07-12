@@ -522,7 +522,6 @@ async function ensurePipeline({ backendUrl, token, name, modelUuid }) {
     prompt: [{ role: "system", content: "You are a deterministic QA assistant. Reply exactly as instructed." }],
     "remove-think": false,
     "knowledge-bases": [],
-    "box-session-id-template": "{launcher_type}_{launcher_id}",
     "retrieval-top-k": 5,
     "rerank-model": "",
     "rerank-top-k": 5,

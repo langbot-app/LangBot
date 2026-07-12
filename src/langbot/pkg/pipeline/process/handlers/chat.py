@@ -12,7 +12,7 @@ from ... import entities
 from ... import plugin_diagnostics
 
 import langbot_plugin.api.entities.events as events
-from ....agent.runner.config_migration import ConfigMigration
+from ....agent.runner.config_resolver import RunnerConfigResolver
 from ....agent.runner import config_schema
 from ....utils import constants, runner as runner_utils
 from ....telemetry import features as telemetry_features
@@ -312,8 +312,10 @@ class ChatMessageHandler(handler.MessageHandler):
             if prompt_config:
                 return prompt_config
 
-        runner_id = ConfigMigration.resolve_runner_id(query.pipeline_config)
-        runner_config = ConfigMigration.resolve_runner_config(query.pipeline_config, runner_id) if runner_id else {}
+        runner_id = RunnerConfigResolver.resolve_runner_id(query.pipeline_config)
+        runner_config = (
+            RunnerConfigResolver.resolve_runner_config(query.pipeline_config, runner_id) if runner_id else {}
+        )
         bound_plugins = query.variables.get('_pipeline_bound_plugins', None)
         descriptor = await self._get_runner_descriptor(runner_id, bound_plugins)
         return config_schema.extract_prompt_config(descriptor, runner_config, DEFAULT_PROMPT_CONFIG)

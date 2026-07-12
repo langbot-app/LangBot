@@ -6,7 +6,12 @@ import sqlalchemy
 import typing
 
 from ....core import app
+from ....agent.runner.config_resolver import RunnerConfigResolver
 from ....entity.persistence import pipeline as persistence_pipeline
+from ....pipeline.extension_preferences import (
+    normalize_extension_preferences,
+    validate_extension_preferences,
+)
 
 
 default_stage_order = [
@@ -163,6 +168,11 @@ class PipelineService:
         return self.ap.persistence_mgr.serialize_model(persistence_pipeline.LegacyPipeline, pipeline)
 
     async def create_pipeline(self, pipeline_data: dict, default: bool = False) -> str:
+        if 'extensions_preferences' in pipeline_data:
+            self._validate_extension_preferences(pipeline_data['extensions_preferences'])
+        if 'config' in pipeline_data:
+            RunnerConfigResolver.validate_pipeline_config(pipeline_data['config'])
+
         # Check limitation
         limitation = self.ap.instance_config.data.get('system', {}).get('limitation', {})
         max_pipelines = limitation.get('max_pipelines', -1)
@@ -177,6 +187,7 @@ class PipelineService:
         pipeline_data['is_default'] = default
 
         pipeline_data['config'] = await self.get_default_pipeline_config()
+        RunnerConfigResolver.validate_pipeline_config(pipeline_data['config'])
 
         # Ensure extensions_preferences is set with enable_all_plugins and enable_all_mcp_servers=True by default
         if 'extensions_preferences' not in pipeline_data:
@@ -203,6 +214,10 @@ class PipelineService:
         pipeline_data = pipeline_data.copy()
         for protected_field in ('uuid', 'for_version', 'stages', 'is_default'):
             pipeline_data.pop(protected_field, None)
+        if 'config' in pipeline_data:
+            RunnerConfigResolver.validate_pipeline_config(pipeline_data['config'])
+        if 'extensions_preferences' in pipeline_data:
+            self._validate_extension_preferences(pipeline_data['extensions_preferences'])
 
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.update(persistence_pipeline.LegacyPipeline)
@@ -259,18 +274,7 @@ class PipelineService:
             'stages': original_pipeline.stages.copy() if original_pipeline.stages else default_stage_order.copy(),
             'config': original_pipeline.config.copy() if original_pipeline.config else {},
             'is_default': False,
-            'extensions_preferences': (
-                original_pipeline.extensions_preferences.copy()
-                if original_pipeline.extensions_preferences
-                else {
-                    'enable_all_plugins': True,
-                    'enable_all_mcp_servers': True,
-                    'plugins': [],
-                    'mcp_servers': [],
-                    'mcp_resources': [],
-                    'mcp_resource_agent_read_enabled': True,
-                }
-            ),
+            'extensions_preferences': normalize_extension_preferences(original_pipeline.extensions_preferences),
         }
 
         # Insert the new pipeline
@@ -297,6 +301,36 @@ class PipelineService:
         mcp_resource_agent_read_enabled: bool | None = None,
     ) -> None:
         """Update the bound plugins and MCP servers for a pipeline"""
+        extension_updates: dict[str, typing.Any] = {
+            'enable_all_plugins': enable_all_plugins,
+            'enable_all_mcp_servers': enable_all_mcp_servers,
+            'enable_all_skills': enable_all_skills,
+            'plugins': bound_plugins,
+        }
+        if bound_mcp_servers is not None:
+            extension_updates['mcp_servers'] = bound_mcp_servers
+        if bound_skills is not None:
+            extension_updates['skills'] = bound_skills
+        if bound_mcp_resources is not None:
+            extension_updates['mcp_resources'] = bound_mcp_resources
+            RunnerConfigResolver.validate_mcp_resource_attachments(
+                bound_mcp_resources,
+                context='Pipeline extension',
+                field_name='bound_mcp_resources',
+            )
+        if mcp_resource_agent_read_enabled is not None:
+            extension_updates['mcp_resource_agent_read_enabled'] = mcp_resource_agent_read_enabled
+        self._validate_extension_preferences(
+            extension_updates,
+            context='Pipeline extension',
+            field_aliases={
+                'plugins': 'bound_plugins',
+                'mcp_servers': 'bound_mcp_servers',
+                'skills': 'bound_skills',
+                'mcp_resources': 'bound_mcp_resources',
+            },
+        )
+
         # Get current pipeline
         result = await self.ap.persistence_mgr.execute_async(
             sqlalchemy.select(persistence_pipeline.LegacyPipeline).where(
@@ -309,7 +343,7 @@ class PipelineService:
             raise ValueError(f'Pipeline {pipeline_uuid} not found')
 
         # Update extensions_preferences
-        extensions_preferences = pipeline.extensions_preferences or {}
+        extensions_preferences = normalize_extension_preferences(pipeline.extensions_preferences)
         extensions_preferences['enable_all_plugins'] = enable_all_plugins
         extensions_preferences['enable_all_mcp_servers'] = enable_all_mcp_servers
         extensions_preferences['enable_all_skills'] = enable_all_skills
@@ -333,3 +367,22 @@ class PipelineService:
         await self.ap.pipeline_mgr.remove_pipeline(pipeline_uuid)
         pipeline = await self.get_pipeline(pipeline_uuid)
         await self.ap.pipeline_mgr.load_pipeline(pipeline)
+
+    @staticmethod
+    def _validate_extension_preferences(
+        value: typing.Any,
+        *,
+        context: str = 'Pipeline extensions_preferences',
+        field_aliases: typing.Mapping[str, str] | None = None,
+    ) -> dict[str, typing.Any]:
+        validated = validate_extension_preferences(
+            value,
+            context=context,
+            field_aliases=field_aliases,
+        )
+        RunnerConfigResolver.validate_mcp_resource_attachments(
+            validated.get('mcp_resources'),
+            context=context,
+            field_name='mcp_resources',
+        )
+        return validated

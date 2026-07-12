@@ -134,7 +134,11 @@ async def persist_activated_skill(
     if not isinstance(session, dict):
         return
 
-    state_context = session.get('state_context')
+    authorization = session.get('authorization')
+    if not isinstance(authorization, dict):
+        return
+
+    state_context = authorization.get('state_context')
     if not isinstance(state_context, dict):
         return
 

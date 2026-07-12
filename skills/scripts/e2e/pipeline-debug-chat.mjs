@@ -112,7 +112,9 @@ function parseJsonEnv(key, fallback) {
 }
 
 function positiveNumberEnv(key, fallback) {
-  const value = Number(env[key] || "");
+  const raw = env[key];
+  if (raw === undefined || raw === "") return fallback;
+  const value = Number(raw);
   return Number.isFinite(value) && value >= 0 ? value : fallback;
 }
 

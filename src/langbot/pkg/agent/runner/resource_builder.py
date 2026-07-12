@@ -1,4 +1,5 @@
 """Agent resource builder for constructing authorized resources."""
+
 from __future__ import annotations
 
 import typing
@@ -15,6 +16,9 @@ from .context_builder import (
 )
 from . import config_schema
 from .host_models import AgentEventEnvelope, AgentBinding
+from .resource_policy import ResourcePolicyProjector
+from ...provider.tools.loaders.mcp import MCP_TOOL_LIST_RESOURCES, MCP_TOOL_READ_RESOURCE
+from ...provider.tools.toolmgr import ToolSourceRef
 
 
 class AgentResourceBuilder:
@@ -66,18 +70,12 @@ class AgentResourceBuilder:
         manifest_perms = descriptor.permissions
 
         # Build each resource category
-        models = await self._build_models_from_binding(
-            manifest_perms, resource_policy, descriptor, runner_config
-        )
-        tools = await self._build_tools_from_binding(
-            manifest_perms, resource_policy, descriptor
-        )
+        models = await self._build_models_from_binding(manifest_perms, resource_policy, descriptor, runner_config)
+        tools = await self._build_tools_from_binding(manifest_perms, resource_policy, descriptor, runner_config)
         knowledge_bases = await self._build_knowledge_bases_from_binding(
             manifest_perms, resource_policy, descriptor, runner_config
         )
-        skills = self._build_skills_from_binding(
-            resource_policy, descriptor
-        )
+        skills = self._build_skills_from_binding(resource_policy, descriptor)
         storage = self._build_storage_from_binding(manifest_perms, binding)
 
         return {
@@ -133,6 +131,7 @@ class AgentResourceBuilder:
         manifest_perms: typing.Any,
         resource_policy: typing.Any,
         descriptor: AgentRunnerDescriptor,
+        runner_config: dict[str, typing.Any],
     ) -> list[ToolResource]:
         """Build tools list from binding."""
         tools: list[ToolResource] = []
@@ -143,8 +142,43 @@ class AgentResourceBuilder:
         if not config_schema.uses_host_tools(descriptor):
             return tools
 
-        # Get tool names from resource policy
         allowed_names = resource_policy.allowed_tool_names
+        allowed_sources = resource_policy.allowed_tool_sources
+        if resource_policy.allow_all_tools or allowed_sources is None:
+            get_catalog = getattr(getattr(self.ap, 'tool_mgr', None), 'get_resolved_tool_catalog', None)
+            if get_catalog is None:
+                return tools
+            try:
+                catalog = await get_catalog(
+                    include_skill_authoring=True,
+                    include_mcp_resource_tools=True,
+                )
+            except Exception as e:
+                self.ap.logger.warning(f'Failed to resolve visible Host tools: {e}')
+                return tools
+
+            if not resource_policy.allow_all_tools:
+                selected_names = set(allowed_names or [])
+                catalog = [item for item in catalog if item.get('name') in selected_names]
+            allowed_names = ResourcePolicyProjector.extract_tool_names(catalog)
+            allowed_sources = {
+                item['name']: ref for item in catalog if (ref := self._catalog_source_ref(item)) is not None
+            }
+
+        if runner_config.get('mcp-resource-agent-read-enabled', True) is not True:
+            denied_resource_tools = {MCP_TOOL_LIST_RESOURCES, MCP_TOOL_READ_RESOURCE}
+            allowed_names = [
+                name
+                for name in (allowed_names or [])
+                if not (
+                    name in denied_resource_tools
+                    and allowed_sources
+                    and (source_ref := allowed_sources.get(name)) is not None
+                    and source_ref['source'] == 'mcp'
+                    and source_ref.get('source_id') is None
+                )
+            ]
+
         tool_operations = [operation for operation in ('detail', 'call') if operation in tool_perms]
 
         # Prefill full tool schema (best-effort) so runners can build LLM tool
@@ -153,19 +187,38 @@ class AgentResourceBuilder:
         get_tool_schema = getattr(getattr(self.ap, 'tool_mgr', None), 'get_tool_schema', None)
         if allowed_names:
             for tool_name in allowed_names:
+                source_ref = allowed_sources.get(tool_name) if allowed_sources else None
+                if source_ref is None:
+                    self.ap.logger.warning(f'Tool {tool_name} is not authorized because its Host source is unresolved')
+                    continue
                 if get_tool_schema is not None:
-                    description, parameters = await get_tool_schema(tool_name)
+                    description, parameters = await get_tool_schema(tool_name, source_ref=source_ref)
                 else:
                     description, parameters = None, None
-                tools.append({
-                    'tool_name': tool_name,
-                    'tool_type': None,
-                    'description': description,
-                    'operations': tool_operations,
-                    'parameters': parameters,
-                })
+                tools.append(
+                    {
+                        'tool_name': tool_name,
+                        'tool_type': source_ref['source'],
+                        'description': description,
+                        'operations': tool_operations,
+                        'parameters': parameters,
+                        'source': source_ref['source'],
+                        'source_id': source_ref.get('source_id'),
+                    }
+                )
 
         return tools
+
+    @staticmethod
+    def _catalog_source_ref(item: dict[str, typing.Any]) -> ToolSourceRef | None:
+        source = item.get('source')
+        if not isinstance(source, str) or not source:
+            return None
+        source_id = item.get('source_id')
+        return {
+            'source': source,
+            'source_id': source_id if isinstance(source_id, str) and source_id else None,
+        }
 
     async def _build_knowledge_bases_from_binding(
         self,
@@ -196,12 +249,16 @@ class AgentResourceBuilder:
             try:
                 kb = await self.ap.rag_mgr.get_knowledge_base_by_uuid(kb_uuid)
                 if kb:
-                    kb_resources.append({
-                        'kb_id': kb_uuid,
-                        'kb_name': kb.get_name(),
-                        'kb_type': kb.knowledge_base_entity.kb_type if hasattr(kb.knowledge_base_entity, 'kb_type') else None,
-                        'operations': kb_operations,
-                    })
+                    kb_resources.append(
+                        {
+                            'kb_id': kb_uuid,
+                            'kb_name': kb.get_name(),
+                            'kb_type': kb.knowledge_base_entity.kb_type
+                            if hasattr(kb.knowledge_base_entity, 'kb_type')
+                            else None,
+                            'operations': kb_operations,
+                        }
+                    )
             except Exception as e:
                 self.ap.logger.warning(f'Failed to build knowledge base resource {kb_uuid}: {e}')
 
@@ -233,11 +290,13 @@ class AgentResourceBuilder:
         skills: list[SkillResource] = []
         for skill_name in names:
             skill_data = loaded_skills.get(skill_name) or {}
-            skills.append({
-                'skill_name': skill_name,
-                'display_name': skill_data.get('display_name') or skill_data.get('name') or skill_name,
-                'description': skill_data.get('description') or None,
-            })
+            skills.append(
+                {
+                    'skill_name': skill_name,
+                    'display_name': skill_data.get('display_name') or skill_data.get('name') or skill_name,
+                    'description': skill_data.get('description') or None,
+                }
+            )
         return skills
 
     def _build_storage_from_binding(
@@ -285,12 +344,16 @@ class AgentResourceBuilder:
         try:
             model = await self.ap.model_mgr.get_model_by_uuid(model_uuid)
             if model and model.model_entity:
-                models.append({
-                    'model_id': model_uuid,
-                    'model_type': getattr(model.model_entity, 'model_type', None),
-                    'provider': getattr(model.provider_entity, 'name', None) if hasattr(model, 'provider_entity') else None,
-                    'operations': operations,
-                })
+                models.append(
+                    {
+                        'model_id': model_uuid,
+                        'model_type': getattr(model.model_entity, 'model_type', None),
+                        'provider': getattr(model.provider_entity, 'name', None)
+                        if hasattr(model, 'provider_entity')
+                        else None,
+                        'operations': operations,
+                    }
+                )
                 seen_model_ids.add(model_uuid)
         except Exception as e:
             self.ap.logger.warning(f'Failed to build LLM model resource {model_uuid}: {e}')
@@ -308,12 +371,16 @@ class AgentResourceBuilder:
         try:
             model = await self.ap.model_mgr.get_rerank_model_by_uuid(model_uuid)
             if model and model.model_entity:
-                models.append({
-                    'model_id': model_uuid,
-                    'model_type': getattr(model.model_entity, 'model_type', 'rerank') or 'rerank',
-                    'provider': getattr(model.provider_entity, 'name', None) if hasattr(model, 'provider_entity') else None,
-                    'operations': ['rerank'],
-                })
+                models.append(
+                    {
+                        'model_id': model_uuid,
+                        'model_type': getattr(model.model_entity, 'model_type', 'rerank') or 'rerank',
+                        'provider': getattr(model.provider_entity, 'name', None)
+                        if hasattr(model, 'provider_entity')
+                        else None,
+                        'operations': ['rerank'],
+                    }
+                )
                 seen_model_ids.add(model_uuid)
         except Exception as e:
             self.ap.logger.warning(f'Failed to build rerank model resource {model_uuid}: {e}')

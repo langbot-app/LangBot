@@ -39,7 +39,8 @@ def _agent_row(
         emoji='A',
         kind=AGENT_KIND_AGENT,
         component_ref='plugin:test/runner/default',
-        config=config or {
+        config=config
+        or {
             'runner': {'id': 'plugin:test/runner/default', 'expire-time': 0},
             'runner_config': {'plugin:test/runner/default': {'temperature': 0.2}},
         },
@@ -71,11 +72,7 @@ def _compiled_params(statement):
 
 
 def _compiled_update_values(statement):
-    return {
-        key: value
-        for key, value in statement.compile().params.items()
-        if not key.startswith('uuid_')
-    }
+    return {key: value for key, value in statement.compile().params.items() if not key.startswith('uuid_')}
 
 
 def _make_app():
@@ -224,6 +221,7 @@ class TestAgentServiceCreateUpdateDelete:
                 'name': 'Support Agent',
                 'description': 'Handles support events',
                 'emoji': 'S',
+                'component_ref': 'plugin:caller/must-not-win/default',
             }
         )
 
@@ -239,6 +237,122 @@ class TestAgentServiceCreateUpdateDelete:
         assert insert_values['enabled'] is True
         assert insert_values['supported_event_patterns'] == AGENT_DEFAULT_EVENT_PATTERNS
         app.pipeline_service._get_default_values_from_schema.assert_called_once_with(runner.config_schema)
+
+    @pytest.mark.parametrize(
+        'config',
+        [
+            None,
+            [],
+            {'runner': {'id': 'plugin:test/runner/default'}},
+            {'runner': {'id': 123}, 'runner_config': {}},
+            {
+                'runner': {'id': 'plugin:test/runner/default'},
+                'runner_config': {'plugin:test/runner/default': ['invalid']},
+            },
+            {
+                'runner': {'id': 'plugin:test/runner/default'},
+                'runner_config': {},
+            },
+        ],
+    )
+    async def test_create_agent_rejects_malformed_4x_runner_config(self, config):
+        app = _make_app()
+
+        with pytest.raises(ValueError, match='Agent config|runner_config'):
+            await AgentService(app).create_agent({'name': 'Invalid Agent', 'config': config})
+
+        app.persistence_mgr.execute_async.assert_not_awaited()
+
+    @pytest.mark.parametrize(
+        ('field_name', 'invalid_value'),
+        [
+            ('enable-all-tools', 0),
+            ('enable-all-tools', None),
+            ('enable-all-tools', 'false'),
+            ('mcp-resource-agent-read-enabled', 0),
+            ('mcp-resource-agent-read-enabled', None),
+            ('mcp-resource-agent-read-enabled', 'false'),
+        ],
+    )
+    async def test_create_agent_rejects_non_boolean_security_fields_before_write(
+        self,
+        field_name,
+        invalid_value,
+    ):
+        app = _make_app()
+        runner_id = 'plugin:test/runner/default'
+
+        with pytest.raises(ValueError, match=f'{field_name}.*boolean'):
+            await AgentService(app).create_agent(
+                {
+                    'name': 'Invalid Agent',
+                    'config': {
+                        'runner': {'id': runner_id},
+                        'runner_config': {runner_id: {field_name: invalid_value}},
+                    },
+                }
+            )
+
+        app.persistence_mgr.execute_async.assert_not_awaited()
+
+    @pytest.mark.parametrize('invalid_value', [0, None, 'false'])
+    async def test_create_agent_rejects_non_boolean_mcp_resource_enabled_before_write(self, invalid_value):
+        app = _make_app()
+        runner_id = 'plugin:test/runner/default'
+
+        with pytest.raises(ValueError, match=r'mcp-resources\[0\]\.enabled.*boolean'):
+            await AgentService(app).create_agent(
+                {
+                    'name': 'Invalid Agent',
+                    'config': {
+                        'runner': {'id': runner_id},
+                        'runner_config': {
+                            runner_id: {
+                                'mcp-resources': [
+                                    {'uri': 'file:///README.md', 'enabled': invalid_value},
+                                ]
+                            }
+                        },
+                    },
+                }
+            )
+
+        app.persistence_mgr.execute_async.assert_not_awaited()
+
+    async def test_create_agent_derives_empty_component_ref_from_empty_runner(self):
+        app = _make_app()
+        app.persistence_mgr.execute_async = AsyncMock(return_value=Mock())
+
+        await AgentService(app).create_agent(
+            {
+                'name': 'Unconfigured Agent',
+                'component_ref': 'plugin:caller/must-not-win/default',
+                'config': {
+                    'runner': {'id': ''},
+                    'runner_config': {},
+                },
+            }
+        )
+
+        insert_values = _compiled_params(app.persistence_mgr.execute_async.await_args.args[0])
+        assert insert_values['component_ref'] is None
+
+    async def test_update_agent_rejects_malformed_4x_runner_config_before_write(self):
+        app = _make_app()
+        app.persistence_mgr.execute_async = AsyncMock(return_value=_result(first_item=_agent_row(agent_uuid='agent-1')))
+
+        with pytest.raises(ValueError, match='runner_config'):
+            await AgentService(app).update_agent(
+                'agent-1',
+                {
+                    'config': {
+                        'runner': {'id': 'plugin:test/runner/default'},
+                        'runner_config': {'plugin:test/runner/default': 'invalid'},
+                    }
+                },
+            )
+
+        assert app.persistence_mgr.execute_async.await_count == 1
 
     async def test_update_agent_protects_immutable_fields_and_recalculates_component_ref(self):
         app = _make_app()
@@ -261,6 +375,7 @@ class TestAgentServiceCreateUpdateDelete:
                 'created_at': '2020-01-01T00:00:00',
                 'updated_at': '2020-01-01T00:00:00',
                 'capability': {'message_only': True},
+                'component_ref': 'plugin:caller/must-not-win/default',
                 'name': 'Updated Agent',
                 'config': new_config,
                 'supported_event_patterns': [],
@@ -274,6 +389,67 @@ class TestAgentServiceCreateUpdateDelete:
             'supported_event_patterns': AGENT_DEFAULT_EVENT_PATTERNS,
             'component_ref': 'plugin:test/new-runner/default',
         }
+
+    async def test_update_agent_ignores_component_ref_without_config(self):
+        app = _make_app()
+        app.persistence_mgr.execute_async = AsyncMock(
+            side_effect=[
+                _result(first_item=_agent_row(agent_uuid='agent-1')),
+                Mock(),
+            ]
+        )
+
+        await AgentService(app).update_agent(
+            'agent-1',
+            {
+                'name': 'Updated Agent',
+                'component_ref': 'plugin:caller/must-not-win/default',
+            },
+        )
+
+        update_values = _compiled_update_values(app.persistence_mgr.execute_async.await_args_list[1].args[0])
+        assert update_values == {
+            'name': 'Updated Agent',
+            'component_ref': 'plugin:test/runner/default',
+        }
+
+    async def test_update_agent_component_ref_only_repairs_from_existing_config(self):
+        app = _make_app()
+        app.persistence_mgr.execute_async = AsyncMock(
+            side_effect=[
+                _result(first_item=_agent_row(agent_uuid='agent-1')),
+                Mock(),
+            ]
+        )
+
+        await AgentService(app).update_agent(
+            'agent-1',
+            {'component_ref': 'plugin:caller/must-not-win/default'},
+        )
+
+        update_values = _compiled_update_values(app.persistence_mgr.execute_async.await_args_list[1].args[0])
+        assert update_values == {'component_ref': 'plugin:test/runner/default'}
+
+    async def test_update_agent_clears_component_ref_for_empty_runner(self):
+        app = _make_app()
+        app.persistence_mgr.execute_async = AsyncMock(
+            side_effect=[
+                _result(first_item=_agent_row(agent_uuid='agent-1')),
+                Mock(),
+            ]
+        )
+        config = {'runner': {'id': ''}, 'runner_config': {}}
+
+        await AgentService(app).update_agent(
+            'agent-1',
+            {
+                'component_ref': 'plugin:caller/must-not-win/default',
+                'config': config,
+            },
+        )
+
+        update_values = _compiled_update_values(app.persistence_mgr.execute_async.await_args_list[1].args[0])
+        assert update_values == {'config': config, 'component_ref': None}
 
     async def test_pipeline_kind_create_update_delete_delegate_to_pipeline_service(self):
         app = _make_app()

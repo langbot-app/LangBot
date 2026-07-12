@@ -7,6 +7,7 @@ import typing
 import sqlalchemy
 
 from ....core import app
+from ....agent.runner.config_resolver import RunnerConfigResolver
 from ....entity.persistence import agent as persistence_agent
 
 
@@ -82,8 +83,8 @@ class AgentService:
         if kind != AGENT_KIND_AGENT:
             raise ValueError(f'Unsupported agent kind: {kind}')
 
-        config = agent_data.get('config') or await self._get_default_agent_config()
-        runner_id = self._resolve_runner_id(config)
+        config = agent_data['config'] if 'config' in agent_data else await self._get_default_agent_config()
+        config, runner_id, _ = RunnerConfigResolver.resolve_agent_runner_config(config)
         new_uuid = str(uuid.uuid4())
         values = {
             'uuid': new_uuid,
@@ -91,7 +92,7 @@ class AgentService:
             'description': agent_data.get('description') or '',
             'emoji': agent_data.get('emoji') or '🤖',
             'kind': AGENT_KIND_AGENT,
-            'component_ref': agent_data.get('component_ref') or runner_id,
+            'component_ref': runner_id,
             'config': config,
             'enabled': agent_data.get('enabled', True),
             'supported_event_patterns': agent_data.get('supported_event_patterns') or AGENT_DEFAULT_EVENT_PATTERNS,
@@ -109,12 +110,14 @@ class AgentService:
             return
 
         update_data = agent_data.copy()
-        for protected_field in ('uuid', 'kind', 'created_at', 'updated_at', 'capability'):
+        for protected_field in ('uuid', 'kind', 'component_ref', 'created_at', 'updated_at', 'capability'):
             update_data.pop(protected_field, None)
         if 'config' in update_data:
-            update_data['component_ref'] = update_data.get('component_ref') or self._resolve_runner_id(
-                update_data['config']
-            )
+            config, runner_id, _ = RunnerConfigResolver.resolve_agent_runner_config(update_data['config'])
+            update_data['config'] = config
+        else:
+            _, runner_id, _ = RunnerConfigResolver.resolve_agent_runner_config(existing_agent.config)
+        update_data['component_ref'] = runner_id
         if 'supported_event_patterns' in update_data and not update_data['supported_event_patterns']:
             update_data['supported_event_patterns'] = AGENT_DEFAULT_EVENT_PATTERNS
 
@@ -168,15 +171,6 @@ class AgentService:
                 )
             },
         }
-
-    @staticmethod
-    def _resolve_runner_id(config: dict[str, typing.Any]) -> str | None:
-        runner = config.get('runner') if isinstance(config, dict) else None
-        if isinstance(runner, dict):
-            runner_id = runner.get('id')
-            if runner_id:
-                return runner_id
-        return None
 
     def _agent_to_product_item(
         self,

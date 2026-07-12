@@ -50,17 +50,35 @@ class PluginToolLoader(loader.ToolLoader):
 
         return catalog
 
-    async def has_tool(self, name: str) -> bool:
+    async def get_tool(
+        self,
+        name: str,
+        source_id: str | None = None,
+    ) -> resource_tool.LLMTool | None:
+        tools = await self.get_tools([source_id] if source_id else None)
+        return next((tool for tool in tools if tool.name == name), None)
+
+    async def has_tool(self, name: str, source_id: str | None = None) -> bool:
         """检查工具是否存在"""
-        for tool in await self.ap.plugin_connector.list_tools():
+        for tool in await self.ap.plugin_connector.list_tools([source_id] if source_id else None):
             if tool.metadata.name == name:
                 return True
         return False
 
-    async def invoke_tool(self, name: str, parameters: dict, query: pipeline_query.Query) -> typing.Any:
+    async def invoke_tool(
+        self,
+        name: str,
+        parameters: dict,
+        query: pipeline_query.Query,
+        source_id: str | None = None,
+    ) -> typing.Any:
         try:
             return await self.ap.plugin_connector.call_tool(
-                name, parameters, session=query.session, query_id=query.query_id
+                name,
+                parameters,
+                session=query.session,
+                query_id=query.query_id,
+                bound_plugins=[source_id] if source_id else None,
             )
         except Exception as e:
             self.ap.logger.error(f'执行函数 {name} 时发生错误: {e}')

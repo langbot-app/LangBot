@@ -2,6 +2,7 @@
 
 These are Host-internal models, not exposed to SDK.
 """
+
 from __future__ import annotations
 
 import typing
@@ -73,7 +74,7 @@ class AgentEventEnvelope(pydantic.BaseModel):
 class BindingScope(pydantic.BaseModel):
     """Scope for agent binding."""
 
-    scope_type: typing.Literal["agent", "bot", "workspace", "global"] = "agent"
+    scope_type: typing.Literal['agent', 'bot', 'workspace', 'global'] = 'agent'
     """Scope type."""
 
     scope_id: str | None = None
@@ -91,6 +92,12 @@ class ResourcePolicy(pydantic.BaseModel):
 
     allowed_tool_names: list[str] | None = None
     """Additional tool name grants. None means no additional tool grants."""
+
+    allowed_tool_sources: dict[str, dict[str, str | None]] | None = None
+    """Host-resolved implementation identity for each allowed tool name."""
+
+    allow_all_tools: bool = False
+    """Whether all tools visible to the current Host scope are granted."""
 
     allowed_kb_uuids: list[str] | None = None
     """Additional knowledge base UUID grants. None means no additional KB grants."""
@@ -114,8 +121,8 @@ class StatePolicy(pydantic.BaseModel):
     enable_state: bool = True
     """Whether host-owned state is enabled."""
 
-    state_scopes: list[typing.Literal["conversation", "actor", "subject", "runner"]] = (
-        pydantic.Field(default_factory=lambda: ["conversation", "actor"])
+    state_scopes: list[typing.Literal['conversation', 'actor', 'subject', 'runner']] = pydantic.Field(
+        default_factory=lambda: ['conversation', 'actor']
     )
     """Enabled state scopes."""
 
@@ -162,7 +169,7 @@ class AgentConfig(pydantic.BaseModel):
     delivery_policy: DeliveryPolicy = pydantic.Field(default_factory=DeliveryPolicy)
     """Delivery policy for this Agent."""
 
-    event_types: list[str] = pydantic.Field(default_factory=lambda: ["message.received"])
+    event_types: list[str] = pydantic.Field(default_factory=lambda: ['message.received'])
     """Event types this Agent handles."""
 
     enabled: bool = True
@@ -185,7 +192,7 @@ class AgentBinding(pydantic.BaseModel):
     scope: BindingScope = pydantic.Field(default_factory=BindingScope)
     """Binding scope."""
 
-    event_types: list[str] = pydantic.Field(default_factory=lambda: ["message.received"])
+    event_types: list[str] = pydantic.Field(default_factory=lambda: ['message.received'])
     """Event types this binding handles."""
 
     runner_id: str

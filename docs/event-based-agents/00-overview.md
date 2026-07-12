@@ -48,7 +48,9 @@ MessageAggregator (消息聚合)
 QueryPool → Controller → Pipeline (固定阶段链)
     │                         │
     │                         ▼
-    │                    RequestRunner (local-agent / dify / n8n / ...)
+    │                    AgentRunner Host orchestrator
+    │                         ▼
+    │                    plugin AgentRunner
     │
     ▼
 adapter.reply_message() / adapter.send_message()
@@ -71,13 +73,14 @@ adapter.reply_message() / adapter.send_message()
     ▼
 EventBus (统一事件总线)
     │
-    ▼
-EventRouter (事件路由引擎, 读取 Bot 的 event_handlers 配置)
+    ├─→ Plugin EventListener observers（始终广播，不参与响应仲裁）
     │
-    ├─→ PipelineHandler   — 现有流水线（完整 Stage 链）
-    ├─→ AgentHandler      — 直接调用 RequestRunner（轻量 AI 处理）
-    ├─→ WebhookHandler    — POST 到外部服务（Dify/n8n webhook 等）
-    └─→ PluginHandler     — 分发给插件 EventListener
+    ▼
+EventRouter (读取 Bot 的 event_bindings)
+    │
+    ├─→ Pipeline target — 完整 Stage 链，仅消息事件
+    ├─→ Agent target    — 独立 Agent，经插件 AgentRunner 执行
+    └─→ discard         — 明确丢弃
     │
     ▼
 统一平台 API
@@ -141,20 +144,13 @@ pkg/platform/adapters/
 
 详见 [03-adapter-structure.md](./03-adapter-structure.md)。
 
-### 3.4 事件处理器（Event Handler）
+### 3.4 事件响应目标与观察者
 
-> **2026-06 方向修订**：四种 Handler 分类法已演进为「事件 → 处理器」统一路由。Pipeline 与 Agent 是长期并存、场景不同的同级处理器：Pipeline 面向消息事件的完整 Stage 链，Agent 面向其声明支持的消息或非消息事件；插件 EventListener 保留为观察者角色。详见 [07-agent-orchestration.md](./07-agent-orchestration.md)。本节保留原设计供对照。
+Pipeline 与 Agent 是长期并存、场景不同的同级处理器。Pipeline 保留完整 Stage 链，面向消息处理；Agent 是独立配置对象，选择一个已安装的插件 AgentRunner，并可声明消息或非消息事件能力。Bot 的 `event_bindings` 只负责把事件绑定到既有 Pipeline、独立 Agent 或 `discard`。
 
-四种处理器类型，用户在 WebUI 的 Bot 管理页面配置：
+插件 EventListener 是观察者：事件先广播给有权限的监听器，随后路由器再选择一个响应目标。Webhook、Dify、n8n 等外部执行方式若需要作为响应者，应由对应 AgentRunner 插件表达，而不是增加另一套 Host Handler 主链。
 
-| 类型 | 说明 | 适用场景 |
-|------|------|----------|
-| **pipeline** | 现有流水线机制，完整的多 Stage 处理链（PreProcessor → MessageProcessor → PostProcessor 等） | 复杂消息处理，需要完整的预处理/后处理流程 |
-| **agent** | 直接调用 RequestRunner（local-agent / dify / n8n / coze / dashscope / langflow / tbox），从 Pipeline 中解耦 | 轻量级 AI 处理、直接对接外部 LLMOps 平台处理各类事件 |
-| **webhook** | 将事件 POST 到外部 URL，根据响应执行动作 | 对接自建服务、Dify/n8n 的 Webhook 触发器、自定义后端 |
-| **plugin** | 分发给插件 EventListener 处理 | 插件自定义逻辑 |
-
-配置存储在 Bot 表的 `event_handlers` JSON 字段中，通过 WebUI 编排面板管理。
+现有 Pipeline 不会被转换为 Agent，Pipeline 内的 runner 配置也不会复制到独立 Agent。用户需要 Agent 时自行创建并绑定。
 
 详见 [04-event-routing.md](./04-event-routing.md)。
 
@@ -173,8 +169,8 @@ pkg/platform/adapters/
 | 1 | 事件处理器配置粒度 | 每个 Bot 独立配置 | Bot 是用户操作的核心单元，不同 Bot 可能对接不同业务场景 |
 | 2 | 适配器特有 API | 统一抽象 + `call_platform_api` 透传 | 通用 API 覆盖大部分场景，透传机制保证灵活性，避免每个适配器导出独立的类型化 API 包 |
 | 3 | 向后兼容策略 | 兼容层适配 | 保留旧事件类型和 API 作为新系统的 alias/wrapper，现有插件无需修改 |
-| 4 | 处理器配置存储 | Bot 表新增 `event_handlers` JSON 字段 | 简单直接，避免新增关联表；替代现有 `use_pipeline_uuid` |
-| 5 | Agent 处理器定位 | 从 Pipeline 中解耦 RequestRunner | 不是所有事件都需要完整 Pipeline Stage 链；Agent 处理器提供轻量级 AI 处理路径，支持所有现有 Runner |
+| 4 | 处理器配置存储 | Bot 表使用 `event_bindings`，目标引用原始 Pipeline 或独立 Agent UUID | 路由关系不复制处理器配置，Pipeline/Agent 各自保持事实源 |
+| 5 | Agent 处理器定位 | 独立 Agent + 插件 AgentRunner | Host 不再内置具体 runner；不同 AgentRunner 通过统一协议接入 |
 | 6 | 事件命名方式 | 命名空间式（`message.received`） | 清晰的分类层级，便于通配匹配（`message.*`），与 WebUI 配置天然对应 |
 
 ## 5. 文档索引
@@ -194,7 +190,7 @@ pkg/platform/adapters/
 | 仓库 | 改动范围 |
 |------|----------|
 | **langbot-plugin-sdk** | 事件定义、实体模型、API 接口、适配器基类、通信协议扩展 |
-| **LangBot**（后端） | 适配器实现、事件路由引擎、Bot 实体扩展、数据库迁移、RequestRunner 解耦 |
+| **LangBot**（后端） | 适配器实现、事件路由引擎、Bot/Agent 实体、AgentRunner Host 编排 |
 | **LangBot**（前端） | Bot 事件处理器编排面板 |
 | **langbot-wiki** | 新架构文档、插件开发指南更新、适配器开发指南 |
 | **langbot-plugin-demo** | 示例更新（使用新事件和 API） |

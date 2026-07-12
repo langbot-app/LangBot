@@ -1047,14 +1047,14 @@ const esES = {
       selectSkills: 'Seleccionar skills',
       noSkillsAvailable: 'No hay skills disponibles',
       mcpServersScopeTooltip:
-        'Aquí solo se controla qué servidores MCP se vinculan al Pipeline. Las herramientas y recursos MCP concretos se eligen en AI Feature > Local Agent.',
+        'Aquí solo se controla qué servidores MCP se vinculan al Pipeline. Las herramientas y recursos MCP concretos se eligen en AI Feature > Agent Runner.',
       enableAllMCPServersTooltip:
         'Al activarlo, todos los servidores MCP configurados y habilitados serán candidatos para herramientas y recursos MCP en AI Feature.',
     },
-    localAgent: {
+    agentRunner: {
       toolsTitle: 'Herramientas',
       toolsDescription:
-        'Selecciona las herramientas de plugins, MCP e integradas disponibles para este Local Agent.',
+        'Selecciona las herramientas de plugins, MCP e integradas disponibles para este Agent Runner.',
       toolsScopeTooltip:
         'Las herramientas MCP solo provienen de servidores MCP vinculados en Extensiones. Vincula allí otro servidor para poder seleccionarlo aquí.',
       enableAllTools: 'Activar todas las herramientas',
@@ -1072,7 +1072,7 @@ const esES = {
       selectTools: 'Seleccionar herramientas',
       resourcesTitle: 'Recursos',
       resourcesDescription:
-        'Selecciona los recursos MCP y bases de conocimiento disponibles para este Local Agent.',
+        'Selecciona los recursos MCP y bases de conocimiento disponibles para este Agent Runner.',
       knowledgeBases: 'Bases de conocimiento',
       mcpResources: 'Recursos MCP',
       mcpResourcesScopeTooltip:
@@ -1716,11 +1716,6 @@ const esES = {
       title: 'Selecciona un motor de IA',
       description:
         'Elige el motor de IA que impulsará la inteligencia de tu Bot.',
-    },
-    spaceBanner: {
-      message:
-        '¡Conéctate a LangBot Space para obtener créditos de prueba gratuitos y configuración instantánea sin esfuerzo!',
-      action: 'Autorizar con Space',
     },
     config: {
       botInfo: 'Información del Bot',

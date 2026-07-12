@@ -437,10 +437,6 @@ export interface SystemLimitation {
   max_bots: number;
   max_pipelines: number;
   max_extensions: number;
-  /** When non-empty, every pipeline is forced to this Box sandbox-scope
-   *  template (e.g. ``{global}``) and the per-pipeline "Sandbox Scope"
-   *  selector is locked. Used by SaaS deployments. Empty = no restriction. */
-  force_box_session_id_template?: string;
 }
 
 export interface WizardProgress {
@@ -800,7 +796,10 @@ export interface ApiRespTools {
 }
 
 export interface ApiRespToolDetail {
-  tool: PluginTool;
+  tool: Omit<PluginTool, 'source' | 'source_id'> & {
+    source: NonNullable<PluginTool['source']>;
+    source_id: string | null;
+  };
 }
 
 // Skills

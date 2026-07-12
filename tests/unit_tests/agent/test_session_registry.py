@@ -1,4 +1,5 @@
 """Tests for AgentRunSessionRegistry."""
+
 from __future__ import annotations
 
 import pytest
@@ -48,6 +49,27 @@ class TestSessionRegistryBasic:
         assert 'resources' not in result
         assert 'permissions' not in result
         assert '_authorized_ids' not in result
+
+    @pytest.mark.asyncio
+    async def test_register_keeps_host_execution_query_by_identity(self):
+        """The runtime registry keeps the Host Query view in memory only."""
+        registry = AgentRunSessionRegistry()
+        execution_query = object()
+
+        await registry.register(
+            run_id='run_execution_query',
+            runner_id='plugin:test/my-runner/default',
+            query_id=None,
+            plugin_identity='test/my-runner',
+            resources=make_resources(),
+            execution_query=execution_query,
+        )
+
+        session = await registry.get('run_execution_query')
+
+        assert session is not None
+        assert session['query_id'] is None
+        assert session['execution_query'] is execution_query
 
     @pytest.mark.asyncio
     async def test_register_requires_plugin_identity(self):
@@ -319,27 +341,36 @@ class TestSessionRegistryBasic:
             available_apis={'steering_pull': True},
         )
 
-        assert await registry.find_steering_target(
-            conversation_id='conv_1',
-            runner_id='plugin:test/my-runner/default',
-            bot_id='bot_1',
-            workspace_id='workspace_1',
-            thread_id='thread_1',
-        ) == 'run_steering_scoped'
-        assert await registry.find_steering_target(
-            conversation_id='conv_1',
-            runner_id='plugin:test/my-runner/default',
-            bot_id='bot_2',
-            workspace_id='workspace_1',
-            thread_id='thread_1',
-        ) is None
-        assert await registry.find_steering_target(
-            conversation_id='conv_1',
-            runner_id='plugin:test/my-runner/default',
-            bot_id='bot_1',
-            workspace_id='workspace_1',
-            thread_id='thread_2',
-        ) is None
+        assert (
+            await registry.find_steering_target(
+                conversation_id='conv_1',
+                runner_id='plugin:test/my-runner/default',
+                bot_id='bot_1',
+                workspace_id='workspace_1',
+                thread_id='thread_1',
+            )
+            == 'run_steering_scoped'
+        )
+        assert (
+            await registry.find_steering_target(
+                conversation_id='conv_1',
+                runner_id='plugin:test/my-runner/default',
+                bot_id='bot_2',
+                workspace_id='workspace_1',
+                thread_id='thread_1',
+            )
+            is None
+        )
+        assert (
+            await registry.find_steering_target(
+                conversation_id='conv_1',
+                runner_id='plugin:test/my-runner/default',
+                bot_id='bot_1',
+                workspace_id='workspace_1',
+                thread_id='thread_2',
+            )
+            is None
+        )
 
     @pytest.mark.asyncio
     async def test_unregister_returns_pending_steering_queue(self):
@@ -554,6 +585,7 @@ class TestGlobalRegistry:
         # in tests can cause UnboundLocalError due to Python scoping
         # Instead, just verify the function signature
         from langbot.pkg.agent.runner.session_registry import get_session_registry
+
         assert callable(get_session_registry)
 
         # Create a fresh instance directly to verify the class works

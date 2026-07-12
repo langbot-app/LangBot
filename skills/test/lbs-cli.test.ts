@@ -3589,7 +3589,7 @@ test("MCP stdio tool-call case setups pipeline and registered MCP server", () =>
       JSON.parse(run.automation.env_defaults.LANGBOT_E2E_EXTENSIONS_PATCH_JSON),
       {
         enable_all_plugins: false,
-        bound_plugins: [{ author: "langbot", name: "local-agent" }],
+        bound_plugins: [{ author: "langbot-team", name: "LocalAgent" }],
         enable_all_mcp_servers: false,
         bound_mcp_servers: ["mcp-server-uuid"],
         enable_all_skills: false,
@@ -3694,6 +3694,10 @@ test("AgentRunner QA Debug Chat case uses dedicated pipeline env", () => {
   assert.equal(
     run.automation.env_defaults.LANGBOT_E2E_EXPECTED_RUNNER_ID,
     "plugin:qa/agent-runner/default",
+  );
+  assert.equal(
+    run.automation.env_defaults.LANGBOT_E2E_DEBUG_CHAT_RESPONSE_P95_MS,
+    "120000",
   );
   assert.deepEqual(
     run.setup_automation.map((item: { entry: string }) => item.entry),

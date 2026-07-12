@@ -19,6 +19,52 @@ async function confirmDelete(page: Page) {
     .click();
 }
 
+async function installDelayedFirstSave(page: Page, apiPath: string) {
+  const payloads: Record<string, unknown>[] = [];
+  let releaseFirstSave = () => {};
+  const firstSaveGate = new Promise<void>((resolve) => {
+    releaseFirstSave = resolve;
+  });
+
+  await page.route(`**${apiPath}`, async (route) => {
+    if (route.request().method() !== 'PUT') {
+      await route.fallback();
+      return;
+    }
+
+    payloads.push(
+      JSON.parse(route.request().postData() || '{}') as Record<string, unknown>,
+    );
+    if (payloads.length === 1) {
+      await firstSaveGate;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 0,
+        message: 'ok',
+        data: {},
+        timestamp: Date.now(),
+      }),
+    });
+  });
+
+  return { payloads, releaseFirstSave };
+}
+
+async function forceFormSubmit(page: Page, formSelector: string) {
+  await page.locator(formSelector).evaluate((form) => {
+    (form as HTMLFormElement).requestSubmit();
+  });
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      }),
+  );
+}
+
 test.describe('frontend CRUD smoke flows', () => {
   test('creates, edits, and deletes a bot', async ({ page }) => {
     await installLangBotApiMocks(page, { authenticated: true });
@@ -56,16 +102,17 @@ test.describe('frontend CRUD smoke flows', () => {
   test('creates, edits, and deletes a pipeline', async ({ page }) => {
     await installLangBotApiMocks(page, { authenticated: true });
 
-    await page.goto('/home/pipelines?id=new');
+    await page.goto('/home/agents?id=new');
+    await page.getByRole('button', { name: /^Pipeline/ }).click();
 
-    await expect(page.locator('input[name="basic.name"]')).toBeVisible();
-    await page.locator('input[name="basic.name"]').fill('Escalation Pipeline');
+    await expect(page.locator('input[name="name"]')).toBeVisible();
+    await page.locator('input[name="name"]').fill('Escalation Pipeline');
     await page
-      .locator('input[name="basic.description"]')
+      .locator('input[name="description"]')
       .fill('Routes urgent customer issues.');
     await submit(page);
 
-    await expect(page).toHaveURL(/\/home\/pipelines\?id=pipeline-1$/);
+    await expect(page).toHaveURL(/\/home\/agents\?id=pipeline-1$/);
     await page.reload();
     await expect(page.locator('input[name="basic.name"]')).toHaveValue(
       'Escalation Pipeline',
@@ -82,9 +129,9 @@ test.describe('frontend CRUD smoke flows', () => {
     await page.getByRole('button', { name: /^Delete$/ }).click();
     await confirmDelete(page);
 
-    await expect(page).toHaveURL(/\/home\/pipelines$/);
+    await expect(page).toHaveURL(/\/home\/agents$/);
     await expect(
-      page.getByText('Select a pipeline from the sidebar'),
+      page.getByText('Select an Agent or Pipeline from the sidebar'),
     ).toBeVisible();
   });
 
@@ -93,7 +140,7 @@ test.describe('frontend CRUD smoke flows', () => {
   }) => {
     await installLangBotApiMocks(page, { authenticated: true });
 
-    await page.goto('/home/pipelines?id=pipeline-ai');
+    await page.goto('/home/agents?id=pipeline-ai');
 
     await expect(page.locator('input[name="basic.name"]')).toBeVisible();
     await page.getByRole('button', { name: /^AI$/ }).click();
@@ -101,7 +148,7 @@ test.describe('frontend CRUD smoke flows', () => {
     await expect(page.getByText('Runtime')).toBeVisible();
     await expect(
       page.locator('[data-slot="card-title"]').filter({
-        hasText: 'Built-in Agent',
+        hasText: 'Local Agent',
       }),
     ).toBeVisible();
     await expect(
@@ -330,12 +377,48 @@ test.describe('bot advanced flows', () => {
 });
 
 test.describe('pipeline advanced flows', () => {
+  test('scopes runner tool catalogs to the edited pipeline', async ({
+    page,
+  }) => {
+    await installLangBotApiMocks(page, {
+      authenticated: true,
+      withRunnerToolSelector: true,
+    });
+    const toolCatalogUrls: URL[] = [];
+    const requestedPaths: string[] = [];
+    page.on('request', (request) => {
+      const url = new URL(request.url());
+      if (url.pathname === '/api/v1/tools') toolCatalogUrls.push(url);
+      requestedPaths.push(url.pathname);
+    });
+
+    await page.goto('/home/agents?id=pipeline-scope');
+    await page.getByRole('button', { name: /^AI$/ }).click();
+    await expect(
+      page.getByRole('button', { name: 'Edit tools' }),
+    ).toBeVisible();
+
+    await expect
+      .poll(() =>
+        toolCatalogUrls.some(
+          (url) => url.searchParams.get('pipeline_uuid') === 'pipeline-scope',
+        ),
+      )
+      .toBe(true);
+    await expect
+      .poll(() =>
+        requestedPaths.includes('/api/v1/pipelines/pipeline-scope/extensions'),
+      )
+      .toBe(true);
+  });
+
   test('switches to monitoring tab from pipeline detail', async ({ page }) => {
     await installLangBotApiMocks(page, { authenticated: true });
 
     // Create a pipeline
-    await page.goto('/home/pipelines?id=new');
-    await page.locator('input[name="basic.name"]').fill('Tab Test Pipeline');
+    await page.goto('/home/agents?id=new');
+    await page.getByRole('button', { name: /^Pipeline/ }).click();
+    await page.locator('input[name="name"]').fill('Tab Test Pipeline');
     await submit(page);
 
     // Verify we're on the Configuration tab
@@ -360,8 +443,9 @@ test.describe('pipeline advanced flows', () => {
     await installLangBotApiMocks(page, { authenticated: true });
 
     // Create a pipeline
-    await page.goto('/home/pipelines?id=new');
-    await page.locator('input[name="basic.name"]').fill('Dirty Form Pipeline');
+    await page.goto('/home/agents?id=new');
+    await page.getByRole('button', { name: /^Pipeline/ }).click();
+    await page.locator('input[name="name"]').fill('Dirty Form Pipeline');
     await submit(page);
 
     // Wait for the page to fully load and form to reset
@@ -385,14 +469,153 @@ test.describe('pipeline advanced flows', () => {
   }) => {
     await installLangBotApiMocks(page, { authenticated: true });
 
-    await page.goto('/home/pipelines?id=new');
+    await page.goto('/home/agents?id=new');
+    await page.getByRole('button', { name: /^Pipeline/ }).click();
 
     // Submit without filling name
     await submit(page);
 
     // Should show validation error for name (zod validation)
     await expect(page.getByText(/cannot be empty/i)).toBeVisible();
-    await expect(page).toHaveURL(/\/home\/pipelines\?id=new$/);
+    await expect(page).toHaveURL(/\/home\/agents\?id=new$/);
+  });
+});
+
+test.describe('agent runner resource selectors', () => {
+  test('uses the global catalog and preserves temporarily unavailable tools', async ({
+    page,
+  }) => {
+    await installLangBotApiMocks(page, { authenticated: true });
+    const toolCatalogUrls: URL[] = [];
+    const requestedPaths: string[] = [];
+    let savedAgent: Record<string, unknown> | undefined;
+    page.on('request', (request) => {
+      const url = new URL(request.url());
+      requestedPaths.push(url.pathname);
+      if (url.pathname === '/api/v1/tools') toolCatalogUrls.push(url);
+      if (
+        url.pathname === '/api/v1/agents/agent-scope' &&
+        request.method() === 'PUT'
+      ) {
+        savedAgent = JSON.parse(request.postData() || '{}') as Record<
+          string,
+          unknown
+        >;
+      }
+    });
+
+    await page.goto('/home/agents?id=agent-scope');
+    await page.getByRole('button', { name: /^Runner$/ }).click();
+    await page.getByRole('button', { name: 'Edit tools' }).click();
+
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByText('available_plugin_tool')).toBeVisible();
+    await dialog
+      .getByRole('checkbox', { name: 'Select available_plugin_tool' })
+      .click();
+    await dialog.getByRole('button', { name: /^Confirm$/ }).click();
+    await save(page);
+
+    await expect.poll(() => savedAgent).toBeTruthy();
+    expect(savedAgent).toMatchObject({
+      config: {
+        runner_config: {
+          'plugin:langbot-team/LocalAgent/default': {
+            tools: ['unavailable_plugin_tool', 'available_plugin_tool'],
+          },
+        },
+      },
+    });
+    expect(
+      toolCatalogUrls.some((url) => url.searchParams.has('pipeline_uuid')),
+    ).toBe(false);
+    expect(requestedPaths).not.toContain(
+      '/api/v1/pipelines/agent-scope/extensions',
+    );
+  });
+});
+
+test.describe('agent and pipeline save concurrency', () => {
+  test('agent save freezes its payload and keeps later edits dirty', async ({
+    page,
+  }) => {
+    await installLangBotApiMocks(page, { authenticated: true });
+    const delayedSave = await installDelayedFirstSave(
+      page,
+      '/api/v1/agents/agent-save-race',
+    );
+
+    await page.goto('/home/agents?id=agent-save-race');
+    const saveButton = page.getByRole('button', { name: /^Save$/ });
+    const nameInput = page.locator('input[name="basic.name"]');
+    const descriptionInput = page.locator('input[name="basic.description"]');
+    await expect(nameInput).toBeVisible();
+
+    await nameInput.fill('Submitted Agent');
+    await saveButton.click();
+    await expect.poll(() => delayedSave.payloads.length).toBe(1);
+    await expect(saveButton).toBeDisabled();
+
+    await descriptionInput.fill('Edited while the agent save is pending');
+    await forceFormSubmit(page, '#agent-form');
+    expect(delayedSave.payloads).toHaveLength(1);
+    await expect(saveButton).toBeDisabled();
+
+    delayedSave.releaseFirstSave();
+    await expect(saveButton).toBeEnabled();
+    expect(delayedSave.payloads[0]).toMatchObject({
+      name: 'Submitted Agent',
+      description: '',
+    });
+
+    await saveButton.click();
+    await expect.poll(() => delayedSave.payloads.length).toBe(2);
+    expect(delayedSave.payloads[1]).toMatchObject({
+      name: 'Submitted Agent',
+      description: 'Edited while the agent save is pending',
+    });
+    await expect(saveButton).toBeDisabled();
+  });
+
+  test('pipeline save freezes its payload and keeps later edits dirty', async ({
+    page,
+  }) => {
+    await installLangBotApiMocks(page, { authenticated: true });
+    const delayedSave = await installDelayedFirstSave(
+      page,
+      '/api/v1/pipelines/pipeline-save-race',
+    );
+
+    await page.goto('/home/agents?id=pipeline-save-race');
+    const saveButton = page.getByRole('button', { name: /^Save$/ });
+    const nameInput = page.locator('input[name="basic.name"]');
+    const descriptionInput = page.locator('input[name="basic.description"]');
+    await expect(nameInput).toBeVisible();
+
+    await nameInput.fill('Submitted Pipeline');
+    await saveButton.click();
+    await expect.poll(() => delayedSave.payloads.length).toBe(1);
+    await expect(saveButton).toBeDisabled();
+
+    await descriptionInput.fill('Edited while the pipeline save is pending');
+    await forceFormSubmit(page, '#pipeline-form');
+    expect(delayedSave.payloads).toHaveLength(1);
+    await expect(saveButton).toBeDisabled();
+
+    delayedSave.releaseFirstSave();
+    await expect(saveButton).toBeEnabled();
+    expect(delayedSave.payloads[0]).toMatchObject({
+      name: 'Submitted Pipeline',
+      description: '',
+    });
+
+    await saveButton.click();
+    await expect.poll(() => delayedSave.payloads.length).toBe(2);
+    expect(delayedSave.payloads[1]).toMatchObject({
+      name: 'Submitted Pipeline',
+      description: 'Edited while the pipeline save is pending',
+    });
+    await expect(saveButton).toBeDisabled();
   });
 });
 
@@ -401,10 +624,11 @@ test.describe('cross-resource flows', () => {
     await installLangBotApiMocks(page, { authenticated: true });
 
     // Create a pipeline first
-    await page.goto('/home/pipelines?id=new');
-    await page.locator('input[name="basic.name"]').fill('Production Pipeline');
+    await page.goto('/home/agents?id=new');
+    await page.getByRole('button', { name: /^Pipeline/ }).click();
+    await page.locator('input[name="name"]').fill('Production Pipeline');
     await submit(page);
-    await expect(page).toHaveURL(/\/home\/pipelines\?id=pipeline-1$/);
+    await expect(page).toHaveURL(/\/home\/agents\?id=pipeline-1$/);
 
     // Create a bot
     await page.goto('/home/bots?id=new');
@@ -417,17 +641,15 @@ test.describe('cross-resource flows', () => {
     // Wait for form to fully load
     await expect(page.locator('input[name="name"]')).toHaveValue('Bound Bot');
 
-    // Find the pipeline select by its label "Bind Pipeline"
-    const pipelineCard = page.getByText('Bind Pipeline').locator('..');
-    await expect(pipelineCard).toBeVisible({ timeout: 5000 });
-
-    // Click on the select trigger within the pipeline binding card
-    // The select trigger shows "Select Pipeline" placeholder initially
-    const pipelineSelectTrigger = page.getByText('Select Pipeline').first();
-    await pipelineSelectTrigger.click();
+    await page.getByRole('button', { name: 'Add behavior' }).click();
+    await page.getByRole('menuitem', { name: /^Reply to messages/ }).click();
+    await page
+      .getByRole('combobox')
+      .filter({ hasText: 'Select processor' })
+      .click();
 
     // Select the pipeline option
-    await page.getByRole('option', { name: 'Production Pipeline' }).click();
+    await page.getByRole('option', { name: /Production Pipeline/ }).click();
 
     // Save the bot
     await save(page);
@@ -436,9 +658,7 @@ test.describe('cross-resource flows', () => {
     await page.reload();
     // The pipeline name should appear in the select trigger (not in sidebar or options)
     await expect(
-      page
-        .locator('[data-slot="select-trigger"]')
-        .filter({ hasText: 'Production Pipeline' }),
+      page.getByRole('combobox').filter({ hasText: 'Production Pipeline' }),
     ).toBeVisible();
   });
 });
@@ -451,12 +671,12 @@ test.describe('empty states', () => {
     await expect(page.getByText('Select a bot from the sidebar')).toBeVisible();
   });
 
-  test('shows empty state when no pipelines exist', async ({ page }) => {
+  test('shows empty state when no processors exist', async ({ page }) => {
     await installLangBotApiMocks(page, { authenticated: true });
 
-    await page.goto('/home/pipelines');
+    await page.goto('/home/agents');
     await expect(
-      page.getByText('Select a pipeline from the sidebar'),
+      page.getByText('Select an Agent or Pipeline from the sidebar'),
     ).toBeVisible();
   });
 

@@ -115,7 +115,7 @@ class TestVectorDatabaseAbstractMethods:
         # list_by_filter should return empty list and -1 for total
         import asyncio
 
-        result = asyncio.get_event_loop().run_until_complete(db.list_by_filter('test_collection'))
+        result = asyncio.run(db.list_by_filter('test_collection'))
         assert result == ([], -1)
 
 

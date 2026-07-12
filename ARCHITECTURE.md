@@ -52,12 +52,13 @@ LangBot/
 │   │   ├── api/                    # HTTP API + MCP server mount
 │   │   ├── platform/               # IM adapters and runtime bot manager
 │   │   ├── pipeline/               # Message routing and pipeline stages
-│   │   ├── provider/               # LLM runners, model manager, tools
+│   │   ├── provider/               # Model providers and Host-owned tools
+│   │   ├── agent/                  # Agent/AgentRunner orchestration and run state
 │   │   ├── plugin/                 # LangBot-side Plugin Runtime connector/handler
 │   │   ├── box/                    # LangBot-side Box service/connector
 │   │   ├── skill/                  # Skill metadata/activation integration
 │   │   ├── rag/ , vector/          # Knowledge-base and vector DB integration
-│   │   ├── persistence/            # SQLAlchemy/SQLModel, Alembic, legacy migrations
+│   │   ├── persistence/            # SQLAlchemy/SQLModel and Alembic migrations
 │   │   ├── storage/                # Local/S3 file storage abstraction
 │   │   └── config/, entity/, utils/, telemetry/, survey/
 │   ├── libs/                       # Vendored third-party platform SDKs
@@ -80,7 +81,7 @@ Platform adapter
   → Controller
   → RuntimePipeline
   → PipelineStage chain
-  → RequestRunner / ToolManager / PluginRuntimeConnector / BoxService
+  → AgentRunner orchestrator / ToolManager / PluginRuntimeConnector / BoxService
   → response via adapter
 ```
 
@@ -107,7 +108,7 @@ Inbound platform messages enter through adapter-specific SDK callbacks. The comm
 3. `MessageAggregator` batches/normalizes messages before adding a `Query` to `QueryPool`.
 4. `Controller` in `pkg/pipeline/controller.py` selects queries subject to global pipeline concurrency and per-session concurrency.
 5. `RuntimePipeline` in `pkg/pipeline/pipelinemgr.py` runs configured pipeline stages using a responsibility-chain style executor that supports generator stages.
-6. The chat stage emits plugin events, calls a configured `RequestRunner`, handles streaming/non-streaming responses, records telemetry, and appends conversation history.
+6. The chat stage emits plugin events and projects the current query into the AgentRunner Host orchestrator. The selected plugin AgentRunner returns streaming or final results while the Host owns authorization, tools, telemetry, and conversation history.
 7. Output stages send text, cards, chunks, files, or error notices back through the original platform adapter.
 
 Pipeline components are registered by decorators and package import side effects. When adding a new stage, loader, runner, or adapter, check the corresponding preregistration mechanism instead of inventing a second registry.
@@ -136,12 +137,12 @@ Important pieces:
 
 Pipelines are configuration-driven. Prefer adding a stage or extending an existing stage family over hard-coding behavior in platform adapters.
 
-## Provider, RAG, and Tools
+## Agents, Providers, RAG, and Tools
 
-Provider code lives under `pkg/provider/`.
+Agent orchestration lives under `pkg/agent/`; model providers and tools live under `pkg/provider/`.
 
 - `modelmgr/` manages configured model providers and requesters.
-- `runners/` implements request runners such as the local agent runner and external workflow integrations.
+- `pkg/agent/runner/` discovers plugin AgentRunner components, resolves bindings, constructs run-scoped context/resources, and records execution state.
 - `tools/toolmgr.py` aggregates tools from native tools, plugin tools, external MCP servers, and skill-authoring tools.
 - `tools/loaders/mcp.py` is the MCP client side: external MCP servers that LangBot connects to for agent tools.
 - RAG lives across `pkg/rag/`, `pkg/vector/`, model services, and plugin KnowledgeEngine actions.
@@ -206,8 +207,8 @@ Persistence is centered on `pkg/persistence/mgr.py`.
 
 - SQLite is the default database; PostgreSQL is supported.
 - Models live under `pkg/entity/persistence/`.
-- Fresh schemas are created from metadata, then legacy migrations run up to the frozen 3.x baseline, then Alembic migrations run to head.
-- New schema changes should use Alembic under `pkg/persistence/alembic/versions/`; do not extend the frozen legacy migration chain.
+- Fresh schemas are created from current metadata, then Alembic migrations run to head. LangBot 4.x does not upgrade 3.x databases.
+- New schema changes use Alembic under `pkg/persistence/alembic/versions/`; there is no legacy migration chain in 4.x.
 
 Configuration starts from `src/langbot/templates/config.yaml` and is generated into `data/config.yaml` on first run. Most long-lived managers read from `ap.instance_config.data`.
 
@@ -239,7 +240,7 @@ When one of these changes, update the others if the behavior or contract changed
 - New LLM tool source: extend `pkg/provider/tools/loaders/` and `ToolManager` intentionally.
 - New plugin component/API/protocol: change `langbot-plugin-sdk` first or in lockstep, then update LangBot bridge code.
 - New Box capability: change both `pkg/box/` and `langbot-plugin-sdk/src/langbot_plugin/box/`, plus config and tests.
-- New database schema: add an Alembic migration, not a legacy `dbmXXX` migration.
+- New database schema: add an Alembic migration.
 
 ## Design Biases
 

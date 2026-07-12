@@ -9,10 +9,6 @@ interface MessageDetailsCardProps {
 
 export function MessageDetailsCard({ details }: MessageDetailsCardProps) {
   const { t } = useTranslation();
-  const isLocalAgent = [
-    'local-agent',
-    'plugin:langbot-team/LocalAgent/default',
-  ].includes(details.message?.runnerName ?? '');
 
   // Parse query variables JSON string
   const queryVariables = useMemo(() => {
@@ -205,49 +201,45 @@ export function MessageDetailsCard({ details }: MessageDetailsCardProps) {
         </div>
       )}
 
-      {/* Query Variables Section - Only show for non-local-agent runners */}
-      {queryVariables &&
-        Object.keys(queryVariables).length > 0 &&
-        !isLocalAgent && (
-          <div className="bg-muted rounded-lg p-3">
-            <h4 className="text-sm font-semibold text-foreground mb-3 flex items-center">
-              <Braces className="w-4 h-4 mr-2" />
-              {t('monitoring.queryVariables.title')}
-            </h4>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
-              {Object.entries(queryVariables).map(([key, value]) => (
-                <div key={key} className="bg-background rounded p-2">
-                  <div className="text-muted-foreground">{key}</div>
-                  <div
-                    className="font-medium text-foreground truncate"
-                    title={
-                      typeof value === 'string' ? value : JSON.stringify(value)
-                    }
-                  >
-                    {value === null || value === undefined ? (
-                      <span className="text-muted-foreground italic">null</span>
-                    ) : typeof value === 'string' ? (
-                      value || (
-                        <span className="text-muted-foreground italic">
-                          empty
-                        </span>
-                      )
-                    ) : (
-                      JSON.stringify(value)
-                    )}
-                  </div>
+      {/* Query Variables Section */}
+      {queryVariables && Object.keys(queryVariables).length > 0 && (
+        <div className="bg-muted rounded-lg p-3">
+          <h4 className="text-sm font-semibold text-foreground mb-3 flex items-center">
+            <Braces className="w-4 h-4 mr-2" />
+            {t('monitoring.queryVariables.title')}
+          </h4>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+            {Object.entries(queryVariables).map(([key, value]) => (
+              <div key={key} className="bg-background rounded p-2">
+                <div className="text-muted-foreground">{key}</div>
+                <div
+                  className="font-medium text-foreground truncate"
+                  title={
+                    typeof value === 'string' ? value : JSON.stringify(value)
+                  }
+                >
+                  {value === null || value === undefined ? (
+                    <span className="text-muted-foreground italic">null</span>
+                  ) : typeof value === 'string' ? (
+                    value || (
+                      <span className="text-muted-foreground italic">
+                        empty
+                      </span>
+                    )
+                  ) : (
+                    JSON.stringify(value)
+                  )}
                 </div>
-              ))}
-            </div>
+              </div>
+            ))}
           </div>
-        )}
+        </div>
+      )}
 
       {/* No data message */}
       {(!details.llmCalls || details.llmCalls.length === 0) &&
         (!details.errors || details.errors.length === 0) &&
-        (isLocalAgent ||
-          !queryVariables ||
-          Object.keys(queryVariables).length === 0) && (
+        (!queryVariables || Object.keys(queryVariables).length === 0) && (
           <div className="text-sm text-muted-foreground text-center py-4">
             {t('monitoring.messageDetails.noData')}
           </div>

@@ -56,7 +56,7 @@ class TestVectorDBManagerInitialization:
             # Run initialize synchronously for test
             import asyncio
 
-            asyncio.get_event_loop().run_until_complete(mgr.initialize())
+            asyncio.run(mgr.initialize())
 
             # Chroma should be instantiated
             mock_chroma_class.assert_called_once_with(mock_app)
@@ -78,7 +78,7 @@ class TestVectorDBManagerInitialization:
 
             import asyncio
 
-            asyncio.get_event_loop().run_until_complete(mgr.initialize())
+            asyncio.run(mgr.initialize())
 
             mock_chroma_class.assert_called_once_with(mock_app)
             mock_app.logger.info.assert_called()
@@ -99,7 +99,7 @@ class TestVectorDBManagerInitialization:
 
             import asyncio
 
-            asyncio.get_event_loop().run_until_complete(mgr.initialize())
+            asyncio.run(mgr.initialize())
 
             mock_qdrant_class.assert_called_once_with(mock_app)
 
@@ -119,7 +119,7 @@ class TestVectorDBManagerInitialization:
 
             import asyncio
 
-            asyncio.get_event_loop().run_until_complete(mgr.initialize())
+            asyncio.run(mgr.initialize())
 
             mock_seekdb_class.assert_called_once_with(mock_app)
 
@@ -138,7 +138,8 @@ class TestVectorDBManagerInitialization:
             mgr = VectorDBManager(mock_app)
 
             import asyncio
-            asyncio.get_event_loop().run_until_complete(mgr.initialize())
+
+            asyncio.run(mgr.initialize())
 
             mock_valkey_class.assert_called_once_with(mock_app)
 
@@ -161,7 +162,7 @@ class TestVectorDBManagerInitialization:
 
             import asyncio
 
-            asyncio.get_event_loop().run_until_complete(mgr.initialize())
+            asyncio.run(mgr.initialize())
 
             mock_milvus_class.assert_called_once_with(
                 mock_app, uri='http://localhost:19530', token='root:Milvus', db_name='langbot_db'
@@ -183,7 +184,7 @@ class TestVectorDBManagerInitialization:
 
             import asyncio
 
-            asyncio.get_event_loop().run_until_complete(mgr.initialize())
+            asyncio.run(mgr.initialize())
 
             # Should use default values
             mock_milvus_class.assert_called_once_with(mock_app, uri='./data/milvus.db', token=None, db_name='default')
@@ -204,7 +205,7 @@ class TestVectorDBManagerInitialization:
 
             import asyncio
 
-            asyncio.get_event_loop().run_until_complete(mgr.initialize())
+            asyncio.run(mgr.initialize())
 
             mock_pgvector_class.assert_called_once_with(
                 mock_app, connection_string='postgresql://user:pass@host:5432/langbot'
@@ -235,7 +236,7 @@ class TestVectorDBManagerInitialization:
 
             import asyncio
 
-            asyncio.get_event_loop().run_until_complete(mgr.initialize())
+            asyncio.run(mgr.initialize())
 
             mock_pgvector_class.assert_called_once_with(
                 mock_app, host='db.example.com', port=5433, database='vectordb', user='admin', password='secret'
@@ -257,7 +258,7 @@ class TestVectorDBManagerInitialization:
 
             import asyncio
 
-            asyncio.get_event_loop().run_until_complete(mgr.initialize())
+            asyncio.run(mgr.initialize())
 
             mock_pgvector_class.assert_called_once_with(
                 mock_app, host='localhost', port=5432, database='langbot', user='postgres', password='postgres'
@@ -279,7 +280,7 @@ class TestVectorDBManagerInitialization:
 
             import asyncio
 
-            asyncio.get_event_loop().run_until_complete(mgr.initialize())
+            asyncio.run(mgr.initialize())
 
             mock_chroma_class.assert_called_once_with(mock_app)
             mock_app.logger.warning.assert_called()

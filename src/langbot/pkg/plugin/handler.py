@@ -27,7 +27,7 @@ from ..provider.modelmgr import requester as model_requester
 from ..core import app
 from ..utils import constants
 from ..agent.runner.session_registry import get_session_registry
-from ..agent.runner.config_migration import ConfigMigration
+from ..agent.runner.config_resolver import RunnerConfigResolver
 from ..agent.runner import config_schema
 
 
@@ -35,6 +35,29 @@ from . import agent_pull_actions, agent_runner_actions, agent_state_actions
 from .agent_run_support import (
     _validate_agent_run_session,
 )
+
+
+_HOST_RESERVED_QUERY_VAR_PREFIXES = (
+    '_host_',
+    '_pipeline_bound_',
+    '_pipeline_mcp_',
+    '_monitoring_',
+    '_sandbox_',
+    '_authorized',
+    '_permission',
+)
+_HOST_RESERVED_QUERY_VAR_KEYS = frozenset(
+    {
+        '_activated_skills',
+        '_fallback_model_uuids',
+        '_routed_by_rule',
+    }
+)
+
+
+def _is_host_reserved_query_var(key: str) -> bool:
+    """Return whether a Query variable controls Host authorization or runtime state."""
+    return key in _HOST_RESERVED_QUERY_VAR_KEYS or key.startswith(_HOST_RESERVED_QUERY_VAR_PREFIXES)
 
 
 class _RawAction:
@@ -105,11 +128,11 @@ async def _get_pipeline_knowledge_base_uuids(ap: app.Application, query: Any) ->
     if not pipeline_config:
         return []
 
-    runner_id = ConfigMigration.resolve_runner_id(pipeline_config)
+    runner_id = RunnerConfigResolver.resolve_runner_id(pipeline_config)
     if not runner_id:
         return []
 
-    runner_config = ConfigMigration.resolve_runner_config(pipeline_config, runner_id)
+    runner_config = RunnerConfigResolver.resolve_runner_config(pipeline_config, runner_id)
     registry = getattr(ap, 'agent_runner_registry', None)
     if registry is None:
         return []
@@ -189,6 +212,60 @@ async def _validate_run_authorization(
     return session, None
 
 
+def _validate_frozen_tool_source_identity(
+    session: Any,
+    tool_name: str,
+    ap: app.Application,
+) -> Union[tuple[None, handler.ActionResponse], tuple[dict[str, str | None], None]]:
+    """Resolve the exact Host tool implementation frozen for this run."""
+    authorization = session.get('authorization')
+    resources = authorization.get('resources') if isinstance(authorization, dict) else None
+    tools = resources.get('tools') if isinstance(resources, dict) else None
+    matching_tools = (
+        [tool for tool in tools if isinstance(tool, dict) and tool.get('tool_name') == tool_name]
+        if isinstance(tools, list)
+        else []
+    )
+
+    source_ref: dict[str, str | None] | None = None
+    if len(matching_tools) == 1:
+        tool = matching_tools[0]
+        source = tool.get('source')
+        source_id = tool.get('source_id')
+        has_complete_shape = (
+            'source' in tool
+            and 'source_id' in tool
+            and isinstance(source, str)
+            and bool(source)
+            and source == source.strip()
+            and (
+                source_id is None or (isinstance(source_id, str) and bool(source_id) and source_id == source_id.strip())
+            )
+        )
+        if has_complete_shape:
+            if source in {'builtin', 'native', 'skill'} and source_id is None:
+                source_ref = {'source': source, 'source_id': None}
+            elif source == 'plugin' and isinstance(source_id, str):
+                source_ref = {'source': source, 'source_id': source_id}
+            elif source == 'mcp':
+                from ..provider.tools.loaders.mcp import MCP_TOOL_LIST_RESOURCES, MCP_TOOL_READ_RESOURCE
+
+                if isinstance(source_id, str) or tool_name in {
+                    MCP_TOOL_LIST_RESOURCES,
+                    MCP_TOOL_READ_RESOURCE,
+                }:
+                    source_ref = {'source': source, 'source_id': source_id}
+
+    if source_ref is not None:
+        return source_ref, None
+
+    run_id = session.get('run_id')
+    ap.logger.warning(f'TOOL: {tool_name} has an invalid frozen source identity for run_id {run_id}')
+    return None, handler.ActionResponse.error(
+        message=f'Tool {tool_name} has an invalid frozen source identity for this agent run',
+    )
+
+
 def _get_cached_query(ap: app.Application, query_id: int | None) -> Any | None:
     """Return a cached Query for query-based runtime actions when available."""
     if query_id is None:
@@ -208,6 +285,8 @@ def _resolve_action_query(data: dict[str, Any], session: Any | None, ap: app.App
     if query_id is None:
         query_id = data.get('query_id')
     query = _get_cached_query(ap, query_id)
+    if query is None and session is not None:
+        query = session.get('execution_query')
     if query is not None and session is not None:
         object.__setattr__(query, '_agent_run_session', session)
     return query
@@ -392,6 +471,16 @@ class RuntimeConnectionHandler(handler.Handler):
                 )
 
             query = self.ap.query_pool.cached_queries[query_id]
+
+            if not isinstance(key, str) or not key:
+                return handler.ActionResponse.error(
+                    message='Query variable key must be a non-empty string',
+                )
+            if _is_host_reserved_query_var(key):
+                self.ap.logger.warning(f'Plugin attempted to write Host-reserved Query variable {key!r}')
+                return handler.ActionResponse.error(
+                    message=f'Query variable {key!r} is reserved for LangBot Host',
+                )
 
             query.variables[key] = value
 
@@ -760,6 +849,7 @@ class RuntimeConnectionHandler(handler.Handler):
             run_id = data.get('run_id')  # Optional: present for AgentRunner calls
             caller_plugin_identity = data.get('caller_plugin_identity')  # Optional: for cross-plugin validation
             session = None
+            source_ref = None
             is_agent_runner_call = bool(run_id)
 
             if is_agent_runner_call:
@@ -778,16 +868,24 @@ class RuntimeConnectionHandler(handler.Handler):
                 )
                 if error:
                     return error
+                source_ref, error = _validate_frozen_tool_source_identity(session, tool_name, self.ap)
+                if error:
+                    return error
 
             # Convert session_data to Session object (simplified)
             # In real implementation, you would reconstruct the full session
             # For now, we'll call the tool manager's execute method
             try:
                 query = _resolve_action_query(data, session, self.ap)
+                execute_kwargs: dict[str, Any] = {
+                    'name': tool_name,
+                    'parameters': parameters,
+                    'query': query,
+                }
+                if source_ref is not None:
+                    execute_kwargs['source_ref'] = source_ref
                 result = await self.ap.tool_mgr.execute_func_call(
-                    name=tool_name,
-                    parameters=parameters,
-                    query=query,
+                    **execute_kwargs,
                 )
                 if is_agent_runner_call:
                     return handler.ActionResponse.success(data={'result': result})
@@ -810,6 +908,8 @@ class RuntimeConnectionHandler(handler.Handler):
             tool_name = data['tool_name']
             run_id = data.get('run_id')  # Optional: present for AgentRunner calls
             caller_plugin_identity = data.get('caller_plugin_identity')  # Optional: for cross-plugin validation
+            session = None
+            source_ref = None
 
             # Permission validation for AgentRunner calls
             if run_id:
@@ -818,9 +918,15 @@ class RuntimeConnectionHandler(handler.Handler):
                 )
                 if error:
                     return error
+                source_ref, error = _validate_frozen_tool_source_identity(session, tool_name, self.ap)
+                if error:
+                    return error
 
             try:
-                tool_detail = await self.ap.tool_mgr.get_tool_detail(tool_name)
+                detail_kwargs: dict[str, Any] = {}
+                if source_ref is not None:
+                    detail_kwargs['source_ref'] = source_ref
+                tool_detail = await self.ap.tool_mgr.get_tool_detail(tool_name, **detail_kwargs)
                 if tool_detail is None:
                     return handler.ActionResponse.error(
                         message=f'Tool {tool_name} not found',
@@ -1310,7 +1416,7 @@ class RuntimeConnectionHandler(handler.Handler):
 
             Note: This action has dual validation paths:
             - AgentRunner: uses session_registry for permission check
-            - Regular plugin: uses ConfigMigration.resolve_runner_config for pipeline-level check
+            - Regular plugin: uses RunnerConfigResolver.resolve_runner_config for pipeline-level check
             """
             kb_id = data['kb_id']
             query_text = data['query_text']

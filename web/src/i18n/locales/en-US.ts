@@ -1220,14 +1220,14 @@ const enUS = {
       selectSkills: 'Select Skills',
       noSkillsAvailable: 'No skills available',
       mcpServersScopeTooltip:
-        'This only controls which MCP servers are bound to the pipeline. Choose exact MCP tools and resources in AI Feature > Local Agent.',
+        'This only controls which MCP servers are bound to the pipeline. Choose exact MCP tools and resources in AI Feature > Agent Runner.',
       enableAllMCPServersTooltip:
         'When enabled, all configured and enabled MCP servers become candidates for MCP tools and resources in AI Feature.',
     },
-    localAgent: {
+    agentRunner: {
       toolsTitle: 'Tools',
       toolsDescription:
-        'Select plugin, MCP, skill, and built-in tools available to this Local Agent.',
+        'Select plugin, MCP, skill, and built-in tools available to this Agent Runner.',
       toolsScopeTooltip:
         'MCP tools only come from MCP servers bound in Extensions. Bind another MCP server there to make its tools selectable here.',
       enableAllTools: 'Enable all tools',
@@ -1245,7 +1245,7 @@ const enUS = {
       selectTools: 'Select tools',
       resourcesTitle: 'Resources',
       resourcesDescription:
-        'Select MCP resources and knowledge bases available to this Local Agent.',
+        'Select MCP resources and knowledge bases available to this Agent Runner.',
       knowledgeBases: 'Knowledge bases',
       mcpResources: 'MCP resources',
       mcpResourcesScopeTooltip:
@@ -2010,11 +2010,6 @@ const enUS = {
         'Runner installation timed out. Check the task in Extensions.',
       registrationTimeout:
         'The extension installed, but its Runner did not register. Check the plugin runtime and retry.',
-    },
-    spaceBanner: {
-      message:
-        'Connect to LangBot Space for free trial model credits and zero-config instant setup!',
-      action: 'Authorize with Space',
     },
     config: {
       botInfo: 'Bot Information',

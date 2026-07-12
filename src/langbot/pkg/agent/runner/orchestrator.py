@@ -12,6 +12,14 @@ from ...core import app
 from .binding_resolver import AgentBindingResolver
 from .context_builder import AgentRunContextBuilder, AgentRunContextPayload
 from .descriptor import AgentRunnerDescriptor
+from .execution_context import (
+    append_mcp_resource_context_to_event,
+    build_mcp_resource_context_addition,
+    build_execution_query,
+    prepare_box_scope,
+    prepare_execution_query,
+    project_mcp_resource_config,
+)
 from .host_models import AgentBinding, AgentEventEnvelope
 from .invoker import AgentRunnerInvoker
 from .query_bridge import QueryRunBridge
@@ -73,6 +81,17 @@ class AgentRunOrchestrator:
         runner_id = binding.runner_id
         descriptor = await self.registry.get(runner_id, bound_plugins)
 
+        execution_query = adapter_context.get('_query') if adapter_context else None
+        if execution_query is None:
+            execution_query = build_execution_query(event, [])
+            project_mcp_resource_config(execution_query, binding.runner_config)
+
+        execution_event = event
+        resource_addition = await build_mcp_resource_context_addition(self.ap, execution_query)
+        if resource_addition:
+            execution_event = event.model_copy(deep=True)
+            append_mcp_resource_context_to_event(execution_event, resource_addition)
+
         resources = await self.resource_builder.build_resources_from_binding(
             event=event,
             binding=binding,
@@ -80,7 +99,7 @@ class AgentRunOrchestrator:
         )
 
         context = await self.context_builder.build_context_from_event(
-            event=event,
+            event=execution_event,
             binding=binding,
             descriptor=descriptor,
             resources=resources,
@@ -88,18 +107,22 @@ class AgentRunOrchestrator:
 
         session_query_id = None
         if adapter_context:
-            query = adapter_context.get('_query')
-            if query is not None:
+            if execution_query is not None:
                 skill_loader.restore_activated_skills_from_state(
                     self.ap,
-                    query,
+                    execution_query,
                     context.get('state', {}),
                 )
             session_query_id = adapter_context.get('query_id')
-            if query is not None or session_query_id is not None:
+            if execution_query is not None or session_query_id is not None:
                 context['context']['available_apis']['prompt_get'] = True
             if 'params' in adapter_context:
                 context['adapter']['extra']['params'] = adapter_context['params']
+
+        authorized_skill_names = [
+            str(skill['skill_name']) for skill in resources.get('skills', []) if skill.get('skill_name')
+        ]
+        prepare_execution_query(execution_query, event, authorized_skill_names)
 
         state_context = build_state_context(event, binding, descriptor)
         run_id = context['run_id']
@@ -152,6 +175,7 @@ class AgentRunOrchestrator:
                     'state_scopes': list(binding.state_policy.state_scopes),
                 },
                 state_context=state_context,
+                execution_query=execution_query,
             )
 
             event_log_id = await self.journal.write_event_log(
@@ -309,6 +333,9 @@ class AgentRunOrchestrator:
         adapter_context = dict(plan.adapter_context)
         adapter_context['_query'] = query
 
+        # Inbound files and subsequent runner tools must share one Host scope.
+        prepare_box_scope(query, plan.event)
+
         # Materialize inbound attachments into sandbox before running
         await self._materialize_inbound_attachments(query, plan.event)
 
@@ -392,7 +419,13 @@ class AgentRunOrchestrator:
         if target_run_id is None:
             return False
 
-        steering_item = self._build_steering_item(event, target_run_id, descriptor.id)
+        execution_event = event
+        resource_addition = await build_mcp_resource_context_addition(self.ap, query)
+        if resource_addition:
+            execution_event = event.model_copy(deep=True)
+            append_mcp_resource_context_to_event(execution_event, resource_addition)
+
+        steering_item = self._build_steering_item(execution_event, target_run_id, descriptor.id)
         if not await self._session_registry.enqueue_steering(target_run_id, steering_item):
             return False
 

@@ -7,7 +7,7 @@ import sqlalchemy
 from ...core import app
 from ...entity.persistence import pipeline as persistence_pipeline
 from . import config_schema
-from .config_migration import ConfigMigration
+from .config_resolver import RunnerConfigResolver
 
 
 class AgentRunnerDefaultConfigService:
@@ -53,7 +53,7 @@ class AgentRunnerDefaultConfigService:
         if not isinstance(pipeline_config, dict):
             return False
 
-        runner_id = ConfigMigration.resolve_runner_id(pipeline_config)
+        runner_id = RunnerConfigResolver.resolve_runner_id(pipeline_config)
         if not runner_id:
             return False
 

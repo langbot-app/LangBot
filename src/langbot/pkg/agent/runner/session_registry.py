@@ -1,4 +1,5 @@
 """Agent run session registry for proxy action permission validation."""
+
 from __future__ import annotations
 
 import asyncio
@@ -7,7 +8,10 @@ import typing
 import time
 import threading
 
+from langbot_plugin.api.entities.builtin.pipeline import query as pipeline_query
+
 from .context_builder import AgentResources
+from ...provider.tools.toolmgr import ToolSourceRef
 
 
 MAX_STEERING_QUEUE_ITEMS = 100
@@ -22,6 +26,7 @@ DEFAULT_RESOURCE_OPERATIONS: dict[str, set[str]] = {
 
 class AgentRunSessionStatus(typing.TypedDict):
     """Status tracking for agent run session."""
+
     started_at: int
     last_activity_at: int
 
@@ -58,13 +63,16 @@ class AgentRunSession(typing.TypedDict):
         run_id: Unique run identifier (UUID from AgentRunContext)
         runner_id: Runner descriptor ID (plugin:author/name/runner)
         query_id: Host entry query ID, only present for query-based adapters
+        execution_query: Host-only Query used by providers and tool loaders
         plugin_identity: Plugin identifier (author/name) of the runner
         authorization: Run-scoped authorization snapshot; runtime auth truth
         status: Session status tracking
     """
+
     run_id: str
     runner_id: str
     query_id: int | None
+    execution_query: pipeline_query.Query | None
     plugin_identity: str  # author/name
     authorization: RunAuthorizationSnapshot
     status: AgentRunSessionStatus
@@ -104,6 +112,7 @@ class AgentRunSessionRegistry:
         available_apis: dict[str, bool] | None = None,
         state_policy: dict[str, typing.Any] | None = None,
         state_context: dict[str, typing.Any] | None = None,
+        execution_query: pipeline_query.Query | None = None,
     ) -> None:
         """Register a new agent run session.
 
@@ -120,6 +129,7 @@ class AgentRunSessionRegistry:
             available_apis: Run-scoped pull APIs exposed in AgentRunContext
             state_policy: State policy from binding (enable_state, state_scopes)
             state_context: Context for state API (scope_keys, binding_identity, etc.)
+            execution_query: Host-only Query used for provider and tool execution
         """
         if not isinstance(plugin_identity, str) or not plugin_identity.strip():
             raise ValueError('plugin_identity is required for agent run sessions')
@@ -153,6 +163,7 @@ class AgentRunSessionRegistry:
             'run_id': run_id,
             'runner_id': runner_id,
             'query_id': query_id,
+            'execution_query': execution_query,
             'plugin_identity': plugin_identity,
             'authorization': authorization,
             'status': {
@@ -370,6 +381,26 @@ class AgentRunSessionRegistry:
             return False
 
         return False
+
+    @staticmethod
+    def get_tool_source_ref(
+        session: AgentRunSession,
+        tool_name: str,
+    ) -> ToolSourceRef | None:
+        """Return the implementation identity frozen in this run's grant."""
+        resources = session['authorization']['resources']
+        for tool in resources.get('tools', []):
+            if tool.get('tool_name') != tool_name:
+                continue
+            source = tool.get('source')
+            if not isinstance(source, str) or not source:
+                return None
+            source_id = tool.get('source_id')
+            return {
+                'source': source,
+                'source_id': source_id if isinstance(source_id, str) and source_id else None,
+            }
+        return None
 
     async def list_active_runs(self) -> list[AgentRunSession]:
         """List all active run sessions.

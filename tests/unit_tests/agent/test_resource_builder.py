@@ -1,4 +1,5 @@
 """Tests for AgentResourceBuilder."""
+
 from __future__ import annotations
 
 from types import SimpleNamespace
@@ -10,6 +11,7 @@ from langbot.pkg.agent.runner.descriptor import AgentRunnerDescriptor
 from langbot.pkg.agent.runner.binding_resolver import AgentBindingResolver
 from langbot.pkg.agent.runner.query_entry_adapter import QueryEntryAdapter
 from langbot.pkg.agent.runner.resource_builder import AgentResourceBuilder
+from langbot.pkg.agent.runner.host_models import AgentBinding, BindingScope, ResourcePolicy
 
 
 RUNNER_ID = 'plugin:test/runner/default'
@@ -100,6 +102,7 @@ def app():
     mock_app.skill_mgr = None
     mock_app.tool_mgr = Mock()
     mock_app.tool_mgr.get_tool_schema = AsyncMock(return_value=(None, None))
+    mock_app.tool_mgr.get_resolved_tool_catalog = AsyncMock(return_value=[])
     return mock_app
 
 
@@ -130,11 +133,13 @@ async def test_build_models_authorizes_config_declared_llm_and_rerank_models(app
             {'name': 'rerank-model', 'type': 'rerank-model-selector'},
         ],
     )
-    query = make_query({
-        'model': {'primary': 'primary', 'fallbacks': ['fallback', 'primary']},
-        'aux-model': 'aux',
-        'rerank-model': 'rerank',
-    })
+    query = make_query(
+        {
+            'model': {'primary': 'primary', 'fallbacks': ['fallback', 'primary']},
+            'aux-model': 'aux',
+            'rerank-model': 'rerank',
+        }
+    )
 
     resources = await build_resources(app, query, descriptor)
 
@@ -173,10 +178,12 @@ async def test_build_models_from_config_without_manifest_acl(app):
         ],
         permissions={},
     )
-    query = make_query({
-        'model': {'primary': 'primary', 'fallbacks': ['fallback']},
-        'rerank-model': 'rerank',
-    })
+    query = make_query(
+        {
+            'model': {'primary': 'primary', 'fallbacks': ['fallback']},
+            'rerank-model': 'rerank',
+        }
+    )
 
     resources = await build_resources(app, query, descriptor)
 
@@ -196,10 +203,12 @@ async def test_build_models_authorizes_rerank_and_llm_refs_from_config(app):
             {'name': 'rerank-model', 'type': 'rerank-model-selector'},
         ],
     )
-    query = make_query({
-        'model': 'llm',
-        'rerank-model': 'rerank',
-    })
+    query = make_query(
+        {
+            'model': 'llm',
+            'rerank-model': 'rerank',
+        }
+    )
 
     resources = await build_resources(app, query, descriptor)
 
@@ -234,10 +243,12 @@ async def test_build_resources_accepts_dynamic_form_type_aliases(app):
             {'name': 'knowledge-bases', 'type': 'select-knowledge-bases'},
         ],
     )
-    query = make_query({
-        'model': 'llm_alias',
-        'knowledge-bases': ['kb_alias'],
-    })
+    query = make_query(
+        {
+            'model': 'llm_alias',
+            'knowledge-bases': ['kb_alias'],
+        }
+    )
 
     resources = await build_resources(app, query, descriptor)
 
@@ -271,10 +282,12 @@ async def test_build_models_manifest_permission_narrows_binding(app):
             'models': ['rerank'],
         },
     )
-    query = make_query({
-        'model': 'llm',
-        'rerank-model': 'rerank',
-    })
+    query = make_query(
+        {
+            'model': 'llm',
+            'rerank-model': 'rerank',
+        }
+    )
 
     resources = await build_resources(app, query, descriptor)
 
@@ -309,7 +322,7 @@ async def test_build_tools_authorizes_query_declared_tools(app):
     """Tools discovered by Pipeline preprocessing become run-scoped authorized
     resources, with full parameters schema prefilled by the host."""
     app.tool_mgr.get_tool_schema = AsyncMock(
-        side_effect=lambda name: {
+        side_effect=lambda name, source_ref=None: {
             'qa_plugin_echo': (
                 'Echo test tool',
                 {'type': 'object', 'properties': {'text': {'type': 'string'}}},
@@ -321,6 +334,12 @@ async def test_build_tools_authorizes_query_declared_tools(app):
     )
     query = make_query(
         {},
+        variables={
+            '_host_tool_source_refs': {
+                'qa_plugin_echo': {'source': 'plugin', 'source_id': 'test/plugin'},
+                'qa_mcp_echo': {'source': 'mcp', 'source_id': 'mcp-server'},
+            },
+        },
         use_funcs=[
             {'name': 'qa_plugin_echo', 'description': 'Echo test tool'},
             SimpleNamespace(name='qa_mcp_echo'),
@@ -332,17 +351,21 @@ async def test_build_tools_authorizes_query_declared_tools(app):
     assert resources['tools'] == [
         {
             'tool_name': 'qa_plugin_echo',
-            'tool_type': None,
+            'tool_type': 'plugin',
             'description': 'Echo test tool',
             'operations': ['detail', 'call'],
             'parameters': {'type': 'object', 'properties': {'text': {'type': 'string'}}},
+            'source': 'plugin',
+            'source_id': 'test/plugin',
         },
         {
             'tool_name': 'qa_mcp_echo',
-            'tool_type': None,
+            'tool_type': 'mcp',
             'description': None,
             'operations': ['detail', 'call'],
             'parameters': None,
+            'source': 'mcp',
+            'source_id': 'mcp-server',
         },
     ]
 
@@ -367,6 +390,103 @@ async def test_build_tools_manifest_permission_denies_binding_tools(app):
     resources = await build_resources(app, query, descriptor)
 
     assert resources['tools'] == []
+
+
+@pytest.mark.asyncio
+async def test_build_tools_materializes_independent_agent_all_tools_policy(app):
+    """Independent Agents resolve an all-tools grant against the live Host catalog."""
+    app.tool_mgr.get_resolved_tool_catalog = AsyncMock(
+        return_value=[
+            {'name': 'exec', 'source': 'builtin'},
+            {'name': 'plugin_tool', 'source': 'plugin', 'source_id': 'test/plugin'},
+        ]
+    )
+    descriptor = make_descriptor(capabilities={'tool_calling': True})
+    binding = AgentBinding(
+        binding_id='agent-binding',
+        scope=BindingScope(scope_type='agent', scope_id='agent-1'),
+        runner_id=RUNNER_ID,
+        runner_config={},
+        resource_policy=ResourcePolicy(allow_all_tools=True),
+    )
+
+    resources = await AgentResourceBuilder(app).build_resources_from_binding(
+        event=QueryEntryAdapter.query_to_event(make_query({})),
+        binding=binding,
+        descriptor=descriptor,
+    )
+
+    assert [tool['tool_name'] for tool in resources['tools']] == ['exec', 'plugin_tool']
+    app.tool_mgr.get_resolved_tool_catalog.assert_awaited_once_with(
+        include_skill_authoring=True,
+        include_mcp_resource_tools=True,
+    )
+
+
+@pytest.mark.asyncio
+async def test_build_tools_denies_mcp_resource_tools_when_agent_reads_disabled(app):
+    app.tool_mgr.get_resolved_tool_catalog = AsyncMock(
+        return_value=[
+            {'name': 'exec', 'source': 'builtin'},
+            {'name': 'langbot_mcp_list_resources', 'source': 'mcp'},
+            {'name': 'langbot_mcp_read_resource', 'source': 'mcp'},
+        ]
+    )
+    descriptor = make_descriptor(capabilities={'tool_calling': True})
+    binding = AgentBinding(
+        binding_id='agent-binding',
+        scope=BindingScope(scope_type='agent', scope_id='agent-1'),
+        runner_id=RUNNER_ID,
+        runner_config={'mcp-resource-agent-read-enabled': False},
+        resource_policy=ResourcePolicy(allow_all_tools=True),
+    )
+
+    resources = await AgentResourceBuilder(app).build_resources_from_binding(
+        event=QueryEntryAdapter.query_to_event(make_query({})),
+        binding=binding,
+        descriptor=descriptor,
+    )
+
+    assert [tool['tool_name'] for tool in resources['tools']] == ['exec']
+
+
+@pytest.mark.asyncio
+async def test_build_tools_keeps_plugin_using_synthetic_mcp_tool_name_when_reads_disabled(app):
+    app.tool_mgr.get_resolved_tool_catalog = AsyncMock(
+        return_value=[
+            {
+                'name': 'langbot_mcp_read_resource',
+                'source': 'plugin',
+                'source_id': 'test/resource-reader',
+            },
+        ]
+    )
+    descriptor = make_descriptor(capabilities={'tool_calling': True})
+    binding = AgentBinding(
+        binding_id='agent-binding',
+        scope=BindingScope(scope_type='agent', scope_id='agent-1'),
+        runner_id=RUNNER_ID,
+        runner_config={'mcp-resource-agent-read-enabled': False},
+        resource_policy=ResourcePolicy(allow_all_tools=True),
+    )
+
+    resources = await AgentResourceBuilder(app).build_resources_from_binding(
+        event=QueryEntryAdapter.query_to_event(make_query({})),
+        binding=binding,
+        descriptor=descriptor,
+    )
+
+    assert resources['tools'] == [
+        {
+            'tool_name': 'langbot_mcp_read_resource',
+            'tool_type': 'plugin',
+            'description': None,
+            'operations': ['detail', 'call'],
+            'parameters': None,
+            'source': 'plugin',
+            'source_id': 'test/resource-reader',
+        }
+    ]
 
 
 @pytest.mark.asyncio

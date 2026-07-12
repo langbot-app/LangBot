@@ -7,12 +7,15 @@ Tests cover:
 
 from __future__ import annotations
 
-import pytest
-from unittest.mock import Mock, AsyncMock
 from importlib import import_module
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock
 
 import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
+import pytest
+
+from langbot.pkg.provider.tools.errors import ToolExecutionDeniedError
 
 
 def get_toolmgr_module():
@@ -258,6 +261,119 @@ class TestToolManagerExecuteFuncCall:
         # Plugin loader should be invoked, MCP should not
         mock_plugin_loader.invoke_tool.assert_called_once()
         mock_mcp_loader.invoke_tool.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_bound_mcp_source_wins_over_unbound_plugin_name_collision(self, mock_app_with_loaders):
+        toolmgr = get_toolmgr_module()
+        mock_app, mock_plugin_loader, mock_mcp_loader = mock_app_with_loaders
+        mock_plugin_loader.has_tool = AsyncMock(return_value=True)
+        mock_mcp_loader.has_tool = AsyncMock(return_value=True)
+        manager = toolmgr.ToolManager(mock_app)
+        self._wire_loaders(manager, mock_app, mock_plugin_loader, mock_mcp_loader)
+        query = Mock(variables={})
+
+        result = await manager.execute_func_call(
+            'shared_tool',
+            {'value': 1},
+            query,
+            source_ref={'source': 'mcp', 'source_id': 'bound-mcp'},
+        )
+
+        assert result == 'mcp_result'
+        mock_plugin_loader.has_tool.assert_not_awaited()
+        mock_plugin_loader.invoke_tool.assert_not_awaited()
+        mock_mcp_loader.has_tool.assert_awaited_once_with('shared_tool', source_id='bound-mcp')
+        mock_mcp_loader.invoke_tool.assert_awaited_once_with(
+            'shared_tool',
+            {'value': 1},
+            query,
+            source_id='bound-mcp',
+        )
+
+    @pytest.mark.asyncio
+    async def test_bound_plugin_source_selects_one_of_two_same_name_plugins(self, mock_app_with_loaders):
+        toolmgr = get_toolmgr_module()
+        mock_app, mock_plugin_loader, mock_mcp_loader = mock_app_with_loaders
+        mock_plugin_loader.has_tool = AsyncMock(return_value=True)
+        mock_mcp_loader.has_tool = AsyncMock(return_value=True)
+        manager = toolmgr.ToolManager(mock_app)
+        self._wire_loaders(manager, mock_app, mock_plugin_loader, mock_mcp_loader)
+        query = Mock(variables={})
+
+        result = await manager.execute_func_call(
+            'shared_tool',
+            {},
+            query,
+            source_ref={'source': 'plugin', 'source_id': 'authorized/plugin'},
+        )
+
+        assert result == 'plugin_result'
+        mock_plugin_loader.has_tool.assert_awaited_once_with('shared_tool', source_id='authorized/plugin')
+        mock_plugin_loader.invoke_tool.assert_awaited_once_with(
+            'shared_tool',
+            {},
+            query,
+            source_id='authorized/plugin',
+        )
+        mock_mcp_loader.has_tool.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_disabled_synthetic_mcp_tool_is_monitored_as_error(
+        self,
+        mock_app_with_loaders,
+        sample_query,
+    ):
+        toolmgr = get_toolmgr_module()
+        mock_app, mock_plugin_loader, mock_mcp_loader = mock_app_with_loaders
+        mock_app.monitoring_service = SimpleNamespace(record_tool_call=AsyncMock())
+        sample_query.variables = {}
+        sample_query.launcher_type = None
+        sample_query.launcher_id = None
+        sample_query.bot_uuid = 'bot-1'
+        mock_mcp_loader.has_tool = AsyncMock(return_value=True)
+        mock_mcp_loader.invoke_tool = AsyncMock(
+            side_effect=ToolExecutionDeniedError(
+                'langbot_mcp_read_resource',
+                'MCP resource agent reads are disabled',
+            )
+        )
+        manager = toolmgr.ToolManager(mock_app)
+        self._wire_loaders(manager, mock_app, mock_plugin_loader, mock_mcp_loader)
+
+        with pytest.raises(ToolExecutionDeniedError):
+            await manager.execute_func_call(
+                'langbot_mcp_read_resource',
+                {'server_name': 'docs', 'uri': 'file:///README.md'},
+                sample_query,
+                source_ref={'source': 'mcp', 'source_id': None},
+            )
+
+        record = mock_app.monitoring_service.record_tool_call
+        record.assert_awaited_once()
+        assert record.await_args.kwargs['status'] == 'error'
+        assert record.await_args.kwargs['tool_source'] == 'mcp'
+        assert 'MCP resource agent reads are disabled' in record.await_args.kwargs['error_message']
+
+
+class TestToolManagerSourceResolution:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize('source', ['mcp', 'plugin'])
+    async def test_same_name_implementations_in_one_scope_are_hidden(self, source):
+        toolmgr = get_toolmgr_module()
+        app = Mock(logger=Mock())
+        manager = toolmgr.ToolManager(app)
+        manager.get_tool_catalog = AsyncMock(
+            return_value=[
+                {'name': 'shared_tool', 'source': source, 'source_id': 'source-a'},
+                {'name': 'shared_tool', 'source': source, 'source_id': 'source-b'},
+                {'name': 'unique_tool', 'source': 'builtin'},
+            ]
+        )
+
+        catalog = await manager.get_resolved_tool_catalog()
+
+        assert [item['name'] for item in catalog] == ['unique_tool']
+        app.logger.warning.assert_called_once()
 
 
 class TestToolManagerShutdown:

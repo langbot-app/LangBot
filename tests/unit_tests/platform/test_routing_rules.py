@@ -71,7 +71,10 @@ class TestEventRouteTrace:
         """Synthetic test dispatch runs the route but does not call the real adapter."""
         import langbot_plugin.api.entities.builtin.provider.message as provider_message
 
+        captured_envelopes = []
+
         async def fake_run(envelope, binding):
+            captured_envelopes.append(envelope)
             yield provider_message.Message(role='assistant', content='test response')
 
         bot = self._make_bot(
@@ -106,6 +109,7 @@ class TestEventRouteTrace:
             config={},
             logger=bot.logger,
             send_message=AsyncMock(),
+            get_supported_apis=Mock(return_value=['send_message', 'edit_message', 'add_reaction', 'get_group_info']),
         )
 
         result = await bot.dispatch_test_event('message.received', {'chat_id': 'user-1', 'message_text': 'hello'})
@@ -114,6 +118,64 @@ class TestEventRouteTrace:
         assert result['dispatched'] is True
         assert result['status'] == 'delivered'
         assert result['suppressed_outputs'][0]['method'] == 'send_message'
+        assert captured_envelopes[0].delivery.supports_edit is False
+        assert captured_envelopes[0].delivery.supports_reaction is False
+        assert captured_envelopes[0].delivery.platform_capabilities['supported_apis'] == ['get_group_info']
+
+    @pytest.mark.asyncio
+    async def test_dispatch_malformed_agent_config_fails_one_event_and_processes_next(self):
+        """Persisted malformed Agent config cannot escape the per-event route boundary."""
+        bot = self._make_bot(
+            [
+                {
+                    'id': 'agent-binding',
+                    'enabled': True,
+                    'event_pattern': 'platform.member.joined',
+                    'target_type': 'agent',
+                    'target_uuid': 'agent-1',
+                    'priority': 0,
+                    'order': 0,
+                }
+            ]
+        )
+        malformed_agent = {
+            'uuid': 'agent-1',
+            'kind': 'agent',
+            'enabled': True,
+            'supported_event_patterns': ['platform.member.joined'],
+            'config': {
+                'runner': {'id': 'runner-1'},
+                'runner_config': {'runner-1': ['invalid']},
+            },
+        }
+        valid_agent = {
+            **malformed_agent,
+            'config': {
+                'runner': {'id': 'runner-1'},
+                'runner_config': {'runner-1': {}},
+            },
+        }
+        runner_calls = []
+
+        async def fake_run(envelope, binding):
+            runner_calls.append((envelope, binding))
+            if False:
+                yield None
+
+        bot.ap = SimpleNamespace(
+            agent_service=SimpleNamespace(get_agent=AsyncMock(side_effect=[malformed_agent, valid_agent])),
+            agent_run_orchestrator=SimpleNamespace(run=fake_run),
+        )
+        event = SimpleNamespace(type='platform.member.joined')
+
+        failed = await bot._dispatch_eba_event_to_processor(event, Mock())
+        delivered = await bot._dispatch_eba_event_to_processor(event, Mock())
+
+        assert failed['status'] == 'failed'
+        assert failed['failure_code'] == 'runner_failed'
+        assert failed['reason'] == 'Agent configuration is invalid'
+        assert delivered['status'] == 'delivered'
+        assert len(runner_calls) == 1
 
     @pytest.mark.asyncio
     async def test_dispatch_test_event_pipeline_receives_synthetic_adapter(self):
@@ -235,6 +297,41 @@ class TestEventRouteTrace:
         assert event.group.name == 'QA Group'
         assert event.sender.nickname == 'QA User'
         assert str(event.message_chain) == 'hello'
+
+    def test_agent_envelope_projects_adapter_delivery_capabilities(self):
+        """Runner delivery context reflects the active adapter's declared APIs."""
+        from langbot_plugin.api.entities.builtin.platform import entities, events, message
+
+        bot = self._make_bot([])
+        bot.bot_entity.uuid = 'bot-1'
+        adapter = SimpleNamespace(
+            get_supported_apis=Mock(return_value=['send_message', 'edit_message', 'add_reaction', 'edit_message', None])
+        )
+        event = events.MessageReceivedEvent(
+            message_id='message-1',
+            message_chain=message.MessageChain([message.Plain(text='hello')]),
+            sender=entities.User(id='user-1', nickname='QA User'),
+            chat_type=entities.ChatType.PRIVATE,
+            chat_id='user-1',
+        )
+
+        envelope = bot._eba_event_to_agent_envelope(event, adapter)
+
+        assert envelope.delivery.supports_edit is True
+        assert envelope.delivery.supports_reaction is True
+        assert envelope.delivery.platform_capabilities == {
+            'adapter': 'SimpleNamespace',
+            'event_type': 'message.received',
+            'supported_apis': ['send_message', 'edit_message', 'add_reaction'],
+        }
+
+    def test_adapter_delivery_capabilities_degrade_on_invalid_declaration(self):
+        """Broken third-party capability declarations do not block event dispatch."""
+        from langbot.pkg.platform.botmgr import RuntimeBot
+
+        adapter = SimpleNamespace(get_supported_apis=Mock(side_effect=RuntimeError('broken manifest')))
+
+        assert RuntimeBot._get_adapter_supported_apis(adapter) == []
 
 
 class TestEventLoggerMetadata:
@@ -381,7 +478,57 @@ class TestEBAEventBindings:
         assert binding.event_types == ['platform.member.joined']
         assert binding.runner_id == 'plugin:test/runner/default'
         assert binding.runner_config == {'temperature': 0.2, 'max_tokens': 1000}
+        assert binding.resource_policy.allow_all_tools is True
+        assert binding.resource_policy.allowed_tool_names is None
         assert binding.delivery_policy.enable_streaming is False
         assert binding.delivery_policy.enable_reply is True
         assert binding.state_policy.state_scopes == ['conversation', 'actor', 'subject', 'runner']
         assert binding.agent_id == 'agent-1'
+
+    def test_agent_product_to_binding_projects_selected_tool_policy(self):
+        """Independent Agents use the same standard runner resource fields as Pipelines."""
+        from langbot.pkg.platform.botmgr import RuntimeBot
+
+        binding = RuntimeBot._agent_product_to_binding(
+            {
+                'uuid': 'agent-1',
+                'config': {
+                    'runner': {'id': 'plugin:test/runner/default'},
+                    'runner_config': {
+                        'plugin:test/runner/default': {
+                            'enable-all-tools': False,
+                            'tools': ['exec', 'plugin_tool'],
+                            'knowledge-bases': ['kb-1'],
+                        }
+                    },
+                },
+            },
+            {'id': 'binding-1'},
+            'platform.member.joined',
+            'bot-1',
+        )
+
+        assert binding is not None
+        assert binding.resource_policy.allow_all_tools is False
+        assert binding.resource_policy.allowed_tool_names == ['exec', 'plugin_tool']
+        assert binding.resource_policy.allowed_kb_uuids == ['kb-1']
+
+    def test_agent_product_to_binding_does_not_fallback_to_component_ref(self):
+        """An empty config runner stays unconfigured even if component_ref is stale."""
+        from langbot.pkg.platform.botmgr import RuntimeBot
+
+        binding = RuntimeBot._agent_product_to_binding(
+            {
+                'uuid': 'agent-1',
+                'component_ref': 'plugin:test/stale/default',
+                'config': {
+                    'runner': {'id': ''},
+                    'runner_config': {},
+                },
+            },
+            {'id': 'binding-1'},
+            'platform.member.joined',
+            'bot-1',
+        )
+
+        assert binding is None

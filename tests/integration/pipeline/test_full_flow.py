@@ -31,7 +31,7 @@ def mock_circular_import_chain():
     """
     Break circular import chain for pipeline modules using isolated_sys_modules.
 
-    Chain: pipeline → core.app → provider.runner → http_controller → groups/plugins
+    Chain: pipeline → core.app → http_controller → groups/plugins
 
     We mock minimal modules to allow importing RuntimePipeline, StageInstContainer,
     and stage classes without triggering full application initialization.
@@ -47,7 +47,7 @@ def mock_circular_import_chain():
     # Mock core.app - Application class is referenced but not instantiated
     mock_core_app = Mock()
 
-    # Mock utils.importutil - prevents auto-import of runners
+    # Mock utils.importutil to avoid unrelated import-time registrations.
     mock_importutil = Mock()
     mock_importutil.import_modules_in_pkg = lambda pkg: None
     mock_importutil.import_modules_in_pkgs = lambda pkgs: None
@@ -63,14 +63,13 @@ def mock_circular_import_chain():
         'langbot.pkg.pipeline.process.handlers.chat',
         'langbot.pkg.pipeline.process.handlers.command',
         'langbot.pkg.pipeline.respback.respback',
-        'langbot.pkg.provider.runner',
     ]
 
     with isolated_sys_modules(
         mocks={
             'langbot.pkg.core.entities': mock_core_entities,
             'langbot.pkg.core.app': mock_core_app,
-        'langbot.pkg.utils.importutil': mock_importutil,
+            'langbot.pkg.utils.importutil': mock_importutil,
             'langbot.pkg.pipeline.controller': Mock(),
             'langbot.pkg.pipeline.pipelinemgr': Mock(),
         },
@@ -249,9 +248,7 @@ def set_fake_runner(pipeline_app):
                 yield result
 
         orchestrator.run_from_query = run_from_query
-        orchestrator.resolve_runner_id_for_telemetry = Mock(
-            return_value='plugin:langbot-team/LocalAgent/default'
-        )
+        orchestrator.resolve_runner_id_for_telemetry = Mock(return_value='plugin:langbot-team/LocalAgent/default')
         pipeline_app.agent_run_orchestrator = orchestrator
 
     return _set_runner

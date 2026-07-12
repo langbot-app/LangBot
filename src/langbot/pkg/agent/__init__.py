@@ -1,4 +1,5 @@
 """Agent runner subsystem for LangBot."""
+
 from __future__ import annotations
 
 from .runner.descriptor import AgentRunnerDescriptor
@@ -15,7 +16,7 @@ from .runner.context_builder import AgentRunContextBuilder
 from .runner.resource_builder import AgentResourceBuilder
 from .runner.result_normalizer import AgentResultNormalizer
 from .runner.orchestrator import AgentRunOrchestrator
-from .runner.config_migration import ConfigMigration
+from .runner.config_resolver import RunnerConfigResolver
 
 __all__ = [
     'AgentRunnerDescriptor',
@@ -33,5 +34,5 @@ __all__ = [
     'AgentResourceBuilder',
     'AgentResultNormalizer',
     'AgentRunOrchestrator',
-    'ConfigMigration',
+    'RunnerConfigResolver',
 ]

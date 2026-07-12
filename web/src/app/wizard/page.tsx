@@ -25,7 +25,6 @@ import {
 
 import { httpClient } from '@/app/infra/http/HttpClient';
 import {
-  userInfo,
   systemInfo,
   initializeUserInfo,
   initializeSystemInfo,
@@ -888,24 +887,6 @@ export default function WizardPage() {
     saveProgress,
   ]);
 
-  // ---- Space auth redirect ----
-
-  const handleSpaceAuth = useCallback(async () => {
-    try {
-      const callbackUrl = `${window.location.origin}/auth/space/callback`;
-      const resp = await httpClient.getSpaceAuthorizeUrl(callbackUrl);
-      window.location.href = resp.authorize_url;
-    } catch (err) {
-      console.error('Failed to get space authorize URL', err);
-      toast.error(t('wizard.spaceAuthError'));
-    }
-  }, [t]);
-
-  // ---- Check if local account ----
-  // Re-evaluated after remote data fetch (when userInfo is populated)
-  const isLocalAccount =
-    !isLoading && (!userInfo || userInfo.account_type === 'local');
-
   // ---- Skip handler ----
   const [showSkipConfirm, setShowSkipConfirm] = useState(false);
   const [isSkipping, setIsSkipping] = useState(false);
@@ -1071,8 +1052,6 @@ export default function WizardPage() {
             onSelect={handleSelectRunner}
             onInstall={handleInstallRunner}
             onRetryCatalog={loadRunnerCatalog}
-            isLocalAccount={isLocalAccount}
-            onSpaceAuth={handleSpaceAuth}
             runnerConfigItems={selectedRunnerConfigItems}
             runnerConfigValues={runnerConfig}
             onRunnerConfigChange={setRunnerConfig}
@@ -1587,8 +1566,6 @@ function StepAIEngine({
   onSelect,
   onInstall,
   onRetryCatalog,
-  isLocalAccount,
-  onSpaceAuth,
   runnerConfigItems,
   runnerConfigValues,
   onRunnerConfigChange,
@@ -1604,8 +1581,6 @@ function StepAIEngine({
   onSelect: (name: string) => void;
   onInstall: (plugin: PluginV4) => void;
   onRetryCatalog: () => void;
-  isLocalAccount: boolean;
-  onSpaceAuth: () => void;
   runnerConfigItems: IDynamicFormItemSchema[];
   runnerConfigValues: Record<string, unknown>;
   onRunnerConfigChange: (v: Record<string, unknown>) => void;
@@ -1878,29 +1853,6 @@ function StepAIEngine({
                 </Card>
               );
             })}
-
-            {/* Space promotion banner */}
-            {selected === 'plugin:langbot-team/LocalAgent/default' &&
-              isLocalAccount && (
-                <div className="animate-in fade-in slide-in-from-left-2 duration-300">
-                  <div className="relative rounded-lg p-[2px] bg-gradient-to-r from-purple-500 via-pink-500 to-orange-500">
-                    <div className="rounded-[calc(0.5rem-2px)] bg-background p-3 flex flex-col items-center gap-2 text-center">
-                      <Sparkles className="w-6 h-6 text-purple-500 shrink-0" />
-                      <p className="text-xs font-medium">
-                        {t('wizard.spaceBanner.message')}
-                      </p>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={onSpaceAuth}
-                        className="w-full"
-                      >
-                        {t('wizard.spaceBanner.action')}
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              )}
           </div>
         </div>
 

@@ -35,6 +35,7 @@ export default function PipelineDetailContent({
   const [activeTab, setActiveTab] = useState('config');
   const [isWebSocketConnected, setIsWebSocketConnected] = useState(false);
   const [formDirty, setFormDirty] = useState(false);
+  const [formSaving, setFormSaving] = useState(false);
 
   function handleFinish() {
     refreshPipelines();
@@ -53,7 +54,7 @@ export default function PipelineDetailContent({
           <h1 className="text-xl font-semibold">
             {t('pipelines.createPipeline')}
           </h1>
-          <Button type="submit" form="pipeline-form">
+          <Button type="submit" form="pipeline-form" disabled={formSaving}>
             {t('common.submit')}
           </Button>
         </div>
@@ -68,6 +69,7 @@ export default function PipelineDetailContent({
               onFinish={handleFinish}
               onNewPipelineCreated={handleNewPipelineCreated}
               onDeletePipeline={() => {}}
+              onSavingChange={setFormSaving}
             />
           </div>
         </div>
@@ -89,7 +91,7 @@ export default function PipelineDetailContent({
         <Button
           type="submit"
           form="pipeline-form"
-          disabled={!formDirty}
+          disabled={!formDirty || formSaving}
           className={activeTab !== 'config' ? 'invisible' : ''}
         >
           {t('common.save')}
@@ -140,6 +142,7 @@ export default function PipelineDetailContent({
             onDeletePipeline={handleDeletePipeline}
             onCancel={() => navigate(routeBase)}
             onDirtyChange={setFormDirty}
+            onSavingChange={setFormSaving}
           />
         </TabsContent>
 

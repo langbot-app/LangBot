@@ -15,14 +15,15 @@ from ..discover import engine
 
 from ..entity.persistence import bot as persistence_bot
 from ..entity.errors import platform as platform_errors
+from ..agent.runner.config_resolver import RunnerConfigResolver
 from ..agent.runner.host_models import (
     AgentBinding,
     AgentEventEnvelope,
     BindingScope,
     DeliveryPolicy,
-    ResourcePolicy,
     StatePolicy,
 )
+from ..agent.runner.resource_policy import ResourcePolicyProjector
 
 from .logger import EventLogger
 
@@ -52,6 +53,8 @@ class SyntheticRouteTestAdapter:
         'create_message_card',
         'edit_message',
         'delete_message',
+        'add_reaction',
+        'remove_reaction',
         'forward_message',
         'set_group_name',
         'mute_member',
@@ -985,6 +988,7 @@ class RuntimeBot:
             getattr(event, 'message_id', None) or getattr(event, 'feedback_id', None) or f'{event_type}:{uuid.uuid4()}'
         )
         target_type, target_id, target_metadata = self._infer_reply_target(event)
+        supported_apis = self._get_adapter_supported_apis(adapter)
 
         conversation_id = None
         if target_type and target_id:
@@ -1014,16 +1018,32 @@ class RuntimeBot:
                     **target_metadata,
                 },
                 supports_streaming=False,
-                supports_edit=False,
-                supports_reaction=False,
+                supports_edit='edit_message' in supported_apis,
+                supports_reaction=bool({'add_reaction', 'remove_reaction'} & set(supported_apis)),
                 platform_capabilities={
                     'adapter': adapter.__class__.__name__,
                     'event_type': event_type,
+                    'supported_apis': supported_apis,
                 },
             ),
             raw_ref=RawEventRef(ref_id=str(event_id), storage_key=None),
             data=self._compact_event_data(event),
         )
+
+    @staticmethod
+    def _get_adapter_supported_apis(
+        adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
+    ) -> list[str]:
+        get_supported_apis = getattr(adapter, 'get_supported_apis', None)
+        if not callable(get_supported_apis):
+            return []
+        try:
+            declared_apis = get_supported_apis()
+        except Exception:
+            return []
+        if not isinstance(declared_apis, (list, tuple, set)):
+            return []
+        return list(dict.fromkeys(api_name for api_name in declared_apis if isinstance(api_name, str) and api_name))
 
     @staticmethod
     def _agent_product_to_binding(
@@ -1033,21 +1053,12 @@ class RuntimeBot:
         bot_uuid: str,
     ) -> AgentBinding | None:
         config = agent.get('config') if isinstance(agent, dict) else None
-        if not isinstance(config, dict):
+        if config is None:
             return None
 
-        runner = config.get('runner')
-        runner_id = None
-        if isinstance(runner, dict):
-            runner_id = runner.get('id')
-        runner_id = runner_id or agent.get('component_ref')
+        _, runner_id, runner_config = RunnerConfigResolver.resolve_agent_runner_config(config)
         if not runner_id:
             return None
-
-        runner_config_map = config.get('runner_config')
-        runner_config = {}
-        if isinstance(runner_config_map, dict):
-            runner_config = runner_config_map.get(runner_id) or {}
 
         return AgentBinding(
             binding_id=f'bot:{bot_uuid}:{event_binding.get("id") or uuid.uuid4()}',
@@ -1055,7 +1066,7 @@ class RuntimeBot:
             event_types=[event_type],
             runner_id=runner_id,
             runner_config=runner_config,
-            resource_policy=ResourcePolicy(),
+            resource_policy=ResourcePolicyProjector.from_runner_config(runner_config),
             state_policy=StatePolicy(state_scopes=['conversation', 'actor', 'subject', 'runner']),
             delivery_policy=DeliveryPolicy(enable_streaming=False, enable_reply=True),
             enabled=True,
@@ -1262,7 +1273,20 @@ class RuntimeBot:
                 text=f'EBA event {event_type} target agent does not support this event: {target_uuid}',
             )
 
-        binding = self._agent_product_to_binding(agent, event_binding, event_type, self.bot_entity.uuid)
+        try:
+            binding = self._agent_product_to_binding(agent, event_binding, event_type, self.bot_entity.uuid)
+        except Exception:
+            return await self._record_event_route_trace(
+                event_type=event_type,
+                status='failed',
+                level='error',
+                binding=event_binding,
+                target_type=target_type,
+                target_uuid=target_uuid,
+                failure_code='runner_failed',
+                reason='Agent configuration is invalid',
+                text=f'Failed to build Agent binding for EBA event {event_type}: {traceback.format_exc()}',
+            )
         if binding is None:
             return await self._record_event_route_trace(
                 event_type=event_type,

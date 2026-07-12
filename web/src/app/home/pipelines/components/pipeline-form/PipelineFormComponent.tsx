@@ -59,6 +59,7 @@ export default function PipelineFormComponent({
   onDeletePipeline,
   onCancel,
   onDirtyChange,
+  onSavingChange,
 }: {
   pipelineId?: string;
   isEditMode: boolean;
@@ -69,11 +70,14 @@ export default function PipelineFormComponent({
   onDeletePipeline: () => void;
   onCancel?: () => void;
   onDirtyChange?: (dirty: boolean) => void;
+  onSavingChange?: (saving: boolean) => void;
 }) {
   const { t } = useTranslation();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showCopyConfirm, setShowCopyConfirm] = useState(false);
   const [isDefaultPipeline, setIsDefaultPipeline] = useState<boolean>(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const isSavingRef = useRef(false);
 
   const formSchema = isEditMode
     ? z.object({
@@ -176,16 +180,20 @@ export default function PipelineFormComponent({
       output: {},
     },
   });
+  const dynamicFormSystemContext = useMemo(
+    () => ({ pipeline_id: pipelineId }),
+    [pipelineId],
+  );
 
   // Track unsaved changes by comparing current form values against a saved snapshot
   const savedSnapshotRef = useRef<string>('');
   // Track which dynamic form stages have completed their initial mount emission.
   const initializedStagesRef = useRef<Set<string>>(new Set());
   const watchedValues = form.watch();
-  const hasUnsavedChanges = useMemo(() => {
+  const hasUnsavedChanges = (() => {
     if (!isEditMode || !savedSnapshotRef.current) return false;
     return JSON.stringify(watchedValues) !== savedSnapshotRef.current;
-  }, [isEditMode, watchedValues]);
+  })();
   // Keep a ref so that non-reactive callbacks (handleDynamicFormEmit) can
   // read the latest dirty state without stale closures.
   const hasUnsavedChangesRef = useRef(hasUnsavedChanges);
@@ -257,12 +265,16 @@ export default function PipelineFormComponent({
   }
 
   function handleCreate(values: FormValues) {
+    if (isSavingRef.current) return;
     const pipeline: Pipeline = {
       config: {},
       description: values.basic.description ?? '',
       name: values.basic.name,
       emoji: values.basic.emoji,
     };
+    isSavingRef.current = true;
+    setIsSaving(true);
+    onSavingChange?.(true);
     httpClient
       .createPipeline(pipeline)
       .then((resp) => {
@@ -272,10 +284,17 @@ export default function PipelineFormComponent({
       })
       .catch((err) => {
         toast.error(t('pipelines.createError') + err.msg);
+      })
+      .finally(() => {
+        isSavingRef.current = false;
+        setIsSaving(false);
+        onSavingChange?.(false);
       });
   }
 
   function handleModify(values: FormValues) {
+    if (isSavingRef.current) return;
+    const submittedSnapshot = JSON.stringify(values);
     const realConfig = {
       ai: values.ai,
       trigger: values.trigger,
@@ -295,15 +314,23 @@ export default function PipelineFormComponent({
       // uuid: pipelineId || '',
       // is_default: false,
     };
+    isSavingRef.current = true;
+    setIsSaving(true);
+    onSavingChange?.(true);
     httpClient
       .updatePipeline(pipelineId || '', pipeline)
       .then(() => {
-        savedSnapshotRef.current = JSON.stringify(form.getValues());
+        savedSnapshotRef.current = submittedSnapshot;
         onFinish();
         toast.success(t('pipelines.saveSuccess'));
       })
       .catch((err) => {
         toast.error(t('pipelines.saveError') + err.msg);
+      })
+      .finally(() => {
+        isSavingRef.current = false;
+        setIsSaving(false);
+        onSavingChange?.(false);
       });
   }
 
@@ -390,6 +417,7 @@ export default function PipelineFormComponent({
                     stage.name
                   ] || {}
                 }
+                systemContext={dynamicFormSystemContext}
                 onSubmit={(values) => {
                   handleDynamicFormEmit(formName, stage.name, values);
                 }}
@@ -424,6 +452,7 @@ export default function PipelineFormComponent({
               <DynamicFormComponent
                 itemConfigList={stage.config}
                 initialValues={stageInitialValues}
+                systemContext={dynamicFormSystemContext}
                 onSubmit={(values) => {
                   handleRunnerConfigEmit(stage.name, values);
                 }}
@@ -451,6 +480,7 @@ export default function PipelineFormComponent({
           <DynamicFormComponent
             itemConfigList={stage.config}
             initialValues={stageInitialValues}
+            systemContext={dynamicFormSystemContext}
             onSubmit={(values) => {
               handleDynamicFormEmit(formName, stage.name, values);
             }}
@@ -746,7 +776,7 @@ export default function PipelineFormComponent({
                 </Button>
               )}
 
-              <Button type="submit" form="pipeline-form">
+              <Button type="submit" form="pipeline-form" disabled={isSaving}>
                 {isEditMode ? t('common.save') : t('common.submit')}
               </Button>
             </div>

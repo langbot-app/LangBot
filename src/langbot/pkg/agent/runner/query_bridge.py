@@ -8,7 +8,7 @@ import typing
 from langbot_plugin.api.entities.builtin.pipeline import query as pipeline_query
 
 from .binding_resolver import AgentBindingResolver
-from .config_migration import ConfigMigration
+from .config_resolver import RunnerConfigResolver
 from .errors import RunnerNotFoundError
 from .host_models import AgentBinding, AgentEventEnvelope
 from .query_entry_adapter import QueryEntryAdapter
@@ -34,7 +34,7 @@ class QueryRunBridge:
 
     def build_plan(self, query: pipeline_query.Query) -> QueryRunPlan:
         """Build an event-first run plan from a Pipeline Query."""
-        runner_id = ConfigMigration.resolve_runner_id(query.pipeline_config)
+        runner_id = RunnerConfigResolver.resolve_runner_id(query.pipeline_config)
         if not runner_id:
             raise RunnerNotFoundError('no runner configured')
 
@@ -53,4 +53,4 @@ class QueryRunBridge:
 
     def resolve_runner_id_for_telemetry(self, query: pipeline_query.Query) -> str | None:
         """Resolve runner ID for telemetry/logging without full execution."""
-        return ConfigMigration.resolve_runner_id(query.pipeline_config)
+        return RunnerConfigResolver.resolve_runner_id(query.pipeline_config)

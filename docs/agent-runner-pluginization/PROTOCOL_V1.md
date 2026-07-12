@@ -295,6 +295,11 @@ class DeliveryContext(BaseModel):
 ```
 
 Runner 可参考 delivery 能力决定返回 `message.delta`、`message.completed` 或 `action.requested`。
+平台事件进入独立 Agent 时，Host 会从当前 adapter 的 `get_supported_apis()` 投影
+`supports_edit`、`supports_reaction`，并把去重后的 API 名称写入
+`platform_capabilities.supported_apis`。这些字段只描述当前投递表面的能力，不授予
+平台动作权限；`action.requested` 仍受 §7.3 的 reserved 约束。合成路由测试使用的
+adapter 会过滤所有已知副作用 API，因此测试事件不会向 runner 宣告真实出站能力。
 
 ### 5.8 ContextAccess
 

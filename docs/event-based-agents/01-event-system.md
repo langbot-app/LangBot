@@ -490,18 +490,19 @@ class PlatformSpecificEvent(Event):
       │
 5. EventBus 分发
       │
-6. EventRouter 查询 Bot 的 event_handlers 配置
-      │  匹配事件类型 → 找到对应的 Handler
-      │  支持通配符：'message.*' 匹配所有消息事件
-      │  未匹配到 → 走默认 Handler（plugin，保持向后兼容）
+6. EventBus 向有权限的 Plugin EventListener 广播观察者事件
+      │  observer 不占用响应目标，也不参与 priority 仲裁
       │
-7. Handler 处理事件
-      │  PipelineHandler → 进入 Pipeline 流水线
-      │  AgentHandler    → 调用 RequestRunner
-      │  WebhookHandler  → POST 到外部 URL
-      │  PluginHandler   → 分发给插件 EventListener
+7. EventRouter 查询 Bot 的 event_bindings
+      │  精确/通配匹配 event_pattern，应用 filters 与 priority
+      │  选择一个 Pipeline、Agent 或 discard 目标
       │
-8. Handler 执行完毕，可能通过 API 执行响应动作
+8. 目标处理事件
+      │  Pipeline → 进入完整 Pipeline 流水线（仅消息事件）
+      │  Agent    → Host 编排已安装的插件 AgentRunner
+      │  discard  → 不产生响应
+      │
+9. 处理器执行完毕，可能通过 Host 授权 API 执行响应动作
       （发消息、编辑消息、踢人、同意好友请求等）
 ```
 

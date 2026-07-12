@@ -1172,10 +1172,10 @@ const zhHans = {
       enableAllMCPServersTooltip:
         '开启后，所有已配置且启用的 MCP 服务器都会进入 AI 能力里的 MCP 工具和资源候选范围。',
     },
-    localAgent: {
+    agentRunner: {
       toolsTitle: '工具',
       toolsDescription:
-        '选择此内置 Agent 可以调用的插件、MCP、技能和内置工具。',
+        '选择当前 AgentRunner 可以调用的插件、MCP、技能和内置工具。',
       toolsScopeTooltip:
         'MCP 工具只会从扩展集成中已绑定的 MCP 服务器里出现；如需增加 MCP 工具来源，请先到扩展集成绑定对应服务器。',
       enableAllTools: '启用所有工具',
@@ -1192,7 +1192,8 @@ const zhHans = {
         '技能工具会在 LangBot 技能服务和 Box 沙箱后端可用时出现，用于让 Agent 激活或注册技能。',
       selectTools: '选择工具',
       resourcesTitle: '资源',
-      resourcesDescription: '选择此内置 Agent 可以读取的 MCP 资源和知识库。',
+      resourcesDescription:
+        '选择当前 AgentRunner 可以读取的 MCP 资源和知识库。',
       knowledgeBases: '知识库',
       mcpResources: 'MCP 资源',
       mcpResourcesScopeTooltip:
@@ -1919,10 +1920,6 @@ const zhHans = {
       installTimeout: '运行器安装超时，请前往扩展页面检查任务。',
       registrationTimeout:
         '扩展已安装，但运行器未完成注册。请检查插件运行时后重试。',
-    },
-    spaceBanner: {
-      message: '接入 LangBot Space，获取免费试用模型额度，零配置极速开箱！',
-      action: '前往授权登录',
     },
     config: {
       botInfo: '机器人信息',

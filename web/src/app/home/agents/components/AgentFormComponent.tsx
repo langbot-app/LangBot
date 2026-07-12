@@ -62,6 +62,7 @@ interface AgentFormComponentProps {
   onFinish: () => void;
   onDeleted: () => void;
   onDirtyChange?: (dirty: boolean) => void;
+  onSavingChange?: (saving: boolean) => void;
 }
 
 interface SectionItem {
@@ -75,6 +76,7 @@ export default function AgentFormComponent({
   onFinish,
   onDeleted,
   onDirtyChange,
+  onSavingChange,
 }: AgentFormComponentProps) {
   const { t } = useTranslation();
   const [activeSection, setActiveSection] =
@@ -86,6 +88,8 @@ export default function AgentFormComponent({
   const [pluginStatusLoading, setPluginStatusLoading] = useState(true);
   const [pluginStatusError, setPluginStatusError] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const isSavingRef = useRef(false);
 
   const formSchema = z.object({
     basic: z.object({
@@ -118,10 +122,10 @@ export default function AgentFormComponent({
   const savedSnapshotRef = useRef('');
   const initializedStagesRef = useRef<Set<string>>(new Set());
   const watchedValues = form.watch();
-  const hasUnsavedChanges = useMemo(() => {
+  const hasUnsavedChanges = (() => {
     if (!savedSnapshotRef.current) return false;
     return JSON.stringify(watchedValues) !== savedSnapshotRef.current;
-  }, [watchedValues]);
+  })();
 
   useEffect(() => {
     onDirtyChange?.(hasUnsavedChanges);
@@ -388,6 +392,8 @@ export default function AgentFormComponent({
   }
 
   function handleSubmit(values: FormValues) {
+    if (isSavingRef.current) return;
+    const submittedSnapshot = JSON.stringify(values);
     const runner = values.runner || {};
     const agent: Partial<Agent> = {
       name: values.basic.name,
@@ -404,16 +410,23 @@ export default function AgentFormComponent({
       },
     };
 
+    isSavingRef.current = true;
+    setIsSaving(true);
+    onSavingChange?.(true);
     httpClient
       .updateAgent(agentId, agent)
       .then(() => {
-        const snapshotValues = form.getValues();
-        savedSnapshotRef.current = JSON.stringify(snapshotValues);
+        savedSnapshotRef.current = submittedSnapshot;
         onFinish();
         toast.success(t('agents.saveSuccess'));
       })
       .catch((err) => {
         toast.error(t('agents.saveError') + err.msg);
+      })
+      .finally(() => {
+        isSavingRef.current = false;
+        setIsSaving(false);
+        onSavingChange?.(false);
       });
   }
 
@@ -574,6 +587,7 @@ export default function AgentFormComponent({
                             type="button"
                             variant="destructive"
                             size="sm"
+                            disabled={isSaving}
                             onClick={() => setShowDeleteConfirm(true)}
                           >
                             <Trash2 className="size-4 mr-1.5" />

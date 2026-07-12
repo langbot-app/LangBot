@@ -16,7 +16,10 @@ class AgentsRouterGroup(group.RouterGroup):
                 return self.success(data={'agents': await self.ap.agent_service.get_agents(sort_by, sort_order)})
 
             json_data = await quart.request.json
-            created = await self.ap.agent_service.create_agent(json_data)
+            try:
+                created = await self.ap.agent_service.create_agent(json_data)
+            except ValueError as exc:
+                return self.http_status(400, -1, str(exc))
             return self.success(data=created)
 
         @self.route('/_/metadata', methods=['GET'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
@@ -33,7 +36,10 @@ class AgentsRouterGroup(group.RouterGroup):
 
             if quart.request.method == 'PUT':
                 json_data = await quart.request.json
-                await self.ap.agent_service.update_agent(agent_uuid, json_data)
+                try:
+                    await self.ap.agent_service.update_agent(agent_uuid, json_data)
+                except ValueError as exc:
+                    return self.http_status(400, -1, str(exc))
                 return self.success()
 
             await self.ap.agent_service.delete_agent(agent_uuid)

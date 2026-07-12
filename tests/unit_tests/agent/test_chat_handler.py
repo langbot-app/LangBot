@@ -8,6 +8,7 @@ Tests focus on:
 
 Avoids circular imports by using proper import structure.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -19,10 +20,11 @@ from langbot.pkg.agent.runner.errors import (
     RunnerExecutionError,
     RunnerNotAuthorizedError,
 )
-from langbot.pkg.agent.runner.config_migration import ConfigMigration
+from langbot.pkg.agent.runner.config_resolver import RunnerConfigResolver
 
 
 # Define mock classes in dependency order (no forward references needed)
+
 
 class MockLauncherType:
     value = 'person'
@@ -59,6 +61,7 @@ class MockSession:
 
 class MockQuery:
     """Mock Query for testing."""
+
     def __init__(self):
         self.query_id = 1
         self.launcher_type = MockLauncherType()
@@ -93,6 +96,7 @@ class MockQuery:
 
 class MockMessageChunk:
     """Mock MessageChunk for testing."""
+
     def __init__(self, content, resp_message_id=None):
         self.role = 'assistant'
         self.content = content
@@ -106,6 +110,7 @@ class MockMessageChunk:
 
 class MockEventContext:
     """Mock event context for testing."""
+
     def __init__(self, prevented=False, reply_message_chain=None, user_message_alter=None):
         self._prevented = prevented
         self.event = MagicMock()
@@ -118,6 +123,7 @@ class MockEventContext:
 
 class MockAgentRunOrchestrator:
     """Mock AgentRunOrchestrator for testing."""
+
     def __init__(self, chunks=None, error=None):
         self._chunks = chunks or []
         self._error = error
@@ -138,6 +144,7 @@ class MockAgentRunOrchestrator:
 
 class MockApplication:
     """Mock Application for testing."""
+
     def __init__(self, orchestrator=None):
         self.agent_run_orchestrator = orchestrator or MockAgentRunOrchestrator()
         self.logger = MagicMock()
@@ -226,11 +233,11 @@ class TestStreamingBehavior:
         assert len(resp_messages) == 2
 
 
-class TestConfigMigrationInChatHandler:
-    """Tests for ConfigMigration usage in chat handler context."""
+class TestRunnerConfigResolverInChatHandler:
+    """Tests for RunnerConfigResolver usage in chat handler context."""
 
     def test_resolve_runner_id_from_pipeline_config(self):
-        """Chat handler should use ConfigMigration to resolve runner ID."""
+        """Chat handler should use RunnerConfigResolver to resolve runner ID."""
         pipeline_config = {
             'ai': {
                 'runner': {
@@ -239,7 +246,7 @@ class TestConfigMigrationInChatHandler:
             },
         }
 
-        runner_id = ConfigMigration.resolve_runner_id(pipeline_config)
+        runner_id = RunnerConfigResolver.resolve_runner_id(pipeline_config)
         assert runner_id == 'plugin:langbot-team/LocalAgent/default'
 
     def test_old_runner_field_is_not_resolved(self):
@@ -252,7 +259,7 @@ class TestConfigMigrationInChatHandler:
             },
         }
 
-        runner_id = ConfigMigration.resolve_runner_id(pipeline_config)
+        runner_id = RunnerConfigResolver.resolve_runner_id(pipeline_config)
         assert runner_id is None
 
 
@@ -302,19 +309,23 @@ class TestChatHandlerImports:
         """Import chat handler module should work."""
         # This test verifies the import works without circular dependency
         from langbot.pkg.pipeline.process.handlers import chat
+
         assert chat.ChatMessageHandler is not None
 
     def test_chat_handler_class_exists(self):
         """ChatMessageHandler class should be defined."""
         from langbot.pkg.pipeline.process.handlers.chat import ChatMessageHandler
+
         assert ChatMessageHandler.__name__ == 'ChatMessageHandler'
 
     def test_chat_handler_has_handle_method(self):
         """ChatMessageHandler should have async generator handle method."""
         from langbot.pkg.pipeline.process.handlers.chat import ChatMessageHandler
+
         assert hasattr(ChatMessageHandler, 'handle')
         # handle returns AsyncGenerator, so check for async generator function
         import inspect
+
         assert inspect.isasyncgenfunction(ChatMessageHandler.handle)
 
 
@@ -353,8 +364,10 @@ class TestChatHandlerAsyncBehavior:
         def make_result(*args, **kwargs):
             return MagicMock(result_type=kwargs.get('result_type', entities.ResultType.CONTINUE))
 
-        with patch('langbot.pkg.pipeline.process.handlers.chat.events') as mock_events_module, \
-             patch('langbot.pkg.pipeline.entities.StageProcessResult', side_effect=make_result):
+        with (
+            patch('langbot.pkg.pipeline.process.handlers.chat.events') as mock_events_module,
+            patch('langbot.pkg.pipeline.entities.StageProcessResult', side_effect=make_result),
+        ):
             mock_events_module.PersonNormalMessageReceived = mock_event
             mock_events_module.GroupNormalMessageReceived = mock_event
 
@@ -396,8 +409,10 @@ class TestChatHandlerAsyncBehavior:
         def make_result(*args, **kwargs):
             return MagicMock(result_type=kwargs.get('result_type', entities.ResultType.CONTINUE))
 
-        with patch('langbot.pkg.pipeline.process.handlers.chat.events') as mock_events_module, \
-             patch('langbot.pkg.pipeline.entities.StageProcessResult', side_effect=make_result):
+        with (
+            patch('langbot.pkg.pipeline.process.handlers.chat.events') as mock_events_module,
+            patch('langbot.pkg.pipeline.entities.StageProcessResult', side_effect=make_result),
+        ):
             mock_events_module.PersonNormalMessageReceived = mock_event
             mock_events_module.GroupNormalMessageReceived = mock_event
 
@@ -439,8 +454,10 @@ class TestChatHandlerAsyncBehavior:
         def make_result(*args, **kwargs):
             return MagicMock(result_type=kwargs.get('result_type', entities.ResultType.CONTINUE))
 
-        with patch('langbot.pkg.pipeline.process.handlers.chat.events') as mock_events_module, \
-             patch('langbot.pkg.pipeline.entities.StageProcessResult', side_effect=make_result):
+        with (
+            patch('langbot.pkg.pipeline.process.handlers.chat.events') as mock_events_module,
+            patch('langbot.pkg.pipeline.entities.StageProcessResult', side_effect=make_result),
+        ):
             mock_events_module.PersonNormalMessageReceived = mock_event
             mock_events_module.GroupNormalMessageReceived = mock_event
 
@@ -460,9 +477,7 @@ class TestChatHandlerAsyncBehavior:
         from langbot.pkg.pipeline.process.handlers.chat import ChatMessageHandler
         from langbot.pkg.pipeline import entities
 
-        orchestrator = MockAgentRunOrchestrator(
-            error=RunnerNotFoundError('plugin:notexist/unknown/default')
-        )
+        orchestrator = MockAgentRunOrchestrator(error=RunnerNotFoundError('plugin:notexist/unknown/default'))
         mock_ap = MockApplication(orchestrator=orchestrator)
         mock_ap.plugin_connector.emit_event = AsyncMock(return_value=MockEventContext(prevented=False))
 
@@ -479,8 +494,10 @@ class TestChatHandlerAsyncBehavior:
                 user_notice=kwargs.get('user_notice'),
             )
 
-        with patch('langbot.pkg.pipeline.process.handlers.chat.events') as mock_events_module, \
-             patch('langbot.pkg.pipeline.entities.StageProcessResult', side_effect=make_result):
+        with (
+            patch('langbot.pkg.pipeline.process.handlers.chat.events') as mock_events_module,
+            patch('langbot.pkg.pipeline.entities.StageProcessResult', side_effect=make_result),
+        ):
             mock_events_module.PersonNormalMessageReceived = mock_event
             mock_events_module.GroupNormalMessageReceived = mock_event
 
@@ -518,8 +535,10 @@ class TestChatHandlerAsyncBehavior:
                 user_notice=kwargs.get('user_notice'),
             )
 
-        with patch('langbot.pkg.pipeline.process.handlers.chat.events') as mock_events_module, \
-             patch('langbot.pkg.pipeline.entities.StageProcessResult', side_effect=make_result):
+        with (
+            patch('langbot.pkg.pipeline.process.handlers.chat.events') as mock_events_module,
+            patch('langbot.pkg.pipeline.entities.StageProcessResult', side_effect=make_result),
+        ):
             mock_events_module.PersonNormalMessageReceived = mock_event
             mock_events_module.GroupNormalMessageReceived = mock_event
 
@@ -556,8 +575,10 @@ class TestChatHandlerAsyncBehavior:
                 user_notice=kwargs.get('user_notice'),
             )
 
-        with patch('langbot.pkg.pipeline.process.handlers.chat.events') as mock_events_module, \
-             patch('langbot.pkg.pipeline.entities.StageProcessResult', side_effect=make_result):
+        with (
+            patch('langbot.pkg.pipeline.process.handlers.chat.events') as mock_events_module,
+            patch('langbot.pkg.pipeline.entities.StageProcessResult', side_effect=make_result),
+        ):
             mock_events_module.PersonNormalMessageReceived = mock_event
             mock_events_module.GroupNormalMessageReceived = mock_event
 
@@ -593,8 +614,10 @@ class TestChatHandlerAsyncBehavior:
         def make_result(*args, **kwargs):
             return MagicMock(result_type=kwargs.get('result_type', entities.ResultType.CONTINUE))
 
-        with patch('langbot.pkg.pipeline.process.handlers.chat.events') as mock_events_module, \
-             patch('langbot.pkg.pipeline.entities.StageProcessResult', side_effect=make_result):
+        with (
+            patch('langbot.pkg.pipeline.process.handlers.chat.events') as mock_events_module,
+            patch('langbot.pkg.pipeline.entities.StageProcessResult', side_effect=make_result),
+        ):
             mock_events_module.PersonNormalMessageReceived = mock_event
             mock_events_module.GroupNormalMessageReceived = mock_event
 

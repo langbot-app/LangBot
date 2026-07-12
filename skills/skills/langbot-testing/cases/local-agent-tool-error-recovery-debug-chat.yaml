@@ -34,7 +34,7 @@ automation_pipeline_url_env: LANGBOT_LOCAL_AGENT_PIPELINE_URL
 automation_pipeline_name_env: LANGBOT_LOCAL_AGENT_PIPELINE_NAME
 automation_expected_runner_id: "plugin:langbot-team/LocalAgent/default"
 automation_runner_config_patch_json: '{"knowledge-bases":[],"max-tool-iterations":3,"tool-execution-mode":"serial"}'
-automation_extensions_patch_json: '{"enable_all_plugins":false,"bound_plugins":[{"author":"langbot","name":"local-agent"},{"author":"qa","name":"plugin-smoke"}],"enable_all_mcp_servers":false,"bound_mcp_servers":[],"enable_all_skills":false,"bound_skills":[]}'
+automation_extensions_patch_json: '{"enable_all_plugins":false,"bound_plugins":[{"author":"langbot-team","name":"LocalAgent"},{"author":"qa","name":"plugin-smoke"}],"enable_all_mcp_servers":false,"bound_mcp_servers":[],"enable_all_skills":false,"bound_skills":[]}'
 automation_restore_runner_config: "1"
 automation_restore_extensions: "1"
 automation_reset_debug_chat: "1"

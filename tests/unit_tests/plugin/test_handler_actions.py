@@ -10,6 +10,8 @@ import pytest
 from langbot_plugin.api.entities.builtin.provider import message as provider_message
 from langbot_plugin.entities.io.actions.enums import PluginToRuntimeAction, RuntimeToLangBotAction
 
+from langbot.pkg.provider.tools.errors import ToolExecutionDeniedError
+
 
 def make_handler(app):
     """Create a RuntimeConnectionHandler with mocked external connection."""
@@ -456,6 +458,14 @@ class TestAgentRunProxyActions:
         mock_app.model_mgr.get_rerank_model_by_uuid = AsyncMock()
         mock_app.tool_mgr = Mock()
         mock_app.tool_mgr.execute_func_call = AsyncMock(return_value={'ok': True})
+        mock_app.tool_mgr.get_tool_detail = AsyncMock(
+            return_value={
+                'name': 'test/search',
+                'description': 'Search test data',
+                'human_desc': 'Search',
+                'parameters': {'type': 'object'},
+            }
+        )
         return mock_app
 
     @staticmethod
@@ -463,9 +473,7 @@ class TestAgentRunProxyActions:
         return SimpleNamespace(
             pipeline_config={'output': {'misc': {'remove-think': remove_think}}},
             variables={},
-            prompt=SimpleNamespace(
-                messages=[provider_message.Message(role='system', content='effective prompt')]
-            ),
+            prompt=SimpleNamespace(messages=[provider_message.Message(role='system', content='effective prompt')]),
         )
 
     @pytest.mark.asyncio
@@ -491,10 +499,12 @@ class TestAgentRunProxyActions:
         runtime_handler = make_handler(app)
 
         try:
-            response = await runtime_handler.actions[PluginToRuntimeAction.GET_PROMPT.value]({
-                'run_id': run_id,
-                'caller_plugin_identity': 'test/runner',
-            })
+            response = await runtime_handler.actions[PluginToRuntimeAction.GET_PROMPT.value](
+                {
+                    'run_id': run_id,
+                    'caller_plugin_identity': 'test/runner',
+                }
+            )
         finally:
             await registry.unregister(run_id)
 
@@ -535,19 +545,23 @@ class TestAgentRunProxyActions:
         runtime_handler = make_handler(app)
 
         try:
-            response = await runtime_handler.actions[PluginToRuntimeAction.INVOKE_LLM.value]({
-                'run_id': run_id,
-                'caller_plugin_identity': 'test/runner',
-                'llm_model_uuid': 'llm_001',
-                'messages': [{'role': 'user', 'content': 'hello'}],
-                'funcs': [{
-                    'name': 'search',
-                    'human_desc': 'Search',
-                    'description': 'Search',
-                    'parameters': {'type': 'object'},
-                }],
-                'extra_args': {'temperature': 0.7, 'presence_penalty': 0.1},
-            })
+            response = await runtime_handler.actions[PluginToRuntimeAction.INVOKE_LLM.value](
+                {
+                    'run_id': run_id,
+                    'caller_plugin_identity': 'test/runner',
+                    'llm_model_uuid': 'llm_001',
+                    'messages': [{'role': 'user', 'content': 'hello'}],
+                    'funcs': [
+                        {
+                            'name': 'search',
+                            'human_desc': 'Search',
+                            'description': 'Search',
+                            'parameters': {'type': 'object'},
+                        }
+                    ],
+                    'extra_args': {'temperature': 0.7, 'presence_penalty': 0.1},
+                }
+            )
         finally:
             await registry.unregister(run_id)
 
@@ -603,12 +617,14 @@ class TestAgentRunProxyActions:
         runtime_handler = make_handler(app)
 
         try:
-            response = await runtime_handler.actions[PluginToRuntimeAction.INVOKE_LLM.value]({
-                'run_id': run_id,
-                'caller_plugin_identity': 'test/runner',
-                'llm_model_uuid': 'llm_usage_001',
-                'messages': [{'role': 'user', 'content': 'hello'}],
-            })
+            response = await runtime_handler.actions[PluginToRuntimeAction.INVOKE_LLM.value](
+                {
+                    'run_id': run_id,
+                    'caller_plugin_identity': 'test/runner',
+                    'llm_model_uuid': 'llm_usage_001',
+                    'messages': [{'role': 'user', 'content': 'hello'}],
+                }
+            )
         finally:
             await registry.unregister(run_id)
 
@@ -647,19 +663,23 @@ class TestAgentRunProxyActions:
         runtime_handler = make_handler(app)
 
         try:
-            response = await runtime_handler.actions[PluginToRuntimeAction.COUNT_TOKENS.value]({
-                'run_id': run_id,
-                'caller_plugin_identity': 'test/runner',
-                'llm_model_uuid': 'llm_count_001',
-                'messages': [{'role': 'user', 'content': 'hello'}],
-                'funcs': [{
-                    'name': 'search',
-                    'human_desc': 'Search',
-                    'description': 'Search',
-                    'parameters': {'type': 'object'},
-                }],
-                'extra_args': {'temperature': 0.7},
-            })
+            response = await runtime_handler.actions[PluginToRuntimeAction.COUNT_TOKENS.value](
+                {
+                    'run_id': run_id,
+                    'caller_plugin_identity': 'test/runner',
+                    'llm_model_uuid': 'llm_count_001',
+                    'messages': [{'role': 'user', 'content': 'hello'}],
+                    'funcs': [
+                        {
+                            'name': 'search',
+                            'human_desc': 'Search',
+                            'description': 'Search',
+                            'parameters': {'type': 'object'},
+                        }
+                    ],
+                    'extra_args': {'temperature': 0.7},
+                }
+            )
         finally:
             await registry.unregister(run_id)
 
@@ -692,12 +712,14 @@ class TestAgentRunProxyActions:
 
         runtime_handler = make_handler(app)
         try:
-            response = await runtime_handler.actions[PluginToRuntimeAction.COUNT_TOKENS.value]({
-                'run_id': run_id,
-                'caller_plugin_identity': 'test/runner',
-                'llm_model_uuid': 'llm_count_002',
-                'messages': [{'role': 'user', 'content': 'hello'}],
-            })
+            response = await runtime_handler.actions[PluginToRuntimeAction.COUNT_TOKENS.value](
+                {
+                    'run_id': run_id,
+                    'caller_plugin_identity': 'test/runner',
+                    'llm_model_uuid': 'llm_count_002',
+                    'messages': [{'role': 'user', 'content': 'hello'}],
+                }
+            )
         finally:
             await registry.unregister(run_id)
 
@@ -742,20 +764,24 @@ class TestAgentRunProxyActions:
 
         responses = []
         try:
-            stream = runtime_handler.actions[PluginToRuntimeAction.INVOKE_LLM_STREAM.value]({
-                'run_id': run_id,
-                'caller_plugin_identity': 'test/runner',
-                'llm_model_uuid': 'llm_stream_001',
-                'messages': [{'role': 'user', 'content': 'hello'}],
-                'funcs': [{
-                    'name': 'search',
-                    'human_desc': 'Search',
-                    'description': 'Search',
-                    'parameters': {'type': 'object'},
-                }],
-                'extra_args': {'max_tokens': 256},
-                'remove_think': True,
-            })
+            stream = runtime_handler.actions[PluginToRuntimeAction.INVOKE_LLM_STREAM.value](
+                {
+                    'run_id': run_id,
+                    'caller_plugin_identity': 'test/runner',
+                    'llm_model_uuid': 'llm_stream_001',
+                    'messages': [{'role': 'user', 'content': 'hello'}],
+                    'funcs': [
+                        {
+                            'name': 'search',
+                            'human_desc': 'Search',
+                            'description': 'Search',
+                            'parameters': {'type': 'object'},
+                        }
+                    ],
+                    'extra_args': {'max_tokens': 256},
+                    'remove_think': True,
+                }
+            )
             async for response in stream:
                 responses.append(response)
         finally:
@@ -801,12 +827,14 @@ class TestAgentRunProxyActions:
 
         responses = []
         try:
-            stream = runtime_handler.actions[PluginToRuntimeAction.INVOKE_LLM_STREAM.value]({
-                'run_id': run_id,
-                'caller_plugin_identity': 'test/runner',
-                'llm_model_uuid': 'llm_stream_002',
-                'messages': [{'role': 'user', 'content': 'hello'}],
-            })
+            stream = runtime_handler.actions[PluginToRuntimeAction.INVOKE_LLM_STREAM.value](
+                {
+                    'run_id': run_id,
+                    'caller_plugin_identity': 'test/runner',
+                    'llm_model_uuid': 'llm_stream_002',
+                    'messages': [{'role': 'user', 'content': 'hello'}],
+                }
+            )
             async for response in stream:
                 responses.append(response)
         finally:
@@ -856,12 +884,14 @@ class TestAgentRunProxyActions:
 
         responses = []
         try:
-            stream = runtime_handler.actions[PluginToRuntimeAction.INVOKE_LLM_STREAM.value]({
-                'run_id': run_id,
-                'caller_plugin_identity': 'test/runner',
-                'llm_model_uuid': 'llm_stream_usage_001',
-                'messages': [{'role': 'user', 'content': 'hello'}],
-            })
+            stream = runtime_handler.actions[PluginToRuntimeAction.INVOKE_LLM_STREAM.value](
+                {
+                    'run_id': run_id,
+                    'caller_plugin_identity': 'test/runner',
+                    'llm_model_uuid': 'llm_stream_usage_001',
+                    'messages': [{'role': 'user', 'content': 'hello'}],
+                }
+            )
             async for response in stream:
                 responses.append(response)
         finally:
@@ -888,18 +918,28 @@ class TestAgentRunProxyActions:
             runner_id='plugin:test/runner/default',
             query_id=903,
             plugin_identity='test/runner',
-            resources=make_agent_resources(tools=[{'tool_name': 'test/search'}]),
+            resources=make_agent_resources(
+                tools=[
+                    {
+                        'tool_name': 'test/search',
+                        'source': 'mcp',
+                        'source_id': 'bound-mcp',
+                    }
+                ]
+            ),
         )
 
         runtime_handler = make_handler(app)
 
         try:
-            response = await runtime_handler.actions[PluginToRuntimeAction.CALL_TOOL.value]({
-                'run_id': run_id,
-                'caller_plugin_identity': 'test/runner',
-                'tool_name': 'test/search',
-                'parameters': {'q': 'langbot'},
-            })
+            response = await runtime_handler.actions[PluginToRuntimeAction.CALL_TOOL.value](
+                {
+                    'run_id': run_id,
+                    'caller_plugin_identity': 'test/runner',
+                    'tool_name': 'test/search',
+                    'parameters': {'q': 'langbot'},
+                }
+            )
         finally:
             await registry.unregister(run_id)
 
@@ -909,7 +949,303 @@ class TestAgentRunProxyActions:
             name='test/search',
             parameters={'q': 'langbot'},
             query=query,
+            source_ref={'source': 'mcp', 'source_id': 'bound-mcp'},
         )
+
+    @pytest.mark.asyncio
+    async def test_get_tool_detail_passes_frozen_source_ref(self, app):
+        """GET_TOOL_DETAIL resolves only the implementation frozen for the run."""
+        from langbot.pkg.agent.runner.session_registry import get_session_registry
+
+        run_id = 'run_proxy_get_tool_detail_source'
+        registry = get_session_registry()
+        await registry.unregister(run_id)
+        await registry.register(
+            run_id=run_id,
+            runner_id='plugin:test/runner/default',
+            query_id=None,
+            plugin_identity='test/runner',
+            resources=make_agent_resources(
+                tools=[
+                    {
+                        'tool_name': 'test/search',
+                        'source': 'mcp',
+                        'source_id': 'bound-mcp',
+                    }
+                ]
+            ),
+        )
+        runtime_handler = make_handler(app)
+
+        try:
+            response = await runtime_handler.actions[PluginToRuntimeAction.GET_TOOL_DETAIL.value](
+                {
+                    'run_id': run_id,
+                    'caller_plugin_identity': 'test/runner',
+                    'tool_name': 'test/search',
+                }
+            )
+        finally:
+            await registry.unregister(run_id)
+
+        assert response.code == 0
+        app.tool_mgr.get_tool_detail.assert_awaited_once_with(
+            'test/search',
+            source_ref={'source': 'mcp', 'source_id': 'bound-mcp'},
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ('action', 'action_payload', 'manager_method'),
+        [
+            pytest.param(
+                PluginToRuntimeAction.CALL_TOOL,
+                {'parameters': {'q': 'langbot'}},
+                'execute_func_call',
+                id='call',
+            ),
+            pytest.param(
+                PluginToRuntimeAction.GET_TOOL_DETAIL,
+                {},
+                'get_tool_detail',
+                id='detail',
+            ),
+        ],
+    )
+    @pytest.mark.parametrize(
+        'tool_resource',
+        [
+            pytest.param(
+                {'tool_name': 'test/search', 'source_id': 'bound-mcp'},
+                id='missing-source',
+            ),
+            pytest.param(
+                {'tool_name': 'test/search', 'source': 'mcp'},
+                id='missing-source-id',
+            ),
+            pytest.param(
+                {'tool_name': 'test/search', 'source': 7, 'source_id': 'bound-mcp'},
+                id='invalid-source-type',
+            ),
+            pytest.param(
+                {'tool_name': 'test/search', 'source': 'mcp', 'source_id': 7},
+                id='invalid-source-id-type',
+            ),
+            pytest.param(
+                {'tool_name': 'test/search', 'source': 'mcp', 'source_id': None},
+                id='unscoped-mcp-source',
+            ),
+            pytest.param(
+                {'tool_name': 'test/search', 'source': 'plugin', 'source_id': None},
+                id='unscoped-plugin-source',
+            ),
+            pytest.param(
+                {'tool_name': 'test/search', 'source': 'builtin', 'source_id': 'unexpected'},
+                id='builtin-source-id',
+            ),
+        ],
+    )
+    async def test_tool_actions_reject_malformed_frozen_source_identity(
+        self,
+        app,
+        action,
+        action_payload,
+        manager_method,
+        tool_resource,
+    ):
+        """Run-scoped tool actions never fall back from a malformed authorization snapshot."""
+        from langbot.pkg.agent.runner.session_registry import get_session_registry
+
+        run_id = f'run_proxy_malformed_source_{action.value}'
+        registry = get_session_registry()
+        await registry.unregister(run_id)
+        await registry.register(
+            run_id=run_id,
+            runner_id='plugin:test/runner/default',
+            query_id=None,
+            plugin_identity='test/runner',
+            resources=make_agent_resources(tools=[tool_resource]),
+        )
+        runtime_handler = make_handler(app)
+
+        try:
+            response = await runtime_handler.actions[action.value](
+                {
+                    'run_id': run_id,
+                    'caller_plugin_identity': 'test/runner',
+                    'tool_name': 'test/search',
+                    **action_payload,
+                }
+            )
+        finally:
+            await registry.unregister(run_id)
+
+        assert response.code != 0
+        assert response.message == 'Tool test/search has an invalid frozen source identity for this agent run'
+        getattr(app.tool_mgr, manager_method).assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_call_tool_returns_error_when_host_denies_execution(self, app):
+        """CALL_TOOL preserves the existing error response when a loader denies execution."""
+        from langbot.pkg.agent.runner.session_registry import get_session_registry
+
+        run_id = 'run_proxy_call_tool_denied'
+        query = self.query()
+        app.query_pool.cached_queries[907] = query
+        app.tool_mgr.execute_func_call.side_effect = ToolExecutionDeniedError(
+            'langbot_mcp_read_resource',
+            'MCP resource agent reads are disabled',
+        )
+        registry = get_session_registry()
+        await registry.unregister(run_id)
+        await registry.register(
+            run_id=run_id,
+            runner_id='plugin:test/runner/default',
+            query_id=907,
+            plugin_identity='test/runner',
+            resources=make_agent_resources(
+                tools=[
+                    {
+                        'tool_name': 'langbot_mcp_read_resource',
+                        'source': 'mcp',
+                        'source_id': None,
+                    }
+                ]
+            ),
+        )
+        runtime_handler = make_handler(app)
+
+        try:
+            response = await runtime_handler.actions[PluginToRuntimeAction.CALL_TOOL.value](
+                {
+                    'run_id': run_id,
+                    'caller_plugin_identity': 'test/runner',
+                    'tool_name': 'langbot_mcp_read_resource',
+                    'parameters': {'server_name': 'docs', 'uri': 'file:///README.md'},
+                }
+            )
+        finally:
+            await registry.unregister(run_id)
+
+        assert response.code != 0
+        assert 'Failed to execute tool langbot_mcp_read_resource' in response.message
+        assert 'MCP resource agent reads are disabled' in response.message
+
+    @pytest.mark.asyncio
+    async def test_call_tool_falls_back_to_host_execution_query(self, app):
+        """Pure EBA runs use their Host-only Query when no cached Query exists."""
+        from langbot.pkg.agent.runner.session_registry import get_session_registry
+
+        run_id = 'run_proxy_call_tool_event_first'
+        query = self.query()
+        registry = get_session_registry()
+        await registry.unregister(run_id)
+        await registry.register(
+            run_id=run_id,
+            runner_id='plugin:test/runner/default',
+            query_id=None,
+            plugin_identity='test/runner',
+            resources=make_agent_resources(tools=[{'tool_name': 'exec', 'source': 'builtin', 'source_id': None}]),
+            execution_query=query,
+        )
+
+        runtime_handler = make_handler(app)
+        try:
+            response = await runtime_handler.actions[PluginToRuntimeAction.CALL_TOOL.value](
+                {
+                    'run_id': run_id,
+                    'caller_plugin_identity': 'test/runner',
+                    'tool_name': 'exec',
+                    'parameters': {'command': 'pwd'},
+                }
+            )
+        finally:
+            await registry.unregister(run_id)
+
+        assert response.code == 0
+        assert getattr(query, '_agent_run_session')['run_id'] == run_id
+        app.tool_mgr.execute_func_call.assert_awaited_once_with(
+            name='exec',
+            parameters={'command': 'pwd'},
+            query=query,
+            source_ref={'source': 'builtin', 'source_id': None},
+        )
+
+    @pytest.mark.asyncio
+    async def test_pure_event_call_tool_exec_uses_native_host_path(self, app):
+        """A pure EBA run can call authorized native exec through CALL_TOOL."""
+        from langbot.pkg.agent.runner.execution_context import build_execution_query
+        from langbot.pkg.agent.runner.host_models import AgentEventEnvelope
+        from langbot.pkg.agent.runner.session_registry import get_session_registry
+        from langbot.pkg.provider.tools.loaders.native import NativeToolLoader
+        from langbot.pkg.provider.tools.toolmgr import ToolManager
+        from langbot_plugin.api.entities.builtin.agent_runner.delivery import DeliveryContext
+        from langbot_plugin.api.entities.builtin.agent_runner.input import AgentInput
+
+        event = AgentEventEnvelope(
+            event_id='event-native-exec',
+            event_type='message.received',
+            source='platform',
+            bot_id='bot-1',
+            conversation_id='person_user-1',
+            input=AgentInput(text='run pwd'),
+            delivery=DeliveryContext(
+                surface='platform',
+                reply_target={'target_type': 'person', 'target_id': 'user-1'},
+                platform_capabilities={'adapter': 'TestAdapter'},
+            ),
+        )
+        query = build_execution_query(event, [])
+        app.box_service = SimpleNamespace(
+            execute_tool=AsyncMock(
+                return_value={
+                    'ok': True,
+                    'session_id': 'lb-box-test',
+                    'stdout': '/workspace\n',
+                    'stderr': '',
+                }
+            ),
+        )
+        app.monitoring_service = None
+        app.skill_mgr = None
+        native_loader = NativeToolLoader(app)
+        native_loader._backend_available = True
+        tool_mgr = ToolManager(app)
+        tool_mgr.native_tool_loader = native_loader
+        tool_mgr.plugin_tool_loader = Mock()
+        tool_mgr.mcp_tool_loader = Mock()
+        tool_mgr.skill_tool_loader = Mock()
+        app.tool_mgr = tool_mgr
+
+        run_id = 'run_pure_event_native_exec'
+        registry = get_session_registry()
+        await registry.unregister(run_id)
+        await registry.register(
+            run_id=run_id,
+            runner_id='plugin:test/runner/default',
+            query_id=None,
+            plugin_identity='test/runner',
+            resources=make_agent_resources(tools=[{'tool_name': 'exec', 'source': 'builtin', 'source_id': None}]),
+            execution_query=query,
+        )
+
+        runtime_handler = make_handler(app)
+        try:
+            response = await runtime_handler.actions[PluginToRuntimeAction.CALL_TOOL.value](
+                {
+                    'run_id': run_id,
+                    'caller_plugin_identity': 'test/runner',
+                    'tool_name': 'exec',
+                    'parameters': {'command': 'pwd'},
+                }
+            )
+        finally:
+            await registry.unregister(run_id)
+
+        assert response.code == 0
+        assert response.data['result']['ok'] is True
+        assert response.data['result']['stdout'] == '/workspace\n'
+        app.box_service.execute_tool.assert_awaited_once_with({'command': 'pwd'}, query)
 
     @pytest.mark.asyncio
     async def test_invoke_rerank_uses_authorized_model_and_extra_args(self, app):
@@ -928,10 +1264,12 @@ class TestAgentRunProxyActions:
         )
 
         provider = SimpleNamespace(
-            invoke_rerank=AsyncMock(return_value=[
-                {'index': 0, 'relevance_score': 0.2},
-                {'index': 1, 'relevance_score': 0.9},
-            ]),
+            invoke_rerank=AsyncMock(
+                return_value=[
+                    {'index': 0, 'relevance_score': 0.2},
+                    {'index': 1, 'relevance_score': 0.9},
+                ]
+            ),
         )
         rerank_model = SimpleNamespace(
             model_entity=SimpleNamespace(extra_args={'top_n': 5, 'return_documents': False}),
@@ -941,15 +1279,17 @@ class TestAgentRunProxyActions:
         runtime_handler = make_handler(app)
 
         try:
-            response = await runtime_handler.actions[PluginToRuntimeAction.INVOKE_RERANK.value]({
-                'run_id': run_id,
-                'caller_plugin_identity': 'test/runner',
-                'rerank_model_uuid': 'rerank_001',
-                'query': 'hello',
-                'documents': ['a', 'b'],
-                'top_k': 1,
-                'extra_args': {'top_n': 2},
-            })
+            response = await runtime_handler.actions[PluginToRuntimeAction.INVOKE_RERANK.value](
+                {
+                    'run_id': run_id,
+                    'caller_plugin_identity': 'test/runner',
+                    'rerank_model_uuid': 'rerank_001',
+                    'query': 'hello',
+                    'documents': ['a', 'b'],
+                    'top_k': 1,
+                    'extra_args': {'top_n': 2},
+                }
+            )
         finally:
             await registry.unregister(run_id)
 

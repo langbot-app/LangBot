@@ -1,7 +1,7 @@
 """drop legacy bot pipeline routing columns
 
 Revision ID: 0011_drop_legacy_bot_routing
-Revises: 0010_merge_mcp_resource_agent_heads
+Revises: 0010_merge_mcp_agent_heads
 Create Date: 2026-07-01
 """
 
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 revision = '0011_drop_legacy_bot_routing'
-down_revision = '0010_merge_mcp_resource_agent_heads'
+down_revision = '0010_merge_mcp_agent_heads'
 branch_labels = None
 depends_on = None
 

@@ -2,7 +2,7 @@
 
 本文档是 `docs/agent-runner-pluginization/` 的状态事实源。协议 schema 仍以 [PROTOCOL_V1.md](./PROTOCOL_V1.md) 为准；测试步骤以 [AGENT_RUNNER_QA_GUIDE.md](./AGENT_RUNNER_QA_GUIDE.md) 为准；安全发布门槛以 [SECURITY_HARDENING.md](./SECURITY_HARDENING.md) 为准。
 
-状态快照日期：2026-06-23。
+状态快照日期：2026-07-12。
 
 ## 实现状态
 
@@ -20,11 +20,12 @@
 | Security boundary | Done | 当前口径降级为轻量边界：LangBot 保护自身持有资源；external harness 的 OS / process / network / workspace 风险由用户或部署环境承担；managed sandbox 不是当前承诺。 |
 | Steering control path | Done | claim 异常不再逃逸 consumer loop；queue 有上限；未 pull 的 claimed 输入在 run 结束时写 `steering.dropped` 审计终态。 |
 | SDK v1 contract closure | Done | SDK 提供 `AgentAPIError` / `AgentAPIException`、typed `SteeringPullResult`、未知 result type 宽容解析、result `sequence` 注入与取消传播。 |
+| EBA processor routing | Done; clean-instance catalog gate pending | Bot `event_bindings`、Pipeline / Agent 平级路由、WebUI dry-run / 合成测试 / 状态、OneBot 非消息事件到 Agent 及平台回复已闭环；全新实例 Runner Marketplace 用例仍需独立空白环境。 |
 
 ## Spec 与实现已知差距
 
 - `action.requested` 仍只作为 telemetry / reserved surface；platform action executor 不在本分支执行。
-- EventGateway / EventRouter 完整实现由外部 EBA 分支联调；本分支只提供 event-first host envelope / binding / run 入口。
+- `action.requested` 权限模型完成前，DeliveryContext 的 adapter capability 投影只用于输出决策，不提供平台动作执行权限。
 - State 与 storage 的长期类型边界仍可继续收窄；当前合同只要求 JSON-safe state 与受控 storage API。
 - `ToolResource.parameters` 已作为 best-effort full schema 由 Host 在构造 `ctx.resources` 时一次塞齐；无 schema 时 runner 仍需兼容 `parameters=None` 或按需调用 detail API。
 - EventLog / Transcript 已提供显式 cleanup primitive；长期 retention 默认值、TTL 调度接入和 sandbox/workspace 文件清理仍是运维收尾项，应在 Runtime Control Plane 产品化前补齐。
@@ -44,7 +45,7 @@
 
 | 范围 | 状态 | 最近证据 |
 | --- | --- | --- |
-| LangBot Runtime Control Plane v2 foundation | Unit-pass; product E2E pending | 2026-06-23 `tests/unit_tests/agent`、`tests/unit_tests/plugin/test_handler_actions.py`、`tests/unit_tests/provider/test_skill_tools.py`、pipeline preproc/chat handler tests 和 Telegram EBA adapter tests 通过，覆盖 ledger、admin permissions、runtime heartbeat、claim/reconcile、orchestrator 持久化、取消传播、skill activation persistence 和插件化 runner pipeline path。 |
+| LangBot Runtime Control Plane v2 foundation | Unit-pass; EBA product flow pass | 2026-07-12 事件路由与 Agent 协议针对性测试通过；WebUI 已验证 Quick Start 场景筛选、事件路由 dry-run / 合成派发、Runner 健康状态，以及真实 OneBot `group.member_joined` → Agent → `send_group_msg` 链路。clean-instance Runner Marketplace 用例因当前实例已有插件与 runner 未执行。 |
 | SDK AgentRunner control entities / proxy | Unit-pass | 2026-06-23 SDK `tests/api/entities/builtin/agent_runner`、`tests/api/proxies`、`tests/api/test_agent_tools_mcp_bridge.py`、`tests/runtime/plugin/test_mgr_agent_runner.py`、`tests/runtime/test_pull_api_handlers.py`、`tests/runtime/io/handlers/test_plugin_handler.py`、EBA event entities 和 message tests 通过，覆盖 typed entities、AgentRunAPIProxy、MCP bridge、runtime manager 与 pull API handlers。 |
 
 ## 历史高价值记录

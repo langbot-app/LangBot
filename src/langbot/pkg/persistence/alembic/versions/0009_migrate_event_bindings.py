@@ -3,7 +3,7 @@
 Bindings keep referencing the original Pipeline UUIDs. This migration never
 creates Agent rows or copies Pipeline runner configuration.
 
-Revision ID: 0009_migrate_routing_to_event_bindings
+Revision ID: 0009_migrate_event_bindings
 Revises: 0008_agent_product_surface
 Create Date: 2026-06-26
 """
@@ -14,7 +14,7 @@ import uuid
 import sqlalchemy as sa
 from alembic import op
 
-revision = '0009_migrate_routing_to_event_bindings'
+revision = '0009_migrate_event_bindings'
 down_revision = '0008_agent_product_surface'
 depends_on = None
 
@@ -30,24 +30,28 @@ def _column_exists(table_name: str, column_name: str) -> bool:
 
 
 def _rule_to_filters(rule: dict) -> list[dict] | None:
-    """Convert a pipeline_routing_rule to event_binding filters (best effort).
-
-    Rules that don't map cleanly (message_content, message_has_element) are
-    skipped — callers should handle None as "cannot migrate".
-    """
+    """Convert one legacy Pipeline routing rule to an EBA event filter."""
     rule_type = rule.get('type')
     operator = rule.get('operator', 'eq')
     value = rule.get('value', '')
 
     if rule_type == 'launcher_type':
-        if value == 'group':
-            return [{'field': 'group', 'operator': 'neq', 'value': None}]
-        if value == 'person':
-            return [{'field': 'group', 'operator': 'eq', 'value': None}]
-    elif rule_type == 'launcher_id':
+        return [{'field': 'chat_type', 'operator': operator, 'value': value}]
+    if rule_type == 'launcher_id':
         return [{'field': 'chat_id', 'operator': operator, 'value': value}]
+    if rule_type == 'message_content':
+        return [{'field': 'message_text', 'operator': operator, 'value': value}]
+    if rule_type == 'message_has_element':
+        element_operator = {
+            'eq': 'contains',
+            'neq': 'not_contains',
+        }.get(operator)
+        if element_operator is None:
+            # The legacy matcher treated every other operator as non-matching.
+            element_operator = 'unsupported_legacy_operator'
+        return [{'field': 'message_element_types', 'operator': element_operator, 'value': value}]
 
-    return None  # message_content / message_has_element: no clean mapping
+    return None
 
 
 def upgrade() -> None:

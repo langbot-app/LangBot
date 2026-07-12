@@ -1030,14 +1030,14 @@ const viVN = {
       selectSkills: 'Chọn kỹ năng',
       noSkillsAvailable: 'Không có kỹ năng khả dụng',
       mcpServersScopeTooltip:
-        'Tại đây chỉ kiểm soát máy chủ MCP được liên kết với Pipeline. Công cụ và tài nguyên MCP cụ thể được chọn trong AI Feature > Local Agent.',
+        'Tại đây chỉ kiểm soát máy chủ MCP được liên kết với Pipeline. Công cụ và tài nguyên MCP cụ thể được chọn trong AI Feature > Agent Runner.',
       enableAllMCPServersTooltip:
         'Khi bật, mọi máy chủ MCP đã cấu hình và bật sẽ trở thành ứng viên cho công cụ và tài nguyên MCP trong AI Feature.',
     },
-    localAgent: {
+    agentRunner: {
       toolsTitle: 'Công cụ',
       toolsDescription:
-        'Chọn công cụ plugin, MCP và công cụ tích hợp sẵn cho Local Agent này.',
+        'Chọn công cụ plugin, MCP và công cụ tích hợp sẵn cho Agent Runner này.',
       toolsScopeTooltip:
         'Công cụ MCP chỉ đến từ máy chủ MCP đã liên kết trong Tiện ích mở rộng. Hãy liên kết máy chủ tại đó trước nếu muốn chọn thêm tại đây.',
       enableAllTools: 'Bật tất cả công cụ',
@@ -1055,7 +1055,7 @@ const viVN = {
       selectTools: 'Chọn công cụ',
       resourcesTitle: 'Tài nguyên',
       resourcesDescription:
-        'Chọn tài nguyên MCP và kho tri thức cho Local Agent này.',
+        'Chọn tài nguyên MCP và kho tri thức cho Agent Runner này.',
       knowledgeBases: 'Kho tri thức',
       mcpResources: 'Tài nguyên MCP',
       mcpResourcesScopeTooltip:
@@ -1677,11 +1677,6 @@ const viVN = {
     aiEngine: {
       title: 'Chọn công cụ AI',
       description: 'Chọn công cụ AI sẽ cung cấp trí tuệ cho Bot của bạn.',
-    },
-    spaceBanner: {
-      message:
-        'Kết nối với LangBot Space để nhận tín dụng dùng thử mô hình miễn phí và thiết lập tức thì không cần cấu hình!',
-      action: 'Ủy quyền với Space',
     },
     config: {
       botInfo: 'Thông tin Bot',

@@ -17,6 +17,7 @@ export default function AgentDetailContent({ id }: { id: string }) {
   const [agent, setAgent] = useState<Agent | null>(null);
   const [loading, setLoading] = useState(!isCreateMode);
   const [formDirty, setFormDirty] = useState(false);
+  const [formSaving, setFormSaving] = useState(false);
 
   useEffect(() => {
     if (isCreateMode) {
@@ -73,7 +74,11 @@ export default function AgentDetailContent({ id }: { id: string }) {
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between pb-4 shrink-0">
         <h1 className="text-xl font-semibold">{t('agents.editAgent')}</h1>
-        <Button type="submit" form="agent-form" disabled={!formDirty}>
+        <Button
+          type="submit"
+          form="agent-form"
+          disabled={!formDirty || formSaving}
+        >
           {t('common.save')}
         </Button>
       </div>
@@ -83,13 +88,13 @@ export default function AgentDetailContent({ id }: { id: string }) {
           agentId={id}
           onFinish={() => {
             refreshPipelines();
-            setFormDirty(false);
           }}
           onDeleted={() => {
             refreshPipelines();
             navigate('/home/agents');
           }}
           onDirtyChange={setFormDirty}
+          onSavingChange={setFormSaving}
         />
       </div>
     </div>

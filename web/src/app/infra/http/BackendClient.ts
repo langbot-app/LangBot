@@ -982,8 +982,14 @@ export class BackendClient extends BaseHttpClient {
     );
   }
 
-  public getToolDetail(toolName: string): Promise<ApiRespToolDetail> {
-    return this.get(`/api/v1/tools/${toolName}`);
+  public getToolDetail(
+    toolName: string,
+    pipelineId?: string,
+  ): Promise<ApiRespToolDetail> {
+    return this.get(
+      `/api/v1/tools/${encodeURIComponent(toolName)}`,
+      pipelineId ? { pipeline_uuid: pipelineId } : undefined,
+    );
   }
 
   public getMCPServer(serverName: string): Promise<ApiRespMCPServer> {

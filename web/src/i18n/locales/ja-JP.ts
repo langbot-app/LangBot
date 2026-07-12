@@ -1232,14 +1232,14 @@ const jaJP = {
       selectSkills: 'スキルを選択',
       noSkillsAvailable: '利用可能なスキルがありません',
       mcpServersScopeTooltip:
-        'ここでは、このパイプラインに紐付ける MCP サーバーだけを管理します。個別の MCP ツールとリソースは AI 機能の Local Agent で選択します。',
+        'ここでは、このパイプラインに紐付ける MCP サーバーだけを管理します。個別の MCP ツールとリソースは AI 機能の Agent Runner で選択します。',
       enableAllMCPServersTooltip:
         '有効にすると、設定済みで有効なすべての MCP サーバーが AI 機能の MCP ツールとリソース候補になります。',
     },
-    localAgent: {
+    agentRunner: {
       toolsTitle: 'ツール',
       toolsDescription:
-        'この Local Agent が使用できるプラグイン、MCP、組み込みツールを選択します。',
+        'この Agent Runner が使用できるプラグイン、MCP、組み込みツールを選択します。',
       toolsScopeTooltip:
         'MCP ツールは拡張機能で紐付けられた MCP サーバーからのみ表示されます。追加するには先に拡張機能でサーバーを紐付けてください。',
       enableAllTools: 'すべてのツールを有効化',
@@ -1257,7 +1257,7 @@ const jaJP = {
       selectTools: 'ツールを選択',
       resourcesTitle: 'リソース',
       resourcesDescription:
-        'この Local Agent が読み取れる MCP リソースとナレッジベースを選択します。',
+        'この Agent Runner が読み取れる MCP リソースとナレッジベースを選択します。',
       knowledgeBases: 'ナレッジベース',
       mcpResources: 'MCP リソース',
       mcpResourcesScopeTooltip:
@@ -1933,11 +1933,6 @@ const jaJP = {
         'Runner のインストールがタイムアウトしました。拡張機能のタスクを確認してください。',
       registrationTimeout:
         '拡張機能はインストールされましたが、Runner が登録されませんでした。プラグインランタイムを確認して再試行してください。',
-    },
-    spaceBanner: {
-      message:
-        'LangBot Spaceに接続して、無料トライアルモデルクレジットとゼロ設定の即時セットアップを入手！',
-      action: 'Spaceで認証',
     },
     config: {
       botInfo: 'ボット情報',

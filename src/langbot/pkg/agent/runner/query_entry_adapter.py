@@ -3,6 +3,7 @@
 This adapter bridges the current Query entry point with the event-first
 Protocol v1 architecture without exposing Query internals to runners.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -23,12 +24,13 @@ from langbot_plugin.api.entities.builtin.agent_runner.delivery import DeliveryCo
 from .host_models import (
     AgentConfig,
     AgentEventEnvelope,
-    ResourcePolicy,
     StatePolicy,
     DeliveryPolicy,
 )
-from .config_migration import ConfigMigration
+from .config_resolver import RunnerConfigResolver
+from .resource_policy import ResourcePolicyProjector
 from . import events as runner_events
+from ...provider.tools.toolmgr import TOOL_SOURCE_REFS_QUERY_KEY
 
 
 class QueryEntryAdapter:
@@ -83,7 +85,7 @@ class QueryEntryAdapter:
             event_id=event.event_id or str(query.query_id),
             event_type=event.event_type or runner_events.MESSAGE_RECEIVED,
             event_time=event.event_time,
-            source="host_adapter",
+            source='host_adapter',
             source_event_type=event.source_event_type,
             bot_id=query.bot_uuid,
             workspace_id=None,  # Not available in Query
@@ -105,21 +107,22 @@ class QueryEntryAdapter:
     ) -> AgentConfig:
         """Project the current Pipeline config container into target Agent config."""
         pipeline_config = query.pipeline_config or {}
-        runner_config = ConfigMigration.resolve_runner_config(pipeline_config, runner_id)
+        runner_config = RunnerConfigResolver.resolve_runner_config(pipeline_config, runner_id)
         agent_id = getattr(query, 'pipeline_uuid', None)
 
-        # Build resource policy from current config
-        resource_policy = ResourcePolicy(
-            allowed_model_uuids=cls._extract_allowed_models(query),
-            allowed_tool_names=cls._extract_allowed_tools(query),
-            allowed_kb_uuids=cls._extract_allowed_kbs(query),
-            allowed_skill_names=cls._extract_allowed_skills(query),
+        resource_policy = ResourcePolicyProjector.from_runner_config(
+            runner_config,
+            resolved_model_uuids=cls._extract_allowed_models(query),
+            resolved_tool_names=cls._extract_allowed_tools(query),
+            resolved_tool_sources=cls._extract_allowed_tool_sources(query),
+            resolved_kb_uuids=cls._extract_allowed_kbs(query),
+            resolved_skill_names=cls._extract_allowed_skills(query),
         )
 
         # Build state policy
         state_policy = StatePolicy(
             enable_state=True,
-            state_scopes=["conversation", "actor", "subject", "runner"],
+            state_scopes=['conversation', 'actor', 'subject', 'runner'],
         )
 
         # Build delivery policy
@@ -181,10 +184,7 @@ class QueryEntryAdapter:
         if isinstance(value, (list, tuple)):
             return all(cls.is_json_serializable(item) for item in value)
         if isinstance(value, dict):
-            return all(
-                isinstance(k, str) and cls.is_json_serializable(v)
-                for k, v in value.items()
-            )
+            return all(isinstance(k, str) and cls.is_json_serializable(v) for k, v in value.items())
         return False
 
     # Private helper methods
@@ -228,7 +228,7 @@ class QueryEntryAdapter:
             event_id=cls._build_scoped_event_id(query, source_event_id, event_time),
             event_type=runner_events.MESSAGE_RECEIVED,
             event_time=event_time,
-            source="host_adapter",
+            source='host_adapter',
             source_event_type=source_event_type,
             data=event_data,
         )
@@ -345,7 +345,7 @@ class QueryEntryAdapter:
         actor_name = sender.get_name() if sender and hasattr(sender, 'get_name') else None
 
         return ActorContext(
-            actor_type="user",
+            actor_type='user',
             actor_id=str(actor_id) if actor_id is not None else None,
             actor_name=actor_name,
             metadata={},
@@ -371,13 +371,13 @@ class QueryEntryAdapter:
             launcher_type_value = getattr(launcher_type, 'value', launcher_type)
 
         return SubjectContext(
-            subject_type="message",
+            subject_type='message',
             subject_id=str(message_id or query_id or ''),
             data={
-                "launcher_type": launcher_type_value,
-                "launcher_id": getattr(query, 'launcher_id', None),
-                "sender_id": str(getattr(query, 'sender_id', '')) if getattr(query, 'sender_id', None) else None,
-                "bot_uuid": getattr(query, 'bot_uuid', None),
+                'launcher_type': launcher_type_value,
+                'launcher_id': getattr(query, 'launcher_id', None),
+                'sender_id': str(getattr(query, 'sender_id', '')) if getattr(query, 'sender_id', None) else None,
+                'bot_uuid': getattr(query, 'bot_uuid', None),
             },
         )
 
@@ -467,31 +467,39 @@ class QueryEntryAdapter:
 
             if elem_type == 'image_url':
                 image_url = elem.get('image_url') or {}
-                add_attachment({
-                    'type': 'image',
-                    'source': 'url',
-                    'url': image_url.get('url') if isinstance(image_url, dict) else str(image_url),
-                })
+                add_attachment(
+                    {
+                        'type': 'image',
+                        'source': 'url',
+                        'url': image_url.get('url') if isinstance(image_url, dict) else str(image_url),
+                    }
+                )
             elif elem_type == 'image_base64':
-                add_attachment({
-                    'type': 'image',
-                    'source': 'base64',
-                    'content': elem.get('image_base64'),
-                })
+                add_attachment(
+                    {
+                        'type': 'image',
+                        'source': 'base64',
+                        'content': elem.get('image_base64'),
+                    }
+                )
             elif elem_type == 'file_url':
-                add_attachment({
-                    'type': 'file',
-                    'source': 'url',
-                    'url': elem.get('file_url'),
-                    'name': elem.get('file_name'),
-                })
+                add_attachment(
+                    {
+                        'type': 'file',
+                        'source': 'url',
+                        'url': elem.get('file_url'),
+                        'name': elem.get('file_name'),
+                    }
+                )
             elif elem_type == 'file_base64':
-                add_attachment({
-                    'type': 'file',
-                    'source': 'base64',
-                    'content': elem.get('file_base64'),
-                    'name': elem.get('file_name'),
-                })
+                add_attachment(
+                    {
+                        'type': 'file',
+                        'source': 'base64',
+                        'content': elem.get('file_base64'),
+                        'name': elem.get('file_name'),
+                    }
+                )
 
         message_chain = getattr(query, 'message_chain', None)
         if message_chain:
@@ -505,30 +513,36 @@ class QueryEntryAdapter:
                     image_id = component.image_id or None
                     image_url = component.url or None
                     image_base64 = component.base64 or None
-                    add_attachment({
-                        'type': 'image',
-                        'source': 'message_chain',
-                        'id': image_id,
-                        'url': image_url,
-                        'content': image_base64,
-                    })
+                    add_attachment(
+                        {
+                            'type': 'image',
+                            'source': 'message_chain',
+                            'id': image_id,
+                            'url': image_url,
+                            'content': image_base64,
+                        }
+                    )
                 elif isinstance(component, platform_message.File):
-                    add_attachment({
-                        'type': 'file',
-                        'source': 'message_chain',
-                        'id': component.id or None,
-                        'name': component.name or None,
-                        'url': component.url or None,
-                        'content': component.base64 or None,
-                    })
+                    add_attachment(
+                        {
+                            'type': 'file',
+                            'source': 'message_chain',
+                            'id': component.id or None,
+                            'name': component.name or None,
+                            'url': component.url or None,
+                            'content': component.base64 or None,
+                        }
+                    )
                 elif isinstance(component, platform_message.Voice):
-                    add_attachment({
-                        'type': 'voice',
-                        'source': 'message_chain',
-                        'id': component.voice_id or None,
-                        'url': component.url or None,
-                        'content': component.base64 or None,
-                    })
+                    add_attachment(
+                        {
+                            'type': 'voice',
+                            'source': 'message_chain',
+                            'id': component.voice_id or None,
+                            'url': component.url or None,
+                            'content': component.base64 or None,
+                        }
+                    )
 
         return attachments
 
@@ -557,9 +571,9 @@ class QueryEntryAdapter:
         """Build DeliveryContext from Query."""
         message_chain = getattr(query, 'message_chain', None)
         return DeliveryContext(
-            surface="platform",
+            surface='platform',
             reply_target={
-                "message_id": getattr(message_chain, 'message_id', None),
+                'message_id': getattr(message_chain, 'message_id', None),
             },
             supports_streaming=True,
             supports_edit=False,
@@ -601,22 +615,24 @@ class QueryEntryAdapter:
     ) -> list[str] | None:
         """Extract allowed tool names from query."""
         use_funcs = getattr(query, 'use_funcs', None)
-        if not use_funcs:
+        if use_funcs is None:
             return None
         try:
-            tool_names = []
-            for func in use_funcs:
-                if isinstance(func, dict):
-                    name = func.get('name')
-                elif hasattr(func, 'name'):
-                    name = func.name
-                else:
-                    continue
-                if name:
-                    tool_names.append(name)
-            return tool_names if tool_names else None
+            return ResourcePolicyProjector.extract_tool_names(use_funcs)
         except (TypeError, AttributeError):
+            return []
+
+    @classmethod
+    def _extract_allowed_tool_sources(
+        cls,
+        query: pipeline_query.Query,
+    ) -> dict[str, typing.Any] | None:
+        """Extract the Host-frozen implementation for each allowed tool."""
+        variables = getattr(query, 'variables', None)
+        if not isinstance(variables, dict):
             return None
+        refs = variables.get(TOOL_SOURCE_REFS_QUERY_KEY)
+        return refs if isinstance(refs, dict) else None
 
     @classmethod
     def _extract_allowed_kbs(
@@ -627,10 +643,9 @@ class QueryEntryAdapter:
         variables = getattr(query, 'variables', None)
         if not variables:
             return None
-        kb_uuids = variables.get('_knowledge_base_uuids')
-        if kb_uuids:
-            return kb_uuids
-        return None
+        if '_knowledge_base_uuids' not in variables:
+            return None
+        return ResourcePolicyProjector.normalize_names(variables.get('_knowledge_base_uuids'))
 
     @classmethod
     def _extract_allowed_skills(

@@ -234,6 +234,12 @@ def make_query():
             '_pipeline_bound_plugins': ['langbot-team/LocalAgent'],
             '_fallback_model_uuids': ['model_fallback'],
             '_pipeline_bound_skills': ['demo'],
+            '_host_tool_source_refs': {
+                'langbot/test-tool/search': {
+                    'source': 'plugin',
+                    'source_id': 'langbot/test-tool',
+                },
+            },
             'public_param': 'visible',
         },
         use_llm_model_uuid='model_primary',
@@ -705,6 +711,98 @@ async def test_orchestrator_unregisters_session_after_event_log_failure(clean_ag
 
 
 @pytest.mark.asyncio
+async def test_unconsumed_steering_audit_does_not_persist_pinned_context(clean_agent_state):
+    """Dropped steering audits retain routing metadata but never execution-only context."""
+    from langbot.pkg.agent.runner.event_log_store import EventLogStore
+
+    class BlockingPluginConnector(FakePluginConnector):
+        def __init__(self):
+            super().__init__()
+            self.started = asyncio.Event()
+            self.release = asyncio.Event()
+
+        async def run_agent(self, plugin_author, plugin_name, runner_name, context):
+            self.calls.append(
+                {
+                    'plugin_author': plugin_author,
+                    'plugin_name': plugin_name,
+                    'runner_name': runner_name,
+                }
+            )
+            self.contexts.append(context)
+            self.sessions_during_run.append(await get_session_registry().get(context['run_id']))
+            self.started.set()
+            await self.release.wait()
+            yield {
+                'type': 'message.completed',
+                'data': {'message': {'role': 'assistant', 'content': 'response'}},
+            }
+
+    db_engine = clean_agent_state
+    descriptor = make_descriptor()
+    descriptor.capabilities.steering = True
+    plugin_connector = BlockingPluginConnector()
+    ap = FakeApplication(plugin_connector, db_engine)
+    pinned_context = 'PINNED_CONTEXT_MUST_NOT_BE_PERSISTED'
+
+    async def build_resource_context(query):
+        attachments = query.variables.get('_pipeline_mcp_resource_attachments', [])
+        return pinned_context if attachments else ''
+
+    mcp_loader = types.SimpleNamespace(build_resource_context_for_query=AsyncMock(side_effect=build_resource_context))
+    ap.tool_mgr = types.SimpleNamespace(mcp_tool_loader=mcp_loader)
+    orchestrator = AgentRunOrchestrator(ap, FakeRegistry(descriptor))
+
+    active_query = make_query()
+
+    async def consume_active_run():
+        return [message async for message in orchestrator.run_from_query(active_query)]
+
+    active_task = asyncio.create_task(consume_active_run())
+    await asyncio.wait_for(plugin_connector.started.wait(), timeout=1)
+
+    steering_query = make_query()
+    steering_query.query_id = 1002
+    steering_query.message_chain[0].id = 'msg_002'
+    steering_query.variables['_pipeline_mcp_resource_attachments'] = [
+        {
+            'server_uuid': 'srv-1',
+            'server_name': 'docs',
+            'uri': 'file:///README.md',
+            'mode': 'pinned',
+        }
+    ]
+    steering_query.variables['_pipeline_mcp_resource_agent_read_enabled'] = True
+
+    try:
+        claimed = await orchestrator.try_claim_steering_from_query(steering_query)
+    finally:
+        plugin_connector.release.set()
+
+    messages = await asyncio.wait_for(active_task, timeout=1)
+    assert claimed is True
+    assert len(messages) == 1
+
+    event_store = EventLogStore(db_engine)
+    event_logs, _, _ = await event_store.page_events(
+        conversation_id=steering_query.session.using_conversation.uuid,
+        limit=10,
+    )
+    dropped = next(event for event in event_logs if event['event_type'] == 'steering.dropped')
+    queued = next(
+        event
+        for event in event_logs
+        if event['event_type'] == 'message.received'
+        and event.get('metadata', {}).get('steering', {}).get('status') == 'queued'
+    )
+
+    assert dropped['input_summary'] == 'Unconsumed steering input dropped'
+    assert dropped['input_json'] is None
+    assert dropped['metadata']['steering']['original_event_id'] == queued['event_id']
+    assert pinned_context not in str(event_logs)
+
+
+@pytest.mark.asyncio
 async def test_orchestrator_enforces_total_runner_deadline(clean_agent_state):
     """Test that orchestrator enforces total runner timeout."""
     db_engine = clean_agent_state
@@ -732,6 +830,48 @@ async def test_orchestrator_enforces_total_runner_deadline(clean_agent_state):
 
 class TestQueryEntrySessionQueryId:
     """Tests for internal query_id entering session registry."""
+
+    @pytest.mark.asyncio
+    async def test_query_box_scope_exists_before_attachment_materialization(self, clean_agent_state):
+        """Inbound staging and later runner tools resolve to the same Box session."""
+        from langbot.pkg.box.service import BoxService
+
+        class CapturingBoxService:
+            available = True
+
+            def __init__(self):
+                self.resolver = object.__new__(BoxService)
+                self.materialize_session_id = None
+
+            async def materialize_inbound_attachments(self, query):
+                self.materialize_session_id = self.resolver.resolve_box_session_id(query)
+                return []
+
+        db_engine = clean_agent_state
+        descriptor = make_descriptor()
+        plugin_connector = FakePluginConnector(
+            results=[
+                {
+                    'type': 'message.completed',
+                    'data': {'message': {'role': 'assistant', 'content': 'response'}},
+                }
+            ]
+        )
+        ap = FakeApplication(plugin_connector, db_engine)
+        box_service = CapturingBoxService()
+        ap.box_service = box_service
+        orchestrator = AgentRunOrchestrator(ap, FakeRegistry(descriptor))
+        query = make_query()
+
+        messages = [message async for message in orchestrator.run_from_query(query)]
+
+        assert len(messages) == 1
+        session = plugin_connector.sessions_during_run[0]
+        assert session is not None
+        assert session['execution_query'] is query
+        runner_session_id = box_service.resolver.resolve_box_session_id(session['execution_query'])
+        assert box_service.materialize_session_id == runner_session_id
+        assert query.variables['_host_box_scope']
 
     @pytest.mark.asyncio
     async def test_query_id_registered_in_session_for_query_entry_flow(self, clean_agent_state):
@@ -765,6 +905,9 @@ class TestQueryEntrySessionQueryId:
         session_during_run = plugin_connector.sessions_during_run[0]
         assert session_during_run is not None
         assert session_during_run['query_id'] == query.query_id
+        assert session_during_run['execution_query'] is query
+        assert query.pipeline_uuid == 'pipeline_001'
+        assert query.pipeline_config is not None
 
     @pytest.mark.asyncio
     async def test_no_query_id_for_pure_event_first_flow(self, clean_agent_state):
@@ -791,6 +934,10 @@ class TestQueryEntrySessionQueryId:
             ]
         )
         ap = FakeApplication(plugin_connector, db_engine)
+        mcp_loader = types.SimpleNamespace(
+            build_resource_context_for_query=AsyncMock(return_value='Pinned documentation')
+        )
+        ap.tool_mgr = types.SimpleNamespace(mcp_tool_loader=mcp_loader)
         orchestrator = AgentRunOrchestrator(ap, FakeRegistry(descriptor))
 
         # Create event and binding directly (not from Query)
@@ -805,7 +952,11 @@ class TestQueryEntrySessionQueryId:
             thread_id=None,
             actor=None,
             subject=None,
-            input=AgentInput(text='hello', contents=[], attachments=[]),
+            input=AgentInput(
+                text='hello',
+                contents=[provider_message.ContentElement.from_text('hello')],
+                attachments=[],
+            ),
             delivery=DeliveryContext(surface='test', supports_streaming=True),
         )
         binding = AgentBinding(
@@ -813,7 +964,17 @@ class TestQueryEntrySessionQueryId:
             scope=BindingScope(scope_type='agent', scope_id='pipeline_001'),
             event_types=['message.received'],
             runner_id=RUNNER_ID,
-            runner_config={},
+            runner_config={
+                'mcp-resources': [
+                    {
+                        'server_uuid': 'srv-1',
+                        'server_name': 'docs',
+                        'uri': 'file:///README.md',
+                        'mode': 'pinned',
+                    }
+                ],
+                'mcp-resource-agent-read-enabled': True,
+            },
             resource_policy=ResourcePolicy(),
             state_policy=StatePolicy(enable_state=False, state_scopes=[]),
             delivery_policy=DeliveryPolicy(enable_streaming=True, enable_reply=True),
@@ -827,6 +988,26 @@ class TestQueryEntrySessionQueryId:
         session_during_run = plugin_connector.sessions_during_run[0]
         assert session_during_run is not None
         assert session_during_run['query_id'] is None
+        execution_query = session_during_run['execution_query']
+        assert execution_query is not None
+        assert execution_query.pipeline_uuid is None
+        assert execution_query.pipeline_config is None
+        assert execution_query.bot_uuid == event.bot_id
+        assert execution_query.launcher_id == event.conversation_id
+        assert execution_query.sender_id == event.conversation_id
+        assert execution_query.session.launcher_id == event.conversation_id
+        assert execution_query.message_event.type == event.event_type
+        assert execution_query.variables['_host_box_scope']
+        assert execution_query.variables['_pipeline_bound_skills'] == ['demo', 'hidden']
+        assert execution_query.variables['_pipeline_mcp_resource_attachments'][0]['server_uuid'] == 'srv-1'
+        assert execution_query.variables['_pipeline_mcp_resource_agent_read_enabled'] is True
+        assert 'MCP resource context selected by LangBot host:' in plugin_connector.contexts[0]['input']['text']
+        assert 'Pinned documentation' in plugin_connector.contexts[0]['input']['text']
+        assert 'Pinned documentation' in plugin_connector.contexts[0]['input']['contents'][0]['text']
+        assert event.input.text == 'hello'
+        assert event.input.contents[0].text == 'hello'
+        assert 'Pinned documentation' not in str(execution_query.user_message.content)
+        mcp_loader.build_resource_context_for_query.assert_awaited_once_with(execution_query)
 
 
 class TestQueryEntryAdapterParams:
@@ -1106,8 +1287,21 @@ class TestQueryEntryAdapterHostCapabilities:
             ]
         )
         ap = FakeApplication(plugin_connector, db_engine)
+        mcp_loader = types.SimpleNamespace(
+            build_resource_context_for_query=AsyncMock(return_value='Pinned documentation')
+        )
+        ap.tool_mgr = types.SimpleNamespace(mcp_tool_loader=mcp_loader)
         orchestrator = AgentRunOrchestrator(ap, FakeRegistry(descriptor))
         query = make_query()
+        query.variables['_pipeline_mcp_resource_attachments'] = [
+            {
+                'server_uuid': 'srv-1',
+                'server_name': 'docs',
+                'uri': 'file:///README.md',
+                'mode': 'pinned',
+            }
+        ]
+        query.variables['_pipeline_mcp_resource_agent_read_enabled'] = True
         query.user_message = provider_message.Message(
             role='user',
             content=[
@@ -1119,6 +1313,7 @@ class TestQueryEntryAdapterHostCapabilities:
         messages = [message async for message in orchestrator.run_from_query(query)]
 
         assert len(messages) == 1
+        assert 'Pinned documentation' in plugin_connector.contexts[0]['input']['text']
 
         # Check EventLog has incoming event
         event_log_store = EventLogStore(db_engine)
@@ -1132,6 +1327,7 @@ class TestQueryEntryAdapterHostCapabilities:
         assert event_logs[0]['input_json']['contents'][1]['image_base64'] is None
         assert event_logs[0]['input_json']['contents'][1]['content_redacted'] is True
         assert 'aGVsbG8=' not in str(event_logs[0]['input_json'])
+        assert 'Pinned documentation' not in str(event_logs[0]['input_json'])
 
         # Check Transcript has user and assistant messages
         transcript_store = TranscriptStore(db_engine)
@@ -1149,3 +1345,4 @@ class TestQueryEntryAdapterHostCapabilities:
         assert user_item['content_json']['content'][1]['image_base64'] is None
         assert user_item['attachment_refs'][0]['content'] is None
         assert 'aGVsbG8=' not in str(user_item)
+        assert 'Pinned documentation' not in str(user_item)

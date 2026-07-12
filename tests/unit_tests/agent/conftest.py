@@ -1,4 +1,5 @@
 """Shared test fixtures for agent runner tests."""
+
 from __future__ import annotations
 
 import typing
@@ -45,6 +46,7 @@ def make_session(
     available_apis: dict[str, bool] | None = None,
     state_policy: dict[str, typing.Any] | None = None,
     state_context: dict[str, typing.Any] | None = None,
+    execution_query: typing.Any | None = None,
 ) -> dict[str, typing.Any]:
     """Create a minimal AgentRunSession dict for testing.
 
@@ -59,13 +61,12 @@ def make_session(
         AgentRunSession dict with run-scoped authorization snapshot
     """
     import time
+
     now = int(time.time())
     res = resources if resources is not None else make_resources()
     apis = available_apis if available_apis is not None else {}
     policy = (
-        state_policy
-        if state_policy is not None
-        else {'enable_state': True, 'state_scopes': ['conversation', 'actor']}
+        state_policy if state_policy is not None else {'enable_state': True, 'state_scopes': ['conversation', 'actor']}
     )
     context = state_context if state_context is not None else {}
 
@@ -102,6 +103,7 @@ def make_session(
         'run_id': run_id,
         'runner_id': runner_id,
         'query_id': query_id,
+        'execution_query': execution_query,
         'plugin_identity': plugin_identity,
         'authorization': {
             'resources': res,

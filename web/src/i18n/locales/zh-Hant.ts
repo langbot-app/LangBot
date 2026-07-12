@@ -986,7 +986,7 @@ const zhHant = {
       enableAllMCPServersTooltip:
         '啟用後，所有已配置且啟用的 MCP 伺服器都會進入 AI 能力中的 MCP 工具和資源候選範圍。',
     },
-    localAgent: {
+    agentRunner: {
       toolsTitle: '工具',
       toolsDescription: '選擇此內建 Agent 可以調用的插件、MCP 和內建工具。',
       toolsScopeTooltip:
@@ -1602,10 +1602,6 @@ const zhHant = {
     aiEngine: {
       title: '選擇 AI 引擎',
       description: '選擇驅動機器人智慧的 AI 引擎。',
-    },
-    spaceBanner: {
-      message: '接入 LangBot Space，取得免費試用模型額度，零配置極速開箱！',
-      action: '前往授權登入',
     },
     config: {
       botInfo: '機器人資訊',

@@ -11,8 +11,11 @@ import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
 
 from ...agent.runner.descriptor import AgentRunnerDescriptor
-from ...agent.runner.config_migration import ConfigMigration
+from ...agent.runner.config_resolver import RunnerConfigResolver
 from ...agent.runner import config_schema
+from ...agent.runner.resource_policy import ResourcePolicyProjector
+from ...provider.tools.toolmgr import ToolManager
+from ..extension_preferences import normalize_extension_preferences
 
 
 DEFAULT_PROMPT_CONFIG = [
@@ -77,6 +80,28 @@ class PreProcessor(stage.PipelineStage):
                 self.ap.logger.warning(f'Fallback model {fallback_uuid} not found, skipping')
         return valid_fallbacks
 
+    async def _resolve_host_tools(
+        self,
+        query: pipeline_query.Query,
+        runner_config: dict[str, typing.Any],
+        bound_plugins: list[str] | None,
+        bound_mcp_servers: list[str] | None,
+        include_mcp_resource_tools: bool,
+    ) -> list[typing.Any]:
+        catalog = await self.ap.tool_mgr.get_resolved_tool_catalog(
+            bound_plugins,
+            bound_mcp_servers,
+            include_skill_authoring=True,
+            include_mcp_resource_tools=include_mcp_resource_tools,
+        )
+        policy = ResourcePolicyProjector.from_runner_config(
+            runner_config,
+            resolved_tool_names=ResourcePolicyProjector.extract_tool_names(catalog),
+        )
+        catalog = ResourcePolicyProjector.filter_tools(catalog, policy)
+        ToolManager.bind_query_tool_sources(query, catalog)
+        return ToolManager.tools_from_catalog(catalog)
+
     def _runner_accepts_multimodal_input(self, descriptor: AgentRunnerDescriptor | None) -> bool:
         if descriptor is None:
             return True
@@ -136,9 +161,7 @@ class PreProcessor(stage.PipelineStage):
                 strict_thread=True,
             )
         except Exception as e:
-            self.ap.logger.warning(
-                f'Unable to load Transcript history view for conversation {conversation_uuid}: {e}'
-            )
+            self.ap.logger.warning(f'Unable to load Transcript history view for conversation {conversation_uuid}: {e}')
             return None
 
         return messages or None
@@ -168,14 +191,16 @@ class PreProcessor(stage.PipelineStage):
     ) -> entities.StageProcessResult:
         """Process"""
         # Resolve runner ID from the current ai.runner.id shape.
-        runner_id = ConfigMigration.resolve_runner_id(query.pipeline_config)
+        runner_id = RunnerConfigResolver.resolve_runner_id(query.pipeline_config)
 
         # Get runner config from ai.runner_config[runner_id].
-        runner_config = ConfigMigration.resolve_runner_config(query.pipeline_config, runner_id) if runner_id else {}
+        runner_config = (
+            RunnerConfigResolver.resolve_runner_config(query.pipeline_config, runner_id) if runner_id else {}
+        )
         query.variables = query.variables or {}
         bound_plugins = query.variables.get('_pipeline_bound_plugins', None)
         bound_mcp_servers = query.variables.get('_pipeline_bound_mcp_servers', None)
-        include_mcp_resource_tools = query.variables.get('_pipeline_mcp_resource_agent_read_enabled', True)
+        include_mcp_resource_tools = query.variables.get('_pipeline_mcp_resource_agent_read_enabled', True) is True
         descriptor = await self._get_runner_descriptor(runner_id, bound_plugins)
 
         session = await self.ap.sess_mgr.get_session(query)
@@ -204,7 +229,7 @@ class PreProcessor(stage.PipelineStage):
         # been idle for longer than the configured conversation expire time.
         # The idle window is measured from the last preprocess/update time, not
         # from the conversation creation time.
-        conversation_expire_time = ConfigMigration.get_expire_time(query.pipeline_config)
+        conversation_expire_time = RunnerConfigResolver.get_expire_time(query.pipeline_config)
         now = datetime.datetime.now()
         if conversation_expire_time is not None and conversation_expire_time > 0:
             last_update_time = getattr(conversation, 'update_time', None) or getattr(conversation, 'create_time', None)
@@ -236,10 +261,12 @@ class PreProcessor(stage.PipelineStage):
                 query.use_llm_model_uuid = llm_model.model_entity.uuid
 
                 if uses_host_tools and 'func_call' in (llm_model.model_entity.abilities or []):
-                    query.use_funcs = await self.ap.tool_mgr.get_all_tools(
+                    query.use_funcs = await self._resolve_host_tools(
+                        query,
+                        runner_config,
                         bound_plugins,
                         bound_mcp_servers,
-                        include_mcp_resource_tools=include_mcp_resource_tools,
+                        include_mcp_resource_tools,
                     )
 
                     self.ap.logger.debug(f'Bound plugins: {bound_plugins}')
@@ -249,16 +276,20 @@ class PreProcessor(stage.PipelineStage):
             # If primary model doesn't support func_call but fallback models exist,
             # load tools anyway since fallback models may support them
             if uses_host_tools and not query.use_funcs and query.variables.get('_fallback_model_uuids'):
-                query.use_funcs = await self.ap.tool_mgr.get_all_tools(
+                query.use_funcs = await self._resolve_host_tools(
+                    query,
+                    runner_config,
                     bound_plugins,
                     bound_mcp_servers,
-                    include_mcp_resource_tools=include_mcp_resource_tools,
+                    include_mcp_resource_tools,
                 )
         elif uses_host_tools:
-            query.use_funcs = await self.ap.tool_mgr.get_all_tools(
+            query.use_funcs = await self._resolve_host_tools(
+                query,
+                runner_config,
                 bound_plugins,
                 bound_mcp_servers,
-                include_mcp_resource_tools=include_mcp_resource_tools,
+                include_mcp_resource_tools,
             )
 
             self.ap.logger.debug(f'Bound plugins: {bound_plugins}')
@@ -372,13 +403,13 @@ class PreProcessor(stage.PipelineStage):
 
         if getattr(self.ap, 'skill_mgr', None) is not None:
             pipeline_data = await self.ap.pipeline_service.get_pipeline(query.pipeline_uuid)
-            extensions_prefs = (pipeline_data or {}).get('extensions_preferences', {})
-            enable_all_skills = extensions_prefs.get('enable_all_skills', True)
+            extensions_prefs = normalize_extension_preferences((pipeline_data or {}).get('extensions_preferences'))
+            enable_all_skills = extensions_prefs['enable_all_skills']
 
             if enable_all_skills:
                 bound_skills = None  # None = all loaded skills are visible
             else:
-                bound_skills = extensions_prefs.get('skills', [])
+                bound_skills = extensions_prefs['skills']
 
             query.variables['_pipeline_bound_skills'] = bound_skills
 

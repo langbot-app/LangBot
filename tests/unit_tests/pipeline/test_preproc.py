@@ -14,7 +14,6 @@ from __future__ import annotations
 import pytest
 from unittest.mock import AsyncMock, Mock
 from importlib import import_module
-from types import SimpleNamespace
 
 from tests.factories import (
     FakeApp,
@@ -113,7 +112,7 @@ class TestPreProcessorNormalText:
         app.model_mgr.get_model_by_uuid = AsyncMock(return_value=mock_model)
 
         # Mock tool manager
-        app.tool_mgr.get_all_tools = AsyncMock(return_value=[])
+        app.tool_mgr.get_resolved_tool_catalog = AsyncMock(return_value=[])
 
         # Mock plugin connector
         mock_event_ctx = Mock()
@@ -151,7 +150,7 @@ class TestPreProcessorNormalText:
         mock_model = Mock()
         mock_model.model_entity = Mock(uuid='test-model', abilities=['func_call'])
         app.model_mgr.get_model_by_uuid = AsyncMock(return_value=mock_model)
-        app.tool_mgr.get_all_tools = AsyncMock(return_value=[])
+        app.tool_mgr.get_resolved_tool_catalog = AsyncMock(return_value=[])
 
         mock_event_ctx = Mock()
         mock_event_ctx.event = Mock(default_prompt=[], prompt=[])
@@ -189,7 +188,7 @@ class TestPreProcessorEmptyMessage:
         app.sess_mgr.get_conversation = AsyncMock(return_value=mock_conversation)
 
         app.model_mgr.get_model_by_uuid = AsyncMock(return_value=None)
-        app.tool_mgr.get_all_tools = AsyncMock(return_value=[])
+        app.tool_mgr.get_resolved_tool_catalog = AsyncMock(return_value=[])
 
         mock_event_ctx = Mock()
         mock_event_ctx.event = Mock(default_prompt=[], prompt=[])
@@ -231,7 +230,7 @@ class TestPreProcessorImageSegment:
         mock_model = Mock()
         mock_model.model_entity = Mock(uuid='vision-model', abilities=['func_call', 'vision'])
         app.model_mgr.get_model_by_uuid = AsyncMock(return_value=mock_model)
-        app.tool_mgr.get_all_tools = AsyncMock(return_value=[])
+        app.tool_mgr.get_resolved_tool_catalog = AsyncMock(return_value=[])
 
         mock_event_ctx = Mock()
         mock_event_ctx.event = Mock(default_prompt=[], prompt=[])
@@ -279,7 +278,7 @@ class TestPreProcessorImageSegment:
         mock_model = Mock()
         mock_model.model_entity = Mock(uuid='text-only-model', abilities=['func_call'])
         app.model_mgr.get_model_by_uuid = AsyncMock(return_value=mock_model)
-        app.tool_mgr.get_all_tools = AsyncMock(return_value=[])
+        app.tool_mgr.get_resolved_tool_catalog = AsyncMock(return_value=[])
 
         mock_event_ctx = Mock()
         mock_event_ctx.event = Mock(default_prompt=[], prompt=[])
@@ -317,7 +316,7 @@ class TestPreProcessorModelSelection:
         mock_model = Mock()
         mock_model.model_entity = Mock(uuid='primary-model-uuid', abilities=['func_call'])
         app.model_mgr.get_model_by_uuid = AsyncMock(return_value=mock_model)
-        app.tool_mgr.get_all_tools = AsyncMock(return_value=[])
+        app.tool_mgr.get_resolved_tool_catalog = AsyncMock(return_value=[])
         attach_agent_runner_descriptor(app)
 
         mock_event_ctx = Mock()
@@ -369,7 +368,7 @@ class TestPreProcessorModelSelection:
             raise ValueError(f'Model {uuid} not found')
 
         app.model_mgr.get_model_by_uuid = AsyncMock(side_effect=mock_get_model)
-        app.tool_mgr.get_all_tools = AsyncMock(return_value=[])
+        app.tool_mgr.get_resolved_tool_catalog = AsyncMock(return_value=[])
         attach_agent_runner_descriptor(app)
 
         mock_event_ctx = Mock()
@@ -411,7 +410,7 @@ class TestPreProcessorVariables:
         app.sess_mgr.get_conversation = AsyncMock(return_value=mock_conversation)
 
         app.model_mgr.get_model_by_uuid = AsyncMock(return_value=None)
-        app.tool_mgr.get_all_tools = AsyncMock(return_value=[])
+        app.tool_mgr.get_resolved_tool_catalog = AsyncMock(return_value=[])
 
         mock_event_ctx = Mock()
         mock_event_ctx.event = Mock(default_prompt=[], prompt=[])
@@ -448,7 +447,7 @@ class TestPreProcessorVariables:
         app.sess_mgr.get_conversation = AsyncMock(return_value=mock_conversation)
 
         app.model_mgr.get_model_by_uuid = AsyncMock(return_value=None)
-        app.tool_mgr.get_all_tools = AsyncMock(return_value=[])
+        app.tool_mgr.get_resolved_tool_catalog = AsyncMock(return_value=[])
 
         mock_event_ctx = Mock()
         mock_event_ctx.event = Mock(default_prompt=[], prompt=[])
@@ -463,12 +462,62 @@ class TestPreProcessorVariables:
         assert 'group_name' in variables
         assert 'sender_name' in variables
 
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize('invalid_value', [0, None, 'false'])
+    @pytest.mark.parametrize(
+        ('configured_skills', 'expected_skills'),
+        [
+            (['bound-skill'], ['bound-skill']),
+            (None, []),
+            ('bound-skill', []),
+        ],
+    )
+    async def test_malformed_enable_all_skills_flag_uses_bound_skills(
+        self,
+        invalid_value,
+        configured_skills,
+        expected_skills,
+    ):
+        preproc = get_preproc_module()
+
+        app = FakeApp()
+        mock_session = Mock()
+        mock_session.launcher_type = Mock(value='person')
+        mock_session.launcher_id = 12345
+        app.sess_mgr.get_session = AsyncMock(return_value=mock_session)
+
+        mock_conversation = Mock()
+        mock_conversation.prompt = Mock(messages=[])
+        mock_conversation.prompt.copy = Mock(return_value=Mock(messages=[]))
+        mock_conversation.messages = []
+        mock_conversation.uuid = None
+        app.sess_mgr.get_conversation = AsyncMock(return_value=mock_conversation)
+
+        app.model_mgr.get_model_by_uuid = AsyncMock(return_value=None)
+        app.tool_mgr.get_resolved_tool_catalog = AsyncMock(return_value=[])
+        app.pipeline_service.get_pipeline = AsyncMock(
+            return_value={
+                'extensions_preferences': {
+                    'enable_all_skills': invalid_value,
+                    'skills': configured_skills,
+                }
+            }
+        )
+
+        mock_event_ctx = Mock()
+        mock_event_ctx.event = Mock(default_prompt=[], prompt=[])
+        app.plugin_connector.emit_event = AsyncMock(return_value=mock_event_ctx)
+
+        result = await preproc.PreProcessor(app).process(text_query('hello'), 'PreProcessor')
+
+        assert result.new_query.variables['_pipeline_bound_skills'] == expected_skills
+
 
 class TestPreProcessorToolSelection:
-    """Tests for Local Agent tool selection."""
+    """Tests for generic AgentRunner tool selection."""
 
     @pytest.mark.asyncio
-    async def test_local_agent_filters_selected_tools(self):
+    async def test_agent_runner_filters_selected_tools(self):
         """Only selected tools should be exposed when all-tools mode is off."""
         preproc = get_preproc_module()
 
@@ -488,11 +537,28 @@ class TestPreProcessorToolSelection:
         mock_model = Mock()
         mock_model.model_entity = Mock(uuid='primary-model-uuid', abilities=['func_call'])
         app.model_mgr.get_model_by_uuid = AsyncMock(return_value=mock_model)
-        app.tool_mgr.get_all_tools = AsyncMock(
+        app.tool_mgr.get_resolved_tool_catalog = AsyncMock(
             return_value=[
-                SimpleNamespace(name='exec'),
-                SimpleNamespace(name='plugin_tool'),
-                SimpleNamespace(name='mcp_tool'),
+                {
+                    'name': 'exec',
+                    'source': 'builtin',
+                    'description': 'Execute',
+                    'parameters': {},
+                },
+                {
+                    'name': 'plugin_tool',
+                    'source': 'plugin',
+                    'source_id': 'test/plugin',
+                    'description': 'Plugin tool',
+                    'parameters': {},
+                },
+                {
+                    'name': 'mcp_tool',
+                    'source': 'mcp',
+                    'source_id': 'mcp-server',
+                    'description': 'MCP tool',
+                    'parameters': {},
+                },
             ]
         )
 
@@ -516,3 +582,53 @@ class TestPreProcessorToolSelection:
         result = await stage.process(query, 'PreProcessor')
 
         assert [tool.name for tool in result.new_query.use_funcs] == ['plugin_tool']
+        assert result.new_query.variables['_host_tool_source_refs'] == {
+            'plugin_tool': {'source': 'plugin', 'source_id': 'test/plugin'},
+        }
+
+
+class TestPreProcessorMCPResourceContext:
+    """Tests for deferring MCP context until the run-scoped execution input."""
+
+    @pytest.mark.asyncio
+    async def test_pinned_context_does_not_mutate_preprocessed_input(self):
+        preproc = get_preproc_module()
+        from langbot.pkg.agent.runner.query_entry_adapter import QueryEntryAdapter
+
+        app = FakeApp()
+        mock_session = Mock()
+        mock_session.launcher_type = Mock(value='person')
+        mock_session.launcher_id = 12345
+        app.sess_mgr.get_session = AsyncMock(return_value=mock_session)
+
+        mock_conversation = Mock()
+        mock_conversation.prompt = Mock(messages=[])
+        mock_conversation.prompt.copy = Mock(return_value=Mock(messages=[]))
+        mock_conversation.messages = []
+        mock_conversation.uuid = 'conversation-1'
+        app.sess_mgr.get_conversation = AsyncMock(return_value=mock_conversation)
+
+        mock_model = Mock()
+        mock_model.model_entity = Mock(uuid='primary-model-uuid', abilities=[])
+        app.model_mgr.get_model_by_uuid = AsyncMock(return_value=mock_model)
+        mcp_loader = Mock()
+        mcp_loader.build_resource_context_for_query = AsyncMock(return_value='Pinned documentation')
+        app.tool_mgr.mcp_tool_loader = mcp_loader
+
+        mock_event_ctx = Mock()
+        mock_event_ctx.event = Mock(default_prompt=[], prompt=[])
+        app.plugin_connector.emit_event = AsyncMock(return_value=mock_event_ctx)
+        attach_agent_runner_descriptor(app, tool_calling=False)
+
+        query = text_query('hello')
+        query.launcher_id = '12345'
+        query.pipeline_config = agent_runner_pipeline_config(
+            {'primary': 'primary-model-uuid', 'fallbacks': []},
+        )
+
+        result = await preproc.PreProcessor(app).process(query, 'PreProcessor')
+        event = QueryEntryAdapter.query_to_event(result.new_query)
+
+        assert event.input.text == 'hello'
+        assert 'Pinned documentation' not in str(event.input.contents)
+        mcp_loader.build_resource_context_for_query.assert_not_awaited()

@@ -21,6 +21,29 @@ interface PipelineMock {
   updated_at: string;
 }
 
+interface AgentMock {
+  uuid: string;
+  name: string;
+  description: string;
+  emoji: string;
+  kind: 'agent';
+  component_ref: string;
+  config: JsonRecord;
+  enabled: boolean;
+  supported_event_patterns: string[];
+  updated_at: string;
+}
+
+interface ToolMock {
+  name: string;
+  description: string;
+  human_desc: string;
+  parameters: JsonRecord;
+  source: 'builtin' | 'plugin' | 'mcp' | 'skill';
+  source_name?: string;
+  source_id?: string;
+}
+
 interface KnowledgeBaseMock {
   uuid: string;
   name: string;
@@ -64,10 +87,12 @@ interface BotMock {
   use_pipeline_uuid?: string;
   pipeline_routing_rules: unknown[];
   adapter_runtime_values: JsonRecord;
+  event_bindings: unknown[];
   updated_at: string;
 }
 
 interface LangBotApiMockState {
+  agents: AgentMock[];
   bots: BotMock[];
   counters: Record<string, number>;
   knowledgeBases: KnowledgeBaseMock[];
@@ -78,6 +103,8 @@ interface LangBotApiMockState {
   sessionAnalyses: Record<string, unknown>;
   sessionMessages: Record<string, unknown[]>;
   skills: SkillMock[];
+  tools: ToolMock[];
+  withRunnerToolSelector: boolean;
 }
 
 function ok(data: unknown) {
@@ -183,7 +210,20 @@ function makePipeline(
     name: String(data.name || ''),
     description: String(data.description || ''),
     config: (data.config as JsonRecord | undefined) || {
-      ai: {},
+      ai: {
+        runner: {
+          id: 'plugin:langbot-team/LocalAgent/default',
+          'expire-time': 0,
+        },
+        runner_config: {
+          'plugin:langbot-team/LocalAgent/default': {
+            model: {
+              primary: 'llm-valid',
+              fallbacks: [],
+            },
+          },
+        },
+      },
       trigger: {},
       safety: {},
       output: {},
@@ -194,7 +234,41 @@ function makePipeline(
   };
 }
 
-function pipelineMetadata() {
+function makeAgent(data: JsonRecord, uuid: string): AgentMock {
+  return {
+    uuid,
+    name: String(data.name || uuid),
+    description: String(data.description || ''),
+    emoji: String(data.emoji || '🤖'),
+    kind: 'agent',
+    component_ref: String(
+      data.component_ref || 'plugin:langbot-team/LocalAgent/default',
+    ),
+    config: (data.config as JsonRecord | undefined) || {
+      runner: {
+        id: 'plugin:langbot-team/LocalAgent/default',
+        'expire-time': 0,
+      },
+      runner_config: {
+        'plugin:langbot-team/LocalAgent/default': {
+          model: {
+            primary: 'llm-valid',
+            fallbacks: [],
+          },
+          'enable-all-tools': false,
+          tools: ['unavailable_plugin_tool'],
+        },
+      },
+    },
+    enabled: data.enabled !== false,
+    supported_event_patterns: (data.supported_event_patterns as
+      | string[]
+      | undefined) || ['*'],
+    updated_at: now(),
+  };
+}
+
+function pipelineMetadata(withRunnerToolSelector = false) {
   return {
     configs: [
       {
@@ -212,21 +286,21 @@ function pipelineMetadata() {
             },
             config: [
               {
-                id: 'runner',
-                name: 'runner',
+                id: 'runner.id',
+                name: 'id',
                 label: {
                   en_US: 'Runner',
                   zh_Hans: '运行器',
                 },
                 type: 'select',
                 required: true,
-                default: 'local-agent',
+                default: 'plugin:langbot-team/LocalAgent/default',
                 options: [
                   {
-                    name: 'local-agent',
+                    name: 'plugin:langbot-team/LocalAgent/default',
                     label: {
-                      en_US: 'Built-in Agent',
-                      zh_Hans: '内置 Agent',
+                      en_US: 'Local Agent',
+                      zh_Hans: '本地 Agent',
                     },
                   },
                 ],
@@ -234,14 +308,14 @@ function pipelineMetadata() {
             ],
           },
           {
-            name: 'local-agent',
+            name: 'plugin:langbot-team/LocalAgent/default',
             label: {
-              en_US: 'Built-in Agent',
-              zh_Hans: '内置 Agent',
+              en_US: 'Local Agent',
+              zh_Hans: '本地 Agent',
             },
             config: [
               {
-                id: 'model',
+                id: 'plugin:langbot-team/LocalAgent/default.model',
                 name: 'model',
                 label: {
                   en_US: 'Model',
@@ -254,9 +328,37 @@ function pipelineMetadata() {
                   fallbacks: [],
                 },
               },
+              ...(withRunnerToolSelector
+                ? [
+                    {
+                      id: 'plugin:langbot-team/LocalAgent/default.tools',
+                      name: 'tools',
+                      label: {
+                        en_US: 'Tools',
+                        zh_Hans: '工具',
+                      },
+                      type: 'rich-tools-selector',
+                      required: false,
+                      default: [],
+                    },
+                  ]
+                : []),
             ],
           },
         ],
+      },
+    ],
+  };
+}
+
+function agentMetadata() {
+  return {
+    runner_config: pipelineMetadata(true).configs[0],
+    kinds: [
+      {
+        name: 'agent',
+        supported_event_patterns: ['*'],
+        message_only: false,
       },
     ],
   };
@@ -366,6 +468,7 @@ function makeBot(
       : undefined,
     pipeline_routing_rules:
       (data.pipeline_routing_rules as unknown[] | undefined) || [],
+    event_bindings: (data.event_bindings as unknown[] | undefined) || [],
     adapter_runtime_values: {
       webhook_full_url: `https://playwright.test/bots/${uuid}/webhook`,
       extra_webhook_full_url: '',
@@ -503,8 +606,90 @@ async function handleBackendApi(route: Route, state: LangBotApiMockState) {
     return fulfillJson(route, { models: [] });
   }
 
+  if (path === '/api/v1/agents/_/metadata') {
+    return fulfillJson(route, agentMetadata());
+  }
+
+  if (path === '/api/v1/agents') {
+    if (method === 'POST') {
+      const data = parseJsonBody(route);
+      if (data.kind === 'pipeline') {
+        const pipeline = makePipeline(state, data);
+        state.pipelines = [
+          ...state.pipelines.filter((item) => item.uuid !== pipeline.uuid),
+          pipeline,
+        ];
+        return fulfillJson(route, { uuid: pipeline.uuid, kind: 'pipeline' });
+      }
+
+      const agentId = nextId(state, 'agent');
+      const agent = makeAgent(data, agentId);
+      state.agents = [
+        ...state.agents.filter((item) => item.uuid !== agentId),
+        agent,
+      ];
+      return fulfillJson(route, { uuid: agentId, kind: 'agent' });
+    }
+
+    return fulfillJson(route, {
+      agents: [
+        ...state.agents,
+        ...state.pipelines.map((pipeline) => ({
+          ...pipeline,
+          kind: 'pipeline',
+          component_ref: 'pipeline',
+          enabled: true,
+          supported_event_patterns: ['message.*'],
+        })),
+      ],
+    });
+  }
+
+  const agentMatch = path.match(/^\/api\/v1\/agents\/([^/]+)$/);
+  if (agentMatch) {
+    const agentId = decodeURIComponent(agentMatch[1]);
+
+    if (method === 'PUT') {
+      const agent = makeAgent(parseJsonBody(route), agentId);
+      state.agents = [
+        ...state.agents.filter((item) => item.uuid !== agentId),
+        agent,
+      ];
+      return fulfillJson(route, {});
+    }
+
+    if (method === 'DELETE') {
+      state.agents = state.agents.filter((item) => item.uuid !== agentId);
+      return fulfillJson(route, {});
+    }
+
+    if (agentId.startsWith('pipeline-')) {
+      let pipeline = state.pipelines.find((item) => item.uuid === agentId);
+      if (!pipeline) {
+        pipeline = makePipeline(state, { name: agentId }, agentId);
+        state.pipelines = [...state.pipelines, pipeline];
+      }
+      return fulfillJson(route, {
+        agent: {
+          ...pipeline,
+          kind: 'pipeline',
+          component_ref: 'pipeline',
+          enabled: true,
+          supported_event_patterns: ['message.*'],
+        },
+      });
+    }
+
+    let agent = state.agents.find((item) => item.uuid === agentId);
+    if (!agent) {
+      agent = makeAgent({ name: agentId }, agentId);
+      state.agents = [...state.agents, agent];
+    }
+    return fulfillJson(route, { agent });
+  }
+
   if (path === '/api/v1/pipelines/_/metadata') {
-    return fulfillJson(route, pipelineMetadata());
+    return fulfillJson(route, pipelineMetadata(state.withRunnerToolSelector));
   }
 
   if (path === '/api/v1/pipelines') {
@@ -559,6 +744,8 @@ async function handleBackendApi(route: Route, state: LangBotApiMockState) {
       available_plugins: [],
       bound_mcp_servers: [],
       available_mcp_servers: state.mcpServers,
+      bound_mcp_resources: [],
+      mcp_resource_agent_read_enabled: true,
       bound_skills: [],
       available_skills: state.skills,
     });
@@ -622,6 +809,10 @@ async function handleBackendApi(route: Route, state: LangBotApiMockState) {
       internal_kb_count: 0,
       external_kb_count: 0,
     });
+  }
+
+  if (path === '/api/v1/tools') {
+    return fulfillJson(route, { tools: state.tools });
   }
 
   if (path === '/api/v1/plugins') {
@@ -951,6 +1142,7 @@ export async function installLangBotApiMocks(
     sessionAnalyses?: Record<string, unknown>;
     sessionMessages?: Record<string, unknown[]>;
     storage?: JsonRecord;
+    withRunnerToolSelector?: boolean;
   } = {},
 ) {
   const {
@@ -960,8 +1152,10 @@ export async function installLangBotApiMocks(
     sessionAnalyses,
     sessionMessages,
     storage = {},
+    withRunnerToolSelector = false,
   } = options;
   const state: LangBotApiMockState = {
+    agents: [],
     bots: [],
     counters: {},
     knowledgeBases: [],
@@ -972,6 +1166,18 @@ export async function installLangBotApiMocks(
     sessionAnalyses: sessionAnalyses || {},
     sessionMessages: sessionMessages || {},
     skills: [],
+    tools: [
+      {
+        name: 'available_plugin_tool',
+        description: 'Available plugin tool',
+        human_desc: 'Available plugin tool',
+        parameters: {},
+        source: 'plugin',
+        source_name: 'langbot-app/TestTools',
+        source_id: 'langbot-app/TestTools',
+      },
+    ],
+    withRunnerToolSelector,
   };
 
   await page.addInitScript(

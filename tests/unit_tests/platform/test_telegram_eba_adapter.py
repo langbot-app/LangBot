@@ -270,6 +270,8 @@ async def test_telegram_converter_maps_bot_status_events():
         'can_invite_users': False,
         'can_pin_messages': False,
         'can_manage_topics': False,
+        'can_edit_tag': False,
+        'can_react_to_messages': False,
         'until_date': 0,
     }
     invited = make_update(

@@ -75,6 +75,9 @@ class ToolResource(typing.TypedDict):
     tool_type: str | None
     description: str | None
     operations: list[str]
+    parameters: dict[str, typing.Any] | None
+    source: typing.NotRequired[str]
+    source_id: typing.NotRequired[str | None]
 
 
 class KnowledgeBaseResource(typing.TypedDict):

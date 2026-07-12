@@ -22,6 +22,7 @@ from mcp.shared.exceptions import McpError
 from pydantic import AnyUrl
 
 from .. import loader
+from ..errors import ToolExecutionDeniedError
 from ....core import app
 import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
@@ -1558,35 +1559,67 @@ class MCPLoader(loader.ToolLoader):
 
         return items
 
-    async def has_tool(self, name: str) -> bool:
+    def _session_by_source_id(self, source_id: str) -> RuntimeMCPSession | None:
+        return next(
+            (session for session in self.sessions.values() if session.server_uuid == source_id),
+            None,
+        )
+
+    async def has_tool(self, name: str, source_id: str | None = None) -> bool:
         """检查工具是否存在"""
-        if name in (MCP_TOOL_LIST_RESOURCES, MCP_TOOL_READ_RESOURCE):
+        if source_id is None and name in (MCP_TOOL_LIST_RESOURCES, MCP_TOOL_READ_RESOURCE):
             return bool(self._eligible_resource_sessions_for_bound(None))
-        for session in self.sessions.values():
+        sessions = [self._session_by_source_id(source_id)] if source_id is not None else list(self.sessions.values())
+        for session in sessions:
+            if session is None:
+                continue
             for function in session.get_tools():
                 if function.name == name:
                     return True
         return False
 
-    async def get_tool(self, name: str) -> resource_tool.LLMTool | None:
-        for session in self.sessions.values():
+    async def get_tool(
+        self,
+        name: str,
+        source_id: str | None = None,
+    ) -> resource_tool.LLMTool | None:
+        if source_id is None and name in (MCP_TOOL_LIST_RESOURCES, MCP_TOOL_READ_RESOURCE):
+            if not self._eligible_resource_sessions_for_bound(None):
+                return None
+            return next(
+                (tool for tool in self._mcp_synthetic_resource_tools() if tool.name == name),
+                None,
+            )
+        sessions = [self._session_by_source_id(source_id)] if source_id is not None else list(self.sessions.values())
+        for session in sessions:
+            if session is None:
+                continue
             for function in session.get_tools():
                 if function.name == name:
                     return function
         return None
 
-    async def invoke_tool(self, name: str, parameters: dict, query: pipeline_query.Query) -> typing.Any:
+    async def invoke_tool(
+        self,
+        name: str,
+        parameters: dict,
+        query: pipeline_query.Query,
+        source_id: str | None = None,
+    ) -> typing.Any:
         """执行工具调用"""
-        if name == MCP_TOOL_LIST_RESOURCES:
-            if getattr(query, 'variables', {}).get('_pipeline_mcp_resource_agent_read_enabled', True) is False:
-                return [provider_message.ContentElement.from_text('Error: MCP resource agent reads are disabled.')]
+        if source_id is None and name == MCP_TOOL_LIST_RESOURCES:
+            if getattr(query, 'variables', {}).get('_pipeline_mcp_resource_agent_read_enabled', True) is not True:
+                raise ToolExecutionDeniedError(name, 'MCP resource agent reads are disabled')
             return await self._invoke_mcp_list_resources(parameters, query)
-        if name == MCP_TOOL_READ_RESOURCE:
-            if getattr(query, 'variables', {}).get('_pipeline_mcp_resource_agent_read_enabled', True) is False:
-                return [provider_message.ContentElement.from_text('Error: MCP resource agent reads are disabled.')]
+        if source_id is None and name == MCP_TOOL_READ_RESOURCE:
+            if getattr(query, 'variables', {}).get('_pipeline_mcp_resource_agent_read_enabled', True) is not True:
+                raise ToolExecutionDeniedError(name, 'MCP resource agent reads are disabled')
             return await self._invoke_mcp_read_resource(parameters, query)
 
-        for session in self.sessions.values():
+        sessions = [self._session_by_source_id(source_id)] if source_id is not None else list(self.sessions.values())
+        for session in sessions:
+            if session is None:
+                continue
             for function in session.get_tools():
                 if function.name == name:
                     self.ap.logger.debug(f'Invoking MCP tool: {name} with parameters: {parameters}')
@@ -1666,7 +1699,7 @@ class MCPLoader(loader.ToolLoader):
         default_max_bytes: int = MCP_RESOURCE_CONTEXT_MAX_BYTES,
     ) -> str:
         """Build host-controlled MCP resource context for the current query."""
-        if getattr(query, 'variables', {}).get('_pipeline_mcp_resource_agent_read_enabled', True) is False:
+        if getattr(query, 'variables', {}).get('_pipeline_mcp_resource_agent_read_enabled', True) is not True:
             return ''
 
         attachments = (query.variables or {}).get('_pipeline_mcp_resource_attachments', [])
@@ -1684,7 +1717,7 @@ class MCPLoader(loader.ToolLoader):
         for raw_attachment in attachments:
             if remaining_tokens <= 0:
                 break
-            if not isinstance(raw_attachment, dict) or raw_attachment.get('enabled') is False:
+            if not isinstance(raw_attachment, dict) or raw_attachment.get('enabled', True) is not True:
                 continue
 
             attachment = raw_attachment.copy()
@@ -1702,8 +1735,23 @@ class MCPLoader(loader.ToolLoader):
             if session.server_uuid not in eligible_by_uuid and session.server_name not in eligible_by_name:
                 continue
 
-            max_tokens = min(int(attachment.get('max_tokens') or remaining_tokens), remaining_tokens)
-            max_bytes = int(attachment.get('max_bytes') or default_max_bytes)
+            raw_max_tokens = attachment.get('max_tokens')
+            raw_max_bytes = attachment.get('max_bytes')
+            if raw_max_tokens is None:
+                max_tokens = remaining_tokens
+            elif isinstance(raw_max_tokens, bool) or not isinstance(raw_max_tokens, int) or raw_max_tokens <= 0:
+                self.ap.logger.warning(f'Ignoring MCP resource {uri!r}: max_tokens must be a positive integer')
+                continue
+            else:
+                max_tokens = min(raw_max_tokens, remaining_tokens)
+
+            if raw_max_bytes is None:
+                max_bytes = default_max_bytes
+            elif isinstance(raw_max_bytes, bool) or not isinstance(raw_max_bytes, int) or raw_max_bytes <= 0:
+                self.ap.logger.warning(f'Ignoring MCP resource {uri!r}: max_bytes must be a positive integer')
+                continue
+            else:
+                max_bytes = raw_max_bytes
 
             try:
                 envelope = await session.read_resource_envelope(

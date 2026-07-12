@@ -16,7 +16,7 @@ from .context_builder import AgentRunContextBuilder
 from .resource_builder import AgentResourceBuilder
 from .result_normalizer import AgentResultNormalizer
 from .orchestrator import AgentRunOrchestrator
-from .config_migration import ConfigMigration
+from .config_resolver import RunnerConfigResolver
 from .default_config import AgentRunnerDefaultConfigService
 from .binding_resolver import AgentBindingResolver, AgentBindingResolutionError
 from .session_registry import (
@@ -49,7 +49,7 @@ __all__ = [
     'AgentResourceBuilder',
     'AgentResultNormalizer',
     'AgentRunOrchestrator',
-    'ConfigMigration',
+    'RunnerConfigResolver',
     'AgentRunnerDefaultConfigService',
     'AgentBindingResolver',
     'AgentBindingResolutionError',

@@ -304,13 +304,10 @@ class AgentRunJournal:
 
         for item in items:
             event = item.get('event') if isinstance(item.get('event'), dict) else {}
-            input_data = item.get('input') if isinstance(item.get('input'), dict) else {}
             conversation = item.get('conversation') if isinstance(item.get('conversation'), dict) else {}
             actor = item.get('actor') if isinstance(item.get('actor'), dict) else {}
             subject = item.get('subject') if isinstance(item.get('subject'), dict) else {}
 
-            text = input_data.get('text')
-            input_summary = text[:1000] if isinstance(text, str) and text else 'Unconsumed steering input dropped'
             event_time = None
             raw_event_time = event.get('event_time')
             if raw_event_time:
@@ -335,12 +332,7 @@ class AgentRunJournal:
                 actor_name=actor.get('actor_name'),
                 subject_type=subject.get('subject_type'),
                 subject_id=subject.get('subject_id'),
-                input_summary=input_summary,
-                input_json={
-                    'text': text,
-                    'contents': self._sanitize_contents(input_data.get('contents') or []),
-                    'attachments': self._sanitize_attachments(input_data.get('attachments') or []),
-                },
+                input_summary='Unconsumed steering input dropped',
                 run_id=run_id,
                 runner_id=runner_id,
                 event_time=event_time,
