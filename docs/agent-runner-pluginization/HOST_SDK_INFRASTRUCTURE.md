@@ -11,14 +11,14 @@
 LangBot 要转为 agent host，而不是内置 runner 容器：
 
 - 接收 IM、WebUI、API 和外部 EBA 分支 EventRouter 产生的事件。
-- 根据事件、bot、workspace、scope 解析应该调用的 Agent / agent binding。
+- 接收 EBA 选中的 Agent 处理器，并根据事件、bot、workspace、scope 解析 AgentRunner binding。
 - 发现、校验和调用插件提供的 AgentRunner。
 - 为每次 run 提供受限资源、状态、存储、上下文引用和生命周期控制。
 - 接收 AgentRunner 返回的事件流，投递到 IM、WebUI 或其他 output surface。
 
 ## 2. 非目标
 
-- 不把 Pipeline 当作长期架构中心。
+- 不定义 Pipeline 的 Stage 编排语义；Pipeline 是 EBA 的同级处理器，其 AI Stage 只在需要 runner 时接入本 Host 边界。
 - 不要求所有 AgentRunner 依赖 LangBot 的上下文管理。
 - 不要求官方 local-agent 的旧行为反向塑造 host 协议。
 - 不在 host 中实现通用 agentic prompt assembler。
@@ -34,27 +34,30 @@ IM / WebUI / API / EventRouter (external EBA branch)
 Event Gateway (external EBA branch)
         |
         v
-AgentBindingResolver
+EventRouter -> one Processor target
+        |-- target_type=pipeline -> Pipeline Stage chain
         |
-        v
-AgentRunOrchestrator
-        |-- AgentRunnerRegistry
-        |-- AgentResourceBuilder
-        |-- AgentContextBuilder
-        |-- AgentRunSessionRegistry
-        |-- PersistentStateStore / EventLogStore / TranscriptStore
-        |-- Sandbox / workspace file tools
-        v
-Plugin Runtime / AgentRunner
-        |
-        v
-AgentRunResult stream
+        `-- target_type=agent -> AgentBindingResolver
+                                      |
+                                      v
+                               AgentRunOrchestrator
+                                      |-- AgentRunnerRegistry
+                                      |-- AgentResourceBuilder
+                                      |-- AgentContextBuilder
+                                      |-- AgentRunSessionRegistry
+                                      |-- PersistentStateStore / EventLogStore / TranscriptStore
+                                      |-- Sandbox / workspace file tools
+                                      v
+                               Plugin Runtime / AgentRunner
+                                      |
+                                      v
+                               AgentRunResult stream
         |
         v
 Delivery / Renderer / Platform API
 ```
 
-目标产品模型、单绑定调度、Agent 复用、插件实例无状态和 fan-out 边界以 [PROTOCOL_V1.md](./PROTOCOL_V1.md) §13 为准。本文只说明 Host 如何把当前入口投影为内部模型。当前 Pipeline 只应接入在 Query entry adapter 位置：它可以继续产生 `message.received` 并投影出临时 `AgentConfig` / `AgentBinding`，但不应再拥有 runner 选择、上下文裁剪和业务 agent 执行的核心语义。EventGateway / EventRouter 由外部 EBA 分支实现并联调。
+Pipeline 与 Agent 是 EventRouter 的平级处理器目标。本文只定义 AgentRunner Host 边界：Agent 目标直接解析 `AgentBinding`；Pipeline 目标执行自己的完整 Stage 链，仅在 AI Stage 调用 runner 时通过 Query entry adapter 构造一次性 `AgentConfig` / `AgentBinding`。该 runner 调用投影不改变 Pipeline 的一等处理器地位，也不会把 Pipeline 持久化为 Agent。AgentRunner 的单绑定调度、Agent 复用、插件实例无状态和 fan-out 边界以 [PROTOCOL_V1.md](./PROTOCOL_V1.md) §13 为准。EventGateway / EventRouter 由外部 EBA 分支实现并联调。
 
 ## 4. LangBot 侧能力
 
@@ -88,7 +91,7 @@ class AgentEventEnvelope(BaseModel):
 
 ### 4.2 AgentConfig 与 AgentBinding
 
-`AgentConfig` 是迁移期的 Host 内部 Agent 配置投影（不暴露给 SDK）。当前 Query entry adapter 从 Pipeline config 投影出它；未来持久 Agent 也应先投影成这个运行期配置，再由 BindingResolver 结合事件和 scope 解析为 `AgentBinding`。
+`AgentConfig` 是 Host 内部的一次 AgentRunner 调用配置投影（不暴露给 SDK）。独立 Agent 从自己的持久配置生成它；Pipeline 只在 AI Stage 调用 runner 时，由 Query entry adapter 从该 Stage 的当前配置生成它。两种来源随后都由 BindingResolver 结合事件和 scope 解析为 `AgentBinding`。Pipeline 本身不是 `AgentConfig`，该调用投影也不会创建或更新持久 Agent。
 
 ```python
 class AgentConfig(BaseModel):
@@ -122,11 +125,11 @@ class AgentBinding(BaseModel):
 BindingResolver 的基数、fan-out 和冲突处理约束见 PROTOCOL_V1 §13；本节只定义 Host 内部投影形态。
 
 **当前 adapter source**：`QueryEntryAdapter.config_to_agent_config(query, runner_id)`
-先把 current config 投影为迁移期 `AgentConfig`，再由
+只在 Pipeline AI Stage 调用 runner 时，把 current config 临时投影为运行期 `AgentConfig`，再由
 `AgentBindingResolver.resolve_one(event, [agent_config])` 解析出唯一
-`AgentBinding`。Pipeline 当前只是迁移期 Agent config source（AI runner config
+`AgentBinding`。该调用从 Pipeline 取得 AI runner config
 → runner_config、extension preference → resource_policy、output settings →
-delivery_policy），但新设计不再把这些字段命名为 Pipeline 专属概念。
+delivery_policy，但 Pipeline 仍执行并拥有完整 Stage/config 语义。该适配不会把 Pipeline 持久化为 Agent；独立 Agent 由用户自行新增和绑定。
 
 ### 4.3 AgentRunnerRegistry
 

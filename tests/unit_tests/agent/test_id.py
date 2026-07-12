@@ -16,12 +16,12 @@ class TestRunnerIdParsing:
 
     def test_parse_plugin_runner_id(self):
         """Parse valid plugin runner ID."""
-        runner_id = 'plugin:langbot/local-agent/default'
+        runner_id = 'plugin:langbot-team/LocalAgent/default'
         parts = parse_runner_id(runner_id)
 
         assert parts.source == 'plugin'
-        assert parts.plugin_author == 'langbot'
-        assert parts.plugin_name == 'local-agent'
+        assert parts.plugin_author == 'langbot-team'
+        assert parts.plugin_name == 'LocalAgent'
         assert parts.runner_name == 'default'
 
     def test_parse_plugin_runner_id_complex_names(self):
@@ -36,7 +36,7 @@ class TestRunnerIdParsing:
 
     def test_parse_invalid_plugin_runner_id_missing_parts(self):
         """Parse invalid plugin runner ID with missing parts."""
-        runner_id = 'plugin:langbot/local-agent'
+        runner_id = 'plugin:langbot-team/LocalAgent'
 
         with pytest.raises(ValueError) as exc_info:
             parse_runner_id(runner_id)
@@ -76,20 +76,20 @@ class TestRunnerIdFormatting:
         """Format plugin runner ID."""
         runner_id = format_runner_id(
             source='plugin',
-            plugin_author='langbot',
-            plugin_name='local-agent',
+            plugin_author='langbot-team',
+            plugin_name='LocalAgent',
             runner_name='default',
         )
 
-        assert runner_id == 'plugin:langbot/local-agent/default'
+        assert runner_id == 'plugin:langbot-team/LocalAgent/default'
 
     def test_format_invalid_source(self):
         """Format runner ID with invalid source."""
         with pytest.raises(ValueError) as exc_info:
             format_runner_id(
                 source='builtin',
-                plugin_author='langbot',
-                plugin_name='local-agent',
+                plugin_author='langbot-team',
+                plugin_name='LocalAgent',
                 runner_name='default',
             )
 
@@ -103,19 +103,19 @@ class TestRunnerIdParts:
         """Get plugin ID from parts."""
         parts = RunnerIdParts(
             source='plugin',
-            plugin_author='langbot',
-            plugin_name='local-agent',
+            plugin_author='langbot-team',
+            plugin_name='LocalAgent',
             runner_name='default',
         )
 
-        assert parts.to_plugin_id() == 'langbot/local-agent'
+        assert parts.to_plugin_id() == 'langbot-team/LocalAgent'
 
     def test_frozen_dataclass(self):
         """RunnerIdParts should be immutable."""
         parts = RunnerIdParts(
             source='plugin',
-            plugin_author='langbot',
-            plugin_name='local-agent',
+            plugin_author='langbot-team',
+            plugin_name='LocalAgent',
             runner_name='default',
         )
 
@@ -128,7 +128,7 @@ class TestIsPluginRunnerId:
 
     def test_is_plugin_runner_id_true(self):
         """Check plugin runner ID returns True."""
-        assert is_plugin_runner_id('plugin:langbot/local-agent/default') is True
+        assert is_plugin_runner_id('plugin:langbot-team/LocalAgent/default') is True
 
     def test_is_plugin_runner_id_false(self):
         """Check non-plugin runner ID returns False."""

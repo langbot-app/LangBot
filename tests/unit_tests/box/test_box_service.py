@@ -185,9 +185,9 @@ def test_resolve_box_session_id_reads_current_runner_config():
     query = make_query(101)
     query.pipeline_config = {
         'ai': {
-            'runner': {'id': 'plugin:langbot/local-agent/default'},
+            'runner': {'id': 'plugin:langbot-team/LocalAgent/default'},
             'runner_config': {
-                'plugin:langbot/local-agent/default': {
+                'plugin:langbot-team/LocalAgent/default': {
                     'box-session-id-template': 'bot-{launcher_id}-{sender_id}',
                 },
             },
@@ -450,7 +450,14 @@ def test_box_service_forced_template_ignores_pipeline_config():
         launcher_id='test_user',
         sender_id='test_user',
         pipeline_config={
-            'ai': {'local-agent': {'box-session-id-template': '{launcher_type}_{launcher_id}_{sender_id}'}}
+            'ai': {
+                'runner': {'id': 'plugin:langbot-team/LocalAgent/default'},
+                'runner_config': {
+                    'plugin:langbot-team/LocalAgent/default': {
+                        'box-session-id-template': '{launcher_type}_{launcher_id}_{sender_id}'
+                    }
+                },
+            }
         },
     )
 
@@ -469,7 +476,16 @@ def test_box_service_empty_forced_template_respects_pipeline_config():
         query_id=7,
         launcher_type='group',
         launcher_id='room-1',
-        pipeline_config={'ai': {'local-agent': {'box-session-id-template': '{launcher_type}_{launcher_id}'}}},
+        pipeline_config={
+            'ai': {
+                'runner': {'id': 'plugin:langbot-team/LocalAgent/default'},
+                'runner_config': {
+                    'plugin:langbot-team/LocalAgent/default': {
+                        'box-session-id-template': '{launcher_type}_{launcher_id}'
+                    }
+                },
+            }
+        },
     )
 
     assert service.resolve_box_session_id(query) == 'group_room-1'

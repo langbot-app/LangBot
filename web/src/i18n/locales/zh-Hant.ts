@@ -349,7 +349,7 @@ const zhHant = {
     routingConnectionDescription: '綁定處理此機器人訊息的流程線',
     eventRouting: '事件路由',
     eventRoutingDescription:
-      '選擇此機器人收到不同事件時交給哪個處理器。具體處理邏輯在 Agent 頁面編輯，Pipeline 僅支援訊息事件。',
+      '選擇此機器人收到不同事件時交給哪個處理器。在對應的 Agent 或 Pipeline 設定中編輯處理邏輯；Pipeline 僅支援訊息事件。',
     routingRules: '條件路由規則',
     routingRulesDescription:
       '按順序匹配，命中第一條規則後路由到對應流程線；都不匹配時使用上方預設流程線',
@@ -454,7 +454,7 @@ const zhHant = {
     },
   },
   agents: {
-    title: 'Agent',
+    title: '處理器',
     description: '建立可重用的處理器，並在機器人事件路由中使用',
     create: '建立處理器',
     editAgent: '編輯 Agent',
@@ -467,7 +467,7 @@ const zhHant = {
     groupByKind: '依類型分組',
     groupByKindShort: '分組',
     pipelineTypeDescription:
-      '保留現有無程式碼訊息流水線，相容舊設定，只能處理訊息事件。',
+      '透過視覺化多階段流程控制訊息的前處理、AI、後處理、擴充與輸出；僅處理訊息事件。',
     allEvents: '支援全部事件',
     messageEventsOnly: '僅支援訊息事件',
     basicInfo: '基本資訊',

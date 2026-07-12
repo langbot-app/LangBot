@@ -17,7 +17,7 @@ AGENT_DEFAULT_EVENT_PATTERNS = ['*']
 
 
 class AgentService:
-    """Unified product surface for Agent processors and Pipelines."""
+    """Unified processor facade for the peer Agent and Pipeline types."""
 
     ap: app.Application
 

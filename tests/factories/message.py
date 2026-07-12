@@ -169,10 +169,12 @@ def _base_query(
         'bot_uuid': 'test-bot-uuid',
         'pipeline_config': {
             'ai': {
-                'runner': {'runner': 'local-agent'},
-                'local-agent': {
-                    'model': {'primary': 'test-model-uuid', 'fallbacks': []},
-                    'prompt': 'test-prompt',
+                'runner': {'id': 'plugin:langbot-team/LocalAgent/default'},
+                'runner_config': {
+                    'plugin:langbot-team/LocalAgent/default': {
+                        'model': {'primary': 'test-model-uuid', 'fallbacks': []},
+                        'prompt': 'test-prompt',
+                    },
                 },
             },
             'output': {'misc': {'at-sender': False, 'quote-origin': False}},
@@ -417,10 +419,12 @@ def query_with_config(
     if pipeline_config is None:
         pipeline_config = {
             'ai': {
-                'runner': {'runner': 'local-agent'},
-                'local-agent': {
-                    'model': {'primary': 'test-model-uuid', 'fallbacks': []},
-                    'prompt': 'test-prompt',
+                'runner': {'id': 'plugin:langbot-team/LocalAgent/default'},
+                'runner_config': {
+                    'plugin:langbot-team/LocalAgent/default': {
+                        'model': {'primary': 'test-model-uuid', 'fallbacks': []},
+                        'prompt': 'test-prompt',
+                    },
                 },
             },
             'output': {'misc': {'at-sender': False, 'quote-origin': False}},

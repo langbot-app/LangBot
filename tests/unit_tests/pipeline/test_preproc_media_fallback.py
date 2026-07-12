@@ -9,7 +9,7 @@ import pytest
 from langbot_plugin.api.entities.builtin.platform import message as platform_message
 
 
-RUNNER_ID = 'plugin:langbot/local-agent/default'
+RUNNER_ID = 'plugin:langbot-team/LocalAgent/default'
 
 
 def _attach_agent_runner_descriptor(app):
@@ -19,8 +19,8 @@ def _attach_agent_runner_descriptor(app):
         id=RUNNER_ID,
         source='plugin',
         label={'en_US': 'Local Agent'},
-        plugin_author='langbot',
-        plugin_name='local-agent',
+        plugin_author='langbot-team',
+        plugin_name='LocalAgent',
         runner_name='default',
         config_schema=[
             {'name': 'model', 'type': 'model-fallback-selector'},

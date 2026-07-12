@@ -35,11 +35,11 @@ class FakeApplication:
                 # Return sample runner data
                 return [
                     {
-                        'plugin_author': 'langbot',
-                        'plugin_name': 'local-agent',
+                        'plugin_author': 'langbot-team',
+                        'plugin_name': 'LocalAgent',
                         'runner_name': 'default',
                         'manifest': {
-                            'id': 'plugin:langbot/local-agent/default',
+                            'id': 'plugin:langbot-team/LocalAgent/default',
                             'name': 'default',
                             'label': {'en_US': 'Local Agent'},
                             'capabilities': {'streaming': True},
@@ -98,11 +98,11 @@ class TestRegistryDiscovery:
 
         runners = await registry.list_runners(use_cache=False)
 
-        # Should find 2 valid runners (langbot/local-agent and alice/my-agent)
+        # Should find 2 valid runners (langbot-team/LocalAgent and alice/my-agent)
         assert len(runners) == 2
 
         ids = [r.id for r in runners]
-        assert 'plugin:langbot/local-agent/default' in ids
+        assert 'plugin:langbot-team/LocalAgent/default' in ids
         assert 'plugin:alice/my-agent/custom' in ids
 
     @pytest.mark.asyncio
@@ -143,15 +143,15 @@ class TestRegistryDiscovery:
 
         # First: get with bound_plugins filter (should not pollute cache)
         descriptor = await registry.get(
-            'plugin:langbot/local-agent/default',
-            bound_plugins=['langbot/local-agent'],
+            'plugin:langbot-team/LocalAgent/default',
+            bound_plugins=['langbot-team/LocalAgent'],
         )
-        assert descriptor.id == 'plugin:langbot/local-agent/default'
+        assert descriptor.id == 'plugin:langbot-team/LocalAgent/default'
 
         # Cache should contain ALL runners (both langbot and alice)
         assert registry._cache is not None
         assert len(registry._cache) == 2  # Both runners in cache
-        assert 'plugin:langbot/local-agent/default' in registry._cache
+        assert 'plugin:langbot-team/LocalAgent/default' in registry._cache
         assert 'plugin:alice/my-agent/custom' in registry._cache
 
         # Second: list_runners without filter should return ALL runners
@@ -173,11 +173,11 @@ class TestRegistryGet:
         ap = FakeApplication()
         registry = AgentRunnerRegistry(ap)
 
-        descriptor = await registry.get('plugin:langbot/local-agent/default')
+        descriptor = await registry.get('plugin:langbot-team/LocalAgent/default')
 
-        assert descriptor.id == 'plugin:langbot/local-agent/default'
-        assert descriptor.plugin_author == 'langbot'
-        assert descriptor.plugin_name == 'local-agent'
+        assert descriptor.id == 'plugin:langbot-team/LocalAgent/default'
+        assert descriptor.plugin_author == 'langbot-team'
+        assert descriptor.plugin_name == 'LocalAgent'
         assert descriptor.runner_name == 'default'
 
     @pytest.mark.asyncio
@@ -199,8 +199,8 @@ class TestRegistryGet:
 
         # Authorized - langbot plugin in bound list
         descriptor = await registry.get(
-            'plugin:langbot/local-agent/default',
-            bound_plugins=['langbot/local-agent'],
+            'plugin:langbot-team/LocalAgent/default',
+            bound_plugins=['langbot-team/LocalAgent'],
         )
         assert descriptor is not None
 
@@ -208,7 +208,7 @@ class TestRegistryGet:
         with pytest.raises(RunnerNotAuthorizedError):
             await registry.get(
                 'plugin:alice/my-agent/custom',
-                bound_plugins=['langbot/local-agent'],
+                bound_plugins=['langbot-team/LocalAgent'],
             )
 
 
@@ -226,7 +226,7 @@ class TestRegistryMetadataForPipeline:
         # Should have options for each runner
         assert len(options) == 2
         option_ids = [o['name'] for o in options]
-        assert 'plugin:langbot/local-agent/default' in option_ids
+        assert 'plugin:langbot-team/LocalAgent/default' in option_ids
         assert 'plugin:alice/my-agent/custom' in option_ids
 
         # Config comes from the typed manifest.

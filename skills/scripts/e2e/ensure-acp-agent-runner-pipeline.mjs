@@ -12,7 +12,7 @@ import {
   writeResult,
 } from "./lib/langbot-e2e.mjs";
 
-const RUNNER_ID = "plugin:langbot/acp-agent-runner/default";
+const RUNNER_ID = "plugin:langbot-team/ACPAgentRunner/default";
 const DEFAULT_PIPELINE_NAME = "Agent QA ACP Claude Debug Chat";
 const DEFAULT_LOCAL_PASSWORD = "LangBotE2ELocalPass!2026";
 const caseId = "ensure-acp-agent-runner-pipeline";

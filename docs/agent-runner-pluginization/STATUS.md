@@ -36,8 +36,8 @@
 
 | Runner | 状态 | 最近证据 |
 | --- | --- | --- |
-| `plugin:langbot/local-agent/default` | Unit-pass; UI smoke pending | 2026-06-10 本地 pytest / ruff 通过；WebUI smoke 由人工统一执行。 |
-| `plugin:langbot/acp-agent-runner/default` / `plugin:langbot/claude-code-agent/default` / `plugin:langbot/codex-agent/default` | Unit-pass; E2E pending | 通过 runner 仓库单测覆盖 session、run_id 注入和 LangBot MCP gateway；真实 harness E2E 取决于对应运行环境、CLI/daemon 可用性和 provider 登录态。 |
+| `plugin:langbot-team/LocalAgent/default` | Unit-pass; UI smoke pending | 2026-06-10 本地 pytest / ruff 通过；WebUI smoke 由人工统一执行。 |
+| `plugin:langbot-team/ACPAgentRunner/default` / `plugin:langbot-team/ClaudeCodeAgent/default` / `plugin:langbot-team/CodexAgent/default` | Unit-pass; E2E pending | 通过 runner 仓库单测覆盖 session、run_id 注入和 LangBot MCP gateway；真实 harness E2E 取决于对应运行环境、CLI/daemon 可用性和 provider 登录态。 |
 | Dify / n8n / Coze / DashScope / Langflow / Tbox / DeerFlow / WeKnora | Unit-pass; credential smoke optional | 2026-06-13 plugin layout / parser tests 通过；真实服务凭据 smoke 非每轮必跑。 |
 
 ## Host / SDK 验收状态

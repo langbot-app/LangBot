@@ -29,6 +29,8 @@ const enUS = {
     loginLoadErrorDesc:
       'Unable to connect to the LangBot backend. Please make sure the service is running and try again.',
     retry: 'Retry',
+    showSecret: 'Show secret',
+    hideSecret: 'Hide secret',
     enterEmail: 'Enter email address',
     enterPassword: 'Enter password',
     invalidEmail: 'Please enter a valid email address',
@@ -364,7 +366,7 @@ const enUS = {
       'Bind the pipeline that processes messages for this bot',
     eventRouting: 'Event Routing',
     eventRoutingDescription:
-      'Choose which processor handles each event received by this bot. Edit the processing logic on the Agent page. Pipelines only support message events.',
+      'Choose which processor handles each event received by this bot. Edit the logic in the corresponding Agent or Pipeline configuration. Pipelines only support message events.',
     eventBindings: 'Event Routes',
     addEventBinding: 'Add Route',
     addBehavior: 'Add behavior',
@@ -650,7 +652,7 @@ const enUS = {
     },
   },
   agents: {
-    title: 'Agent',
+    title: 'Processors',
     description: 'Create reusable processors and use them in bot event routing',
     create: 'Create Processor',
     editAgent: 'Edit Agent',
@@ -664,7 +666,7 @@ const enUS = {
     groupByKind: 'Group by type',
     groupByKindShort: 'Group',
     pipelineTypeDescription:
-      'Keep the existing no-code message pipeline for backward compatibility. It only handles message events.',
+      'Use a visual multi-stage flow to control message preprocessing, AI, postprocessing, extensions, and output. Message events only.',
     allEvents: 'Supports all events',
     messageEventsOnly: 'Message events only',
     basicInfo: 'Basic Information',
@@ -695,6 +697,20 @@ const enUS = {
     deleteAgentHint:
       'Once deleted, events bound to it can no longer be executed.',
     noRunnerMetadata: 'No AgentRunner metadata is currently available.',
+    runnerStatusLoading: 'Checking runner status',
+    runnerStatusCheckFailed: 'Runner status could not be checked',
+    runnerStatusCheckFailedDescription:
+      'Retry the check. If it still fails, verify the backend and plugin runtime.',
+    noRunnersAvailable: 'No runners are available',
+    noRunnersAvailableDescription:
+      'Install and enable an AgentRunner extension before configuring this Agent.',
+    selectedRunnerUnavailable: 'Selected runner is unavailable',
+    selectedRunnerUnavailableDescription:
+      '{{runner}} is not currently registered. Select another runner or restore its extension.',
+    noRunnerSelected: 'No runner selected',
+    runnerReady: 'Runner ready',
+    runnerReadyDescription:
+      '{{runner}} is registered and the plugin runtime is connected.',
   },
   plugins: {
     title: 'Extensions',
@@ -1974,6 +1990,26 @@ const enUS = {
       title: 'Select an AI Engine',
       description:
         "Choose the AI engine that will power your bot's intelligence.",
+      loadingCatalog: 'Loading AgentRunner extensions...',
+      catalogUnavailable: 'Runner catalog is unavailable',
+      catalogUnavailableDescription:
+        'Installed runners are still available. Retry the catalog or browse Extensions.',
+      noMarketplaceRunners: 'No AgentRunner extensions are published yet',
+      noMarketplaceRunnersDescription:
+        'Retry after runner extensions are published to the configured Marketplace.',
+      browseRunners: 'Browse Runner Extensions',
+      installAndContinue: 'Install & Continue',
+      installing: 'Installing...',
+      useInstalled: 'Use This Runner',
+      installedUnavailable: 'Installed, Runner Unavailable',
+      installSuccess: '{{runner}} installed and selected',
+      installFailed: 'Failed to install the Runner extension',
+      versionUnavailable:
+        'The Marketplace did not return an installable version.',
+      installTimeout:
+        'Runner installation timed out. Check the task in Extensions.',
+      registrationTimeout:
+        'The extension installed, but its Runner did not register. Check the plugin runtime and retry.',
     },
     spaceBanner: {
       message:

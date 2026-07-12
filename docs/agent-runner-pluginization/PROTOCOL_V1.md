@@ -33,8 +33,8 @@ Protocol v1 **不定义**：
 | AgentRunAPIProxy | AgentRunner 访问 Host 能力的受限 API。 |
 | AgentBinding | Host 内部的事件到 runner 绑定配置，不直接暴露给 SDK（见 HOST_SDK §4.2）。 |
 
-产品层的 `Agent` 替代旧 Pipeline 承载 agent 配置：bot / IM channel
-绑定一个 Agent，一个 Agent 可以被多个 bot / channel 复用。Host 内部的
+产品层同时保留 Pipeline 与独立 `Agent`：现有 Pipeline 不迁移为 Agent；
+用户可以新建 Agent 并绑定到 bot / IM channel，一个 Agent 可以被多个 bot / channel 复用。Host 内部的
 `AgentBinding` 是一次事件运行前解析出的有效绑定，只影响 Host 构造出的
 `ctx.config`、`ctx.resources`、`ctx.context` 和 `ctx.delivery`。SDK 不需要知道
 Agent / binding 的持久化形态。
@@ -700,11 +700,12 @@ Host 不负责业务编排：不拼接全量历史、不替 runner 做 prompt as
 
 > 发布级路径隔离、MCP allowlist、secret redaction、配额、workspace 清理等**不属于** v1 协议闭环，是生产默认启用前的 release gate，见 [SECURITY_HARDENING.md](./SECURITY_HARDENING.md)。
 
-## 12. Pipeline Adapter 边界
+## 12. Pipeline AI Stage Adapter 边界
 
-Pipeline 是当前入口 adapter，不是协议中心。目标产品模型中 Agent 会替代
-Pipeline 承载 runner config、resource policy 和 delivery policy；当前 Query
-entry adapter 只是迁移桥。它负责：
+Pipeline 与 Agent 是 EBA 中平级的处理器：Pipeline 处理消息事件并执行完整
+Stage 链，Agent 处理其声明支持的消息或非消息事件。本协议只约束 AgentRunner
+调用，因此 Pipeline 仅在 AI Stage 调用 runner 时进入 Query entry adapter；
+该适配不会把 Pipeline 变成 Agent，也不会创建或更新持久 Agent。adapter 负责：
 
 - 从 `Query` 构造 `AgentEventContext` 和临时 `AgentBinding`（见 HOST_SDK §4.2）。
 - 从当前 Agent/runner config 构造 `ctx.config`。
@@ -719,9 +720,9 @@ entry adapter 只是迁移桥。它负责：
 
 ## 13. 已确认约束
 
-- v1 / EBA 主线是 `one event -> one AgentBinding -> one run_id -> one runner`。
-- 一个 bot / IM channel 在同一时间只绑定一个负责 agentic 处理的 Agent；一个 Agent 可以被多个 bot / channel 复用。
-- 如果配置层出现多个匹配 AgentBinding，BindingResolver 必须按明确规则选出一个或拒绝配置，不应默认 fan-out。
+- EBA 路由层是 `one event -> one Processor target (Pipeline | Agent)`；同一 bot / channel 可以让不同事件绑定不同类型的处理器。
+- 进入 AgentRunner Protocol 后，调用基数是 `one AgentBinding -> one run_id -> one runner`。这既适用于独立 Agent，也适用于 Pipeline AI Stage 的单次 runner 调用。
+- 一个 Agent 可以被多个 bot / channel 复用。如果 Agent 分支出现多个匹配 binding，BindingResolver 必须按明确规则选出一个或拒绝配置，不应默认 fan-out。
 - observer agent、多 runner fan-out、并行裁决、result 合并等能力需要单独设计 delivery、state、platform action 和 audit 语义，不属于当前 v1 契约。
 - `AgentRunnerDescriptor.source` 只允许 `plugin`；Host 内置 adapter 不能作为 runner source 绕过插件/runtime/proxy 权限链。
 - `ctx.resources` 与 proxy action 校验必须来自同一个 run authorization snapshot；runtime handler 不应重新执行资源裁剪。

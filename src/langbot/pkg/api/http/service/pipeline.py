@@ -200,15 +200,9 @@ class PipelineService:
         return pipeline_data['uuid']
 
     async def update_pipeline(self, pipeline_uuid: str, pipeline_data: dict) -> None:
-        from ....agent.runner.config_migration import ConfigMigration
-
         pipeline_data = pipeline_data.copy()
         for protected_field in ('uuid', 'for_version', 'stages', 'is_default'):
             pipeline_data.pop(protected_field, None)
-
-        # Migrate config to new format before saving
-        if 'config' in pipeline_data:
-            pipeline_data['config'] = ConfigMigration.migrate_pipeline_config(pipeline_data['config'])
 
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.update(persistence_pipeline.LegacyPipeline)

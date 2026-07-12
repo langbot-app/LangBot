@@ -3578,7 +3578,7 @@ test("MCP stdio tool-call case setups pipeline and registered MCP server", () =>
     );
     assert.equal(
       run.automation.env_defaults.LANGBOT_E2E_EXPECTED_RUNNER_ID,
-      "plugin:langbot/local-agent/default",
+      "plugin:langbot-team/LocalAgent/default",
     );
     assert.equal(run.automation.env_defaults.LANGBOT_E2E_RESET_DEBUG_CHAT, "1");
     assert.equal(

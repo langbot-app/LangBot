@@ -70,7 +70,7 @@ const startedAt = new Date();
 const targets = [
   {
     id: "local-agent",
-    expected_runner_id: "plugin:langbot/local-agent/default",
+    expected_runner_id: "plugin:langbot-team/LocalAgent/default",
     pipeline_url: firstEnv("LANGBOT_LOCAL_AGENT_PIPELINE_URL"),
     pipeline_name: firstEnv("LANGBOT_LOCAL_AGENT_PIPELINE_NAME"),
     require_func_call_model: true,
@@ -79,7 +79,7 @@ const targets = [
   },
   {
     id: "acp-agent-runner",
-    expected_runner_id: "plugin:langbot/acp-agent-runner/default",
+    expected_runner_id: "plugin:langbot-team/ACPAgentRunner/default",
     pipeline_url: firstEnv("LANGBOT_ACP_AGENT_RUNNER_PIPELINE_URL", "LANGBOT_AGENT_RUNNER_PIPELINE_URL"),
     pipeline_name: firstEnv("LANGBOT_ACP_AGENT_RUNNER_PIPELINE_NAME", "LANGBOT_AGENT_RUNNER_PIPELINE_NAME"),
     require_func_call_model: false,
@@ -219,7 +219,7 @@ async function run() {
         return metadata.author && metadata.name ? `${metadata.author}/${metadata.name}` : "";
       })
       .filter(Boolean);
-    const requiredPlugins = ["langbot/local-agent", "langbot/acp-agent-runner", "qa/plugin-smoke"];
+    const requiredPlugins = ["langbot-team/LocalAgent", "langbot-team/ACPAgentRunner", "qa/plugin-smoke"];
     const pluginPresence = Object.fromEntries(requiredPlugins.map((id) => [id, installedPluginIds.includes(id)]));
     for (const [id, present] of Object.entries(pluginPresence)) {
       addCheck(`plugin:${id}`, present ? "pass" : "blocked", { plugin_id: id, reason: present ? "" : "Required plugin is not listed by /api/v1/plugins." });
@@ -309,7 +309,7 @@ async function run() {
       const config = pipeline.config || {};
       const aiConfig = config.ai && typeof config.ai === "object" ? config.ai : {};
       const runner = aiConfig.runner && typeof aiConfig.runner === "object" ? aiConfig.runner : {};
-      const runnerId = runner.id || runner.runner || "";
+      const runnerId = runner.id || "";
       const runnerConfigs = aiConfig.runner_config && typeof aiConfig.runner_config === "object" ? aiConfig.runner_config : {};
       const runnerConfig = runnerConfigs[runnerId] && typeof runnerConfigs[runnerId] === "object" ? runnerConfigs[runnerId] : {};
       const pipelineSummary = {

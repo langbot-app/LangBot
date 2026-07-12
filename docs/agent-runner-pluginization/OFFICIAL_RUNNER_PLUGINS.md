@@ -12,7 +12,7 @@
 
 ```text
 langbot-app/
-  langbot-local-agent/                # plugin:langbot/local-agent/default
+  langbot-local-agent/                # plugin:langbot-team/LocalAgent/default
     manifest.yaml
     components/agent_runner/default.{yaml,py}
   langbot-agent-runner/               # 外部服务 runner 仓库
@@ -25,18 +25,18 @@ langbot-app/
 
 | 旧 runner | 官方插件 | runner id |
 | --- | --- | --- |
-| `local-agent` | `langbot/local-agent` | `plugin:langbot/local-agent/default` |
-| `dify-service-api` | `langbot/dify-agent` | `plugin:langbot/dify-agent/default` |
-| `n8n-service-api` | `langbot/n8n-agent` | `plugin:langbot/n8n-agent/default` |
-| `coze-api` | `langbot/coze-agent` | `plugin:langbot/coze-agent/default` |
-| - | `langbot/acp-agent-runner` | `plugin:langbot/acp-agent-runner/default` |
-| - | `langbot/claude-code-agent` | `plugin:langbot/claude-code-agent/default` |
-| - | `langbot/codex-agent` | `plugin:langbot/codex-agent/default` |
-| `dashscope-app-api` | `langbot/dashscope-agent` | `plugin:langbot/dashscope-agent/default` |
-| `deerflow-api` | `langbot/deerflow-agent` | `plugin:langbot/deerflow-agent/default` |
-| `langflow-api` | `langbot/langflow-agent` | `plugin:langbot/langflow-agent/default` |
-| `tbox-app-api` | `langbot/tbox-agent` | `plugin:langbot/tbox-agent/default` |
-| `weknora-api` | `langbot/weknora-agent` | `plugin:langbot/weknora-agent/default` |
+| `local-agent` | `langbot-team/LocalAgent` | `plugin:langbot-team/LocalAgent/default` |
+| `dify-service-api` | `langbot-team/DifyAgent` | `plugin:langbot-team/DifyAgent/default` |
+| `n8n-service-api` | `langbot-team/N8nAgent` | `plugin:langbot-team/N8nAgent/default` |
+| `coze-api` | `langbot-team/CozeAgent` | `plugin:langbot-team/CozeAgent/default` |
+| - | `langbot-team/ACPAgentRunner` | `plugin:langbot-team/ACPAgentRunner/default` |
+| - | `langbot-team/ClaudeCodeAgent` | `plugin:langbot-team/ClaudeCodeAgent/default` |
+| - | `langbot-team/CodexAgent` | `plugin:langbot-team/CodexAgent/default` |
+| `dashscope-app-api` | `langbot-team/DashScopeAgent` | `plugin:langbot-team/DashScopeAgent/default` |
+| `deerflow-api` | `langbot-team/DeerFlowAgent` | `plugin:langbot-team/DeerFlowAgent/default` |
+| `langflow-api` | `langbot-team/LangflowAgent` | `plugin:langbot-team/LangflowAgent/default` |
+| `tbox-app-api` | `langbot-team/TboxAgent` | `plugin:langbot-team/TboxAgent/default` |
+| `weknora-api` | `langbot-team/WeKnoraAgent` | `plugin:langbot-team/WeKnoraAgent/default` |
 
 每个插件可后续提供多个 runner，但迁移目标的默认 runner 统一叫 `default`。
 
@@ -115,7 +115,7 @@ Claude Code、Codex、Kimi Code 这类 runner 不一定通过 LangBot 的模型/
 
 当前形态：
 
-- Runner ID 示例：`plugin:langbot/acp-agent-runner/default`、`plugin:langbot/claude-code-agent/default`、`plugin:langbot/codex-agent/default`。
+- Runner ID 示例：`plugin:langbot-team/ACPAgentRunner/default`、`plugin:langbot-team/ClaudeCodeAgent/default`、`plugin:langbot-team/CodexAgent/default`。
 - Runner 可通过 ACP、远端 daemon、本机 subprocess 或外部 HTTP API 调用 harness；harness 的安装、登录态、workspace 和 provider-native 权限由该运行环境负责。
 - Runner 会把当前 LangBot `run_id`、可访问资源摘要和 gateway 使用规则注入本次消息；harness 通过 gateway 回填 `run_id` 后访问 LangBot 资产。
 - 外部 session id / workspace / checkpoint 写回 Host state 或 plugin storage，后续轮次可复用目标 harness 会话。
@@ -126,7 +126,7 @@ Claude Code、Codex、Kimi Code 这类 runner 不一定通过 LangBot 的模型/
 
 ## 8. 发布和安装策略
 
-最终 LangBot 安装/升级时需保证官方 runner 插件可用，可选方案：首次启动检测缺失并提示安装；打包发行版预装；migration 前检查插件存在性。当前分支未发布，因此不把历史配置兼容或旧内置 runner fallback 写入运行时协议面。建议顺序：开发阶段用本地路径插件 → 发布前支持 marketplace 安装 → 若发布升级需要迁移历史配置，再在 release gate 中实现一次性 migration 并要求官方插件已可用。
+最终 LangBot 安装/升级时需保证官方 runner 插件可用，可选方案：首次启动检测缺失并提示安装，或由用户从 marketplace 安装。当前分支未发布，因此不保留历史 Pipeline Agent 配置兼容、旧内置 runner fallback，也不把旧 Pipeline 内的 Agent 配置迁移成独立 Agent。4.x 只读取 `ai.runner.id` 与 `ai.runner_config[id]`；升级后由用户选择或安装需要的 AgentRunner。
 
 ## 9. 验收标准
 

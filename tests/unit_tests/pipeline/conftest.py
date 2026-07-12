@@ -27,7 +27,7 @@ import langbot_plugin.api.entities.builtin.provider.session as provider_session
 from langbot.pkg.pipeline import entities as pipeline_entities
 
 
-DEFAULT_RUNNER_ID = 'plugin:langbot/local-agent/default'
+DEFAULT_RUNNER_ID = 'plugin:langbot-team/LocalAgent/default'
 
 
 class MockApplication:

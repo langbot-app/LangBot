@@ -375,7 +375,7 @@ const esES = {
       'Vincula el Pipeline que procesa los mensajes de este Bot',
     eventRouting: 'Enrutamiento de eventos',
     eventRoutingDescription:
-      'Elige qué procesador maneja cada evento recibido por este Bot. Edita la lógica de procesamiento en la página Agent. Los Pipelines solo admiten eventos de mensaje.',
+      'Elige qué procesador maneja cada evento recibido por este Bot. Edita la lógica en la configuración del Agent o Pipeline correspondiente. Los Pipelines solo admiten eventos de mensaje.',
     routingRules: 'Reglas de enrutamiento condicional',
     routingRulesDescription:
       'Las reglas se evalúan en orden; la primera coincidencia enruta a su pipeline. Si ninguna coincide, se usa el pipeline predeterminado.',
@@ -484,7 +484,7 @@ const esES = {
     },
   },
   agents: {
-    title: 'Agent',
+    title: 'Procesadores',
     description:
       'Crea procesadores reutilizables y úsalos en el enrutamiento de eventos del bot',
     create: 'Crear procesador',
@@ -499,7 +499,7 @@ const esES = {
     groupByKind: 'Agrupar por tipo',
     groupByKindShort: 'Agrupar',
     pipelineTypeDescription:
-      'Mantiene el pipeline de mensajes sin código para compatibilidad con versiones anteriores. Solo procesa eventos de mensaje.',
+      'Usa un flujo visual de varias etapas para controlar el preprocesamiento, la IA, el posprocesamiento, las extensiones y la salida. Solo procesa eventos de mensaje.',
     allEvents: 'Compatible con todos los eventos',
     messageEventsOnly: 'Solo eventos de mensaje',
     basicInfo: 'Información básica',

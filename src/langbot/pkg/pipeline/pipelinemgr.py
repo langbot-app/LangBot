@@ -14,6 +14,7 @@ import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.events as events
 from ..utils import importutil
 from .config_coercion import coerce_pipeline_config
+from ..agent.runner.config_migration import ConfigMigration
 
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
@@ -94,12 +95,19 @@ class RuntimePipeline:
         extensions_prefs = pipeline_entity.extensions_preferences or {}
         self.enable_all_plugins = extensions_prefs.get('enable_all_plugins', True)
         self.enable_all_mcp_servers = extensions_prefs.get('enable_all_mcp_servers', True)
-        local_agent_config = (pipeline_entity.config or {}).get('ai', {}).get('local-agent', {})
-        self.mcp_resource_attachments = local_agent_config.get(
+        pipeline_config = pipeline_entity.config or {}
+        runner_config: dict[str, typing.Any] = {}
+        runner_id = ConfigMigration.resolve_runner_id(pipeline_config) if isinstance(pipeline_config, dict) else None
+        if runner_id:
+            resolved_runner_config = ConfigMigration.resolve_runner_config(pipeline_config, runner_id)
+            if isinstance(resolved_runner_config, dict):
+                runner_config = resolved_runner_config
+
+        self.mcp_resource_attachments = runner_config.get(
             'mcp-resources',
             extensions_prefs.get('mcp_resources', []),
         )
-        self.mcp_resource_agent_read_enabled = local_agent_config.get(
+        self.mcp_resource_agent_read_enabled = runner_config.get(
             'mcp-resource-agent-read-enabled',
             extensions_prefs.get('mcp_resource_agent_read_enabled', True),
         )

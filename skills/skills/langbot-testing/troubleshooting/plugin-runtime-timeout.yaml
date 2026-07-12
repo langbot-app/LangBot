@@ -22,7 +22,7 @@ fix_steps:
   - "Stop the LangBot backend."
   - "Stop orphaned langbot_plugin.cli runtime processes."
   - "Confirm the configured backend URL is free or reachable as appropriate."
-  - "Start LangBot again and wait for Connected to plugin runtime plus langbot/local-agent initialization."
+  - "Start LangBot again and wait for Connected to plugin runtime plus langbot-team/LocalAgent initialization."
   - "For disposable test data only, move suspected fixture plugins out of data/plugins and restart to isolate plugin discovery failures."
 verification: "Open Installed Plugins and confirm the plugin list loads, then run pipeline-debug-chat and confirm the UI shows a Bot response while backend logs include Streaming completed."
 related_cases:

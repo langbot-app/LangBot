@@ -31,7 +31,7 @@ automation_env:
   - LANGBOT_MCP_QA_STDIO_SERVER_UUID
 automation_pipeline_url_env: LANGBOT_LOCAL_AGENT_PIPELINE_URL
 automation_pipeline_name_env: LANGBOT_LOCAL_AGENT_PIPELINE_NAME
-automation_expected_runner_id: "plugin:langbot/local-agent/default"
+automation_expected_runner_id: "plugin:langbot-team/LocalAgent/default"
 automation_extensions_patch_json: '{"enable_all_plugins":false,"bound_plugins":[{"author":"langbot","name":"local-agent"}],"enable_all_mcp_servers":false,"bound_mcp_servers":["${LANGBOT_MCP_QA_STDIO_SERVER_UUID}"],"enable_all_skills":false,"bound_skills":[]}'
 automation_restore_extensions: "1"
 automation_reset_debug_chat: "1"
@@ -65,7 +65,7 @@ steps:
   - "Submit the server."
   - "Confirm the server detail page shows Tools: 1 and qa_mcp_echo."
   - "Open the target local-agent pipeline."
-  - "Use runner Default or the pluginized langbot/local-agent runner."
+  - "Use runner Default or the pluginized langbot-team/LocalAgent runner."
   - "Select a model with function-calling ability that is known to work with tools in the current environment."
   - "Open Debug Chat."
   - "Send: Call the qa_mcp_echo tool with exactly this text: mcp-ok-local-agent. Return only the tool result."

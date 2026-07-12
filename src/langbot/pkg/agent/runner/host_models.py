@@ -139,9 +139,9 @@ class DeliveryPolicy(pydantic.BaseModel):
 class AgentConfig(pydantic.BaseModel):
     """Host-side Agent configuration.
 
-    Product-level Agent is the target replacement for Pipeline-owned agent
-    config. Current Pipeline entry paths can project their config into this
-    model during migration.
+    Product-level Agents are independent from Pipelines. A Pipeline entry path
+    can project its config into this runtime-only model without creating or
+    updating a persisted Agent.
     """
 
     agent_id: str | None = None
@@ -175,8 +175,8 @@ class AgentConfig(pydantic.BaseModel):
 class AgentBinding(pydantic.BaseModel):
     """Binding configuration for mapping events to runners.
 
-    This is Host-internal model for event-to-runner binding.
-    It replaces the old Pipeline runner config role.
+    This is a Host-internal, runtime-only model for event-to-runner binding.
+    Projecting Pipeline config into it is not a persistence migration.
     """
 
     binding_id: str

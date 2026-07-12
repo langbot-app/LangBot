@@ -1,340 +1,342 @@
-# EBA Productization and Release Plan
+# EBA 产品化与发布计划
 
-> Status: planning draft, 2026-07-01
+> 状态：规划草案，2026-07-01
 >
-> Scope: productizing the merged AgentRunner pluginization and Event Based Agent adapter work into a product that non-technical users can start with quickly. This document focuses on product gaps, release gates, and SaaS multi-namespace tenancy. It does not introduce new protocol schema; protocol facts remain in [PROTOCOL_V1.md](./PROTOCOL_V1.md) and host model facts remain in [HOST_SDK_INFRASTRUCTURE.md](./HOST_SDK_INFRASTRUCTURE.md).
+> 范围：将已经合并的 AgentRunner 插件化和 Event Based Agent 适配器工作产品化，使非技术用户也能快速上手。本文聚焦产品缺口、发布门禁和 SaaS 多命名空间租户能力。本文不引入新的协议 schema；协议事实仍以 [PROTOCOL_V1.md](./PROTOCOL_V1.md) 为准，Host 模型事实仍以 [HOST_SDK_INFRASTRUCTURE.md](./HOST_SDK_INFRASTRUCTURE.md) 为准。
 
-## 1. Product Direction
+## 1. 产品方向
 
-The current technical direction is correct: LangBot should treat platform input as events, resolve one effective route for each event, and invoke a processing asset through the AgentRunner host boundary. However, this is not yet a product that non-technical users can adopt without understanding internal architecture.
+当前技术方向是正确的：LangBot 应该把平台输入视为事件，为每个事件解析出一个有效路由，并通过 AgentRunner Host 边界调用一个处理资产。但这还不是一个非技术用户无需理解内部架构就能采用的产品。
 
-The product-level model should be:
+产品层模型应当是：
 
-- **Bot**: the platform connection and event routing surface. A bot owns adapter credentials, platform permissions, incoming event visibility, and the route table for those events.
-- **Processor**: a reusable processing asset that can handle routed events. Current processor types are **Agent** and **Pipeline**. Future types can include **Workflow**.
-- **Pipeline**: a first-class no-code message processor kept for compatibility and low-code users. It is message-only and should be bindable only to `message.*` events.
-- **Agent**: a runner-backed processor for event-first processing. It can handle message and non-message events according to its declared supported event range.
-- **Solution**: a future distribution/export unit containing processors, route templates, dependency manifests, variables, and docs. A solution must not include concrete bot credentials, tenant secrets, or installed UUID bindings.
+- **机器人（Bot）**：平台连接与事件路由入口。机器人拥有适配器凭据、平台权限、入站事件可见性，以及这些事件的路由表。
+- **处理器（Processor）**：可复用的事件处理资产。当前处理器类型包括 **Agent** 和 **Pipeline**。未来可以增加 **Workflow**。
+- **Pipeline**：一等的无代码消息处理器，通过完整 Stage 链提供预处理、AI、后处理、扩展和输出控制。Pipeline 只处理消息，应当只能绑定到 `message.*` 事件。
+- **Agent**：由 runner 驱动的事件优先处理器。Agent 可以根据自身声明的事件支持范围处理消息事件和非消息事件。
+- **Solution（方案包）**：未来的分发/导出单元，包含处理器、路由模板、依赖清单、变量和文档。Solution 不应包含具体机器人凭据、租户密钥或已安装资产的 UUID 绑定。
 
-`EBA` is an internal engineering term. It can appear in internal design documents, but it should not be visible in primary product flows. User-facing language should prefer terms such as "channel", "event routing", "processor", "message pipeline", "automation", and "route template".
+`EBA` 是内部工程术语。它可以出现在内部设计文档中，但不应出现在主要产品流程里。面向用户的语言应优先使用“频道”“事件路由”“处理器”“消息流水线”“自动化”“路由模板”等表达。
 
-## 2. Current Foundation
+## 2. 当前基础
 
-The merged branch has enough technical foundation for internal smoke testing:
+已合并分支已经具备内部冒烟测试所需的技术基础：
 
-- EBA adapters can normalize platform activity into stable host event names.
-- Bots can persist `event_bindings` and route events to an Agent, Pipeline, or discard target.
-- Legacy message input can be projected into the canonical `message.received` event path.
-- Pipeline remains available as a message-only no-code processor.
-- AgentRunner pluginization provides the host-runner contract, event-first context, result stream, and runtime integration boundary.
-- Official local and external runner plugins can validate that runner behavior is no longer hard-coded into LangBot core.
-- The WebUI has an Agent/processor management surface and bot-side event routing surface.
+- EBA 适配器可以把平台活动规范化为稳定的 Host 事件名。
+- 机器人可以持久化 `event_bindings`，并将事件路由到 Agent、Pipeline 或丢弃目标。
+- 旧消息输入可以投射到标准的 `message.received` 事件路径。
+- Pipeline 仍可作为只处理消息的无代码处理器使用。
+- AgentRunner 插件化提供了 Host 与 Runner 的契约、事件优先上下文、结果流和运行时集成边界。
+- 官方 local runner 和 external runner 插件可以验证 runner 行为已经不再硬编码在 LangBot Core 中。
+- WebUI 已具备 Agent/处理器管理页面，以及机器人侧事件路由页面。
+- 机器人事件路由已具备 dry-run 诊断、运行时状态展示，以及安全的合成测试事件派发；测试事件会走已保存的 runtime 路由，但抑制真实平台出站动作。
+- MCP 工具面已暴露机器人事件路由状态查询和合成测试事件派发，便于 QA agent 或外部调试工具复用。
 
-This is a technical convergence milestone, not a product-ready release.
+这是一个技术收敛里程碑，还不是产品就绪版本。
 
-## 3. Gap to a Non-Technical Product
+## 3. 距离非技术产品的缺口
 
-### 3.1 Conceptual Load
+### 3.1 概念负担
 
-Current users still need to understand too many internal concepts: EBA, adapter event names, runner identifiers, plugin runtime health, event patterns, priority, and binding targets. A non-technical product should guide users through intent and outcomes:
+当前用户仍需要理解过多内部概念：EBA、适配器事件名、runner 标识、插件运行时健康状态、事件模式、优先级和绑定目标。面向非技术用户的产品应当通过意图和结果来引导：
 
-- "When a message is received, reply with this processor."
-- "When a new group member joins, send a welcome message."
-- "When a friend request arrives, ask an Agent to decide whether to accept."
+- “收到一条消息时，用这个处理器回复。”
+- “有新群成员加入时，发送欢迎语。”
+- “收到好友请求时，让 Agent 判断是否接受。”
 
-Raw event patterns such as `group.member_joined` should remain available in advanced mode, but the default UI should group events by friendly names and platform capability.
+`group.member_joined` 这类原始事件模式应继续保留在高级模式中，但默认 UI 应按友好名称和平台能力对事件进行分组。
 
-### 3.2 Onboarding
+### 3.2 上手路径
 
-The first-run path needs to start from a use case, not from architecture:
+首次使用路径应当从用例开始，而不是从架构开始：
 
-1. Choose a channel.
-2. Connect the account or webhook.
-3. Pick an event preset supported by that channel.
-4. Choose or create a processor.
-5. Send a test event.
-6. Read a simple run trace if it fails.
+1. 选择一个频道。
+2. 连接账号或 webhook。
+3. 选择该频道支持的事件预设。
+4. 选择或创建一个处理器。
+5. 发送测试事件。
+6. 如果失败，阅读简单的运行轨迹。
 
-The current product still assumes users can diagnose whether the backend, plugin runtime, box runtime, adapter, and runner plugin are all connected. That is acceptable for developers, but not for non-technical users.
+当前产品仍假设用户能诊断后端、插件运行时、Box 运行时、适配器和 runner 插件是否都已连接。对于开发者这是可接受的，但对非技术用户不可接受。
 
-### 3.3 Adapter Readiness
+### 3.3 适配器就绪度
 
-Each adapter needs a product capability manifest, not only an engineering implementation:
+每个适配器都需要产品能力清单，而不仅是工程实现：
 
-- supported event list with friendly labels;
-- supported outgoing actions;
-- required credentials and setup steps;
-- local/self-host/SaaS availability;
-- test signal availability;
-- deprecated/legacy status;
-- known limitations.
+- 支持的事件列表及友好标签；
+- 支持的出站动作；
+- 所需凭据和配置步骤；
+- 本地部署、自托管、SaaS 可用性；
+- 测试信号可用性；
+- 废弃/遗留状态；
+- 已知限制。
 
-Deprecated adapters should be clearly marked as "deprecated" or "legacy" in the product. New event-based adapters should be described by channel name and capability, not by the EBA acronym.
+废弃适配器应在产品中明确标记为“已废弃”或“遗留”。新的事件型适配器应按频道名称和能力描述，而不是使用 EBA 缩写。
 
-### 3.4 Processor UX
+### 3.4 处理器体验
 
-The Agent page should manage reusable processors, not make users think about all event routing decisions at once.
+处理器页面应管理可复用的 Agent 与 Pipeline，而不是让用户一次性理解所有事件路由决策。
 
-- Agent creation should provide opinionated runner templates.
-- Pipeline creation should remain a no-code message pipeline path.
-- Future Workflow creation can be introduced as another processor type when execution semantics are stable.
-- Supported event range should be shown as capability information and advanced constraints, not as the main creation concept.
-- Dependency health should be visible: runner plugin installed, runtime connected, required model configured, required resource accessible.
+- 创建 Agent 时应提供有倾向性的 runner 模板。
+- 创建 Pipeline 时应继续保持无代码消息流水线路径。
+- 未来 Workflow 的执行语义稳定后，可以作为另一种处理器类型引入。
+- 支持的事件范围应作为能力信息和高级约束展示，而不是作为创建流程的主要概念。
+- 依赖健康状态应可见：runner 插件是否安装、运行时是否连接、所需模型是否配置、所需资源是否可访问。
 
-### 3.5 Bot Event Routing UX
+### 3.5 机器人事件路由体验
 
-The Bot page should be the primary place for platform-specific event routing because platform events are easiest to understand in the context of the connected channel.
+机器人页面应成为平台特定事件路由的主要配置位置，因为平台事件在已连接频道的上下文中最容易被用户理解。
 
-Minimum product requirements:
+最低产品要求：
 
-- friendly event selector generated from adapter capability;
-- target selector filtered by event compatibility;
-- Pipeline hidden for non-message events;
-- conflict warnings for overlapping routes;
-- priority explained visually rather than as a raw number first;
-- route test button that can inject or replay a sample event;
-- per-route status showing last matched run and last failure reason;
-- safe fallback route, including explicit discard.
+- 基于适配器能力生成友好的事件选择器；
+- 目标选择器按事件兼容性过滤；
+- 对非消息事件隐藏 Pipeline；
+- 对重叠路由给出冲突警告；
+- 优先级先用视觉方式解释，而不是首先展示原始数字；
+- 提供路由测试按钮，可以注入或重放样例事件；
+- 每条路由展示状态，包括最近一次匹配的 run 和最近失败原因；
+- 提供安全的兜底路由，包括显式丢弃。
 
-### 3.6 Observability
+### 3.6 可观测性
 
-Non-technical users need a short run trace rather than raw logs:
+非技术用户需要的是简短运行轨迹，而不是原始日志：
 
 ```text
-Event received -> Route matched -> Processor started -> Action delivered
+收到事件 -> 命中路由 -> 启动处理器 -> 动作已投递
 ```
 
-When something fails, the UI should point to the failing layer:
+当失败发生时，UI 应指出失败层级：
 
-- channel not connected;
-- event unsupported by adapter;
-- no route matched;
-- processor disabled;
-- runner plugin unavailable;
-- model/resource missing;
-- delivery permission denied.
+- 频道未连接；
+- 适配器不支持该事件；
+- 没有路由命中；
+- 处理器已禁用；
+- runner 插件不可用；
+- 模型/资源缺失；
+- 投递权限被拒绝。
 
-### 3.7 Documentation and Templates
+### 3.7 文档和模板
 
-The release needs product docs and templates for common scenarios:
+发布需要面向产品场景的文档和模板：
 
-- customer service bot;
-- group welcome and moderation;
-- friend request review;
-- Dify-backed external Agent;
-- local Agent with LangBot model and knowledge base;
-- message Pipeline for compatibility.
+- 客服机器人；
+- 群欢迎和群管理；
+- 好友请求审核；
+- Dify 支持的外部 Agent；
+- 使用 LangBot 模型和知识库的本地 Agent；
+- 用于多阶段消息处理的 Pipeline。
 
-The docs should describe the product model first and expose internal terms only in advanced architecture sections.
+文档应先描述产品模型，只在高级架构章节中暴露内部术语。
 
-## 4. Recommended UX Boundary
+## 4. 推荐 UX 边界
 
-The previous "put all event orchestration in Agent" direction should be narrowed. The better boundary is:
+之前“把所有事件编排都放进 Agent”的方向应当收窄。更好的边界是：
 
-- **Bot page owns event routing**, because the event surface is platform-specific and users naturally expect channel behavior to be configured on the bot.
-- **Agent page owns processor assets**, because processors should be reusable across bots and can later be packaged into solutions.
-- **Pipeline remains a processor type**, not a historical object hidden behind Agent terminology.
+- **机器人页面负责事件路由**，因为事件面是平台特定的，用户也自然会在机器人上配置频道行为。
+- **处理器页面负责处理器资产**，因为 Agent 与 Pipeline 都应能跨机器人复用，并且未来可以被打包进 Solution。
+- **Pipeline 保持为一种处理器类型**，而不是隐藏在 Agent 术语背后的历史对象。
 
-This gives a lower mental load:
+这样可以降低心智负担：
 
-- A user asks "what should this bot do when something happens?" on the Bot page.
-- A user asks "what logic do I want to reuse?" on the Agent page.
+- 用户在机器人页面问：“当这个机器人遇到某件事时，应该做什么？”
+- 用户在处理器页面问：“我想复用什么处理逻辑？”
 
-It also supports the requirement that different events on the same bot can use different processor types: one event can use Pipeline, another can use Agent, and a future event can use Workflow.
+这也支持同一个机器人上的不同事件使用不同处理器类型：一个事件可以使用 Pipeline，另一个事件可以使用 Agent，未来另一个事件可以使用 Workflow。
 
-## 5. Future Export, Distribution, and Import Unit
+## 5. 未来导出、分发和导入单元
 
-Export/import is not in the current implementation scope, but the product boundary should not block it.
+导出/导入不在当前实现范围内，但产品边界不应阻塞它。
 
-The correct future distribution unit is **Solution**, not Bot and not Agent alone.
+正确的未来分发单元是 **Solution**，不是机器人，也不是单独的 Agent。
 
-A Solution should contain:
+Solution 应包含：
 
-- processors: Agent, Pipeline, future Workflow definitions;
-- route templates: event patterns, friendly names, target logical references, default priority, and optional conditions;
-- dependency manifest: required runner plugins, adapter capability requirements, models, tools, and resources;
-- variables: user-provided values such as API keys, channel choices, model selections, and prompt parameters;
-- docs: setup intent and expected behavior.
+- 处理器：Agent、Pipeline、未来 Workflow 定义；
+- 路由模板：事件模式、友好名称、目标逻辑引用、默认优先级和可选条件；
+- 依赖清单：所需 runner 插件、适配器能力要求、模型、工具和资源；
+- 变量：用户提供的值，例如 API key、频道选择、模型选择和 prompt 参数；
+- 文档：配置意图和预期行为。
 
-A Solution should not contain:
+Solution 不应包含：
 
-- concrete bot credentials;
-- installed runtime tokens;
-- tenant or namespace UUIDs;
-- secrets;
-- raw platform account identifiers;
-- resolved bot event binding UUIDs.
+- 具体机器人凭据；
+- 已安装运行时 token；
+- 租户或命名空间 UUID；
+- 密钥；
+- 原始平台账号标识；
+- 已解析的机器人事件绑定 UUID。
 
-During import, route templates should be resolved inside the target namespace after the user chooses a bot/channel and grants required permissions.
+导入时，应在目标命名空间内解析路由模板。用户需要先选择机器人/频道，并授予所需权限。
 
-## 6. SaaS Multi-Namespace Architecture
+## 6. SaaS 多命名空间架构
 
-The product must support a multi-namespace SaaS architecture before public SaaS release. The event routing model is sensitive because adapters, credentials, processors, runtimes, state, and logs all cross trust boundaries.
+产品在公开 SaaS 发布前必须支持多命名空间 SaaS 架构。事件路由模型很敏感，因为适配器、凭据、处理器、运行时、状态和日志都会跨越信任边界。
 
-### 6.1 Namespace Model
+### 6.1 命名空间模型
 
-Use a layered namespace model:
+采用分层命名空间模型：
 
-| Scope | Purpose |
+| 范围 | 用途 |
 | --- | --- |
-| Tenant | Billing, legal ownership, top-level isolation. |
-| Workspace | Collaboration and product workspace inside a tenant. |
-| Namespace | Deployable isolation boundary for bots, processors, runtime tokens, resources, and logs. A self-host deployment can have one default namespace. |
-| Bot scope | Platform adapter instance and event route table. |
-| Processor scope | Agent, Pipeline, Workflow, and related config. |
-| Runtime scope | Plugin runtime, runner registrations, leases, and execution permissions. |
-| Resource scope | Knowledge bases, model credentials, files, state, and secrets. |
+| 租户（Tenant） | 计费、法律归属、顶层隔离。 |
+| 工作空间（Workspace） | 租户内的协作和产品工作区。 |
+| 命名空间（Namespace） | 机器人、处理器、运行时 token、资源和日志的可部署隔离边界。自托管部署可以只有一个默认命名空间。 |
+| 机器人范围 | 平台适配器实例和事件路由表。 |
+| 处理器范围 | Agent、Pipeline、Workflow 及相关配置。 |
+| 运行时范围 | 插件运行时、runner 注册、lease 和执行权限。 |
+| 资源范围 | 知识库、模型凭据、文件、状态和密钥。 |
 
-Core persisted objects should carry `tenant_id`, `workspace_id`, and `namespace_id` before SaaS GA. Self-hosted deployments can seed a default tenant/workspace/namespace during migration.
+在 SaaS GA 前，核心持久化对象都应携带 `tenant_id`、`workspace_id` 和 `namespace_id`。自托管部署可以在迁移时种子化一个默认租户/工作空间/命名空间。
 
-### 6.2 Event Ingress Isolation
+### 6.2 事件入口隔离
 
-Every incoming event must resolve namespace before route matching:
+每个入站事件都必须先解析命名空间，再进行路由匹配：
 
 ```text
 adapter ingress -> tenant/workspace/namespace resolution -> event normalization -> event log append -> route match -> processor run
 ```
 
-Webhook and callback endpoints should encode or look up a namespace-scoped adapter installation. A platform event from one namespace must never match a route from another namespace, even if adapter names, bot names, or raw platform IDs collide.
+Webhook 和回调端点应编码或查找命名空间范围内的适配器安装。来自一个命名空间的平台事件，绝不能匹配另一个命名空间的路由，即使适配器名称、机器人名称或原始平台 ID 发生碰撞。
 
-### 6.3 Route Target Rules
+### 6.3 路由目标规则
 
-Runtime route bindings can use installed UUIDs, but exported route templates must use logical references. In SaaS:
+运行时路由绑定可以使用已安装 UUID，但导出的路由模板必须使用逻辑引用。在 SaaS 中：
 
-- a bot route can target only processors in the same namespace by default;
-- cross-namespace targets are forbidden unless explicitly shared by policy;
-- Pipeline targets remain message-only;
-- route conflict evaluation is namespace-local;
-- route audit events must include tenant, workspace, namespace, bot, route, target, and run identifiers.
+- 默认情况下，机器人路由只能指向同一命名空间内的处理器；
+- 跨命名空间目标默认禁止，除非由策略明确共享；
+- Pipeline 目标仍然只允许处理消息；
+- 路由冲突评估应限制在命名空间内；
+- 路由审计事件必须包含租户、工作空间、命名空间、机器人、路由、目标和 run 标识。
 
-### 6.4 Runtime and Plugin Isolation
+### 6.4 运行时和插件隔离
 
-The plugin runtime and runner registry need namespace-scoped authority:
+插件运行时和 runner 注册表需要命名空间范围的授权：
 
-- runtime registration token is scoped to one namespace or an explicitly allowed namespace set;
-- runner discovery is filtered by namespace permissions;
-- leases and heartbeats are namespace-scoped;
-- run-scoped API tokens cannot access objects outside the run namespace;
-- plugin storage, state, and temporary files include namespace in their storage key;
-- shared runtime is acceptable for early SaaS only if every API call is scoped and audited;
-- dedicated runtime should be available for enterprise or high-risk tenants.
+- 运行时注册 token 只作用于一个命名空间，或显式允许的一组命名空间；
+- runner 发现结果按命名空间权限过滤；
+- lease 和 heartbeat 按命名空间隔离；
+- run-scoped API token 不能访问 run 所在命名空间之外的对象；
+- 插件存储、状态和临时文件的 storage key 应包含命名空间；
+- 早期 SaaS 可以接受共享运行时，但每个 API 调用都必须被 scoped 并审计；
+- 企业或高风险租户应支持专用运行时。
 
-### 6.5 Secrets, Resources, and State
+### 6.5 密钥、资源和状态
 
-Secrets and resources must not be globally addressable:
+密钥和资源不能全局寻址：
 
-- adapter credentials live in namespace-scoped secret storage;
-- model provider credentials can be tenant/workspace/namespace scoped according to policy;
-- knowledge resources declare which namespaces can use them;
-- Agent persistent state is partitioned by tenant/workspace/namespace/processor unless a sharing policy says otherwise;
-- event logs and transcripts are namespace-scoped and subject to retention policy.
+- 适配器凭据存放在命名空间范围的密钥存储中；
+- 模型提供商凭据可以根据策略按租户/工作空间/命名空间设定范围；
+- 知识资源声明允许哪些命名空间使用；
+- Agent 持久状态按租户/工作空间/命名空间/处理器分区，除非共享策略另有规定；
+- 事件日志和会话记录按命名空间隔离，并受保留策略约束。
 
-### 6.6 Marketplace and Installed Assets
+### 6.6 Marketplace 和已安装资产
 
-Marketplace package visibility is not the same as installed asset visibility:
+Marketplace 包可见性不等于已安装资产可见性：
 
-- marketplace package can be public, tenant-private, or workspace-private;
-- installation creates namespace-local assets or namespace-local references;
-- installed processors and route templates are copied by default to avoid accidental cross-tenant mutation;
-- updates should be explicit and auditable.
+- Marketplace 包可以是公开、租户私有或工作空间私有；
+- 安装会创建命名空间本地资产，或命名空间本地引用；
+- 已安装处理器和路由模板默认复制，避免意外跨租户变更；
+- 更新必须显式且可审计。
 
-### 6.7 SaaS Test Requirements
+### 6.7 SaaS 测试要求
 
-Before SaaS beta:
+SaaS beta 前必须验证：
 
-- tenant A event cannot match tenant B routes;
-- namespace A runtime cannot claim namespace B runs;
-- namespace A processor cannot read namespace B resources;
-- solution import cannot preserve source tenant UUIDs or secrets;
-- route replay cannot expose raw event payload from another namespace;
-- admin users can inspect audit trails without accessing secret values.
+- 租户 A 的事件不能匹配租户 B 的路由；
+- 命名空间 A 的运行时不能 claim 命名空间 B 的 run；
+- 命名空间 A 的处理器不能读取命名空间 B 的资源；
+- Solution 导入不能保留源租户 UUID 或密钥；
+- 路由重放不能暴露另一个命名空间的原始事件 payload；
+- 管理员可以查看审计轨迹，但不能访问密钥值。
 
-## 7. Release Plan
+## 7. 发布计划
 
-### Phase 0: Technical Convergence
+### Phase 0：技术收敛
 
-Goal: prove the merged branch can run with event bindings and externalized runners.
+目标：证明合并分支可以基于事件绑定和外置 runner 运行。
 
-Required gates:
+必要门禁：
 
-- Bot event routing uses `event_bindings` as the single routing source.
-- Legacy bot pipeline routing fields are removed or migrated.
-- Pipeline works as a message-only processor.
-- Agent runner plugin smoke tests pass with local and Dify runners.
-- Migration naming and downgrade paths are valid.
-- Primary UI no longer exposes "EBA" in user-facing adapter names.
+- 机器人事件路由以 `event_bindings` 作为唯一路由来源。
+- 旧机器人 pipeline 路由字段已移除或迁移。
+- Pipeline 可作为只处理消息的处理器运行。
+- Agent runner 插件冒烟测试通过，覆盖 local runner 和 Dify runner。
+- 迁移命名和 downgrade 路径有效。
+- 主 UI 不再在面向用户的适配器名称中暴露 “EBA”。
 
-### Phase 1: Private Beta for Technical Users
+### Phase 1：面向技术用户的私有 Beta
 
-Goal: make the system usable by contributors and early self-host adopters.
+目标：让贡献者和早期自托管用户可用。
 
-Required gates:
+必要门禁：
 
-- adapter capability matrix exists in docs and UI;
-- route editor filters incompatible targets;
-- runner/plugin health checks are visible;
-- local Agent and Dify Agent setup has a guided path;
-- per-route run trace exists;
-- deprecated adapters are marked consistently;
-- failure messages identify the failing layer.
+- 文档和 UI 中存在适配器能力矩阵；
+- 路由编辑器会过滤不兼容目标；
+- runner/plugin 健康检查可见；
+- local Agent 和 Dify Agent 有引导式配置路径；
+- 每条路由有运行轨迹；
+- 废弃适配器被一致标记；
+- 失败信息能指出失败层级。
 
-### Phase 2: Product Beta for Non-Technical Users
+### Phase 2：面向非技术用户的产品 Beta
 
-Goal: let users complete common scenarios without reading architecture docs.
+目标：让用户无需阅读架构文档也能完成常见场景。
 
-Required gates:
+必要门禁：
 
-- first-run bot wizard starts from use case and channel;
-- event presets hide raw event patterns by default;
-- route simulation or test event exists;
-- common processor templates exist;
-- conflict warnings and fallback behavior are clear;
-- docs use product language first and advanced terms later;
-- SaaS namespace schema is implemented or migration-ready.
+- 首次使用机器人向导从用例和频道开始；
+- 事件预设默认隐藏原始事件模式；
+- 存在路由模拟或测试事件能力；
+- 存在常见处理器模板；
+- 冲突警告和兜底行为清晰；
+- 文档先使用产品语言，再介绍高级术语；
+- SaaS 命名空间 schema 已实现，或已经具备迁移准备。
 
-### Phase 3: SaaS Beta
+### Phase 3：SaaS Beta
 
-Goal: run the product for multiple tenants safely.
+目标：安全地为多个租户运行产品。
 
-Required gates:
+必要门禁：
 
-- tenant/workspace/namespace fields exist on all routing, runtime, state, log, and resource facts;
-- namespace-scoped runtime registration and run claim are enforced;
-- namespace-scoped secrets and adapter installs are enforced;
-- route matching and audit are namespace-local;
-- quotas, retention, and admin audit surfaces exist;
-- migration from self-host default namespace is documented.
+- 所有路由、运行时、状态、日志和资源事实都具备租户/工作空间/命名空间字段；
+- 命名空间范围的运行时注册和 run claim 已强制执行；
+- 命名空间范围的密钥和适配器安装已强制执行；
+- 路由匹配和审计限制在命名空间内；
+- 配额、保留策略和管理员审计界面存在；
+- 自托管默认命名空间迁移已有文档。
 
-### Phase 4: GA
+### Phase 4：GA
 
-Goal: make the product reliable for broad adoption.
+目标：让产品具备广泛采用所需的可靠性。
 
-Required gates:
+必要门禁：
 
-- solution export/import is implemented with dependency and variable resolution;
-- marketplace distribution supports namespace-local installation;
-- cross-namespace sharing policy is explicit;
-- security review covers adapters, runtime tokens, runner APIs, secrets, logs, and route replay;
-- upgrade and rollback procedures are documented;
-- product telemetry measures onboarding drop-off and route failure categories.
+- Solution 导出/导入已实现，并支持依赖和变量解析；
+- Marketplace 分发支持命名空间本地安装；
+- 跨命名空间共享策略是显式的；
+- 安全评审覆盖适配器、运行时 token、runner API、密钥、日志和路由重放；
+- 升级和回滚流程已有文档；
+- 产品遥测可以衡量上手流失和路由失败类别。
 
-## 8. Acceptance Checklist
+## 8. 验收清单
 
-A release can be considered product-ready only when:
+只有满足以下条件，才可以认为发布版本达到产品就绪：
 
-- a non-technical user can connect a supported channel, choose a scenario, bind a processor, test it, and understand the result without editing raw JSON;
-- the product UI avoids internal terms such as EBA in primary flows;
-- Bot page owns platform event routing and Agent page owns reusable processors;
-- Pipeline remains visible as a no-code message processor and is not offered for non-message events;
-- different events on one bot can route to different processor types;
-- route failures are explained by layer;
-- namespace isolation is enforced by schema, service checks, runtime tokens, storage keys, and tests;
-- export/import, when implemented, uses Solution packages with route templates rather than concrete bot bindings.
+- 非技术用户可以连接一个受支持频道，选择场景，绑定处理器，测试它，并在不编辑原始 JSON 的情况下理解结果；
+- 产品 UI 在主要流程中避免使用 EBA 这类内部术语；
+- 机器人页面负责平台事件路由，处理器页面负责可复用的 Agent 与 Pipeline；
+- Pipeline 仍作为无代码消息处理器可见，并且不会出现在非消息事件目标中；
+- 同一个机器人的不同事件可以路由到不同处理器类型；
+- 路由失败能按层级解释；
+- 命名空间隔离通过 schema、service check、运行时 token、storage key 和测试强制执行；
+- 导出/导入实现后，使用带路由模板的 Solution 包，而不是具体机器人绑定。
 
-## 9. Open Decisions
+## 9. 待决策问题
 
-- Final user-facing name for the combined processor surface: "Agent", "Processor", or another term.
-- Whether Workflow should be a separate persisted processor type or an Agent runner category.
-- Whether SaaS namespaces should map one-to-one to workspaces initially, or whether advanced tenants need multiple namespaces per workspace from the first SaaS beta.
-- Which adapters are allowed in SaaS shared runtime and which require dedicated runtime isolation.
-- Exact package format for future Solution export/import.
+- 组合处理器入口统一使用 “Processor / 处理器”；Agent 与 Pipeline 是其中平级的类型。
+- Workflow 应作为独立持久化处理器类型，还是作为 Agent runner 类别。
+- SaaS 命名空间初期是否与工作空间一一映射，还是高级租户在首个 SaaS beta 就需要一个工作空间下多个命名空间。
+- 哪些适配器允许在 SaaS 共享运行时中运行，哪些需要专用运行时隔离。
+- 未来 Solution 导出/导入的确切包格式。

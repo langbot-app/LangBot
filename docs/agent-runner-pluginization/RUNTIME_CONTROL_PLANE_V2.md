@@ -532,7 +532,7 @@ Tests: 40+ 个文件
 
 ## 12. 待定问题
 
-- Host 是否需要最小持久 `Agent` / `Binding` 模型，还是继续由 Pipeline / Platform 插件投影运行期 `AgentBinding`。
+- 已确认：Agent 与 Pipeline 都持久存在，并由 EBA 处理器 binding 指向其中之一；Pipeline 仅在 AI Stage 调用 runner 时投影一次性 `AgentBinding`，不会充当持久 Agent 的替代物。
 - Platform 插件创建 run 时，是否传完整 `AgentBinding` snapshot，还是引用 Host-owned binding id。
 - `AgentRunEvent` 与现有 `EventLog` / `Transcript` 的查询关系：直接 join，还是通过专门 view 聚合。
 - `run.append_result` 的认证粒度：runner plugin identity、run token、scoped capability token，或 SDK runtime 内部 channel。

@@ -69,7 +69,7 @@ class MockQuery:
         self.pipeline_config = {
             'ai': {
                 'runner': {
-                    'id': 'plugin:langbot/local-agent/default',
+                    'id': 'plugin:langbot-team/LocalAgent/default',
                 },
                 'runner_config': {},
             },
@@ -133,7 +133,7 @@ class MockAgentRunOrchestrator:
         return False
 
     def resolve_runner_id_for_telemetry(self, query):
-        return 'plugin:langbot/local-agent/default'
+        return 'plugin:langbot-team/LocalAgent/default'
 
 
 class MockApplication:
@@ -234,16 +234,16 @@ class TestConfigMigrationInChatHandler:
         pipeline_config = {
             'ai': {
                 'runner': {
-                    'id': 'plugin:langbot/local-agent/default',
+                    'id': 'plugin:langbot-team/LocalAgent/default',
                 },
             },
         }
 
         runner_id = ConfigMigration.resolve_runner_id(pipeline_config)
-        assert runner_id == 'plugin:langbot/local-agent/default'
+        assert runner_id == 'plugin:langbot-team/LocalAgent/default'
 
-    def test_resolve_runner_id_from_old_format(self):
-        """ConfigMigration resolves old runner aliases for compatibility."""
+    def test_old_runner_field_is_not_resolved(self):
+        """The 4.x path requires ai.runner.id."""
         pipeline_config = {
             'ai': {
                 'runner': {
@@ -253,7 +253,7 @@ class TestConfigMigrationInChatHandler:
         }
 
         runner_id = ConfigMigration.resolve_runner_id(pipeline_config)
-        assert runner_id == 'plugin:langbot/local-agent/default'
+        assert runner_id is None
 
 
 class TestErrorHandling:
@@ -268,18 +268,18 @@ class TestErrorHandling:
     def test_runner_execution_error_retryable(self):
         """RunnerExecutionError should have retryable property."""
         error = RunnerExecutionError(
-            'plugin:langbot/local-agent/default',
+            'plugin:langbot-team/LocalAgent/default',
             'Upstream timeout',
             retryable=True,
         )
-        assert error.runner_id == 'plugin:langbot/local-agent/default'
+        assert error.runner_id == 'plugin:langbot-team/LocalAgent/default'
         assert error.retryable is True
         assert 'timeout' in str(error)
 
     def test_runner_execution_error_not_retryable(self):
         """RunnerExecutionError can be non-retryable."""
         error = RunnerExecutionError(
-            'plugin:langbot/local-agent/default',
+            'plugin:langbot-team/LocalAgent/default',
             'Configuration error',
             retryable=False,
         )
@@ -288,11 +288,11 @@ class TestErrorHandling:
     def test_runner_not_authorized_error_properties(self):
         """RunnerNotAuthorizedError should have bound_plugins property."""
         error = RunnerNotAuthorizedError(
-            'plugin:langbot/local-agent/default',
-            ['langbot/dify-agent'],
+            'plugin:langbot-team/LocalAgent/default',
+            ['langbot-team/DifyAgent'],
         )
-        assert error.runner_id == 'plugin:langbot/local-agent/default'
-        assert error.bound_plugins == ['langbot/dify-agent']
+        assert error.runner_id == 'plugin:langbot-team/LocalAgent/default'
+        assert error.bound_plugins == ['langbot-team/DifyAgent']
 
 
 class TestChatHandlerImports:
@@ -500,7 +500,7 @@ class TestChatHandlerAsyncBehavior:
         from langbot.pkg.pipeline import entities
 
         orchestrator = MockAgentRunOrchestrator(
-            error=RunnerNotAuthorizedError('plugin:langbot/local-agent/default', ['other/plugin'])
+            error=RunnerNotAuthorizedError('plugin:langbot-team/LocalAgent/default', ['other/plugin'])
         )
         mock_ap = MockApplication(orchestrator=orchestrator)
         mock_ap.plugin_connector.emit_event = AsyncMock(return_value=MockEventContext(prevented=False))
@@ -538,7 +538,7 @@ class TestChatHandlerAsyncBehavior:
         from langbot.pkg.pipeline import entities
 
         orchestrator = MockAgentRunOrchestrator(
-            error=RunnerExecutionError('plugin:langbot/local-agent/default', 'timeout', retryable=True)
+            error=RunnerExecutionError('plugin:langbot-team/LocalAgent/default', 'timeout', retryable=True)
         )
         mock_ap = MockApplication(orchestrator=orchestrator)
         mock_ap.plugin_connector.emit_event = AsyncMock(return_value=MockEventContext(prevented=False))

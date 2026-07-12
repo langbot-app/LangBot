@@ -193,7 +193,7 @@ class TestPersistActivatedSkill:
 
         query = SimpleNamespace(variables={ACTIVATED_SKILLS_KEY: {'pdf': {'name': 'pdf'}}})
         query._agent_run_session = {
-            'runner_id': 'plugin:langbot/local-agent/default',
+            'runner_id': 'plugin:langbot-team/LocalAgent/default',
             'state_context': {
                 'scope_keys': {'conversation': 'conv-scope-key'},
                 'binding_identity': 'binding-1',
@@ -214,7 +214,7 @@ class TestPersistActivatedSkill:
         assert kwargs['state_key'] == ACTIVATED_SKILL_NAMES_STATE_KEY
         assert kwargs['value'] == ['pdf']
         assert kwargs['scope'] == 'conversation'
-        assert kwargs['runner_id'] == 'plugin:langbot/local-agent/default'
+        assert kwargs['runner_id'] == 'plugin:langbot-team/LocalAgent/default'
         assert kwargs['binding_identity'] == 'binding-1'
 
     @pytest.mark.asyncio

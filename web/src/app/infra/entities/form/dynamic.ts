@@ -55,6 +55,7 @@ export enum DynamicFormItemType {
   FLOAT = 'float',
   BOOLEAN = 'boolean',
   STRING = 'string',
+  SECRET = 'secret',
   TEXT = 'text',
   STRING_ARRAY = 'array[string]',
   FILE = 'file',

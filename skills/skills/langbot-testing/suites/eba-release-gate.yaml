@@ -10,5 +10,7 @@ tags:
   - release-gate
 cases:
   - wizard-scenario-routing
+  - wizard-runner-marketplace-catalog
+  - agent-runner-health-visibility
   - bot-event-routing-product-flow
   - wizard-onebot-agent-runtime

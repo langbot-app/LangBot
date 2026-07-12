@@ -1,13 +1,25 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type React from 'react';
+import { Link } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { Brain, FileJson2, Info, Power, Trash2 } from 'lucide-react';
+import {
+  Brain,
+  CircleAlert,
+  CircleCheck,
+  FileJson2,
+  Info,
+  LoaderCircle,
+  Power,
+  RefreshCw,
+  Trash2,
+  Unplug,
+} from 'lucide-react';
 import { httpClient } from '@/app/infra/http/HttpClient';
-import { Agent } from '@/app/infra/entities/api';
+import { Agent, ApiRespPluginSystemStatus } from '@/app/infra/entities/api';
 import {
   PipelineConfigStage,
   PipelineConfigTab,
@@ -43,6 +55,7 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 interface AgentFormComponentProps {
   agentId: string;
@@ -68,6 +81,10 @@ export default function AgentFormComponent({
     useState<SectionItem['name']>('basic');
   const [runnerConfigSchema, setRunnerConfigSchema] =
     useState<PipelineConfigTab | null>(null);
+  const [pluginSystemStatus, setPluginSystemStatus] =
+    useState<ApiRespPluginSystemStatus | null>(null);
+  const [pluginStatusLoading, setPluginStatusLoading] = useState(true);
+  const [pluginStatusError, setPluginStatusError] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const formSchema = z.object({
@@ -145,6 +162,23 @@ export default function AgentFormComponent({
     };
   }, [agentId, form, t]);
 
+  const loadPluginSystemStatus = useCallback(async () => {
+    setPluginStatusLoading(true);
+    setPluginStatusError(false);
+    try {
+      setPluginSystemStatus(await httpClient.getPluginSystemStatus());
+    } catch {
+      setPluginSystemStatus(null);
+      setPluginStatusError(true);
+    } finally {
+      setPluginStatusLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadPluginSystemStatus();
+  }, [loadPluginSystemStatus]);
+
   const sections: SectionItem[] = [
     { label: t('agents.basicInfo'), name: 'basic', icon: Info },
     { label: t('agents.runnerSettings'), name: 'runner', icon: Brain },
@@ -152,6 +186,128 @@ export default function AgentFormComponent({
   ];
 
   const currentRunner = (form.watch('runner') as Record<string, any>)?.id;
+  const runnerOptions = useMemo(() => {
+    const runnerStage = runnerConfigSchema?.stages.find(
+      (stage) => stage.name === 'runner',
+    );
+    return (
+      runnerStage?.config.find((item) => item.name === 'id')?.options ?? []
+    );
+  }, [runnerConfigSchema]);
+  const selectedRunnerOption = runnerOptions.find(
+    (option) => option.name === currentRunner,
+  );
+
+  function renderRunnerStatusActions(showRetry = true) {
+    return (
+      <div className="mt-3 flex flex-wrap gap-2">
+        {showRetry && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => void loadPluginSystemStatus()}
+          >
+            <RefreshCw className="size-4" />
+            {t('common.retry')}
+          </Button>
+        )}
+        <Button type="button" variant="outline" size="sm" asChild>
+          <Link to="/home/extensions">{t('plugins.title')}</Link>
+        </Button>
+      </div>
+    );
+  }
+
+  function renderRunnerStatus() {
+    if (pluginStatusLoading) {
+      return (
+        <Alert>
+          <LoaderCircle className="animate-spin" />
+          <AlertTitle>{t('agents.runnerStatusLoading')}</AlertTitle>
+        </Alert>
+      );
+    }
+
+    if (pluginStatusError || !pluginSystemStatus) {
+      return (
+        <Alert variant="destructive">
+          <CircleAlert />
+          <AlertTitle>{t('agents.runnerStatusCheckFailed')}</AlertTitle>
+          <AlertDescription>
+            {t('agents.runnerStatusCheckFailedDescription')}
+            {renderRunnerStatusActions()}
+          </AlertDescription>
+        </Alert>
+      );
+    }
+
+    if (!pluginSystemStatus.is_enable) {
+      return (
+        <Alert variant="destructive">
+          <Power />
+          <AlertTitle>{t('plugins.systemDisabled')}</AlertTitle>
+          <AlertDescription>
+            {t('plugins.systemDisabledDesc')}
+            {renderRunnerStatusActions(false)}
+          </AlertDescription>
+        </Alert>
+      );
+    }
+
+    if (!pluginSystemStatus.is_connected) {
+      return (
+        <Alert variant="destructive">
+          <Unplug />
+          <AlertTitle>{t('plugins.connectionError')}</AlertTitle>
+          <AlertDescription>
+            {t('plugins.connectionErrorDesc')}
+            {renderRunnerStatusActions()}
+          </AlertDescription>
+        </Alert>
+      );
+    }
+
+    if (runnerOptions.length === 0) {
+      return (
+        <Alert variant="destructive">
+          <CircleAlert />
+          <AlertTitle>{t('agents.noRunnersAvailable')}</AlertTitle>
+          <AlertDescription>
+            {t('agents.noRunnersAvailableDescription')}
+            {renderRunnerStatusActions()}
+          </AlertDescription>
+        </Alert>
+      );
+    }
+
+    if (!currentRunner || !selectedRunnerOption) {
+      return (
+        <Alert variant="destructive">
+          <CircleAlert />
+          <AlertTitle>{t('agents.selectedRunnerUnavailable')}</AlertTitle>
+          <AlertDescription>
+            {t('agents.selectedRunnerUnavailableDescription', {
+              runner: currentRunner || t('agents.noRunnerSelected'),
+            })}
+            {renderRunnerStatusActions()}
+          </AlertDescription>
+        </Alert>
+      );
+    }
+
+    return (
+      <Alert className="border-emerald-600/40 bg-emerald-500/5 text-emerald-950 dark:text-emerald-100">
+        <CircleCheck className="text-emerald-600" />
+        <AlertTitle>{t('agents.runnerReady')}</AlertTitle>
+        <AlertDescription>
+          {t('agents.runnerReadyDescription', {
+            runner: extractI18nObject(selectedRunnerOption.label),
+          })}
+        </AlertDescription>
+      </Alert>
+    );
+  }
 
   function updateSnapshotIfInitial(stageKey: string) {
     if (!initializedStagesRef.current.has(stageKey)) {
@@ -431,6 +587,7 @@ export default function AgentFormComponent({
 
                 {activeSection === 'runner' && (
                   <div className="space-y-6">
+                    {renderRunnerStatus()}
                     {runnerConfigSchema?.stages.map((stage) =>
                       renderDynamicStage(stage),
                     )}

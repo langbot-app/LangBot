@@ -110,7 +110,7 @@ Each probe writes `automation-result.json` and probe logs under
 | Generic Pipeline Debug Chat | `pipeline-debug-chat` | The WebUI Debug Chat path itself works before runner-specific failures are diagnosed. |
 | Deterministic QA runner install | `agent-runner-live-install` | A local `.lbpkg` AgentRunner package can install and register a runner. |
 | Deterministic QA runner Debug Chat | `agent-runner-qa-debug-chat` | The installed QA runner executes through WebUI Debug Chat without a model provider. |
-| Required runner plugins | `agent-runner-release-preflight` | `langbot/local-agent` and `langbot/acp-agent-runner` are visible to the host. |
+| Required runner plugins | `agent-runner-release-preflight` | `langbot-team/LocalAgent` and `langbot-team/ACPAgentRunner` are visible to the host. |
 | Required QA plugin tools | `plugin-e2e-smoke`, `agent-runner-release-preflight`, `qa-plugin-smoke-live-install` | The deterministic `qa_plugin_echo` and `qa_plugin_fail` tools are exposed before tool-loop and tool-error cases start. |
 | Knowledge base fixture | `langrag-kb-retrieve`, `local-agent-rag-debug-chat` | LangRAG data is queryable and the runner inserts retrieved context. |
 | Effective prompt bridge | `local-agent-effective-prompt-debug-chat` | Host prompt preprocessing reaches the runner. |

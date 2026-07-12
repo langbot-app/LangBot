@@ -11,7 +11,6 @@ from ...entity.persistence import (
     pipeline as persistence_pipeline,
     bot as persistence_bot,
 )
-from ...agent.runner.config_migration import LEGACY_RUNNER_ID_MAP
 
 
 @migration.migration_class(1)
@@ -113,47 +112,6 @@ class DBMigrateV3Config(migration.DBMigration):
             pipeline_uuid = default_pipeline['uuid']
 
             pipeline_config = default_pipeline['config']
-
-            # ai
-            ai_config = pipeline_config.setdefault('ai', {})
-            runner_name = self.ap.provider_cfg.data['runner']
-            runner_id = LEGACY_RUNNER_ID_MAP.get(runner_name, '')
-            ai_config['runner'] = {
-                'id': runner_id,
-            }
-            runner_configs = ai_config.setdefault('runner_config', {})
-
-            local_agent_runner_id = LEGACY_RUNNER_ID_MAP['local-agent']
-            local_agent_config = runner_configs.setdefault(local_agent_runner_id, {})
-            local_agent_config['model'] = {
-                'primary': model_uuid,
-                'fallbacks': [],
-            }
-
-            local_agent_config['prompt'] = [
-                {
-                    'role': 'system',
-                    'content': self.ap.provider_cfg.data['prompt']['default'],
-                }
-            ]
-            runner_configs[LEGACY_RUNNER_ID_MAP['dify-service-api']] = {
-                'base-url': self.ap.provider_cfg.data['dify-service-api']['base-url'],
-                'app-type': self.ap.provider_cfg.data['dify-service-api']['app-type'],
-                'api-key': self.ap.provider_cfg.data['dify-service-api'][
-                    self.ap.provider_cfg.data['dify-service-api']['app-type']
-                ]['api-key'],
-                'thinking-convert': self.ap.provider_cfg.data['dify-service-api']['options']['convert-thinking-tips'],
-                'timeout': self.ap.provider_cfg.data['dify-service-api'][
-                    self.ap.provider_cfg.data['dify-service-api']['app-type']
-                ]['timeout'],
-            }
-            runner_configs[LEGACY_RUNNER_ID_MAP['dashscope-app-api']] = {
-                'app-type': self.ap.provider_cfg.data['dashscope-app-api']['app-type'],
-                'api-key': self.ap.provider_cfg.data['dashscope-app-api']['api-key'],
-                'references_quote': self.ap.provider_cfg.data['dashscope-app-api'][
-                    self.ap.provider_cfg.data['dashscope-app-api']['app-type']
-                ]['references_quote'],
-            }
 
             # trigger
             pipeline_config['trigger']['group-respond-rules'] = self.ap.pipeline_cfg.data['respond-rules']['default']

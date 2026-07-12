@@ -33,7 +33,7 @@ automation_env:
   - LANGBOT_LOCAL_AGENT_PIPELINE_NAME
 automation_pipeline_url_env: LANGBOT_LOCAL_AGENT_PIPELINE_URL
 automation_pipeline_name_env: LANGBOT_LOCAL_AGENT_PIPELINE_NAME
-automation_expected_runner_id: "plugin:langbot/local-agent/default"
+automation_expected_runner_id: "plugin:langbot-team/LocalAgent/default"
 automation_runner_config_patch_json: '{"knowledge-bases":[],"max-tool-iterations":2,"tool-execution-mode":"serial"}'
 automation_extensions_patch_json: '{"enable_all_plugins":false,"bound_plugins":[{"author":"langbot","name":"local-agent"},{"author":"qa","name":"plugin-smoke"}],"enable_all_mcp_servers":false,"bound_mcp_servers":[],"enable_all_skills":false,"bound_skills":[]}'
 automation_restore_runner_config: "1"
@@ -54,14 +54,14 @@ preconditions:
   - "qa-plugin-smoke exposes qa_plugin_echo."
 steps:
   - "Ensure the local-agent pipeline and qa-plugin-smoke fixture plugin are available."
-  - "Temporarily set max-tool-iterations to 2 and bind only langbot/local-agent plus qa/plugin-smoke."
+  - "Temporarily set max-tool-iterations to 2 and bind only langbot-team/LocalAgent plus qa/plugin-smoke."
   - "Reset the person Debug Chat session for the target pipeline."
   - "Send the LOOP_LIMIT prompt and wait for the runner limit message."
   - "Restore the original runner config and pipeline extension bindings."
 checks:
   - "UI: The final Bot message contains Tool call iteration limit reached. I stopped before calling more tools."
   - "API diagnostic: pipeline-config-diagnostic.json shows max-tool-iterations was patched to 2."
-  - "API diagnostic: pipeline-extensions-diagnostic.json shows only langbot/local-agent and qa/plugin-smoke were bound."
+  - "API diagnostic: pipeline-extensions-diagnostic.json shows only langbot-team/LocalAgent and qa/plugin-smoke were bound."
   - "Logs: Backend shows the request completed without infinite loop, runner timeout, or model setup failure."
   - "Console: No unexpected frontend runtime errors appear during Debug Chat."
 evidence_required:

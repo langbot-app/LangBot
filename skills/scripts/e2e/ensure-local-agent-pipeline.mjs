@@ -18,7 +18,7 @@ import {
   writeResult,
 } from "./lib/langbot-e2e.mjs";
 
-const RUNNER_ID = "plugin:langbot/local-agent/default";
+const RUNNER_ID = "plugin:langbot-team/LocalAgent/default";
 const SPACE_PROVIDER_UUID = "00000000-0000-0000-0000-000000000000";
 const DEFAULT_PIPELINE_NAME = "Agent QA Local Agent Debug Chat";
 const DEFAULT_LOCAL_PASSWORD = "LangBotE2ELocalPass!2026";

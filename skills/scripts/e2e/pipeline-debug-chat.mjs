@@ -429,7 +429,7 @@ async function inspectAndPatchPipelineConfig(page, {
     const config = JSON.parse(JSON.stringify(pipeline.config || {}));
     const aiConfig = config.ai && typeof config.ai === "object" ? config.ai : {};
     const runner = aiConfig.runner && typeof aiConfig.runner === "object" ? aiConfig.runner : {};
-    const runnerId = runner.id || runner.runner || "";
+    const runnerId = runner.id || "";
     if (!runnerId) {
       return {
         status: "blocked",
@@ -438,7 +438,7 @@ async function inspectAndPatchPipelineConfig(page, {
         pipeline_id: pipelineId,
         pipeline_name: pipeline.name,
         matched_by: matchedBy,
-        reason: "Pipeline has no ai.runner.id or legacy ai.runner.runner.",
+        reason: "Pipeline has no ai.runner.id.",
       };
     }
     if (expectedRunnerId && runnerId !== expectedRunnerId) {

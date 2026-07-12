@@ -26,7 +26,7 @@ from langbot_plugin.api.entities.builtin.provider import session as provider_ses
 from langbot_plugin.api.entities.builtin.resource import tool as resource_tool
 
 
-RUNNER_ID = 'plugin:langbot/local-agent/default'
+RUNNER_ID = 'plugin:langbot-team/LocalAgent/default'
 
 
 class FakeLogger:
@@ -153,8 +153,8 @@ def make_descriptor() -> AgentRunnerDescriptor:
         id=RUNNER_ID,
         source='plugin',
         label={'en_US': 'Local Agent'},
-        plugin_author='langbot',
-        plugin_name='local-agent',
+        plugin_author='langbot-team',
+        plugin_name='LocalAgent',
         runner_name='default',
         capabilities={
             'streaming': True,
@@ -231,7 +231,7 @@ def make_query():
             ],
         ),
         variables={
-            '_pipeline_bound_plugins': ['langbot/local-agent'],
+            '_pipeline_bound_plugins': ['langbot-team/LocalAgent'],
             '_fallback_model_uuids': ['model_fallback'],
             '_pipeline_bound_skills': ['demo'],
             'public_param': 'visible',
@@ -354,8 +354,8 @@ async def test_orchestrator_runs_fake_plugin_with_authorized_context(clean_agent
     assert messages[0].content == 'fake response'
     assert plugin_connector.calls == [
         {
-            'plugin_author': 'langbot',
-            'plugin_name': 'local-agent',
+            'plugin_author': 'langbot-team',
+            'plugin_name': 'LocalAgent',
             'runner_name': 'default',
         }
     ]
@@ -400,7 +400,7 @@ async def test_orchestrator_runs_fake_plugin_with_authorized_context(clean_agent
 
     session_during_run = plugin_connector.sessions_during_run[0]
     assert session_during_run is not None
-    assert session_during_run['plugin_identity'] == 'langbot/local-agent'
+    assert session_during_run['plugin_identity'] == 'langbot-team/LocalAgent'
     assert session_during_run['authorization']['authorized_ids']['tool'] == {'langbot/test-tool/search'}
     assert session_during_run['authorization']['authorized_ids']['skill'] == {'demo'}
     assert await get_session_registry().get(context['run_id']) is None

@@ -27,7 +27,7 @@ from tests.e2e.utils.process_manager import find_project_root
 pytestmark = pytest.mark.e2e
 
 
-LOCAL_AGENT_RUNNER_ID = 'plugin:langbot/local-agent/default'
+LOCAL_AGENT_RUNNER_ID = 'plugin:langbot-team/LocalAgent/default'
 FAKE_PROVIDER_UUID = 'e2e-fake-provider'
 FAKE_MODEL_UUID = 'e2e-fake-local-agent-model'
 LOCAL_AGENT_PLUGIN_DIRNAME = 'langbot__local-agent'

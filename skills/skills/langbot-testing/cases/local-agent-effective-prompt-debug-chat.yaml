@@ -44,7 +44,7 @@ steps:
   - "Confirm the fixture plugin is bound to the target pipeline through Extensions."
   - "Open the target local-agent pipeline."
   - "Open Configuration > AI."
-  - "Use runner Default or the pluginized langbot/local-agent runner."
+  - "Use runner Default or the pluginized langbot-team/LocalAgent runner."
   - "Select a model that is known to follow system prompts in Debug Chat."
   - "Save the pipeline."
   - "Open Debug Chat."

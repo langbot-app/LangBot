@@ -11,10 +11,7 @@ async def test_update_pipeline_filters_protected_fields_without_mutating_input(m
     loaded_pipeline = Mock()
     service.get_pipeline = AsyncMock(return_value=loaded_pipeline)
 
-    bot = Mock(uuid='bot-uuid')
-    bot_result = Mock(all=Mock(return_value=[bot]))
-    mock_app.persistence_mgr.execute_async = AsyncMock(side_effect=[None, bot_result])
-    mock_app.bot_service = Mock(update_bot=AsyncMock())
+    mock_app.persistence_mgr.execute_async = AsyncMock(return_value=None)
     mock_app.pipeline_mgr = Mock(remove_pipeline=AsyncMock(), load_pipeline=AsyncMock())
     mock_app.sess_mgr.session_list = []
 
@@ -35,9 +32,5 @@ async def test_update_pipeline_filters_protected_fields_without_mutating_input(m
     updated_fields = {getattr(field, 'key', str(field)) for field in update_stmt._values}
     assert updated_fields == {'name'}
 
-    mock_app.bot_service.update_bot.assert_awaited_once_with(
-        'bot-uuid',
-        {'use_pipeline_name': 'Updated pipeline'},
-    )
     mock_app.pipeline_mgr.remove_pipeline.assert_awaited_once_with('pipeline-uuid')
     mock_app.pipeline_mgr.load_pipeline.assert_awaited_once_with(loaded_pipeline)
