@@ -357,10 +357,13 @@ class TestCredentialsBuild:
             cred_calls.append(kwargs)
             return ('CRED', kwargs)
 
-        monkeypatch.setattr(mod, 'GlideClient', _FakeClient)
-        monkeypatch.setattr(mod, 'ServerCredentials', _fake_credentials)
-        monkeypatch.setattr(mod, 'GlideClientConfiguration', lambda **kw: kw)
-        monkeypatch.setattr(mod, 'NodeAddress', lambda *a, **k: ('node', a, k))
+        # These names are absent when the optional valkey-glide dependency is
+        # unavailable (for example, on Windows), so allow the test doubles to
+        # create them on the module.
+        monkeypatch.setattr(mod, 'GlideClient', _FakeClient, raising=False)
+        monkeypatch.setattr(mod, 'ServerCredentials', _fake_credentials, raising=False)
+        monkeypatch.setattr(mod, 'GlideClientConfiguration', lambda **kw: kw, raising=False)
+        monkeypatch.setattr(mod, 'NodeAddress', lambda *a, **k: ('node', a, k), raising=False)
         return backend, created, cred_calls, warnings
 
     async def test_username_without_password_fails_closed(self, monkeypatch):

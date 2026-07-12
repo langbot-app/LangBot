@@ -31,8 +31,10 @@ Both are compatible with LangBot.
 
 ## Installation
 
-Valkey Search support is included when you install LangBot — the `valkey-glide` dependency is
-declared in `pyproject.toml`. To install manually:
+Valkey Search support is included automatically on Linux and macOS. The official `valkey-glide`
+client does not currently publish a Windows package, so LangBot skips this optional dependency on
+Windows; LangBot remains usable there, but the Valkey Search backend is unavailable. To install the
+client manually on a supported platform:
 
 ```bash
 pip install 'valkey-glide>=2.4.1,<3.0.0'

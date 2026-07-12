@@ -80,7 +80,7 @@ dependencies = [
     "pgvector>=0.4.1",
     "botocore>=1.42.39",
     "litellm>=1.0.0",
-    "valkey-glide>=2.4.1,<3.0.0",
+    "valkey-glide>=2.4.1,<3.0.0; sys_platform != 'win32'", # No Windows wheels are published
 ]
 keywords = [
     "bot",

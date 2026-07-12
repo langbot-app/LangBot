@@ -2084,7 +2084,7 @@ dependencies = [
     { name = "tiktoken" },
     { name = "urllib3" },
     { name = "uv" },
-    { name = "valkey-glide" },
+    { name = "valkey-glide", marker = "sys_platform != 'win32'" },
     { name = "websockets" },
 ]
 
@@ -2173,7 +2173,7 @@ requires-dist = [
     { name = "tiktoken", specifier = ">=0.9.0" },
     { name = "urllib3", specifier = ">=2.7.0" },
     { name = "uv", specifier = ">=0.11.15" },
-    { name = "valkey-glide", specifier = ">=2.4.1,<3.0.0" },
+    { name = "valkey-glide", marker = "sys_platform != 'win32'", specifier = ">=2.4.1,<3.0.0" },
     { name = "websockets", specifier = ">=15.0.1" },
 ]
 
@@ -5991,9 +5991,9 @@ name = "valkey-glide"
 version = "2.4.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "anyio" },
-    { name = "protobuf" },
-    { name = "sniffio" },
+    { name = "anyio", marker = "sys_platform != 'win32'" },
+    { name = "protobuf", marker = "sys_platform != 'win32'" },
+    { name = "sniffio", marker = "sys_platform != 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/72/a2/582b34c6acc8dc857c537f6007459cba48dfa0dc404789a657e5c1a998c0/valkey_glide-2.4.1.tar.gz", hash = "sha256:f1155d84156d11b90488aa67e90102f0bf98a45314f5b99308ac9074c05f7241", size = 898030, upload-time = "2026-05-28T21:41:55.881Z" }
 wheels = [

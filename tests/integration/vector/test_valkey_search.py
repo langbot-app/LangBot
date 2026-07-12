@@ -77,10 +77,11 @@ async def backend(valkey_config):
         ValkeySearchVectorDatabase,
         VALKEY_SEARCH_AVAILABLE,
     )
-    from glide import ft
 
     if not VALKEY_SEARCH_AVAILABLE:
         pytest.skip('valkey-glide not installed')
+
+    from glide import ft
 
     ap = _make_ap(valkey_config)
     db = ValkeySearchVectorDatabase(ap)
