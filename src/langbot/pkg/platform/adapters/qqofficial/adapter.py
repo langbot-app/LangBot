@@ -280,6 +280,9 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
             ctx['stream_msg_id'] = resp['id']
         ctx['sent_length'] = len(ctx['accumulated_text'])
         ctx['index'] += 1
+        # 每个 chunk 单独 HTTP 下发，msg_seq 必须递增，否则后续 chunk 会被 QQ
+        # 以 (msg_id, msg_seq) 去重 (40054005 消息被去重)。
+        ctx['msg_seq'] += 1
         if is_final:
             self._stream_ctx.pop(message_id, None)
             self._stream_ctx_ts.pop(message_id, None)
