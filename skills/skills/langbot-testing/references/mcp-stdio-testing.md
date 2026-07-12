@@ -87,7 +87,7 @@ extension binding uses this UUID, not the human-readable server name.
 
 1. Open the target pipeline.
 2. Confirm `Extensions` allows the MCP server, or that all MCP servers are enabled.
-3. Use runner `Default` or the pluginized `langbot/local-agent` runner.
+3. Use runner `Default` or the pluginized `langbot-team/LocalAgent` runner.
 4. Select a model with function-calling ability that is known to work with tools in the current environment.
 5. Open `Debug Chat`.
 6. Ask:

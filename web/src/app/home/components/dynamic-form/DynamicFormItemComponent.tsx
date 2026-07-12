@@ -43,6 +43,7 @@ import {
   Plus,
   X,
   Eye,
+  EyeOff,
   Wrench,
   Trash2,
   Sparkles,
@@ -137,6 +138,7 @@ export default function DynamicFormItemComponent({
   const [bots, setBots] = useState<Bot[]>([]);
   const [tools, setTools] = useState<PluginTool[]>([]);
   const [uploading, setUploading] = useState<boolean>(false);
+  const [secretVisible, setSecretVisible] = useState(false);
   const [kbDialogOpen, setKbDialogOpen] = useState(false);
   const [tempSelectedKBIds, setTempSelectedKBIds] = useState<string[]>([]);
   const [toolsDialogOpen, setToolsDialogOpen] = useState(false);
@@ -383,6 +385,44 @@ export default function DynamicFormItemComponent({
           {...field}
           value={field.value ?? ''}
         />
+      );
+
+    case DynamicFormItemType.SECRET:
+      return (
+        <div className="relative w-full max-w-md">
+          <Input
+            type={secretVisible ? 'text' : 'password'}
+            autoComplete="new-password"
+            className="pr-10"
+            {...field}
+            value={field.value ?? ''}
+          />
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="absolute right-1 top-1/2 size-8 -translate-y-1/2 text-muted-foreground"
+                aria-label={
+                  secretVisible
+                    ? t('common.hideSecret')
+                    : t('common.showSecret')
+                }
+                onClick={() => setSecretVisible((visible) => !visible)}
+              >
+                {secretVisible ? (
+                  <EyeOff className="size-4" />
+                ) : (
+                  <Eye className="size-4" />
+                )}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {secretVisible ? t('common.hideSecret') : t('common.showSecret')}
+            </TooltipContent>
+          </Tooltip>
+        </div>
       );
 
     case DynamicFormItemType.TEXT:

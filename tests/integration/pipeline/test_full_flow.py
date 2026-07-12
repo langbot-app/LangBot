@@ -14,7 +14,6 @@ from __future__ import annotations
 import pytest
 import asyncio
 from unittest.mock import AsyncMock, Mock
-import sys
 
 from tests.factories import FakeApp, text_query, mock_platform_adapter
 from tests.factories.provider import FakeProvider
@@ -48,10 +47,6 @@ def mock_circular_import_chain():
     # Mock core.app - Application class is referenced but not instantiated
     mock_core_app = Mock()
 
-    # Mock provider.runner with preregistered_runners list
-    mock_runner = Mock()
-    mock_runner.preregistered_runners = []  # Will be populated in tests
-
     # Mock utils.importutil - prevents auto-import of runners
     mock_importutil = Mock()
     mock_importutil.import_modules_in_pkg = lambda pkg: None
@@ -75,8 +70,7 @@ def mock_circular_import_chain():
         mocks={
             'langbot.pkg.core.entities': mock_core_entities,
             'langbot.pkg.core.app': mock_core_app,
-            'langbot.pkg.provider.runner': mock_runner,
-            'langbot.pkg.utils.importutil': mock_importutil,
+        'langbot.pkg.utils.importutil': mock_importutil,
             'langbot.pkg.pipeline.controller': Mock(),
             'langbot.pkg.pipeline.pipelinemgr': Mock(),
         },
@@ -108,8 +102,7 @@ def mock_circular_import_chain():
 class FakeRunner:
     """Minimal fake runner class for pipeline integration tests.
 
-    Note: preregistered_runners expects a CLASS, not an instance.
-    The handler calls runner_cls(self.ap, query.pipeline_config) to instantiate.
+    The test orchestrator instantiates this class for each configured run.
     """
 
     name = 'local-agent'
@@ -243,12 +236,23 @@ def fake_platform_adapter():
 
 
 @pytest.fixture
-def set_fake_runner():
-    """Factory fixture to set a fake runner CLASS in preregistered_runners."""
+def set_fake_runner(pipeline_app):
+    """Attach a minimal AgentRunOrchestrator-compatible test double."""
 
     def _set_runner(runner_cls):
-        # preregistered_runners expects a list of runner classes
-        sys.modules['langbot.pkg.provider.runner'].preregistered_runners = [runner_cls]
+        runner = runner_cls()
+        orchestrator = Mock()
+        orchestrator.try_claim_steering_from_query = AsyncMock(return_value=False)
+
+        async def run_from_query(query):
+            async for result in runner.run(query):
+                yield result
+
+        orchestrator.run_from_query = run_from_query
+        orchestrator.resolve_runner_id_for_telemetry = Mock(
+            return_value='plugin:langbot-team/LocalAgent/default'
+        )
+        pipeline_app.agent_run_orchestrator = orchestrator
 
     return _set_runner
 
@@ -260,11 +264,13 @@ def create_minimal_pipeline_config():
     """Create minimal pipeline configuration for tests."""
     return {
         'ai': {
-            'runner': {'runner': 'local-agent', 'expire-time': None},
-            'local-agent': {
-                'model': {'primary': 'test-model-uuid', 'fallbacks': []},
-                'prompt': 'default',
-                'knowledge-bases': [],
+            'runner': {'id': 'plugin:langbot-team/LocalAgent/default', 'expire-time': 0},
+            'runner_config': {
+                'plugin:langbot-team/LocalAgent/default': {
+                    'model': {'primary': 'test-model-uuid', 'fallbacks': []},
+                    'prompt': 'default',
+                    'knowledge-bases': [],
+                },
             },
         },
         'output': {
@@ -366,7 +372,7 @@ class TestPreProcessorStage:
 
         result = await preproc_stage.process(query, 'PreProcessor')
 
-        assert result.result_type == entities.ResultType.CONTINUE
+        assert result.result_type.value == entities.ResultType.CONTINUE.value
         assert result.new_query.session is not None
         assert result.new_query.user_message is not None
 
@@ -393,7 +399,7 @@ class TestPreProcessorStage:
 
         result = await preproc_stage.process(query, 'PreProcessor')
 
-        assert result.result_type == entities.ResultType.CONTINUE
+        assert result.result_type.value == entities.ResultType.CONTINUE.value
         # Check user_message content
         assert result.new_query.user_message is not None
         assert result.new_query.user_message.role == 'user'
@@ -466,7 +472,7 @@ class TestProcessorStage:
         results = await collect_processor_results(processor_stage, query, 'MessageProcessor')
 
         assert len(results) == 1
-        assert results[0].result_type == entities.ResultType.INTERRUPT
+        assert results[0].result_type.value == entities.ResultType.INTERRUPT.value
 
     @pytest.mark.asyncio
     async def test_processor_prevent_default_with_reply_continues(self, pipeline_app, fake_platform_adapter):
@@ -501,7 +507,7 @@ class TestProcessorStage:
         results = await collect_processor_results(processor_stage, query, 'MessageProcessor')
 
         assert len(results) == 1
-        assert results[0].result_type == entities.ResultType.CONTINUE
+        assert results[0].result_type.value == entities.ResultType.CONTINUE.value
         assert len(query.resp_messages) == 1
         assert query.resp_messages[0] == reply_chain
 
@@ -546,7 +552,7 @@ class TestRunnerExceptionFlow:
         results = await collect_processor_results(processor_stage, query, 'MessageProcessor')
 
         assert len(results) == 1
-        assert results[0].result_type == entities.ResultType.INTERRUPT
+        assert results[0].result_type.value == entities.ResultType.INTERRUPT.value
         assert results[0].user_notice == 'Request failed.'
         assert results[0].error_notice is not None
 
@@ -585,7 +591,7 @@ class TestRunnerExceptionFlow:
         results = await collect_processor_results(processor_stage, query, 'MessageProcessor')
 
         assert len(results) == 1
-        assert results[0].result_type == entities.ResultType.INTERRUPT
+        assert results[0].result_type.value == entities.ResultType.INTERRUPT.value
         assert 'Custom runtime error' in results[0].user_notice
 
     @pytest.mark.asyncio
@@ -623,7 +629,7 @@ class TestRunnerExceptionFlow:
         results = await collect_processor_results(processor_stage, query, 'MessageProcessor')
 
         assert len(results) == 1
-        assert results[0].result_type == entities.ResultType.INTERRUPT
+        assert results[0].result_type.value == entities.ResultType.INTERRUPT.value
         assert results[0].user_notice is None
 
 
@@ -655,7 +661,7 @@ class TestSendResponseBackStage:
 
         result = await respback_stage.process(query, 'SendResponseBackStage')
 
-        assert result.result_type == entities.ResultType.CONTINUE
+        assert result.result_type.value == entities.ResultType.CONTINUE.value
 
         # Check that adapter was called
         outbound = platform.get_outbound_messages()
@@ -815,7 +821,7 @@ class TestStageChainIntegration:
 
         # Run PreProcessor
         result1 = await preproc_stage.process(query, 'PreProcessor')
-        assert result1.result_type == entities.ResultType.CONTINUE
+        assert result1.result_type.value == entities.ResultType.CONTINUE.value
         query = result1.new_query
 
         # Run Processor
@@ -831,7 +837,7 @@ class TestStageChainIntegration:
 
         # Run SendResponseBackStage
         result3 = await respback_stage.process(query, 'SendResponseBackStage')
-        assert result3.result_type == entities.ResultType.CONTINUE
+        assert result3.result_type.value == entities.ResultType.CONTINUE.value
 
         # Verify adapter was called
         outbound = platform.get_outbound_messages()
@@ -879,14 +885,14 @@ class TestStageChainIntegration:
 
         # Run PreProcessor
         result1 = await preproc_stage.process(query, 'PreProcessor')
-        assert result1.result_type == entities.ResultType.CONTINUE
+        assert result1.result_type.value == entities.ResultType.CONTINUE.value
         query = result1.new_query
 
         # Run Processor - should INTERRUPT
         results = await collect_processor_results(processor_stage, query, 'MessageProcessor')
 
         assert len(results) == 1
-        assert results[0].result_type == entities.ResultType.INTERRUPT
+        assert results[0].result_type.value == entities.ResultType.INTERRUPT.value
 
         # Chain stops here - no resp_messages
         assert len(query.resp_messages) == 0

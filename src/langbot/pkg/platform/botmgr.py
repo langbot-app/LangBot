@@ -630,7 +630,7 @@ class RuntimeBot:
             text=f'Test event {event_type} dispatched from control plane',
         )
         test_adapter = SyntheticRouteTestAdapter(self.adapter)
-        outcome = await self._dispatch_eba_event_to_agent(
+        outcome = await self._dispatch_eba_event_to_processor(
             event,
             typing.cast(abstract_platform_adapter.AbstractMessagePlatformAdapter, test_adapter),
         )
@@ -1135,9 +1135,9 @@ class RuntimeBot:
             except Exception:
                 await self.logger.error(f'Failed to dispatch platform event to plugins: {traceback.format_exc()}')
 
-        await self._dispatch_eba_event_to_agent(event, adapter)
+        await self._dispatch_eba_event_to_processor(event, adapter)
 
-    async def _dispatch_eba_event_to_agent(
+    async def _dispatch_eba_event_to_processor(
         self,
         event: platform_events.EBAEvent,
         adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,

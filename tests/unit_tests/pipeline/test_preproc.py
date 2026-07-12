@@ -35,7 +35,7 @@ def get_entities_module():
     return import_module('langbot.pkg.pipeline.entities')
 
 
-RUNNER_ID = 'plugin:langbot/local-agent/default'
+RUNNER_ID = 'plugin:langbot-team/LocalAgent/default'
 
 
 def attach_agent_runner_descriptor(app, *, multimodal_input=True, tool_calling=True):
@@ -46,8 +46,8 @@ def attach_agent_runner_descriptor(app, *, multimodal_input=True, tool_calling=T
         id=RUNNER_ID,
         source='plugin',
         label={'en_US': 'Local Agent'},
-        plugin_author='langbot',
-        plugin_name='local-agent',
+        plugin_author='langbot-team',
+        plugin_name='LocalAgent',
         runner_name='default',
         config_schema=[
             {'name': 'model', 'type': 'model-fallback-selector'},
@@ -499,22 +499,19 @@ class TestPreProcessorToolSelection:
         mock_event_ctx = Mock()
         mock_event_ctx.event = Mock(default_prompt=[], prompt=[])
         app.plugin_connector.emit_event = AsyncMock(return_value=mock_event_ctx)
+        attach_agent_runner_descriptor(app)
 
         stage = preproc.PreProcessor(app)
         query = text_query('hello')
-        query.pipeline_config = {
-            'ai': {
-                'runner': {'runner': 'local-agent'},
-                'local-agent': {
-                    'model': {'primary': 'primary-model-uuid', 'fallbacks': []},
-                    'prompt': 'default',
-                    'enable-all-tools': False,
-                    'tools': ['plugin_tool'],
-                },
-            },
-            'output': {'misc': {'at-sender': False}},
-            'trigger': {'misc': {}},
-        }
+        query.pipeline_config = agent_runner_pipeline_config(
+            {'primary': 'primary-model-uuid', 'fallbacks': []},
+        )
+        query.pipeline_config['ai']['runner_config'][RUNNER_ID].update(
+            {
+                'enable-all-tools': False,
+                'tools': ['plugin_tool'],
+            }
+        )
 
         result = await stage.process(query, 'PreProcessor')
 

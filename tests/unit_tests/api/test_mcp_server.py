@@ -76,6 +76,8 @@ async def test_mcp_server_exposes_bot_event_route_tools():
 
     assert 'list_bot_event_route_statuses' in tool_names
     assert 'test_bot_event_route' in tool_names
+    assert 'list_processors' in tool_names
+    assert 'list_agents' not in tool_names
 
 
 @pytest.mark.asyncio

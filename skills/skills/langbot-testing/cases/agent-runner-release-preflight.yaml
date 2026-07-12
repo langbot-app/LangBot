@@ -45,7 +45,7 @@ steps:
   - "Run the local-agent primary model test endpoint unless LANGBOT_PREFLIGHT_TEST_MODELS=0."
 checks:
   - "API diagnostic: api-diagnostic.json has no blockers and no env_issues."
-  - "API diagnostic: required pipelines resolve to plugin:langbot/local-agent/default and plugin:langbot/acp-agent-runner/default."
+  - "API diagnostic: required pipelines resolve to plugin:langbot-team/LocalAgent/default and plugin:langbot-team/ACPAgentRunner/default."
   - "API diagnostic: qa_plugin_echo is exposed by /api/v1/tools."
   - "API diagnostic: local-agent model check catches invalid credentials or missing func_call/vision before release E2E starts."
   - "Secret safety: token values, api keys, and provider secrets are not printed."

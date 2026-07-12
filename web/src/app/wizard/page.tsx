@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { UUID } from 'uuidjs';
 import { toast } from 'sonner';
@@ -18,6 +18,9 @@ import {
   UserPlus,
   X,
   ExternalLink,
+  Download,
+  RefreshCw,
+  CircleAlert,
 } from 'lucide-react';
 
 import { httpClient } from '@/app/infra/http/HttpClient';
@@ -26,6 +29,8 @@ import {
   systemInfo,
   initializeUserInfo,
   initializeSystemInfo,
+  getCloudServiceClient,
+  getCloudServiceClientSync,
 } from '@/app/infra/http';
 import {
   Adapter,
@@ -55,6 +60,7 @@ import {
 } from '@/app/infra/entities/adapter-categories';
 import { getAdapterDocUrl } from '@/app/infra/entities/adapter-docs';
 import i18n from 'i18next';
+import { PluginV4 } from '@/app/infra/entities/plugin';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -81,6 +87,30 @@ import {
 // ---------------------------------------------------------------------------
 
 const TOTAL_STEPS = 4;
+const RUNNER_COMPONENT_FILTER = 'AgentRunner';
+const RUNNER_CATALOG_PAGE_SIZE = 100;
+const RUNNER_INSTALL_TIMEOUT_MS = 120_000;
+const RUNNER_REGISTRATION_TIMEOUT_MS = 60_000;
+
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error && typeof error === 'object') {
+    const value = error as { msg?: string; message?: string };
+    return value.msg || value.message || '';
+  }
+  return typeof error === 'string' ? error : '';
+}
+
+function marketplacePluginId(plugin: Pick<PluginV4, 'author' | 'name'>) {
+  return `${plugin.author}/${plugin.name}`;
+}
+
+function runnerPluginPrefix(plugin: Pick<PluginV4, 'author' | 'name'>) {
+  return `plugin:${plugin.author}/${plugin.name}/`;
+}
 
 type WizardScenarioId =
   | 'message_reply'
@@ -174,11 +204,107 @@ export default function WizardPage() {
   const [aiConfigTab, setAiConfigTab] = useState<PipelineConfigTab | null>(
     null,
   );
+  const [marketplaceRunners, setMarketplaceRunners] = useState<PluginV4[]>([]);
+  const [installedPluginIds, setInstalledPluginIds] = useState<string[]>([]);
+  const [isRunnerCatalogLoading, setIsRunnerCatalogLoading] = useState(true);
+  const [runnerCatalogError, setRunnerCatalogError] = useState(false);
+  const [installingRunnerPluginId, setInstallingRunnerPluginId] = useState<
+    string | null
+  >(null);
+  const [runnerInstallError, setRunnerInstallError] = useState<string | null>(
+    null,
+  );
   const [isLoading, setIsLoading] = useState(true);
   const [isCreatingBot, setIsCreatingBot] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSavingBot, setIsSavingBot] = useState(false);
   const [botSaved, setBotSaved] = useState(false);
+
+  const loadRunnerCatalog = useCallback(async () => {
+    setIsRunnerCatalogLoading(true);
+    setRunnerCatalogError(false);
+    try {
+      const cloudClient = await getCloudServiceClient();
+      const [firstSearchResult, recommendationResult, installedResult] =
+        await Promise.all([
+          cloudClient.searchMarketplaceExtensions({
+            query: '',
+            page: 1,
+            page_size: RUNNER_CATALOG_PAGE_SIZE,
+            type_filter: 'plugin',
+            component_filter: RUNNER_COMPONENT_FILTER,
+          }),
+          cloudClient.getRecommendationLists().catch(() => ({ lists: [] })),
+          httpClient.getPlugins().catch(() => ({ plugins: [] })),
+        ]);
+
+      const remainingPageCount = Math.max(
+        0,
+        Math.ceil((firstSearchResult.total || 0) / RUNNER_CATALOG_PAGE_SIZE) -
+          1,
+      );
+      const remainingResults = await Promise.all(
+        Array.from({ length: remainingPageCount }, (_, index) =>
+          cloudClient.searchMarketplaceExtensions({
+            query: '',
+            page: index + 2,
+            page_size: RUNNER_CATALOG_PAGE_SIZE,
+            type_filter: 'plugin',
+            component_filter: RUNNER_COMPONENT_FILTER,
+          }),
+        ),
+      );
+      const catalogPlugins = [
+        ...(firstSearchResult.plugins || []),
+        ...remainingResults.flatMap((result) => result.plugins || []),
+      ];
+
+      const recommendationOrder = new Map<string, number>();
+      let nextOrder = 0;
+      for (const list of recommendationResult.lists || []) {
+        for (const plugin of list.plugins || []) {
+          if (!plugin.components?.[RUNNER_COMPONENT_FILTER]) continue;
+          const id = marketplacePluginId(plugin);
+          if (!recommendationOrder.has(id)) {
+            recommendationOrder.set(id, nextOrder);
+            nextOrder += 1;
+          }
+        }
+      }
+
+      const runners = catalogPlugins
+        .filter((plugin) => plugin.components?.[RUNNER_COMPONENT_FILTER])
+        .sort((left, right) => {
+          const leftOrder = recommendationOrder.get(marketplacePluginId(left));
+          const rightOrder = recommendationOrder.get(
+            marketplacePluginId(right),
+          );
+          if (leftOrder !== undefined && rightOrder !== undefined) {
+            return leftOrder - rightOrder;
+          }
+          if (leftOrder !== undefined) return -1;
+          if (rightOrder !== undefined) return 1;
+          return right.install_count - left.install_count;
+        });
+
+      setMarketplaceRunners(runners);
+      setInstalledPluginIds(
+        installedResult.plugins.map((plugin) => {
+          const metadata = plugin.manifest.manifest.metadata;
+          return `${metadata.author ?? ''}/${metadata.name}`;
+        }),
+      );
+    } catch (error) {
+      console.error('Failed to load AgentRunner catalog', error);
+      setRunnerCatalogError(true);
+    } finally {
+      setIsRunnerCatalogLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadRunnerCatalog();
+  }, [loadRunnerCatalog]);
 
   // ---- Helper: persist wizard progress to backend (fire-and-forget) ----
   const saveProgress = useCallback(
@@ -358,9 +484,9 @@ export default function WizardPage() {
 
   // ---- Runner selection with progress saving ----
   const handleSelectRunner = useCallback(
-    (runner: string) => {
+    (runner: string, configTab: PipelineConfigTab | null = aiConfigTab) => {
       setSelectedRunner(runner);
-      const configStage = aiConfigTab?.stages.find((s) => s.name === runner);
+      const configStage = configTab?.stages.find((s) => s.name === runner);
       const defaults = configStage ? getDefaultValues(configStage.config) : {};
       const promptKey = selectedScenario
         ? WIZARD_SCENARIO_PROMPT_KEYS[selectedScenario]
@@ -375,6 +501,90 @@ export default function WizardPage() {
       saveProgress({ step: 2, selected_runner: runner });
     },
     [aiConfigTab, saveProgress, selectedScenario, t],
+  );
+
+  const handleInstallRunner = useCallback(
+    async (plugin: PluginV4) => {
+      const pluginId = marketplacePluginId(plugin);
+      setInstallingRunnerPluginId(pluginId);
+      setRunnerInstallError(null);
+
+      try {
+        if (!plugin.latest_version) {
+          throw new Error(t('wizard.aiEngine.versionUnavailable'));
+        }
+
+        const { task_id: taskId } =
+          await httpClient.installPluginFromMarketplace(
+            plugin.author,
+            plugin.name,
+            plugin.latest_version,
+          );
+        const installDeadline = Date.now() + RUNNER_INSTALL_TIMEOUT_MS;
+        let installCompleted = false;
+        while (Date.now() < installDeadline) {
+          const task = await httpClient.getAsyncTask(taskId);
+          if (task.runtime.done) {
+            if (task.runtime.exception) {
+              throw new Error(task.runtime.exception);
+            }
+            installCompleted = true;
+            break;
+          }
+          await wait(1000);
+        }
+        if (!installCompleted) {
+          throw new Error(t('wizard.aiEngine.installTimeout'));
+        }
+
+        const registrationDeadline =
+          Date.now() + RUNNER_REGISTRATION_TIMEOUT_MS;
+        const prefix = runnerPluginPrefix(plugin);
+        while (Date.now() < registrationDeadline) {
+          const metadata = await httpClient.getGeneralPipelineMetadata();
+          const nextAiTab =
+            metadata.configs.find((config) => config.name === 'ai') ?? null;
+          const nextRunnerStage = nextAiTab?.stages.find(
+            (stage) => stage.name === 'runner',
+          );
+          const nextRunnerOptions =
+            nextRunnerStage?.config.find((item) => item.name === 'id')
+              ?.options ?? [];
+          const pluginRunnerOptions = nextRunnerOptions.filter((option) =>
+            option.name.startsWith(prefix),
+          );
+          const preferredRunner =
+            pluginRunnerOptions.find((option) =>
+              option.name.endsWith('/default'),
+            ) ?? pluginRunnerOptions[0];
+
+          if (nextAiTab && preferredRunner) {
+            setAiConfigTab(nextAiTab);
+            setInstalledPluginIds((current) =>
+              current.includes(pluginId) ? current : [...current, pluginId],
+            );
+            handleSelectRunner(preferredRunner.name, nextAiTab);
+            toast.success(
+              t('wizard.aiEngine.installSuccess', {
+                runner: extractI18nObject(plugin.label),
+              }),
+            );
+            return;
+          }
+          await wait(1000);
+        }
+
+        throw new Error(t('wizard.aiEngine.registrationTimeout'));
+      } catch (error) {
+        const message =
+          getErrorMessage(error) || t('wizard.aiEngine.installFailed');
+        setRunnerInstallError(message);
+        toast.error(message);
+      } finally {
+        setInstallingRunnerPluginId(null);
+      }
+    },
+    [handleSelectRunner, t],
   );
 
   // ---- Navigation helpers ----
@@ -843,8 +1053,16 @@ export default function WizardPage() {
         {currentStep === 2 && (
           <StepAIEngine
             runnerOptions={runnerOptions}
+            marketplaceRunners={marketplaceRunners}
+            installedPluginIds={installedPluginIds}
+            isRunnerCatalogLoading={isRunnerCatalogLoading}
+            runnerCatalogError={runnerCatalogError}
+            installingRunnerPluginId={installingRunnerPluginId}
+            runnerInstallError={runnerInstallError}
             selected={selectedRunner}
             onSelect={handleSelectRunner}
+            onInstall={handleInstallRunner}
+            onRetryCatalog={loadRunnerCatalog}
             isLocalAccount={isLocalAccount}
             onSpaceAuth={handleSpaceAuth}
             runnerConfigItems={selectedRunnerConfigItems}
@@ -1351,8 +1569,16 @@ function StepBotConfig({
 
 function StepAIEngine({
   runnerOptions,
+  marketplaceRunners,
+  installedPluginIds,
+  isRunnerCatalogLoading,
+  runnerCatalogError,
+  installingRunnerPluginId,
+  runnerInstallError,
   selected,
   onSelect,
+  onInstall,
+  onRetryCatalog,
   isLocalAccount,
   onSpaceAuth,
   runnerConfigItems,
@@ -1360,8 +1586,16 @@ function StepAIEngine({
   onRunnerConfigChange,
 }: {
   runnerOptions: { name: string; label: { en_US: string; zh_Hans: string } }[];
+  marketplaceRunners: PluginV4[];
+  installedPluginIds: string[];
+  isRunnerCatalogLoading: boolean;
+  runnerCatalogError: boolean;
+  installingRunnerPluginId: string | null;
+  runnerInstallError: string | null;
   selected: string | null;
   onSelect: (name: string) => void;
+  onInstall: (plugin: PluginV4) => void;
+  onRetryCatalog: () => void;
   isLocalAccount: boolean;
   onSpaceAuth: () => void;
   runnerConfigItems: IDynamicFormItemSchema[];
@@ -1383,6 +1617,20 @@ function StepAIEngine({
     return r ? extractI18nObject(r.label) : (selected ?? '');
   }, [runnerOptions, selected]);
 
+  const marketplaceRunnerIds = useMemo(
+    () => new Set(marketplaceRunners.map(marketplacePluginId)),
+    [marketplaceRunners],
+  );
+  const standaloneRunnerOptions = useMemo(
+    () =>
+      runnerOptions.filter((option) => {
+        if (!option.name.startsWith('plugin:')) return true;
+        const pluginId = option.name.slice('plugin:'.length).split('/');
+        return !marketplaceRunnerIds.has(`${pluginId[0]}/${pluginId[1]}`);
+      }),
+    [marketplaceRunnerIds, runnerOptions],
+  );
+
   // Before any runner is selected: centered grid layout
   if (!selected) {
     return (
@@ -1395,11 +1643,136 @@ function StepAIEngine({
             {t('wizard.aiEngine.description')}
           </p>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {runnerOptions.map((opt) => (
+        {runnerCatalogError && (
+          <div className="rounded-md border border-destructive/40 bg-destructive/5 p-4">
+            <div className="flex items-start gap-3">
+              <CircleAlert className="mt-0.5 size-5 shrink-0 text-destructive" />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium">
+                  {t('wizard.aiEngine.catalogUnavailable')}
+                </p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {t('wizard.aiEngine.catalogUnavailableDescription')}
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="mt-3"
+                  onClick={onRetryCatalog}
+                >
+                  <RefreshCw className="size-4" />
+                  {t('common.retry')}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {runnerInstallError && (
+          <div className="rounded-md border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+            {runnerInstallError}
+          </div>
+        )}
+
+        {isRunnerCatalogLoading && marketplaceRunners.length === 0 && (
+          <div className="flex min-h-32 items-center justify-center rounded-md border border-dashed">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="size-4 animate-spin" />
+              {t('wizard.aiEngine.loadingCatalog')}
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {marketplaceRunners.map((plugin) => {
+            const pluginId = marketplacePluginId(plugin);
+            const prefix = runnerPluginPrefix(plugin);
+            const registeredOptions = runnerOptions.filter((option) =>
+              option.name.startsWith(prefix),
+            );
+            const preferredOption =
+              registeredOptions.find((option) =>
+                option.name.endsWith('/default'),
+              ) ?? registeredOptions[0];
+            const isInstalled = installedPluginIds.includes(pluginId);
+            const isInstalling = installingRunnerPluginId === pluginId;
+            const iconUrl =
+              getCloudServiceClientSync().resolveMarketplaceIconURL(
+                plugin.type,
+                plugin.author,
+                plugin.name,
+                plugin.icon,
+              );
+
+            return (
+              <Card key={pluginId} className="flex min-h-52 flex-col">
+                <CardHeader className="flex flex-row items-start gap-3 pb-3">
+                  <img
+                    src={iconUrl}
+                    alt=""
+                    className="size-10 shrink-0 rounded-md border bg-muted object-cover"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <CardTitle className="text-base">
+                      {extractI18nObject(plugin.label) || plugin.name}
+                    </CardTitle>
+                    <CardDescription className="mt-1 text-xs font-mono">
+                      {plugin.author}/{plugin.name}
+                    </CardDescription>
+                  </div>
+                </CardHeader>
+                <CardContent className="flex flex-1 flex-col">
+                  <p className="line-clamp-3 text-sm text-muted-foreground">
+                    {extractI18nObject(plugin.description)}
+                  </p>
+                  <div className="mt-auto pt-4">
+                    {preferredOption ? (
+                      <Button
+                        type="button"
+                        className="w-full"
+                        onClick={() => onSelect(preferredOption.name)}
+                      >
+                        <Check className="size-4" />
+                        {t('wizard.aiEngine.useInstalled')}
+                      </Button>
+                    ) : isInstalled ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled
+                        className="w-full"
+                      >
+                        <CircleAlert className="size-4" />
+                        {t('wizard.aiEngine.installedUnavailable')}
+                      </Button>
+                    ) : (
+                      <Button
+                        type="button"
+                        className="w-full"
+                        disabled={installingRunnerPluginId !== null}
+                        onClick={() => onInstall(plugin)}
+                      >
+                        {isInstalling ? (
+                          <Loader2 className="size-4 animate-spin" />
+                        ) : (
+                          <Download className="size-4" />
+                        )}
+                        {isInstalling
+                          ? t('wizard.aiEngine.installing')
+                          : t('wizard.aiEngine.installAndContinue')}
+                      </Button>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+
+          {standaloneRunnerOptions.map((opt) => (
             <Card
               key={opt.name}
-              className="cursor-pointer transition-all hover:shadow-md hover:border-primary/50"
+              className="min-h-40 cursor-pointer transition-all hover:border-primary/50 hover:shadow-md"
               onClick={() => onSelect(opt.name)}
             >
               <CardHeader className="flex flex-row items-center gap-3">
@@ -1414,6 +1787,29 @@ function StepAIEngine({
               </CardHeader>
             </Card>
           ))}
+        </div>
+
+        {!isRunnerCatalogLoading &&
+          marketplaceRunners.length === 0 &&
+          standaloneRunnerOptions.length === 0 &&
+          !runnerCatalogError && (
+            <div className="rounded-md border border-dashed p-6 text-center">
+              <p className="font-medium">
+                {t('wizard.aiEngine.noMarketplaceRunners')}
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {t('wizard.aiEngine.noMarketplaceRunnersDescription')}
+              </p>
+            </div>
+          )}
+
+        <div className="flex justify-center">
+          <Button variant="outline" size="sm" asChild>
+            <Link to="/home/extensions?type=plugin&component=AgentRunner">
+              {t('wizard.aiEngine.browseRunners')}
+              <ExternalLink className="size-4" />
+            </Link>
+          </Button>
         </div>
       </div>
     );
@@ -1476,7 +1872,7 @@ function StepAIEngine({
             })}
 
             {/* Space promotion banner */}
-            {selected === 'plugin:langbot/local-agent/default' &&
+            {selected === 'plugin:langbot-team/LocalAgent/default' &&
               isLocalAccount && (
                 <div className="animate-in fade-in slide-in-from-left-2 duration-300">
                   <div className="relative rounded-lg p-[2px] bg-gradient-to-r from-purple-500 via-pink-500 to-orange-500">

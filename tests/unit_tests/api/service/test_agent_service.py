@@ -206,7 +206,7 @@ class TestAgentServiceCreateUpdateDelete:
     async def test_create_agent_uses_default_runner_config_from_registry(self):
         app = _make_app()
         runner = SimpleNamespace(
-            id='plugin:langbot/local-agent/default',
+            id='plugin:langbot-team/LocalAgent/default',
             config_schema=[
                 {'name': 'model', 'default': 'gpt-4.1'},
                 {'name': 'temperature', 'default': 0.2},

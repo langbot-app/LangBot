@@ -36,7 +36,7 @@ automation_env:
   - LANGBOT_LOCAL_AGENT_RAG_KB_UUID
 automation_pipeline_url_env: LANGBOT_LOCAL_AGENT_PIPELINE_URL
 automation_pipeline_name_env: LANGBOT_LOCAL_AGENT_PIPELINE_NAME
-automation_expected_runner_id: "plugin:langbot/local-agent/default"
+automation_expected_runner_id: "plugin:langbot-team/LocalAgent/default"
 automation_runner_config_patch_json: '{"knowledge-bases":["${LANGBOT_LOCAL_AGENT_RAG_KB_UUID}"],"retrieval-top-k":1,"context-window-tokens":900,"context-reserve-tokens":220,"context-keep-recent-tokens":160,"context-summary-tokens":260,"max-tool-iterations":3,"tool-execution-mode":"parallel"}'
 automation_extensions_patch_json: '{"enable_all_plugins":false,"bound_plugins":[{"author":"langbot","name":"local-agent"},{"author":"qa","name":"plugin-smoke"}],"enable_all_mcp_servers":false,"bound_mcp_servers":[],"enable_all_skills":false,"bound_skills":[]}'
 automation_restore_runner_config: "1"
@@ -60,7 +60,7 @@ preconditions:
 steps:
   - "Ensure the local-agent pipeline, LangRAG sentinel KB, and qa-plugin-smoke fixture plugin are available."
   - "Temporarily bind the LangRAG KB, shrink the runner context budget, and set tool-execution-mode to parallel."
-  - "Temporarily bind only langbot/local-agent and qa/plugin-smoke; disable MCP servers and skills to isolate the tool surface."
+  - "Temporarily bind only langbot-team/LocalAgent and qa/plugin-smoke; disable MCP servers and skills to isolate the tool surface."
   - "Reset the person Debug Chat session for the target pipeline."
   - "Send the passcode memory prompt and wait for MEMORY_SET."
   - "Send the long pressure prompt and wait for PARALLEL_CONTEXT_PRESSURE_READY."
@@ -70,7 +70,7 @@ checks:
   - "UI: All three user messages appear in Debug Chat."
   - "UI: The final Bot message contains PARALLEL_COMBO_FINAL with the compacted sentinel, azalea-cobalt-7421, and both qa-plugin-smoke tool results."
   - "API diagnostic: pipeline-config-diagnostic.json shows knowledge-bases, context token settings, max-tool-iterations, and tool-execution-mode=parallel were patched."
-  - "API diagnostic: pipeline-extensions-diagnostic.json shows only langbot/local-agent and qa/plugin-smoke were bound."
+  - "API diagnostic: pipeline-extensions-diagnostic.json shows only langbot-team/LocalAgent and qa/plugin-smoke were bound."
   - "Logs: Backend completes RAG retrieval, both plugin tool calls, and Debug Chat response without runner timeout or model setup failure."
   - "Console: No unexpected frontend runtime errors appear during the run."
 evidence_required:

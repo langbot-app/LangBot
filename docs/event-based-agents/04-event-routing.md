@@ -1,6 +1,6 @@
 # 事件路由与编排
 
-> **2026-06 方向修订**：本文档的四种 handler_type（pipeline / agent / webhook / plugin）分类法已被「事件 → Agent」统一编排取代，收编映射与新数据模型见 [07-agent-orchestration.md](./07-agent-orchestration.md)。本文档中的事件匹配规则（§4）、`use_pipeline_uuid` 迁移策略（§6）、WebUI 交互骨架（§7）与 webhook 请求/响应格式（§5.4）仍然有效，将在 Agent 模型下沿用。
+> **2026-06 方向修订**：本文档的四种 handler_type（pipeline / agent / webhook / plugin）分类法已被「事件 → 处理器（Agent / Pipeline）」统一编排取代，收编映射与新数据模型见 [07-agent-orchestration.md](./07-agent-orchestration.md)。本文档中的事件匹配规则（§4）、`use_pipeline_uuid` 路由迁移策略（§6）、WebUI 交互骨架（§7）与 webhook 请求/响应格式（§5.4）仍然有效。
 
 ## 1. 概述
 
@@ -600,6 +600,8 @@ class PluginHandler(AbstractEventHandler):
 ### 6.1 自动迁移
 
 数据库迁移脚本将现有的 `use_pipeline_uuid` 自动转换为 `event_handlers`：
+
+这里迁移的只有 Bot 路由字段：binding 仍指向原 Pipeline，不会新建 Agent，也不会复制 Pipeline 内嵌的 runner 配置。
 
 ```python
 # 迁移逻辑

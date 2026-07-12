@@ -143,7 +143,7 @@ pkg/platform/adapters/
 
 ### 3.4 事件处理器（Event Handler）
 
-> **2026-06 方向修订**：四种处理器的分类法已演进为「事件 → Agent」统一编排——所有编排目标（流水线、RequestRunner、webhook、工作流）收编为 Agent 抽象，插件 EventListener 保留为观察者角色。详见 [07-agent-orchestration.md](./07-agent-orchestration.md)。本节保留原设计供对照。
+> **2026-06 方向修订**：四种 Handler 分类法已演进为「事件 → 处理器」统一路由。Pipeline 与 Agent 是长期并存、场景不同的同级处理器：Pipeline 面向消息事件的完整 Stage 链，Agent 面向其声明支持的消息或非消息事件；插件 EventListener 保留为观察者角色。详见 [07-agent-orchestration.md](./07-agent-orchestration.md)。本节保留原设计供对照。
 
 四种处理器类型，用户在 WebUI 的 Bot 管理页面配置：
 
@@ -187,7 +187,7 @@ pkg/platform/adapters/
 | [04-event-routing.md](./04-event-routing.md) | 事件路由与编排：路由引擎、处理器类型、WebUI 数据模型 |
 | [05-plugin-sdk.md](./05-plugin-sdk.md) | 插件 SDK 改造：新事件/API、兼容层 |
 | [06-migration-plan.md](./06-migration-plan.md) | 分阶段迁移计划 |
-| [07-agent-orchestration.md](./07-agent-orchestration.md) | **产品最终形态（2026-06 修订）**：Agent 统一编排、SDK Agent 组件契约、发布火车 |
+| [07-agent-orchestration.md](./07-agent-orchestration.md) | **产品最终形态（2026-06 修订）**：Pipeline / Agent 同级处理器编排、SDK Agent 组件契约、发布火车 |
 
 ## 6. 涉及的代码仓库
 

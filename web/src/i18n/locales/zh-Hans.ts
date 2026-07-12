@@ -28,6 +28,8 @@ const zhHans = {
     loginLoadError: '无法连接到服务器',
     loginLoadErrorDesc: '无法连接到 LangBot 后端服务，请确认服务已启动后重试。',
     retry: '重试',
+    showSecret: '显示密钥',
+    hideSecret: '隐藏密钥',
     enterEmail: '输入邮箱地址',
     enterPassword: '输入密码',
     invalidEmail: '请输入有效的邮箱地址',
@@ -349,7 +351,7 @@ const zhHans = {
     routingConnectionDescription: '绑定处理此机器人消息的流水线',
     eventRouting: '事件路由',
     eventRoutingDescription:
-      '选择此机器人收到不同事件时交给哪个处理器。具体处理逻辑在 Agent 页面编辑，Pipeline 仅支持消息事件。',
+      '选择此机器人收到不同事件时交给哪个处理器。在对应的 Agent 或 Pipeline 配置中编辑处理逻辑；Pipeline 仅支持消息事件。',
     eventBindings: '事件路由',
     addEventBinding: '添加路由',
     addBehavior: '添加行为',
@@ -624,7 +626,7 @@ const zhHans = {
     },
   },
   agents: {
-    title: 'Agent',
+    title: '处理器',
     description: '创建可复用的处理器，并在机器人事件路由中使用',
     create: '创建处理器',
     editAgent: '编辑 Agent',
@@ -637,7 +639,7 @@ const zhHans = {
     groupByKind: '按类型分组',
     groupByKindShort: '分组',
     pipelineTypeDescription:
-      '保留现有无代码消息流水线，兼容旧配置，只能处理消息事件。',
+      '通过可视化多阶段流程控制消息的预处理、AI、后处理、扩展和输出；仅处理消息事件。',
     allEvents: '支持全部事件',
     messageEventsOnly: '仅支持消息事件',
     basicInfo: '基础信息',
@@ -666,6 +668,19 @@ const zhHans = {
     deleteAgentAction: '删除此 Agent',
     deleteAgentHint: '删除后，绑定到它的事件将无法继续执行。',
     noRunnerMetadata: '当前没有可用的 AgentRunner 元数据。',
+    runnerStatusLoading: '正在检查运行器状态',
+    runnerStatusCheckFailed: '无法检查运行器状态',
+    runnerStatusCheckFailedDescription:
+      '请重试检查；如果仍然失败，请确认后端和插件运行时正常。',
+    noRunnersAvailable: '没有可用的运行器',
+    noRunnersAvailableDescription:
+      '请先安装并启用 AgentRunner 扩展，再配置此 Agent。',
+    selectedRunnerUnavailable: '所选运行器不可用',
+    selectedRunnerUnavailableDescription:
+      '{{runner}} 当前未注册。请选择其他运行器，或恢复对应扩展。',
+    noRunnerSelected: '尚未选择运行器',
+    runnerReady: '运行器已就绪',
+    runnerReadyDescription: '{{runner}} 已注册，插件运行时连接正常。',
   },
   plugins: {
     title: '插件扩展',
@@ -1886,6 +1901,24 @@ const zhHans = {
     aiEngine: {
       title: '选择 AI 引擎',
       description: '选择驱动机器人智能的 AI 引擎。',
+      loadingCatalog: '正在加载 AgentRunner 扩展...',
+      catalogUnavailable: '无法加载运行器目录',
+      catalogUnavailableDescription:
+        '已安装的运行器仍可使用。你可以重试，或前往扩展页面查看。',
+      noMarketplaceRunners: '市场暂未发布 AgentRunner 扩展',
+      noMarketplaceRunnersDescription:
+        '请在运行器扩展发布到当前配置的市场后重试。',
+      browseRunners: '浏览运行器扩展',
+      installAndContinue: '安装并继续',
+      installing: '正在安装...',
+      useInstalled: '使用此运行器',
+      installedUnavailable: '已安装，运行器不可用',
+      installSuccess: '{{runner}} 已安装并选中',
+      installFailed: '运行器扩展安装失败',
+      versionUnavailable: '扩展市场未返回可安装版本。',
+      installTimeout: '运行器安装超时，请前往扩展页面检查任务。',
+      registrationTimeout:
+        '扩展已安装，但运行器未完成注册。请检查插件运行时后重试。',
     },
     spaceBanner: {
       message: '接入 LangBot Space，获取免费试用模型额度，零配置极速开箱！',

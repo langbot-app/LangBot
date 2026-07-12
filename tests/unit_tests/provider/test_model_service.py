@@ -21,7 +21,7 @@ from langbot.pkg.provider.modelmgr.modelmgr import ModelManager
 from langbot.pkg.provider.modelmgr.token import TokenManager
 
 
-DEFAULT_RUNNER_ID = 'plugin:langbot/local-agent/default'
+DEFAULT_RUNNER_ID = 'plugin:langbot-team/LocalAgent/default'
 
 
 class FakeAgentRunnerRegistry:
@@ -30,8 +30,8 @@ class FakeAgentRunnerRegistry:
             id=runner_id,
             source='plugin',
             label={'en_US': 'Local Agent'},
-            plugin_author='langbot',
-            plugin_name='local-agent',
+            plugin_author='langbot-team',
+            plugin_name='LocalAgent',
             runner_name='default',
             config_schema=[
                 {'name': 'model', 'type': 'model-fallback-selector'},

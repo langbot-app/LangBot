@@ -158,27 +158,26 @@ class TestQueryConfigToAgentConfig:
 
         assert agent_config.runner_id == "plugin:author/plugin/runner"
 
-    def test_config_to_agent_config_uses_legacy_runner_config_migration(self, mock_query):
-        """Temporary query adapter must share the normal runner config resolver."""
+    def test_config_to_agent_config_uses_current_runner_config(self, mock_query):
+        """Temporary query adapters use the current runner config container."""
         mock_query.pipeline_config = {
             "ai": {
-                "runner": {"runner": "local-agent"},
-                "local-agent": {
-                    "model": "model-primary",
-                    "knowledge-base": "kb-001",
+                "runner": {"id": "plugin:langbot-team/LocalAgent/default"},
+                "runner_config": {
+                    "plugin:langbot-team/LocalAgent/default": {
+                        "model": {"primary": "model-primary", "fallbacks": []},
+                        "knowledge-bases": ["kb-001"],
+                    },
                 },
             }
         }
 
         agent_config = QueryEntryAdapter.config_to_agent_config(
             mock_query,
-            "plugin:langbot/local-agent/default",
+            "plugin:langbot-team/LocalAgent/default",
         )
 
-        assert agent_config.runner_config["model"] == {
-            "primary": "model-primary",
-            "fallbacks": [],
-        }
+        assert agent_config.runner_config["model"] == {"primary": "model-primary", "fallbacks": []}
         assert agent_config.runner_config["knowledge-bases"] == ["kb-001"]
 
     def test_resolver_projects_agent_scope(self, mock_query):

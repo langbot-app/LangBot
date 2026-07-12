@@ -113,6 +113,7 @@ function getValueSchema(spec: DynamicFormValueSpec) {
     case DynamicFormItemType.BOOLEAN:
       return z.boolean();
     case DynamicFormItemType.STRING:
+    case DynamicFormItemType.SECRET:
       return z.string();
     case DynamicFormItemType.STRING_ARRAY:
       return z.array(z.string());

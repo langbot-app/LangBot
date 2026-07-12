@@ -97,11 +97,6 @@ class RuntimePipeline:
         self.enable_all_mcp_servers = extensions_prefs.get('enable_all_mcp_servers', True)
 
         pipeline_config = pipeline_entity.config or {}
-        ai_config = pipeline_config.get('ai', {}) if isinstance(pipeline_config, dict) else {}
-        legacy_local_agent_config = ai_config.get('local-agent', {}) if isinstance(ai_config, dict) else {}
-        if not isinstance(legacy_local_agent_config, dict):
-            legacy_local_agent_config = {}
-
         runner_config: dict[str, typing.Any] = {}
         runner_id = ConfigMigration.resolve_runner_id(pipeline_config) if isinstance(pipeline_config, dict) else None
         if runner_id:
@@ -111,17 +106,11 @@ class RuntimePipeline:
 
         self.mcp_resource_attachments = runner_config.get(
             'mcp-resources',
-            legacy_local_agent_config.get(
-                'mcp-resources',
-                extensions_prefs.get('mcp_resources', []),
-            ),
+            extensions_prefs.get('mcp_resources', []),
         )
         self.mcp_resource_agent_read_enabled = runner_config.get(
             'mcp-resource-agent-read-enabled',
-            legacy_local_agent_config.get(
-                'mcp-resource-agent-read-enabled',
-                extensions_prefs.get('mcp_resource_agent_read_enabled', True),
-            ),
+            extensions_prefs.get('mcp_resource_agent_read_enabled', True),
         )
 
         if self.enable_all_plugins:

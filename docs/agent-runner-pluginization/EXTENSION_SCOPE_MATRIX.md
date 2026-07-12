@@ -12,7 +12,7 @@
 | --- | --- | --- |
 | AgentRunner Protocol v1 | 定义 Host 调用 runner 的稳定合同：discovery、`AgentRunContext`、result stream、Host pull API、错误和权限边界。 | 不定义 Agent Platform 的产品数据库模型；不定义 runtime task queue。 |
 | Host runner 外化底座 | 提供 `AgentEventEnvelope`、`AgentBinding` 运行投影、`run(event, binding)`、resource authorization、run-scoped session、EventLog / Transcript / State / sandbox 文件边界。 | 不实现 EventGateway、scheduler、integration provider、Agent 管控面 UI。 |
-| 当前 Pipeline 入口 | 通过 `QueryEntryAdapter` 把旧 Query / Pipeline config 投影成 event + binding，作为迁移期入口。 | 不继续把 Pipeline 当作长期 agent 配置中心。 |
+| Pipeline 的 AgentRunner 接入 | Pipeline 作为一等消息处理器执行完整 Stage 链；仅在 AI Stage 调用 runner 时，`QueryEntryAdapter` 把当前 Query/config 投影成 event + binding。 | 不把整个 Pipeline 当成临时 Agent；不复制 Pipeline 配置来自动创建 Agent。 |
 | 官方 runner 插件 | 作为协议消费者验证 local-agent / 外部 harness runner 能接入 Host 基础设施。 | 不让官方 runner 的内部实现反向决定 Host / SDK 协议形态。 |
 
 ## 2. 扩展矩阵
@@ -20,7 +20,7 @@
 | 能力 | 当前分支状态 | 后续归属 | 后续接入方式 | 禁止事项 |
 | --- | --- | --- | --- | --- |
 | Product `Agent` | 已有 `agents` 产品表 / API 和运行期 `AgentConfig` / `AgentBinding` 投影；完整 binding persistence / EventRouter / UI 闭环仍未完成。 | Agent Platform / binding persistence UI。 | 持久 Agent 保存 runner id、runner config、resource/state/delivery policy；运行前投影为 `AgentBinding`。 | 不把持久 Agent schema 加进 SDK 协议；插件实例边界见 PROTOCOL_V1 §13。 |
-| Bot / channel 绑定 Agent | 已有单次运行前的 `AgentBinding` 解析投影；目标调度语义见 PROTOCOL_V1 §13。 | EBA / Agent Platform。 | EventRouter 根据 bot、channel、workspace、conversation、event type 解析有效 `AgentBinding`。 | 不在本矩阵重定义 fan-out / observer 语义；需要时按 §3 新增设计。 |
+| Agent 处理器调用 runner | 已有单次运行前的 `AgentBinding` 解析投影；AgentRunner 调度语义见 PROTOCOL_V1 §13。 | EBA / Agent Platform。 | EventRouter 先选中 Agent 处理器，再根据 bot、channel、workspace、conversation、event type 解析有效 `AgentBinding`。Pipeline 目标走独立 Stage 链。 | 不用 `AgentBinding` 取代 EBA 的 Pipeline / Agent 处理器选择；不在本矩阵重定义 fan-out / observer 语义。 |
 | Agent session / run | 已有持久 `AgentRun` / `AgentRunEvent` ledger 和 active `AgentRunSessionRegistry`；还没有独立 `AgentSession` / task 产品模型。 | Agent Platform / Runtime Control Plane。 | 如需要可新增 `AgentSession` / task 表，但执行仍回到 `run(event, binding)` 或 runtime-managed 等价入口。 | 不把持久 session 字段塞进 `AgentRunContext` 顶层；不要求所有 runner 长期持有 LangBot session。 |
 | EventLog / Transcript / Sandbox files | 已完成 Host-owned store、history pull API 和 sandbox 文件边界；runner 不直接写 DB。 | 本分支持续维护底座；Agent Platform 可复用。 | 外部 EBA、scheduler、integration、runtime task 都写同一套 EventLog / Transcript；当前 run 文件通过 sandbox/workspace staging 共享。 | 不让 runner / sandbox 直接访问 Host DB；不把大 payload 内联进 prompt。 |
 | Host-owned state / storage | 已有 state snapshot、`state.updated` 处理和 State API；storage 作为授权能力保留。 | 本分支持续维护底座；Runtime / Platform 可复用。 | 外部 session id、working directory、checkpoint 等小 JSON 用 state；当前 run 大对象用 sandbox/workspace 文件。 | 不把跨轮次状态存在插件实例内；不绕过 run-scoped authorization。 |

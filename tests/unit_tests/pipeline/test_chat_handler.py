@@ -337,8 +337,13 @@ class TestChatHandlerExceptions:
         query.pipeline_config = {
             'output': {'misc': {'exception-handling': 'show-hint', 'failure-hint': 'Request failed.'}},
             'ai': {
-                'runner': {'runner': 'local-agent'},
-                'local-agent': {'prompt': 'default', 'model': {'primary': 'test'}},
+                'runner': {'id': 'plugin:langbot-team/LocalAgent/default'},
+                'runner_config': {
+                    'plugin:langbot-team/LocalAgent/default': {
+                        'prompt': 'default',
+                        'model': {'primary': 'test'},
+                    },
+                },
             },
         }
 
@@ -385,8 +390,13 @@ class TestChatHandlerExceptions:
         query.pipeline_config = {
             'output': {'misc': {'exception-handling': 'show-error'}},
             'ai': {
-                'runner': {'runner': 'local-agent'},
-                'local-agent': {'prompt': 'default', 'model': {'primary': 'test'}},
+                'runner': {'id': 'plugin:langbot-team/LocalAgent/default'},
+                'runner_config': {
+                    'plugin:langbot-team/LocalAgent/default': {
+                        'prompt': 'default',
+                        'model': {'primary': 'test'},
+                    },
+                },
             },
         }
 
@@ -430,8 +440,13 @@ class TestChatHandlerExceptions:
         query.pipeline_config = {
             'output': {'misc': {'exception-handling': 'hide'}},
             'ai': {
-                'runner': {'runner': 'local-agent'},
-                'local-agent': {'prompt': 'default', 'model': {'primary': 'test'}},
+                'runner': {'id': 'plugin:langbot-team/LocalAgent/default'},
+                'runner_config': {
+                    'plugin:langbot-team/LocalAgent/default': {
+                        'prompt': 'default',
+                        'model': {'primary': 'test'},
+                    },
+                },
             },
         }
 

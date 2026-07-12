@@ -34,7 +34,7 @@ automation_env:
   - LANGBOT_E2E_RESPONSE_TIMEOUT_MS
 automation_pipeline_url_env: LANGBOT_ACP_AGENT_RUNNER_PIPELINE_URL
 automation_pipeline_name_env: LANGBOT_ACP_AGENT_RUNNER_PIPELINE_NAME
-automation_expected_runner_id: "plugin:langbot/acp-agent-runner/default"
+automation_expected_runner_id: "plugin:langbot-team/ACPAgentRunner/default"
 automation_prompt: "Use the injected LangBot MCP server tool langbot_get_current_event once. If the MCP call succeeds, reply with exactly ACP_AGENT_RUNNER_E2E_OK."
 automation_expected_text: "ACP_AGENT_RUNNER_E2E_OK"
 automation_response_timeout_ms: "300000"
@@ -49,7 +49,7 @@ preconditions:
 steps:
   - "Open LANGBOT_FRONTEND_URL."
   - "Open the ACP AgentRunner QA pipeline."
-  - "Confirm the pipeline AI runner is plugin:langbot/acp-agent-runner/default."
+  - "Confirm the pipeline AI runner is plugin:langbot-team/ACPAgentRunner/default."
   - "Open Debug Chat."
   - "Ask the real remote Claude ACP agent to call langbot_get_current_event and return ACP_AGENT_RUNNER_E2E_OK exactly."
 checks:
@@ -72,7 +72,7 @@ success_patterns:
 failure_patterns:
   - "acp.command_not_found"
   - "acp.process_exited"
-  - "Agent runner plugin:langbot/acp-agent-runner/default execution failed"
+  - "Agent runner plugin:langbot-team/ACPAgentRunner/default execution failed"
 troubleshooting:
   - backend-not-listening
   - plugin-runtime-timeout

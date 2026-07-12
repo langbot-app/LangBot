@@ -164,17 +164,20 @@ async def test_runtime_pipeline_execute(mock_app, sample_query):
     mock_stage.process.assert_called_once()
 
 
-def test_runtime_pipeline_prefers_local_agent_mcp_resources(mock_app):
-    """Local Agent resource selection should override legacy extension prefs."""
+def test_runtime_pipeline_prefers_runner_mcp_resources(mock_app):
+    """Runner resource selection should override extension preferences."""
     pipelinemgr = get_pipelinemgr_module()
     persistence_pipeline = get_persistence_pipeline_module()
 
     pipeline_entity = Mock(spec=persistence_pipeline.LegacyPipeline)
     pipeline_entity.config = {
         'ai': {
-            'local-agent': {
-                'mcp-resources': [{'server_uuid': 'srv-new', 'uri': 'file:///new.md'}],
-                'mcp-resource-agent-read-enabled': False,
+            'runner': {'id': 'plugin:langbot-team/LocalAgent/default'},
+            'runner_config': {
+                'plugin:langbot-team/LocalAgent/default': {
+                    'mcp-resources': [{'server_uuid': 'srv-new', 'uri': 'file:///new.md'}],
+                    'mcp-resource-agent-read-enabled': False,
+                },
             }
         }
     }
@@ -190,12 +193,17 @@ def test_runtime_pipeline_prefers_local_agent_mcp_resources(mock_app):
 
 
 def test_runtime_pipeline_falls_back_to_extension_mcp_resources(mock_app):
-    """Existing extension prefs remain compatible until a Local Agent value exists."""
+    """Extension preferences apply when the current runner has no override."""
     pipelinemgr = get_pipelinemgr_module()
     persistence_pipeline = get_persistence_pipeline_module()
 
     pipeline_entity = Mock(spec=persistence_pipeline.LegacyPipeline)
-    pipeline_entity.config = {'ai': {'local-agent': {}}}
+    pipeline_entity.config = {
+        'ai': {
+            'runner': {'id': 'plugin:langbot-team/LocalAgent/default'},
+            'runner_config': {'plugin:langbot-team/LocalAgent/default': {}},
+        }
+    }
     pipeline_entity.extensions_preferences = {
         'mcp_resources': [{'server_uuid': 'srv-old', 'uri': 'file:///old.md'}],
         'mcp_resource_agent_read_enabled': False,

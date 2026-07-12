@@ -30,6 +30,8 @@ const jaJP = {
     loginLoadErrorDesc:
       'LangBot バックエンドに接続できません。サービスが起動していることを確認してから再試行してください。',
     retry: '再試行',
+    showSecret: 'シークレットを表示',
+    hideSecret: 'シークレットを隠す',
     enterEmail: 'メールアドレスを入力',
     enterPassword: 'パスワードを入力',
     invalidEmail: '有効なメールアドレスを入力してください',
@@ -370,7 +372,7 @@ const jaJP = {
       'このボットのメッセージを処理するパイプラインを紐付け',
     eventRouting: 'イベントルーティング',
     eventRoutingDescription:
-      'このボットが受信した各イベントをどのプロセッサーに渡すかを選択します。処理ロジックは Agent ページで編集します。Pipeline はメッセージイベントのみ対応します。',
+      'このボットが受信した各イベントをどのプロセッサーに渡すかを選択します。対応する Agent または Pipeline の設定で処理ロジックを編集します。Pipeline はメッセージイベントのみ対応します。',
     eventBindings: 'イベントルート',
     addEventBinding: 'ルートを追加',
     addBehavior: '動作を追加',
@@ -663,7 +665,7 @@ const jaJP = {
     },
   },
   agents: {
-    title: 'Agent',
+    title: 'プロセッサー',
     description:
       '再利用可能なプロセッサーを作成し、ボットのイベントルーティングで使用します',
     create: 'プロセッサーを作成',
@@ -679,7 +681,7 @@ const jaJP = {
     groupByKind: 'タイプ別にグループ化',
     groupByKindShort: 'グループ',
     pipelineTypeDescription:
-      '既存のノーコードメッセージ Pipeline を互換性のため保持します。メッセージイベントのみ処理できます。',
+      'ビジュアルな多段フローで、メッセージの前処理、AI、後処理、拡張、出力を制御します。メッセージイベントのみ処理できます。',
     allEvents: 'すべてのイベントに対応',
     messageEventsOnly: 'メッセージイベントのみ',
     basicInfo: '基本情報',
@@ -709,6 +711,20 @@ const jaJP = {
     deleteAgentAction: 'この Agent を削除',
     deleteAgentHint: '削除すると、紐付けられたイベントは実行できなくなります。',
     noRunnerMetadata: '現在利用可能な AgentRunner メタデータはありません。',
+    runnerStatusLoading: 'Runner の状態を確認しています',
+    runnerStatusCheckFailed: 'Runner の状態を確認できませんでした',
+    runnerStatusCheckFailedDescription:
+      '再試行してください。失敗が続く場合は、バックエンドとプラグインランタイムを確認してください。',
+    noRunnersAvailable: '利用可能な Runner がありません',
+    noRunnersAvailableDescription:
+      'この Agent を設定する前に AgentRunner 拡張機能をインストールして有効にしてください。',
+    selectedRunnerUnavailable: '選択した Runner は利用できません',
+    selectedRunnerUnavailableDescription:
+      '{{runner}} は現在登録されていません。別の Runner を選択するか、対応する拡張機能を復元してください。',
+    noRunnerSelected: 'Runner が選択されていません',
+    runnerReady: 'Runner の準備完了',
+    runnerReadyDescription:
+      '{{runner}} は登録済みで、プラグインランタイムに接続されています。',
   },
   plugins: {
     title: '拡張機能',
@@ -1897,6 +1913,26 @@ const jaJP = {
       title: 'AIエンジンを選択',
       description:
         'ボットのインテリジェンスを駆動するAIエンジンを選択してください。',
+      loadingCatalog: 'AgentRunner 拡張機能を読み込んでいます...',
+      catalogUnavailable: 'Runner カタログを読み込めません',
+      catalogUnavailableDescription:
+        'インストール済みの Runner は引き続き使用できます。再試行するか、拡張機能を確認してください。',
+      noMarketplaceRunners: 'AgentRunner 拡張機能はまだ公開されていません',
+      noMarketplaceRunnersDescription:
+        '設定済みのマーケットプレイスに Runner 拡張機能が公開された後、再試行してください。',
+      browseRunners: 'Runner 拡張機能を見る',
+      installAndContinue: 'インストールして続行',
+      installing: 'インストール中...',
+      useInstalled: 'この Runner を使用',
+      installedUnavailable: 'インストール済み、Runner は利用不可',
+      installSuccess: '{{runner}} をインストールして選択しました',
+      installFailed: 'Runner 拡張機能のインストールに失敗しました',
+      versionUnavailable:
+        'マーケットプレイスからインストール可能なバージョンが返されませんでした。',
+      installTimeout:
+        'Runner のインストールがタイムアウトしました。拡張機能のタスクを確認してください。',
+      registrationTimeout:
+        '拡張機能はインストールされましたが、Runner が登録されませんでした。プラグインランタイムを確認して再試行してください。',
     },
     spaceBanner: {
       message:

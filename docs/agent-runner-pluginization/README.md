@@ -17,8 +17,7 @@
 
 **本分支目标：AgentRunner 外化 / 插件化基础设施**
 
-本分支只做 LangBot 作为 Agent Host 的基础能力建设，为后续用 `Agent`
-替代 Pipeline 承载 agent 配置打底：
+本分支只做 LangBot 作为 Agent Host 的基础能力建设，让现有 Pipeline 与用户新建的独立 `Agent` 都能调用插件化 AgentRunner；不负责把两者做持久化迁移：
 
 - LangBot 与 SDK 的稳定协议合同（Protocol v1）
 - Host-side `AgentEventEnvelope` / `AgentBinding` 模型
@@ -45,15 +44,15 @@ EventGateway / EventRouter 在本文档中描述为 **external EBA branch integr
 
 ## 目标产品模型
 
-未来产品层应把 `Agent` 理解为 Pipeline 的替代物：原先 bot 绑定 Pipeline，Pipeline 携带 agent/provider/RAG/tool 等配置；后续应改为 bot 或 IM channel 绑定一个 Agent，Agent 携带 runner id、runner config、resource/state/delivery policy 等 agent 配置。
+产品层同时保留 Pipeline 与独立 `Agent`。现有 Pipeline 保持原实体和执行链，也可继续被 bot 绑定；新建 Agent 则携带 runner id、runner config、resource/state/delivery policy 等配置，并可被多个 bot / IM channel 复用。统一产品列表可以聚合展示两类处理器，但不会把 Pipeline 或其内嵌 runner 配置自动迁移成 Agent；用户需要 Agent 时自行新增并绑定。
 
 调度基数、Agent 复用、插件实例无状态、Pipeline adapter 和 fan-out 边界的规范来源是 [PROTOCOL_V1.md](./PROTOCOL_V1.md) §13；README 不复写这些约束。
 
-## 当前入口关系
+## Pipeline 与 AgentRunner 的关系
 
-**当前 Pipeline 是入口 adapter，不再是 agent runner 设计核心。**
+**Pipeline 与 Agent 是 EBA 中平级的处理器；`QueryEntryAdapter` 只适配 Pipeline 内部的 AgentRunner 调用。**
 
-主入口仍可由 Pipeline 触发，但内部已转换成 event-first path：`run_from_query()` 经 `QueryEntryAdapter` 把 `Query` 转换为 `AgentEventEnvelope` + `AgentBinding`，再委托到统一的 `run(event, binding, ...)`。Pipeline path 因此获得了 event-first host capabilities（EventLog / Transcript / PersistentStateStore 写入，History / Event / State pull API 和 sandbox/workspace 文件读写能力可用）。
+EBA 先根据 `target_type` 选择 Pipeline 或 Agent。Pipeline 目标执行完整 Stage 链；当 Pipeline 的 AI Stage 调用 runner 时，`run_from_query()` 经 `QueryEntryAdapter` 把 `Query` 转换为 `AgentEventEnvelope` + `AgentBinding`，再委托到统一的 `run(event, binding, ...)`。Agent 目标则直接从自己的持久配置构造 binding。两条路径可以复用同一套 AgentRunner Host capabilities，但 Pipeline 本身不会被投影或持久化为 Agent。
 
 下一轮测试路径、状态定义和 smoke 记录见 [AGENT_RUNNER_QA_GUIDE.md](./AGENT_RUNNER_QA_GUIDE.md)。
 
@@ -62,8 +61,9 @@ EventGateway / EventRouter 在本文档中描述为 **external EBA branch integr
 | 术语 | 含义 |
 | --- | --- |
 | Protocol v1 | Host 调用 AgentRunner 的 runner 可见合同：discovery、`AgentRunContext`、result stream、Host pull API 和错误模型。 |
+| Processor | EBA 的处理器上位概念；当前平级类型为 Pipeline 与 Agent。 |
 | Agent | 目标产品层配置对象，保存 runner id、runner config 和资源/状态/投递策略；不等于插件实例。 |
-| AgentConfig | Host 内部迁移期配置投影，由当前 Pipeline config 或未来持久 Agent 生成。 |
+| AgentConfig | Host 内部的单次 AgentRunner 调用配置投影，可由 Pipeline AI Stage 或持久 Agent 生成；投影本身不会创建 Agent。 |
 | AgentBinding / binding | Host 在一次事件运行前解析出的有效绑定，决定调用哪个 runner 以及带什么策略。 |
 | envelope | Host 内部事件封装，即 `AgentEventEnvelope`；runner 看到的是由它投影出的 `ctx.event`。 |
 | descriptor / manifest | runner discovery 的能力和配置描述；manifest 来自插件，descriptor 是 Host 校验后的注册表视图。 |

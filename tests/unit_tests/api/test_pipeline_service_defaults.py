@@ -39,7 +39,7 @@ def make_runner(runner_id: str, config_schema: list[dict]):
 @pytest.mark.asyncio
 async def test_default_pipeline_config_uses_first_installed_runner_schema():
     local_agent = make_runner(
-        'plugin:langbot/local-agent/default',
+        'plugin:langbot-team/LocalAgent/default',
         [
             {'name': 'model', 'type': 'model-fallback-selector', 'default': {'primary': '', 'fallbacks': []}},
             {'name': 'prompt', 'type': 'prompt-editor', 'default': [{'role': 'system', 'content': 'Hello'}]},

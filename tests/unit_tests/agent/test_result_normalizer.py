@@ -32,11 +32,11 @@ class FakeApplication:
 def make_descriptor():
     """Create a test descriptor."""
     return AgentRunnerDescriptor(
-        id='plugin:langbot/local-agent/default',
+        id='plugin:langbot-team/LocalAgent/default',
         source='plugin',
         label={'en_US': 'Local Agent', 'zh_Hans': '内置 Agent'},
-        plugin_author='langbot',
-        plugin_name='local-agent',
+        plugin_author='langbot-team',
+        plugin_name='LocalAgent',
         runner_name='default',
         capabilities={'streaming': True},
     )
@@ -190,7 +190,7 @@ class TestNormalizeRunFailed:
         with pytest.raises(RunnerExecutionError) as exc_info:
             await normalizer.normalize(result_dict, descriptor)
 
-        assert exc_info.value.runner_id == 'plugin:langbot/local-agent/default'
+        assert exc_info.value.runner_id == 'plugin:langbot-team/LocalAgent/default'
         assert exc_info.value.retryable is True
         assert 'timeout' in str(exc_info.value)
 

@@ -544,10 +544,10 @@ class TestRETRIEVEKNOWLEDGEBASEBugFix:
         pipeline_config = {
             'ai': {
                 'runner': {
-                    'id': 'plugin:langbot/local-agent/default',
+                    'id': 'plugin:langbot-team/LocalAgent/default',
                 },
                 'runner_config': {
-                    'plugin:langbot/local-agent/default': {
+                    'plugin:langbot-team/LocalAgent/default': {
                         'knowledge-bases': ['kb_001'],
                     },
                 },
@@ -583,8 +583,8 @@ class TestRETRIEVEKNOWLEDGEBASEBugFix:
 
         assert 'kb_custom' in allowed_kbs
 
-    def test_retrieve_kb_reads_old_runner_format(self):
-        """Old runner format is resolved for migration compatibility."""
+    def test_retrieve_kb_does_not_read_old_runner_format(self):
+        """The 4.x authorization path ignores legacy Pipeline runner fields."""
         from langbot.pkg.agent.runner.config_migration import ConfigMigration
 
         pipeline_config = {
@@ -600,8 +600,8 @@ class TestRETRIEVEKNOWLEDGEBASEBugFix:
 
         runner_id = ConfigMigration.resolve_runner_id(pipeline_config)
         runner_config = ConfigMigration.resolve_runner_config(pipeline_config, runner_id)
-        assert runner_id == 'plugin:langbot/local-agent/default'
-        assert runner_config.get('knowledge-bases') == ['kb_legacy']
+        assert runner_id is None
+        assert runner_config == {}
 
 
 class TestHandlerActionAuthorization:

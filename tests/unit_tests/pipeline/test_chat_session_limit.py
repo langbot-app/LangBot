@@ -50,8 +50,13 @@ async def _run_preprocessor(mock_app, sample_query, conversation):
 
     sample_query.pipeline_config = {
         'ai': {
-            'runner': {'runner': 'local-agent', 'expire-time': 60},
-            'local-agent': {'model': {'primary': '', 'fallbacks': []}, 'prompt': []},
+            'runner': {'id': 'plugin:langbot-team/LocalAgent/default', 'expire-time': 60},
+            'runner_config': {
+                'plugin:langbot-team/LocalAgent/default': {
+                    'model': {'primary': '', 'fallbacks': []},
+                    'prompt': [],
+                },
+            },
         },
         'trigger': {'misc': {'combine-quote-message': False}},
         'output': {'misc': {'exception-handling': 'show-hint'}},

@@ -27,7 +27,7 @@ class TestEventRouteTrace:
         """A route miss is visible as structured route trace metadata."""
         bot = self._make_bot([])
 
-        await bot._dispatch_eba_event_to_agent(SimpleNamespace(type='platform.member.joined'), Mock())
+        await bot._dispatch_eba_event_to_processor(SimpleNamespace(type='platform.member.joined'), Mock())
 
         bot.logger.info.assert_awaited_once()
         _, kwargs = bot.logger.info.await_args

@@ -373,7 +373,7 @@ export default function PipelineFormComponent({
     const boxScopeForced = !!forcedBoxTemplate;
     const isLocalAgentRunner =
       stage.name === 'local-agent' ||
-      stage.name === 'plugin:langbot/local-agent/default';
+      stage.name === 'plugin:langbot-team/LocalAgent/default';
     const isLocalAgentStage = formName === 'ai' && isLocalAgentRunner;
     const stageSystemContext = isLocalAgentRunner
       ? {

@@ -31,7 +31,7 @@ await ensureEvidence(paths);
 const backendUrl = (env.LANGBOT_BACKEND_URL || "").replace(/\/$/, "");
 const pipelineUrl = env.LANGBOT_E2E_PIPELINE_URL || env.LANGBOT_LOCAL_AGENT_PIPELINE_URL || env.LANGBOT_PIPELINE_URL || "";
 const pipelineName = env.LANGBOT_E2E_PIPELINE_NAME || env.LANGBOT_LOCAL_AGENT_PIPELINE_NAME || env.LANGBOT_PIPELINE_NAME || "";
-const expectedRunnerId = env.LANGBOT_E2E_EXPECTED_RUNNER_ID || "plugin:langbot/local-agent/default";
+const expectedRunnerId = env.LANGBOT_E2E_EXPECTED_RUNNER_ID || "plugin:langbot-team/LocalAgent/default";
 const expectedText = env.LANGBOT_E2E_EXPECTED_TEXT || "qa_steering_sentinel_6194";
 const responseTimeoutMs = positiveInt(env.LANGBOT_E2E_RESPONSE_TIMEOUT_MS, 240000);
 const followupDelayMs = 1000;
@@ -446,7 +446,7 @@ async function inspectPipeline(page, { backendUrl, pipelineUrl, pipelineName, ex
     }
     const config = pipeline.config || {};
     const runner = config.ai?.runner || {};
-    const runnerId = runner.id || runner.runner || "";
+    const runnerId = runner.id || "";
     if (!runnerId) {
       return {
         status: "blocked",
@@ -455,7 +455,7 @@ async function inspectPipeline(page, { backendUrl, pipelineUrl, pipelineName, ex
         pipeline_id: pipelineId,
         pipeline_name: pipeline.name,
         matched_by: matchedBy,
-        reason: "Pipeline has no ai.runner.id or legacy ai.runner.runner.",
+        reason: "Pipeline has no ai.runner.id.",
       };
     }
     if (expectedRunnerId && runnerId !== expectedRunnerId) {

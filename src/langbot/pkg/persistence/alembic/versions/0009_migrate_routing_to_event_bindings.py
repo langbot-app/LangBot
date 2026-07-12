@@ -1,4 +1,7 @@
-"""migrate use_pipeline_uuid and pipeline_routing_rules into event_bindings
+"""Migrate legacy Bot routes into Pipeline event bindings.
+
+Bindings keep referencing the original Pipeline UUIDs. This migration never
+creates Agent rows or copies Pipeline runner configuration.
 
 Revision ID: 0009_migrate_routing_to_event_bindings
 Revises: 0008_agent_product_surface

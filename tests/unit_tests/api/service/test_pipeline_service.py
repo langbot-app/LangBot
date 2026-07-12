@@ -353,19 +353,6 @@ class TestPipelineServiceCreatePipeline:
         }
 
 
-class _MockResultWithBots:
-    """Helper class to mock SQLAlchemy result with iterable .all() method."""
-
-    def __init__(self, bots_list):
-        self._bots_list = bots_list
-
-    def all(self):
-        return self._bots_list
-
-    def first(self):
-        return self._bots_list[0] if self._bots_list else None
-
-
 class TestPipelineServiceUpdatePipeline:
     """Tests for update_pipeline method."""
 
@@ -379,20 +366,18 @@ class TestPipelineServiceUpdatePipeline:
         ap.pipeline_mgr.load_pipeline = AsyncMock()
         ap.sess_mgr = SimpleNamespace()
         ap.sess_mgr.session_list = []
-        ap.bot_service = None  # No bot_service when not updating name
-
         ap.persistence_mgr.execute_async = AsyncMock()
 
         service = PipelineService(ap)
         service.get_pipeline = AsyncMock(return_value={'uuid': 'test-uuid', 'name': 'Updated'})
 
-        # Execute with protected fields - no name change, so no bot sync
+        # Execute with protected fields.
         pipeline_data = {
             'uuid': 'should-be-removed',
             'for_version': 'should-be-removed',
             'stages': ['should-be-removed'],
             'is_default': True,
-            'description': 'New description',  # Not name change, so no bot_service needed
+            'description': 'New description',
         }
         await service.update_pipeline('test-uuid', pipeline_data)
 
@@ -402,8 +387,8 @@ class TestPipelineServiceUpdatePipeline:
         assert ['should-be-removed'] not in update_params.values()
         assert not any(value is True for value in update_params.values())
 
-    async def test_update_pipeline_syncs_bot_names(self):
-        """Updates bot use_pipeline_name when pipeline name changes."""
+    async def test_update_pipeline_name_does_not_rewrite_bot_routes(self):
+        """Bot event bindings remain independent from pipeline display names."""
         # Setup
         ap = SimpleNamespace()
         ap.persistence_mgr = SimpleNamespace()
@@ -415,45 +400,14 @@ class TestPipelineServiceUpdatePipeline:
         ap.bot_service = SimpleNamespace()
         ap.bot_service.update_bot = AsyncMock()
 
-        # Create proper mock Bot entities with uuid attribute
-        mock_bot1 = Mock()
-        mock_bot1.uuid = 'bot-uuid-1'
-        mock_bot2 = Mock()
-        mock_bot2.uuid = 'bot-uuid-2'
-
-        # Create bot list
-        bot_list = [mock_bot1, mock_bot2]
-
-        # Create mock result using helper class
-        bot_result = _MockResultWithBots(bot_list)
-
-        # The order of calls in update_pipeline:
-        # 1. UPDATE (line 125) - returns Mock (no result needed)
-        # 2. SELECT bots (line 136) - returns bot_result with .all()
-        call_count = 0
-
-        async def mock_execute(query):
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                # First call is the UPDATE - just return a Mock
-                return Mock()
-            elif call_count == 2:
-                # Second call is the SELECT bots - return proper result
-                return bot_result
-            return Mock()  # Any additional calls
-
-        ap.persistence_mgr.execute_async = AsyncMock(side_effect=mock_execute)
-        ap.persistence_mgr.serialize_model = Mock(return_value={})
+        ap.persistence_mgr.execute_async = AsyncMock(return_value=Mock())
 
         service = PipelineService(ap)
         service.get_pipeline = AsyncMock(return_value={'uuid': 'test-uuid', 'name': 'New Name'})
 
-        # Execute with name change
         await service.update_pipeline('test-uuid', {'name': 'New Name'})
 
-        # Verify - bot_service.update_bot was called for each bot
-        assert ap.bot_service.update_bot.call_count == 2
+        ap.bot_service.update_bot.assert_not_awaited()
 
     async def test_update_pipeline_clears_conversations(self):
         """Clears session conversations using this pipeline."""

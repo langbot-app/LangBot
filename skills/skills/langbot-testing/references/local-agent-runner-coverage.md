@@ -1,6 +1,6 @@
 # Local Agent Runner Coverage
 
-Use this matrix when judging whether the external `langbot/local-agent` plugin still behaves like the old built-in local-agent runner.
+Use this matrix when judging whether the external `langbot-team/LocalAgent` plugin still behaves like the old built-in local-agent runner.
 
 The QA target is end-to-end behavior. UI cases prove the host, SDK, plugin runtime, and WebUI work together. Unit or component tests are still needed for negative branches that are hard to trigger reliably through a live provider.
 

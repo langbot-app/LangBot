@@ -1,0 +1,59 @@
+id: wizard-runner-marketplace-catalog
+title: "Quick Start discovers AgentRunner extensions on a clean instance"
+mode: agent-browser
+area: wizard
+type: feature
+priority: p0
+risk: high
+ci_eligible: false
+tags:
+  - wizard
+  - agent-runner
+  - marketplace
+  - clean-install
+  - productization
+skills:
+  - langbot-env-setup
+  - langbot-testing
+env:
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_E2E_LOGIN_USER
+automation: scripts/e2e/wizard-runner-marketplace-catalog.mjs
+automation_env:
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_E2E_LOGIN_USER
+  - LANGBOT_BROWSER_PROFILE
+  - LANGBOT_CHROMIUM_EXECUTABLE
+preconditions:
+  - "The target is a newly initialized local instance with wizard_status=none."
+  - "No plugins or AgentRunner components are installed."
+steps:
+  - "Confirm the backend reports zero installed plugins and zero registered runners."
+  - "Resume Quick Start at the AI Engine step with a temporary disabled Bot."
+  - "Confirm the browser requests Marketplace plugins with component_filter=AgentRunner."
+  - "When Space has not published Runner plugins, confirm the safe empty state and Runner Extensions link."
+  - "Confirm Create & Deploy remains disabled until a Runner is installed and selected."
+  - "Verify the layout at desktop and mobile widths."
+checks:
+  - "API: The instance has zero installed plugins and zero registered runners."
+  - "API: The instance wizard status is none."
+  - "Network: Marketplace search uses component_filter=AgentRunner and type_filter=plugin."
+  - "UI: The AI Engine step remains usable when the Runner catalog is empty."
+  - "UI: Browse Runner Extensions links to the AgentRunner-filtered market."
+  - "UI: Create & Deploy remains disabled without a selected Runner."
+  - "Console: No unexpected frontend errors appear during the flow."
+  - "Cleanup: Wizard progress and the temporary Bot are removed."
+evidence_required:
+  - ui
+  - screenshot
+  - console
+  - api_diagnostic
+diagnostics:
+  - "This case validates the clean-instance discovery and empty state. Run the install continuation after Space publishes at least one AgentRunner plugin."
+  - "A Marketplace API response alone is not a pass; the empty or installable Runner UI must be visible."
+troubleshooting:
+  - backend-not-listening
+  - plugin-runtime-timeout
+  - proxy-env-mismatch

@@ -370,7 +370,7 @@ const viVN = {
       'Liên kết Pipeline xử lý tin nhắn cho Bot này',
     eventRouting: 'Định tuyến sự kiện',
     eventRoutingDescription:
-      'Chọn bộ xử lý sẽ nhận từng sự kiện của Bot này. Chỉnh sửa logic xử lý trong trang Agent. Pipeline chỉ hỗ trợ sự kiện tin nhắn.',
+      'Chọn bộ xử lý cho từng sự kiện của Bot. Chỉnh sửa logic trong cấu hình Agent hoặc Pipeline tương ứng. Pipeline chỉ hỗ trợ sự kiện tin nhắn.',
     routingRules: 'Quy tắc định tuyến có điều kiện',
     routingRulesDescription:
       'Các quy tắc được đánh giá theo thứ tự; kết quả khớp đầu tiên sẽ định tuyến đến pipeline tương ứng. Nếu không khớp, pipeline mặc định ở trên sẽ được sử dụng.',
@@ -478,7 +478,7 @@ const viVN = {
     },
   },
   agents: {
-    title: 'Agent',
+    title: 'Bộ xử lý',
     description:
       'Tạo bộ xử lý có thể tái sử dụng và dùng chúng trong định tuyến sự kiện của bot',
     create: 'Tạo bộ xử lý',
@@ -493,7 +493,7 @@ const viVN = {
     groupByKind: 'Nhóm theo loại',
     groupByKindShort: 'Nhóm',
     pipelineTypeDescription:
-      'Giữ lại pipeline tin nhắn không cần mã hiện có để tương thích ngược. Chỉ xử lý sự kiện tin nhắn.',
+      'Dùng luồng trực quan nhiều giai đoạn để kiểm soát tiền xử lý, AI, hậu xử lý, tiện ích mở rộng và đầu ra. Chỉ xử lý sự kiện tin nhắn.',
     allEvents: 'Hỗ trợ tất cả sự kiện',
     messageEventsOnly: 'Chỉ sự kiện tin nhắn',
     basicInfo: 'Thông tin cơ bản',
