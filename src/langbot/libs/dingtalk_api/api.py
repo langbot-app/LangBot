@@ -885,7 +885,10 @@ class DingTalkClient:
 
         while not self._stopped:
             try:
-                connection = self.client.open_connection()
+                # open_connection performs blocking network I/O in the DingTalk SDK.
+                # Run it off the event loop so connection stalls do not block the
+                # LangBot HTTP server and other async tasks.
+                connection = await asyncio.to_thread(self.client.open_connection)
 
                 if not connection:
                     if self.logger:
