@@ -21,7 +21,7 @@ import quart
 
 from ... import group
 from ......utils import paths
-from ......platform.sources.websocket_manager import ws_connection_manager
+from ......platform.sources.websocket_manager import is_valid_session_id, ws_connection_manager
 
 logger = logging.getLogger(__name__)
 
@@ -203,11 +203,15 @@ class EmbedRouterGroup(group.RouterGroup):
                 if session_type not in ['person', 'group']:
                     return self.http_status(400, -1, 'session_type must be person or group')
 
+                session_id = quart.request.args.get('session_id', '')
+                if not is_valid_session_id(session_id):
+                    return self.http_status(400, -1, 'Valid session_id is required')
+
                 websocket_adapter = self.ap.platform_mgr.websocket_proxy_bot.adapter
                 if not websocket_adapter:
                     return self.http_status(404, -1, 'WebSocket adapter not found')
 
-                messages = websocket_adapter.get_websocket_messages(pipeline_uuid, session_type)
+                messages = websocket_adapter.get_websocket_messages(pipeline_uuid, session_type, session_id)
                 return self.success(data={'messages': messages})
 
             except Exception as e:
@@ -227,11 +231,15 @@ class EmbedRouterGroup(group.RouterGroup):
                 if session_type not in ['person', 'group']:
                     return self.http_status(400, -1, 'session_type must be person or group')
 
+                session_id = quart.request.args.get('session_id', '')
+                if not is_valid_session_id(session_id):
+                    return self.http_status(400, -1, 'Valid session_id is required')
+
                 websocket_adapter = self.ap.platform_mgr.websocket_proxy_bot.adapter
                 if not websocket_adapter:
                     return self.http_status(404, -1, 'WebSocket adapter not found')
 
-                websocket_adapter.reset_session(pipeline_uuid, session_type)
+                websocket_adapter.reset_session(pipeline_uuid, session_type, session_id)
                 return self.success(data={'message': 'Session reset successfully'})
 
             except Exception as e:
@@ -294,6 +302,11 @@ class EmbedRouterGroup(group.RouterGroup):
                 )
                 return
 
+            session_id = quart.websocket.args.get('session_id', '')
+            if not is_valid_session_id(session_id):
+                await quart.websocket.send(json.dumps({'type': 'error', 'message': 'Valid session_id is required'}))
+                return
+
             websocket_adapter = self.ap.platform_mgr.websocket_proxy_bot.adapter
             if not websocket_adapter:
                 await quart.websocket.send(json.dumps({'type': 'error', 'message': 'WebSocket adapter not found'}))
@@ -304,6 +317,7 @@ class EmbedRouterGroup(group.RouterGroup):
                     websocket=quart.websocket._get_current_object(),
                     pipeline_uuid=pipeline_uuid,
                     session_type=session_type,
+                    session_id=session_id,
                     metadata={'user_agent': quart.websocket.headers.get('User-Agent', '')},
                 )
 

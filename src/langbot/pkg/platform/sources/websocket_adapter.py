@@ -13,7 +13,7 @@ import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
 import langbot_plugin.api.definition.abstract.platform.event_logger as abstract_platform_logger
 from ...core import app
-from .websocket_manager import ws_connection_manager, WebSocketConnection
+from .websocket_manager import WebSocketConnection, is_valid_session_id, ws_connection_manager
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +91,59 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
         self.outbound_message_queue = asyncio.Queue()
         self.stream_enabled = True
 
+    @staticmethod
+    def _conversation_key(pipeline_uuid: str, session_id: str | None = None) -> str:
+        """Return the history key for a pipeline/client conversation."""
+        return f'{pipeline_uuid}:{session_id}' if session_id else pipeline_uuid
+
+    @staticmethod
+    def _parse_embed_target(target_id: str) -> tuple[str, str] | None:
+        """Extract pipeline and session identifiers from a stable embed launcher."""
+        target_value = str(target_id)
+        for prefix in ('websocket_', 'websocketgroup_'):
+            if target_value.startswith(prefix):
+                target = target_value[len(prefix) :]
+                break
+        else:
+            return None
+        if ':' not in target:
+            return None
+        pipeline_uuid, session_id = target.rsplit(':', 1)
+        if not pipeline_uuid or not is_valid_session_id(session_id):
+            return None
+        return pipeline_uuid, session_id
+
+    @classmethod
+    async def _get_connection_from_target(cls, target_id: str):
+        """Resolve a person or group WebSocket launcher to its connection."""
+        target_value = str(target_id)
+        for prefix in ('websocket_', 'websocketgroup_'):
+            if target_value.startswith(prefix):
+                target = target_value[len(prefix) :]
+                break
+        else:
+            return None
+        connection = await ws_connection_manager.get_connection(target)
+        if connection is not None:
+            return connection
+        embed_target = cls._parse_embed_target(target_id)
+        if embed_target is not None:
+            pipeline_uuid, session_id = embed_target
+            return await ws_connection_manager.get_connection_by_session_id(session_id, pipeline_uuid)
+        return await ws_connection_manager.get_connection_by_session_id(target)
+
+    async def _get_message_context(self, message_source) -> tuple[str, str | None]:
+        """Resolve the originating pipeline and browser session for a reply."""
+        sender = getattr(message_source, 'sender', None)
+        sender_id = getattr(sender, 'id', '')
+        connection = await self._get_connection_from_target(sender_id)
+        if connection is not None:
+            return connection.pipeline_uuid, connection.session_id
+        embed_target = self._parse_embed_target(sender_id)
+        if embed_target is not None:
+            return embed_target
+        return typing.cast(str, self.ap.platform_mgr.websocket_proxy_bot.bot_entity.use_pipeline_uuid), None
+
     async def send_message(
         self,
         target_type: str,
@@ -103,15 +156,26 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
         target_id 可能是 launcher_id（如 websocket_xxx）或 pipeline_uuid。
         我们需要尝试两种方式来确保消息能够送达。
         """
-        # 获取当前的 pipeline_uuid
-        pipeline_uuid = self.ap.platform_mgr.websocket_proxy_bot.bot_entity.use_pipeline_uuid
+        connection = await self._get_connection_from_target(target_id)
+        if connection is not None:
+            pipeline_uuid = connection.pipeline_uuid
+            session_id = connection.session_id
+        else:
+            embed_target = self._parse_embed_target(target_id)
+            if embed_target is not None:
+                pipeline_uuid, session_id = embed_target
+            else:
+                pipeline_uuid = typing.cast(
+                    str,
+                    self.ap.platform_mgr.websocket_proxy_bot.bot_entity.use_pipeline_uuid,
+                )
+                session_id = None
         session_type = 'group' if target_type == 'group' else 'person'
+        conversation_key = self._conversation_key(pipeline_uuid, session_id)
 
-        # 选择会话
         session = self.websocket_group_session if session_type == 'group' else self.websocket_person_session
 
-        # 生成唯一消息ID
-        msg_id = len(session.get_message_list(pipeline_uuid)) + 1
+        msg_id = len(session.get_message_list(conversation_key)) + 1
 
         message_data = WebSocketMessage(
             id=msg_id,
@@ -122,10 +186,8 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
             is_final=True,
         )
 
-        # 保存到历史记录
-        session.get_message_list(pipeline_uuid).append(message_data)
+        session.get_message_list(conversation_key).append(message_data)
 
-        # 直接广播到当前pipeline的连接
         await ws_connection_manager.broadcast_to_pipeline(
             pipeline_uuid,
             {
@@ -134,6 +196,7 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
                 'data': message_data.model_dump(),
             },
             session_type=session_type,
+            session_id=session_id,
         )
 
         return message_data.model_dump()
@@ -152,12 +215,11 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
             else self.websocket_person_session
         )
 
-        # 从message_source获取pipeline_uuid和connection_id
-        pipeline_uuid = self.ap.platform_mgr.websocket_proxy_bot.bot_entity.use_pipeline_uuid
+        pipeline_uuid, session_id = await self._get_message_context(message_source)
         session_type = 'group' if isinstance(message_source, platform_events.GroupMessage) else 'person'
+        conversation_key = self._conversation_key(pipeline_uuid, session_id)
 
-        # 生成新的消息ID
-        msg_id = len(session.get_message_list(pipeline_uuid)) + 1
+        msg_id = len(session.get_message_list(conversation_key)) + 1
 
         message_data = WebSocketMessage(
             id=msg_id,
@@ -168,10 +230,8 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
             is_final=True,
         )
 
-        # 保存到历史记录
-        session.get_message_list(pipeline_uuid).append(message_data)
+        session.get_message_list(conversation_key).append(message_data)
 
-        # 直接广播到所有该pipeline的连接，包含session_type信息
         await ws_connection_manager.broadcast_to_pipeline(
             pipeline_uuid,
             {
@@ -180,6 +240,7 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
                 'data': message_data.model_dump(),
             },
             session_type=session_type,
+            session_id=session_id,
         )
 
         return message_data.model_dump()
@@ -200,10 +261,11 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
             else self.websocket_person_session
         )
 
-        pipeline_uuid = self.ap.platform_mgr.websocket_proxy_bot.bot_entity.use_pipeline_uuid
+        pipeline_uuid, session_id = await self._get_message_context(message_source)
         session_type = 'group' if isinstance(message_source, platform_events.GroupMessage) else 'person'
-        message_list = session.get_message_list(pipeline_uuid)
-        stream_message_indexes = session.get_stream_message_indexes(pipeline_uuid)
+        conversation_key = self._conversation_key(pipeline_uuid, session_id)
+        message_list = session.get_message_list(conversation_key)
+        stream_message_indexes = session.get_stream_message_indexes(conversation_key)
 
         # Streaming messages in LangBot have a stable resp_message_id during the same assistant reply.
         # Use it as the primary key to avoid overwriting an old card from a previous reply.
@@ -247,7 +309,6 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
         if message_is_final and resp_message_id:
             stream_message_indexes.pop(resp_message_id, None)
 
-        # 直接广播到所有该pipeline的连接，包含session_type信息
         await ws_connection_manager.broadcast_to_pipeline(
             pipeline_uuid,
             {
@@ -256,6 +317,7 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
                 'data': message_data.model_dump(),
             },
             session_type=session_type,
+            session_id=session_id,
         )
 
         return message_data.model_dump()
@@ -381,23 +443,19 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
         """
         pipeline_uuid = connection.pipeline_uuid
         session_type = connection.session_type
+        conversation_key = self._conversation_key(pipeline_uuid, connection.session_id)
 
-        # 获取stream参数，默认为True
         self.stream_enabled = message_data.get('stream', True)
 
-        # 选择会话
         use_session = self.websocket_group_session if session_type == 'group' else self.websocket_person_session
 
-        # 解析消息链
         message_chain_obj = message_data.get('message', [])
 
-        # 处理图片组件：将path转换为base64
         await self._process_image_components(message_chain_obj)
 
         message_chain = platform_message.MessageChain.model_validate(message_chain_obj)
 
-        # 生成消息ID
-        message_id = len(use_session.get_message_list(pipeline_uuid)) + 1
+        message_id = len(use_session.get_message_list(conversation_key)) + 1
 
         # 保存用户消息
         user_message = WebSocketMessage(
@@ -409,9 +467,8 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
             connection_id=connection.connection_id,
             is_final=True,  # 用户消息始终是完整的，非流式
         )
-        use_session.get_message_list(pipeline_uuid).append(user_message)
+        use_session.get_message_list(conversation_key).append(user_message)
 
-        # 广播用户消息到所有连接（包括发送者），包含session_type信息
         await ws_connection_manager.broadcast_to_pipeline(
             pipeline_uuid,
             {
@@ -420,25 +477,27 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
                 'data': user_message.model_dump(),
             },
             session_type=session_type,
+            session_id=connection.session_id,
         )
 
         # 添加消息源
         message_chain.insert(0, platform_message.Source(id=message_id, time=datetime.now().timestamp()))
 
         # 创建事件
+        launcher_id = f'{pipeline_uuid}:{connection.session_id}' if connection.session_id else connection.connection_id
         if session_type == 'person':
-            sender = platform_entities.Friend(
-                id=f'websocket_{connection.connection_id}', nickname='User', remark='User'
-            )
+            sender = platform_entities.Friend(id=f'websocket_{launcher_id}', nickname='User', remark='User')
             event = platform_events.FriendMessage(
                 sender=sender, message_chain=message_chain, time=datetime.now().timestamp()
             )
         else:
             group = platform_entities.Group(
-                id='websocketgroup', name='Group', permission=platform_entities.Permission.Member
+                id=f'websocketgroup_{launcher_id}' if connection.session_id else 'websocketgroup',
+                name='Group',
+                permission=platform_entities.Permission.Member,
             )
             sender = platform_entities.GroupMember(
-                id=f'websocket_{connection.connection_id}',
+                id=f'websocket_{launcher_id}',
                 member_name='User',
                 group=group,
                 permission=platform_entities.Permission.Member,
@@ -468,22 +527,27 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
         if event.__class__ in listeners:
             asyncio.create_task(listeners[event.__class__](event, callback_adapter))
 
-    def get_websocket_messages(self, pipeline_uuid: str, session_type: str) -> list[dict]:
-        """获取消息历史"""
-        if session_type == 'person':
-            return [message.model_dump() for message in self.websocket_person_session.get_message_list(pipeline_uuid)]
-        else:
-            return [message.model_dump() for message in self.websocket_group_session.get_message_list(pipeline_uuid)]
+    def get_websocket_messages(
+        self,
+        pipeline_uuid: str,
+        session_type: str,
+        session_id: str | None = None,
+    ) -> list[dict]:
+        """Return history for one pipeline/client conversation."""
+        conversation_key = self._conversation_key(pipeline_uuid, session_id)
+        session = self.websocket_person_session if session_type == 'person' else self.websocket_group_session
+        return [message.model_dump() for message in session.get_message_list(conversation_key)]
 
-    def reset_session(self, pipeline_uuid: str, session_type: str):
-        """重置会话"""
-        if session_type == 'person':
-            if pipeline_uuid in self.websocket_person_session.message_lists:
-                self.websocket_person_session.message_lists[pipeline_uuid] = []
-            if pipeline_uuid in self.websocket_person_session.stream_message_indexes:
-                self.websocket_person_session.stream_message_indexes[pipeline_uuid] = {}
-        else:
-            if pipeline_uuid in self.websocket_group_session.message_lists:
-                self.websocket_group_session.message_lists[pipeline_uuid] = []
-            if pipeline_uuid in self.websocket_group_session.stream_message_indexes:
-                self.websocket_group_session.stream_message_indexes[pipeline_uuid] = {}
+    def reset_session(
+        self,
+        pipeline_uuid: str,
+        session_type: str,
+        session_id: str | None = None,
+    ):
+        """Reset one pipeline/client conversation."""
+        conversation_key = self._conversation_key(pipeline_uuid, session_id)
+        session = self.websocket_person_session if session_type == 'person' else self.websocket_group_session
+        if conversation_key in session.message_lists:
+            session.message_lists[conversation_key] = []
+        if conversation_key in session.stream_message_indexes:
+            session.stream_message_indexes[conversation_key] = {}

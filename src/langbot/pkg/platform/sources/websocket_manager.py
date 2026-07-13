@@ -9,6 +9,16 @@ from datetime import datetime
 import pydantic
 
 logger = logging.getLogger(__name__)
+_SESSION_FILTER_UNSET = object()
+
+
+def is_valid_session_id(value: str) -> bool:
+    """Accept only canonical random UUIDs for client conversation identifiers."""
+    try:
+        parsed = uuid.UUID(value)
+    except (ValueError, TypeError, AttributeError):
+        return False
+    return parsed.version == 4 and str(parsed) == value
 
 
 class WebSocketConnection(pydantic.BaseModel):
@@ -24,6 +34,9 @@ class WebSocketConnection(pydantic.BaseModel):
 
     session_type: str  # 'person' or 'group'
     """会话类型"""
+
+    session_id: str | None = None
+    """Optional client conversation identifier used by embed widgets."""
 
     websocket: typing.Any = pydantic.Field(exclude=True)
     """WebSocket连接对象 (quart.websocket)"""
@@ -65,13 +78,15 @@ class WebSocketConnectionManager:
         websocket: typing.Any,
         pipeline_uuid: str,
         session_type: str,
-        metadata: dict = None,
+        metadata: dict | None = None,
+        session_id: str | None = None,
     ) -> WebSocketConnection:
-        """添加新的WebSocket连接"""
+        """Register a WebSocket connection and its optional embed session."""
         async with self._lock:
             connection = WebSocketConnection(
                 pipeline_uuid=pipeline_uuid,
                 session_type=session_type,
+                session_id=session_id,
                 websocket=websocket,
                 metadata=metadata or {},
             )
@@ -120,9 +135,24 @@ class WebSocketConnectionManager:
 
             logger.debug(f'WebSocket connection disconnected: {connection_id}')
 
-    async def get_connection(self, connection_id: str) -> typing.Optional[WebSocketConnection]:
-        """获取指定连接"""
+    async def get_connection(self, connection_id: str) -> WebSocketConnection | None:
+        """Get a connection by its transport identifier."""
         return self.connections.get(connection_id)
+
+    async def get_connection_by_session_id(
+        self,
+        session_id: str,
+        pipeline_uuid: str | None = None,
+    ) -> WebSocketConnection | None:
+        """Get an active embed connection by its stable browser session identifier."""
+        for connection in self.connections.values():
+            if (
+                connection.session_id == session_id
+                and connection.is_active
+                and (pipeline_uuid is None or connection.pipeline_uuid == pipeline_uuid)
+            ):
+                return connection
+        return None
 
     async def get_connections_by_pipeline(self, pipeline_uuid: str) -> list[WebSocketConnection]:
         """获取指定流水线的所有连接"""
@@ -134,19 +164,29 @@ class WebSocketConnectionManager:
         connection_ids = self.session_connections.get(session_type, set())
         return [self.connections[cid] for cid in connection_ids if cid in self.connections]
 
-    async def broadcast_to_pipeline(self, pipeline_uuid: str, message: dict, session_type: str = None):
-        """向指定流水线的所有连接广播消息
+    async def broadcast_to_pipeline(
+        self,
+        pipeline_uuid: str,
+        message: dict,
+        session_type: str | None = None,
+        session_id: typing.Any = _SESSION_FILTER_UNSET,
+    ):
+        """Broadcast a message to matching connections for one pipeline.
 
         Args:
-            pipeline_uuid: 流水线UUID
-            message: 要广播的消息
-            session_type: 可选的会话类型过滤器，如果提供则只向匹配的session_type连接广播
+            pipeline_uuid: Pipeline identifier.
+            message: Serialized message to enqueue.
+            session_type: Optional session-type filter.
+            session_id: Embed conversation filter. Omit it to broadcast across
+                conversations; pass ``None`` to target non-embed connections.
         """
         connections = await self.get_connections_by_pipeline(pipeline_uuid)
 
-        # 如果指定了session_type，只向匹配的连接广播
         if session_type is not None:
             connections = [conn for conn in connections if conn.session_type == session_type]
+
+        if session_id is not _SESSION_FILTER_UNSET:
+            connections = [conn for conn in connections if conn.session_id == session_id]
 
         tasks = []
         for conn in connections:

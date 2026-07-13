@@ -15,6 +15,7 @@ from tests.factories import FakeApp
 
 
 pytestmark = pytest.mark.integration
+SESSION_ID = '31c0f2e9-b115-4ee6-8f15-3e624d6456b1'
 
 
 @pytest.fixture(scope='module')
@@ -191,10 +192,10 @@ class TestEmbedMessagesEndpoint:
     """Tests for messages endpoint."""
 
     @pytest.mark.asyncio
-    async def test_get_messages_person_success(self, quart_test_client):
+    async def test_get_messages_person_success(self, quart_test_client, fake_embed_app):
         """GET messages/person returns messages."""
         response = await quart_test_client.get(
-            '/api/v1/embed/a1b2c3d4-5678-90ab-cdef-123456789abc/messages/person',
+            f'/api/v1/embed/a1b2c3d4-5678-90ab-cdef-123456789abc/messages/person?session_id={SESSION_ID}',
             headers={'Authorization': 'Bearer 1234567890.dummy'},
         )
 
@@ -202,16 +203,29 @@ class TestEmbedMessagesEndpoint:
         data = await response.get_json()
         assert data['code'] == 0
         assert 'messages' in data['data']
+        fake_embed_app.platform_mgr.websocket_proxy_bot.adapter.get_websocket_messages.assert_called_with(
+            'test-pipeline-uuid', 'person', SESSION_ID
+        )
 
     @pytest.mark.asyncio
     async def test_get_messages_group_success(self, quart_test_client):
         """GET messages/group returns messages."""
         response = await quart_test_client.get(
-            '/api/v1/embed/a1b2c3d4-5678-90ab-cdef-123456789abc/messages/group',
+            f'/api/v1/embed/a1b2c3d4-5678-90ab-cdef-123456789abc/messages/group?session_id={SESSION_ID}',
             headers={'Authorization': 'Bearer 1234567890.dummy'},
         )
 
         assert response.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_get_messages_requires_session_id(self, quart_test_client):
+        """GET messages without a client session identifier returns 400."""
+        response = await quart_test_client.get(
+            '/api/v1/embed/a1b2c3d4-5678-90ab-cdef-123456789abc/messages/person',
+            headers={'Authorization': 'Bearer 1234567890.dummy'},
+        )
+
+        assert response.status_code == 400
 
     @pytest.mark.asyncio
     async def test_get_messages_invalid_session_type(self, quart_test_client):
@@ -229,16 +243,29 @@ class TestEmbedResetEndpoint:
     """Tests for session reset endpoint."""
 
     @pytest.mark.asyncio
-    async def test_reset_session_person_success(self, quart_test_client):
+    async def test_reset_session_person_success(self, quart_test_client, fake_embed_app):
         """POST reset/person resets session."""
         response = await quart_test_client.post(
-            '/api/v1/embed/a1b2c3d4-5678-90ab-cdef-123456789abc/reset/person',
+            f'/api/v1/embed/a1b2c3d4-5678-90ab-cdef-123456789abc/reset/person?session_id={SESSION_ID}',
             headers={'Authorization': 'Bearer 1234567890.dummy'},
         )
 
         assert response.status_code == 200
         data = await response.get_json()
         assert data['code'] == 0
+        fake_embed_app.platform_mgr.websocket_proxy_bot.adapter.reset_session.assert_called_with(
+            'test-pipeline-uuid', 'person', SESSION_ID
+        )
+
+    @pytest.mark.asyncio
+    async def test_reset_session_requires_session_id(self, quart_test_client):
+        """POST reset without a client session identifier returns 400."""
+        response = await quart_test_client.post(
+            '/api/v1/embed/a1b2c3d4-5678-90ab-cdef-123456789abc/reset/person',
+            headers={'Authorization': 'Bearer 1234567890.dummy'},
+        )
+
+        assert response.status_code == 400
 
     @pytest.mark.asyncio
     async def test_reset_session_invalid_uuid(self, quart_test_client):

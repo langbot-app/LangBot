@@ -303,11 +303,60 @@
     '<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zM6 20V4h7v5h5v11H6z"/><path d="M8 17l2.5-3.5L13 17l2-2.5L18 17H8z"/></svg>';
 
   // ========== State ==========
+  function createSessionId() {
+    if (window.crypto && typeof window.crypto.randomUUID === "function") {
+      return window.crypto.randomUUID();
+    }
+
+    var bytes = new Uint8Array(16);
+    if (!window.crypto || typeof window.crypto.getRandomValues !== "function") {
+      throw new Error("Secure random number generation is unavailable");
+    }
+    window.crypto.getRandomValues(bytes);
+    bytes[6] = (bytes[6] & 15) | 64;
+    bytes[8] = (bytes[8] & 63) | 128;
+    var hex = Array.prototype.map
+      .call(bytes, function (value) {
+        return value.toString(16).padStart(2, "0");
+      })
+      .join("");
+    return (
+      hex.slice(0, 8) +
+      "-" +
+      hex.slice(8, 12) +
+      "-" +
+      hex.slice(12, 16) +
+      "-" +
+      hex.slice(16, 20) +
+      "-" +
+      hex.slice(20)
+    );
+  }
+
+  function getOrCreateSessionId() {
+    var storageKey = "langbot_embed_session_" + CONFIG.botUuid;
+    try {
+      var stored = window.sessionStorage.getItem(storageKey);
+      if (
+        /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(
+          stored || "",
+        )
+      )
+        return stored;
+      var created = createSessionId();
+      window.sessionStorage.setItem(storageKey, created);
+      return created;
+    } catch (e) {
+      return createSessionId();
+    }
+  }
+
   var state = {
     isOpen: false,
     isConnected: false,
     ws: null,
     connectionId: null,
+    sessionId: getOrCreateSessionId(),
     reconnectAttempts: 0,
     heartbeatTimer: null,
     messages: [],
@@ -473,7 +522,9 @@
       "/api/v1/embed/" +
       CONFIG.botUuid +
       "/ws/connect?session_type=" +
-      CONFIG.sessionType;
+      CONFIG.sessionType +
+      "&session_id=" +
+      encodeURIComponent(state.sessionId);
 
     try {
       state.ws = new WebSocket(url);
@@ -665,7 +716,9 @@
       "/api/v1/embed/" +
       CONFIG.botUuid +
       "/messages/" +
-      CONFIG.sessionType;
+      CONFIG.sessionType +
+      "?session_id=" +
+      encodeURIComponent(state.sessionId);
     var headers = {};
     if (state.sessionToken)
       headers["Authorization"] = "Bearer " + state.sessionToken;
@@ -693,7 +746,9 @@
       "/api/v1/embed/" +
       CONFIG.botUuid +
       "/reset/" +
-      CONFIG.sessionType;
+      CONFIG.sessionType +
+      "?session_id=" +
+      encodeURIComponent(state.sessionId);
     var headers = {};
     if (state.sessionToken)
       headers["Authorization"] = "Bearer " + state.sessionToken;
