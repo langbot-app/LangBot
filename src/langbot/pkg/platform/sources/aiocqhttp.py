@@ -491,7 +491,11 @@ class AiocqhttpAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
     message_converter: AiocqhttpMessageConverter = AiocqhttpMessageConverter()
     event_converter: AiocqhttpEventConverter = pydantic.Field(default_factory=AiocqhttpEventConverter)
 
-    on_websocket_connection_event_cache: typing.List[typing.Callable[[aiocqhttp.Event], None]] = []
+    on_websocket_connection_event_cache: list[aiocqhttp.Event] = []
+    _listener_wrappers: dict[
+        tuple[typing.Type[platform_events.Event], typing.Callable],
+        tuple[str, typing.Callable],
+    ] = {}
 
     def __init__(self, config: dict, logger: abstract_platform_logger.AbstractEventLogger):
         super().__init__(
@@ -506,12 +510,23 @@ class AiocqhttpAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
         self.config['shutdown_trigger'] = shutdown_trigger_placeholder
 
         self.on_websocket_connection_event_cache = []
+        self._listener_wrappers = {}
 
         if 'access-token' in config:
             self.bot = aiocqhttp.CQHttp(access_token=config['access-token'])
             del self.config['access-token']
         else:
             self.bot = aiocqhttp.CQHttp()
+
+        self.bot.on_websocket_connection(self._on_websocket_connection)
+
+    async def _on_websocket_connection(self, event: aiocqhttp.Event):
+        for cached_event in self.on_websocket_connection_event_cache:
+            if cached_event.self_id == event.self_id and cached_event.time == event.time:
+                return
+
+        self.on_websocket_connection_event_cache.append(event)
+        await self.logger.info(f'WebSocket connection established, bot id: {event.self_id}')
 
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
         # Check if message contains a Forward component
@@ -648,21 +663,13 @@ class AiocqhttpAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
 
         if event_type == platform_events.GroupMessage:
             self.bot.on_message('group')(on_message)
+            self._listener_wrappers[(event_type, callback)] = ('message.group', on_message)
             # self.bot.on_notice()(on_message)
         elif event_type == platform_events.FriendMessage:
             self.bot.on_message('private')(on_message)
+            self._listener_wrappers[(event_type, callback)] = ('message.private', on_message)
             # self.bot.on_notice()(on_message)
         # print(event_type)
-
-        async def on_websocket_connection(event: aiocqhttp.Event):
-            for event in self.on_websocket_connection_event_cache:
-                if event.self_id == event.self_id and event.time == event.time:
-                    return
-
-            self.on_websocket_connection_event_cache.append(event)
-            await self.logger.info(f'WebSocket connection established, bot id: {event.self_id}')
-
-        self.bot.on_websocket_connection(on_websocket_connection)
 
     def unregister_listener(
         self,
@@ -671,7 +678,12 @@ class AiocqhttpAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
             [platform_events.Event, abstract_platform_adapter.AbstractMessagePlatformAdapter], None
         ],
     ):
-        return super().unregister_listener(event_type, callback)
+        listener = self._listener_wrappers.pop((event_type, callback), None)
+        if listener is None:
+            return
+
+        event_name, wrapper = listener
+        self.bot._bus.unsubscribe(event_name, wrapper)
 
     async def run_async(self):
         await self.bot._server_app.run_task(**self.config)

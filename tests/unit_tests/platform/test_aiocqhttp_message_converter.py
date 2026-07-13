@@ -2,6 +2,7 @@ import pytest
 import aiocqhttp
 
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
+import langbot_plugin.api.entities.builtin.platform.events as platform_events
 from langbot.pkg.platform.sources.aiocqhttp import (
     AiocqhttpAdapter,
     AiocqhttpEventConverter,
@@ -13,6 +14,72 @@ async def _convert_single(component: platform_message.MessageComponent):
     chain = platform_message.MessageChain([component])
     message, _, _ = await AiocqhttpMessageConverter.yiri2target(chain)
     return message[0]
+
+
+class _TestLogger:
+    def __init__(self):
+        self.messages = []
+
+    async def info(self, message):
+        self.messages.append(message)
+
+
+def _make_adapter():
+    logger = _TestLogger()
+    adapter = AiocqhttpAdapter.model_construct(
+        config={},
+        logger=logger,
+        bot=aiocqhttp.CQHttp(),
+        on_websocket_connection_event_cache=[],
+        _listener_wrappers={},
+    )
+    adapter.bot.on_websocket_connection(adapter._on_websocket_connection)
+    return adapter, logger
+
+
+def test_connection_listener_is_registered_once_for_multiple_message_listeners():
+    adapter, _ = _make_adapter()
+
+    async def callback(event, source_adapter):
+        return None
+
+    adapter.register_listener(platform_events.FriendMessage, callback)
+    adapter.register_listener(platform_events.GroupMessage, callback)
+    adapter.register_listener(platform_events.FeedbackEvent, callback)
+
+    assert len(adapter.bot._bus._subscribers['meta_event.lifecycle.connect']) == 1
+
+
+@pytest.mark.asyncio
+async def test_connection_listener_only_suppresses_exact_duplicates():
+    adapter, logger = _make_adapter()
+    first = aiocqhttp.Event({'self_id': 1001, 'time': 10})
+    duplicate = aiocqhttp.Event({'self_id': 1001, 'time': 10})
+    second = aiocqhttp.Event({'self_id': 2002, 'time': 20})
+
+    await adapter._on_websocket_connection(first)
+    await adapter._on_websocket_connection(duplicate)
+    await adapter._on_websocket_connection(second)
+
+    assert adapter.on_websocket_connection_event_cache == [first, second]
+    assert logger.messages == [
+        'WebSocket connection established, bot id: 1001',
+        'WebSocket connection established, bot id: 2002',
+    ]
+
+
+def test_unregister_listener_removes_registered_wrapper():
+    adapter, _ = _make_adapter()
+
+    async def callback(event, source_adapter):
+        return None
+
+    adapter.register_listener(platform_events.GroupMessage, callback)
+    assert len(adapter.bot._bus._subscribers['message.group']) == 1
+
+    adapter.unregister_listener(platform_events.GroupMessage, callback)
+
+    assert not adapter.bot._bus._subscribers['message.group']
 
 
 @pytest.mark.asyncio
