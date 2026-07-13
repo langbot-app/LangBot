@@ -364,6 +364,9 @@
     isStreaming: false,
     streamingMsgId: null,
     historyLoaded: false,
+    hasConnected: false,
+    messageVersion: 0,
+    historyReloadTimer: null,
     pendingImage: null,
     feedbackState: {},
   };
@@ -571,6 +574,8 @@
       case "connected":
         state.isConnected = true;
         state.connectionId = data.connection_id;
+        if (state.hasConnected) loadHistory(true);
+        state.hasConnected = true;
         updateStatusDot();
         updateSendBtn();
         break;
@@ -638,6 +643,7 @@
 
     if (existingIdx >= 0) {
       state.messages[existingIdx] = msg;
+      state.messageVersion++;
       updateMessageEl(existingIdx, msg);
     } else {
       addMessage(msg);
@@ -707,9 +713,18 @@
   }
 
   // ========== Message History ==========
-  function loadHistory() {
-    if (state.historyLoaded) return;
+  function scheduleHistoryReload() {
+    if (state.historyReloadTimer) clearTimeout(state.historyReloadTimer);
+    state.historyReloadTimer = setTimeout(function () {
+      state.historyReloadTimer = null;
+      loadHistory(true);
+    }, 100);
+  }
+
+  function loadHistory(force) {
+    if (state.historyLoaded && !force) return;
     state.historyLoaded = true;
+    var messageVersion = state.messageVersion;
 
     var url =
       CONFIG.baseUrl +
@@ -728,6 +743,16 @@
       })
       .then(function (json) {
         if (json.code === 0 && json.data && json.data.messages) {
+          if (force && messageVersion !== state.messageVersion) {
+            scheduleHistoryReload();
+            return;
+          }
+          if (force) {
+            state.messages = [];
+            state.isStreaming = false;
+            state.streamingMsgId = null;
+            renderMessages();
+          }
           var msgs = json.data.messages;
           for (var i = 0; i < msgs.length; i++) {
             addMessage(msgs[i], true);
@@ -755,6 +780,7 @@
     fetch(url, { method: "POST", headers: headers })
       .then(function () {
         state.messages = [];
+        state.messageVersion++;
         state.isStreaming = false;
         state.streamingMsgId = null;
         state.historyLoaded = true;
@@ -768,6 +794,7 @@
   // ========== UI Rendering ==========
   function addMessage(msg, silent) {
     state.messages.push(msg);
+    if (!silent) state.messageVersion++;
     var el = createMessageEl(msg);
     if (els.welcome) {
       els.welcome.style.display = "none";

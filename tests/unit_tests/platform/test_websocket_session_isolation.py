@@ -170,9 +170,36 @@ def test_session_ids_must_be_canonical_random_uuids():
     assert not is_valid_session_id('00000000-0000-0000-0000-000000000000')
 
 
+def test_history_read_does_not_allocate_unknown_session():
+    adapter = WebSocketAdapter.model_construct(ap=Mock(), logger=AsyncMock())
+    adapter.websocket_person_session = WebSocketSession(id='person')
+    adapter.websocket_group_session = WebSocketSession(id='group')
+
+    assert adapter.get_websocket_messages('pipeline-1', 'person', 'missing-session') == []
+    assert adapter.websocket_person_session.message_lists == {}
+
+
 def test_history_and_reset_are_scoped_to_browser_session():
+    matching_provider_session = Mock(
+        launcher_type=Mock(value='person'),
+        launcher_id='websocket_pipeline-1:session-a',
+    )
+    matching_group_provider_session = Mock(
+        launcher_type=Mock(value='group'),
+        launcher_id='websocketgroup_pipeline-1:session-a',
+    )
+    other_session = Mock(
+        launcher_type=Mock(value='person'),
+        launcher_id='websocket_pipeline-1:session-b',
+    )
+    ap = Mock()
+    ap.sess_mgr.session_list = [
+        matching_provider_session,
+        matching_group_provider_session,
+        other_session,
+    ]
     adapter = WebSocketAdapter.model_construct(
-        ap=Mock(),
+        ap=ap,
         logger=AsyncMock(),
     )
     adapter.websocket_person_session = Mock()
@@ -207,6 +234,8 @@ def test_history_and_reset_are_scoped_to_browser_session():
     adapter.websocket_person_session.get_message_list.side_effect = histories.__getitem__
     adapter.websocket_person_session.message_lists = histories
     adapter.websocket_person_session.stream_message_indexes = stream_indexes
+    adapter.websocket_group_session.message_lists = {}
+    adapter.websocket_group_session.stream_message_indexes = {}
 
     assert adapter.get_websocket_messages('pipeline-1', 'person', 'session-a')[0]['content'] == 'private-a'
     assert adapter.get_websocket_messages('pipeline-1', 'person', 'session-b')[0]['content'] == 'private-b'
@@ -217,6 +246,11 @@ def test_history_and_reset_are_scoped_to_browser_session():
     assert stream_indexes['pipeline-1:session-a'] == {}
     assert histories['pipeline-1:session-b'] == session_b
     assert stream_indexes['pipeline-1:session-b'] == {'response-b': 0}
+    assert ap.sess_mgr.session_list == [matching_group_provider_session, other_session]
+
+    adapter.reset_session('pipeline-1', 'group', 'session-a')
+
+    assert ap.sess_mgr.session_list == [other_session]
 
 
 def test_widget_sends_stable_session_id_to_all_conversation_endpoints():
@@ -228,3 +262,6 @@ def test_widget_sends_stable_session_id_to_all_conversation_endpoints():
     assert 'window.localStorage' not in widget
     assert 'session_id=' in widget
     assert widget.count('encodeURIComponent(state.sessionId)') >= 3
+    assert 'loadHistory(true)' in widget
+    assert 'messageVersion !== state.messageVersion' in widget
+    assert 'scheduleHistoryReload();' in widget

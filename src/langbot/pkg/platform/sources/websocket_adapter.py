@@ -536,7 +536,7 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
         """Return history for one pipeline/client conversation."""
         conversation_key = self._conversation_key(pipeline_uuid, session_id)
         session = self.websocket_person_session if session_type == 'person' else self.websocket_group_session
-        return [message.model_dump() for message in session.get_message_list(conversation_key)]
+        return [message.model_dump() for message in session.message_lists.get(conversation_key, [])]
 
     def reset_session(
         self,
@@ -551,3 +551,23 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
             session.message_lists[conversation_key] = []
         if conversation_key in session.stream_message_indexes:
             session.stream_message_indexes[conversation_key] = {}
+
+        if session_id:
+            launcher_id = (
+                f'websocketgroup_{pipeline_uuid}:{session_id}'
+                if session_type == 'group'
+                else f'websocket_{pipeline_uuid}:{session_id}'
+            )
+            self.ap.sess_mgr.session_list = [
+                candidate_session
+                for candidate_session in self.ap.sess_mgr.session_list
+                if not (
+                    str(
+                        candidate_session.launcher_type.value
+                        if hasattr(candidate_session.launcher_type, 'value')
+                        else candidate_session.launcher_type
+                    )
+                    == session_type
+                    and str(candidate_session.launcher_id) == launcher_id
+                )
+            ]
