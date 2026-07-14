@@ -1407,6 +1407,27 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             )
         return api_client
 
+    @staticmethod
+    def _has_markdown_table(text_elements: list) -> bool:
+        """Check if text elements contain markdown table syntax (|...|).
+
+        A markdown table requires:
+        - At least one line with pipe characters (|)
+        - A separator line with pipes and dashes (|---|)
+        """
+        # Regex to detect markdown table: lines with pipes and separator lines with dashes
+        table_pattern = re.compile(r'^\s*\|.+\|\s*$', re.MULTILINE)
+        separator_pattern = re.compile(r'^\s*\|\s*-+(\s*\|\s*-+)*\s*\|\s*$', re.MULTILINE)
+
+        for paragraph in text_elements:
+            for ele in paragraph:
+                if ele.get('tag') == 'md':
+                    text = ele.get('text', '')
+                    # Quick check: if has pipes and separator line, it's likely a table
+                    if '|' in text and table_pattern.search(text) and separator_pattern.search(text):
+                        return True
+        return False
+
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
         text_elements, media_items = await self.message_converter.yiri2target(message, self.api_client)
 
@@ -1420,7 +1441,10 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
         # Send text message if there are text elements
         if text_elements:
-            needs_post = any(ele['tag'] == 'at' for paragraph in text_elements for ele in paragraph)
+            # Use 'post' format if: has @mentions OR has markdown tables
+            has_at = any(ele['tag'] == 'at' for paragraph in text_elements for ele in paragraph)
+            has_table = self._has_markdown_table(text_elements)
+            needs_post = has_at or has_table
 
             if needs_post:
                 msg_type = 'post'
@@ -1914,9 +1938,10 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
         # Send text message if there are text elements
         if text_elements:
-            # Determine msg_type based on content: use 'post' if at mentions
-            # are present (requires post paragraph structure), otherwise 'text'
-            needs_post = any(ele['tag'] == 'at' for paragraph in text_elements for ele in paragraph)
+            # Use 'post' format if: has @mentions OR has markdown tables
+            has_at = any(ele['tag'] == 'at' for paragraph in text_elements for ele in paragraph)
+            has_table = self._has_markdown_table(text_elements)
+            needs_post = has_at or has_table
 
             if needs_post:
                 msg_type = 'post'
