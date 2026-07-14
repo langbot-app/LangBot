@@ -20,7 +20,7 @@
 | Security boundary | Done | 当前口径降级为轻量边界：LangBot 保护自身持有资源；external harness 的 OS / process / network / workspace 风险由用户或部署环境承担；managed sandbox 不是当前承诺。 |
 | Steering control path | Done | claim 异常不再逃逸 consumer loop；queue 有上限；未 pull 的 claimed 输入在 run 结束时写 `steering.dropped` 审计终态。 |
 | SDK v1 contract closure | Done | SDK 提供 `AgentAPIError` / `AgentAPIException`、typed `SteeringPullResult`、未知 result type 宽容解析、result `sequence` 注入与取消传播。 |
-| EBA processor routing | Done; clean-instance catalog gate pending | Bot `event_bindings`、Pipeline / Agent 平级路由、WebUI dry-run / 合成测试 / 状态、OneBot 非消息事件到 Agent 及平台回复已闭环；全新实例 Runner Marketplace 用例仍需独立空白环境。 |
+| EBA processor routing | Done; release gate 5/5 pass | Bot `event_bindings`、Pipeline / Agent 平级路由、WebUI dry-run / 合成测试 / 状态、OneBot 非消息事件到 Agent 及平台回复已闭环；隔离空白实例已验证从 Space 安装并注册 LocalAgent。 |
 
 ## Spec 与实现已知差距
 
@@ -37,7 +37,7 @@
 
 | Runner | 状态 | 最近证据 |
 | --- | --- | --- |
-| `plugin:langbot-team/LocalAgent/default` | Unit-pass; UI smoke pending | 2026-06-10 本地 pytest / ruff 通过；WebUI smoke 由人工统一执行。 |
+| `plugin:langbot-team/LocalAgent/default` | Unit-pass; Marketplace UI pass | 2026-07-12 隔离 first-run 实例从真实 AgentRunner catalog 安装 `langbot-team/LocalAgent` 0.1.0，Host 注册 `plugin:langbot-team/LocalAgent/default`，Wizard 自动选中并解锁后续操作。此项不替代带真实模型的 Debug Chat 能力验收。 |
 | `plugin:langbot-team/ACPAgentRunner/default` / `plugin:langbot-team/ClaudeCodeAgent/default` / `plugin:langbot-team/CodexAgent/default` | Unit-pass; E2E pending | 通过 runner 仓库单测覆盖 session、run_id 注入和 LangBot MCP gateway；真实 harness E2E 取决于对应运行环境、CLI/daemon 可用性和 provider 登录态。 |
 | Dify / n8n / Coze / DashScope / Langflow / Tbox / DeerFlow / WeKnora | Unit-pass; credential smoke optional | 2026-06-13 plugin layout / parser tests 通过；真实服务凭据 smoke 非每轮必跑。 |
 
@@ -45,7 +45,7 @@
 
 | 范围 | 状态 | 最近证据 |
 | --- | --- | --- |
-| LangBot Runtime Control Plane v2 foundation | Unit-pass; EBA product flow pass | 2026-07-12 事件路由与 Agent 协议针对性测试通过；WebUI 已验证 Quick Start 场景筛选、事件路由 dry-run / 合成派发、Runner 健康状态，以及真实 OneBot `group.member_joined` → Agent → `send_group_msg` 链路。clean-instance Runner Marketplace 用例因当前实例已有插件与 runner 未执行。 |
+| LangBot Runtime Control Plane v2 foundation | Unit-pass; EBA release gate 5/5 pass | 2026-07-12 `eba-functional-20260712-release-gate-rerun` 通过 Quick Start 场景筛选、隔离实例 Runner Marketplace 安装、Runner 健康状态、事件路由 dry-run / 合成派发，以及真实 OneBot `group.member_joined` → Agent → `send_group_msg` 链路。 |
 | SDK AgentRunner control entities / proxy | Unit-pass | 2026-06-23 SDK `tests/api/entities/builtin/agent_runner`、`tests/api/proxies`、`tests/api/test_agent_tools_mcp_bridge.py`、`tests/runtime/plugin/test_mgr_agent_runner.py`、`tests/runtime/test_pull_api_handlers.py`、`tests/runtime/io/handlers/test_plugin_handler.py`、EBA event entities 和 message tests 通过，覆盖 typed entities、AgentRunAPIProxy、MCP bridge、runtime manager 与 pull API handlers。 |
 
 ## 历史高价值记录

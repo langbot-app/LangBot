@@ -106,14 +106,16 @@ try {
   const messageBehavior = page.getByRole("menuitem", {
     name: /Reply to messages|回复收到的消息|受信メッセージに返信/,
   });
+  const noEventRoutes = page.getByText(
+    /No event routes|暂无事件路由|イベントルートはありません/,
+    { exact: true },
+  );
+  await noEventRoutes.waitFor();
   await messageBehavior.waitFor();
   await page.waitForTimeout(250);
   await safeScreenshot(page, scenarioMenuScreenshot);
   await messageBehavior.click();
-  await page
-    .getByText(/Message received|收到消息|メッセージを受信/)
-    .first()
-    .waitFor();
+  await noEventRoutes.waitFor({ state: "hidden" });
   result.visible_signals.push("create-mode-routing", "scenario-route-added");
 
   const create = await apiJson(backendUrl, "/api/v1/platform/bots", {

@@ -1705,7 +1705,7 @@
         },
         {
           "id": "wizard-runner-marketplace-catalog",
-          "title": "Quick Start discovers AgentRunner extensions on a clean instance",
+          "title": "Quick Start installs a published AgentRunner on a clean instance",
           "mode": "agent-browser",
           "area": "wizard",
           "type": "feature",

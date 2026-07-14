@@ -141,3 +141,22 @@ class TestParsePluginId:
 
         with pytest.raises(ValueError):
             PluginRuntimeConnector._parse_plugin_id('')
+
+
+class TestRuntimeDebugPort:
+    """Tests for local runtime debug port selection."""
+
+    @pytest.mark.parametrize(
+        ('debug_url', 'expected'),
+        [
+            ('ws://localhost:5401/plugin/debug/ws', 5401),
+            ('http://127.0.0.1:15401', 15401),
+            ('localhost:25401', 25401),
+            ('', 5401),
+            ('ws://localhost:not-a-port/plugin/debug/ws', 5401),
+        ],
+    )
+    def test_runtime_debug_port_from_url(self, debug_url, expected):
+        from langbot.pkg.plugin.connector import PluginRuntimeConnector
+
+        assert PluginRuntimeConnector._runtime_debug_port_from_url(debug_url) == expected

@@ -13,17 +13,20 @@ import {
   scanBrowserDiagnostics,
   writeResult,
 } from "./lib/langbot-e2e.mjs";
+import { startIsolatedLangBotInstance } from "./lib/isolated-langbot-instance.mjs";
 
 const caseId = "wizard-runner-marketplace-catalog";
 await loadEnvFiles();
 const paths = evidencePaths(caseId);
 await ensureEvidence(paths);
 const mobileScreenshot = paths.screenshot.replace(/\.png$/, "-mobile.png");
+const installedScreenshot = paths.screenshot.replace(/\.png$/, "-installed.png");
 
 const startedAt = new Date();
-const frontendUrl = process.env.LANGBOT_FRONTEND_URL || "";
-const backendUrl = process.env.LANGBOT_BACKEND_URL || "";
+let frontendUrl = "";
+let backendUrl = "";
 let browser;
+let isolated;
 let token = "";
 let botId = "";
 
@@ -41,13 +44,17 @@ const result = {
   visible_signals: [],
   api: {},
   marketplace_request: null,
+  marketplace_response: null,
   diagnostics: null,
   cleanup: {},
   evidence: {
     screenshot: paths.screenshot,
     mobile_screenshot: mobileScreenshot,
+    installed_screenshot: installedScreenshot,
     console_log: paths.consoleLog,
     network_log: paths.networkLog,
+    isolated_backend_log: `${paths.evidenceDir}/isolated-backend.log`,
+    isolated_frontend_log: `${paths.evidenceDir}/isolated-frontend.log`,
     automation_result_json: paths.automationResultJson,
     result_json: paths.resultJson,
   },
@@ -55,8 +62,15 @@ const result = {
 };
 
 try {
-  if (!frontendUrl) throw new Error("LANGBOT_FRONTEND_URL is not configured.");
-  if (!backendUrl) throw new Error("LANGBOT_BACKEND_URL is not configured.");
+  isolated = await startIsolatedLangBotInstance({
+    evidenceDir: paths.evidenceDir,
+  });
+  frontendUrl = isolated.frontendUrl;
+  backendUrl = isolated.backendUrl;
+  result.api.isolated_instance = {
+    backend_url: backendUrl,
+    frontend_url: frontendUrl,
+  };
 
   browser = await createBrowser(paths);
   const { page } = browser;
@@ -82,11 +96,35 @@ try {
       // The assertion below reports a missing or malformed catalog request.
     }
   });
+  page.on("response", async (response) => {
+    const pathname = new URL(response.url()).pathname;
+    if (!/\/api\/v1\/marketplace\/(extensions|plugins)\/search$/.test(pathname)) {
+      return;
+    }
+    try {
+      const payload = await response.json();
+      const entries = payload?.data?.extensions || payload?.data?.plugins || [];
+      const localAgent = entries.find(
+        (entry) => `${entry.author}/${entry.name}` === "langbot-team/LocalAgent",
+      );
+      result.marketplace_response = {
+        endpoint: pathname,
+        total: payload?.data?.total ?? entries.length,
+        local_agent_present: Boolean(localAgent),
+        local_agent_version: localAgent?.latest_version || null,
+      };
+    } catch {
+      // The UI assertions below surface malformed Marketplace responses.
+    }
+  });
 
   await page.goto(frontendUrl, { waitUntil: "domcontentloaded" });
   const auth = await ensureAuthenticatedBrowser(page, {
     frontendUrl,
     backendUrl,
+    user: isolated.user,
+    password: isolated.password,
+    recoveryKey: isolated.recoveryKey,
   });
   if (auth.status !== "pass") {
     result.status = auth.status;
@@ -174,12 +212,17 @@ try {
       exact: true,
     })
     .waitFor({ timeout: 15_000 });
-  await page
-    .getByText(
-      /No AgentRunner extensions are published yet|市场暂未发布 AgentRunner 扩展|AgentRunner 拡張機能はまだ公開されていません/,
-      { exact: true },
-    )
-    .waitFor({ timeout: 15_000 });
+  const localAgentIdentity = page.getByText("langbot-team/LocalAgent", {
+    exact: true,
+  });
+  await localAgentIdentity.waitFor({ timeout: 30_000 });
+  const localAgentCard = localAgentIdentity.locator(
+    "xpath=ancestor::*[@data-slot='card'][1]",
+  );
+  const installButton = localAgentCard.getByRole("button", {
+    name: /Install & Continue|安装并继续|インストールして続行/,
+  });
+  await installButton.waitFor();
   const browseLink = page.getByRole("link", {
     name: /Browse Runner Extensions|浏览运行器扩展|Runner 拡張機能を見る/,
   });
@@ -199,10 +242,19 @@ try {
       "Wizard did not request the AgentRunner Marketplace catalog.",
     );
   }
+  if (
+    !result.marketplace_response?.local_agent_present ||
+    !result.marketplace_response?.local_agent_version
+  ) {
+    throw new Error(
+      "The Marketplace catalog did not return an installable langbot-team/LocalAgent version.",
+    );
+  }
 
   result.visible_signals.push(
     "first-run-ai-engine-step",
-    "empty-runner-catalog-state",
+    "published-local-agent-runner",
+    "install-and-continue-action",
     "runner-marketplace-link",
     "next-disabled-without-runner",
   );
@@ -220,13 +272,73 @@ try {
   await safeScreenshot(page, mobileScreenshot);
   result.visible_signals.push("mobile-layout");
 
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await installButton.click();
+  const installingButton = localAgentCard.getByRole("button", {
+    name: /Installing\.\.\.|正在安装\.\.\.|インストール中\.\.\./,
+  });
+  await installingButton.waitFor({ timeout: 15_000 });
+  const installOutcome = await Promise.race([
+    nextButton
+      .click({ trial: true, timeout: 180_000 })
+      .then(() => "registered"),
+    installButton
+      .waitFor({ state: "visible", timeout: 180_000 })
+      .then(() => "failed"),
+  ]);
+  if (installOutcome === "failed") {
+    throw new Error("LocalAgent installation failed before Runner registration.");
+  }
+  if (await nextButton.isDisabled()) {
+    throw new Error("Create & Deploy remained disabled after LocalAgent installation.");
+  }
+
+  const [installedPluginsResponse, installedMetadataResponse] =
+    await Promise.all([
+      apiJson(backendUrl, "/api/v1/plugins", { token }),
+      apiJson(backendUrl, "/api/v1/pipelines/_/metadata", { token }),
+    ]);
+  const postInstallPlugins =
+    installedPluginsResponse.json.data?.plugins || [];
+  const installedRunnerStage = installedMetadataResponse.json.data?.configs
+    ?.find((config) => config.name === "ai")
+    ?.stages?.find((stage) => stage.name === "runner");
+  const installedRunnerOptions =
+    installedRunnerStage?.config?.find((item) => item.name === "id")?.options ||
+    [];
+  const localAgentInstalled = postInstallPlugins.some((plugin) => {
+    const metadata = plugin.manifest?.manifest?.metadata || {};
+    return `${metadata.author}/${metadata.name}` === "langbot-team/LocalAgent";
+  });
+  const localAgentRegistered = installedRunnerOptions.some(
+    (option) => option.name === "plugin:langbot-team/LocalAgent/default",
+  );
+  result.api.installed_state = {
+    plugin_count: postInstallPlugins.length,
+    runner_count: installedRunnerOptions.length,
+    local_agent_installed: localAgentInstalled,
+    local_agent_registered: localAgentRegistered,
+  };
+  if (!localAgentInstalled || !localAgentRegistered) {
+    throw new Error(
+      "LocalAgent installation completed in the UI but the plugin or Runner registration is missing.",
+    );
+  }
+  await safeScreenshot(page, installedScreenshot);
+  result.visible_signals.push(
+    "local-agent-installed",
+    "local-agent-runner-registered",
+    "local-agent-selected",
+    "create-and-deploy-enabled",
+  );
+
   result.diagnostics = await scanBrowserDiagnostics(paths);
   if (result.diagnostics.status !== "pass") {
     throw new Error(result.diagnostics.reason);
   }
   result.status = "pass";
   result.reason =
-    "A clean first-run instance requested the AgentRunner catalog, showed a safe empty state, and prevented continuing without a Runner.";
+    "A clean first-run instance discovered LocalAgent in the AgentRunner catalog, installed and registered it, selected it, and enabled Create & Deploy.";
 } catch (error) {
   if (!["blocked", "env_issue"].includes(result.status)) result.status = "fail";
   result.reason = result.reason || error.message;
@@ -270,6 +382,18 @@ try {
     result.reason = "The clean Wizard fixtures were not fully reset.";
   }
   if (browser) await browser.close().catch(() => {});
+  if (isolated) {
+    try {
+      await isolated.stop();
+      cleanup.isolated_instance_stopped = true;
+    } catch (error) {
+      cleanup.isolated_instance_stopped = false;
+      if (result.status === "pass") {
+        result.status = "fail";
+        result.reason = `Could not stop the isolated LangBot instance: ${error.message}`;
+      }
+    }
+  }
   const finishedAt = new Date();
   result.finished_at = finishedAt.toISOString();
   result.finished_at_local = localIsoWithOffset(finishedAt);

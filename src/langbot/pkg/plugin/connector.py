@@ -9,6 +9,7 @@ from typing import Any
 import typing
 import os
 import sys
+from urllib.parse import urlparse
 import httpx
 import sqlalchemy
 import yaml
@@ -172,9 +173,20 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             # cmd: lbp rt -s
             python_path = sys.executable
             env = os.environ.copy()
+            debug_url = self.ap.instance_config.data.get('plugin', {}).get(
+                'display_plugin_debug_url', 'ws://localhost:5401/plugin/debug/ws'
+            )
+            debug_port = self._runtime_debug_port_from_url(debug_url)
             self.ctrl = stdio_client_controller.StdioClientController(
                 command=python_path,
-                args=['-m', 'langbot_plugin.cli.__init__', 'rt', '-s'],
+                args=[
+                    '-m',
+                    'langbot_plugin.cli.__init__',
+                    'rt',
+                    '-s',
+                    '--ws-debug-port',
+                    str(debug_port),
+                ],
                 env=env,
             )
             task = self.ctrl.run(new_connection_callback)
@@ -183,6 +195,15 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             self.heartbeat_task = asyncio.create_task(self.heartbeat_loop())
 
         asyncio.create_task(task)
+
+    @staticmethod
+    def _runtime_debug_port_from_url(debug_url: str) -> int:
+        """Extract the local plugin runtime debug port from its display URL."""
+        try:
+            parsed = urlparse(debug_url if '://' in debug_url else f'//{debug_url}')
+            return parsed.port or 5401
+        except (TypeError, ValueError):
+            return 5401
 
     async def initialize_plugins(self):
         pass
