@@ -196,6 +196,16 @@ class _TransportReconnect(Exception):
     """
 
 
+class _CallerReconnect(Exception):
+    """Internal signal: a tool/resource call hit a server-expired session
+    (e.g. a UDP/HTTP MCP server's own session timeout) and asked the owning
+    lifecycle loop to rebuild the connection.
+
+    Like _TransportReconnect, this does NOT consume the fatal retry budget —
+    the server-side timeout is expected, recurring behavior, not a failure.
+    """
+
+
 class RuntimeMCPSession:
     """运行时 MCP 会话"""
 
@@ -265,6 +275,12 @@ class RuntimeMCPSession:
         self._lifecycle_task = None
         self._shutdown_event = asyncio.Event()
         self._ready_event = asyncio.Event()
+        # Signaled by callers (invoke_mcp_tool / read_resource_envelope) when
+        # they see a server-expired session; the lifecycle loop reconnects and
+        # sets _reconnected_event so all callers waiting on this cycle resume
+        # together, instead of each racing to rebuild the session itself.
+        self._reconnect_event = asyncio.Event()
+        self._reconnected_event: asyncio.Event | None = None
         # Set transiently when a WS transport drop should NOT stop the managed
         # process (it will be re-attached on the next initialize()).
         self._preserve_managed_process = False
@@ -429,12 +445,19 @@ class RuntimeMCPSession:
             if self._uses_box_stdio():
                 monitor_task = asyncio.create_task(self._box_stdio_runtime.monitor_process_health())
                 shutdown_task = asyncio.create_task(self._shutdown_event.wait())
+                reconnect_task = asyncio.create_task(self._reconnect_event.wait())
                 done, pending = await asyncio.wait(
-                    [shutdown_task, monitor_task],
+                    [shutdown_task, monitor_task, reconnect_task],
                     return_when=asyncio.FIRST_COMPLETED,
                 )
                 for task in pending:
                     task.cancel()
+                if reconnect_task in done and not self._shutdown_event.is_set():
+                    self._reconnect_event.clear()
+                    self.ap.logger.info(
+                        f'MCP session {self.server_name}: caller requested reconnect (server session expired)'
+                    )
+                    raise _CallerReconnect('Caller requested reconnect after session expiry')
                 for task in done:
                     if task is monitor_task and not self._shutdown_event.is_set():
                         # The monitor completed. This is EITHER the managed
@@ -462,7 +485,20 @@ class RuntimeMCPSession:
                         self.error_phase = MCPSessionErrorPhase.RUNTIME
                         raise Exception('Box managed process exited unexpectedly')
             else:
-                await self._shutdown_event.wait()
+                shutdown_task = asyncio.create_task(self._shutdown_event.wait())
+                reconnect_task = asyncio.create_task(self._reconnect_event.wait())
+                done, pending = await asyncio.wait(
+                    [shutdown_task, reconnect_task],
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+                for task in pending:
+                    task.cancel()
+                if reconnect_task in done and not self._shutdown_event.is_set():
+                    self._reconnect_event.clear()
+                    self.ap.logger.info(
+                        f'MCP session {self.server_name}: caller requested reconnect (server session expired)'
+                    )
+                    raise _CallerReconnect('Caller requested reconnect after session expiry')
 
         except _ColdStartRetry:
             # Cold-start in progress: set the preserve flag BEFORE the finally
@@ -520,6 +556,43 @@ class RuntimeMCPSession:
                 self.error_message = None
                 self.error_phase = None
                 await asyncio.sleep(1)
+                continue
+            except _CallerReconnect:
+                # A tool/resource call hit a server-expired session and asked us
+                # to rebuild the connection. Same treatment as _TransportReconnect:
+                # reconnect immediately WITHOUT consuming the fatal retry budget.
+                # Wake any callers waiting in _trigger_reconnect() regardless of
+                # outcome so they don't block for the full timeout.
+                reconnected_event = self._reconnected_event
+                if self._shutdown_event.is_set():
+                    if reconnected_event is not None:
+                        reconnected_event.set()
+                    return
+                self.status = MCPSessionStatus.CONNECTING
+                self.error_message = None
+                self.error_phase = None
+                try:
+                    if self.server_config['mode'] == 'stdio':
+                        await self._init_stdio_python_server()
+                    elif self.server_config['mode'] == 'remote':
+                        await self._init_remote_server()
+                    elif self.server_config['mode'] == 'sse':
+                        await self._init_sse_server()
+                    elif self.server_config['mode'] == 'http':
+                        await self._init_streamable_http_server()
+                    await self.refresh()
+                    self.status = MCPSessionStatus.CONNECTED
+                    self.ap.logger.info(f'MCP session {self.server_name} reconnected successfully after session expiry')
+                except Exception as reconnect_err:
+                    self.status = MCPSessionStatus.ERROR
+                    self.error_message = str(reconnect_err)
+                    self.ap.logger.error(
+                        f'MCP session {self.server_name}: reconnect after session expiry failed: '
+                        f'{self._describe_exception(reconnect_err)}'
+                    )
+                finally:
+                    if reconnected_event is not None:
+                        reconnected_event.set()
                 continue
             except _ColdStartRetry as e:
                 # The managed process is alive but still cold-starting (e.g.
@@ -622,6 +695,47 @@ class RuntimeMCPSession:
             elif isinstance(leaf, McpError) and leaf.error.code == 32600 and leaf.error.message == 'Session terminated':
                 return True
         return False
+
+    @staticmethod
+    def _is_session_terminated(exc: BaseException) -> bool:
+        """Whether exc indicates the server-side session expired.
+
+        Long-lived MCP servers (notably UDP/HTTP transports) commonly enforce
+        their own session timeout (e.g. ~30 minutes); once it fires, any call
+        on the cached session raises this rather than a transport-level error.
+        """
+        for leaf in RuntimeMCPSession._iter_exception_leaves(exc):
+            msg = str(leaf).lower()
+            if 'session terminated' in msg or 'session expired' in msg:
+                return True
+        return False
+
+    _RECONNECT_WAIT_TIMEOUT = 30.0
+
+    async def _trigger_reconnect(self) -> bool:
+        """Ask the owning lifecycle loop to rebuild the session and wait for it.
+
+        Concurrent callers that hit the timeout at the same time all signal
+        the same _reconnect_event and await the same _reconnected_event, so
+        the lifecycle loop reconnects once and every caller resumes together
+        — instead of each caller racing to rebuild the session itself.
+
+        Returns True if reconnection succeeded within the timeout.
+        """
+        if self._shutdown_event.is_set():
+            return False
+
+        if self._reconnected_event is None or self._reconnected_event.is_set():
+            self._reconnected_event = asyncio.Event()
+        reconnected_event = self._reconnected_event
+        self._reconnect_event.set()
+
+        try:
+            await asyncio.wait_for(reconnected_event.wait(), timeout=self._RECONNECT_WAIT_TIMEOUT)
+            return self.status == MCPSessionStatus.CONNECTED
+        except asyncio.TimeoutError:
+            self.ap.logger.warning(f'MCP session {self.server_name} reconnect timed out')
+            return False
 
     _MONITOR_POLL_INTERVAL = 5
     _MONITOR_MAX_CONSECUTIVE_ERRORS = 3
@@ -831,21 +945,34 @@ class RuntimeMCPSession:
         arguments: dict,
         query: pipeline_query.Query | None = None,
     ) -> list[provider_message.ContentElement]:
-        if not self.session:
-            raise Exception('MCP session is not connected')
+        for attempt in range(2):
+            if not self.session:
+                raise Exception('MCP session is not connected')
 
-        result = await self.session.call_tool(tool_name, arguments)
-        if result.isError:
-            error_texts = []
+            try:
+                result = await self.session.call_tool(tool_name, arguments)
+            except Exception as e:
+                if attempt == 0 and self._is_session_terminated(e):
+                    self.ap.logger.warning(
+                        f'MCP tool {tool_name} on {self.server_name} got session terminated, triggering reconnect...'
+                    )
+                    if await self._trigger_reconnect():
+                        continue
+                raise
+
+            if result.isError:
+                error_texts = []
+                for content in result.content:
+                    if getattr(content, 'type', '') == 'text':
+                        error_texts.append(content.text)
+                raise Exception('\n'.join(error_texts) if error_texts else 'Unknown error from MCP tool')
+
+            result_contents: list[provider_message.ContentElement] = []
             for content in result.content:
-                if getattr(content, 'type', '') == 'text':
-                    error_texts.append(content.text)
-            raise Exception('\n'.join(error_texts) if error_texts else 'Unknown error from MCP tool')
+                result_contents.extend(self._content_to_provider_elements(content, query=query, source_tool=tool_name))
+            return result_contents
 
-        result_contents: list[provider_message.ContentElement] = []
-        for content in result.content:
-            result_contents.extend(self._content_to_provider_elements(content, query=query, source_tool=tool_name))
-        return result_contents
+        raise Exception('MCP session is not connected')
 
     def get_tools(self) -> list[resource_tool.LLMTool]:
         return self.functions
@@ -910,7 +1037,21 @@ class RuntimeMCPSession:
             self._record_resource_read_trace(query, envelope)
             return envelope
 
-        result = await self.session.read_resource(AnyUrl(uri))
+        result = None
+        for attempt in range(2):
+            if not self.session:
+                raise Exception('MCP session is not connected')
+            try:
+                result = await self.session.read_resource(AnyUrl(uri))
+                break
+            except Exception as e:
+                if attempt == 0 and self._is_session_terminated(e):
+                    self.ap.logger.warning(
+                        f'MCP resource read on {self.server_name} got session terminated, triggering reconnect...'
+                    )
+                    if await self._trigger_reconnect():
+                        continue
+                raise
         contents: list[dict] = []
         total_bytes = 0
         truncated_any = False
