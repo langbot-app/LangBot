@@ -14,133 +14,148 @@ import langbot_plugin.api.entities.builtin.provider.message as provider_message
 
 
 class _ThinkStripState:
-    """Stateful filter that drops ```` think blocks across chunk boundaries.
+    """Stateful filter that drops think blocks across chunks."""
 
-    The think tag (and the legacy CRETIRE_* marker) can straddle two or
-    more streaming chunks.  A naive per-chunk regex either fails to match
-    (when split mid-tag) or leaks the tag into user-visible output.  This
-    state machine tracks the longest suffix of the consumed input that is
-    also a prefix of any known tag, and keeps that suffix in an internal
-    buffer for the next call.
-    """
-
-    _OPEN_TAG: str = '<think>'
-    _CLOSE_TAG: str = '</think>'
-    _LEGACY_OPEN: str = 'CRETIRE_REASONING_BEGINk'
-    _LEGACY_CLOSE: str = 'CRETIRE_REASONING_ENDk'
+    _THINK_OPEN = '<think>'
+    _THINK_CLOSE = '</think>'
+    _LEGACY_OPEN = 'CRETIRE_REASONING_BEGINk'
+    _LEGACY_CLOSE = 'CRETIRE_REASONING_ENDk'
 
     def __init__(self) -> None:
-        self._tags: tuple[str, ...] = (
-            self._OPEN_TAG,
-            self._CLOSE_TAG,
-            self._LEGACY_OPEN,
-            self._LEGACY_CLOSE,
+        self._pairs: tuple[tuple[str, str], ...] = (
+            (self._THINK_OPEN, self._THINK_CLOSE),
+            (self._LEGACY_OPEN, self._LEGACY_CLOSE),
         )
-        self._max_tag_len: int = max(len(t) for t in self._tags)
-        self._buf: str = ''
-        self._buf_inside: bool = False
+        self._open_tags = tuple(open_tag for open_tag, _close_tag in self._pairs)
+        self._buf = ''
+        self._close_tag: str | None = None
+        self._pending_initial = True
 
     def feed(self, chunk: str) -> str:
-        """Feed a streaming delta; return the portion that should be emitted."""
+        """Feed a streaming delta and return user-visible content."""
         if not chunk:
             return chunk
 
-        if self._buf_inside:
-            text = self._buf + chunk
-            for close_tag in (self._CLOSE_TAG, self._LEGACY_CLOSE):
-                idx = text.find(close_tag)
-                if idx != -1:
-                    self._buf = ''
-                    self._buf_inside = False
-                    return self._process(text[idx + len(close_tag) :])
-            keep = 0
-            for tag in (self._CLOSE_TAG, self._LEGACY_CLOSE):
-                _, k = self._split_for_close_prefix(text, 0, tag)
-                if k > keep:
-                    keep = k
-            self._buf = text[len(text) - keep :]
-            return ''
-
-        return self._process(chunk)
-
-    def _process(self, chunk: str) -> str:
         text = self._buf + chunk
+        if self._close_tag is not None:
+            return self._consume_think_body(text)
 
-        out: list[str] = []
-        i = 0
-        n = len(text)
-        while i < n:
-            open_idx, open_tag = self._find_open(text, i)
-            if open_idx == -1:
-                emit_end, _keep = self._split_for_tag_prefix(text, i)
-                out.append(text[i:emit_end])
-                self._buf = text[emit_end:]
-                self._buf_inside = False
-                return ''.join(out)
-
-            if open_idx > i:
-                out.append(text[i:open_idx])
-            block_start = open_idx + len(open_tag)
-            close_tag = self._LEGACY_CLOSE if open_tag == self._LEGACY_OPEN else self._CLOSE_TAG
-            close_idx = text.find(close_tag, block_start)
-            if close_idx == -1:
-                emit_end, _keep = self._split_for_close_prefix(text, block_start, close_tag)
-                self._buf = text[emit_end:]
-                self._buf_inside = True
-                return ''.join(out)
-            i = close_idx + len(close_tag)
-
-        emit_end, _keep = self._split_for_tag_prefix(text, i)
-        out.append(text[i:emit_end])
-        self._buf = text[emit_end:]
-        self._buf_inside = False
-        return ''.join(out)
+        return self._process_visible_text(text)
 
     def flush(self) -> str:
-        """Release any text still held in the internal buffer."""
-        pending, self._buf = self._buf, ''
-        inside, self._buf_inside = self._buf_inside, False
-        if inside:
+        """Release buffered visible content when the stream ends."""
+        if self._close_tag is not None:
+            self._buf = ''
+            self._close_tag = None
             return ''
+
+        pending, self._buf = self._buf, ''
+        self._close_tag = None
         return pending
 
-    def _find_open(self, text: str, start: int) -> tuple[int, str]:
+    def _consume_think_body(self, text: str) -> str:
+        close_tag = self._close_tag
+        if close_tag is None:
+            return text
+
+        close_idx = text.find(close_tag)
+        if close_idx != -1:
+            self._close_tag = None
+            self._buf = ''
+            self._pending_initial = False
+            return self._process_visible_text(text[close_idx + len(close_tag) :])
+
+        self._buf = self._close_prefix(text, close_tag)
+        return ''
+
+    def _process_visible_text(self, text: str) -> str:
+        out: list[str] = []
+        index = 0
+
+        while index < len(text):
+            if self._pending_initial:
+                open_idx, open_tag, close_tag = self._find_next_open(text, index)
+                orphan_close_idx, orphan_close_tag = self._find_next_close(text, index)
+
+                if orphan_close_idx != -1 and (open_idx == -1 or orphan_close_idx < open_idx):
+                    self._pending_initial = False
+                    index = orphan_close_idx + len(orphan_close_tag)
+                    continue
+
+                if open_idx == -1:
+                    self._buf = text[index:]
+                    return ''.join(out)
+
+                if open_idx > index:
+                    self._pending_initial = False
+                    out.append(text[index:open_idx])
+                    index = open_idx
+                    continue
+
+            open_idx, open_tag, close_tag = self._find_next_open(text, index)
+            if open_idx == -1:
+                emit_end = self._visible_emit_end(text, index)
+                out.append(text[index:emit_end])
+                if emit_end > index:
+                    self._pending_initial = False
+                self._buf = text[emit_end:]
+                return ''.join(out)
+
+            out.append(text[index:open_idx])
+            if open_idx > index:
+                self._pending_initial = False
+            body_start = open_idx + len(open_tag)
+            close_idx = text.find(close_tag, body_start)
+            if close_idx == -1:
+                self._close_tag = close_tag
+                self._buf = self._close_prefix(text[body_start:], close_tag)
+                return ''.join(out)
+
+            self._pending_initial = False
+            index = close_idx + len(close_tag)
+
+        self._buf = ''
+        return ''.join(out)
+
+    def _find_next_open(self, text: str, start: int) -> tuple[int, str, str]:
         best_idx = -1
-        best_tag = ''
-        for tag in (self._OPEN_TAG, self._LEGACY_OPEN):
-            idx = text.find(tag, start)
+        best_open = ''
+        best_close = ''
+        for open_tag, close_tag in self._pairs:
+            idx = text.find(open_tag, start)
             if idx != -1 and (best_idx == -1 or idx < best_idx):
                 best_idx = idx
-                best_tag = tag
-        return best_idx, best_tag
+                best_open = open_tag
+                best_close = close_tag
+        return best_idx, best_open, best_close
 
-    def _split_for_tag_prefix(self, text: str, start: int) -> tuple[int, int]:
-        suffix = text[start:]
-        best_keep = 0
-        for tag in (self._OPEN_TAG, self._LEGACY_OPEN):
-            idx = suffix.find(tag)
-            if idx != -1:
-                candidate = len(suffix) - idx
-                if candidate > best_keep:
-                    best_keep = candidate
-        if best_keep == 0:
-            limit = min(len(suffix), self._max_tag_len - 1)
-            for k in range(limit, 0, -1):
-                tail = suffix[-k:]
-                if any(tag.startswith(tail) for tag in self._tags):
-                    best_keep = k
-                    break
-        return len(text) - best_keep, best_keep
+    def _find_next_close(self, text: str, start: int) -> tuple[int, str]:
+        best_idx = -1
+        best_close = ''
+        for _open_tag, close_tag in self._pairs:
+            idx = text.find(close_tag, start)
+            if idx != -1 and (best_idx == -1 or idx < best_idx):
+                best_idx = idx
+                best_close = close_tag
+        return best_idx, best_close
 
-    def _split_for_close_prefix(self, text: str, start: int, close_tag: str) -> tuple[int, int]:
-        suffix = text[start:]
-        best_keep = 0
-        limit = min(len(suffix), len(close_tag) - 1)
-        for k in range(limit, 0, -1):
-            if close_tag.startswith(suffix[-k:]):
-                best_keep = k
-                break
-        return len(text) - best_keep, best_keep
+    def _visible_emit_end(self, text: str, start: int) -> int:
+        visible = text[start:]
+        limit = min(len(visible), max(len(open_tag) for open_tag in self._open_tags) - 1)
+        for keep in range(limit, 0, -1):
+            suffix = visible[-keep:]
+            if any(open_tag.startswith(suffix) for open_tag in self._open_tags):
+                return len(text) - keep
+        return len(text)
+
+    @staticmethod
+    def _close_prefix(text: str, close_tag: str) -> str:
+        limit = min(len(text), len(close_tag) - 1)
+        for keep in range(limit, 0, -1):
+            suffix = text[-keep:]
+            if close_tag.startswith(suffix):
+                return suffix
+        return ''
 
 
 class LiteLLMRequester(requester.ProviderAPIRequester):
@@ -367,11 +382,10 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
 
         return req_messages
 
-    # Patterns covering chain-of-thought markers emitted by various
-    # OpenAI-compatible providers (DeepSeek, MiniMax-M3, etc.) as well
-    # as an internal private marker.
     _THINK_PATTERNS: tuple[str, ...] = (
-        r'</think>',
+        r'^\s*(?:(?!<think>).)*?</think>\s*',
+        r'^\s*(?:(?!CRETIRE_REASONING_BEGINk).)*?CRETIRE_REASONING_ENDk\s*',
+        r'<think>.*?</think>',
         r'CRETIRE_REASONING_BEGINk.*?CRETIRE_REASONING_ENDk',
     )
 
@@ -380,6 +394,7 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         """Strip chain-of-thought blocks from ``content``."""
         if not content:
             return content
+
         import re
 
         for pattern in cls._THINK_PATTERNS:
@@ -397,16 +412,12 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         Returns:
             Processed content string
         """
-        # Strip chain-of-thought blocks when requested. The think pattern is
-        # the public convention used by DeepSeek, MiniMax-M3 and other
-        # OpenAI-compatible providers that emit raw reasoning text in the
-        # content field. The CRETIRE_* pattern is an internal marker.
         if remove_think and content:
             content = self._strip_think(content)
 
-        # Handle separate reasoning_content field
-        # Currently we don't include reasoning_content in user-facing output regardless of remove_think
-        # because it's typically internal model reasoning, not user-visible thinking
+        if reasoning_content and not remove_think:
+            content = f'<think>\n{reasoning_content}\n</think>\n{content or ""}'.strip()
+
         return content or ''
 
     @staticmethod
@@ -715,13 +726,7 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         chunk_idx = 0
         role = 'assistant'
         tool_call_state: dict[int, dict[str, typing.Any]] = {}
-
-        # Stream-level state for `` stripping. `` tags can straddle
-        # chunk boundaries, so use a stateful filter.
-        if remove_think:
-            think_state = _ThinkStripState()
-        else:
-            think_state = None
+        think_state = _ThinkStripState() if remove_think else None
 
         try:
             response = await acompletion(**args)
@@ -765,8 +770,6 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                         # Use reasoning_content as the displayed content
                         delta_content = reasoning_content
 
-                # Strip `` tags from the delta when remove_think is set.
-                # Think blocks can straddle chunks, so use a stateful filter.
                 if think_state is not None and delta_content:
                     delta_content = think_state.feed(delta_content)
                     if not delta_content:
@@ -793,6 +796,15 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                 chunk_data = {k: v for k, v in chunk_data.items() if v is not None}
                 yield provider_message.MessageChunk(**chunk_data)
                 chunk_idx += 1
+
+            if think_state is not None:
+                pending_content = think_state.flush()
+                if pending_content:
+                    yield provider_message.MessageChunk(
+                        role=role,
+                        content=pending_content,
+                        is_final=True,
+                    )
 
         except Exception as e:
             self._handle_litellm_error(e)

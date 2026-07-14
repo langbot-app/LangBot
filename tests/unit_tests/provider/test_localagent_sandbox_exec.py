@@ -163,6 +163,51 @@ def test_stream_accumulator_merges_fragmented_tool_call_arguments():
     assert final_msg.tool_calls[0].function.arguments == '{"command":"pwd"}'
 
 
+def test_stream_accumulator_strips_leading_think_from_tool_round_content():
+    accumulator = _StreamAccumulator(
+        msg_sequence=3,
+        initial_content='I will search for LangBot.',
+        remove_think=True,
+    )
+
+    assert accumulator.add(provider_message.MessageChunk(role='assistant', content='<thi')) is None
+    assert accumulator.add(provider_message.MessageChunk(role='assistant', content='nk>hidden')) is None
+    emitted = accumulator.add(
+        provider_message.MessageChunk(
+            role='assistant',
+            content=' reasoning</think>Here is the answer.',
+            is_final=True,
+        )
+    )
+
+    assert emitted is not None
+    assert emitted.content == 'I will search for LangBot.Here is the answer.'
+    assert '<think>' not in emitted.content
+    assert 'hidden reasoning' not in emitted.content
+
+
+def test_stream_accumulator_strips_initial_orphan_think_close_from_tool_round_content():
+    accumulator = _StreamAccumulator(
+        msg_sequence=3,
+        initial_content='I will search for LangBot.',
+        remove_think=True,
+    )
+
+    assert accumulator.add(provider_message.MessageChunk(role='assistant', content='hidden reasoning')) is None
+    emitted = accumulator.add(
+        provider_message.MessageChunk(
+            role='assistant',
+            content=' still hidden</think>Here is the answer.',
+            is_final=True,
+        )
+    )
+
+    assert emitted is not None
+    assert emitted.content == 'I will search for LangBot.Here is the answer.'
+    assert '</think>' not in emitted.content
+    assert 'hidden reasoning' not in emitted.content
+
+
 @pytest.mark.asyncio
 async def test_localagent_uses_exec_for_exact_calculation():
     provider = RecordingProvider()
