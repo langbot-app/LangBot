@@ -91,6 +91,16 @@ docker compose --profile all up -d
 
 ---
 
+## Demo trực tuyến
+
+**Thử ngay:** https://demo.langbot.dev/
+- Email: `demo@langbot.app`
+- Mật khẩu: `langbot123456`
+
+*Lưu ý: Môi trường demo công khai. Không nhập thông tin nhạy cảm.*
+
+---
+
 ## Nền tảng được hỗ trợ
 
 | Nền tảng | Trạng thái | Ghi chú |
@@ -153,14 +163,6 @@ docker compose --profile all up -d
 
 ---
 
-## Demo trực tuyến
-
-**Thử ngay:** https://demo.langbot.dev/
-- Email: `demo@langbot.app`
-- Mật khẩu: `langbot123456`
-
-*Lưu ý: Môi trường demo công khai. Không nhập thông tin nhạy cảm.*
-
 ## Được xây dựng cho AI Agent 🤖
 
 LangBot **thân thiện với agent ngay từ thiết kế** —— các coding agent của bạn (Claude Code, Codex, Copilot, Cursor, …) có thể vận hành, mở rộng và triển khai LangBot với sự hỗ trợ hạng nhất:
@@ -179,12 +181,6 @@ LangBot **thân thiện với agent ngay từ thiết kế** —— các coding 
 [![Discord](https://img.shields.io/discord/1335141740050649118?logo=discord&label=Discord)](https://discord.gg/wdNEHETs87)
 
 - [Cộng đồng Discord](https://discord.gg/wdNEHETs87)
-
----
-
-## Lịch sử Star
-
-[![Star History Chart](https://api.star-history.com/svg?repos=langbot-app/LangBot&type=Date)](https://star-history.com/#langbot-app/LangBot&Date)
 
 ---
 

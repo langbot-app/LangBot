@@ -91,6 +91,16 @@ docker compose --profile all up -d
 
 ---
 
+## ライブデモ
+
+**今すぐ試す:** https://demo.langbot.dev/
+- メール: `demo@langbot.app`
+- パスワード: `langbot123456`
+
+*注意: 公開デモ環境です。機密情報を入力しないでください。*
+
+---
+
 ## 対応プラットフォーム
 
 | プラットフォーム | ステータス | 備考 |
@@ -153,14 +163,6 @@ docker compose --profile all up -d
 
 ---
 
-## ライブデモ
-
-**今すぐ試す:** https://demo.langbot.dev/
-- メール: `demo@langbot.app`
-- パスワード: `langbot123456`
-
-*注意: 公開デモ環境です。機密情報を入力しないでください。*
-
 ## AI エージェントのために 🤖
 
 LangBot は **設計段階からエージェントフレンドリー** です。お使いのコーディングエージェント（Claude Code、Codex、Copilot、Cursor など）が、ファーストクラスのサポートで LangBot を操作・拡張・デプロイできます：
@@ -179,12 +181,6 @@ LangBot は **設計段階からエージェントフレンドリー** です。
 [![Discord](https://img.shields.io/discord/1335141740050649118?logo=discord&label=Discord)](https://discord.gg/wdNEHETs87)
 
 - [Discord コミュニティ](https://discord.gg/wdNEHETs87)
-
----
-
-## Star 推移
-
-[![Star History Chart](https://api.star-history.com/svg?repos=langbot-app/LangBot&type=Date)](https://star-history.com/#langbot-app/LangBot&Date)
 
 ---
 

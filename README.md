@@ -92,6 +92,17 @@ docker compose --profile all up -d
 
 ---
 
+## Live Demo
+
+**Try it now:** https://demo.langbot.dev/
+
+- Email: `demo@langbot.app`
+- Password: `langbot123456`
+
+_Note: Public demo environment. Do not enter sensitive information._
+
+---
+
 ## Supported Platforms
 
 | Platform | Status | Notes |
@@ -167,28 +178,11 @@ LangBot is **agent-friendly by design** — your coding agents (Claude Code, Cod
 
 ---
 
-## Live Demo
-
-**Try it now:** https://demo.langbot.dev/
-
-- Email: `demo@langbot.app`
-- Password: `langbot123456`
-
-_Note: Public demo environment. Do not enter sensitive information._
-
----
-
 ## Community
 
 [![Discord](https://img.shields.io/discord/1335141740050649118?logo=discord&label=Discord)](https://discord.gg/wdNEHETs87)
 
 - [Discord Community](https://discord.gg/wdNEHETs87)
-
----
-
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=langbot-app/LangBot&type=Date)](https://star-history.com/#langbot-app/LangBot&Date)
 
 ---
 

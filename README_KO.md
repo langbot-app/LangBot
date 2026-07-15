@@ -91,6 +91,16 @@ docker compose --profile all up -d
 
 ---
 
+## 라이브 데모
+
+**지금 체험:** https://demo.langbot.dev/
+- 이메일: `demo@langbot.app`
+- 비밀번호: `langbot123456`
+
+*참고: 공개 데모 환경입니다. 민감한 정보를 입력하지 마세요.*
+
+---
+
 ## 지원 플랫폼
 
 | 플랫폼 | 상태 | 비고 |
@@ -153,14 +163,6 @@ docker compose --profile all up -d
 
 ---
 
-## 라이브 데모
-
-**지금 체험:** https://demo.langbot.dev/
-- 이메일: `demo@langbot.app`
-- 비밀번호: `langbot123456`
-
-*참고: 공개 데모 환경입니다. 민감한 정보를 입력하지 마세요.*
-
 ## AI 에이전트를 위한 설계 🤖
 
 LangBot은 **설계 단계부터 에이전트 친화적**입니다 —— 코딩 에이전트(Claude Code, Codex, Copilot, Cursor 등)가 일급 지원으로 LangBot을 운영·확장·배포할 수 있습니다:
@@ -179,12 +181,6 @@ LangBot은 **설계 단계부터 에이전트 친화적**입니다 —— 코딩
 [![Discord](https://img.shields.io/discord/1335141740050649118?logo=discord&label=Discord)](https://discord.gg/wdNEHETs87)
 
 - [Discord 커뮤니티](https://discord.gg/wdNEHETs87)
-
----
-
-## Star 추이
-
-[![Star History Chart](https://api.star-history.com/svg?repos=langbot-app/LangBot&type=Date)](https://star-history.com/#langbot-app/LangBot&Date)
 
 ---
 

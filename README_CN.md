@@ -92,6 +92,16 @@ docker compose --profile all up -d
 
 ---
 
+## 在线演示
+
+**立即体验：** https://demo.langbot.dev/
+- 邮箱：`demo@langbot.app`
+- 密码：`langbot123456`
+
+*注意：公开演示环境，请不要在其中填入任何敏感信息。*
+
+---
+
 ## 支持的平台
 
 | 平台 | 状态 | 备注 |
@@ -170,16 +180,6 @@ docker compose --profile all up -d
 
 ---
 
-## 在线演示
-
-**立即体验：** https://demo.langbot.dev/
-- 邮箱：`demo@langbot.app`
-- 密码：`langbot123456`
-
-*注意：公开演示环境，请不要在其中填入任何敏感信息。*
-
----
-
 ## 为 AI Agent 而生 🤖
 
 LangBot **从设计上就对 Agent 友好** —— 你的编码 Agent（Claude Code、Codex、Copilot、Cursor 等）可以一等公民般地操作、扩展和部署 LangBot：
@@ -200,12 +200,6 @@ LangBot **从设计上就对 Agent 友好** —— 你的编码 Agent（Claude C
 
 - [Discord 社区](https://discord.gg/wdNEHETs87)
 - [QQ 社区群](https://qm.qq.com/q/DxZZcNxM1W)
-
----
-
-## Star 趋势
-
-[![Star History Chart](https://api.star-history.com/svg?repos=langbot-app/LangBot&type=Date)](https://star-history.com/#langbot-app/LangBot&Date)
 
 ---
 

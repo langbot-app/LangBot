@@ -93,6 +93,16 @@ docker compose --profile all up -d
 
 ---
 
+## 線上演示
+
+**立即體驗：** https://demo.langbot.dev/
+- 信箱：`demo@langbot.app`
+- 密碼：`langbot123456`
+
+*注意：公開演示環境，請不要在其中填入任何敏感資訊。*
+
+---
+
 ## 支援的平台
 
 | 平台 | 狀態 | 備註 |
@@ -169,14 +179,6 @@ docker compose --profile all up -d
 
 ---
 
-## 線上演示
-
-**立即體驗：** https://demo.langbot.dev/
-- 信箱：`demo@langbot.app`
-- 密碼：`langbot123456`
-
-*注意：公開演示環境，請不要在其中填入任何敏感資訊。*
-
 ## 為 AI Agent 而生 🤖
 
 LangBot **從設計上就對 Agent 友善** —— 你的編碼 Agent（Claude Code、Codex、Copilot、Cursor 等）可以一等公民般地操作、擴充和部署 LangBot：
@@ -197,12 +199,6 @@ LangBot **從設計上就對 Agent 友善** —— 你的編碼 Agent（Claude C
 
 - [Discord 社群](https://discord.gg/wdNEHETs87)
 - [QQ 社群群](https://qm.qq.com/q/JLi38whHum)
-
----
-
-## Star 趨勢
-
-[![Star History Chart](https://api.star-history.com/svg?repos=langbot-app/LangBot&type=Date)](https://star-history.com/#langbot-app/LangBot&Date)
 
 ---
 

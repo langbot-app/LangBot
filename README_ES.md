@@ -91,6 +91,16 @@ docker compose --profile all up -d
 
 ---
 
+## Demo en Vivo
+
+**Pruébelo ahora:** https://demo.langbot.dev/
+- Correo electrónico: `demo@langbot.app`
+- Contraseña: `langbot123456`
+
+*Nota: Entorno de demostración público. No ingrese información confidencial.*
+
+---
+
 ## Plataformas Soportadas
 
 | Plataforma | Estado | Notas |
@@ -153,14 +163,6 @@ docker compose --profile all up -d
 
 ---
 
-## Demo en Vivo
-
-**Pruébelo ahora:** https://demo.langbot.dev/
-- Correo electrónico: `demo@langbot.app`
-- Contraseña: `langbot123456`
-
-*Nota: Entorno de demostración público. No ingrese información confidencial.*
-
 ## Diseñado para Agentes de IA 🤖
 
 LangBot es **agent-friendly por diseño** —— tus agentes de codificación (Claude Code, Codex, Copilot, Cursor, …) pueden operar, extender y desplegar LangBot con soporte de primera clase:
@@ -179,12 +181,6 @@ LangBot es **agent-friendly por diseño** —— tus agentes de codificación (C
 [![Discord](https://img.shields.io/discord/1335141740050649118?logo=discord&label=Discord)](https://discord.gg/wdNEHETs87)
 
 - [Comunidad de Discord](https://discord.gg/wdNEHETs87)
-
----
-
-## Historial de Stars
-
-[![Star History Chart](https://api.star-history.com/svg?repos=langbot-app/LangBot&type=Date)](https://star-history.com/#langbot-app/LangBot&Date)
 
 ---
 
