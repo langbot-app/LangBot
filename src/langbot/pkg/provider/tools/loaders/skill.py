@@ -49,6 +49,18 @@ def get_visible_skill(ap: app.Application, query: pipeline_query.Query, skill_na
     return get_visible_skills(ap, query).get(skill_name)
 
 
+def register_created_skill_visibility(query: pipeline_query.Query, skill_name: str) -> None:
+    """Make a newly registered skill visible for the current Query only."""
+    if not skill_name:
+        return
+    if getattr(query, 'variables', None) is None:
+        query.variables = {}
+
+    bound_skills = query.variables.get(PIPELINE_BOUND_SKILLS_KEY)
+    if isinstance(bound_skills, list) and skill_name not in bound_skills:
+        bound_skills.append(skill_name)
+
+
 def get_activated_skills(query: pipeline_query.Query) -> dict[str, dict]:
     if query.variables is None:
         return {}

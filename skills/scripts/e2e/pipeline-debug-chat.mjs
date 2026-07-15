@@ -239,6 +239,7 @@ async function runFilesystemChecks(checks) {
     }
     const contains = textList(check.contains);
     const notContains = textList(check.not_contains || check.notContains);
+    const expectedJson = check.json_equals ?? check.jsonEquals;
     const expectedExitCode = Number.isInteger(check.exit_code)
       ? check.exit_code
       : Number.isInteger(check.expected_exit_code)
@@ -257,18 +258,31 @@ async function runFilesystemChecks(checks) {
       }
       const missing = contains.filter((needle) => !text.includes(needle));
       const forbidden = notContains.filter((needle) => text.includes(needle));
+      let jsonError = "";
+      let jsonMatches = null;
+      if (expectedJson !== undefined) {
+        try {
+          jsonMatches = JSON.stringify(sortJson(JSON.parse(text))) === JSON.stringify(sortJson(expectedJson));
+          if (!jsonMatches) jsonError = "JSON content does not match json_equals.";
+        } catch (error) {
+          jsonMatches = false;
+          jsonError = `Invalid JSON: ${error.message}`;
+        }
+      }
+      const failed = missing.length > 0 || forbidden.length > 0 || jsonMatches === false;
       results.push({
         index,
-        status: missing.length || forbidden.length ? "fail" : "pass",
+        status: failed ? "fail" : "pass",
         type: "file",
         path,
         missing,
         forbidden,
+        json_matches: jsonMatches,
         reason: missing.length
           ? `Missing expected text: ${missing.join(", ")}`
           : forbidden.length
             ? `Found forbidden text: ${forbidden.join(", ")}`
-            : "",
+            : jsonError,
       });
       continue;
     }
@@ -308,6 +322,16 @@ async function runFilesystemChecks(checks) {
     checks: results,
     reason: failed.length ? `Filesystem checks failed: ${failed.map((item) => item.index).join(", ")}` : "",
   };
+}
+
+function sortJson(value) {
+  if (Array.isArray(value)) return value.map(sortJson);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.keys(value)
+      .sort()
+      .map((key) => [key, sortJson(value[key])]),
+  );
 }
 
 function pipelineIdFromUrl(url) {

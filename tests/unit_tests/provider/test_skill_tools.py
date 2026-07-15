@@ -441,6 +441,48 @@ class TestSkillToolLoader:
         assert result['source_path'] == '/workspace/repo'
 
     @pytest.mark.asyncio
+    async def test_registered_skill_can_be_activated_in_same_query(self):
+        from langbot.pkg.provider.tools.loaders.skill import PIPELINE_BOUND_SKILLS_KEY
+        from langbot.pkg.provider.tools.loaders.skill_authoring import (
+            ACTIVATE_SKILL_TOOL_NAME,
+            REGISTER_SKILL_TOOL_NAME,
+            SkillToolLoader,
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo_dir = os.path.join(tmpdir, 'repo')
+            os.makedirs(repo_dir)
+            created = _make_skill_data(name='cloned-skill', package_root=os.path.realpath(repo_dir))
+            ap = _make_ap()
+            ap.box_service = SimpleNamespace(default_workspace=tmpdir, available=True)
+            ap.skill_mgr = SimpleNamespace(skills={'existing': _make_skill_data(name='existing')})
+
+            async def create_skill(_data):
+                ap.skill_mgr.skills['cloned-skill'] = created
+                return created
+
+            ap.skill_service = SimpleNamespace(
+                scan_directory_async=AsyncMock(return_value=created),
+                create_skill=AsyncMock(side_effect=create_skill),
+            )
+            query = SimpleNamespace(variables={PIPELINE_BOUND_SKILLS_KEY: ['existing']})
+            loader = SkillToolLoader(ap)
+
+            await loader.invoke_tool(
+                REGISTER_SKILL_TOOL_NAME,
+                {'path': '/workspace/repo', 'name': 'cloned-skill'},
+                query,
+            )
+            activated = await loader.invoke_tool(
+                ACTIVATE_SKILL_TOOL_NAME,
+                {'skill_name': 'cloned-skill'},
+                query,
+            )
+
+        assert query.variables[PIPELINE_BOUND_SKILLS_KEY] == ['existing', 'cloned-skill']
+        assert activated['activated'] is True
+
+    @pytest.mark.asyncio
     async def test_register_skill_rejects_workspace_escape(self):
         from langbot.pkg.provider.tools.loaders.skill_authoring import (
             REGISTER_SKILL_TOOL_NAME,

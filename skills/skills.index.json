@@ -1621,8 +1621,14 @@
             "edit"
           ],
           "automation": "scripts/e2e/pipeline-debug-chat.mjs",
-          "setup_automation": [],
-          "setup_provides_env": [],
+          "setup_automation": [
+            "node:scripts/e2e/ensure-local-agent-pipeline.mjs --write-env",
+            "node:scripts/e2e/reset-sandbox-skill.mjs --name=lb-skill-edit-regression"
+          ],
+          "setup_provides_env": [
+            "LANGBOT_LOCAL_AGENT_PIPELINE_URL",
+            "LANGBOT_LOCAL_AGENT_PIPELINE_NAME"
+          ],
           "evidence_required": [
             "ui",
             "backend_log",

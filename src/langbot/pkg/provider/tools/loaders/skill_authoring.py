@@ -67,7 +67,7 @@ class SkillToolLoader(loader.ToolLoader):
         if name == ACTIVATE_SKILL_TOOL_NAME:
             return await self._invoke_activate_skill(parameters, query)
         if name == REGISTER_SKILL_TOOL_NAME:
-            return await self._invoke_register_skill(parameters)
+            return await self._invoke_register_skill(parameters, query)
         raise ValueError(f'Unknown skill tool: {name}')
 
     async def shutdown(self):
@@ -121,8 +121,10 @@ class SkillToolLoader(loader.ToolLoader):
             'content': result_content,
         }
 
-    async def _invoke_register_skill(self, parameters: dict) -> typing.Any:
+    async def _invoke_register_skill(self, parameters: dict, query) -> typing.Any:
         """Register a skill from sandbox directory to data/skills/."""
+        from . import skill as skill_loader
+
         sandbox_path = str(parameters.get('path', '') or '').strip()
         if not sandbox_path:
             raise ValueError('path is required')
@@ -153,6 +155,7 @@ class SkillToolLoader(loader.ToolLoader):
                 'package_root': host_path,
             }
         )
+        skill_loader.register_created_skill_visibility(query, skill_name)
 
         return {
             'registered': True,

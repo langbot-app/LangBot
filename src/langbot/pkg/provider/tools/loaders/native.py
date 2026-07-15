@@ -574,9 +574,13 @@ else:
         )
         if self._should_use_box_workspace_files(selected_skill):
             return await self._write_workspace_via_box(path, content, parameters, query)
-        os.makedirs(os.path.dirname(host_path), exist_ok=True)
         try:
+            os.makedirs(os.path.dirname(host_path), exist_ok=True)
             self._write_host_file(host_path, content, parameters)
+        except PermissionError:
+            if selected_skill is None and hasattr(self.ap.box_service, 'execute_tool'):
+                return await self._write_workspace_via_box(path, content, parameters, query)
+            raise
         except ValueError as exc:
             return {'ok': False, 'error': str(exc)}
         self._refresh_skill_from_disk(selected_skill)
@@ -625,18 +629,23 @@ else:
         )
         if self._should_use_box_workspace_files(selected_skill):
             return await self._edit_workspace_via_box(path, old_string, new_string, query)
-        if not os.path.isfile(host_path):
-            return {'ok': False, 'error': f'File not found: {path}'}
-        with open(host_path, 'r', encoding='utf-8', errors='replace') as f:
-            content = f.read()
-        count = content.count(old_string)
-        if count == 0:
-            return {'ok': False, 'error': 'old_string not found in file.'}
-        if count > 1:
-            return {'ok': False, 'error': f'old_string matches {count} locations; provide a more unique string.'}
-        new_content = content.replace(old_string, new_string, 1)
-        with open(host_path, 'w', encoding='utf-8') as f:
-            f.write(new_content)
+        try:
+            if not os.path.isfile(host_path):
+                return {'ok': False, 'error': f'File not found: {path}'}
+            with open(host_path, 'r', encoding='utf-8', errors='replace') as f:
+                content = f.read()
+            count = content.count(old_string)
+            if count == 0:
+                return {'ok': False, 'error': 'old_string not found in file.'}
+            if count > 1:
+                return {'ok': False, 'error': f'old_string matches {count} locations; provide a more unique string.'}
+            new_content = content.replace(old_string, new_string, 1)
+            with open(host_path, 'w', encoding='utf-8') as f:
+                f.write(new_content)
+        except PermissionError:
+            if selected_skill is None and hasattr(self.ap.box_service, 'execute_tool'):
+                return await self._edit_workspace_via_box(path, old_string, new_string, query)
+            raise
         self._refresh_skill_from_disk(selected_skill)
         return {'ok': True, 'path': path}
 
