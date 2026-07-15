@@ -242,6 +242,33 @@ def _lark_extract_action_form_inputs(action: typing.Any, action_value_obj: dict)
     return form_inputs
 
 
+class NonBlockingLarkWSClient(lark_oapi.ws.Client):
+    """Keep the SDK's synchronous connection lookup off LangBot's event loop.
+
+    lark-oapi performs ``requests.post`` inside its async ``_connect`` method.
+    A stalled TLS handshake therefore freezes Quart and every other adapter in
+    the process. Pre-fetch the URL in a worker thread, then let the SDK finish
+    the WebSocket setup on the main loop with the already-resolved URL.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._langbot_connect_lock = asyncio.Lock()
+
+    async def _connect(self) -> None:
+        async with self._langbot_connect_lock:
+            if self._conn is not None:
+                return
+
+            conn_url = await asyncio.to_thread(self._get_conn_url)
+            original_get_conn_url = self._get_conn_url
+            self._get_conn_url = lambda: conn_url
+            try:
+                await super()._connect()
+            finally:
+                self._get_conn_url = original_get_conn_url
+
+
 class AESCipher(object):
     def __init__(self, key):
         self.bs = AES.block_size
@@ -1240,7 +1267,9 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         bot_account_id = config['bot_name']
 
         domain = self._resolve_domain(config)
-        bot = lark_oapi.ws.Client(config['app_id'], config['app_secret'], event_handler=event_handler, domain=domain)
+        bot = NonBlockingLarkWSClient(
+            config['app_id'], config['app_secret'], event_handler=event_handler, domain=domain
+        )
         api_client = self.build_api_client(config)
         cipher = AESCipher(config.get('encrypt-key', ''))
         self.request_app_ticket(api_client, config)
