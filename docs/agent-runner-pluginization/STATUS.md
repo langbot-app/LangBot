@@ -15,7 +15,7 @@
 | Result payload validation | Done | Wire 保持 `{type, data}`；Host 对投递/副作用类 payload 严格校验，tool-call telemetry 宽松，未知 type 忽略并 warning。 |
 | Old built-in runners | Done | 旧 `src/langbot/pkg/provider/runners/*` 与 `RequestRunner` 路径已从本分支删除。 |
 | Official runner manifests | Done | `local-agent`、ACP / Claude Code / Codex 外部 harness runner、外部服务 runner 已重新声明真实生效的 LangBot resource permissions。 |
-| Skill 链路 | Unit-pass; WebUI E2E pass | 已按 **skill 全 tool 化** 收敛：发现走 `list_skills` / `langbot_list_assets` 和 skill resources；`activate` / `register_skill` 走统一 tool 授权；`skill_authoring` capability 降级为便捷开关。`activate` 会 best-effort 写入 conversation-scope `host.activated_skills`，后续 run 通过当前 pipeline-visible skill cache 恢复。新注册 Skill 在当前 Query 内立即获得临时可见性；Docker `exec` 产生的宿主侧不可写文件由 `write` / `edit` 回退到 Box 执行。2026-07-15 真实 LocalAgent Debug Chat 已完成创建、注册、同 Query 激活、编辑和执行闭环。 |
+| Skill 链路 | Unit-pass; WebUI E2E pass | 已按 **skill 全 tool 化** 收敛：发现走 `list_skills` / `langbot_list_assets` 和 skill resources；`activate` / `register_skill` 走统一 tool 授权；`skill_authoring` capability 降级为便捷开关。`activate` 会 best-effort 写入 conversation-scope `host.activated_skills`，后续 run 通过当前 pipeline-visible skill cache 恢复。新注册 Skill 在当前 Query 内立即获得临时可见性；Docker `exec` 产生的宿主侧不可写文件由 `write` / `edit` 回退到 Box 执行。2026-07-15 真实 LocalAgent Debug Chat 已完成创建、注册、同 Query 激活、编辑和执行闭环；非流式 runner turn 只向下游 Pipeline 产出一次，工具中间结果不再拆成额外 Bot 气泡。 |
 | Runtime Control Plane v2 foundation | Partial | Host-owned `AgentRun` / `AgentRunEvent` ledger、orchestrator 自动建账、result event persistence、run get/list/event page/cancel/append/finalize actions 已落地；`agent_run:admin` / `runtime:admin` 控制权限、最小 runtime register/heartbeat/list/reconcile 和 run claim/renew/release 原语已落地。完整 Agent Platform 产品形态、daemon supervisor、任务唤醒/长轮询/WebSocket、分布式 runtime 管控仍未完成。 |
 | Security boundary | Done | 当前口径降级为轻量边界：LangBot 保护自身持有资源；external harness 的 OS / process / network / workspace 风险由用户或部署环境承担；managed sandbox 不是当前承诺。 |
 | Steering control path | Done | claim 异常不再逃逸 consumer loop；queue 有上限；未 pull 的 claimed 输入在 run 结束时写 `steering.dropped` 审计终态。 |
@@ -37,7 +37,7 @@
 
 | Runner | 状态 | 最近证据 |
 | --- | --- | --- |
-| `plugin:langbot-team/LocalAgent/default` | Unit-pass; Marketplace UI pass; Debug Chat E2E pass | 2026-07-12 隔离 first-run 实例从真实 AgentRunner catalog 安装 `langbot-team/LocalAgent` 0.1.0，Host 注册 `plugin:langbot-team/LocalAgent/default`，Wizard 自动选中并解锁后续操作。2026-07-15 `local-agent-functional-20260715-skill-edit-final` 使用真实 `gpt-5.5` 完成 Skill 创建、注册、同 Query 激活、已激活包编辑与脚本执行；三阶段 UI、浏览器诊断和结构化文件系统检查全部通过，p95 18.8 秒、错误率 0。 |
+| `plugin:langbot-team/LocalAgent/default` | Unit-pass; Marketplace UI pass; Debug Chat E2E pass | 2026-07-12 隔离 first-run 实例从真实 AgentRunner catalog 安装 `langbot-team/LocalAgent` 0.1.0，Host 注册 `plugin:langbot-team/LocalAgent/default`，Wizard 自动选中并解锁后续操作。2026-07-15 `2026-07-15-08-44-10-770-08-00-sandbox-skill-authoring-edit-existing-e2e` 使用真实 `gpt-5.5` 完成 Skill 创建、注册、同 Query 激活、已激活包编辑与脚本执行；三阶段 UI、浏览器诊断和结构化文件系统检查全部通过，每阶段恰好新增一个 Bot 气泡，p95 14.6 秒、错误率 0。 |
 | `plugin:langbot-team/ACPAgentRunner/default` / `plugin:langbot-team/ClaudeCodeAgent/default` / `plugin:langbot-team/CodexAgent/default` | Unit-pass; E2E pending | 通过 runner 仓库单测覆盖 session、run_id 注入和 LangBot MCP gateway；真实 harness E2E 取决于对应运行环境、CLI/daemon 可用性和 provider 登录态。 |
 | Dify / n8n / Coze / DashScope / Langflow / Tbox / DeerFlow / WeKnora | Unit-pass; credential smoke optional | 2026-06-13 plugin layout / parser tests 通过；真实服务凭据 smoke 非每轮必跑。 |
 
@@ -46,7 +46,7 @@
 | 范围 | 状态 | 最近证据 |
 | --- | --- | --- |
 | LangBot Runtime Control Plane v2 foundation | Unit-pass; EBA release gate 5/5 pass | 2026-07-12 `eba-functional-20260712-release-gate-rerun` 通过 Quick Start 场景筛选、隔离实例 Runner Marketplace 安装、Runner 健康状态、事件路由 dry-run / 合成派发，以及真实 OneBot `group.member_joined` → Agent → `send_group_msg` 链路。 |
-| Host Skill / native tool integration | Unit-pass; WebUI E2E pass | 2026-07-15 provider / native / Skill / monitoring 定向测试 67 项通过，Skills CLI 104 项通过；真实 Debug Chat 验证 `register_skill` 后同 Query `activate` 成功，监控工具调用不再把 SQL 行误取为字符串，结构化 JSON 文件检查不依赖格式空格。 |
+| Host Skill / native tool integration | Unit-pass; WebUI E2E pass | 2026-07-15 provider / native / Skill / monitoring 定向测试 67 项通过，Pipeline / Chat / Wrapper 定向测试 61 项通过，Skills CLI 105 项通过；真实 Debug Chat 验证 `register_skill` 后同 Query `activate` 成功，监控工具调用不再把 SQL 行误取为字符串，结构化 JSON 文件检查不依赖格式空格，非流式多阶段 runner 结果只生成一个最终 Bot 气泡。 |
 | SDK AgentRunner control entities / proxy | Unit-pass | 2026-06-23 SDK `tests/api/entities/builtin/agent_runner`、`tests/api/proxies`、`tests/api/test_agent_tools_mcp_bridge.py`、`tests/runtime/plugin/test_mgr_agent_runner.py`、`tests/runtime/test_pull_api_handlers.py`、`tests/runtime/io/handlers/test_plugin_handler.py`、EBA event entities 和 message tests 通过，覆盖 typed entities、AgentRunAPIProxy、MCP bridge、runtime manager 与 pull API handlers。 |
 
 ## 历史高价值记录

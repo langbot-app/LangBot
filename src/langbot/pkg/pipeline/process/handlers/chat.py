@@ -113,10 +113,12 @@ class ChatMessageHandler(handler.MessageHandler):
                 # Create a single resp_message_id for the entire streaming response
                 resp_message_id = uuid.uuid4()
                 chunk_count = 0
+                has_result = False
 
                 # Use AgentRunOrchestrator to run the agent
                 # This replaces direct runner lookup and PluginAgentRunnerWrapper
                 async for result in self.ap.agent_run_orchestrator.run_from_query(query):
+                    has_result = True
                     result.resp_message_id = str(resp_message_id)
 
                     # For streaming mode, pop previous response before adding new chunk
@@ -156,7 +158,8 @@ class ChatMessageHandler(handler.MessageHandler):
                     if result.content is not None:
                         text_length += len(result.content)
 
-                    yield entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
+                    if is_stream:
+                        yield entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
 
                 # Log final summary after streaming completes
                 if is_stream:
@@ -169,6 +172,12 @@ class ChatMessageHandler(handler.MessageHandler):
                 # conversation.messages. TranscriptStore is the canonical
                 # history source for this path.
                 await self._ensure_conversation_for_history(query)
+
+                # Non-streaming adapters should receive only the completed runner turn.
+                # Keep every normalized result on the query for diagnostics and history,
+                # while running downstream response stages once with the final result.
+                if not is_stream and has_result:
+                    yield entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
 
             except Exception as e:
                 # Import orchestrator errors for specific handling

@@ -384,8 +384,8 @@ class TestChatHandlerAsyncBehavior:
         assert query.resp_messages[0].content == 'Hello World!'
 
     @pytest.mark.asyncio
-    async def test_non_streaming_no_pop(self):
-        """Non-streaming mode: all chunks should remain."""
+    async def test_non_streaming_keeps_results_and_yields_once(self):
+        """Non-streaming mode keeps runner results but runs downstream stages once."""
         from langbot.pkg.pipeline.process.handlers.chat import ChatMessageHandler
         from langbot.pkg.pipeline import entities
 
@@ -424,6 +424,7 @@ class TestChatHandlerAsyncBehavior:
         assert len(query.resp_messages) == 2
         assert query.resp_messages[0].content == 'Response 1'
         assert query.resp_messages[1].content == 'Response 2'
+        assert len(results) == 1
 
     @pytest.mark.asyncio
     async def test_agent_turn_recreates_conversation_if_tool_resets_it(self):

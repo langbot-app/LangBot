@@ -2006,6 +2006,33 @@ test("debug chat classifier passes when expected text appears in a new assistant
   assert.match(result.reason, /new assistant message/);
   assert.equal(result.before_assistant_expected_count, 0);
   assert.equal(result.after_assistant_expected_count, 1);
+  assert.equal(result.new_assistant_message_count, 1);
+});
+
+test("debug chat classifier rejects split non-streaming assistant messages", () => {
+  const expectedText = "E2E_OK:skill";
+  const result = classifyDebugChatResult({
+    beforeText: "",
+    afterText: `Bot: intermediate one\nBot: intermediate two\nBot: ${expectedText}`,
+    expectedText,
+    prompt: "Run a tool and return the result",
+    latestExpectedLeaf: expectedText,
+    latestFailureLeaf: "",
+    beforeMessages: [],
+    afterMessages: [
+      { role: "assistant", text: "intermediate one" },
+      { role: "assistant", text: "intermediate two" },
+      { role: "assistant", text: expectedText },
+    ],
+    latestAssistantText: expectedText,
+    maxNewAssistantMessages: 1,
+  });
+
+  assert.equal(result.status, "fail");
+  assert.match(result.reason, /created 3 assistant messages/);
+  assert.equal(result.before_assistant_message_count, 0);
+  assert.equal(result.after_assistant_message_count, 3);
+  assert.equal(result.new_assistant_message_count, 3);
 });
 
 test("debug chat classifier allows a recovered failure when latest assistant is successful", () => {

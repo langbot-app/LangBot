@@ -989,6 +989,7 @@ try {
             expectedText: step.expectedText,
             responseTimeoutMs: step.responseTimeoutMs,
             imagePath: index === 0 ? imagePath : "",
+            maxNewAssistantMessages: streamOutput === false ? 1 : null,
             failureSignals: failureSignals.length > 0 ? failureSignals : undefined,
           });
           const promptDurationMs = Date.now() - promptStartedAt;
@@ -1002,6 +1003,9 @@ try {
             final_count: chatResult.final_count,
             before_assistant_expected_count: chatResult.before_assistant_expected_count,
             after_assistant_expected_count: chatResult.after_assistant_expected_count,
+            before_assistant_message_count: chatResult.before_assistant_message_count,
+            after_assistant_message_count: chatResult.after_assistant_message_count,
+            new_assistant_message_count: chatResult.new_assistant_message_count,
             failure_signal: chatResult.failure_signal || "",
           });
           result.status = chatResult.status;
