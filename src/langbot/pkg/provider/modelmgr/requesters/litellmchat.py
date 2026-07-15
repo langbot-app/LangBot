@@ -674,6 +674,10 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
             if tools:
                 args['tools'] = tools
                 args.setdefault('tool_choice', 'auto')
+                # LangBot owns tool discovery and execution. LiteLLM 1.92+
+                # otherwise probes its optional MCP gateway for every tool call
+                # and imports proxy-only dependencies such as FastAPI.
+                args['_skip_mcp_handler'] = True
 
         return args
 

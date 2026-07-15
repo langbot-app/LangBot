@@ -877,6 +877,7 @@ class TestInvokeLLM:
             called_kwargs = litellmchat.acompletion.await_args.kwargs
             assert called_kwargs['tools'] == [{'type': 'function', 'function': {'name': 'get_weather'}}]
             assert called_kwargs['tool_choice'] == 'auto'
+            assert called_kwargs['_skip_mcp_handler'] is True
 
     @pytest.mark.asyncio
     async def test_build_completion_args_preserves_explicit_tool_choice(self):

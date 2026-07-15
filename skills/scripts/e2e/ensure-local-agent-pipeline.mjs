@@ -62,6 +62,7 @@ const result = {
   scanned_space_model_count: 0,
   tested_model_count: 0,
   model_tests: [],
+  plugin_setup: null,
   created: false,
   updated: false,
   wrote_env: false,
@@ -100,6 +101,16 @@ try {
     user,
     backend_token_check: auth.check,
   };
+
+  const pluginSetup = await ensureLocalAgentRunner({
+    backendUrl,
+    token: auth.token,
+  });
+  result.plugin_setup = pluginSetup;
+  if (pluginSetup.status !== "pass") {
+    result.status = pluginSetup.status === "env_issue" ? "env_issue" : "fail";
+    throw new Error(pluginSetup.reason || "Failed to prepare the LocalAgent runner plugin.");
+  }
 
   const wizard = await skipWizard({ backendUrl, token: auth.token });
   result.wizard = wizard;
@@ -192,6 +203,236 @@ async function skipWizard({ backendUrl, token }) {
       ? "Wizard marked skipped for local QA."
       : response.json.msg || "Wizard status update failed.",
   };
+}
+
+async function ensureLocalAgentRunner({ backendUrl, token }) {
+  const [author, name] = RUNNER_ID.replace(/^plugin:/, "").split("/");
+  const existingRunnerIds = await listRunnerIds(backendUrl, token);
+  if (existingRunnerIds.includes(RUNNER_ID)) {
+    return {
+      status: "pass",
+      reason: "LocalAgent runner is already registered.",
+      plugin_id: `${author}/${name}`,
+      runner_id: RUNNER_ID,
+      installed: false,
+    };
+  }
+
+  const pluginsResponse = await apiJson(backendUrl, "/api/v1/plugins", {
+    token,
+  });
+  if (isApiFailure(pluginsResponse)) {
+    return {
+      status: "env_issue",
+      reason:
+        pluginsResponse.json.msg ||
+        "Failed to inspect installed plugins before preparing LocalAgent.",
+    };
+  }
+  const pluginId = `${author}/${name}`;
+  const pluginPresent = (pluginsResponse.json.data?.plugins || []).some(
+    (plugin) => {
+      const metadata =
+        plugin.manifest?.manifest?.metadata ||
+        plugin.manifest?.metadata ||
+        plugin.metadata ||
+        {};
+      return `${metadata.author}/${metadata.name}` === pluginId;
+    },
+  );
+  if (pluginPresent) {
+    const registered = await waitForRunnerRegistration({
+      backendUrl,
+      token,
+      runnerId: RUNNER_ID,
+      timeoutMs: 30_000,
+    });
+    return registered
+      ? {
+          status: "pass",
+          reason: "Installed LocalAgent plugin finished Runner registration.",
+          plugin_id: pluginId,
+          runner_id: RUNNER_ID,
+          installed: false,
+        }
+      : {
+          status: "fail",
+          reason: `${pluginId} is installed but ${RUNNER_ID} did not register.`,
+          plugin_id: pluginId,
+          runner_id: RUNNER_ID,
+          installed: false,
+        };
+  }
+
+  const spaceUrl = String(env.LANGBOT_SPACE_URL || "https://space.langbot.app").replace(
+    /\/$/,
+    "",
+  );
+  let detailResponse;
+  try {
+    detailResponse = await fetch(
+      `${spaceUrl}/api/v1/marketplace/plugins/${encodeURIComponent(author)}/${encodeURIComponent(name)}`,
+    );
+  } catch (error) {
+    return {
+      status: "env_issue",
+      reason: `Could not reach LangBot Space for ${pluginId}: ${error.message}`,
+    };
+  }
+  const detail = await detailResponse.json().catch(() => ({}));
+  const version = detail?.data?.plugin?.latest_version || "";
+  if (detailResponse.status >= 400 || detail.code !== 0 || !version) {
+    return {
+      status: "env_issue",
+      reason:
+        detail.msg ||
+        `LangBot Space did not return an installable version for ${pluginId}.`,
+    };
+  }
+
+  const install = await apiJson(
+    backendUrl,
+    "/api/v1/plugins/install/marketplace",
+    {
+      method: "POST",
+      token,
+      body: {
+        plugin_author: author,
+        plugin_name: name,
+        plugin_version: version,
+      },
+    },
+  );
+  const taskId = install.json.data?.task_id ?? null;
+  if (isApiFailure(install) || !taskId) {
+    return {
+      status: "fail",
+      reason:
+        install.json.msg ||
+        `Marketplace install did not create a task for ${pluginId}.`,
+      plugin_id: pluginId,
+      version,
+    };
+  }
+  const task = await waitForTask({ backendUrl, token, taskId });
+  if (!taskComplete(task)) {
+    return {
+      status: taskFailed(task) ? "fail" : "env_issue",
+      reason:
+        task?.runtime?.exception ||
+        task?.error ||
+        `Marketplace install task for ${pluginId} did not complete.`,
+      plugin_id: pluginId,
+      version,
+      task_id: taskId,
+    };
+  }
+  const registered = await waitForRunnerRegistration({
+    backendUrl,
+    token,
+    runnerId: RUNNER_ID,
+    timeoutMs: 60_000,
+  });
+  return registered
+    ? {
+        status: "pass",
+        reason: `Installed ${pluginId} ${version} and registered ${RUNNER_ID}.`,
+        plugin_id: pluginId,
+        runner_id: RUNNER_ID,
+        version,
+        task_id: taskId,
+        installed: true,
+      }
+    : {
+        status: "fail",
+        reason: `Installed ${pluginId} ${version}, but ${RUNNER_ID} did not register.`,
+        plugin_id: pluginId,
+        runner_id: RUNNER_ID,
+        version,
+        task_id: taskId,
+        installed: true,
+      };
+}
+
+async function listRunnerIds(backendUrl, token) {
+  const response = await apiJson(backendUrl, "/api/v1/pipelines/_/metadata", {
+    token,
+  });
+  if (isApiFailure(response)) return [];
+  return (response.json.data?.configs || [])
+    .flatMap((section) => section.stages || [])
+    .flatMap((stage) => stage.config || [])
+    .filter((item) => item.name === "id")
+    .flatMap((item) => item.options || [])
+    .map((option) => option.name || option.value || option.id || "")
+    .filter(Boolean);
+}
+
+async function waitForRunnerRegistration({
+  backendUrl,
+  token,
+  runnerId,
+  timeoutMs,
+}) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if ((await listRunnerIds(backendUrl, token)).includes(runnerId)) return true;
+    await sleep(1000);
+  }
+  return false;
+}
+
+async function waitForTask({ backendUrl, token, taskId }) {
+  const deadline =
+    Date.now() + Number(env.LANGBOT_PLUGIN_INSTALL_TIMEOUT_MS || 120_000);
+  let task = null;
+  while (Date.now() < deadline) {
+    const response = await apiJson(
+      backendUrl,
+      `/api/v1/system/tasks/${encodeURIComponent(taskId)}`,
+      { token },
+    );
+    task = response.json.data || response.json;
+    if (taskComplete(task) || taskFailed(task)) return task;
+    await sleep(1000);
+  }
+  return task;
+}
+
+function taskComplete(task) {
+  const status = String(task?.status || task?.state || "").toLowerCase();
+  const runtimeStatus = String(
+    task?.runtime?.status || task?.runtime?.state || "",
+  ).toLowerCase();
+  return (
+    ["done", "completed", "success", "succeeded", "finished"].includes(
+      status,
+    ) ||
+    ["done", "completed", "success", "succeeded", "finished"].includes(
+      runtimeStatus,
+    ) ||
+    task?.done === true ||
+    task?.completed === true ||
+    (task?.runtime?.done === true && !task?.runtime?.exception)
+  );
+}
+
+function taskFailed(task) {
+  const status = String(task?.status || task?.state || "").toLowerCase();
+  const runtimeStatus = String(
+    task?.runtime?.status || task?.runtime?.state || "",
+  ).toLowerCase();
+  return (
+    ["failed", "error", "cancelled", "canceled"].includes(status) ||
+    ["failed", "error", "cancelled", "canceled"].includes(runtimeStatus) ||
+    task?.failed === true ||
+    Boolean(task?.error) ||
+    Boolean(task?.runtime?.exception)
+  );
+}
+
+function sleep(ms) {
+  return new Promise((resolvePromise) => setTimeout(resolvePromise, ms));
 }
 
 async function ensureLocalAgentPipeline({
