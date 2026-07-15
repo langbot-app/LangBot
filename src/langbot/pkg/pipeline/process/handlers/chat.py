@@ -119,6 +119,18 @@ class ChatMessageHandler(handler.MessageHandler):
                 # This replaces direct runner lookup and PluginAgentRunnerWrapper
                 async for result in self.ap.agent_run_orchestrator.run_from_query(query):
                     has_result = True
+
+                    if is_stream and isinstance(result, provider_message.MessageChunk):
+                        if result.all_content is not None:
+                            result = result.model_copy(update={'content': result.all_content})
+                    elif is_stream and isinstance(result, provider_message.Message):
+                        result = provider_message.MessageChunk.model_validate(
+                            {
+                                **result.model_dump(),
+                                'is_final': True,
+                            }
+                        )
+
                     result.resp_message_id = str(resp_message_id)
 
                     # For streaming mode, pop previous response before adding new chunk

@@ -384,6 +384,47 @@ class TestChatHandlerAsyncBehavior:
         assert query.resp_messages[0].content == 'Hello World!'
 
     @pytest.mark.asyncio
+    async def test_streaming_renders_accumulated_deltas_and_completes_same_message(self):
+        """Incremental runner deltas and message.completed update one response stream."""
+        from langbot.pkg.pipeline.process.handlers.chat import ChatMessageHandler
+        from langbot.pkg.pipeline import entities
+        from langbot_plugin.api.entities.builtin.provider import message as provider_message
+
+        chunks = [
+            provider_message.MessageChunk(role='assistant', content='Hel', all_content='Hel'),
+            provider_message.MessageChunk(role='assistant', content='lo', all_content='Hello'),
+            provider_message.Message(role='assistant', content='Hello'),
+        ]
+        orchestrator = MockAgentRunOrchestrator(chunks=chunks)
+        mock_ap = MockApplication(orchestrator=orchestrator)
+        mock_ap.plugin_connector.emit_event = AsyncMock(return_value=MockEventContext(prevented=False))
+        query = MockQuery()
+        query.adapter.is_stream = True
+        handler = ChatMessageHandler(mock_ap)
+        mock_event = MagicMock()
+        mock_event.return_value = MagicMock()
+
+        def make_result(*args, **kwargs):
+            return MagicMock(result_type=kwargs.get('result_type', entities.ResultType.CONTINUE))
+
+        observed = []
+        with (
+            patch('langbot.pkg.pipeline.process.handlers.chat.events') as mock_events_module,
+            patch('langbot.pkg.pipeline.entities.StageProcessResult', side_effect=make_result),
+        ):
+            mock_events_module.PersonNormalMessageReceived = mock_event
+            mock_events_module.GroupNormalMessageReceived = mock_event
+
+            async for _ in handler.handle(query):
+                current = query.resp_messages[-1]
+                observed.append((current.content, current.is_final, current.resp_message_id))
+
+        assert [content for content, _, _ in observed] == ['Hel', 'Hello', 'Hello']
+        assert [is_final for _, is_final, _ in observed] == [False, False, True]
+        assert len({response_id for _, _, response_id in observed}) == 1
+        assert all(isinstance(message, provider_message.MessageChunk) for message in query.resp_messages)
+
+    @pytest.mark.asyncio
     async def test_non_streaming_keeps_results_and_yields_once(self):
         """Non-streaming mode keeps runner results but runs downstream stages once."""
         from langbot.pkg.pipeline.process.handlers.chat import ChatMessageHandler

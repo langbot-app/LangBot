@@ -35,7 +35,7 @@ automation_env:
 automation_pipeline_url_env: LANGBOT_ACP_AGENT_RUNNER_PIPELINE_URL
 automation_pipeline_name_env: LANGBOT_ACP_AGENT_RUNNER_PIPELINE_NAME
 automation_expected_runner_id: "plugin:langbot-team/ACPAgentRunner/default"
-automation_prompt: "Use the injected LangBot MCP server tool langbot_get_current_event once. If the MCP call succeeds, reply with exactly ACP_AGENT_RUNNER_E2E_OK."
+automation_prompt: "Do not launch any background agent, subagent, task, or worker. In this current ACP session, directly call the MCP tool named langbot_get_current_event exactly once and wait for its result. After it returns, reply exactly ACP_AGENT_RUNNER_E2E_OK with no other text."
 automation_expected_text: "ACP_AGENT_RUNNER_E2E_OK"
 automation_response_timeout_ms: "300000"
 setup_automation:
