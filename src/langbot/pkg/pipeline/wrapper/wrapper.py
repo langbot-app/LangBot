@@ -158,7 +158,9 @@ class ResponseWrapper(stage.PipelineStage):
                                 result_type=entities.ResultType.CONTINUE,
                                 new_query=query,
                             )
-                    elif self._is_final_assistant_message(result):
+                    elif (
+                        isinstance(result, provider_message.MessageChunk) and result.is_final and not result.tool_calls
+                    ):
                         # Final streaming chunk with no text content but
                         # possibly carrying sandbox outbox attachments.
                         reply_chain = platform_message.MessageChain([])
