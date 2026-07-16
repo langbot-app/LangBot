@@ -2072,6 +2072,7 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         message: platform_message.MessageChain,
         quote_origin: bool = False,
         is_final: bool = False,
+        keep_stream: bool = False,
     ):
         """
         回复消息变成更新卡片消息

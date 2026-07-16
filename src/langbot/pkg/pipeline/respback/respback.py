@@ -46,12 +46,22 @@ class SendResponseBackStage(stage.PipelineStage):
         try:
             if await query.adapter.is_stream_output_supported() and has_chunks:
                 is_final = [msg.is_final for msg in query.resp_messages][-1]
+                bot_msg = query.resp_messages[-1]
+                # Read the keep_stream hint that the runner may have set on
+                # the MessageChunk's provider_specific_fields.  This tells
+                # adapters (e.g. WeComBot WS) to keep the stream session
+                # alive across multi-round tool-call loops.
+                keep_stream = False
+                psf = getattr(bot_msg, 'provider_specific_fields', None)
+                if psf:
+                    keep_stream = bool(psf.get('keep_stream', False))
                 await query.adapter.reply_message_chunk(
                     message_source=query.message_event,
-                    bot_message=query.resp_messages[-1],
+                    bot_message=bot_msg,
                     message=message_chain,
                     quote_origin=quote_origin,
                     is_final=is_final,
+                    keep_stream=keep_stream,
                 )
             else:
                 await query.adapter.reply_message(

@@ -468,6 +468,7 @@ class HttpBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         message: platform_message.MessageChain,
         quote_origin: bool = False,
         is_final: bool = False,
+        keep_stream: bool = False,
     ) -> dict:
         message_is_final = is_final and getattr(bot_message, 'tool_calls', None) is None
         return await self._emit_reply(message_source, message, is_final=message_is_final, stream=True)

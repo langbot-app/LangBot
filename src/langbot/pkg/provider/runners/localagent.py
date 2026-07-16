@@ -481,7 +481,12 @@ class LocalAgentRunner(runner.RequestRunner):
         except AttributeError:
             is_stream = False
 
-        remove_think = ((query.pipeline_config.get('output') or {}).get('misc') or {}).get('remove-think', False)
+        _misc = (query.pipeline_config.get('output') or {}).get('misc') or {}
+        remove_think = _misc.get('remove-think', False)
+        keep_first_think_only = _misc.get('keep-first-think-only', False)
+        # When keep-first-think-only is on, the first (pre-loop) round keeps
+        # its CoT; subsequent tool-call rounds strip it as usual.
+        _strip_think_first_round = remove_think and not keep_first_think_only
 
         # Build ordered candidate list (primary + fallbacks)
         candidates = await self._get_model_candidates(query)
@@ -500,23 +505,30 @@ class LocalAgentRunner(runner.RequestRunner):
                 candidates,
                 req_messages,
                 query.use_funcs,
-                remove_think,
+                _strip_think_first_round,
             )
             final_msg = msg
         else:
             # Streaming: invoke with fallback
-            stream_accumulator = _StreamAccumulator(msg_sequence=1, remove_think=remove_think)
+            stream_accumulator = _StreamAccumulator(msg_sequence=1, remove_think=_strip_think_first_round)
 
             stream_src, use_llm_model = await self._invoke_stream_with_fallback(
                 query,
                 candidates,
                 req_messages,
                 query.use_funcs,
-                remove_think,
+                _strip_think_first_round,
             )
             async for msg in stream_src:
                 chunk = stream_accumulator.add(msg)
                 if chunk:
+                    # When keep-first-think-only is active and this round
+                    # produced tool calls, signal the adapter to keep the
+                    # stream session alive so the next round can reuse it.
+                    if keep_first_think_only and chunk.is_final and chunk.tool_calls:
+                        psf = dict(chunk.provider_specific_fields or {})
+                        psf['keep_stream'] = True
+                        chunk = chunk.model_copy(update={'provider_specific_fields': psf})
                     yield chunk
                     initial_response_emitted = True
 

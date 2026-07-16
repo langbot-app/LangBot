@@ -145,4 +145,14 @@ stages:
         type: boolean
         required: true
         default: false
+      - name: keep-first-think-only
+        label:
+          en_US: Keep Only First CoT
+          zh_Hans: 仅保留第一条思维链
+        description:
+          en_US: 'Only effective when "Remove CoT" is enabled. Keeps the chain-of-thought on the first LLM round but strips it from all subsequent rounds in a multi-round tool-call loop.'
+          zh_Hans: '仅在启用"删除思维链"时生效。多轮工具调用中，保留第一轮的思维链，后续轮次的思维链一律删除。'
+        type: boolean
+        required: true
+        default: false
 

@@ -571,6 +571,7 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         message: platform_message.MessageChain,
         quote_origin: bool = False,
         is_final: bool = False,
+        keep_stream: bool = False,
     ):
         message_id = bot_message.resp_message_id
         msg_seq = bot_message.msg_sequence
