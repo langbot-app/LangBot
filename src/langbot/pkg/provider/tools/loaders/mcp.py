@@ -950,7 +950,12 @@ class RuntimeMCPSession:
                 raise Exception('MCP session is not connected')
 
             try:
-                result = await self.session.call_tool(tool_name, arguments)
+                async with asyncio.timeout(30):
+                    result = await self.session.call_tool(tool_name, arguments)
+            except TimeoutError as e:
+                raise Exception(
+                    f"MCP tool '{tool_name}' on server '{self.server_name}' timed out after 30 seconds"
+                ) from e
             except Exception as e:
                 if attempt == 0 and self._is_session_terminated(e):
                     self.ap.logger.warning(
