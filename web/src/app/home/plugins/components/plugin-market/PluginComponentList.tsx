@@ -1,7 +1,7 @@
 import { Fragment } from 'react';
 import { TFunction } from 'i18next';
-import { Wrench, AudioWaveform, Hash, Book, FileText } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { pluginComponentIconMap } from './PluginComponentIcons';
 
 export default function PluginComponentList({
   components,
@@ -18,14 +18,6 @@ export default function PluginComponentList({
   t: TFunction;
   responsive?: boolean;
 }) {
-  const kindIconMap: Record<string, React.ReactNode> = {
-    Tool: <Wrench className="w-5 h-5" />,
-    EventListener: <AudioWaveform className="w-5 h-5" />,
-    Command: <Hash className="w-5 h-5" />,
-    KnowledgeEngine: <Book className="w-5 h-5" />,
-    Parser: <FileText className="w-5 h-5" />,
-  };
-
   const componentKindList = Object.keys(components || {});
 
   return (
@@ -34,11 +26,12 @@ export default function PluginComponentList({
       {componentKindList.length > 0 && (
         <>
           {componentKindList.map((kind) => {
+            const ComponentIcon = pluginComponentIconMap[kind];
             return (
               <Fragment key={kind}>
                 {useBadge && (
                   <Badge variant="outline" className="flex items-center gap-1">
-                    {kindIconMap[kind]}
+                    {ComponentIcon && <ComponentIcon className="w-5 h-5" />}
                     {responsive ? (
                       <span className="hidden md:inline">
                         {t('market.componentName.' + kind)}
@@ -52,7 +45,7 @@ export default function PluginComponentList({
 
                 {!useBadge && (
                   <div className="flex flex-row items-center justify-start gap-[0.2rem]">
-                    {kindIconMap[kind]}
+                    {ComponentIcon && <ComponentIcon className="w-5 h-5" />}
                     {responsive ? (
                       <span className="hidden md:inline">
                         {t('market.componentName.' + kind)}
