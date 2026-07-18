@@ -564,6 +564,45 @@ class TestSkillToolLoader:
 
 class TestNativeToolLoaderSkillPaths:
     @pytest.mark.asyncio
+    async def test_glob_skill_root_lists_visible_and_activated_mounts(self):
+        from langbot.pkg.provider.tools.loaders.native import NativeToolLoader
+        from langbot.pkg.provider.tools.loaders.skill import PIPELINE_BOUND_SKILLS_KEY, register_activated_skill
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ap = _make_ap()
+            ap.box_service = SimpleNamespace(available=True, default_workspace=tmpdir)
+            ap.skill_mgr = SimpleNamespace(
+                skills={
+                    'visible-skill': _make_skill_data(name='visible-skill', package_root=tmpdir),
+                    'hidden-skill': _make_skill_data(name='hidden-skill', package_root=tmpdir),
+                }
+            )
+            loader = NativeToolLoader(ap)
+            query = SimpleNamespace(
+                query_id='q1',
+                variables={PIPELINE_BOUND_SKILLS_KEY: ['visible-skill']},
+            )
+            register_activated_skill(query, _make_skill_data(name='activated-skill', package_root=tmpdir))
+
+            result = await loader.invoke_tool(
+                'glob',
+                {'path': '/workspace/.skills', 'pattern': '*'},
+                query,
+            )
+
+            assert result == {
+                'ok': True,
+                'matches': [
+                    '/workspace/.skills/activated-skill',
+                    '/workspace/.skills/visible-skill',
+                ],
+                'preview': '/workspace/.skills/activated-skill\n/workspace/.skills/visible-skill',
+                'total': 2,
+                'truncated': False,
+                'truncated_by': None,
+            }
+
+    @pytest.mark.asyncio
     async def test_read_visible_skill_file(self):
         from langbot.pkg.provider.tools.loaders.native import NativeToolLoader
         from langbot.pkg.provider.tools.loaders.skill import PIPELINE_BOUND_SKILLS_KEY
