@@ -36,6 +36,8 @@ If the direct MCP fixture passes but `/api/v1/tools` still shows the old MCP nam
 
 For a multimodal check, upload a small image and ask for a deterministic acknowledgement. Prefer the bundled 64x64 red-square fixture over a 1x1 image because some model providers reject tiny images before the runner path is exercised.
 
+For sustained agentic behavior, run `local-agent-complex-coding-task-debug-chat`. It gives the runner one complete task in an isolated Box workspace, requires it to inspect a failing multi-file project, iterate on production fixes, rerun tests, and produce host-verifiable artifacts. Keep the normal context budget for this case; it is not a context-compaction or provider-concurrency probe.
+
 For a Debug Chat non-streaming delivery check, disable the Debug Chat stream switch before sending the prompt. This validates the UI/adapter delivery path. Runner-internal non-streaming model invocation is covered by component tests that set `runtime_metadata.streaming_supported=false`.
 
 ## Timeout And Tool Regression Checks

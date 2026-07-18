@@ -30,6 +30,11 @@ automation_env:
   - LANGBOT_LOCAL_AGENT_PIPELINE_NAME
 automation_pipeline_url_env: LANGBOT_LOCAL_AGENT_PIPELINE_URL
 automation_pipeline_name_env: LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+automation_expected_runner_id: "plugin:langbot-team/LocalAgent/default"
+automation_extensions_patch_json: '{"enable_all_plugins":false,"bound_plugins":[{"author":"langbot-team","name":"LocalAgent"},{"author":"qa","name":"plugin-smoke"}],"enable_all_mcp_servers":false,"bound_mcp_servers":[],"enable_all_skills":false,"bound_skills":[]}'
+automation_restore_extensions: "1"
+automation_reset_debug_chat: "1"
+automation_debug_chat_session_type: "person"
 automation_prompt: "Call the qa_plugin_echo tool with exactly this text: plugin-tool-ok-local-agent. Return only the tool result."
 automation_expected_text: "qa-plugin-smoke:plugin-tool-ok-local-agent"
 automation_response_timeout_ms: "180000"
@@ -44,7 +49,7 @@ preconditions:
 steps:
   - "Install or enable the bundled qa-plugin-smoke fixture plugin."
   - "Confirm /api/v1/tools or the plugin detail shows qa_plugin_echo."
-  - "Confirm the fixture plugin is bound to the target pipeline through Extensions, or that all plugins are enabled."
+  - "Temporarily bind only langbot-team/LocalAgent and qa/plugin-smoke; disable MCP servers and skills to isolate the tool surface."
   - "Open the target local-agent pipeline."
   - "Use runner Default or the pluginized langbot-team/LocalAgent runner."
   - "Select a model with function-calling ability that is known to work with tools in the current environment."
@@ -52,6 +57,7 @@ steps:
   - "Send: Call the qa_plugin_echo tool with exactly this text: plugin-tool-ok-local-agent. Return only the tool result."
 checks:
   - "UI: Debug Chat bot response contains qa-plugin-smoke:plugin-tool-ok-local-agent."
+  - "API diagnostic: pipeline-extensions-diagnostic.json shows only langbot-team/LocalAgent and qa/plugin-smoke were bound."
   - "Logs: Backend logs show the plugin tool call was executed, not only listed."
   - "Console: No unexpected frontend errors appear during Debug Chat."
 evidence_required:

@@ -38,6 +38,7 @@ These browser cases are the minimum gate for a local-agent migration check:
 | `local-agent-multimodal-debug-chat` | Image upload, structured input contents, and multimodal runner consumption | UI shows uploaded image and bot returns `IMAGE_OK`; backend receives an image input. |
 | `local-agent-rag-multimodal-debug-chat` | RAG insertion while structured image input is present | UI shows uploaded image, bot returns the KB sentinel, and backend logs the same request with `[Image]`. |
 | `local-agent-nonstreaming-debug-chat` | Debug Chat non-streaming UI delivery path | Bot returns `NONSTREAM_OK` with the Debug Chat stream switch disabled; runner-internal `invoke_llm` mode is covered by local-agent component tests using `runtime_metadata.streaming_supported=false`. |
+| `local-agent-complex-coding-task-debug-chat` | Sustained native-tool planning, multi-file edits, iterative test recovery, and artifact production | Bot returns the completion sentinel only after host verification reruns 12 tests, acceptance, and protected-file checks. |
 
 ## Full Coverage Matrix
 

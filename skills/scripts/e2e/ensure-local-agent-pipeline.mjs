@@ -441,10 +441,10 @@ async function ensureLocalAgentPipeline({
   pipelineName,
   runnerId,
 }) {
-  const fakeProviderBaseUrl =
-    env.LANGBOT_E2E_FAKE_PROVIDER_BASE_URL ||
-    env.LANGBOT_FAKE_PROVIDER_BASE_URL ||
-    "";
+  // Fake-provider use must be explicit for this pipeline. The generic fake
+  // provider variables persist after load tests and must not silently replace
+  // a real LocalAgent model in later QA runs.
+  const fakeProviderBaseUrl = env.LANGBOT_E2E_FAKE_PROVIDER_BASE_URL || "";
   let fakeModel = null;
   if (fakeProviderBaseUrl) {
     fakeModel = await ensureFakeProviderModel({

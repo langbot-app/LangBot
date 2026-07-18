@@ -169,6 +169,7 @@
         "langrag-sentinel-kb-discover",
         "local-agent-basic-debug-chat",
         "local-agent-combo-rag-compaction-tool-debug-chat",
+        "local-agent-complex-coding-task-debug-chat",
         "local-agent-context-compaction-debug-chat",
         "local-agent-effective-prompt-debug-chat",
         "local-agent-multimodal-debug-chat",
@@ -1006,6 +1007,43 @@
             "console",
             "backend_log",
             "api_diagnostic"
+          ]
+        },
+        {
+          "id": "local-agent-complex-coding-task-debug-chat",
+          "title": "Local Agent completes a multi-file coding task with iterative verification",
+          "mode": "agent-browser",
+          "area": "pipeline",
+          "type": "regression",
+          "priority": "p1",
+          "risk": "high",
+          "ci_eligible": false,
+          "tags": [
+            "local-agent",
+            "agentic",
+            "coding",
+            "sandbox",
+            "tools",
+            "long-running"
+          ],
+          "automation": "scripts/e2e/pipeline-debug-chat.mjs",
+          "setup_automation": [
+            "node:scripts/e2e/ensure-local-agent-pipeline.mjs --write-env",
+            "node:scripts/e2e/reset-complex-agent-task.mjs"
+          ],
+          "setup_provides_env": [
+            "LANGBOT_LOCAL_AGENT_PIPELINE_URL",
+            "LANGBOT_LOCAL_AGENT_PIPELINE_NAME"
+          ],
+          "evidence_required": [
+            "ui",
+            "screenshot",
+            "console",
+            "network",
+            "backend_log",
+            "api_diagnostic",
+            "filesystem",
+            "metrics"
           ]
         },
         {
