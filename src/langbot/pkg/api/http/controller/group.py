@@ -12,6 +12,7 @@ from quart.typing import RouteCallable
 from ....utils import constants
 from ....workspace.collaboration import MembershipPermissionError, WorkspaceCollaborationError
 from ....workspace.errors import WorkspaceNotFoundError
+from ....cloud.entitlements import EntitlementUnavailableError
 from ..authz import AuthorizationError, Permission, permissions_for_role, require_permission
 from ..context import PrincipalContext, PrincipalType, RequestContext, WorkspaceContext
 
@@ -244,6 +245,10 @@ class RouterGroup(abc.ABC):
 
         requested_workspace_uuid = quart.request.headers.get('X-Workspace-Id')
         access = await collaboration_service.resolve_account_workspace(account_uuid, requested_workspace_uuid)
+        entitlement_revision = await self._resolve_entitlement_revision(
+            access.execution.instance_uuid,
+            access.workspace.uuid,
+        )
         request_context = RequestContext(
             instance_uuid=access.execution.instance_uuid,
             placement_generation=access.execution.placement_generation,
@@ -260,6 +265,7 @@ class RouterGroup(abc.ABC):
                 permissions=permissions_for_role(access.membership.role),
                 membership_revision=access.membership.projection_revision,
             ),
+            entitlement_revision=entitlement_revision,
         )
         quart.g.request_context = request_context
         quart.g.workspace_membership = access.membership
@@ -272,6 +278,10 @@ class RouterGroup(abc.ABC):
             if inspect.isawaitable(authenticated):
                 identity = await authenticated
                 if identity is not None:
+                    entitlement_revision = await self._resolve_entitlement_revision(
+                        identity.instance_uuid,
+                        identity.workspace_uuid,
+                    )
                     request_context = RequestContext(
                         instance_uuid=identity.instance_uuid,
                         placement_generation=identity.placement_generation,
@@ -287,6 +297,7 @@ class RouterGroup(abc.ABC):
                             role=None,
                             permissions=identity.permissions,
                         ),
+                        entitlement_revision=entitlement_revision,
                     )
                     quart.g.request_context = request_context
                     return request_context
@@ -316,6 +327,18 @@ class RouterGroup(abc.ABC):
         quart.g.request_context = request_context
         return request_context
 
+    async def _resolve_entitlement_revision(self, instance_uuid: str, workspace_uuid: str) -> int:
+        deployment = getattr(self.ap, 'deployment', None)
+        if deployment is None or not getattr(deployment, 'multi_workspace_enabled', False):
+            return 0
+        resolver = getattr(self.ap, 'entitlement_resolver', None)
+        if resolver is None:
+            raise EntitlementUnavailableError('Workspace entitlement resolver is unavailable')
+        if instance_uuid != resolver.instance_uuid:
+            raise EntitlementUnavailableError('Workspace entitlement targets another LangBot instance')
+        snapshot = await resolver.resolve(workspace_uuid)
+        return snapshot.entitlement_revision
+
     @staticmethod
     def _inject_handler_context(
         handler: RouteCallable,
@@ -339,6 +362,8 @@ class RouterGroup(abc.ABC):
             return self.http_status(404, 'resource_not_found', 'Resource not found')
         if isinstance(error, MembershipPermissionError):
             return self.http_status(403, error.code, str(error))
+        if isinstance(error, EntitlementUnavailableError):
+            return self.http_status(403, 'entitlement_unavailable', str(error))
         request_id = self.request_id()
         logger = getattr(self.ap, 'logger', self.quart_app.logger)
         logger.warning(f'Authentication failed request_id={request_id} error_type={type(error).__name__}: {error}')

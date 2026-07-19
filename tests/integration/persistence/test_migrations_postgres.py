@@ -15,15 +15,20 @@ from __future__ import annotations
 
 import logging
 import os
+import uuid
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+
 import pytest
 import sqlalchemy as sa
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from sqlalchemy import text
 
 from langbot.pkg.entity.persistence.base import Base
 from langbot.pkg.entity.persistence.user import User
-from langbot.pkg.persistence.mgr import PersistenceManager
+from langbot.pkg.persistence.mgr import PersistenceManager, PersistenceMode
+from langbot.pkg.persistence.tenant_uow import TENANT_POLICY_NAME, TENANT_TABLE_COLUMNS, TenantUnitOfWork
 from langbot.pkg.persistence.alembic_runner import (
     run_alembic_upgrade,
     run_alembic_stamp,
@@ -47,6 +52,44 @@ def _get_script_head() -> str:
     cfg = Config()
     cfg.set_main_option('script_location', _ALEMBIC_DIR)
     return ScriptDirectory.from_config(cfg).get_current_head()
+
+
+def _application_for_postgres_url(postgres_url: str, logger_name: str) -> SimpleNamespace:
+    url = sa.engine.make_url(postgres_url)
+    return SimpleNamespace(
+        instance_config=SimpleNamespace(
+            data={
+                'database': {
+                    'use': 'postgresql',
+                    'postgresql': {
+                        'host': url.host,
+                        'port': url.port,
+                        'user': url.username,
+                        'password': url.password,
+                        'database': url.database,
+                    },
+                }
+            }
+        ),
+        logger=logging.getLogger(logger_name),
+    )
+
+
+async def _dispose_manager(manager: PersistenceManager | None) -> None:
+    if manager is not None and getattr(manager, 'db', None) is not None:
+        await manager.get_db_engine().dispose()
+
+
+def _restore_postgres_manager_registry(monkeypatch) -> None:
+    """Undo the registry isolation used by test_database_decorator.py."""
+    from langbot.pkg.persistence import mgr as persistence_mgr_module
+    from langbot.pkg.persistence.databases.postgresql import PostgreSQLDatabaseManager
+
+    monkeypatch.setattr(
+        persistence_mgr_module.database,
+        'preregistered_managers',
+        [PostgreSQLDatabaseManager],
+    )
 
 
 pytestmark = [pytest.mark.integration, pytest.mark.slow]
@@ -309,7 +352,7 @@ class TestPostgreSQLWorkspaceMigration:
             )
         assert 'workspaces' not in tables_before_migration
 
-        await manager._run_alembic_migrations()
+        await manager._initialize_managed_schema()
 
         async with postgres_engine.connect() as conn:
             account = (await conn.execute(text('SELECT uuid, status, source FROM users'))).mappings().one()
@@ -425,3 +468,278 @@ class TestPostgreSQLResourceTenancyMigration:
                     ),
                     {'workspace_uuid': second_workspace_uuid},
                 )
+
+
+class TestPostgreSQLTenantRuntime:
+    """Release bootstrap, RLS enforcement, and runtime-role safety."""
+
+    @pytest.mark.asyncio
+    async def test_oss_postgres_defaults_to_the_singleton_workspace(
+        self,
+        postgres_url,
+        clean_tables,
+        clean_alembic_version,
+        monkeypatch,
+    ):
+        instance_uuid = 'oss-postgres-rls-compatibility-test'
+        _restore_postgres_manager_registry(monkeypatch)
+        monkeypatch.setattr(constants, 'instance_id', instance_uuid)
+        manager = PersistenceManager(
+            _application_for_postgres_url(postgres_url, 'postgres-oss-rls-compatibility-test'),
+            mode=PersistenceMode.OSS_COMPAT,
+        )
+        try:
+            await manager.initialize()
+            async with manager.get_db_engine().connect() as conn:
+                workspace_uuid = await conn.scalar(text("SELECT uuid FROM workspaces WHERE source = 'local'"))
+                tenant_setting = await conn.scalar(text("SELECT current_setting('langbot.workspace_uuid', true)"))
+                visible_workspaces = await conn.scalar(text('SELECT COUNT(*) FROM workspaces'))
+            assert workspace_uuid == tenant_setting
+            assert visible_workspaces == 1
+        finally:
+            await _dispose_manager(manager)
+
+    @pytest.mark.asyncio
+    async def test_release_bootstrap_and_runtime_isolation(
+        self,
+        postgres_url,
+        postgres_engine,
+        clean_tables,
+        clean_alembic_version,
+        monkeypatch,
+    ):
+        instance_uuid = 'cloud-runtime-persistence-test'
+        workspace_a = '10000000-0000-0000-0000-000000000001'
+        workspace_b = '20000000-0000-0000-0000-000000000002'
+        role_suffix = uuid.uuid4().hex[:12]
+        runtime_role = f'lb_runtime_{role_suffix}'
+        bypass_role = f'lb_bypass_{role_suffix}'
+        owner_role = f'lb_owner_{role_suffix}'
+        role_password = f'Lb{uuid.uuid4().hex}'
+        created_roles: list[str] = []
+        managers: list[PersistenceManager] = []
+        runtime_engine: AsyncEngine | None = None
+        owner_changed = False
+
+        _restore_postgres_manager_registry(monkeypatch)
+        monkeypatch.setattr(constants, 'instance_id', instance_uuid)
+        release_manager = PersistenceManager(
+            _application_for_postgres_url(postgres_url, 'postgres-release-bootstrap-test'),
+            mode=PersistenceMode.RELEASE_MIGRATION,
+        )
+        managers.append(release_manager)
+
+        async with postgres_engine.connect() as conn:
+            admin_user = await conn.scalar(text('SELECT current_user'))
+        quote = postgres_engine.dialect.identifier_preparer.quote
+
+        def role_url(role_name: str) -> str:
+            return (
+                sa.engine.make_url(postgres_url)
+                .set(
+                    username=role_name,
+                    password=role_password,
+                )
+                .render_as_string(hide_password=False)
+            )
+
+        async def create_role(role_name: str, *, bypass_rls: bool = False) -> None:
+            bypass_clause = ' BYPASSRLS' if bypass_rls else ''
+            async with postgres_engine.connect() as conn:
+                await conn.execute(
+                    text(f"CREATE ROLE {quote(role_name)} LOGIN{bypass_clause} PASSWORD '{role_password}'")
+                )
+                await conn.execute(
+                    text(
+                        f'GRANT CONNECT ON DATABASE {quote(sa.engine.make_url(postgres_url).database)} '
+                        f'TO {quote(role_name)}'
+                    )
+                )
+                await conn.execute(text(f'GRANT USAGE ON SCHEMA public TO {quote(role_name)}'))
+                await conn.execute(
+                    text(f'GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO {quote(role_name)}')
+                )
+                await conn.execute(text(f'GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO {quote(role_name)}'))
+            created_roles.append(role_name)
+
+        try:
+            await release_manager.initialize()
+            release_engine = release_manager.get_db_engine()
+
+            assert await get_alembic_current(release_engine) == _get_script_head()
+            async with release_engine.connect() as conn:
+                assert await conn.scalar(text('SELECT COUNT(*) FROM workspaces')) == 0
+                rls_rows = (
+                    (
+                        await conn.execute(
+                            text(
+                                """
+                            SELECT c.relname, c.relrowsecurity, c.relforcerowsecurity,
+                                   EXISTS (
+                                       SELECT 1 FROM pg_policy p
+                                       WHERE p.polrelid = c.oid AND p.polname = :policy_name
+                                   ) AS has_policy
+                            FROM pg_class c
+                            JOIN pg_namespace n ON n.oid = c.relnamespace
+                            WHERE n.nspname = current_schema() AND c.relname IN :table_names
+                            """
+                            ).bindparams(sa.bindparam('table_names', expanding=True)),
+                            {
+                                'policy_name': TENANT_POLICY_NAME,
+                                'table_names': tuple(TENANT_TABLE_COLUMNS),
+                            },
+                        )
+                    )
+                    .mappings()
+                    .all()
+                )
+            assert {row['relname'] for row in rls_rows} == set(TENANT_TABLE_COLUMNS)
+            assert all(row['relrowsecurity'] and row['relforcerowsecurity'] and row['has_policy'] for row in rls_rows)
+
+            for workspace_uuid, slug in ((workspace_a, 'workspace-a'), (workspace_b, 'workspace-b')):
+                async with TenantUnitOfWork(release_engine, workspace_uuid) as uow:
+                    await uow.execute(
+                        text(
+                            """
+                            INSERT INTO workspaces
+                                (uuid, instance_uuid, name, slug, type, status, source, projection_revision)
+                            VALUES
+                                (:uuid, :instance_uuid, :name, :slug, 'team', 'active', 'cloud_projection', 0)
+                            """
+                        ),
+                        {
+                            'uuid': workspace_uuid,
+                            'instance_uuid': instance_uuid,
+                            'name': slug,
+                            'slug': slug,
+                        },
+                    )
+                    await uow.execute(
+                        text(
+                            'INSERT INTO workspace_metadata (workspace_uuid, key, value) '
+                            "VALUES (:workspace_uuid, 'seed', :value)"
+                        ),
+                        {'workspace_uuid': workspace_uuid, 'value': slug},
+                    )
+
+            await create_role(runtime_role)
+            runtime_engine = create_async_engine(role_url(runtime_role), pool_size=1, max_overflow=0)
+
+            async with runtime_engine.connect() as conn:
+                assert (await conn.execute(text('SELECT uuid FROM workspaces'))).all() == []
+                assert (await conn.execute(text('SELECT * FROM workspace_metadata'))).all() == []
+
+            with pytest.raises(sa.exc.DBAPIError):
+                async with runtime_engine.begin() as conn:
+                    await conn.execute(
+                        text(
+                            'INSERT INTO workspace_metadata (workspace_uuid, key, value) '
+                            "VALUES (:workspace_uuid, 'no-scope', 'rejected')"
+                        ),
+                        {'workspace_uuid': workspace_a},
+                    )
+
+            async with TenantUnitOfWork(runtime_engine, workspace_a) as uow:
+                assert (await uow.execute(text('SELECT uuid FROM workspaces'))).scalars().all() == [workspace_a]
+                assert (
+                    await uow.execute(
+                        text('SELECT uuid FROM workspaces WHERE uuid = :workspace_uuid'),
+                        {'workspace_uuid': workspace_b},
+                    )
+                ).all() == []
+
+            with pytest.raises(sa.exc.DBAPIError):
+                async with TenantUnitOfWork(runtime_engine, workspace_a) as uow:
+                    await uow.execute(
+                        text(
+                            'INSERT INTO workspace_metadata (workspace_uuid, key, value) '
+                            "VALUES (:workspace_uuid, 'cross-scope', 'rejected')"
+                        ),
+                        {'workspace_uuid': workspace_b},
+                    )
+
+            async with TenantUnitOfWork(runtime_engine, workspace_a) as uow:
+                assert (await uow.execute(text('SELECT value FROM workspace_metadata'))).scalars().all() == [
+                    'workspace-a'
+                ]
+            async with TenantUnitOfWork(runtime_engine, workspace_b) as uow:
+                assert (await uow.execute(text('SELECT value FROM workspace_metadata'))).scalars().all() == [
+                    'workspace-b'
+                ]
+            async with runtime_engine.connect() as conn:
+                setting = await conn.scalar(text("SELECT current_setting('langbot.workspace_uuid', true)"))
+                assert setting in (None, '')
+                assert await conn.scalar(text('SELECT COUNT(*) FROM workspace_metadata')) == 0
+
+            with pytest.raises(RuntimeError, match='force rollback'):
+                async with TenantUnitOfWork(runtime_engine, workspace_a) as uow:
+                    await uow.execute(
+                        text(
+                            'INSERT INTO workspace_metadata (workspace_uuid, key, value) '
+                            "VALUES (:workspace_uuid, 'rolled-back', 'no')"
+                        ),
+                        {'workspace_uuid': workspace_a},
+                    )
+                    raise RuntimeError('force rollback')
+            async with TenantUnitOfWork(runtime_engine, workspace_a) as uow:
+                assert (
+                    await uow.session.scalar(text("SELECT COUNT(*) FROM workspace_metadata WHERE key = 'rolled-back'"))
+                    == 0
+                )
+            async with runtime_engine.connect() as conn:
+                setting = await conn.scalar(text("SELECT current_setting('langbot.workspace_uuid', true)"))
+                assert setting in (None, '')
+
+            cloud_manager = PersistenceManager(
+                _application_for_postgres_url(role_url(runtime_role), 'postgres-cloud-runtime-test'),
+                mode=PersistenceMode.CLOUD_RUNTIME,
+            )
+            cloud_manager.create_tables = AsyncMock(side_effect=AssertionError('Cloud runtime attempted create_all'))
+            cloud_manager._run_alembic_migrations = AsyncMock(
+                side_effect=AssertionError('Cloud runtime attempted an Alembic upgrade')
+            )
+            managers.append(cloud_manager)
+            await cloud_manager.initialize()
+            cloud_manager.create_tables.assert_not_awaited()
+            cloud_manager._run_alembic_migrations.assert_not_awaited()
+
+            superuser_manager = PersistenceManager(
+                _application_for_postgres_url(postgres_url, 'postgres-superuser-runtime-test'),
+                mode=PersistenceMode.CLOUD_RUNTIME,
+            )
+            managers.append(superuser_manager)
+            with pytest.raises(RuntimeError, match='must not be a superuser'):
+                await superuser_manager.initialize()
+
+            await create_role(bypass_role, bypass_rls=True)
+            bypass_manager = PersistenceManager(
+                _application_for_postgres_url(role_url(bypass_role), 'postgres-bypass-runtime-test'),
+                mode=PersistenceMode.CLOUD_RUNTIME,
+            )
+            managers.append(bypass_manager)
+            with pytest.raises(RuntimeError, match='must not have BYPASSRLS'):
+                await bypass_manager.initialize()
+
+            await create_role(owner_role)
+            async with postgres_engine.connect() as conn:
+                await conn.execute(text(f'ALTER TABLE workspace_metadata OWNER TO {quote(owner_role)}'))
+            owner_changed = True
+            owner_manager = PersistenceManager(
+                _application_for_postgres_url(role_url(owner_role), 'postgres-owner-runtime-test'),
+                mode=PersistenceMode.CLOUD_RUNTIME,
+            )
+            managers.append(owner_manager)
+            with pytest.raises(RuntimeError, match='must not own tenant tables'):
+                await owner_manager.initialize()
+        finally:
+            if runtime_engine is not None:
+                await runtime_engine.dispose()
+            for manager in reversed(managers):
+                await _dispose_manager(manager)
+
+            async with postgres_engine.connect() as conn:
+                if owner_changed:
+                    await conn.execute(text(f'ALTER TABLE workspace_metadata OWNER TO {quote(admin_user)}'))
+                for role_name in reversed(created_roles):
+                    await conn.execute(text(f'DROP OWNED BY {quote(role_name)}'))
+                    await conn.execute(text(f'DROP ROLE {quote(role_name)}'))

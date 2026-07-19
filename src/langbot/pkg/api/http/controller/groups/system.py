@@ -8,6 +8,7 @@ from .....utils import constants
 from .....entity.persistence.metadata import WorkspaceMetadata
 from ...authz import Permission
 from ...context import RequestContext
+from .....provider.tools.loaders.mcp_policy import stdio_mcp_enabled
 
 
 @group.group_class('system', '/api/v1/system')
@@ -70,6 +71,9 @@ class SystemRouterGroup(group.RouterGroup):
                     'disable_models_service': self.ap.instance_config.data.get('space', {}).get(
                         'disable_models_service', False
                     ),
+                    # Exposed independently of Box status so the WebUI cannot
+                    # infer stdio permission from sandbox availability.
+                    'mcp_stdio_enabled': stdio_mcp_enabled(self.ap),
                     'limitation': self.ap.instance_config.data.get('system', {}).get('limitation', {}),
                     'outbound_ips': outbound_ips,
                     'wizard_status': wizard_status,

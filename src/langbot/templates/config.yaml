@@ -125,9 +125,22 @@ plugin:
     runtime_ws_url: 'ws://langbot_plugin_runtime:5400/control/ws'
     enable_marketplace: true
     display_plugin_debug_url: 'ws://localhost:5401/plugin/debug/ws'
+    worker:
+        # Instance-wide maximum for every plugin installation. Plugin
+        # manifests cannot raise or override these limits.
+        max_cpus: 1.0
+        max_memory_mb: 512
+        max_pids: 128
+        max_open_files: 256
+        max_file_size_mb: 512
     binary_storage:
         # Max bytes for a single plugin binary storage value
         max_value_bytes: 10485760
+mcp:
+    stdio:
+        # Independent gate for local stdio MCP transports. Cloud v2 sets
+        # MCP__STDIO__ENABLED=false even when Box Runtime is available.
+        enabled: true
 monitoring:
     auto_cleanup:
         # Enable automatic cleanup of expired monitoring records

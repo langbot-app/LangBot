@@ -29,6 +29,7 @@ from langbot.pkg.api.http.context import (
 )
 from langbot.pkg.api.http.service.mcp import MCPService, redact_mcp_secrets, restore_mcp_secret_placeholders
 from langbot.pkg.entity.persistence.mcp import MCPServer
+from langbot.pkg.provider.tools.loaders.mcp_policy import MCPStdioDisabledError
 from langbot.pkg.workspace.errors import WorkspaceNotFoundError
 
 
@@ -350,6 +351,27 @@ class TestMCPServiceGetMCPServers:
 
 class TestMCPServiceCreateMCPServer:
     """Tests for create_mcp_server method."""
+
+    async def test_create_stdio_rejected_by_independent_instance_gate(self):
+        ap = SimpleNamespace(
+            instance_config=SimpleNamespace(
+                data={
+                    'mcp': {'stdio': {'enabled': False}},
+                    'system': {'limitation': {'max_extensions': -1}},
+                }
+            ),
+            persistence_mgr=SimpleNamespace(execute_async=AsyncMock()),
+            tool_mgr=None,
+        )
+        service = _service(ap)
+
+        with pytest.raises(MCPStdioDisabledError, match='disabled by instance policy'):
+            await service.create_mcp_server(
+                _CONTEXT,
+                {'name': 'local', 'mode': 'stdio', 'enable': True, 'extra_args': {}},
+            )
+
+        ap.persistence_mgr.execute_async.assert_not_awaited()
 
     async def test_create_mcp_server_max_extensions_reached_raises(self):
         """Raises ValueError when max_extensions limit reached."""
@@ -886,6 +908,24 @@ class TestMCPServiceDeleteMCPServer:
 
 class TestMCPServiceTestMCPServer:
     """Tests for test_mcp_server method."""
+
+    async def test_transient_stdio_test_rejected_by_instance_gate(self):
+        ap = SimpleNamespace(
+            instance_config=SimpleNamespace(data={'mcp': {'stdio': {'enabled': False}}}),
+            tool_mgr=SimpleNamespace(mcp_tool_loader=SimpleNamespace(load_mcp_server=AsyncMock())),
+            task_mgr=SimpleNamespace(create_user_task=Mock()),
+        )
+        service = _service(ap)
+
+        with pytest.raises(MCPStdioDisabledError, match='disabled by instance policy'):
+            await service.test_mcp_server(
+                _CONTEXT,
+                '_',
+                {'name': 'local', 'mode': 'stdio', 'enable': True, 'extra_args': {}},
+            )
+
+        ap.tool_mgr.mcp_tool_loader.load_mcp_server.assert_not_awaited()
+        ap.task_mgr.create_user_task.assert_not_called()
 
     async def test_test_mcp_server_existing_server(self):
         """Tests existing MCP server connection."""

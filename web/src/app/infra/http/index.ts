@@ -25,6 +25,7 @@ export const systemInfo: ApiRespSystemInfo = {
   debug: false,
   version: '',
   edition: 'community',
+  mcp_stdio_enabled: false,
   enable_marketplace: true,
   cloud_service_url: '',
   allow_modify_login_info: true,

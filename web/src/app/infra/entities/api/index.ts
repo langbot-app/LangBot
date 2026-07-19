@@ -346,6 +346,8 @@ export interface ApiRespSystemInfo {
   debug: boolean;
   version: string;
   edition: string;
+  /** Independent instance-level gate for local stdio MCP transports. */
+  mcp_stdio_enabled: boolean;
   cloud_service_url: string;
   enable_marketplace: boolean;
   allow_modify_login_info: boolean;
