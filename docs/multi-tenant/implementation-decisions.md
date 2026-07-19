@@ -2,6 +2,9 @@
 
 This log records implementation choices made while delivering the Workspace architecture. It is intended to make trade-offs auditable without interrupting implementation for routine decisions.
 
+> Open challenges that may supersede parts of this log are tracked in
+> [pending-architecture-decisions.md](./pending-architecture-decisions.md). They remain proposals until a decision is recorded here.
+
 ## 2026-07-18
 
 ### OSS remains a singleton Workspace with multiple Accounts

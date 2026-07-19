@@ -1,20 +1,26 @@
 # LangBot Workspace 多用户与 SaaS 多租户架构
 
+> **架构修订中：** 已确认的 SaaS 形态是一个逻辑 LangBot 实例承载全部 Workspace；当前不做分布式，
+> 但协议和状态必须支持未来在同一逻辑实例内增加 replica、worker 和数据库 shard。
+> 本文后续 Cell、CloudInstance、Workspace Placement 和按 CloudInstance 分配数据库/Runtime 的章节属于旧提案，
+> 在 [待决策项](./pending-architecture-decisions.md) 完成讨论前不得作为最终 Cloud v2 拓扑实施。
+
 ## 1. 决策摘要
 
 本方案采用以下架构：
 
-> 开源 LangBot Core 提供完整的租户隔离内核和单 Workspace 多用户能力；SaaS 使用独立闭源 Cloud Control Plane 管理全局账户、多 Workspace、计费、权益、放置和 Cloud 生命周期。
+> 开源 LangBot Core 提供完整的租户隔离内核和单 Workspace 多用户能力；SaaS 使用独立闭源 Cloud Control Plane 管理全局账户、多 Workspace、计费、权益和 SaaS 生命周期。
 
 这是本次设计的核心边界：
 
 - Workspace 是 LangBot 实例内的逻辑租户边界，不是一个 Pod，也不是一个 Kubernetes namespace。
 - OSS 每个 LangBot 实例只能存在一个 Workspace，但该 Workspace 可以有多个用户、邀请和固定角色权限。
-- SaaS 一个账户可以拥有或加入多个 Workspace；一个 LangBot CloudInstance 可以承载多个 Workspace。
+- SaaS 一个账户可以拥有或加入多个 Workspace；全部 Workspace 由同一个逻辑 LangBot 实例承载。
+- 当前实例可以单副本运行；未来 Core、Runtime、Box 或数据库可以在不引入多个产品级 LangBot 实例的前提下横向扩展。
 - SaaS 普通注册会自动创建个人 Workspace。通过邀请注册的新用户也会创建个人 Workspace，并同时加入受邀 Workspace。
 - OSS 首位用户创建实例唯一 Workspace；后续用户通过邀请加入该 Workspace，不再创建第二个 Workspace。
 - 数据隔离、权限校验、运行时隔离必须留在开源 Core 中，不能依赖闭源服务在线代理每次请求。
-- SaaS 全局账户、Workspace 目录、Membership、Invitation、Subscription、Billing、Entitlement 和 Placement 由闭源控制面维护；Core 只保存执行所需的 Account、Workspace 和 Membership 版本化投影，不投影 pending Invitation secret。
+- SaaS 全局账户、Workspace 目录、Membership、Invitation、Subscription、Billing 和 Entitlement 由闭源控制面维护；Core 只保存执行所需的 Account、Workspace 和 Membership 版本化投影，不投影 pending Invitation secret。
 - 现有 Space 的 Pod-per-account、namespace-per-account 和 Pod subscription 模型不进入新架构。Cloud 部署按绿地方案重新设计。
 - 现有 Space 只复用账户交互、OAuth、支付适配器、邮件、财务后台和生命周期可靠性经验，不复用旧 Cloud 领域模型。
 
@@ -31,7 +37,7 @@
 - Query、Session、Plugin、MCP、RAG、Box、Storage 和 Monitoring 运行时隔离。
 - SaaS Control Plane 与 LangBot Data Plane 的协议边界。
 - Workspace 级订阅、权益、用量和计费模型。
-- 新 Cloud v2 的 Cell、CloudInstance、Placement 和 Router 架构。
+- 单逻辑 LangBot SaaS 实例，以及未来内部 replica、worker 和 database shard 的兼容边界。
 - 分阶段实施和验收策略。
 
 ### 2.2 本方案不覆盖
