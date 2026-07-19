@@ -87,21 +87,23 @@ class WorkspacesRouterGroup(group.RouterGroup):
                 }
             )
 
-        @self.route('', methods=['GET', 'POST'], permission=Permission.WORKSPACE_VIEW)
-        async def _(request_context: RequestContext) -> typing.Any:
-            if quart.request.method == 'POST':
-                if self.ap.workspace_service.policy.multi_workspace_enabled:
-                    return self.http_status(
-                        409,
-                        'control_plane_required',
-                        'Cloud Workspaces are created by the SaaS control plane',
-                    )
-                return self.http_status(403, 'edition_limit', 'This edition supports one Workspace per instance')
-
-            accesses = await self.ap.workspace_collaboration_service.list_account_workspaces(
-                request_context.account_uuid
-            )
+        @self.route('', methods=['GET'], auth_type=group.AuthType.ACCOUNT_TOKEN)
+        async def _(user_email: str) -> typing.Any:
+            account = await self.ap.user_service.get_user_by_email(user_email)
+            if account is None:
+                return self.http_status(401, 'invalid_authentication', 'Account not found')
+            accesses = await self.ap.workspace_collaboration_service.list_account_workspaces(account.uuid)
             return self.success(data={'workspaces': [_workspace_payload(access.workspace) for access in accesses]})
+
+        @self.route('', methods=['POST'], permission=Permission.WORKSPACE_VIEW)
+        async def _(request_context: RequestContext) -> typing.Any:
+            if self.ap.workspace_service.policy.multi_workspace_enabled:
+                return self.http_status(
+                    409,
+                    'control_plane_required',
+                    'Cloud Workspaces are created by the SaaS control plane',
+                )
+            return self.http_status(403, 'edition_limit', 'This edition supports one Workspace per instance')
 
         @self.route('/current', methods=['GET'], permission=Permission.WORKSPACE_VIEW)
         async def _(request_context: RequestContext) -> typing.Any:
@@ -270,9 +272,14 @@ class InvitationsRouterGroup(group.RouterGroup):
 
             authorization = quart.request.headers.get('Authorization', '')
             if authorization.startswith('Bearer '):
-                account = await self.ap.user_service.get_authenticated_account(authorization.removeprefix('Bearer '))
-                if isinstance(account, str):
-                    account = await self.ap.user_service.get_user_by_email(account)
+                try:
+                    account = await self.ap.user_service.get_authenticated_account(
+                        authorization.removeprefix('Bearer ')
+                    )
+                    if isinstance(account, str):
+                        account = await self.ap.user_service.get_user_by_email(account)
+                except Exception as exc:
+                    return self._auth_error_response(exc)
                 if account is None:
                     return self.http_status(401, 'invalid_authentication', 'Account not found')
                 membership = await self.ap.workspace_collaboration_service.accept_invitation(

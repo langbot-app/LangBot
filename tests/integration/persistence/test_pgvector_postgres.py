@@ -13,10 +13,12 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from langbot.pkg.entity.persistence.base import Base
+from langbot.pkg.entity.persistence.rag import KnowledgeBase
+from langbot.pkg.entity.persistence.workspace import Workspace
 from langbot.pkg.persistence.alembic_runner import get_alembic_current, run_alembic_stamp, run_alembic_upgrade
 from langbot.pkg.persistence.mgr import PersistenceManager, PersistenceMode
 from langbot.pkg.utils import constants
-from langbot.pkg.vector.vdbs.pgvector_db import PgVectorDatabase, PgVectorScope
+from langbot.pkg.vector.vdbs.pgvector_db import PgVectorDatabase, PgVectorEntry, PgVectorScope
 
 
 pytestmark = [pytest.mark.integration, pytest.mark.slow, pytest.mark.asyncio]
@@ -393,30 +395,24 @@ async def test_pgvector_shared_database_is_scoped_indexed_and_ddl_free_at_runtim
         ):
             async with release_manager.tenant_uow(workspace_uuid) as uow:
                 await uow.execute(
-                    text(
-                        """
-                        INSERT INTO workspaces
-                            (uuid, instance_uuid, name, slug, type, status, source, projection_revision)
-                        VALUES
-                            (:uuid, :instance_uuid, :name, :slug, 'team', 'active', 'cloud_projection', 0)
-                        """
-                    ),
-                    {
-                        'uuid': workspace_uuid,
-                        'instance_uuid': instance_uuid,
-                        'name': slug,
-                        'slug': slug,
-                    },
+                    sa.insert(Workspace).values(
+                        uuid=workspace_uuid,
+                        instance_uuid=instance_uuid,
+                        name=slug,
+                        slug=slug,
+                        type='team',
+                        status='active',
+                        source='cloud_projection',
+                        projection_revision=0,
+                    )
                 )
                 await uow.execute(
-                    text(
-                        """
-                        INSERT INTO knowledge_bases
-                            (uuid, workspace_uuid, name, embedding_dimension)
-                        VALUES (:uuid, :workspace_uuid, :name, 384)
-                        """
-                    ),
-                    {'uuid': kb_uuid, 'workspace_uuid': workspace_uuid, 'name': slug},
+                    sa.insert(KnowledgeBase).values(
+                        uuid=kb_uuid,
+                        workspace_uuid=workspace_uuid,
+                        name=slug,
+                        embedding_dimension=384,
+                    )
                 )
 
         async with postgres_engine.connect() as conn:
@@ -495,14 +491,26 @@ async def test_pgvector_shared_database_is_scoped_indexed_and_ddl_free_at_runtim
         async with runtime_manager.tenant_uow(workspace_a) as uow:
             rows = (
                 await uow.execute(
-                    text("SELECT workspace_uuid, vector_id FROM langbot_vectors WHERE vector_id = 'same-vector'")
+                    sa.select(PgVectorEntry.workspace_uuid, PgVectorEntry.vector_id).where(
+                        PgVectorEntry.vector_id == 'same-vector'
+                    )
                 )
             ).all()
             assert rows == [(workspace_a, 'same-vector')]
-            await uow.execute(text('SET LOCAL enable_seqscan = off'))
+
+        # Index-plan inspection is deployment diagnostics, not a public tenant
+        # Session capability. Establish the same transaction-local RLS scope on
+        # a test-only connection and keep raw EXPLAIN outside TenantUnitOfWork.
+        runtime_engine = runtime_manager.get_db_engine()
+        async with runtime_engine.begin() as conn:
+            await conn.execute(
+                text('SELECT set_config(:setting_name, :setting_value, true)'),
+                {'setting_name': 'langbot.workspace_uuid', 'setting_value': workspace_a},
+            )
+            await conn.execute(text('SET LOCAL enable_seqscan = off'))
             plan = '\n'.join(
                 (
-                    await uow.execute(
+                    await conn.execute(
                         text(
                             """
                             EXPLAIN SELECT vector_id
@@ -524,7 +532,6 @@ async def test_pgvector_shared_database_is_scoped_indexed_and_ddl_free_at_runtim
             )
             assert 'ix_langbot_vectors_hnsw_cosine_384' in plan
 
-        runtime_engine = runtime_manager.get_db_engine()
         async with runtime_engine.connect() as conn:
             assert await conn.scalar(text('SELECT COUNT(*) FROM langbot_vectors')) == 0
             assert await conn.scalar(text("SELECT current_setting('langbot.workspace_uuid', true)")) in (None, '')

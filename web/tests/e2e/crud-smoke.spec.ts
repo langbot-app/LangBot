@@ -1,6 +1,9 @@
 import { expect, Page, test } from '@playwright/test';
 
-import { installLangBotApiMocks } from './fixtures/langbot-api';
+import {
+  installLangBotApiMocks,
+  makeWorkspaceEntry,
+} from './fixtures/langbot-api';
 
 async function save(page: Page) {
   const button = page.getByRole('button', { name: /^Save$/ });
@@ -20,6 +23,61 @@ async function confirmDelete(page: Page) {
 }
 
 test.describe('frontend CRUD smoke flows', () => {
+  test('viewer keeps ordinary bot and pipeline monitoring access', async ({
+    page,
+  }) => {
+    const workspace = makeWorkspaceEntry(
+      'workspace-viewer',
+      'Viewer Workspace',
+      'local',
+    );
+    await installLangBotApiMocks(page, {
+      authenticated: true,
+      workspaces: [workspace],
+    });
+
+    await page.goto('/home/bots?id=new');
+    await page.locator('input[name="name"]').fill('Viewer Test Bot');
+    await page
+      .locator('input[name="description"]')
+      .fill('Proves monitoring is ordinary resource visibility.');
+    await page.getByRole('combobox').click();
+    await page.getByRole('option', { name: 'Playwright Adapter' }).click();
+    await submit(page);
+    await expect(page).toHaveURL(/\/home\/bots\?id=bot-1$/);
+
+    await page.goto('/home/pipelines?id=new');
+    await page.locator('input[name="basic.name"]').fill('Viewer Pipeline');
+    await page
+      .locator('input[name="basic.description"]')
+      .fill('Viewer monitoring permission regression.');
+    await submit(page);
+    await expect(page).toHaveURL(/\/home\/pipelines\?id=pipeline-1$/);
+
+    workspace.membership.role = 'viewer';
+    workspace.permissions = ['member.view', 'resource.view', 'workspace.view'];
+
+    await page.goto('/home/bots?id=bot-1');
+    await expect(page.getByRole('tab', { name: 'Logs' })).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'Sessions' })).toBeVisible();
+    await expect(page.getByRole('button', { name: /^Save$/ })).toHaveCount(0);
+    await page.getByRole('tab', { name: 'Logs' }).click();
+    await expect(page.getByText('No logs yet')).toBeVisible();
+
+    await page.goto('/home/pipelines?id=pipeline-1');
+    await expect(page.getByRole('tab', { name: 'Dashboard' })).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'Debug Chat' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /^Save$/ })).toHaveCount(0);
+
+    await page.goto('/home/monitoring');
+    await expect(
+      page.getByRole('button', { name: 'Refresh Data' }),
+    ).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Export Data' })).toHaveCount(
+      0,
+    );
+  });
+
   test('creates, edits, and deletes a bot', async ({ page }) => {
     await installLangBotApiMocks(page, { authenticated: true });
 

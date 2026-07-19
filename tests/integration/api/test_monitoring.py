@@ -155,6 +155,34 @@ class TestMonitoringOverviewEndpoint:
         data = await response.get_json()
         assert data['code'] == 0
 
+    @pytest.mark.asyncio
+    async def test_viewer_can_read_monitoring_but_cannot_export(
+        self,
+        quart_test_client,
+        fake_monitoring_app,
+    ):
+        """Ordinary monitoring is resource.view; export remains data.export."""
+        membership = (
+            fake_monitoring_app.workspace_collaboration_service.resolve_account_workspace.return_value.membership
+        )
+        original_role = membership.role
+        membership.role = 'viewer'
+        try:
+            response = await quart_test_client.get(
+                '/api/v1/monitoring/overview',
+                headers={'Authorization': 'Bearer test_token'},
+            )
+            assert response.status_code == 200
+
+            export_response = await quart_test_client.get(
+                '/api/v1/monitoring/export?type=messages',
+                headers={'Authorization': 'Bearer test_token'},
+            )
+            assert export_response.status_code == 403
+            assert (await export_response.get_json())['code'] == 'permission_denied'
+        finally:
+            membership.role = original_role
+
 
 @pytest.mark.usefixtures('mock_circular_import_chain')
 class TestMonitoringMessagesEndpoint:

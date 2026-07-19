@@ -35,6 +35,34 @@ type InvitationView = {
   workspace: Workspace;
 };
 
+const TERMINAL_INVITATION_ERROR_CODES = new Set([
+  'invitation_invalid',
+  'invitation_expired',
+  'invitation_revoked',
+  'invitation_used',
+  'invitation_email_mismatch',
+]);
+
+function invitationErrorKey(
+  code: string | null | undefined,
+  fallback: 'workspace.invitationInvalid' | 'workspace.invitationAcceptFailed',
+) {
+  switch (code) {
+    case 'invitation_invalid':
+      return 'workspace.invitationInvalid';
+    case 'invitation_expired':
+      return 'workspace.invitationExpired';
+    case 'invitation_revoked':
+      return 'workspace.invitationAlreadyRevoked';
+    case 'invitation_used':
+      return 'workspace.invitationAlreadyUsed';
+    case 'invitation_email_mismatch':
+      return 'workspace.invitationEmailMismatch';
+    default:
+      return fallback;
+  }
+}
+
 function captureInvitationTokenFromFragment(): string | null {
   if (typeof window === 'undefined') return null;
   const fragment = new URLSearchParams(window.location.hash.slice(1));
@@ -76,6 +104,9 @@ export default function AcceptInvitationPage() {
     setView(null);
     setErrorMessage('');
     const invitationToken = captureInvitationTokenFromFragment();
+    const deferredErrorCode = new URLSearchParams(window.location.search).get(
+      'error',
+    );
     setToken(invitationToken);
     if (!invitationToken) {
       setErrorMessage(t('workspace.invitationMissing'));
@@ -89,20 +120,26 @@ export default function AcceptInvitationPage() {
       .then((response) => {
         if (cancelled) return;
         setView(response);
-        setStatus('ready');
+        if (deferredErrorCode) {
+          setErrorMessage(
+            t(
+              invitationErrorKey(
+                deferredErrorCode,
+                'workspace.invitationAcceptFailed',
+              ),
+            ),
+          );
+          setStatus('error');
+        } else {
+          setStatus('ready');
+        }
       })
       .catch((error: { code?: string; msg?: string }) => {
         if (cancelled) return;
         clearPendingInvitationToken();
-        const key =
-          error.code === 'invitation_expired'
-            ? 'workspace.invitationExpired'
-            : error.code === 'invitation_revoked'
-              ? 'workspace.invitationAlreadyRevoked'
-              : error.code === 'invitation_used'
-                ? 'workspace.invitationAlreadyUsed'
-                : 'workspace.invitationInvalid';
-        setErrorMessage(t(key));
+        setErrorMessage(
+          t(invitationErrorKey(error.code, 'workspace.invitationInvalid')),
+        );
         setStatus('error');
       });
 
@@ -144,11 +181,15 @@ export default function AcceptInvitationPage() {
         setErrorMessage(t('workspace.existingAccountLoginRequired'));
         return;
       }
-      setStatus('error');
       setErrorMessage(
-        apiError.code === 'invitation_email_mismatch'
-          ? t('workspace.invitationEmailMismatch')
-          : t('workspace.invitationAcceptFailed'),
+        t(
+          invitationErrorKey(apiError.code, 'workspace.invitationAcceptFailed'),
+        ),
+      );
+      setStatus(
+        apiError.code && TERMINAL_INVITATION_ERROR_CODES.has(apiError.code)
+          ? 'error'
+          : 'ready',
       );
     }
   }

@@ -26,7 +26,7 @@ def parse_iso_datetime(datetime_str: str | None) -> datetime.datetime | None:
 @group.group_class('monitoring', '/api/v1/monitoring')
 class MonitoringRouterGroup(group.RouterGroup):
     async def initialize(self) -> None:
-        @self.route('/overview', methods=['GET'], permission=Permission.AUDIT_VIEW)
+        @self.route('/overview', methods=['GET'], permission=Permission.RESOURCE_VIEW)
         async def get_overview(request_context: RequestContext) -> str:
             """Get overview metrics"""
             # Parse query parameters
@@ -49,7 +49,7 @@ class MonitoringRouterGroup(group.RouterGroup):
 
             return self.success(data=metrics)
 
-        @self.route('/token-statistics', methods=['GET'], permission=Permission.AUDIT_VIEW)
+        @self.route('/token-statistics', methods=['GET'], permission=Permission.RESOURCE_VIEW)
         async def get_token_statistics(request_context: RequestContext) -> str:
             """Get detailed token usage statistics (summary, per-model, timeseries)."""
             bot_ids = quart.request.args.getlist('botId')
@@ -74,7 +74,7 @@ class MonitoringRouterGroup(group.RouterGroup):
 
             return self.success(data=stats)
 
-        @self.route('/messages', methods=['GET'], permission=Permission.AUDIT_VIEW)
+        @self.route('/messages', methods=['GET'], permission=Permission.RESOURCE_VIEW)
         async def get_messages(request_context: RequestContext) -> str:
             """Get message logs"""
             # Parse query parameters
@@ -110,7 +110,7 @@ class MonitoringRouterGroup(group.RouterGroup):
                 }
             )
 
-        @self.route('/llm-calls', methods=['GET'], permission=Permission.AUDIT_VIEW)
+        @self.route('/llm-calls', methods=['GET'], permission=Permission.RESOURCE_VIEW)
         async def get_llm_calls(request_context: RequestContext) -> str:
             """Get LLM call records"""
             # Parse query parameters
@@ -144,7 +144,7 @@ class MonitoringRouterGroup(group.RouterGroup):
                 }
             )
 
-        @self.route('/tool-calls', methods=['GET'], permission=Permission.AUDIT_VIEW)
+        @self.route('/tool-calls', methods=['GET'], permission=Permission.RESOURCE_VIEW)
         async def get_tool_calls(request_context: RequestContext) -> str:
             """Get tool call records"""
             bot_ids = quart.request.args.getlist('botId')
@@ -178,7 +178,7 @@ class MonitoringRouterGroup(group.RouterGroup):
                 }
             )
 
-        @self.route('/embedding-calls', methods=['GET'], permission=Permission.AUDIT_VIEW)
+        @self.route('/embedding-calls', methods=['GET'], permission=Permission.RESOURCE_VIEW)
         async def get_embedding_calls(request_context: RequestContext) -> str:
             """Get embedding call records"""
             # Parse query parameters
@@ -210,7 +210,7 @@ class MonitoringRouterGroup(group.RouterGroup):
                 }
             )
 
-        @self.route('/sessions', methods=['GET'], permission=Permission.AUDIT_VIEW)
+        @self.route('/sessions', methods=['GET'], permission=Permission.RESOURCE_VIEW)
         async def get_sessions(request_context: RequestContext) -> str:
             """Get session information"""
             # Parse query parameters
@@ -251,7 +251,7 @@ class MonitoringRouterGroup(group.RouterGroup):
                 }
             )
 
-        @self.route('/errors', methods=['GET'], permission=Permission.AUDIT_VIEW)
+        @self.route('/errors', methods=['GET'], permission=Permission.RESOURCE_VIEW)
         async def get_errors(request_context: RequestContext) -> str:
             """Get error logs"""
             # Parse query parameters
@@ -285,7 +285,7 @@ class MonitoringRouterGroup(group.RouterGroup):
                 }
             )
 
-        @self.route('/data', methods=['GET'], permission=Permission.AUDIT_VIEW)
+        @self.route('/data', methods=['GET'], permission=Permission.RESOURCE_VIEW)
         async def get_all_data(request_context: RequestContext) -> str:
             """Get all monitoring data in a single request"""
             # Parse query parameters
@@ -393,7 +393,7 @@ class MonitoringRouterGroup(group.RouterGroup):
                 }
             )
 
-        @self.route('/sessions/<session_id>/analysis', methods=['GET'], permission=Permission.AUDIT_VIEW)
+        @self.route('/sessions/<session_id>/analysis', methods=['GET'], permission=Permission.RESOURCE_VIEW)
         async def get_session_analysis(session_id: str, request_context: RequestContext) -> str:
             """Get detailed analysis for a specific session"""
             analysis = await self.ap.monitoring_service.get_session_analysis(request_context, session_id)
@@ -402,7 +402,7 @@ class MonitoringRouterGroup(group.RouterGroup):
             # The frontend will handle the 'found: false' case
             return self.success(data=analysis)
 
-        @self.route('/messages/<message_id>/details', methods=['GET'], permission=Permission.AUDIT_VIEW)
+        @self.route('/messages/<message_id>/details', methods=['GET'], permission=Permission.RESOURCE_VIEW)
         async def get_message_details(message_id: str, request_context: RequestContext) -> str:
             """Get detailed information for a specific message"""
             details = await self.ap.monitoring_service.get_message_details(request_context, message_id)
@@ -604,7 +604,7 @@ class MonitoringRouterGroup(group.RouterGroup):
 
             return response, 200
 
-        @self.route('/feedback/stats', methods=['GET'], permission=Permission.AUDIT_VIEW)
+        @self.route('/feedback/stats', methods=['GET'], permission=Permission.RESOURCE_VIEW)
         async def get_feedback_stats(request_context: RequestContext) -> str:
             """Get feedback statistics"""
             # Parse query parameters
@@ -627,7 +627,7 @@ class MonitoringRouterGroup(group.RouterGroup):
 
             return self.success(data=stats)
 
-        @self.route('/feedback', methods=['GET'], permission=Permission.AUDIT_VIEW)
+        @self.route('/feedback', methods=['GET'], permission=Permission.RESOURCE_VIEW)
         async def get_feedback(request_context: RequestContext) -> str:
             """Get feedback list"""
             # Parse query parameters

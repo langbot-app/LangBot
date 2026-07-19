@@ -5,8 +5,11 @@ from unittest.mock import AsyncMock
 
 import pytest
 import quart
+import sqlalchemy
+from sqlalchemy.ext.asyncio import create_async_engine
 
 from langbot.pkg.api.http.controller.groups.extensions import ExtensionsRouterGroup
+from langbot.pkg.persistence.mgr import PersistenceManager
 from langbot.pkg.workspace.errors import WorkspaceNotFoundError
 
 
@@ -92,3 +95,48 @@ async def test_extensions_route_redacts_plugin_secrets_without_mutating_runtime_
     assert plugin['plugin_config']['nested']['token'] == '***'
     assert plugin['debug']['plugin_debug_key'] == '***'
     assert raw_plugin['plugin_config']['apiKey'] == 'plugin-secret'
+
+
+@pytest.mark.asyncio
+async def test_extensions_parallel_reads_open_explicit_child_task_scopes():
+    engine = create_async_engine('sqlite+aiosqlite:///:memory:')
+    account = SimpleNamespace(uuid='account-a', user='owner@example.com')
+    ap = SimpleNamespace()
+    ap.persistence_mgr = PersistenceManager(ap)
+    ap.persistence_mgr.db = SimpleNamespace(get_engine=lambda: engine)
+    ap.user_service = SimpleNamespace(get_authenticated_account=AsyncMock(return_value=account))
+    ap.workspace_collaboration_service = SimpleNamespace(
+        resolve_account_workspace=AsyncMock(
+            return_value=SimpleNamespace(
+                workspace=SimpleNamespace(uuid='workspace-a'),
+                membership=SimpleNamespace(uuid='membership-a', role='owner', projection_revision=0),
+                execution=SimpleNamespace(instance_uuid='instance-a', placement_generation=2),
+            )
+        )
+    )
+    ap.plugin_connector = SimpleNamespace(
+        is_enable_plugin=False,
+        list_plugins=AsyncMock(return_value=[]),
+    )
+
+    async def list_mcp_servers(_context, *, contain_runtime_info):
+        await ap.persistence_mgr.execute_async(sqlalchemy.select(sqlalchemy.literal(1)))
+        assert contain_runtime_info is True
+        return [{'name': 'Scoped MCP'}]
+
+    ap.mcp_service = SimpleNamespace(get_mcp_servers=AsyncMock(side_effect=list_mcp_servers))
+    ap.skill_service = SimpleNamespace(list_skills=AsyncMock(return_value=[]))
+    quart_app = quart.Quart(__name__)
+    router = ExtensionsRouterGroup(ap, quart_app)
+    await router.initialize()
+
+    try:
+        response = await quart_app.test_client().get(
+            '/api/v1/extensions',
+            headers={'Authorization': 'Bearer token', 'X-Workspace-Id': 'workspace-a'},
+        )
+    finally:
+        await engine.dispose()
+
+    assert response.status_code == 200
+    assert (await response.get_json())['data']['extensions'] == [{'type': 'mcp', 'server': {'name': 'Scoped MCP'}}]

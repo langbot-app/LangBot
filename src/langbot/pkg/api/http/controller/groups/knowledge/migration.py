@@ -34,6 +34,54 @@ EXTERNAL_PLUGIN_CREATION_FIELDS: dict[str, set[str] | None] = {
     'langbot-team/FastGPTConnector': None,  # all fields -> creation_settings
 }
 
+_INFORMATION_SCHEMA_TABLES = sqlalchemy.table(
+    'tables',
+    sqlalchemy.column('table_schema'),
+    sqlalchemy.column('table_name'),
+    schema='information_schema',
+)
+_SQLITE_MASTER = sqlalchemy.table(
+    'sqlite_master',
+    sqlalchemy.column('type'),
+    sqlalchemy.column('name'),
+)
+_LEGACY_KNOWLEDGE_BASE_BACKUP = sqlalchemy.table(
+    'knowledge_bases_backup',
+    sqlalchemy.column('uuid'),
+    sqlalchemy.column('name'),
+    sqlalchemy.column('description'),
+    sqlalchemy.column('emoji'),
+    sqlalchemy.column('embedding_model_uuid'),
+    sqlalchemy.column('top_k'),
+    sqlalchemy.column('created_at'),
+    sqlalchemy.column('updated_at'),
+)
+_LEGACY_EXTERNAL_KNOWLEDGE_BASE = sqlalchemy.table(
+    'external_knowledge_bases',
+    sqlalchemy.column('uuid'),
+    sqlalchemy.column('name'),
+    sqlalchemy.column('description'),
+    sqlalchemy.column('emoji'),
+    sqlalchemy.column('plugin_author'),
+    sqlalchemy.column('plugin_name'),
+    sqlalchemy.column('retriever_config'),
+    sqlalchemy.column('created_at'),
+)
+_CURRENT_KNOWLEDGE_BASE = sqlalchemy.table(
+    'knowledge_bases',
+    sqlalchemy.column('uuid'),
+    sqlalchemy.column('workspace_uuid'),
+    sqlalchemy.column('name'),
+    sqlalchemy.column('description'),
+    sqlalchemy.column('emoji'),
+    sqlalchemy.column('created_at'),
+    sqlalchemy.column('updated_at'),
+    sqlalchemy.column('knowledge_engine_plugin_id'),
+    sqlalchemy.column('collection_id'),
+    sqlalchemy.column('creation_settings'),
+    sqlalchemy.column('retrieval_settings'),
+)
+
 
 @group.group_class('knowledge/migration', '/api/v1/knowledge/migration')
 class KnowledgeMigrationRouterGroup(group.RouterGroup):
@@ -87,16 +135,18 @@ class KnowledgeMigrationRouterGroup(group.RouterGroup):
         """Check if a table exists."""
         if self.ap.persistence_mgr.db.name == 'postgresql':
             result = await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.text(
-                    'SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = :table_name);'
-                ).bindparams(table_name=table_name)
+                sqlalchemy.select(_INFORMATION_SCHEMA_TABLES.c.table_name)
+                .where(_INFORMATION_SCHEMA_TABLES.c.table_schema == 'public')
+                .where(_INFORMATION_SCHEMA_TABLES.c.table_name == table_name)
+                .limit(1)
             )
-            return result.scalar()
+            return result.first() is not None
         else:
             result = await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.text("SELECT name FROM sqlite_master WHERE type='table' AND name=:table_name;").bindparams(
-                    table_name=table_name
-                )
+                sqlalchemy.select(_SQLITE_MASTER.c.name)
+                .where(_SQLITE_MASTER.c.type == 'table')
+                .where(_SQLITE_MASTER.c.name == table_name)
+                .limit(1)
             )
             return result.first() is not None
 
@@ -151,7 +201,10 @@ class KnowledgeMigrationRouterGroup(group.RouterGroup):
         has_external = await self._table_exists('external_knowledge_bases')
         if has_external:
             result = await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.text('SELECT DISTINCT plugin_author, plugin_name FROM external_knowledge_bases;')
+                sqlalchemy.select(
+                    _LEGACY_EXTERNAL_KNOWLEDGE_BASE.c.plugin_author,
+                    _LEGACY_EXTERNAL_KNOWLEDGE_BASE.c.plugin_name,
+                ).distinct()
             )
             for row in result.fetchall():
                 plugin_author = row[0] or ''
@@ -222,9 +275,7 @@ class KnowledgeMigrationRouterGroup(group.RouterGroup):
         # Step 3: Restore internal knowledge bases from backup
         task_context.trace('Restoring internal knowledge bases...', action='restore-internal')
         if await self._table_exists('knowledge_bases_backup'):
-            result = await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.text('SELECT * FROM knowledge_bases_backup;')
-            )
+            result = await self.ap.persistence_mgr.execute_async(sqlalchemy.select(_LEGACY_KNOWLEDGE_BASE_BACKUP))
             rows = result.fetchall()
             columns = result.keys()
 
@@ -239,17 +290,15 @@ class KnowledgeMigrationRouterGroup(group.RouterGroup):
                 created_at = row_dict.get('created_at')
                 updated_at = row_dict.get('updated_at')
 
+                # DB migration 20 created these columns as TEXT, while a fresh
+                # schema uses SQLAlchemy JSON.  Keep the statement structured,
+                # but retain untyped bound values so both physical schemas and
+                # SQLite's string-valued legacy DATETIME rows remain valid.
                 creation_settings = json.dumps({'embedding_model_uuid': embedding_model_uuid})
                 retrieval_settings = json.dumps({'top_k': top_k})
 
                 await self.ap.persistence_mgr.execute_async(
-                    sqlalchemy.text(
-                        'INSERT INTO knowledge_bases '
-                        '(uuid, workspace_uuid, name, description, emoji, created_at, updated_at, '
-                        'knowledge_engine_plugin_id, collection_id, creation_settings, retrieval_settings) '
-                        'VALUES (:uuid, :workspace_uuid, :name, :description, :emoji, :created_at, :updated_at, '
-                        ':plugin_id, :collection_id, :creation_settings, :retrieval_settings);'
-                    ).bindparams(
+                    sqlalchemy.insert(_CURRENT_KNOWLEDGE_BASE).values(
                         uuid=kb_uuid,
                         workspace_uuid=execution_context.workspace_uuid,
                         name=name,
@@ -257,7 +306,7 @@ class KnowledgeMigrationRouterGroup(group.RouterGroup):
                         emoji=emoji,
                         created_at=created_at,
                         updated_at=updated_at,
-                        plugin_id=LANGRAG_PLUGIN_ID,
+                        knowledge_engine_plugin_id=LANGRAG_PLUGIN_ID,
                         collection_id=kb_uuid,
                         creation_settings=creation_settings,
                         retrieval_settings=retrieval_settings,
@@ -279,9 +328,7 @@ class KnowledgeMigrationRouterGroup(group.RouterGroup):
         # Step 4: Restore external knowledge bases
         task_context.trace('Restoring external knowledge bases...', action='restore-external')
         if has_external:
-            result = await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.text('SELECT * FROM external_knowledge_bases;')
-            )
+            result = await self.ap.persistence_mgr.execute_async(sqlalchemy.select(_LEGACY_EXTERNAL_KNOWLEDGE_BASE))
             rows = result.fetchall()
             columns = result.keys()
 
@@ -324,13 +371,7 @@ class KnowledgeMigrationRouterGroup(group.RouterGroup):
                     retrieval_settings_dict = {k: v for k, v in retriever_config.items() if k not in creation_fields}
 
                 await self.ap.persistence_mgr.execute_async(
-                    sqlalchemy.text(
-                        'INSERT INTO knowledge_bases '
-                        '(uuid, workspace_uuid, name, description, emoji, created_at, updated_at, '
-                        'knowledge_engine_plugin_id, collection_id, creation_settings, retrieval_settings) '
-                        'VALUES (:uuid, :workspace_uuid, :name, :description, :emoji, :created_at, :updated_at, '
-                        ':plugin_id, :collection_id, :creation_settings, :retrieval_settings);'
-                    ).bindparams(
+                    sqlalchemy.insert(_CURRENT_KNOWLEDGE_BASE).values(
                         uuid=kb_uuid,
                         workspace_uuid=execution_context.workspace_uuid,
                         name=name,
@@ -338,7 +379,7 @@ class KnowledgeMigrationRouterGroup(group.RouterGroup):
                         emoji=emoji,
                         created_at=created_at,
                         updated_at=created_at,
-                        plugin_id=external_plugin_id,
+                        knowledge_engine_plugin_id=external_plugin_id,
                         collection_id=kb_uuid,
                         creation_settings=json.dumps(creation_settings_dict),
                         retrieval_settings=json.dumps(retrieval_settings_dict),
@@ -391,13 +432,13 @@ class KnowledgeMigrationRouterGroup(group.RouterGroup):
             if needed:
                 if await self._table_exists('knowledge_bases_backup'):
                     result = await self.ap.persistence_mgr.execute_async(
-                        sqlalchemy.text('SELECT COUNT(*) FROM knowledge_bases_backup;')
+                        sqlalchemy.select(sqlalchemy.func.count()).select_from(_LEGACY_KNOWLEDGE_BASE_BACKUP)
                     )
                     internal_kb_count = result.scalar() or 0
 
                 if await self._table_exists('external_knowledge_bases'):
                     result = await self.ap.persistence_mgr.execute_async(
-                        sqlalchemy.text('SELECT COUNT(*) FROM external_knowledge_bases;')
+                        sqlalchemy.select(sqlalchemy.func.count()).select_from(_LEGACY_EXTERNAL_KNOWLEDGE_BASE)
                     )
                     external_kb_count = result.scalar() or 0
 

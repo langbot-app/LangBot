@@ -21,16 +21,18 @@ closed SaaS product or a production Cloud v2 deployment. Checked implementation
 items later in this document do not supersede these gates.
 
 - [ ] The closed Control Plane owns the global Account, Workspace, Membership, and Invitation directory.
-- [ ] The closed placement service issues monotonic generations and leases for projected Workspaces.
+- [ ] The closed Control Plane execution-ownership module issues monotonic generations and owner leases for projected Workspaces.
 - [ ] Core verifies a signed `InstanceManifest` before the closed bootstrap can inject `CloudWorkspacePolicy`.
-- [ ] Tenant database writes hold a generation-aware shared transaction fence through commit, while placement cutovers take the exclusive fence.
+- [ ] Tenant database writes hold a generation-aware shared transaction fence through commit, while execution-owner cutovers take the exclusive fence.
 - [ ] Business writes and non-transactional side effects use a generation-stamped outbox or equivalent publish fence.
-- [ ] Durable object references survive a placement-generation change through stable published keys or an explicitly atomic key/reference migration.
+- [ ] Durable object references survive an execution-generation change through stable published keys or an explicitly atomic key/reference migration.
 - [ ] The SaaS runtime pools enforce tenant-safe egress and SSRF controls for Webhooks, providers, MCP servers, and every tenant-configurable outbound URL.
 - [ ] Entitlement checks, usage aggregation, subscription lifecycle, and billing are implemented in the closed Control Plane.
 - [ ] OAuth state and directory projection use an atomic shared store suitable for horizontally scaled SaaS services.
 - [ ] A greenfield Cloud v2 deployment is designed and validated independently of the legacy Space deployment scheme.
 - [ ] The Plugin Runtime deployment provides delegated cgroup v2 and tenant-safe egress; the shared profile refuses to run without hard CPU, memory, and PID limits.
+- [ ] The Plugin Runtime Supervisor automatically restores an unexpectedly exited enabled worker with bounded backoff and cannot create a cross-tenant restart storm.
+- [ ] Plugin installation data has an operator-owned hard disk quota provider that atomically rejects writes over the limit; directory scans are not accepted as enforcement.
 - [ ] The Box deployment provides an operator-owned quota provider that proves hard byte and inode limits for Workspace, Skill, root, tmp, and home storage.
 - [ ] Core and Box Runtime mount the same durable volume and pass the authenticated marker challenge during startup and reconnect.
 - [ ] Production provisions distinct migrator/runtime credentials and runs the implemented same-host/port/database release command as a one-shot Job, with tested orchestration retry, backup, and rollback procedures.
@@ -70,6 +72,16 @@ items later in this document do not supersede these gates.
 - [x] PostgreSQL's default `PUBLIC TEMP` is documented and tested as a dedicated-business-database v1 compatibility exception; the migrator never grants `TEMP` directly to the runtime role.
 - [x] Legacy pgvector migration succeeds as a non-superuser, non-`BYPASSRLS` source-table owner and restores mixed source-table RLS/FORCE states exactly.
 - [ ] Legacy pgvector migration still needs explicit failure-and-retry integration coverage before SaaS activation.
+
+### Runtime transaction enforcement
+
+- [x] Each tenant UoW owns one task, root transaction, database bind, and transaction-local scope.
+- [x] A scoped Session and every captured bound method become permanently unusable when the owning UoW exits.
+- [x] Public transaction/session control, raw/textual SQL, connection/bind escape, nested transactions, execution/loader options, foreign binds, live results, unapproved functions/operators/casts/types, `INSERT FROM SELECT`, hidden `ON CONFLICT` and batch-value expressions, forced-unquoted identifiers, and custom AST/compiler nodes fail closed and make the UoW rollback-only.
+- [x] ORM `SessionEvents` fail before a registered callback can receive the synchronous Session or transaction connection; rollback cleanup cannot execute the rejected listener.
+- [x] ORM flush, implicit autoflush, and commit reject SQL expressions assigned to mapped attributes before compilation.
+- [x] Tenant relationship loading uses eager loading or explicit async `refresh`; synchronous object-session access and `AsyncAttrs.awaitable_attrs` are not supported tenant APIs.
+- [x] The UoW guard is documented as a trusted-Core misuse boundary rather than an in-process Python sandbox; mapped metadata/compiler registration is trusted, plugins remain out of process, and SQLAlchemy upgrades must rerun the private-container regression suite.
 
 ## 2. Authentication and authorization
 
@@ -145,8 +157,8 @@ Each row type must have a non-null Workspace UUID, scoped indexes, scoped unique
 
 ### Core runtime
 
-- [x] RuntimeBot carries Workspace UUID and placement generation.
-- [x] RuntimePipeline carries Workspace UUID and placement generation.
+- [x] RuntimeBot carries Workspace UUID and execution generation (currently stored in the compatibility field `placement_generation`).
+- [x] RuntimePipeline carries Workspace UUID and execution generation (currently stored in the compatibility field `placement_generation`).
 - [x] Query and Event carry Workspace UUID without making it an authorization source.
 - [x] Session key includes Workspace UUID, Bot UUID, launcher type, and launcher ID.
 - [x] QueryPool and manager indexes cannot collide across Workspaces.
@@ -157,7 +169,7 @@ Each row type must have a non-null Workspace UUID, scoped indexes, scoped unique
 ### Plugin
 
 - [x] Plugin installation and configuration are Workspace scoped.
-- [x] Runtime control actions carry trusted Workspace binding and placement generation.
+- [x] Runtime control actions carry trusted Workspace binding and execution generation (wire-compatible as `placement_generation`).
 - [x] The Plugin Runtime supervisor is instance-scoped and intentionally serves multiple Workspaces.
 - [x] Every plugin process is bound to exactly one Workspace, installation, generation, revision, and verified artifact digest.
 - [x] Same-digest plugin code may be cached once, while worker processes and writable data remain isolated.
@@ -170,22 +182,22 @@ Each row type must have a non-null Workspace UUID, scoped indexes, scoped unique
 
 ### MCP, RAG, and Box
 
-- [x] MCP runtime key contains instance UUID, Workspace UUID, placement generation, and server UUID.
+- [x] MCP runtime key contains instance UUID, Workspace UUID, execution generation, and server UUID.
 - [x] Same-named MCP servers in two Workspaces do not share sessions.
 - [x] Pipeline cannot reference another Workspace's MCP resource.
 - [x] RAG collection names and handles are server-derived and Workspace scoped.
 - [x] Legacy global vector migration is available only to the local OSS singleton Workspace.
-- [x] Object storage paths include instance, Workspace, and placement generation for the fixed-generation OSS runtime.
+- [x] Object storage paths include instance, Workspace, and execution generation for the fixed-generation OSS runtime.
 - [x] Object storage revalidates generation before touching a provider or resolving an opaque key.
 - [ ] Cloud cutover uses generation-scoped staging plus stable published object references, rather than making the staging generation the durable identity.
 - [x] Box persistent and ephemeral namespaces include the required instance, Workspace, and generation scope.
-- [x] Same-named Box sessions and processes cannot collide across Workspaces or placement generations.
+- [x] Same-named Box sessions and processes cannot collide across Workspaces or execution generations.
 - [x] Box relay and process I/O reject or retire stale generations.
 - [x] External paths and privileged mounts cannot be supplied by an untrusted plugin.
 - [x] Cloud attachment host I/O uses query UUIDs and link-free dirfd operations with bounded inode traversal.
 - [x] Cloud Skill package paths are Runtime-owned, Workspace-scoped, read-only mounts; Python env/cache stays tenant-writable.
 - [x] Skill ZIP preview/install rejects path escape, links, non-regular files, duplicate entries, excessive compression ratio, entry count, per-file size, and total size.
-- [x] Cloud Box startup proves Core and Runtime see the same durable volume.
+- [x] Cloud Box code paths and automated tests require the authenticated marker challenge before startup or reconnect can proceed.
 - [x] Cloud Box readiness fails until hard Workspace, Skill, ephemeral-storage, and inode quota capabilities are available.
 
 ## 6. SDK and protocol
@@ -233,7 +245,7 @@ Each row type must have a non-null Workspace UUID, scoped indexes, scoped unique
 - [x] API Key cannot cross Workspace.
 - [x] Plugin cannot enumerate or invoke another Workspace's resources.
 - [x] Sessions, caches, locks, MCP, RAG, Box, storage, and monitoring do not collide.
-- [x] Background jobs cannot execute without an explicit Workspace and placement generation.
+- [x] Background jobs cannot execute without an explicit Workspace and execution generation.
 
 ### Security and revocation
 
@@ -241,7 +253,7 @@ Each row type must have a non-null Workspace UUID, scoped indexes, scoped unique
 - [x] OAuth redirects trust only server-configured WebUI or webhook origins, never request `Host` or `Origin` headers.
 - [x] Dashboard WebSockets revalidate authentication, Membership, resource, permission, and generation per message.
 - [x] Public embed WebSockets re-resolve Bot availability and execution binding per message.
-- [x] Runtime, storage, Plugin Runtime, MCP, RAG, and Box reject a stale placement generation.
+- [x] Runtime, storage, Plugin Runtime, MCP, RAG, and Box reject a stale execution generation.
 - [x] Unhandled API and webhook failures return a generic error plus request ID without exception text.
 - [x] URL user information and sensitive query parameters are redacted before configuration is serialized or logged.
 

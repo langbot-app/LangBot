@@ -233,6 +233,22 @@ async def test_owner_invites_second_account_and_secret_is_not_persisted(workspac
     assert (await forbidden_invite.get_json())['code'] == 'permission_denied'
 
 
+async def test_invitation_accept_rejects_invalid_bearer_as_authentication_failure(workspace_api):
+    _, client, _, _ = workspace_api
+
+    response = await client.post(
+        '/api/v1/invitations/accept',
+        headers={'Authorization': 'Bearer definitely-not-a-jwt'},
+        json={'token': 'lbi_not-a-real-invitation'},
+    )
+
+    assert response.status_code == 401
+    assert await response.get_json() == {
+        'code': 'invalid_authentication',
+        'msg': 'Invalid authentication credentials',
+    }
+
+
 async def test_workspace_selector_and_path_cannot_escape_membership(workspace_api):
     _, client, _, owner_token = workspace_api
 
@@ -411,6 +427,16 @@ async def test_cloud_projection_is_selected_explicitly_and_directory_writes_use_
     assert by_uuid[singleton_uuid]['membership']['email'] == 'owner@example.com'
     assert by_uuid[singleton_uuid]['permissions']
     assert by_uuid[cloud_workspace_uuid]['placement_generation'] == 12
+
+    list_response = await client.get(
+        '/api/v1/workspaces',
+        headers=_auth(owner_token, singleton_uuid),
+    )
+    assert list_response.status_code == 200
+    assert {workspace['uuid'] for workspace in (await list_response.get_json())['data']['workspaces']} == {
+        singleton_uuid,
+        cloud_workspace_uuid,
+    }
 
     current_response = await client.get(
         '/api/v1/workspaces/current',

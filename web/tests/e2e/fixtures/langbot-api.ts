@@ -164,6 +164,7 @@ export function makeWorkspaceEntry(
     permissions: [
       'api_key.manage',
       'audit.view',
+      'data.export',
       'member.invite',
       'member.remove',
       'member.update_role',
@@ -575,7 +576,7 @@ async function handleBackendApi(route: Route, state: LangBotApiMockState) {
 
   const botLogsMatch = path.match(/^\/api\/v1\/platform\/bots\/([^/]+)\/logs$/);
   if (botLogsMatch) {
-    return fulfillJson(route, { logs: [], total: 0 });
+    return fulfillJson(route, { logs: [], total_count: 0 });
   }
 
   const botMatch = path.match(/^\/api\/v1\/platform\/bots\/([^/]+)$/);

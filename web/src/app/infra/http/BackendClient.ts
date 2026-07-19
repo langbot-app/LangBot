@@ -1165,7 +1165,7 @@ export class BackendClient extends BaseHttpClient {
   }
 
   public getWorkspaces(): Promise<{ workspaces: Workspace[] }> {
-    return this.get('/api/v1/workspaces');
+    return this.get('/api/v1/workspaces', undefined, { skipWorkspace: true });
   }
 
   public getCurrentWorkspace(): Promise<CurrentWorkspace> {
