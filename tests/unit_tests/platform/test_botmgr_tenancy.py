@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import contextlib
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
 from langbot.pkg.api.http.authz import WorkspaceRequiredError
 from langbot.pkg.api.http.context import ExecutionContext
 from langbot.pkg.platform.botmgr import PlatformManager, RuntimeBot
+import langbot_plugin.api.entities.builtin.platform.events as platform_events
 
 
 WORKSPACE_A = '00000000-0000-0000-0000-00000000000a'
@@ -112,3 +115,71 @@ def test_runtime_bot_rejects_workspace_mismatch():
             logger=SimpleNamespace(),
             execution_context=_context(WORKSPACE_B, BOT_A),
         )
+
+
+class _ScopeOnlyPersistenceManager:
+    mode = SimpleNamespace(value='cloud_runtime')
+
+    def __init__(self):
+        self.active_workspace = None
+
+    @contextlib.asynccontextmanager
+    async def tenant_scope(self, workspace_uuid: str):
+        assert self.active_workspace is None
+        self.active_workspace = workspace_uuid
+        try:
+            yield
+        finally:
+            self.active_workspace = None
+
+    def current_session(self):
+        return None
+
+
+class _ListenerAdapter:
+    def __init__(self):
+        self.listeners = {}
+
+    def register_listener(self, event_type, listener):
+        self.listeners[event_type] = listener
+
+
+@pytest.mark.asyncio
+async def test_platform_callback_carries_scope_without_holding_database_session():
+    persistence_mgr = _ScopeOnlyPersistenceManager()
+    adapter = _ListenerAdapter()
+
+    async def push_person_message(*_args, **_kwargs):
+        assert persistence_mgr.active_workspace == WORKSPACE_A
+        assert persistence_mgr.current_session() is None
+        return True
+
+    application = SimpleNamespace(
+        persistence_mgr=persistence_mgr,
+        workspace_service=_WorkspaceService(),
+        webhook_pusher=SimpleNamespace(push_person_message=push_person_message),
+    )
+    entity = SimpleNamespace(
+        uuid=BOT_A,
+        workspace_uuid=WORKSPACE_A,
+        name='Bot',
+        enable=True,
+        pipeline_routing_rules=[],
+        use_pipeline_uuid=None,
+    )
+    logger = SimpleNamespace(info=AsyncMock(), error=AsyncMock())
+    runtime = RuntimeBot(
+        ap=application,
+        bot_entity=entity,
+        adapter=adapter,
+        logger=logger,
+        execution_context=_context(WORKSPACE_A, BOT_A),
+    )
+    await runtime.initialize()
+
+    listener = adapter.listeners[platform_events.FriendMessage]
+    event = SimpleNamespace(message_chain=[], sender=SimpleNamespace(id='user'))
+    await listener(event, adapter)
+
+    assert persistence_mgr.active_workspace is None
+    logger.info.assert_awaited()

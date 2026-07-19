@@ -13,6 +13,7 @@ Source: src/langbot/pkg/api/http/service/maintenance.py
 
 from __future__ import annotations
 
+import contextlib
 import pytest
 from unittest.mock import AsyncMock, Mock, patch, MagicMock
 from types import SimpleNamespace
@@ -195,6 +196,51 @@ class TestMaintenanceServiceCleanupExpiredFiles:
         # Verify - warning logged, defaults used
         assert ap.logger.warning.called
         assert 'uploaded_files' in result
+
+    async def test_cloud_cleanup_carries_scope_without_holding_database_session(self):
+        class ScopeOnlyPersistenceManager:
+            mode = SimpleNamespace(value='cloud_runtime')
+
+            def __init__(self):
+                self.active_workspace = None
+
+            @contextlib.asynccontextmanager
+            async def tenant_scope(self, workspace_uuid):
+                self.active_workspace = workspace_uuid
+                try:
+                    yield
+                finally:
+                    self.active_workspace = None
+
+            def current_session(self):
+                return None
+
+        persistence_mgr = ScopeOnlyPersistenceManager()
+        application = SimpleNamespace(
+            persistence_mgr=persistence_mgr,
+            instance_config=SimpleNamespace(data={}),
+            logger=SimpleNamespace(warning=Mock()),
+        )
+        service = MaintenanceService(application)
+
+        async def cleanup_uploads(_context, _retention_days):
+            assert persistence_mgr.active_workspace == TEST_CONTEXT.workspace_uuid
+            assert persistence_mgr.current_session() is None
+            return 2
+
+        def cleanup_logs(_retention_days):
+            assert persistence_mgr.active_workspace == TEST_CONTEXT.workspace_uuid
+            assert persistence_mgr.current_session() is None
+            return 1
+
+        service._cleanup_expired_uploaded_files = cleanup_uploads
+        service._cleanup_expired_log_files = cleanup_logs
+
+        assert await service.cleanup_expired_files(TEST_CONTEXT) == {
+            'uploaded_files': 2,
+            'log_files': 1,
+        }
+        assert persistence_mgr.active_workspace is None
 
 
 class TestMaintenanceServiceGetStorageAnalysis:

@@ -11,7 +11,9 @@ from langbot.pkg.api.http.authz import WorkspaceRequiredError
 from langbot.pkg.api.http.context import ExecutionContext
 from langbot.pkg.api.http.service.monitoring import MonitoringService
 from langbot.pkg.entity.persistence.base import Base
+from langbot.pkg.entity.persistence.monitoring import MonitoringMessage
 from langbot.pkg.entity.persistence.workspace import Workspace
+from langbot.pkg.persistence.mgr import PersistenceManager
 
 
 pytestmark = pytest.mark.asyncio
@@ -136,6 +138,26 @@ async def test_same_session_and_resource_ids_do_not_collide(service):
     assert (await service.get_message_details(context_a, message_b))['found'] is False
 
 
+async def test_tool_call_inherits_context_from_connection_message_row(service):
+    context = _context(WORKSPACE_A)
+    message_id = await _record_message(service, context, 'tool context')
+
+    await service.record_tool_call(
+        context,
+        tool_name='search',
+        tool_source='native',
+        duration=12,
+        message_id=message_id,
+    )
+
+    tool_calls, total = await service.get_tool_calls(context)
+    assert total == 1
+    assert tool_calls[0]['bot_id'] == 'same-bot'
+    assert tool_calls[0]['pipeline_id'] == 'same-pipeline'
+    assert tool_calls[0]['session_id'] == 'same-session'
+    assert tool_calls[0]['message_id'] == message_id
+
+
 async def test_feedback_upsert_and_cancel_are_workspace_scoped(service):
     context_a = _context(WORKSPACE_A)
     context_b = _context(WORKSPACE_B)
@@ -152,3 +174,58 @@ async def test_feedback_upsert_and_cancel_are_workspace_scoped(service):
     await service.record_feedback(context_a, feedback_id='same-feedback', feedback_type=3)
     assert (await service.get_feedback_stats(context_a))['total_feedback'] == 0
     assert (await service.get_feedback_stats(context_b))['total_feedback'] == 1
+
+
+async def test_cleanup_commits_sqlite_delete_before_vacuum(tmp_path):
+    engine = create_async_engine(
+        f'sqlite+aiosqlite:///{tmp_path / "monitoring-cleanup.db"}',
+        connect_args={'timeout': 0.1},
+    )
+    application = SimpleNamespace(
+        instance_config=SimpleNamespace(data={'database': {'use': 'sqlite'}}),
+    )
+    manager = PersistenceManager(application)
+    manager.db = SimpleNamespace(get_engine=lambda: engine)
+    application.persistence_mgr = manager
+    try:
+        async with engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+            await connection.execute(
+                sqlalchemy.insert(Workspace).values(
+                    uuid=WORKSPACE_A,
+                    instance_uuid='instance',
+                    name='A',
+                    slug='a',
+                    source='cloud_projection',
+                )
+            )
+            await connection.execute(
+                sqlalchemy.insert(MonitoringMessage).values(
+                    id='expired-message',
+                    workspace_uuid=WORKSPACE_A,
+                    timestamp=datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+                    - datetime.timedelta(days=30),
+                    bot_id='bot',
+                    bot_name='Bot',
+                    pipeline_id='pipeline',
+                    pipeline_name='Pipeline',
+                    message_content='expired',
+                    session_id='session',
+                    status='success',
+                    level='info',
+                )
+            )
+
+        deleted = await MonitoringService(application).cleanup_expired_records(
+            _context(WORKSPACE_A),
+            retention_days=1,
+        )
+
+        assert deleted['monitoring_messages'] == 1
+        async with engine.connect() as connection:
+            remaining = await connection.scalar(
+                sqlalchemy.select(sqlalchemy.func.count()).select_from(MonitoringMessage)
+            )
+        assert remaining == 0
+    finally:
+        await engine.dispose()

@@ -13,6 +13,7 @@ Source: src/langbot/pkg/api/http/service/mcp.py
 
 from __future__ import annotations
 
+import asyncio
 import copy
 import pytest
 from unittest.mock import AsyncMock, Mock, MagicMock
@@ -484,6 +485,54 @@ class TestMCPServiceCreateMCPServer:
 
         # Verify - host_mcp_server was called
         ap.tool_mgr.mcp_tool_loader.host_mcp_server.assert_called_once()
+
+    async def test_create_mcp_server_does_not_start_host_until_transaction_commits(self):
+        """The Runtime must not observe a server row that can still roll back."""
+
+        gate = asyncio.get_running_loop().create_future()
+
+        class PersistenceManagerStub:
+            def create_after_commit_gate(self):
+                return gate
+
+        ap = SimpleNamespace()
+        ap.persistence_mgr = PersistenceManagerStub()
+        ap.instance_config = SimpleNamespace(data={'system': {'limitation': {'max_extensions': -1}}})
+        observed = []
+
+        async def host_mcp_server(context, config):
+            observed.append((context, config))
+
+        ap.tool_mgr = SimpleNamespace(
+            mcp_tool_loader=SimpleNamespace(
+                host_mcp_server=host_mcp_server,
+                _hosted_mcp_tasks=[],
+            )
+        )
+        server_entity = _create_mock_mcp_server(server_uuid='new-uuid', enable=True)
+        results = [
+            _create_mock_result([]),
+            Mock(),
+            _create_mock_result(first_item=server_entity),
+        ]
+        ap.persistence_mgr.execute_async = AsyncMock(side_effect=results)
+        ap.persistence_mgr.serialize_model = Mock(
+            return_value={'uuid': 'new-uuid', 'name': 'New Server', 'enable': True}
+        )
+        service = _service(ap)
+
+        await service.create_mcp_server(_CONTEXT, {'name': 'New Server', 'enable': True})
+        await asyncio.sleep(0)
+        assert observed == []
+
+        gate.set_result(None)
+        await ap.tool_mgr.mcp_tool_loader._hosted_mcp_tasks[0]
+        assert observed == [
+            (
+                _CONTEXT,
+                {'uuid': 'new-uuid', 'name': 'New Server', 'enable': True},
+            )
+        ]
 
     async def test_create_mcp_server_disabled_no_load(self):
         """Does not load server when disabled."""

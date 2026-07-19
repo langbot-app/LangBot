@@ -636,7 +636,8 @@ function AddExtensionContent() {
     const pluginDisplayName = `${githubOwner}/${githubRepo}`;
     httpClient
       .installPluginFromGithub(
-        selectedAsset.download_url,
+        selectedAsset.id,
+        selectedRelease.id,
         githubOwner,
         githubRepo,
         selectedRelease.tag_name,

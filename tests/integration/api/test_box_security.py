@@ -9,6 +9,7 @@ import pytest
 import quart
 
 from langbot.pkg.api.http.controller.groups.box import BoxRouterGroup
+from langbot.pkg.cloud.entitlements import EntitlementUnavailableError
 
 
 pytestmark = pytest.mark.integration
@@ -34,6 +35,8 @@ async def box_security_api():
         'owner-token': SimpleNamespace(uuid='owner-account', user='owner@example.com'),
     }
     application = Mock()
+    application.deployment = SimpleNamespace(multi_workspace_enabled=False)
+    application.persistence_mgr = SimpleNamespace(tenant_uow=None)
     application.user_service.get_authenticated_account = AsyncMock(side_effect=lambda token: accounts[token])
     application.workspace_collaboration_service.resolve_account_workspace = AsyncMock(
         side_effect=lambda account_uuid, _workspace_uuid: _access(account_uuid)
@@ -41,6 +44,7 @@ async def box_security_api():
     application.box_service.get_status = AsyncMock(return_value={'enabled': True})
     application.box_service.get_sessions = AsyncMock(return_value=[{'session_id': 'private-session'}])
     application.box_service.get_recent_errors = Mock(return_value=[{'error': 'private error'}])
+    application.box_service.managed_admission_required = False
 
     quart_app = quart.Quart(__name__)
     router = BoxRouterGroup(application, quart_app)
@@ -81,3 +85,17 @@ async def test_owner_can_audit_box_sessions_and_errors(box_security_api):
     assert errors.status_code == 200
     application.box_service.get_sessions.assert_awaited_once()
     application.box_service.get_recent_errors.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_box_status_returns_explicit_403_when_workspace_has_no_managed_sandbox(box_security_api):
+    application, client = box_security_api
+    application.box_service.get_status.side_effect = EntitlementUnavailableError(
+        'Workspace entitlement does not grant managed_sandbox'
+    )
+
+    response = await client.get('/api/v1/box/status', headers=_headers('viewer-token'))
+
+    assert response.status_code == 403
+    payload = await response.get_json()
+    assert payload['code'] == 'managed_sandbox_unavailable'

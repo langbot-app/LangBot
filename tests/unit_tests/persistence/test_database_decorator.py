@@ -11,9 +11,19 @@ Note: Uses import isolation to break circular import chains.
 from __future__ import annotations
 
 import sys
-from unittest.mock import Mock, MagicMock
 from contextlib import contextmanager
 from typing import Generator
+from unittest.mock import MagicMock, Mock
+
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def isolate_database_manager_registry(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep decorator tests from mutating the process-wide manager registry."""
+    from langbot.pkg.persistence import database
+
+    monkeypatch.setattr(database, 'preregistered_managers', list(database.preregistered_managers))
 
 
 @contextmanager

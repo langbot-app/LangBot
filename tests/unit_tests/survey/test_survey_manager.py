@@ -32,6 +32,12 @@ def create_mock_app():
     return mock_app
 
 
+def scalar_result(value=None):
+    """Return the scalar-only shape used by Connection column selects."""
+
+    return Mock(scalar_one_or_none=Mock(return_value=value))
+
+
 class TestSurveyManagerInit:
     """Tests for SurveyManager initialization."""
 
@@ -67,7 +73,7 @@ class TestSurveyManagerInit:
         """Test that initialize loads space URL from config."""
         survey_module = get_survey_module()
         mock_app = create_mock_app()
-        mock_app.persistence_mgr.execute_async = AsyncMock(return_value=Mock(first=Mock(return_value=None)))
+        mock_app.persistence_mgr.execute_async = AsyncMock(return_value=scalar_result())
 
         manager = survey_module.SurveyManager(mock_app)
         await manager.initialize()
@@ -80,7 +86,7 @@ class TestSurveyManagerInit:
         survey_module = get_survey_module()
         mock_app = create_mock_app()
         mock_app.instance_config.data = {'space': {'url': 'https://space.example.com/'}}
-        mock_app.persistence_mgr.execute_async = AsyncMock(return_value=Mock(first=Mock(return_value=None)))
+        mock_app.persistence_mgr.execute_async = AsyncMock(return_value=scalar_result())
 
         manager = survey_module.SurveyManager(mock_app)
         await manager.initialize()
@@ -93,7 +99,7 @@ class TestSurveyManagerInit:
         survey_module = get_survey_module()
         mock_app = create_mock_app()
         mock_app.instance_config.data = {}
-        mock_app.persistence_mgr.execute_async = AsyncMock(return_value=Mock(first=Mock(return_value=None)))
+        mock_app.persistence_mgr.execute_async = AsyncMock(return_value=scalar_result())
 
         manager = survey_module.SurveyManager(mock_app)
         await manager.initialize()
@@ -110,12 +116,7 @@ class TestLoadTriggeredEvents:
         survey_module = get_survey_module()
         mock_app = create_mock_app()
 
-        # Mock existing metadata row
-        mock_row = Mock()
-        mock_row.value = json.dumps(['event1', 'event2'])
-        mock_result = Mock()
-        mock_result.first = Mock(return_value=(mock_row,))
-        mock_app.persistence_mgr.execute_async = AsyncMock(return_value=mock_result)
+        mock_app.persistence_mgr.execute_async = AsyncMock(return_value=scalar_result(json.dumps(['event1', 'event2'])))
 
         manager = survey_module.SurveyManager(mock_app)
         await manager._load_triggered_events()
@@ -128,7 +129,7 @@ class TestLoadTriggeredEvents:
         """Test that empty set is used when no events stored."""
         survey_module = get_survey_module()
         mock_app = create_mock_app()
-        mock_app.persistence_mgr.execute_async = AsyncMock(return_value=Mock(first=Mock(return_value=None)))
+        mock_app.persistence_mgr.execute_async = AsyncMock(return_value=scalar_result())
 
         manager = survey_module.SurveyManager(mock_app)
         await manager._load_triggered_events()
@@ -218,7 +219,7 @@ class TestTriggerEvent:
         """Test that new event is added and saved."""
         survey_module = get_survey_module()
         mock_app = create_mock_app()
-        mock_app.persistence_mgr.execute_async = AsyncMock(return_value=Mock(first=Mock(return_value=None)))
+        mock_app.persistence_mgr.execute_async = AsyncMock(return_value=scalar_result())
 
         manager = survey_module.SurveyManager(mock_app)
         manager._space_url = 'https://space.example.com'
@@ -235,7 +236,7 @@ class TestRecordBotResponseSuccess:
         manager = survey_module.SurveyManager(mock_app)
         manager._space_url = 'https://space.example.com'
         # No existing metadata rows: select returns no row
-        mock_app.persistence_mgr.execute_async = AsyncMock(return_value=Mock(first=Mock(return_value=None)))
+        mock_app.persistence_mgr.execute_async = AsyncMock(return_value=scalar_result())
         return manager
 
     @pytest.mark.asyncio
@@ -304,19 +305,13 @@ class TestRecordBotResponseSuccess:
         survey_module = get_survey_module()
         mock_app = create_mock_app()
 
-        count_row = Mock()
-        count_row.value = '42'
-
         def execute_side_effect(stmt):
-            result = Mock()
             # Both _load_triggered_events and _load_bot_response_count select
-            # from Metadata; return the count row only for the count key.
+            # Metadata.value; return the count only for the count key.
             stmt_str = str(stmt.compile(compile_kwargs={'literal_binds': True}))
             if survey_module.BOT_RESPONSE_COUNT_KEY in stmt_str:
-                result.first.return_value = (count_row,)
-            else:
-                result.first.return_value = None
-            return result
+                return scalar_result('42')
+            return scalar_result()
 
         mock_app.persistence_mgr.execute_async = AsyncMock(side_effect=execute_side_effect)
 

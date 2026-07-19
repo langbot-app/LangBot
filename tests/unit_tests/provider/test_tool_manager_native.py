@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import contextlib
 import os
 import tempfile
 from types import SimpleNamespace
@@ -11,6 +12,7 @@ import pytest
 import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 
 from langbot.pkg.provider.tools.loaders.native import NativeToolLoader
+from langbot.pkg.provider.tools.loaders import native as native_loader
 from langbot.pkg.provider.tools.toolmgr import ToolManager
 from langbot.pkg.api.http.context import ExecutionContext
 
@@ -52,7 +54,8 @@ class StubLoader:
             for tool in self._tools
         ]
 
-    async def has_tool(self, name: str) -> bool:
+    async def has_tool(self, *args) -> bool:
+        name = args[-1]
         return any(tool.name == name for tool in self._tools)
 
     async def invoke_tool(self, name: str, parameters: dict, query):
@@ -129,9 +132,53 @@ async def test_tool_manager_routes_native_tool_calls():
     manager.plugin_tool_loader = StubLoader([make_tool('plugin_tool')])
     manager.mcp_tool_loader = StubLoader([make_tool('mcp_tool')])
 
-    result = await manager.execute_func_call('exec', {'command': 'pwd'}, query=Mock())
+    query = SimpleNamespace(
+        _execution_context=_CONTEXT,
+        bot_uuid=None,
+        pipeline_uuid=None,
+        query_uuid=None,
+    )
+    result = await manager.execute_func_call('exec', {'command': 'pwd'}, query=query)
 
     assert result == {'backend': 'fake'}
+
+
+@pytest.mark.asyncio
+async def test_tool_manager_hides_sandbox_and_skill_tools_without_workspace_entitlement():
+    box_service = SimpleNamespace(is_workspace_sandbox_available=AsyncMock(return_value=False))
+    manager = ToolManager(SimpleNamespace(box_service=box_service))
+    manager.native_tool_loader = StubLoader([make_tool('exec')])
+    manager.skill_tool_loader = StubLoader([make_tool('activate')])
+    manager.plugin_tool_loader = StubLoader([make_tool('plugin_tool')])
+    manager.mcp_tool_loader = StubLoader([make_tool('mcp_tool')])
+
+    tools = await manager.get_all_tools(_CONTEXT, include_skill_authoring=True)
+    catalog = await manager.get_tool_catalog(_CONTEXT, include_skill_authoring=True)
+
+    assert [tool.name for tool in tools] == ['plugin_tool', 'mcp_tool']
+    assert [item['name'] for item in catalog] == ['plugin_tool', 'mcp_tool']
+    assert box_service.is_workspace_sandbox_available.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_tool_manager_rechecks_workspace_entitlement_before_native_invocation():
+    box_service = SimpleNamespace(is_workspace_sandbox_available=AsyncMock(return_value=False))
+    manager = ToolManager(SimpleNamespace(box_service=box_service))
+    manager.native_tool_loader = StubLoader([make_tool('exec')], invoke_result={'unexpected': True})
+    manager.skill_tool_loader = StubLoader([])
+    manager.plugin_tool_loader = StubLoader([])
+    manager.mcp_tool_loader = StubLoader([])
+    query = SimpleNamespace(
+        _execution_context=_CONTEXT,
+        bot_uuid=None,
+        pipeline_uuid=None,
+        query_uuid=None,
+    )
+
+    with pytest.raises(Exception, match='exec'):
+        await manager.execute_func_call('exec', {'command': 'pwd'}, query=query)
+
+    box_service.is_workspace_sandbox_available.assert_awaited_once_with(_CONTEXT)
 
 
 @pytest.mark.asyncio
@@ -157,6 +204,26 @@ async def test_native_tool_loader_exposes_all_tools_when_box_available():
     assert [tool.name for tool in tools] == ['exec', 'read', 'write', 'edit', 'glob', 'grep']
     for tool_name in ('exec', 'read', 'write', 'edit', 'glob', 'grep'):
         assert await loader.has_tool(tool_name) is True
+
+
+@pytest.mark.asyncio
+async def test_native_tool_loader_rechecks_admission_at_the_final_invoke_boundary():
+    box_service = SimpleNamespace(
+        available=True,
+        require_workspace_sandbox=AsyncMock(side_effect=RuntimeError('entitlement expired')),
+    )
+    loader = NativeToolLoader(SimpleNamespace(box_service=box_service, logger=Mock()))
+    query = SimpleNamespace(
+        _execution_context=_CONTEXT,
+        bot_uuid=None,
+        pipeline_uuid=None,
+        query_uuid=None,
+    )
+
+    with pytest.raises(RuntimeError, match='entitlement expired'):
+        await loader.invoke_tool('read', {'path': '/workspace/private.txt'}, query)
+
+    box_service.require_workspace_sandbox.assert_awaited_once_with(_CONTEXT)
 
 
 # ── read/write/edit file tool tests ─────────────────────────────
@@ -384,6 +451,103 @@ async def test_path_escape_blocked():
 
         with pytest.raises(ValueError, match='escapes'):
             await loader.invoke_tool('read', {'path': '/workspace/../../etc/passwd'}, _make_query())
+
+
+@pytest.mark.parametrize(
+    ('tool_name', 'parameters'),
+    [
+        ('read', {'path': '/workspace/shared/tenant-b-only.txt'}),
+        (
+            'write',
+            {'path': '/workspace/shared/tenant-b-only.txt', 'content': 'overwritten by tenant a'},
+        ),
+        (
+            'edit',
+            {
+                'path': '/workspace/shared/tenant-b-only.txt',
+                'old_string': 'tenant-b-secret',
+                'new_string': 'overwritten by tenant a',
+            },
+        ),
+        ('glob', {'path': '/workspace/shared', 'pattern': '*'}),
+        ('grep', {'path': '/workspace/shared', 'pattern': 'tenant-b-secret'}),
+    ],
+)
+@pytest.mark.asyncio
+async def test_host_workspace_operations_do_not_follow_a_swapped_ancestor(
+    monkeypatch,
+    tool_name: str,
+    parameters: dict,
+):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tenant_a = os.path.join(tmpdir, 'tenant-a')
+        tenant_b = os.path.join(tmpdir, 'tenant-b')
+        os.makedirs(os.path.join(tenant_a, 'shared'))
+        os.makedirs(os.path.join(tenant_b, 'shared'))
+        tenant_b_file = os.path.join(tenant_b, 'shared', 'tenant-b-only.txt')
+        with open(os.path.join(tenant_a, 'shared', 'tenant-a-only.txt'), 'w', encoding='utf-8') as file_obj:
+            file_obj.write('tenant-a-content')
+        with open(tenant_b_file, 'w', encoding='utf-8') as file_obj:
+            file_obj.write('tenant-b-secret')
+
+        box_service = SimpleNamespace(
+            available=True,
+            default_workspace=tmpdir,
+            _tenant_workspace=Mock(return_value=tenant_a),
+        )
+        loader = NativeToolLoader(SimpleNamespace(box_service=box_service, logger=Mock()))
+        original_open_host_root = native_loader._open_host_root
+
+        @contextlib.contextmanager
+        def open_host_root_after_swap(location, *, create):
+            with original_open_host_root(location, create=create) as root_fd:
+                original_ancestor = os.path.join(tenant_a, 'shared-original')
+                os.rename(os.path.join(tenant_a, 'shared'), original_ancestor)
+                os.symlink(os.path.join(tenant_b, 'shared'), os.path.join(tenant_a, 'shared'))
+                yield root_fd
+
+        monkeypatch.setattr(native_loader, '_open_host_root', open_host_root_after_swap)
+
+        try:
+            result = await loader.invoke_tool(tool_name, parameters, _make_query())
+        except ValueError as exc:
+            result = {'ok': False, 'error': str(exc)}
+
+        assert result.get('ok') is False
+        assert 'tenant-b-secret' not in repr(result)
+        assert 'tenant-b-only.txt' not in repr(result)
+        with open(tenant_b_file, encoding='utf-8') as file_obj:
+            assert file_obj.read() == 'tenant-b-secret'
+
+
+@pytest.mark.asyncio
+async def test_host_file_api_falls_back_to_tenant_box_when_openat_is_unavailable(monkeypatch):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        box_service = SimpleNamespace(
+            available=True,
+            default_workspace=tmpdir,
+            _tenant_workspace=Mock(return_value=tmpdir),
+            execute_tool=AsyncMock(
+                return_value={
+                    'ok': True,
+                    'stdout': '{"ok": true, "content": "box-owned", "truncated": false}',
+                    'stderr': '',
+                }
+            ),
+        )
+        loader = NativeToolLoader(SimpleNamespace(box_service=box_service, logger=Mock()))
+        monkeypatch.setattr(native_loader, '_SECURE_HOST_FILE_OPS_AVAILABLE', False)
+
+        result = await loader.invoke_tool(
+            'read',
+            {'path': '/workspace/file.txt'},
+            _make_query(),
+        )
+
+        assert result['ok'] is True
+        assert result['content'] == 'box-owned'
+        command = box_service.execute_tool.await_args.args[0]['command']
+        assert 'path = "/workspace/file.txt"' in command
 
 
 @pytest.mark.asyncio

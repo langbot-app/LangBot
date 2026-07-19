@@ -1,7 +1,34 @@
 """Test plugin list filtering by component kinds."""
 
+from contextlib import nullcontext
 from unittest.mock import AsyncMock, MagicMock
+
 import pytest
+from langbot_plugin.entities.io.context import InstallationBinding
+
+from langbot.pkg.api.http.context import ExecutionContext
+
+
+TEST_EXECUTION_CONTEXT = ExecutionContext(
+    instance_uuid='instance-a',
+    workspace_uuid='workspace-a',
+    placement_generation=1,
+)
+TEST_INSTALLATION_BINDING = InstallationBinding(
+    instance_uuid=TEST_EXECUTION_CONTEXT.instance_uuid,
+    workspace_uuid=TEST_EXECUTION_CONTEXT.workspace_uuid,
+    placement_generation=TEST_EXECUTION_CONTEXT.placement_generation,
+    installation_uuid='00000000-0000-4000-8000-000000000001',
+    runtime_revision=1,
+    artifact_digest='a' * 64,
+)
+
+
+def configure_connector(connector) -> None:
+    connector._execution_context.set(TEST_EXECUTION_CONTEXT)
+    connector._operation_bindings = AsyncMock(return_value=[TEST_INSTALLATION_BINDING])
+    connector._load_workspace_settings = AsyncMock(return_value=[])
+    connector.handler.installation_scope = MagicMock(side_effect=lambda _binding: nullcontext())
 
 
 @pytest.mark.asyncio
@@ -17,6 +44,7 @@ async def test_plugin_list_filter_by_component_kinds():
     # Create connector
     connector = PluginRuntimeConnector(mock_app, AsyncMock())
     connector.handler = MagicMock()
+    configure_connector(connector)
 
     # Mock plugin data with different component kinds
     mock_plugins = [
@@ -90,7 +118,7 @@ async def test_plugin_list_filter_by_component_kinds():
     # Mock database query
     async def mock_execute_async(query):
         mock_result = MagicMock()
-        mock_result.__iter__ = lambda self: iter([])
+        mock_result.scalars.return_value.all.return_value = []
         return mock_result
 
     mock_app.persistence_mgr.execute_async = mock_execute_async
@@ -123,6 +151,7 @@ async def test_plugin_list_filter_no_filter():
     # Create connector
     connector = PluginRuntimeConnector(mock_app, AsyncMock())
     connector.handler = MagicMock()
+    configure_connector(connector)
 
     # Mock plugin data with different component kinds
     mock_plugins = [
@@ -157,7 +186,7 @@ async def test_plugin_list_filter_no_filter():
     # Mock database query
     async def mock_execute_async(query):
         mock_result = MagicMock()
-        mock_result.__iter__ = lambda self: iter([])
+        mock_result.scalars.return_value.all.return_value = []
         return mock_result
 
     mock_app.persistence_mgr.execute_async = mock_execute_async
@@ -184,6 +213,7 @@ async def test_plugin_list_filter_empty_result():
     # Create connector
     connector = PluginRuntimeConnector(mock_app, AsyncMock())
     connector.handler = MagicMock()
+    configure_connector(connector)
 
     # Mock plugin data - only KnowledgeEngine plugins
     mock_plugins = [
@@ -206,7 +236,7 @@ async def test_plugin_list_filter_empty_result():
     # Mock database query
     async def mock_execute_async(query):
         mock_result = MagicMock()
-        mock_result.__iter__ = lambda self: iter([])
+        mock_result.scalars.return_value.all.return_value = []
         return mock_result
 
     mock_app.persistence_mgr.execute_async = mock_execute_async
@@ -230,6 +260,7 @@ async def test_plugin_list_filter_plugin_without_components():
     # Create connector
     connector = PluginRuntimeConnector(mock_app, AsyncMock())
     connector.handler = MagicMock()
+    configure_connector(connector)
 
     # Mock plugin data - one with components, one without
     mock_plugins = [
@@ -264,7 +295,7 @@ async def test_plugin_list_filter_plugin_without_components():
     # Mock database query
     async def mock_execute_async(query):
         mock_result = MagicMock()
-        mock_result.__iter__ = lambda self: iter([])
+        mock_result.scalars.return_value.all.return_value = []
         return mock_result
 
     mock_app.persistence_mgr.execute_async = mock_execute_async

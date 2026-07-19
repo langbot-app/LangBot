@@ -23,6 +23,7 @@ from pydantic import AnyUrl
 
 from .. import loader
 from ....core import app
+from ....core.task_boundary import create_detached_task, run_in_workspace_uow
 from ....api.http.context import ExecutionContext
 from ....api.http.service.tenant import TenantContext, require_workspace_uuid
 from ....workspace.errors import WorkspaceError, WorkspaceInvariantError
@@ -1437,11 +1438,41 @@ class MCPLoader(loader.ToolLoader):
 
         self.sessions = {}
 
-        result = await self.ap.persistence_mgr.execute_async(sqlalchemy.select(persistence_mcp.MCPServer))
-        servers = result.all()
+        server_configs: list[tuple[typing.Any, typing.Any, dict]] = []
+        list_bindings = getattr(self.ap.workspace_service, 'list_active_execution_bindings', None)
+        tenant_uow = getattr(self.ap.persistence_mgr, 'tenant_uow', None)
+        cloud_runtime = getattr(getattr(self.ap.persistence_mgr, 'mode', None), 'value', None) == 'cloud_runtime'
+        if cloud_runtime:
+            if not callable(list_bindings) or not callable(tenant_uow):
+                raise RuntimeError('Cloud MCP loading requires explicit instance discovery and tenant UoWs')
+            for binding in await list_bindings():
+                async with tenant_uow(binding.workspace_uuid):
+                    result = await self.ap.persistence_mgr.execute_async(
+                        sqlalchemy.select(persistence_mcp.MCPServer)
+                        .where(persistence_mcp.MCPServer.workspace_uuid == binding.workspace_uuid)
+                        .order_by(persistence_mcp.MCPServer.uuid)
+                    )
+                    for server in result.all():
+                        server_configs.append(
+                            (
+                                binding,
+                                server,
+                                self.ap.persistence_mgr.serialize_model(persistence_mcp.MCPServer, server),
+                            )
+                        )
+        else:
+            # Compatibility path for isolated loader tests and older embedders.
+            result = await self.ap.persistence_mgr.execute_async(sqlalchemy.select(persistence_mcp.MCPServer))
+            for server in result.all():
+                server_configs.append(
+                    (
+                        None,
+                        server,
+                        self.ap.persistence_mgr.serialize_model(persistence_mcp.MCPServer, server),
+                    )
+                )
 
-        for server in servers:
-            config = self.ap.persistence_mgr.serialize_model(persistence_mcp.MCPServer, server)
+        for binding, server, config in server_configs:
             if config.get('mode') == 'stdio' and not stdio_mcp_enabled(self.ap):
                 self.ap.logger.info(
                     f'Skipping disabled stdio MCP server {server.uuid}; '
@@ -1449,7 +1480,8 @@ class MCPLoader(loader.ToolLoader):
                 )
                 continue
             try:
-                binding = await self.ap.workspace_service.get_execution_binding(server.workspace_uuid)
+                if binding is None:
+                    binding = await self.ap.workspace_service.get_execution_binding(server.workspace_uuid)
                 execution_context = ExecutionContext(
                     instance_uuid=binding.instance_uuid,
                     workspace_uuid=binding.workspace_uuid,
@@ -1461,7 +1493,10 @@ class MCPLoader(loader.ToolLoader):
                 )
                 continue
 
-            task = asyncio.create_task(self.host_mcp_server(execution_context, config))
+            task = create_detached_task(
+                self.host_mcp_server(execution_context, config),
+                after_commit_manager=getattr(self.ap, 'persistence_mgr', None),
+            )
             self._hosted_mcp_tasks.append(task)
 
     @staticmethod
@@ -1482,7 +1517,12 @@ class MCPLoader(loader.ToolLoader):
         return [session for key, session in self.sessions.items() if key[:3] == scope_key]
 
     async def host_mcp_server(self, context: TenantContext, server_config: dict):
-        execution_context = await self._assert_execution_active(context)
+        requested_context = _execution_context_from_tenant(context)
+        execution_context = await run_in_workspace_uow(
+            self.ap,
+            requested_context.workspace_uuid,
+            lambda: self._assert_execution_active(requested_context),
+        )
         configured_workspace = str(server_config.get('workspace_uuid') or '').strip()
         if configured_workspace and configured_workspace != execution_context.workspace_uuid:
             raise ValueError('MCP server configuration belongs to another Workspace')

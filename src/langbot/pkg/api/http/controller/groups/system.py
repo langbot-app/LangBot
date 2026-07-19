@@ -25,12 +25,33 @@ class SystemRouterGroup(group.RouterGroup):
                     account, _ = await self._authenticate_account(authorization.removeprefix('Bearer '))
                     request_context = await self._resolve_account_context(account, group.AuthType.USER_TOKEN)
                     if request_context is not None:
-                        result = await self.ap.persistence_mgr.execute_async(
-                            sqlalchemy.select(WorkspaceMetadata).where(
-                                WorkspaceMetadata.workspace_uuid == request_context.workspace_uuid,
-                                WorkspaceMetadata.key.in_(['wizard_status', 'wizard_progress']),
+                        tenant_uow = getattr(self.ap.persistence_mgr, 'tenant_uow', None)
+
+                        async def load_workspace_metadata():
+                            return await self.ap.persistence_mgr.execute_async(
+                                sqlalchemy.select(
+                                    WorkspaceMetadata.key,
+                                    WorkspaceMetadata.value,
+                                ).where(
+                                    WorkspaceMetadata.workspace_uuid == request_context.workspace_uuid,
+                                    WorkspaceMetadata.key.in_(['wizard_status', 'wizard_progress']),
+                                )
                             )
+
+                        cloud_runtime = (
+                            getattr(getattr(self.ap.persistence_mgr, 'mode', None), 'value', None) == 'cloud_runtime'
                         )
+                        if cloud_runtime:
+                            if not callable(tenant_uow):
+                                raise RuntimeError('Cloud system metadata requires an explicit tenant UoW')
+                            async with tenant_uow(request_context.workspace_uuid):
+                                result = await load_workspace_metadata()
+                        else:
+                            result = await load_workspace_metadata()
+                        # ``execute_async`` deliberately preserves its historical
+                        # AsyncConnection result shape. Selecting the two fields
+                        # explicitly keeps this reader independent of ORM Session
+                        # scalar semantics inside a tenant UoW.
                         for row in result:
                             if row.key == 'wizard_status':
                                 wizard_status = row.value

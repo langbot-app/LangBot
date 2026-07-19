@@ -60,11 +60,19 @@ database:
     sqlite:
         path: 'data/langbot.db'
     postgresql:
+        # Optional SQLAlchemy URL (postgresql[+asyncpg]://...). When set, it
+        # overrides the structured fields and preserves TLS/query options.
+        url: ''
         host: '127.0.0.1'
         port: 5432
         user: 'postgres'
         password: 'postgres'
         database: 'postgres'
+    cloud_migration:
+        # `langbot migrate --cloud` reads an operator-only PostgreSQL DSN from
+        # this environment variable. The operator role must differ from the
+        # runtime role above; never put its password in this file or CLI args.
+        operator_dsn_env: 'LANGBOT_CLOUD_MIGRATION_DSN'
 vdb:
     use: chroma
     qdrant:
@@ -88,6 +96,11 @@ vdb:
         token: ''
         db_name: ''
     pgvector:
+        # SaaS/shared-schema deployments reuse database.postgresql. OSS can
+        # keep this false when deliberately using an external pgvector DB.
+        use_business_database: false
+        # Release migrations create one partial ANN index per enabled value.
+        allowed_dimensions: [384, 512, 768, 1024, 1536]
         host: '127.0.0.1'
         port: 5433
         database: 'langbot'
@@ -133,6 +146,9 @@ plugin:
         max_pids: 128
         max_open_files: 256
         max_file_size_mb: 512
+        # Cloud shared Runtime sets this to true and fails closed unless
+        # delegated cgroup v2 controllers are available.
+        require_hard_limits: false
     binary_storage:
         # Max bytes for a single plugin binary storage value
         max_value_bytes: 10485760
@@ -164,6 +180,26 @@ box:
         # External WebSocket runtimes also require LANGBOT_BOX_CONTROL_TOKEN in
         # both LangBot and Box. Keep the shared secret out of this config file.
         endpoint: ''  # External Box Runtime base URL, e.g. 'ws://127.0.0.1:5410'. Leave empty for local auto-managed runtime.
+    # Cloud v2 overrides these values through the instance config/environment.
+    # OSS keeps admission disabled and preserves the existing multi-session
+    # local behavior. These limits are Runtime-owned and cannot be relaxed by
+    # a pipeline, Workspace entitlement, or tool call.
+    admission:
+        required: false
+        logical_session_id: 'global'
+        required_backend: 'nsjail'
+        max_sessions: 1
+        max_managed_processes: 0
+        max_grant_ttl_sec: 300
+        max_timeout_sec: 120
+        cpus: 1.0
+        memory_mb: 512
+        pids_limit: 128
+        read_only_rootfs: true
+        # OSS admission-disabled mode uses 0 for unlimited compatibility.
+        # Cloud bootstrap requires a positive hard quota.
+        workspace_quota_mb: 0
+        readiness_cache_sec: 15
     local:
         profile: 'default'
         image: ''  # Custom local sandbox image. Leave empty to use the profile default.

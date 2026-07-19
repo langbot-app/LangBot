@@ -151,10 +151,11 @@ class UserService:
         )
 
     async def is_initialized(self) -> bool:
-        result = await self.ap.persistence_mgr.execute_async(sqlalchemy.select(user.User).limit(1))
-
-        result_list = result.all()
-        return result_list is not None and len(result_list) > 0
+        account = await self._identity_scalar(
+            sqlalchemy.select(user.User).limit(1),
+            f'instance:{self._jwt_identity()[1]}',
+        )
+        return account is not None
 
     def _session_factory(self) -> async_sessionmaker[AsyncSession]:
         return async_sessionmaker(self.ap.persistence_mgr.get_db_engine(), expire_on_commit=False)
@@ -247,27 +248,23 @@ class UserService:
 
     async def get_user_by_email(self, user_email: str) -> user.User | None:
         normalized_email = user_email.strip().casefold()
-        result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(user.User).where(user.User.normalized_email == normalized_email)
+        return await self._identity_scalar(
+            sqlalchemy.select(user.User).where(user.User.normalized_email == normalized_email),
+            f'email:{normalized_email}',
         )
-
-        result_list = result.all()
-        return result_list[0] if result_list is not None and len(result_list) > 0 else None
 
     async def get_user_by_uuid(self, account_uuid: str) -> user.User | None:
-        result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(user.User).where(user.User.uuid == account_uuid)
+        return await self._identity_scalar(
+            sqlalchemy.select(user.User).where(user.User.uuid == account_uuid),
+            f'uuid:{account_uuid}',
         )
-        return result.first()
 
     async def get_user_by_space_account_uuid(self, space_account_uuid: str) -> user.User | None:
         """Get user by Space account UUID"""
-        result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(user.User).where(user.User.space_account_uuid == space_account_uuid)
+        return await self._identity_scalar(
+            sqlalchemy.select(user.User).where(user.User.space_account_uuid == space_account_uuid),
+            f'space:{space_account_uuid}',
         )
-
-        result_list = result.all()
-        return result_list[0] if result_list is not None and len(result_list) > 0 else None
 
     async def authenticate(self, user_email: str, password: str) -> str | None:
         user_obj = await self.get_user_by_email(user_email)
@@ -389,11 +386,13 @@ class UserService:
 
     async def reset_password(self, user_email: str, new_password: str) -> None:
         hashed_password = await self._hash_password(new_password)
+        normalized_email = normalize_email(user_email)
 
-        await self.ap.persistence_mgr.execute_async(
+        await self._identity_execute(
             sqlalchemy.update(user.User)
-            .where(user.User.normalized_email == normalize_email(user_email))
-            .values(password=hashed_password)
+            .where(user.User.normalized_email == normalized_email)
+            .values(password=hashed_password),
+            f'email:{normalized_email}',
         )
 
     async def change_password(self, user_email: str, current_password: str, new_password: str) -> None:
@@ -407,11 +406,13 @@ class UserService:
         await self._verify_password(user_obj.password, current_password)
 
         hashed_password = await self._hash_password(new_password)
+        normalized_email = normalize_email(user_email)
 
-        await self.ap.persistence_mgr.execute_async(
+        await self._identity_execute(
             sqlalchemy.update(user.User)
-            .where(user.User.normalized_email == normalize_email(user_email))
-            .values(password=hashed_password)
+            .where(user.User.normalized_email == normalized_email)
+            .values(password=hashed_password),
+            f'email:{normalized_email}',
         )
 
     # Space user management
@@ -435,7 +436,7 @@ class UserService:
 
             if existing_user:
                 # Update existing user's tokens
-                await self.ap.persistence_mgr.execute_async(
+                await self._identity_execute(
                     sqlalchemy.update(user.User)
                     .where(user.User.space_account_uuid == space_account_uuid)
                     .values(
@@ -443,7 +444,8 @@ class UserService:
                         space_refresh_token=refresh_token,
                         space_api_key=api_key,
                         space_access_token_expires_at=expires_at,
-                    )
+                    ),
+                    f'space:{space_account_uuid}',
                 )
                 await self._update_space_provider_for_account(existing_user, api_key)
                 return await self.get_user_by_space_account_uuid(space_account_uuid)
@@ -538,9 +540,38 @@ class UserService:
 
     async def get_first_user(self) -> user.User | None:
         """Get the first user (for single-user mode)"""
-        result = await self.ap.persistence_mgr.execute_async(sqlalchemy.select(user.User).limit(1))
-        result_list = result.all()
-        return result_list[0] if result_list else None
+        return await self._identity_scalar(
+            sqlalchemy.select(user.User).limit(1),
+            f'instance:{self._jwt_identity()[1]}',
+        )
+
+    async def _identity_scalar(
+        self,
+        statement: typing.Any,
+        identity: str,
+    ) -> user.User | None:
+        """Execute one exact Account lookup in an explicit discovery transaction."""
+
+        digest = hashlib.sha256(identity.encode('utf-8')).hexdigest()
+        current_session = getattr(self.ap.persistence_mgr, 'current_session', lambda: None)
+        identity_uow = getattr(self.ap.persistence_mgr, 'identity_discovery_uow', None)
+        if current_session() is None and callable(identity_uow):
+            async with identity_uow(digest) as discovery:
+                return await discovery.session.scalar(statement)
+        result = await self.ap.persistence_mgr.execute_async(statement)
+        rows = result.all()
+        return rows[0] if rows else None
+
+    async def _identity_execute(self, statement: typing.Any, identity: str) -> typing.Any:
+        """Execute one exact Account mutation in an explicit transaction."""
+
+        digest = hashlib.sha256(identity.encode('utf-8')).hexdigest()
+        current_session = getattr(self.ap.persistence_mgr, 'current_session', lambda: None)
+        identity_uow = getattr(self.ap.persistence_mgr, 'identity_discovery_uow', None)
+        if current_session() is None and callable(identity_uow):
+            async with identity_uow(digest) as discovery:
+                return await discovery.session.execute(statement)
+        return await self.ap.persistence_mgr.execute_async(statement)
 
     async def set_password(self, user_email: str, new_password: str, current_password: str | None = None) -> None:
         """Set or change password for a user"""
@@ -557,10 +588,12 @@ class UserService:
             await self._verify_password(user_obj.password, current_password)
 
         hashed_password = await self._hash_password(new_password)
-        await self.ap.persistence_mgr.execute_async(
+        normalized_email = normalize_email(user_email)
+        await self._identity_execute(
             sqlalchemy.update(user.User)
-            .where(user.User.normalized_email == normalize_email(user_email))
-            .values(password=hashed_password)
+            .where(user.User.normalized_email == normalized_email)
+            .values(password=hashed_password),
+            f'email:{normalized_email}',
         )
 
     async def bind_space_account(self, user_email: str, code: str) -> user.User:
@@ -596,9 +629,10 @@ class UserService:
             raise ValueError('This Space account is already bound to another user')
 
         # Update local account to Space account
-        await self.ap.persistence_mgr.execute_async(
+        normalized_email = normalize_email(user_email)
+        await self._identity_execute(
             sqlalchemy.update(user.User)
-            .where(user.User.normalized_email == normalize_email(user_email))
+            .where(user.User.normalized_email == normalized_email)
             .values(
                 user=normalize_email(space_email),  # Update email to Space email
                 normalized_email=normalize_email(space_email),
@@ -608,7 +642,8 @@ class UserService:
                 space_refresh_token=refresh_token,
                 space_api_key=api_key,
                 space_access_token_expires_at=expires_at,
-            )
+            ),
+            f'email:{normalized_email}',
         )
 
         # Update Space model provider API keys

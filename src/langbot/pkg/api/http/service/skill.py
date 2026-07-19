@@ -4,6 +4,7 @@ import io
 import inspect
 import os
 import posixpath
+import stat
 import zipfile
 from typing import Optional
 from urllib.parse import quote, unquote, urlparse
@@ -34,6 +35,12 @@ _GITHUB_ASSET_HOSTS = {
     'raw.githubusercontent.com',
     'codeload.github.com',
 }
+_MAX_GITHUB_ARCHIVE_BYTES = 10 * 1024 * 1024
+_MAX_GITHUB_ARCHIVE_ENTRIES = 4096
+_MAX_SKILL_ARCHIVE_FILES = 1024
+_MAX_SKILL_FILE_BYTES = 10 * 1024 * 1024
+_MAX_SKILL_UNCOMPRESSED_BYTES = 50 * 1024 * 1024
+_MAX_SKILL_COMPRESSION_RATIO = 200
 
 
 class SkillService:
@@ -322,9 +329,22 @@ class SkillService:
 
     async def _download_github_asset(self, asset_url: str) -> bytes:
         async with httpx.AsyncClient(follow_redirects=True, timeout=120) as client:
-            resp = await client.get(asset_url)
-            resp.raise_for_status()
-            return resp.content
+            async with client.stream('GET', asset_url) as resp:
+                resp.raise_for_status()
+                content_length = resp.headers.get('content-length')
+                if content_length is not None:
+                    try:
+                        if int(content_length) > _MAX_GITHUB_ARCHIVE_BYTES:
+                            raise ValueError('GitHub skill archive exceeds the compressed size limit')
+                    except ValueError as exc:
+                        if 'exceeds' in str(exc):
+                            raise
+                content = bytearray()
+                async for chunk in resp.aiter_bytes():
+                    content.extend(chunk)
+                    if len(content) > _MAX_GITHUB_ARCHIVE_BYTES:
+                        raise ValueError('GitHub skill archive exceeds the compressed size limit')
+                return bytes(content)
 
     async def _download_github_skill_directory_as_zip(
         self, asset_url: str, *, owner: str, repo: str
@@ -339,7 +359,11 @@ class SkillService:
             raise ValueError('GitHub repository archive must be a valid .zip archive') from exc
 
         with source_archive as source_zip:
+            if len(source_zip.infolist()) > _MAX_GITHUB_ARCHIVE_ENTRIES:
+                raise ValueError('GitHub repository archive contains too many entries')
             skill_entry = self._find_github_skill_archive_entry(source_zip, info['file_path'])
+            if skill_entry.file_size > _MAX_SKILL_FILE_BYTES:
+                raise ValueError('GitHub SKILL.md exceeds the file size limit')
             try:
                 skill_md_content = source_zip.read(skill_entry).decode('utf-8')
             except UnicodeDecodeError as exc:
@@ -377,6 +401,7 @@ class SkillService:
         normalized_source_dir = posixpath.normpath(source_skill_dir)
         source_prefix = f'{normalized_source_dir}/'
         copied_files = 0
+        copied_bytes = 0
 
         for member in source_zip.infolist():
             normalized_member = posixpath.normpath(member.filename)
@@ -399,10 +424,33 @@ class SkillService:
             if member.is_dir():
                 target_zip.writestr(target_info, b'')
                 continue
-
-            target_zip.writestr(target_info, source_zip.read(member))
+            if member.flag_bits & 0x1:
+                raise ValueError('Encrypted GitHub skill archive entries are not supported')
+            unix_mode = member.external_attr >> 16
+            if stat.S_IFMT(unix_mode) == stat.S_IFLNK:
+                raise ValueError(f'GitHub archive contains a symbolic link: {member.filename}')
+            if member.file_size > _MAX_SKILL_FILE_BYTES:
+                raise ValueError(f'GitHub skill file exceeds the size limit: {member.filename}')
+            if member.file_size and member.file_size > max(member.compress_size, 1) * _MAX_SKILL_COMPRESSION_RATIO:
+                raise ValueError(f'GitHub skill file exceeds the compression-ratio limit: {member.filename}')
             copied_files += 1
+            copied_bytes += member.file_size
+            if copied_files > _MAX_SKILL_ARCHIVE_FILES:
+                raise ValueError('GitHub skill directory contains too many files')
+            if copied_bytes > _MAX_SKILL_UNCOMPRESSED_BYTES:
+                raise ValueError('GitHub skill directory exceeds the uncompressed size limit')
 
+            # Copy in bounded chunks instead of materialising a potentially
+            # large member in Core memory. The Box Runtime independently
+            # revalidates the resulting archive before installation.
+            with source_zip.open(member, 'r') as source_file, target_zip.open(target_info, 'w') as target_file:
+                remaining = member.file_size
+                while remaining:
+                    chunk = source_file.read(min(64 * 1024, remaining))
+                    if not chunk:
+                        raise ValueError(f'GitHub skill file is truncated: {member.filename}')
+                    target_file.write(chunk)
+                    remaining -= len(chunk)
         if copied_files == 0:
             raise ValueError('GitHub skill directory is empty')
 

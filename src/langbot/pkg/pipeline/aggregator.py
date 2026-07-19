@@ -13,6 +13,7 @@ import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
 
 from ..api.http.context import ExecutionContext
+from ..core.task_boundary import create_detached_task, run_in_workspace_uow
 from .pool import ExecutionContextMismatchError
 from ..workspace.errors import WorkspaceError, WorkspaceInvariantError
 
@@ -203,7 +204,10 @@ class MessageAggregator:
             if len(buffer.messages) >= MAX_BUFFER_MESSAGES:
                 force_flush = True
             else:
-                buffer.timer_task = asyncio.create_task(self._delayed_flush(aggregation_key, delay, execution_context))
+                buffer.timer_task = create_detached_task(
+                    self._delayed_flush(aggregation_key, delay, execution_context),
+                    after_commit_manager=getattr(self.ap, 'persistence_mgr', None),
+                )
 
         if force_flush:
             await self._flush_buffer(aggregation_key, execution_context)
@@ -218,7 +222,11 @@ class MessageAggregator:
 
         try:
             await asyncio.sleep(delay)
-            await self._flush_buffer(aggregation_key, execution_context)
+            await run_in_workspace_uow(
+                self.ap,
+                execution_context.workspace_uuid,
+                lambda: self._flush_buffer(aggregation_key, execution_context),
+            )
         except asyncio.CancelledError:
             pass
         except WorkspaceError as exc:

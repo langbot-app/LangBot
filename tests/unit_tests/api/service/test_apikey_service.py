@@ -166,6 +166,29 @@ async def test_revoked_expired_and_unknown_keys_fail_closed(api_key_context):
     assert await service.authenticate_api_key(expired_secret) is None
 
 
+async def test_revoke_winning_last_used_update_race_fails_authentication(api_key_context):
+    application, service, context, _engine = api_key_context
+    created = await service.create_api_key(context, 'Racing revoke')
+    original_execute = application.persistence_mgr.execute_async
+    injected_revoke = False
+
+    async def execute_with_revoke(statement, *args, **kwargs):
+        nonlocal injected_revoke
+        if (
+            not injected_revoke
+            and isinstance(statement, sqlalchemy.sql.dml.Update)
+            and statement.table.name == ApiKey.__tablename__
+        ):
+            injected_revoke = True
+            await original_execute(sqlalchemy.update(ApiKey).where(ApiKey.id == created['id']).values(status='revoked'))
+        return await original_execute(statement, *args, **kwargs)
+
+    application.persistence_mgr.execute_async = execute_with_revoke
+
+    assert await service.authenticate_api_key(created['key']) is None
+    assert injected_revoke is True
+
+
 async def test_cross_workspace_crud_and_secret_guessing_are_isolated(api_key_context):
     application, service, first_context, engine = api_key_context
     second_workspace_uuid = str(uuid.uuid4())

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import pytest
 import asyncio
+import contextvars
 import sys
 from unittest.mock import Mock, MagicMock
 from contextlib import contextmanager
@@ -359,6 +360,53 @@ class TestAsyncTaskManager:
         assert len(manager.tasks) == 1
 
         wrapper.cancel()
+
+    @pytest.mark.asyncio
+    async def test_create_task_does_not_inherit_request_context(self):
+        """Long-lived tasks must receive identity through explicit arguments."""
+
+        _, _, AsyncTaskManager = get_taskmgr_classes()
+        mock_app = create_mock_app()
+        manager = AsyncTaskManager(mock_app)
+        request_value = contextvars.ContextVar('request_value', default=None)
+        token = request_value.set('request-scoped-transaction')
+        observed = []
+
+        async def detached_task(captured_workspace: str) -> None:
+            observed.append((request_value.get(), captured_workspace))
+
+        try:
+            wrapper = manager.create_task(detached_task('workspace-a'))
+            await wrapper.task
+        finally:
+            request_value.reset(token)
+
+        assert observed == [(None, 'workspace-a')]
+
+    @pytest.mark.asyncio
+    async def test_create_task_waits_for_registered_transaction_commit(self):
+        _, _, AsyncTaskManager = get_taskmgr_classes()
+        mock_app = create_mock_app()
+        gate = asyncio.get_running_loop().create_future()
+
+        class PersistenceManagerStub:
+            def create_after_commit_gate(self):
+                return gate
+
+        mock_app.persistence_mgr = PersistenceManagerStub()
+        manager = AsyncTaskManager(mock_app)
+        observed = []
+
+        async def background_work() -> None:
+            observed.append('started')
+
+        wrapper = manager.create_task(background_work())
+        await asyncio.sleep(0)
+        assert observed == []
+
+        gate.set_result(None)
+        await wrapper.task
+        assert observed == ['started']
 
     @pytest.mark.asyncio
     async def test_get_stats_counts_correctly(self):

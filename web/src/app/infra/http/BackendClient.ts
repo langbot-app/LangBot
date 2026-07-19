@@ -741,13 +741,15 @@ export class BackendClient extends BaseHttpClient {
   }
 
   public installPluginFromGithub(
-    assetUrl: string,
+    assetId: number,
+    releaseId: number,
     owner: string,
     repo: string,
     releaseTag: string,
   ): Promise<AsyncTaskCreatedResp> {
     return this.post('/api/v1/plugins/install/github', {
-      asset_url: assetUrl,
+      asset_id: assetId,
+      release_id: releaseId,
       owner,
       repo,
       release_tag: releaseTag,

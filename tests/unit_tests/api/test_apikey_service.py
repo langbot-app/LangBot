@@ -45,9 +45,16 @@ async def test_verify_api_key_keeps_db_validation_for_lbk_keys(key_exists):
         if key_exists
         else None
     )
-    query_result = Mock()
-    query_result.first.return_value = key
-    persistence_mgr = SimpleNamespace(execute_async=AsyncMock(side_effect=[query_result, Mock(rowcount=1)]))
+    discovery_result = Mock()
+    discovery_result.first.return_value = key
+    query_results = [discovery_result]
+    if key_exists:
+        scoped_result = Mock()
+        scoped_result.first.return_value = key
+        update_result = Mock()
+        update_result.scalar_one_or_none.return_value = key.id
+        query_results.extend([scoped_result, update_result])
+    persistence_mgr = SimpleNamespace(execute_async=AsyncMock(side_effect=query_results))
     instance_config = SimpleNamespace(data={'api': {'global_api_key': ''}})
     workspace_service = SimpleNamespace(
         get_execution_binding=AsyncMock(
@@ -69,7 +76,7 @@ async def test_verify_api_key_keeps_db_validation_for_lbk_keys(key_exists):
     result = await service.verify_api_key('lbk_valid_format')
 
     assert result is key_exists
-    assert persistence_mgr.execute_async.await_count == (2 if key_exists else 1)
+    assert persistence_mgr.execute_async.await_count == (3 if key_exists else 1)
     if key_exists:
         workspace_service.get_execution_binding.assert_awaited_once_with('workspace-a')
     else:

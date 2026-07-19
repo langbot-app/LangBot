@@ -6,6 +6,7 @@ import typing
 from collections.abc import Awaitable, Callable
 from typing import TypeVar
 
+import sqlalchemy
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from ..entity.persistence.workspace import (
@@ -68,6 +69,11 @@ class WorkspaceService:
     ) -> Workspace:
         """Load one Workspace projected onto this LangBot instance."""
 
+        tenant_uow = getattr(self.ap.persistence_mgr, 'tenant_uow', None)
+        if session is None and callable(tenant_uow):
+            async with tenant_uow(workspace_uuid) as uow:
+                return await self.get_workspace(workspace_uuid, session=uow.session)
+
         async def operation(repository: WorkspaceRepository) -> Workspace:
             workspace = await repository.get_workspace(workspace_uuid)
             if workspace is None or workspace.instance_uuid != self.instance_uuid:
@@ -97,6 +103,11 @@ class WorkspaceService:
     ) -> WorkspaceExecutionState:
         """Load a Workspace execution state and validate its instance binding."""
 
+        tenant_uow = getattr(self.ap.persistence_mgr, 'tenant_uow', None)
+        if session is None and callable(tenant_uow):
+            async with tenant_uow(workspace_uuid) as uow:
+                return await self.get_execution_state(workspace_uuid, session=uow.session)
+
         async def operation(repository: WorkspaceRepository) -> WorkspaceExecutionState:
             execution_state = await repository.get_execution_state(workspace_uuid)
             if execution_state is None:
@@ -108,6 +119,47 @@ class WorkspaceService:
             return execution_state
 
         return await self._run(operation, session=session)
+
+    async def list_active_execution_bindings(self) -> list[WorkspaceExecutionBinding]:
+        """Discover this instance's active Workspaces, then validate each tenant projection.
+
+        The instance discovery transaction may only reveal active, unfenced
+        execution-state identifiers.  It is closed before any Workspace data is
+        read; every returned binding is revalidated inside its own tenant unit
+        of work.
+        """
+
+        instance_discovery_uow = getattr(self.ap.persistence_mgr, 'instance_discovery_uow', None)
+        statement = (
+            sqlalchemy.select(WorkspaceExecutionState.workspace_uuid)
+            .where(
+                WorkspaceExecutionState.instance_uuid == self.instance_uuid,
+                WorkspaceExecutionState.state == WorkspaceExecutionStatus.ACTIVE.value,
+                WorkspaceExecutionState.write_fenced == sqlalchemy.false(),
+            )
+            .order_by(WorkspaceExecutionState.workspace_uuid)
+        )
+        if callable(instance_discovery_uow):
+            async with instance_discovery_uow(self.instance_uuid) as uow:
+                result = await uow.session.execute(statement)
+                workspace_uuids = list(result.scalars().all())
+        else:
+            # Compatibility for lightweight test doubles. Production managers
+            # always expose the explicit discovery scope.
+            result = await self.ap.persistence_mgr.execute_async(statement)
+            workspace_uuids = list(result.scalars().all())
+
+        bindings: list[WorkspaceExecutionBinding] = []
+        for workspace_uuid in workspace_uuids:
+            try:
+                bindings.append(await self.get_execution_binding(workspace_uuid))
+            except (
+                WorkspaceExecutionUnavailableError,
+                WorkspaceInvariantError,
+                WorkspaceNotFoundError,
+            ) as exc:
+                self.ap.logger.warning(f'Skipping invalid Workspace execution projection {workspace_uuid!r}: {exc}')
+        return bindings
 
     async def get_execution_binding(
         self,
@@ -123,6 +175,18 @@ class WorkspaceService:
         validates the local projection and execution fence. Callers never infer
         a Workspace from source or recency.
         """
+
+        self._require_deployment_admission()
+
+        tenant_uow = getattr(self.ap.persistence_mgr, 'tenant_uow', None)
+        if session is None and workspace_uuid is not None and callable(tenant_uow):
+            async with tenant_uow(workspace_uuid) as uow:
+                return await self.get_execution_binding(
+                    workspace_uuid,
+                    expected_generation=expected_generation,
+                    session=uow.session,
+                    _require_local=_require_local,
+                )
 
         async def operation(repository: WorkspaceRepository) -> WorkspaceExecutionBinding:
             if workspace_uuid is None:
@@ -180,7 +244,11 @@ class WorkspaceService:
                 state=execution_state.state,
             )
 
-        return await self._run(operation, session=session)
+        binding = await self._run(operation, session=session)
+        # The database lookup can cross the Manifest expiry boundary. Never
+        # return a binding that is already invalid at a side-effect boundary.
+        self._require_deployment_admission()
+        return binding
 
     async def get_local_execution_binding(
         self,
@@ -408,6 +476,18 @@ class WorkspaceService:
         if session is not None:
             return await operation(WorkspaceRepository(session))
 
+        current_session = getattr(self.ap.persistence_mgr, 'current_session', lambda: None)
+        active_session = current_session()
+        if active_session is not None:
+            return await operation(WorkspaceRepository(active_session))
+        if getattr(getattr(self.ap.persistence_mgr, 'mode', None), 'value', None) == 'cloud_runtime':
+            # Do not let service-local session factories silently bypass the
+            # request/task scope enforced by PersistenceManager.
+            require_current_session = getattr(self.ap.persistence_mgr, 'require_current_session', None)
+            if callable(require_current_session):
+                require_current_session()
+            raise RuntimeError('Cloud Workspace services require an explicit persistence unit of work')
+
         session_factory = async_sessionmaker(
             self.ap.persistence_mgr.get_db_engine(),
             expire_on_commit=False,
@@ -415,3 +495,8 @@ class WorkspaceService:
         async with session_factory() as owned_session:
             async with owned_session.begin():
                 return await operation(WorkspaceRepository(owned_session))
+
+    def _require_deployment_admission(self) -> None:
+        guard = getattr(self.ap, 'deployment_admission', None)
+        if guard is not None:
+            guard.require_active()

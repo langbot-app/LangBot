@@ -1,4 +1,5 @@
 from __future__ import annotations
+import asyncio
 import io
 import mimetypes
 import os.path
@@ -14,6 +15,7 @@ from langbot.pkg.api.http.authz import WorkspaceRequiredError
 from langbot.pkg.api.http.context import ExecutionContext, RequestContext
 from langbot.pkg.api.http.service.tenant import TenantContext, require_workspace_uuid
 from langbot.pkg.core import app, taskmgr
+from langbot.pkg.core.task_boundary import run_in_workspace_uow
 from langbot.pkg.entity.persistence import rag as persistence_rag
 from langbot.pkg.workspace.errors import WorkspaceNotFoundError
 
@@ -90,16 +92,23 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
         task_context: taskmgr.TaskContext,
         parser_plugin_id: str | None = None,
     ):
-        await self._assert_execution_context(execution_context)
+        await run_in_workspace_uow(
+            self.ap,
+            execution_context.workspace_uuid,
+            lambda: self._assert_execution_context(execution_context),
+        )
         self._require_upload_object_key(execution_context, file.file_name)
         try:
             # set file status to processing
-            await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.update(persistence_rag.File)
-                .where(persistence_rag.File.workspace_uuid == execution_context.workspace_uuid)
-                .where(persistence_rag.File.uuid == file.uuid)
-                .values(status='processing')
-            )
+            status_visible = False
+            for retry_delay in (0.0, 0.01, 0.05, 0.1):
+                if retry_delay:
+                    await asyncio.sleep(retry_delay)
+                if await self._set_file_status(execution_context, file.uuid, 'processing'):
+                    status_visible = True
+                    break
+            if not status_visible:
+                raise WorkspaceNotFoundError('Knowledge file was not committed before its background task started')
 
             task_context.set_current_action('Processing file')
 
@@ -152,13 +161,8 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
                 raise Exception(error_msg)
 
             # set file status to completed
-            await self._assert_execution_context(execution_context)
-            await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.update(persistence_rag.File)
-                .where(persistence_rag.File.workspace_uuid == execution_context.workspace_uuid)
-                .where(persistence_rag.File.uuid == file.uuid)
-                .values(status='completed')
-            )
+            if not await self._set_file_status(execution_context, file.uuid, 'completed'):
+                raise WorkspaceNotFoundError('Knowledge file not found')
 
         except Exception as e:
             self.ap.logger.error(f'Error storing file {file.uuid}: {e}')
@@ -166,16 +170,10 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
             # A stale placement is fenced from all writes, including failure
             # status updates from an old background task.
             try:
-                await self._assert_execution_context(execution_context)
+                if not await self._set_file_status(execution_context, file.uuid, 'failed'):
+                    raise WorkspaceNotFoundError('Knowledge file not found')
             except Exception:
                 self.ap.logger.warning(f'Skipping stale RAG task status update for file {file.uuid}')
-            else:
-                await self.ap.persistence_mgr.execute_async(
-                    sqlalchemy.update(persistence_rag.File)
-                    .where(persistence_rag.File.workspace_uuid == execution_context.workspace_uuid)
-                    .where(persistence_rag.File.uuid == file.uuid)
-                    .values(status='failed')
-                )
 
             raise
         finally:
@@ -190,6 +188,37 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
                 )
             except (WorkspaceRequiredError, WorkspaceNotFoundError):
                 self.ap.logger.warning(f'Skipping stale RAG upload cleanup for file {file.uuid}')
+
+    async def _set_file_status(
+        self,
+        execution_context: ExecutionContext,
+        file_uuid: str,
+        status: str,
+    ) -> bool:
+        """Commit one detached-task status transition in its own tenant UoW."""
+
+        async def update() -> bool:
+            await self._assert_execution_context(execution_context)
+            result = await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.update(persistence_rag.File)
+                .where(persistence_rag.File.workspace_uuid == execution_context.workspace_uuid)
+                .where(persistence_rag.File.uuid == file_uuid)
+                .values(status=status)
+            )
+            return getattr(result, 'rowcount', 0) > 0
+
+        persistence_mgr = self.ap.persistence_mgr
+        managed_mode = getattr(getattr(persistence_mgr, 'mode', None), 'value', None) in {
+            'cloud_runtime',
+            'oss_compat',
+        }
+        tenant_uow = getattr(persistence_mgr, 'tenant_uow', None)
+        if managed_mode:
+            if not callable(tenant_uow):
+                raise RuntimeError('Knowledge tasks require an explicit tenant UoW')
+            async with tenant_uow(execution_context.workspace_uuid):
+                return await update()
+        return await update()
 
     async def store_file(
         self,
@@ -735,7 +764,36 @@ class RAGManager:
 
         self.knowledge_bases = {}
 
-        # Load knowledge bases
+        list_bindings = getattr(self.ap.workspace_service, 'list_active_execution_bindings', None)
+        tenant_uow = getattr(self.ap.persistence_mgr, 'tenant_uow', None)
+        cloud_runtime = getattr(getattr(self.ap.persistence_mgr, 'mode', None), 'value', None) == 'cloud_runtime'
+        if cloud_runtime:
+            if not callable(list_bindings) or not callable(tenant_uow):
+                raise RuntimeError('Cloud knowledge loading requires explicit instance discovery and tenant UoWs')
+            for binding in await list_bindings():
+                async with tenant_uow(binding.workspace_uuid):
+                    result = await self.ap.persistence_mgr.execute_async(
+                        sqlalchemy.select(persistence_rag.KnowledgeBase)
+                        .where(persistence_rag.KnowledgeBase.workspace_uuid == binding.workspace_uuid)
+                        .order_by(persistence_rag.KnowledgeBase.uuid)
+                    )
+                    for knowledge_base in result.all():
+                        try:
+                            await self.load_knowledge_base(
+                                ExecutionContext(
+                                    instance_uuid=binding.instance_uuid,
+                                    workspace_uuid=binding.workspace_uuid,
+                                    placement_generation=binding.placement_generation,
+                                ),
+                                knowledge_base,
+                            )
+                        except Exception as e:
+                            self.ap.logger.error(
+                                f'Error loading knowledge base {knowledge_base.uuid}: {e}\n{traceback.format_exc()}'
+                            )
+            return
+
+        # Compatibility path for isolated manager tests and older embedders.
         result = await self.ap.persistence_mgr.execute_async(sqlalchemy.select(persistence_rag.KnowledgeBase))
         knowledge_bases = result.all()
 

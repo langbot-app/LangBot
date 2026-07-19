@@ -43,22 +43,37 @@ class Controller:
 
         try:
             async with self.semaphore:
-                execution_context = await self._assert_query_execution_active(selected_query)
-                pipeline_uuid = selected_query.pipeline_uuid
+                queued_context = get_query_execution_context(selected_query)
 
-                if pipeline_uuid:
-                    pipeline = await self.ap.pipeline_mgr.get_pipeline_by_uuid(
-                        execution_context,
-                        pipeline_uuid,
-                    )
-                    if pipeline:
-                        await pipeline.run(selected_query)
-                    else:
-                        self.ap.logger.warning(
-                            f'Pipeline {pipeline_uuid} not found for query {selected_query.query_id}, query dropped'
+                async def run_scoped_query() -> None:
+                    execution_context = await self._assert_query_execution_active(selected_query)
+                    pipeline_uuid = selected_query.pipeline_uuid
+
+                    if pipeline_uuid:
+                        pipeline = await self.ap.pipeline_mgr.get_pipeline_by_uuid(
+                            execution_context,
+                            pipeline_uuid,
                         )
+                        if pipeline:
+                            await pipeline.run(selected_query)
+                        else:
+                            self.ap.logger.warning(
+                                f'Pipeline {pipeline_uuid} not found for query {selected_query.query_id}, query dropped'
+                            )
+                    else:
+                        self.ap.logger.warning(f'No pipeline_uuid for query {selected_query.query_id}, query dropped')
+
+                tenant_scope = getattr(self.ap.persistence_mgr, 'tenant_scope', None)
+                cloud_runtime = (
+                    getattr(getattr(self.ap.persistence_mgr, 'mode', None), 'value', None) == 'cloud_runtime'
+                )
+                if cloud_runtime:
+                    if not callable(tenant_scope):
+                        raise RuntimeError('Cloud query processing requires an explicit tenant scope')
+                    async with tenant_scope(queued_context.workspace_uuid):
+                        await run_scoped_query()
                 else:
-                    self.ap.logger.warning(f'No pipeline_uuid for query {selected_query.query_id}, query dropped')
+                    await run_scoped_query()
         except WorkspaceError as exc:
             self.ap.logger.info(
                 f'Dropped query {selected_query.query_id} because its Workspace execution binding is stale: {exc}'

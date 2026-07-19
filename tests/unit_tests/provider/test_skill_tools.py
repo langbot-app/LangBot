@@ -304,6 +304,22 @@ class TestSkillPathHelpers:
         assert 'export VIRTUAL_ENV="$_LB_VENV_DIR"' in command
         assert command.rstrip().endswith('python scripts/run.py')
 
+    def test_wrap_skill_python_env_keeps_state_outside_read_only_source(self):
+        from langbot.pkg.provider.tools.loaders.skill import wrap_skill_command_with_python_env
+
+        command = wrap_skill_command_with_python_env(
+            'python scripts/run.py',
+            mount_path='/workspace/.skills/demo',
+            state_path='/workspace/.skill-envs/demo',
+        )
+
+        assert '_LB_VENV_DIR="/workspace/.skill-envs/demo/.venv"' in command
+        assert '_LB_META_DIR="/workspace/.skill-envs/demo/.langbot"' in command
+        assert '_LB_TMP_DIR="/workspace/.skill-envs/demo/.tmp"' in command
+        assert '_LB_PIP_CACHE_DIR="/workspace/.skill-envs/demo/.cache/pip"' in command
+        assert 'root = "/workspace/.skills/demo"' in command
+        assert 'pip install "/workspace/.skills/demo"' in command
+
 
 class TestSkillToolLoader:
     """The skill tool surface is now just ``activate`` + ``register_skill``.
@@ -497,7 +513,11 @@ class TestNativeToolLoaderSkillPaths:
                 f.write('demo instructions')
 
             ap = _make_ap()
-            ap.box_service = SimpleNamespace(available=True, default_workspace=tmpdir)
+            ap.box_service = SimpleNamespace(
+                available=True,
+                default_workspace=tmpdir,
+                shares_filesystem_with_box=True,
+            )
             ap.skill_mgr = _make_skill_manager({'demo': _make_skill_data(name='demo', package_root=tmpdir)})
             loader = NativeToolLoader(ap)
 
@@ -510,6 +530,70 @@ class TestNativeToolLoaderSkillPaths:
             assert result['ok'] is True
             assert result['content'] == 'demo instructions'
             assert result['truncated'] is False
+
+    @pytest.mark.asyncio
+    async def test_external_runtime_read_never_interprets_package_root_on_core_host(self):
+        from langbot.pkg.provider.tools.loaders.native import NativeToolLoader
+        from langbot.pkg.provider.tools.loaders.skill import PIPELINE_BOUND_SKILLS_KEY
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with open(os.path.join(tmpdir, 'SKILL.md'), 'w', encoding='utf-8') as file_obj:
+                file_obj.write('core-host-secret')
+
+            ap = _make_ap()
+            ap.box_service = SimpleNamespace(
+                available=True,
+                shares_filesystem_with_box=False,
+                read_skill_file=AsyncMock(return_value={'content': 'runtime-owned-content'}),
+            )
+            ap.skill_mgr = _make_skill_manager({'demo': _make_skill_data(name='demo', package_root=tmpdir)})
+            loader = NativeToolLoader(ap)
+            query = _make_query(
+                query_id='q-external-read',
+                variables={PIPELINE_BOUND_SKILLS_KEY: ['demo']},
+            )
+
+            result = await loader.invoke_tool(
+                'read',
+                {'path': '/workspace/.skills/demo/SKILL.md'},
+                query,
+            )
+
+            assert result['ok'] is True
+            assert result['content'] == 'runtime-owned-content'
+            assert 'core-host-secret' not in repr(result)
+            ap.box_service.read_skill_file.assert_awaited_once_with(_CONTEXT, 'demo', 'SKILL.md')
+
+    @pytest.mark.asyncio
+    async def test_external_runtime_rejects_skill_host_fallback_without_protocol_capability(self):
+        from langbot.pkg.provider.tools.loaders.native import NativeToolLoader
+        from langbot.pkg.provider.tools.loaders.skill import PIPELINE_BOUND_SKILLS_KEY
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with open(os.path.join(tmpdir, 'secret.txt'), 'w', encoding='utf-8') as file_obj:
+                file_obj.write('core-host-secret')
+
+            ap = _make_ap()
+            ap.box_service = SimpleNamespace(
+                available=True,
+                shares_filesystem_with_box=False,
+            )
+            ap.skill_mgr = _make_skill_manager({'demo': _make_skill_data(name='demo', package_root=tmpdir)})
+            loader = NativeToolLoader(ap)
+            query = _make_query(
+                query_id='q-external-no-protocol',
+                variables={PIPELINE_BOUND_SKILLS_KEY: ['demo']},
+            )
+
+            with pytest.raises(ValueError, match='owned by the Box Runtime'):
+                await loader.invoke_tool(
+                    'grep',
+                    {
+                        'path': '/workspace/.skills/demo',
+                        'pattern': 'core-host-secret',
+                    },
+                    query,
+                )
 
     @pytest.mark.asyncio
     async def test_exec_in_activated_skill_mount_rewrites_command_and_refreshes(self):
@@ -542,7 +626,48 @@ class TestNativeToolLoaderSkillPaths:
             tool_parameters = ap.box_service.execute_tool.await_args.args[0]
             assert tool_parameters['command'] == 'python /workspace/.skills/demo/scripts/run.py'
             assert tool_parameters['workdir'] == '/workspace/.skills/demo'
+            assert ap.box_service.execute_tool.await_args.kwargs['skill_name'] == 'demo'
             ap.skill_mgr.refresh_skill_from_disk.assert_called_once_with(_CONTEXT, 'demo')
+
+    @pytest.mark.asyncio
+    async def test_external_runtime_python_skill_uses_trusted_metadata_and_writable_env(self):
+        from langbot.pkg.provider.tools.loaders.native import NativeToolLoader
+        from langbot.pkg.provider.tools.loaders.skill import register_activated_skill
+
+        ap = _make_ap()
+        ap.box_service = SimpleNamespace(
+            available=True,
+            shares_filesystem_with_box=False,
+            execute_tool=AsyncMock(return_value={'ok': True}),
+        )
+        ap.skill_mgr = SimpleNamespace(refresh_skill_from_disk=Mock())
+        loader = NativeToolLoader(ap)
+        query = _make_query(query_id='q-external', launcher_type='person', launcher_id='123')
+        register_activated_skill(
+            query,
+            _make_skill_data(
+                name='demo',
+                package_root='/box-runtime/skills/tenants/workspace/demo',
+                python_project=True,
+            ),
+        )
+
+        result = await loader.invoke_tool(
+            'exec',
+            {
+                'command': 'python /workspace/.skills/demo/scripts/run.py',
+                'workdir': '/workspace/.skills/demo',
+            },
+            query,
+        )
+
+        assert result['ok'] is True
+        tool_parameters = ap.box_service.execute_tool.await_args.args[0]
+        wrapped = tool_parameters['command']
+        assert '_LB_VENV_DIR="/workspace/.skill-envs/demo/.venv"' in wrapped
+        assert 'root = "/workspace/.skills/demo"' in wrapped
+        assert '/box-runtime/skills/tenants/workspace/demo' not in wrapped
+        assert ap.box_service.execute_tool.await_args.kwargs['skill_name'] == 'demo'
 
     @pytest.mark.asyncio
     async def test_write_requires_skill_activation(self):

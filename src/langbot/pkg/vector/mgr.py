@@ -64,9 +64,26 @@ class VectorDBManager:
 
                 # Get pgvector configuration
                 pgvector_config = kb_config.get('pgvector', {})
+                use_business_database = pgvector_config.get('use_business_database', False)
+                allowed_dimensions = pgvector_config.get(
+                    'allowed_dimensions',
+                    [384, 512, 768, 1024, 1536],
+                )
+                common_options = {
+                    'use_business_database': use_business_database,
+                    'allowed_dimensions': allowed_dimensions,
+                }
+                if use_business_database:
+                    self.vector_db = PgVectorDatabase(self.ap, **common_options)
+                    self.ap.logger.info('Initialized pgvector on the shared business PostgreSQL database.')
+                    return
                 connection_string = pgvector_config.get('connection_string')
                 if connection_string:
-                    self.vector_db = PgVectorDatabase(self.ap, connection_string=connection_string)
+                    self.vector_db = PgVectorDatabase(
+                        self.ap,
+                        connection_string=connection_string,
+                        **common_options,
+                    )
                 else:
                     # Use individual parameters
                     host = pgvector_config.get('host', 'localhost')
@@ -75,7 +92,13 @@ class VectorDBManager:
                     user = pgvector_config.get('user', 'postgres')
                     password = pgvector_config.get('password', 'postgres')
                     self.vector_db = PgVectorDatabase(
-                        self.ap, host=host, port=port, database=database, user=user, password=password
+                        self.ap,
+                        host=host,
+                        port=port,
+                        database=database,
+                        user=user,
+                        password=password,
+                        **common_options,
                     )
                 self.ap.logger.info('Initialized pgvector database backend.')
 
@@ -156,23 +179,24 @@ class VectorDBManager:
         """
 
         await self._validate_execution_context(execution_context)
-        result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(
-                persistence_rag.KnowledgeBase.collection_id,
-                persistence_rag.KnowledgeBase.legacy_vector_collection,
-                persistence_workspace.Workspace.source,
+        async with self.ap.persistence_mgr.tenant_uow(execution_context.workspace_uuid):
+            result = await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.select(
+                    persistence_rag.KnowledgeBase.collection_id,
+                    persistence_rag.KnowledgeBase.legacy_vector_collection,
+                    persistence_workspace.Workspace.source,
+                )
+                .join(
+                    persistence_workspace.Workspace,
+                    persistence_workspace.Workspace.uuid == persistence_rag.KnowledgeBase.workspace_uuid,
+                )
+                .where(
+                    persistence_rag.KnowledgeBase.workspace_uuid == execution_context.workspace_uuid,
+                    persistence_rag.KnowledgeBase.uuid == knowledge_base_uuid,
+                    persistence_workspace.Workspace.instance_uuid == execution_context.instance_uuid,
+                )
+                .limit(1)
             )
-            .join(
-                persistence_workspace.Workspace,
-                persistence_workspace.Workspace.uuid == persistence_rag.KnowledgeBase.workspace_uuid,
-            )
-            .where(
-                persistence_rag.KnowledgeBase.workspace_uuid == execution_context.workspace_uuid,
-                persistence_rag.KnowledgeBase.uuid == knowledge_base_uuid,
-                persistence_workspace.Workspace.instance_uuid == execution_context.instance_uuid,
-            )
-            .limit(1)
-        )
         row = result.first()
         if row is None:
             raise WorkspaceNotFoundError('Knowledge base not found')
@@ -193,6 +217,58 @@ class VectorDBManager:
             )
 
         return self.physical_collection_name(execution_context, knowledge_base_uuid)
+
+    def _pgvector_database(self):
+        from .vdbs.pgvector_db import PgVectorDatabase
+
+        return self.vector_db if isinstance(self.vector_db, PgVectorDatabase) else None
+
+    async def _resolve_pgvector_scope(
+        self,
+        execution_context: ExecutionContext,
+        knowledge_base_uuid: str,
+        *,
+        expected_dimension: int | None,
+        initialize_dimension: bool,
+    ):
+        """Bind and verify the server-owned knowledge-base vector dimension."""
+
+        from .vdbs.pgvector_db import PgVectorScope
+
+        pgvector = self._pgvector_database()
+        if pgvector is None:  # pragma: no cover - private call invariant
+            raise RuntimeError('pgvector scope requested for another vector backend')
+        if expected_dimension is not None and expected_dimension not in pgvector.allowed_dimensions:
+            raise ValueError(f'Embedding dimension {expected_dimension} is not enabled for this deployment')
+
+        async with self.ap.persistence_mgr.tenant_uow(execution_context.workspace_uuid):
+            query = sqlalchemy.select(persistence_rag.KnowledgeBase.embedding_dimension).where(
+                persistence_rag.KnowledgeBase.workspace_uuid == execution_context.workspace_uuid,
+                persistence_rag.KnowledgeBase.uuid == knowledge_base_uuid,
+            )
+            current_dimension = (await self.ap.persistence_mgr.execute_async(query)).scalar_one_or_none()
+            if current_dimension is None and expected_dimension is not None and initialize_dimension:
+                await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.update(persistence_rag.KnowledgeBase)
+                    .where(
+                        persistence_rag.KnowledgeBase.workspace_uuid == execution_context.workspace_uuid,
+                        persistence_rag.KnowledgeBase.uuid == knowledge_base_uuid,
+                        persistence_rag.KnowledgeBase.embedding_dimension.is_(None),
+                    )
+                    .values(embedding_dimension=expected_dimension)
+                )
+                current_dimension = (await self.ap.persistence_mgr.execute_async(query)).scalar_one_or_none()
+
+            if expected_dimension is not None and current_dimension != expected_dimension:
+                if current_dimension is None:
+                    raise ValueError('Knowledge base has no selected pgvector embedding dimension')
+                raise ValueError(f'Knowledge base embedding dimension is {current_dimension}, not {expected_dimension}')
+
+        return PgVectorScope(
+            workspace_uuid=execution_context.workspace_uuid,
+            knowledge_base_uuid=knowledge_base_uuid,
+            embedding_dimension=current_dimension,
+        )
 
     async def upsert(
         self,
@@ -219,6 +295,25 @@ class VectorDBManager:
             }
             for item in source_metadata
         ]
+        pgvector = self._pgvector_database()
+        if pgvector is not None:
+            if not vectors:
+                return
+            scope = await self._resolve_pgvector_scope(
+                execution_context,
+                knowledge_base_uuid,
+                expected_dimension=len(vectors[0]),
+                initialize_dimension=True,
+            )
+            await pgvector.add_embeddings(
+                collection=collection_name,
+                ids=ids,
+                embeddings_list=vectors,
+                metadatas=scoped_metadata,
+                documents=documents,
+                scope=scope,
+            )
+            return
         await self.vector_db.add_embeddings(
             collection=collection_name,
             ids=ids,
@@ -248,15 +343,34 @@ class VectorDBManager:
             execution_context,
             knowledge_base_uuid,
         )
-        results = await self.vector_db.search(
-            collection=collection_name,
-            query_embedding=query_vector,
-            k=limit,
-            search_type=search_type,
-            query_text=query_text,
-            filter=filter,
-            vector_weight=vector_weight,
-        )
+        pgvector = self._pgvector_database()
+        if pgvector is not None:
+            scope = await self._resolve_pgvector_scope(
+                execution_context,
+                knowledge_base_uuid,
+                expected_dimension=len(query_vector),
+                initialize_dimension=False,
+            )
+            results = await pgvector.search(
+                collection=collection_name,
+                query_embedding=query_vector,
+                k=limit,
+                search_type=search_type,
+                query_text=query_text,
+                filter=filter,
+                vector_weight=vector_weight,
+                scope=scope,
+            )
+        else:
+            results = await self.vector_db.search(
+                collection=collection_name,
+                query_embedding=query_vector,
+                k=limit,
+                search_type=search_type,
+                query_text=query_text,
+                filter=filter,
+                vector_weight=vector_weight,
+            )
 
         if not results or 'ids' not in results or not results['ids']:
             return []
@@ -297,8 +411,20 @@ class VectorDBManager:
             execution_context,
             knowledge_base_uuid,
         )
+        pgvector = self._pgvector_database()
+        scope = None
+        if pgvector is not None:
+            scope = await self._resolve_pgvector_scope(
+                execution_context,
+                knowledge_base_uuid,
+                expected_dimension=None,
+                initialize_dimension=False,
+            )
         for file_id in file_ids:
-            await self.vector_db.delete_by_file_id(collection_name, file_id)
+            if pgvector is not None:
+                await pgvector.delete_by_file_id(collection_name, file_id, scope=scope)
+            else:
+                await self.vector_db.delete_by_file_id(collection_name, file_id)
 
     async def delete_collection(
         self,
@@ -311,7 +437,17 @@ class VectorDBManager:
             execution_context,
             knowledge_base_uuid,
         )
-        await self.vector_db.delete_collection(collection_name)
+        pgvector = self._pgvector_database()
+        if pgvector is not None:
+            scope = await self._resolve_pgvector_scope(
+                execution_context,
+                knowledge_base_uuid,
+                expected_dimension=None,
+                initialize_dimension=False,
+            )
+            await pgvector.delete_collection(collection_name, scope=scope)
+        else:
+            await self.vector_db.delete_collection(collection_name)
 
     async def delete_by_filter(
         self,
@@ -328,6 +464,15 @@ class VectorDBManager:
             execution_context,
             knowledge_base_uuid,
         )
+        pgvector = self._pgvector_database()
+        if pgvector is not None:
+            scope = await self._resolve_pgvector_scope(
+                execution_context,
+                knowledge_base_uuid,
+                expected_dimension=None,
+                initialize_dimension=False,
+            )
+            return await pgvector.delete_by_filter(collection_name, filter, scope=scope)
         return await self.vector_db.delete_by_filter(collection_name, filter)
 
     async def list_by_filter(
@@ -347,4 +492,13 @@ class VectorDBManager:
             execution_context,
             knowledge_base_uuid,
         )
+        pgvector = self._pgvector_database()
+        if pgvector is not None:
+            scope = await self._resolve_pgvector_scope(
+                execution_context,
+                knowledge_base_uuid,
+                expected_dimension=None,
+                initialize_dimension=False,
+            )
+            return await pgvector.list_by_filter(collection_name, filter, limit, offset, scope=scope)
         return await self.vector_db.list_by_filter(collection_name, filter, limit, offset)

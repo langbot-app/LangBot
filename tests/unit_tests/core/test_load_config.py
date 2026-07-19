@@ -35,6 +35,22 @@ class TestApplyEnvOverridesToConfig:
 
         assert result['system']['name'] == 'custom_name'
 
+    def test_override_log_never_prints_secret_value(self, capsys):
+        """Environment-backed credentials must not be copied into logs."""
+        load_config = get_load_config_module()
+
+        secret = 'database-password-that-must-not-leak'
+        cfg = {'database': {'postgresql': {'password': ''}}}
+        env = {'DATABASE__POSTGRESQL__PASSWORD': secret}
+
+        with patch.dict(os.environ, env, clear=True):
+            result = load_config._apply_env_overrides_to_config(cfg)
+
+        captured = capsys.readouterr().out
+        assert result['database']['postgresql']['password'] == secret
+        assert 'DATABASE__POSTGRESQL__PASSWORD' in captured
+        assert secret not in captured
+
     def test_override_int_value(self):
         """Test overriding an int value with proper conversion."""
         load_config = get_load_config_module()
@@ -195,6 +211,19 @@ class TestApplyEnvOverridesToConfig:
             result = load_config._apply_env_overrides_to_config(cfg)
 
         assert result['system']['name'] == 'default'
+
+    def test_skip_env_vars_with_empty_path_segments(self, capsys):
+        """Platform variables such as __CF_USER_TEXT_ENCODING are not config."""
+        load_config = get_load_config_module()
+
+        cfg = {'system': {'name': 'default'}}
+        env = {'__CF_USER_TEXT_ENCODING': '0x1F5:0x0:0x64'}
+
+        with patch.dict(os.environ, env, clear=True):
+            result = load_config._apply_env_overrides_to_config(cfg)
+
+        assert result == cfg
+        assert capsys.readouterr().out == ''
 
     def test_nested_config_path(self):
         """Test overriding deeply nested config."""

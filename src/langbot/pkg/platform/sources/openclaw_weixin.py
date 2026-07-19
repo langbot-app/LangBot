@@ -286,19 +286,30 @@ class OpenClawWeixinAdapter(abstract_platform_adapter.AbstractMessagePlatformAda
             if execution_context.bot_uuid != self._bot_uuid:
                 raise RuntimeError('Weixin Bot UUID does not match its ExecutionContext')
 
-            binding = await ap.workspace_service.get_execution_binding(
-                execution_context.workspace_uuid,
-                expected_generation=execution_context.placement_generation,
-            )
-            if binding.instance_uuid != execution_context.instance_uuid:
-                raise RuntimeError('Weixin Bot Workspace belongs to another LangBot instance')
+            async def persist() -> None:
+                binding = await ap.workspace_service.get_execution_binding(
+                    execution_context.workspace_uuid,
+                    expected_generation=execution_context.placement_generation,
+                )
+                if binding.instance_uuid != execution_context.instance_uuid:
+                    raise RuntimeError('Weixin Bot Workspace belongs to another LangBot instance')
 
-            await ap.persistence_mgr.execute_async(
-                sqlalchemy.update(persistence_bot.Bot)
-                .where(persistence_bot.Bot.workspace_uuid == execution_context.workspace_uuid)
-                .where(persistence_bot.Bot.uuid == self._bot_uuid)
-                .values(adapter_config=self.config)
-            )
+                await ap.persistence_mgr.execute_async(
+                    sqlalchemy.update(persistence_bot.Bot)
+                    .where(persistence_bot.Bot.workspace_uuid == execution_context.workspace_uuid)
+                    .where(persistence_bot.Bot.uuid == self._bot_uuid)
+                    .values(adapter_config=self.config)
+                )
+
+            cloud_runtime = getattr(getattr(ap.persistence_mgr, 'mode', None), 'value', None) == 'cloud_runtime'
+            if cloud_runtime:
+                tenant_uow = getattr(ap.persistence_mgr, 'tenant_uow', None)
+                if not callable(tenant_uow):
+                    raise RuntimeError('Cloud adapter persistence requires an explicit tenant UoW')
+                async with tenant_uow(execution_context.workspace_uuid):
+                    await persist()
+            else:
+                await persist()
         except Exception as e:
             await self.logger.warning(f'Failed to persist adapter config: {e}')
 

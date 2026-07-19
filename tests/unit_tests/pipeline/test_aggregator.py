@@ -13,8 +13,11 @@ from __future__ import annotations
 
 import pytest
 import asyncio
+import contextvars
+from contextlib import asynccontextmanager
 from unittest.mock import Mock, AsyncMock
 from importlib import import_module
+from types import SimpleNamespace
 
 from tests.factories import (
     FakeApp,
@@ -894,16 +897,47 @@ class TestMessageAggregatorWorkspaceIsolation:
         app = make_aggregator_app()
         enable_aggregation(app)
         agg = get_aggregator_module().MessageAggregator(app)
-        delayed_flush = AsyncMock()
+        request_value = contextvars.ContextVar('aggregator_request_value', default=None)
+        token = request_value.set('request-scope')
+        observed = []
+
+        async def delayed_flush(*args):
+            observed.append((request_value.get(), args[2]))
+
         monkeypatch.setattr(agg, '_delayed_flush', delayed_flush)
         context = execution_context(pipeline_uuid='test-pipeline')
 
-        await agg.add_message(**scoped_message_kwargs(context))
-        await asyncio.sleep(0)
+        try:
+            await agg.add_message(**scoped_message_kwargs(context))
+            await asyncio.sleep(0)
+        finally:
+            request_value.reset(token)
 
-        delayed_flush.assert_awaited_once()
-        assert delayed_flush.await_args.args[2] is context
+        assert observed == [(None, context)]
         await agg.flush_all()
+
+    @pytest.mark.asyncio
+    async def test_delayed_flush_opens_explicit_workspace_uow(self, monkeypatch):
+        app = make_aggregator_app()
+        app.persistence_mgr.mode = SimpleNamespace(value='cloud_runtime')
+        scopes = []
+
+        @asynccontextmanager
+        async def tenant_uow(workspace_uuid):
+            scopes.append(workspace_uuid)
+            yield
+
+        app.persistence_mgr.tenant_uow = tenant_uow
+        agg = get_aggregator_module().MessageAggregator(app)
+        flush = AsyncMock()
+        monkeypatch.setattr(agg, '_flush_buffer', flush)
+        context = execution_context('workspace-a', pipeline_uuid='test-pipeline')
+        key = aggregation_key(context, pipeline_uuid='test-pipeline')
+
+        await agg._delayed_flush(key, 0, context)
+
+        assert scopes == ['workspace-a']
+        flush.assert_awaited_once_with(key, context)
 
     @pytest.mark.asyncio
     async def test_flush_rejects_context_from_another_workspace(self):

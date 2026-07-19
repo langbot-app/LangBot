@@ -44,11 +44,27 @@ class WebhookRouterGroup(group.RouterGroup):
             if not hasattr(runtime_bot.adapter, 'handle_unified_webhook'):
                 return quart.jsonify({'error': 'Adapter does not support unified webhook'}), 501
 
-            response = await runtime_bot.adapter.handle_unified_webhook(
-                bot_uuid=bot_uuid,
-                path=path,
-                request=quart.request,
-            )
+            async def dispatch():
+                await self.ap.workspace_service.get_execution_binding(
+                    runtime_bot.workspace_uuid,
+                    expected_generation=runtime_bot.placement_generation,
+                )
+                return await runtime_bot.adapter.handle_unified_webhook(
+                    bot_uuid=bot_uuid,
+                    path=path,
+                    request=quart.request,
+                )
+
+            persistence_mgr = self.ap.persistence_mgr
+            cloud_runtime = getattr(getattr(persistence_mgr, 'mode', None), 'value', None) == 'cloud_runtime'
+            if cloud_runtime:
+                tenant_scope = getattr(persistence_mgr, 'tenant_scope', None)
+                if not callable(tenant_scope):
+                    raise RuntimeError('Cloud webhook dispatch requires an explicit tenant scope')
+                async with tenant_scope(runtime_bot.workspace_uuid):
+                    response = await dispatch()
+            else:
+                response = await dispatch()
 
             return response
 

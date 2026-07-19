@@ -61,8 +61,16 @@ class BuildAppStage(stage.BootingStage):
             instance_config=ap.instance_config.data,
         )
         ap.deployment = deployment
+        ap.deployment_admission = cloud_bootstrap.DeploymentAdmissionGuard(
+            constants.instance_id,
+            deployment,
+        )
         ap.entitlement_resolver = (
-            EntitlementResolver(constants.instance_id, deployment.entitlement_provider)
+            EntitlementResolver(
+                constants.instance_id,
+                deployment.entitlement_provider,
+                deployment_admission=ap.deployment_admission.require_active,
+            )
             if deployment.multi_workspace_enabled
             else None
         )

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+from collections.abc import Callable
 from typing import Protocol, runtime_checkable
 
 import pydantic
@@ -10,6 +11,10 @@ import pydantic
 
 class EntitlementUnavailableError(RuntimeError):
     """Raised when a trusted, currently-active entitlement is unavailable."""
+
+    def __init__(self, message: str, *, entitlement_revision: int | None = None) -> None:
+        super().__init__(message)
+        self.entitlement_revision = entitlement_revision
 
 
 class EntitlementSnapshot(pydantic.BaseModel):
@@ -60,9 +65,15 @@ class EntitlementSnapshot(pydantic.BaseModel):
         if self.instance_uuid != instance_uuid or self.workspace_uuid != workspace_uuid:
             raise EntitlementUnavailableError('Entitlement scope does not match the Workspace execution context')
         if self.status != 'active':
-            raise EntitlementUnavailableError('Workspace entitlement is not active')
+            raise EntitlementUnavailableError(
+                'Workspace entitlement is not active',
+                entitlement_revision=self.entitlement_revision,
+            )
         if current_time < self.not_before or current_time >= self.expires_at:
-            raise EntitlementUnavailableError('Workspace entitlement is not currently valid')
+            raise EntitlementUnavailableError(
+                'Workspace entitlement is not currently valid',
+                entitlement_revision=self.entitlement_revision,
+            )
         return self
 
     def require_feature(self, feature: str) -> None:
@@ -95,9 +106,16 @@ class OpenSourceEntitlementProvider:
 class EntitlementResolver:
     """Validate scope/freshness and reject revision rollback or equivocation."""
 
-    def __init__(self, instance_uuid: str, provider: EntitlementProvider) -> None:
+    def __init__(
+        self,
+        instance_uuid: str,
+        provider: EntitlementProvider,
+        *,
+        deployment_admission: Callable[[], object] | None = None,
+    ) -> None:
         self.instance_uuid = instance_uuid
         self.provider = provider
+        self._deployment_admission = deployment_admission
         self._lock = asyncio.Lock()
         self._snapshots: dict[str, tuple[int, str, EntitlementSnapshot]] = {}
 
@@ -112,7 +130,12 @@ class EntitlementResolver:
         minimum_revision: int = 0,
         now: int | None = None,
     ) -> EntitlementSnapshot:
+        if self._deployment_admission is not None:
+            self._deployment_admission()
         candidate = await self.provider.get_workspace_entitlement(workspace_uuid)
+        if self._deployment_admission is not None:
+            # A provider call may cross the Manifest expiry boundary.
+            self._deployment_admission()
         if not isinstance(candidate, EntitlementSnapshot):
             raise EntitlementUnavailableError('Entitlement provider returned an invalid snapshot')
         # Deep-copy untrusted provider-owned containers before caching them.

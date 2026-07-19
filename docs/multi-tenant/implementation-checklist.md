@@ -12,9 +12,13 @@ verification gates. Exact commands and observed results are recorded in the
 - [x] Unrelated untracked files in either repository remain untouched.
 - [x] Open-source startup cannot enable SaaS multi-workspace through edition flags or unsigned configuration.
 
-## SaaS-only release gates
+## SaaS activation gates
 
-These items intentionally remain incomplete. The feature branch delivers the Core isolation kernel, not the closed SaaS product or a production Cloud v2 deployment.
+These items intentionally remain incomplete. Some require additional Core
+transaction/cutover primitives and others require the closed Control Plane or
+deployment. The feature branch delivers the Core isolation kernel, not the
+closed SaaS product or a production Cloud v2 deployment. Checked implementation
+items later in this document do not supersede these gates.
 
 - [ ] The closed Control Plane owns the global Account, Workspace, Membership, and Invitation directory.
 - [ ] The closed placement service issues monotonic generations and leases for projected Workspaces.
@@ -22,10 +26,17 @@ These items intentionally remain incomplete. The feature branch delivers the Cor
 - [ ] Tenant database writes hold a generation-aware shared transaction fence through commit, while placement cutovers take the exclusive fence.
 - [ ] Business writes and non-transactional side effects use a generation-stamped outbox or equivalent publish fence.
 - [ ] Durable object references survive a placement-generation change through stable published keys or an explicitly atomic key/reference migration.
-- [ ] SaaS cells enforce tenant-safe egress and SSRF controls for Webhooks, providers, MCP servers, and every tenant-configurable outbound URL.
+- [ ] The SaaS runtime pools enforce tenant-safe egress and SSRF controls for Webhooks, providers, MCP servers, and every tenant-configurable outbound URL.
 - [ ] Entitlement checks, usage aggregation, subscription lifecycle, and billing are implemented in the closed Control Plane.
 - [ ] OAuth state and directory projection use an atomic shared store suitable for horizontally scaled SaaS services.
 - [ ] A greenfield Cloud v2 deployment is designed and validated independently of the legacy Space deployment scheme.
+- [ ] The Plugin Runtime deployment provides delegated cgroup v2 and tenant-safe egress; the shared profile refuses to run without hard CPU, memory, and PID limits.
+- [ ] The Box deployment provides an operator-owned quota provider that proves hard byte and inode limits for Workspace, Skill, root, tmp, and home storage.
+- [ ] Core and Box Runtime mount the same durable volume and pass the authenticated marker challenge during startup and reconnect.
+- [ ] Production provisions distinct migrator/runtime credentials and runs the implemented same-host/port/database release command as a one-shot Job, with tested orchestration retry, backup, and rollback procedures.
+- [ ] Production PostgreSQL uses a dedicated cluster/endpoint, or a tested HBA/proxy policy proves the cluster-wide runtime credential can connect only to the target business database.
+- [ ] Any future direct-migrator/pooler-runtime endpoint split is admitted only by a migrator-owned, runtime-read-only database cluster identity that the runtime role cannot spoof.
+- [ ] Legacy pgvector migration failure and retry integration paths prove exact source-table RLS/FORCE restoration; the non-superuser, non-`BYPASSRLS` success path is already covered below.
 - [ ] Multi-workspace is enabled in SaaS only after all closed Control Plane, deployment, and security gates pass.
 
 ## 1. Persistence foundation
@@ -50,6 +61,15 @@ These items intentionally remain incomplete. The feature branch delivers the Cor
 - [x] SQLite destructive boundaries create verified, revision-aware backups and atomically restore after failure.
 - [x] Migration can resume safely after interruption.
 - [x] New installs and upgraded installs produce the same tenancy-kernel schema.
+- [x] The first Cloud release pins migrator and runtime sessions to `public` with `current_schemas(false)` containing only that business schema; runtime-role/database `search_path` overrides are rejected.
+- [x] Cloud sessions require `session_replication_role=origin`, `row_security=on`, and `lo_compat_privileges=off`; every persistent `pg_db_role_setting` applicable to the runtime role or current business database is rejected.
+- [x] The release migrator grants the runtime role exact business-table DML, `alembic_version` read-only access, and business-sequence `USAGE/SELECT`, with no `WITH GRANT OPTION` or non-business object grants.
+- [x] Every Cloud runtime startup revalidates the login role, current user, schema, effective/direct ACLs, ownership, memberships in all directions, column ACLs, routines, extensions, foreign objects, parameter ACLs, and other-schema access before serving traffic.
+- [x] The business database requires `vector`, permits only `plpgsql`/`vector` extensions, forbids runtime extension ownership, and contains no foreign data wrapper, foreign server, or user mapping.
+- [x] The runtime role and `PUBLIC` have no explicit routine or parameter ACL; the runtime owns no routine and cannot effectively execute any `SECURITY DEFINER` routine, including extension-owned routines.
+- [x] PostgreSQL's default `PUBLIC TEMP` is documented and tested as a dedicated-business-database v1 compatibility exception; the migrator never grants `TEMP` directly to the runtime role.
+- [x] Legacy pgvector migration succeeds as a non-superuser, non-`BYPASSRLS` source-table owner and restores mixed source-table RLS/FORCE states exactly.
+- [ ] Legacy pgvector migration still needs explicit failure-and-retry integration coverage before SaaS activation.
 
 ## 2. Authentication and authorization
 
@@ -138,7 +158,10 @@ Each row type must have a non-null Workspace UUID, scoped indexes, scoped unique
 
 - [x] Plugin installation and configuration are Workspace scoped.
 - [x] Runtime control actions carry trusted Workspace binding and placement generation.
-- [x] A plugin process or supervisor never serves multiple Workspaces in SaaS mode.
+- [x] The Plugin Runtime supervisor is instance-scoped and intentionally serves multiple Workspaces.
+- [x] Every plugin process is bound to exactly one Workspace, installation, generation, revision, and verified artifact digest.
+- [x] Same-digest plugin code may be cached once, while worker processes and writable data remain isolated.
+- [x] Same-digest plugin dependencies are prepared once in a Runtime-owned immutable environment and mounted read-only into each isolated worker; dependency failure is surfaced before launch and recorded per installation without blocking other desired-state recovery.
 - [x] Host API derives Workspace from the connection, installation, and trusted action context, not plugin input.
 - [x] Plugin get_bots, models, tools, vector, RAG, configuration, and messaging calls are scoped.
 - [x] Plugin Workspace storage no longer uses owner default.
@@ -159,6 +182,11 @@ Each row type must have a non-null Workspace UUID, scoped indexes, scoped unique
 - [x] Same-named Box sessions and processes cannot collide across Workspaces or placement generations.
 - [x] Box relay and process I/O reject or retire stale generations.
 - [x] External paths and privileged mounts cannot be supplied by an untrusted plugin.
+- [x] Cloud attachment host I/O uses query UUIDs and link-free dirfd operations with bounded inode traversal.
+- [x] Cloud Skill package paths are Runtime-owned, Workspace-scoped, read-only mounts; Python env/cache stays tenant-writable.
+- [x] Skill ZIP preview/install rejects path escape, links, non-regular files, duplicate entries, excessive compression ratio, entry count, per-file size, and total size.
+- [x] Cloud Box startup proves Core and Runtime see the same durable volume.
+- [x] Cloud Box readiness fails until hard Workspace, Skill, ephemeral-storage, and inode quota capabilities are available.
 
 ## 6. SDK and protocol
 
@@ -223,7 +251,7 @@ Each row type must have a non-null Workspace UUID, scoped indexes, scoped unique
 - [x] LangBot integration tests pass.
 - [x] Frontend lint completes without errors and the production build passes.
 - [x] SDK focused and full relevant tests pass.
-- [x] Local SDK is installed into LangBot from the exact pushed SDK commit and cross-repo tests pass with no sync.
+- [x] LangBot is pinned to the exact pushed SDK commit and cross-repo tests pass against that revision.
 
 ## 9. Real browser E2E
 

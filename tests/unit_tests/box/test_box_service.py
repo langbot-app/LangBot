@@ -117,6 +117,9 @@ class _InProcessBoxRuntimeClient(BoxRuntimeClient):
     async def init(self, config: dict) -> None:
         self._runtime.init(config)
 
+    async def verify_shared_workspace(self, marker_name: str) -> dict:
+        return self._runtime.verify_shared_workspace(marker_name)
+
 
 class FakeBackend(BaseSandboxBackend):
     def __init__(self, logger: Mock, available: bool = True):
@@ -320,6 +323,43 @@ def test_separated_box_runtime_does_not_create_default_workspace_in_langbot(tmp_
     service._ensure_default_workspace()
 
     assert not (host_root / 'default').exists()
+
+
+@pytest.mark.asyncio
+async def test_cloud_initialize_fails_when_core_and_runtime_volumes_are_separated(tmp_path):
+    logger = Mock()
+    core_root = tmp_path / 'core-box'
+    runtime_root = tmp_path / 'runtime-box'
+    (core_root / 'default').mkdir(parents=True)
+    runtime = BoxRuntime(logger=logger, backends=[FakeBackend(logger)], session_ttl_sec=300)
+    runtime.init(
+        {
+            'local': {
+                'host_root': str(runtime_root),
+                'default_workspace': 'default',
+                'allowed_mount_roots': [str(runtime_root)],
+            }
+        }
+    )
+    app = make_app(logger, host_root=str(core_root))
+    app.deployment = SimpleNamespace(multi_workspace_enabled=True)
+    app.instance_config.data['box'].update(
+        {
+            'backend': 'nsjail',
+            'admission': {'required': True, 'workspace_quota_mb': 32},
+        }
+    )
+    service = BoxService(
+        app,
+        client=_InProcessBoxRuntimeClient(logger, runtime),
+    )
+
+    with pytest.raises(BoxValidationError, match='shared durable Workspace volume'):
+        await service.initialize()
+
+    assert service.available is False
+    assert list((core_root / 'default').glob('.langbot-box-volume-probe-*')) == []
+    await runtime.shutdown()
 
 
 def test_separated_box_runtime_allows_box_owned_missing_host_path(tmp_path):
@@ -1888,7 +1928,7 @@ class TestInboundOutboundRoundTrip:
             assert '/workspace/inbox/' in parameters['command']
             return {
                 'ok': True,
-                'stdout': '["/workspace/inbox/42/image_1.png"]',
+                'stdout': '["/workspace/inbox/query-42/image_1.png"]',
                 'stderr': '',
             }
 
@@ -1898,7 +1938,7 @@ class TestInboundOutboundRoundTrip:
         assert len(descriptors) == 1
         d = descriptors[0]
         assert d['type'] == 'Image'
-        assert d['path'] == '/workspace/inbox/42/image_1.png'
+        assert d['path'] == '/workspace/inbox/query-42/image_1.png'
         assert d['size'] == len(img_bytes)
 
     @pytest.mark.asyncio
@@ -2011,7 +2051,7 @@ class TestAttachmentHostPath:
         assert d['type'] == 'Image'
         assert d['size'] == len(big)
         # File actually landed on the host workspace.
-        host_file = os.path.join(ws, 'inbox', str(query.query_id), d['name'])
+        host_file = os.path.join(ws, 'inbox', str(query.query_uuid), d['name'])
         assert os.path.isfile(host_file)
         assert open(host_file, 'rb').read() == big
 
@@ -2023,7 +2063,7 @@ class TestAttachmentHostPath:
 
         service, ws = self._service_with_workspace(tmp_path)
         # Seed a stale file under the same query_id (simulates webchat id reuse).
-        stale_dir = os.path.join(ws, 'inbox', '42')
+        stale_dir = os.path.join(ws, 'inbox', 'query-42')
         os.makedirs(stale_dir, exist_ok=True)
         open(os.path.join(stale_dir, 'image_1.png'), 'wb').write(b'STALE-OLD-IMAGE')
 
@@ -2040,10 +2080,39 @@ class TestAttachmentHostPath:
         assert b'STALE-OLD-IMAGE' not in open(host_file, 'rb').read()
 
     @pytest.mark.asyncio
+    async def test_inbound_host_replaces_query_symlink_without_touching_other_workspace(self, tmp_path):
+        import base64
+
+        import langbot_plugin.api.entities.builtin.platform.message as platform_message
+
+        service, ws = self._service_with_workspace(tmp_path)
+        other_workspace = tmp_path / 'other-workspace'
+        other_workspace.mkdir()
+        protected = other_workspace / 'protected.txt'
+        protected.write_bytes(b'workspace-b-secret')
+        inbox = os.path.join(ws, 'inbox')
+        os.makedirs(inbox, exist_ok=True)
+        os.symlink(other_workspace, os.path.join(inbox, 'query-42'))
+
+        query = make_query()
+        payload = b'workspace-a-input'
+        query.message_chain = platform_message.MessageChain(
+            [platform_message.File(name='input.bin', base64=base64.b64encode(payload).decode())]
+        )
+        service.execute_tool = AsyncMock(side_effect=AssertionError('exec must not be used on host path'))
+
+        descriptors = await service.materialize_inbound_attachments(query)
+
+        assert descriptors[0]['path'] == '/workspace/inbox/query-42/input.bin'
+        assert protected.read_bytes() == b'workspace-b-secret'
+        assert not os.path.islink(os.path.join(inbox, 'query-42'))
+        assert open(os.path.join(inbox, 'query-42', 'input.bin'), 'rb').read() == payload
+
+    @pytest.mark.asyncio
     async def test_outbound_reads_host_and_clears(self, tmp_path):
         service, ws = self._service_with_workspace(tmp_path)
         query = make_query()
-        outbox = os.path.join(ws, 'outbox', str(query.query_id))
+        outbox = os.path.join(ws, 'outbox', str(query.query_uuid))
         os.makedirs(outbox, exist_ok=True)
         # A large file that would be truncated on the exec/stdout path:
         big_png = b'\x89PNG\r\n\x1a\n' + b'y' * (400 * 1024)
@@ -2064,12 +2133,68 @@ class TestAttachmentHostPath:
         assert os.listdir(outbox) == []
 
     @pytest.mark.asyncio
+    async def test_outbound_host_never_follows_query_or_file_symlinks(self, tmp_path):
+        service, ws = self._service_with_workspace(tmp_path)
+        query = make_query()
+        other_workspace = tmp_path / 'other-workspace'
+        other_workspace.mkdir()
+        secret = other_workspace / 'secret.txt'
+        secret.write_bytes(b'workspace-b-secret')
+        outbox_root = os.path.join(ws, 'outbox')
+        os.makedirs(outbox_root, exist_ok=True)
+
+        # A hostile query-directory replacement is rejected rather than read.
+        query_dir = os.path.join(outbox_root, str(query.query_uuid))
+        os.symlink(other_workspace, query_dir)
+        with pytest.raises(BoxValidationError, match='symbolic link'):
+            await service.collect_outbound_attachments(query)
+        assert secret.read_bytes() == b'workspace-b-secret'
+
+        os.unlink(query_dir)
+        os.makedirs(query_dir)
+        os.symlink(secret, os.path.join(query_dir, 'leak.txt'))
+        service.execute_tool = AsyncMock(side_effect=AssertionError('exec must not be used on host path'))
+        assert await service.collect_outbound_attachments(query) == []
+        assert secret.read_bytes() == b'workspace-b-secret'
+
+    @pytest.mark.asyncio
+    async def test_outbound_host_fails_closed_on_inode_bomb(self, tmp_path):
+        service, ws = self._service_with_workspace(tmp_path)
+        query = make_query()
+        outbox = os.path.join(ws, 'outbox', str(query.query_uuid))
+        os.makedirs(outbox, exist_ok=True)
+        harmless_target = tmp_path / 'harmless-target'
+        harmless_target.write_bytes(b'x')
+        # Symlinks do not count toward the 20 returned files, so this proves
+        # traversal itself has a bounded entry budget.
+        for index in range(513):
+            os.symlink(harmless_target, os.path.join(outbox, f'entry-{index}'))
+
+        with pytest.raises(BoxValidationError, match='symbolic link'):
+            await service.collect_outbound_attachments(query)
+        assert harmless_target.read_bytes() == b'x'
+
+    def test_host_attachment_directories_use_query_uuid_not_process_local_id(self, tmp_path):
+        service, _ws = self._service_with_workspace(tmp_path)
+        first = make_query(query_id=7)
+        second = make_query(query_id=7)
+        object.__setattr__(first, 'query_uuid', 'replica-a-query')
+        object.__setattr__(second, 'query_uuid', 'replica-b-query')
+
+        first_path = service._host_query_dir(service.OUTBOX_SUBDIR, first)
+        second_path = service._host_query_dir(service.OUTBOX_SUBDIR, second)
+
+        assert first_path is not None and first_path.endswith('/outbox/replica-a-query')
+        assert second_path is not None and second_path.endswith('/outbox/replica-b-query')
+        assert first_path != second_path
+
+    @pytest.mark.asyncio
     async def test_outbound_empty_clears_stale_host_dir(self, tmp_path):
         # Reusing a query_id (counter resets on restart) must not re-send files
         # a previous run left in the outbox: an empty collection still clears it.
         service, ws = self._service_with_workspace(tmp_path)
         query = make_query()
-        outbox = os.path.join(ws, 'outbox', str(query.query_id))
+        outbox = os.path.join(ws, 'outbox', str(query.query_uuid))
         os.makedirs(outbox, exist_ok=True)
         # Stale file from a prior turn; the agent produced nothing this turn —
         # but _read_outbox_host would still pick it up, so collection must drop
@@ -2118,16 +2243,16 @@ class TestAttachmentHostPath:
         os.makedirs(os.path.join(outbox, '0'), exist_ok=True)
 
         # Simulate a host delete that cannot remove the root-owned outbox.
-        import shutil as _shutil
+        from langbot.pkg.box import secure_fs
 
-        real_rmtree = _shutil.rmtree
+        real_purge = secure_fs.purge_subdirectory
 
-        def fake_rmtree(path, *a, **k):
-            if os.path.abspath(path) == os.path.abspath(outbox):
-                return  # "permission denied" — silently leaves the dir
-            return real_rmtree(path, *a, **k)
+        def fake_purge(root, subdir):
+            if os.path.abspath(os.path.join(root, subdir)) == os.path.abspath(outbox):
+                raise PermissionError('root-owned')
+            return real_purge(root, subdir)
 
-        monkeypatch.setattr(_shutil, 'rmtree', fake_rmtree)
+        monkeypatch.setattr(secure_fs, 'purge_subdirectory', fake_purge)
 
         service.build_spec = Mock()
         service.client.execute = AsyncMock()

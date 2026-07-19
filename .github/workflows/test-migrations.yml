@@ -44,7 +44,9 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16
+        # Release migration 0013 installs the pgvector extension in the shared
+        # business database; CI must exercise the same extension availability.
+        image: pgvector/pgvector:pg16
         env:
           POSTGRES_USER: langbot
           POSTGRES_PASSWORD: langbot
@@ -75,4 +77,10 @@ jobs:
       - name: Run PostgreSQL migration tests
         env:
           TEST_POSTGRES_URL: postgresql+asyncpg://langbot:langbot@localhost:5432/langbot_test
-        run: uv run pytest tests/integration/persistence/test_migrations_postgres.py -q --tb=short
+        run: >-
+          uv run pytest
+          tests/integration/persistence/test_migrations_postgres.py
+          tests/integration/persistence/test_pgvector_postgres.py
+          tests/integration/persistence/test_release_migration_postgres.py
+          tests/integration/persistence/test_plugin_identity_migration.py
+          -q --tb=short

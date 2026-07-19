@@ -4,7 +4,6 @@ import logging
 import asyncio
 import traceback
 import os
-import sqlalchemy
 
 from ..platform import botmgr as im_mgr
 from ..platform.webhook_pusher import WebhookPusher
@@ -51,7 +50,6 @@ from ..workspace import collaboration as workspace_collaboration_module
 from ..cloud import bootstrap as cloud_bootstrap_module
 from ..cloud import entitlements as cloud_entitlements_module
 from ..api.http.context import ExecutionContext, PrincipalContext, PrincipalType
-from ..entity.persistence.workspace import WorkspaceExecutionState, WorkspaceExecutionStatus
 
 
 class Application:
@@ -131,6 +129,8 @@ class Application:
     workspace_collaboration_service: workspace_collaboration_module.WorkspaceCollaborationService = None
 
     deployment: cloud_bootstrap_module.OpenSourceDeployment | cloud_bootstrap_module.VerifiedCloudDeployment = None
+
+    deployment_admission: cloud_bootstrap_module.DeploymentAdmissionGuard = None
 
     entitlement_resolver: cloud_entitlements_module.EntitlementResolver | None = None
 
@@ -250,18 +250,12 @@ class Application:
                     check_interval_seconds = check_interval_hours * 3600
                     while True:
                         try:
-                            execution_states = await self.persistence_mgr.execute_async(
-                                sqlalchemy.select(WorkspaceExecutionState).where(
-                                    WorkspaceExecutionState.instance_uuid == self.workspace_service.instance_uuid,
-                                    WorkspaceExecutionState.state == WorkspaceExecutionStatus.ACTIVE.value,
-                                    WorkspaceExecutionState.write_fenced == sqlalchemy.false(),
-                                )
-                            )
-                            for execution_state in execution_states.all():
+                            bindings = await self.workspace_service.list_active_execution_bindings()
+                            for binding in bindings:
                                 context = ExecutionContext(
-                                    instance_uuid=execution_state.instance_uuid,
-                                    workspace_uuid=execution_state.workspace_uuid,
-                                    placement_generation=execution_state.active_generation,
+                                    instance_uuid=binding.instance_uuid,
+                                    workspace_uuid=binding.workspace_uuid,
+                                    placement_generation=binding.placement_generation,
                                     trigger_principal=PrincipalContext(PrincipalType.SYSTEM),
                                 )
                                 deleted = await self.monitoring_service.cleanup_expired_records(
@@ -298,18 +292,12 @@ class Application:
                     check_interval_seconds = check_interval_hours * 3600
                     while True:
                         try:
-                            execution_states = await self.persistence_mgr.execute_async(
-                                sqlalchemy.select(WorkspaceExecutionState).where(
-                                    WorkspaceExecutionState.instance_uuid == self.workspace_service.instance_uuid,
-                                    WorkspaceExecutionState.state == WorkspaceExecutionStatus.ACTIVE.value,
-                                    WorkspaceExecutionState.write_fenced == sqlalchemy.false(),
-                                )
-                            )
-                            for execution_state in execution_states.all():
+                            bindings = await self.workspace_service.list_active_execution_bindings()
+                            for binding in bindings:
                                 context = ExecutionContext(
-                                    instance_uuid=execution_state.instance_uuid,
-                                    workspace_uuid=execution_state.workspace_uuid,
-                                    placement_generation=execution_state.active_generation,
+                                    instance_uuid=binding.instance_uuid,
+                                    workspace_uuid=binding.workspace_uuid,
+                                    placement_generation=binding.placement_generation,
                                     trigger_principal=PrincipalContext(PrincipalType.SYSTEM),
                                 )
                                 deleted = await self.maintenance_service.cleanup_expired_files(context)

@@ -211,7 +211,7 @@ class LocalAgentRunner(runner.RequestRunner):
             req_messages.append(
                 provider_message.Message(
                     role='system',
-                    content=self.ap.box_service.get_system_guidance(query.query_id),
+                    content=self.ap.box_service.get_system_guidance(query),
                 )
             )
 

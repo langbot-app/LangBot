@@ -83,6 +83,7 @@ class RouterGroup(abc.ABC):
             rule = self.path + rule
 
             async def handler_error(*args, **kwargs):
+                request_context: RequestContext | None = None
                 if auth_type == AuthType.ACCOUNT_TOKEN:
                     authorization = quart.request.headers.get('Authorization', '')
                     if not authorization.startswith('Bearer '):
@@ -183,6 +184,17 @@ class RouterGroup(abc.ABC):
                                 return self._auth_error_response(e)
 
                 try:
+                    if request_context is not None:
+                        persistence_mgr = getattr(self.ap, 'persistence_mgr', None)
+                        tenant_scope_descriptor = getattr(type(persistence_mgr), 'tenant_scope', None)
+                        if callable(tenant_scope_descriptor):
+                            # Authorization discovery is complete. Carry the
+                            # trusted Workspace identity across the handler, but
+                            # do not reserve a database connection while it waits
+                            # on providers, runtimes, uploads, or streamed clients.
+                            # Services that need atomic writes open a short UoW.
+                            async with persistence_mgr.tenant_scope(request_context.workspace_uuid):
+                                return await f(*args, **kwargs)
                     return await f(*args, **kwargs)
 
                 except Exception as e:  # 自动 500

@@ -7,7 +7,6 @@ import pytest
 
 from langbot.pkg.api.http.context import ExecutionContext
 from langbot.pkg.plugin.connector import PluginRuntimeConnector, PluginRuntimeNotConnectedError
-from langbot_plugin.entities.io.context import ActionContext
 from langbot_plugin.runtime.security import (
     PLUGIN_RUNTIME_CONTROL_TOKEN_ENV,
     PLUGIN_RUNTIME_CONTROL_TOKEN_HEADER,
@@ -91,7 +90,7 @@ async def test_enabled_connector_reports_not_connected_after_workspace_validatio
 
 
 @pytest.mark.asyncio
-async def test_connector_resolves_oss_singleton_binding_from_workspace_service():
+async def test_oss_connector_resolves_singleton_only_for_legacy_callers():
     connector = make_connector()
     connector.ap.workspace_service = SimpleNamespace(
         get_local_execution_binding=AsyncMock(
@@ -103,31 +102,29 @@ async def test_connector_resolves_oss_singleton_binding_from_workspace_service()
         )
     )
 
-    assert await connector._resolve_action_context() == ActionContext(
+    assert await connector._current_execution_context() == ExecutionContext(
         instance_uuid='instance-a',
         workspace_uuid='workspace-a',
         placement_generation=3,
     )
 
 
-@pytest.mark.asyncio
-async def test_edition_metadata_cannot_enable_multi_workspace_runtime_binding():
+def test_edition_metadata_cannot_enable_shared_runtime_profile():
     connector = make_connector()
     connector.ap.instance_config.data['system'] = {'edition': 'cloud'}
-    connector.ap.workspace_service = SimpleNamespace(
-        policy=SimpleNamespace(multi_workspace_enabled=False),
-        get_local_execution_binding=AsyncMock(
-            return_value=SimpleNamespace(
-                instance_uuid='instance-a',
-                workspace_uuid='workspace-a',
-                placement_generation=1,
-            )
-        ),
+
+    assert connector.runtime_profile == 'oss_dev'
+
+
+def test_closed_deployment_selects_instance_scoped_shared_profile():
+    app = SimpleNamespace(
+        instance_config=SimpleNamespace(data={'plugin': {'enable': True}}),
+        deployment=SimpleNamespace(mode='cloud'),
     )
 
-    context = await connector._resolve_action_context()
+    connector = PluginRuntimeConnector(app, AsyncMock())
 
-    assert context.workspace_uuid == 'workspace-a'
+    assert connector.runtime_profile == 'shared'
 
 
 def test_external_runtime_control_headers_require_strong_secret(monkeypatch):
@@ -148,48 +145,61 @@ def test_local_runtime_control_headers_generate_ephemeral_secret(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_connector_fails_closed_without_trusted_workspace_service():
+async def test_oss_legacy_fallback_fails_without_workspace_service():
     connector = make_connector()
 
-    with pytest.raises(
-        RuntimeError,
-        match='Plugin Runtime Workspace binding is unavailable',
-    ):
-        await connector._resolve_action_context()
+    with pytest.raises(AttributeError):
+        await connector._current_execution_context()
 
 
 @pytest.mark.asyncio
 async def test_cloud_connector_never_falls_back_to_ghost_local_workspace():
-    connector = make_connector()
-    connector.ap.instance_config.data['system'] = {'edition': 'cloud'}
+    app = SimpleNamespace(
+        instance_config=SimpleNamespace(data={'plugin': {'enable': True}}),
+        deployment=SimpleNamespace(mode='cloud'),
+    )
     get_local_binding = AsyncMock()
-    connector.ap.workspace_service = SimpleNamespace(
-        policy=SimpleNamespace(multi_workspace_enabled=True),
+    app.workspace_service = SimpleNamespace(
         get_local_execution_binding=get_local_binding,
     )
+    connector = PluginRuntimeConnector(app, AsyncMock())
 
-    with pytest.raises(
-        RuntimeError,
-        match='require an explicit projected Workspace binding',
-    ):
-        await connector._resolve_action_context()
+    with pytest.raises(Exception, match='Plugin resource not found'):
+        await connector._current_execution_context()
 
     get_local_binding.assert_not_awaited()
 
 
-@pytest.mark.asyncio
-async def test_cloud_connector_initialize_fails_before_opening_unbound_runtime():
-    connector = make_connector()
-    connector.ap.instance_config.data['system'] = {'edition': 'cloud'}
-    connector.ap.workspace_service = SimpleNamespace(
-        policy=SimpleNamespace(multi_workspace_enabled=True),
+def test_worker_policy_is_loaded_only_from_instance_configuration():
+    app = SimpleNamespace(
+        instance_config=SimpleNamespace(
+            data={
+                'plugin': {
+                    'enable': True,
+                    'worker': {
+                        'max_cpus': 1.5,
+                        'max_memory_mb': 768,
+                        'max_pids': 64,
+                        'max_open_files': 128,
+                        'max_file_size_mb': 32,
+                        'require_hard_limits': True,
+                    },
+                    # A plugin-controlled value at any other path is ignored.
+                    'manifest': {'max_memory_mb': 99999},
+                }
+            }
+        )
     )
+    connector = PluginRuntimeConnector(app, AsyncMock())
 
-    with pytest.raises(
-        RuntimeError,
-        match='require an explicit projected Workspace binding',
-    ):
-        await connector.initialize()
+    policy = connector._load_worker_policy()
+
+    assert policy.max_cpus == 1.5
+    assert policy.max_memory_mb == 768
+    assert policy.max_pids == 64
+    assert policy.max_open_files == 128
+    assert policy.max_file_size_mb == 32
+    assert policy.require_hard_limits is True
 
 
 @pytest.mark.asyncio
@@ -198,17 +208,11 @@ async def test_explicit_cloud_binding_is_revalidated_against_projection():
         instance_config=SimpleNamespace(
             data={
                 'plugin': {'enable': True},
-                'system': {'edition': 'cloud'},
             }
-        )
-    )
-    configured = ActionContext(
-        instance_uuid='instance-a',
-        workspace_uuid='workspace-cloud-a',
-        placement_generation=7,
+        ),
+        deployment=SimpleNamespace(mode='cloud'),
     )
     app.workspace_service = SimpleNamespace(
-        policy=SimpleNamespace(multi_workspace_enabled=True),
         get_execution_binding=AsyncMock(
             return_value=SimpleNamespace(
                 instance_uuid='instance-a',
@@ -216,13 +220,19 @@ async def test_explicit_cloud_binding_is_revalidated_against_projection():
                 placement_generation=7,
             )
         ),
-        get_local_execution_binding=AsyncMock(),
     )
-    connector = PluginRuntimeConnector(app, AsyncMock(), action_context=configured)
+    connector = PluginRuntimeConnector(app, AsyncMock())
+    connector.handler = SimpleNamespace()
+    connector._synchronize_workspace = AsyncMock()
+    configured = ExecutionContext(
+        instance_uuid='instance-a',
+        workspace_uuid='workspace-cloud-a',
+        placement_generation=7,
+    )
 
-    assert await connector._resolve_action_context() == configured
+    assert await connector.require_workspace_context(configured) == configured
     app.workspace_service.get_execution_binding.assert_awaited_once_with(
         'workspace-cloud-a',
         expected_generation=7,
     )
-    app.workspace_service.get_local_execution_binding.assert_not_awaited()
+    connector._synchronize_workspace.assert_awaited_once_with(configured)

@@ -25,6 +25,8 @@ async def space_oauth_api():
         execution=SimpleNamespace(instance_uuid='instance-a', placement_generation=1),
     )
     application = Mock()
+    application.deployment = SimpleNamespace(multi_workspace_enabled=False)
+    application.persistence_mgr = None
     application.user_service.get_authenticated_account = AsyncMock(return_value=account)
     application.user_service.issue_space_oauth_state = AsyncMock(
         side_effect=lambda purpose, **_: f'opaque-{purpose}-state'

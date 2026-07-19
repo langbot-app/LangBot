@@ -1,11 +1,13 @@
-"""enforce PostgreSQL tenant isolation with row-level security
+"""enforce PostgreSQL tenant isolation with exact discovery contracts
 
 Revision ID: 0011_postgres_tenant_rls
 Revises: 0010_scope_resources
 Create Date: 2026-07-19
 
-The table list is deliberately duplicated from the runtime contract. Alembic
-revisions must remain self-contained after application code evolves.
+The table and policy lists are deliberately duplicated from the runtime
+contract. Alembic revisions must remain self-contained after application code
+evolves. Discovery policies are SELECT-only and reveal the minimum rows needed
+to turn an authenticated credential into one Workspace transaction.
 """
 
 from __future__ import annotations
@@ -20,8 +22,18 @@ depends_on = None
 
 
 _POLICY_NAME = 'langbot_workspace_isolation'
+_ACCOUNT_POLICY_NAME = 'langbot_account_discovery'
+_API_KEY_POLICY_NAME = 'langbot_api_key_discovery'
+_INVITATION_POLICY_NAME = 'langbot_invitation_discovery'
+_INSTANCE_POLICY_NAME = 'langbot_instance_discovery'
+
 _TENANT_SETTING = 'langbot.workspace_uuid'
+_ACCOUNT_SETTING = 'langbot.account_uuid'
+_API_KEY_HASH_SETTING = 'langbot.api_key_hash'
+_INVITATION_HASH_SETTING = 'langbot.invitation_hash'
+_INSTANCE_SETTING = 'langbot.instance_uuid'
 _OSS_WORKSPACE_METADATA_KEY = 'oss_workspace_uuid'
+
 _TENANT_TABLE_COLUMNS: dict[str, str] = {
     'workspaces': 'uuid',
     'workspace_memberships': 'workspace_uuid',
@@ -54,17 +66,42 @@ _TENANT_TABLE_COLUMNS: dict[str, str] = {
 }
 
 
+def _setting(name: str) -> str:
+    return f"NULLIF(current_setting('{name}', true), '')"
+
+
+def _tenant_expression(column: str) -> str:
+    return f'{column}::text = {_setting(_TENANT_SETTING)}'
+
+
+_DISCOVERY_POLICIES: dict[str, dict[str, str]] = {
+    'workspace_memberships': {
+        _ACCOUNT_POLICY_NAME: (f"account_uuid::text = {_setting(_ACCOUNT_SETTING)} AND status = 'active'"),
+    },
+    'workspace_execution_states': {
+        _INSTANCE_POLICY_NAME: (
+            f"instance_uuid = {_setting(_INSTANCE_SETTING)} AND state = 'active' AND write_fenced = false"
+        ),
+    },
+    'api_keys': {
+        _API_KEY_POLICY_NAME: (
+            f"key_hash = {_setting(_API_KEY_HASH_SETTING)} AND status = 'active' "
+            'AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)'
+        ),
+    },
+    'workspace_invitations': {
+        _INVITATION_POLICY_NAME: f'token_hash = {_setting(_INVITATION_HASH_SETTING)}',
+    },
+}
+
+
 def _quote_identifier(conn: sa.Connection, identifier: str) -> str:
     return conn.dialect.identifier_preparer.quote(identifier)
 
 
 def _record_oss_workspace_scope(conn: sa.Connection) -> None:
-    """Keep PostgreSQL OSS usable after FORCE RLS is enabled.
+    """Keep PostgreSQL OSS usable after FORCE RLS is enabled."""
 
-    The runtime reads this instance-level metadata and installs the singleton
-    Workspace as a transaction-local default. Cloud databases have no local
-    Workspace and therefore do not receive this compatibility value.
-    """
     local_workspaces = (
         conn.execute(sa.text("SELECT uuid FROM workspaces WHERE source = 'local' ORDER BY uuid")).scalars().all()
     )
@@ -84,6 +121,43 @@ def _record_oss_workspace_scope(conn: sa.Connection) -> None:
         raise RuntimeError('Stored OSS Workspace scope does not match the local Workspace')
 
 
+def _drop_all_policies(conn: sa.Connection, table_name: str) -> None:
+    policy_names = conn.execute(
+        sa.text(
+            """
+            SELECT p.polname
+            FROM pg_policy p
+            JOIN pg_class c ON c.oid = p.polrelid
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname = current_schema() AND c.relname = :table_name
+            """
+        ),
+        {'table_name': table_name},
+    ).scalars()
+    table = _quote_identifier(conn, table_name)
+    for policy in policy_names:
+        op.execute(sa.text(f'DROP POLICY {_quote_identifier(conn, policy)} ON {table}'))
+
+
+def _create_policy(
+    conn: sa.Connection,
+    table_name: str,
+    policy_name: str,
+    expression: str,
+    *,
+    command: str,
+) -> None:
+    table = _quote_identifier(conn, table_name)
+    policy = _quote_identifier(conn, policy_name)
+    if command == 'ALL':
+        sql = f'CREATE POLICY {policy} ON {table} AS PERMISSIVE FOR ALL TO PUBLIC USING ({expression}) WITH CHECK ({expression})'
+    elif command == 'SELECT':
+        sql = f'CREATE POLICY {policy} ON {table} AS PERMISSIVE FOR SELECT TO PUBLIC USING ({expression})'
+    else:  # pragma: no cover - migration-local invariant
+        raise AssertionError(f'Unsupported RLS command: {command}')
+    op.execute(sa.text(sql))
+
+
 def upgrade() -> None:
     conn = op.get_bind()
     if conn.dialect.name != 'postgresql':
@@ -96,22 +170,20 @@ def upgrade() -> None:
 
     _record_oss_workspace_scope(conn)
 
-    policy_name = _quote_identifier(conn, _POLICY_NAME)
     for table_name, tenant_column in _TENANT_TABLE_COLUMNS.items():
         table = _quote_identifier(conn, table_name)
-        column = _quote_identifier(conn, tenant_column)
-        tenant_value = f"CAST(NULLIF(current_setting('{_TENANT_SETTING}', true), '') AS VARCHAR(36))"
-
+        _drop_all_policies(conn, table_name)
         op.execute(sa.text(f'ALTER TABLE {table} ENABLE ROW LEVEL SECURITY'))
         op.execute(sa.text(f'ALTER TABLE {table} FORCE ROW LEVEL SECURITY'))
-        op.execute(sa.text(f'DROP POLICY IF EXISTS {policy_name} ON {table}'))
-        op.execute(
-            sa.text(
-                f'CREATE POLICY {policy_name} ON {table} '
-                f'USING ({column} = {tenant_value}) '
-                f'WITH CHECK ({column} = {tenant_value})'
-            )
+        _create_policy(
+            conn,
+            table_name,
+            _POLICY_NAME,
+            _tenant_expression(_quote_identifier(conn, tenant_column)),
+            command='ALL',
         )
+        for policy_name, expression in _DISCOVERY_POLICIES.get(table_name, {}).items():
+            _create_policy(conn, table_name, policy_name, expression, command='SELECT')
 
 
 def downgrade() -> None:
@@ -120,11 +192,10 @@ def downgrade() -> None:
         return
 
     existing_tables = set(sa.inspect(conn).get_table_names())
-    policy_name = _quote_identifier(conn, _POLICY_NAME)
     for table_name in _TENANT_TABLE_COLUMNS:
         if table_name not in existing_tables:
             continue
         table = _quote_identifier(conn, table_name)
-        op.execute(sa.text(f'DROP POLICY IF EXISTS {policy_name} ON {table}'))
+        _drop_all_policies(conn, table_name)
         op.execute(sa.text(f'ALTER TABLE {table} NO FORCE ROW LEVEL SECURITY'))
         op.execute(sa.text(f'ALTER TABLE {table} DISABLE ROW LEVEL SECURITY'))

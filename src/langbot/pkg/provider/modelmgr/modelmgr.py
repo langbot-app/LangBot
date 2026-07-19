@@ -197,6 +197,23 @@ class ModelManager:
         self.llm_model_dict = {}
         self.embedding_model_dict = {}
         self.rerank_model_dict = {}
+
+        list_bindings = getattr(self.ap.workspace_service, 'list_active_execution_bindings', None)
+        tenant_uow = getattr(self.ap.persistence_mgr, 'tenant_uow', None)
+        cloud_runtime = getattr(getattr(self.ap.persistence_mgr, 'mode', None), 'value', None) == 'cloud_runtime'
+        if cloud_runtime:
+            if not callable(list_bindings) or not callable(tenant_uow):
+                raise RuntimeError('Cloud model loading requires explicit instance discovery and tenant UoWs')
+            for binding in await list_bindings():
+                context = self._context_from_binding(
+                    binding,
+                    trigger_principal=PrincipalContext(principal_type=PrincipalType.SYSTEM),
+                )
+                async with tenant_uow(binding.workspace_uuid):
+                    await self._load_workspace_models(context)
+            return
+
+        # Compatibility path for isolated manager tests and older embedders.
         contexts: dict[str, ExecutionContext] = {}
 
         async def context_for(workspace_uuid: str | None) -> ExecutionContext:
@@ -252,6 +269,61 @@ class ModelManager:
         for model_entity in result.all():
             try:
                 context = await context_for(model_entity.workspace_uuid)
+                provider = self.provider_dict.get(self._cache_key(context, model_entity.provider_uuid))
+                if provider is None:
+                    self.ap.logger.warning(
+                        f'Provider {model_entity.provider_uuid} not found for model {model_entity.uuid}'
+                    )
+                    continue
+                runtime_model = builder(context, model_entity, provider)
+                cache[self._cache_key(context, model_entity.uuid)] = runtime_model
+            except Exception as exc:
+                self.ap.logger.error(f'Failed to load model {model_entity.uuid}: {exc}\n{traceback.format_exc()}')
+
+    async def _load_workspace_models(self, context: ExecutionContext) -> None:
+        """Load one Workspace while its tenant transaction is active."""
+
+        providers_result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(persistence_model.ModelProvider).where(
+                persistence_model.ModelProvider.workspace_uuid == context.workspace_uuid
+            )
+        )
+        for provider_entity in providers_result.all():
+            try:
+                runtime_provider = await self._build_provider(context, provider_entity)
+                self.provider_dict[self._cache_key(context, provider_entity.uuid)] = runtime_provider
+            except provider_errors.RequesterNotFoundError as exc:
+                self.ap.logger.warning(
+                    f'Requester {exc.requester_name} not found, skipping provider {provider_entity.uuid}'
+                )
+            except Exception as exc:
+                self.ap.logger.error(f'Failed to load provider {provider_entity.uuid}: {exc}\n{traceback.format_exc()}')
+
+        await self._load_workspace_model_kind(
+            context,
+            persistence_model.LLMModel,
+            self.llm_model_dict,
+            self._build_llm_model,
+        )
+        await self._load_workspace_model_kind(
+            context,
+            persistence_model.EmbeddingModel,
+            self.embedding_model_dict,
+            self._build_embedding_model,
+        )
+        await self._load_workspace_model_kind(
+            context,
+            persistence_model.RerankModel,
+            self.rerank_model_dict,
+            self._build_rerank_model,
+        )
+
+    async def _load_workspace_model_kind(self, context, entity_type, cache: dict, builder) -> None:
+        result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(entity_type).where(entity_type.workspace_uuid == context.workspace_uuid)
+        )
+        for model_entity in result.all():
+            try:
                 provider = self.provider_dict.get(self._cache_key(context, model_entity.provider_uuid))
                 if provider is None:
                     self.ap.logger.warning(

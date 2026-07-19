@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime
+import functools
 import os
 import re
 from pathlib import Path
@@ -22,6 +23,25 @@ DEFAULT_LOG_RETENTION_DAYS = 3
 UPLOAD_OWNER_TYPES = ('upload_image', 'upload_document', 'upload')
 
 
+def _workspace_scope(method):
+    """Bind maintenance work to a Workspace without spanning external I/O."""
+
+    @functools.wraps(method)
+    async def wrapped(self, context, *args, **kwargs):
+        workspace_uuid = require_workspace_uuid(context)
+        persistence_mgr = getattr(self.ap, 'persistence_mgr', None)
+        tenant_scope = getattr(persistence_mgr, 'tenant_scope', None)
+        cloud_runtime = getattr(getattr(persistence_mgr, 'mode', None), 'value', None) == 'cloud_runtime'
+        if cloud_runtime:
+            if not callable(tenant_scope):
+                raise RuntimeError('Cloud maintenance requires an explicit tenant scope')
+            async with tenant_scope(workspace_uuid):
+                return await method(self, context, *args, **kwargs)
+        return await method(self, context, *args, **kwargs)
+
+    return wrapped
+
+
 class MaintenanceService:
     """Storage maintenance and diagnostics."""
 
@@ -30,6 +50,7 @@ class MaintenanceService:
     def __init__(self, ap: app.Application) -> None:
         self.ap = ap
 
+    @_workspace_scope
     async def cleanup_expired_files(self, context: ExecutionContext) -> dict[str, int]:
         if not isinstance(context, ExecutionContext):
             raise WorkspaceRequiredError('Storage cleanup requires an ExecutionContext')

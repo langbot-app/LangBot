@@ -16,11 +16,13 @@ import posixpath
 import sqlalchemy
 
 from .....core import taskmgr
+from .....core.task_boundary import run_in_workspace_uow
 from .....entity.persistence import plugin as persistence_plugin
 from ...authz import Permission
 from ...context import ExecutionContext, RequestContext
 from .. import group
 from .....workspace.errors import WorkspaceNotFoundError
+from .....plugin.github import validate_github_plugin_install_info
 from langbot_plugin.runtime.plugin.mgr import PluginInstallSource
 
 
@@ -308,7 +310,11 @@ class PluginsRouterGroup(group.RouterGroup):
     ):
         """Revalidate a captured task context immediately before Runtime I/O."""
 
-        await self.ap.plugin_connector.require_workspace_context(execution_context)
+        await run_in_workspace_uow(
+            self.ap,
+            execution_context.workspace_uuid,
+            lambda: self.ap.plugin_connector.require_workspace_context(execution_context),
+        )
         return await operation()
 
     async def _require_public_plugin_runtime_context(self) -> ExecutionContext:
@@ -757,27 +763,31 @@ class PluginsRouterGroup(group.RouterGroup):
             if limit_error is not None:
                 return limit_error
 
-            data = await quart.request.json
-            asset_url = data.get('asset_url', '')
-            owner = data.get('owner', '')
-            repo = data.get('repo', '')
-            release_tag = data.get('release_tag', '')
+            data = await quart.request.json or {}
+            try:
+                install_info = validate_github_plugin_install_info(
+                    {
+                        'asset_url': data.get('asset_url'),
+                        'asset_id': data.get('asset_id'),
+                        'release_id': data.get('release_id'),
+                        'owner': data.get('owner'),
+                        'repo': data.get('repo'),
+                        'release_tag': data.get('release_tag'),
+                        'github_url': f'https://github.com/{data.get("owner", "")}/{data.get("repo", "")}',
+                    }
+                )
+            except ValueError as exc:
+                return self.http_status(400, -1, str(exc))
 
-            if not asset_url:
-                return self.http_status(400, -1, 'Missing asset_url parameter')
+            owner = install_info['owner']
+            repo = install_info['repo']
+            release_tag = install_info['release_tag']
 
             execution_context = await self.ap.plugin_connector.require_workspace_context(request_context)
 
             ctx = taskmgr.TaskContext.new()
             ctx.metadata['plugin_name'] = f'{owner}/{repo}'
             ctx.metadata['install_source'] = 'github'
-            install_info = {
-                'asset_url': asset_url,
-                'owner': owner,
-                'repo': repo,
-                'release_tag': release_tag,
-                'github_url': f'https://github.com/{owner}/{repo}',
-            }
 
             wrapper = self.ap.task_mgr.create_user_task(
                 self._run_fenced_plugin_operation(

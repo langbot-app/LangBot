@@ -506,6 +506,34 @@ class PipelineManager:
     async def load_pipelines_from_db(self):
         self.ap.logger.info('Loading pipelines from db...')
 
+        self.pipelines = []
+        list_bindings = getattr(self.ap.workspace_service, 'list_active_execution_bindings', None)
+        tenant_uow = getattr(self.ap.persistence_mgr, 'tenant_uow', None)
+        cloud_runtime = getattr(getattr(self.ap.persistence_mgr, 'mode', None), 'value', None) == 'cloud_runtime'
+        if cloud_runtime:
+            if not callable(list_bindings) or not callable(tenant_uow):
+                raise RuntimeError('Cloud pipeline loading requires explicit instance discovery and tenant UoWs')
+            for binding in await list_bindings():
+                async with tenant_uow(binding.workspace_uuid):
+                    result = await self.ap.persistence_mgr.execute_async(
+                        sqlalchemy.select(persistence_pipeline.LegacyPipeline)
+                        .where(persistence_pipeline.LegacyPipeline.workspace_uuid == binding.workspace_uuid)
+                        .order_by(persistence_pipeline.LegacyPipeline.uuid)
+                    )
+                    for pipeline in result.all():
+                        await self.load_pipeline(
+                            ExecutionContext(
+                                instance_uuid=binding.instance_uuid,
+                                workspace_uuid=binding.workspace_uuid,
+                                placement_generation=binding.placement_generation,
+                                pipeline_uuid=pipeline.uuid,
+                                trigger_principal=PrincipalContext(PrincipalType.SYSTEM),
+                            ),
+                            pipeline,
+                        )
+            return
+
+        # Compatibility path for isolated manager tests and older embedders.
         result = await self.ap.persistence_mgr.execute_async(sqlalchemy.select(persistence_pipeline.LegacyPipeline))
 
         pipelines = result.all()

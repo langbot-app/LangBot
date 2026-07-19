@@ -201,5 +201,14 @@ def should_prepare_skill_python_env(package_root: str | None) -> bool:
     return box_workspace.should_prepare_python_env(package_root)
 
 
-def wrap_skill_command_with_python_env(command: str, *, mount_path: str = '/workspace') -> str:
-    return box_workspace.wrap_python_command_with_env(command, mount_path=mount_path).rstrip()
+def wrap_skill_command_with_python_env(
+    command: str,
+    *,
+    mount_path: str = '/workspace',
+    state_path: str | None = None,
+) -> str:
+    return box_workspace.wrap_python_command_with_env(
+        command,
+        mount_path=mount_path,
+        state_path=state_path,
+    ).rstrip()

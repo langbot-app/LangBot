@@ -126,24 +126,30 @@ def should_prepare_python_env(host_path: str | None) -> bool:
     return bool(list_python_manifest_files(normalized_root))
 
 
-def wrap_python_command_with_env(command: str, *, mount_path: str = '/workspace') -> str:
+def wrap_python_command_with_env(
+    command: str,
+    *,
+    mount_path: str = '/workspace',
+    state_path: str | None = None,
+) -> str:
     """Wrap a command with a reusable sandbox-local Python env bootstrap.
 
-    This is the generic "workspace is a Python project" path used by mutable
-    workspaces such as skills. Read-only installation strategies stay in the
-    higher-level caller because they are application policy, not workspace
-    semantics.
+    ``mount_path`` is always the source tree used for manifest hashing and
+    installation. ``state_path`` may point at a separate writable directory
+    for read-only source mounts; when omitted, legacy mutable-workspace behavior
+    stores the environment beside the source.
     """
+    writable_state_path = state_path or mount_path
     bootstrap = textwrap.dedent(
         f"""
         set -e
 
-        _LB_VENV_DIR="{mount_path}/.venv"
-        _LB_META_DIR="{mount_path}/.langbot"
+        _LB_VENV_DIR="{writable_state_path}/.venv"
+        _LB_META_DIR="{writable_state_path}/.langbot"
         _LB_META_FILE="$_LB_META_DIR/python-env.json"
         _LB_LOCK_DIR="$_LB_META_DIR/python-env.lock"
-        _LB_TMP_DIR="{mount_path}/.tmp"
-        _LB_PIP_CACHE_DIR="{mount_path}/.cache/pip"
+        _LB_TMP_DIR="{writable_state_path}/.tmp"
+        _LB_PIP_CACHE_DIR="{writable_state_path}/.cache/pip"
 
         mkdir -p "$_LB_META_DIR" "$_LB_TMP_DIR" "$_LB_PIP_CACHE_DIR"
         _LB_SYSTEM_PYTHON="$(command -v python3 || command -v python || true)"

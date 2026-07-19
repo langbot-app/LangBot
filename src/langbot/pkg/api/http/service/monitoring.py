@@ -2,14 +2,32 @@ from __future__ import annotations
 
 import uuid
 import datetime
+import functools
 import json
 import sqlalchemy
+from sqlalchemy.dialects import postgresql as postgresql_dialect
+from sqlalchemy.dialects import sqlite as sqlite_dialect
 
 from ....core import app
 from ....entity.persistence import monitoring as persistence_monitoring
 from ..authz import WorkspaceRequiredError
 from ..context import ExecutionContext
 from .tenant import TenantContext, require_workspace_uuid
+
+
+def _workspace_transaction(method):
+    """Run an explicit service entrypoint in one Workspace transaction."""
+
+    @functools.wraps(method)
+    async def wrapped(self, context, *args, **kwargs):
+        workspace_uuid = require_workspace_uuid(context)
+        tenant_uow = getattr(self.ap.persistence_mgr, 'tenant_uow', None)
+        if callable(tenant_uow):
+            async with tenant_uow(workspace_uuid):
+                return await method(self, context, *args, **kwargs)
+        return await method(self, context, *args, **kwargs)
+
+    return wrapped
 
 
 class MonitoringService:
@@ -49,7 +67,7 @@ class MonitoringService:
         Returns:
             A dict mapping table name to the number of deleted rows.
         """
-        self._require_write_context(context)
+        workspace_uuid = self._require_write_context(context)
         if retention_days < 1:
             raise ValueError('retention_days must be >= 1')
         if batch_size < 1:
@@ -104,17 +122,27 @@ class MonitoringService:
             ),
         ]
 
-        deleted_counts: dict[str, int] = {}
+        async def delete_records() -> dict[str, int]:
+            deleted_counts: dict[str, int] = {}
+            for table_name, model_cls, ts_column, pk_column in tables_and_columns:
+                deleted_counts[table_name] = await self._delete_expired_in_batches(
+                    context=context,
+                    model_cls=model_cls,
+                    ts_column=ts_column,
+                    pk_column=pk_column,
+                    cutoff=cutoff,
+                    batch_size=batch_size,
+                )
+            return deleted_counts
 
-        for table_name, model_cls, ts_column, pk_column in tables_and_columns:
-            deleted_counts[table_name] = await self._delete_expired_in_batches(
-                context=context,
-                model_cls=model_cls,
-                ts_column=ts_column,
-                pk_column=pk_column,
-                cutoff=cutoff,
-                batch_size=batch_size,
-            )
+        tenant_scope = getattr(self.ap.persistence_mgr, 'tenant_scope', None)
+        if callable(tenant_scope):
+            # Carry the Workspace across the complete cleanup without holding a
+            # connection. Each select+delete batch opens and commits its own UoW.
+            async with tenant_scope(workspace_uuid):
+                deleted_counts = await delete_records()
+        else:
+            deleted_counts = await delete_records()
 
         if sum(deleted_counts.values()) > 0:
             await self._release_sqlite_space()
@@ -134,25 +162,36 @@ class MonitoringService:
         deleted_total = 0
 
         while True:
-            select_result = await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.select(pk_column)
-                .where(model_cls.workspace_uuid == workspace_uuid, ts_column < cutoff)
-                .limit(batch_size)
-            )
-            pk_values = list(select_result.scalars().all())
-            if not pk_values:
-                break
 
-            delete_result = await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.delete(model_cls).where(
-                    model_cls.workspace_uuid == workspace_uuid,
-                    pk_column.in_(pk_values),
+            async def delete_batch() -> tuple[int, int]:
+                select_result = await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.select(pk_column)
+                    .where(model_cls.workspace_uuid == workspace_uuid, ts_column < cutoff)
+                    .limit(batch_size)
                 )
-            )
-            deleted = delete_result.rowcount or 0
-            deleted_total += deleted
+                pk_values = list(select_result.scalars().all())
+                if not pk_values:
+                    return 0, 0
 
-            if len(pk_values) < batch_size:
+                delete_result = await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.delete(model_cls).where(
+                        model_cls.workspace_uuid == workspace_uuid,
+                        pk_column.in_(pk_values),
+                    )
+                )
+                return len(pk_values), int(delete_result.rowcount or 0)
+
+            tenant_uow = getattr(self.ap.persistence_mgr, 'tenant_uow', None)
+            if callable(tenant_uow):
+                async with tenant_uow(workspace_uuid):
+                    selected, deleted = await delete_batch()
+            else:
+                selected, deleted = await delete_batch()
+
+            deleted_total += deleted
+            if selected == 0:
+                break
+            if selected < batch_size:
                 break
 
         return deleted_total
@@ -192,22 +231,30 @@ class MonitoringService:
         session_id: str | None = None,
     ):
         workspace_uuid = self._require_write_context(context)
+        context_columns = (
+            persistence_monitoring.MonitoringMessage.id,
+            persistence_monitoring.MonitoringMessage.bot_id,
+            persistence_monitoring.MonitoringMessage.bot_name,
+            persistence_monitoring.MonitoringMessage.pipeline_id,
+            persistence_monitoring.MonitoringMessage.pipeline_name,
+            persistence_monitoring.MonitoringMessage.session_id,
+        )
         if message_id:
             result = await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.select(persistence_monitoring.MonitoringMessage).where(
+                sqlalchemy.select(*context_columns).where(
                     persistence_monitoring.MonitoringMessage.workspace_uuid == workspace_uuid,
                     persistence_monitoring.MonitoringMessage.id == message_id,
                 )
             )
             row = result.first()
             if row:
-                return row[0]
+                return row
 
         if not session_id:
             return None
 
         user_query = (
-            sqlalchemy.select(persistence_monitoring.MonitoringMessage)
+            sqlalchemy.select(*context_columns)
             .where(
                 sqlalchemy.and_(
                     persistence_monitoring.MonitoringMessage.session_id == session_id,
@@ -221,10 +268,10 @@ class MonitoringService:
         result = await self.ap.persistence_mgr.execute_async(user_query)
         row = result.first()
         if row:
-            return row[0]
+            return row
 
         any_query = (
-            sqlalchemy.select(persistence_monitoring.MonitoringMessage)
+            sqlalchemy.select(*context_columns)
             .where(
                 persistence_monitoring.MonitoringMessage.workspace_uuid == workspace_uuid,
                 persistence_monitoring.MonitoringMessage.session_id == session_id,
@@ -234,10 +281,11 @@ class MonitoringService:
         )
         result = await self.ap.persistence_mgr.execute_async(any_query)
         row = result.first()
-        return row[0] if row else None
+        return row
 
     # ========== Recording Methods ==========
 
+    @_workspace_transaction
     async def record_message(
         self,
         context: ExecutionContext,
@@ -285,6 +333,7 @@ class MonitoringService:
 
         return message_id
 
+    @_workspace_transaction
     async def record_llm_call(
         self,
         context: ExecutionContext,
@@ -331,6 +380,7 @@ class MonitoringService:
 
         return call_id
 
+    @_workspace_transaction
     async def record_tool_call(
         self,
         context: ExecutionContext,
@@ -389,6 +439,7 @@ class MonitoringService:
 
         return call_id
 
+    @_workspace_transaction
     async def record_embedding_call(
         self,
         context: ExecutionContext,
@@ -432,6 +483,7 @@ class MonitoringService:
 
         return call_id
 
+    @_workspace_transaction
     async def record_session_start(
         self,
         context: ExecutionContext,
@@ -466,6 +518,7 @@ class MonitoringService:
             sqlalchemy.insert(persistence_monitoring.MonitoringSession).values(session_data)
         )
 
+    @_workspace_transaction
     async def update_session_activity(
         self,
         context: ExecutionContext,
@@ -503,6 +556,7 @@ class MonitoringService:
         # Check if any rows were updated
         return result.rowcount > 0
 
+    @_workspace_transaction
     async def record_error(
         self,
         context: ExecutionContext,
@@ -540,6 +594,7 @@ class MonitoringService:
 
         return error_id
 
+    @_workspace_transaction
     async def update_message_status(
         self,
         context: ExecutionContext,
@@ -1802,81 +1857,57 @@ class MonitoringService:
             )
             return None
 
-        # Check if record with this feedback_id already exists
-        existing_result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(MonitoringFeedback).where(
-                MonitoringFeedback.workspace_uuid == workspace_uuid,
-                MonitoringFeedback.feedback_id == feedback_id,
-            )
-        )
-        existing_row = existing_result.first()
-
-        if existing_row:
-            # UPDATE existing record
-            existing = existing_row[0] if isinstance(existing_row, tuple) else existing_row
-            await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.update(MonitoringFeedback)
-                .where(
-                    MonitoringFeedback.workspace_uuid == workspace_uuid,
-                    MonitoringFeedback.feedback_id == feedback_id,
-                )
-                .values(
-                    timestamp=now,
-                    feedback_type=feedback_type,
-                    feedback_content=feedback_content,
-                    inaccurate_reasons=reasons_json,
-                    bot_id=bot_id or existing.bot_id,
-                    bot_name=bot_name or existing.bot_name,
-                    pipeline_id=pipeline_id or existing.pipeline_id,
-                    pipeline_name=pipeline_name or existing.pipeline_name,
-                    session_id=session_id or existing.session_id,
-                    message_id=message_id or existing.message_id,
-                    stream_id=stream_id or existing.stream_id,
-                    user_id=user_id or existing.user_id,
-                    platform=platform or existing.platform,
-                )
-            )
-            return existing.id
+        record_data = {
+            'id': str(uuid.uuid4()),
+            'workspace_uuid': workspace_uuid,
+            'timestamp': now,
+            'feedback_id': feedback_id,
+            'feedback_type': feedback_type,
+            'feedback_content': feedback_content,
+            'inaccurate_reasons': reasons_json,
+            'bot_id': bot_id,
+            'bot_name': bot_name,
+            'pipeline_id': pipeline_id,
+            'pipeline_name': pipeline_name,
+            'session_id': session_id,
+            'message_id': message_id,
+            'stream_id': stream_id,
+            'user_id': user_id,
+            'platform': platform,
+        }
+        dialect_name = self.ap.persistence_mgr.get_db_engine().dialect.name
+        if dialect_name == 'postgresql':
+            statement = postgresql_dialect.insert(MonitoringFeedback).values(record_data)
+        elif dialect_name == 'sqlite':
+            statement = sqlite_dialect.insert(MonitoringFeedback).values(record_data)
         else:
-            # INSERT new record with IntegrityError defense
-            record_id = str(uuid.uuid4())
-            record_data = {
-                'id': record_id,
-                'workspace_uuid': workspace_uuid,
-                'timestamp': now,
-                'feedback_id': feedback_id,
-                'feedback_type': feedback_type,
-                'feedback_content': feedback_content,
-                'inaccurate_reasons': reasons_json,
-                'bot_id': bot_id,
-                'bot_name': bot_name,
-                'pipeline_id': pipeline_id,
-                'pipeline_name': pipeline_name,
-                'session_id': session_id,
-                'message_id': message_id,
-                'stream_id': stream_id,
-                'user_id': user_id,
-                'platform': platform,
-            }
-            try:
-                await self.ap.persistence_mgr.execute_async(sqlalchemy.insert(MonitoringFeedback).values(record_data))
-                return record_id
-            except Exception:
-                # UNIQUE constraint conflict (concurrent feedback for same feedback_id)
-                await self.ap.persistence_mgr.execute_async(
-                    sqlalchemy.update(MonitoringFeedback)
-                    .where(
-                        MonitoringFeedback.workspace_uuid == workspace_uuid,
-                        MonitoringFeedback.feedback_id == feedback_id,
-                    )
-                    .values(
-                        timestamp=now,
-                        feedback_type=feedback_type,
-                        feedback_content=feedback_content,
-                        inaccurate_reasons=reasons_json,
-                    )
-                )
-                return feedback_id
+            raise RuntimeError(f'Monitoring feedback upsert does not support {dialect_name!r}')
+
+        excluded = statement.excluded
+
+        def preserve_existing(column):
+            return sqlalchemy.func.coalesce(sqlalchemy.func.nullif(getattr(excluded, column.key), ''), column)
+
+        statement = statement.on_conflict_do_update(
+            index_elements=[MonitoringFeedback.workspace_uuid, MonitoringFeedback.feedback_id],
+            set_={
+                'timestamp': excluded.timestamp,
+                'feedback_type': excluded.feedback_type,
+                'feedback_content': excluded.feedback_content,
+                'inaccurate_reasons': excluded.inaccurate_reasons,
+                'bot_id': preserve_existing(MonitoringFeedback.bot_id),
+                'bot_name': preserve_existing(MonitoringFeedback.bot_name),
+                'pipeline_id': preserve_existing(MonitoringFeedback.pipeline_id),
+                'pipeline_name': preserve_existing(MonitoringFeedback.pipeline_name),
+                'session_id': preserve_existing(MonitoringFeedback.session_id),
+                'message_id': preserve_existing(MonitoringFeedback.message_id),
+                'stream_id': preserve_existing(MonitoringFeedback.stream_id),
+                'user_id': preserve_existing(MonitoringFeedback.user_id),
+                'platform': preserve_existing(MonitoringFeedback.platform),
+            },
+        ).returning(MonitoringFeedback.id)
+        result = await self.ap.persistence_mgr.execute_async(statement)
+        return str(result.scalar_one())
 
     async def get_feedback_stats(
         self,

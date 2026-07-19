@@ -7,6 +7,7 @@ import time
 
 from . import app
 from . import entities as core_entities
+from .task_boundary import create_detached_task
 
 
 class TaskContext:
@@ -125,7 +126,12 @@ class TaskWrapper:
         TaskWrapper._id_index += 1
         self.ap = ap
         self.task_context = context or TaskContext()
-        self.task = self.ap.event_loop.create_task(coro)
+        self.task = create_detached_task(
+            coro,
+            loop=self.ap.event_loop,
+            name=name or None,
+            after_commit_manager=getattr(self.ap, 'persistence_mgr', None),
+        )
         self.task_type = task_type
         self.kind = kind
         self.name = name

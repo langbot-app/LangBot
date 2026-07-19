@@ -65,11 +65,33 @@ class SkillToolLoader(loader.ToolLoader):
         return self._has_skill_manager() and self._sandbox_available
 
     async def invoke_tool(self, name: str, parameters: dict, query) -> typing.Any:
+        require_sandbox = getattr(
+            getattr(self.ap, 'box_service', None),
+            'require_workspace_sandbox',
+            None,
+        )
+        if callable(require_sandbox):
+            await require_sandbox(self._execution_context(query))
         if name == ACTIVATE_SKILL_TOOL_NAME:
             return await self._invoke_activate_skill(parameters, query)
         if name == REGISTER_SKILL_TOOL_NAME:
             return await self._invoke_register_skill(parameters, query)
         raise ValueError(f'Unknown skill tool: {name}')
+
+    @staticmethod
+    def _execution_context(query) -> ExecutionContext:
+        attached_context = getattr(query, '_execution_context', None)
+        if isinstance(attached_context, ExecutionContext):
+            return attached_context
+        return ExecutionContext(
+            instance_uuid=str(getattr(query, 'instance_uuid', '') or ''),
+            workspace_uuid=str(getattr(query, 'workspace_uuid', '') or ''),
+            placement_generation=getattr(query, 'placement_generation', 0) or 0,
+            bot_uuid=getattr(query, 'bot_uuid', None),
+            pipeline_uuid=getattr(query, 'pipeline_uuid', None),
+            query_uuid=getattr(query, 'query_uuid', None),
+            entitlement_revision=getattr(query, 'entitlement_revision', 0),
+        )
 
     async def shutdown(self):
         pass
@@ -128,7 +150,8 @@ class SkillToolLoader(loader.ToolLoader):
             raise ValueError('path is required')
 
         # Resolve sandbox path to host path
-        host_path = self._resolve_workspace_directory(sandbox_path)
+        execution_context = self._execution_context(query)
+        host_path = self._resolve_workspace_directory(sandbox_path, execution_context)
 
         # Get or create skill service
         skill_service = getattr(self.ap, 'skill_service', None)
@@ -136,14 +159,6 @@ class SkillToolLoader(loader.ToolLoader):
             raise ValueError('Skill service not available')
 
         # Scan and register the skill
-        execution_context = ExecutionContext(
-            instance_uuid=str(getattr(query, 'instance_uuid', '') or ''),
-            workspace_uuid=str(getattr(query, 'workspace_uuid', '') or ''),
-            placement_generation=getattr(query, 'placement_generation', 0) or 0,
-            bot_uuid=getattr(query, 'bot_uuid', None),
-            pipeline_uuid=getattr(query, 'pipeline_uuid', None),
-            query_uuid=getattr(query, 'query_uuid', None),
-        )
         scanned = await skill_service.scan_directory_async(execution_context, host_path)
 
         # Override name if provided
@@ -170,10 +185,19 @@ class SkillToolLoader(loader.ToolLoader):
             'skill': created,
         }
 
-    def _resolve_workspace_directory(self, sandbox_path: str) -> str:
+    def _resolve_workspace_directory(
+        self,
+        sandbox_path: str,
+        execution_context: ExecutionContext,
+    ) -> str:
         """Resolve sandbox path to host filesystem path."""
         box_service = getattr(self.ap, 'box_service', None)
-        workspace_root = getattr(box_service, 'default_workspace', None)
+        tenant_workspace = getattr(box_service, '_tenant_workspace', None)
+        workspace_root = (
+            tenant_workspace(execution_context)
+            if callable(tenant_workspace)
+            else getattr(box_service, 'default_workspace', None)
+        )
         if not workspace_root:
             raise ValueError('No default workspace configured')
 

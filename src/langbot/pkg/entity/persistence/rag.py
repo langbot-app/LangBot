@@ -29,6 +29,9 @@ class KnowledgeBase(Base):
     )
     creation_settings = sqlalchemy.Column(sqlalchemy.JSON, nullable=True, default=None)
     retrieval_settings = sqlalchemy.Column(sqlalchemy.JSON, nullable=True, default=None)
+    # Server-selected pgvector dimension. ``None`` means no embedding has been
+    # written yet; the first pgvector upsert binds it atomically.
+    embedding_dimension = sqlalchemy.Column(sqlalchemy.Integer, nullable=True)
 
     # Field sets for different operations
     MUTABLE_FIELDS = {'name', 'description', 'retrieval_settings'}
@@ -40,6 +43,7 @@ class KnowledgeBase(Base):
     ALL_DB_FIELDS = CREATE_FIELDS | {
         'workspace_uuid',
         'legacy_vector_collection',
+        'embedding_dimension',
         'emoji',
         'created_at',
         'updated_at',
@@ -56,6 +60,10 @@ class KnowledgeBase(Base):
             unique=True,
             sqlite_where=sqlalchemy.text('collection_id IS NOT NULL'),
             postgresql_where=sqlalchemy.text('collection_id IS NOT NULL'),
+        ),
+        sqlalchemy.CheckConstraint(
+            'embedding_dimension IS NULL OR embedding_dimension > 0',
+            name='ck_knowledge_bases_embedding_dimension_positive',
         ),
     )
 

@@ -21,6 +21,7 @@ _RUNTIME_POLICY_DEFAULTS = {
             'max_pids': 128,
             'max_open_files': 256,
             'max_file_size_mb': 512,
+            'require_hard_limits': False,
         }
     },
     'mcp': {'stdio': {'enabled': True}},
@@ -103,11 +104,19 @@ def _apply_env_overrides_to_config(cfg: dict) -> dict:
         if '__' not in env_key:
             continue
 
-        print(f'apply env overrides to config: env_key: {env_key}, env_value: {env_value}')
-
         # Convert environment variable name to config path
         # e.g., CONCURRENCY__PIPELINE -> ['concurrency', 'pipeline']
         keys = [key.lower() for key in env_key.split('__')]
+        # macOS and some launchers expose variables such as
+        # ``__CF_USER_TEXT_ENCODING``. They are not LangBot config paths and
+        # must not create an empty top-level YAML key when config is dumped.
+        if any(not key for key in keys):
+            continue
+
+        # Values may contain database passwords, runtime control tokens, or
+        # provider credentials. Keep the useful audit breadcrumb without ever
+        # copying the secret into startup logs.
+        print(f'apply env override to config: env_key: {env_key}')
 
         # Navigate to the target value and validate the path
         current = cfg
