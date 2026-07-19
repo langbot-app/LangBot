@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime
+import enum
 import sqlite3
 import typing
 
@@ -15,6 +16,7 @@ from ..entity import persistence
 from ..core import app
 from ..utils import constants, importutil
 from . import databases, migrations
+from .tenant_uow import TENANT_POLICY_NAME, TENANT_SETTING, TENANT_TABLE_COLUMNS, TenantUnitOfWork
 
 importutil.import_modules_in_pkg(databases)
 importutil.import_modules_in_pkg(migrations)
@@ -64,6 +66,15 @@ _PRE_WORKSPACE_ALEMBIC_REVISIONS = {
 }
 _WORKSPACE_ALEMBIC_REVISION = '0009_workspace_tenancy'
 _RESOURCE_SCOPE_ALEMBIC_REVISION = '0010_scope_resources'
+_OSS_WORKSPACE_METADATA_KEY = 'oss_workspace_uuid'
+
+
+class PersistenceMode(enum.StrEnum):
+    """Trusted persistence startup mode selected by the process entrypoint."""
+
+    OSS_COMPAT = 'oss_compat'
+    CLOUD_RUNTIME = 'cloud_runtime'
+    RELEASE_MIGRATION = 'release_migration'
 
 
 class PersistenceManager:
@@ -76,9 +87,12 @@ class PersistenceManager:
 
     meta: sqlalchemy.MetaData
 
-    def __init__(self, ap: app.Application):
+    def __init__(self, ap: app.Application, *, mode: PersistenceMode = PersistenceMode.OSS_COMPAT):
+        if not isinstance(mode, PersistenceMode):
+            raise TypeError('PersistenceManager mode must be a trusted PersistenceMode value')
         self.ap = ap
         self.meta = base.Base.metadata
+        self.mode = mode
 
     async def initialize(self):
         database_type = self.ap.instance_config.data.get('database', {}).get('use', 'sqlite')
@@ -89,7 +103,27 @@ class PersistenceManager:
                 await self.db.initialize()
                 break
 
+        engine = self.get_db_engine()
+        if self.mode in {PersistenceMode.CLOUD_RUNTIME, PersistenceMode.RELEASE_MIGRATION}:
+            if engine.dialect.name != 'postgresql':
+                raise RuntimeError(f'{self.mode.value} persistence mode requires PostgreSQL')
+
+        if self.mode == PersistenceMode.CLOUD_RUNTIME:
+            await self._validate_cloud_runtime()
+            return
+
         self._enable_sqlite_foreign_keys()
+        await self._initialize_managed_schema()
+
+        if self.mode == PersistenceMode.OSS_COMPAT:
+            await self.write_space_model_providers()
+
+    async def _initialize_managed_schema(self) -> None:
+        """Create or migrate schema only in OSS and release processes."""
+        from . import alembic_runner
+
+        engine = self.get_db_engine()
+        release_bootstrap = self.mode == PersistenceMode.RELEASE_MIGRATION and await self._is_empty_schema()
 
         await self.create_tables()
 
@@ -125,16 +159,36 @@ class PersistenceManager:
 
             self.ap.logger.info(f'Successfully upgraded database to version {last_migration_number}.')
 
-        # Run Alembic migrations (new migration system)
-        await self._run_alembic_migrations()
+        if engine.dialect.name == 'postgresql':
+            current_revision = await alembic_runner.get_alembic_current(engine)
+            head_revision = alembic_runner.get_alembic_head()
 
-        # A legacy database may not contain tenant tables introduced by a
-        # newer release.  They were deliberately deferred before 0009 because
-        # their Workspace/account FK targets did not exist yet; create them
-        # now that the tenancy contract is in place.
-        await self.create_tables()
+            if release_bootstrap:
+                # Base.metadata represents the complete 0010 schema. An empty
+                # Cloud database has no legacy data to transform and must not
+                # run 0009's OSS singleton Workspace bootstrap.
+                if current_revision is not None:
+                    raise RuntimeError('Empty PostgreSQL release bootstrap unexpectedly has an Alembic revision')
+                await alembic_runner.run_alembic_stamp(engine, _RESOURCE_SCOPE_ALEMBIC_REVISION)
+            elif current_revision != head_revision:
+                # A legacy database may not contain tenant tables introduced
+                # by a newer release. Upgrade the account/resource contract,
+                # then create deferred tables before the RLS migration runs.
+                await self._run_alembic_migrations(_RESOURCE_SCOPE_ALEMBIC_REVISION)
+                await self.create_tables()
 
-        await self.write_space_model_providers()
+            await self._run_alembic_migrations()
+            await self._validate_postgres_tenant_schema(validate_runtime_role=False)
+
+            if self.mode == PersistenceMode.OSS_COMPAT:
+                await self._install_oss_postgres_tenant_scope()
+        else:
+            await self._run_alembic_migrations()
+
+            # SQLite keeps the historical post-migration create_all pass. New
+            # tenant tables are deferred until the Workspace/account schema is
+            # compatible with their foreign keys.
+            await self.create_tables()
 
     async def create_tables(self):
         async with self.get_db_engine().connect() as conn:
@@ -172,6 +226,37 @@ class PersistenceManager:
                 await self.execute_async(sqlalchemy.insert(metadata.Metadata).values(item))
 
         await self._ensure_instance_uuid_metadata()
+
+    async def _is_empty_schema(self) -> bool:
+        async with self.get_db_engine().connect() as conn:
+            table_names = await conn.run_sync(lambda sync_conn: set(sqlalchemy.inspect(sync_conn).get_table_names()))
+        return not table_names
+
+    async def _install_oss_postgres_tenant_scope(self) -> None:
+        """Default every OSS PostgreSQL transaction to its singleton Workspace."""
+        if getattr(self, '_oss_tenant_scope_listener_installed', False):
+            return
+
+        async with self.get_db_engine().connect() as conn:
+            workspace_uuid = await conn.scalar(
+                sqlalchemy.select(metadata.Metadata.value).where(
+                    metadata.Metadata.key == _OSS_WORKSPACE_METADATA_KEY,
+                )
+            )
+        if not isinstance(workspace_uuid, str) or not workspace_uuid.strip():
+            raise RuntimeError(
+                'PostgreSQL OSS mode requires exactly one local Workspace recorded before tenant RLS is enabled'
+            )
+        workspace_uuid = workspace_uuid.strip()
+
+        def set_oss_tenant_scope(conn: sqlalchemy.Connection) -> None:
+            conn.execute(
+                sqlalchemy.text(f"SELECT set_config('{TENANT_SETTING}', :workspace_uuid, true)"),
+                {'workspace_uuid': workspace_uuid},
+            )
+
+        sqlalchemy.event.listen(self.get_db_engine().sync_engine, 'begin', set_oss_tenant_scope)
+        self._oss_tenant_scope_listener_installed = True
 
     def _enable_sqlite_foreign_keys(self) -> None:
         """Enable SQLite FK enforcement for every pooled runtime connection."""
@@ -214,6 +299,122 @@ class PersistenceManager:
                 'LangBot instance UUID does not match the value bound to this database: '
                 f'{runtime_instance_uuid!r} != {persisted_instance_uuid!r}'
             )
+
+    async def _validate_cloud_runtime(self) -> None:
+        """Validate a release-prepared schema without performing any DDL."""
+        from . import alembic_runner
+
+        engine = self.get_db_engine()
+        current_revision = await alembic_runner.get_alembic_current(engine)
+        head_revision = alembic_runner.get_alembic_head()
+        if current_revision != head_revision:
+            raise RuntimeError(
+                f'Cloud runtime database schema is not at the release head: {current_revision!r} != {head_revision!r}'
+            )
+
+        runtime_instance_uuid = constants.instance_id.strip()
+        if not runtime_instance_uuid:
+            raise RuntimeError('LangBot instance UUID is empty before Cloud persistence validation')
+        async with engine.connect() as conn:
+            persisted_instance_uuid = await conn.scalar(
+                sqlalchemy.select(metadata.Metadata.value).where(metadata.Metadata.key == 'instance_uuid')
+            )
+        if persisted_instance_uuid is None:
+            raise RuntimeError("Cloud runtime database is missing metadata['instance_uuid']")
+        if persisted_instance_uuid != runtime_instance_uuid:
+            raise RuntimeError(
+                'LangBot instance UUID does not match the value bound to this database: '
+                f'{runtime_instance_uuid!r} != {persisted_instance_uuid!r}'
+            )
+
+        await self._validate_postgres_tenant_schema(validate_runtime_role=True)
+
+    async def _validate_postgres_tenant_schema(self, *, validate_runtime_role: bool) -> None:
+        """Fail closed when PostgreSQL cannot enforce the tenant contract."""
+        engine = self.get_db_engine()
+        if engine.dialect.name != 'postgresql':
+            raise RuntimeError('PostgreSQL tenant schema validation requires PostgreSQL')
+
+        table_query = sqlalchemy.text(
+            """
+            SELECT
+                c.relname AS table_name,
+                c.relrowsecurity AS rls_enabled,
+                c.relforcerowsecurity AS rls_forced,
+                pg_get_userbyid(c.relowner) = current_user AS owned_by_runtime,
+                EXISTS (
+                    SELECT 1
+                    FROM pg_policy p
+                    WHERE p.polrelid = c.oid
+                      AND p.polname = :policy_name
+                      AND p.polcmd = '*'
+                      AND p.polpermissive
+                      AND p.polqual IS NOT NULL
+                      AND p.polwithcheck IS NOT NULL
+                ) AS policy_valid
+            FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname = current_schema()
+              AND c.relkind IN ('r', 'p')
+              AND c.relname IN :table_names
+            """
+        ).bindparams(sqlalchemy.bindparam('table_names', expanding=True))
+
+        async with engine.connect() as conn:
+            if validate_runtime_role:
+                role = (
+                    (
+                        await conn.execute(
+                            sqlalchemy.text(
+                                """
+                            SELECT rolsuper, rolbypassrls
+                            FROM pg_roles
+                            WHERE rolname = current_user
+                            """
+                            )
+                        )
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
+                if role is None:
+                    raise RuntimeError('Cloud runtime PostgreSQL role could not be inspected')
+                if role['rolsuper']:
+                    raise RuntimeError('Cloud runtime PostgreSQL role must not be a superuser')
+                if role['rolbypassrls']:
+                    raise RuntimeError('Cloud runtime PostgreSQL role must not have BYPASSRLS')
+
+            rows = (
+                (
+                    await conn.execute(
+                        table_query,
+                        {
+                            'policy_name': TENANT_POLICY_NAME,
+                            'table_names': tuple(TENANT_TABLE_COLUMNS),
+                        },
+                    )
+                )
+                .mappings()
+                .all()
+            )
+
+        by_table = {row['table_name']: row for row in rows}
+        missing_tables = set(TENANT_TABLE_COLUMNS) - set(by_table)
+        if missing_tables:
+            raise RuntimeError(f'PostgreSQL tenant tables are missing: {sorted(missing_tables)!r}')
+
+        invalid_rls = sorted(
+            table_name
+            for table_name, row in by_table.items()
+            if not row['rls_enabled'] or not row['rls_forced'] or not row['policy_valid']
+        )
+        if invalid_rls:
+            raise RuntimeError(f'PostgreSQL tenant RLS contract is incomplete for tables: {invalid_rls!r}')
+
+        if validate_runtime_role:
+            owned_tables = sorted(table_name for table_name, row in by_table.items() if row['owned_by_runtime'])
+            if owned_tables:
+                raise RuntimeError(f'Cloud runtime PostgreSQL role must not own tenant tables: {owned_tables!r}')
 
     async def write_space_model_providers(self):
         if constants.edition != 'community':
@@ -277,7 +478,7 @@ class PersistenceManager:
 
     # =================================
 
-    async def _run_alembic_migrations(self):
+    async def _run_alembic_migrations(self, target_revision: str = 'head'):
         """Run Alembic-based migrations after legacy migrations complete."""
         from . import alembic_runner
 
@@ -310,8 +511,8 @@ class PersistenceManager:
             # PostgreSQL has transactional DDL. SQLite has already crossed the
             # two destructive tenancy boundaries under verified backups; this
             # final call is a no-op today and applies future migrations.
-            await alembic_runner.run_alembic_upgrade(engine, 'head')
-            self.ap.logger.info('Alembic migrations completed.')
+            await alembic_runner.run_alembic_upgrade(engine, target_revision)
+            self.ap.logger.info(f'Alembic migrations completed at {target_revision}.')
         except Exception as e:
             self.ap.logger.error(f'Alembic migration failed: {e}', exc_info=True)
             raise
@@ -358,6 +559,9 @@ class PersistenceManager:
             result = await conn.execute(*args, **kwargs)
             await conn.commit()
             return result
+
+    def tenant_uow(self, workspace_uuid: str) -> TenantUnitOfWork:
+        return TenantUnitOfWork(self.get_db_engine(), workspace_uuid)
 
     def get_db_engine(self) -> sqlalchemy_asyncio.AsyncEngine:
         return self.db.get_engine()

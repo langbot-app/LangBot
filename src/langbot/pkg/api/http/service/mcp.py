@@ -11,6 +11,7 @@ from ....core import app, taskmgr
 from ....entity.persistence import mcp as persistence_mcp
 from ....entity.persistence import plugin as persistence_plugin
 from ....provider.tools.loaders.mcp import MCPSessionStatus, RuntimeMCPSession
+from ....provider.tools.loaders.mcp_policy import require_stdio_mcp_enabled
 from ....workspace.errors import WorkspaceNotFoundError
 from ..context import ExecutionContext
 from .secrets import is_url_key, redact_url_secrets, restore_url_secret_placeholders
@@ -207,6 +208,10 @@ class MCPService:
         execution_context = await self._execution_context(context)
         workspace_uuid = execution_context.workspace_uuid
 
+        # This gate is independent of Box availability.  Cloud v2 disables
+        # stdio MCP even though Box Runtime itself remains available.
+        require_stdio_mcp_enabled(self.ap, server_data)
+
         limitation = self.ap.instance_config.data.get('system', {}).get('limitation', {})
         max_extensions = limitation.get('max_extensions', -1)
         if max_extensions >= 0:
@@ -315,6 +320,13 @@ class MCPService:
             if duplicate is not None and duplicate['uuid'] != server_uuid:
                 raise ValueError(f'MCP server already exists: {payload["name"]}')
 
+        effective_server = {**old_server, **payload}
+        # Existing disabled rows remain readable/deletable.  Switching away
+        # from stdio or explicitly disabling one is also allowed, but an
+        # update may never leave a disabled stdio server enabled.
+        if bool(effective_server.get('enable', True)):
+            require_stdio_mcp_enabled(self.ap, effective_server)
+
         result = await self.ap.persistence_mgr.execute_async(
             scope_statement(
                 sqlalchemy.update(persistence_mcp.MCPServer)
@@ -405,7 +417,8 @@ class MCPService:
         ctx = taskmgr.TaskContext.new()
 
         if server_name != '_':
-            await self._require_server(execution_context, server_name)
+            _, persisted_server = await self._require_server(execution_context, server_name)
+            require_stdio_mcp_enabled(self.ap, persisted_server)
             runtime_mcp_session = self.ap.tool_mgr.mcp_tool_loader.get_session(execution_context, server_name)
             if runtime_mcp_session is None:
                 raise WorkspaceNotFoundError('MCP server not found')
@@ -427,6 +440,7 @@ class MCPService:
             payload = dict(server_data)
             payload.pop('workspace_uuid', None)
             payload['workspace_uuid'] = execution_context.workspace_uuid
+            require_stdio_mcp_enabled(self.ap, payload)
             runtime_mcp_session = await self.ap.tool_mgr.mcp_tool_loader.load_mcp_server(
                 execution_context,
                 payload,

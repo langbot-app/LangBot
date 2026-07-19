@@ -13,6 +13,7 @@ from langbot.pkg.entity.persistence.base import Base
 from langbot.pkg.entity.persistence.user import User
 from langbot.pkg.persistence.mgr import PersistenceManager
 from langbot.pkg.persistence.alembic_runner import (
+    get_alembic_head,
     get_alembic_current,
     run_alembic_downgrade,
     run_alembic_stamp,
@@ -126,7 +127,7 @@ async def test_legacy_instance_gets_stable_accounts_and_default_workspace(legacy
         assert execution_state['state'] == 'active'
         assert execution_state['write_fenced'] in (False, 0)
 
-    assert await get_alembic_current(legacy_engine) == '0010_scope_resources'
+    assert await get_alembic_current(legacy_engine) == get_alembic_head()
 
 
 async def test_workspace_upgrade_is_idempotent_and_preserves_identifiers(legacy_engine):

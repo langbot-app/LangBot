@@ -259,6 +259,60 @@ class TestApplyEnvOverridesToConfig:
         assert result['system']['enable'] is False
         assert result['concurrency']['pipeline'] == 10
 
+    def test_plugin_worker_and_stdio_policy_native_env_overrides(self):
+        load_config = get_load_config_module()
+        cfg = {
+            'plugin': {
+                'worker': {
+                    'max_cpus': 1.0,
+                    'max_memory_mb': 512,
+                    'max_pids': 128,
+                    'max_open_files': 256,
+                    'max_file_size_mb': 512,
+                }
+            },
+            'mcp': {'stdio': {'enabled': True}},
+        }
+        env = {
+            'PLUGIN__WORKER__MAX_CPUS': '2.5',
+            'PLUGIN__WORKER__MAX_MEMORY_MB': '1024',
+            'PLUGIN__WORKER__MAX_PIDS': '64',
+            'PLUGIN__WORKER__MAX_OPEN_FILES': '128',
+            'PLUGIN__WORKER__MAX_FILE_SIZE_MB': '256',
+            'MCP__STDIO__ENABLED': 'false',
+        }
+
+        with patch.dict(os.environ, env, clear=True):
+            result = load_config._apply_env_overrides_to_config(cfg)
+
+        assert result['plugin']['worker'] == {
+            'max_cpus': 2.5,
+            'max_memory_mb': 1024,
+            'max_pids': 64,
+            'max_open_files': 128,
+            'max_file_size_mb': 256,
+        }
+        assert result['mcp']['stdio']['enabled'] is False
+
+    def test_runtime_policy_defaults_preserve_env_types_for_upgraded_config(self):
+        load_config = get_load_config_module()
+        cfg = {'plugin': {'enable': True}}
+
+        completed = load_config._complete_runtime_policy_defaults(cfg)
+        with patch.dict(
+            os.environ,
+            {
+                'PLUGIN__WORKER__MAX_MEMORY_MB': '768',
+                'MCP__STDIO__ENABLED': 'false',
+            },
+            clear=True,
+        ):
+            result = load_config._apply_env_overrides_to_config(completed)
+
+        assert result['plugin']['worker']['max_memory_mb'] == 768
+        assert isinstance(result['plugin']['worker']['max_memory_mb'], int)
+        assert result['mcp']['stdio']['enabled'] is False
+
     def test_webhook_prefix_override(self):
         """Test overriding webhook_prefix via environment variable."""
         load_config = get_load_config_module()

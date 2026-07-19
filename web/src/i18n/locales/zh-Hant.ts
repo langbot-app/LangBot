@@ -784,6 +784,8 @@ const zhHant = {
     boxStdioRefusedSuggestion:
       '請啟用 Box（box.enabled = true）並確認執行時連線正常，或將此伺服器切換到 http/sse 模式。',
     boxRequired: '需要 Box',
+    disabledByPolicy: '已被策略停用',
+    stdioDisabledByPolicy: '此部署已停用 Stdio MCP，請改用遠端 MCP 伺服器。',
     stdioBlockedByBoxToast:
       'Box 沙箱已停用或無法使用，無法儲存 stdio 模式的 MCP。請啟用 Box 或改為 http/sse 模式。',
     toolsFound: '個工具',

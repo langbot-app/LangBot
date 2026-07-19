@@ -820,6 +820,9 @@ const enUS = {
     boxStdioRefusedSuggestion:
       'Enable Box (box.enabled = true) and ensure the runtime is healthy, or switch this server to http/sse mode.',
     boxRequired: 'requires Box',
+    disabledByPolicy: 'disabled by policy',
+    stdioDisabledByPolicy:
+      'Stdio MCP is disabled for this deployment. Use a remote MCP server instead.',
     stdioBlockedByBoxToast:
       'Stdio MCP cannot be saved while the Box sandbox is disabled or unreachable. Enable Box or pick http/sse.',
     toolsFound: 'tools',

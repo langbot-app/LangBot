@@ -69,6 +69,7 @@ class ExecutionContext:
     pipeline_uuid: str | None = None
     query_uuid: str | None = None
     trigger_principal: PrincipalContext | None = None
+    entitlement_revision: int = 0
 
     @classmethod
     def from_request(
@@ -89,4 +90,5 @@ class ExecutionContext:
             pipeline_uuid=pipeline_uuid,
             query_uuid=query_uuid,
             trigger_principal=ctx.principal,
+            entitlement_revision=ctx.entitlement_revision,
         )

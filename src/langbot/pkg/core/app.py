@@ -48,6 +48,8 @@ from ..survey import manager as survey_module
 from ..skill import manager as skill_mgr
 from ..workspace import service as workspace_service_module
 from ..workspace import collaboration as workspace_collaboration_module
+from ..cloud import bootstrap as cloud_bootstrap_module
+from ..cloud import entitlements as cloud_entitlements_module
 from ..api.http.context import ExecutionContext, PrincipalContext, PrincipalType
 from ..entity.persistence.workspace import WorkspaceExecutionState, WorkspaceExecutionStatus
 
@@ -127,6 +129,10 @@ class Application:
     workspace_service: workspace_service_module.WorkspaceService = None
 
     workspace_collaboration_service: workspace_collaboration_module.WorkspaceCollaborationService = None
+
+    deployment: cloud_bootstrap_module.OpenSourceDeployment | cloud_bootstrap_module.VerifiedCloudDeployment = None
+
+    entitlement_resolver: cloud_entitlements_module.EntitlementResolver | None = None
 
     vector_db_mgr: vectordb_mgr.VectorDBManager = None
 

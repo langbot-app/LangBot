@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import copy
 from typing import Any
 from langbot.pkg.utils import constants
 import yaml
@@ -10,6 +11,44 @@ import time
 
 from .. import stage, app
 from ..bootutils import config
+
+
+_RUNTIME_POLICY_DEFAULTS = {
+    'plugin': {
+        'worker': {
+            'max_cpus': 1.0,
+            'max_memory_mb': 512,
+            'max_pids': 128,
+            'max_open_files': 256,
+            'max_file_size_mb': 512,
+        }
+    },
+    'mcp': {'stdio': {'enabled': True}},
+}
+
+
+def _complete_runtime_policy_defaults(cfg: dict) -> dict:
+    """Backfill typed security-policy leaves before applying env overrides.
+
+    The historic config loader intentionally does not deep-complete the whole
+    template.  These fields are different: their native env overrides must
+    retain boolean/numeric types on upgraded instances, so their defaults must
+    exist before ``PLUGIN__...`` and ``MCP__...`` are parsed.
+    """
+
+    def merge(target: dict, defaults: dict, path: tuple[str, ...] = ()) -> None:
+        for key, default in defaults.items():
+            if key not in target:
+                target[key] = copy.deepcopy(default)
+                continue
+            if isinstance(default, dict):
+                if not isinstance(target[key], dict):
+                    dotted_path = '.'.join((*path, key))
+                    raise ValueError(f'{dotted_path} must be a mapping')
+                merge(target[key], default, (*path, key))
+
+    merge(cfg, _RUNTIME_POLICY_DEFAULTS)
+    return cfg
 
 
 def _apply_env_overrides_to_config(cfg: dict) -> dict:
@@ -149,6 +188,10 @@ class LoadConfigStage(stage.BootingStage):
         # # ======= deprecated =======
 
         ap.instance_config = await config.load_yaml_config('data/config.yaml', 'config.yaml', completion=False)
+
+        # Deep-complete only typed execution-policy fields. This keeps native
+        # env coercion reliable for existing data/config.yaml files.
+        ap.instance_config.data = _complete_runtime_policy_defaults(ap.instance_config.data)
 
         # Apply environment variable overrides to data/config.yaml
         ap.instance_config.data = _apply_env_overrides_to_config(ap.instance_config.data)

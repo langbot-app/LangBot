@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING
 from alembic.config import Config
 from alembic import command
 from alembic.runtime.migration import MigrationContext
+from alembic.script import ScriptDirectory
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncEngine
@@ -57,6 +58,16 @@ def _do_get_current(connection: Connection) -> str | None:
     """Get current alembic revision synchronously."""
     ctx = MigrationContext.configure(connection)
     return ctx.get_current_revision()
+
+
+def get_alembic_head() -> str:
+    """Resolve the single release head without opening a database connection."""
+    cfg = Config()
+    cfg.set_main_option('script_location', _ALEMBIC_DIR)
+    head = ScriptDirectory.from_config(cfg).get_current_head()
+    if head is None:
+        raise RuntimeError('Alembic has no migration head')
+    return head
 
 
 def _do_autogenerate(connection: Connection, message: str = 'auto migration') -> None:

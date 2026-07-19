@@ -830,6 +830,9 @@ const ruRU = {
     boxStdioRefusedSuggestion:
       'Включите Box (box.enabled = true) и убедитесь, что среда работает, либо переключите этот сервер в режим http/sse.',
     boxRequired: 'требуется Box',
+    disabledByPolicy: 'отключено политикой',
+    stdioDisabledByPolicy:
+      'Stdio MCP отключён в этом развёртывании. Используйте удалённый MCP-сервер.',
     stdioBlockedByBoxToast:
       'Сохранить MCP в режиме stdio нельзя: песочница Box отключена или недоступна. Включите Box либо выберите режим http/sse.',
     toolsFound: 'инструментов',

@@ -833,6 +833,9 @@ const esES = {
     boxStdioRefusedSuggestion:
       'Active Box (box.enabled = true) y asegúrese de que el runtime está conectado, o cambie este servidor a modo http/sse.',
     boxRequired: 'requiere Box',
+    disabledByPolicy: 'desactivado por la política',
+    stdioDisabledByPolicy:
+      'Stdio MCP está deshabilitado en este despliegue. Use un servidor MCP remoto.',
     stdioBlockedByBoxToast:
       'No se puede guardar el MCP en modo stdio mientras el sandbox de Box está desactivado o no disponible. Active Box o seleccione modo http/sse.',
     toolsFound: 'herramientas',

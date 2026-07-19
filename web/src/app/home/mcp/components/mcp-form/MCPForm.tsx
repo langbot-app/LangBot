@@ -56,6 +56,7 @@ import {
 import { CustomApiError } from '@/app/infra/entities/common';
 import { BoxUnavailableNotice } from '@/app/home/components/BoxUnavailableNotice';
 import { useBoxStatus } from '@/app/infra/hooks/useBoxStatus';
+import { useMCPStdioPolicy } from '@/app/infra/hooks/useMCPStdioPolicy';
 
 function StatusDisplay({
   testing,
@@ -560,11 +561,15 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
     hint: boxHint,
     reason: boxReason,
   } = useBoxStatus();
+  const { enabled: mcpStdioEnabled } = useMCPStdioPolicy();
   // stdio mode requires the Box sandbox at runtime. If the user picks
   // stdio while Box is disabled / unreachable, the server would refuse
   // to start anyway — block creation upfront so they aren't surprised
   // by an immediate "Connection failed" on the detail page.
-  const stdioBlockedByBox = watchMode === 'stdio' && !boxAvailable;
+  const stdioBlockedByPolicy = watchMode === 'stdio' && !mcpStdioEnabled;
+  const stdioBlockedByBox =
+    watchMode === 'stdio' && mcpStdioEnabled && !boxAvailable;
+  const stdioBlocked = stdioBlockedByPolicy || stdioBlockedByBox;
 
   const { isDirty } = form.formState;
   useEffect(() => {
@@ -572,8 +577,8 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
   }, [isDirty, onDirtyChange]);
 
   useEffect(() => {
-    onSaveBlockedChange?.(stdioBlockedByBox);
-  }, [stdioBlockedByBox, onSaveBlockedChange]);
+    onSaveBlockedChange?.(stdioBlocked);
+  }, [stdioBlocked, onSaveBlockedChange]);
 
   useEffect(() => {
     onTestingChange?.(mcpTesting);
@@ -589,10 +594,9 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
       testMcp: () => testMcp(),
       isTesting: mcpTesting,
     }),
-    // testMcp now reads everything via form.getValues(), so it does not need
-    // the latest stdioArgs/extraArgs closure — but keep mcpTesting so the
-    // exposed isTesting flag stays accurate.
-    [mcpTesting],
+    // Form values are read through form.getValues(); policy and runtime health
+    // remain closure values and must refresh the imperative handler.
+    [mcpTesting, mcpStdioEnabled, boxAvailable],
   );
 
   useEffect(() => {
@@ -747,6 +751,10 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
   async function handleFormSubmit(value: z.infer<typeof formSchema>) {
     // Belt-and-suspenders: even though the Save button is disabled when
     // stdio is unselectable, intercept programmatic submits too.
+    if (value.mode === 'stdio' && !mcpStdioEnabled) {
+      toast.error(t('mcp.stdioDisabledByPolicy'));
+      return;
+    }
     if (value.mode === 'stdio' && !boxAvailable) {
       toast.error(t('mcp.stdioBlockedByBoxToast'));
       return;
@@ -814,6 +822,16 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
 
     try {
       const mode = form.getValues('mode');
+      if (mode === 'stdio' && !mcpStdioEnabled) {
+        toast.error(t('mcp.stdioDisabledByPolicy'));
+        setMcpTesting(false);
+        return;
+      }
+      if (mode === 'stdio' && !boxAvailable) {
+        toast.error(t('mcp.stdioBlockedByBoxToast'));
+        setMcpTesting(false);
+        return;
+      }
       // Read every field via form.getValues() rather than the captured
       // `stdioArgs` / `extraArgs` state. testMcp() is invoked through an
       // imperative handle (formRef.current.testMcp()) whose closure is only
@@ -1020,13 +1038,20 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
                 </FormControl>
                 <SelectContent>
                   <SelectItem value="remote">{t('mcp.remote')}</SelectItem>
-                  <SelectItem value="stdio" disabled={!boxAvailable}>
+                  <SelectItem
+                    value="stdio"
+                    disabled={!mcpStdioEnabled || !boxAvailable}
+                  >
                     {t('mcp.local')}
-                    {!boxAvailable && (
+                    {!mcpStdioEnabled ? (
+                      <span className="ml-2 text-xs text-muted-foreground">
+                        ({t('mcp.disabledByPolicy')})
+                      </span>
+                    ) : !boxAvailable ? (
                       <span className="ml-2 text-xs text-muted-foreground">
                         ({t('mcp.boxRequired')})
                       </span>
-                    )}
+                    ) : null}
                   </SelectItem>
                 </SelectContent>
               </Select>
@@ -1035,6 +1060,14 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
                   ? t('mcp.localModeDescription')
                   : t('mcp.remoteModeDescription')}
               </FormDescription>
+              {stdioBlockedByPolicy && (
+                <div
+                  role="alert"
+                  className="mt-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-200"
+                >
+                  {t('mcp.stdioDisabledByPolicy')}
+                </div>
+              )}
               {stdioBlockedByBox && (
                 <BoxUnavailableNotice
                   hint={boxHint}

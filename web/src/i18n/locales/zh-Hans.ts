@@ -786,6 +786,8 @@ const zhHans = {
     boxStdioRefusedSuggestion:
       '请启用 Box（box.enabled = true）并确认运行时连接正常，或将此服务器切换到 http/sse 模式。',
     boxRequired: '需要 Box',
+    disabledByPolicy: '已被策略禁用',
+    stdioDisabledByPolicy: '此部署已禁用 Stdio MCP，请改用远程 MCP 服务器。',
     stdioBlockedByBoxToast:
       'Box 沙箱已禁用或不可用，无法保存 stdio 模式的 MCP。请启用 Box 或改为 http/sse 模式。',
     toolsFound: '个工具',

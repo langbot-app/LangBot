@@ -823,6 +823,9 @@ const viVN = {
     boxStdioRefusedSuggestion:
       'Hãy bật Box (box.enabled = true) và đảm bảo runtime hoạt động, hoặc chuyển server này sang chế độ http/sse.',
     boxRequired: 'cần Box',
+    disabledByPolicy: 'bị tắt theo chính sách',
+    stdioDisabledByPolicy:
+      'Stdio MCP đã bị tắt trong bản triển khai này. Hãy dùng máy chủ MCP từ xa.',
     stdioBlockedByBoxToast:
       'Không thể lưu MCP ở chế độ stdio khi Sandbox Box bị tắt hoặc không khả dụng. Hãy bật Box hoặc chọn chế độ http/sse.',
     toolsFound: 'công cụ',

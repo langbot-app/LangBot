@@ -30,6 +30,7 @@ import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
 from ....entity.persistence import mcp as persistence_mcp
 from .mcp_stdio import BoxStdioSessionRuntime, MCPServerBoxConfig, MCPSessionErrorPhase, _ColdStartRetry  # noqa: F401
+from .mcp_policy import require_stdio_mcp_enabled, stdio_mcp_enabled
 
 # Synthesized LLM tools for MCP resources (not from server tools/list).
 # Dispatched in MCPLoader.invoke_tool; placeholder func on LLMTool is never used.
@@ -350,6 +351,11 @@ class RuntimeMCPSession:
         )
 
     async def _init_stdio_python_server(self):
+        # Final transport gate: this must run before both the Box branch and
+        # the backwards-compatible host-stdio branch.  Service/UI checks are
+        # usability guards; this is the execution security boundary.
+        require_stdio_mcp_enabled(self.ap, self.server_config)
+
         if self._uses_box_stdio():
             await self._box_stdio_runtime.initialize()
             return
@@ -1436,6 +1442,12 @@ class MCPLoader(loader.ToolLoader):
 
         for server in servers:
             config = self.ap.persistence_mgr.serialize_model(persistence_mcp.MCPServer, server)
+            if config.get('mode') == 'stdio' and not stdio_mcp_enabled(self.ap):
+                self.ap.logger.info(
+                    f'Skipping disabled stdio MCP server {server.uuid}; '
+                    'the persisted configuration is retained but no process is launched'
+                )
+                continue
             try:
                 binding = await self.ap.workspace_service.get_execution_binding(server.workspace_uuid)
                 execution_context = ExecutionContext(
@@ -1511,6 +1523,7 @@ class MCPLoader(loader.ToolLoader):
         """
         execution_context = await self._assert_execution_active(context)
         server_config = dict(server_config)
+        require_stdio_mcp_enabled(self.ap, server_config)
         configured_workspace = str(server_config.get('workspace_uuid') or '').strip()
         if configured_workspace and configured_workspace != execution_context.workspace_uuid:
             raise ValueError('MCP server configuration belongs to another Workspace')

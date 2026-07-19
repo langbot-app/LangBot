@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 
 from .. import stage, app
-from ...utils import version, proxy
+from ...utils import version, proxy, constants
 from ...pipeline import pool, controller, pipelinemgr
 from ...pipeline import aggregator as message_aggregator
 from ...box import service as box_service
@@ -41,7 +41,8 @@ from ...telemetry import telemetry as telemetry_module
 from ...survey import manager as survey_module
 from ...workspace import service as workspace_service_module
 from ...workspace import collaboration as workspace_collaboration_module
-from ...workspace import policy as workspace_policy_module
+from ...cloud import bootstrap as cloud_bootstrap
+from ...cloud.entitlements import EntitlementResolver
 from ...api.http.context import ExecutionContext, PrincipalContext, PrincipalType
 from ...api.http.authz import WorkspaceRequiredError
 
@@ -52,6 +53,20 @@ class BuildAppStage(stage.BootingStage):
 
     async def run(self, ap: app.Application):
         """Build LangBot application"""
+        # Multi-Workspace mode is selected only by an installed closed
+        # bootstrap that returns a verified Manifest receipt. Mutable values
+        # such as system.edition are intentionally absent from this boundary.
+        deployment = await cloud_bootstrap.resolve_deployment(
+            instance_uuid=constants.instance_id,
+            instance_config=ap.instance_config.data,
+        )
+        ap.deployment = deployment
+        ap.entitlement_resolver = (
+            EntitlementResolver(constants.instance_id, deployment.entitlement_provider)
+            if deployment.multi_workspace_enabled
+            else None
+        )
+
         ap.task_mgr = taskmgr.AsyncTaskManager(ap)
 
         discover = discover_engine.ComponentDiscoveryEngine(ap)
@@ -109,16 +124,14 @@ class BuildAppStage(stage.BootingStage):
         await storage_mgr_inst.initialize()
         ap.storage_mgr = storage_mgr_inst
 
-        persistence_mgr_inst = persistencemgr.PersistenceManager(ap)
+        persistence_mgr_inst = persistencemgr.PersistenceManager(
+            ap,
+            mode=persistencemgr.PersistenceMode(deployment.persistence_mode),
+        )
         ap.persistence_mgr = persistence_mgr_inst
         await persistence_mgr_inst.initialize()
 
-        # The open-source Core is intentionally single-Workspace.  A mutable
-        # config value such as ``system.edition`` is product metadata, not a
-        # trust credential, and must never activate SaaS routing.  The closed
-        # Cloud bootstrap will install its verified policy only after checking
-        # a signed InstanceManifest; until that bootstrap exists, fail closed.
-        workspace_policy = workspace_policy_module.open_core_workspace_policy()
+        workspace_policy = deployment.workspace_policy
         workspace_service_inst = workspace_service_module.WorkspaceService(
             ap,
             policy=workspace_policy,

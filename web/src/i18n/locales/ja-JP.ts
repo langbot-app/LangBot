@@ -826,6 +826,9 @@ const jaJP = {
     boxStdioRefusedSuggestion:
       'Box を有効化（box.enabled = true）してランタイムの接続を確認するか、このサーバーを http/sse モードに切り替えてください。',
     boxRequired: 'Box が必要',
+    disabledByPolicy: 'ポリシーにより無効',
+    stdioDisabledByPolicy:
+      'このデプロイでは Stdio MCP が無効です。リモート MCP サーバーを使用してください。',
     stdioBlockedByBoxToast:
       'Box サンドボックスが無効または利用できないため、stdio モードの MCP は保存できません。Box を有効化するか、http/sse モードに切り替えてください。',
     toolsFound: '個のツール',

@@ -154,6 +154,7 @@ def mcp_module():
 def _make_ap():
     ap = Mock()
     ap.logger = Mock()
+    ap.instance_config = SimpleNamespace(data={'mcp': {'stdio': {'enabled': True}}})
     ap.workspace_service = Mock()
     ap.workspace_service.get_execution_binding = AsyncMock(
         return_value=SimpleNamespace(
@@ -789,6 +790,31 @@ class TestBoxConfigParsing:
         assert isinstance(s.box_config, mcp_module.MCPServerBoxConfig)
         assert s.box_config.image is None
         assert s.box_config.host_path_mode == 'ro'
+
+
+@pytest.mark.asyncio
+async def test_stdio_instance_gate_runs_before_box_transport(mcp_module):
+    ap = _make_ap()
+    ap.instance_config.data['mcp']['stdio']['enabled'] = False
+    ap.box_service.available = True
+    session = _make_session(
+        mcp_module,
+        {
+            'name': 'blocked',
+            'uuid': 'blocked-uuid',
+            'mode': 'stdio',
+            'command': 'python',
+            'args': [],
+            'env': {},
+        },
+        ap=ap,
+    )
+    session._box_stdio_runtime.initialize = AsyncMock()
+
+    with pytest.raises(RuntimeError, match='disabled by instance policy'):
+        await session._init_stdio_python_server()
+
+    session._box_stdio_runtime.initialize.assert_not_awaited()
 
 
 @pytest.mark.asyncio

@@ -5,6 +5,7 @@ from urllib.parse import unquote
 
 from ....authz import Permission
 from ....context import RequestContext
+from ......provider.tools.loaders.mcp_policy import MCPStdioDisabledError
 from ... import group
 
 
@@ -31,6 +32,8 @@ class MCPRouterGroup(group.RouterGroup):
             data = await quart.request.json
             try:
                 server_uuid = await self.ap.mcp_service.create_mcp_server(request_context, data)
+            except MCPStdioDisabledError as exc:
+                return self.http_status(403, exc.code, str(exc))
             except ValueError as exc:
                 return self.http_status(400, -1, str(exc))
             return self.success(data={'uuid': server_uuid})
@@ -63,6 +66,8 @@ class MCPRouterGroup(group.RouterGroup):
                 data = await quart.request.json
                 try:
                     await self.ap.mcp_service.update_mcp_server(request_context, server_data['uuid'], data)
+                except MCPStdioDisabledError as exc:
+                    return self.http_status(403, exc.code, str(exc))
                 except ValueError as exc:
                     return self.http_status(400, -1, str(exc))
             else:
@@ -79,11 +84,14 @@ class MCPRouterGroup(group.RouterGroup):
             """测试MCP服务器连接"""
             server_name = unquote(server_name)
             server_data = await quart.request.json
-            task_id = await self.ap.mcp_service.test_mcp_server(
-                request_context,
-                server_name=server_name,
-                server_data=server_data,
-            )
+            try:
+                task_id = await self.ap.mcp_service.test_mcp_server(
+                    request_context,
+                    server_name=server_name,
+                    server_data=server_data,
+                )
+            except MCPStdioDisabledError as exc:
+                return self.http_status(403, exc.code, str(exc))
             return self.success(data={'task_id': task_id})
 
         @self.route(

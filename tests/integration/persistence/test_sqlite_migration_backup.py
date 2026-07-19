@@ -47,7 +47,7 @@ async def test_tenancy_migrations_retain_verified_boundary_backups(tmp_path):
 
         await _manager(engine)._run_alembic_migrations()
 
-        assert await alembic_runner.get_alembic_current(engine) == '0010_scope_resources'
+        assert await alembic_runner.get_alembic_current(engine) == alembic_runner.get_alembic_head()
         payloads = _manifest_payloads(tmp_path / 'migration-backups')
         assert len(payloads) == 2
         assert {
@@ -102,6 +102,6 @@ async def test_failed_tenancy_migration_restores_backup_and_revision(
 
         monkeypatch.setattr(alembic_runner, 'run_alembic_upgrade', real_upgrade)
         await _manager(engine)._run_alembic_migrations()
-        assert await alembic_runner.get_alembic_current(engine) == '0010_scope_resources'
+        assert await alembic_runner.get_alembic_current(engine) == alembic_runner.get_alembic_head()
     finally:
         await engine.dispose()

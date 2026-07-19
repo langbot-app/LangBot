@@ -808,6 +808,9 @@ const thTH = {
     boxStdioRefusedSuggestion:
       'กรุณาเปิดใช้งาน Box (box.enabled = true) และตรวจสอบว่ารันไทม์ทำงานปกติ หรือเปลี่ยน MCP server เป็นโหมด http/sse',
     boxRequired: 'ต้องใช้ Box',
+    disabledByPolicy: 'ถูกปิดใช้งานโดยนโยบาย',
+    stdioDisabledByPolicy:
+      'การติดตั้งใช้งานนี้ปิด Stdio MCP อยู่ โปรดใช้เซิร์ฟเวอร์ MCP แบบระยะไกล',
     stdioBlockedByBoxToast:
       'ไม่สามารถบันทึก MCP โหมด stdio เนื่องจาก Sandbox Box ถูกปิดใช้งานหรือไม่พร้อมใช้งาน กรุณาเปิดใช้งาน Box หรือเลือกโหมด http/sse',
     toolsFound: 'เครื่องมือ',
