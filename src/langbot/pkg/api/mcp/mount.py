@@ -19,7 +19,10 @@ from __future__ import annotations
 
 import contextlib
 import typing
+import uuid
 
+from ..http.context import PrincipalContext, PrincipalType, RequestContext, WorkspaceContext
+from .context import bind_request_context, reset_request_context
 from .server import LangBotMCPServer
 
 if typing.TYPE_CHECKING:
@@ -76,7 +79,7 @@ class MCPMount:
     def wrap(self, quart_asgi: typing.Callable) -> typing.Callable:
         """Return a dispatcher ASGI app fronting ``quart_asgi``."""
         mcp_asgi = self._mcp_asgi
-        verify_api_key = self.ap.apikey_service.verify_api_key
+        authenticate_api_key = self.ap.apikey_service.authenticate_api_key
         is_mcp_path = self._is_mcp_path
 
         async def dispatcher(scope, receive, send):  # type: ignore[no-untyped-def]
@@ -88,12 +91,12 @@ class MCPMount:
 
             # Authenticate MCP HTTP requests with a LangBot API key.
             api_key = _extract_api_key(scope.get('headers', []))
-            authorized = False
+            identity = None
             if api_key:
                 with contextlib.suppress(Exception):
-                    authorized = await verify_api_key(api_key)
+                    identity = await authenticate_api_key(api_key)
 
-            if not authorized:
+            if identity is None:
                 await send(
                     {
                         'type': 'http.response.start',
@@ -107,6 +110,26 @@ class MCPMount:
                 await send({'type': 'http.response.body', 'body': _UNAUTHORIZED_BODY})
                 return
 
-            await mcp_asgi(scope, receive, send)
+            request_context = RequestContext(
+                instance_uuid=identity.instance_uuid,
+                placement_generation=identity.placement_generation,
+                request_id=str(uuid.uuid4()),
+                auth_type='api-key',
+                principal=PrincipalContext(
+                    principal_type=PrincipalType.API_KEY,
+                    api_key_uuid=identity.api_key_uuid,
+                ),
+                workspace=WorkspaceContext(
+                    workspace_uuid=identity.workspace_uuid,
+                    membership_uuid=None,
+                    role=None,
+                    permissions=identity.permissions,
+                ),
+            )
+            token = bind_request_context(request_context)
+            try:
+                await mcp_asgi(scope, receive, send)
+            finally:
+                reset_request_context(token)
 
         return dispatcher

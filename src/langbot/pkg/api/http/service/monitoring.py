@@ -7,6 +7,9 @@ import sqlalchemy
 
 from ....core import app
 from ....entity.persistence import monitoring as persistence_monitoring
+from ..authz import WorkspaceRequiredError
+from ..context import ExecutionContext
+from .tenant import TenantContext, require_workspace_uuid
 
 
 class MonitoringService:
@@ -17,9 +20,26 @@ class MonitoringService:
     def __init__(self, ap: app.Application) -> None:
         self.ap = ap
 
+    @staticmethod
+    def _require_write_context(context: ExecutionContext | None) -> str:
+        """Reject background/runtime writes that lost their execution fence."""
+
+        if not isinstance(context, ExecutionContext):
+            raise WorkspaceRequiredError('Monitoring writes require an ExecutionContext')
+        if not context.instance_uuid.strip() or not context.workspace_uuid.strip():
+            raise WorkspaceRequiredError('Monitoring writes require an instance and Workspace')
+        if context.placement_generation <= 0:
+            raise WorkspaceRequiredError('Monitoring writes require a positive placement generation')
+        return context.workspace_uuid
+
     # ========== Cleanup Methods ==========
 
-    async def cleanup_expired_records(self, retention_days: int, batch_size: int = 1000) -> dict[str, int]:
+    async def cleanup_expired_records(
+        self,
+        context: ExecutionContext,
+        retention_days: int,
+        batch_size: int = 1000,
+    ) -> dict[str, int]:
         """Delete monitoring records older than the specified retention period.
 
         Args:
@@ -29,6 +49,7 @@ class MonitoringService:
         Returns:
             A dict mapping table name to the number of deleted rows.
         """
+        self._require_write_context(context)
         if retention_days < 1:
             raise ValueError('retention_days must be >= 1')
         if batch_size < 1:
@@ -87,6 +108,7 @@ class MonitoringService:
 
         for table_name, model_cls, ts_column, pk_column in tables_and_columns:
             deleted_counts[table_name] = await self._delete_expired_in_batches(
+                context=context,
                 model_cls=model_cls,
                 ts_column=ts_column,
                 pk_column=pk_column,
@@ -101,24 +123,31 @@ class MonitoringService:
 
     async def _delete_expired_in_batches(
         self,
+        context: ExecutionContext,
         model_cls: type,
         ts_column: sqlalchemy.Column,
         pk_column: sqlalchemy.Column,
         cutoff: datetime.datetime,
         batch_size: int,
     ) -> int:
+        workspace_uuid = self._require_write_context(context)
         deleted_total = 0
 
         while True:
             select_result = await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.select(pk_column).where(ts_column < cutoff).limit(batch_size)
+                sqlalchemy.select(pk_column)
+                .where(model_cls.workspace_uuid == workspace_uuid, ts_column < cutoff)
+                .limit(batch_size)
             )
             pk_values = list(select_result.scalars().all())
             if not pk_values:
                 break
 
             delete_result = await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.delete(model_cls).where(pk_column.in_(pk_values))
+                sqlalchemy.delete(model_cls).where(
+                    model_cls.workspace_uuid == workspace_uuid,
+                    pk_column.in_(pk_values),
+                )
             )
             deleted = delete_result.rowcount or 0
             deleted_total += deleted
@@ -158,13 +187,16 @@ class MonitoringService:
 
     async def _get_message_for_tool_context(
         self,
+        context: ExecutionContext,
         message_id: str | None = None,
         session_id: str | None = None,
     ):
+        workspace_uuid = self._require_write_context(context)
         if message_id:
             result = await self.ap.persistence_mgr.execute_async(
                 sqlalchemy.select(persistence_monitoring.MonitoringMessage).where(
-                    persistence_monitoring.MonitoringMessage.id == message_id
+                    persistence_monitoring.MonitoringMessage.workspace_uuid == workspace_uuid,
+                    persistence_monitoring.MonitoringMessage.id == message_id,
                 )
             )
             row = result.first()
@@ -180,6 +212,7 @@ class MonitoringService:
                 sqlalchemy.and_(
                     persistence_monitoring.MonitoringMessage.session_id == session_id,
                     persistence_monitoring.MonitoringMessage.role == 'user',
+                    persistence_monitoring.MonitoringMessage.workspace_uuid == workspace_uuid,
                 )
             )
             .order_by(persistence_monitoring.MonitoringMessage.timestamp.desc())
@@ -192,7 +225,10 @@ class MonitoringService:
 
         any_query = (
             sqlalchemy.select(persistence_monitoring.MonitoringMessage)
-            .where(persistence_monitoring.MonitoringMessage.session_id == session_id)
+            .where(
+                persistence_monitoring.MonitoringMessage.workspace_uuid == workspace_uuid,
+                persistence_monitoring.MonitoringMessage.session_id == session_id,
+            )
             .order_by(persistence_monitoring.MonitoringMessage.timestamp.desc())
             .limit(1)
         )
@@ -204,6 +240,7 @@ class MonitoringService:
 
     async def record_message(
         self,
+        context: ExecutionContext,
         bot_id: str,
         bot_name: str,
         pipeline_id: str,
@@ -220,9 +257,11 @@ class MonitoringService:
         role: str = 'user',
     ) -> str:
         """Record a message"""
+        workspace_uuid = self._require_write_context(context)
         message_id = str(uuid.uuid4())
         message_data = {
             'id': message_id,
+            'workspace_uuid': workspace_uuid,
             'timestamp': datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None),
             'bot_id': bot_id,
             'bot_name': bot_name,
@@ -248,6 +287,7 @@ class MonitoringService:
 
     async def record_llm_call(
         self,
+        context: ExecutionContext,
         bot_id: str,
         bot_name: str,
         pipeline_id: str,
@@ -263,9 +303,11 @@ class MonitoringService:
         message_id: str | None = None,
     ) -> str:
         """Record an LLM call"""
+        workspace_uuid = self._require_write_context(context)
         call_id = str(uuid.uuid4())
         call_data = {
             'id': call_id,
+            'workspace_uuid': workspace_uuid,
             'timestamp': datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None),
             'model_name': model_name,
             'input_tokens': input_tokens,
@@ -291,6 +333,7 @@ class MonitoringService:
 
     async def record_tool_call(
         self,
+        context: ExecutionContext,
         tool_name: str,
         tool_source: str,
         duration: int,
@@ -306,7 +349,12 @@ class MonitoringService:
         error_message: str | None = None,
     ) -> str:
         """Record a tool call."""
-        context_message = await self._get_message_for_tool_context(message_id=message_id, session_id=session_id)
+        workspace_uuid = self._require_write_context(context)
+        context_message = await self._get_message_for_tool_context(
+            context,
+            message_id=message_id,
+            session_id=session_id,
+        )
         if context_message:
             bot_id = bot_id or context_message.bot_id
             bot_name = bot_name or context_message.bot_name
@@ -318,6 +366,7 @@ class MonitoringService:
         call_id = str(uuid.uuid4())
         call_data = {
             'id': call_id,
+            'workspace_uuid': workspace_uuid,
             'timestamp': datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None),
             'tool_name': tool_name,
             'tool_source': tool_source,
@@ -342,6 +391,7 @@ class MonitoringService:
 
     async def record_embedding_call(
         self,
+        context: ExecutionContext,
         model_name: str,
         prompt_tokens: int,
         total_tokens: int,
@@ -356,9 +406,11 @@ class MonitoringService:
         call_type: str | None = None,
     ) -> str:
         """Record an embedding call"""
+        workspace_uuid = self._require_write_context(context)
         call_id = str(uuid.uuid4())
         call_data = {
             'id': call_id,
+            'workspace_uuid': workspace_uuid,
             'timestamp': datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None),
             'model_name': model_name,
             'prompt_tokens': prompt_tokens,
@@ -382,6 +434,7 @@ class MonitoringService:
 
     async def record_session_start(
         self,
+        context: ExecutionContext,
         session_id: str,
         bot_id: str,
         bot_name: str,
@@ -392,7 +445,9 @@ class MonitoringService:
         user_name: str | None = None,
     ) -> None:
         """Record a new session"""
+        workspace_uuid = self._require_write_context(context)
         session_data = {
+            'workspace_uuid': workspace_uuid,
             'session_id': session_id,
             'bot_id': bot_id,
             'bot_name': bot_name,
@@ -413,6 +468,7 @@ class MonitoringService:
 
     async def update_session_activity(
         self,
+        context: ExecutionContext,
         session_id: str,
         pipeline_id: str | None = None,
         pipeline_name: str | None = None,
@@ -424,6 +480,7 @@ class MonitoringService:
         Returns:
             True if session was found and updated, False if session doesn't exist.
         """
+        workspace_uuid = self._require_write_context(context)
         update_values = {
             'last_activity': datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None),
             'message_count': persistence_monitoring.MonitoringSession.message_count + 1,
@@ -437,7 +494,10 @@ class MonitoringService:
 
         result = await self.ap.persistence_mgr.execute_async(
             sqlalchemy.update(persistence_monitoring.MonitoringSession)
-            .where(persistence_monitoring.MonitoringSession.session_id == session_id)
+            .where(
+                persistence_monitoring.MonitoringSession.workspace_uuid == workspace_uuid,
+                persistence_monitoring.MonitoringSession.session_id == session_id,
+            )
             .values(update_values)
         )
         # Check if any rows were updated
@@ -445,6 +505,7 @@ class MonitoringService:
 
     async def record_error(
         self,
+        context: ExecutionContext,
         bot_id: str,
         bot_name: str,
         pipeline_id: str,
@@ -456,9 +517,11 @@ class MonitoringService:
         message_id: str | None = None,
     ) -> str:
         """Record an error"""
+        workspace_uuid = self._require_write_context(context)
         error_id = str(uuid.uuid4())
         error_data = {
             'id': error_id,
+            'workspace_uuid': workspace_uuid,
             'timestamp': datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None),
             'error_type': error_type,
             'error_message': error_message,
@@ -479,12 +542,14 @@ class MonitoringService:
 
     async def update_message_status(
         self,
+        context: ExecutionContext,
         message_id: str,
         status: str,
         level: str | None = None,
         variables: str | None = None,
     ) -> None:
         """Update message status and optionally variables"""
+        workspace_uuid = self._require_write_context(context)
         update_values = {'status': status}
         if level is not None:
             update_values['level'] = level
@@ -493,7 +558,10 @@ class MonitoringService:
 
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.update(persistence_monitoring.MonitoringMessage)
-            .where(persistence_monitoring.MonitoringMessage.id == message_id)
+            .where(
+                persistence_monitoring.MonitoringMessage.workspace_uuid == workspace_uuid,
+                persistence_monitoring.MonitoringMessage.id == message_id,
+            )
             .values(update_values)
         )
 
@@ -501,17 +569,19 @@ class MonitoringService:
 
     async def get_overview_metrics(
         self,
+        context: TenantContext,
         bot_ids: list[str] | None = None,
         pipeline_ids: list[str] | None = None,
         start_time: datetime.datetime | None = None,
         end_time: datetime.datetime | None = None,
     ) -> dict:
         """Get overview metrics"""
+        workspace_uuid = require_workspace_uuid(context)
         # Build base query conditions
-        message_conditions = []
-        llm_conditions = []
-        embedding_conditions = []
-        session_conditions = []
+        message_conditions = [persistence_monitoring.MonitoringMessage.workspace_uuid == workspace_uuid]
+        llm_conditions = [persistence_monitoring.MonitoringLLMCall.workspace_uuid == workspace_uuid]
+        embedding_conditions = [persistence_monitoring.MonitoringEmbeddingCall.workspace_uuid == workspace_uuid]
+        session_conditions = [persistence_monitoring.MonitoringSession.workspace_uuid == workspace_uuid]
 
         if bot_ids:
             message_conditions.append(persistence_monitoring.MonitoringMessage.bot_id.in_(bot_ids))
@@ -594,6 +664,7 @@ class MonitoringService:
 
     async def get_token_statistics(
         self,
+        context: TenantContext,
         bot_ids: list[str] | None = None,
         pipeline_ids: list[str] | None = None,
         start_time: datetime.datetime | None = None,
@@ -612,8 +683,9 @@ class MonitoringService:
         token accounting.
         """
         LLMCall = persistence_monitoring.MonitoringLLMCall
+        workspace_uuid = require_workspace_uuid(context)
 
-        conditions = []
+        conditions = [LLMCall.workspace_uuid == workspace_uuid]
         if bot_ids:
             conditions.append(LLMCall.bot_id.in_(bot_ids))
         if pipeline_ids:
@@ -767,6 +839,7 @@ class MonitoringService:
 
     async def get_messages(
         self,
+        context: TenantContext,
         bot_ids: list[str] | None = None,
         pipeline_ids: list[str] | None = None,
         session_ids: list[str] | None = None,
@@ -776,7 +849,8 @@ class MonitoringService:
         offset: int = 0,
     ) -> tuple[list[dict], int]:
         """Get messages with filters"""
-        conditions = []
+        workspace_uuid = require_workspace_uuid(context)
+        conditions = [persistence_monitoring.MonitoringMessage.workspace_uuid == workspace_uuid]
 
         if bot_ids:
             conditions.append(persistence_monitoring.MonitoringMessage.bot_id.in_(bot_ids))
@@ -820,6 +894,7 @@ class MonitoringService:
 
     async def get_llm_calls(
         self,
+        context: TenantContext,
         bot_ids: list[str] | None = None,
         pipeline_ids: list[str] | None = None,
         start_time: datetime.datetime | None = None,
@@ -828,7 +903,8 @@ class MonitoringService:
         offset: int = 0,
     ) -> tuple[list[dict], int]:
         """Get LLM calls with filters"""
-        conditions = []
+        workspace_uuid = require_workspace_uuid(context)
+        conditions = [persistence_monitoring.MonitoringLLMCall.workspace_uuid == workspace_uuid]
 
         if bot_ids:
             conditions.append(persistence_monitoring.MonitoringLLMCall.bot_id.in_(bot_ids))
@@ -871,6 +947,7 @@ class MonitoringService:
 
     async def get_tool_calls(
         self,
+        context: TenantContext,
         bot_ids: list[str] | None = None,
         pipeline_ids: list[str] | None = None,
         session_ids: list[str] | None = None,
@@ -880,7 +957,8 @@ class MonitoringService:
         offset: int = 0,
     ) -> tuple[list[dict], int]:
         """Get tool calls with filters"""
-        conditions = []
+        workspace_uuid = require_workspace_uuid(context)
+        conditions = [persistence_monitoring.MonitoringToolCall.workspace_uuid == workspace_uuid]
 
         if bot_ids:
             conditions.append(persistence_monitoring.MonitoringToolCall.bot_id.in_(bot_ids))
@@ -923,6 +1001,7 @@ class MonitoringService:
 
     async def get_embedding_calls(
         self,
+        context: TenantContext,
         start_time: datetime.datetime | None = None,
         end_time: datetime.datetime | None = None,
         knowledge_base_id: str | None = None,
@@ -930,7 +1009,8 @@ class MonitoringService:
         offset: int = 0,
     ) -> tuple[list[dict], int]:
         """Get embedding calls with filters"""
-        conditions = []
+        workspace_uuid = require_workspace_uuid(context)
+        conditions = [persistence_monitoring.MonitoringEmbeddingCall.workspace_uuid == workspace_uuid]
 
         if start_time:
             conditions.append(persistence_monitoring.MonitoringEmbeddingCall.timestamp >= start_time)
@@ -971,6 +1051,7 @@ class MonitoringService:
 
     async def get_sessions(
         self,
+        context: TenantContext,
         bot_ids: list[str] | None = None,
         pipeline_ids: list[str] | None = None,
         start_time: datetime.datetime | None = None,
@@ -980,7 +1061,8 @@ class MonitoringService:
         offset: int = 0,
     ) -> tuple[list[dict], int]:
         """Get sessions with filters"""
-        conditions = []
+        workspace_uuid = require_workspace_uuid(context)
+        conditions = [persistence_monitoring.MonitoringSession.workspace_uuid == workspace_uuid]
 
         if bot_ids:
             conditions.append(persistence_monitoring.MonitoringSession.bot_id.in_(bot_ids))
@@ -1025,6 +1107,7 @@ class MonitoringService:
 
     async def get_errors(
         self,
+        context: TenantContext,
         bot_ids: list[str] | None = None,
         pipeline_ids: list[str] | None = None,
         start_time: datetime.datetime | None = None,
@@ -1033,7 +1116,8 @@ class MonitoringService:
         offset: int = 0,
     ) -> tuple[list[dict], int]:
         """Get errors with filters"""
-        conditions = []
+        workspace_uuid = require_workspace_uuid(context)
+        conditions = [persistence_monitoring.MonitoringError.workspace_uuid == workspace_uuid]
 
         if bot_ids:
             conditions.append(persistence_monitoring.MonitoringError.bot_id.in_(bot_ids))
@@ -1076,12 +1160,15 @@ class MonitoringService:
 
     async def get_session_analysis(
         self,
+        context: TenantContext,
         session_id: str,
     ) -> dict:
         """Get detailed analysis for a specific session"""
+        workspace_uuid = require_workspace_uuid(context)
         # Get session info
         session_query = sqlalchemy.select(persistence_monitoring.MonitoringSession).where(
-            persistence_monitoring.MonitoringSession.session_id == session_id
+            persistence_monitoring.MonitoringSession.workspace_uuid == workspace_uuid,
+            persistence_monitoring.MonitoringSession.session_id == session_id,
         )
         session_result = await self.ap.persistence_mgr.execute_async(session_query)
         session_row = session_result.first()
@@ -1097,7 +1184,10 @@ class MonitoringService:
         # Get messages for this session
         messages_query = (
             sqlalchemy.select(persistence_monitoring.MonitoringMessage)
-            .where(persistence_monitoring.MonitoringMessage.session_id == session_id)
+            .where(
+                persistence_monitoring.MonitoringMessage.workspace_uuid == workspace_uuid,
+                persistence_monitoring.MonitoringMessage.session_id == session_id,
+            )
             .order_by(persistence_monitoring.MonitoringMessage.timestamp.asc())
         )
         messages_result = await self.ap.persistence_mgr.execute_async(messages_query)
@@ -1118,7 +1208,8 @@ class MonitoringService:
 
         # Get LLM calls for this session
         llm_query = sqlalchemy.select(persistence_monitoring.MonitoringLLMCall).where(
-            persistence_monitoring.MonitoringLLMCall.session_id == session_id
+            persistence_monitoring.MonitoringLLMCall.workspace_uuid == workspace_uuid,
+            persistence_monitoring.MonitoringLLMCall.session_id == session_id,
         )
         llm_result = await self.ap.persistence_mgr.execute_async(llm_query)
         llm_rows = llm_result.all()
@@ -1146,7 +1237,10 @@ class MonitoringService:
         # Get tool calls for this session
         tool_query = (
             sqlalchemy.select(persistence_monitoring.MonitoringToolCall)
-            .where(persistence_monitoring.MonitoringToolCall.session_id == session_id)
+            .where(
+                persistence_monitoring.MonitoringToolCall.workspace_uuid == workspace_uuid,
+                persistence_monitoring.MonitoringToolCall.session_id == session_id,
+            )
             .order_by(persistence_monitoring.MonitoringToolCall.timestamp.asc())
         )
         tool_result = await self.ap.persistence_mgr.execute_async(tool_query)
@@ -1174,7 +1268,10 @@ class MonitoringService:
         # Get errors for this session
         error_query = (
             sqlalchemy.select(persistence_monitoring.MonitoringError)
-            .where(persistence_monitoring.MonitoringError.session_id == session_id)
+            .where(
+                persistence_monitoring.MonitoringError.workspace_uuid == workspace_uuid,
+                persistence_monitoring.MonitoringError.session_id == session_id,
+            )
             .order_by(persistence_monitoring.MonitoringError.timestamp.desc())
         )
         error_result = await self.ap.persistence_mgr.execute_async(error_query)
@@ -1228,12 +1325,15 @@ class MonitoringService:
 
     async def get_message_details(
         self,
+        context: TenantContext,
         message_id: str,
     ) -> dict:
         """Get detailed information for a specific message including associated LLM calls and errors"""
+        workspace_uuid = require_workspace_uuid(context)
         # Get message info
         message_query = sqlalchemy.select(persistence_monitoring.MonitoringMessage).where(
-            persistence_monitoring.MonitoringMessage.id == message_id
+            persistence_monitoring.MonitoringMessage.workspace_uuid == workspace_uuid,
+            persistence_monitoring.MonitoringMessage.id == message_id,
         )
         message_result = await self.ap.persistence_mgr.execute_async(message_query)
         message_row = message_result.first()
@@ -1249,7 +1349,10 @@ class MonitoringService:
         # Get LLM calls for this message
         llm_query = (
             sqlalchemy.select(persistence_monitoring.MonitoringLLMCall)
-            .where(persistence_monitoring.MonitoringLLMCall.message_id == message_id)
+            .where(
+                persistence_monitoring.MonitoringLLMCall.workspace_uuid == workspace_uuid,
+                persistence_monitoring.MonitoringLLMCall.message_id == message_id,
+            )
             .order_by(persistence_monitoring.MonitoringLLMCall.timestamp.asc())
         )
         llm_result = await self.ap.persistence_mgr.execute_async(llm_query)
@@ -1271,7 +1374,10 @@ class MonitoringService:
         # Get errors for this message
         error_query = (
             sqlalchemy.select(persistence_monitoring.MonitoringError)
-            .where(persistence_monitoring.MonitoringError.message_id == message_id)
+            .where(
+                persistence_monitoring.MonitoringError.workspace_uuid == workspace_uuid,
+                persistence_monitoring.MonitoringError.message_id == message_id,
+            )
             .order_by(persistence_monitoring.MonitoringError.timestamp.asc())
         )
         error_result = await self.ap.persistence_mgr.execute_async(error_query)
@@ -1379,6 +1485,7 @@ class MonitoringService:
 
     async def export_messages(
         self,
+        context: TenantContext,
         bot_ids: list[str] | None = None,
         pipeline_ids: list[str] | None = None,
         start_time: datetime.datetime | None = None,
@@ -1386,7 +1493,8 @@ class MonitoringService:
         limit: int = 100000,
     ) -> list[dict]:
         """Export messages as list of dictionaries for CSV conversion"""
-        conditions = []
+        workspace_uuid = require_workspace_uuid(context)
+        conditions = [persistence_monitoring.MonitoringMessage.workspace_uuid == workspace_uuid]
 
         if bot_ids:
             conditions.append(persistence_monitoring.MonitoringMessage.bot_id.in_(bot_ids))
@@ -1432,6 +1540,7 @@ class MonitoringService:
 
     async def export_llm_calls(
         self,
+        context: TenantContext,
         bot_ids: list[str] | None = None,
         pipeline_ids: list[str] | None = None,
         start_time: datetime.datetime | None = None,
@@ -1439,7 +1548,8 @@ class MonitoringService:
         limit: int = 100000,
     ) -> list[dict]:
         """Export LLM calls as list of dictionaries for CSV conversion"""
-        conditions = []
+        workspace_uuid = require_workspace_uuid(context)
+        conditions = [persistence_monitoring.MonitoringLLMCall.workspace_uuid == workspace_uuid]
 
         if bot_ids:
             conditions.append(persistence_monitoring.MonitoringLLMCall.bot_id.in_(bot_ids))
@@ -1485,13 +1595,15 @@ class MonitoringService:
 
     async def export_embedding_calls(
         self,
+        context: TenantContext,
         start_time: datetime.datetime | None = None,
         end_time: datetime.datetime | None = None,
         knowledge_base_id: str | None = None,
         limit: int = 100000,
     ) -> list[dict]:
         """Export embedding calls as list of dictionaries for CSV conversion"""
-        conditions = []
+        workspace_uuid = require_workspace_uuid(context)
+        conditions = [persistence_monitoring.MonitoringEmbeddingCall.workspace_uuid == workspace_uuid]
 
         if start_time:
             conditions.append(persistence_monitoring.MonitoringEmbeddingCall.timestamp >= start_time)
@@ -1533,6 +1645,7 @@ class MonitoringService:
 
     async def export_errors(
         self,
+        context: TenantContext,
         bot_ids: list[str] | None = None,
         pipeline_ids: list[str] | None = None,
         start_time: datetime.datetime | None = None,
@@ -1540,7 +1653,8 @@ class MonitoringService:
         limit: int = 100000,
     ) -> list[dict]:
         """Export errors as list of dictionaries for CSV conversion"""
-        conditions = []
+        workspace_uuid = require_workspace_uuid(context)
+        conditions = [persistence_monitoring.MonitoringError.workspace_uuid == workspace_uuid]
 
         if bot_ids:
             conditions.append(persistence_monitoring.MonitoringError.bot_id.in_(bot_ids))
@@ -1581,6 +1695,7 @@ class MonitoringService:
 
     async def export_sessions(
         self,
+        context: TenantContext,
         bot_ids: list[str] | None = None,
         pipeline_ids: list[str] | None = None,
         start_time: datetime.datetime | None = None,
@@ -1588,7 +1703,8 @@ class MonitoringService:
         limit: int = 100000,
     ) -> list[dict]:
         """Export sessions as list of dictionaries for CSV conversion"""
-        conditions = []
+        workspace_uuid = require_workspace_uuid(context)
+        conditions = [persistence_monitoring.MonitoringSession.workspace_uuid == workspace_uuid]
 
         if bot_ids:
             conditions.append(persistence_monitoring.MonitoringSession.bot_id.in_(bot_ids))
@@ -1633,6 +1749,7 @@ class MonitoringService:
 
     async def record_feedback(
         self,
+        context: ExecutionContext,
         feedback_id: str,
         feedback_type: int,
         feedback_content: str | None = None,
@@ -1646,7 +1763,7 @@ class MonitoringService:
         stream_id: str | None = None,
         user_id: str | None = None,
         platform: str | None = None,
-    ) -> str:
+    ) -> str | None:
         """Record user feedback (like/dislike) from AI Bot conversation.
 
         Args:
@@ -1669,6 +1786,7 @@ class MonitoringService:
         """
         import json
 
+        workspace_uuid = self._require_write_context(context)
         now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
         reasons_json = json.dumps(inaccurate_reasons, ensure_ascii=False) if inaccurate_reasons else None
 
@@ -1677,13 +1795,19 @@ class MonitoringService:
         # Handle cancel feedback (type=3): delete existing record
         if feedback_type == 3:
             await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.delete(MonitoringFeedback).where(MonitoringFeedback.feedback_id == feedback_id)
+                sqlalchemy.delete(MonitoringFeedback).where(
+                    MonitoringFeedback.workspace_uuid == workspace_uuid,
+                    MonitoringFeedback.feedback_id == feedback_id,
+                )
             )
             return None
 
         # Check if record with this feedback_id already exists
         existing_result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(MonitoringFeedback).where(MonitoringFeedback.feedback_id == feedback_id)
+            sqlalchemy.select(MonitoringFeedback).where(
+                MonitoringFeedback.workspace_uuid == workspace_uuid,
+                MonitoringFeedback.feedback_id == feedback_id,
+            )
         )
         existing_row = existing_result.first()
 
@@ -1692,7 +1816,10 @@ class MonitoringService:
             existing = existing_row[0] if isinstance(existing_row, tuple) else existing_row
             await self.ap.persistence_mgr.execute_async(
                 sqlalchemy.update(MonitoringFeedback)
-                .where(MonitoringFeedback.feedback_id == feedback_id)
+                .where(
+                    MonitoringFeedback.workspace_uuid == workspace_uuid,
+                    MonitoringFeedback.feedback_id == feedback_id,
+                )
                 .values(
                     timestamp=now,
                     feedback_type=feedback_type,
@@ -1715,6 +1842,7 @@ class MonitoringService:
             record_id = str(uuid.uuid4())
             record_data = {
                 'id': record_id,
+                'workspace_uuid': workspace_uuid,
                 'timestamp': now,
                 'feedback_id': feedback_id,
                 'feedback_type': feedback_type,
@@ -1737,7 +1865,10 @@ class MonitoringService:
                 # UNIQUE constraint conflict (concurrent feedback for same feedback_id)
                 await self.ap.persistence_mgr.execute_async(
                     sqlalchemy.update(MonitoringFeedback)
-                    .where(MonitoringFeedback.feedback_id == feedback_id)
+                    .where(
+                        MonitoringFeedback.workspace_uuid == workspace_uuid,
+                        MonitoringFeedback.feedback_id == feedback_id,
+                    )
                     .values(
                         timestamp=now,
                         feedback_type=feedback_type,
@@ -1749,6 +1880,7 @@ class MonitoringService:
 
     async def get_feedback_stats(
         self,
+        context: TenantContext,
         bot_ids: list[str] | None = None,
         pipeline_ids: list[str] | None = None,
         start_time: datetime.datetime | None = None,
@@ -1759,7 +1891,8 @@ class MonitoringService:
         Returns:
             Dictionary with total likes, dislikes, and breakdown by bot/pipeline
         """
-        conditions = []
+        workspace_uuid = require_workspace_uuid(context)
+        conditions = [persistence_monitoring.MonitoringFeedback.workspace_uuid == workspace_uuid]
 
         if bot_ids:
             conditions.append(persistence_monitoring.MonitoringFeedback.bot_id.in_(bot_ids))
@@ -1837,6 +1970,7 @@ class MonitoringService:
 
     async def get_feedback_list(
         self,
+        context: TenantContext,
         bot_ids: list[str] | None = None,
         pipeline_ids: list[str] | None = None,
         feedback_type: int | None = None,
@@ -1846,7 +1980,8 @@ class MonitoringService:
         offset: int = 0,
     ) -> tuple[list[dict], int]:
         """Get feedback list with filters."""
-        conditions = []
+        workspace_uuid = require_workspace_uuid(context)
+        conditions = [persistence_monitoring.MonitoringFeedback.workspace_uuid == workspace_uuid]
 
         if bot_ids:
             conditions.append(persistence_monitoring.MonitoringFeedback.bot_id.in_(bot_ids))
@@ -1889,6 +2024,7 @@ class MonitoringService:
 
     async def export_feedback(
         self,
+        context: TenantContext,
         bot_ids: list[str] | None = None,
         pipeline_ids: list[str] | None = None,
         start_time: datetime.datetime | None = None,
@@ -1896,7 +2032,8 @@ class MonitoringService:
         limit: int = 100000,
     ) -> list[dict]:
         """Export feedback as list of dictionaries for CSV conversion."""
-        conditions = []
+        workspace_uuid = require_workspace_uuid(context)
+        conditions = [persistence_monitoring.MonitoringFeedback.workspace_uuid == workspace_uuid]
 
         if bot_ids:
             conditions.append(persistence_monitoring.MonitoringFeedback.bot_id.in_(bot_ids))

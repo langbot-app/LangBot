@@ -5,6 +5,7 @@ import logging
 import aiohttp
 
 from langbot.pkg.utils import httpclient
+from langbot.pkg.api.http.context import ExecutionContext
 import uuid
 from typing import TYPE_CHECKING
 
@@ -24,14 +25,20 @@ class WebhookPusher:
         self.ap = ap
         self.logger = self.ap.logger
 
-    async def push_person_message(self, event: platform_events.FriendMessage, bot_uuid: str, adapter_name: str) -> bool:
+    async def push_person_message(
+        self,
+        execution_context: ExecutionContext,
+        event: platform_events.FriendMessage,
+        bot_uuid: str,
+        adapter_name: str,
+    ) -> bool:
         """Push person message event to webhooks
 
         Returns:
             bool: True if any webhook responded with skip_pipeline=true, False otherwise
         """
         try:
-            webhooks = await self.ap.webhook_service.get_enabled_webhooks()
+            webhooks = await self.ap.webhook_service.get_enabled_webhooks(execution_context)
             if not webhooks:
                 return False
 
@@ -67,14 +74,20 @@ class WebhookPusher:
             self.logger.error(f'Failed to push person message to webhooks: {e}')
             return False
 
-    async def push_group_message(self, event: platform_events.GroupMessage, bot_uuid: str, adapter_name: str) -> bool:
+    async def push_group_message(
+        self,
+        execution_context: ExecutionContext,
+        event: platform_events.GroupMessage,
+        bot_uuid: str,
+        adapter_name: str,
+    ) -> bool:
         """Push group message event to webhooks
 
         Returns:
             bool: True if any webhook responded with skip_pipeline=true, False otherwise
         """
         try:
-            webhooks = await self.ap.webhook_service.get_enabled_webhooks()
+            webhooks = await self.ap.webhook_service.get_enabled_webhooks(execution_context)
             if not webhooks:
                 return False
 

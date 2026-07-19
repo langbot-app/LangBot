@@ -24,6 +24,7 @@ import {
 } from './types';
 import { CustomApiError } from '@/app/infra/entities/common';
 import { PanelBody } from '../settings-dialog/panel-layout';
+import { useCurrentWorkspace } from '@/app/infra/http';
 
 interface ModelsPanelProps {
   // True when this panel is the active section and the dialog is open.
@@ -83,6 +84,9 @@ export default function ModelsPanel({
   onBlockingChange,
 }: ModelsPanelProps) {
   const { t } = useTranslation();
+  const currentWorkspace = useCurrentWorkspace();
+  const canManage =
+    currentWorkspace?.permissions.includes('provider_secret.manage') ?? false;
 
   const [providers, setProviders] = useState<ModelProvider[]>([]);
   const [accountType, setAccountType] = useState<'local' | 'space'>('local');
@@ -270,17 +274,9 @@ export default function ModelsPanel({
 
   async function handleSpaceLogin() {
     try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        toast.error(t('common.error'));
-        return;
-      }
       const currentOrigin = window.location.origin;
       const redirectUri = `${currentOrigin}/auth/space/callback?mode=bind`;
-      const response = await httpClient.getSpaceAuthorizeUrl(
-        redirectUri,
-        token,
-      );
+      const response = await httpClient.getSpaceBindAuthorizeUrl(redirectUri);
       window.location.href = response.authorize_url;
     } catch {
       toast.error(t('common.spaceLoginFailed'));
@@ -544,6 +540,7 @@ export default function ModelsPanel({
       <ProviderCard
         key={provider.uuid}
         provider={provider}
+        canManage={canManage}
         isLangBotModels={isLangBotModels}
         supportTypes={requesterSupportTypes[provider.requester]}
         isExpanded={expandedProviders.has(provider.uuid)}
@@ -628,10 +625,12 @@ export default function ModelsPanel({
                 )
               : t('models.providerCount', { count: otherProviders.length })}
           </span>
-          <Button size="sm" variant="outline" onClick={handleCreateProvider}>
-            <Plus className="h-4 w-4 mr-1" />
-            {t('models.addProvider')}
-          </Button>
+          {canManage && (
+            <Button size="sm" variant="outline" onClick={handleCreateProvider}>
+              <Plus className="h-4 w-4 mr-1" />
+              {t('models.addProvider')}
+            </Button>
+          )}
         </div>
 
         {/* Provider List */}

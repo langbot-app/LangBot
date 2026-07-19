@@ -30,7 +30,10 @@ class WebhookRouterGroup(group.RouterGroup):
             适配器返回的响应
         """
         try:
-            runtime_bot = await self.ap.platform_mgr.get_bot_by_uuid(bot_uuid)
+            # Public ingress never accepts X-Workspace-Id.  The opaque bot UUID
+            # is resolved against the already-bound runtime resource, which
+            # carries the trusted Workspace and placement generation.
+            runtime_bot = await self.ap.platform_mgr.resolve_public_bot(bot_uuid)
 
             if not runtime_bot:
                 return quart.jsonify({'error': 'Bot not found'}), 404
@@ -49,6 +52,9 @@ class WebhookRouterGroup(group.RouterGroup):
 
             return response
 
-        except Exception as e:
-            self.ap.logger.error(f'Webhook dispatch error for bot {bot_uuid}: {traceback.format_exc()}')
-            return quart.jsonify({'error': str(e)}), 500
+        except Exception:
+            request_id = self.request_id()
+            self.ap.logger.error(
+                f'Webhook dispatch error request_id={request_id} bot={bot_uuid}: {traceback.format_exc()}'
+            )
+            return self.internal_error_response(request_id)

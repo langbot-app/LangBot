@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import pytest
 from unittest.mock import MagicMock, AsyncMock, Mock
+from types import SimpleNamespace
 
 from tests.factories import FakeApp
 
@@ -65,12 +66,43 @@ def fake_bot_app():
     )
 
     # Auth services
+    account = SimpleNamespace(uuid='account-test', user='test@example.com')
     app.user_service = Mock()
     app.user_service.is_initialized = AsyncMock(return_value=True)
     app.user_service.verify_jwt_token = AsyncMock(return_value='test@example.com')
-    app.user_service.get_user_by_email = AsyncMock(return_value=Mock(email='test@example.com'))
+    app.user_service.get_user_by_email = AsyncMock(return_value=account)
+    app.user_service.get_authenticated_account = AsyncMock(return_value=account)
+    app.workspace_collaboration_service = SimpleNamespace(
+        resolve_account_workspace=AsyncMock(
+            return_value=SimpleNamespace(
+                workspace=SimpleNamespace(uuid='workspace-test'),
+                membership=SimpleNamespace(
+                    uuid='membership-test',
+                    role='owner',
+                    projection_revision=0,
+                ),
+                execution=SimpleNamespace(instance_uuid='instance-test', placement_generation=1),
+            )
+        )
+    )
     app.apikey_service = Mock()
     app.apikey_service.verify_api_key = AsyncMock(return_value=True)
+    app.apikey_service.authenticate_api_key = AsyncMock(
+        return_value=SimpleNamespace(
+            instance_uuid='instance-test',
+            placement_generation=1,
+            api_key_uuid='api-key-test',
+            workspace_uuid='workspace-test',
+            permissions=frozenset(
+                {
+                    'resource.view',
+                    'resource.manage',
+                    'runtime.operate',
+                    'provider_secret.manage',
+                }
+            ),
+        )
+    )
 
     # Bot service
     app.bot_service = Mock()
@@ -197,6 +229,25 @@ class TestBotLogsEndpoint:
         assert data['code'] == 0
         assert 'logs' in data['data']
         assert 'total_count' in data['data']
+
+    @pytest.mark.asyncio
+    async def test_viewer_cannot_read_message_logs(self, quart_test_client, fake_bot_app):
+        access = fake_bot_app.workspace_collaboration_service.resolve_account_workspace.return_value
+        original_role = access.membership.role
+        access.membership.role = 'viewer'
+        fake_bot_app.bot_service.list_event_logs.reset_mock()
+        try:
+            response = await quart_test_client.post(
+                '/api/v1/platform/bots/test-bot-uuid/logs',
+                headers={'Authorization': 'Bearer test_token'},
+                json={'from_index': -1, 'max_count': 10},
+            )
+        finally:
+            access.membership.role = original_role
+
+        assert response.status_code == 403
+        assert (await response.get_json())['code'] == 'permission_denied'
+        fake_bot_app.bot_service.list_event_logs.assert_not_awaited()
 
 
 @pytest.mark.usefixtures('mock_circular_import_chain')

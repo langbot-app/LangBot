@@ -38,6 +38,7 @@ import AddModelPopover from './AddModelPopover';
 
 interface ProviderCardProps {
   provider: ModelProvider;
+  canManage: boolean;
   isLangBotModels?: boolean;
   supportTypes?: string[];
   isExpanded: boolean;
@@ -101,6 +102,7 @@ function maskApiKey(key: string): string {
 
 export default function ProviderCard({
   provider,
+  canManage,
   isLangBotModels = false,
   supportTypes,
   isExpanded,
@@ -196,7 +198,7 @@ export default function ProviderCard({
               </div>
             </div>
             <div className="flex items-center gap-1 ml-2 shrink-0">
-              {isLangBotModels && accountType !== 'space' && (
+              {canManage && isLangBotModels && accountType !== 'space' && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -232,7 +234,7 @@ export default function ProviderCard({
                     </Button>
                   </div>
                 )}
-              {!isLangBotModels && (
+              {canManage && !isLangBotModels && (
                 <>
                   <Button
                     variant="ghost"
@@ -317,7 +319,7 @@ export default function ProviderCard({
             ) : (
               <div />
             )}
-            {!isLangBotModels && (
+            {canManage && !isLangBotModels && (
               <div className="flex items-center gap-1">
                 <AddModelPopover
                   isOpen={
@@ -404,6 +406,7 @@ export default function ProviderCard({
                   <ModelItem
                     key={model.uuid}
                     model={model}
+                    canManage={canManage}
                     modelType="llm"
                     isLangBotModels={isLangBotModels}
                     editModelPopoverOpen={editModelPopoverOpen}
@@ -441,6 +444,7 @@ export default function ProviderCard({
                   <ModelItem
                     key={model.uuid}
                     model={model}
+                    canManage={canManage}
                     modelType="embedding"
                     isLangBotModels={isLangBotModels}
                     editModelPopoverOpen={editModelPopoverOpen}
@@ -472,6 +476,7 @@ export default function ProviderCard({
                   <ModelItem
                     key={model.uuid}
                     model={model}
+                    canManage={canManage}
                     modelType="rerank"
                     isLangBotModels={isLangBotModels}
                     editModelPopoverOpen={editModelPopoverOpen}

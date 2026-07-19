@@ -14,6 +14,9 @@ services:
     restart: on-failure
     environment:
       - TZ=Asia/Shanghai
+      # Shared with the langbot service and sent only as a WebSocket handshake
+      # header. Generate with: openssl rand -hex 32
+      - LANGBOT_PLUGIN_RUNTIME_CONTROL_TOKEN=${LANGBOT_PLUGIN_RUNTIME_CONTROL_TOKEN:-}
     command: ["uv", "run", "--no-sync", "-m", "langbot_plugin.cli.__init__", "rt"]
     networks:
       - langbot_network
@@ -40,9 +43,16 @@ services:
     restart: on-failure
     environment:
       - TZ=Asia/Shanghai
+      # Shared control-plane secret used to authenticate both the RPC socket
+      # and managed-process relay. Generate once (for example with
+      # ``openssl rand -hex 32``) and export it before enabling this profile.
+      # An empty value is accepted by Compose so Box can remain optional, but
+      # the Box runtime itself fails closed when the profile is started.
+      - LANGBOT_BOX_CONTROL_TOKEN=${LANGBOT_BOX_CONTROL_TOKEN:-}
       # The Box runtime does NOT read box.local.* from config.yaml or env; it
-      # receives its configuration from LangBot via the INIT RPC action.
-      # Do not add LANGBOT_BOX_* / BOX__* here — they would be silently ignored.
+      # receives its functional configuration from LangBot via the INIT RPC
+      # action. LANGBOT_BOX_CONTROL_TOKEN is the intentional security-only
+      # exception; do not add BOX__* here because those would be ignored.
     # Launched through the same CLI entry point as the plugin runtime
     # (`langbot_plugin.cli.__init__ <subcommand>`). WebSocket is the default
     # control transport — mirrors `rt`, which also runs with no flag. Pass
@@ -60,6 +70,12 @@ services:
     restart: on-failure
     environment:
       - TZ=Asia/Shanghai
+      # Must match langbot_plugin_runtime. Empty/missing values make the
+      # external control channel fail closed.
+      - LANGBOT_PLUGIN_RUNTIME_CONTROL_TOKEN=${LANGBOT_PLUGIN_RUNTIME_CONTROL_TOKEN:-}
+      # Must match the value supplied to langbot_box. The token is sent only
+      # in WebSocket handshake headers, never in URLs or action payloads.
+      - LANGBOT_BOX_CONTROL_TOKEN=${LANGBOT_BOX_CONTROL_TOKEN:-}
       # Unified env-override convention: SECTION__SUBSECTION__KEY overrides the
       # matching config.yaml field (see LoadConfigStage). These map onto
       # box.* and are forwarded to the Box runtime via INIT RPC.

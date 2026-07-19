@@ -188,15 +188,10 @@ export default function DynamicFormItemComponent({
 
   const handleSpaceLogin = () => {
     try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        toast.error(t('common.error'));
-        return;
-      }
       const currentOrigin = window.location.origin;
       const redirectUri = `${currentOrigin}/auth/space/callback?mode=bind`;
       httpClient
-        .getSpaceAuthorizeUrl(redirectUri, token)
+        .getSpaceBindAuthorizeUrl(redirectUri)
         .then((response) => {
           window.location.href = response.authorize_url;
         })

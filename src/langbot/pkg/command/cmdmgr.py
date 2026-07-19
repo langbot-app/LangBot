@@ -89,6 +89,7 @@ class CommandManager:
 
         _admins = await self.ap.persistence_mgr.execute_async(
             _sa.select(_BotAdmin).where(
+                _BotAdmin.workspace_uuid == query.workspace_uuid,
                 _BotAdmin.bot_uuid == (query.bot_uuid or ''),
                 _BotAdmin.launcher_type == query.launcher_type.value,
                 _BotAdmin.launcher_id == str(query.launcher_id),
@@ -98,7 +99,11 @@ class CommandManager:
             privilege = 2
 
         ctx = command_context.ExecuteContext(
+            instance_uuid=query.instance_uuid,
+            workspace_uuid=query.workspace_uuid,
+            placement_generation=query.placement_generation,
             query_id=query.query_id,
+            query_uuid=query.query_uuid,
             session=session,
             command_text=command_text,
             full_command_text=full_command_text,

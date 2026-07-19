@@ -252,42 +252,65 @@ class TestDifyHumanInputForms:
         runner.dify_client.upload_file = AsyncMock(return_value={'id': 'upload-1'})
         return runner
 
-    def test_pending_forms_are_isolated_by_bot_and_pipeline(self):
+    def test_pending_forms_are_isolated_by_workspace_generation_bot_and_pipeline(self):
         from langbot.pkg.provider.runners import difysvapi
 
         query_a = MagicMock()
+        query_a.instance_uuid = 'instance-a'
+        query_a.workspace_uuid = 'workspace-a'
+        query_a.placement_generation = 1
         query_a.bot_uuid = 'bot-a'
         query_a.pipeline_uuid = 'pipeline-a'
         query_a.session.launcher_type.value = 'person'
         query_a.session.launcher_id = 'shared-user'
 
         query_b = MagicMock()
+        query_b.instance_uuid = 'instance-a'
+        query_b.workspace_uuid = 'workspace-a'
+        query_b.placement_generation = 1
         query_b.bot_uuid = 'bot-b'
         query_b.pipeline_uuid = 'pipeline-a'
         query_b.session.launcher_type.value = 'person'
         query_b.session.launcher_id = 'shared-user'
 
         query_c = MagicMock()
+        query_c.instance_uuid = 'instance-a'
+        query_c.workspace_uuid = 'workspace-a'
+        query_c.placement_generation = 1
         query_c.bot_uuid = 'bot-a'
         query_c.pipeline_uuid = 'pipeline-b'
         query_c.session.launcher_type.value = 'person'
         query_c.session.launcher_id = 'shared-user'
 
+        query_d = MagicMock()
+        query_d.instance_uuid = 'instance-a'
+        query_d.workspace_uuid = 'workspace-b'
+        query_d.placement_generation = 2
+        query_d.bot_uuid = 'bot-a'
+        query_d.pipeline_uuid = 'pipeline-a'
+        query_d.session.launcher_type.value = 'person'
+        query_d.session.launcher_id = 'shared-user'
+
         key_a = difysvapi._session_key_from_query(query_a)
         key_b = difysvapi._session_key_from_query(query_b)
         key_c = difysvapi._session_key_from_query(query_c)
+        key_d = difysvapi._session_key_from_query(query_d)
         difysvapi._PENDING_FORMS.clear()
         difysvapi._set_pending_form(key_a, {'form_token': 'token-a', 'workflow_run_id': 'run-a'})
         difysvapi._set_pending_form(key_b, {'form_token': 'token-b', 'workflow_run_id': 'run-b'})
         difysvapi._set_pending_form(key_c, {'form_token': 'token-c', 'workflow_run_id': 'run-c'})
+        difysvapi._set_pending_form(key_d, {'form_token': 'token-d', 'workflow_run_id': 'run-d'})
 
         assert key_a != key_b
         assert key_a != key_c
+        assert key_a != key_d
         assert difysvapi._get_pending_form_by_token(key_a, 'token-a') is not None
         assert difysvapi._get_pending_form_by_token(key_a, 'token-b') is None
         assert difysvapi._get_pending_form_by_token(key_a, 'token-c') is None
+        assert difysvapi._get_pending_form_by_token(key_a, 'token-d') is None
         assert difysvapi._get_pending_form_by_token(key_b, 'token-b') is not None
         assert difysvapi._get_pending_form_by_token(key_c, 'token-c') is not None
+        assert difysvapi._get_pending_form_by_token(key_d, 'token-d') is not None
         assert difysvapi._get_latest_pending_form(key_a)['workflow_run_id'] == 'run-a'
         assert difysvapi._get_latest_pending_form(key_b)['workflow_run_id'] == 'run-b'
         assert difysvapi._get_latest_pending_form(key_c)['workflow_run_id'] == 'run-c'

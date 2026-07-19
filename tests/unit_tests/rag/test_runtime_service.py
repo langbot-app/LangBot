@@ -1,474 +1,467 @@
-"""Tests for RAGRuntimeService.
-
-Tests the service that handles RAG-related requests from plugins,
-using mocked vector_db_mgr and storage_mgr.
-"""
+"""Tenant-aware tests for the plugin-facing RAG runtime service."""
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+
 import pytest
 
-from tests.utils.import_isolation import isolated_sys_modules
+from langbot.pkg.api.http.context import ExecutionContext
+from langbot.pkg.rag.service.runtime import RAGRuntimeService
+from langbot.pkg.workspace.errors import WorkspaceNotFoundError
 
 
-class TestRAGRuntimeServiceVectorUpsert:
-    """Tests for vector_upsert method."""
+WORKSPACE_UUID = '00000000-0000-0000-0000-00000000000a'
+CONTEXT = ExecutionContext(
+    instance_uuid='instance-a',
+    workspace_uuid=WORKSPACE_UUID,
+    placement_generation=4,
+)
 
-    def _create_mock_app(self):
-        """Create mock app with vector_db_mgr and storage_mgr."""
-        mock_app = MagicMock()
-        mock_app.vector_db_mgr = MagicMock()
-        mock_app.vector_db_mgr.upsert = AsyncMock()
-        mock_app.storage_mgr = MagicMock()
-        mock_app.storage_mgr.storage_provider = MagicMock()
-        mock_app.storage_mgr.storage_provider.load = AsyncMock(return_value=b'content')
-        return mock_app
 
-    def _make_rag_import_mocks(self):
-        """Create mocks needed for importing RAG service."""
-        return {
-            'langbot.pkg.core.app': MagicMock(),
-            'langbot_plugin.api.entities.builtin.rag': MagicMock(),
-        }
+class _ScalarResult:
+    def __init__(self, value):
+        self.value = value
 
+    def scalar_one_or_none(self):
+        return self.value
+
+    def first(self):
+        return None if self.value is None else (self.value,)
+
+
+def _app(*, kb_uuid='kb-a', file_exists=True):
+    persistence_results = [_ScalarResult(kb_uuid)]
+    if file_exists is not None:
+        persistence_results.append(_ScalarResult('file-a' if file_exists else None))
+    return SimpleNamespace(
+        workspace_service=SimpleNamespace(
+            get_execution_binding=AsyncMock(return_value=SimpleNamespace(instance_uuid='instance-a'))
+        ),
+        persistence_mgr=SimpleNamespace(execute_async=AsyncMock(side_effect=persistence_results)),
+        vector_db_mgr=SimpleNamespace(
+            upsert=AsyncMock(),
+            search=AsyncMock(return_value=[{'id': 'chunk-a'}]),
+            delete_by_file_id=AsyncMock(),
+            delete_by_filter=AsyncMock(return_value=3),
+            list_by_filter=AsyncMock(return_value=([{'id': 'chunk-a'}], 1)),
+        ),
+        storage_mgr=SimpleNamespace(
+            load_scoped_object_key=AsyncMock(return_value=b'content'),
+            storage_provider=SimpleNamespace(load=AsyncMock(return_value=b'content')),
+        ),
+    )
+
+
+@pytest.mark.asyncio
+async def test_vector_upsert_resolves_canonical_kb_and_forwards_trusted_context():
+    app = _app()
+    service = RAGRuntimeService(app)
+
+    await service.vector_upsert(
+        CONTEXT,
+        'logical-collection',
+        [[0.1, 0.2]],
+        ['chunk-a'],
+        metadata=[{'file_id': 'file-a'}],
+        documents=['hello'],
+    )
+
+    app.vector_db_mgr.upsert.assert_awaited_once_with(
+        execution_context=CONTEXT,
+        knowledge_base_uuid='kb-a',
+        vectors=[[0.1, 0.2]],
+        ids=['chunk-a'],
+        metadata=[{'file_id': 'file-a'}],
+        documents=['hello'],
+    )
+
+
+@pytest.mark.asyncio
+async def test_vector_upsert_rejects_mismatched_lengths():
+    service = RAGRuntimeService(_app())
+    with pytest.raises(ValueError, match='vectors and ids'):
+        await service.vector_upsert(CONTEXT, 'kb-a', [[0.1]], ['a', 'b'])
+
+
+@pytest.mark.asyncio
+async def test_unknown_or_cross_workspace_collection_is_not_forwarded():
+    app = _app(kb_uuid=None)
+    service = RAGRuntimeService(app)
+
+    with pytest.raises(WorkspaceNotFoundError):
+        await service.vector_search(CONTEXT, 'kb-from-other-workspace', [0.1], 5)
+    app.vector_db_mgr.search.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_vector_search_forwards_all_search_options():
+    app = _app()
+    service = RAGRuntimeService(app)
+
+    result = await service.vector_search(
+        CONTEXT,
+        'kb-a',
+        [0.1, 0.2],
+        7,
+        filters={'file_id': 'file-a'},
+        search_type='hybrid',
+        query_text='hello',
+        vector_weight=0.7,
+    )
+
+    assert result == [{'id': 'chunk-a'}]
+    app.vector_db_mgr.search.assert_awaited_once_with(
+        execution_context=CONTEXT,
+        knowledge_base_uuid='kb-a',
+        query_vector=[0.1, 0.2],
+        limit=7,
+        filter={'file_id': 'file-a'},
+        search_type='hybrid',
+        query_text='hello',
+        vector_weight=0.7,
+    )
+
+
+@pytest.mark.asyncio
+async def test_vector_delete_and_list_stay_on_canonical_kb():
+    delete_app = _app()
+    delete_service = RAGRuntimeService(delete_app)
+    assert await delete_service.vector_delete(CONTEXT, 'logical', file_ids=['file-a']) == 1
+    delete_app.vector_db_mgr.delete_by_file_id.assert_awaited_once_with(
+        execution_context=CONTEXT,
+        knowledge_base_uuid='kb-a',
+        file_ids=['file-a'],
+    )
+
+    filter_app = _app()
+    filter_service = RAGRuntimeService(filter_app)
+    assert await filter_service.vector_delete(CONTEXT, 'logical', filters={'page': 1}) == 3
+    filter_app.vector_db_mgr.delete_by_filter.assert_awaited_once_with(
+        execution_context=CONTEXT,
+        knowledge_base_uuid='kb-a',
+        filter={'page': 1},
+    )
+
+    list_app = _app()
+    list_service = RAGRuntimeService(list_app)
+    assert await list_service.vector_list(CONTEXT, 'logical', {'page': 1}, 10, 2) == (
+        [{'id': 'chunk-a'}],
+        1,
+    )
+    list_app.vector_db_mgr.list_by_filter.assert_awaited_once_with(
+        execution_context=CONTEXT,
+        knowledge_base_uuid='kb-a',
+        filter={'page': 1},
+        limit=10,
+        offset=2,
+    )
+
+
+@pytest.mark.asyncio
+async def test_file_stream_requires_workspace_owned_file():
+    app = _app(file_exists=True)
+    app.persistence_mgr.execute_async = AsyncMock(return_value=_ScalarResult('file-a'))
+    service = RAGRuntimeService(app)
+    assert await service.get_file_stream(CONTEXT, 'nested/file.pdf') == b'content'
+    app.storage_mgr.load_scoped_object_key.assert_awaited_once_with(
+        CONTEXT,
+        'nested/file.pdf',
+        expected_owner_type='upload_document',
+    )
+
+    missing_app = _app(file_exists=False)
+    missing_app.persistence_mgr.execute_async = AsyncMock(return_value=_ScalarResult(None))
+    missing_service = RAGRuntimeService(missing_app)
+    with pytest.raises(WorkspaceNotFoundError):
+        await missing_service.get_file_stream(CONTEXT, 'other.pdf')
+    missing_app.storage_mgr.load_scoped_object_key.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    'unsafe_path',
+    [
+        '',
+        '../secret.txt',
+        '/absolute/path.txt',
+        '..\\secret.txt',
+        'nested\\..\\secret.txt',
+        '%2e%2e/secret.txt',
+        'nested/%2e%2e/secret.txt',
+        'C:\\secret.txt',
+        'safe/\x00file.txt',
+    ],
+)
+async def test_file_stream_rejects_unsafe_paths_before_storage(unsafe_path):
+    app = _app(file_exists=True)
+    service = RAGRuntimeService(app)
+    with pytest.raises(ValueError, match='Invalid storage path'):
+        await service.get_file_stream(CONTEXT, unsafe_path)
+    app.storage_mgr.load_scoped_object_key.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_runtime_rejects_wrong_instance_binding():
+    app = _app()
+    app.workspace_service.get_execution_binding.return_value = SimpleNamespace(instance_uuid='instance-b')
+    service = RAGRuntimeService(app)
+
+    with pytest.raises(Exception, match='another LangBot instance'):
+        await service.vector_search(CONTEXT, 'kb-a', [0.1], 1)
+    app.persistence_mgr.execute_async.assert_not_awaited()
+
+
+# The following classes preserve the pre-tenancy regression scenarios.  They
+# intentionally exercise the same inputs through the new trusted
+# ExecutionContext and assert the canonical Workspace-owned KB forwarded to the
+# vector layer.
+class TestRAGRuntimeServiceVectorUpsertRegression:
     @pytest.mark.asyncio
     async def test_vector_upsert_basic(self):
-        """Basic vector upsert delegates to vector_db_mgr."""
-        mock_app = self._create_mock_app()
+        app = _app()
+        service = RAGRuntimeService(app)
+        vectors = [[0.1, 0.2], [0.3, 0.4]]
+        ids = ['id1', 'id2']
 
-        mocks = self._make_rag_import_mocks()
+        await service.vector_upsert(CONTEXT, 'test_collection', vectors, ids)
 
-        with isolated_sys_modules(mocks):
-            from langbot.pkg.rag.service.runtime import RAGRuntimeService
-
-            service = RAGRuntimeService(mock_app)
-
-            vectors = [[0.1, 0.2], [0.3, 0.4]]
-            ids = ['id1', 'id2']
-
-            await service.vector_upsert(
-                collection_id='test_collection',
-                vectors=vectors,
-                ids=ids,
-            )
-
-            mock_app.vector_db_mgr.upsert.assert_called_once()
-            call_args = mock_app.vector_db_mgr.upsert.call_args
-            assert call_args.kwargs['collection_name'] == 'test_collection'
-            assert call_args.kwargs['vectors'] == vectors
-            assert call_args.kwargs['ids'] == ids
-            # Default metadata is empty dicts
-            assert call_args.kwargs['metadata'] == [{} for _ in vectors]
+        app.vector_db_mgr.upsert.assert_awaited_once_with(
+            execution_context=CONTEXT,
+            knowledge_base_uuid='kb-a',
+            vectors=vectors,
+            ids=ids,
+            metadata=[{}, {}],
+            documents=None,
+        )
 
     @pytest.mark.asyncio
     async def test_vector_upsert_with_metadata(self):
-        """Vector upsert with provided metadata."""
-        mock_app = self._create_mock_app()
+        app = _app()
+        metadata = [{'file_id': 'abc', 'page': 1}]
 
-        mocks = self._make_rag_import_mocks()
+        await RAGRuntimeService(app).vector_upsert(
+            CONTEXT,
+            'test',
+            [[0.1, 0.2]],
+            ['id1'],
+            metadata=metadata,
+        )
 
-        with isolated_sys_modules(mocks):
-            from langbot.pkg.rag.service.runtime import RAGRuntimeService
-
-            service = RAGRuntimeService(mock_app)
-
-            vectors = [[0.1, 0.2]]
-            ids = ['id1']
-            metadata = [{'file_id': 'abc', 'page': 1}]
-
-            await service.vector_upsert(
-                collection_id='test',
-                vectors=vectors,
-                ids=ids,
-                metadata=metadata,
-            )
-
-            call_args = mock_app.vector_db_mgr.upsert.call_args
-            assert call_args.kwargs['metadata'] == metadata
+        assert app.vector_db_mgr.upsert.await_args.kwargs['metadata'] == metadata
 
     @pytest.mark.asyncio
     async def test_vector_upsert_with_documents(self):
-        """Vector upsert with documents for full-text search."""
-        mock_app = self._create_mock_app()
+        app = _app()
+        documents = ['This is a test document']
 
-        mocks = self._make_rag_import_mocks()
-
-        with isolated_sys_modules(mocks):
-            from langbot.pkg.rag.service.runtime import RAGRuntimeService
-
-            service = RAGRuntimeService(mock_app)
-
-            vectors = [[0.1, 0.2]]
-            ids = ['id1']
-            documents = ['This is a test document']
-
-            await service.vector_upsert(
-                collection_id='test',
-                vectors=vectors,
-                ids=ids,
-                documents=documents,
-            )
-
-            call_args = mock_app.vector_db_mgr.upsert.call_args
-            assert call_args.kwargs['documents'] == documents
-
-
-class TestRAGRuntimeServiceVectorSearch:
-    """Tests for vector_search method."""
-
-    def _create_mock_app(self):
-        """Create mock app."""
-        mock_app = MagicMock()
-        mock_app.vector_db_mgr = MagicMock()
-        mock_app.vector_db_mgr.search = AsyncMock(
-            return_value=[
-                {'id': 'id1', 'distance': 0.1, 'metadata': {'file_id': 'abc'}},
-                {'id': 'id2', 'distance': 0.2, 'metadata': {'file_id': 'def'}},
-            ]
+        await RAGRuntimeService(app).vector_upsert(
+            CONTEXT,
+            'test',
+            [[0.1, 0.2]],
+            ['id1'],
+            documents=documents,
         )
-        return mock_app
 
-    def _make_rag_import_mocks(self):
-        return {
-            'langbot.pkg.core.app': MagicMock(),
-            'langbot_plugin.api.entities.builtin.rag': MagicMock(),
-        }
+        assert app.vector_db_mgr.upsert.await_args.kwargs['documents'] == documents
 
+
+class TestRAGRuntimeServiceVectorSearchRegression:
     @pytest.mark.asyncio
     async def test_vector_search_basic(self):
-        """Basic vector search delegates to vector_db_mgr."""
-        mock_app = self._create_mock_app()
+        app = _app()
+        query_vector = [0.1, 0.2, 0.3]
 
-        mocks = self._make_rag_import_mocks()
+        result = await RAGRuntimeService(app).vector_search(
+            CONTEXT,
+            'test',
+            query_vector,
+            5,
+        )
 
-        with isolated_sys_modules(mocks):
-            from langbot.pkg.rag.service.runtime import RAGRuntimeService
-
-            service = RAGRuntimeService(mock_app)
-
-            query_vector = [0.1, 0.2, 0.3]
-
-            result = await service.vector_search(
-                collection_id='test',
-                query_vector=query_vector,
-                top_k=5,
-            )
-
-            assert len(result) == 2
-            mock_app.vector_db_mgr.search.assert_called_once()
-            call_args = mock_app.vector_db_mgr.search.call_args
-            assert call_args.kwargs['collection_name'] == 'test'
-            assert call_args.kwargs['query_vector'] == query_vector
-            assert call_args.kwargs['limit'] == 5
+        assert result == [{'id': 'chunk-a'}]
+        app.vector_db_mgr.search.assert_awaited_once_with(
+            execution_context=CONTEXT,
+            knowledge_base_uuid='kb-a',
+            query_vector=query_vector,
+            limit=5,
+            filter=None,
+            search_type='vector',
+            query_text='',
+            vector_weight=None,
+        )
 
     @pytest.mark.asyncio
     async def test_vector_search_with_filters(self):
-        """Vector search with metadata filters."""
-        mock_app = self._create_mock_app()
+        app = _app()
+        filters = {'file_id': 'abc'}
 
-        mocks = self._make_rag_import_mocks()
+        await RAGRuntimeService(app).vector_search(
+            CONTEXT,
+            'test',
+            [0.1, 0.2],
+            10,
+            filters=filters,
+        )
 
-        with isolated_sys_modules(mocks):
-            from langbot.pkg.rag.service.runtime import RAGRuntimeService
-
-            service = RAGRuntimeService(mock_app)
-
-            filters = {'file_id': 'abc'}
-
-            await service.vector_search(
-                collection_id='test',
-                query_vector=[0.1, 0.2],
-                top_k=10,
-                filters=filters,
-            )
-
-            call_args = mock_app.vector_db_mgr.search.call_args
-            assert call_args.kwargs['filter'] == filters
+        assert app.vector_db_mgr.search.await_args.kwargs['filter'] == filters
 
     @pytest.mark.asyncio
     async def test_vector_search_hybrid_mode(self):
-        """Vector search with hybrid search type."""
-        mock_app = self._create_mock_app()
+        app = _app()
 
-        mocks = self._make_rag_import_mocks()
+        await RAGRuntimeService(app).vector_search(
+            CONTEXT,
+            'test',
+            [0.1, 0.2],
+            10,
+            search_type='hybrid',
+            query_text='search query',
+            vector_weight=0.7,
+        )
 
-        with isolated_sys_modules(mocks):
-            from langbot.pkg.rag.service.runtime import RAGRuntimeService
-
-            service = RAGRuntimeService(mock_app)
-
-            await service.vector_search(
-                collection_id='test',
-                query_vector=[0.1, 0.2],
-                top_k=10,
-                search_type='hybrid',
-                query_text='search query',
-                vector_weight=0.7,
-            )
-
-            call_args = mock_app.vector_db_mgr.search.call_args
-            assert call_args.kwargs['search_type'] == 'hybrid'
-            assert call_args.kwargs['query_text'] == 'search query'
-            assert call_args.kwargs['vector_weight'] == 0.7
+        kwargs = app.vector_db_mgr.search.await_args.kwargs
+        assert kwargs['search_type'] == 'hybrid'
+        assert kwargs['query_text'] == 'search query'
+        assert kwargs['vector_weight'] == 0.7
 
 
-class TestRAGRuntimeServiceVectorDelete:
-    """Tests for vector_delete method."""
-
-    def _create_mock_app(self):
-        mock_app = MagicMock()
-        mock_app.vector_db_mgr = MagicMock()
-        mock_app.vector_db_mgr.delete_by_file_id = AsyncMock()
-        mock_app.vector_db_mgr.delete_by_filter = AsyncMock(return_value=5)
-        return mock_app
-
-    def _make_rag_import_mocks(self):
-        return {
-            'langbot.pkg.core.app': MagicMock(),
-            'langbot_plugin.api.entities.builtin.rag': MagicMock(),
-        }
-
+class TestRAGRuntimeServiceVectorDeleteRegression:
     @pytest.mark.asyncio
     async def test_vector_delete_by_file_ids(self):
-        """Delete by file_ids delegates to delete_by_file_id."""
-        mock_app = self._create_mock_app()
+        app = _app()
 
-        mocks = self._make_rag_import_mocks()
+        result = await RAGRuntimeService(app).vector_delete(
+            CONTEXT,
+            'test',
+            file_ids=['file1', 'file2', 'file3'],
+        )
 
-        with isolated_sys_modules(mocks):
-            from langbot.pkg.rag.service.runtime import RAGRuntimeService
-
-            service = RAGRuntimeService(mock_app)
-
-            result = await service.vector_delete(
-                collection_id='test',
-                file_ids=['file1', 'file2', 'file3'],
-            )
-
-            assert result == 3  # Returns count of file_ids
-            mock_app.vector_db_mgr.delete_by_file_id.assert_called_once()
-            call_args = mock_app.vector_db_mgr.delete_by_file_id.call_args
-            assert call_args.kwargs['collection_name'] == 'test'
-            assert call_args.kwargs['file_ids'] == ['file1', 'file2', 'file3']
+        assert result == 3
+        app.vector_db_mgr.delete_by_file_id.assert_awaited_once_with(
+            execution_context=CONTEXT,
+            knowledge_base_uuid='kb-a',
+            file_ids=['file1', 'file2', 'file3'],
+        )
 
     @pytest.mark.asyncio
     async def test_vector_delete_by_filters(self):
-        """Delete by filters delegates to delete_by_filter."""
-        mock_app = self._create_mock_app()
+        app = _app()
+        filters = {'status': 'deleted'}
+        app.vector_db_mgr.delete_by_filter.return_value = 5
 
-        mocks = self._make_rag_import_mocks()
+        result = await RAGRuntimeService(app).vector_delete(
+            CONTEXT,
+            'test',
+            filters=filters,
+        )
 
-        with isolated_sys_modules(mocks):
-            from langbot.pkg.rag.service.runtime import RAGRuntimeService
-
-            service = RAGRuntimeService(mock_app)
-
-            filters = {'status': 'deleted'}
-
-            result = await service.vector_delete(
-                collection_id='test',
-                filters=filters,
-            )
-
-            assert result == 5  # Returns count from delete_by_filter
-            mock_app.vector_db_mgr.delete_by_filter.assert_called_once()
-            call_args = mock_app.vector_db_mgr.delete_by_filter.call_args
-            assert call_args.kwargs['collection_name'] == 'test'
-            assert call_args.kwargs['filter'] == filters
+        assert result == 5
+        assert app.vector_db_mgr.delete_by_filter.await_args.kwargs['filter'] == filters
 
     @pytest.mark.asyncio
     async def test_vector_delete_no_params(self):
-        """Delete with no params returns 0."""
-        mock_app = self._create_mock_app()
+        app = _app()
 
-        mocks = self._make_rag_import_mocks()
+        result = await RAGRuntimeService(app).vector_delete(CONTEXT, 'test')
 
-        with isolated_sys_modules(mocks):
-            from langbot.pkg.rag.service.runtime import RAGRuntimeService
-
-            service = RAGRuntimeService(mock_app)
-
-            result = await service.vector_delete(collection_id='test')
-
-            assert result == 0
-            mock_app.vector_db_mgr.delete_by_file_id.assert_not_called()
-            mock_app.vector_db_mgr.delete_by_filter.assert_not_called()
+        assert result == 0
+        app.vector_db_mgr.delete_by_file_id.assert_not_awaited()
+        app.vector_db_mgr.delete_by_filter.assert_not_awaited()
 
 
-class TestRAGRuntimeServiceVectorList:
-    """Tests for vector_list method."""
-
-    def _create_mock_app(self):
-        mock_app = MagicMock()
-        mock_app.vector_db_mgr = MagicMock()
-        mock_app.vector_db_mgr.list_by_filter = AsyncMock(
-            return_value=([{'id': 'id1', 'metadata': {'file_id': 'abc'}}], 10)
-        )
-        return mock_app
-
-    def _make_rag_import_mocks(self):
-        return {
-            'langbot.pkg.core.app': MagicMock(),
-            'langbot_plugin.api.entities.builtin.rag': MagicMock(),
-        }
-
+class TestRAGRuntimeServiceVectorListRegression:
     @pytest.mark.asyncio
     async def test_vector_list_basic(self):
-        """Basic vector list delegates to vector_db_mgr."""
-        mock_app = self._create_mock_app()
+        app = _app()
 
-        mocks = self._make_rag_import_mocks()
+        items, total = await RAGRuntimeService(app).vector_list(CONTEXT, 'test')
 
-        with isolated_sys_modules(mocks):
-            from langbot.pkg.rag.service.runtime import RAGRuntimeService
-
-            service = RAGRuntimeService(mock_app)
-
-            items, total = await service.vector_list(
-                collection_id='test',
-            )
-
-            assert len(items) == 1
-            assert total == 10
-            mock_app.vector_db_mgr.list_by_filter.assert_called_once()
-            call_args = mock_app.vector_db_mgr.list_by_filter.call_args
-            assert call_args.kwargs['collection_name'] == 'test'
-            assert call_args.kwargs['limit'] == 20  # Default
-            assert call_args.kwargs['offset'] == 0  # Default
+        assert items == [{'id': 'chunk-a'}]
+        assert total == 1
+        app.vector_db_mgr.list_by_filter.assert_awaited_once_with(
+            execution_context=CONTEXT,
+            knowledge_base_uuid='kb-a',
+            filter=None,
+            limit=20,
+            offset=0,
+        )
 
     @pytest.mark.asyncio
     async def test_vector_list_with_pagination(self):
-        """Vector list with custom pagination."""
-        mock_app = self._create_mock_app()
+        app = _app()
 
-        mocks = self._make_rag_import_mocks()
+        await RAGRuntimeService(app).vector_list(CONTEXT, 'test', limit=50, offset=100)
 
-        with isolated_sys_modules(mocks):
-            from langbot.pkg.rag.service.runtime import RAGRuntimeService
-
-            service = RAGRuntimeService(mock_app)
-
-            await service.vector_list(
-                collection_id='test',
-                limit=50,
-                offset=100,
-            )
-
-            call_args = mock_app.vector_db_mgr.list_by_filter.call_args
-            assert call_args.kwargs['limit'] == 50
-            assert call_args.kwargs['offset'] == 100
+        kwargs = app.vector_db_mgr.list_by_filter.await_args.kwargs
+        assert kwargs['limit'] == 50
+        assert kwargs['offset'] == 100
 
     @pytest.mark.asyncio
     async def test_vector_list_with_filters(self):
-        """Vector list with metadata filters."""
-        mock_app = self._create_mock_app()
+        app = _app()
+        filters = {'file_id': 'abc'}
 
-        mocks = self._make_rag_import_mocks()
+        await RAGRuntimeService(app).vector_list(CONTEXT, 'test', filters=filters)
 
-        with isolated_sys_modules(mocks):
-            from langbot.pkg.rag.service.runtime import RAGRuntimeService
-
-            service = RAGRuntimeService(mock_app)
-
-            filters = {'file_id': 'abc'}
-
-            await service.vector_list(
-                collection_id='test',
-                filters=filters,
-            )
-
-            call_args = mock_app.vector_db_mgr.list_by_filter.call_args
-            assert call_args.kwargs['filter'] == filters
+        assert app.vector_db_mgr.list_by_filter.await_args.kwargs['filter'] == filters
 
 
-class TestRAGRuntimeServiceGetFileStream:
-    """Tests for get_file_stream method."""
-
-    def _create_mock_app(self):
-        mock_app = MagicMock()
-        mock_app.vector_db_mgr = MagicMock()
-        mock_app.storage_mgr = MagicMock()
-        mock_app.storage_mgr.storage_provider = MagicMock()
-        mock_app.storage_mgr.storage_provider.load = AsyncMock(return_value=b'file content')
-        return mock_app
-
-    def _make_rag_import_mocks(self):
-        return {
-            'langbot.pkg.core.app': MagicMock(),
-            'langbot_plugin.api.entities.builtin.rag': MagicMock(),
-        }
-
+class TestRAGRuntimeServiceGetFileStreamRegression:
     @pytest.mark.asyncio
     async def test_get_file_stream_basic(self):
-        """Get file stream loads from storage."""
-        mock_app = self._create_mock_app()
+        app = _app(file_exists=True)
+        app.persistence_mgr.execute_async = AsyncMock(return_value=_ScalarResult('file-a'))
 
-        mocks = self._make_rag_import_mocks()
+        result = await RAGRuntimeService(app).get_file_stream(
+            CONTEXT,
+            'knowledge/files/doc.pdf',
+        )
 
-        with isolated_sys_modules(mocks):
-            from langbot.pkg.rag.service.runtime import RAGRuntimeService
-
-            service = RAGRuntimeService(mock_app)
-
-            result = await service.get_file_stream('knowledge/files/doc.pdf')
-
-            assert result == b'file content'
-            mock_app.storage_mgr.storage_provider.load.assert_called_once_with('knowledge/files/doc.pdf')
+        assert result == b'content'
+        app.storage_mgr.load_scoped_object_key.assert_awaited_once_with(
+            CONTEXT,
+            'knowledge/files/doc.pdf',
+            expected_owner_type='upload_document',
+        )
 
     @pytest.mark.asyncio
     async def test_get_file_stream_empty_result(self):
-        """Empty file returns empty bytes."""
-        mock_app = self._create_mock_app()
-        mock_app.storage_mgr.storage_provider.load = AsyncMock(return_value=None)
+        app = _app(file_exists=True)
+        app.persistence_mgr.execute_async = AsyncMock(return_value=_ScalarResult('file-a'))
+        app.storage_mgr.load_scoped_object_key.return_value = None
 
-        mocks = self._make_rag_import_mocks()
+        result = await RAGRuntimeService(app).get_file_stream(CONTEXT, 'nonexistent.pdf')
 
-        with isolated_sys_modules(mocks):
-            from langbot.pkg.rag.service.runtime import RAGRuntimeService
-
-            service = RAGRuntimeService(mock_app)
-
-            result = await service.get_file_stream('nonexistent.pdf')
-
-            assert result == b''
+        assert result == b''
 
     @pytest.mark.asyncio
     async def test_get_file_stream_normalizes_safe_path(self):
-        """Safe relative paths are normalized before loading."""
-        mock_app = self._create_mock_app()
+        app = _app(file_exists=True)
+        app.persistence_mgr.execute_async = AsyncMock(return_value=_ScalarResult('file-a'))
 
-        mocks = self._make_rag_import_mocks()
+        result = await RAGRuntimeService(app).get_file_stream(
+            CONTEXT,
+            'knowledge/./files/doc.pdf',
+        )
 
-        with isolated_sys_modules(mocks):
-            from langbot.pkg.rag.service.runtime import RAGRuntimeService
-
-            service = RAGRuntimeService(mock_app)
-
-            result = await service.get_file_stream('knowledge/./files/doc.pdf')
-
-            assert result == b'file content'
-            mock_app.storage_mgr.storage_provider.load.assert_called_once_with('knowledge/files/doc.pdf')
+        assert result == b'content'
+        app.storage_mgr.load_scoped_object_key.assert_awaited_once_with(
+            CONTEXT,
+            'knowledge/files/doc.pdf',
+            expected_owner_type='upload_document',
+        )
 
     @pytest.mark.asyncio
     async def test_get_file_stream_path_traversal_blocked(self):
-        """Path traversal attacks are blocked."""
-        mock_app = self._create_mock_app()
+        app = _app(file_exists=True)
+        service = RAGRuntimeService(app)
 
-        mocks = self._make_rag_import_mocks()
-
-        with isolated_sys_modules(mocks):
-            from langbot.pkg.rag.service.runtime import RAGRuntimeService
-
-            service = RAGRuntimeService(mock_app)
-
-            # Absolute path should raise ValueError
-            with pytest.raises(ValueError, match='Invalid storage path'):
-                await service.get_file_stream('/etc/passwd')
-
-            # Path traversal should raise ValueError
-            with pytest.raises(ValueError, match='Invalid storage path'):
-                await service.get_file_stream('knowledge/../../../etc/passwd')
+        with pytest.raises(ValueError, match='Invalid storage path'):
+            await service.get_file_stream(CONTEXT, '/etc/passwd')
+        with pytest.raises(ValueError, match='Invalid storage path'):
+            await service.get_file_stream(CONTEXT, 'knowledge/../../../etc/passwd')
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
@@ -486,36 +479,22 @@ class TestRAGRuntimeServiceGetFileStream:
         ],
     )
     async def test_get_file_stream_rejects_unsafe_paths(self, storage_path: str):
-        """Unsafe runtime file paths are rejected before storage load."""
-        mock_app = self._create_mock_app()
+        app = _app(file_exists=True)
 
-        mocks = self._make_rag_import_mocks()
+        with pytest.raises(ValueError, match='Invalid storage path'):
+            await RAGRuntimeService(app).get_file_stream(CONTEXT, storage_path)
 
-        with isolated_sys_modules(mocks):
-            from langbot.pkg.rag.service.runtime import RAGRuntimeService
-
-            service = RAGRuntimeService(mock_app)
-
-            with pytest.raises(ValueError, match='Invalid storage path'):
-                await service.get_file_stream(storage_path)
-
-            mock_app.storage_mgr.storage_provider.load.assert_not_called()
+        app.storage_mgr.load_scoped_object_key.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_get_file_stream_normalizes_path(self):
-        """Valid paths with .. in filename (not traversal) should work."""
-        mock_app = self._create_mock_app()
+        app = _app(file_exists=True)
+        app.persistence_mgr.execute_async = AsyncMock(return_value=_ScalarResult('file-a'))
 
-        mocks = self._make_rag_import_mocks()
+        await RAGRuntimeService(app).get_file_stream(CONTEXT, 'knowledge/files/test.pdf')
 
-        with isolated_sys_modules(mocks):
-            from langbot.pkg.rag.service.runtime import RAGRuntimeService
-
-            service = RAGRuntimeService(mock_app)
-
-            # Path that contains '..' as part of filename (not traversal)
-            # This should NOT raise - posixpath.normpath handles this
-            # But the current implementation checks '..' in split('/')
-            # Let's test a simple valid path
-            await service.get_file_stream('knowledge/files/test.pdf')
-            mock_app.storage_mgr.storage_provider.load.assert_called()
+        app.storage_mgr.load_scoped_object_key.assert_awaited_once_with(
+            CONTEXT,
+            'knowledge/files/test.pdf',
+            expected_owner_type='upload_document',
+        )

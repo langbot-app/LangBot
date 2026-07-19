@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from langbot.pkg.api.http.service.apikey import ApiKeyService
+from langbot.pkg.entity.persistence.apikey import ApiKeyStatus
 
 
 @pytest.mark.asyncio
@@ -13,30 +14,63 @@ from langbot.pkg.api.http.service.apikey import ApiKeyService
 async def test_verify_api_key_rejects_non_lbk_keys_without_db_query(api_key):
     persistence_mgr = SimpleNamespace(execute_async=AsyncMock())
     instance_config = SimpleNamespace(data={'api': {'global_api_key': ''}})
-    service = ApiKeyService(SimpleNamespace(persistence_mgr=persistence_mgr, instance_config=instance_config))
+    workspace_service = SimpleNamespace(get_execution_binding=AsyncMock())
+    service = ApiKeyService(
+        SimpleNamespace(
+            persistence_mgr=persistence_mgr,
+            instance_config=instance_config,
+            workspace_service=workspace_service,
+        )
+    )
 
     result = await service.verify_api_key(api_key)
 
     assert result is False
     persistence_mgr.execute_async.assert_not_awaited()
+    workspace_service.get_execution_binding.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ('db_row', 'expected'),
-    [
-        (object(), True),
-        (None, False),
-    ],
-)
-async def test_verify_api_key_keeps_db_validation_for_lbk_keys(db_row, expected):
+@pytest.mark.parametrize('key_exists', [True, False])
+async def test_verify_api_key_keeps_db_validation_for_lbk_keys(key_exists):
+    key = (
+        SimpleNamespace(
+            id=1,
+            uuid='key-uuid',
+            workspace_uuid='workspace-a',
+            status=ApiKeyStatus.ACTIVE.value,
+            expires_at=None,
+            scopes=[],
+        )
+        if key_exists
+        else None
+    )
     query_result = Mock()
-    query_result.first.return_value = db_row
-    persistence_mgr = SimpleNamespace(execute_async=AsyncMock(return_value=query_result))
+    query_result.first.return_value = key
+    persistence_mgr = SimpleNamespace(execute_async=AsyncMock(side_effect=[query_result, Mock(rowcount=1)]))
     instance_config = SimpleNamespace(data={'api': {'global_api_key': ''}})
-    service = ApiKeyService(SimpleNamespace(persistence_mgr=persistence_mgr, instance_config=instance_config))
+    workspace_service = SimpleNamespace(
+        get_execution_binding=AsyncMock(
+            return_value=SimpleNamespace(
+                instance_uuid='instance-a',
+                workspace_uuid='workspace-a',
+                placement_generation=1,
+            )
+        )
+    )
+    service = ApiKeyService(
+        SimpleNamespace(
+            persistence_mgr=persistence_mgr,
+            instance_config=instance_config,
+            workspace_service=workspace_service,
+        )
+    )
 
     result = await service.verify_api_key('lbk_valid_format')
 
-    assert result is expected
-    persistence_mgr.execute_async.assert_awaited_once()
+    assert result is key_exists
+    assert persistence_mgr.execute_async.await_count == (2 if key_exists else 1)
+    if key_exists:
+        workspace_service.get_execution_binding.assert_awaited_once_with('workspace-a')
+    else:
+        workspace_service.get_execution_binding.assert_not_awaited()

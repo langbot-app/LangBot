@@ -16,10 +16,21 @@ from langbot_plugin.api.entities.builtin.provider.message import Message
 from langbot_plugin.api.entities.builtin.provider.prompt import Prompt
 from langbot_plugin.api.entities.builtin.provider.session import Conversation, LauncherTypes, Session
 
+from langbot.pkg.api.http.context import ExecutionContext
+
+
+_CONTEXT = ExecutionContext(
+    instance_uuid='instance-a',
+    workspace_uuid='workspace-a',
+    placement_generation=1,
+    bot_uuid='bot-1',
+    pipeline_uuid='pipe-1',
+)
+
 
 def _make_query() -> Query:
     message_chain = MessageChain([Plain(text='create a skill')])
-    return Query(
+    query = Query(
         query_id=1,
         launcher_type=LauncherTypes.PERSON,
         launcher_id='launcher-1',
@@ -45,6 +56,8 @@ def _make_query() -> Query:
         },
         variables={},
     )
+    object.__setattr__(query, '_execution_context', _CONTEXT)
+    return query
 
 
 def _make_conversation() -> Conversation:
@@ -84,6 +97,8 @@ def _make_app(*, skill_service) -> SimpleNamespace:
             get_pipeline=AsyncMock(return_value={'extensions_preferences': {'enable_all_skills': True}})
         ),
         skill_mgr=SimpleNamespace(
+            ensure_loaded=AsyncMock(),
+            get_skills=Mock(return_value={}),
             build_skill_aware_prompt_addition=Mock(return_value=''),
             skills={},
         ),
@@ -119,6 +134,7 @@ async def test_preproc_enables_skill_authoring_tools_when_skill_service_availabl
 
     assert result.result_type == entities_module.ResultType.CONTINUE
     app.tool_mgr.get_all_tools.assert_awaited_once_with(
+        _CONTEXT,
         None,
         None,
         include_skill_authoring=True,
@@ -137,6 +153,7 @@ async def test_preproc_disables_skill_authoring_tools_when_skill_service_missing
 
     assert result.result_type == entities_module.ResultType.CONTINUE
     app.tool_mgr.get_all_tools.assert_awaited_once_with(
+        _CONTEXT,
         None,
         None,
         include_skill_authoring=False,
@@ -157,6 +174,7 @@ async def test_preproc_disables_mcp_resource_tools_when_agent_reading_is_disable
 
     assert result.result_type == entities_module.ResultType.CONTINUE
     app.tool_mgr.get_all_tools.assert_awaited_once_with(
+        _CONTEXT,
         None,
         None,
         include_skill_authoring=True,
@@ -179,7 +197,10 @@ async def test_preproc_injects_skill_index_into_system_prompt():
     result = await stage_process_capture(preproc_module, app, query)
 
     assert result.result_type == entities_module.ResultType.CONTINUE
-    app.skill_mgr.build_skill_aware_prompt_addition.assert_called_once_with(bound_skills=None)
+    app.skill_mgr.build_skill_aware_prompt_addition.assert_called_once_with(
+        _CONTEXT,
+        bound_skills=None,
+    )
     head = query.prompt.messages[0]
     assert head.role == 'system'
     assert head.content.endswith(addendum)
@@ -206,7 +227,10 @@ async def test_preproc_respects_pipeline_bound_skills_subset():
     result = await stage_process_capture(preproc_module, app, query)
 
     assert result.result_type == entities_module.ResultType.CONTINUE
-    app.skill_mgr.build_skill_aware_prompt_addition.assert_called_once_with(bound_skills=['only-this'])
+    app.skill_mgr.build_skill_aware_prompt_addition.assert_called_once_with(
+        _CONTEXT,
+        bound_skills=['only-this'],
+    )
     assert query.variables.get('_pipeline_bound_skills') == ['only-this']
 
 

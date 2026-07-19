@@ -1,6 +1,7 @@
 """WebSocket适配器 - 支持双向通信的IM系统"""
 
 import asyncio
+import contextvars
 import logging
 import typing
 from datetime import datetime
@@ -13,9 +14,13 @@ import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
 import langbot_plugin.api.definition.abstract.platform.event_logger as abstract_platform_logger
 from ...core import app
-from .websocket_manager import WebSocketConnection, is_valid_session_id, ws_connection_manager
+from .websocket_manager import WebSocketConnection, WebSocketScope, is_valid_session_id, ws_connection_manager
 
 logger = logging.getLogger(__name__)
+_current_pipeline_uuid: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    'websocket_pipeline_uuid',
+    default=None,
+)
 
 
 class WebSocketMessage(pydantic.BaseModel):
@@ -113,9 +118,19 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
             return None
         return pipeline_uuid, session_id
 
-    @classmethod
-    async def _get_connection_from_target(cls, target_id: str):
+    def _scope(self) -> WebSocketScope:
+        """Return this adapter's immutable runtime placement."""
+
+        return WebSocketScope.from_context(self.logger.execution_context)
+
+    def get_pipeline_uuid_override(self) -> str | None:
+        """Return the connection pipeline propagated into the listener task."""
+
+        return _current_pipeline_uuid.get()
+
+    async def _get_connection_from_target(self, target_id: str):
         """Resolve a person or group WebSocket launcher to its connection."""
+        scope = self._scope()
         target_value = str(target_id)
         for prefix in ('websocket_', 'websocketgroup_'):
             if target_value.startswith(prefix):
@@ -123,14 +138,18 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
                 break
         else:
             return None
-        connection = await ws_connection_manager.get_connection(target)
+        connection = await ws_connection_manager.get_connection(target, scope=scope)
         if connection is not None:
             return connection
-        embed_target = cls._parse_embed_target(target_id)
+        embed_target = self._parse_embed_target(target_id)
         if embed_target is not None:
             pipeline_uuid, session_id = embed_target
-            return await ws_connection_manager.get_connection_by_session_id(session_id, pipeline_uuid)
-        return await ws_connection_manager.get_connection_by_session_id(target)
+            return await ws_connection_manager.get_connection_by_session_id(
+                session_id,
+                scope=scope,
+                pipeline_uuid=pipeline_uuid,
+            )
+        return await ws_connection_manager.get_connection_by_session_id(target, scope=scope)
 
     async def _get_message_context(self, message_source) -> tuple[str, str | None]:
         """Resolve the originating pipeline and browser session for a reply."""
@@ -142,7 +161,7 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
         embed_target = self._parse_embed_target(sender_id)
         if embed_target is not None:
             return embed_target
-        return typing.cast(str, self.ap.platform_mgr.websocket_proxy_bot.bot_entity.use_pipeline_uuid), None
+        raise ValueError('WebSocket reply target is not bound to this adapter scope')
 
     async def send_message(
         self,
@@ -160,16 +179,17 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
         if connection is not None:
             pipeline_uuid = connection.pipeline_uuid
             session_id = connection.session_id
+            scope = connection.scope
         else:
             embed_target = self._parse_embed_target(target_id)
             if embed_target is not None:
                 pipeline_uuid, session_id = embed_target
             else:
-                pipeline_uuid = typing.cast(
-                    str,
-                    self.ap.platform_mgr.websocket_proxy_bot.bot_entity.use_pipeline_uuid,
-                )
+                pipeline_uuid = str(target_id).strip()
+                if not pipeline_uuid:
+                    raise ValueError('WebSocket target pipeline is required')
                 session_id = None
+            scope = self._scope()
         session_type = 'group' if target_type == 'group' else 'person'
         conversation_key = self._conversation_key(pipeline_uuid, session_id)
 
@@ -195,6 +215,7 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
                 'session_type': session_type,
                 'data': message_data.model_dump(),
             },
+            scope=scope,
             session_type=session_type,
             session_id=session_id,
         )
@@ -216,6 +237,7 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
         )
 
         pipeline_uuid, session_id = await self._get_message_context(message_source)
+        scope = self._scope()
         session_type = 'group' if isinstance(message_source, platform_events.GroupMessage) else 'person'
         conversation_key = self._conversation_key(pipeline_uuid, session_id)
 
@@ -239,6 +261,7 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
                 'session_type': session_type,
                 'data': message_data.model_dump(),
             },
+            scope=scope,
             session_type=session_type,
             session_id=session_id,
         )
@@ -262,6 +285,7 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
         )
 
         pipeline_uuid, session_id = await self._get_message_context(message_source)
+        scope = self._scope()
         session_type = 'group' if isinstance(message_source, platform_events.GroupMessage) else 'person'
         conversation_key = self._conversation_key(pipeline_uuid, session_id)
         message_list = session.get_message_list(conversation_key)
@@ -316,6 +340,7 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
                 'session_type': session_type,
                 'data': message_data.model_dump(),
             },
+            scope=scope,
             session_type=session_type,
             session_id=session_id,
         )
@@ -360,7 +385,11 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
                         message = await asyncio.wait_for(self.outbound_message_queue.get(), timeout=0.1)
                         # 广播到所有相关连接
                         target_id = message.get('target_id', '')
-                        await ws_connection_manager.broadcast_to_pipeline(target_id, message)
+                        await ws_connection_manager.broadcast_to_pipeline(
+                            target_id,
+                            message,
+                            scope=self._scope(),
+                        )
                     except asyncio.TimeoutError:
                         pass
 
@@ -372,7 +401,11 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
         """停止适配器"""
         pass
 
-    async def _process_image_components(self, message_chain_obj: list):
+    async def _process_image_components(
+        self,
+        connection: WebSocketConnection,
+        message_chain_obj: list,
+    ):
         """
         处理消息链中的图片、语音和文件组件，将 path 转换为 base64
 
@@ -387,14 +420,28 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
         import base64
         import mimetypes
 
-        storage_mgr = self.ap.storage_mgr
+        attachments = [
+            component
+            for component in message_chain_obj
+            if component.get('path') and component.get('type') in ('Image', 'Voice', 'File')
+        ]
+        if not attachments:
+            return
 
-        for component in message_chain_obj:
+        storage_mgr = self.ap.storage_mgr
+        execution_context = connection.execution_context
+        expected_prefix = storage_mgr.scoped_prefix(execution_context, owner_type='upload_image')
+
+        for component in attachments:
             comp_type = component.get('type', '')
             comp_path = component.get('path', '')
 
-            if not comp_path or comp_type not in ('Image', 'Voice', 'File'):
-                continue
+            if not comp_path.startswith(expected_prefix) or not storage_mgr.is_scoped_object_key(
+                comp_path,
+                expected_owner_type='upload_image',
+            ):
+                await self.logger.warning(f'Rejected {comp_type} attachment outside the WebSocket connection scope')
+                raise ValueError('Attachment key does not belong to this WebSocket connection')
 
             try:
                 file_content = await storage_mgr.storage_provider.load(comp_path)
@@ -416,10 +463,15 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
                     mime_type = mimetypes.guess_type(comp_path)[0] or 'application/octet-stream'
 
                 component['base64'] = f'data:{mime_type};base64,{base64_str}'
-                await storage_mgr.storage_provider.delete(comp_path)
+                await storage_mgr.delete_scoped_object_key(
+                    execution_context,
+                    comp_path,
+                    expected_owner_type='upload_image',
+                )
                 component['path'] = ''
             except Exception as e:
                 await self.logger.error(f'Failed to load {comp_type} file {comp_path}: {e}')
+                raise
 
     async def handle_websocket_message(
         self,
@@ -451,7 +503,7 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
 
         message_chain_obj = message_data.get('message', [])
 
-        await self._process_image_components(message_chain_obj)
+        await self._process_image_components(connection, message_chain_obj)
 
         message_chain = platform_message.MessageChain.model_validate(message_chain_obj)
 
@@ -476,6 +528,7 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
                 'session_type': session_type,
                 'data': user_message.model_dump(),
             },
+            scope=connection.scope,
             session_type=session_type,
             session_id=connection.session_id,
         )
@@ -506,11 +559,6 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
                 sender=sender, message_chain=message_chain, time=datetime.now().timestamp()
             )
 
-        # 设置流水线UUID (proxy bot always needs it for reply_message routing)
-        self.ap.platform_mgr.websocket_proxy_bot.bot_entity.use_pipeline_uuid = pipeline_uuid
-        if owner_bot is not None:
-            owner_bot.bot_entity.use_pipeline_uuid = pipeline_uuid
-
         # 异步触发事件处理
         # Use owner_bot's listeners if available, otherwise fall back to proxy bot
         listeners = (
@@ -525,7 +573,11 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
             owner_bot.adapter.set_ws_adapter(self)
         callback_adapter = owner_bot.adapter if (owner_bot and hasattr(owner_bot, 'adapter')) else self
         if event.__class__ in listeners:
-            asyncio.create_task(listeners[event.__class__](event, callback_adapter))
+            token = _current_pipeline_uuid.set(pipeline_uuid)
+            try:
+                asyncio.create_task(listeners[event.__class__](event, callback_adapter))
+            finally:
+                _current_pipeline_uuid.reset(token)
 
     def get_websocket_messages(
         self,
@@ -558,11 +610,15 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
                 if session_type == 'group'
                 else f'websocket_{pipeline_uuid}:{session_id}'
             )
+            scope = self._scope()
             self.ap.sess_mgr.session_list = [
                 candidate_session
                 for candidate_session in self.ap.sess_mgr.session_list
                 if not (
-                    str(
+                    getattr(candidate_session, 'instance_uuid', None) == scope.instance_uuid
+                    and getattr(candidate_session, 'workspace_uuid', None) == scope.workspace_uuid
+                    and getattr(candidate_session, 'placement_generation', None) == scope.placement_generation
+                    and str(
                         candidate_session.launcher_type.value
                         if hasattr(candidate_session.launcher_type, 'value')
                         else candidate_session.launcher_type

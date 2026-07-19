@@ -9,6 +9,8 @@ from langbot_plugin.api.entities.events import pipeline_query
 
 from . import loader as tool_loader
 from .errors import ToolNotFoundError
+from ...pipeline.pool import get_query_execution_context
+from ...api.http.service.tenant import TenantContext
 
 if TYPE_CHECKING:
     from ...core import app
@@ -57,6 +59,7 @@ class ToolManager:
 
     async def get_all_tools(
         self,
+        context: TenantContext,
         bound_plugins: list[str] | None = None,
         bound_mcp_servers: list[str] | None = None,
         include_skill_authoring: bool = False,
@@ -70,6 +73,7 @@ class ToolManager:
         all_functions.extend(await self.plugin_tool_loader.get_tools(bound_plugins))
         all_functions.extend(
             await self.mcp_tool_loader.get_tools(
+                context,
                 bound_mcp_servers,
                 include_resource_tools=include_mcp_resource_tools,
             )
@@ -79,6 +83,7 @@ class ToolManager:
 
     async def get_tool_catalog(
         self,
+        context: TenantContext,
         bound_plugins: list[str] | None = None,
         bound_mcp_servers: list[str] | None = None,
         include_skill_authoring: bool = False,
@@ -106,6 +111,7 @@ class ToolManager:
 
         if self.mcp_tool_loader:
             for item in await self.mcp_tool_loader.get_tool_catalog(
+                context,
                 bound_mcp_servers,
                 include_resource_tools=include_mcp_resource_tools,
             ):
@@ -113,19 +119,18 @@ class ToolManager:
 
         return catalog
 
-    async def get_tool_by_name(self, name: str) -> tool_loader.ToolLookupResult | None:
+    async def get_tool_by_name(self, context: TenantContext, name: str) -> tool_loader.ToolLookupResult | None:
         """Get tool by name from any active loader."""
         for active_loader in (
             self.native_tool_loader,
             self.plugin_tool_loader,
-            self.mcp_tool_loader,
             self.skill_tool_loader,
         ):
             tool = await active_loader.get_tool(name)
             if tool:
                 return tool
 
-        return None
+        return await self.mcp_tool_loader.get_tool(context, name)
 
     async def generate_tools_for_openai(self, use_funcs: list[resource_tool.LLMTool]) -> list:
         tools = []
@@ -175,6 +180,7 @@ class ToolManager:
 
         try:
             await monitoring_service.record_tool_call(
+                get_query_execution_context(query),
                 tool_name=name,
                 tool_source=source,
                 duration=duration_ms,
@@ -249,7 +255,8 @@ class ToolManager:
                 query=query,
                 invoke=lambda: self.plugin_tool_loader.invoke_tool(name, parameters, query),
             )
-        if await self.mcp_tool_loader.has_tool(name):
+        execution_context = get_query_execution_context(query)
+        if await self.mcp_tool_loader.has_tool(execution_context, name):
             telemetry_features.increment(query, 'tool_calls', 'mcp')
             return await self._invoke_tool_with_monitoring(
                 source='mcp',

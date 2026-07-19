@@ -13,6 +13,8 @@ Source: src/langbot/pkg/api/http/service/space.py
 
 from __future__ import annotations
 
+from urllib.parse import parse_qs, urlsplit
+
 import pytest
 from unittest.mock import AsyncMock, Mock, patch, MagicMock
 from types import SimpleNamespace
@@ -73,7 +75,7 @@ class TestSpaceServiceGetOAuthAuthorizeUrl:
         result = service.get_oauth_authorize_url('http://localhost/callback')
 
         # Verify
-        assert 'redirect_uri=http://localhost/callback' in result
+        assert parse_qs(urlsplit(result).query)['redirect_uri'] == ['http://localhost/callback']
         assert 'https://space.langbot.app/auth/authorize' in result
 
     def test_get_oauth_authorize_url_with_state(self):
@@ -93,8 +95,9 @@ class TestSpaceServiceGetOAuthAuthorizeUrl:
         result = service.get_oauth_authorize_url('http://localhost/callback', state='random_state')
 
         # Verify
-        assert 'redirect_uri=http://localhost/callback' in result
-        assert 'state=random_state' in result
+        params = parse_qs(urlsplit(result).query)
+        assert params['redirect_uri'] == ['http://localhost/callback']
+        assert params['state'] == ['random_state']
 
     def test_get_oauth_authorize_url_default_config(self):
         """Uses default OAuth URL when config not set."""

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import pytest
 from unittest.mock import MagicMock, AsyncMock, Mock
+from types import SimpleNamespace
 
 from tests.factories import FakeApp
 
@@ -66,7 +67,26 @@ def fake_monitoring_app():
     app.user_service = Mock()
     app.user_service.is_initialized = AsyncMock(return_value=True)
     app.user_service.verify_jwt_token = AsyncMock(return_value='test@example.com')
-    app.user_service.get_user_by_email = AsyncMock(return_value=Mock(email='test@example.com'))
+    app.user_service.get_user_by_email = AsyncMock(
+        return_value=SimpleNamespace(
+            uuid='account-uuid',
+            user='test@example.com',
+            email='test@example.com',
+        )
+    )
+    app.workspace_collaboration_service = SimpleNamespace(
+        resolve_account_workspace=AsyncMock(
+            return_value=SimpleNamespace(
+                execution=SimpleNamespace(instance_uuid='instance', placement_generation=1),
+                workspace=SimpleNamespace(uuid='00000000-0000-0000-0000-00000000000a'),
+                membership=SimpleNamespace(
+                    uuid='membership-uuid',
+                    role='owner',
+                    projection_revision=1,
+                ),
+            )
+        )
+    )
 
     # Monitoring service
     app.monitoring_service = Mock()

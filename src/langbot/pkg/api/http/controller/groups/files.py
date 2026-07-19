@@ -7,7 +7,17 @@ import asyncio
 
 import quart.datastructures
 
+from ...authz import Permission
+from ...context import RequestContext
 from .. import group
+
+
+def _storage_owner(context: RequestContext) -> str:
+    if context.principal.account_uuid:
+        return f'account:{context.principal.account_uuid}'
+    if context.principal.api_key_uuid:
+        return f'api-key:{context.principal.api_key_uuid}'
+    return f'principal:{context.principal.principal_type.value}'
 
 
 @group.group_class('files', '/api/v1/files')
@@ -15,21 +25,30 @@ class FilesRouterGroup(group.RouterGroup):
     async def initialize(self) -> None:
         @self.route('/image/<path:image_key>', methods=['GET'], auth_type=group.AuthType.NONE)
         async def _(image_key: str) -> quart.Response:
-            if '..' in image_key or '\\' in image_key:
+            image_bytes = await self.ap.storage_mgr.resolve_public_object(
+                image_key,
+                expected_owner_type='upload_image',
+            )
+            if image_bytes is None:
+                image_bytes = await self.ap.storage_mgr.resolve_public_object(
+                    image_key,
+                    expected_owner_type='bot_log',
+                )
+            if image_bytes is None:
                 return quart.Response(status=404)
-
-            if not await self.ap.storage_mgr.storage_provider.exists(image_key):
-                return quart.Response(status=404)
-
-            image_bytes = await self.ap.storage_mgr.storage_provider.load(image_key)
             mime_type = mimetypes.guess_type(image_key)[0]
             if mime_type is None:
                 mime_type = 'image/jpeg'
 
             return quart.Response(image_bytes, mimetype=mime_type)
 
-        @self.route('/images', methods=['POST'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
-        async def upload_image() -> quart.Response:
+        @self.route(
+            '/images',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def upload_image(request_context: RequestContext) -> quart.Response:
             request = quart.request
 
             # Check file size limit before reading the file
@@ -66,18 +85,29 @@ class FilesRouterGroup(group.RouterGroup):
             if '/' in file_name or '\\' in file_name:
                 return self.fail(400, 'File name contains invalid characters')
 
-            file_key = file_name + '_' + str(uuid.uuid4())[:8] + '.' + extension
+            logical_key = f'{uuid.uuid4()}.{extension}'
 
             # save file to storage
-            await self.ap.storage_mgr.storage_provider.save(file_key, file_bytes)
+            file_key = await self.ap.storage_mgr.save_scoped(
+                request_context,
+                owner_type='upload_image',
+                owner=_storage_owner(request_context),
+                key=logical_key,
+                value=file_bytes,
+            )
             return self.success(
                 data={
                     'file_key': file_key,
                 }
             )
 
-        @self.route('/documents', methods=['POST'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
-        async def upload_document() -> quart.Response:
+        @self.route(
+            '/documents',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def upload_document(request_context: RequestContext) -> quart.Response:
             request = quart.request
 
             # Check file size limit before reading the file
@@ -110,12 +140,18 @@ class FilesRouterGroup(group.RouterGroup):
             if '/' in file_name or '\\' in file_name:
                 return self.fail(400, 'File name contains invalid characters')
 
-            file_key = file_name + '_' + str(uuid.uuid4())[:8]
+            logical_key = str(uuid.uuid4())
             if extension:
-                file_key += '.' + extension
+                logical_key += '.' + extension
 
             # save file to storage
-            await self.ap.storage_mgr.storage_provider.save(file_key, file_bytes)
+            file_key = await self.ap.storage_mgr.save_scoped(
+                request_context,
+                owner_type='upload_document',
+                owner=_storage_owner(request_context),
+                key=logical_key,
+                value=file_bytes,
+            )
             return self.success(
                 data={
                     'file_id': file_key,

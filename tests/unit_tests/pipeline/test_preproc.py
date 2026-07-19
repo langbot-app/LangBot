@@ -16,6 +16,8 @@ from unittest.mock import AsyncMock, Mock
 from importlib import import_module
 from types import SimpleNamespace
 
+from langbot_plugin.api.entities.builtin.provider import session as provider_session
+
 from tests.factories import (
     FakeApp,
     text_query,
@@ -35,6 +37,20 @@ def get_entities_module():
     return import_module('langbot.pkg.pipeline.entities')
 
 
+def make_session(
+    launcher_type: provider_session.LauncherTypes = provider_session.LauncherTypes.PERSON,
+    launcher_id: int = 12345,
+) -> provider_session.Session:
+    """Build a scope-aware Session that matches the shared Query factory."""
+
+    return provider_session.Session(
+        launcher_type=launcher_type,
+        launcher_id=launcher_id,
+        sender_id=12345,
+        bot_uuid='test-bot-uuid',
+    )
+
+
 class TestPreProcessorNormalText:
     """Tests for normal text message preprocessing."""
 
@@ -46,9 +62,7 @@ class TestPreProcessorNormalText:
 
         app = FakeApp()
         # Mock session manager to return a session
-        mock_session = Mock()
-        mock_session.launcher_type = Mock(value='person')
-        mock_session.launcher_id = 12345
+        mock_session = make_session()
         app.sess_mgr.get_session = AsyncMock(return_value=mock_session)
 
         # Mock conversation
@@ -92,9 +106,7 @@ class TestPreProcessorNormalText:
         preproc = get_preproc_module()
 
         app = FakeApp()
-        mock_session = Mock()
-        mock_session.launcher_type = Mock(value='person')
-        mock_session.launcher_id = 12345
+        mock_session = make_session()
         app.sess_mgr.get_session = AsyncMock(return_value=mock_session)
 
         mock_conversation = Mock()
@@ -132,9 +144,7 @@ class TestPreProcessorEmptyMessage:
         entities = get_entities_module()
 
         app = FakeApp()
-        mock_session = Mock()
-        mock_session.launcher_type = Mock(value='person')
-        mock_session.launcher_id = 12345
+        mock_session = make_session()
         app.sess_mgr.get_session = AsyncMock(return_value=mock_session)
 
         mock_conversation = Mock()
@@ -171,9 +181,7 @@ class TestPreProcessorImageSegment:
         preproc = get_preproc_module()
 
         app = FakeApp()
-        mock_session = Mock()
-        mock_session.launcher_type = Mock(value='person')
-        mock_session.launcher_id = 12345
+        mock_session = make_session()
         app.sess_mgr.get_session = AsyncMock(return_value=mock_session)
 
         mock_conversation = Mock()
@@ -219,9 +227,7 @@ class TestPreProcessorImageSegment:
         preproc = get_preproc_module()
 
         app = FakeApp()
-        mock_session = Mock()
-        mock_session.launcher_type = Mock(value='person')
-        mock_session.launcher_id = 12345
+        mock_session = make_session()
         app.sess_mgr.get_session = AsyncMock(return_value=mock_session)
 
         mock_conversation = Mock()
@@ -258,9 +264,7 @@ class TestPreProcessorModelSelection:
         preproc = get_preproc_module()
 
         app = FakeApp()
-        mock_session = Mock()
-        mock_session.launcher_type = Mock(value='person')
-        mock_session.launcher_id = 12345
+        mock_session = make_session()
         app.sess_mgr.get_session = AsyncMock(return_value=mock_session)
 
         mock_conversation = Mock()
@@ -305,9 +309,7 @@ class TestPreProcessorModelSelection:
         preproc = get_preproc_module()
 
         app = FakeApp()
-        mock_session = Mock()
-        mock_session.launcher_type = Mock(value='person')
-        mock_session.launcher_id = 12345
+        mock_session = make_session()
         app.sess_mgr.get_session = AsyncMock(return_value=mock_session)
 
         mock_conversation = Mock()
@@ -324,7 +326,7 @@ class TestPreProcessorModelSelection:
         mock_fallback = Mock()
         mock_fallback.model_entity = Mock(uuid='fallback-uuid', abilities=['func_call'])
 
-        async def mock_get_model(uuid):
+        async def mock_get_model(_context, uuid):
             if uuid == 'primary-uuid':
                 return mock_primary
             elif uuid == 'fallback-uuid':
@@ -368,9 +370,7 @@ class TestPreProcessorVariables:
         preproc = get_preproc_module()
 
         app = FakeApp()
-        mock_session = Mock()
-        mock_session.launcher_type = Mock(value='person')
-        mock_session.launcher_id = 12345
+        mock_session = make_session()
         app.sess_mgr.get_session = AsyncMock(return_value=mock_session)
 
         mock_conversation = Mock()
@@ -405,9 +405,10 @@ class TestPreProcessorVariables:
         preproc = get_preproc_module()
 
         app = FakeApp()
-        mock_session = Mock()
-        mock_session.launcher_type = Mock(value='group')
-        mock_session.launcher_id = 99999
+        mock_session = make_session(
+            provider_session.LauncherTypes.GROUP,
+            99999,
+        )
         app.sess_mgr.get_session = AsyncMock(return_value=mock_session)
 
         mock_conversation = Mock()
@@ -443,9 +444,7 @@ class TestPreProcessorToolSelection:
         preproc = get_preproc_module()
 
         app = FakeApp()
-        mock_session = Mock()
-        mock_session.launcher_type = Mock(value='person')
-        mock_session.launcher_id = 12345
+        mock_session = make_session()
         app.sess_mgr.get_session = AsyncMock(return_value=mock_session)
 
         mock_conversation = Mock()

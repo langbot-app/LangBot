@@ -67,7 +67,32 @@ interface BotMock {
   updated_at: string;
 }
 
+export interface WorkspaceEntryMock {
+  workspace: {
+    uuid: string;
+    instance_uuid: string;
+    name: string;
+    slug: string;
+    type: 'personal' | 'team';
+    status: 'active';
+    source: 'local' | 'cloud_projection';
+  };
+  membership: {
+    uuid: string;
+    workspace_uuid: string;
+    account_uuid: string;
+    email: string;
+    role: 'owner' | 'admin' | 'developer' | 'operator' | 'viewer';
+    status: 'active';
+    joined_at: string;
+    created_at: string;
+  };
+  permissions: string[];
+  placement_generation: number;
+}
+
 interface LangBotApiMockState {
+  authenticated: boolean;
   bots: BotMock[];
   counters: Record<string, number>;
   knowledgeBases: KnowledgeBaseMock[];
@@ -78,6 +103,7 @@ interface LangBotApiMockState {
   sessionAnalyses: Record<string, unknown>;
   sessionMessages: Record<string, unknown[]>;
   skills: SkillMock[];
+  workspaces: WorkspaceEntryMock[];
 }
 
 function ok(data: unknown) {
@@ -107,6 +133,58 @@ function parseJsonBody(route: Route): JsonRecord {
 
 function now() {
   return new Date().toISOString();
+}
+
+export function makeWorkspaceEntry(
+  uuid: string,
+  name: string,
+  source: 'local' | 'cloud_projection' = 'cloud_projection',
+): WorkspaceEntryMock {
+  const createdAt = now();
+  return {
+    workspace: {
+      uuid,
+      instance_uuid: 'instance-playwright',
+      name,
+      slug: uuid,
+      type: 'team',
+      status: 'active',
+      source,
+    },
+    membership: {
+      uuid: `membership-${uuid}`,
+      workspace_uuid: uuid,
+      account_uuid: 'account-playwright',
+      email: 'admin@example.com',
+      role: 'owner',
+      status: 'active',
+      joined_at: createdAt,
+      created_at: createdAt,
+    },
+    permissions: [
+      'api_key.manage',
+      'audit.view',
+      'member.invite',
+      'member.remove',
+      'member.update_role',
+      'member.view',
+      'owner.transfer',
+      'provider_secret.manage',
+      'resource.manage',
+      'resource.view',
+      'runtime.operate',
+      'workspace.view',
+    ],
+    placement_generation: 1,
+  };
+}
+
+function defaultWorkspaceEntry(): WorkspaceEntryMock {
+  return makeWorkspaceEntry(
+    'workspace-playwright',
+    'Playwright Workspace',
+    'local',
+  );
 }
 
 function nextId(state: LangBotApiMockState, prefix: string) {
@@ -423,21 +501,33 @@ async function handleBackendApi(route: Route, state: LangBotApiMockState) {
   if (path === '/api/v1/user/account-info') {
     return fulfillJson(route, {
       initialized: true,
-      account_type: 'local',
-      has_password: true,
+      password_login_enabled: true,
+      space_login_enabled: false,
     });
   }
 
   if (path === '/api/v1/user/check-token') {
-    return fulfillJson(route, { token: '' });
+    return fulfillJson(route, {
+      token: state.authenticated ? 'playwright-token' : '',
+    });
   }
 
   if (path === '/api/v1/user/auth') {
+    state.authenticated = true;
     return fulfillJson(route, { token: 'playwright-token' });
+  }
+
+  if (path === '/api/v1/user/space/callback') {
+    state.authenticated = true;
+    return fulfillJson(route, {
+      token: 'playwright-space-token',
+      user: 'admin@example.com',
+    });
   }
 
   if (path === '/api/v1/user/info') {
     return fulfillJson(route, {
+      account_uuid: 'account-playwright',
       user: 'admin@example.com',
       account_type: 'local',
       has_password: true,
@@ -446,6 +536,24 @@ async function handleBackendApi(route: Route, state: LangBotApiMockState) {
 
   if (path === '/api/v1/user/space-credits') {
     return fulfillJson(route, { credits: null });
+  }
+
+  if (path === '/api/v1/workspaces/bootstrap') {
+    return fulfillJson(route, { workspaces: state.workspaces });
+  }
+
+  if (path === '/api/v1/workspaces/current') {
+    const selectedWorkspaceUuid = request.headers()['x-workspace-id'];
+    const entry = state.workspaces.find(
+      (item) => item.workspace.uuid === selectedWorkspaceUuid,
+    );
+    return fulfillJson(route, entry || state.workspaces[0]);
+  }
+
+  if (path === '/api/v1/workspaces') {
+    return fulfillJson(route, {
+      workspaces: state.workspaces.map((entry) => entry.workspace),
+    });
   }
 
   if (path === '/api/v1/platform/adapters') {
@@ -951,6 +1059,7 @@ export async function installLangBotApiMocks(
     sessionAnalyses?: Record<string, unknown>;
     sessionMessages?: Record<string, unknown[]>;
     storage?: JsonRecord;
+    workspaces?: WorkspaceEntryMock[];
   } = {},
 ) {
   const {
@@ -960,8 +1069,10 @@ export async function installLangBotApiMocks(
     sessionAnalyses,
     sessionMessages,
     storage = {},
+    workspaces = [defaultWorkspaceEntry()],
   } = options;
   const state: LangBotApiMockState = {
+    authenticated,
     bots: [],
     counters: {},
     knowledgeBases: [],
@@ -972,6 +1083,7 @@ export async function installLangBotApiMocks(
     sessionAnalyses: sessionAnalyses || {},
     sessionMessages: sessionMessages || {},
     skills: [],
+    workspaces,
   };
 
   await page.addInitScript(

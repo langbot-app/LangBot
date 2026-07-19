@@ -22,10 +22,12 @@ from langbot.libs.dify_service_api.v1 import client, errors
 import httpx
 
 
-# Module-level store for paused-workflow form state. The key isolates the bot,
-# pipeline, adapter, and launcher; each value holds an insertion-ordered map of
-# form_token -> form_data so one conversation can pause multiple workflows.
-PendingFormKey = tuple[str, str, str, str, str]
+# Module-level store for paused-workflow form state. The key includes the full
+# execution scope before the bot, pipeline, adapter, and launcher dimensions;
+# each value holds an insertion-ordered map of form_token -> form_data so one
+# conversation can pause multiple workflows without crossing Workspaces or
+# placement generations.
+PendingFormKey = tuple[str, str, int, str, str, str, str, str]
 _PENDING_FORMS: dict[PendingFormKey, 'OrderedDict[str, dict[str, typing.Any]]'] = {}
 _PENDING_FORM_DEFAULT_TTL = 30 * 60  # 30 minutes safety cap
 _STREAM_FORM_PLACEHOLDER = '\u200b'
@@ -48,10 +50,13 @@ def _dify_user_from_query(query: pipeline_query.Query) -> str:
 
 
 def _session_key_from_query(query: pipeline_query.Query) -> PendingFormKey:
-    """Build a process-local pending-form key isolated by bot and pipeline."""
+    """Build a process-local pending-form key isolated by execution scope."""
     adapter = getattr(query, 'adapter', None)
     adapter_type = f'{type(adapter).__module__}.{type(adapter).__qualname__}'
     return (
+        str(getattr(query, 'instance_uuid', '') or ''),
+        str(getattr(query, 'workspace_uuid', '') or ''),
+        int(getattr(query, 'placement_generation', 0) or 0),
         str(getattr(query, 'bot_uuid', '') or ''),
         str(getattr(query, 'pipeline_uuid', '') or ''),
         adapter_type,
@@ -74,8 +79,8 @@ def _prune_pending_forms(now: float | None = None) -> None:
 
 def _set_pending_form(session_key: PendingFormKey, form_data: dict[str, typing.Any]) -> None:
     _prune_pending_forms()
-    if isinstance(session_key, tuple) and len(session_key) > 1:
-        form_data['pipeline_uuid'] = session_key[1]
+    if isinstance(session_key, tuple) and len(session_key) == 8:
+        form_data['pipeline_uuid'] = session_key[4]
     stored = dict(form_data)
     expiration_time = stored.get('expiration_time')
     try:

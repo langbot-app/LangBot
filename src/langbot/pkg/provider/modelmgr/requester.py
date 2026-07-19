@@ -5,7 +5,9 @@ import typing
 import time
 
 from ...core import app
+from ...api.http.context import ExecutionContext
 from ...entity.persistence import model as persistence_model
+from ...workspace.errors import WorkspaceInvariantError
 import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 from . import token
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
@@ -14,6 +16,20 @@ import langbot_plugin.api.entities.builtin.provider.message as provider_message
 
 LLM_USAGE_QUERY_VARIABLE = '_llm_usage'
 STREAM_USAGE_QUERY_VARIABLE = '_stream_usage'
+
+
+def _ensure_same_execution_scope(
+    expected: ExecutionContext,
+    actual: ExecutionContext,
+    *,
+    resource: str,
+) -> None:
+    if (
+        actual.instance_uuid != expected.instance_uuid
+        or actual.workspace_uuid != expected.workspace_uuid
+        or actual.placement_generation != expected.placement_generation
+    ):
+        raise WorkspaceInvariantError(f'{resource} belongs to another Workspace execution scope')
 
 
 def _store_llm_usage(query: pipeline_query.Query | None, usage_info: dict | None) -> None:
@@ -39,24 +55,61 @@ class RuntimeProvider:
 
     def __init__(
         self,
+        execution_context: ExecutionContext,
         provider_entity: persistence_model.ModelProvider,
         token_mgr: token.TokenManager,
         requester: ProviderAPIRequester,
     ):
+        if provider_entity.workspace_uuid != execution_context.workspace_uuid:
+            raise WorkspaceInvariantError('Provider belongs to another Workspace')
+        self.execution_context = execution_context
         self.provider_entity = provider_entity
         self.token_mgr = token_mgr
         self.requester = requester
 
+    def _validate_invocation(
+        self,
+        model: RuntimeLLMModel | RuntimeEmbeddingModel | RuntimeRerankModel,
+        execution_context: ExecutionContext,
+    ) -> None:
+        _ensure_same_execution_scope(self.execution_context, execution_context, resource='Provider invocation')
+        _ensure_same_execution_scope(self.execution_context, model.execution_context, resource='Runtime model')
+        if model.provider is not self:
+            raise WorkspaceInvariantError('Runtime model is attached to another provider')
+
+    def _resolve_llm_execution_context(
+        self,
+        query: pipeline_query.Query | None,
+        execution_context: ExecutionContext | None,
+    ) -> ExecutionContext:
+        if query is not None:
+            from ...pipeline.pool import get_query_execution_context
+
+            query_context = get_query_execution_context(query)
+            if execution_context is not None:
+                _ensure_same_execution_scope(
+                    query_context,
+                    execution_context,
+                    resource='Explicit LLM invocation context',
+                )
+            return query_context
+        if execution_context is None:
+            raise WorkspaceInvariantError('LLM invocation requires an ExecutionContext when query is absent')
+        return execution_context
+
     async def invoke_llm(
         self,
-        query: pipeline_query.Query,
+        query: pipeline_query.Query | None,
         model: RuntimeLLMModel,
         messages: typing.List[provider_message.Message],
         funcs: typing.List[resource_tool.LLMTool] = None,
         extra_args: dict[str, typing.Any] = {},
         remove_think: bool = False,
+        execution_context: ExecutionContext | None = None,
     ) -> provider_message.Message:
         """Bridge method for invoking LLM with monitoring"""
+        invocation_context = self._resolve_llm_execution_context(query, execution_context)
+        self._validate_invocation(model, invocation_context)
         # Start timing for monitoring
         start_time = time.time()
         input_tokens = 0
@@ -130,14 +183,17 @@ class RuntimeProvider:
 
     async def invoke_llm_stream(
         self,
-        query: pipeline_query.Query,
+        query: pipeline_query.Query | None,
         model: RuntimeLLMModel,
         messages: typing.List[provider_message.Message],
         funcs: typing.List[resource_tool.LLMTool] = None,
         extra_args: dict[str, typing.Any] = {},
         remove_think: bool = False,
+        execution_context: ExecutionContext | None = None,
     ) -> provider_message.MessageChunk:
         """Bridge method for invoking LLM stream with monitoring"""
+        invocation_context = self._resolve_llm_execution_context(query, execution_context)
+        self._validate_invocation(model, invocation_context)
         # Start timing for monitoring
         start_time = time.time()
         status = 'success'
@@ -212,6 +268,8 @@ class RuntimeProvider:
         model: RuntimeEmbeddingModel,
         input_text: typing.List[str],
         extra_args: dict[str, typing.Any] = {},
+        *,
+        execution_context: ExecutionContext,
         knowledge_base_id: str | None = None,
         query_text: str | None = None,
         session_id: str | None = None,
@@ -219,6 +277,7 @@ class RuntimeProvider:
         call_type: str | None = None,
     ) -> typing.List[typing.List[float]]:
         """Bridge method for invoking embedding with monitoring"""
+        self._validate_invocation(model, execution_context)
         # Start timing for monitoring
         start_time = time.time()
         prompt_tokens = 0
@@ -254,6 +313,7 @@ class RuntimeProvider:
 
             try:
                 await self.requester.ap.monitoring_service.record_embedding_call(
+                    execution_context,
                     model_name=model.model_entity.name,
                     prompt_tokens=prompt_tokens,
                     total_tokens=total_tokens,
@@ -276,8 +336,11 @@ class RuntimeProvider:
         query: str,
         documents: typing.List[str],
         extra_args: dict[str, typing.Any] = {},
+        *,
+        execution_context: ExecutionContext,
     ) -> typing.List[dict]:
         """Bridge method for invoking rerank with monitoring"""
+        self._validate_invocation(model, execution_context)
         start_time = time.time()
         status = 'success'
 
@@ -316,9 +379,16 @@ class RuntimeLLMModel:
 
     def __init__(
         self,
+        execution_context: ExecutionContext,
         model_entity: persistence_model.LLMModel,
         provider: RuntimeProvider,
     ):
+        _ensure_same_execution_scope(provider.execution_context, execution_context, resource='LLM model')
+        if model_entity.workspace_uuid != execution_context.workspace_uuid:
+            raise WorkspaceInvariantError('LLM model belongs to another Workspace')
+        if model_entity.provider_uuid != provider.provider_entity.uuid:
+            raise WorkspaceInvariantError('LLM model references another provider')
+        self.execution_context = execution_context
         self.model_entity = model_entity
         self.provider = provider
 
@@ -334,9 +404,16 @@ class RuntimeEmbeddingModel:
 
     def __init__(
         self,
+        execution_context: ExecutionContext,
         model_entity: persistence_model.EmbeddingModel,
         provider: RuntimeProvider,
     ):
+        _ensure_same_execution_scope(provider.execution_context, execution_context, resource='Embedding model')
+        if model_entity.workspace_uuid != execution_context.workspace_uuid:
+            raise WorkspaceInvariantError('Embedding model belongs to another Workspace')
+        if model_entity.provider_uuid != provider.provider_entity.uuid:
+            raise WorkspaceInvariantError('Embedding model references another provider')
+        self.execution_context = execution_context
         self.model_entity = model_entity
         self.provider = provider
 
@@ -352,9 +429,16 @@ class RuntimeRerankModel:
 
     def __init__(
         self,
+        execution_context: ExecutionContext,
         model_entity: persistence_model.RerankModel,
         provider: RuntimeProvider,
     ):
+        _ensure_same_execution_scope(provider.execution_context, execution_context, resource='Rerank model')
+        if model_entity.workspace_uuid != execution_context.workspace_uuid:
+            raise WorkspaceInvariantError('Rerank model belongs to another Workspace')
+        if model_entity.provider_uuid != provider.provider_entity.uuid:
+            raise WorkspaceInvariantError('Rerank model references another provider')
+        self.execution_context = execution_context
         self.model_entity = model_entity
         self.provider = provider
 

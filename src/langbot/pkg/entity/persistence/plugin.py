@@ -8,6 +8,11 @@ class PluginSetting(Base):
 
     __tablename__ = 'plugin_settings'
 
+    workspace_uuid = sqlalchemy.Column(
+        sqlalchemy.String(36),
+        sqlalchemy.ForeignKey('workspaces.uuid', ondelete='CASCADE'),
+        primary_key=True,
+    )
     plugin_author = sqlalchemy.Column(sqlalchemy.String(255), primary_key=True)
     plugin_name = sqlalchemy.Column(sqlalchemy.String(255), primary_key=True)
     enabled = sqlalchemy.Column(sqlalchemy.Boolean, nullable=False, default=True)
@@ -22,3 +27,5 @@ class PluginSetting(Base):
         server_default=sqlalchemy.func.now(),
         onupdate=sqlalchemy.func.now(),
     )
+
+    __table_args__ = (sqlalchemy.Index('ix_plugin_settings_workspace_enabled', 'workspace_uuid', 'enabled'),)

@@ -1,6 +1,15 @@
 from __future__ import annotations
 
+import uuid
+
+import sqlalchemy
+
+from ..api.http.authz import WorkspaceRequiredError
+from ..api.http.context import ExecutionContext
 from ..core import app
+from ..entity.persistence import rag as persistence_rag
+from ..entity.persistence import workspace as persistence_workspace
+from ..workspace.errors import WorkspaceNotFoundError
 from .vdb import VectorDatabase, SearchType
 
 
@@ -87,26 +96,141 @@ class VectorDBManager:
             return [SearchType.VECTOR.value]
         return [st.value for st in self.vector_db.supported_search_types()]
 
+    @staticmethod
+    def physical_collection_name(
+        execution_context: ExecutionContext,
+        knowledge_base_uuid: str,
+    ) -> str:
+        """Derive an opaque physical collection from trusted tenant identity.
+
+        Vector backends have different collection-name constraints, so the
+        instance, Workspace and knowledge-base identifiers are encoded through
+        UUIDv5 instead of being concatenated into a client-visible handle.
+        Placement generation is deliberately not part of the name: generation
+        fencing rejects stale work while preserving data across placements.
+        """
+
+        if not isinstance(execution_context, ExecutionContext):
+            raise WorkspaceRequiredError('ExecutionContext is required for vector access')
+        instance_uuid = execution_context.instance_uuid.strip()
+        workspace_uuid = execution_context.workspace_uuid.strip()
+        kb_uuid = knowledge_base_uuid.strip() if isinstance(knowledge_base_uuid, str) else ''
+        if not instance_uuid or not workspace_uuid or not kb_uuid:
+            raise WorkspaceRequiredError('Instance, Workspace and knowledge-base context are required')
+        if execution_context.placement_generation <= 0:
+            raise WorkspaceRequiredError('A positive placement generation is required')
+
+        collection_uuid = uuid.uuid5(
+            uuid.NAMESPACE_URL,
+            f'langbot:knowledge-vector:{instance_uuid}:{workspace_uuid}:{kb_uuid}',
+        )
+        return f'lb_{collection_uuid.hex}'
+
+    async def _validate_execution_context(self, execution_context: ExecutionContext) -> None:
+        """Validate the active placement before touching a vector backend."""
+
+        # Also performs structural validation before accessing app services.
+        self.physical_collection_name(execution_context, 'context-validation')
+        workspace_service = getattr(self.ap, 'workspace_service', None)
+        if workspace_service is None:
+            raise WorkspaceRequiredError('Workspace execution service is unavailable')
+        binding = await workspace_service.get_execution_binding(
+            execution_context.workspace_uuid,
+            expected_generation=execution_context.placement_generation,
+        )
+        if binding.instance_uuid != execution_context.instance_uuid:
+            raise WorkspaceRequiredError('ExecutionContext belongs to another LangBot instance')
+
+    async def _resolve_physical_collection_name(
+        self,
+        execution_context: ExecutionContext,
+        knowledge_base_uuid: str,
+    ) -> str:
+        """Resolve a scoped collection or an explicitly migrated OSS handle.
+
+        Legacy handles are server-owned migration state, not caller input.
+        They are honored only for the one local Workspace under the OSS
+        single-Workspace policy.  A projected/cloud Workspace always gets the
+        opaque tenant-derived collection, even if its database row was
+        incorrectly marked as legacy.
+        """
+
+        await self._validate_execution_context(execution_context)
+        result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(
+                persistence_rag.KnowledgeBase.collection_id,
+                persistence_rag.KnowledgeBase.legacy_vector_collection,
+                persistence_workspace.Workspace.source,
+            )
+            .join(
+                persistence_workspace.Workspace,
+                persistence_workspace.Workspace.uuid == persistence_rag.KnowledgeBase.workspace_uuid,
+            )
+            .where(
+                persistence_rag.KnowledgeBase.workspace_uuid == execution_context.workspace_uuid,
+                persistence_rag.KnowledgeBase.uuid == knowledge_base_uuid,
+                persistence_workspace.Workspace.instance_uuid == execution_context.instance_uuid,
+            )
+            .limit(1)
+        )
+        row = result.first()
+        if row is None:
+            raise WorkspaceNotFoundError('Knowledge base not found')
+
+        collection_id, legacy_vector_collection, workspace_source = row
+        if legacy_vector_collection:
+            policy = getattr(self.ap, 'workspace_policy', None)
+            is_single_workspace = policy is not None and not getattr(
+                policy,
+                'multi_workspace_enabled',
+                True,
+            )
+            is_local_workspace = workspace_source == persistence_workspace.WorkspaceSource.LOCAL.value
+            if is_single_workspace and is_local_workspace and isinstance(collection_id, str) and collection_id.strip():
+                return collection_id
+            self.ap.logger.warning(
+                'Ignored a legacy vector collection marker outside the local single-Workspace compatibility boundary.'
+            )
+
+        return self.physical_collection_name(execution_context, knowledge_base_uuid)
+
     async def upsert(
         self,
-        collection_name: str,
+        execution_context: ExecutionContext,
+        knowledge_base_uuid: str,
         vectors: list[list[float]],
         ids: list[str],
         metadata: list[dict] | None = None,
         documents: list[str] | None = None,
     ):
-        """Proxy: Upsert vectors"""
+        """Upsert vectors into a server-derived tenant collection."""
+
+        collection_name = await self._resolve_physical_collection_name(
+            execution_context,
+            knowledge_base_uuid,
+        )
+        source_metadata = metadata or [{} for _ in vectors]
+        scoped_metadata = [
+            {
+                **item,
+                '_langbot_instance_uuid': execution_context.instance_uuid,
+                '_langbot_workspace_uuid': execution_context.workspace_uuid,
+                '_langbot_knowledge_base_uuid': knowledge_base_uuid,
+            }
+            for item in source_metadata
+        ]
         await self.vector_db.add_embeddings(
             collection=collection_name,
             ids=ids,
             embeddings_list=vectors,
-            metadatas=metadata or [{} for _ in vectors],
+            metadatas=scoped_metadata,
             documents=documents,
         )
 
     async def search(
         self,
-        collection_name: str,
+        execution_context: ExecutionContext,
+        knowledge_base_uuid: str,
         query_vector: list[float],
         limit: int,
         filter: dict | None = None,
@@ -120,6 +244,10 @@ class VectorDBManager:
         The underlying VectorDatabase.search returns Chroma-style format:
         { 'ids': [['id1']], 'distances': [[0.1]], 'metadatas': [[{}]] }
         """
+        collection_name = await self._resolve_physical_collection_name(
+            execution_context,
+            knowledge_base_uuid,
+        )
         results = await self.vector_db.search(
             collection=collection_name,
             query_embedding=query_vector,
@@ -154,30 +282,58 @@ class VectorDBManager:
 
         return parsed_results
 
-    async def delete_by_file_id(self, collection_name: str, file_ids: list[str]):
+    async def delete_by_file_id(
+        self,
+        execution_context: ExecutionContext,
+        knowledge_base_uuid: str,
+        file_ids: list[str],
+    ):
         """Proxy: Delete vectors by file_id (metadata-level identifier).
 
         This delegates to VectorDatabase.delete_by_file_id which removes
         all vectors associated with the given file IDs.
         """
+        collection_name = await self._resolve_physical_collection_name(
+            execution_context,
+            knowledge_base_uuid,
+        )
         for file_id in file_ids:
             await self.vector_db.delete_by_file_id(collection_name, file_id)
 
-    async def delete_collection(self, collection_name: str):
-        """Proxy: Delete an entire collection."""
+    async def delete_collection(
+        self,
+        execution_context: ExecutionContext,
+        knowledge_base_uuid: str,
+    ):
+        """Delete one server-derived tenant collection."""
+
+        collection_name = await self._resolve_physical_collection_name(
+            execution_context,
+            knowledge_base_uuid,
+        )
         await self.vector_db.delete_collection(collection_name)
 
-    async def delete_by_filter(self, collection_name: str, filter: dict) -> int:
+    async def delete_by_filter(
+        self,
+        execution_context: ExecutionContext,
+        knowledge_base_uuid: str,
+        filter: dict,
+    ) -> int:
         """Proxy: Delete vectors by metadata filter.
 
         Returns:
             Number of deleted vectors (best-effort; some backends return 0).
         """
+        collection_name = await self._resolve_physical_collection_name(
+            execution_context,
+            knowledge_base_uuid,
+        )
         return await self.vector_db.delete_by_filter(collection_name, filter)
 
     async def list_by_filter(
         self,
-        collection_name: str,
+        execution_context: ExecutionContext,
+        knowledge_base_uuid: str,
         filter: dict | None = None,
         limit: int = 20,
         offset: int = 0,
@@ -187,4 +343,8 @@ class VectorDBManager:
         Returns:
             Tuple of (items, total).
         """
+        collection_name = await self._resolve_physical_collection_name(
+            execution_context,
+            knowledge_base_uuid,
+        )
         return await self.vector_db.list_by_filter(collection_name, filter, limit, offset)

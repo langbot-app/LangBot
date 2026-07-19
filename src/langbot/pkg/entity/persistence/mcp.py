@@ -7,6 +7,11 @@ class MCPServer(Base):
     __tablename__ = 'mcp_servers'
 
     uuid = sqlalchemy.Column(sqlalchemy.String(255), primary_key=True, unique=True)
+    workspace_uuid = sqlalchemy.Column(
+        sqlalchemy.String(36),
+        sqlalchemy.ForeignKey('workspaces.uuid', ondelete='CASCADE'),
+        nullable=False,
+    )
     name = sqlalchemy.Column(sqlalchemy.String(255), nullable=False)
     enable = sqlalchemy.Column(sqlalchemy.Boolean, nullable=False, default=False)
     mode = sqlalchemy.Column(sqlalchemy.String(255), nullable=False)  # stdio, remote (legacy: sse, http)
@@ -21,4 +26,9 @@ class MCPServer(Base):
         nullable=False,
         server_default=sqlalchemy.func.now(),
         onupdate=sqlalchemy.func.now(),
+    )
+
+    __table_args__ = (
+        sqlalchemy.UniqueConstraint('workspace_uuid', 'name', name='uq_mcp_servers_workspace_name'),
+        sqlalchemy.Index('ix_mcp_servers_workspace_enable', 'workspace_uuid', 'enable'),
     )

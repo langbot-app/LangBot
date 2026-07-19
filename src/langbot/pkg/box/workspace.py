@@ -274,6 +274,7 @@ class BoxWorkspaceSession:
     def __init__(
         self,
         box_service,
+        execution_context,
         session_id: str,
         *,
         host_path: str | None = None,
@@ -290,6 +291,7 @@ class BoxWorkspaceSession:
         persistent: bool = False,
     ):
         self.box_service = box_service
+        self.execution_context = execution_context
         self.session_id = session_id
         self.host_path = host_path
         self.host_path_mode = host_path_mode
@@ -363,7 +365,7 @@ class BoxWorkspaceSession:
         timeout_sec: int | None = None,
     ):
         payload = self.build_exec_payload(cmd, workdir=workdir, env=env, timeout_sec=timeout_sec)
-        return await self.box_service.client.execute(self.box_service.build_spec(payload))
+        return await self.box_service.execute_in_context(self.execution_context, payload)
 
     async def execute_for_query(
         self,
@@ -378,7 +380,7 @@ class BoxWorkspaceSession:
         return await self.box_service.execute_spec_payload(payload, query)
 
     async def create_session(self):
-        return await self.box_service.create_session(self.build_session_payload())
+        return await self.box_service.create_session(self.execution_context, self.build_session_payload())
 
     def build_process_payload(
         self,
@@ -415,16 +417,26 @@ class BoxWorkspaceSession:
     ):
         payload = self.build_process_payload(command, args, env=env, cwd=cwd)
         payload['process_id'] = process_id
-        return await self.box_service.start_managed_process(self.session_id, payload)
+        return await self.box_service.start_managed_process(self.execution_context, self.session_id, payload)
 
     async def get_managed_process(self, process_id: str = 'default'):
-        return await self.box_service.get_managed_process(self.session_id, process_id)
+        return await self.box_service.get_managed_process(self.execution_context, self.session_id, process_id)
 
     async def stop_managed_process(self, process_id: str = 'default') -> None:
-        await self.box_service.stop_managed_process(self.session_id, process_id)
+        await self.box_service.stop_managed_process(self.execution_context, self.session_id, process_id)
 
-    def get_managed_process_websocket_url(self, process_id: str = 'default') -> str:
-        return self.box_service.get_managed_process_websocket_url(self.session_id, process_id)
+    async def get_managed_process_websocket_connection(
+        self,
+        process_id: str = 'default',
+    ) -> tuple[str, dict[str, str]]:
+        return await self.box_service.get_managed_process_websocket_connection(
+            self.execution_context,
+            self.session_id,
+            process_id,
+        )
 
     async def cleanup(self) -> None:
-        await self.box_service.client.delete_session(self.session_id)
+        await self.box_service.client.delete_session(
+            self.session_id,
+            action_context=self.box_service._action_context(self.execution_context),
+        )

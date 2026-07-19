@@ -25,6 +25,7 @@ class TestGetSession:
 
         assert isinstance(session, aiohttp.ClientSession)
         assert not session.closed
+        assert isinstance(session.cookie_jar, aiohttp.DummyCookieJar)
 
         # Cleanup
         await session.close()
@@ -143,4 +144,13 @@ class TestSessionPoolIntegration:
 
         assert session is session2
 
+        await httpclient.close_all()
+
+    async def test_shared_session_does_not_persist_cookies(self):
+        """Shared transport pooling never creates cross-Workspace cookie state."""
+        session = httpclient.get_session()
+
+        session.cookie_jar.update_cookies({'workspace_session': 'secret'})
+
+        assert list(session.cookie_jar) == []
         await httpclient.close_all()

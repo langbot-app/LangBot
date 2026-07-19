@@ -18,6 +18,8 @@ from hypercorn.config import Config
 from quart import Quart
 
 from langbot.pkg.api.mcp.mount import MCPMount
+from langbot.pkg.api.http.authz import Permission
+from langbot.pkg.api.http.service.apikey import ApiKeyIdentity
 
 PORT = 5399
 GLOBAL_KEY = 'test-global-key-123'
@@ -31,11 +33,19 @@ def build_ap() -> SimpleNamespace:
     ap.ver_mgr = SimpleNamespace(get_current_version=lambda: '4.5.0-test')
     ap.logger = SimpleNamespace(info=print, error=print, warning=print)
 
-    # API key verification: reuse real logic shape (global key match)
-    async def verify_api_key(key: str) -> bool:
-        return bool(key) and key == GLOBAL_KEY
+    # API key authentication derives the trusted Workspace carried into tools.
+    async def authenticate_api_key(key: str) -> ApiKeyIdentity | None:
+        if key != GLOBAL_KEY:
+            return None
+        return ApiKeyIdentity(
+            instance_uuid='inst-1',
+            workspace_uuid='workspace-1',
+            placement_generation=1,
+            api_key_uuid='global-test-key',
+            permissions=frozenset(permission.value for permission in Permission),
+        )
 
-    ap.apikey_service = SimpleNamespace(verify_api_key=verify_api_key)
+    ap.apikey_service = SimpleNamespace(authenticate_api_key=authenticate_api_key)
     ap.bot_service = SimpleNamespace(
         get_bots=AsyncMock(return_value=[{'uuid': 'bot-1', 'name': 'Demo Bot', 'adapter': 'telegram'}])
     )

@@ -49,6 +49,7 @@ def make_app():
     # skills
     ap.skill_mgr = Mock()
     ap.skill_mgr.skills = {'a': {}, 'b': {}, 'c': {}}
+    ap.skill_mgr.total_cached_skill_count.return_value = 3
 
     return ap
 

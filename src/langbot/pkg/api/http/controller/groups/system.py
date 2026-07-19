@@ -5,7 +5,9 @@ import sqlalchemy
 
 from .. import group
 from .....utils import constants
-from .....entity.persistence.metadata import Metadata
+from .....entity.persistence.metadata import WorkspaceMetadata
+from ...authz import Permission
+from ...context import RequestContext
 
 
 @group.group_class('system', '/api/v1/system')
@@ -17,17 +19,25 @@ class SystemRouterGroup(group.RouterGroup):
             wizard_status = 'none'
             wizard_progress = None
             try:
-                result = await self.ap.persistence_mgr.execute_async(
-                    sqlalchemy.select(Metadata).where(Metadata.key.in_(['wizard_status', 'wizard_progress']))
-                )
-                for row in result:
-                    if row.key == 'wizard_status':
-                        wizard_status = row.value
-                    elif row.key == 'wizard_progress':
-                        try:
-                            wizard_progress = json.loads(row.value)
-                        except (json.JSONDecodeError, TypeError):
-                            wizard_progress = None
+                authorization = quart.request.headers.get('Authorization', '')
+                if authorization.startswith('Bearer '):
+                    account, _ = await self._authenticate_account(authorization.removeprefix('Bearer '))
+                    request_context = await self._resolve_account_context(account, group.AuthType.USER_TOKEN)
+                    if request_context is not None:
+                        result = await self.ap.persistence_mgr.execute_async(
+                            sqlalchemy.select(WorkspaceMetadata).where(
+                                WorkspaceMetadata.workspace_uuid == request_context.workspace_uuid,
+                                WorkspaceMetadata.key.in_(['wizard_status', 'wizard_progress']),
+                            )
+                        )
+                        for row in result:
+                            if row.key == 'wizard_status':
+                                wizard_status = row.value
+                            elif row.key == 'wizard_progress':
+                                try:
+                                    wizard_progress = json.loads(row.value)
+                                except (json.JSONDecodeError, TypeError):
+                                    wizard_progress = None
             except Exception:
                 pass
 
@@ -67,8 +77,13 @@ class SystemRouterGroup(group.RouterGroup):
                 }
             )
 
-        @self.route('/wizard/completed', methods=['POST'], auth_type=group.AuthType.USER_TOKEN)
-        async def _() -> str:
+        @self.route(
+            '/wizard/completed',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN,
+            permission=Permission.WORKSPACE_UPDATE,
+        )
+        async def _(request_context: RequestContext) -> str:
             """Mark wizard status in metadata table and clear progress.
 
             Accepts JSON body: { "status": "skipped" | "completed" }
@@ -80,28 +95,48 @@ class SystemRouterGroup(group.RouterGroup):
 
             try:
                 result = await self.ap.persistence_mgr.execute_async(
-                    sqlalchemy.select(Metadata).where(Metadata.key == 'wizard_status')
+                    sqlalchemy.select(WorkspaceMetadata).where(
+                        WorkspaceMetadata.workspace_uuid == request_context.workspace_uuid,
+                        WorkspaceMetadata.key == 'wizard_status',
+                    )
                 )
                 if result.first():
                     await self.ap.persistence_mgr.execute_async(
-                        sqlalchemy.update(Metadata).where(Metadata.key == 'wizard_status').values(value=status)
+                        sqlalchemy.update(WorkspaceMetadata)
+                        .where(
+                            WorkspaceMetadata.workspace_uuid == request_context.workspace_uuid,
+                            WorkspaceMetadata.key == 'wizard_status',
+                        )
+                        .values(value=status)
                     )
                 else:
                     await self.ap.persistence_mgr.execute_async(
-                        sqlalchemy.insert(Metadata).values(key='wizard_status', value=status)
+                        sqlalchemy.insert(WorkspaceMetadata).values(
+                            workspace_uuid=request_context.workspace_uuid,
+                            key='wizard_status',
+                            value=status,
+                        )
                     )
 
                 # Clear wizard progress when wizard is completed/skipped
                 await self.ap.persistence_mgr.execute_async(
-                    sqlalchemy.delete(Metadata).where(Metadata.key == 'wizard_progress')
+                    sqlalchemy.delete(WorkspaceMetadata).where(
+                        WorkspaceMetadata.workspace_uuid == request_context.workspace_uuid,
+                        WorkspaceMetadata.key == 'wizard_progress',
+                    )
                 )
-            except Exception as e:
-                return self.http_status(500, 500, f'Failed to update wizard status: {e}')
+            except Exception:
+                raise
 
             return self.success(data={})
 
-        @self.route('/wizard/progress', methods=['PUT'], auth_type=group.AuthType.USER_TOKEN)
-        async def _() -> str:
+        @self.route(
+            '/wizard/progress',
+            methods=['PUT'],
+            auth_type=group.AuthType.USER_TOKEN,
+            permission=Permission.WORKSPACE_UPDATE,
+        )
+        async def _(request_context: RequestContext) -> str:
             """Save wizard progress to metadata table.
 
             Accepts JSON body with wizard state fields:
@@ -113,23 +148,40 @@ class SystemRouterGroup(group.RouterGroup):
 
             try:
                 result = await self.ap.persistence_mgr.execute_async(
-                    sqlalchemy.select(Metadata).where(Metadata.key == 'wizard_progress')
+                    sqlalchemy.select(WorkspaceMetadata).where(
+                        WorkspaceMetadata.workspace_uuid == request_context.workspace_uuid,
+                        WorkspaceMetadata.key == 'wizard_progress',
+                    )
                 )
                 if result.first():
                     await self.ap.persistence_mgr.execute_async(
-                        sqlalchemy.update(Metadata).where(Metadata.key == 'wizard_progress').values(value=progress_json)
+                        sqlalchemy.update(WorkspaceMetadata)
+                        .where(
+                            WorkspaceMetadata.workspace_uuid == request_context.workspace_uuid,
+                            WorkspaceMetadata.key == 'wizard_progress',
+                        )
+                        .values(value=progress_json)
                     )
                 else:
                     await self.ap.persistence_mgr.execute_async(
-                        sqlalchemy.insert(Metadata).values(key='wizard_progress', value=progress_json)
+                        sqlalchemy.insert(WorkspaceMetadata).values(
+                            workspace_uuid=request_context.workspace_uuid,
+                            key='wizard_progress',
+                            value=progress_json,
+                        )
                     )
-            except Exception as e:
-                return self.http_status(500, 500, f'Failed to save wizard progress: {e}')
+            except Exception:
+                raise
 
             return self.success(data={})
 
-        @self.route('/tasks', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
-        async def _() -> str:
+        @self.route(
+            '/tasks',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN,
+            permission=Permission.RESOURCE_VIEW,
+        )
+        async def _(request_context: RequestContext) -> str:
             task_type = quart.request.args.get('type')
             task_kind = quart.request.args.get('kind')
 
@@ -138,29 +190,55 @@ class SystemRouterGroup(group.RouterGroup):
             if task_kind == '':
                 task_kind = None
 
-            return self.success(data=self.ap.task_mgr.get_tasks_dict(task_type, task_kind))
+            return self.success(
+                data=self.ap.task_mgr.get_tasks_dict(
+                    task_type,
+                    task_kind,
+                    instance_uuid=request_context.instance_uuid,
+                    workspace_uuid=request_context.workspace_uuid,
+                    placement_generation=request_context.placement_generation,
+                )
+            )
 
-        @self.route('/tasks/<task_id>', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
-        async def _(task_id: str) -> str:
-            task = self.ap.task_mgr.get_task_by_id(int(task_id))
+        @self.route(
+            '/tasks/<task_id>',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN,
+            permission=Permission.RESOURCE_VIEW,
+        )
+        async def _(task_id: str, request_context: RequestContext) -> str:
+            task = self.ap.task_mgr.get_task_by_id(
+                int(task_id),
+                instance_uuid=request_context.instance_uuid,
+                workspace_uuid=request_context.workspace_uuid,
+                placement_generation=request_context.placement_generation,
+            )
 
             if task is None:
                 return self.http_status(404, 404, 'Task not found')
 
             return self.success(data=task.to_dict())
 
-        @self.route('/storage-analysis', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
-        async def _() -> str:
-            return self.success(data=await self.ap.maintenance_service.get_storage_analysis())
+        @self.route(
+            '/storage-analysis',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN,
+            permission=Permission.AUDIT_VIEW,
+        )
+        async def _(request_context: RequestContext) -> str:
+            return self.success(data=await self.ap.maintenance_service.get_storage_analysis(request_context))
 
         @self.route(
             '/debug/plugin/action',
             methods=['POST'],
             auth_type=group.AuthType.USER_TOKEN,
+            permission=Permission.RUNTIME_OPERATE,
         )
-        async def _() -> str:
+        async def _(request_context: RequestContext) -> str:
             if not constants.debug_mode:
                 return self.http_status(403, 403, 'Forbidden')
+
+            await self.ap.plugin_connector.require_workspace_context(request_context)
 
             data = await quart.request.json
 
@@ -174,6 +252,7 @@ class SystemRouterGroup(group.RouterGroup):
                 AnoymousAction(data['action']),
                 data['data'],
                 timeout=data.get('timeout', 10),
+                action_context=self.ap.plugin_connector.handler.require_bound_action_context().without_installation(),
             )
 
             return self.success(data=resp)
@@ -182,8 +261,10 @@ class SystemRouterGroup(group.RouterGroup):
             '/status/plugin-system',
             methods=['GET'],
             auth_type=group.AuthType.USER_TOKEN,
+            permission=Permission.RESOURCE_VIEW,
         )
-        async def _() -> str:
+        async def _(request_context: RequestContext) -> str:
+            await self.ap.plugin_connector.require_workspace_context(request_context)
             plugin_connector_error = 'ok'
             is_connected = True
 

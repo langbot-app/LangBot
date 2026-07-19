@@ -14,6 +14,14 @@ from unittest.mock import Mock, AsyncMock
 from importlib import import_module
 
 from tests.factories import text_query
+from langbot_plugin.entities.io.context import ActionContext
+
+
+TEST_ACTION_CONTEXT = ActionContext(
+    instance_uuid='instance-a',
+    workspace_uuid='workspace-a',
+    placement_generation=1,
+)
 
 
 def get_connector_module():
@@ -88,6 +96,7 @@ class TestListPlugins:
         connector = create_mock_connector()
 
         connector.handler = AsyncMock()
+        connector.handler.require_bound_action_context = Mock(return_value=TEST_ACTION_CONTEXT)
         connector.handler.list_plugins = AsyncMock(
             return_value=[{'manifest': {'manifest': {'metadata': {'author': 'test', 'name': 'plugin'}}}}]
         )
@@ -96,6 +105,8 @@ class TestListPlugins:
 
         connector.handler.list_plugins.assert_called_once()
         assert result == [{'manifest': {'manifest': {'metadata': {'author': 'test', 'name': 'plugin'}}}}]
+        statement = connector.ap.persistence_mgr.execute_async.await_args.args[0]
+        assert 'workspace-a' in statement.compile().params.values()
 
     @pytest.mark.asyncio
     async def test_filters_by_component_kinds(self):
@@ -104,6 +115,7 @@ class TestListPlugins:
         connector = create_mock_connector()
 
         connector.handler = AsyncMock()
+        connector.handler.require_bound_action_context = Mock(return_value=TEST_ACTION_CONTEXT)
         connector.handler.list_plugins = AsyncMock(
             return_value=[
                 {
@@ -131,6 +143,7 @@ class TestListPlugins:
         connector = create_mock_connector()
 
         connector.handler = AsyncMock()
+        connector.handler.require_bound_action_context = Mock(return_value=TEST_ACTION_CONTEXT)
         connector.handler.list_plugins = AsyncMock(
             return_value=[
                 {

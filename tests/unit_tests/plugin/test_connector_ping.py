@@ -6,8 +6,13 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from langbot.pkg.plugin import connector as connector_module
+from langbot.pkg.api.http.context import ExecutionContext
 from langbot.pkg.plugin.connector import PluginRuntimeConnector, PluginRuntimeNotConnectedError
+from langbot_plugin.entities.io.context import ActionContext
+from langbot_plugin.runtime.security import (
+    PLUGIN_RUNTIME_CONTROL_TOKEN_ENV,
+    PLUGIN_RUNTIME_CONTROL_TOKEN_HEADER,
+)
 
 
 def make_connector() -> PluginRuntimeConnector:
@@ -38,130 +43,190 @@ async def test_ping_plugin_runtime_delegates_to_connected_handler():
 
 
 @pytest.mark.asyncio
-async def test_stop_transport_tolerates_handler_callback_removing_attribute():
-    connector = make_connector()
+async def test_disabled_connector_validates_workspace_without_runtime_handler():
+    app = SimpleNamespace(
+        instance_config=SimpleNamespace(data={'plugin': {'enable': False}}),
+        workspace_service=SimpleNamespace(
+            get_execution_binding=AsyncMock(
+                return_value=SimpleNamespace(
+                    instance_uuid='instance-a',
+                    workspace_uuid='workspace-a',
+                    placement_generation=3,
+                )
+            )
+        ),
+    )
+    connector = PluginRuntimeConnector(app, AsyncMock())
+    request_context = ExecutionContext(
+        instance_uuid='instance-a',
+        workspace_uuid='workspace-a',
+        placement_generation=3,
+    )
 
-    class Handler:
-        async def close(self):
-            del connector.handler
+    result = await connector.require_workspace_context(request_context)
 
-    connector.handler = Handler()
-
-    await connector._stop_transport()
-
-    assert not hasattr(connector, 'handler')
+    assert result == request_context
+    app.workspace_service.get_execution_binding.assert_awaited_once_with(
+        'workspace-a',
+        expected_generation=3,
+    )
 
 
 @pytest.mark.asyncio
-async def test_stdio_runtime_connection_does_not_capture_unconsumed_stderr(
-    monkeypatch: pytest.MonkeyPatch,
-):
+async def test_enabled_connector_reports_not_connected_after_workspace_validation():
     connector = make_connector()
-    created = {}
-
-    class FakeRuntimeHandler:
-        def __init__(self, connection, disconnect_callback, ap):
-            self.release = asyncio.Event()
-
-        async def ping(self):
-            return None
-
-        async def set_runtime_config(self, **kwargs):
-            return None
-
-        async def run(self):
-            await self.release.wait()
-
-        async def close(self):
-            self.release.set()
-
-    class FakeController:
-        def __init__(self, **kwargs):
-            created.update(kwargs)
-
-        async def run(self, callback):
-            await callback(object())
-
-        async def close(self):
-            return None
-
-    monkeypatch.setattr(connector_module.platform, 'get_platform', lambda: 'linux')
-    monkeypatch.setattr(
-        connector_module.platform,
-        'use_websocket_to_connect_plugin_runtime',
-        lambda: False,
+    connector.ap.workspace_service = SimpleNamespace(
+        get_execution_binding=AsyncMock(
+            return_value=SimpleNamespace(
+                instance_uuid='instance-a',
+                workspace_uuid='workspace-a',
+                placement_generation=3,
+            )
+        )
     )
-    monkeypatch.setattr(
-        connector_module.handler,
-        'RuntimeConnectionHandler',
-        FakeRuntimeHandler,
-    )
-    monkeypatch.setattr(
-        connector_module.stdio_client_controller,
-        'StdioClientController',
-        FakeController,
+    request_context = ExecutionContext(
+        instance_uuid='instance-a',
+        workspace_uuid='workspace-a',
+        placement_generation=3,
     )
 
-    await connector.initialize()
-
-    assert created['capture_stderr'] is False
-    assert connector._connected.is_set()
-    await connector.aclose()
+    with pytest.raises(PluginRuntimeNotConnectedError, match='Plugin runtime is not connected'):
+        await connector.require_workspace_context(request_context)
 
 
 @pytest.mark.asyncio
-async def test_runtime_disconnect_notifies_once_and_clears_handler(
-    monkeypatch: pytest.MonkeyPatch,
-):
-    disconnect = AsyncMock()
-    connector = PluginRuntimeConnector(make_connector().ap, disconnect)
-
-    class FakeRuntimeHandler:
-        def __init__(self, connection, disconnect_callback, ap):
-            self.disconnect_callback = disconnect_callback
-
-        async def ping(self):
-            return None
-
-        async def set_runtime_config(self, **kwargs):
-            return None
-
-        async def run(self):
-            await self.disconnect_callback(self)
-
-        async def close(self):
-            return None
-
-    class FakeController:
-        def __init__(self, **kwargs):
-            pass
-
-        async def run(self, callback):
-            await callback(object())
-
-        async def close(self):
-            return None
-
-    monkeypatch.setattr(connector_module.platform, 'get_platform', lambda: 'linux')
-    monkeypatch.setattr(
-        connector_module.platform,
-        'use_websocket_to_connect_plugin_runtime',
-        lambda: False,
-    )
-    monkeypatch.setattr(
-        connector_module.handler,
-        'RuntimeConnectionHandler',
-        FakeRuntimeHandler,
-    )
-    monkeypatch.setattr(
-        connector_module.stdio_client_controller,
-        'StdioClientController',
-        FakeController,
+async def test_connector_resolves_oss_singleton_binding_from_workspace_service():
+    connector = make_connector()
+    connector.ap.workspace_service = SimpleNamespace(
+        get_local_execution_binding=AsyncMock(
+            return_value=SimpleNamespace(
+                instance_uuid='instance-a',
+                workspace_uuid='workspace-a',
+                placement_generation=3,
+            )
+        )
     )
 
-    await connector.initialize()
-    await asyncio.sleep(0)
+    assert await connector._resolve_action_context() == ActionContext(
+        instance_uuid='instance-a',
+        workspace_uuid='workspace-a',
+        placement_generation=3,
+    )
 
-    disconnect.assert_awaited_once_with(connector)
-    assert not hasattr(connector, 'handler')
-    await connector.aclose()
+
+@pytest.mark.asyncio
+async def test_edition_metadata_cannot_enable_multi_workspace_runtime_binding():
+    connector = make_connector()
+    connector.ap.instance_config.data['system'] = {'edition': 'cloud'}
+    connector.ap.workspace_service = SimpleNamespace(
+        policy=SimpleNamespace(multi_workspace_enabled=False),
+        get_local_execution_binding=AsyncMock(
+            return_value=SimpleNamespace(
+                instance_uuid='instance-a',
+                workspace_uuid='workspace-a',
+                placement_generation=1,
+            )
+        ),
+    )
+
+    context = await connector._resolve_action_context()
+
+    assert context.workspace_uuid == 'workspace-a'
+
+
+def test_external_runtime_control_headers_require_strong_secret(monkeypatch):
+    monkeypatch.delenv(PLUGIN_RUNTIME_CONTROL_TOKEN_ENV, raising=False)
+    connector = make_connector()
+
+    with pytest.raises(PluginRuntimeNotConnectedError, match=PLUGIN_RUNTIME_CONTROL_TOKEN_ENV):
+        connector._control_headers(allow_generate=False)
+
+
+def test_local_runtime_control_headers_generate_ephemeral_secret(monkeypatch):
+    monkeypatch.delenv(PLUGIN_RUNTIME_CONTROL_TOKEN_ENV, raising=False)
+    connector = make_connector()
+
+    headers = connector._control_headers(allow_generate=True)
+
+    assert len(headers[PLUGIN_RUNTIME_CONTROL_TOKEN_HEADER]) >= 32
+
+
+@pytest.mark.asyncio
+async def test_connector_fails_closed_without_trusted_workspace_service():
+    connector = make_connector()
+
+    with pytest.raises(
+        RuntimeError,
+        match='Plugin Runtime Workspace binding is unavailable',
+    ):
+        await connector._resolve_action_context()
+
+
+@pytest.mark.asyncio
+async def test_cloud_connector_never_falls_back_to_ghost_local_workspace():
+    connector = make_connector()
+    connector.ap.instance_config.data['system'] = {'edition': 'cloud'}
+    get_local_binding = AsyncMock()
+    connector.ap.workspace_service = SimpleNamespace(
+        policy=SimpleNamespace(multi_workspace_enabled=True),
+        get_local_execution_binding=get_local_binding,
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match='require an explicit projected Workspace binding',
+    ):
+        await connector._resolve_action_context()
+
+    get_local_binding.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_cloud_connector_initialize_fails_before_opening_unbound_runtime():
+    connector = make_connector()
+    connector.ap.instance_config.data['system'] = {'edition': 'cloud'}
+    connector.ap.workspace_service = SimpleNamespace(
+        policy=SimpleNamespace(multi_workspace_enabled=True),
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match='require an explicit projected Workspace binding',
+    ):
+        await connector.initialize()
+
+
+@pytest.mark.asyncio
+async def test_explicit_cloud_binding_is_revalidated_against_projection():
+    app = SimpleNamespace(
+        instance_config=SimpleNamespace(
+            data={
+                'plugin': {'enable': True},
+                'system': {'edition': 'cloud'},
+            }
+        )
+    )
+    configured = ActionContext(
+        instance_uuid='instance-a',
+        workspace_uuid='workspace-cloud-a',
+        placement_generation=7,
+    )
+    app.workspace_service = SimpleNamespace(
+        policy=SimpleNamespace(multi_workspace_enabled=True),
+        get_execution_binding=AsyncMock(
+            return_value=SimpleNamespace(
+                instance_uuid='instance-a',
+                workspace_uuid='workspace-cloud-a',
+                placement_generation=7,
+            )
+        ),
+        get_local_execution_binding=AsyncMock(),
+    )
+    connector = PluginRuntimeConnector(app, AsyncMock(), action_context=configured)
+
+    assert await connector._resolve_action_context() == configured
+    app.workspace_service.get_execution_binding.assert_awaited_once_with(
+        'workspace-cloud-a',
+        expected_generation=7,
+    )
+    app.workspace_service.get_local_execution_binding.assert_not_awaited()

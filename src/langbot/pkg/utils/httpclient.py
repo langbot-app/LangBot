@@ -29,7 +29,13 @@ def get_session(*, trust_env: bool = False) -> aiohttp.ClientSession:
 
     session = _sessions.get(key)
     if session is None or session.closed:
-        session = aiohttp.ClientSession(trust_env=trust_env)
+        # Shared transport pools must never share upstream cookie state across
+        # Workspace-scoped requests. Callers that need a stateful cookie jar
+        # must own a dedicated session instead of using this global pool.
+        session = aiohttp.ClientSession(
+            trust_env=trust_env,
+            cookie_jar=aiohttp.DummyCookieJar(),
+        )
         _sessions[key] = session
 
     return session

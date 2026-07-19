@@ -5,8 +5,10 @@ import traceback
 
 from ..core import app
 from ..core import entities as core_entities
+from ..workspace.errors import WorkspaceError, WorkspaceInvariantError
 
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
+from .pool import get_query_execution_context
 
 
 class Controller:
@@ -20,6 +22,52 @@ class Controller:
     def __init__(self, ap: app.Application):
         self.ap = ap
         self.semaphore = asyncio.Semaphore(self.ap.instance_config.data['concurrency']['pipeline'])
+
+    async def _assert_query_execution_active(
+        self,
+        query: pipeline_query.Query,
+    ):
+        """Revalidate a queued query immediately before runtime work starts."""
+
+        execution_context = get_query_execution_context(query)
+        binding = await self.ap.workspace_service.get_execution_binding(
+            execution_context.workspace_uuid,
+            expected_generation=execution_context.placement_generation,
+        )
+        if binding.instance_uuid != execution_context.instance_uuid:
+            raise WorkspaceInvariantError('Queued query instance does not match the active Workspace binding')
+        return execution_context
+
+    async def _process_query(self, selected_query: pipeline_query.Query) -> None:
+        """Run one selected query and always release its scheduling slot."""
+
+        try:
+            async with self.semaphore:
+                execution_context = await self._assert_query_execution_active(selected_query)
+                pipeline_uuid = selected_query.pipeline_uuid
+
+                if pipeline_uuid:
+                    pipeline = await self.ap.pipeline_mgr.get_pipeline_by_uuid(
+                        execution_context,
+                        pipeline_uuid,
+                    )
+                    if pipeline:
+                        await pipeline.run(selected_query)
+                    else:
+                        self.ap.logger.warning(
+                            f'Pipeline {pipeline_uuid} not found for query {selected_query.query_id}, query dropped'
+                        )
+                else:
+                    self.ap.logger.warning(f'No pipeline_uuid for query {selected_query.query_id}, query dropped')
+        except WorkspaceError as exc:
+            self.ap.logger.info(
+                f'Dropped query {selected_query.query_id} because its Workspace execution binding is stale: {exc}'
+            )
+        finally:
+            await self.ap.query_pool.remove_query(selected_query)
+            async with self.ap.query_pool:
+                (await self.ap.sess_mgr.get_session(selected_query))._semaphore.release()
+                self.ap.query_pool.condition.notify_all()
 
     async def consumer(self):
         """事件处理循环"""
@@ -51,40 +99,18 @@ class Controller:
                         continue
 
                 if selected_query:
-
-                    async def _process_query(selected_query: pipeline_query.Query):
-                        async with self.semaphore:  # 总并发上限
-                            # find pipeline
-                            # Here firstly find the bot, then find the pipeline, in case the bot adapter's config is not the latest one.
-                            # Like aiocqhttp, once a client is connected, even the adapter was updated and restarted, the existing client connection will not be affected.
-                            pipeline_uuid = selected_query.pipeline_uuid
-
-                            if pipeline_uuid:
-                                pipeline = await self.ap.pipeline_mgr.get_pipeline_by_uuid(pipeline_uuid)
-                                if pipeline:
-                                    await pipeline.run(selected_query)
-                                else:
-                                    self.ap.logger.warning(
-                                        f'Pipeline {pipeline_uuid} not found for query {selected_query.query_id}, query dropped'
-                                    )
-                            else:
-                                self.ap.logger.warning(
-                                    f'No pipeline_uuid for query {selected_query.query_id}, query dropped'
-                                )
-
-                        async with self.ap.query_pool:
-                            (await self.ap.sess_mgr.get_session(selected_query))._semaphore.release()
-                            # 通知其他协程，有新的请求可以处理了
-                            self.ap.query_pool.condition.notify_all()
-
+                    execution_context = get_query_execution_context(selected_query)
                     self.ap.task_mgr.create_task(
-                        _process_query(selected_query),
+                        self._process_query(selected_query),
                         kind='query',
                         name=f'query-{selected_query.query_id}',
                         scopes=[
                             core_entities.LifecycleControlScope.APPLICATION,
                             core_entities.LifecycleControlScope.PLATFORM,
                         ],
+                        instance_uuid=execution_context.instance_uuid,
+                        workspace_uuid=execution_context.workspace_uuid,
+                        placement_generation=execution_context.placement_generation,
                     )
 
         except Exception as e:

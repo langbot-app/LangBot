@@ -10,6 +10,7 @@ import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
 
+from langbot.pkg.api.http.context import ExecutionContext
 from langbot.pkg.provider.runners.localagent import LocalAgentRunner, _StreamAccumulator
 
 
@@ -95,7 +96,7 @@ def make_query() -> pipeline_query.Query:
     adapter = AsyncMock()
     adapter.is_stream_output_supported = AsyncMock(return_value=False)
 
-    return pipeline_query.Query.model_construct(
+    query = pipeline_query.Query.model_construct(
         query_id='avg-query',
         launcher_type=provider_session.LauncherTypes.PERSON,
         launcher_id=12345,
@@ -122,6 +123,20 @@ def make_query() -> pipeline_query.Query:
         use_llm_model_uuid='test-model-uuid',
         variables={},
     )
+    object.__setattr__(
+        query,
+        '_execution_context',
+        ExecutionContext(
+            instance_uuid='instance-test',
+            workspace_uuid='workspace-test',
+            placement_generation=1,
+            bot_uuid='bot-uuid',
+            pipeline_uuid='pipeline-uuid',
+            query_uuid='query-avg',
+        ),
+    )
+    object.__setattr__(query, 'query_uuid', 'query-avg')
+    return query
 
 
 def test_stream_accumulator_merges_fragmented_tool_call_arguments():
