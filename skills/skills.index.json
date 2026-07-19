@@ -136,10 +136,12 @@
         "references/sandbox-skill-authoring.md",
         "references/skill-all-tool-acceptance.md",
         "references/troubleshooting.md",
-        "references/web-ui-testing.md"
+        "references/web-ui-testing.md",
+        "references/workspace-release-testing.md"
       ],
       "cases": [
         "acp-agent-runner-debug-chat",
+        "agent-run-ledger-audit",
         "agent-runner-async-db-readiness",
         "agent-runner-behavior-matrix",
         "agent-runner-fixture-contract",
@@ -195,7 +197,10 @@
         "webui-login-state",
         "wizard-onebot-agent-runtime",
         "wizard-runner-marketplace-catalog",
-        "wizard-scenario-routing"
+        "wizard-scenario-routing",
+        "workspace-compatibility-preflight",
+        "workspace-plugin-pages-smoke",
+        "workspace-repository-contracts"
       ],
       "case_summaries": [
         {
@@ -226,6 +231,30 @@
             "ui",
             "console",
             "backend_log"
+          ]
+        },
+        {
+          "id": "agent-run-ledger-audit",
+          "title": "Persisted AgentRunner run ledger passes end-to-end invariants",
+          "mode": "probe",
+          "area": "agent",
+          "type": "regression",
+          "priority": "p0",
+          "risk": "high",
+          "ci_eligible": false,
+          "tags": [
+            "agent-runner",
+            "ledger",
+            "audit",
+            "tools"
+          ],
+          "automation": "scripts/e2e/agent-run-ledger-audit.mjs",
+          "setup_automation": [],
+          "setup_provides_env": [],
+          "evidence_required": [
+            "filesystem",
+            "metrics",
+            "api_diagnostic"
           ]
         },
         {
@@ -892,7 +921,8 @@
             "ui",
             "screenshot",
             "console",
-            "backend_log"
+            "network",
+            "api_diagnostic"
           ]
         },
         {
@@ -1040,7 +1070,6 @@
             "screenshot",
             "console",
             "network",
-            "backend_log",
             "api_diagnostic",
             "filesystem",
             "metrics"
@@ -1486,9 +1515,11 @@
           ],
           "evidence_required": [
             "ui",
+            "screenshot",
             "console",
-            "backend_log",
-            "api_diagnostic"
+            "network",
+            "api_diagnostic",
+            "metrics"
           ]
         },
         {
@@ -1797,6 +1828,78 @@
             "console",
             "api_diagnostic"
           ]
+        },
+        {
+          "id": "workspace-compatibility-preflight",
+          "title": "LangBot workspace repositories and local SDK are mutually compatible",
+          "mode": "probe",
+          "area": "release",
+          "type": "smoke",
+          "priority": "p0",
+          "risk": "high",
+          "ci_eligible": true,
+          "tags": [
+            "workspace",
+            "compatibility",
+            "preflight",
+            "sdk"
+          ],
+          "automation": "scripts/e2e/workspace-compatibility-preflight.mjs",
+          "setup_automation": [],
+          "setup_provides_env": [],
+          "evidence_required": [
+            "filesystem",
+            "api_diagnostic"
+          ]
+        },
+        {
+          "id": "workspace-plugin-pages-smoke",
+          "title": "Major workspace plugin pages render and answer read-only Page APIs",
+          "mode": "agent-browser",
+          "area": "plugin",
+          "type": "smoke",
+          "priority": "p0",
+          "risk": "high",
+          "ci_eligible": false,
+          "tags": [
+            "workspace",
+            "plugin",
+            "page",
+            "browser"
+          ],
+          "automation": "scripts/e2e/workspace-plugin-pages-smoke.mjs",
+          "setup_automation": [],
+          "setup_provides_env": [],
+          "evidence_required": [
+            "ui",
+            "screenshot",
+            "console",
+            "network",
+            "api_diagnostic"
+          ]
+        },
+        {
+          "id": "workspace-repository-contracts",
+          "title": "Changed LangBot workspace repositories pass their contract suites",
+          "mode": "probe",
+          "area": "release",
+          "type": "regression",
+          "priority": "p0",
+          "risk": "high",
+          "ci_eligible": true,
+          "tags": [
+            "workspace",
+            "contracts",
+            "pytest",
+            "sdk"
+          ],
+          "automation": "scripts/e2e/workspace-repository-contracts.mjs",
+          "setup_automation": [],
+          "setup_provides_env": [],
+          "evidence_required": [
+            "filesystem",
+            "metrics"
+          ]
         }
       ],
       "suites": [
@@ -1809,6 +1912,8 @@
         "langbot-performance-contract-gate",
         "langbot-performance-reliability-gate",
         "langbot-user-path-performance-gate",
+        "langbot-workspace-contract-gate",
+        "langbot-workspace-release-gate",
         "local-agent-gate"
       ],
       "suite_summaries": [
@@ -2004,6 +2109,57 @@
           ]
         },
         {
+          "id": "langbot-workspace-contract-gate",
+          "title": "LangBot workspace contract gate",
+          "description": "Low-cost cross-repository gate for branch/SDK compatibility and deterministic product contracts before live workflow testing.",
+          "type": "regression",
+          "priority": "p0",
+          "tags": [
+            "workspace",
+            "contracts",
+            "pr-gate"
+          ],
+          "cases": [
+            "workspace-compatibility-preflight",
+            "agent-runner-fixture-contract",
+            "agent-runner-behavior-matrix",
+            "agent-runner-ledger-invariants",
+            "langbot-fault-taxonomy-contract",
+            "langbot-overhead-accounting-contract",
+            "workspace-repository-contracts"
+          ]
+        },
+        {
+          "id": "langbot-workspace-release-gate",
+          "title": "LangBot workspace top-down release gate",
+          "description": "Broad release gate combining deterministic repository contracts with representative browser workflows, plugin pages, RAG/parser, EBA, external AgentRunner, and one complex LocalAgent task.",
+          "type": "release_gate",
+          "priority": "p0",
+          "tags": [
+            "workspace",
+            "release-gate",
+            "browser",
+            "agent"
+          ],
+          "cases": [
+            "workspace-compatibility-preflight",
+            "workspace-repository-contracts",
+            "agent-runner-release-preflight",
+            "webui-login-state",
+            "wizard-scenario-routing",
+            "bot-event-routing-product-flow",
+            "agent-runner-health-visibility",
+            "agent-runner-qa-debug-chat",
+            "local-agent-complex-coding-task-debug-chat",
+            "agent-run-ledger-audit",
+            "langrag-kb-retrieve",
+            "workspace-plugin-pages-smoke",
+            "mcp-stdio-register",
+            "mcp-stdio-tool-call",
+            "wizard-onebot-agent-runtime"
+          ]
+        },
+        {
           "id": "local-agent-gate",
           "title": "Local Agent runner regression gate",
           "description": "High-signal local-agent runner checks covering prompt bridge, RAG, context compaction, plugin tools, MCP tools, non-streaming, and multimodal paths.",
@@ -2145,10 +2301,12 @@
         "aiosqlite-connect-hangs",
         "ambiguous-runner-default-label",
         "backend-not-listening",
+        "box-runtime-silent-action-timeout",
         "box-session-conflict-logical-metadata",
         "debug-chat-history-contaminates-automation",
         "dynamic-form-missing-config-id",
         "e2b-extra-mount-sync-missing",
+        "local-agent-mcp-text-result-empty-follow-up",
         "local-agent-model-route-unavailable",
         "marketplace-network-flaky",
         "mcp-stdio-args-not-applied",
@@ -2204,6 +2362,16 @@
           ]
         },
         {
+          "id": "box-runtime-silent-action-timeout",
+          "title": "Box runtime process stays alive while all action RPC calls time out",
+          "category": "product",
+          "related_cases": [
+            "local-agent-complex-coding-task-debug-chat",
+            "agent-run-ledger-audit",
+            "mcp-stdio-tool-call"
+          ]
+        },
+        {
           "id": "box-session-conflict-logical-metadata",
           "title": "BoxSessionConflictError after a successful first exec",
           "category": "product",
@@ -2236,6 +2404,16 @@
           "category": "product",
           "related_cases": [
             "sandbox-skill-authoring-e2e"
+          ]
+        },
+        {
+          "id": "local-agent-mcp-text-result-empty-follow-up",
+          "title": "MCP tool succeeds but Local Agent completes without a visible reply",
+          "category": "product",
+          "related_cases": [
+            "mcp-stdio-register",
+            "mcp-stdio-tool-call",
+            "agent-run-ledger-audit"
           ]
         },
         {

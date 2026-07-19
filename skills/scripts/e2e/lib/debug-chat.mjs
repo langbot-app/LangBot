@@ -28,6 +28,11 @@ export function findNewFailureSignal(beforeText, afterText, failureSignals = DEB
   return failureSignals.find((signal) => countOccurrences(afterText, signal) > countOccurrences(beforeText, signal)) || "";
 }
 
+export function hasDebugChatOutcome(text, expectedText, minExpectedCount, failureBaselines = []) {
+  if (countOccurrences(text, expectedText) >= minExpectedCount) return true;
+  return failureBaselines.some(({ signal, count }) => countOccurrences(text, signal) > count);
+}
+
 function findFailureSignalInText(text, failureSignals = DEBUG_CHAT_FAILURE_SIGNALS) {
   return failureSignals.find((signal) => String(text || "").includes(signal)) || "";
 }
@@ -320,12 +325,24 @@ export async function visibleDebugChatMessages(page) {
   });
 }
 
-export async function waitForExpectedDebugChatText(page, { expectedText, minExpectedCount, timeoutMs }) {
+export async function waitForExpectedDebugChatText(page, {
+  expectedText,
+  minExpectedCount,
+  timeoutMs,
+  beforeText = "",
+  failureSignals = DEBUG_CHAT_FAILURE_SIGNALS,
+}) {
+  const failureBaselines = failureSignals.map((signal) => ({
+    signal,
+    count: countOccurrences(beforeText, signal),
+  }));
   await page.waitForFunction(
-    ({ expected, min }) => {
-      return document.body.innerText.split(expected).length - 1 >= min;
+    ({ expected, min, failures }) => {
+      const text = document.body.innerText;
+      if (text.split(expected).length - 1 >= min) return true;
+      return failures.some(({ signal, count }) => text.split(signal).length - 1 > count);
     },
-    { expected: expectedText, min: minExpectedCount },
+    { expected: expectedText, min: minExpectedCount, failures: failureBaselines },
     { timeout: timeoutMs },
   ).catch(() => {});
 }
@@ -397,6 +414,8 @@ export async function runDebugChatPrompt(page, {
     minExpectedCount,
     prompt,
     timeoutMs: responseTimeoutMs,
+    beforeText,
+    failureSignals,
   });
   await waitForDebugChatTextStable(page);
 

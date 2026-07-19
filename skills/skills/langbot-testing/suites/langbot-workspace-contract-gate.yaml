@@ -1,0 +1,17 @@
+id: langbot-workspace-contract-gate
+title: "LangBot workspace contract gate"
+description: "Low-cost cross-repository gate for branch/SDK compatibility and deterministic product contracts before live workflow testing."
+type: regression
+priority: p0
+tags:
+  - workspace
+  - contracts
+  - pr-gate
+cases:
+  - workspace-compatibility-preflight
+  - agent-runner-fixture-contract
+  - agent-runner-behavior-matrix
+  - agent-runner-ledger-invariants
+  - langbot-fault-taxonomy-contract
+  - langbot-overhead-accounting-contract
+  - workspace-repository-contracts

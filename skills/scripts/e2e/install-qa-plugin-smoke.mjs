@@ -33,6 +33,7 @@ const expectedTools = (env.LANGBOT_E2E_EXPECTED_TOOLS || env.LANGBOT_E2E_EXPECTE
   .map((item) => item.trim())
   .filter(Boolean);
 const expectedRunnerId = env.LANGBOT_E2E_EXPECTED_RUNNER_ID || "";
+const forceReinstall = /^(?:1|true|yes|on)$/i.test(env.LANGBOT_E2E_FORCE_REINSTALL || "");
 
 const result = {
   source: "automation",
@@ -74,8 +75,10 @@ try {
     result.tool_names = await listToolNames(backendUrl, auth.token);
   }
   const missingToolsBefore = expectedTools.filter((tool) => !result.tool_names.includes(tool));
-  if (result.plugin_present_before && missingToolsBefore.length > 0) {
-    result.reinstall_reason = `Installed plugin is missing expected tools: ${missingToolsBefore.join(", ")}`;
+  if (result.plugin_present_before && (forceReinstall || missingToolsBefore.length > 0)) {
+    result.reinstall_reason = forceReinstall
+      ? "Explicit reinstall requested by LANGBOT_E2E_FORCE_REINSTALL."
+      : `Installed plugin is missing expected tools: ${missingToolsBefore.join(", ")}`;
     const removeTask = await removePlugin(backendUrl, auth.token);
     if (!isTaskComplete(removeTask)) {
       throw new Error(`Plugin reinstall cleanup did not complete successfully: ${JSON.stringify(removeTask)}`);

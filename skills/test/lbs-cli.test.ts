@@ -54,6 +54,7 @@ import { repoRoot } from "../src/cli.ts";
 import {
   classifyDebugChatResult,
   findNewFailureSignal,
+  hasDebugChatOutcome,
   minExpectedOccurrences,
 } from "../scripts/e2e/lib/debug-chat.mjs";
 import {
@@ -1911,6 +1912,17 @@ test("debug chat classifier distinguishes new failure signals from old history",
 
   assert.equal(custom.status, "fail");
   assert.equal(custom.failure_signal, "qa-plugin-smoke:mcp-ok-local-agent");
+});
+
+test("debug chat outcome wait can stop on a new failure signal", () => {
+  const baselines = [{ signal: "runner.timeout", count: 1 }];
+
+  assert.equal(hasDebugChatOutcome("old runner.timeout", "EXPECTED", 1, baselines), false);
+  assert.equal(
+    hasDebugChatOutcome("old runner.timeout\nnew runner.timeout", "EXPECTED", 1, baselines),
+    true,
+  );
+  assert.equal(hasDebugChatOutcome("EXPECTED", "EXPECTED", 1, baselines), true);
 });
 
 test("debug chat classifier lets new failure signals override stale expected history", () => {

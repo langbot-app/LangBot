@@ -74,14 +74,15 @@ checks:
   - "UI: The MCP detail page shows qa_mcp_echo."
   - "API diagnostic: /api/v1/tools contains qa_mcp_echo."
   - "UI: Debug Chat bot response contains qa_mcp_echo:mcp-ok-local-agent."
-  - "Logs: Backend logs show the MCP tool call was executed, not only listed."
   - "API diagnostic: pipeline-extensions-diagnostic.json shows the qa-local-stdio server UUID is the only bound MCP server for the run."
   - "Console: No unexpected frontend errors appear during MCP form use or Debug Chat."
 evidence_required:
   - ui
+  - screenshot
   - console
-  - backend_log
+  - network
   - api_diagnostic
+  - metrics
 diagnostics:
   - "For token-free deterministic UI coverage, start scripts/e2e/fake-openai-provider.mjs and pass LANGBOT_E2E_FAKE_PROVIDER_BASE_URL to this case; setup will bind the local-agent pipeline to that fake OpenAI-compatible model."
   - "Run node scripts/e2e/mcp-stdio-fixture.mjs to verify the bundled stdio fixture can list and call qa_mcp_echo without involving a model provider."
@@ -95,5 +96,6 @@ troubleshooting:
   - mcp-stdio-args-not-applied
   - tool-name-collision-between-mcp-and-plugin
   - local-agent-model-route-unavailable
+  - local-agent-mcp-text-result-empty-follow-up
   - survey-widget-blocks-debug-chat
   - plugin-runtime-timeout

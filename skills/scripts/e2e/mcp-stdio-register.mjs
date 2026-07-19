@@ -71,7 +71,7 @@ const result = {
     automation_result_json: paths.automationResultJson,
     result_json: paths.resultJson,
   },
-  evidence_collected: ["api_diagnostic"],
+  evidence_collected: ["screenshot", "console", "network", "api_diagnostic"],
   wrote_env: false,
 };
 

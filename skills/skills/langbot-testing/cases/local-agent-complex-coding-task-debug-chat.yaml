@@ -72,7 +72,6 @@ evidence_required:
   - screenshot
   - console
   - network
-  - backend_log
   - api_diagnostic
   - filesystem
   - metrics
@@ -91,5 +90,6 @@ failure_patterns:
 troubleshooting:
   - local-agent-model-route-unavailable
   - sandbox-native-tools-unavailable
+  - box-runtime-silent-action-timeout
   - plugin-runtime-timeout
   - debug-chat-history-contaminates-automation

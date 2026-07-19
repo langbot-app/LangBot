@@ -1,0 +1,38 @@
+id: workspace-compatibility-preflight
+title: "LangBot workspace repositories and local SDK are mutually compatible"
+mode: probe
+area: release
+type: smoke
+priority: p0
+risk: high
+ci_eligible: true
+tags:
+  - workspace
+  - compatibility
+  - preflight
+  - sdk
+skills:
+  - langbot-testing
+automation: scripts/e2e/workspace-compatibility-preflight.mjs
+steps:
+  - "Discover the active LangBot checkout and sibling workspace repositories, with LANGBOT_WORKSPACE_ROOT and repository-specific env overrides available for non-default layouts."
+  - "Verify every checkout is on main or dev/4.11.x and record dirty worktrees as warnings only."
+  - "Validate plugin manifest identities for LocalAgent, Control Plane, LongTermMemory, GeneralParsers, LangRAG, and Skill Authoring."
+  - "Use the LangBot virtualenv to import langbot_plugin and AgentRunner Protocol entities from the workspace SDK source tree."
+checks:
+  - "workspace-preflight.json contains no failed checks."
+  - "The langbot_plugin import path is inside the discovered langbot-plugin-sdk/src directory."
+  - "Dirty worktrees are visible as warnings and do not hide compatibility failures."
+evidence_required:
+  - filesystem
+  - api_diagnostic
+diagnostics:
+  - "A branch failure means the checkout is outside the supported main/dev/4.11.x workspace combination."
+  - "A local-sdk-import failure usually means uv restored the pinned PyPI wheel or the workspace SDK path is wrong."
+success_patterns:
+  - "Workspace compatibility preflight passed"
+failure_patterns:
+  - "blocking check"
+  - "did not load from the workspace SDK"
+troubleshooting:
+  - uv-run-resyncs-local-sdk
