@@ -15,7 +15,7 @@ import json
 import secrets
 import time
 import traceback
-from typing import Any, Callable, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
 import aiohttp
 
@@ -33,7 +33,9 @@ from langbot.libs.wecom_ai_bot_api.api import (
     extract_wecom_event_type,
     parse_select_button_action,
 )
-from langbot.pkg.platform.logger import EventLogger
+
+if TYPE_CHECKING:
+    from langbot.pkg.platform.logger import EventLogger
 
 DEFAULT_WS_URL = 'wss://openws.work.weixin.qq.com'
 

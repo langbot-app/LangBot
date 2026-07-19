@@ -3,6 +3,7 @@ from __future__ import annotations
 import quart
 
 from ... import group
+from ......pipeline.extension_preferences import normalize_extension_preferences
 
 
 @group.group_class('pipelines', '/api/v1/pipelines')
@@ -19,7 +20,10 @@ class PipelinesRouterGroup(group.RouterGroup):
             elif quart.request.method == 'POST':
                 json_data = await quart.request.json
 
-                pipeline_uuid = await self.ap.pipeline_service.create_pipeline(json_data)
+                try:
+                    pipeline_uuid = await self.ap.pipeline_service.create_pipeline(json_data)
+                except ValueError as exc:
+                    return self.http_status(400, -1, str(exc))
 
                 return self.success(data={'uuid': pipeline_uuid})
 
@@ -41,7 +45,10 @@ class PipelinesRouterGroup(group.RouterGroup):
             elif quart.request.method == 'PUT':
                 json_data = await quart.request.json
 
-                await self.ap.pipeline_service.update_pipeline(pipeline_uuid, json_data)
+                try:
+                    await self.ap.pipeline_service.update_pipeline(pipeline_uuid, json_data)
+                except ValueError as exc:
+                    return self.http_status(400, -1, str(exc))
 
                 return self.success()
             elif quart.request.method == 'DELETE':
@@ -73,24 +80,27 @@ class PipelinesRouterGroup(group.RouterGroup):
                 plugins = await self.ap.plugin_connector.list_plugins(component_kinds=pipeline_component_kinds)
                 mcp_servers = await self.ap.mcp_service.get_mcp_servers(contain_runtime_info=True)
 
-                # Get available skills
-                available_skills = await self.ap.skill_service.list_skills()
+                # Skill listing depends on Box. Pipeline plugin/MCP binding
+                # must remain usable when Box is slow or unavailable.
+                try:
+                    available_skills = await self.ap.skill_service.list_skills()
+                except Exception as exc:
+                    self.ap.logger.warning('Unable to list skills for pipeline extensions: %s', exc)
+                    available_skills = []
 
-                extensions_prefs = pipeline.get('extensions_preferences', {})
+                extensions_prefs = normalize_extension_preferences(pipeline.get('extensions_preferences'))
                 return self.success(
                     data={
-                        'enable_all_plugins': extensions_prefs.get('enable_all_plugins', True),
-                        'enable_all_mcp_servers': extensions_prefs.get('enable_all_mcp_servers', True),
-                        'enable_all_skills': extensions_prefs.get('enable_all_skills', True),
-                        'bound_plugins': extensions_prefs.get('plugins', []),
+                        'enable_all_plugins': extensions_prefs['enable_all_plugins'],
+                        'enable_all_mcp_servers': extensions_prefs['enable_all_mcp_servers'],
+                        'enable_all_skills': extensions_prefs['enable_all_skills'],
+                        'bound_plugins': extensions_prefs['plugins'],
                         'available_plugins': plugins,
-                        'bound_mcp_servers': extensions_prefs.get('mcp_servers', []),
+                        'bound_mcp_servers': extensions_prefs['mcp_servers'],
                         'available_mcp_servers': mcp_servers,
-                        'bound_mcp_resources': extensions_prefs.get('mcp_resources', []),
-                        'mcp_resource_agent_read_enabled': extensions_prefs.get(
-                            'mcp_resource_agent_read_enabled', True
-                        ),
-                        'bound_skills': extensions_prefs.get('skills', []),
+                        'bound_mcp_resources': extensions_prefs['mcp_resources'],
+                        'mcp_resource_agent_read_enabled': extensions_prefs['mcp_resource_agent_read_enabled'],
+                        'bound_skills': extensions_prefs['skills'],
                         'available_skills': available_skills,
                     }
                 )
@@ -106,16 +116,41 @@ class PipelinesRouterGroup(group.RouterGroup):
                 bound_mcp_resources = json_data.get('bound_mcp_resources')
                 mcp_resource_agent_read_enabled = json_data.get('mcp_resource_agent_read_enabled')
 
-                await self.ap.pipeline_service.update_pipeline_extensions(
-                    pipeline_uuid,
-                    bound_plugins,
-                    bound_mcp_servers,
-                    enable_all_plugins,
-                    enable_all_mcp_servers,
-                    bound_skills=bound_skills,
-                    enable_all_skills=enable_all_skills,
-                    bound_mcp_resources=bound_mcp_resources,
-                    mcp_resource_agent_read_enabled=mcp_resource_agent_read_enabled,
-                )
+                extension_flags = {
+                    'enable_all_plugins': enable_all_plugins,
+                    'enable_all_mcp_servers': enable_all_mcp_servers,
+                    'enable_all_skills': enable_all_skills,
+                }
+                for field, value in extension_flags.items():
+                    if field in json_data and not isinstance(value, bool):
+                        return self.http_status(
+                            400,
+                            -1,
+                            f"Pipeline extension field '{field}' must be a boolean",
+                        )
+
+                if 'mcp_resource_agent_read_enabled' in json_data and not isinstance(
+                    mcp_resource_agent_read_enabled, bool
+                ):
+                    return self.http_status(
+                        400,
+                        -1,
+                        "Pipeline extension field 'mcp_resource_agent_read_enabled' must be a boolean",
+                    )
+
+                try:
+                    await self.ap.pipeline_service.update_pipeline_extensions(
+                        pipeline_uuid,
+                        bound_plugins,
+                        bound_mcp_servers,
+                        enable_all_plugins,
+                        enable_all_mcp_servers,
+                        bound_skills=bound_skills,
+                        enable_all_skills=enable_all_skills,
+                        bound_mcp_resources=bound_mcp_resources,
+                        mcp_resource_agent_read_enabled=mcp_resource_agent_read_enabled,
+                    )
+                except ValueError as exc:
+                    return self.http_status(400, -1, str(exc))
 
                 return self.success()

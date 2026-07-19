@@ -32,6 +32,9 @@ import {
   Server,
   Puzzle,
   RefreshCcw,
+  Bot,
+  Workflow,
+  ListTree,
 } from 'lucide-react';
 import { useTheme } from '@/components/providers/theme-provider';
 
@@ -80,6 +83,7 @@ import {
   SidebarMenuSub,
   SidebarMenuSubButton,
   SidebarMenuSubItem,
+  SidebarRail,
   useSidebar,
 } from '@/components/ui/sidebar';
 import {
@@ -196,7 +200,7 @@ const ENTITY_KEY_MAP: Record<
 // Route prefix map for entity detail pages
 const ENTITY_ROUTE_MAP: Record<EntityCategoryId, string> = {
   bots: '/home/bots',
-  pipelines: '/home/pipelines',
+  pipelines: '/home/agents',
   knowledge: '/home/knowledge',
   plugins: '/home/extensions',
   mcp: '/home/mcp',
@@ -558,6 +562,7 @@ function NavItems({
         const isSkill = categoryId === 'skills';
         const isBot = categoryId === 'bots';
         const isMCP = categoryId === 'mcp';
+        const isAgents = categoryId === 'pipelines';
 
         const resolveItemRoute = (item: SidebarEntityItem): string => {
           if (item.extensionType === 'mcp') {
@@ -640,6 +645,18 @@ function NavItems({
             !inPopover &&
             sidebarData.extensionsGroupByType;
 
+          const showAgentGroupHeaders =
+            isAgents && !inPopover && sidebarData.agentsGroupByKind;
+
+          const agentGroupOrder: Array<'agent' | 'pipeline'> = [
+            'agent',
+            'pipeline',
+          ];
+          const agentGroupLabelKey: Record<'agent' | 'pipeline', string> = {
+            agent: 'agents.kindBadgeAgent',
+            pipeline: 'agents.kindBadgePipeline',
+          };
+
           const groupOrder: Array<'plugin' | 'mcp' | 'skill'> = [
             'plugin',
             'mcp',
@@ -710,7 +727,12 @@ function NavItems({
                       )}
                     />
                   ) : null}
-                  <span className="truncate">{item.name}</span>
+                  <span className="min-w-0 flex-1 truncate">{item.name}</span>
+                  {isBot && item.legacyAdapter && (
+                    <span className="ml-auto shrink-0 rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium leading-none text-amber-700 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300">
+                      {t('bots.legacyAdapterBadge')}
+                    </span>
+                  )}
                 </button>
               );
             }
@@ -773,7 +795,30 @@ function NavItems({
                             )}
                           />
                         ) : null}
-                        <span className="truncate">{item.name}</span>
+                        <span className="min-w-0 flex-1 truncate">
+                          {item.name}
+                        </span>
+                        {isBot && item.legacyAdapter && (
+                          <span className="shrink-0 rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium leading-none text-amber-700 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300">
+                            {t('bots.legacyAdapterBadge')}
+                          </span>
+                        )}
+                        {item.kind && (
+                          <span
+                            className="ml-auto flex shrink-0 items-center text-muted-foreground"
+                            title={
+                              item.kind === 'pipeline'
+                                ? t('agents.kindBadgePipeline')
+                                : t('agents.kindBadgeAgent')
+                            }
+                          >
+                            {item.kind === 'pipeline' ? (
+                              <Workflow className="size-3.5" />
+                            ) : (
+                              <Bot className="size-3.5" />
+                            )}
+                          </span>
+                        )}
                         {item.debug && (
                           <Bug className="size-3.5 shrink-0 text-orange-400" />
                         )}
@@ -825,7 +870,25 @@ function NavItems({
                       </div>
                     );
                   })
-                : visibleItems.map((item) => renderItem(item))}
+                : showAgentGroupHeaders
+                  ? agentGroupOrder.map((kind) => {
+                      const groupItems = visibleItems.filter(
+                        (it) => (it.kind ?? 'agent') === kind,
+                      );
+                      if (groupItems.length === 0) return null;
+                      return (
+                        <div
+                          key={kind}
+                          className="flex flex-col gap-0.5 mt-0.5"
+                        >
+                          <div className="px-2 pt-1 pb-0.5 text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
+                            {t(agentGroupLabelKey[kind])}
+                          </div>
+                          {groupItems.map((item) => renderItem(item))}
+                        </div>
+                      );
+                    })
+                  : visibleItems.map((item) => renderItem(item))}
               {/* Show more / less toggle when items exceed limit */}
               {sortedItems.length > maxItems && !inPopover && (
                 <SidebarMenuSubItem>
@@ -1062,22 +1125,69 @@ function NavItems({
                   <span className="cursor-pointer select-none">
                     {config.name}
                   </span>
-                  <div className="ml-auto flex items-center gap-0.5 -mr-1">
-                    {isExtensionsCategory && (
-                      <button
-                        type="button"
-                        title={t('common.refresh', '刷新')}
-                        className="p-1 rounded-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground [@media(hover:hover)]:opacity-0 group-hover/category-header:opacity-100 transition-all"
-                        onClick={handleRefreshExtensions}
-                      >
-                        <RefreshCcw
+                  {/* Group/refresh controls — left-aligned, hugging the title */}
+                  {(isAgents || isExtensionsCategory) && (
+                    <div className="flex items-center gap-0.5">
+                      {isAgents && (
+                        <button
+                          type="button"
+                          title={t('agents.groupByKind')}
                           className={cn(
-                            'size-3.5',
-                            extRefreshing && 'animate-spin',
+                            'flex items-center gap-1 px-1.5 py-1 rounded-sm text-[10px] transition-all',
+                            sidebarData.agentsGroupByKind
+                              ? 'text-sidebar-accent-foreground bg-sidebar-accent'
+                              : 'text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
                           )}
-                        />
-                      </button>
-                    )}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            sidebarData.setAgentsGroupByKind(
+                              !sidebarData.agentsGroupByKind,
+                            );
+                          }}
+                        >
+                          <ListTree className="size-3.5" />
+                          <span>{t('agents.groupByKindShort')}</span>
+                        </button>
+                      )}
+                      {isExtensionsCategory && (
+                        <button
+                          type="button"
+                          title={t('plugins.groupByType')}
+                          className={cn(
+                            'flex items-center gap-1 px-1.5 py-1 rounded-sm text-[10px] transition-all',
+                            sidebarData.extensionsGroupByType
+                              ? 'text-sidebar-accent-foreground bg-sidebar-accent'
+                              : 'text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
+                          )}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            sidebarData.setExtensionsGroupByType(
+                              !sidebarData.extensionsGroupByType,
+                            );
+                          }}
+                        >
+                          <ListTree className="size-3.5" />
+                          <span>{t('plugins.groupByTypeShort')}</span>
+                        </button>
+                      )}
+                      {isExtensionsCategory && (
+                        <button
+                          type="button"
+                          title={t('common.refresh', '刷新')}
+                          className="p-1 rounded-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground [@media(hover:hover)]:opacity-0 group-hover/category-header:opacity-100 transition-all"
+                          onClick={handleRefreshExtensions}
+                        >
+                          <RefreshCcw
+                            className={cn(
+                              'size-3.5',
+                              extRefreshing && 'animate-spin',
+                            )}
+                          />
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  <div className="ml-auto flex items-center gap-0.5 -mr-1">
                     {canCreate &&
                       (isPlugin ? (
                         <DropdownMenu>
@@ -2144,6 +2254,7 @@ export default function HomeSidebar({
             </SidebarMenuItem>
           </SidebarMenu>
         </SidebarFooter>
+        <SidebarRail />
       </Sidebar>
 
       <Dialog open={feedbackOpen} onOpenChange={setFeedbackOpen}>

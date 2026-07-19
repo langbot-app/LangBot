@@ -153,7 +153,6 @@ def make_app(
     host_root: str = '',
     workspace_quota_mb: int | None = None,
     enabled: bool = True,
-    force_box_session_id_template: str = '',
 ):
     box_config = {
         'enabled': enabled,
@@ -172,13 +171,107 @@ def make_app(
 
     return SimpleNamespace(
         logger=logger,
-        instance_config=SimpleNamespace(
-            data={
-                'box': box_config,
-                'system': {'limitation': {'force_box_session_id_template': force_box_session_id_template}},
-            }
-        ),
+        instance_config=SimpleNamespace(data={'box': box_config}),
     )
+
+
+def test_resolve_box_session_id_is_host_owned():
+    query = make_query(101)
+    query.pipeline_config = {
+        'ai': {
+            'runner': {'id': 'plugin:test/runner/default'},
+            'runner_config': {'plugin:test/runner/default': {}},
+        },
+    }
+    service = BoxService(make_app(Mock()), client=Mock(spec=BoxRuntimeClient))
+
+    session_id = service.resolve_box_session_id(query)
+    assert session_id.startswith('lb-box-')
+    assert len(session_id) == 71
+    assert set(session_id.removeprefix('lb-box-')) <= set('0123456789abcdef')
+    assert 'test_user' not in session_id
+
+
+def test_resolve_box_session_id_is_stable_and_conversation_scoped():
+    service = BoxService(make_app(Mock()), client=Mock(spec=BoxRuntimeClient))
+    first = pipeline_query.Query.model_construct(
+        query_id=1,
+        launcher_type='group',
+        launcher_id='room-1',
+        bot_uuid='bot-1',
+    )
+    same_conversation = pipeline_query.Query.model_construct(
+        query_id=2,
+        launcher_type='group',
+        launcher_id='room-1',
+        bot_uuid='bot-1',
+    )
+    other_conversation = pipeline_query.Query.model_construct(
+        query_id=3,
+        launcher_type='group',
+        launcher_id='room-2',
+        bot_uuid='bot-1',
+    )
+
+    assert service.resolve_box_session_id(first) == service.resolve_box_session_id(same_conversation)
+    assert service.resolve_box_session_id(first) != service.resolve_box_session_id(other_conversation)
+
+
+def test_resolve_box_session_id_prefers_private_host_scope():
+    service = BoxService(make_app(Mock()), client=Mock(spec=BoxRuntimeClient))
+    first = pipeline_query.Query.model_construct(
+        query_id=1,
+        launcher_type='person',
+        launcher_id='raw-launcher-a',
+        variables={'_host_box_scope': 'trusted-conversation'},
+    )
+    same_scope = pipeline_query.Query.model_construct(
+        query_id=2,
+        launcher_type='group',
+        launcher_id='raw-launcher-b',
+        variables={'_host_box_scope': 'trusted-conversation'},
+    )
+    other_scope = pipeline_query.Query.model_construct(
+        query_id=3,
+        launcher_type='person',
+        launcher_id='raw-launcher-a',
+        variables={'_host_box_scope': 'other-conversation'},
+    )
+
+    assert service.resolve_box_session_id(first) == service.resolve_box_session_id(same_scope)
+    assert service.resolve_box_session_id(first) != service.resolve_box_session_id(other_scope)
+
+
+def test_resolve_box_session_id_hashes_unsafe_unicode_and_long_identity():
+    raw_identity = '用户/../../workspace/' + ('x' * 1000)
+    query = pipeline_query.Query.model_construct(
+        query_id=1,
+        launcher_type='group/unsafe',
+        launcher_id=raw_identity,
+        variables={'_host_box_scope': raw_identity},
+    )
+    service = BoxService(make_app(Mock()), client=Mock(spec=BoxRuntimeClient))
+
+    session_id = service.resolve_box_session_id(query)
+
+    assert session_id.startswith('lb-box-')
+    assert len(session_id) == 71
+    assert session_id.isascii()
+    assert '/' not in session_id
+    assert '用户' not in session_id
+
+
+def test_resolve_box_session_id_rejects_missing_private_host_scope():
+    query = pipeline_query.Query.model_construct(
+        query_id=1,
+        launcher_type='person',
+        launcher_id='fallback-must-not-be-used',
+        variables={'_host_box_scope': None},
+    )
+    service = BoxService(make_app(Mock()), client=Mock(spec=BoxRuntimeClient))
+
+    with pytest.raises(BoxValidationError, match='Host conversation scope'):
+        service.resolve_box_session_id(query)
 
 
 @pytest.mark.asyncio
@@ -354,11 +447,13 @@ async def test_box_service_defaults_session_id_from_query():
     service = BoxService(make_app(logger), client=_InProcessBoxRuntimeClient(logger, runtime))
     await service.initialize()
 
-    result = await service.execute_tool({'command': 'pwd'}, make_query(7))
+    query = make_query(7)
+    expected_session_id = service.resolve_box_session_id(query)
+    result = await service.execute_tool({'command': 'pwd'}, query)
 
-    assert result['session_id'] == 'person_test_user'
+    assert result['session_id'] == expected_session_id
     assert result['ok'] is True
-    assert backend.start_calls == ['person_test_user']
+    assert backend.start_calls == [expected_session_id]
 
 
 @pytest.mark.asyncio
@@ -370,15 +465,16 @@ async def test_box_service_session_id_uses_query_attributes_without_variables():
     await service.initialize()
 
     query = pipeline_query.Query.model_construct(query_id=7, launcher_type='group', launcher_id='room-1')
+    expected_session_id = service.resolve_box_session_id(query)
     result = await service.execute_tool({'command': 'pwd'}, query)
 
-    assert result['session_id'] == 'group_room-1'
+    assert result['session_id'] == expected_session_id
     assert result['ok'] is True
-    assert backend.start_calls == ['group_room-1']
+    assert backend.start_calls == [expected_session_id]
 
 
 @pytest.mark.asyncio
-async def test_box_service_session_id_falls_back_to_query_id_for_synthetic_queries():
+async def test_box_service_session_id_fails_closed_without_session_context():
     logger = Mock()
     backend = FakeBackend(logger)
     runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
@@ -386,76 +482,11 @@ async def test_box_service_session_id_falls_back_to_query_id_for_synthetic_queri
     await service.initialize()
 
     query = pipeline_query.Query.model_construct(query_id=7)
-    result = await service.execute_tool({'command': 'pwd'}, query)
 
-    assert result['session_id'] == 'query_7'
-    assert result['ok'] is True
-    assert backend.start_calls == ['query_7']
+    with pytest.raises(BoxValidationError, match='Host session context'):
+        await service.execute_tool({'command': 'pwd'}, query)
 
-
-@pytest.mark.asyncio
-async def test_box_service_forced_global_scope_overrides_pipeline_template():
-    """SaaS guard: a non-empty ``force_box_session_id_template`` pins every
-    query to one shared sandbox regardless of the pipeline's own scope."""
-    logger = Mock()
-    backend = FakeBackend(logger)
-    runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
-    service = BoxService(
-        make_app(logger, force_box_session_id_template='{global}'),
-        client=_InProcessBoxRuntimeClient(logger, runtime),
-    )
-    await service.initialize()
-
-    # Two distinct callers that would otherwise get separate sandboxes.
-    q1 = pipeline_query.Query.model_construct(query_id=1, launcher_type='group', launcher_id='room-1')
-    q2 = pipeline_query.Query.model_construct(query_id=2, launcher_type='person', launcher_id='alice')
-
-    r1 = await service.execute_tool({'command': 'pwd'}, q1)
-    r2 = await service.execute_tool({'command': 'pwd'}, q2)
-
-    assert r1['session_id'] == 'global'
-    assert r2['session_id'] == 'global'
-    # Only one sandbox was ever started — the shared global one.
-    assert backend.start_calls == ['global']
-
-
-def test_box_service_forced_template_ignores_pipeline_config():
-    """The forced template wins even when the pipeline explicitly sets a
-    per-user scope — proving the override is not bypassable via pipeline config."""
-    logger = Mock()
-    service = BoxService(
-        make_app(logger, force_box_session_id_template='{global}'),
-        client=Mock(spec=BoxRuntimeClient),
-    )
-    query = pipeline_query.Query.model_construct(
-        query_id=7,
-        launcher_type='person',
-        launcher_id='test_user',
-        sender_id='test_user',
-        pipeline_config={
-            'ai': {'local-agent': {'box-session-id-template': '{launcher_type}_{launcher_id}_{sender_id}'}}
-        },
-    )
-
-    assert service.resolve_box_session_id(query) == 'global'
-
-
-def test_box_service_empty_forced_template_respects_pipeline_config():
-    """An empty/whitespace forced template is a no-op: the pipeline's own
-    scope template is honoured (default non-SaaS behaviour)."""
-    logger = Mock()
-    service = BoxService(
-        make_app(logger, force_box_session_id_template='   '),
-        client=Mock(spec=BoxRuntimeClient),
-    )
-    query = pipeline_query.Query.model_construct(
-        query_id=7,
-        launcher_type='group',
-        launcher_id='room-1',
-        pipeline_config={'ai': {'local-agent': {'box-session-id-template': '{launcher_type}_{launcher_id}'}}},
-    )
-
-    assert service.resolve_box_session_id(query) == 'group_room-1'
+    assert backend.start_calls == []
 
 
 @pytest.mark.asyncio
@@ -506,11 +537,13 @@ async def test_box_service_uses_default_workspace_when_host_path_omitted(tmp_pat
     service = BoxService(app, client=_InProcessBoxRuntimeClient(logger, runtime))
     await service.initialize()
 
-    result = await service.execute_tool({'command': 'pwd'}, make_query(15))
+    query = make_query(15)
+    expected_session_id = service.resolve_box_session_id(query)
+    result = await service.execute_tool({'command': 'pwd'}, query)
 
     assert result['ok'] is True
-    assert backend.start_calls == ['person_test_user']
-    assert backend.exec_calls == [('person_test_user', 'pwd')]
+    assert backend.start_calls == [expected_session_id]
+    assert backend.exec_calls == [(expected_session_id, 'pwd')]
     assert backend.start_specs[0].host_path == os.path.realpath(host_dir)
 
 
@@ -571,41 +604,6 @@ async def test_box_service_rejects_host_mount_outside_allowed_roots(tmp_path):
             },
             make_query(12),
         )
-
-
-class TestGetSystemGuidance:
-    """``get_system_guidance`` must ALWAYS advertise the per-query outbox path
-    when given a ``query_id`` — even with no inbound attachment — so files the
-    agent generates (QR codes, charts, rendered docs) are actually delivered.
-
-    The wrapper collects the outbox on every turn regardless of inbound files;
-    before this, the agent was only told the outbox path inside the
-    inbound-attachment note, so pure-generation turns produced files that were
-    silently dropped.
-    """
-
-    def _service(self, logger=None):
-        logger = logger or Mock()
-        runtime = BoxRuntime(logger=logger, backends=[FakeBackend(logger)], session_ttl_sec=300)
-        return BoxService(make_app(logger), client=_InProcessBoxRuntimeClient(logger, runtime))
-
-    def test_guidance_includes_outbox_when_query_id_given(self):
-        service = self._service()
-        guidance = service.get_system_guidance(42)
-        assert f'{service.OUTBOX_MOUNT_DIR}/42' in guidance
-        assert 'delivered to the user automatically' in guidance
-
-    def test_guidance_omits_outbox_without_query_id(self):
-        service = self._service()
-        guidance = service.get_system_guidance()
-        assert service.OUTBOX_MOUNT_DIR not in guidance
-        # core exec guidance is still present
-        assert 'exec tool' in guidance
-
-    def test_guidance_outbox_independent_of_inbound_attachments(self):
-        # A bare query_id (the pure-generation case) still gets the outbox note.
-        service = self._service()
-        assert f'{service.OUTBOX_MOUNT_DIR}/0' in service.get_system_guidance(0)
 
 
 @pytest.mark.asyncio
@@ -980,11 +978,13 @@ async def test_box_service_rejects_and_cleans_up_when_execution_exceeds_workspac
 
     await service.initialize()
 
+    query = make_query(45)
+    expected_session_id = service.resolve_box_session_id(query)
     with pytest.raises(BoxValidationError, match='workspace quota exceeded after execution'):
-        await service.execute_tool({'command': 'generate-output'}, make_query(45))
+        await service.execute_tool({'command': 'generate-output'}, query)
 
-    assert backend.start_calls == ['person_test_user']
-    assert backend.stop_calls == ['person_test_user']
+    assert backend.start_calls == [expected_session_id]
+    assert backend.stop_calls == [expected_session_id]
 
 
 @pytest.mark.asyncio

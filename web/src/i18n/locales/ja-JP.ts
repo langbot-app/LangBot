@@ -30,6 +30,8 @@ const jaJP = {
     loginLoadErrorDesc:
       'LangBot バックエンドに接続できません。サービスが起動していることを確認してから再試行してください。',
     retry: '再試行',
+    showSecret: 'シークレットを表示',
+    hideSecret: 'シークレットを隠す',
     enterEmail: 'メールアドレスを入力',
     enterPassword: 'パスワードを入力',
     invalidEmail: '有効なメールアドレスを入力してください',
@@ -337,14 +339,17 @@ const jaJP = {
     getBotConfigError: 'ボット設定の取得に失敗しました：',
     saveSuccess: '保存に成功しました',
     saveError: '保存に失敗しました：',
-    createSuccess:
-      '作成が完了しました。有効化するか、パイプラインの設定を行ってください',
+    createSuccess: '作成が完了しました。イベントルーティングを設定してください',
     createError: '作成に失敗しました：',
     deleteSuccess: '削除に成功しました',
     deleteError: '削除に失敗しました：',
     deleteConfirmation: '本当にこのボットを削除しますか？',
     platformAdapter: 'プラットフォーム/アダプター選択',
     selectAdapter: 'アダプターを選択',
+    legacyAdapters: '旧式アダプター',
+    legacyAdapterBadge: '旧式',
+    legacyAdaptersHint:
+      'これらのアダプターには新しいイベント駆動の接続方式があります。既存設定との互換性のために残しており、新規ボットには推奨されません。',
     adapterConfig: 'アダプター設定',
     viewAdapterDocs: 'ドキュメントを見る',
     bindPipeline: 'パイプラインを紐付け',
@@ -365,6 +370,194 @@ const jaJP = {
     routingConnection: 'ルーティングと接続',
     routingConnectionDescription:
       'このボットのメッセージを処理するパイプラインを紐付け',
+    eventRouting: 'イベントルーティング',
+    eventRoutingDescription:
+      'このボットが受信した各イベントをどのプロセッサーに渡すかを選択します。対応する Agent または Pipeline の設定で処理ロジックを編集します。Pipeline はメッセージイベントのみ対応します。',
+    eventBindings: 'イベントルート',
+    addEventBinding: 'ルートを追加',
+    addBehavior: '動作を追加',
+    behaviorReplyMessages: '受信メッセージに返信',
+    behaviorReplyMessagesDescription:
+      '受信メッセージを Agent または Pipeline で処理します。',
+    behaviorWelcomeMembers: '新しいメンバーを歓迎',
+    behaviorWelcomeMembersDescription:
+      'メンバーがグループに参加したときに Agent を実行します。',
+    behaviorHandleDepartures: 'メンバーの退出を処理',
+    behaviorHandleDeparturesDescription:
+      'メンバーが退出または削除されたときに Agent を実行します。',
+    behaviorReviewFriendRequests: '友だち申請を確認',
+    behaviorReviewFriendRequestsDescription:
+      '新しい申請の処理方法を Agent に判断させます。',
+    behaviorHandleModeration: 'モデレーションイベントを処理',
+    behaviorHandleModerationDescription:
+      'グループメンバーが制限されたときに Agent を実行します。',
+    behaviorCustom: '別のイベントを設定',
+    behaviorCustomDescription:
+      'ルートを追加し、このアダプターが対応する全イベントから選択します。',
+    eventPattern: 'イベント',
+    eventPatternPlaceholder: 'イベントを選択',
+    targetType: 'ターゲットタイプ',
+    target: 'プロセッサー',
+    targetAgent: 'Agent',
+    targetPipeline: 'Pipeline',
+    targetDiscard: '破棄',
+    selectTarget: 'プロセッサーを選択',
+    searchTarget: 'プロセッサーを検索…',
+    noTargetFound: '対応するプロセッサーが見つかりません',
+    priority: '優先度',
+    enabled: '有効',
+    eventBindingDescriptionPlaceholder: 'ルール説明',
+    noEventBindings: 'イベントルートはありません',
+    unsupportedPipelineEvent:
+      'Pipeline は message.* イベントにのみ使用できます',
+    disable: '無効化',
+    enable: '有効化',
+    disabledBindings: '無効',
+    adapterEventsTitle: 'このアダプターが受信できるイベント',
+    adapterEventsDescription:
+      '{{count}} 種類のイベントを利用できます。ルートは上から順に照合され、未一致のイベントはプロセッサーへ送られません。',
+    adapterEventsMore: 'ほか {{count}} 件',
+    advancedEventValues: '高度なイベント値',
+    eventGroup: 'グループ',
+    routeConflictTitle: '一部のルートが重複しています',
+    routeConflictShadowed:
+      '{{winner}} が同じイベントを先に処理するため、{{shadowed}} は実行されない可能性があります。',
+    routeConflictMore: 'ほか {{count}} 件のルート競合を確認してください。',
+    routeFallbackCatchAll:
+      '{{route}} はすべてのイベントを受けるフォールバックです。優先度の高いルートが先に実行されます。',
+    routeFallbackIgnored:
+      'どのルートにも一致しないイベントは無視されます。すべてのイベントに明示的な結果が必要な場合のみ、フォールバックを追加してください。',
+    testRoute: 'ルートをテスト',
+    refreshRouteStatus: '状態を更新',
+    routeStatusIdle: '実行記録なし',
+    routeStatusRefreshFailed: 'ルート状態の更新に失敗しました。',
+    routeStatus: {
+      matched: '一致',
+      delivered: '配信済み',
+      discarded: '破棄済み',
+      failed: '失敗',
+      not_matched: '未一致',
+      test_started: 'テスト中',
+    },
+    routeStatusDetail: {
+      matched: 'このルートがイベントに一致しました。',
+      delivered: 'プロセッサーがイベントを受信しました。',
+      discarded: '設定に従ってイベントを破棄しました。',
+      failed: 'ルートを完了できませんでした。',
+      not_matched: '設定済みルートに一致しませんでした。',
+      test_started: '保存済みルートを実行しています。',
+    },
+    routeFailure: {
+      binding_disabled: 'このルートは無効です。',
+      event_pattern_mismatch: 'イベントがこのルートに一致しません。',
+      filters_mismatch: 'サンプルデータがルート条件を満たしていません。',
+      lower_priority: '別の一致ルートの優先度が高く設定されています。',
+      route_not_found: 'このイベントに一致するルートがありません。',
+      processor_incompatible:
+        '選択したプロセッサーはこのイベントを処理できません。',
+      processor_not_found: '選択したプロセッサーを利用できません。',
+      processor_disabled: '選択したプロセッサーは無効です。',
+      runner_failed: 'Agent Runner がイベント処理中に失敗しました。',
+      delivery_failed: '処理は完了しましたが、結果の配信に失敗しました。',
+    },
+    routeTestAction: '保存済みルートを実行',
+    routeTestRunning: '実行中…',
+    routeTestFailed:
+      '保存済みルートの実行に失敗しました。後でもう一度お試しください。',
+    routeTestDispatched:
+      '保存済みルートを実行しました。{{count}} 件のプラットフォーム操作を抑制しました。',
+    routeTestSideEffectWarning:
+      '保存済みルートを実行するとプロセッサーが動作します。プラットフォームのメッセージ操作は抑制されますが、ツールや外部サービスには副作用が生じる場合があります。',
+    dryRunTitle: 'イベントルートをテスト',
+    dryRunDescription:
+      'プロセッサーを実行せずに現在のフォームをプレビューするか、保存済みルートを実行して設定を検証します。',
+    dryRunEventType: 'イベントタイプ',
+    dryRunSampleReady: 'サンプルイベントを準備しました',
+    dryRunSampleDescription:
+      'LangBot が「{{event}}」用のサンプルデータを準備しました。通常はそのままテストできます。',
+    dryRunEditPayload: '詳細データを編集',
+    dryRunHidePayload: '詳細データを閉じる',
+    dryRunPayload: '詳細イベントデータ（JSON）',
+    dryRunPayloadHint:
+      'message_text、chat_type、chat_id などの簡単なフィールドで条件をテストできます。',
+    dryRunPayloadJsonError: '有効な JSON を入力してください。',
+    dryRunPayloadObjectError:
+      'ペイロードは JSON オブジェクトである必要があります。',
+    dryRunNeedsSavedBot: 'ルートをテストする前にボットを保存してください。',
+    dryRunFailed: 'ルートテストに失敗しました。後でもう一度お試しください。',
+    dryRunAction: 'ルートをプレビュー',
+    dryRunRunning: 'テスト中…',
+    dryRunMatched: 'ルートに一致しました',
+    dryRunNotMatched: '一致するルートはありません',
+    dryRunTarget: '対象プロセッサー',
+    dryRunNoTarget: '対象なし',
+    dryRunMatchedRule: '一致したルール',
+    dryRunRuleIndex: 'ルート {{index}}',
+    dryRunNoRule: '一致したルールなし',
+    dryRunDiagnostics: '診断ステップ',
+    dryRunDiagnosticSelected: '{{route}}を選択しました。',
+    dryRunDiagnosticMatched: '{{route}}が一致しました。{{reason}}',
+    dryRunDiagnosticSkipped: '{{route}}をスキップしました。{{reason}}',
+    eventCustom: 'カスタムイベント',
+    eventWildcard: 'すべてのイベント',
+    eventNamespaceWildcard: '{{namespace}}.*',
+    eventNames: {
+      message_received: 'メッセージ受信',
+      message_edited: 'メッセージ編集',
+      message_deleted: 'メッセージ削除',
+      message_reaction: 'メッセージリアクション',
+      feedback_received: 'フィードバック受信',
+      friend_request_received: '友達リクエスト受信',
+      friend_added: '友達追加',
+      group_member_joined: 'メンバー参加',
+      group_member_left: 'メンバー退出',
+      group_member_banned: 'メンバーBAN',
+      bot_invited_to_group: 'ボットがグループに招待された',
+      bot_removed_from_group: 'ボットがグループから削除された',
+      bot_muted: 'ボットがミュートされた',
+      bot_unmuted: 'ボットのミュート解除',
+      platform_specific: 'プラットフォーム固有イベント',
+    },
+    eventDescriptions: {
+      all: 'このアダプターが受信するすべてのイベントに一致します。',
+      namespace: '同じイベントグループ内の複数の具体イベントに一致します。',
+      custom: 'カスタムイベント、または説明がまだないイベントです。',
+      message_received:
+        'ユーザーまたはグループがボットへ新しいメッセージを送信します。',
+      message_edited:
+        '既存メッセージが変更されたことをプラットフォームが通知します。',
+      message_deleted:
+        '既存メッセージが削除されたことをプラットフォームが通知します。',
+      message_reaction:
+        'ユーザーがメッセージへのリアクションを追加または削除します。',
+      feedback_received:
+        'プラットフォームまたはユーザーからフィードバックを受信します。',
+      friend_request_received: '誰かがボットを友達に追加しようとしています。',
+      friend_added: '友達関係が作成されました。',
+      group_member_joined: 'ボットがいるグループにメンバーが参加しました。',
+      group_member_left: 'ボットがいるグループからメンバーが退出しました。',
+      group_member_banned: 'グループメンバーがBANまたは削除されました。',
+      bot_invited_to_group: 'ボットがグループに招待されました。',
+      bot_removed_from_group: 'ボットがグループから削除されました。',
+      bot_muted: 'ボットがグループでミュートされました。',
+      bot_unmuted: 'ボットのグループでのミュートが解除されました。',
+      platform_specific: 'アダプター固有のプラットフォームイベントです。',
+    },
+    conditions: '条件',
+    conditionsDescription:
+      'すべての条件に一致した場合のみこのバインディングが発火します。空の場合は常に発火します。',
+    conditionsEmpty: '条件なし。常に発火します。',
+    addFilter: '条件を追加',
+    filterChatType: 'セッションタイプ',
+    filterChatId: 'セッション ID',
+    filterMessageText: 'メッセージ本文',
+    filterMessageElement: 'メッセージ要素',
+    operator_eq: '等しい',
+    operator_neq: '等しくない',
+    operator_contains: '含む',
+    operator_not_contains: '含まない',
+    operator_starts_with: '前方一致',
+    operator_regex: '正規表現',
     routingRules: '条件付きルーティングルール',
     routingRulesDescription:
       'ルールは順番に評価され、最初に一致したルールのパイプラインにルーティングされます。一致しない場合はデフォルトパイプラインが使用されます。',
@@ -471,6 +664,68 @@ const jaJP = {
       configureAdmins: 'Manage Admins',
     },
   },
+  agents: {
+    title: 'プロセッサー',
+    description:
+      '再利用可能なプロセッサーを作成し、ボットのイベントルーティングで使用します',
+    create: 'プロセッサーを作成',
+    editAgent: 'Agent を編集',
+    selectFromSidebar:
+      'サイドバーから Agent または Pipeline を選択してください',
+    agentType: 'Agent',
+    agentTypeDescription:
+      'Runner を使ってメッセージ、グループメンバー、友だち、フィードバックなどのプラットフォームイベントを処理します。',
+    pipelineType: 'Pipeline',
+    kindBadgeAgent: 'Agent',
+    kindBadgePipeline: 'パイプライン',
+    groupByKind: 'タイプ別にグループ化',
+    groupByKindShort: 'グループ',
+    pipelineTypeDescription:
+      'ビジュアルな多段フローで、メッセージの前処理、AI、後処理、拡張、出力を制御します。メッセージイベントのみ処理できます。',
+    allEvents: 'すべてのイベントに対応',
+    messageEventsOnly: 'メッセージイベントのみ',
+    basicInfo: '基本情報',
+    basicInfoDescription: '名前、アイコン、説明、有効状態を設定します',
+    runnerSettings: 'Runner',
+    advanced: '詳細',
+    bindableEvents: '紐付け可能なイベント範囲',
+    bindableEventsDescription:
+      'この Agent を選択できるボットイベントルートの範囲を制限します。通常は既定値のままで問題ありません。',
+    supportedEvents: 'イベント範囲',
+    supportedEventsDescription:
+      '1 行に 1 つのイベントパターンを指定します。例: *、message.received、group.*。Pipeline は message.* 固定です。',
+    enabled: 'Agent を有効化',
+    enabledDescription:
+      '無効化すると、この Agent はイベントルーティングで選択されません。',
+    nameRequired: '名前は必須です',
+    createSuccess: '作成に成功しました',
+    createError: '作成に失敗しました：',
+    loadError: '読み込みに失敗しました：',
+    saveSuccess: '保存に成功しました',
+    saveError: '保存に失敗しました：',
+    deleteSuccess: '削除に成功しました',
+    deleteError: '削除に失敗しました：',
+    deleteConfirmation: 'この Agent を削除してもよろしいですか？',
+    dangerZone: '危険ゾーン',
+    dangerZoneDescription: '元に戻せない操作',
+    deleteAgentAction: 'この Agent を削除',
+    deleteAgentHint: '削除すると、紐付けられたイベントは実行できなくなります。',
+    noRunnerMetadata: '現在利用可能な AgentRunner メタデータはありません。',
+    runnerStatusLoading: 'Runner の状態を確認しています',
+    runnerStatusCheckFailed: 'Runner の状態を確認できませんでした',
+    runnerStatusCheckFailedDescription:
+      '再試行してください。失敗が続く場合は、バックエンドとプラグインランタイムを確認してください。',
+    noRunnersAvailable: '利用可能な Runner がありません',
+    noRunnersAvailableDescription:
+      'この Agent を設定する前に AgentRunner 拡張機能をインストールして有効にしてください。',
+    selectedRunnerUnavailable: '選択した Runner は利用できません',
+    selectedRunnerUnavailableDescription:
+      '{{runner}} は現在登録されていません。別の Runner を選択するか、対応する拡張機能を復元してください。',
+    noRunnerSelected: 'Runner が選択されていません',
+    runnerReady: 'Runner の準備完了',
+    runnerReadyDescription:
+      '{{runner}} は登録済みで、プラグインランタイムに接続されています。',
+  },
   plugins: {
     title: '拡張機能',
     description:
@@ -500,6 +755,7 @@ const jaJP = {
     noExtensionInstalled: '拡張機能がインストールされていません',
     loadingExtensions: '拡張機能を読み込み中...',
     groupByType: '形式でグループ化',
+    groupByTypeShort: 'グループ',
     pluginConfig: 'プラグイン設定',
     pluginSort: 'プラグインの並び替え',
     pluginSortDescription:
@@ -563,6 +819,7 @@ const jaJP = {
       KnowledgeEngine: '知識エンジン',
       Parser: 'パーサー',
       Page: 'ページ',
+      AgentRunner: 'Agent Runner',
     },
     uploadLocal: 'ローカルアップロード',
     debugging: 'デバッグ中',
@@ -740,6 +997,7 @@ const jaJP = {
       KnowledgeEngine: '知識エンジン',
       Parser: 'パーサー',
       Page: 'ページ',
+      AgentRunner: 'Agent Runner',
     },
     filterByType: 'タイプ',
     allTypes: '全部',
@@ -974,14 +1232,14 @@ const jaJP = {
       selectSkills: 'スキルを選択',
       noSkillsAvailable: '利用可能なスキルがありません',
       mcpServersScopeTooltip:
-        'ここでは、このパイプラインに紐付ける MCP サーバーだけを管理します。個別の MCP ツールとリソースは AI 機能の Local Agent で選択します。',
+        'ここでは、このパイプラインに紐付ける MCP サーバーだけを管理します。個別の MCP ツールとリソースは AI 機能の Agent Runner で選択します。',
       enableAllMCPServersTooltip:
         '有効にすると、設定済みで有効なすべての MCP サーバーが AI 機能の MCP ツールとリソース候補になります。',
     },
-    localAgent: {
+    agentRunner: {
       toolsTitle: 'ツール',
       toolsDescription:
-        'この Local Agent が使用できるプラグイン、MCP、組み込みツールを選択します。',
+        'この Agent Runner が使用できるプラグイン、MCP、組み込みツールを選択します。',
       toolsScopeTooltip:
         'MCP ツールは拡張機能で紐付けられた MCP サーバーからのみ表示されます。追加するには先に拡張機能でサーバーを紐付けてください。',
       enableAllTools: 'すべてのツールを有効化',
@@ -999,7 +1257,7 @@ const jaJP = {
       selectTools: 'ツールを選択',
       resourcesTitle: 'リソース',
       resourcesDescription:
-        'この Local Agent が読み取れる MCP リソースとナレッジベースを選択します。',
+        'この Agent Runner が読み取れる MCP リソースとナレッジベースを選択します。',
       knowledgeBases: 'ナレッジベース',
       mcpResources: 'MCP リソース',
       mcpResourcesScopeTooltip:
@@ -1592,7 +1850,7 @@ const jaJP = {
     next: '次へ',
     finish: '作成＆デプロイ',
     confirmCreateBot: '確定、ボットを作成',
-    createSuccess: 'パイプラインが作成され、ボットにリンクされました！',
+    createSuccess: 'プロセッサーが作成され、ボットにリンクされました！',
     botCreateSuccess: 'ボットが正常に作成されました！',
     botSaveSuccess: 'ボット設定が保存され、有効になりました！',
     createError: 'リソースの作成に失敗しました',
@@ -1601,14 +1859,43 @@ const jaJP = {
     completeSaveError: '完了状態の保存に失敗しました。もう一度お試しください。',
     step: {
       platform: 'プラットフォーム',
+      scenarioChannel: 'シナリオとチャンネル',
       botConfig: 'ボット設定',
       aiEngine: 'AIエンジン',
       done: '完了',
     },
-    platform: {
-      title: 'プラットフォームを選択',
+    scenario: {
+      title: 'このボットで何を実現しますか？',
       description:
-        'ボットが接続するメッセージングプラットフォームを選択してください。',
+        'まず主要な動作を1つ選びます。作成後に他の動作も追加できます。',
+      messageReply: '受信メッセージに返信',
+      messageReplyDescription:
+        'AI Pipeline でプライベートまたはグループメッセージに返信します。',
+      welcomeMembers: '新しいメンバーを歓迎',
+      welcomeMembersDescription:
+        'メンバーがグループに参加したときに Agent を実行します。',
+      welcomeMembersPrompt:
+        '新しいグループメンバーを短く親しみやすいメッセージで歓迎してください。利用可能なメンバーとグループの情報を活用し、内部イベント名やシステムの詳細には言及しないでください。',
+      handleDepartures: 'メンバーの退出を処理',
+      handleDeparturesDescription:
+        'メンバーが退出または削除されたときに Agent を実行します。',
+      handleDeparturesPrompt:
+        '公開の応答が適切な場合に、メンバーの退出へ短く敬意のあるメッセージで対応してください。退出理由を推測したり、内部イベント名に言及したりしないでください。',
+      handleModeration: 'モデレーションイベントを処理',
+      handleModerationDescription:
+        'グループメンバーが制限されたときに Agent を実行します。',
+      handleModerationPrompt:
+        '利用可能な情報だけを使い、メンバーへの制限について簡潔で中立的なグループ通知を書いてください。詳細を作り上げたり、内部イベント名に言及したりしないでください。',
+      pipelineBadge: 'Pipeline',
+      agentBadge: 'Agent',
+    },
+    platform: {
+      title: 'チャンネルを選択',
+      description: '選択したシナリオに対応するチャンネルのみ表示されます。',
+      chooseScenarioFirst:
+        'シナリオを選択すると、対応するチャンネルが表示されます。',
+      noCompatiblePlatforms:
+        '現在インストールされているチャンネルはこのシナリオに対応していません。',
     },
     botConfig: {
       title: 'ボットを設定',
@@ -1626,11 +1913,26 @@ const jaJP = {
       title: 'AIエンジンを選択',
       description:
         'ボットのインテリジェンスを駆動するAIエンジンを選択してください。',
-    },
-    spaceBanner: {
-      message:
-        'LangBot Spaceに接続して、無料トライアルモデルクレジットとゼロ設定の即時セットアップを入手！',
-      action: 'Spaceで認証',
+      loadingCatalog: 'AgentRunner 拡張機能を読み込んでいます...',
+      catalogUnavailable: 'Runner カタログを読み込めません',
+      catalogUnavailableDescription:
+        'インストール済みの Runner は引き続き使用できます。再試行するか、拡張機能を確認してください。',
+      noMarketplaceRunners: 'AgentRunner 拡張機能はまだ公開されていません',
+      noMarketplaceRunnersDescription:
+        '設定済みのマーケットプレイスに Runner 拡張機能が公開された後、再試行してください。',
+      browseRunners: 'Runner 拡張機能を見る',
+      installAndContinue: 'インストールして続行',
+      installing: 'インストール中...',
+      useInstalled: 'この Runner を使用',
+      installedUnavailable: 'インストール済み、Runner は利用不可',
+      installSuccess: '{{runner}} をインストールして選択しました',
+      installFailed: 'Runner 拡張機能のインストールに失敗しました',
+      versionUnavailable:
+        'マーケットプレイスからインストール可能なバージョンが返されませんでした。',
+      installTimeout:
+        'Runner のインストールがタイムアウトしました。拡張機能のタスクを確認してください。',
+      registrationTimeout:
+        '拡張機能はインストールされましたが、Runner が登録されませんでした。プラグインランタイムを確認して再試行してください。',
     },
     config: {
       botInfo: 'ボット情報',
@@ -1642,7 +1944,7 @@ const jaJP = {
     done: {
       title: '完了しました！',
       description:
-        'ボットが作成され、AIパイプラインに接続されました。ワークベンチから管理できます。',
+        'ボットが作成され、プロセッサーに接続されました。ワークベンチから管理できます。',
       backToWorkbench: 'ワークベンチに戻る',
     },
   },

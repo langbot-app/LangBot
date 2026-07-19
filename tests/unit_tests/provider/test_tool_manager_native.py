@@ -4,7 +4,7 @@ import base64
 import os
 import tempfile
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
@@ -65,7 +65,8 @@ def make_tool(name: str) -> resource_tool.LLMTool:
 
 
 @pytest.mark.asyncio
-async def test_tool_manager_omits_skill_authoring_tools_by_default():
+async def test_tool_manager_includes_skill_tools_by_default():
+    """Skill tools are exposed like native tools; the SkillToolLoader self-gates."""
     manager = ToolManager(SimpleNamespace())
     manager.native_tool_loader = StubLoader([make_tool('exec')])
     manager.skill_tool_loader = StubLoader([make_tool('activate')])
@@ -74,20 +75,21 @@ async def test_tool_manager_omits_skill_authoring_tools_by_default():
 
     tools = await manager.get_all_tools()
 
-    assert [tool.name for tool in tools] == ['exec', 'plugin_tool', 'mcp_tool']
+    assert [tool.name for tool in tools] == ['exec', 'activate', 'plugin_tool', 'mcp_tool']
 
 
 @pytest.mark.asyncio
-async def test_tool_manager_includes_skill_authoring_tools_when_requested():
+async def test_tool_manager_omits_skill_tools_when_loader_unavailable():
+    """When the SkillToolLoader gate is closed (no sandbox / skill_mgr) it returns no tools."""
     manager = ToolManager(SimpleNamespace())
     manager.native_tool_loader = StubLoader([make_tool('exec')])
-    manager.skill_tool_loader = StubLoader([make_tool('activate')])
+    manager.skill_tool_loader = StubLoader([])
     manager.plugin_tool_loader = StubLoader([make_tool('plugin_tool')])
     manager.mcp_tool_loader = StubLoader([make_tool('mcp_tool')])
 
-    tools = await manager.get_all_tools(include_skill_authoring=True)
+    tools = await manager.get_all_tools()
 
-    assert [tool.name for tool in tools] == ['exec', 'activate', 'plugin_tool', 'mcp_tool']
+    assert [tool.name for tool in tools] == ['exec', 'plugin_tool', 'mcp_tool']
 
 
 @pytest.mark.asyncio
@@ -235,6 +237,32 @@ async def test_write_creates_subdirectories():
 
 
 @pytest.mark.asyncio
+async def test_write_falls_back_to_box_for_container_owned_workspace_file():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        box_service = SimpleNamespace(
+            available=True,
+            default_workspace=tmpdir,
+            execute_tool=AsyncMock(
+                return_value={
+                    'ok': True,
+                    'stdout': '{"ok": true, "path": "/workspace/root-owned.txt"}',
+                }
+            ),
+        )
+        loader = NativeToolLoader(SimpleNamespace(box_service=box_service, logger=Mock()))
+        loader._write_host_file = Mock(side_effect=PermissionError)
+
+        result = await loader.invoke_tool(
+            'write',
+            {'path': '/workspace/root-owned.txt', 'content': 'updated'},
+            _make_query(),
+        )
+
+        assert result == {'ok': True, 'path': '/workspace/root-owned.txt'}
+        box_service.execute_tool.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_read_binary_file_as_base64_chunk():
     with tempfile.TemporaryDirectory() as tmpdir:
         loader, _ = _make_loader_with_workspace(tmpdir)
@@ -322,6 +350,35 @@ async def test_edit_replaces_unique_string():
         assert result['ok'] is True
         with open(os.path.join(tmpdir, 'code.py')) as f:
             assert f.read() == 'def foo():\n    return 42\n'
+
+
+@pytest.mark.asyncio
+async def test_edit_falls_back_to_box_for_container_owned_workspace_file():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = os.path.join(tmpdir, 'root-owned.txt')
+        with open(path, 'w') as f:
+            f.write('before')
+        box_service = SimpleNamespace(
+            available=True,
+            default_workspace=tmpdir,
+            execute_tool=AsyncMock(
+                return_value={
+                    'ok': True,
+                    'stdout': '{"ok": true, "path": "/workspace/root-owned.txt"}',
+                }
+            ),
+        )
+        loader = NativeToolLoader(SimpleNamespace(box_service=box_service, logger=Mock()))
+
+        with patch('builtins.open', side_effect=PermissionError):
+            result = await loader.invoke_tool(
+                'edit',
+                {'path': '/workspace/root-owned.txt', 'old_string': 'before', 'new_string': 'after'},
+                _make_query(),
+            )
+
+        assert result == {'ok': True, 'path': '/workspace/root-owned.txt'}
+        box_service.execute_tool.assert_awaited_once()
 
 
 @pytest.mark.asyncio

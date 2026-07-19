@@ -93,15 +93,30 @@ class OAClient:
                 raise Exception('msg_signature不在请求体中')
 
             if req.method == 'GET':
-                # 校验签名
+                if msg_signature:
+                    wxcpt = WXBizMsgCrypt(self.token, self.aes, self.appid)
+                    ret, reply_echo = wxcpt.VerifyURL(msg_signature, timestamp, nonce, echostr)
+                    if ret == 0:
+                        return reply_echo
+                    await self.logger.error(
+                        'OfficialAccount encrypted URL verification failed: '
+                        f'ret={ret}, timestamp_present={bool(timestamp)}, nonce_present={bool(nonce)}, '
+                        f'echostr_present={bool(echostr)}'
+                    )
+
+                # Plaintext callback verification.
                 check_str = ''.join(sorted([self.token, timestamp, nonce]))
                 check_signature = hashlib.sha1(check_str.encode('utf-8')).hexdigest()
 
                 if check_signature == signature:
                     return echostr  # 验证成功返回echostr
                 else:
-                    await self.logger.error('拒绝请求')
-                    raise Exception('拒绝请求')
+                    await self.logger.error(
+                        'OfficialAccount plaintext URL verification failed: '
+                        f'signature_present={bool(signature)}, timestamp_present={bool(timestamp)}, '
+                        f'nonce_present={bool(nonce)}, echostr_present={bool(echostr)}'
+                    )
+                    return 'signature verification failed', 403
             elif req.method == 'POST':
                 encryt_msg = await req.data
                 wxcpt = WXBizMsgCrypt(self.token, self.aes, self.appid)
@@ -279,9 +294,27 @@ class OAClientForLongerResponse:
                 raise Exception('msg_signature不在请求体中')
 
             if req.method == 'GET':
+                if msg_signature:
+                    wxcpt = WXBizMsgCrypt(self.token, self.aes, self.appid)
+                    ret, reply_echo = wxcpt.VerifyURL(msg_signature, timestamp, nonce, echostr)
+                    if ret == 0:
+                        return reply_echo
+                    await self.logger.error(
+                        'OfficialAccount encrypted URL verification failed: '
+                        f'ret={ret}, timestamp_present={bool(timestamp)}, nonce_present={bool(nonce)}, '
+                        f'echostr_present={bool(echostr)}'
+                    )
+
                 check_str = ''.join(sorted([self.token, timestamp, nonce]))
                 check_signature = hashlib.sha1(check_str.encode('utf-8')).hexdigest()
-                return echostr if check_signature == signature else '拒绝请求'
+                if check_signature == signature:
+                    return echostr
+                await self.logger.error(
+                    'OfficialAccount plaintext URL verification failed: '
+                    f'signature_present={bool(signature)}, timestamp_present={bool(timestamp)}, '
+                    f'nonce_present={bool(nonce)}, echostr_present={bool(echostr)}'
+                )
+                return 'signature verification failed', 403
 
             elif req.method == 'POST':
                 encryt_msg = await req.data

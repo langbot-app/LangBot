@@ -1,0 +1,41 @@
+id: agent-run-ledger-audit
+title: "Persisted AgentRunner run ledger passes end-to-end invariants"
+mode: probe
+area: agent
+type: regression
+priority: p0
+risk: high
+ci_eligible: false
+tags:
+  - agent-runner
+  - ledger
+  - audit
+  - tools
+skills:
+  - langbot-testing
+automation: scripts/e2e/agent-run-ledger-audit.mjs
+steps:
+  - "Set LANGBOT_AGENT_RUN_ID to audit a specific run, or leave it unset to audit the latest persisted AgentRunner run."
+  - "Read the active LangBot database configuration and inspect the selected run and its ordered events."
+  - "Verify completed terminal state, run.completed, paired tool.call.started/completed events, stable tool names, and monotonic ordering."
+  - "Compare called tools with the authorization snapshot and validate each advertised tool has owner/source, description, and parameter schema."
+  - "Reject malformed event JSON and invalid-JSON, timeout, forbidden, permission-denied, or unauthorized signals."
+checks:
+  - "ledger-audit.json status is pass."
+  - "metrics has equal tool_call_started and tool_call_completed counts."
+  - "failures is empty and no unauthorized tool call is present."
+evidence_required:
+  - filesystem
+  - metrics
+  - api_diagnostic
+diagnostics:
+  - "Run this immediately after a complex UI Agent task so latest-run selection cannot drift to unrelated traffic."
+  - "Use LANGBOT_AGENT_RUN_ID when multiple operators share the test instance."
+success_patterns:
+  - "Agent run ledger audit passed"
+failure_patterns:
+  - "tool_call_pairing"
+  - "forbidden_error_signals"
+  - "unauthorized_tool_calls"
+troubleshooting:
+  - box-runtime-silent-action-timeout

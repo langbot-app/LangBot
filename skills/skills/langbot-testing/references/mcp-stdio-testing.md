@@ -79,13 +79,15 @@ node scripts/e2e/mcp-stdio-register.mjs
 It upserts `qa-local-stdio` through the authenticated WebUI session, points it at
 the bundled `qa_mcp_echo_server.py`, then checks `/api/v1/tools` and the MCP
 runtime info. A pass proves LangBot has refreshed the saved server and exposes
-`qa_mcp_echo` before any model provider is involved.
+`qa_mcp_echo` before any model provider is involved. It also writes the resolved
+server UUID to `LANGBOT_MCP_QA_STDIO_SERVER_UUID` in `skills/.env.local`; pipeline
+extension binding uses this UUID, not the human-readable server name.
 
 ## Local-Agent Tool Call Check
 
 1. Open the target pipeline.
 2. Confirm `Extensions` allows the MCP server, or that all MCP servers are enabled.
-3. Use runner `Default` or the pluginized `langbot/local-agent` runner.
+3. Use runner `Default` or the pluginized `langbot-team/LocalAgent` runner.
 4. Select a model with function-calling ability that is known to work with tools in the current environment.
 5. Open `Debug Chat`.
 6. Ask:

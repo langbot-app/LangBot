@@ -9,6 +9,7 @@ import subprocess
 import time
 import signal
 import os
+import sys
 from pathlib import Path
 from typing import Optional
 import logging
@@ -26,13 +27,21 @@ class LangBotProcess:
         port: int = 15300,
         timeout: int = 30,
         collect_coverage: bool = True,
+        debug: bool = False,
+        cli_args: list[str] | None = None,
     ):
         self.project_root = project_root
         self.work_dir = work_dir  # Directory containing data/config.yaml
         self.port = port
         self.timeout = timeout
         self.collect_coverage = collect_coverage
+        self.debug = debug
+        self.cli_args = cli_args or []
         self.process: Optional[subprocess.Popen] = None
+        self._stdout_file = None
+        self._stderr_file = None
+        self._stdout_path = self.work_dir / 'langbot.stdout.log'
+        self._stderr_path = self.work_dir / 'langbot.stderr.log'
         self._stdout_data: bytes = b''
         self._stderr_data: bytes = b''
         self._coverage_file: Optional[Path] = None
@@ -63,13 +72,14 @@ class LangBotProcess:
         # Disable telemetry
         env['SPACE__DISABLE_TELEMETRY'] = 'true'
         env['SPACE__DISABLE_MODELS_SERVICE'] = 'true'
+        if self.debug:
+            env['DEBUG'] = 'true'
 
         # Build command
         if self.collect_coverage:
             # Use coverage.py to collect coverage data
             # Set COVERAGE_PROCESS_START to enable coverage in subprocess
             self._coverage_file = self.work_dir / '.coverage.e2e'
-            env['COVERAGE_PROCESS_START'] = str(self.project_root / '.coveragerc')
             env['COVERAGE_FILE'] = str(self._coverage_file)
 
             # Create .coveragerc for subprocess
@@ -88,27 +98,33 @@ precision = 2
             coveragerc_path = self.work_dir / '.coveragerc'
             with open(coveragerc_path, 'w') as f:
                 f.write(coveragerc_content)
+            env['COVERAGE_PROCESS_START'] = str(coveragerc_path)
 
             cmd = [
+                sys.executable,
+                '-m',
                 'coverage',
                 'run',
                 '--rcfile=' + str(coveragerc_path),
                 '-m',
                 'langbot',
+                *self.cli_args,
             ]
         else:
-            cmd = ['uv', 'run', 'python', '-m', 'langbot']
+            cmd = [sys.executable, '-m', 'langbot', *self.cli_args]
 
         logger.info(f'Starting LangBot in: {self.work_dir}')
         logger.info(f'Command: {cmd}')
 
         # Start process (run in work_dir so it finds data/config.yaml)
+        self._stdout_file = open(self._stdout_path, 'wb')
+        self._stderr_file = open(self._stderr_path, 'wb')
         self.process = subprocess.Popen(
             cmd,
             cwd=self.work_dir,
             env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stdout=self._stdout_file,
+            stderr=self._stderr_file,
             preexec_fn=os.setsid if os.name != 'nt' else None,
         )
 
@@ -117,7 +133,14 @@ precision = 2
         while time.time() - start_time < self.timeout:
             # Check if process died
             if self.process.poll() is not None:
-                self._stdout_data, self._stderr_data = self.process.communicate()
+                if self._stdout_file:
+                    self._stdout_file.close()
+                    self._stdout_file = None
+                if self._stderr_file:
+                    self._stderr_file.close()
+                    self._stderr_file = None
+                self._stdout_data = self._stdout_path.read_bytes() if self._stdout_path.exists() else b''
+                self._stderr_data = self._stderr_path.read_bytes() if self._stderr_path.exists() else b''
                 logger.error(f'LangBot process died: {self._stderr_data.decode()}')
                 return False
 
@@ -170,8 +193,14 @@ precision = 2
             self.process.wait()
 
         # Collect output for debugging
-        if self.process.stdout or self.process.stderr:
-            self._stdout_data, self._stderr_data = self.process.communicate()
+        if self._stdout_file:
+            self._stdout_file.close()
+            self._stdout_file = None
+        if self._stderr_file:
+            self._stderr_file.close()
+            self._stderr_file = None
+        self._stdout_data = self._stdout_path.read_bytes() if self._stdout_path.exists() else b''
+        self._stderr_data = self._stderr_path.read_bytes() if self._stderr_path.exists() else b''
 
         self.process = None
 
@@ -183,6 +212,10 @@ precision = 2
         """Get stdout and stderr logs."""
         stdout = self._stdout_data.decode('utf-8', errors='replace')
         stderr = self._stderr_data.decode('utf-8', errors='replace')
+        if not stdout and self._stdout_path.exists():
+            stdout = self._stdout_path.read_text(encoding='utf-8', errors='replace')
+        if not stderr and self._stderr_path.exists():
+            stderr = self._stderr_path.read_text(encoding='utf-8', errors='replace')
         return stdout, stderr
 
     def get_coverage_file(self) -> Optional[Path]:

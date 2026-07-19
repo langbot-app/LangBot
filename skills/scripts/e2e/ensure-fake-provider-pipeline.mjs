@@ -14,7 +14,7 @@ import {
   writeResult,
 } from "./lib/langbot-e2e.mjs";
 
-const RUNNER_ID = "local-agent";
+const RUNNER_ID = "plugin:langbot-team/LocalAgent/default";
 const DEFAULT_LOCAL_PASSWORD = "LangBotE2ELocalPass!2026";
 const DEFAULT_PIPELINE_NAME = "LangBot QA Fake Provider Debug Chat";
 const DEFAULT_PROVIDER_NAME = "LangBot QA Fake OpenAI Provider";
@@ -511,15 +511,17 @@ async function ensurePipeline({ backendUrl, token, name, modelUuid }) {
 
   const config = pipeline.config && typeof pipeline.config === "object" ? pipeline.config : {};
   const ai = config.ai && typeof config.ai === "object" ? config.ai : {};
-  const existingLocalAgentConfig = ai["local-agent"] && typeof ai["local-agent"] === "object"
-    ? ai["local-agent"]
+  const runnerConfigs = ai.runner_config && typeof ai.runner_config === "object"
+    ? ai.runner_config
+    : {};
+  const existingLocalAgentConfig = runnerConfigs[RUNNER_ID] && typeof runnerConfigs[RUNNER_ID] === "object"
+    ? runnerConfigs[RUNNER_ID]
     : {};
   const localAgentConfig = {
     timeout: 60,
     prompt: [{ role: "system", content: "You are a deterministic QA assistant. Reply exactly as instructed." }],
     "remove-think": false,
     "knowledge-bases": [],
-    "box-session-id-template": "{launcher_type}_{launcher_id}",
     "retrieval-top-k": 5,
     "rerank-model": "",
     "rerank-top-k": 5,
@@ -546,10 +548,12 @@ async function ensurePipeline({ backendUrl, token, name, modelUuid }) {
       runner: {
         ...(ai.runner && typeof ai.runner === "object" ? ai.runner : {}),
         id: RUNNER_ID,
-        runner: RUNNER_ID,
         "expire-time": 0,
       },
-      "local-agent": localAgentConfig,
+      runner_config: {
+        ...runnerConfigs,
+        [RUNNER_ID]: localAgentConfig,
+      },
     },
   };
 

@@ -317,13 +317,17 @@ const zhHant = {
     getBotConfigError: '取得機器人設定失敗：',
     saveSuccess: '儲存成功',
     saveError: '儲存失敗：',
-    createSuccess: '建立成功 請啟用或修改綁定流程線',
+    createSuccess: '建立成功，請設定事件路由',
     createError: '建立失敗：',
     deleteSuccess: '刪除成功',
     deleteError: '刪除失敗：',
     deleteConfirmation: '您確定要刪除這個機器人嗎？',
     platformAdapter: '平台/適配器選擇',
     selectAdapter: '選擇適配器',
+    legacyAdapters: '舊版適配器',
+    legacyAdapterBadge: '過時',
+    legacyAdaptersHint:
+      '這些適配器已有對應的事件驅動接入版本，僅為相容既有設定保留，不建議新建機器人時使用。',
     adapterConfig: '適配器設定',
     viewAdapterDocs: '查看文檔',
     bindPipeline: '綁定流程線',
@@ -343,6 +347,9 @@ const zhHant = {
     basicInfoDescription: '設定機器人名稱和描述',
     routingConnection: '路由與連接',
     routingConnectionDescription: '綁定處理此機器人訊息的流程線',
+    eventRouting: '事件路由',
+    eventRoutingDescription:
+      '選擇此機器人收到不同事件時交給哪個處理器。在對應的 Agent 或 Pipeline 設定中編輯處理邏輯；Pipeline 僅支援訊息事件。',
     routingRules: '條件路由規則',
     routingRulesDescription:
       '按順序匹配，命中第一條規則後路由到對應流程線；都不匹配時使用上方預設流程線',
@@ -446,6 +453,50 @@ const zhHant = {
       configureAdmins: '設定管理員',
     },
   },
+  agents: {
+    title: '處理器',
+    description: '建立可重用的處理器，並在機器人事件路由中使用',
+    create: '建立處理器',
+    editAgent: '編輯 Agent',
+    selectFromSidebar: '從側邊欄選擇一個 Agent 或 Pipeline',
+    agentType: 'Agent',
+    agentTypeDescription: '透過執行器處理訊息、群成員、好友、回饋等平台事件。',
+    pipelineType: 'Pipeline',
+    kindBadgeAgent: 'Agent',
+    kindBadgePipeline: '流水線',
+    groupByKind: '依類型分組',
+    groupByKindShort: '分組',
+    pipelineTypeDescription:
+      '透過視覺化多階段流程控制訊息的前處理、AI、後處理、擴充與輸出；僅處理訊息事件。',
+    allEvents: '支援全部事件',
+    messageEventsOnly: '僅支援訊息事件',
+    basicInfo: '基本資訊',
+    basicInfoDescription: '設定名稱、圖示、描述和啟用狀態',
+    runnerSettings: '執行器',
+    advanced: '進階',
+    bindableEvents: '可綁定事件範圍',
+    bindableEventsDescription:
+      '限制此 Agent 可被機器人事件路由選擇的事件範圍。通常保持預設即可。',
+    supportedEvents: '事件範圍',
+    supportedEventsDescription:
+      '每行一個事件模式，例如 *、message.received、group.*。Pipeline 固定僅支援 message.*。',
+    enabled: '啟用 Agent',
+    enabledDescription: '停用後，此 Agent 不應被事件路由選中。',
+    nameRequired: '名稱不能為空',
+    createSuccess: '建立成功',
+    createError: '建立失敗：',
+    loadError: '載入失敗：',
+    saveSuccess: '儲存成功',
+    saveError: '儲存失敗：',
+    deleteSuccess: '刪除成功',
+    deleteError: '刪除失敗：',
+    deleteConfirmation: '你確定要刪除這個 Agent 嗎？',
+    dangerZone: '危險區域',
+    dangerZoneDescription: '不可逆的操作',
+    deleteAgentAction: '刪除此 Agent',
+    deleteAgentHint: '刪除後，綁定到它的事件將無法繼續執行。',
+    noRunnerMetadata: '目前沒有可用的 AgentRunner 中繼資料。',
+  },
   plugins: {
     title: '外掛擴展',
     description: '安裝和設定用於擴展功能的外掛，請在流程線配置中選用',
@@ -476,6 +527,7 @@ const zhHant = {
     noExtensionInstalled: '暫未安裝任何擴充功能',
     loadingExtensions: '正在載入擴充功能...',
     groupByType: '依格式分組',
+    groupByTypeShort: '分組',
     pluginSort: '外掛排序',
     pluginSortDescription:
       '外掛順序會影響同一事件內的處理順序，請拖曳外掛卡片排序',
@@ -533,6 +585,7 @@ const zhHant = {
       KnowledgeEngine: '知識引擎',
       Parser: '解析器',
       Page: '擴展頁',
+      AgentRunner: 'Agent 執行器',
     },
     uploadLocal: '本地上傳',
     debugging: '調試中',
@@ -702,6 +755,7 @@ const zhHant = {
       KnowledgeEngine: '知識引擎',
       Parser: '解析器',
       Page: '擴展頁',
+      AgentRunner: 'Agent 執行器',
     },
     filterByType: '類型',
     allTypes: '全部類型',
@@ -932,7 +986,7 @@ const zhHant = {
       enableAllMCPServersTooltip:
         '啟用後，所有已配置且啟用的 MCP 伺服器都會進入 AI 能力中的 MCP 工具和資源候選範圍。',
     },
-    localAgent: {
+    agentRunner: {
       toolsTitle: '工具',
       toolsDescription: '選擇此內建 Agent 可以調用的插件、MCP 和內建工具。',
       toolsScopeTooltip:
@@ -1548,10 +1602,6 @@ const zhHant = {
     aiEngine: {
       title: '選擇 AI 引擎',
       description: '選擇驅動機器人智慧的 AI 引擎。',
-    },
-    spaceBanner: {
-      message: '接入 LangBot Space，取得免費試用模型額度，零配置極速開箱！',
-      action: '前往授權登入',
     },
     config: {
       botInfo: '機器人資訊',

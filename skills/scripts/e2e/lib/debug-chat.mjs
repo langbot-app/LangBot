@@ -28,6 +28,11 @@ export function findNewFailureSignal(beforeText, afterText, failureSignals = DEB
   return failureSignals.find((signal) => countOccurrences(afterText, signal) > countOccurrences(beforeText, signal)) || "";
 }
 
+export function hasDebugChatOutcome(text, expectedText, minExpectedCount, failureBaselines = []) {
+  if (countOccurrences(text, expectedText) >= minExpectedCount) return true;
+  return failureBaselines.some(({ signal, count }) => countOccurrences(text, signal) > count);
+}
+
 function findFailureSignalInText(text, failureSignals = DEBUG_CHAT_FAILURE_SIGNALS) {
   return failureSignals.find((signal) => String(text || "").includes(signal)) || "";
 }
@@ -91,6 +96,7 @@ export function classifyDebugChatResult({
   beforeMessages = null,
   afterMessages = null,
   latestAssistantText = "",
+  maxNewAssistantMessages = null,
   failureSignals = DEBUG_CHAT_FAILURE_SIGNALS,
 }) {
   const minExpectedCount = minExpectedOccurrences(beforeText, expectedText, prompt);
@@ -107,6 +113,20 @@ export function classifyDebugChatResult({
   const assistantExpectedIncreased = hasMessageEvidence
     ? afterAssistantExpectedCount > beforeAssistantExpectedCount
     : false;
+  const beforeAssistantMessageCount = hasMessageEvidence
+    ? beforeMessages.filter((message) => message.role === "assistant").length
+    : null;
+  const afterAssistantMessageCount = hasMessageEvidence
+    ? afterMessages.filter((message) => message.role === "assistant").length
+    : null;
+  const newAssistantMessageCount = hasMessageEvidence
+    ? afterAssistantMessageCount - beforeAssistantMessageCount
+    : null;
+  const assistantMessageEvidence = {
+    before_assistant_message_count: beforeAssistantMessageCount,
+    after_assistant_message_count: afterAssistantMessageCount,
+    new_assistant_message_count: newAssistantMessageCount,
+  };
 
   if (hasMessageEvidence) {
     const latestAssistantFailure = findFailureSignalInText(latestAssistantText, failureSignals);
@@ -119,6 +139,18 @@ export function classifyDebugChatResult({
         failure_signal: latestAssistantFailure,
         before_assistant_expected_count: beforeAssistantExpectedCount,
         after_assistant_expected_count: afterAssistantExpectedCount,
+        ...assistantMessageEvidence,
+      };
+    }
+    if (maxNewAssistantMessages !== null && newAssistantMessageCount > maxNewAssistantMessages) {
+      return {
+        status: "fail",
+        reason: `Debug Chat created ${newAssistantMessageCount} assistant messages; expected at most ${maxNewAssistantMessages}.`,
+        min_expected_count: minExpectedCount,
+        final_count: finalCount,
+        before_assistant_expected_count: beforeAssistantExpectedCount,
+        after_assistant_expected_count: afterAssistantExpectedCount,
+        ...assistantMessageEvidence,
       };
     }
     if (assistantExpectedIncreased && String(latestAssistantText).includes(expectedText)) {
@@ -129,6 +161,7 @@ export function classifyDebugChatResult({
         final_count: finalCount,
         before_assistant_expected_count: beforeAssistantExpectedCount,
         after_assistant_expected_count: afterAssistantExpectedCount,
+        ...assistantMessageEvidence,
       };
     }
     if (failureText) {
@@ -140,6 +173,7 @@ export function classifyDebugChatResult({
         failure_signal: failureText,
         before_assistant_expected_count: beforeAssistantExpectedCount,
         after_assistant_expected_count: afterAssistantExpectedCount,
+        ...assistantMessageEvidence,
       };
     }
     return {
@@ -149,6 +183,7 @@ export function classifyDebugChatResult({
       final_count: finalCount,
       before_assistant_expected_count: beforeAssistantExpectedCount,
       after_assistant_expected_count: afterAssistantExpectedCount,
+      ...assistantMessageEvidence,
     };
   }
   if (failureText) {
@@ -290,12 +325,24 @@ export async function visibleDebugChatMessages(page) {
   });
 }
 
-export async function waitForExpectedDebugChatText(page, { expectedText, minExpectedCount, timeoutMs }) {
+export async function waitForExpectedDebugChatText(page, {
+  expectedText,
+  minExpectedCount,
+  timeoutMs,
+  beforeText = "",
+  failureSignals = DEBUG_CHAT_FAILURE_SIGNALS,
+}) {
+  const failureBaselines = failureSignals.map((signal) => ({
+    signal,
+    count: countOccurrences(beforeText, signal),
+  }));
   await page.waitForFunction(
-    ({ expected, min }) => {
-      return document.body.innerText.split(expected).length - 1 >= min;
+    ({ expected, min, failures }) => {
+      const text = document.body.innerText;
+      if (text.split(expected).length - 1 >= min) return true;
+      return failures.some(({ signal, count }) => text.split(signal).length - 1 > count);
     },
-    { expected: expectedText, min: minExpectedCount },
+    { expected: expectedText, min: minExpectedCount, failures: failureBaselines },
     { timeout: timeoutMs },
   ).catch(() => {});
 }
@@ -345,7 +392,14 @@ export async function sendDebugChatPrompt(page, prompt, imagePath = "") {
   return true;
 }
 
-export async function runDebugChatPrompt(page, { prompt, expectedText, responseTimeoutMs, imagePath = "", failureSignals = DEBUG_CHAT_FAILURE_SIGNALS }) {
+export async function runDebugChatPrompt(page, {
+  prompt,
+  expectedText,
+  responseTimeoutMs,
+  imagePath = "",
+  maxNewAssistantMessages = null,
+  failureSignals = DEBUG_CHAT_FAILURE_SIGNALS,
+}) {
   const beforeText = await bodyText(page);
   const beforeMessages = await visibleDebugChatMessages(page);
   const minExpectedCount = minExpectedOccurrences(beforeText, expectedText, prompt);
@@ -360,6 +414,8 @@ export async function runDebugChatPrompt(page, { prompt, expectedText, responseT
     minExpectedCount,
     prompt,
     timeoutMs: responseTimeoutMs,
+    beforeText,
+    failureSignals,
   });
   await waitForDebugChatTextStable(page);
 
@@ -380,6 +436,7 @@ export async function runDebugChatPrompt(page, { prompt, expectedText, responseT
     beforeMessages,
     afterMessages,
     latestAssistantText,
+    maxNewAssistantMessages,
     failureSignals,
   });
 }

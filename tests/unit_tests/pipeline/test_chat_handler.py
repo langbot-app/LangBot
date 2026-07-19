@@ -30,22 +30,8 @@ def mock_circular_import_chain():
         make_pipeline_handler_import_mocks,
         get_handler_modules_to_clear,
     )
-    from langbot_plugin.api.entities.builtin.provider.message import Message
 
     mocks = make_pipeline_handler_import_mocks()
-
-    # Create a default runner that yields a simple response
-    class DefaultRunner:
-        name = 'local-agent'
-
-        def __init__(self, app, config):
-            self.app = app
-            self.config = config
-
-        async def run(self, query):
-            yield Message(role='assistant', content='fake response')
-
-    mocks['langbot.pkg.provider.runner'].preregistered_runners = [DefaultRunner]
 
     clear = get_handler_modules_to_clear('chat')
 
@@ -56,7 +42,30 @@ def mock_circular_import_chain():
 @pytest.fixture
 def fake_app():
     """Create FakeApp instance."""
-    return FakeApp()
+    from langbot_plugin.api.entities.builtin.provider.message import Message
+
+    app = FakeApp()
+
+    class FakeAgentRunOrchestrator:
+        runner_class = None
+
+        async def try_claim_steering_from_query(self, query):
+            return False
+
+        async def run_from_query(self, query):
+            if self.runner_class is None:
+                yield Message(role='assistant', content='fake response')
+                return
+
+            runner = self.runner_class(app, {})
+            async for result in runner.run(query):
+                yield result
+
+        def resolve_runner_id_for_telemetry(self, query):
+            return 'plugin:langbot-team/LocalAgent/default'
+
+    app.agent_run_orchestrator = FakeAgentRunOrchestrator()
+    return app
 
 
 @pytest.fixture
@@ -71,13 +80,11 @@ def mock_event_ctx():
 
 
 @pytest.fixture
-def set_runner():
-    """Factory fixture to set a custom runner for tests."""
+def set_runner(fake_app):
+    """Configure the orchestrator test double for one test."""
 
     def _set_runner(runner_class):
-        import sys
-
-        sys.modules['langbot.pkg.provider.runner'].preregistered_runners = [runner_class]
+        fake_app.agent_run_orchestrator.runner_class = runner_class
 
     return _set_runner
 
@@ -319,8 +326,13 @@ class TestChatHandlerExceptions:
         query.pipeline_config = {
             'output': {'misc': {'exception-handling': 'show-hint', 'failure-hint': 'Request failed.'}},
             'ai': {
-                'runner': {'runner': 'local-agent'},
-                'local-agent': {'prompt': 'default', 'model': {'primary': 'test'}},
+                'runner': {'id': 'plugin:langbot-team/LocalAgent/default'},
+                'runner_config': {
+                    'plugin:langbot-team/LocalAgent/default': {
+                        'prompt': 'default',
+                        'model': {'primary': 'test'},
+                    },
+                },
             },
         }
 
@@ -367,8 +379,13 @@ class TestChatHandlerExceptions:
         query.pipeline_config = {
             'output': {'misc': {'exception-handling': 'show-error'}},
             'ai': {
-                'runner': {'runner': 'local-agent'},
-                'local-agent': {'prompt': 'default', 'model': {'primary': 'test'}},
+                'runner': {'id': 'plugin:langbot-team/LocalAgent/default'},
+                'runner_config': {
+                    'plugin:langbot-team/LocalAgent/default': {
+                        'prompt': 'default',
+                        'model': {'primary': 'test'},
+                    },
+                },
             },
         }
 
@@ -412,8 +429,13 @@ class TestChatHandlerExceptions:
         query.pipeline_config = {
             'output': {'misc': {'exception-handling': 'hide'}},
             'ai': {
-                'runner': {'runner': 'local-agent'},
-                'local-agent': {'prompt': 'default', 'model': {'primary': 'test'}},
+                'runner': {'id': 'plugin:langbot-team/LocalAgent/default'},
+                'runner_config': {
+                    'plugin:langbot-team/LocalAgent/default': {
+                        'prompt': 'default',
+                        'model': {'primary': 'test'},
+                    },
+                },
             },
         }
 

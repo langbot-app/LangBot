@@ -4,6 +4,7 @@ import asyncio
 import collections
 import datetime as _dt
 import enum
+import hashlib
 import json
 import os
 from typing import TYPE_CHECKING
@@ -13,6 +14,7 @@ import pydantic
 from langbot_plugin.box.client import BoxRuntimeClient
 from .connector import BoxRuntimeConnector, _get_box_config
 from ..telemetry import features as telemetry_features
+from ..utils import constants
 from langbot_plugin.box.errors import BoxError, BoxValidationError
 from langbot_plugin.box.models import (
     BUILTIN_PROFILES,
@@ -27,6 +29,8 @@ _INT_ADAPTER = pydantic.TypeAdapter(int)
 _UTC = _dt.timezone.utc
 _MAX_RECENT_ERRORS = 50
 _MIB = 1024 * 1024
+_HOST_BOX_SCOPE_VARIABLE = '_host_box_scope'
+_BOX_SESSION_ID_PREFIX = 'lb-box-'
 
 
 def _is_path_under(path: str, root: str) -> bool:
@@ -224,39 +228,53 @@ class BoxService:
         return self._serialize_result(result)
 
     def resolve_box_session_id(self, query: pipeline_query.Query) -> str:
-        """Resolve the Box session_id from the pipeline's template and query variables.
+        """Resolve a Host-owned Box session ID for the current conversation."""
+        if query is None:
+            raise BoxValidationError('Box execution requires a Host session context.')
 
-        When ``system.limitation.force_box_session_id_template`` is set to a
-        non-empty value, that template overrides whatever the pipeline
-        configured. This is the authoritative SaaS guard: it runs on every
-        ``exec`` call, so a tenant cannot escape a single shared sandbox even
-        by editing the pipeline config directly through the API (which only
-        gates the web UI).
-        """
-        forced_template = self._forced_box_session_id_template()
-        if forced_template:
-            template = forced_template
-        else:
-            template = (
-                (query.pipeline_config or {})
-                .get('ai', {})
-                .get('local-agent', {})
-                .get('box-session-id-template', '{launcher_type}_{launcher_id}')
-            )
-        variables = dict(query.variables or {})
+        variables = getattr(query, 'variables', None)
+        if isinstance(variables, dict) and _HOST_BOX_SCOPE_VARIABLE in variables:
+            private_scope = variables[_HOST_BOX_SCOPE_VARIABLE]
+            if not isinstance(private_scope, str) or not private_scope.strip():
+                raise BoxValidationError('Box execution requires a Host conversation scope.')
+            return self._hash_box_session_scope(f'host:{private_scope}')
+
+        session = getattr(query, 'session', None)
         launcher_type = getattr(query, 'launcher_type', None)
+        launcher_id = getattr(query, 'launcher_id', None)
+
+        if launcher_type is None:
+            launcher_type = getattr(session, 'launcher_type', None)
+        if launcher_id is None:
+            launcher_id = getattr(session, 'launcher_id', None)
         if hasattr(launcher_type, 'value'):
             launcher_type = launcher_type.value
-        launcher_id = getattr(query, 'launcher_id', None)
-        sender_id = getattr(query, 'sender_id', None)
-        query_id = getattr(query, 'query_id', None)
 
-        variables.setdefault('query_id', str(query_id or 'unknown'))
-        variables.setdefault('launcher_type', str(launcher_type or 'query'))
-        variables.setdefault('launcher_id', str(launcher_id or query_id or 'unknown'))
-        variables.setdefault('sender_id', str(sender_id or launcher_id or query_id or 'unknown'))
-        variables.setdefault('global', 'global')
-        return template.format_map(collections.defaultdict(lambda: 'unknown', variables))
+        if launcher_type is None or launcher_id is None or not str(launcher_id).strip():
+            raise BoxValidationError('Box execution requires a Host session context.')
+
+        adapter = getattr(query, 'adapter', None)
+        adapter_identity = adapter.__class__.__name__ if adapter is not None else None
+        scope = json.dumps(
+            {
+                'instance_id': str(constants.instance_id or '') or None,
+                'workspace_id': None,
+                'bot_id': getattr(query, 'bot_uuid', None),
+                'platform_adapter': adapter_identity,
+                'target_type': str(launcher_type),
+                'target_id': str(launcher_id),
+                'thread_id': None,
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(',', ':'),
+        )
+        return self._hash_box_session_scope(f'host:{scope}')
+
+    @staticmethod
+    def _hash_box_session_scope(scope: str) -> str:
+        digest = hashlib.sha256(scope.encode('utf-8')).hexdigest()
+        return f'{_BOX_SESSION_ID_PREFIX}{digest}'
 
     def build_skill_extra_mounts(self, query: pipeline_query.Query) -> list[dict]:
         """Build extra_mounts entries for all pipeline-bound skills.
@@ -1122,20 +1140,6 @@ class BoxService:
         raw = str(self._local_config().get('image', '') or '').strip()
         return raw or None
 
-    def _forced_box_session_id_template(self) -> str:
-        """Return the SaaS-forced sandbox-scope template, or '' when unset.
-
-        Read from ``system.limitation.force_box_session_id_template``. A
-        non-empty value pins every pipeline to a single sandbox scope
-        (e.g. ``'{global}'``) and cannot be overridden per-pipeline.
-        """
-        limitation = (
-            (self.ap.instance_config.data or {}).get('system', {}).get('limitation', {})
-            if getattr(self.ap, 'instance_config', None) is not None
-            else {}
-        )
-        return str(limitation.get('force_box_session_id_template', '') or '').strip()
-
     def _load_workspace_quota_mb(self) -> int | None:
         raw_value = self._local_config().get('workspace_quota_mb')
         if raw_value in (None, ''):
@@ -1304,42 +1308,6 @@ class BoxService:
 
     def get_recent_errors(self) -> list[dict]:
         return list(self._recent_errors)
-
-    def get_system_guidance(self, query_id=None) -> str:
-        """Return LLM system-prompt guidance for the exec tool.
-
-        All execution-specific prompt text is kept here so that callers
-        (e.g. LocalAgentRunner) stay free of box domain knowledge.
-
-        ``query_id`` is the current turn's pipeline query id. When provided,
-        the guidance ALWAYS advertises the per-query outbox path so the agent
-        knows how to deliver generated files back to the user — even on turns
-        where the user sent no inbound attachment (e.g. "generate a QR code"),
-        which is exactly when the inbound-attachment note never fires. Outbound
-        collection in the wrapper runs on every turn regardless of inbound
-        files, so without this the file would be produced and silently dropped.
-        """
-        guidance = (
-            'When the exec tool is available, use it for exact calculations, statistics, structured data parsing, '
-            'and code execution instead of estimating mentally. If the user provides numbers, tables, CSV-like text, '
-            'JSON, or other data and asks for a computed answer, prefer running a short Python script via exec '
-            'and then answer from the tool result. Unless the user explicitly asks for the script, code, or implementation '
-            'details, do not include the generated script in the final answer; return the result and a brief explanation only.'
-        )
-        if self.default_workspace:
-            guidance += (
-                ' A default workspace is mounted at /workspace for file tasks. When the user asks to read, create, or '
-                'modify local files in the working directory, use exec with /workspace paths directly; do not ask the '
-                'user for directory parameters unless they explicitly need a different directory.'
-            )
-        if query_id is not None:
-            outbox_dir = f'{self.OUTBOX_MOUNT_DIR}/{query_id}'
-            guidance += (
-                f' If you produce any file (image, audio, document, etc.) that should be sent back to the user, '
-                f'write it into {outbox_dir}/ (create the directory if needed). Every file placed there will be '
-                'delivered to the user automatically; do not paste file contents or base64 into your reply.'
-            )
-        return guidance
 
     async def get_status(self) -> dict:
         if not self._available:

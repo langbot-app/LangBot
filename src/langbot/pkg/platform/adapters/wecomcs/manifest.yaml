@@ -1,0 +1,106 @@
+apiVersion: v1
+kind: MessagePlatformAdapter
+
+metadata:
+  name: wecomcs-eba
+  label:
+    en_US: WeCom Customer Service
+    zh_Hans: 企业微信客服
+    zh_Hant: 企業微信客服
+  description:
+    en_US: WeCom Customer Service adapter with event-driven orchestration support
+    zh_Hans: 企业微信客服适配器，支持事件驱动编排，通过统一 Webhook 接收客服会话消息
+    zh_Hant: 企業微信客服適配器，支援事件驅動編排，透過統一 Webhook 接收客服會話訊息
+  icon: wecom.png
+
+spec:
+  categories:
+    - china
+  help_links:
+    zh: https://link.langbot.app/zh/platforms/wecomcs
+    en: https://link.langbot.app/en/platforms/wecomcs
+    ja: https://link.langbot.app/ja/platforms/wecomcs
+  config:
+    - name: webhook_url
+      label:
+        en_US: Webhook Callback URL
+        zh_Hans: Webhook 回调地址
+        zh_Hant: Webhook 回調地址
+      description:
+        en_US: Copy this URL and paste it into your WeCom Customer Service webhook configuration.
+        zh_Hans: 复制此地址并粘贴到企业微信客服的 Webhook 配置中。
+        zh_Hant: 複製此地址並貼到企業微信客服的 Webhook 設定中。
+      type: webhook-url
+      required: false
+      default: ""
+    - name: corpid
+      label:
+        en_US: Corpid
+        zh_Hans: 企业ID
+        zh_Hant: 企業ID
+      type: string
+      required: true
+      default: ""
+    - name: secret
+      label:
+        en_US: Secret
+        zh_Hans: 密钥 (Secret)
+        zh_Hant: 密鑰 (Secret)
+      type: string
+      required: true
+      default: ""
+    - name: token
+      label:
+        en_US: Token
+        zh_Hans: 令牌 (Token)
+        zh_Hant: 令牌 (Token)
+      type: string
+      required: true
+      default: ""
+    - name: EncodingAESKey
+      label:
+        en_US: EncodingAESKey
+        zh_Hans: 消息加解密密钥 (EncodingAESKey)
+        zh_Hant: 訊息加解密密鑰 (EncodingAESKey)
+      type: string
+      required: true
+      default: ""
+    - name: api_base_url
+      label:
+        en_US: API Base URL
+        zh_Hans: API 基础 URL
+        zh_Hant: API 基礎 URL
+      description:
+        en_US: Optional WeCom API base URL for private network or reverse proxy deployments.
+        zh_Hans: 可选，若部署在内网环境并通过反向代理访问企业微信 API，可根据文档填写此项
+        zh_Hant: 可選，若部署在內網環境並透過反向代理存取企業微信 API，可根據文件填寫此項
+      type: string
+      required: false
+      default: "https://qyapi.weixin.qq.com/cgi-bin"
+
+  supported_events:
+    - message.received
+    - platform.specific
+
+  supported_apis:
+    required:
+      - send_message
+      - reply_message
+    optional:
+      - get_message
+      - get_user_info
+      - get_friend_list
+      - call_platform_api
+
+  platform_specific_apis:
+    - action: check_access_token
+      description: { en_US: "Check whether the current WeCom Customer Service access token is usable", zh_Hans: "检查当前企业微信客服 access token 是否可用" }
+    - action: refresh_access_token
+      description: { en_US: "Refresh the WeCom Customer Service access token", zh_Hans: "刷新企业微信客服 access token" }
+    - action: get_customer_info
+      description: { en_US: "Get WeCom Customer Service customer information by external user ID", zh_Hans: "按 external_userid 获取企业微信客服客户信息" }
+
+execution:
+  python:
+    path: ./adapter.py
+    attr: WecomCSAdapter

@@ -166,8 +166,13 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
             try:
                 await self.ping()
                 self.ap.logger.debug('Heartbeat to Box runtime success.')
+            except asyncio.CancelledError:
+                raise
             except Exception as e:
-                self.ap.logger.debug(f'Failed to heartbeat to Box runtime: {e}')
+                self.ap.logger.warning(f'Heartbeat to Box runtime failed; reconnecting: {e}')
+                if self.runtime_disconnect_callback is not None:
+                    await self.runtime_disconnect_callback(self)
+                    return
 
     async def ping(self) -> None:
         if self._handler is None:
@@ -323,15 +328,9 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
             # closed) or raised after the initial handshake succeeded.
             # Either way, treat it as a disconnect.
             if connected.is_set():
-                if self._uses_websocket():
-                    self.ap.logger.error('Disconnected from Box runtime, trying to reconnect...')
-                    if self.runtime_disconnect_callback is not None:
-                        await self.runtime_disconnect_callback(self)
-                else:
-                    self.ap.logger.error(
-                        'Disconnected from Box runtime via stdio. '
-                        'Cannot automatically reconnect — please restart LangBot.'
-                    )
+                self.ap.logger.error('Disconnected from Box runtime, trying to reconnect...')
+                if self.runtime_disconnect_callback is not None:
+                    await self.runtime_disconnect_callback(self)
 
         return new_connection_callback
 

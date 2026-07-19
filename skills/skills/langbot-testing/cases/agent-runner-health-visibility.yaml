@@ -1,0 +1,53 @@
+id: agent-runner-health-visibility
+title: "Agent configuration shows whether its selected runner is usable"
+mode: agent-browser
+area: agent
+type: feature
+priority: p0
+risk: medium
+ci_eligible: false
+tags:
+  - agent-runner
+  - agent
+  - productization
+  - release-gate
+skills:
+  - langbot-env-setup
+  - langbot-testing
+env:
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_BROWSER_PROFILE
+automation: scripts/e2e/agent-runner-health-visibility.mjs
+automation_env:
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_BROWSER_PROFILE
+  - LANGBOT_CHROMIUM_EXECUTABLE
+preconditions:
+  - "The plugin runtime is enabled and connected, with at least one AgentRunner registered."
+  - "The target is a local test instance where a temporary Agent may be created and deleted."
+steps:
+  - "Read the live plugin runtime status and select a registered runner from Agent metadata."
+  - "Create a temporary Agent using that runner and open its Runner settings in the WebUI."
+  - "Confirm the UI reports that the runner is ready."
+  - "Replace the temporary Agent binding with a syntactically valid but unregistered runner id."
+  - "Reload Runner settings and confirm the UI reports that the selected runner is unavailable."
+checks:
+  - "UI: A registered runner and connected plugin runtime produce a visible ready status."
+  - "UI: A stale runner binding produces a visible unavailable status with recovery actions."
+  - "API: Plugin runtime status is connected and Agent metadata contains the registered runner."
+  - "Console: No unexpected frontend errors appear during the flow."
+  - "Cleanup: The temporary Agent is deleted after evidence is collected."
+evidence_required:
+  - ui
+  - screenshot
+  - console
+  - api_diagnostic
+diagnostics:
+  - "A disconnected plugin runtime is env_issue, not a passing unavailable-runner product check."
+  - "A ready status inferred only from API metadata without opening the Runner UI is not a pass."
+troubleshooting:
+  - backend-not-listening
+  - plugin-runtime-timeout
+  - proxy-env-mismatch

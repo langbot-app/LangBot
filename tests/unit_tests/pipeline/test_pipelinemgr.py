@@ -164,18 +164,21 @@ async def test_runtime_pipeline_execute(mock_app, sample_query):
     mock_stage.process.assert_called_once()
 
 
-def test_runtime_pipeline_prefers_local_agent_mcp_resources(mock_app):
-    """Local Agent resource selection should override legacy extension prefs."""
+def test_runtime_pipeline_prefers_runner_mcp_resources(mock_app):
+    """Runner resource selection should override extension preferences."""
     pipelinemgr = get_pipelinemgr_module()
     persistence_pipeline = get_persistence_pipeline_module()
 
     pipeline_entity = Mock(spec=persistence_pipeline.LegacyPipeline)
     pipeline_entity.config = {
         'ai': {
-            'local-agent': {
-                'mcp-resources': [{'server_uuid': 'srv-new', 'uri': 'file:///new.md'}],
-                'mcp-resource-agent-read-enabled': False,
-            }
+            'runner': {'id': 'plugin:langbot-team/LocalAgent/default'},
+            'runner_config': {
+                'plugin:langbot-team/LocalAgent/default': {
+                    'mcp-resources': [{'server_uuid': 'srv-new', 'uri': 'file:///new.md'}],
+                    'mcp-resource-agent-read-enabled': False,
+                },
+            },
         }
     }
     pipeline_entity.extensions_preferences = {
@@ -190,12 +193,17 @@ def test_runtime_pipeline_prefers_local_agent_mcp_resources(mock_app):
 
 
 def test_runtime_pipeline_falls_back_to_extension_mcp_resources(mock_app):
-    """Existing extension prefs remain compatible until a Local Agent value exists."""
+    """Extension preferences apply when the current runner has no override."""
     pipelinemgr = get_pipelinemgr_module()
     persistence_pipeline = get_persistence_pipeline_module()
 
     pipeline_entity = Mock(spec=persistence_pipeline.LegacyPipeline)
-    pipeline_entity.config = {'ai': {'local-agent': {}}}
+    pipeline_entity.config = {
+        'ai': {
+            'runner': {'id': 'plugin:langbot-team/LocalAgent/default'},
+            'runner_config': {'plugin:langbot-team/LocalAgent/default': {}},
+        }
+    }
     pipeline_entity.extensions_preferences = {
         'mcp_resources': [{'server_uuid': 'srv-old', 'uri': 'file:///old.md'}],
         'mcp_resource_agent_read_enabled': False,
@@ -204,4 +212,96 @@ def test_runtime_pipeline_falls_back_to_extension_mcp_resources(mock_app):
     runtime_pipeline = pipelinemgr.RuntimePipeline(mock_app, pipeline_entity, [])
 
     assert runtime_pipeline.mcp_resource_attachments == [{'server_uuid': 'srv-old', 'uri': 'file:///old.md'}]
+    assert runtime_pipeline.mcp_resource_agent_read_enabled is False
+
+
+@pytest.mark.parametrize('invalid_value', [0, None, 'false', [], {}])
+def test_runtime_pipeline_mcp_resource_read_flag_fails_closed(mock_app, invalid_value):
+    pipelinemgr = get_pipelinemgr_module()
+    persistence_pipeline = get_persistence_pipeline_module()
+
+    pipeline_entity = Mock(spec=persistence_pipeline.LegacyPipeline)
+    pipeline_entity.config = {
+        'ai': {
+            'runner': {'id': 'plugin:test/runner/default'},
+            'runner_config': {
+                'plugin:test/runner/default': {
+                    'mcp-resource-agent-read-enabled': invalid_value,
+                }
+            },
+        }
+    }
+    pipeline_entity.extensions_preferences = {'mcp_resource_agent_read_enabled': True}
+
+    runtime_pipeline = pipelinemgr.RuntimePipeline(mock_app, pipeline_entity, [])
+
+    assert runtime_pipeline.mcp_resource_agent_read_enabled is False
+
+
+@pytest.mark.parametrize('invalid_value', [0, None, 'false', [], {}])
+def test_runtime_pipeline_extension_enable_all_flags_fail_closed(mock_app, invalid_value):
+    pipelinemgr = get_pipelinemgr_module()
+    persistence_pipeline = get_persistence_pipeline_module()
+
+    pipeline_entity = Mock(spec=persistence_pipeline.LegacyPipeline)
+    pipeline_entity.config = {}
+    pipeline_entity.extensions_preferences = {
+        'enable_all_plugins': invalid_value,
+        'plugins': [{'author': 'allowed', 'name': 'plugin'}],
+        'enable_all_mcp_servers': invalid_value,
+        'mcp_servers': ['bound-mcp'],
+    }
+
+    runtime_pipeline = pipelinemgr.RuntimePipeline(mock_app, pipeline_entity, [])
+
+    assert runtime_pipeline.enable_all_plugins is False
+    assert runtime_pipeline.bound_plugins == ['allowed/plugin']
+    assert runtime_pipeline.enable_all_mcp_servers is False
+    assert runtime_pipeline.bound_mcp_servers == ['bound-mcp']
+
+
+@pytest.mark.parametrize('invalid_preferences', [None, [], '', 0, False])
+def test_runtime_pipeline_malformed_extension_root_disables_all_extensions(
+    mock_app,
+    invalid_preferences,
+):
+    pipelinemgr = get_pipelinemgr_module()
+    persistence_pipeline = get_persistence_pipeline_module()
+
+    pipeline_entity = Mock(spec=persistence_pipeline.LegacyPipeline)
+    pipeline_entity.config = {}
+    pipeline_entity.extensions_preferences = invalid_preferences
+
+    runtime_pipeline = pipelinemgr.RuntimePipeline(mock_app, pipeline_entity, [])
+
+    assert runtime_pipeline.enable_all_plugins is False
+    assert runtime_pipeline.bound_plugins == []
+    assert runtime_pipeline.enable_all_mcp_servers is False
+    assert runtime_pipeline.bound_mcp_servers == []
+    assert runtime_pipeline.mcp_resource_attachments == []
+    assert runtime_pipeline.mcp_resource_agent_read_enabled is False
+
+
+def test_runtime_pipeline_malformed_extension_lists_are_empty_allowlists(mock_app):
+    pipelinemgr = get_pipelinemgr_module()
+    persistence_pipeline = get_persistence_pipeline_module()
+
+    pipeline_entity = Mock(spec=persistence_pipeline.LegacyPipeline)
+    pipeline_entity.config = {}
+    pipeline_entity.extensions_preferences = {
+        'enable_all_plugins': True,
+        'plugins': 'allowed/plugin',
+        'enable_all_mcp_servers': True,
+        'mcp_servers': 'bound-mcp',
+        'mcp_resources': 'file:///README.md',
+        'mcp_resource_agent_read_enabled': True,
+    }
+
+    runtime_pipeline = pipelinemgr.RuntimePipeline(mock_app, pipeline_entity, [])
+
+    assert runtime_pipeline.enable_all_plugins is False
+    assert runtime_pipeline.bound_plugins == []
+    assert runtime_pipeline.enable_all_mcp_servers is False
+    assert runtime_pipeline.bound_mcp_servers == []
+    assert runtime_pipeline.mcp_resource_attachments == []
     assert runtime_pipeline.mcp_resource_agent_read_enabled is False

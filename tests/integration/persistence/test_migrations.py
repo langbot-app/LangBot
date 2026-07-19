@@ -9,32 +9,58 @@ Run: uv run pytest tests/integration/persistence/test_migrations.py -q
 
 from __future__ import annotations
 
-import pytest
-from sqlalchemy.ext.asyncio import create_async_engine
+import json
 
-from langbot.pkg.entity.persistence.base import Base
-from langbot.pkg.persistence.alembic_runner import (
-    run_alembic_upgrade,
-    run_alembic_stamp,
-    get_alembic_current,
-    _ALEMBIC_DIR,
-)
+import pytest
+import sqlalchemy as sa
 from alembic.config import Config
 from alembic.script import ScriptDirectory
+from sqlalchemy.ext.asyncio import create_async_engine
+
+from langbot.pkg.entity.persistence import (
+    agent as agent_models,
+    agent_run as agent_run_models,
+    agent_runner_state as agent_runner_state_models,
+    bot as bot_models,
+    metadata as metadata_models,
+    monitoring as monitoring_models,
+)
+from langbot.pkg.entity.persistence.base import Base
+from langbot.pkg.persistence.alembic_runner import (
+    _ALEMBIC_DIR,
+    get_alembic_current,
+    run_alembic_stamp,
+    run_alembic_upgrade,
+)
+
+
+def _get_script_directory() -> ScriptDirectory:
+    """Load the repository's Alembic revision graph."""
+    cfg = Config()
+    cfg.set_main_option('script_location', _ALEMBIC_DIR)
+    return ScriptDirectory.from_config(cfg)
 
 
 def _get_script_head() -> str:
-    """Resolve the current Alembic head revision from the script directory.
-
-    Avoids hardcoding a revision number in assertions so adding a new
-    migration doesn't require editing the migration tests.
-    """
-    cfg = Config()
-    cfg.set_main_option('script_location', _ALEMBIC_DIR)
-    return ScriptDirectory.from_config(cfg).get_current_head()
+    """Resolve the only Alembic head without hardcoding a revision."""
+    return _get_script_directory().get_current_head()
 
 
 pytestmark = pytest.mark.integration
+
+
+class TestAlembicRevisionGraph:
+    """Static release gates for the Alembic graph."""
+
+    def test_revision_ids_fit_alembic_version_column_and_graph_has_one_head(self):
+        script = _get_script_directory()
+        revisions = list(script.walk_revisions())
+
+        assert script.get_bases() == ['0001_baseline']
+        assert script.get_heads() == ['0012_monitoring_tool_calls']
+        assert all(len(item.revision) <= 32 for item in revisions), {
+            item.revision: len(item.revision) for item in revisions if len(item.revision) > 32
+        }
 
 
 @pytest.fixture
@@ -148,6 +174,174 @@ class TestSQLiteMigrationUpgrade:
 
         rev2 = await get_alembic_current(sqlite_engine)
         assert rev2 == rev1, f'Expected {rev1}, got {rev2}'
+
+    @pytest.mark.asyncio
+    async def test_upgrade_from_mcp_resource_branch_creates_agent_and_monitoring_schema(self, sqlite_engine):
+        """The MCP branch can converge into the Agent branch and the current head."""
+        await run_alembic_stamp(sqlite_engine, '0008_mcp_resource_prefs')
+        await run_alembic_upgrade(sqlite_engine, 'head')
+
+        def inspect_schema(sync_conn):
+            inspector = sa.inspect(sync_conn)
+            tables = set(inspector.get_table_names())
+            monitoring_indexes = {
+                index['name'] for index in inspector.get_indexes(monitoring_models.MonitoringToolCall.__tablename__)
+            }
+            return tables, monitoring_indexes
+
+        async with sqlite_engine.connect() as conn:
+            tables, monitoring_indexes = await conn.run_sync(inspect_schema)
+
+        expected_agent_tables = {
+            agent_models.Agent.__tablename__,
+            agent_run_models.AgentRun.__tablename__,
+            agent_run_models.AgentRunEvent.__tablename__,
+            agent_run_models.AgentRuntime.__tablename__,
+            agent_runner_state_models.AgentRunnerState.__tablename__,
+        }
+        expected_monitoring_indexes = {index.name for index in monitoring_models.MonitoringToolCall.__table__.indexes}
+
+        assert expected_agent_tables <= tables
+        assert monitoring_models.MonitoringToolCall.__tablename__ in tables
+        assert expected_monitoring_indexes <= monitoring_indexes
+        assert await get_alembic_current(sqlite_engine) == _get_script_head()
+
+    @pytest.mark.asyncio
+    async def test_bot_admin_data_migrates_when_create_all_already_created_table(self, sqlite_engine):
+        """0007 must migrate config admins even when the ORM created its table first."""
+        config = {
+            'admins': ['group_admin-1', 'person_user_with_underscore', 'malformed'],
+            'preserved': True,
+        }
+
+        async with sqlite_engine.begin() as conn:
+            await conn.run_sync(bot_models.Bot.__table__.create)
+            await conn.run_sync(bot_models.BotAdmin.__table__.create)
+            await conn.run_sync(metadata_models.Metadata.__table__.create)
+            await conn.execute(
+                sa.insert(bot_models.Bot).values(
+                    uuid='bot-1',
+                    name='Bot',
+                    description='',
+                    adapter='test',
+                    adapter_config={},
+                    enable=True,
+                )
+            )
+            await conn.execute(
+                sa.insert(bot_models.BotAdmin).values(
+                    bot_uuid='bot-1',
+                    launcher_type='group',
+                    launcher_id='admin-1',
+                )
+            )
+            await conn.execute(
+                sa.insert(metadata_models.Metadata).values(
+                    key='instance_config',
+                    value=json.dumps(config),
+                )
+            )
+
+        await run_alembic_stamp(sqlite_engine, '0006_normalize_mcp_remote_mode')
+        await run_alembic_upgrade(sqlite_engine, '0007_add_bot_admins')
+
+        async with sqlite_engine.connect() as conn:
+            admin_rows = (
+                await conn.execute(
+                    sa.select(
+                        bot_models.BotAdmin.launcher_type,
+                        bot_models.BotAdmin.launcher_id,
+                    ).order_by(bot_models.BotAdmin.launcher_type, bot_models.BotAdmin.launcher_id)
+                )
+            ).all()
+            stored_config = (
+                await conn.execute(
+                    sa.select(metadata_models.Metadata.value).where(metadata_models.Metadata.key == 'instance_config')
+                )
+            ).scalar_one()
+
+        assert admin_rows == [('group', 'admin-1'), ('person', 'user_with_underscore')]
+        assert json.loads(stored_config) == {'preserved': True}
+
+    @pytest.mark.asyncio
+    async def test_pipeline_routing_rules_preserve_message_filters(self, sqlite_engine):
+        """Every legacy routing rule keeps its matching semantics in event bindings."""
+        routing_rules = [
+            {
+                'type': 'launcher_type',
+                'operator': 'eq',
+                'value': 'group',
+                'pipeline_uuid': 'pipeline-group',
+            },
+            {
+                'type': 'launcher_id',
+                'operator': 'regex',
+                'value': '^room-',
+                'pipeline_uuid': 'pipeline-room',
+            },
+            {
+                'type': 'message_content',
+                'operator': 'contains',
+                'value': 'urgent',
+                'pipeline_uuid': 'pipeline-content',
+            },
+            {
+                'type': 'message_has_element',
+                'operator': 'eq',
+                'value': 'Image',
+                'pipeline_uuid': 'pipeline-image',
+            },
+            {
+                'type': 'message_has_element',
+                'operator': 'neq',
+                'value': 'Voice',
+                'pipeline_uuid': 'pipeline-no-voice',
+            },
+        ]
+
+        async with sqlite_engine.begin() as conn:
+            await conn.execute(
+                sa.text(
+                    'CREATE TABLE bots ('
+                    'uuid VARCHAR(255) PRIMARY KEY, '
+                    'use_pipeline_uuid VARCHAR(255), '
+                    'pipeline_routing_rules JSON NOT NULL, '
+                    'event_bindings JSON NOT NULL'
+                    ')'
+                )
+            )
+            await conn.execute(
+                sa.text(
+                    'INSERT INTO bots '
+                    '(uuid, use_pipeline_uuid, pipeline_routing_rules, event_bindings) '
+                    'VALUES (:uuid, :default_pipeline, :rules, :bindings)'
+                ),
+                {
+                    'uuid': 'bot-routing',
+                    'default_pipeline': 'pipeline-default',
+                    'rules': json.dumps(routing_rules),
+                    'bindings': '[]',
+                },
+            )
+
+        await run_alembic_stamp(sqlite_engine, '0008_agent_product_surface')
+        await run_alembic_upgrade(sqlite_engine, '0009_migrate_event_bindings')
+
+        async with sqlite_engine.connect() as conn:
+            raw_bindings = (
+                await conn.execute(sa.text("SELECT event_bindings FROM bots WHERE uuid = 'bot-routing'"))
+            ).scalar_one()
+
+        bindings = json.loads(raw_bindings)
+        filters_by_pipeline = {binding['target_uuid']: binding['filters'] for binding in bindings}
+        assert filters_by_pipeline == {
+            'pipeline-group': [{'field': 'chat_type', 'operator': 'eq', 'value': 'group'}],
+            'pipeline-room': [{'field': 'chat_id', 'operator': 'regex', 'value': '^room-'}],
+            'pipeline-content': [{'field': 'message_text', 'operator': 'contains', 'value': 'urgent'}],
+            'pipeline-image': [{'field': 'message_element_types', 'operator': 'contains', 'value': 'Image'}],
+            'pipeline-no-voice': [{'field': 'message_element_types', 'operator': 'not_contains', 'value': 'Voice'}],
+            'pipeline-default': [],
+        }
 
 
 class TestSQLiteMigrationFreshDatabase:

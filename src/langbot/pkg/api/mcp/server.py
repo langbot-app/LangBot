@@ -28,7 +28,7 @@ if typing.TYPE_CHECKING:
 
 INSTRUCTIONS = """\
 This MCP server manages a LangBot instance. LangBot is an LLM-native instant
-messaging bot platform. Use these tools to inspect and manage bots, pipelines,
+messaging bot platform. Use these tools to inspect and manage bots, agents, pipelines,
 models, knowledge bases, MCP servers, and skills.
 
 Authentication uses a LangBot API key (web-UI-created `lbk_...` key or the
@@ -113,6 +113,29 @@ class LangBotMCPServer:
             await ap.bot_service.delete_bot(bot_uuid)
             return _dump({'ok': True})
 
+        @mcp.tool(description='List recent runtime route status for a bot event route table.')
+        async def list_bot_event_route_statuses(bot_uuid: str) -> str:
+            return _dump(await ap.bot_service.list_event_route_statuses(bot_uuid))
+
+        @mcp.tool(
+            description=(
+                'Dispatch a synthetic event through the saved bot event routes. '
+                'This validates routing without sending real outbound platform messages.'
+            )
+        )
+        async def test_bot_event_route(
+            bot_uuid: str,
+            event_type: str,
+            payload: dict | None = None,
+        ) -> str:
+            return _dump(
+                await ap.bot_service.dispatch_test_event_route(
+                    bot_uuid=bot_uuid,
+                    event_type=event_type,
+                    payload=payload,
+                )
+            )
+
         # ----- Pipelines ----------------------------------------------- #
         @mcp.tool(description='List all pipelines.')
         async def list_pipelines() -> str:
@@ -139,6 +162,34 @@ class LangBotMCPServer:
         @mcp.tool(description='Delete a pipeline by UUID.')
         async def delete_pipeline(pipeline_uuid: str) -> str:
             await ap.pipeline_service.delete_pipeline(pipeline_uuid)
+            return _dump({'ok': True})
+
+        # ----- Processors ---------------------------------------------- #
+        @mcp.tool(description='List product-level processors, including Agents and Pipelines.')
+        async def list_processors() -> str:
+            return _dump(await ap.agent_service.get_agents())
+
+        @mcp.tool(description='Get an Agent or Pipeline processor by UUID.')
+        async def get_processor(processor_uuid: str) -> str:
+            return _dump(await ap.agent_service.get_agent(processor_uuid))
+
+        @mcp.tool(
+            description=(
+                'Create an Agent or Pipeline processor. Set `processor_data.kind` to '
+                '`agent` or `pipeline`. Returns the new UUID and kind.'
+            )
+        )
+        async def create_processor(processor_data: dict) -> str:
+            return _dump(await ap.agent_service.create_agent(processor_data))
+
+        @mcp.tool(description='Update an Agent or Pipeline processor by UUID.')
+        async def update_processor(processor_uuid: str, processor_data: dict) -> str:
+            await ap.agent_service.update_agent(processor_uuid, processor_data)
+            return _dump({'ok': True})
+
+        @mcp.tool(description='Delete an Agent or Pipeline processor by UUID.')
+        async def delete_processor(processor_uuid: str) -> str:
+            await ap.agent_service.delete_agent(processor_uuid)
             return _dump({'ok': True})
 
         # ----- Models -------------------------------------------------- #

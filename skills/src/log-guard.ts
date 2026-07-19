@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import type { StructuredItem } from "./types.ts";
 import { listValue, loadEnv, loadStructuredItems, scalar } from "./fs.ts";
 
@@ -99,6 +99,22 @@ export type AutomationResultEvidence = {
   url?: string;
   prompt?: string;
   expected_text?: string;
+  stream_output?: string;
+  prompt_count?: number;
+  image_fixture?: string;
+  evidence?: Record<string, string>;
+  evidence_collected?: string[];
+  browser_diagnostics?: {
+    status?: string;
+    reason?: string;
+    finding_count?: number;
+  };
+  chat_results?: Array<{
+    index?: number;
+    expected_text?: string;
+    status?: string;
+    reason?: string;
+  }>;
   metrics_summary?: Record<string, unknown>;
   thresholds_summary?: Record<string, unknown>;
   artifacts?: Record<string, unknown>;
@@ -216,13 +232,13 @@ export function scanLogSources(
   for (const configured of configuredSources) {
     const explicitPath = options[configured.option];
     const autoPath = configured.source === "backend" && options["no-auto-log"] !== true
-      ? latestLangBotLogPath(env)
+      ? latestLangBotLogPath(env, root)
       : null;
     const rawPath = typeof explicitPath === "string" ? explicitPath : autoPath;
     const autoDetected = typeof explicitPath !== "string" && rawPath === autoPath;
     if (!rawPath) {
       if (configured.source === "backend" && options["no-auto-log"] !== true) {
-        const logsDir = env.LANGBOT_REPO ? join(env.LANGBOT_REPO, "data", "logs") : "LANGBOT_REPO/data/logs";
+        const logsDir = langBotLogsDir(env, root) ?? "LANGBOT_REPO/data/logs";
         sources.push({ source: "backend", path: join(logsDir, "langbot-*.log"), status: "auto_not_found", line_count: 0, auto_detected: true });
       }
       continue;
@@ -610,6 +626,47 @@ function objectField(data: Record<string, unknown>, key: string): Record<string,
     : undefined;
 }
 
+function stringMapField(data: Record<string, unknown>, key: string): Record<string, string> | undefined {
+  const value = data[key];
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const entries = Object.entries(value as Record<string, unknown>)
+    .filter((entry): entry is [string, string] => typeof entry[1] === "string" && entry[1].trim().length > 0);
+  return entries.length ? Object.fromEntries(entries) : undefined;
+}
+
+function stringListField(data: Record<string, unknown>, key: string): string[] | undefined {
+  const value = data[key];
+  if (!Array.isArray(value)) return undefined;
+  const items = value.map((item) => typeof item === "string" ? item : "").filter(Boolean);
+  return items.length ? items : undefined;
+}
+
+function chatResultsField(data: Record<string, unknown>): AutomationResultEvidence["chat_results"] {
+  const value = data.chat_results;
+  if (!Array.isArray(value)) return undefined;
+  const results = value
+    .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object" && !Array.isArray(item))
+    .map((item) => ({
+      index: numberField(item, "index"),
+      expected_text: stringField(item, "expected_text"),
+      status: stringField(item, "status"),
+      reason: stringField(item, "reason"),
+    }));
+  return results.length ? results : undefined;
+}
+
+function browserDiagnosticsField(data: Record<string, unknown>): AutomationResultEvidence["browser_diagnostics"] {
+  const value = data.browser_diagnostics;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const diagnostics = value as Record<string, unknown>;
+  const findings = Array.isArray(diagnostics.findings) ? diagnostics.findings.length : undefined;
+  return {
+    status: stringField(diagnostics, "status"),
+    reason: stringField(diagnostics, "reason"),
+    finding_count: findings,
+  };
+}
+
 function evidenceDirFromOptions(options: Record<string, string | boolean>): string | undefined {
   const explicit = typeof options["evidence-dir"] === "string" ? options["evidence-dir"] : undefined;
   if (explicit) return resolve(explicit);
@@ -652,6 +709,13 @@ export function readAutomationResultEvidence(options: Record<string, string | bo
       url: stringField(result, "url"),
       prompt: redactSecrets(stringField(result, "prompt") ?? ""),
       expected_text: stringField(result, "expected_text"),
+      stream_output: typeof result.stream_output === "boolean" ? String(result.stream_output) : stringField(result, "stream_output"),
+      prompt_count: numberField(result, "prompt_count"),
+      image_fixture: stringField(result, "image_fixture"),
+      evidence: stringMapField(result, "evidence"),
+      evidence_collected: stringListField(result, "evidence_collected"),
+      browser_diagnostics: browserDiagnosticsField(result),
+      chat_results: chatResultsField(result),
       metrics_summary: objectField(result, "metrics_summary"),
       thresholds_summary: objectField(result, "thresholds_summary"),
       artifacts: objectField(result, "artifacts"),
@@ -661,10 +725,31 @@ export function readAutomationResultEvidence(options: Record<string, string | bo
   }
 }
 
-export function latestLangBotLogPath(env: Record<string, string>): string | null {
-  const repo = env.LANGBOT_REPO;
-  if (!repo) return null;
-  const logsDir = join(repo, "data", "logs");
+function langBotRepoFromRoot(root: string): string | null {
+  const candidates = [
+    resolve(root),
+    basename(resolve(root)) === "skills" ? resolve(root, "..") : "",
+    resolve(root, "../LangBot"),
+    resolve(root, "LangBot"),
+  ].filter(Boolean);
+
+  const seen = new Set<string>();
+  for (const candidate of candidates) {
+    if (seen.has(candidate)) continue;
+    seen.add(candidate);
+    if (existsSync(join(candidate, "data", "config.yaml"))) return candidate;
+  }
+  return null;
+}
+
+function langBotLogsDir(env: Record<string, string>, root: string): string | null {
+  const repo = env.LANGBOT_REPO ? resolve(env.LANGBOT_REPO) : langBotRepoFromRoot(root);
+  return repo ? join(repo, "data", "logs") : null;
+}
+
+export function latestLangBotLogPath(env: Record<string, string>, root = process.cwd()): string | null {
+  const logsDir = langBotLogsDir(env, root);
+  if (!logsDir) return null;
   if (!existsSync(logsDir)) return null;
 
   const candidates = readdirSync(logsDir)

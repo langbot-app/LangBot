@@ -9,6 +9,7 @@ from typing import Any
 import typing
 import os
 import sys
+from urllib.parse import urlparse
 import httpx
 import sqlalchemy
 import yaml
@@ -172,9 +173,20 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             # cmd: lbp rt -s
             python_path = sys.executable
             env = os.environ.copy()
+            debug_url = self.ap.instance_config.data.get('plugin', {}).get(
+                'display_plugin_debug_url', 'ws://localhost:5401/plugin/debug/ws'
+            )
+            debug_port = self._runtime_debug_port_from_url(debug_url)
             self.ctrl = stdio_client_controller.StdioClientController(
                 command=python_path,
-                args=['-m', 'langbot_plugin.cli.__init__', 'rt', '-s'],
+                args=[
+                    '-m',
+                    'langbot_plugin.cli.__init__',
+                    'rt',
+                    '-s',
+                    '--ws-debug-port',
+                    str(debug_port),
+                ],
                 env=env,
             )
             task = self.ctrl.run(new_connection_callback)
@@ -184,8 +196,26 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
 
         asyncio.create_task(task)
 
+    @staticmethod
+    def _runtime_debug_port_from_url(debug_url: str) -> int:
+        """Extract the local plugin runtime debug port from its display URL."""
+        try:
+            parsed = urlparse(debug_url if '://' in debug_url else f'//{debug_url}')
+            return parsed.port or 5401
+        except (TypeError, ValueError):
+            return 5401
+
     async def initialize_plugins(self):
         pass
+
+    async def _refresh_agent_runner_registry(self) -> None:
+        registry = getattr(self.ap, 'agent_runner_registry', None)
+        if registry is None:
+            return
+        try:
+            await registry.refresh()
+        except Exception as e:
+            self.ap.logger.warning(f'Failed to refresh agent runner registry: {e}')
 
     async def ping_plugin_runtime(self):
         if not hasattr(self, 'handler'):
@@ -559,6 +589,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                 task_context.metadata.update(metadata)
 
         await self._wait_for_installed_plugin_ready(plugin_author, plugin_name, task_context)
+        await self._refresh_agent_runner_registry()
 
     async def upgrade_plugin(
         self,
@@ -576,6 +607,8 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             if trace is not None:
                 if task_context is not None:
                     task_context.trace(trace)
+
+        await self._refresh_agent_runner_registry()
 
     async def delete_plugin(
         self,
@@ -600,6 +633,8 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             if task_context is not None:
                 task_context.trace('Cleaning up plugin configuration and storage...')
             await self.handler.cleanup_plugin_data(plugin_author, plugin_name)
+
+        await self._refresh_agent_runner_registry()
 
     async def list_plugins(self, component_kinds: list[str] | None = None) -> list[dict[str, Any]]:
         """List plugins, optionally filtered by component kinds.
@@ -814,6 +849,53 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             cmd_ret = command_context.CommandReturn.model_validate(ret)
 
             yield cmd_ret
+
+    # AgentRunner methods
+    async def list_agent_runners(self, bound_plugins: list[str] | None = None) -> list[dict[str, Any]]:
+        """List all available AgentRunner components.
+
+        Returns list of dicts with plugin_author, plugin_name, runner_name, manifest, etc.
+        """
+        if not self.is_enable_plugin:
+            return []
+
+        runners_data = await self.handler.list_agent_runners(include_plugins=bound_plugins)
+        return runners_data
+
+    async def run_agent(
+        self,
+        plugin_author: str,
+        plugin_name: str,
+        runner_name: str,
+        context: dict[str, Any],
+    ) -> typing.AsyncGenerator[dict[str, Any], None]:
+        """Run an AgentRunner from a plugin.
+
+        Args:
+            plugin_author: Plugin author
+            plugin_name: Plugin name
+            runner_name: AgentRunner component name
+            context: AgentRunContext as dict
+
+        Yields:
+            AgentRunResult dicts
+        """
+        if not self.is_enable_plugin:
+            # Return a protocol-level failure result.
+            yield {
+                'type': 'run.failed',
+                'data': {
+                    'error': 'Plugin system is disabled',
+                    'code': 'plugin.disabled',
+                    'retryable': False,
+                },
+            }
+            return
+
+        gen = self.handler.run_agent(plugin_author, plugin_name, runner_name, context)
+
+        async for ret in gen:
+            yield ret
 
     async def retrieve_knowledge(
         self,

@@ -27,6 +27,9 @@ import langbot_plugin.api.entities.builtin.provider.session as provider_session
 from langbot.pkg.pipeline import entities as pipeline_entities
 
 
+DEFAULT_RUNNER_ID = 'plugin:langbot-team/LocalAgent/default'
+
+
 class MockApplication:
     """Mock Application object providing all basic dependencies needed by stages"""
 
@@ -202,8 +205,13 @@ def sample_query(sample_message_chain, sample_message_event, mock_adapter):
         bot_uuid='test-bot-uuid',
         pipeline_config={
             'ai': {
-                'runner': {'runner': 'local-agent'},
-                'local-agent': {'model': {'primary': 'test-model-uuid', 'fallbacks': []}, 'prompt': 'test-prompt'},
+                'runner': {'id': DEFAULT_RUNNER_ID},
+                'runner_config': {
+                    DEFAULT_RUNNER_ID: {
+                        'model': {'primary': 'test-model-uuid', 'fallbacks': []},
+                        'prompt': [{'role': 'system', 'content': 'test-prompt'}],
+                    },
+                },
             },
             'output': {'misc': {'at-sender': False, 'quote-origin': False}},
             'trigger': {'misc': {'combine-quote-message': False}},
@@ -227,8 +235,13 @@ def sample_pipeline_config():
     """Provides sample pipeline configuration"""
     return {
         'ai': {
-            'runner': {'runner': 'local-agent'},
-            'local-agent': {'model': {'primary': 'test-model-uuid', 'fallbacks': []}, 'prompt': 'test-prompt'},
+            'runner': {'id': DEFAULT_RUNNER_ID},
+            'runner_config': {
+                DEFAULT_RUNNER_ID: {
+                    'model': {'primary': 'test-model-uuid', 'fallbacks': []},
+                    'prompt': [{'role': 'system', 'content': 'test-prompt'}],
+                },
+            },
         },
         'output': {'misc': {'at-sender': False, 'quote-origin': False}},
         'trigger': {'misc': {'combine-quote-message': False}},

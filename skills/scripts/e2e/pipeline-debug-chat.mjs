@@ -10,19 +10,24 @@ import {
   setDebugChatStreamOutput,
 } from "./lib/debug-chat.mjs";
 import {
+  beginBackendLogCapture,
   createBrowser,
+  ensureAuthenticatedBrowser,
   ensureEvidence,
   evidencePaths,
   exitCode,
+  finishBackendLogCapture,
   localIsoWithOffset,
   pathExists,
   safeScreenshot,
+  scanBrowserDiagnostics,
   writeResult,
 } from "./lib/langbot-e2e.mjs";
 
 const caseId = env.LBS_CASE_ID || "pipeline-debug-chat";
 const paths = evidencePaths(caseId);
 await ensureEvidence(paths);
+const backendLogCapture = await beginBackendLogCapture(paths.evidenceDir);
 
 const expectedText = env.LANGBOT_E2E_EXPECTED_TEXT || "OK";
 const prompt = env.LANGBOT_E2E_PROMPT || `请只回复 ${expectedText}，用于前端调试测试。`;
@@ -50,15 +55,19 @@ const pipelineName = pipelineRequired
 const expectedRunnerId = env.LANGBOT_E2E_EXPECTED_RUNNER_ID || "";
 const resetDebugChat = boolFromEnv(env.LANGBOT_E2E_RESET_DEBUG_CHAT, false);
 const restoreRunnerConfig = boolFromEnv(env.LANGBOT_E2E_RESTORE_RUNNER_CONFIG, true);
+const restoreExtensions = boolFromEnv(env.LANGBOT_E2E_RESTORE_EXTENSIONS, true);
 const debugChatSessionType = env.LANGBOT_E2E_DEBUG_CHAT_SESSION_TYPE || "person";
 const pipelineConfigDiagnosticPath = resolve(paths.evidenceDir, "pipeline-config-diagnostic.json");
+const pipelineExtensionsDiagnosticPath = resolve(paths.evidenceDir, "pipeline-extensions-diagnostic.json");
 const debugChatResetDiagnosticPath = resolve(paths.evidenceDir, "debug-chat-reset-diagnostic.json");
 const pipelineConfigRestoreDiagnosticPath = resolve(paths.evidenceDir, "pipeline-config-restore-diagnostic.json");
+const pipelineExtensionsRestoreDiagnosticPath = resolve(paths.evidenceDir, "pipeline-extensions-restore-diagnostic.json");
 const metricsPath = resolve(paths.evidenceDir, "metrics.json");
 const startedAt = new Date();
 
 let browser;
-let restorePlan = null;
+let restoreConfigPlan = null;
+let restoreExtensionsPlan = null;
 let result = {
   source: "automation",
   case_id: caseId,
@@ -106,7 +115,9 @@ function parseJsonEnv(key, fallback) {
 }
 
 function positiveNumberEnv(key, fallback) {
-  const value = Number(env[key] || "");
+  const raw = env[key];
+  if (raw === undefined || raw === "") return fallback;
+  const value = Number(raw);
   return Number.isFinite(value) && value >= 0 ? value : fallback;
 }
 
@@ -231,6 +242,7 @@ async function runFilesystemChecks(checks) {
     }
     const contains = textList(check.contains);
     const notContains = textList(check.not_contains || check.notContains);
+    const expectedJson = check.json_equals ?? check.jsonEquals;
     const expectedExitCode = Number.isInteger(check.exit_code)
       ? check.exit_code
       : Number.isInteger(check.expected_exit_code)
@@ -249,18 +261,31 @@ async function runFilesystemChecks(checks) {
       }
       const missing = contains.filter((needle) => !text.includes(needle));
       const forbidden = notContains.filter((needle) => text.includes(needle));
+      let jsonError = "";
+      let jsonMatches = null;
+      if (expectedJson !== undefined) {
+        try {
+          jsonMatches = JSON.stringify(sortJson(JSON.parse(text))) === JSON.stringify(sortJson(expectedJson));
+          if (!jsonMatches) jsonError = "JSON content does not match json_equals.";
+        } catch (error) {
+          jsonMatches = false;
+          jsonError = `Invalid JSON: ${error.message}`;
+        }
+      }
+      const failed = missing.length > 0 || forbidden.length > 0 || jsonMatches === false;
       results.push({
         index,
-        status: missing.length || forbidden.length ? "fail" : "pass",
+        status: failed ? "fail" : "pass",
         type: "file",
         path,
         missing,
         forbidden,
+        json_matches: jsonMatches,
         reason: missing.length
           ? `Missing expected text: ${missing.join(", ")}`
           : forbidden.length
             ? `Found forbidden text: ${forbidden.join(", ")}`
-            : "",
+            : jsonError,
       });
       continue;
     }
@@ -302,6 +327,16 @@ async function runFilesystemChecks(checks) {
   };
 }
 
+function sortJson(value) {
+  if (Array.isArray(value)) return value.map(sortJson);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.keys(value)
+      .sort()
+      .map((key) => [key, sortJson(value[key])]),
+  );
+}
+
 function pipelineIdFromUrl(url) {
   if (!url) return "";
   try {
@@ -314,6 +349,11 @@ function pipelineIdFromUrl(url) {
 
 function sanitizePipelineDiagnostic(diagnostic) {
   const { restore_config: _restoreConfig, ...safe } = diagnostic || {};
+  return safe;
+}
+
+function sanitizePipelineExtensionsDiagnostic(diagnostic) {
+  const { restore_extensions: _restoreExtensions, ...safe } = diagnostic || {};
   return safe;
 }
 
@@ -418,7 +458,7 @@ async function inspectAndPatchPipelineConfig(page, {
     const config = JSON.parse(JSON.stringify(pipeline.config || {}));
     const aiConfig = config.ai && typeof config.ai === "object" ? config.ai : {};
     const runner = aiConfig.runner && typeof aiConfig.runner === "object" ? aiConfig.runner : {};
-    const runnerId = runner.id || runner.runner || "";
+    const runnerId = runner.id || "";
     if (!runnerId) {
       return {
         status: "blocked",
@@ -427,7 +467,7 @@ async function inspectAndPatchPipelineConfig(page, {
         pipeline_id: pipelineId,
         pipeline_name: pipeline.name,
         matched_by: matchedBy,
-        reason: "Pipeline has no ai.runner.id or legacy ai.runner.runner.",
+        reason: "Pipeline has no ai.runner.id.",
       };
     }
     if (expectedRunnerId && runnerId !== expectedRunnerId) {
@@ -451,6 +491,31 @@ async function inspectAndPatchPipelineConfig(page, {
       ? runnerConfigs[runnerId]
       : {};
     const patchKeys = Object.keys(runnerConfigPatch || {});
+    const sensitiveConfigKeyRe = /(?:api[_-]?key|authorization|bearer|credential|jwt|oauth|password|secret)/i;
+    const sanitizeConfigValue = (key, value, depth = 0) => {
+      if (sensitiveConfigKeyRe.test(String(key))) return "[redacted]";
+      if (typeof value === "string") {
+        return value.length > 1200 ? `${value.slice(0, 1200)}...[truncated ${value.length - 1200} chars]` : value;
+      }
+      if (Array.isArray(value)) {
+        const items = value.slice(0, 50).map((item) => sanitizeConfigValue(key, item, depth + 1));
+        if (value.length > 50) items.push(`[truncated ${value.length - 50} items]`);
+        return items;
+      }
+      if (value && typeof value === "object") {
+        if (depth >= 3) return "[object truncated]";
+        return Object.fromEntries(
+          Object.entries(value).map(([childKey, childValue]) => [
+            childKey,
+            sanitizeConfigValue(childKey, childValue, depth + 1),
+          ]),
+        );
+      }
+      return value;
+    };
+    const pickPatchValues = (config) => Object.fromEntries(
+      patchKeys.map((key) => [key, sanitizeConfigValue(key, config?.[key])]),
+    );
     const baseDiagnostic = {
       status: "ready",
       authenticated: true,
@@ -462,6 +527,7 @@ async function inspectAndPatchPipelineConfig(page, {
       expected_runner_id: expectedRunnerId || "",
       patch_keys: patchKeys,
       runner_config_before_keys: Object.keys(currentRunnerConfig),
+      runner_config_patch_before: pickPatchValues(currentRunnerConfig),
       patched: patchKeys.length > 0,
     };
 
@@ -506,6 +572,7 @@ async function inspectAndPatchPipelineConfig(page, {
       put_status: update.status,
       put_code: update.json.code ?? null,
       runner_config_after_keys: Object.keys(updatedRunnerConfig),
+      runner_config_patch_after: pickPatchValues(updatedRunnerConfig),
       restore_config: config,
     };
   }, {
@@ -546,6 +613,201 @@ async function restorePipelineConfig(page, { backendUrl, pipelineId, config }) {
       reason: response.status >= 400 ? json.msg || "Pipeline config restore failed." : "Pipeline config restored.",
     };
   }, { backendUrl, pipelineId, config });
+}
+
+async function inspectAndPatchPipelineExtensions(page, {
+  backendUrl,
+  pipelineId,
+  extensionsPatch,
+}) {
+  return await page.evaluate(async ({
+    backendUrl,
+    pipelineId,
+    extensionsPatch,
+  }) => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      return {
+        status: "blocked",
+        authenticated: false,
+        pipeline_id: pipelineId,
+        reason: "Browser profile has no localStorage token.",
+      };
+    }
+
+    const headers = {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    };
+    const getJson = async (path) => {
+      const response = await fetch(`${backendUrl}${path}`, { headers });
+      return {
+        status: response.status,
+        json: await response.json().catch(() => ({})),
+      };
+    };
+    const putJson = async (path, body) => {
+      const response = await fetch(`${backendUrl}${path}`, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify(body),
+      });
+      return {
+        status: response.status,
+        json: await response.json().catch(() => ({})),
+      };
+    };
+
+    if (!pipelineId) {
+      return {
+        status: "blocked",
+        authenticated: true,
+        pipeline_resolved: false,
+        reason: "Pipeline id is required before patching extensions.",
+      };
+    }
+
+    const before = await getJson(`/api/v1/pipelines/${encodeURIComponent(pipelineId)}/extensions`);
+    let extensions = before.json.data || {};
+    let getStatus = before.status;
+    let getCode = before.json.code ?? null;
+    let fallbackReason = "";
+    if (before.status >= 400 || before.json.code !== 0) {
+      const pipelineResponse = await getJson(`/api/v1/pipelines/${encodeURIComponent(pipelineId)}`);
+      const pipeline = pipelineResponse.json.data?.pipeline || {};
+      const prefs = pipeline.extensions_preferences || {};
+      if (pipelineResponse.status >= 400 || pipelineResponse.json.code !== 0 || !pipeline.uuid) {
+        return {
+          status: "fail",
+          authenticated: true,
+          pipeline_id: pipelineId,
+          get_status: before.status,
+          get_code: before.json.code ?? null,
+          fallback_pipeline_status: pipelineResponse.status,
+          fallback_pipeline_code: pipelineResponse.json.code ?? null,
+          reason: before.json.msg || "Could not load pipeline extensions.",
+        };
+      }
+      fallbackReason = before.json.msg || "Could not load pipeline extensions; restored from pipeline preferences.";
+      extensions = {
+        enable_all_plugins: prefs.enable_all_plugins ?? true,
+        enable_all_mcp_servers: prefs.enable_all_mcp_servers ?? true,
+        enable_all_skills: prefs.enable_all_skills ?? true,
+        bound_plugins: prefs.plugins || [],
+        bound_mcp_servers: prefs.mcp_servers || [],
+        bound_skills: prefs.skills || [],
+      };
+    }
+
+    const patchKeys = Object.keys(extensionsPatch || {});
+    const restoreExtensions = {
+      enable_all_plugins: extensions.enable_all_plugins ?? true,
+      enable_all_mcp_servers: extensions.enable_all_mcp_servers ?? true,
+      enable_all_skills: extensions.enable_all_skills ?? true,
+      bound_plugins: extensions.bound_plugins || [],
+      bound_mcp_servers: extensions.bound_mcp_servers || [],
+      bound_skills: extensions.bound_skills || [],
+    };
+    const baseDiagnostic = {
+      status: "ready",
+      authenticated: true,
+      pipeline_id: pipelineId,
+      patch_keys: patchKeys,
+      patched: patchKeys.length > 0,
+      get_status: getStatus,
+      get_code: getCode,
+      fallback_reason: fallbackReason,
+      extensions_before: {
+        enable_all_plugins: restoreExtensions.enable_all_plugins,
+        enable_all_mcp_servers: restoreExtensions.enable_all_mcp_servers,
+        enable_all_skills: restoreExtensions.enable_all_skills,
+        bound_plugins: restoreExtensions.bound_plugins,
+        bound_mcp_servers: restoreExtensions.bound_mcp_servers,
+        bound_skills: restoreExtensions.bound_skills,
+      },
+    };
+
+    if (patchKeys.length === 0) {
+      return baseDiagnostic;
+    }
+
+    const updateBody = {
+      enable_all_plugins: Object.prototype.hasOwnProperty.call(extensionsPatch, "enable_all_plugins")
+        ? Boolean(extensionsPatch.enable_all_plugins)
+        : restoreExtensions.enable_all_plugins,
+      enable_all_mcp_servers: Object.prototype.hasOwnProperty.call(extensionsPatch, "enable_all_mcp_servers")
+        ? Boolean(extensionsPatch.enable_all_mcp_servers)
+        : restoreExtensions.enable_all_mcp_servers,
+      enable_all_skills: Object.prototype.hasOwnProperty.call(extensionsPatch, "enable_all_skills")
+        ? Boolean(extensionsPatch.enable_all_skills)
+        : restoreExtensions.enable_all_skills,
+      bound_plugins: Object.prototype.hasOwnProperty.call(extensionsPatch, "bound_plugins")
+        ? extensionsPatch.bound_plugins
+        : restoreExtensions.bound_plugins,
+      bound_mcp_servers: Object.prototype.hasOwnProperty.call(extensionsPatch, "bound_mcp_servers")
+        ? extensionsPatch.bound_mcp_servers
+        : restoreExtensions.bound_mcp_servers,
+      bound_skills: Object.prototype.hasOwnProperty.call(extensionsPatch, "bound_skills")
+        ? extensionsPatch.bound_skills
+        : restoreExtensions.bound_skills,
+    };
+
+    const update = await putJson(`/api/v1/pipelines/${encodeURIComponent(pipelineId)}/extensions`, updateBody);
+    if (update.status >= 400 || update.json.code !== 0) {
+      return {
+        ...baseDiagnostic,
+        status: "fail",
+        put_status: update.status,
+        put_code: update.json.code ?? null,
+        reason: update.json.msg || "Pipeline extensions update failed.",
+      };
+    }
+
+    return {
+      ...baseDiagnostic,
+      put_status: update.status,
+      put_code: update.json.code ?? null,
+      extensions_after: updateBody,
+      restore_extensions: restoreExtensions,
+    };
+  }, {
+    backendUrl,
+    pipelineId,
+    extensionsPatch,
+  });
+}
+
+async function restorePipelineExtensions(page, { backendUrl, pipelineId, extensions }) {
+  return await page.evaluate(async ({ backendUrl, pipelineId, extensions }) => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      return {
+        status: "blocked",
+        authenticated: false,
+        pipeline_id: pipelineId,
+        reason: "Browser profile has no localStorage token.",
+      };
+    }
+    const response = await fetch(`${backendUrl}/api/v1/pipelines/${encodeURIComponent(pipelineId)}/extensions`, {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(extensions),
+    });
+    const json = await response.json().catch(() => ({}));
+    return {
+      status: response.status >= 400 || json.code !== 0 ? "fail" : "ready",
+      authenticated: true,
+      pipeline_id: pipelineId,
+      put_status: response.status,
+      put_code: json.code ?? null,
+      reason: response.status >= 400 || json.code !== 0
+        ? json.msg || "Pipeline extensions restore failed."
+        : "Pipeline extensions restored.",
+    };
+  }, { backendUrl, pipelineId, extensions });
 }
 
 async function resetPipelineDebugChat(page, { backendUrl, pipelineId, sessionType }) {
@@ -590,11 +852,13 @@ try {
   const promptSteps = promptStepsFromEnv();
   const filesystemChecks = parseJsonEnv("LANGBOT_E2E_FILESYSTEM_CHECKS_JSON", []);
   const runnerConfigPatch = parseJsonEnv("LANGBOT_E2E_RUNNER_CONFIG_PATCH_JSON", {});
+  const extensionsPatch = parseJsonEnv("LANGBOT_E2E_EXTENSIONS_PATCH_JSON", {});
   const runnerPatchKeys = Object.keys(runnerConfigPatch);
-  if (runnerPatchKeys.length > 0 || resetDebugChat || expectedRunnerId) {
+  const extensionsPatchKeys = Object.keys(extensionsPatch);
+  if (runnerPatchKeys.length > 0 || extensionsPatchKeys.length > 0 || resetDebugChat || expectedRunnerId) {
     if (!backendUrl) {
       result.status = "env_issue";
-      result.reason = "LANGBOT_BACKEND_URL is required for runner config patch, runner assertion, or Debug Chat reset.";
+      result.reason = "LANGBOT_BACKEND_URL is required for runner config patch, extensions patch, runner assertion, or Debug Chat reset.";
       throw new Error(result.reason);
     }
   }
@@ -602,13 +866,30 @@ try {
   result.prompt = promptSteps.length === 1 ? promptSteps[0].prompt : `${promptSteps.length} prompts`;
   result.expected_text = promptSteps.at(-1)?.expectedText || expectedText;
 
-  const openResult = await openPipelineDebugChat(page, {
-    pipelineUrl,
-    pipelineName,
-    envHint: pipelineRequired
-      ? "case-specific pipeline env mapped to LANGBOT_E2E_PIPELINE_URL or LANGBOT_E2E_PIPELINE_NAME"
-      : "LANGBOT_PIPELINE_URL or LANGBOT_PIPELINE_NAME",
+  const authDiagnostic = await ensureAuthenticatedBrowser(page, {
+    frontendUrl: env.LANGBOT_FRONTEND_URL || "",
+    backendUrl,
   });
+  result.browser_auth = authDiagnostic;
+  if (!result.evidence_collected.includes("api_diagnostic")) result.evidence_collected.push("api_diagnostic");
+  const authFailed = authDiagnostic.status === "env_issue" || authDiagnostic.status === "blocked" || authDiagnostic.status === "fail";
+  if (authFailed) {
+    result.status = authDiagnostic.status;
+    result.reason = authDiagnostic.reason || "Browser authentication failed.";
+  } else {
+    result.status = "running";
+    result.reason = "";
+  }
+
+  const openResult = authFailed
+    ? { opened: false, status: result.status, reason: result.reason }
+    : await openPipelineDebugChat(page, {
+      pipelineUrl,
+      pipelineName,
+      envHint: pipelineRequired
+        ? "case-specific pipeline env mapped to LANGBOT_E2E_PIPELINE_URL or LANGBOT_E2E_PIPELINE_NAME"
+        : "LANGBOT_PIPELINE_URL or LANGBOT_PIPELINE_NAME",
+    });
   result.url = page.url();
 
   if (!openResult.opened) {
@@ -617,7 +898,7 @@ try {
   } else {
     result.status = "running";
     result.reason = "";
-    if (runnerPatchKeys.length > 0 || resetDebugChat || expectedRunnerId) {
+    if (runnerPatchKeys.length > 0 || extensionsPatchKeys.length > 0 || resetDebugChat || expectedRunnerId) {
       const pipelineDiagnostic = await inspectAndPatchPipelineConfig(page, {
         backendUrl,
         pipelineUrl,
@@ -636,13 +917,35 @@ try {
         result.reason = pipelineDiagnostic.reason || "Pipeline config preparation failed.";
       } else {
         if (pipelineDiagnostic.restore_config && restoreRunnerConfig) {
-          restorePlan = {
+          restoreConfigPlan = {
             backendUrl,
             pipelineId: pipelineDiagnostic.pipeline_id,
             config: pipelineDiagnostic.restore_config,
           };
         }
-        if (resetDebugChat) {
+        if (extensionsPatchKeys.length > 0) {
+          const extensionsDiagnostic = await inspectAndPatchPipelineExtensions(page, {
+            backendUrl,
+            pipelineId: pipelineDiagnostic.pipeline_id,
+            extensionsPatch,
+          });
+          const safeExtensionsDiagnostic = sanitizePipelineExtensionsDiagnostic(extensionsDiagnostic);
+          await writeFile(pipelineExtensionsDiagnosticPath, `${JSON.stringify(safeExtensionsDiagnostic, null, 2)}\n`, "utf8");
+          result.evidence.pipeline_extensions_diagnostic_json = pipelineExtensionsDiagnosticPath;
+          result.pipeline_extensions = safeExtensionsDiagnostic;
+          if (!result.evidence_collected.includes("api_diagnostic")) result.evidence_collected.push("api_diagnostic");
+          if (extensionsDiagnostic.status === "fail" || extensionsDiagnostic.status === "blocked") {
+            result.status = extensionsDiagnostic.status;
+            result.reason = extensionsDiagnostic.reason || "Pipeline extensions preparation failed.";
+          } else if (extensionsDiagnostic.restore_extensions && restoreExtensions) {
+            restoreExtensionsPlan = {
+              backendUrl,
+              pipelineId: extensionsDiagnostic.pipeline_id,
+              extensions: extensionsDiagnostic.restore_extensions,
+            };
+          }
+        }
+        if (!["fail", "blocked", "env_issue"].includes(result.status) && resetDebugChat) {
           const resetDiagnostic = await resetPipelineDebugChat(page, {
             backendUrl,
             pipelineId: pipelineDiagnostic.pipeline_id,
@@ -689,6 +992,7 @@ try {
             expectedText: step.expectedText,
             responseTimeoutMs: step.responseTimeoutMs,
             imagePath: index === 0 ? imagePath : "",
+            maxNewAssistantMessages: streamOutput === false ? 1 : null,
             failureSignals: failureSignals.length > 0 ? failureSignals : undefined,
           });
           const promptDurationMs = Date.now() - promptStartedAt;
@@ -702,6 +1006,9 @@ try {
             final_count: chatResult.final_count,
             before_assistant_expected_count: chatResult.before_assistant_expected_count,
             after_assistant_expected_count: chatResult.after_assistant_expected_count,
+            before_assistant_message_count: chatResult.before_assistant_message_count,
+            after_assistant_message_count: chatResult.after_assistant_message_count,
+            new_assistant_message_count: chatResult.new_assistant_message_count,
             failure_signal: chatResult.failure_signal || "",
           });
           result.status = chatResult.status;
@@ -720,6 +1027,15 @@ try {
         result.reason = filesystemResult.reason || "Filesystem checks failed.";
       }
     }
+
+    if (result.status === "pass" && !boolFromEnv(env.LANGBOT_E2E_ALLOW_BROWSER_ERRORS, false)) {
+      const browserDiagnostics = await scanBrowserDiagnostics(paths);
+      result.browser_diagnostics = browserDiagnostics;
+      if (browserDiagnostics.status === "fail") {
+        result.status = "fail";
+        result.reason = browserDiagnostics.reason;
+      }
+    }
   }
 } catch (error) {
   if (!["env_issue", "blocked", "fail", "pass"].includes(result.status) || !result.reason) {
@@ -728,10 +1044,20 @@ try {
   result.reason = result.reason || error.message;
 } finally {
   if (browser?.page) await safeScreenshot(browser.page, paths.screenshot);
-  if (browser?.page && restorePlan) {
-    const restoreDiagnostic = await restorePipelineConfig(browser.page, restorePlan).catch((error) => ({
+  if (browser?.page && restoreExtensionsPlan) {
+    const restoreDiagnostic = await restorePipelineExtensions(browser.page, restoreExtensionsPlan).catch((error) => ({
       status: "fail",
-      pipeline_id: restorePlan.pipelineId,
+      pipeline_id: restoreExtensionsPlan.pipelineId,
+      reason: error.message,
+    }));
+    await writeFile(pipelineExtensionsRestoreDiagnosticPath, `${JSON.stringify(restoreDiagnostic, null, 2)}\n`, "utf8");
+    result.evidence.pipeline_extensions_restore_diagnostic_json = pipelineExtensionsRestoreDiagnosticPath;
+    result.pipeline_extensions_restore = restoreDiagnostic;
+  }
+  if (browser?.page && restoreConfigPlan) {
+    const restoreDiagnostic = await restorePipelineConfig(browser.page, restoreConfigPlan).catch((error) => ({
+      status: "fail",
+      pipeline_id: restoreConfigPlan.pipelineId,
       reason: error.message,
     }));
     await writeFile(pipelineConfigRestoreDiagnosticPath, `${JSON.stringify(restoreDiagnostic, null, 2)}\n`, "utf8");
@@ -739,6 +1065,12 @@ try {
     result.pipeline_config_restore = restoreDiagnostic;
   }
   if (browser) await browser.close().catch(() => {});
+  const backendLog = await finishBackendLogCapture(backendLogCapture);
+  if (backendLog) {
+    result.evidence.backend_log = backendLog.path;
+    result.backend_log = backendLog;
+    if (!result.evidence_collected.includes("backend_log")) result.evidence_collected.push("backend_log");
+  }
   const finishedAt = new Date();
   result.finished_at = finishedAt.toISOString();
   result.finished_at_local = localIsoWithOffset(finishedAt);

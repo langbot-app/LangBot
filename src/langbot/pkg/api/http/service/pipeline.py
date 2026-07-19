@@ -3,9 +3,15 @@ from __future__ import annotations
 import uuid
 import json
 import sqlalchemy
+import typing
 
 from ....core import app
+from ....agent.runner.config_resolver import RunnerConfigResolver
 from ....entity.persistence import pipeline as persistence_pipeline
+from ....pipeline.extension_preferences import (
+    normalize_extension_preferences,
+    validate_extension_preferences,
+)
 
 
 default_stage_order = [
@@ -13,7 +19,6 @@ default_stage_order = [
     'BanSessionCheckStage',  # 封禁会话检查
     'PreContentFilterStage',  # 内容过滤前置阶段
     'PreProcessor',  # 预处理器
-    'ConversationMessageTruncator',  # 会话消息截断器
     'RequireRateLimitOccupancy',  # 请求速率限制占用
     'MessageProcessor',  # 处理器
     'ReleaseRateLimitOccupancy',  # 释放速率限制占用
@@ -30,11 +35,100 @@ class PipelineService:
     def __init__(self, ap: app.Application) -> None:
         self.ap = ap
 
+    def _get_default_values_from_schema(self, config_schema: list[dict[str, typing.Any]]) -> dict[str, typing.Any]:
+        """Build runner config defaults from a DynamicForm schema."""
+        defaults: dict[str, typing.Any] = {}
+        for item in config_schema:
+            name = item.get('name')
+            if not name:
+                continue
+            if 'default' in item:
+                defaults[name] = item['default']
+        return defaults
+
+    async def get_default_pipeline_config(self) -> dict[str, typing.Any]:
+        """Get the default pipeline config, rendering runner defaults from installed plugins."""
+        from ....utils import paths as path_utils
+
+        template_path = path_utils.get_resource_path('templates/default-pipeline-config.json')
+        with open(template_path, 'r', encoding='utf-8') as f:
+            config = json.load(f)
+
+        agent_runner_registry = getattr(self.ap, 'agent_runner_registry', None)
+        if agent_runner_registry is None:
+            return config
+
+        try:
+            runners = await agent_runner_registry.list_runners(bound_plugins=None)
+        except Exception as e:
+            logger = getattr(self.ap, 'logger', None)
+            if logger:
+                logger.warning(f'Failed to load plugin agent runners for default pipeline config: {e}')
+            return config
+
+        if not runners:
+            return config
+
+        selected_runner = runners[0]
+        ai_config = config.setdefault('ai', {})
+        runner_config = ai_config.setdefault('runner', {})
+        runner_config['id'] = selected_runner.id
+        runner_config.setdefault('expire-time', 0)
+
+        ai_config['runner_config'] = {
+            selected_runner.id: self._get_default_values_from_schema(selected_runner.config_schema),
+        }
+
+        return config
+
     async def get_pipeline_metadata(self) -> list[dict]:
+        """Get pipeline metadata with dynamically loaded plugin runners from registry"""
+        import copy
+
+        # Deep copy AI metadata to avoid modifying the original
+        ai_metadata = copy.deepcopy(self.ap.pipeline_config_meta_ai)
+
+        # Find the runner stage
+        runner_stage = None
+        for stage in ai_metadata.get('stages', []):
+            if stage.get('name') == 'runner':
+                runner_stage = stage
+                break
+
+        if runner_stage:
+            # Find the runner select config (now uses 'id' field)
+            for config_item in runner_stage.get('config', []):
+                if config_item.get('name') == 'id':
+                    # Get plugin agent runners from registry
+                    try:
+                        (
+                            runner_options,
+                            runner_stages,
+                        ) = await self.ap.agent_runner_registry.get_runner_metadata_for_pipeline()
+
+                        # Replace options entirely with registry options
+                        # Only installed/available runners should be shown
+                        config_item['options'] = runner_options
+
+                        # Use the registry order as the default order. If no runner is available, leave
+                        # the default unset so the UI can recommend installing an AgentRunner plugin.
+                        if runner_options and 'default' not in config_item:
+                            config_item['default'] = runner_options[0]['name']
+
+                        # Add corresponding stage configuration for each runner
+                        for stage_config in runner_stages:
+                            # Avoid duplicate stages
+                            existing_stage_names = {s.get('name') for s in ai_metadata.get('stages', [])}
+                            if stage_config['name'] not in existing_stage_names:
+                                ai_metadata['stages'].append(stage_config)
+
+                    except Exception as e:
+                        self.ap.logger.warning(f'Failed to load plugin agent runners from registry: {e}')
+
         return [
             self.ap.pipeline_config_meta_trigger,
             self.ap.pipeline_config_meta_safety,
-            self.ap.pipeline_config_meta_ai,
+            ai_metadata,
             self.ap.pipeline_config_meta_output,
         ]
 
@@ -74,7 +168,10 @@ class PipelineService:
         return self.ap.persistence_mgr.serialize_model(persistence_pipeline.LegacyPipeline, pipeline)
 
     async def create_pipeline(self, pipeline_data: dict, default: bool = False) -> str:
-        from ....utils import paths as path_utils
+        if 'extensions_preferences' in pipeline_data:
+            self._validate_extension_preferences(pipeline_data['extensions_preferences'])
+        if 'config' in pipeline_data:
+            RunnerConfigResolver.validate_pipeline_config(pipeline_data['config'])
 
         # Check limitation
         limitation = self.ap.instance_config.data.get('system', {}).get('limitation', {})
@@ -89,9 +186,8 @@ class PipelineService:
         pipeline_data['stages'] = default_stage_order.copy()
         pipeline_data['is_default'] = default
 
-        template_path = path_utils.get_resource_path('templates/default-pipeline-config.json')
-        with open(template_path, 'r', encoding='utf-8') as f:
-            pipeline_data['config'] = json.load(f)
+        pipeline_data['config'] = await self.get_default_pipeline_config()
+        RunnerConfigResolver.validate_pipeline_config(pipeline_data['config'])
 
         # Ensure extensions_preferences is set with enable_all_plugins and enable_all_mcp_servers=True by default
         if 'extensions_preferences' not in pipeline_data:
@@ -118,6 +214,10 @@ class PipelineService:
         pipeline_data = pipeline_data.copy()
         for protected_field in ('uuid', 'for_version', 'stages', 'is_default'):
             pipeline_data.pop(protected_field, None)
+        if 'config' in pipeline_data:
+            RunnerConfigResolver.validate_pipeline_config(pipeline_data['config'])
+        if 'extensions_preferences' in pipeline_data:
+            self._validate_extension_preferences(pipeline_data['extensions_preferences'])
 
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.update(persistence_pipeline.LegacyPipeline)
@@ -126,19 +226,6 @@ class PipelineService:
         )
 
         pipeline = await self.get_pipeline(pipeline_uuid)
-
-        if 'name' in pipeline_data:
-            from ....entity.persistence import bot as persistence_bot
-
-            result = await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.select(persistence_bot.Bot).where(persistence_bot.Bot.use_pipeline_uuid == pipeline_uuid)
-            )
-
-            bots = result.all()
-
-            for bot in bots:
-                bot_data = {'use_pipeline_name': pipeline_data['name']}
-                await self.ap.bot_service.update_bot(bot.uuid, bot_data)
 
         await self.ap.pipeline_mgr.remove_pipeline(pipeline_uuid)
         await self.ap.pipeline_mgr.load_pipeline(pipeline)
@@ -187,18 +274,7 @@ class PipelineService:
             'stages': original_pipeline.stages.copy() if original_pipeline.stages else default_stage_order.copy(),
             'config': original_pipeline.config.copy() if original_pipeline.config else {},
             'is_default': False,
-            'extensions_preferences': (
-                original_pipeline.extensions_preferences.copy()
-                if original_pipeline.extensions_preferences
-                else {
-                    'enable_all_plugins': True,
-                    'enable_all_mcp_servers': True,
-                    'plugins': [],
-                    'mcp_servers': [],
-                    'mcp_resources': [],
-                    'mcp_resource_agent_read_enabled': True,
-                }
-            ),
+            'extensions_preferences': normalize_extension_preferences(original_pipeline.extensions_preferences),
         }
 
         # Insert the new pipeline
@@ -225,6 +301,36 @@ class PipelineService:
         mcp_resource_agent_read_enabled: bool | None = None,
     ) -> None:
         """Update the bound plugins and MCP servers for a pipeline"""
+        extension_updates: dict[str, typing.Any] = {
+            'enable_all_plugins': enable_all_plugins,
+            'enable_all_mcp_servers': enable_all_mcp_servers,
+            'enable_all_skills': enable_all_skills,
+            'plugins': bound_plugins,
+        }
+        if bound_mcp_servers is not None:
+            extension_updates['mcp_servers'] = bound_mcp_servers
+        if bound_skills is not None:
+            extension_updates['skills'] = bound_skills
+        if bound_mcp_resources is not None:
+            extension_updates['mcp_resources'] = bound_mcp_resources
+            RunnerConfigResolver.validate_mcp_resource_attachments(
+                bound_mcp_resources,
+                context='Pipeline extension',
+                field_name='bound_mcp_resources',
+            )
+        if mcp_resource_agent_read_enabled is not None:
+            extension_updates['mcp_resource_agent_read_enabled'] = mcp_resource_agent_read_enabled
+        self._validate_extension_preferences(
+            extension_updates,
+            context='Pipeline extension',
+            field_aliases={
+                'plugins': 'bound_plugins',
+                'mcp_servers': 'bound_mcp_servers',
+                'skills': 'bound_skills',
+                'mcp_resources': 'bound_mcp_resources',
+            },
+        )
+
         # Get current pipeline
         result = await self.ap.persistence_mgr.execute_async(
             sqlalchemy.select(persistence_pipeline.LegacyPipeline).where(
@@ -237,7 +343,7 @@ class PipelineService:
             raise ValueError(f'Pipeline {pipeline_uuid} not found')
 
         # Update extensions_preferences
-        extensions_preferences = pipeline.extensions_preferences or {}
+        extensions_preferences = normalize_extension_preferences(pipeline.extensions_preferences)
         extensions_preferences['enable_all_plugins'] = enable_all_plugins
         extensions_preferences['enable_all_mcp_servers'] = enable_all_mcp_servers
         extensions_preferences['enable_all_skills'] = enable_all_skills
@@ -261,3 +367,22 @@ class PipelineService:
         await self.ap.pipeline_mgr.remove_pipeline(pipeline_uuid)
         pipeline = await self.get_pipeline(pipeline_uuid)
         await self.ap.pipeline_mgr.load_pipeline(pipeline)
+
+    @staticmethod
+    def _validate_extension_preferences(
+        value: typing.Any,
+        *,
+        context: str = 'Pipeline extensions_preferences',
+        field_aliases: typing.Mapping[str, str] | None = None,
+    ) -> dict[str, typing.Any]:
+        validated = validate_extension_preferences(
+            value,
+            context=context,
+            field_aliases=field_aliases,
+        )
+        RunnerConfigResolver.validate_mcp_resource_attachments(
+            validated.get('mcp_resources'),
+            context=context,
+            field_name='mcp_resources',
+        )
+        return validated

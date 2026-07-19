@@ -1,0 +1,36 @@
+id: workspace-repository-contracts
+title: "Changed LangBot workspace repositories pass their contract suites"
+mode: probe
+area: release
+type: regression
+priority: p0
+risk: high
+ci_eligible: true
+tags:
+  - workspace
+  - contracts
+  - pytest
+  - sdk
+skills:
+  - langbot-testing
+automation: scripts/e2e/workspace-repository-contracts.mjs
+steps:
+  - "Resolve the active LangBot virtualenv and workspace SDK source path."
+  - "Run tests independently for AgentRunner, Control Plane, LongTermMemory, Parser, RAG, Skill Authoring, LocalAgent, LangBot Agent/Provider, the skills CLI, and SDK runtime contracts."
+  - "Run SDK packaging blackbox separately so an isolated build dependency network failure is classified as env_issue without masking product test failures."
+  - "Write per-repository stdout, stderr, status, and duration under repository-contracts/."
+checks:
+  - "Every product contract group has status pass."
+  - "A packaging env_issue is recorded separately and does not convert a product failure into a pass."
+  - "Every command uses the LangBot virtualenv and local SDK PYTHONPATH."
+evidence_required:
+  - filesystem
+  - metrics
+diagnostics:
+  - "Inspect the named repository stdout/stderr logs before rerunning a broader suite."
+  - "Packaging dependency fetch errors belong to environment readiness; assertion/import/runtime failures belong to the product."
+success_patterns:
+  - "All repository product contracts passed"
+failure_patterns:
+  - "repository product contract group"
+  - "Test command timed out"

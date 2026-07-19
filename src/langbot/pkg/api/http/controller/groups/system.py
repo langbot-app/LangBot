@@ -105,8 +105,8 @@ class SystemRouterGroup(group.RouterGroup):
             """Save wizard progress to metadata table.
 
             Accepts JSON body with wizard state fields:
-            { "step": int, "selected_adapter": str|null, "created_bot_uuid": str|null,
-              "bot_saved": bool, "selected_runner": str|null }
+            { "step": int, "selected_scenario": str|null, "selected_adapter": str|null,
+              "created_bot_uuid": str|null, "bot_saved": bool, "selected_runner": str|null }
             """
             data = await quart.request.get_json(silent=True) or {}
             progress_json = json.dumps(data, ensure_ascii=False)

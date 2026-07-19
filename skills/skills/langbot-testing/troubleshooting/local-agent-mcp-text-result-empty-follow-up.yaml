@@ -1,0 +1,25 @@
+id: local-agent-mcp-text-result-empty-follow-up
+title: "MCP tool succeeds but Local Agent completes without a visible reply"
+date: 2026-07-19
+category: product
+symptoms:
+  - "The run ledger records matching tool.call.started and tool.call.completed events for the MCP tool, followed by run.completed."
+  - "Debug Chat shows no new assistant message and waits until its response timeout."
+  - "The provider records a successful follow-up model call, while the backend reports a stream with zero visible chunks or characters."
+patterns:
+  - "Streaming completed: 0 chunks, 0 chars"
+  - "tool.call.completed"
+  - "run.completed"
+  - "Expected text did not appear in a new assistant message"
+likely_causes:
+  - "Local Agent serialized a text-only MCP ContentElement list as JSON instead of plain tool-result text, and the selected model returned no visible follow-up content."
+  - "The streaming caller accepted an empty final transport chunk as a successful model response, allowing a zero-output run to complete."
+fix_steps:
+  - "Use a LocalAgent build that flattens text-only MCP ContentElement lists before the tool follow-up model turn."
+  - "Use a LocalAgent build that rejects empty final chunks and fails or falls back instead of completing a zero-output run."
+  - "Rebuild and reinstall the local LocalAgent package so the running plugin runtime contains the fix."
+verification: "Run mcp-stdio-tool-call with only qa-local-stdio bound. Debug Chat must show qa_mcp_echo:mcp-ok-local-agent, and an empty follow-up regression must end as run.failed rather than run.completed."
+related_cases:
+  - mcp-stdio-register
+  - mcp-stdio-tool-call
+  - agent-run-ledger-audit

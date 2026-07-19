@@ -1,0 +1,95 @@
+id: local-agent-complex-coding-task-debug-chat
+title: "Local Agent completes a multi-file coding task with iterative verification"
+mode: agent-browser
+area: pipeline
+type: regression
+priority: p1
+risk: high
+ci_eligible: false
+tags:
+  - local-agent
+  - agentic
+  - coding
+  - sandbox
+  - tools
+  - long-running
+skills:
+  - langbot-env-setup
+  - langbot-testing
+env:
+  - LANGBOT_REPO
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_LOCAL_AGENT_PIPELINE_URL
+  - LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+automation: scripts/e2e/pipeline-debug-chat.mjs
+automation_env:
+  - LANGBOT_REPO
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_BROWSER_PROFILE
+  - LANGBOT_CHROMIUM_EXECUTABLE
+  - LANGBOT_LOCAL_AGENT_PIPELINE_URL
+  - LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+automation_pipeline_url_env: LANGBOT_LOCAL_AGENT_PIPELINE_URL
+automation_pipeline_name_env: LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+automation_expected_runner_id: "plugin:langbot-team/LocalAgent/default"
+automation_runner_config_patch_json: '{"knowledge-bases":[],"context-window-tokens":200000,"context-keep-recent-tokens":120000,"context-reserve-tokens":20000,"context-summary-tokens":12000,"max-tool-iterations":40,"tool-execution-mode":"serial","timeout":900}'
+automation_extensions_patch_json: '{"enable_all_plugins":false,"bound_plugins":[{"author":"langbot-team","name":"LocalAgent"}],"enable_all_mcp_servers":false,"bound_mcp_servers":[],"enable_all_skills":false,"bound_skills":[]}'
+automation_restore_runner_config: "1"
+automation_restore_extensions: "1"
+automation_reset_debug_chat: "1"
+automation_debug_chat_session_type: "person"
+automation_prompt: "Work autonomously on the project at /workspace/order-orchestrator. Read TASK.md completely, inspect the code and tests, then follow the required workflow. Run the full baseline test suite before editing and record the failing test names. Fix only production code under order_engine; do not alter TASK.md, tests, or acceptance_check.py. This is an end-to-end task: continue through failures, diagnose them, make multi-file fixes, rerun all 12 tests until green, run acceptance_check.py, and create both result.json and AGENT_REPORT.md exactly as required. Do not stop after analysis or ask me for confirmation. When and only when all verification passes, return exactly COMPLEX_AGENT_TASK_OK tests=12 acceptance=PASS."
+automation_expected_text: "COMPLEX_AGENT_TASK_OK tests=12 acceptance=PASS"
+automation_response_timeout_ms: "900000"
+automation_stream_output: "1"
+automation_filesystem_checks_json: '[{"argv":["python3","skills/skills/langbot-testing/fixtures/complex-agent-task/verify.py","--workspace","${LANGBOT_REPO}/data/box/default/order-orchestrator"],"cwd":"${LANGBOT_REPO}","stdout_contains":"HOST_VERIFY_PASS tests=12 acceptance=PASS protected=PASS","exit_code":0,"timeout_ms":120000}]'
+setup_automation:
+  - "node:scripts/e2e/ensure-local-agent-pipeline.mjs --write-env"
+  - "node:scripts/e2e/reset-complex-agent-task.mjs"
+setup_provides_env:
+  - LANGBOT_LOCAL_AGENT_PIPELINE_URL
+  - LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+preconditions:
+  - "The local Box workspace is mounted at LANGBOT_REPO/data/box/default and exposed to native tools as /workspace."
+  - "The selected real model supports sustained function calling across file inspection, edits, and test reruns."
+steps:
+  - "Reset the isolated order-orchestrator workspace and confirm its baseline test suite fails."
+  - "Open the Local Agent pipeline in Debug Chat and send one complete autonomous coding task."
+  - "Observe the Agent inspect requirements and code, run the baseline tests, edit multiple production files, and rerun verification after failures."
+  - "Require the visible final sentinel only after all 12 tests and the acceptance check pass."
+  - "Run the host-side verifier to confirm protected files were not changed and required artifacts are valid."
+checks:
+  - "UI: A new Bot message contains exactly COMPLEX_AGENT_TASK_OK tests=12 acceptance=PASS."
+  - "Run ledger: The real model performs a sustained sequence of native read, exec, and edit/write tool calls rather than a short answer."
+  - "Filesystem: Host verification reruns all 12 tests and acceptance_check.py successfully."
+  - "Filesystem: TASK.md, tests/test_order_engine.py, and acceptance_check.py match the immutable fixture copies."
+  - "Artifacts: result.json and AGENT_REPORT.md contain the required completion evidence."
+  - "API diagnostic: The temporary runner config uses a 200000-token context window and restores the prior config after the run."
+evidence_required:
+  - ui
+  - screenshot
+  - console
+  - network
+  - api_diagnostic
+  - filesystem
+  - metrics
+diagnostics:
+  - "A generic explanation or early plan without filesystem artifacts is a product-path failure, even if the model response sounds plausible."
+  - "If the Agent edits protected tests, the host verifier fails even when the visible test command passes."
+  - "If the run times out, inspect agent_run_event to distinguish model latency from a stuck tool or runtime action."
+success_patterns:
+  - "COMPLEX_AGENT_TASK_OK tests=12 acceptance=PASS"
+  - "HOST_VERIFY_PASS tests=12 acceptance=PASS protected=PASS"
+failure_patterns:
+  - "Agent runner temporarily unavailable"
+  - "runner.timeout"
+  - "Action invoke_llm_stream call timed out"
+  - "Tool call iteration limit reached"
+troubleshooting:
+  - local-agent-model-route-unavailable
+  - sandbox-native-tools-unavailable
+  - box-runtime-silent-action-timeout
+  - plugin-runtime-timeout
+  - debug-chat-history-contaminates-automation

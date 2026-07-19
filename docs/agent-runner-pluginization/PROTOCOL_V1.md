@@ -1,0 +1,742 @@
+# LangBot AgentRunner Protocol v1
+
+本文档是 LangBot Host 与插件 SDK / Runtime / AgentRunner 之间协议合同的**唯一规范来源（single source of truth）**。
+
+- 本文件描述当前 Protocol v1 稳定合同，不混入验收流水。当前实现状态见 [STATUS.md](./STATUS.md)，测试执行入口见 [AGENT_RUNNER_QA_GUIDE.md](./AGENT_RUNNER_QA_GUIDE.md)，安全发布门槛见 [SECURITY_HARDENING.md](./SECURITY_HARDENING.md)。
+- 本文件之外的任何文档**不得重新定义这里的数据结构**，只能引用，例如"见 PROTOCOL_V1 §4.2"。
+- Host 内部模型（`AgentEventEnvelope`、`AgentBinding`、Descriptor、各 Store）不属于 SDK 协议，定义在 [HOST_SDK_INFRASTRUCTURE.md](./HOST_SDK_INFRASTRUCTURE.md)。
+
+## 1. 协议目标
+
+Protocol v1 只解决四件事：
+
+- LangBot 如何发现插件提供的 AgentRunner。
+- LangBot 如何把一次事件调用封装成 `AgentRunContext`。
+- AgentRunner 如何以事件流形式返回运行结果。
+- AgentRunner 如何通过受限 API 访问 LangBot host 能力。
+
+Protocol v1 **不定义**：
+
+- LangBot 内部如何持久化 `AgentBinding`（见 HOST_SDK）。
+- AgentRunner 内部如何组装 prompt、压缩历史、管理 memory（见 [AGENT_CONTEXT_PROTOCOL.md](./AGENT_CONTEXT_PROTOCOL.md)）。
+- 官方 runner 的具体实现（见 [OFFICIAL_RUNNER_PLUGINS.md](./OFFICIAL_RUNNER_PLUGINS.md)）。
+- Pipeline 的长期配置模型。
+- 发布级安全 hardening 的完整实现（见 [SECURITY_HARDENING.md](./SECURITY_HARDENING.md)）。
+
+## 2. 参与方
+
+| 名称 | 职责 |
+| --- | --- |
+| LangBot Host | 事件入口、绑定解析、权限、资源、存储、生命周期、结果投递。 |
+| Plugin Runtime | 加载插件，响应 Host 的 runner discovery 和 run 调用。 |
+| AgentRunner | 插件提供的 agent 执行组件。 |
+| AgentRunAPIProxy | AgentRunner 访问 Host 能力的受限 API。 |
+| AgentBinding | Host 内部的事件到 runner 绑定配置，不直接暴露给 SDK（见 HOST_SDK §4.2）。 |
+
+产品层同时保留 Pipeline 与独立 `Agent`：现有 Pipeline 不迁移为 Agent；
+用户可以新建 Agent 并绑定到 bot / IM channel，一个 Agent 可以被多个 bot / channel 复用。Host 内部的
+`AgentBinding` 是一次事件运行前解析出的有效绑定，只影响 Host 构造出的
+`ctx.config`、`ctx.resources`、`ctx.context` 和 `ctx.delivery`。SDK 不需要知道
+Agent / binding 的持久化形态。
+
+外部 harness runner（Claude Code、Codex、Kimi Code 等）也是 `AgentRunner`：它们消费 event-first `AgentRunContext`、返回 `AgentRunResult`，并通过 Host 授权的 state/storage API 保存跨轮次指针；当前运行文件和工具大结果进入 sandbox/workspace。它们内部可以继续使用自己的 session、tool loop、MCP、上下文压缩和权限模型。
+
+## 3. 协议演进
+
+当前 AgentRunner 合同不暴露显式 `protocol_version` 字段。协议演进先按字段级兼容规则处理：
+
+- 新增可选字段保持向后兼容。
+- 删除字段或改变既有字段语义，需要在 SDK 发布前完成；发布后应走新的显式兼容方案。
+- 结果流演进：Host **必须忽略未知 result type 并记录 warning**（除非该 type 明确要求强校验）。SDK envelope 接收入站未知 `type` 字符串，runner 侧可按原字符串转发或忽略；新增 result type 不提升大版本。
+- SDK 入站 context 类实体偏宽松，用于兼容 Host 附加的非核心字段；Host 返回 DTO（history/event/steering/run/runtime/stats/error 等）忽略未知字段，保证 Host 增加可选返回字段时旧 SDK 不会解析失败；manifest、runner result payload 等由插件/runner 提交给 Host 的输入合同仍偏严格。安全边界仍在 Host，SDK 校验只提升开发体验。
+
+## 4. Discovery 协议
+
+### 4.1 LIST_AGENT_RUNNERS
+
+Host 调用 Plugin Runtime 获取当前插件暴露的 runner 列表，请求无额外 payload。返回：
+
+```python
+class ListAgentRunnersResponse(BaseModel):
+    runners: list[AgentRunnerDiscovery]
+
+class AgentRunnerDiscovery(BaseModel):
+    plugin_author: str
+    plugin_name: str
+    runner_name: str
+    manifest: AgentRunnerManifest
+```
+
+`manifest` 是 SDK typed `AgentRunnerManifest`，由 Runtime 从插件组件 manifest 解析并校验后返回。`plugin_author` / `plugin_name` / `runner_name` 保留为 transport 寻址字段；Host 以它们生成稳定 runner id，并把 `manifest.id` 校验为 `plugin:author/name/runner`。单个 runner manifest 解析失败时 Runtime/Host 记录 warning 并跳过该 runner，不影响同一插件或其它插件的 runner discovery。
+
+### 4.2 AgentRunnerManifest
+
+这里的 manifest 指 Runtime 返回给 Host 的 typed runner manifest：
+
+```python
+class AgentRunnerManifest(BaseModel):
+    id: str
+    name: str
+    label: I18nObject
+    description: I18nObject | None = None
+    capabilities: AgentRunnerCapabilities = AgentRunnerCapabilities()
+    permissions: AgentRunnerPermissions = AgentRunnerPermissions()
+    config_schema: list[DynamicFormItemSchema] = []
+    metadata: dict[str, Any] = {}
+```
+
+- runner id 由 Host 生成，格式 `plugin:author/name/runner`。
+- `name` 是插件内 runner 名称，例如 `default`。
+- `config_schema` 只描述绑定配置表单，不代表插件实例状态。
+- `capabilities` 是 Host 用于 UI 和资源投影的 typed bool model；它不是权限授予。
+- `permissions` 是 runner 申请的 LangBot 资源访问上限；实际授权仍必须与 binding policy 求交。
+- `metadata` 只放展示、诊断、非稳定扩展信息。
+
+### 4.3 Capabilities
+
+```python
+class AgentRunnerCapabilities(BaseModel):
+    streaming: bool = False
+    tool_calling: bool = False
+    knowledge_retrieval: bool = False
+    multimodal_input: bool = False
+    skill_authoring: bool = False
+    interrupt: bool = False
+    steering: bool = False
+
+    model_config = ConfigDict(extra="forbid")
+```
+
+- `streaming`: runner 可以返回 `message.delta`。
+- `tool_calling`: runner 可能调用 Host tool API。
+- `knowledge_retrieval`: runner 可能调用 Host knowledge API。
+- `multimodal_input`: runner 可以处理非纯文本 input / attachment。
+- `skill_authoring`:（降级为便捷开关，非访问硬前提）声明该 runner 期望使用 LangBot skill 工具链。skill 本身通过**统一 tool 授权**获得——发现走 `list_skills` / `langbot_list_assets`，激活/注册走 `activate` / `register_skill`，操作走 native exec/read/write，全部计入 `resource_policy.allowed_tool_names`。该 capability 仅作为「一键授权这组 skill tool + sandbox」的便捷开关，不再单独决定 skill 是否可用。
+- `interrupt`: runner 支持取消或中断。
+- `steering`: runner 支持在 turn 边界通过 Host pull API 消费同 conversation 在途追加消息。
+
+Capabilities 字段全部是 `bool`，未知 key 禁止进入 typed manifest。早期草案里的上下文/会话类 capability 已删除；对应语义由 event-first context 和 runner-owned context 原则表达。
+
+### 4.4 Permissions 与 Effective Access
+
+```python
+class AgentRunnerPermissions(BaseModel):
+    models: list[Literal["invoke", "stream", "rerank"]] = []
+    tools: list[Literal["detail", "call"]] = []
+    knowledge_bases: list[Literal["list", "retrieve"]] = []
+    history: list[Literal["page", "search"]] = []
+    events: list[Literal["get", "page"]] = []
+    storage: list[Literal["plugin", "workspace"]] = []
+    files: list[Literal["config", "knowledge"]] = []
+
+    model_config = ConfigDict(extra="forbid")
+```
+
+平台动作执行不属于当前 permissions。Platform action executor / EBA action 分支落地前，runner 只能返回 `action.requested` telemetry，Host 不执行平台动作。
+
+Runner 实际可用 LangBot 资源来自 Host 在 run 前冻结的授权快照：
+
+```text
+effective_access = manifest.permissions ∩ binding.resource_policy ∩ current scope/config
+```
+
+具体落地：
+
+1. `AgentResourceBuilder` 先用 manifest permissions 与 binding resource policy / runner config 求交，生成 `ctx.resources`。
+2. `AgentContextBuilder` 用 manifest permissions 与 binding state/storage policy 求交，生成 `ctx.context.available_apis`。
+3. `AgentRunSessionRegistry` 冻结 run-scoped resources 与 available APIs。
+4. Runtime handler / `AgentRunAPIProxy` 按 active `run_id`、runner identity、caller plugin identity、resource id、scope、payload size、rate limit 和 deadline 校验每次调用。
+
+反承诺：manifest permissions **只约束 LangBot 持有的资源访问**。它不承诺限制外部 harness 的 native shell、文件系统、CLI、MCP、网络或本机权限；这些能力由 operator/runtime/sandbox 另行约束，见 HOST_SDK §4.8 与 SECURITY_HARDENING。
+
+默认原则：
+
+- Host 不得默认 inline 全量历史。
+- Host 只 inline 当前 event / input 和 context handles。
+- Runner 拥有 working context assembly。
+- Runner 可在授权后通过 Host history / event / state API 拉取更多上下文，并通过授权 sandbox/workspace 工具访问当前运行文件。
+- 历史窗口策略不属于 Protocol v1 字段，也不属于 Host 通用语义。
+
+context 边界的设计理由见 [AGENT_CONTEXT_PROTOCOL.md](./AGENT_CONTEXT_PROTOCOL.md)。
+
+## 5. Run 协议
+
+### 5.1 RUN_AGENT
+
+Host 调用 Runtime：
+
+```python
+class AgentRunRequest(BaseModel):
+    runner_id: str
+    runner_name: str
+    context: AgentRunContext
+```
+
+Runtime 返回 `AgentRunResult` 异步流。底层 transport 可继续用 `plugin_author` / `plugin_name` / `runner_name` 定位组件，但协议语义以 `runner_id` 和 `context` 为准。
+
+### 5.2 AgentRunContext
+
+这是 SDK 看到的**唯一权威 context 定义**。
+
+```python
+class AgentRunContext(BaseModel):
+    run_id: str
+    trigger: AgentTrigger
+    event: AgentEventContext
+    conversation: ConversationContext | None = None
+    actor: ActorContext | None = None
+    subject: SubjectContext | None = None
+    input: AgentInput
+    delivery: DeliveryContext
+    resources: AgentResources
+    context: ContextAccess
+    state: AgentRunState
+    runtime: AgentRuntimeContext
+    config: dict[str, Any] = {}
+    adapter: AdapterContext | None = None
+    metadata: dict[str, Any] = {}
+```
+
+核心约束：
+
+- `event` 是必选字段，Protocol v1 是 event-first。
+- `input` 表示当前事件的主输入，不等于历史消息。
+- `bootstrap` / `messages` **不是协议字段**；Host 不内联历史窗口。
+- `adapter` 只放入口 adapter 的非核心元数据，runner 不应依赖它做长期能力。
+- `config` 是 Agent/runner config，不是插件实例状态。
+
+### 5.3 AgentTrigger
+
+```python
+class AgentTrigger(BaseModel):
+    type: str
+    source: Literal["platform", "webui", "api", "scheduler", "system", "host_adapter"]
+    timestamp: int | None = None
+```
+
+`trigger.type` 应与 `event.event_type` 一致或更粗粒度。例如入口适配器触发消息时：
+
+```json
+{ "type": "message.received", "source": "host_adapter" }
+```
+
+### 5.4 AgentEventContext
+
+```python
+class AgentEventContext(BaseModel):
+    event_id: str
+    event_type: str
+    event_time: int | None = None
+    source: str
+    source_event_type: str | None = None
+    raw_ref: RawEventRef | None = None
+    data: dict[str, Any] = {}
+```
+
+- `event_type` 使用 LangBot 稳定协议名，例如 `message.received`。稳定事件名清单见 [EVENT_BASED_AGENT.md](./EVENT_BASED_AGENT.md)。
+- 平台原始事件名放入 `source_event_type`。
+- 大型原始 payload 必须放入 `raw_ref` 或 staged file，不应直接塞入 `data`。
+
+### 5.5 Conversation / Actor / Subject
+
+```python
+class ConversationContext(BaseModel):
+    conversation_id: str | None = None
+    thread_id: str | None = None
+    launcher_type: str | None = None
+    launcher_id: str | None = None
+    sender_id: str | None = None
+    bot_id: str | None = None
+    workspace_id: str | None = None
+    session_id: str | None = None
+
+class ActorContext(BaseModel):
+    actor_type: str
+    actor_id: str | None = None
+    actor_name: str | None = None
+    metadata: dict[str, Any] = {}
+
+class SubjectContext(BaseModel):
+    subject_type: str
+    subject_id: str | None = None
+    data: dict[str, Any] = {}
+```
+
+示例：
+
+- 消息事件：actor 是发消息的人，subject 是当前消息。
+- 入群事件：actor 是新成员或邀请人，subject 是群/成员关系。
+- 定时事件：actor 可以是 system，subject 是 schedule。
+
+### 5.6 AgentInput
+
+```python
+class AgentInput(BaseModel):
+    text: str | None = None
+    contents: list[ContentElement] = []
+    attachments: list[InputAttachment] = []
+```
+
+- 文本、多模态、附件都属于当前 event input。
+- 大文件、图片、音频、工具大结果应进入授权 sandbox/workspace，input attachment 只携带轻量 metadata/path/url/content。
+- 平台原始消息链不属于 SDK `AgentInput`；需要诊断时放在 Host 内部 envelope 或 `ctx.adapter.extra` 的一次性兼容字段中，不作为长期 runner 合同。
+
+### 5.7 DeliveryContext
+
+```python
+class DeliveryContext(BaseModel):
+    surface: str
+    reply_target: dict[str, Any] | None = None
+    supports_streaming: bool = False
+    supports_edit: bool = False
+    supports_reaction: bool = False
+    max_message_size: int | None = None
+    platform_capabilities: dict[str, Any] = {}
+```
+
+Runner 可参考 delivery 能力决定返回 `message.delta`、`message.completed` 或 `action.requested`。
+平台事件进入独立 Agent 时，Host 会从当前 adapter 的 `get_supported_apis()` 投影
+`supports_edit`、`supports_reaction`，并把去重后的 API 名称写入
+`platform_capabilities.supported_apis`。这些字段只描述当前投递表面的能力，不授予
+平台动作权限；`action.requested` 仍受 §7.3 的 reserved 约束。合成路由测试使用的
+adapter 会过滤所有已知副作用 API，因此测试事件不会向 runner 宣告真实出站能力。
+
+### 5.8 ContextAccess
+
+```python
+class ContextAccess(BaseModel):
+    conversation_id: str | None = None
+    thread_id: str | None = None
+    latest_cursor: str | None = None
+    event_seq: int | None = None
+    transcript_seq: int | None = None
+    has_history_before: bool = False
+    inline_policy: InlineContextPolicy
+    available_apis: ContextAPICapabilities
+
+class InlineContextPolicy(BaseModel):
+    mode: Literal["none", "current_event", "recent_tail", "summary_tail"]
+    delivered_count: int = 0
+    source_total_count: int | None = None
+    messages_complete: bool = False
+    reason: str | None = None
+
+class ContextAPICapabilities(BaseModel):
+    prompt_get: bool = False
+    history_page: bool = False
+    history_search: bool = False
+    event_get: bool = False
+    event_page: bool = False
+    state: bool = False
+    storage: bool = False
+    steering_pull: bool = False
+```
+
+`ContextAccess` 告诉 runner：Host inline 了什么、没 inline 什么、需要更多上下文时走哪些 API。它是 runner 按需读取上下文的入口说明，不是 Host 的业务上下文编排策略。
+
+### 5.9 AgentRuntimeContext
+
+```python
+class AgentRuntimeContext(BaseModel):
+    langbot_version: str | None = None
+    trace_id: str | None = None
+    deadline_at: float | None = None
+    metadata: dict[str, Any] = {}
+```
+
+### 5.10 AgentRunState
+
+```python
+class AgentRunState(BaseModel):
+    conversation: dict[str, Any] = {}
+    actor: dict[str, Any] = {}
+    subject: dict[str, Any] = {}
+    runner: dict[str, Any] = {}
+```
+
+State 是可选 host-owned snapshot。Runner 也可以完全自管状态。
+
+## 6. Resources
+
+```python
+class ToolResource(BaseModel):
+    tool_name: str
+    tool_type: str | None = None
+    description: str | None = None
+    parameters: dict[str, Any] | None = None  # 完整 JSON schema，由 Host 一次塞齐
+    operations: list[Literal["detail", "call"]] = []
+
+class SkillResource(BaseModel):
+    skill_name: str
+    display_name: str | None = None
+    description: str | None = None
+
+class AgentResources(BaseModel):
+    models: list[ModelResource] = []
+    tools: list[ToolResource] = []
+    knowledge_bases: list[KnowledgeBaseResource] = []
+    skills: list[SkillResource] = []
+    storage: StorageResource = StorageResource()
+    platform_capabilities: dict[str, Any] = {}
+```
+
+`tools` 携带每个授权工具的完整 schema（`parameters`），由 Host 在构造 `ctx.resources` 时一次塞齐，runner 不需再逐个调用 `get_tool_detail` 拉取，减少 N 次往返。
+
+`skills` 是本次 run 中 pipeline-visible 的 skill facts（`skill_name`、`display_name`、`description`）。**skill 通过统一 tool 形式消费，不是独立资源类别**：发现走 `list_skills` tool（或 `langbot_list_assets` 增加 skills 一类），激活走 `activate`，操作走 native exec/read/write。Host **不**把 skill 索引注入 system prompt，也不做 progressive-disclosure 注入；LLM 通过调用发现工具主动查询 skill 清单。Host **可选**在 ctx 提供预渲染的 `suggested_skill_prompt`（首轮延迟优化，runner 可忽略 / override），但它不是访问前提。`skills` 字段本身仅作为发现工具的数据来源与该可选预渲染的输入。
+
+资源列表是本次 run 的授权结果。History / Event / State / Storage 访问通过 `ctx.context.available_apis` 和 Host 侧 run session 校验控制，不作为可枚举 resource list 暴露。Runner 只能通过 `AgentRunAPIProxy` 访问这些能力。当前事件的文件和工具大结果优先进入授权 sandbox/workspace，由 runner 通过 read/write/exec 类工具按需读取。
+
+## 7. Result Stream
+
+### 7.1 AgentRunResult envelope
+
+```python
+JSONValue = str | int | float | bool | None | list["JSONValue"] | dict[str, "JSONValue"]
+
+ResultType = Literal[
+    "message.delta",
+    "message.completed",
+    "tool.call.started",
+    "tool.call.completed",
+    "state.updated",
+    "action.requested",
+    "run.completed",
+    "run.failed",
+]
+
+class AgentRunResult(BaseModel):
+    run_id: str
+    type: AgentRunResultType | str
+    data: dict[str, Any] = {}
+    usage: LLMTokenUsage | None = None
+    sequence: int | None = None
+    timestamp: int | None = None
+```
+
+SDK 当前实现是单一 envelope：`type` 枚举 + `data` dict。Payload 由 SDK typed model 构造并 dump，但 wire 不改成 discriminated union；这样新旧版本偏斜时 Host 仍可按 §3 忽略未知 `type`。
+
+`usage` 是 runner 可选上报的 token 使用量，沿用 SDK `LLMTokenUsage`：
+
+```python
+class LLMTokenUsage(BaseModel):
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    total_tokens: int | None = None
+    # provider-specific detail/cached/reasoning counters are preserved as extra fields
+```
+
+约束：
+
+- 运行时能观测到 provider/runtime usage 时，SHOULD 在 terminal `run.completed.usage` 上报本次 run 的最终聚合 token usage。
+- `run.failed.usage` MAY 上报失败前已经产生的部分 usage。
+- 不能观测 usage 的 runner 合法地省略该字段；缺失表示 unknown，Host 不得按 0 处理。
+- ACP 等外部协议不保证统一 usage；ACP runner 只能在具体 provider/native event 提供 usage 时填充本字段。
+- cost 不作为 runner result 的权威字段。Host 后续应基于 usage、model identity、时间和自身价格表计算账单成本；provider 原始 cost 如需保留，可放在 `usage` extra 字段中作为非权威 telemetry。
+
+Host 边界分级校验：
+
+- `message.delta`、`message.completed`、`state.updated`、`action.requested`、`run.completed`、`run.failed` 属于会影响投递或 Host 副作用的严格 payload；校验失败时丢弃该 result 并记录 warning。
+- `tool.call.started`、`tool.call.completed` 当前只作为 telemetry，payload 宽松兼容。
+- 未知 `type` 忽略并记录 warning。
+
+### 7.2 稳定 result payloads
+
+| type | `data` payload |
+| --- | --- |
+| `message.delta` | `{ "chunk": MessageChunk }` |
+| `message.completed` | `{ "message": Message }` |
+| `tool.call.started` | `{ "tool_call_id": str, "tool_name": str, "parameters": dict }` |
+| `tool.call.completed` | `{ "tool_call_id": str, "tool_name": str, "result": dict \| None, "error": str \| None }` |
+| `state.updated` | `{ "scope": "conversation" \| "actor" \| "subject" \| "runner", "key": str, "value": JSONValue }` |
+| `action.requested` | `{ "action": str, "target": dict \| None, "payload": dict \| None }` |
+| `run.completed` | `{ "finish_reason": str, "message"?: Message }` |
+| `run.failed` | `{ "code": str, "error": str, "retryable": bool }` |
+
+Runner 生成的大文件、工具输出和临时产物不通过 result event 回传；应写入当前 run 的授权 sandbox/workspace，再用消息文本、metadata 或 attachment reference 指向它们。
+
+### 7.3 稳定 result types
+
+| type | 说明 | 当前消费 |
+| --- | --- | --- |
+| `message.delta` | 流式消息片段。 | ✅ |
+| `message.completed` | 完整消息。 | ✅ |
+| `tool.call.started` | 工具调用开始的可观测事件。 | telemetry |
+| `tool.call.completed` | 工具调用完成的可观测事件。 | telemetry |
+| `state.updated` | runner 请求更新 host-owned state。 | ✅ |
+| `action.requested` | runner 请求 Host 执行平台动作。 | **reserved / 仅 telemetry，不执行** |
+| `run.completed` | run 正常结束。 | ✅ |
+| `run.failed` | run 失败。 | ✅ |
+
+`action.requested` 是为 EBA 和 platform API 保留的协议表面：本分支 Host 收到后只记 telemetry，**不执行**，runner 作者不应在当前 Host 底座中依赖其副作用。真实执行器由外部 EBA / platform action 分支接入；执行模型见 EVENT_BASED_AGENT §6。
+
+Host 必须校验 `state.updated` 的 scope、key、value 大小和 JSON 可序列化性。本分支 `action.requested` 仍只记录 telemetry。
+
+除 runner 经 `state.updated` 写之外，Host 自身也可直接写部分 host-owned state。例如 `activate` tool 在 Host 侧执行时，直接把已激活 skill 写入 conversation scope 的 `host.activated_skills` 快照。当 host 直接写与 runner `state.updated` 写到同一 key 时，按 **last-write-wins** 合并——runner 可以覆盖 host 写的快照。
+
+### 7.4 Stream delivery semantics
+
+- Host 按 Runtime stream 顺序消费 result。当前 v1 不定义跨连接 replay，也不承诺 at-least-once；从 Host 视角，收到的 result 最多应用一次。
+- `sequence` 是单个 `run_id` 内的结果序号。in-process / stdio 这类天然有序的在线 stream 可以省略；任何会缓冲、重放、跨进程队列或 runtime-managed task 的 transport 必须提供从 1 开始严格递增的 `sequence`。
+- Host 看到已提供 `sequence` 的 result 时，应按 `(run_id, sequence)` 做重复检测，并在缺号或乱序时记录 warning；除非 transport 明确声明 replay 语义，Host 不应自行等待缺失序号重排用户可见输出。
+- `run.failed.data.retryable` 只表示整次 run 理论上可由上层重试；Protocol v1 不自动重试 run，也不自动重试 proxy action。
+- History / Event / Transcript cursor 是 opaque token。runner 不得解析 cursor，也不得假设 cursor 在不同 API、conversation、thread 或 retention window 之间可比较；当前实现即使返回数字字符串，也只是实现细节。
+
+### 7.5 示例
+
+```json
+{ "type": "message.delta",     "data": { "chunk": { "role": "assistant", "content": "hel" } } }
+{ "type": "message.completed", "data": { "message": { "role": "assistant", "content": "hello" } } }
+{ "type": "state.updated",     "data": { "scope": "conversation", "key": "external.session_id", "value": "abc" } }
+{ "type": "action.requested",  "data": { "action": "message.edit", "target": {"message_id": "..."}, "payload": {"text": "..."} } }
+```
+
+## 8. AgentRunAPIProxy
+
+所有 proxy action 必须携带 `run_id`。Host 必须校验：active run session 存在、caller plugin identity 匹配、resource 在本次 `ctx.resources` 中授权、scope 不越界、payload size / rate limit / deadline 合法。
+
+```python
+# Model
+await api.invoke_llm(llm_model_uuid, messages, funcs=None, extra_args=None)
+await api.invoke_llm_with_usage(llm_model_uuid, messages, funcs=None, extra_args=None)
+async for chunk in api.invoke_llm_stream(llm_model_uuid, messages, funcs=None, extra_args=None):
+    ...
+async for event in api.invoke_llm_stream_events(llm_model_uuid, messages, funcs=None, extra_args=None):
+    ...
+await api.invoke_rerank(rerank_model_id, query, documents, top_k=None)
+
+# Tool
+await api.get_tool_detail(tool_name)
+await api.call_tool(tool_name, parameters)
+
+# Knowledge
+await api.retrieve_knowledge(kb_id, query_text, top_k=5, filters=None)
+
+# History（返回 Transcript projection，不返回原始平台 payload）
+await api.get_prompt()
+await api.history_page(conversation_id=None, before_cursor=None, after_cursor=None,
+                       limit=50, direction="backward", include_attachments=False)
+await api.history_search(query, filters=None, top_k=10)
+
+# Event（返回稳定 event envelope 或受限 raw ref，不默认返回大 payload）
+await api.event_get(event_id)
+await api.event_page(conversation_id=None, event_types=None, before_cursor=None, limit=50)
+await api.steering_pull(mode="all", limit=None)
+
+# State / Storage
+await api.state_get(scope, key);   await api.state_set(scope, key, value);   await api.state_delete(scope, key)
+await api.state_list(scope, prefix=None, limit=100)
+await api.get_plugin_storage(key); await api.set_plugin_storage(key, value); await api.delete_plugin_storage(key)
+await api.get_plugin_storage_keys()
+await api.get_workspace_storage(key); await api.set_workspace_storage(key, value); await api.delete_workspace_storage(key)
+await api.get_workspace_storage_keys()
+
+# Host info
+await api.get_langbot_version()
+```
+
+`invoke_llm()` / `invoke_llm_stream()` 的第一个参数在 SDK 中命名为
+`llm_model_uuid`，wire payload 字段也是 `llm_model_uuid`。该值对 runner
+仍是 opaque identifier，不应解析其内部格式。
+
+`invoke_llm()` 和 `invoke_llm_stream()` 保持兼容：前者返回 `Message`，后者只
+yield `MessageChunk`。需要 provider 真实 token 计量的 runner 应使用
+`invoke_llm_with_usage()` 或 `invoke_llm_stream_events()`。Host response 可在
+原有 `{message: ...}` / `{chunk: ...}` 外额外携带可选 `usage` 字段；streaming
+场景允许在所有 chunk 之后追加一个 usage-only event。`usage` 至少保留
+OpenAI-compatible 的 `prompt_tokens`、`completion_tokens`、`total_tokens`，
+若 provider 返回 `prompt_tokens_details` / `completion_tokens_details` 或
+cache token counters，Host / SDK 不应丢弃这些字段。没有 usage 的 provider
+必须继续返回成功响应，SDK 将 usage 置为 `None`。
+
+`get_prompt()` 返回当前 query-backed run 的 Host effective prompt messages：
+`list[Message]` 的 JSON 形式。该能力只在 `ctx.context.available_apis.prompt_get`
+为 true 时可用；没有 query 缓存、prompt 已过期或非 query entry run 时 Host
+可以返回错误或空列表。Runner 应在不可用时回退到自己的 config/prompt 策略。
+
+`steering_pull(mode="all")` 是推荐默认：Host 按 claim 顺序返回全部 pending steering 输入并清空对应队列。`mode="one-at-a-time"` 仅用于 runner 主动节流，每次返回一条。Host 不合并多条用户消息；runner 负责在 turn 边界决定模型侧格式。
+
+Steering 审计使用 EventLog 而不是 Transcript schema 扩展：被 active run 吸收的原始 `message.received` 事件保留原事件类型，并在 `metadata.steering` 标记 `status="queued"`、`trigger_behavior="absorbed_into_active_run"`、`claimed_by_run_id`、`claimed_runner_id`、`claimed_at`。Runner 成功 pull 后，Host 追加 `steering.injected` EventLog 记录，`metadata.steering.status="injected"` 并引用 `source_event_id`。若 run 结束时仍有已 claim 但未 pull 的 steering 输入，Host 追加 `steering.dropped` EventLog 记录，`metadata.steering.status="dropped"` 并引用 `source_event_id`；这不是用户消息事实的删除，只是 dispatch 终态。Transcript 继续只表示会话事实，不承担 dispatch 行为标记。
+
+`state` 与 `storage` 的建议边界：`state` 放小型 JSON（conversation / actor / subject / runner），`storage` 放 blob 或较大数据（插件私有数据、workspace 数据、checkpoint）。
+
+Compaction checkpoint 的推荐 state 约定：
+
+- scope: `conversation`
+- key: `runner.compaction.checkpoint`
+- value:
+
+```json
+{
+  "schema_version": "langbot.local_agent.compaction_checkpoint.v1",
+  "summary": "<conversation_summary>...</conversation_summary>",
+  "covers_until": "transcript-cursor-or-seq",
+  "tokens_before": 12345,
+  "created_at": 1710000000,
+  "conversation_id": "conv-..."
+}
+```
+
+`covers_until` 是摘要覆盖到的 transcript 游标锚点。Runner 读取 checkpoint 后应只拉取该游标之后的 transcript；若 checkpoint 缺失、schema 不匹配、conversation 不匹配或游标不可用，应回退到无 checkpoint 的尾部历史拉取行为。
+
+Proxy 返回数据结构也属于本协议：
+
+```python
+class TranscriptItem(BaseModel):
+    transcript_id: str
+    event_id: str
+    conversation_id: str | None = None
+    thread_id: str | None = None
+    role: str
+    item_type: str = "message"
+    content: str | None = None
+    content_json: dict[str, Any] | None = None
+    attachment_refs: list[dict[str, Any]] = []
+    seq: int | None = None
+    cursor: str | None = None
+    created_at: int | None = None
+    metadata: dict[str, Any] = {}
+
+class HistoryPage(BaseModel):
+    items: list[TranscriptItem] = []
+    next_cursor: str | None = None
+    prev_cursor: str | None = None
+    has_more: bool = False
+    total_count: int | None = None
+
+class HistorySearchResult(BaseModel):
+    items: list[TranscriptItem] = []
+    total_count: int | None = None
+    query: str
+
+class AgentEventRecord(BaseModel):
+    event_id: str
+    event_type: str
+    event_time: int | None = None
+    source: str
+    bot_id: str | None = None
+    workspace_id: str | None = None
+    conversation_id: str | None = None
+    thread_id: str | None = None
+    actor_type: str | None = None
+    actor_id: str | None = None
+    actor_name: str | None = None
+    subject_type: str | None = None
+    subject_id: str | None = None
+    input_summary: str | None = None
+    input_ref: str | None = None
+    raw_ref: str | None = None
+    seq: int | None = None
+    cursor: str | None = None
+    created_at: int | None = None
+    metadata: dict[str, Any] = {}
+
+class EventPage(BaseModel):
+    items: list[AgentEventRecord] = []
+    next_cursor: str | None = None
+    prev_cursor: str | None = None
+    has_more: bool = False
+    total_count: int | None = None
+
+class SteeringInputItem(BaseModel):
+    claimed_run_id: str
+    runner_id: str
+    claimed_at: int | None = None
+    event: AgentEventContext
+    input: AgentInput
+    conversation: ConversationContext | None = None
+    actor: ActorContext | None = None
+    subject: SubjectContext | None = None
+    metadata: dict[str, Any] = {}
+
+class SteeringPullResult(BaseModel):
+    items: list[SteeringInputItem] = []
+```
+
+## 9. 错误模型
+
+```python
+class AgentAPIError(BaseModel):
+    code: str
+    message: str
+    retryable: bool = False
+    details: dict[str, Any] = {}
+```
+
+| code | 说明 |
+| --- | --- |
+| `unauthorized` | 未授权访问资源或 scope。 |
+| `not_found` | 资源不存在或对当前 runner 不可见。 |
+| `deadline_exceeded` | 超过 run deadline。 |
+| `payload_too_large` | 请求或响应过大。 |
+| `rate_limited` | Host 限流。 |
+| `invalid_argument` | 参数错误。 |
+| `runtime_error` | Host 或下游能力错误。 |
+
+SDK runner-facing proxy 在 Host 返回结构化错误或畸形响应时抛出 `AgentAPIException`，其中 `error` 字段为 `AgentAPIError`。Legacy transport 只返回字符串错误时，SDK 使用 `host.action_error` 包装，避免 runner 继续依赖裸 `KeyError` 或字符串匹配。
+
+Runner 失败使用 `run.failed`：
+
+```json
+{ "type": "run.failed", "data": { "code": "runner.error", "error": "failed to call external agent", "retryable": false } }
+```
+
+## 10. Timeout 与 Cancellation
+
+- Host 在 `ctx.runtime.deadline_at` 下发总 deadline；SDK proxy 必须用该 deadline 限制单次 action timeout。
+- Host 可以取消 active run；Runtime 应尽力中断 runner。
+- Protocol v1 的 run 绑定当前 Host 进程和当前 runtime channel，不保证跨 Host 重启恢复。Host 重启、runtime channel 断开或 run session 丢失时，Runtime / external harness connector 必须 fail-fast 并尽力取消仍在执行的 runner，不得继续使用旧 `run_id` 调用 Host API。
+- Runner 支持中断时应返回或触发 `run.failed`，code 为 `cancelled`。
+- Host 必须 unregister active run session。
+
+## 11. Security 与 Guardrail（协议层）
+
+Protocol v1 的安全边界在 Host：
+
+- Runner 不能直接访问未授权 model/tool/kb/history/storage/sandbox。
+- SDK 本地校验只提升开发体验，不能替代 Host 校验。
+- 所有 resource id 对 runner 来说都是 opaque。
+- 默认只能访问当前 conversation / thread 的 history；跨会话、workspace 级访问必须额外授权。
+- 大 payload 不应塞进 result event；当前 run 的文件和工具大结果应进入授权 sandbox/workspace，由 read/write/exec 类工具按需访问。
+- Host 必须记录 run_id、runner_id、action、resource、scope、result。
+
+Host 不负责业务编排：不拼接全量历史、不替 runner 做 prompt assembly、不内置 agent memory / tool loop / 上下文压缩策略。这些由官方或第三方 AgentRunner 插件实现。
+
+外部 harness runner 的边界统一见 HOST_SDK §4.8。简言之：harness native permission mode、allowed/disallowed tools、shell/MCP 权限只是额外执行约束，不能替代 Host 对 LangBot 资源的授权。
+
+> 发布级路径隔离、MCP allowlist、secret redaction、配额、workspace 清理等**不属于** v1 协议闭环，是生产默认启用前的 release gate，见 [SECURITY_HARDENING.md](./SECURITY_HARDENING.md)。
+
+## 12. Pipeline AI Stage Adapter 边界
+
+Pipeline 与 Agent 是 EBA 中平级的处理器：Pipeline 处理消息事件并执行完整
+Stage 链，Agent 处理其声明支持的消息或非消息事件。本协议只约束 AgentRunner
+调用，因此 Pipeline 仅在 AI Stage 调用 runner 时进入 Query entry adapter；
+该适配不会把 Pipeline 变成 Agent，也不会创建或更新持久 Agent。adapter 负责：
+
+- 从 `Query` 构造 `AgentEventContext` 和临时 `AgentBinding`（见 HOST_SDK §4.2）。
+- 从当前 Agent/runner config 构造 `ctx.config`。
+- 将 Query-only 字段放入 `ctx.adapter`，例如 filtered params 放 `ctx.adapter.extra["params"]`。
+
+约束：
+
+- adapter **不**定义历史窗口、prompt 组装或 agentic context 策略。
+- `ctx.adapter.extra` 只允许承载一次性、JSON-safe、入口相关的非核心元数据，例如 `params`；不得承载 `prompt`、history window、RAG 结果、tool schema 或授权资源。
+- 静态绑定 prompt 属于 `ctx.config.prompt`。preprocessing / hook 后的动态有效指令不通过 `ctx.adapter.extra` 主动推送；后续如需要保留这类能力，应通过 Host prompt/instruction pull API 暴露（占位见 HOST_SDK §4.8）。
+- 新 runner 不应长期依赖 `adapter`，应只依赖 event-first context 和 Host API。
+
+## 13. 已确认约束
+
+- EBA 路由层是 `one event -> one Processor target (Pipeline | Agent)`；同一 bot / channel 可以让不同事件绑定不同类型的处理器。
+- 进入 AgentRunner Protocol 后，调用基数是 `one AgentBinding -> one run_id -> one runner`。这既适用于独立 Agent，也适用于 Pipeline AI Stage 的单次 runner 调用。
+- 一个 Agent 可以被多个 bot / channel 复用。如果 Agent 分支出现多个匹配 binding，BindingResolver 必须按明确规则选出一个或拒绝配置，不应默认 fan-out。
+- observer agent、多 runner fan-out、并行裁决、result 合并等能力需要单独设计 delivery、state、platform action 和 audit 语义，不属于当前 v1 契约。
+- `AgentRunnerDescriptor.source` 只允许 `plugin`；Host 内置 adapter 不能作为 runner source 绕过插件/runtime/proxy 权限链。
+- `ctx.resources` 与 proxy action 校验必须来自同一个 run authorization snapshot；runtime handler 不应重新执行资源裁剪。
+- v1 不要求 Agent、AgentRunner 插件实例或 runner id 全局串行。多个 bot / channel 可复用同一个 Agent；并发隔离依赖 `run_id`、binding、conversation / thread scope 和 Host authorization snapshot。
+- 外部 harness runner 当前是 MVP / dev path，证明协议可接入，不代表发布级安全边界或 Docker 生产可用性完成。
+
+## 14. 开放问题
+
+- `AgentBinding` 是否需要进入 SDK 文档作为只读诊断信息，还是完全 Host 内部。
+- State 与 Storage 的边界是否需要更强类型。
+- platform action 的审批模型如何表达。
+- Host 侧 scoped MCP / workspace projection 是否需要从 runner config 上移为一等 resource projection API。（skill 一项已收敛：skill 全 tool 化，作为被授权 tool 暴露，不再是独立 projection。）

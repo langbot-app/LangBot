@@ -1,0 +1,61 @@
+id: wizard-onebot-agent-runtime
+title: "Quick Start runs a real OneBot member event through an Agent"
+mode: agent-browser
+area: wizard
+type: feature
+priority: p0
+risk: high
+ci_eligible: false
+tags:
+  - wizard
+  - eba
+  - onebot
+  - agent-runner
+  - release-gate
+skills:
+  - langbot-env-setup
+  - langbot-testing
+env:
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_BROWSER_PROFILE
+automation: scripts/e2e/wizard-onebot-agent-runtime.mjs
+automation_env:
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_BROWSER_PROFILE
+  - LANGBOT_CHROMIUM_EXECUTABLE
+preconditions:
+  - "The target is a local test instance where temporary Bots and Agents may be created and deleted."
+  - "Local Agent is installed so the scenario prompt can be verified in its prompt editor."
+  - "The QA Deterministic Runner is installed and registered as plugin:qa/agent-runner/default."
+  - "The LangBot virtualenv includes the websockets package used by the local OneBot probe."
+steps:
+  - "Open Quick Start and choose Welcome new members with the OneBot v11 channel."
+  - "Create and enable a temporary OneBot Bot on an available local port."
+  - "Select Local Agent and confirm the editable welcome prompt is prefilled."
+  - "Choose QA Deterministic Runner and finish the wizard."
+  - "Connect a local OneBot reverse WebSocket and send a group_increase notice."
+  - "Confirm the Agent output is sent back with send_group_msg."
+  - "Open the Bot route editor and confirm the route status is Delivered."
+checks:
+  - "UI: The wizard reaches All Set after creating the Agent route."
+  - "UI: Local Agent receives a scenario-specific editable welcome prompt."
+  - "Runtime: OneBot group_increase converts to group.member_joined."
+  - "Runtime: The saved Agent route reaches delivered status."
+  - "Runtime: The deterministic Agent reply invokes send_group_msg."
+  - "UI: Delivered is visible on the saved route card."
+  - "Console: No unexpected frontend errors appear during the flow."
+  - "Cleanup: The temporary Bot and Agent are deleted."
+evidence_required:
+  - ui
+  - screenshot
+  - console
+  - api_diagnostic
+diagnostics:
+  - "The case uses a local reverse WebSocket and deterministic runner, so it requires no platform or model credentials."
+  - "A passing API route status without the visible Delivered route card is not a pass."
+troubleshooting:
+  - backend-not-listening
+  - plugin-runtime-timeout
+  - proxy-env-mismatch

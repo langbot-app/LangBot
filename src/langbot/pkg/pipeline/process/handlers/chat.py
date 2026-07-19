@@ -10,30 +10,36 @@ from datetime import datetime
 from .. import handler
 from ... import entities
 from ... import plugin_diagnostics
-from ....provider import runner as runner_module
 
 import langbot_plugin.api.entities.events as events
-from ....utils import importutil, constants, runner as runner_utils
+from ....agent.runner.config_resolver import RunnerConfigResolver
+from ....agent.runner import config_schema
+from ....utils import constants, runner as runner_utils
 from ....telemetry import features as telemetry_features
-from ....provider import runners
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
 
 
-importutil.import_modules_in_pkg(runners)
+DEFAULT_PROMPT_CONFIG = [
+    {'role': 'system', 'content': 'You are a helpful assistant.'},
+]
 
 
 class ChatMessageHandler(handler.MessageHandler):
+    """Chat message handler using AgentRunOrchestrator.
+
+    This handler delegates all runner execution to the agent_run_orchestrator,
+    which resolves runner ID, builds context, invokes plugin runtime,
+    and normalizes results.
+    """
+
     async def handle(
         self,
         query: pipeline_query.Query,
     ) -> typing.AsyncGenerator[entities.StageProcessResult, None]:
-        """处理"""
-        # 调API
-        #   生成器
-
-        # 触发插件事件
+        """Handle chat message by delegating to AgentRunOrchestrator."""
+        # Trigger plugin event
         event_class = (
             events.PersonNormalMessageReceived
             if query.launcher_type == provider_session.LauncherTypes.PERSON
@@ -54,7 +60,7 @@ class ChatMessageHandler(handler.MessageHandler):
         bound_plugins = query.variables.get('_pipeline_bound_plugins', None)
         event_ctx = await self.ap.plugin_connector.emit_event(event, bound_plugins)
 
-        is_create_card = False  # 判断下是否需要创建流式卡片
+        is_create_card = False  # Track if streaming card was created
 
         if event_ctx.is_prevented_default():
             if event_ctx.event.reply_message_chain is not None:
@@ -87,40 +93,65 @@ class ChatMessageHandler(handler.MessageHandler):
 
             text_length = 0
             try:
-                is_stream = await query.adapter.is_stream_output_supported()
-            except AttributeError:
-                is_stream = False
-
-            try:
-                for r in runner_module.preregistered_runners:
-                    if r.name == query.pipeline_config['ai']['runner']['runner']:
-                        runner = r(self.ap, query.pipeline_config)
-                        break
-                else:
-                    raise ValueError(f'Request Runner not found: {query.pipeline_config["ai"]["runner"]["runner"]}')
                 # Mark start time for telemetry
                 start_ts = time.time()
 
-                if is_stream:
-                    resp_message_id = uuid.uuid4()
-                    chunk_count = 0  # Track streaming chunks to reduce excessive logging
+                try_claim_steering = getattr(
+                    self.ap.agent_run_orchestrator,
+                    'try_claim_steering_from_query',
+                    None,
+                )
+                if try_claim_steering and await try_claim_steering(query):
+                    yield entities.StageProcessResult(result_type=entities.ResultType.INTERRUPT, new_query=query)
+                    return
 
-                    async for result in runner.run(query):
-                        result.resp_message_id = str(resp_message_id)
+                try:
+                    is_stream = await query.adapter.is_stream_output_supported()
+                except AttributeError:
+                    is_stream = False
+
+                # Create a single resp_message_id for the entire streaming response
+                resp_message_id = uuid.uuid4()
+                chunk_count = 0
+                has_result = False
+
+                # Use AgentRunOrchestrator to run the agent
+                # This replaces direct runner lookup and PluginAgentRunnerWrapper
+                async for result in self.ap.agent_run_orchestrator.run_from_query(query):
+                    has_result = True
+
+                    if is_stream and isinstance(result, provider_message.MessageChunk):
+                        if result.all_content is not None:
+                            result = result.model_copy(update={'content': result.all_content})
+                    elif is_stream and isinstance(result, provider_message.Message):
+                        result = provider_message.MessageChunk.model_validate(
+                            {
+                                **result.model_dump(),
+                                'is_final': True,
+                            }
+                        )
+
+                    result.resp_message_id = str(resp_message_id)
+
+                    # For streaming mode, pop previous response before adding new chunk
+                    # This allows incremental card updates
+                    if is_stream:
                         if query.resp_messages:
                             query.resp_messages.pop()
                         if query.resp_message_chain:
                             query.resp_message_chain.pop()
-                        # 此时连接外部 AI 服务正常,创建卡片
-                        if not is_create_card:  # 只有不是第一次才创建卡片
+
+                        # Create streaming card on first result (connection established)
+                        if not is_create_card:
                             await query.adapter.create_message_card(str(resp_message_id), query.message_event)
                             is_create_card = True
-                        query.resp_messages.append(result)
 
+                    query.resp_messages.append(result)
+
+                    if is_stream:
                         chunk_count += 1
-                        # Only log every 10th chunk to reduce excessive logging during streaming
-                        # This prevents memory overflow from thousands of log entries per conversation
-                        # First chunk uses INFO level to confirm connection establishment
+                        # Only log every 10th chunk to reduce excessive logging during streaming.
+                        # First chunk uses INFO level to confirm connection establishment.
                         if chunk_count == 1:
                             summary = self.format_result_log(result)
                             if summary is not None:
@@ -131,46 +162,66 @@ class ChatMessageHandler(handler.MessageHandler):
                             self.ap.logger.debug(
                                 f'Conversation({query.query_id}) Streaming chunk {chunk_count}: {self.cut_str(result.readable_str())}'
                             )
-
-                        if result.content is not None:
-                            text_length += len(result.content)
-
-                        yield entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
-
-                    # Log final summary after streaming completes
-                    self.ap.logger.info(
-                        f'Conversation({query.query_id}) Streaming completed: {chunk_count} chunks, {text_length} chars'
-                    )
-
-                else:
-                    async for result in runner.run(query):
-                        query.resp_messages.append(result)
-
+                    else:
                         summary = self.format_result_log(result)
                         if summary is not None:
                             self.ap.logger.info(f'Conversation({query.query_id}) Response: {summary}')
 
-                        if result.content is not None:
-                            text_length += len(result.content)
+                    if result.content is not None:
+                        text_length += len(result.content)
 
+                    if is_stream:
                         yield entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
 
-                query.session.using_conversation.messages.append(query.user_message)
+                # Log final summary after streaming completes
+                if is_stream:
+                    self.ap.logger.info(
+                        f'Conversation({query.query_id}) Streaming completed: {chunk_count} chunks, {text_length} chars'
+                    )
 
-                query.session.using_conversation.messages.extend(query.resp_messages)
+                # Keep a conversation object available for downstream legacy
+                # readers, but do not mirror AgentRunner history into
+                # conversation.messages. TranscriptStore is the canonical
+                # history source for this path.
+                await self._ensure_conversation_for_history(query)
+
+                # Non-streaming adapters should receive only the completed runner turn.
+                # Keep every normalized result on the query for diagnostics and history,
+                # while running downstream response stages once with the final result.
+                if not is_stream and has_result:
+                    yield entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
+
             except Exception as e:
+                # Import orchestrator errors for specific handling
+                from ....agent.runner.errors import (
+                    RunnerNotFoundError,
+                    RunnerNotAuthorizedError,
+                    RunnerExecutionError,
+                )
+
                 error_info = f'{traceback.format_exc()}'
                 self.ap.logger.error(f'Conversation({query.query_id}) Request Failed: {error_info}')
-                traceback.print_exc()
 
-                exception_handling = query.pipeline_config['output']['misc'].get('exception-handling', 'show-hint')
+                # Handle specific runner errors with appropriate messages
+                if isinstance(e, RunnerNotFoundError):
+                    user_notice = f'Agent runner not found: {e.runner_id}'
+                elif isinstance(e, RunnerNotAuthorizedError):
+                    user_notice = 'Agent runner not authorized for this pipeline'
+                elif isinstance(e, RunnerExecutionError):
+                    if e.retryable:
+                        user_notice = 'Agent runner temporarily unavailable. Please try again.'
+                    else:
+                        user_notice = 'Agent runner execution failed.'
+                else:
+                    # Use existing exception handling
+                    exception_handling = query.pipeline_config['output']['misc'].get('exception-handling', 'show-hint')
 
-                if exception_handling == 'show-error':
-                    user_notice = f'{e}'
-                elif exception_handling == 'show-hint':
-                    user_notice = query.pipeline_config['output']['misc'].get('failure-hint', 'Request failed.')
-                else:  # hide
-                    user_notice = None
+                    if exception_handling == 'show-error':
+                        user_notice = f'{e}'
+                    elif exception_handling == 'show-hint':
+                        user_notice = query.pipeline_config['output']['misc'].get('failure-hint', 'Request failed.')
+                    else:  # hide
+                        user_notice = None
 
                 yield entities.StageProcessResult(
                     result_type=entities.ResultType.INTERRUPT,
@@ -180,7 +231,7 @@ class ChatMessageHandler(handler.MessageHandler):
                     debug_notice=traceback.format_exc(),
                 )
             finally:
-                # Telemetry reporting: collect minimal per-query execution info and send asynchronously
+                # Telemetry reporting
                 try:
                     end_ts = time.time()
                     duration_ms = None
@@ -188,16 +239,14 @@ class ChatMessageHandler(handler.MessageHandler):
                         duration_ms = int((end_ts - start_ts) * 1000)
 
                     adapter_name = query.adapter.__class__.__name__ if hasattr(query, 'adapter') else None
-                    runner_name = (
-                        query.pipeline_config.get('ai', {}).get('runner', {}).get('runner')
-                        if query.pipeline_config
-                        else None
-                    )
 
-                    # Model name if using localagent
+                    # Use orchestrator to resolve runner ID for telemetry
+                    runner_name = self.ap.agent_run_orchestrator.resolve_runner_id_for_telemetry(query)
+
+                    # Model name if available
                     model_name = None
                     try:
-                        if runner_name == 'local-agent' and getattr(query, 'use_llm_model_uuid', None):
+                        if getattr(query, 'use_llm_model_uuid', None):
                             m = await self.ap.model_mgr.get_model_by_uuid(query.use_llm_model_uuid)
                             if m and getattr(m, 'model_entity', None):
                                 model_name = getattr(m.model_entity, 'name', None)
@@ -207,7 +256,7 @@ class ChatMessageHandler(handler.MessageHandler):
                     pipeline_plugins = query.variables.get('_pipeline_bound_plugins', None)
 
                     runner_category = runner_utils.get_runner_category_from_runner(
-                        runner_name, runner, query.pipeline_config
+                        runner_name, None, query.pipeline_config
                     )
 
                     # Feature usage collected during query processing (tool calls,
@@ -231,7 +280,6 @@ class ChatMessageHandler(handler.MessageHandler):
                         'timestamp': datetime.utcnow().isoformat(),
                     }
 
-                    # Send telemetry asynchronously and do not block pipeline via app's telemetry manager
                     await self.ap.telemetry.start_send_task(payload)
 
                     # Trigger survey events on successful non-WebSocket responses
@@ -241,5 +289,72 @@ class ChatMessageHandler(handler.MessageHandler):
                             # Counts toward the bot_response_success_100 milestone event
                             await self.ap.survey.record_bot_response_success()
                 except Exception as ex:
-                    # Ensure telemetry issues do not affect normal flow
                     self.ap.logger.warning(f'Failed to send telemetry: {ex}')
+
+    async def _ensure_conversation_for_history(
+        self,
+        query: pipeline_query.Query,
+    ) -> provider_session.Conversation:
+        session = getattr(query, 'session', None)
+        conversation = getattr(session, 'using_conversation', None)
+        if conversation is not None:
+            return conversation
+
+        if session is None or getattr(self.ap, 'sess_mgr', None) is None:
+            raise RuntimeError('Conversation is not available for history update')
+
+        prompt_config = await self._build_history_prompt_config(query)
+        conversation = await self.ap.sess_mgr.get_conversation(
+            query,
+            session,
+            prompt_config,
+            query.pipeline_uuid,
+            query.bot_uuid,
+        )
+        if conversation is None:
+            raise RuntimeError('Conversation manager did not return a conversation')
+
+        if getattr(session, 'using_conversation', None) is None:
+            session.using_conversation = conversation
+        return conversation
+
+    async def _build_history_prompt_config(
+        self,
+        query: pipeline_query.Query,
+    ) -> list[dict[str, typing.Any]]:
+        prompt_messages = getattr(getattr(query, 'prompt', None), 'messages', None)
+        if prompt_messages:
+            prompt_config = []
+            for message in prompt_messages:
+                if hasattr(message, 'model_dump'):
+                    prompt_config.append(message.model_dump(mode='python'))
+                elif isinstance(message, dict):
+                    prompt_config.append(message)
+            if prompt_config:
+                return prompt_config
+
+        runner_id = RunnerConfigResolver.resolve_runner_id(query.pipeline_config)
+        runner_config = (
+            RunnerConfigResolver.resolve_runner_config(query.pipeline_config, runner_id) if runner_id else {}
+        )
+        bound_plugins = query.variables.get('_pipeline_bound_plugins', None)
+        descriptor = await self._get_runner_descriptor(runner_id, bound_plugins)
+        return config_schema.extract_prompt_config(descriptor, runner_config, DEFAULT_PROMPT_CONFIG)
+
+    async def _get_runner_descriptor(
+        self,
+        runner_id: str | None,
+        bound_plugins: list[str] | None,
+    ) -> typing.Any | None:
+        if not runner_id:
+            return None
+
+        registry = getattr(self.ap, 'agent_runner_registry', None)
+        if registry is None:
+            return None
+
+        try:
+            return await registry.get(runner_id, bound_plugins)
+        except Exception as e:
+            self.ap.logger.debug(f'Unable to load AgentRunner descriptor for {runner_id}: {e}')
+            return None

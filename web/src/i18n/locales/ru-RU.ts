@@ -341,14 +341,17 @@ const ruRU = {
     getBotConfigError: 'Не удалось получить конфигурацию бота: ',
     saveSuccess: 'Успешно сохранено',
     saveError: 'Ошибка сохранения: ',
-    createSuccess:
-      'Успешно создано. Пожалуйста, включите или измените привязанный конвейер',
+    createSuccess: 'Успешно создано. Настройте маршрутизацию событий',
     createError: 'Ошибка создания: ',
     deleteSuccess: 'Успешно удалено',
     deleteError: 'Ошибка удаления: ',
     deleteConfirmation: 'Вы уверены, что хотите удалить этого бота?',
     platformAdapter: 'Выбор платформы/адаптера',
     selectAdapter: 'Выберите адаптер',
+    legacyAdapters: 'Устаревшие адаптеры',
+    legacyAdapterBadge: 'Устаревший',
+    legacyAdaptersHint:
+      'У этих адаптеров есть новые событийные версии. Они сохранены только для существующих конфигураций и не рекомендуются для новых ботов.',
     adapterConfig: 'Настройка адаптера',
     viewAdapterDocs: 'Документация',
     bindPipeline: 'Привязать конвейер',
@@ -369,6 +372,9 @@ const ruRU = {
     routingConnection: 'Маршрутизация и подключение',
     routingConnectionDescription:
       'Привяжите конвейер, обрабатывающий сообщения для этого бота',
+    eventRouting: 'Маршрутизация событий',
+    eventRoutingDescription:
+      'Выберите обработчик для каждого события бота. Изменяйте логику в настройках соответствующего Agent или Pipeline. Pipeline поддерживает только события сообщений.',
     routingRules: 'Правила условной маршрутизации',
     routingRulesDescription:
       'Правила проверяются по порядку; первое совпадение направляет в соответствующий конвейер. При отсутствии совпадений используется конвейер по умолчанию.',
@@ -475,6 +481,54 @@ const ruRU = {
       configureAdmins: 'Manage Admins',
     },
   },
+  agents: {
+    title: 'Обработчики',
+    description:
+      'Создавайте переиспользуемые обработчики и используйте их в маршрутизации событий бота',
+    create: 'Создать обработчик',
+    editAgent: 'Редактировать Agent',
+    selectFromSidebar: 'Выберите Agent или Pipeline на боковой панели',
+    agentType: 'Agent',
+    agentTypeDescription:
+      'Используйте runner для обработки сообщений, участников групп, друзей, обратной связи и других событий платформы.',
+    pipelineType: 'Pipeline',
+    kindBadgeAgent: 'Agent',
+    kindBadgePipeline: 'Pipeline',
+    groupByKind: 'Группировать по типу',
+    groupByKindShort: 'Группа',
+    pipelineTypeDescription:
+      'Визуальный многоэтапный процесс управляет предобработкой сообщений, AI, постобработкой, расширениями и выводом. Только события сообщений.',
+    allEvents: 'Поддерживает все события',
+    messageEventsOnly: 'Только события сообщений',
+    basicInfo: 'Основная информация',
+    basicInfoDescription: 'Задайте имя, иконку, описание и статус активации',
+    runnerSettings: 'Runner',
+    advanced: 'Дополнительно',
+    bindableEvents: 'Диапазон привязываемых событий',
+    bindableEventsDescription:
+      'Ограничьте, какие маршруты событий бота могут выбирать этот Agent. Обычно достаточно значения по умолчанию.',
+    supportedEvents: 'Диапазон событий',
+    supportedEventsDescription:
+      'Один шаблон события в строке, например *, message.received, group.*. Pipeline фиксирован на message.*.',
+    enabled: 'Включить Agent',
+    enabledDescription:
+      'При отключении этот Agent не должен выбираться маршрутизацией событий.',
+    nameRequired: 'Имя не может быть пустым',
+    createSuccess: 'Успешно создано',
+    createError: 'Ошибка создания: ',
+    loadError: 'Ошибка загрузки: ',
+    saveSuccess: 'Успешно сохранено',
+    saveError: 'Ошибка сохранения: ',
+    deleteSuccess: 'Успешно удалено',
+    deleteError: 'Ошибка удаления: ',
+    deleteConfirmation: 'Вы уверены, что хотите удалить этот Agent?',
+    dangerZone: 'Опасная зона',
+    dangerZoneDescription: 'Необратимые и деструктивные действия',
+    deleteAgentAction: 'Удалить этот Agent',
+    deleteAgentHint:
+      'После удаления события, привязанные к ней, больше не смогут выполняться.',
+    noRunnerMetadata: 'Метаданные AgentRunner в данный момент недоступны.',
+  },
   plugins: {
     title: 'Расширения',
     description:
@@ -505,6 +559,7 @@ const ruRU = {
     noExtensionInstalled: 'Расширения не установлены',
     loadingExtensions: 'Загрузка расширений...',
     groupByType: 'Группировать по формату',
+    groupByTypeShort: 'Группа',
     pluginConfig: 'Настройка плагина',
     pluginSort: 'Порядок плагинов',
     pluginSortDescription:
@@ -569,6 +624,7 @@ const ruRU = {
       KnowledgeEngine: 'Движок знаний',
       Parser: 'Парсер',
       Page: 'Страница',
+      AgentRunner: 'Исполнитель агента',
     },
     uploadLocal: 'Загрузить локально',
     debugging: 'Отладка',
@@ -745,6 +801,7 @@ const ruRU = {
       KnowledgeEngine: 'Движок знаний',
       Parser: 'Парсер',
       Page: 'Страница',
+      AgentRunner: 'Исполнитель агента',
     },
     filterByType: 'Тип',
     allTypes: 'Все типы',
@@ -981,14 +1038,14 @@ const ruRU = {
       selectSkills: 'Выбрать навыки',
       noSkillsAvailable: 'Нет доступных навыков',
       mcpServersScopeTooltip:
-        'Здесь задаётся только привязка MCP-серверов к конвейеру. Конкретные MCP-инструменты и ресурсы выбираются в AI Feature > Local Agent.',
+        'Здесь задаётся только привязка MCP-серверов к конвейеру. Конкретные MCP-инструменты и ресурсы выбираются в AI Feature > Agent Runner.',
       enableAllMCPServersTooltip:
         'Если включено, все настроенные и включённые MCP-серверы станут кандидатами для инструментов и ресурсов MCP в AI Feature.',
     },
-    localAgent: {
+    agentRunner: {
       toolsTitle: 'Инструменты',
       toolsDescription:
-        'Выберите инструменты плагинов, MCP и встроенные инструменты для этого Local Agent.',
+        'Выберите инструменты плагинов, MCP и встроенные инструменты для этого Agent Runner.',
       toolsScopeTooltip:
         'MCP-инструменты берутся только из MCP-серверов, привязанных в Расширениях. Чтобы добавить источник, сначала привяжите там сервер.',
       enableAllTools: 'Включить все инструменты',
@@ -1006,7 +1063,7 @@ const ruRU = {
       selectTools: 'Выбрать инструменты',
       resourcesTitle: 'Ресурсы',
       resourcesDescription:
-        'Выберите MCP-ресурсы и базы знаний для этого Local Agent.',
+        'Выберите MCP-ресурсы и базы знаний для этого Agent Runner.',
       knowledgeBases: 'Базы знаний',
       mcpResources: 'MCP-ресурсы',
       mcpResourcesScopeTooltip:
@@ -1629,11 +1686,6 @@ const ruRU = {
       title: 'Выберите ИИ-движок',
       description:
         'Выберите ИИ-движок, который будет управлять интеллектом вашего бота.',
-    },
-    spaceBanner: {
-      message:
-        'Подключитесь к LangBot Space для бесплатных пробных кредитов и мгновенной настройки!',
-      action: 'Авторизация через Space',
     },
     config: {
       botInfo: 'Информация о боте',

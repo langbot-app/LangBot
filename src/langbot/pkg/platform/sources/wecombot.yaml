@@ -12,6 +12,7 @@ metadata:
     zh_Hant: 企業微信智慧機器人，支援長連線和 Webhook 兩種接入方式，請查看文件了解使用方式
   icon: wecombot.png
 spec:
+  legacy: true
   categories:
     - china
   help_links:

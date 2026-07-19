@@ -343,6 +343,78 @@ function manualEvidenceTemplate(mode: string): ManualEvidenceTemplate {
   };
 }
 
+function existingEvidencePath(evidence: Record<string, string> | undefined, key: string): string {
+  const path = evidence?.[key];
+  return path && existsSync(path) ? path : "";
+}
+
+function renderAutomationEvidence(
+  mode: string,
+  automation: AutomationResultEvidence,
+  logGuard: LogGuardResult,
+): ManualEvidenceTemplate {
+  if (automation.status !== "loaded") return manualEvidenceTemplate(mode);
+
+  const isProbe = isProbeMode(mode);
+  const screenshot = existingEvidencePath(automation.evidence, "screenshot");
+  const consoleLog = existingEvidencePath(automation.evidence, "console_log");
+  const networkLog = existingEvidencePath(automation.evidence, "network_log");
+  const apiDiagnostics = Object.entries(automation.evidence ?? {})
+    .filter(([key, value]) => key.endsWith("_diagnostic_json") && value && existsSync(value))
+    .map(([, value]) => value);
+  const successLines = logGuard.success_signals
+    .map((signal) => signal.excerpt || `${signal.source}:${signal.line ?? ""} ${signal.pattern}`.trim())
+    .slice(0, 3);
+  const findings = logGuard.findings
+    .map((finding) => `${finding.severity}/${finding.kind}${finding.excerpt ? `: ${finding.excerpt}` : ""}`)
+    .slice(0, 3);
+  const chatSummary = automation.chat_results?.length
+    ? automation.chat_results
+      .map((item) => `#${(item.index ?? 0) + 1} ${item.status ?? "unknown"} ${item.expected_text ?? ""}`.trim())
+      .join("; ")
+    : automation.reason || "";
+  const diagnostics = [
+    automation.browser_diagnostics?.reason,
+    apiDiagnostics.length ? `api diagnostics: ${apiDiagnostics.join(", ")}` : "",
+  ].filter(Boolean).join("; ") || "No extra diagnostics recorded.";
+
+  if (isProbe) {
+    return {
+      result: automation.result || "unknown",
+      target_tested: String(automation.url || automation.path || "automation target"),
+      execution_path: "automation script",
+      probe_result: automation.reason || chatSummary || "Automation completed.",
+      logs_or_artifacts: [
+        consoleLog ? `console=${consoleLog}` : "",
+        networkLog ? `network=${networkLog}` : "",
+        automation.path ? `automation=${automation.path}` : "",
+      ].filter(Boolean).join(", ") || "No log artifacts recorded.",
+      diagnostics,
+      matched_troubleshooting: findings.length ? findings.join(" | ") : "None.",
+      assets_to_update: automation.result === "pass" ? "None." : "Review case/troubleshooting assets if this failure is expected to recur.",
+    };
+  }
+
+  return {
+    result: automation.result || "unknown",
+    url_tested: automation.url || "Not recorded.",
+    browser_path: "direct Playwright automation",
+    ui_result: chatSummary || automation.reason || "Automation completed.",
+    console_errors: automation.browser_diagnostics?.status === "fail"
+      ? automation.browser_diagnostics.reason || "Browser diagnostics failed."
+      : "None found by browser diagnostics.",
+    network_symptoms: networkLog ? `Captured in ${networkLog}` : "No network log artifact recorded.",
+    backend_logs: successLines.length
+      ? successLines.join(" | ")
+      : `Log Guard status: ${logGuard.status}${findings.length ? `; ${findings.join(" | ")}` : ""}`,
+    frontend_logs: consoleLog ? `Captured in ${consoleLog}` : "No frontend console log artifact recorded.",
+    screenshots: screenshot || "No screenshot artifact recorded.",
+    diagnostics,
+    matched_troubleshooting: findings.length ? findings.join(" | ") : "None.",
+    assets_to_update: automation.result === "pass" ? "None." : "Review case/troubleshooting assets if this failure is expected to recur.",
+  };
+}
+
 function envSummary(item: StructuredItem, env: Record<string, string>): Record<string, string> {
   const keys = [
     ...listValue(item.fields, "env"),
@@ -1321,6 +1393,8 @@ export function commandTestRun(ctx: CommandContext): number {
 function buildReport(root: string, item: StructuredItem, options: Record<string, string | boolean>): TestReport {
   const env = loadEnv(root);
   const mode = caseMode(item);
+  const automationResult = readAutomationResultEvidence(options);
+  const logGuard = scanStructuredLogSources(root, item, options);
   const related = relatedTroubleshooting(root, item).map((entry) => ({
     id: scalar(entry.fields, "id"),
     title: scalar(entry.fields, "title"),
@@ -1332,8 +1406,8 @@ function buildReport(root: string, item: StructuredItem, options: Record<string,
     generated_at: new Date().toISOString(),
     case: caseSummary(item),
     result_options: ["pass", "fail", "blocked", "env_issue", "flaky"],
-    automation_result: readAutomationResultEvidence(options),
-    manual_evidence: manualEvidenceTemplate(mode),
+    automation_result: automationResult,
+    manual_evidence: renderAutomationEvidence(mode, automationResult, logGuard),
     environment: envSummary(item, env),
     required_skills: listValue(item.fields, "skills"),
     steps: listValue(item.fields, "steps"),
@@ -1344,7 +1418,7 @@ function buildReport(root: string, item: StructuredItem, options: Record<string,
     failure_patterns: listValue(item.fields, "failure_patterns"),
     expected_failures: listValue(item.fields, "expected_failures"),
     troubleshooting: related,
-    log_guard: scanStructuredLogSources(root, item, options),
+    log_guard: logGuard,
   };
 }
 

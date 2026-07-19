@@ -10,10 +10,13 @@ import {
   waitForDebugChatTextStable,
 } from "./lib/debug-chat.mjs";
 import {
+  beginBackendLogCapture,
   createBrowser,
+  ensureAuthenticatedBrowser,
   ensureEvidence,
   evidencePaths,
   exitCode,
+  finishBackendLogCapture,
   localIsoWithOffset,
   loadEnvFiles,
   pathExists,
@@ -26,11 +29,12 @@ await loadEnvFiles();
 const caseId = env.LBS_CASE_ID || "local-agent-steering-debug-chat";
 const paths = evidencePaths(caseId);
 await ensureEvidence(paths);
+const backendLogCapture = await beginBackendLogCapture(paths.evidenceDir);
 
 const backendUrl = (env.LANGBOT_BACKEND_URL || "").replace(/\/$/, "");
 const pipelineUrl = env.LANGBOT_E2E_PIPELINE_URL || env.LANGBOT_LOCAL_AGENT_PIPELINE_URL || env.LANGBOT_PIPELINE_URL || "";
 const pipelineName = env.LANGBOT_E2E_PIPELINE_NAME || env.LANGBOT_LOCAL_AGENT_PIPELINE_NAME || env.LANGBOT_PIPELINE_NAME || "";
-const expectedRunnerId = env.LANGBOT_E2E_EXPECTED_RUNNER_ID || "plugin:langbot/local-agent/default";
+const expectedRunnerId = env.LANGBOT_E2E_EXPECTED_RUNNER_ID || "plugin:langbot-team/LocalAgent/default";
 const expectedText = env.LANGBOT_E2E_EXPECTED_TEXT || "qa_steering_sentinel_6194";
 const responseTimeoutMs = positiveInt(env.LANGBOT_E2E_RESPONSE_TIMEOUT_MS, 240000);
 const followupDelayMs = 1000;
@@ -74,6 +78,7 @@ const result = {
   pipeline_config: null,
   debug_chat_reset: null,
   tool_diagnostic: null,
+  browser_auth: null,
   steering: null,
   evidence: {
     console_log: paths.consoleLog,
@@ -94,6 +99,18 @@ try {
 
   browser = await createBrowser(paths);
   const { page } = browser;
+
+  const authDiagnostic = await ensureAuthenticatedBrowser(page, {
+    frontendUrl: env.LANGBOT_FRONTEND_URL || "",
+    backendUrl,
+  });
+  result.browser_auth = authDiagnostic;
+  if (!result.evidence_collected.includes("api_diagnostic")) result.evidence_collected.push("api_diagnostic");
+  if (authDiagnostic.status === "env_issue" || authDiagnostic.status === "blocked" || authDiagnostic.status === "fail") {
+    result.status = authDiagnostic.status;
+    result.reason = authDiagnostic.reason || "Browser authentication failed.";
+    throw new Error(result.reason);
+  }
 
   const openResult = await openPipelineDebugChat(page, {
     pipelineUrl,
@@ -176,6 +193,12 @@ try {
 } finally {
   if (browser?.page) await safeScreenshot(browser.page, paths.screenshot);
   if (browser) await browser.close().catch(() => {});
+  const backendLog = await finishBackendLogCapture(backendLogCapture);
+  if (backendLog) {
+    result.evidence.backend_log = backendLog.path;
+    result.backend_log = backendLog;
+    if (!result.evidence_collected.includes("backend_log")) result.evidence_collected.push("backend_log");
+  }
   const finishedAt = new Date();
   result.finished_at = finishedAt.toISOString();
   result.finished_at_local = localIsoWithOffset(finishedAt);
@@ -432,7 +455,7 @@ async function inspectPipeline(page, { backendUrl, pipelineUrl, pipelineName, ex
     }
     const config = pipeline.config || {};
     const runner = config.ai?.runner || {};
-    const runnerId = runner.id || runner.runner || "";
+    const runnerId = runner.id || "";
     if (!runnerId) {
       return {
         status: "blocked",
@@ -441,7 +464,7 @@ async function inspectPipeline(page, { backendUrl, pipelineUrl, pipelineName, ex
         pipeline_id: pipelineId,
         pipeline_name: pipeline.name,
         matched_by: matchedBy,
-        reason: "Pipeline has no ai.runner.id or legacy ai.runner.runner.",
+        reason: "Pipeline has no ai.runner.id.",
       };
     }
     if (expectedRunnerId && runnerId !== expectedRunnerId) {

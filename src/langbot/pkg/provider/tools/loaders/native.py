@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import fnmatch
 import json
 import os
 
@@ -574,9 +575,13 @@ else:
         )
         if self._should_use_box_workspace_files(selected_skill):
             return await self._write_workspace_via_box(path, content, parameters, query)
-        os.makedirs(os.path.dirname(host_path), exist_ok=True)
         try:
+            os.makedirs(os.path.dirname(host_path), exist_ok=True)
             self._write_host_file(host_path, content, parameters)
+        except PermissionError:
+            if selected_skill is None and hasattr(self.ap.box_service, 'execute_tool'):
+                return await self._write_workspace_via_box(path, content, parameters, query)
+            raise
         except ValueError as exc:
             return {'ok': False, 'error': str(exc)}
         self._refresh_skill_from_disk(selected_skill)
@@ -625,18 +630,23 @@ else:
         )
         if self._should_use_box_workspace_files(selected_skill):
             return await self._edit_workspace_via_box(path, old_string, new_string, query)
-        if not os.path.isfile(host_path):
-            return {'ok': False, 'error': f'File not found: {path}'}
-        with open(host_path, 'r', encoding='utf-8', errors='replace') as f:
-            content = f.read()
-        count = content.count(old_string)
-        if count == 0:
-            return {'ok': False, 'error': 'old_string not found in file.'}
-        if count > 1:
-            return {'ok': False, 'error': f'old_string matches {count} locations; provide a more unique string.'}
-        new_content = content.replace(old_string, new_string, 1)
-        with open(host_path, 'w', encoding='utf-8') as f:
-            f.write(new_content)
+        try:
+            if not os.path.isfile(host_path):
+                return {'ok': False, 'error': f'File not found: {path}'}
+            with open(host_path, 'r', encoding='utf-8', errors='replace') as f:
+                content = f.read()
+            count = content.count(old_string)
+            if count == 0:
+                return {'ok': False, 'error': 'old_string not found in file.'}
+            if count > 1:
+                return {'ok': False, 'error': f'old_string matches {count} locations; provide a more unique string.'}
+            new_content = content.replace(old_string, new_string, 1)
+            with open(host_path, 'w', encoding='utf-8') as f:
+                f.write(new_content)
+        except PermissionError:
+            if selected_skill is None and hasattr(self.ap.box_service, 'execute_tool'):
+                return await self._edit_workspace_via_box(path, old_string, new_string, query)
+            raise
         self._refresh_skill_from_disk(selected_skill)
         return {'ok': True, 'path': path}
 
@@ -898,6 +908,23 @@ else:
         pattern = parameters['pattern']
         path = str(parameters.get('path', '/workspace') or '/workspace')
         self.ap.logger.info(f'glob tool invoked: query_id={query.query_id} pattern={pattern} path={path}')
+
+        if path.rstrip('/') == skill_loader.SKILL_MOUNT_PREFIX:
+            skill_names = set(skill_loader.get_visible_skills(self.ap, query))
+            skill_names.update(skill_loader.get_activated_skills(query))
+            matches = [
+                skill_loader.get_virtual_skill_mount_path(skill_name)
+                for skill_name in sorted(skill_names)
+                if fnmatch.fnmatchcase(skill_name, pattern)
+            ]
+            return {
+                'ok': True,
+                'matches': matches,
+                'preview': '\n'.join(matches),
+                'total': len(matches),
+                'truncated': False,
+                'truncated_by': None,
+            }
 
         host_path, selected_skill = self._resolve_host_path(
             query,

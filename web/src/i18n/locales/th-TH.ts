@@ -328,13 +328,17 @@ const thTH = {
     getBotConfigError: 'ไม่สามารถดึงการกำหนดค่า Bot ได้: ',
     saveSuccess: 'บันทึกสำเร็จ',
     saveError: 'บันทึกล้มเหลว: ',
-    createSuccess: 'สร้างสำเร็จ กรุณาเปิดใช้งานหรือแก้ไข Pipeline ที่ผูกไว้',
+    createSuccess: 'สร้างสำเร็จ กรุณากำหนดเส้นทางเหตุการณ์',
     createError: 'สร้างล้มเหลว: ',
     deleteSuccess: 'ลบสำเร็จ',
     deleteError: 'ลบล้มเหลว: ',
     deleteConfirmation: 'คุณแน่ใจหรือไม่ว่าต้องการลบ Bot นี้?',
     platformAdapter: 'การเลือกแพลตฟอร์ม/อะแดปเตอร์',
     selectAdapter: 'เลือกอะแดปเตอร์',
+    legacyAdapters: 'อะแดปเตอร์รุ่นเก่า',
+    legacyAdapterBadge: 'เก่า',
+    legacyAdaptersHint:
+      'อะแดปเตอร์เหล่านี้มีรุ่นใหม่แบบขับเคลื่อนด้วยเหตุการณ์แล้ว และเก็บไว้เพื่อความเข้ากันได้กับการตั้งค่าเดิมเท่านั้น ไม่แนะนำสำหรับ Bot ใหม่',
     adapterConfig: 'การกำหนดค่าอะแดปเตอร์',
     viewAdapterDocs: 'ดูเอกสาร',
     bindPipeline: 'ผูก Pipeline',
@@ -355,6 +359,9 @@ const thTH = {
     routingConnection: 'การกำหนดเส้นทางและการเชื่อมต่อ',
     routingConnectionDescription:
       'ผูก Pipeline ที่ประมวลผลข้อความสำหรับ Bot นี้',
+    eventRouting: 'การกำหนดเส้นทางเหตุการณ์',
+    eventRoutingDescription:
+      'เลือกตัวประมวลผลสำหรับแต่ละเหตุการณ์ของ Bot และแก้ไขตรรกะในการตั้งค่า Agent หรือ Pipeline ที่เกี่ยวข้อง โดย Pipeline รองรับเฉพาะเหตุการณ์ข้อความ',
     routingRules: 'กฎการกำหนดเส้นทางตามเงื่อนไข',
     routingRulesDescription:
       'กฎจะถูกประเมินตามลำดับ การจับคู่แรกจะกำหนดเส้นทางไปยัง Pipeline ที่เกี่ยวข้อง หากไม่ตรงกันจะใช้ Pipeline เริ่มต้นด้านบน',
@@ -461,6 +468,53 @@ const thTH = {
       configureAdmins: 'Manage Admins',
     },
   },
+  agents: {
+    title: 'ตัวประมวลผล',
+    description: 'สร้างตัวประมวลผลที่ใช้ซ้ำได้และใช้ในเส้นทางเหตุการณ์ของบอท',
+    create: 'สร้างตัวประมวลผล',
+    editAgent: 'แก้ไข Agent',
+    selectFromSidebar: 'เลือก Agent หรือ Pipeline จากแถบด้านข้าง',
+    agentType: 'Agent',
+    agentTypeDescription:
+      'ใช้ runner เพื่อประมวลผลข้อความ สมาชิกกลุ่ม เพื่อน ฟีดแบ็ก และเหตุการณ์แพลตฟอร์มอื่นๆ',
+    pipelineType: 'Pipeline',
+    kindBadgeAgent: 'Agent',
+    kindBadgePipeline: 'Pipeline',
+    groupByKind: 'จัดกลุ่มตามประเภท',
+    groupByKindShort: 'จัดกลุ่ม',
+    pipelineTypeDescription:
+      'ใช้โฟลว์แบบหลายขั้นตอนที่มองเห็นได้เพื่อควบคุมการประมวลผลก่อน AI การประมวลผลหลัง ส่วนขยาย และผลลัพธ์ รองรับเฉพาะเหตุการณ์ข้อความ',
+    allEvents: 'รองรับทุกเหตุการณ์',
+    messageEventsOnly: 'เฉพาะเหตุการณ์ข้อความ',
+    basicInfo: 'ข้อมูลพื้นฐาน',
+    basicInfoDescription: 'ตั้งชื่อ ไอคอน คำอธิบาย และสถานะการเปิดใช้งาน',
+    runnerSettings: 'Runner',
+    advanced: 'ขั้นสูง',
+    bindableEvents: 'ช่วงเหตุการณ์ที่ผูกได้',
+    bindableEventsDescription:
+      'จำกัดว่าเส้นทางเหตุการณ์ของบอทใดสามารถเลือก Agent นี้ได้ ค่าเริ่มต้นเหมาะกับกรณีส่วนใหญ่',
+    supportedEvents: 'ช่วงเหตุการณ์',
+    supportedEventsDescription:
+      'หนึ่งรูปแบบเหตุการณ์ต่อบรรทัด เช่น *, message.received, group.* Pipeline ถูกกำหนดไว้ที่ message.*',
+    enabled: 'เปิดใช้งาน Agent',
+    enabledDescription:
+      'เมื่อปิดใช้งาน Agent นี้จะไม่ถูกเลือกโดยการกำหนดเส้นทางเหตุการณ์',
+    nameRequired: 'ชื่อต้องไม่ว่างเปล่า',
+    createSuccess: 'สร้างสำเร็จ',
+    createError: 'สร้างล้มเหลว: ',
+    loadError: 'โหลดล้มเหลว: ',
+    saveSuccess: 'บันทึกสำเร็จ',
+    saveError: 'บันทึกล้มเหลว: ',
+    deleteSuccess: 'ลบสำเร็จ',
+    deleteError: 'ลบล้มเหลว: ',
+    deleteConfirmation: 'คุณแน่ใจหรือว่าต้องการลบ Agent นี้?',
+    dangerZone: 'โซนอันตราย',
+    dangerZoneDescription: 'การดำเนินการที่ไม่สามารถย้อนกลับและทำลายข้อมูล',
+    deleteAgentAction: 'ลบ Agent นี้',
+    deleteAgentHint:
+      'เมื่อลบแล้ว เหตุการณ์ที่เชื่อมกับมันจะไม่สามารถดำเนินการต่อได้',
+    noRunnerMetadata: 'ขณะนี้ไม่มีข้อมูลเมตา AgentRunner ที่พร้อมใช้งาน',
+  },
   plugins: {
     title: 'ส่วนขยาย',
     description:
@@ -490,6 +544,7 @@ const thTH = {
     noExtensionInstalled: 'ยังไม่มีส่วนขยายที่ติดตั้ง',
     loadingExtensions: 'กำลังโหลดส่วนขยาย...',
     groupByType: 'จัดกลุ่มตามรูปแบบ',
+    groupByTypeShort: 'จัดกลุ่ม',
     pluginConfig: 'การกำหนดค่าปลั๊กอิน',
     pluginSort: 'เรียงลำดับปลั๊กอิน',
     pluginSortDescription:
@@ -552,6 +607,7 @@ const thTH = {
       KnowledgeEngine: 'เครื่องมือความรู้',
       Parser: 'ตัวแยกวิเคราะห์',
       Page: 'หน้า',
+      AgentRunner: 'Agent Runner',
     },
     uploadLocal: 'อัปโหลดจากเครื่อง',
     debugging: 'ดีบัก',
@@ -724,6 +780,7 @@ const thTH = {
       KnowledgeEngine: 'เครื่องมือความรู้',
       Parser: 'ตัวแยกวิเคราะห์',
       Page: 'หน้า',
+      AgentRunner: 'Agent Runner',
     },
     filterByType: 'ประเภท',
     allTypes: 'ทุกประเภท',
@@ -956,14 +1013,14 @@ const thTH = {
       selectSkills: 'เลือกสกิล',
       noSkillsAvailable: 'ไม่มีสกิลที่พร้อมใช้งาน',
       mcpServersScopeTooltip:
-        'ส่วนนี้ใช้ควบคุมว่า Pipeline ผูกกับเซิร์ฟเวอร์ MCP ใดเท่านั้น ส่วนเครื่องมือและทรัพยากร MCP รายตัวให้เลือกใน AI Feature > Local Agent',
+        'ส่วนนี้ใช้ควบคุมว่า Pipeline ผูกกับเซิร์ฟเวอร์ MCP ใดเท่านั้น ส่วนเครื่องมือและทรัพยากร MCP รายตัวให้เลือกใน AI Feature > Agent Runner',
       enableAllMCPServersTooltip:
         'เมื่อเปิดใช้ เซิร์ฟเวอร์ MCP ที่ตั้งค่าและเปิดใช้งานทั้งหมดจะเป็นตัวเลือกสำหรับเครื่องมือและทรัพยากร MCP ใน AI Feature',
     },
-    localAgent: {
+    agentRunner: {
       toolsTitle: 'เครื่องมือ',
       toolsDescription:
-        'เลือกเครื่องมือจากปลั๊กอิน MCP และเครื่องมือในตัวสำหรับ Local Agent นี้',
+        'เลือกเครื่องมือจากปลั๊กอิน MCP และเครื่องมือในตัวสำหรับ Agent Runner นี้',
       toolsScopeTooltip:
         'เครื่องมือ MCP จะแสดงจากเซิร์ฟเวอร์ MCP ที่ผูกไว้ในส่วนขยายเท่านั้น หากต้องการเพิ่มแหล่งเครื่องมือ ให้ไปผูกเซิร์ฟเวอร์ที่นั่นก่อน',
       enableAllTools: 'เปิดใช้เครื่องมือทั้งหมด',
@@ -981,7 +1038,7 @@ const thTH = {
       selectTools: 'เลือกเครื่องมือ',
       resourcesTitle: 'ทรัพยากร',
       resourcesDescription:
-        'เลือกทรัพยากร MCP และคลังความรู้สำหรับ Local Agent นี้',
+        'เลือกทรัพยากร MCP และคลังความรู้สำหรับ Agent Runner นี้',
       knowledgeBases: 'คลังความรู้',
       mcpResources: 'ทรัพยากร MCP',
       mcpResourcesScopeTooltip:
@@ -1594,11 +1651,6 @@ const thTH = {
     aiEngine: {
       title: 'เลือกเครื่องมือ AI',
       description: 'เลือกเครื่องมือ AI ที่จะขับเคลื่อนความฉลาดของ Bot',
-    },
-    spaceBanner: {
-      message:
-        'เชื่อมต่อกับ LangBot Space เพื่อรับเครดิตทดลองใช้โมเดลฟรีและตั้งค่าทันทีโดยไม่ต้องกำหนดค่า!',
-      action: 'ยืนยันสิทธิ์กับ Space',
     },
     config: {
       botInfo: 'ข้อมูล Bot',

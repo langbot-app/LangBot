@@ -8,9 +8,12 @@ import httpx
 import pytest
 from mcp import types as mcp_types
 
+from langbot.pkg.agent.runner.execution_context import project_mcp_resource_config
+from langbot.pkg.provider.tools.errors import ToolExecutionDeniedError
 from langbot.pkg.provider.tools.loaders.mcp import (
     MCP_RESOURCE_CONTEXT_QUERY_KEY,
     MCP_RESOURCE_TRACE_QUERY_KEY,
+    MCP_READ_RESOURCE_SCHEMA,
     MCP_TOOL_LIST_RESOURCES,
     MCP_TOOL_READ_RESOURCE,
     MCPLoader,
@@ -257,24 +260,43 @@ async def test_mcp_loader_can_hide_synthetic_resource_tools():
 
 
 @pytest.mark.asyncio
-async def test_mcp_loader_refuses_resource_tool_calls_when_agent_read_disabled():
+async def test_mcp_loader_get_tool_returns_synthetic_resource_schema():
+    loader = MCPLoader(_app())
+    loader.sessions = {'docs': _connected_session()}
+
+    tool = await loader.get_tool(MCP_TOOL_READ_RESOURCE)
+
+    assert tool is not None
+    assert tool.name == MCP_TOOL_READ_RESOURCE
+    assert tool.parameters == MCP_READ_RESOURCE_SCHEMA
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('read_enabled', [False, 0, None, 'false'])
+@pytest.mark.parametrize(
+    ('tool_name', 'parameters'),
+    [
+        (MCP_TOOL_LIST_RESOURCES, {'server_name': 'docs'}),
+        (MCP_TOOL_READ_RESOURCE, {'server_name': 'docs', 'uri': 'file:///README.md'}),
+    ],
+)
+async def test_mcp_loader_refuses_resource_tool_calls_when_agent_read_disabled(
+    read_enabled,
+    tool_name,
+    parameters,
+):
     loader = MCPLoader(_app())
     session = _connected_session()
     loader.sessions = {'docs': session}
-    query = SimpleNamespace(
-        variables={
-            '_pipeline_bound_mcp_servers': ['srv-1'],
-            '_pipeline_mcp_resource_agent_read_enabled': False,
-        }
-    )
-
-    result = await loader.invoke_tool(
-        MCP_TOOL_READ_RESOURCE,
-        {'server_name': 'docs', 'uri': 'file:///README.md'},
+    query = SimpleNamespace(variables={'_pipeline_bound_mcp_servers': ['srv-1']})
+    project_mcp_resource_config(
         query,
+        {'mcp-resource-agent-read-enabled': read_enabled},
     )
 
-    assert result[0].text == 'Error: MCP resource agent reads are disabled.'
+    with pytest.raises(ToolExecutionDeniedError, match='MCP resource agent reads are disabled'):
+        await loader.invoke_tool(tool_name, parameters, query)
+
     session.session.read_resource.assert_not_called()
 
 
@@ -321,3 +343,93 @@ async def test_build_resource_context_for_query_uses_only_bound_attached_text_re
     assert query.variables[MCP_RESOURCE_CONTEXT_QUERY_KEY]['resource_count'] == 1
     docs.session.read_resource.assert_awaited_once()
     other.session.read_resource.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ('enabled_config', 'expected_enabled'),
+    [
+        pytest.param({}, True, id='missing'),
+        pytest.param({'enabled': True}, True, id='true'),
+        pytest.param({'enabled': False}, False, id='false'),
+        pytest.param({'enabled': 0}, False, id='zero'),
+        pytest.param({'enabled': None}, False, id='none'),
+        pytest.param({'enabled': 'false'}, False, id='string-false'),
+    ],
+)
+async def test_build_resource_context_attachment_enabled_fails_closed(enabled_config, expected_enabled):
+    loader = MCPLoader(_app())
+    session = _connected_session(name='docs', uuid='srv-1')
+    session.session.read_resource.return_value = mcp_types.ReadResourceResult(
+        contents=[
+            mcp_types.TextResourceContents(
+                uri='file:///README.md',
+                mimeType='text/markdown',
+                text='enabled attachment',
+            )
+        ]
+    )
+    loader.sessions = {'docs': session}
+    attachment = {
+        'server_uuid': 'srv-1',
+        'server_name': 'docs',
+        'uri': 'file:///README.md',
+        'mode': 'pinned',
+        **enabled_config,
+    }
+    query = SimpleNamespace(
+        variables={
+            '_pipeline_bound_mcp_servers': ['srv-1'],
+            '_pipeline_mcp_resource_attachments': [attachment],
+        }
+    )
+
+    context = await loader.build_resource_context_for_query(query)
+
+    if expected_enabled:
+        assert 'enabled attachment' in context
+        session.session.read_resource.assert_awaited_once()
+    else:
+        assert context == ''
+        session.session.read_resource.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ('field_name', 'invalid_value'),
+    [
+        pytest.param('max_tokens', '100', id='string-tokens'),
+        pytest.param('max_tokens', 0, id='zero-tokens'),
+        pytest.param('max_tokens', -1, id='negative-tokens'),
+        pytest.param('max_tokens', True, id='boolean-tokens'),
+        pytest.param('max_bytes', '4096', id='string-bytes'),
+        pytest.param('max_bytes', 0, id='zero-bytes'),
+        pytest.param('max_bytes', -1, id='negative-bytes'),
+        pytest.param('max_bytes', True, id='boolean-bytes'),
+    ],
+)
+async def test_build_resource_context_invalid_attachment_limits_fail_closed(field_name, invalid_value):
+    ap = _app()
+    loader = MCPLoader(ap)
+    session = _connected_session(name='docs', uuid='srv-1')
+    loader.sessions = {'docs': session}
+    query = SimpleNamespace(
+        variables={
+            '_pipeline_bound_mcp_servers': ['srv-1'],
+            '_pipeline_mcp_resource_attachments': [
+                {
+                    'server_uuid': 'srv-1',
+                    'server_name': 'docs',
+                    'uri': 'file:///README.md',
+                    'mode': 'pinned',
+                    field_name: invalid_value,
+                }
+            ],
+        }
+    )
+
+    context = await loader.build_resource_context_for_query(query)
+
+    assert context == ''
+    session.session.read_resource.assert_not_awaited()
+    ap.logger.warning.assert_called_once()

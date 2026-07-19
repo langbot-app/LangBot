@@ -47,7 +47,8 @@ evidence_required:
   - ui
   - screenshot
   - console
-  - backend_log
+  - network
+  - api_diagnostic
 diagnostics:
   - "If no LangRAG engine is available, check /api/v1/knowledge/engines and install langbot-team/LangRAG."
   - "If the embedding selector does not show a local Chroma model, confirm the model exists under embedding_models, not llm_models."

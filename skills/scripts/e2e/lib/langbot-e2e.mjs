@@ -1,5 +1,5 @@
 import { appendFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { env } from "node:process";
 
 const secretRe = /(?:authorization|bearer|token|secret|password|api[_-]?key|jwt|oauth)\s*[:=]\s*["']?[^"',\s]+/gi;
@@ -50,6 +50,38 @@ export async function ensureEvidence(paths) {
   await appendFile(paths.networkLog, "", "utf8");
 }
 
+export async function beginBackendLogCapture(evidenceDir, sourcePath = env.LANGBOT_BACKEND_LOG || "") {
+  if (!sourcePath) return null;
+  const source = resolve(sourcePath);
+  try {
+    const info = await stat(source);
+    return {
+      source,
+      start_offset: info.size,
+      target: resolve(evidenceDir, "backend.log"),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function finishBackendLogCapture(capture) {
+  if (!capture) return null;
+  try {
+    const content = await readFile(capture.source);
+    const start = content.length >= capture.start_offset ? capture.start_offset : 0;
+    const window = content.subarray(start);
+    if (window.length === 0) return null;
+    await writeFile(capture.target, window);
+    return {
+      path: capture.target,
+      bytes: window.length,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function pathExists(path) {
   try {
     await stat(path);
@@ -69,6 +101,86 @@ export async function writeResult(paths, result) {
   if (paths.resultJson && paths.resultJson !== paths.automationResultJson) {
     await writeFile(paths.resultJson, text, "utf8");
   }
+}
+
+function browserDiagnosticFindings(source, text) {
+  const findings = [];
+  const lines = String(text || "").split(/\r?\n/);
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (!line) continue;
+    const lineNumber = index + 1;
+
+    if (source === "console") {
+      const checks = [
+        ["pageerror", /\[pageerror\]/i],
+        ["frontend_uncaught_error", /\[error\].*(?:\bUncaught\b|Unhandled(?: promise rejection|Rejection)|TypeError|ReferenceError)/i],
+        ["http_5xx", /Failed to load resource: the server responded with a status of 5\d\d/i],
+        ["api_server_error", /\[error\].*Server error:/i],
+        ["plugin_runtime_timeout", /\[error\].*Action [A-Za-z0-9_]+ call timed out/i],
+      ];
+      for (const [kind, regex] of checks) {
+        if (!regex.test(line)) continue;
+        findings.push({
+          source,
+          severity: "fail",
+          kind,
+          line: lineNumber,
+          excerpt: redact(line.trim()),
+        });
+        break;
+      }
+      continue;
+    }
+
+    if (source === "network") {
+      if (/\[response\]\s+5\d\d\b/i.test(line)) {
+        findings.push({
+          source,
+          severity: "fail",
+          kind: "http_5xx",
+          line: lineNumber,
+          excerpt: redact(line.trim()),
+        });
+        continue;
+      }
+      if (/\[requestfailed\]/i.test(line) && !/net::ERR_ABORTED/i.test(line)) {
+        findings.push({
+          source,
+          severity: "warning",
+          kind: "request_failed",
+          line: lineNumber,
+          excerpt: redact(line.trim()),
+        });
+      }
+    }
+  }
+  return findings;
+}
+
+export async function scanBrowserDiagnostics(paths) {
+  const sources = [
+    ["console", paths.consoleLog],
+    ["network", paths.networkLog],
+  ];
+  const findings = [];
+  for (const [source, path] of sources) {
+    let text = "";
+    try {
+      text = await readFile(path, "utf8");
+    } catch {
+      continue;
+    }
+    findings.push(...browserDiagnosticFindings(source, text));
+  }
+  const hasFailure = findings.some((finding) => finding.severity === "fail");
+  return {
+    status: hasFailure ? "fail" : "pass",
+    findings,
+    reason: hasFailure
+      ? `Browser diagnostics found ${findings.filter((finding) => finding.severity === "fail").length} failing signal(s).`
+      : "No failing browser diagnostics found.",
+  };
 }
 
 export async function loadEnvFiles(paths = ["skills/.env", "skills/.env.local"]) {
@@ -92,8 +204,28 @@ export async function loadEnvFiles(paths = ["skills/.env", "skills/.env.local"])
   }
 }
 
-export async function readRecoveryKey(repo = env.LANGBOT_REPO || "../LangBot") {
-  const configPath = resolve(repo, "data/config.yaml");
+export async function resolveLangBotRepo(repo = env.LANGBOT_REPO || "", cwd = process.cwd()) {
+  if (repo) return resolve(repo);
+
+  const candidates = [
+    resolve(cwd),
+    basename(cwd) === "skills" ? resolve(cwd, "..") : "",
+    resolve(cwd, "../LangBot"),
+    resolve(cwd, "LangBot"),
+  ].filter(Boolean);
+
+  const seen = new Set();
+  for (const candidate of candidates) {
+    if (seen.has(candidate)) continue;
+    seen.add(candidate);
+    if (await pathExists(resolve(candidate, "data/config.yaml"))) return candidate;
+  }
+
+  return resolve(cwd, "../LangBot");
+}
+
+export async function readRecoveryKey(repo = env.LANGBOT_REPO || "") {
+  const configPath = resolve(await resolveLangBotRepo(repo), "data/config.yaml");
   const config = await readFile(configPath, "utf8");
   const match = config.match(/^\s*recovery_key:\s*['"]?([^'"\s#]+)['"]?\s*$/m);
   return match?.[1] || "";
@@ -200,6 +332,62 @@ export async function verifyBrowserToken(page, backendUrl) {
       };
     }
   }, backendUrl);
+}
+
+export async function ensureAuthenticatedBrowser(page, {
+  frontendUrl = env.LANGBOT_FRONTEND_URL || "",
+  backendUrl = env.LANGBOT_BACKEND_URL || "",
+  user = env.LANGBOT_E2E_LOGIN_USER || "",
+  password = env.LANGBOT_E2E_LOGIN_PASSWORD || "LangBotE2ELocalPass!2026",
+  recoveryKey = "",
+} = {}) {
+  if (!frontendUrl) return { status: "env_issue", reason: "LANGBOT_FRONTEND_URL is not configured." };
+  if (!backendUrl) return { status: "env_issue", reason: "LANGBOT_BACKEND_URL is not configured." };
+
+  const current = await verifyBrowserToken(page, backendUrl).catch((error) => ({
+    authenticated: false,
+    reason: error.message,
+  }));
+  if (current.authenticated) {
+    return {
+      status: "pass",
+      reason: "Existing browser token is valid.",
+      backend_token_check: null,
+      browser_token_check: current,
+      injected: false,
+    };
+  }
+
+  if (!user) {
+    return {
+      status: "blocked",
+      reason: "Browser profile is not authenticated for LANGBOT_FRONTEND_URL, and LANGBOT_E2E_LOGIN_USER is not configured for automatic local login.",
+      backend_token_check: null,
+      browser_token_check: current,
+      injected: false,
+    };
+  }
+
+  const auth = await resetAndAuthLocalUser({ backendUrl, user, password, recoveryKey });
+  await setBrowserToken(page, frontendUrl, auth.token);
+  const browserCheck = await verifyBrowserToken(page, backendUrl);
+  if (!browserCheck.authenticated) {
+    return {
+      status: "blocked",
+      reason: browserCheck.reason || "Browser token check failed after automatic local login.",
+      backend_token_check: auth.check,
+      browser_token_check: browserCheck,
+      injected: true,
+    };
+  }
+
+  return {
+    status: "pass",
+    reason: "Browser token injected from local recovery login.",
+    backend_token_check: auth.check,
+    browser_token_check: browserCheck,
+    injected: true,
+  };
 }
 
 export function exitCode(status) {

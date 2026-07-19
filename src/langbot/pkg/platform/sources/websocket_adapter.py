@@ -506,10 +506,7 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
                 sender=sender, message_chain=message_chain, time=datetime.now().timestamp()
             )
 
-        # 设置流水线UUID (proxy bot always needs it for reply_message routing)
-        self.ap.platform_mgr.websocket_proxy_bot.bot_entity.use_pipeline_uuid = pipeline_uuid
-        if owner_bot is not None:
-            owner_bot.bot_entity.use_pipeline_uuid = pipeline_uuid
+        object.__setattr__(event, '_langbot_pipeline_uuid', pipeline_uuid)
 
         # 异步触发事件处理
         # Use owner_bot's listeners if available, otherwise fall back to proxy bot

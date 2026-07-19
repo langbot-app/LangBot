@@ -1,17 +1,101 @@
-"""Unit tests for provider_specific_fields round-trip in LiteLLMRequester.
+"""Unit tests for LiteLLMRequester message/tool conversion.
 
-This tests the fix for GitHub issue #1899: Gemini requires thought_signature
-to be preserved across tool call rounds for function calls to work correctly.
+This includes provider_specific_fields round-trip coverage for GitHub issue
+#1899 and token counting preflight behavior for AgentRunner context budgeting.
 """
 
-import langbot_plugin.api.entities.builtin.provider.message as provider_message
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock, patch
 
+import pytest
+import langbot_plugin.api.entities.builtin.provider.message as provider_message
+import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
+
+from langbot.pkg.provider.modelmgr import requester as model_requester
 from langbot.pkg.provider.modelmgr.requesters.litellmchat import LiteLLMRequester
 
 
 def _make_requester() -> LiteLLMRequester:
     # _convert_messages and _normalize_stream_tool_calls do not touch instance config.
     return LiteLLMRequester.__new__(LiteLLMRequester)
+
+
+def _make_configured_requester() -> LiteLLMRequester:
+    req = LiteLLMRequester.__new__(LiteLLMRequester)
+    req.requester_cfg = {
+        'base_url': '',
+        'timeout': 120,
+        'custom_llm_provider': 'openai',
+        'drop_params': False,
+        'num_retries': 0,
+        'api_version': '',
+    }
+    req.ap = SimpleNamespace(
+        tool_mgr=SimpleNamespace(
+            generate_tools_for_openai=AsyncMock(
+                return_value=[
+                    {
+                        'type': 'function',
+                        'function': {
+                            'name': 'search',
+                            'description': 'Search',
+                            'parameters': {'type': 'object'},
+                        },
+                    }
+                ]
+            )
+        )
+    )
+    return req
+
+
+def _make_runtime_model() -> model_requester.RuntimeLLMModel:
+    provider = SimpleNamespace(token_mgr=SimpleNamespace(get_token=Mock(return_value='sk-test')))
+    return SimpleNamespace(
+        model_entity=SimpleNamespace(
+            name='gpt-4.1',
+            extra_args={'temperature': 0.2},
+        ),
+        provider=provider,
+    )
+
+
+@pytest.mark.asyncio
+async def test_count_tokens_uses_litellm_counter_with_request_messages_and_tools():
+    """Token preflight uses the same LiteLLM request shape as chat completion."""
+    req = _make_configured_requester()
+    model = _make_runtime_model()
+    tool = resource_tool.LLMTool(
+        name='search',
+        human_desc='Search',
+        description='Search',
+        parameters={'type': 'object'},
+        func=lambda **kwargs: None,
+    )
+
+    with patch('langbot.pkg.provider.modelmgr.requesters.litellmchat.litellm.token_counter', return_value=42) as counter:
+        tokens = await req.count_tokens(
+            model=model,
+            messages=[
+                provider_message.Message(
+                    role='user',
+                    content=[
+                        provider_message.ContentElement(type='text', text='hello'),
+                        provider_message.ContentElement(type='file_url', file_url='https://example.test/a.pdf'),
+                    ],
+                )
+            ],
+            funcs=[tool],
+            extra_args={'presence_penalty': 0.1},
+        )
+
+    assert tokens == 42
+    counter.assert_called_once()
+    kwargs = counter.call_args.kwargs
+    assert kwargs['model'] == 'openai/gpt-4.1'
+    assert kwargs['messages'] == [{'role': 'user', 'content': [{'type': 'text', 'text': 'hello'}]}]
+    assert kwargs['tools'][0]['function']['name'] == 'search'
+    assert kwargs['tool_choice'] == 'auto'
 
 
 def test_convert_messages_preserves_tool_call_provider_specific_fields():

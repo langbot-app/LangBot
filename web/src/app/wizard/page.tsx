@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { UUID } from 'uuidjs';
 import { toast } from 'sonner';
@@ -7,19 +7,29 @@ import {
   ArrowLeft,
   ArrowRight,
   Check,
+  ChevronDown,
+  ChevronRight,
   Sparkles,
   PartyPopper,
   Loader2,
+  MessageSquare,
+  ShieldCheck,
+  UserMinus,
+  UserPlus,
   X,
   ExternalLink,
+  Download,
+  RefreshCw,
+  CircleAlert,
 } from 'lucide-react';
 
 import { httpClient } from '@/app/infra/http/HttpClient';
 import {
-  userInfo,
   systemInfo,
   initializeUserInfo,
   initializeSystemInfo,
+  getCloudServiceClient,
+  getCloudServiceClientSync,
 } from '@/app/infra/http';
 import {
   Adapter,
@@ -27,7 +37,10 @@ import {
   Pipeline,
   WizardProgress,
 } from '@/app/infra/entities/api';
-import { IDynamicFormItemSchema } from '@/app/infra/entities/form/dynamic';
+import {
+  DynamicFormItemType,
+  IDynamicFormItemSchema,
+} from '@/app/infra/entities/form/dynamic';
 import {
   PipelineConfigTab,
   PipelineConfigStage,
@@ -46,6 +59,7 @@ import {
 } from '@/app/infra/entities/adapter-categories';
 import { getAdapterDocUrl } from '@/app/infra/entities/adapter-docs';
 import i18n from 'i18next';
+import { PluginV4 } from '@/app/infra/entities/plugin';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -72,6 +86,93 @@ import {
 // ---------------------------------------------------------------------------
 
 const TOTAL_STEPS = 4;
+const RUNNER_COMPONENT_FILTER = 'AgentRunner';
+const RUNNER_CATALOG_PAGE_SIZE = 100;
+const RUNNER_INSTALL_TIMEOUT_MS = 120_000;
+const RUNNER_REGISTRATION_TIMEOUT_MS = 60_000;
+
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error && typeof error === 'object') {
+    const value = error as { msg?: string; message?: string };
+    return value.msg || value.message || '';
+  }
+  return typeof error === 'string' ? error : '';
+}
+
+function marketplacePluginId(plugin: Pick<PluginV4, 'author' | 'name'>) {
+  return `${plugin.author}/${plugin.name}`;
+}
+
+function runnerPluginPrefix(plugin: Pick<PluginV4, 'author' | 'name'>) {
+  return `plugin:${plugin.author}/${plugin.name}/`;
+}
+
+type WizardScenarioId =
+  | 'message_reply'
+  | 'welcome_members'
+  | 'handle_departures'
+  | 'handle_moderation';
+
+const WIZARD_SCENARIO_PROMPT_KEYS: Partial<Record<WizardScenarioId, string>> = {
+  welcome_members: 'wizard.scenario.welcomeMembersPrompt',
+  handle_departures: 'wizard.scenario.handleDeparturesPrompt',
+  handle_moderation: 'wizard.scenario.handleModerationPrompt',
+};
+
+const WIZARD_SCENARIOS = [
+  {
+    id: 'message_reply' as const,
+    eventType: 'message.received',
+    processorKind: 'pipeline' as const,
+    labelKey: 'wizard.scenario.messageReply',
+    descriptionKey: 'wizard.scenario.messageReplyDescription',
+    icon: MessageSquare,
+    emoji: '💬',
+  },
+  {
+    id: 'welcome_members' as const,
+    eventType: 'group.member_joined',
+    processorKind: 'agent' as const,
+    labelKey: 'wizard.scenario.welcomeMembers',
+    descriptionKey: 'wizard.scenario.welcomeMembersDescription',
+    icon: UserPlus,
+    emoji: '👋',
+  },
+  {
+    id: 'handle_departures' as const,
+    eventType: 'group.member_left',
+    processorKind: 'agent' as const,
+    labelKey: 'wizard.scenario.handleDepartures',
+    descriptionKey: 'wizard.scenario.handleDeparturesDescription',
+    icon: UserMinus,
+    emoji: '👤',
+  },
+  {
+    id: 'handle_moderation' as const,
+    eventType: 'group.member_banned',
+    processorKind: 'agent' as const,
+    labelKey: 'wizard.scenario.handleModeration',
+    descriptionKey: 'wizard.scenario.handleModerationDescription',
+    icon: ShieldCheck,
+    emoji: '🛡️',
+  },
+];
+
+function adapterSupportsScenario(
+  adapter: Adapter,
+  scenarioId: WizardScenarioId,
+) {
+  const scenario = WIZARD_SCENARIOS.find((item) => item.id === scenarioId);
+  if (!scenario) return false;
+  const supportedEvents = adapter.spec.supported_events?.length
+    ? adapter.spec.supported_events
+    : ['message.received'];
+  return supportedEvents.includes(scenario.eventType);
+}
 
 // ---------------------------------------------------------------------------
 // Main Wizard Page (full-screen, no sidebar)
@@ -83,10 +184,11 @@ export default function WizardPage() {
 
   // ---- Wizard state ----
   const [currentStep, setCurrentStep] = useState(0);
+  const [selectedScenario, setSelectedScenario] =
+    useState<WizardScenarioId | null>(null);
   const [selectedAdapter, setSelectedAdapter] = useState<string | null>(null);
   const [selectedRunner, setSelectedRunner] = useState<string | null>(null);
   const [botName, setBotName] = useState('');
-
   const [botDescription, _setBotDescription] = useState('');
   const [adapterConfig, setAdapterConfig] = useState<Record<string, unknown>>(
     {},
@@ -101,27 +203,143 @@ export default function WizardPage() {
   const [aiConfigTab, setAiConfigTab] = useState<PipelineConfigTab | null>(
     null,
   );
+  const [marketplaceRunners, setMarketplaceRunners] = useState<PluginV4[]>([]);
+  const [installedPluginIds, setInstalledPluginIds] = useState<string[]>([]);
+  const [isRunnerCatalogLoading, setIsRunnerCatalogLoading] = useState(true);
+  const [runnerCatalogError, setRunnerCatalogError] = useState(false);
+  const [installingRunnerPluginId, setInstallingRunnerPluginId] = useState<
+    string | null
+  >(null);
+  const [runnerInstallError, setRunnerInstallError] = useState<string | null>(
+    null,
+  );
   const [isLoading, setIsLoading] = useState(true);
   const [isCreatingBot, setIsCreatingBot] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSavingBot, setIsSavingBot] = useState(false);
   const [botSaved, setBotSaved] = useState(false);
 
+  const loadRunnerCatalog = useCallback(async () => {
+    setIsRunnerCatalogLoading(true);
+    setRunnerCatalogError(false);
+    try {
+      const cloudClient = await getCloudServiceClient();
+      const [firstSearchResult, recommendationResult, installedResult] =
+        await Promise.all([
+          cloudClient.searchMarketplaceExtensions({
+            query: '',
+            page: 1,
+            page_size: RUNNER_CATALOG_PAGE_SIZE,
+            type_filter: 'plugin',
+            component_filter: RUNNER_COMPONENT_FILTER,
+          }),
+          cloudClient.getRecommendationLists().catch(() => ({ lists: [] })),
+          httpClient.getPlugins().catch(() => ({ plugins: [] })),
+        ]);
+
+      const remainingPageCount = Math.max(
+        0,
+        Math.ceil((firstSearchResult.total || 0) / RUNNER_CATALOG_PAGE_SIZE) -
+          1,
+      );
+      const remainingResults = await Promise.all(
+        Array.from({ length: remainingPageCount }, (_, index) =>
+          cloudClient.searchMarketplaceExtensions({
+            query: '',
+            page: index + 2,
+            page_size: RUNNER_CATALOG_PAGE_SIZE,
+            type_filter: 'plugin',
+            component_filter: RUNNER_COMPONENT_FILTER,
+          }),
+        ),
+      );
+      const catalogPlugins = [
+        ...(firstSearchResult.plugins || []),
+        ...remainingResults.flatMap((result) => result.plugins || []),
+      ];
+
+      const recommendationOrder = new Map<string, number>();
+      let nextOrder = 0;
+      for (const list of recommendationResult.lists || []) {
+        for (const plugin of list.plugins || []) {
+          if (!plugin.components?.[RUNNER_COMPONENT_FILTER]) continue;
+          const id = marketplacePluginId(plugin);
+          if (!recommendationOrder.has(id)) {
+            recommendationOrder.set(id, nextOrder);
+            nextOrder += 1;
+          }
+        }
+      }
+
+      const runners = catalogPlugins
+        .filter((plugin) => plugin.components?.[RUNNER_COMPONENT_FILTER])
+        .sort((left, right) => {
+          const leftOrder = recommendationOrder.get(marketplacePluginId(left));
+          const rightOrder = recommendationOrder.get(
+            marketplacePluginId(right),
+          );
+          if (leftOrder !== undefined && rightOrder !== undefined) {
+            return leftOrder - rightOrder;
+          }
+          if (leftOrder !== undefined) return -1;
+          if (rightOrder !== undefined) return 1;
+          return right.install_count - left.install_count;
+        });
+
+      setMarketplaceRunners(runners);
+      setInstalledPluginIds(
+        installedResult.plugins.map((plugin) => {
+          const metadata = plugin.manifest.manifest.metadata;
+          return `${metadata.author ?? ''}/${metadata.name}`;
+        }),
+      );
+    } catch (error) {
+      console.error('Failed to load AgentRunner catalog', error);
+      setRunnerCatalogError(true);
+    } finally {
+      setIsRunnerCatalogLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadRunnerCatalog();
+  }, [loadRunnerCatalog]);
+
   // ---- Helper: persist wizard progress to backend (fire-and-forget) ----
   const saveProgress = useCallback(
     (overrides: Partial<WizardProgress> = {}) => {
       const progress: WizardProgress = {
         step: overrides.step ?? currentStep,
-        selected_adapter: overrides.selected_adapter ?? selectedAdapter,
-        created_bot_uuid: overrides.created_bot_uuid ?? createdBotUuid,
+        selected_scenario:
+          overrides.selected_scenario !== undefined
+            ? overrides.selected_scenario
+            : selectedScenario,
+        selected_adapter:
+          overrides.selected_adapter !== undefined
+            ? overrides.selected_adapter
+            : selectedAdapter,
+        created_bot_uuid:
+          overrides.created_bot_uuid !== undefined
+            ? overrides.created_bot_uuid
+            : createdBotUuid,
         bot_saved: overrides.bot_saved ?? botSaved,
-        selected_runner: overrides.selected_runner ?? selectedRunner,
+        selected_runner:
+          overrides.selected_runner !== undefined
+            ? overrides.selected_runner
+            : selectedRunner,
       };
       httpClient.saveWizardProgress(progress).catch((err) => {
         console.error('Failed to save wizard progress', err);
       });
     },
-    [currentStep, selectedAdapter, createdBotUuid, botSaved, selectedRunner],
+    [
+      currentStep,
+      selectedScenario,
+      selectedAdapter,
+      createdBotUuid,
+      botSaved,
+      selectedRunner,
+    ],
   );
 
   // ---- Fetch remote data & restore progress ----
@@ -150,6 +368,10 @@ export default function WizardPage() {
             if (cancelled) return;
 
             setSelectedAdapter(progress.selected_adapter);
+            setSelectedScenario(
+              (progress.selected_scenario as WizardScenarioId | null) ??
+                'message_reply',
+            );
             setCreatedBotUuid(progress.created_bot_uuid);
             setBotSaved(progress.bot_saved ?? false);
             setSelectedRunner(progress.selected_runner);
@@ -166,13 +388,14 @@ export default function WizardPage() {
               (runtimeValues?.extra_webhook_full_url as string) || '',
             );
 
-            // Restore step (cap at step 2 — step 3 means done)
-            setCurrentStep(Math.min(progress.step, 2));
+            // Step 3 is resumable so a refresh cannot create a duplicate processor.
+            setCurrentStep(Math.min(progress.step, 3));
           } catch {
             // Bot no longer exists — clear stale progress and start fresh
             httpClient
               .saveWizardProgress({
                 step: 0,
+                selected_scenario: null,
                 selected_adapter: null,
                 created_bot_uuid: null,
                 bot_saved: false,
@@ -202,7 +425,7 @@ export default function WizardPage() {
 
   const runnerOptions = useMemo(() => {
     if (!runnerStage) return [];
-    const runnerField = runnerStage.config.find((c) => c.name === 'runner');
+    const runnerField = runnerStage.config.find((c) => c.name === 'id');
     return runnerField?.options ?? [];
   }, [runnerStage]);
 
@@ -211,6 +434,11 @@ export default function WizardPage() {
       if (!selectedRunner || !aiConfigTab) return undefined;
       return aiConfigTab.stages.find((s) => s.name === selectedRunner);
     }, [selectedRunner, aiConfigTab]);
+
+  const selectedScenarioDefinition = useMemo(
+    () => WIZARD_SCENARIOS.find((item) => item.id === selectedScenario),
+    [selectedScenario],
+  );
 
   // Adapter spec config for the selected adapter
   const selectedAdapterConfig: IDynamicFormItemSchema[] = useMemo(() => {
@@ -263,11 +491,107 @@ export default function WizardPage() {
 
   // ---- Runner selection with progress saving ----
   const handleSelectRunner = useCallback(
-    (runner: string) => {
+    (runner: string, configTab: PipelineConfigTab | null = aiConfigTab) => {
       setSelectedRunner(runner);
+      const configStage = configTab?.stages.find((s) => s.name === runner);
+      const defaults = configStage ? getDefaultValues(configStage.config) : {};
+      const promptKey = selectedScenario
+        ? WIZARD_SCENARIO_PROMPT_KEYS[selectedScenario]
+        : undefined;
+      const supportsPromptEditor = configStage?.config.some(
+        (item) => item.type === DynamicFormItemType.PROMPT_EDITOR,
+      );
+      if (promptKey && supportsPromptEditor) {
+        defaults.prompt = [{ role: 'system', content: t(promptKey) }];
+      }
+      setRunnerConfig(defaults);
       saveProgress({ step: 2, selected_runner: runner });
     },
-    [saveProgress],
+    [aiConfigTab, saveProgress, selectedScenario, t],
+  );
+
+  const handleInstallRunner = useCallback(
+    async (plugin: PluginV4) => {
+      const pluginId = marketplacePluginId(plugin);
+      setInstallingRunnerPluginId(pluginId);
+      setRunnerInstallError(null);
+
+      try {
+        if (!plugin.latest_version) {
+          throw new Error(t('wizard.aiEngine.versionUnavailable'));
+        }
+
+        const { task_id: taskId } =
+          await httpClient.installPluginFromMarketplace(
+            plugin.author,
+            plugin.name,
+            plugin.latest_version,
+          );
+        const installDeadline = Date.now() + RUNNER_INSTALL_TIMEOUT_MS;
+        let installCompleted = false;
+        while (Date.now() < installDeadline) {
+          const task = await httpClient.getAsyncTask(taskId);
+          if (task.runtime.done) {
+            if (task.runtime.exception) {
+              throw new Error(task.runtime.exception);
+            }
+            installCompleted = true;
+            break;
+          }
+          await wait(1000);
+        }
+        if (!installCompleted) {
+          throw new Error(t('wizard.aiEngine.installTimeout'));
+        }
+
+        const registrationDeadline =
+          Date.now() + RUNNER_REGISTRATION_TIMEOUT_MS;
+        const prefix = runnerPluginPrefix(plugin);
+        while (Date.now() < registrationDeadline) {
+          const metadata = await httpClient.getGeneralPipelineMetadata();
+          const nextAiTab =
+            metadata.configs.find((config) => config.name === 'ai') ?? null;
+          const nextRunnerStage = nextAiTab?.stages.find(
+            (stage) => stage.name === 'runner',
+          );
+          const nextRunnerOptions =
+            nextRunnerStage?.config.find((item) => item.name === 'id')
+              ?.options ?? [];
+          const pluginRunnerOptions = nextRunnerOptions.filter((option) =>
+            option.name.startsWith(prefix),
+          );
+          const preferredRunner =
+            pluginRunnerOptions.find((option) =>
+              option.name.endsWith('/default'),
+            ) ?? pluginRunnerOptions[0];
+
+          if (nextAiTab && preferredRunner) {
+            setAiConfigTab(nextAiTab);
+            setInstalledPluginIds((current) =>
+              current.includes(pluginId) ? current : [...current, pluginId],
+            );
+            handleSelectRunner(preferredRunner.name, nextAiTab);
+            toast.success(
+              t('wizard.aiEngine.installSuccess', {
+                runner: extractI18nObject(plugin.label),
+              }),
+            );
+            return;
+          }
+          await wait(1000);
+        }
+
+        throw new Error(t('wizard.aiEngine.registrationTimeout'));
+      } catch (error) {
+        const message =
+          getErrorMessage(error) || t('wizard.aiEngine.installFailed');
+        setRunnerInstallError(message);
+        toast.error(message);
+      } finally {
+        setInstallingRunnerPluginId(null);
+      }
+    },
+    [handleSelectRunner, t],
   );
 
   // ---- Navigation helpers ----
@@ -275,7 +599,7 @@ export default function WizardPage() {
   const canProceed = useCallback((): boolean => {
     switch (currentStep) {
       case 0:
-        return selectedAdapter !== null;
+        return selectedScenario !== null && selectedAdapter !== null;
       case 1:
         return createdBotUuid !== null && botSaved;
       case 2:
@@ -283,7 +607,32 @@ export default function WizardPage() {
       default:
         return false;
     }
-  }, [currentStep, selectedAdapter, createdBotUuid, botSaved, selectedRunner]);
+  }, [
+    currentStep,
+    selectedScenario,
+    selectedAdapter,
+    createdBotUuid,
+    botSaved,
+    selectedRunner,
+  ]);
+
+  const handleSelectScenario = useCallback(
+    (scenarioId: WizardScenarioId) => {
+      const adapter = adapters.find((item) => item.name === selectedAdapter);
+      const nextAdapter =
+        adapter && adapterSupportsScenario(adapter, scenarioId)
+          ? selectedAdapter
+          : null;
+      setSelectedScenario(scenarioId);
+      setSelectedAdapter(nextAdapter);
+      saveProgress({
+        step: 0,
+        selected_scenario: scenarioId,
+        selected_adapter: nextAdapter,
+      });
+    },
+    [adapters, selectedAdapter, saveProgress],
+  );
 
   const goNext = useCallback(() => {
     if (currentStep < TOTAL_STEPS - 1 && canProceed()) {
@@ -350,6 +699,7 @@ export default function WizardPage() {
       // Persist progress
       saveProgress({
         step: 1,
+        selected_scenario: selectedScenario,
         selected_adapter: selectedAdapter,
         created_bot_uuid: resp.uuid,
         bot_saved: false,
@@ -363,7 +713,7 @@ export default function WizardPage() {
     } finally {
       setIsCreatingBot(false);
     }
-  }, [selectedAdapter, adapters, t, saveProgress]);
+  }, [selectedScenario, selectedAdapter, adapters, t, saveProgress]);
 
   // ---- Save Bot Config & Enable (Step 1) ----
   // Updates the bot's adapter config and enables it.
@@ -419,40 +769,75 @@ export default function WizardPage() {
   // ---- Create Pipeline & Link (Step 2 finish) ----
 
   const handleFinish = useCallback(async () => {
-    if (!selectedRunner || !createdBotUuid) return;
+    if (!selectedRunner || !createdBotUuid || !selectedScenarioDefinition)
+      return;
     setIsSubmitting(true);
+    let processorUuid = '';
 
     try {
-      // 1. Create pipeline (backend fills config from default template)
-      const pipeline: Pipeline = {
-        name: `${botName} Pipeline`,
-        description: botDescription || '',
-        config: {},
-      };
-      const pipelineResp = await httpClient.createPipeline(pipeline);
+      let targetType: 'agent' | 'pipeline';
 
-      // 2. Fetch the created pipeline to get the full default config
-      //    (includes trigger, safety, ai, output sections).
-      //    Then merge only the AI section with the wizard's runner config.
-      const createdPipeline = await httpClient.getPipeline(pipelineResp.uuid);
-      const fullConfig = createdPipeline.pipeline.config;
+      if (selectedScenarioDefinition.processorKind === 'pipeline') {
+        const pipeline: Pipeline = {
+          name: `${botName} Pipeline`,
+          description: botDescription || '',
+          config: {},
+        };
+        const pipelineResp = await httpClient.createPipeline(pipeline);
+        processorUuid = pipelineResp.uuid;
+        const createdPipeline = await httpClient.getPipeline(pipelineResp.uuid);
+        const fullConfig = createdPipeline.pipeline.config as unknown as Record<
+          string,
+          unknown
+        >;
+        const fullAiConfig =
+          fullConfig.ai && typeof fullConfig.ai === 'object'
+            ? (fullConfig.ai as Record<string, unknown>)
+            : {};
+        const existingRunner =
+          fullAiConfig.runner && typeof fullAiConfig.runner === 'object'
+            ? (fullAiConfig.runner as Record<string, unknown>)
+            : {};
+        const existingRunnerConfigs =
+          fullAiConfig.runner_config &&
+          typeof fullAiConfig.runner_config === 'object'
+            ? (fullAiConfig.runner_config as Record<string, unknown>)
+            : {};
 
-      const mergedConfig = {
-        ...fullConfig,
-        ai: {
-          ...fullConfig.ai,
-          runner: { runner: selectedRunner },
-          [selectedRunner]: runnerConfig,
-        },
-      };
+        await httpClient.updatePipeline(pipelineResp.uuid, {
+          name: `${botName} Pipeline`,
+          description: botDescription || '',
+          config: {
+            ...fullConfig,
+            ai: {
+              ...fullAiConfig,
+              runner: { ...existingRunner, id: selectedRunner },
+              runner_config: {
+                ...existingRunnerConfigs,
+                [selectedRunner]: runnerConfig,
+              },
+            },
+          },
+        });
+        targetType = 'pipeline';
+      } else {
+        const agentResp = await httpClient.createAgent({
+          kind: 'agent',
+          name: `${botName} - ${t(selectedScenarioDefinition.labelKey)}`,
+          description: botDescription || '',
+          emoji: selectedScenarioDefinition.emoji,
+          component_ref: selectedRunner,
+          config: {
+            runner: { id: selectedRunner, 'expire-time': 0 },
+            runner_config: { [selectedRunner]: runnerConfig },
+          },
+          enabled: true,
+          supported_event_patterns: [selectedScenarioDefinition.eventType],
+        });
+        processorUuid = agentResp.uuid;
+        targetType = 'agent';
+      }
 
-      await httpClient.updatePipeline(pipelineResp.uuid, {
-        name: `${botName} Pipeline`,
-        description: botDescription || '',
-        config: mergedConfig,
-      });
-
-      // 3. Link pipeline to the bot created in Step 1
       const botData = await httpClient.getBot(createdBotUuid);
       const existingBot = botData.bot;
       await httpClient.updateBot(createdBotUuid, {
@@ -461,11 +846,29 @@ export default function WizardPage() {
         adapter: existingBot.adapter,
         adapter_config: existingBot.adapter_config,
         enable: existingBot.enable,
-        use_pipeline_uuid: pipelineResp.uuid,
+        event_bindings: [
+          {
+            event_pattern: selectedScenarioDefinition.eventType,
+            target_type: targetType,
+            target_uuid: processorUuid,
+            filters: [],
+            priority: 0,
+            enabled: true,
+            description: '',
+          },
+        ],
       });
 
       setCurrentStep(3);
+      saveProgress({ step: 3 });
     } catch (err) {
+      if (processorUuid) {
+        try {
+          await httpClient.deleteAgent(processorUuid);
+        } catch (rollbackError) {
+          console.warn('Failed to roll back wizard processor', rollbackError);
+        }
+      }
       const apiErr = err as { msg?: string };
       toast.error(
         t('wizard.createError') + (apiErr?.msg ? `: ${apiErr.msg}` : ''),
@@ -476,29 +879,13 @@ export default function WizardPage() {
   }, [
     selectedRunner,
     createdBotUuid,
+    selectedScenarioDefinition,
     botName,
     botDescription,
     runnerConfig,
     t,
+    saveProgress,
   ]);
-
-  // ---- Space auth redirect ----
-
-  const handleSpaceAuth = useCallback(async () => {
-    try {
-      const callbackUrl = `${window.location.origin}/auth/space/callback`;
-      const resp = await httpClient.getSpaceAuthorizeUrl(callbackUrl);
-      window.location.href = resp.authorize_url;
-    } catch (err) {
-      console.error('Failed to get space authorize URL', err);
-      toast.error(t('wizard.spaceAuthError'));
-    }
-  }, [t]);
-
-  // ---- Check if local account ----
-  // Re-evaluated after remote data fetch (when userInfo is populated)
-  const isLocalAccount =
-    !isLoading && (!userInfo || userInfo.account_type === 'local');
 
   // ---- Skip handler ----
   const [showSkipConfirm, setShowSkipConfirm] = useState(false);
@@ -514,6 +901,7 @@ export default function WizardPage() {
       // Always clear persisted progress so re-entering starts fresh
       await httpClient.saveWizardProgress({
         step: 0,
+        selected_scenario: null,
         selected_adapter: null,
         created_bot_uuid: null,
         bot_saved: false,
@@ -541,7 +929,7 @@ export default function WizardPage() {
   }
 
   const stepLabels = [
-    t('wizard.step.platform'),
+    t('wizard.step.scenarioChannel'),
     t('wizard.step.botConfig'),
     t('wizard.step.aiEngine'),
     t('wizard.step.done'),
@@ -630,6 +1018,8 @@ export default function WizardPage() {
         {currentStep === 0 && (
           <StepPlatform
             adapters={adapters}
+            selectedScenario={selectedScenario}
+            onSelectScenario={handleSelectScenario}
             selected={selectedAdapter}
             onSelect={setSelectedAdapter}
           />
@@ -652,10 +1042,16 @@ export default function WizardPage() {
         {currentStep === 2 && (
           <StepAIEngine
             runnerOptions={runnerOptions}
+            marketplaceRunners={marketplaceRunners}
+            installedPluginIds={installedPluginIds}
+            isRunnerCatalogLoading={isRunnerCatalogLoading}
+            runnerCatalogError={runnerCatalogError}
+            installingRunnerPluginId={installingRunnerPluginId}
+            runnerInstallError={runnerInstallError}
             selected={selectedRunner}
             onSelect={handleSelectRunner}
-            isLocalAccount={isLocalAccount}
-            onSpaceAuth={handleSpaceAuth}
+            onInstall={handleInstallRunner}
+            onRetryCatalog={loadRunnerCatalog}
             runnerConfigItems={selectedRunnerConfigItems}
             runnerConfigValues={runnerConfig}
             onRunnerConfigChange={setRunnerConfig}
@@ -742,97 +1138,261 @@ export default function WizardPage() {
 
 function StepPlatform({
   adapters,
+  selectedScenario,
+  onSelectScenario,
   selected,
   onSelect,
 }: {
   adapters: Adapter[];
+  selectedScenario: WizardScenarioId | null;
+  onSelectScenario: (scenarioId: WizardScenarioId) => void;
   selected: string | null;
   onSelect: (name: string) => void;
 }) {
   const { t } = useTranslation();
+  const [showLegacy, setShowLegacy] = useState(false);
+
+  const activeAdapters = useMemo(
+    () =>
+      selectedScenario
+        ? adapters.filter(
+            (adapter) =>
+              !adapter.spec.legacy &&
+              adapterSupportsScenario(adapter, selectedScenario),
+          )
+        : [],
+    [adapters, selectedScenario],
+  );
+  const legacyAdapters = useMemo(
+    () =>
+      selectedScenario
+        ? adapters.filter(
+            (adapter) =>
+              adapter.spec.legacy &&
+              adapterSupportsScenario(adapter, selectedScenario),
+          )
+        : [],
+    [adapters, selectedScenario],
+  );
 
   const groupedAdapters = useMemo(() => {
-    const withCategories = adapters.map((a) => ({
+    const withCategories = activeAdapters.map((a) => ({
       ...a,
       categories: a.spec.categories,
     }));
     return groupByCategory(withCategories);
-  }, [adapters]);
+  }, [activeAdapters]);
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto">
-      <div className="text-center">
-        <h2 className="text-xl font-semibold">{t('wizard.platform.title')}</h2>
-        <p className="text-sm text-muted-foreground mt-1">
-          {t('wizard.platform.description')}
-        </p>
-      </div>
-      {groupedAdapters.map((group) => (
-        <div key={group.categoryId ?? 'uncategorized'} className="space-y-3">
-          {group.categoryId && (
-            <h3 className="text-sm font-medium text-muted-foreground">
-              {getCategoryLabel(t, group.categoryId)}
-            </h3>
-          )}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {group.items.map((adapter) => (
-              <Card
-                key={adapter.name}
-                className={cn(
-                  'cursor-pointer transition-all hover:shadow-md',
-                  selected === adapter.name
-                    ? 'ring-2 ring-primary shadow-md'
-                    : 'hover:border-primary/50',
-                )}
-                onClick={() => onSelect(adapter.name)}
-              >
-                <CardHeader className="flex flex-row items-center gap-3 pb-2">
-                  <img
-                    src={httpClient.getAdapterIconURL(adapter.name)}
-                    alt=""
-                    className="w-10 h-10 rounded-lg shrink-0"
-                  />
-                  <div className="min-w-0">
-                    <CardTitle className="text-base truncate">
-                      {extractI18nObject(adapter.label)}
-                    </CardTitle>
-                  </div>
-                  {selected === adapter.name && (
-                    <div className="ml-auto shrink-0">
-                      <div className="w-5 h-5 rounded-full bg-primary flex items-center justify-center">
-                        <Check className="w-3 h-3 text-primary-foreground" />
-                      </div>
-                    </div>
-                  )}
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-muted-foreground line-clamp-2">
-                    {extractI18nObject(adapter.description)}
-                  </p>
-                  {(() => {
-                    const docUrl = getAdapterDocUrl(
-                      adapter.spec.help_links,
-                      i18n.language,
-                    );
-                    return docUrl ? (
-                      <a
-                        href={docUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="mt-2 inline-flex items-center text-xs text-primary hover:underline"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <ExternalLink className="mr-1 h-3 w-3" />
-                        {t('bots.viewAdapterDocs')}
-                      </a>
-                    ) : null;
-                  })()}
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+    <div className="mx-auto max-w-5xl space-y-8">
+      <section className="space-y-3">
+        <div>
+          <h2 className="text-xl font-semibold">
+            {t('wizard.scenario.title')}
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {t('wizard.scenario.description')}
+          </p>
         </div>
-      ))}
+        <div className="grid gap-3 sm:grid-cols-2">
+          {WIZARD_SCENARIOS.map((scenario) => {
+            const Icon = scenario.icon;
+            const isSelected = selectedScenario === scenario.id;
+            return (
+              <button
+                key={scenario.id}
+                type="button"
+                onClick={() => onSelectScenario(scenario.id)}
+                className={cn(
+                  'rounded-md border bg-card p-3 text-left transition-colors',
+                  isSelected
+                    ? 'border-primary ring-2 ring-primary/20'
+                    : 'hover:border-primary/60',
+                )}
+              >
+                <div className="flex items-start gap-3">
+                  <span
+                    className={cn(
+                      'flex h-8 w-8 shrink-0 items-center justify-center rounded-md',
+                      isSelected
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-muted text-muted-foreground',
+                    )}
+                  >
+                    <Icon className="h-4 w-4" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center justify-between gap-2">
+                      <span className="font-medium">
+                        {t(scenario.labelKey)}
+                      </span>
+                      <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                        {t(
+                          scenario.processorKind === 'pipeline'
+                            ? 'wizard.scenario.pipelineBadge'
+                            : 'wizard.scenario.agentBadge',
+                        )}
+                      </span>
+                    </span>
+                    <span className="mt-1 block text-sm leading-snug text-muted-foreground">
+                      {t(scenario.descriptionKey)}
+                    </span>
+                  </span>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="space-y-5 border-t pt-6">
+        <div className="text-center">
+          <h2 className="text-xl font-semibold">
+            {t('wizard.platform.title')}
+          </h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            {t('wizard.platform.description')}
+          </p>
+        </div>
+        {!selectedScenario && (
+          <div className="rounded-md border border-dashed p-5 text-center text-sm text-muted-foreground">
+            {t('wizard.platform.chooseScenarioFirst')}
+          </div>
+        )}
+        {selectedScenario &&
+          activeAdapters.length === 0 &&
+          legacyAdapters.length === 0 && (
+            <div className="rounded-md border border-dashed p-5 text-center text-sm text-muted-foreground">
+              {t('wizard.platform.noCompatiblePlatforms')}
+            </div>
+          )}
+        {groupedAdapters.map((group) => (
+          <div key={group.categoryId ?? 'uncategorized'} className="space-y-3">
+            {group.categoryId && (
+              <h3 className="text-sm font-medium text-muted-foreground">
+                {getCategoryLabel(t, group.categoryId)}
+              </h3>
+            )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {group.items.map((adapter) => (
+                <Card
+                  key={adapter.name}
+                  className={cn(
+                    'cursor-pointer transition-all hover:shadow-md',
+                    selected === adapter.name
+                      ? 'ring-2 ring-primary shadow-md'
+                      : 'hover:border-primary/50',
+                  )}
+                  onClick={() => onSelect(adapter.name)}
+                >
+                  <CardHeader className="flex flex-row items-center gap-3 pb-2">
+                    <img
+                      src={httpClient.getAdapterIconURL(adapter.name)}
+                      alt=""
+                      className="w-10 h-10 rounded-lg shrink-0"
+                    />
+                    <div className="min-w-0">
+                      <CardTitle className="text-base truncate">
+                        {extractI18nObject(adapter.label)}
+                      </CardTitle>
+                    </div>
+                    {selected === adapter.name && (
+                      <div className="ml-auto shrink-0">
+                        <div className="w-5 h-5 rounded-full bg-primary flex items-center justify-center">
+                          <Check className="w-3 h-3 text-primary-foreground" />
+                        </div>
+                      </div>
+                    )}
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm text-muted-foreground line-clamp-2">
+                      {extractI18nObject(adapter.description)}
+                    </p>
+                    {(() => {
+                      const docUrl = getAdapterDocUrl(
+                        adapter.spec.help_links,
+                        i18n.language,
+                      );
+                      return docUrl ? (
+                        <a
+                          href={docUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-2 inline-flex items-center text-xs text-primary hover:underline"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <ExternalLink className="mr-1 h-3 w-3" />
+                          {t('bots.viewAdapterDocs')}
+                        </a>
+                      ) : null;
+                    })()}
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
+        ))}
+        {legacyAdapters.length > 0 && (
+          <div className="border-t pt-4 space-y-3">
+            <button
+              type="button"
+              className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+              onClick={() => setShowLegacy((v) => !v)}
+            >
+              {showLegacy ? (
+                <ChevronDown className="h-4 w-4" />
+              ) : (
+                <ChevronRight className="h-4 w-4" />
+              )}
+              {t('bots.legacyAdapters')}
+              <span className="rounded bg-muted px-1.5 py-0.5 text-xs">
+                {legacyAdapters.length}
+              </span>
+            </button>
+            {showLegacy && (
+              <>
+                <p className="text-xs text-muted-foreground">
+                  {t('bots.legacyAdaptersHint')}
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 opacity-60">
+                  {legacyAdapters.map((adapter) => (
+                    <Card
+                      key={adapter.name}
+                      className={cn(
+                        'cursor-pointer transition-all hover:shadow-md',
+                        selected === adapter.name
+                          ? 'ring-2 ring-primary shadow-md'
+                          : 'hover:border-primary/50',
+                      )}
+                      onClick={() => onSelect(adapter.name)}
+                    >
+                      <CardHeader className="flex flex-row items-center gap-3 pb-2">
+                        <img
+                          src={httpClient.getAdapterIconURL(adapter.name)}
+                          alt=""
+                          className="w-10 h-10 rounded-lg shrink-0 grayscale"
+                        />
+                        <div className="min-w-0">
+                          <CardTitle className="text-base truncate">
+                            {extractI18nObject(adapter.label)}
+                          </CardTitle>
+                        </div>
+                        {selected === adapter.name && (
+                          <div className="ml-auto shrink-0">
+                            <div className="w-5 h-5 rounded-full bg-primary flex items-center justify-center">
+                              <Check className="w-3 h-3 text-primary-foreground" />
+                            </div>
+                          </div>
+                        )}
+                      </CardHeader>
+                    </Card>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </section>
     </div>
   );
 }
@@ -996,19 +1556,31 @@ function StepBotConfig({
 
 function StepAIEngine({
   runnerOptions,
+  marketplaceRunners,
+  installedPluginIds,
+  isRunnerCatalogLoading,
+  runnerCatalogError,
+  installingRunnerPluginId,
+  runnerInstallError,
   selected,
   onSelect,
-  isLocalAccount,
-  onSpaceAuth,
+  onInstall,
+  onRetryCatalog,
   runnerConfigItems,
   runnerConfigValues,
   onRunnerConfigChange,
 }: {
   runnerOptions: { name: string; label: { en_US: string; zh_Hans: string } }[];
+  marketplaceRunners: PluginV4[];
+  installedPluginIds: string[];
+  isRunnerCatalogLoading: boolean;
+  runnerCatalogError: boolean;
+  installingRunnerPluginId: string | null;
+  runnerInstallError: string | null;
   selected: string | null;
   onSelect: (name: string) => void;
-  isLocalAccount: boolean;
-  onSpaceAuth: () => void;
+  onInstall: (plugin: PluginV4) => void;
+  onRetryCatalog: () => void;
   runnerConfigItems: IDynamicFormItemSchema[];
   runnerConfigValues: Record<string, unknown>;
   onRunnerConfigChange: (v: Record<string, unknown>) => void;
@@ -1028,6 +1600,20 @@ function StepAIEngine({
     return r ? extractI18nObject(r.label) : (selected ?? '');
   }, [runnerOptions, selected]);
 
+  const marketplaceRunnerIds = useMemo(
+    () => new Set(marketplaceRunners.map(marketplacePluginId)),
+    [marketplaceRunners],
+  );
+  const standaloneRunnerOptions = useMemo(
+    () =>
+      runnerOptions.filter((option) => {
+        if (!option.name.startsWith('plugin:')) return true;
+        const pluginId = option.name.slice('plugin:'.length).split('/');
+        return !marketplaceRunnerIds.has(`${pluginId[0]}/${pluginId[1]}`);
+      }),
+    [marketplaceRunnerIds, runnerOptions],
+  );
+
   // Before any runner is selected: centered grid layout
   if (!selected) {
     return (
@@ -1040,11 +1626,136 @@ function StepAIEngine({
             {t('wizard.aiEngine.description')}
           </p>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {runnerOptions.map((opt) => (
+        {runnerCatalogError && (
+          <div className="rounded-md border border-destructive/40 bg-destructive/5 p-4">
+            <div className="flex items-start gap-3">
+              <CircleAlert className="mt-0.5 size-5 shrink-0 text-destructive" />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium">
+                  {t('wizard.aiEngine.catalogUnavailable')}
+                </p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {t('wizard.aiEngine.catalogUnavailableDescription')}
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="mt-3"
+                  onClick={onRetryCatalog}
+                >
+                  <RefreshCw className="size-4" />
+                  {t('common.retry')}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {runnerInstallError && (
+          <div className="rounded-md border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+            {runnerInstallError}
+          </div>
+        )}
+
+        {isRunnerCatalogLoading && marketplaceRunners.length === 0 && (
+          <div className="flex min-h-32 items-center justify-center rounded-md border border-dashed">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="size-4 animate-spin" />
+              {t('wizard.aiEngine.loadingCatalog')}
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {marketplaceRunners.map((plugin) => {
+            const pluginId = marketplacePluginId(plugin);
+            const prefix = runnerPluginPrefix(plugin);
+            const registeredOptions = runnerOptions.filter((option) =>
+              option.name.startsWith(prefix),
+            );
+            const preferredOption =
+              registeredOptions.find((option) =>
+                option.name.endsWith('/default'),
+              ) ?? registeredOptions[0];
+            const isInstalled = installedPluginIds.includes(pluginId);
+            const isInstalling = installingRunnerPluginId === pluginId;
+            const iconUrl =
+              getCloudServiceClientSync().resolveMarketplaceIconURL(
+                plugin.type,
+                plugin.author,
+                plugin.name,
+                plugin.icon,
+              );
+
+            return (
+              <Card key={pluginId} className="flex min-h-52 flex-col">
+                <CardHeader className="flex flex-row items-start gap-3 pb-3">
+                  <img
+                    src={iconUrl}
+                    alt=""
+                    className="size-10 shrink-0 rounded-md border bg-muted object-cover"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <CardTitle className="text-base">
+                      {extractI18nObject(plugin.label) || plugin.name}
+                    </CardTitle>
+                    <CardDescription className="mt-1 text-xs font-mono">
+                      {plugin.author}/{plugin.name}
+                    </CardDescription>
+                  </div>
+                </CardHeader>
+                <CardContent className="flex flex-1 flex-col">
+                  <p className="line-clamp-3 text-sm text-muted-foreground">
+                    {extractI18nObject(plugin.description)}
+                  </p>
+                  <div className="mt-auto pt-4">
+                    {preferredOption ? (
+                      <Button
+                        type="button"
+                        className="w-full"
+                        onClick={() => onSelect(preferredOption.name)}
+                      >
+                        <Check className="size-4" />
+                        {t('wizard.aiEngine.useInstalled')}
+                      </Button>
+                    ) : isInstalled ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled
+                        className="w-full"
+                      >
+                        <CircleAlert className="size-4" />
+                        {t('wizard.aiEngine.installedUnavailable')}
+                      </Button>
+                    ) : (
+                      <Button
+                        type="button"
+                        className="w-full"
+                        disabled={installingRunnerPluginId !== null}
+                        onClick={() => onInstall(plugin)}
+                      >
+                        {isInstalling ? (
+                          <Loader2 className="size-4 animate-spin" />
+                        ) : (
+                          <Download className="size-4" />
+                        )}
+                        {isInstalling
+                          ? t('wizard.aiEngine.installing')
+                          : t('wizard.aiEngine.installAndContinue')}
+                      </Button>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+
+          {standaloneRunnerOptions.map((opt) => (
             <Card
               key={opt.name}
-              className="cursor-pointer transition-all hover:shadow-md hover:border-primary/50"
+              className="min-h-40 cursor-pointer transition-all hover:border-primary/50 hover:shadow-md"
               onClick={() => onSelect(opt.name)}
             >
               <CardHeader className="flex flex-row items-center gap-3">
@@ -1059,6 +1770,29 @@ function StepAIEngine({
               </CardHeader>
             </Card>
           ))}
+        </div>
+
+        {!isRunnerCatalogLoading &&
+          marketplaceRunners.length === 0 &&
+          standaloneRunnerOptions.length === 0 &&
+          !runnerCatalogError && (
+            <div className="rounded-md border border-dashed p-6 text-center">
+              <p className="font-medium">
+                {t('wizard.aiEngine.noMarketplaceRunners')}
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {t('wizard.aiEngine.noMarketplaceRunnersDescription')}
+              </p>
+            </div>
+          )}
+
+        <div className="flex justify-center">
+          <Button variant="outline" size="sm" asChild>
+            <Link to="/home/extensions?type=plugin&component=AgentRunner">
+              {t('wizard.aiEngine.browseRunners')}
+              <ExternalLink className="size-4" />
+            </Link>
+          </Button>
         </div>
       </div>
     );
@@ -1119,28 +1853,6 @@ function StepAIEngine({
                 </Card>
               );
             })}
-
-            {/* Space promotion banner */}
-            {selected === 'local-agent' && isLocalAccount && (
-              <div className="animate-in fade-in slide-in-from-left-2 duration-300">
-                <div className="relative rounded-lg p-[2px] bg-gradient-to-r from-purple-500 via-pink-500 to-orange-500">
-                  <div className="rounded-[calc(0.5rem-2px)] bg-background p-3 flex flex-col items-center gap-2 text-center">
-                    <Sparkles className="w-6 h-6 text-purple-500 shrink-0" />
-                    <p className="text-xs font-medium">
-                      {t('wizard.spaceBanner.message')}
-                    </p>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={onSpaceAuth}
-                      className="w-full"
-                    >
-                      {t('wizard.spaceBanner.action')}
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
         </div>
 
@@ -1210,6 +1922,7 @@ function StepDone() {
       // Always clear persisted progress so re-entering starts fresh
       await httpClient.saveWizardProgress({
         step: 0,
+        selected_scenario: null,
         selected_adapter: null,
         created_bot_uuid: null,
         bot_saved: false,

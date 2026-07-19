@@ -1,0 +1,103 @@
+id: local-agent-parallel-tools-rag-compaction-debug-chat
+title: "Local Agent preserves RAG, compacted history, and parallel plugin tools"
+mode: agent-browser
+area: pipeline
+type: regression
+priority: p1
+risk: high
+ci_eligible: false
+tags:
+  - local-agent
+  - langrag
+  - context
+  - compaction
+  - plugin
+  - tools
+  - parallel-tools
+  - pipeline
+skills:
+  - langbot-env-setup
+  - langbot-testing
+env:
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_LOCAL_AGENT_PIPELINE_URL
+  - LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+env_optional:
+  - LANGBOT_E2E_FAKE_PROVIDER_BASE_URL
+automation: scripts/e2e/pipeline-debug-chat.mjs
+automation_env:
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_BROWSER_PROFILE
+  - LANGBOT_CHROMIUM_EXECUTABLE
+  - LANGBOT_LOCAL_AGENT_PIPELINE_URL
+  - LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+  - LANGBOT_LOCAL_AGENT_RAG_KB_UUID
+automation_pipeline_url_env: LANGBOT_LOCAL_AGENT_PIPELINE_URL
+automation_pipeline_name_env: LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+automation_expected_runner_id: "plugin:langbot-team/LocalAgent/default"
+automation_runner_config_patch_json: '{"knowledge-bases":["${LANGBOT_LOCAL_AGENT_RAG_KB_UUID}"],"retrieval-top-k":1,"context-window-tokens":900,"context-reserve-tokens":220,"context-keep-recent-tokens":160,"context-summary-tokens":260,"max-tool-iterations":3,"tool-execution-mode":"parallel"}'
+automation_extensions_patch_json: '{"enable_all_plugins":false,"bound_plugins":[{"author":"langbot-team","name":"LocalAgent"},{"author":"qa","name":"plugin-smoke"}],"enable_all_mcp_servers":false,"bound_mcp_servers":[],"enable_all_skills":false,"bound_skills":[]}'
+automation_restore_runner_config: "1"
+automation_restore_extensions: "1"
+automation_reset_debug_chat: "1"
+automation_debug_chat_session_type: "person"
+automation_expected_text: "PARALLEL_COMBO_FINAL qa_parallel_compaction_sentinel_8142 azalea-cobalt-7421 qa-plugin-smoke:parallel-tool-a-local-agent qa-plugin-smoke:parallel-tool-b-local-agent"
+automation_response_timeout_ms: "180000"
+automation_prompts_json: '[{"prompt":"请记住这个用于 local-agent 并行工具组合回归测试的暗号：qa_parallel_compaction_sentinel_8142。请只回复 MEMORY_SET。","expected_text":"MEMORY_SET","response_timeout_ms":"180000"},{"prompt":"下面这轮只用于制造长历史压力，目标标记 PARALLEL_RAG_GOAL 必须被压缩保留。请忽略填充内容，最后只回复 PARALLEL_CONTEXT_PRESSURE_READY。填充片段 P001 parallel context padding. P002 parallel context padding. P003 parallel context padding. P004 parallel context padding. P005 parallel context padding. P006 parallel context padding. P007 parallel context padding. P008 parallel context padding. P009 parallel context padding. P010 parallel context padding. P011 parallel context padding. P012 parallel context padding. P013 parallel context padding. P014 parallel context padding. P015 parallel context padding. P016 parallel context padding. P017 parallel context padding. P018 parallel context padding. P019 parallel context padding. P020 parallel context padding. P021 parallel context padding. P022 parallel context padding. P023 parallel context padding. P024 parallel context padding. P025 parallel context padding. P026 parallel context padding. P027 parallel context padding. P028 parallel context padding. P029 parallel context padding. P030 parallel context padding. P031 parallel context padding. P032 parallel context padding.","expected_text":"PARALLEL_CONTEXT_PRESSURE_READY","response_timeout_ms":"180000"},{"prompt":"PARALLEL_COMBO final check: using the knowledge base, the compacted earlier passcode, and one model turn that calls qa_plugin_echo for both parallel-tool-a-local-agent and parallel-tool-b-local-agent, return only PARALLEL_COMBO_FINAL plus the passcode, the RAG sentinel, and both plugin tool results.","expected_text":"PARALLEL_COMBO_FINAL qa_parallel_compaction_sentinel_8142 azalea-cobalt-7421 qa-plugin-smoke:parallel-tool-a-local-agent qa-plugin-smoke:parallel-tool-b-local-agent","response_timeout_ms":"180000"}]'
+setup_automation:
+  - "node:scripts/e2e/ensure-local-agent-pipeline.mjs --write-env"
+  - "node:scripts/e2e/ensure-langrag-sentinel-kb.mjs --write-env"
+  - "case:qa-plugin-smoke-live-install"
+setup_provides_env:
+  - LANGBOT_LOCAL_AGENT_PIPELINE_URL
+  - LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+  - LANGBOT_LOCAL_AGENT_RAG_KB_UUID
+preconditions:
+  - "The selected model route supports function/tool calling with multiple tool calls in one turn, or LANGBOT_E2E_FAKE_PROVIDER_BASE_URL points to scripts/e2e/fake-openai-provider.mjs."
+  - "The LangRAG sentinel knowledge base contains azalea-cobalt-7421 and qa-plugin-smoke exposes qa_plugin_echo."
+steps:
+  - "Ensure the local-agent pipeline, LangRAG sentinel KB, and qa-plugin-smoke fixture plugin are available."
+  - "Temporarily bind the LangRAG KB, shrink the runner context budget, and set tool-execution-mode to parallel."
+  - "Temporarily bind only langbot-team/LocalAgent and qa/plugin-smoke; disable MCP servers and skills to isolate the tool surface."
+  - "Reset the person Debug Chat session for the target pipeline."
+  - "Send the passcode memory prompt and wait for MEMORY_SET."
+  - "Send the long pressure prompt and wait for PARALLEL_CONTEXT_PRESSURE_READY."
+  - "Ask the runner to combine compacted passcode, RAG sentinel, and two same-turn qa_plugin_echo results in one final answer."
+  - "Restore the original runner config and pipeline extension bindings."
+checks:
+  - "UI: All three user messages appear in Debug Chat."
+  - "UI: The final Bot message contains PARALLEL_COMBO_FINAL with the compacted sentinel, azalea-cobalt-7421, and both qa-plugin-smoke tool results."
+  - "API diagnostic: pipeline-config-diagnostic.json shows knowledge-bases, context token settings, max-tool-iterations, and tool-execution-mode=parallel were patched."
+  - "API diagnostic: pipeline-extensions-diagnostic.json shows only langbot-team/LocalAgent and qa/plugin-smoke were bound."
+  - "Logs: Backend completes RAG retrieval, both plugin tool calls, and Debug Chat response without runner timeout or model setup failure."
+  - "Console: No unexpected frontend runtime errors appear during the run."
+evidence_required:
+  - ui
+  - screenshot
+  - console
+  - backend_log
+  - api_diagnostic
+diagnostics:
+  - "For token-free deterministic UI coverage, start scripts/e2e/fake-openai-provider.mjs and pass LANGBOT_E2E_FAKE_PROVIDER_BASE_URL to this case."
+  - "The fake provider intentionally returns two qa_plugin_echo tool_calls in the same streamed model turn for this prompt."
+  - "The fake provider intentionally returns PARALLEL_COMBO_MISSING_* if the final model input lacks compacted memory, RAG context, or either plugin tool result."
+  - "If only one tool result is present, inspect the provider trace and runner parallel tool batch handling."
+  - "If the final answer lacks azalea-cobalt-7421, first rerun ensure-langrag-sentinel-kb and local-agent-rag-debug-chat."
+success_patterns:
+  - "Processing request from person_websocket"
+  - "Streaming completed"
+failure_patterns:
+  - "Action invoke_llm_stream call timed out"
+  - "All models failed during streaming setup"
+  - "Task exception was never retrieved"
+  - "PARALLEL_COMBO_MISSING_"
+  - "survey widget blocks debug chat"
+troubleshooting:
+  - local-agent-model-route-unavailable
+  - tool-name-collision-between-mcp-and-plugin
+  - plugin-runtime-timeout
+  - proxy-env-mismatch
+  - survey-widget-blocks-debug-chat
+  - debug-chat-history-contaminates-automation

@@ -10,6 +10,8 @@ spec:
     MessagePlatformAdapter:
       fromDirs:
         - path: pkg/platform/sources/
+        - path: pkg/platform/adapters/
+          maxDepth: 3
     LLMAPIRequester:
       fromDirs:
         - path: pkg/provider/modelmgr/requesters/

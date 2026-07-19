@@ -34,8 +34,10 @@ steps:
   - "Poll /api/v1/tools and /api/v1/mcp/servers/qa-local-stdio until qa_mcp_echo is visible."
 checks:
   - "API diagnostic: qa-local-stdio runtime_status is connected."
+  - "API diagnostic: qa-local-stdio server_uuid is present for pipeline extension binding."
   - "API diagnostic: runtime_tool_names includes qa_mcp_echo."
   - "API diagnostic: /api/v1/tools includes qa_mcp_echo."
+  - "Automation writes LANGBOT_MCP_QA_STDIO_SERVER_UUID into skills/.env.local for downstream tool-call cases."
   - "Console and network logs contain no unexpected frontend/runtime failures."
 evidence_required:
   - screenshot

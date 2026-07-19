@@ -411,6 +411,20 @@ class ProviderAPIRequester(metaclass=abc.ABCMeta):
         """
         pass
 
+    async def count_tokens(
+        self,
+        model: RuntimeLLMModel,
+        messages: typing.List[provider_message.Message],
+        funcs: typing.List[resource_tool.LLMTool] = None,
+        extra_args: dict[str, typing.Any] = {},
+    ) -> int:
+        """Count model input tokens before invoking the model.
+
+        Requesters should use the same provider/model conversion path as
+        ``invoke_llm`` so the preflight count matches the actual request shape.
+        """
+        raise NotImplementedError('This requester does not support token counting')
+
     async def invoke_llm_stream(
         self,
         query: pipeline_query.Query,

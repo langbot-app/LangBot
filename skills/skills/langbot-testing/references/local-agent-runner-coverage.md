@@ -1,6 +1,6 @@
 # Local Agent Runner Coverage
 
-Use this matrix when judging whether the external `langbot/local-agent` plugin still behaves like the old built-in local-agent runner.
+Use this matrix when judging whether the external `langbot-team/LocalAgent` plugin still behaves like the old built-in local-agent runner.
 
 The QA target is end-to-end behavior. UI cases prove the host, SDK, plugin runtime, and WebUI work together. Unit or component tests are still needed for negative branches that are hard to trigger reliably through a live provider.
 
@@ -29,10 +29,16 @@ These browser cases are the minimum gate for a local-agent migration check:
 | `local-agent-rag-debug-chat` | Knowledge-base authorization, retrieval, and RAG prompt insertion | Bot returns the KB sentinel, not a generic answer. |
 | `mcp-stdio-tool-call` | MCP stdio discovery, tool detail, model function calling, and tool execution | Bot returns `qa_mcp_echo:<input>` and backend logs the MCP tool call. |
 | `local-agent-plugin-tool-call-debug-chat` | Plugin tool discovery, tool detail, model function calling, and tool execution | Bot returns `qa-plugin-smoke:<input>` and backend logs the plugin tool call. |
+| `local-agent-tool-error-recovery-debug-chat` | Plugin tool execution failure, model-facing error tool result, and final recovery turn | Bot returns `TOOL_ERROR_RECOVERY_FINAL...` only after the model sees the tool error result. |
+| `local-agent-tool-loop-limit-debug-chat` | Repeated plugin tool requests and max tool iteration enforcement | Bot returns the runner limit message instead of looping indefinitely. |
+| `local-agent-combo-rag-compaction-tool-debug-chat` | RAG, compacted history, and plugin tool execution in the same Debug Chat run | Bot returns `COMBO_FINAL` with the compacted sentinel, KB sentinel, and plugin tool result together. |
+| `local-agent-multitool-rag-compaction-debug-chat` | RAG, compacted history, and repeated serial plugin tool loop turns in the same Debug Chat run | Bot returns `MULTITOOL_COMBO_FINAL` with the compacted sentinel, KB sentinel, and both plugin tool results together. |
+| `local-agent-parallel-tools-rag-compaction-debug-chat` | RAG, compacted history, and two plugin tool calls emitted in the same model turn | Bot returns `PARALLEL_COMBO_FINAL` with the compacted sentinel, KB sentinel, and both plugin tool results together. |
 | `local-agent-steering-debug-chat` | Host steering claim, runner pull at turn boundary, and follow-up injection during an active tool loop | Two user messages produce one assistant response containing the steering sentinel. |
 | `local-agent-multimodal-debug-chat` | Image upload, structured input contents, and multimodal runner consumption | UI shows uploaded image and bot returns `IMAGE_OK`; backend receives an image input. |
 | `local-agent-rag-multimodal-debug-chat` | RAG insertion while structured image input is present | UI shows uploaded image, bot returns the KB sentinel, and backend logs the same request with `[Image]`. |
-| `local-agent-nonstreaming-debug-chat` | Host non-streaming adapter path and runner non-streaming invocation | Bot returns `NONSTREAM_OK`; backend completes without the streaming-completed path. |
+| `local-agent-nonstreaming-debug-chat` | Debug Chat non-streaming UI delivery path | Bot returns `NONSTREAM_OK` with the Debug Chat stream switch disabled; runner-internal `invoke_llm` mode is covered by local-agent component tests using `runtime_metadata.streaming_supported=false`. |
+| `local-agent-complex-coding-task-debug-chat` | Sustained native-tool planning, multi-file edits, iterative test recovery, and artifact production | Bot returns the completion sentinel only after host verification reruns 12 tests, acceptance, and protected-file checks. |
 
 ## Full Coverage Matrix
 
@@ -44,14 +50,18 @@ These browser cases are the minimum gate for a local-agent migration check:
 | Multimodal plus RAG | Run `local-agent-rag-multimodal-debug-chat`. | RAG sentinel is still retrievable and the image is not dropped from the user message; exact image-preservation inside the model message is covered by unit tests. |
 | History and context compaction | Run `local-agent-context-compaction-debug-chat` with a small temporary `context-window-tokens` budget. | The runner compacts older history into `<conversation_summary>` and the final answer still recovers the older sentinel from the compacted context. |
 | Streaming model invocation | Enable Debug Chat streaming and ask for `OK`. | UI receives incremental bot output and backend logs streaming completion. |
-| Non-streaming model invocation | Disable Debug Chat streaming or use a non-streaming adapter path. | UI receives a final bot message and backend logs a normal response completion. |
+| Non-streaming UI delivery | Disable Debug Chat streaming. | UI receives a final bot message without frontend streaming errors. |
+| Non-streaming model invocation | Use local-agent component tests with `runtime_metadata.streaming_supported=false` or a host adapter that does not support streaming. | Runner calls `invoke_llm` instead of `invoke_llm_stream` and emits `message.completed`. |
 | Model fallback before first chunk | Configure a failing primary and working fallback, preferably with a controlled test provider. | First model failure does not fail the run; fallback model produces the final answer. |
 | Failure after streaming commit | Use a controlled provider that emits one chunk and then fails. | Runner reports a terminal run failure and does not fallback after partial output. |
 | No authorized model | Clear model config or configure a model not in run resources. | Runner returns `runner.no_model` instead of calling an unauthorized model. |
 | MCP tool call | Use `qa-local-stdio` and `qa_mcp_echo`. | Bot returns the exact `qa_mcp_echo:<input>` result; `/api/v1/tools` contains `qa_mcp_echo`. |
 | Plugin tool call | Install a fixture plugin exposing a deterministic tool and bind it to the pipeline. | Runner lists the plugin tool and can call it through the same tool loop as MCP tools. |
+| Repeated tool loop | Run `local-agent-multitool-rag-compaction-debug-chat` with `max-tool-iterations` high enough for two serial calls. | Runner calls `qa_plugin_echo` twice and the final answer contains both distinct tool results with RAG and compacted history. |
+| Parallel tool batch | Run `local-agent-parallel-tools-rag-compaction-debug-chat` with `tool-execution-mode: parallel`. | Runner executes two same-turn `qa_plugin_echo` calls and the final answer contains both results with RAG and compacted history. |
+| Tool iteration limit | Run `local-agent-tool-loop-limit-debug-chat` with `max-tool-iterations: 2` and a fake provider that keeps requesting tools. | Runner stops and returns `Tool call iteration limit reached...`; it does not keep invoking tools indefinitely. |
 | Run steering | Use `local-agent-steering-debug-chat` with the fixture `qa_plugin_sleep` tool. | A follow-up sent while the sleep tool keeps the run active is claimed into the same run: two user messages, one assistant response, sentinel included. |
-| Tool errors | Make the model request an unauthorized tool or invalid arguments in a controlled unit/component test. | Tool result contains an error message and the run does not bypass authorization. |
+| Tool errors | Run `local-agent-tool-error-recovery-debug-chat` for plugin tool execution errors; keep unauthorized-tool branches in unit/component tests. | The model receives an `Error:` tool result and returns the recovery sentinel; unauthorized calls remain blocked in component tests. |
 | Tool iteration limit | Use a controlled model/tool fixture that repeatedly requests more tool calls. | Runner stops with `runner.tool_loop_limit` at the configured limit. |
 | Knowledge retrieval | Bind a KB containing a unique sentinel. | Bot returns the sentinel and backend logs LangRAG retrieval. |
 | Legacy `knowledge-base` config | Load a pipeline config using the old single-KB field. | Runner still retrieves from the KB. |

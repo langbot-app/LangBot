@@ -1,0 +1,16 @@
+id: eba-release-gate
+title: "Event-based bot product release gate"
+description: "Browser and runtime gate for scenario onboarding, route diagnostics, and real platform-to-Agent execution."
+type: release_gate
+priority: p0
+tags:
+  - eba
+  - event-routing
+  - wizard
+  - release-gate
+cases:
+  - wizard-scenario-routing
+  - wizard-runner-marketplace-catalog
+  - agent-runner-health-visibility
+  - bot-event-routing-product-flow
+  - wizard-onebot-agent-runtime

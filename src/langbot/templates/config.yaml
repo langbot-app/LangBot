@@ -37,12 +37,6 @@ system:
         max_bots: -1
         max_pipelines: -1
         max_extensions: -1
-        # When set to a non-empty string, every pipeline is forced to use this
-        # Box sandbox-scope template regardless of its own configuration, and
-        # the per-pipeline "Sandbox Scope" selector is locked in the web UI.
-        # Used by SaaS deployments to confine a tenant to a single shared
-        # sandbox (set to '{global}'). Empty string = no restriction.
-        force_box_session_id_template: ''
     task_retention:
         # Keep at most this many completed async task records in memory
         completed_limit: 200
@@ -122,6 +116,19 @@ plugin:
     binary_storage:
         # Max bytes for a single plugin binary storage value
         max_value_bytes: 10485760
+agent_runner:
+    # Host-level admin permissions for trusted control plugins. These plugins
+    # can use existing plugin action handlers to inspect or manage AgentRunner
+    # infrastructure across runner/plugin boundaries. Keep empty unless you
+    # fully trust the plugin identity.
+    #
+    # Example:
+    # admin_plugins:
+    #   - identity: langbot/agent-runner-control
+    #     permissions:
+    #       - agent_run:admin
+    #       - runtime:admin
+    admin_plugins: []
 monitoring:
     auto_cleanup:
         # Enable automatic cleanup of expired monitoring records

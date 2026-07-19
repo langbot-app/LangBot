@@ -1,6 +1,6 @@
 # Box 系统架构深度分析
 
-> 更新日期: 2026-06-02
+> 更新日期: 2026-07-12
 > 状态更新: 自部署社区版已具备发布条件（box 可选、降级完善、无迁移欠债）；工具调用循环上限、配额遍历异步化、`host_path` 挂载白名单等已落地。剩余多租户 / 安全硬化项见 [SaaS 阻塞项清单](./box-issues.md)。
 > 分支: `feat/sandbox` (LangBot + langbot-plugin-sdk)
 > 相关文档: [SaaS 阻塞项](./box-issues.md) | [Session 作用域](./box-session-scope.md) | [Runtime 对比](./box-vs-plugin-runtime.md) | [测试覆盖](./box-test-coverage.md) | [toB 分析](./box-tob-analysis.md)
@@ -13,7 +13,9 @@
 ┌──────────────────────────────────────────────────────────────────┐
 │                       LangBot 主进程                              │
 │                                                                   │
-│  LocalAgentRunner ──> ToolManager ──> NativeToolLoader            │
+│  AgentRunner ──> SDK call_tool / scoped MCP bridge                │
+│       │                    │                                      │
+│       └────────────────> ToolManager ──> NativeToolLoader         │
 │       │                    │              │                       │
 │       │                    │      exec / read / write / edit      │
 │       │                    │              glob / grep             │
@@ -32,7 +34,7 @@
 │    ├─ Host mount 校验 (allowed_mount_roots)                        │
 │    ├─ Workspace quota 检查                                         │
 │    ├─ 输出截断 (head+tail)                                         │
-│    ├─ Session ID 模板解析 (resolve_box_session_id)                 │
+│    ├─ Host scope 哈希 (resolve_box_session_id)                     │
 │    ├─ 技能挂载组装 (build_skill_extra_mounts)                      │
 │    ├─ 重连循环 (_reconnect_loop, 指数退避)                          │
 │    └─ BoxRuntimeConnector                                          │
@@ -85,7 +87,8 @@
 **核心设计原则**:
 - Box Runtime 作为独立进程运行，通过 Action RPC 与 LangBot 主进程通信，两者复用 SDK 的 IO 层（Handler → Connection → Controller）
 - 一个 session_id 对应一个容器/沙箱实例。同一 session 内可并存多条 mount 与多个 managed process
-- Skill / 默认 exec / MCP Server 共享同一个 session 容器（详见 [box-session-scope.md](./box-session-scope.md)）
+- AgentRunner 无权指定 session scope。SDK/Python `call_tool` 与 scoped MCP bridge 都发出同一个 `PluginToRuntimeAction.CALL_TOOL`，最终由 Host 的 ToolManager 执行，并使用当前 run 保存的同一个 execution Query
+- Box 内托管的 stdio MCP server 使用独立的长期 `mcp-shared` session；它不是 AgentRunner 本次事件的 sandbox session（详见 [box-session-scope.md](./box-session-scope.md)）
 
 ---
 
@@ -93,7 +96,7 @@
 
 ### 2.1 BoxService (`pkg/box/service.py`, 722 行)
 
-应用层门面，协调 Profile、安全校验、配额、连接、Skill 挂载与 Session 模板：
+应用层门面，协调 Profile、安全校验、配额、连接、Skill 挂载与 Host scope 哈希：
 
 主要公开方法（按定义顺序）：
 
@@ -104,7 +107,7 @@ BoxService
   ├─ _reconnect_loop(connector)                指数退避重连
   ├─ available (property)                      连接状态
   │
-  ├─ resolve_box_session_id(query)             从 pipeline 模板解析 session_id
+  ├─ resolve_box_session_id(query)             哈希 Host 私有 scope，生成固定长度 session_id
   ├─ build_skill_extra_mounts(query)           组装 pipeline-bound skill 的挂载列表
   │
   ├─ execute_tool(parameters, query)           Agent 调用 exec 时的入口
@@ -136,6 +139,8 @@ BoxService
 **Profile 系统**: 4 个内置 Profile（`default` / `offline_readonly` / `network_basic` / `network_extended`），`locked` frozenset 字段不可被 LLM 覆盖。参数合并顺序：Profile defaults → LLM 请求参数 → locked 强制值。
 
 **输出截断**: 默认 4000 字符上限，保留前 60% + 后 40%，中间插入 `[...truncated...]`。
+
+**Session 所有权**: `resolve_box_session_id(query)` 只接受 Host 已确定的私有 scope 或 Query launcher/session identity，并输出 `lb-box-` + 64 位小写 SHA-256 十六进制摘要（固定 71 个 ASCII 字符）。哈希输入是 canonical JSON，包含 instance、workspace、bot、platform adapter、target type/id 与 thread；原始用户、群组、conversation 或 event id 不会出现在 Box session id 中。相同 Host scope 稳定复用，不同 target/thread/workspace/bot/adapter/instance 相互隔离；缺少可用 identity 时 fail closed。Pipeline、Agent 或 AgentRunner 配置都不能覆盖该规则。
 
 **Skill 挂载合并**: `execute_tool()` 调用时，`build_skill_extra_mounts(query)` 会把当前 pipeline-bound 的所有 skill 的 `package_root` 作为 `extra_mounts` 加入 BoxSpec，挂在 `/workspace/.skills/<name>`。LLM 通过 `activate` 工具显式激活某个 skill 后，工具调用才允许引用这个 skill 的虚拟路径。
 
@@ -414,7 +419,9 @@ ToolManager.initialize()
 1. 验证 skill 已激活
 2. 单次 exec 只能引用一个 skill 包
 3. 若 skill 是 Python 项目（有 `requirements.txt` 或 `pyproject.toml`），命令会被 venv bootstrap 包裹（在 skill 挂载点内创建 `.venv`）
-4. 调用 `box_service.execute_tool()` → 走默认 session_id 与已组装好的 `extra_mounts`，**不再为每 skill 起独立 session**
+4. 调用 `box_service.execute_tool()` → 走 Host 从当前事件生成的 session_id 与已组装好的 `extra_mounts`，**不再为每 skill 起独立 session**
+
+AgentRunner 可以直接通过 SDK/Python `AgentRunAPIProxy.call_tool` 调用这些工具，也可以让外部 harness 通过 SDK-owned scoped MCP bridge 回调。两条入口都发送 `PluginToRuntimeAction.CALL_TOOL`，共享同一个 run authorization、Host session 中保存的 execution Query、ToolManager 与 `resolve_box_session_id(query)` 规则；Runner 不能提交自定义 Box session id。Pipeline run 保存原 Query；纯 EBA run 由 Host 构造 `pipeline_config=None`、`pipeline_uuid=None` 的最小 Query。
 
 ### 4.3 MCP-in-Box (`mcp_stdio.py`, 354 行)
 
@@ -422,7 +429,7 @@ ToolManager.initialize()
 
 ```
 initialize()
-  1. 复用/创建共享 session (session_id = _build_box_session_id())
+  1. 复用/创建共享 session (`session_id = mcp-shared`)
      - persistent=True，长期保持
   2. workspace.execute_raw(install_cmd) 安装依赖 (可选)
   3. 将每个 MCP server 文件 stage 到 /workspace/.mcp/<process_id>/
@@ -434,6 +441,8 @@ initialize()
 配置 (`MCPServerBoxConfig`): `network='on'` (MCP 服务器通常需要网络)，`host_path_mode='ro'` (默认只读)，`startup_timeout_sec=120` (留时间给 pip install)。
 
 每条 MCP server 是同一 session 中的一个 managed process，独立的 `process_id`、独立 attach URL，互不阻塞。
+
+这里的 `mcp-shared` 只承载 LangBot 管理的 stdio MCP server 进程。AgentRunner 的 scoped MCP bridge 是回调 Host 工具的协议入口，不会把事件运行的 exec/read/write 改到 `mcp-shared`。
 
 ---
 
@@ -566,22 +575,14 @@ volumes:
 | http/sse MCP server | 正常 | 正常(不依赖 Box) |
 | Skill 列表/读取 (`list_skills`/`get_skill`/`read_skill_file`) | 走 Box runtime | 走 LangBot 本地 `data/skills/` 只读 fallback |
 | Skill 创建/编辑/安装/写文件 | 走 Box runtime | **HTTP 400** + 明确错误信息(`_require_box_for_write`) |
-| Pipeline AI 配置中 `box-session-id-template` | 正常生效 | **前端 banner** 提示字段无效 |
 | Pipeline 扩展页 `enable_all_skills` / 绑定 skill | 可编辑 | **前端禁用** + banner |
 | 仪表盘 Box 状态卡片 | 绿点 / "已连接" | 灰点 / "已禁用"(disabled) 或 红点 / "已断开"(failed) |
 
 > 后端拒写的边界条件:如果 `ap.box_service` **完全没装**(老式 dev mode,没经过 BuildAppStage),`_require_box_for_write` 视作 no-op,保留 `data/skills/` 本地路径——以兼容历史测试与最小化设置。生产环境总会装 `ap.box_service`,因此该 fallback 不会被触发。
 
-### Pipeline 配置 (templates/metadata/pipeline/ai.yaml)
+### Session scope
 
-`local-agent.config.box-session-id-template` 控制 session 作用域，预设：
-
-- `{launcher_type}_{launcher_id}` — 每个会话 (推荐，默认)
-- `{launcher_type}_{launcher_id}_{sender_id}` — 群聊每个用户
-- `{launcher_type}_{launcher_id}_{conversation_id}` — 每个对话上下文
-- `{query_id}` — 每条消息（完全隔离）
-
-详见 [box-session-scope.md](./box-session-scope.md)。
+Pipeline 与 AgentRunner 配置不再暴露 sandbox session 模板。Host 将当前平台会话/事件 scope 规范化后哈希成固定长度的 `lb-box-<sha256>`；相同 scope 稳定复用，不同 scope 隔离，缺少 identity 时拒绝执行。SDK/Python 与 scoped MCP bridge 的工具调用遵守同一规则。详见 [box-session-scope.md](./box-session-scope.md)。
 
 ### REST API
 

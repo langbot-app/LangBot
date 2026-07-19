@@ -303,6 +303,59 @@ async def test_runtime_provider_invoke_llm_delegates(runtime_provider, runtime_l
 
 
 @pytest.mark.asyncio
+async def test_runtime_provider_invoke_llm_stashes_usage(runtime_provider, runtime_llm_model):
+    """RuntimeProvider preserves requester usage for upstream action handlers."""
+    provider = runtime_provider
+
+    import langbot_plugin.api.entities.builtin.provider.message as provider_message
+    import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
+
+    query = pipeline_query.Query.model_construct(
+        query_id='test-query-usage',
+        launcher_type='person',
+        launcher_id=12345,
+        sender_id=12345,
+        message_chain=None,
+        message_event=None,
+        adapter=None,
+        pipeline_uuid='pipeline-uuid',
+        bot_uuid='bot-uuid',
+        pipeline_config={'ai': {}, 'output': {}, 'trigger': {}},
+        session=None,
+        prompt=None,
+        messages=[],
+        user_message=None,
+        use_funcs=[],
+        use_llm_model_uuid=None,
+        variables={},
+        resp_messages=[],
+        resp_message_chain=None,
+        current_stage_name=None,
+    )
+    usage = {
+        'prompt_tokens': 11,
+        'completion_tokens': 7,
+        'total_tokens': 18,
+        'prompt_tokens_details': {'cached_tokens': 3},
+    }
+    provider.requester.invoke_llm = AsyncMock(
+        return_value=(
+            provider_message.Message(role='assistant', content='ok'),
+            usage,
+        )
+    )
+
+    result = await provider.invoke_llm(
+        query,
+        runtime_llm_model,
+        [provider_message.Message(role='user', content='Hello')],
+    )
+
+    assert result.content == 'ok'
+    assert query.variables[requester.LLM_USAGE_QUERY_VARIABLE] == usage
+
+
+@pytest.mark.asyncio
 async def test_runtime_provider_invoke_llm_stream_yields_chunks(runtime_provider, runtime_llm_model):
     """Test RuntimeProvider.invoke_llm_stream yields chunks from requester."""
     provider = runtime_provider
@@ -343,6 +396,61 @@ async def test_runtime_provider_invoke_llm_stream_yields_chunks(runtime_provider
 
     assert len(chunks) == 1
     assert chunks[0].role == 'assistant'
+
+
+@pytest.mark.asyncio
+async def test_runtime_provider_invoke_llm_stream_stashes_usage(runtime_provider, runtime_llm_model):
+    """RuntimeProvider transfers captured stream usage to the public query usage key."""
+    provider = runtime_provider
+
+    import langbot_plugin.api.entities.builtin.provider.message as provider_message
+    import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
+
+    query = pipeline_query.Query.model_construct(
+        query_id='test-stream-usage',
+        launcher_type='person',
+        launcher_id=12345,
+        sender_id=12345,
+        message_chain=None,
+        message_event=None,
+        adapter=None,
+        pipeline_uuid='pipeline-uuid',
+        bot_uuid='bot-uuid',
+        pipeline_config={'ai': {}, 'output': {}, 'trigger': {}},
+        session=None,
+        prompt=None,
+        messages=[],
+        user_message=None,
+        use_funcs=[],
+        use_llm_model_uuid=None,
+        variables={},
+        resp_messages=[],
+        resp_message_chain=None,
+        current_stage_name=None,
+    )
+    usage = {
+        'prompt_tokens': 13,
+        'completion_tokens': 2,
+        'total_tokens': 15,
+    }
+
+    async def fake_stream(**kwargs):
+        kwargs['query'].variables[requester.LLM_USAGE_QUERY_VARIABLE] = usage
+        yield provider_message.MessageChunk(role='assistant', content='ok')
+
+    provider.requester.invoke_llm_stream = fake_stream
+
+    chunks = [
+        chunk
+        async for chunk in provider.invoke_llm_stream(
+            query,
+            runtime_llm_model,
+            [provider_message.Message(role='user', content='Hello')],
+        )
+    ]
+
+    assert len(chunks) == 1
+    assert query.variables[requester.LLM_USAGE_QUERY_VARIABLE] == usage
 
 
 @pytest.mark.asyncio

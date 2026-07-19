@@ -143,10 +143,6 @@ def make_pipeline_handler_import_mocks() -> dict[str, MagicMock]:
     # Mock core.app - Application class is referenced but not instantiated
     mock_app = MagicMock()
 
-    # Mock provider.runner - has preregistered_runners attribute
-    mock_runner = MagicMock()
-    mock_runner.preregistered_runners = []  # Empty by default, tests override
-
     # Mock utils.importutil - prevents auto-import of runners
     mock_importutil = MagicMock()
     mock_importutil.import_modules_in_pkg = lambda pkg: None
@@ -158,19 +154,11 @@ def make_pipeline_handler_import_mocks() -> dict[str, MagicMock]:
         'langbot.pkg.pipeline.controller': MagicMock(),
         'langbot.pkg.pipeline.pipelinemgr': MagicMock(),
         'langbot.pkg.pipeline.process.process': MagicMock(),
-        'langbot.pkg.provider.runner': mock_runner,
         'langbot.pkg.utils.importutil': mock_importutil,
     }
 
 
-# Package attributes that need to be updated alongside sys.modules mocking.
-# When Python imports a submodule (e.g., langbot.pkg.provider.runner), it
-# automatically sets an attribute on the parent package. The import statement
-# `from ....provider import runner` gets this attribute, not sys.modules directly.
-# This dict maps mock module names to the parent packages that need attribute updates.
-_PACKAGE_ATTRIBUTE_UPDATES: dict[str, tuple[str, str]] = {
-    'langbot.pkg.provider.runner': ('langbot.pkg.provider', 'runner'),
-}
+_PACKAGE_ATTRIBUTE_UPDATES: dict[str, tuple[str, str]] = {}
 
 
 def get_handler_modules_to_clear(handler_name: str) -> list[str]:

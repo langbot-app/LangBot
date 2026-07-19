@@ -185,11 +185,10 @@ class BoxStdioSessionRuntime:
         box_service = getattr(self.ap, 'box_service', None)
         if box_service is None:
             return False
-        # When Box is configured but currently unavailable (disabled or
-        # connection failed), do NOT silently fall through to host-stdio —
-        # that would bypass the sandbox the operator asked for. The caller
-        # is expected to refuse the stdio MCP server with a clear error.
-        return bool(getattr(box_service, 'available', False))
+        # Transport selection follows operator intent, not momentary health.
+        # An enabled Box may be reconnecting; initialize() waits for it instead
+        # of falling through to unsandboxed host stdio or exhausting retries.
+        return bool(getattr(box_service, 'enabled', True))
 
     async def initialize(self) -> None:
         await self._wait_for_box_runtime()

@@ -37,7 +37,20 @@ def build_ap() -> SimpleNamespace:
 
     ap.apikey_service = SimpleNamespace(verify_api_key=verify_api_key)
     ap.bot_service = SimpleNamespace(
-        get_bots=AsyncMock(return_value=[{'uuid': 'bot-1', 'name': 'Demo Bot', 'adapter': 'telegram'}])
+        get_bots=AsyncMock(return_value=[{'uuid': 'bot-1', 'name': 'Demo Bot', 'adapter': 'telegram'}]),
+        list_event_route_statuses=AsyncMock(return_value={'routes': [], 'unmatched_events': [], 'stale_routes': []}),
+        dispatch_test_event_route=AsyncMock(
+            return_value={
+                'dispatched': True,
+                'event_type': 'message.received',
+                'suppressed_outputs': [],
+                'route_status': {
+                    'routes': [],
+                    'unmatched_events': [],
+                    'stale_routes': [],
+                },
+            }
+        ),
     )
     ap.pipeline_service = SimpleNamespace(get_pipelines=AsyncMock(return_value=[{'uuid': 'pl-1', 'name': 'default'}]))
     ap.llm_model_service = SimpleNamespace(get_llm_models=AsyncMock(return_value=[]))
@@ -96,7 +109,7 @@ async def main() -> int:
             tools = await session.list_tools()
             names = [t.name for t in tools.tools]
             print(f'PASS: listed {len(names)} tools')
-            for required in ('list_bots', 'get_system_info', 'list_skills'):
+            for required in ('list_bots', 'get_system_info', 'list_skills', 'test_bot_event_route'):
                 if required not in names:
                     failures.append(f'missing tool {required}')
 
@@ -113,6 +126,20 @@ async def main() -> int:
                 failures.append(f'get_system_info wrong: {text2!r}')
             else:
                 print('PASS: get_system_info returned version')
+
+            res3 = await session.call_tool(
+                'test_bot_event_route',
+                {
+                    'bot_uuid': 'bot-1',
+                    'event_type': 'message.received',
+                    'payload': {'message_text': 'hello'},
+                },
+            )
+            text3 = res3.content[0].text if res3.content else ''
+            if '"dispatched": true' not in text3:
+                failures.append(f'test_bot_event_route wrong: {text3!r}')
+            else:
+                print('PASS: test_bot_event_route returned dispatch result')
 
     shutdown.set()
     with contextlib.suppress(Exception):

@@ -337,14 +337,17 @@ const viVN = {
     getBotConfigError: 'Lấy cấu hình Bot thất bại: ',
     saveSuccess: 'Lưu thành công',
     saveError: 'Lưu thất bại: ',
-    createSuccess:
-      'Tạo thành công. Vui lòng bật hoặc sửa đổi Pipeline đã liên kết',
+    createSuccess: 'Tạo thành công. Vui lòng cấu hình định tuyến sự kiện',
     createError: 'Tạo thất bại: ',
     deleteSuccess: 'Xóa thành công',
     deleteError: 'Xóa thất bại: ',
     deleteConfirmation: 'Bạn có chắc chắn muốn xóa Bot này không?',
     platformAdapter: 'Nền tảng/Lựa chọn Adapter',
     selectAdapter: 'Chọn Adapter',
+    legacyAdapters: 'Adapter cũ',
+    legacyAdapterBadge: 'Cũ',
+    legacyAdaptersHint:
+      'Các adapter này đã có phiên bản hướng sự kiện mới hơn. Chúng chỉ được giữ lại để tương thích với cấu hình hiện có và không được khuyến nghị cho Bot mới.',
     adapterConfig: 'Cấu hình Adapter',
     viewAdapterDocs: 'Xem tài liệu',
     bindPipeline: 'Liên kết Pipeline',
@@ -365,6 +368,9 @@ const viVN = {
     routingConnection: 'Định tuyến & Kết nối',
     routingConnectionDescription:
       'Liên kết Pipeline xử lý tin nhắn cho Bot này',
+    eventRouting: 'Định tuyến sự kiện',
+    eventRoutingDescription:
+      'Chọn bộ xử lý cho từng sự kiện của Bot. Chỉnh sửa logic trong cấu hình Agent hoặc Pipeline tương ứng. Pipeline chỉ hỗ trợ sự kiện tin nhắn.',
     routingRules: 'Quy tắc định tuyến có điều kiện',
     routingRulesDescription:
       'Các quy tắc được đánh giá theo thứ tự; kết quả khớp đầu tiên sẽ định tuyến đến pipeline tương ứng. Nếu không khớp, pipeline mặc định ở trên sẽ được sử dụng.',
@@ -471,6 +477,54 @@ const viVN = {
       configureAdmins: 'Manage Admins',
     },
   },
+  agents: {
+    title: 'Bộ xử lý',
+    description:
+      'Tạo bộ xử lý có thể tái sử dụng và dùng chúng trong định tuyến sự kiện của bot',
+    create: 'Tạo bộ xử lý',
+    editAgent: 'Chỉnh sửa Agent',
+    selectFromSidebar: 'Chọn một Agent hoặc Pipeline từ thanh bên',
+    agentType: 'Agent',
+    agentTypeDescription:
+      'Dùng runner để xử lý tin nhắn, thành viên nhóm, bạn bè, phản hồi và các sự kiện nền tảng khác.',
+    pipelineType: 'Pipeline',
+    kindBadgeAgent: 'Agent',
+    kindBadgePipeline: 'Pipeline',
+    groupByKind: 'Nhóm theo loại',
+    groupByKindShort: 'Nhóm',
+    pipelineTypeDescription:
+      'Dùng luồng trực quan nhiều giai đoạn để kiểm soát tiền xử lý, AI, hậu xử lý, tiện ích mở rộng và đầu ra. Chỉ xử lý sự kiện tin nhắn.',
+    allEvents: 'Hỗ trợ tất cả sự kiện',
+    messageEventsOnly: 'Chỉ sự kiện tin nhắn',
+    basicInfo: 'Thông tin cơ bản',
+    basicInfoDescription: 'Đặt tên, biểu tượng, mô tả và trạng thái kích hoạt',
+    runnerSettings: 'Runner',
+    advanced: 'Nâng cao',
+    bindableEvents: 'Phạm vi sự kiện có thể gắn',
+    bindableEventsDescription:
+      'Giới hạn những tuyến sự kiện bot có thể chọn Agent này. Mặc định phù hợp với hầu hết trường hợp.',
+    supportedEvents: 'Phạm vi sự kiện',
+    supportedEventsDescription:
+      'Mỗi dòng một mẫu sự kiện, ví dụ *, message.received, group.*. Pipeline cố định ở message.*.',
+    enabled: 'Kích hoạt Agent',
+    enabledDescription:
+      'Khi bị tắt, Agent này sẽ không được định tuyến sự kiện chọn.',
+    nameRequired: 'Tên không được để trống',
+    createSuccess: 'Tạo thành công',
+    createError: 'Tạo thất bại: ',
+    loadError: 'Tải thất bại: ',
+    saveSuccess: 'Lưu thành công',
+    saveError: 'Lưu thất bại: ',
+    deleteSuccess: 'Xóa thành công',
+    deleteError: 'Xóa thất bại: ',
+    deleteConfirmation: 'Bạn có chắc muốn xóa Agent này không?',
+    dangerZone: 'Vùng nguy hiểm',
+    dangerZoneDescription: 'Hành động không thể hoàn tác và mang tính phá hủy',
+    deleteAgentAction: 'Xóa Agent này',
+    deleteAgentHint:
+      'Sau khi xóa, các sự kiện đã gắn vào nó sẽ không thể thực thi được nữa.',
+    noRunnerMetadata: 'Hiện chưa có siêu dữ liệu AgentRunner khả dụng.',
+  },
   plugins: {
     title: 'Tiện ích mở rộng',
     description:
@@ -500,6 +554,7 @@ const viVN = {
     noExtensionInstalled: 'Chưa cài đặt tiện ích mở rộng nào',
     loadingExtensions: 'Đang tải tiện ích mở rộng...',
     groupByType: 'Nhóm theo định dạng',
+    groupByTypeShort: 'Nhóm',
     pluginConfig: 'Cấu hình Plugin',
     pluginSort: 'Sắp xếp Plugin',
     pluginSortDescription:
@@ -563,6 +618,7 @@ const viVN = {
       KnowledgeEngine: 'Công cụ tri thức',
       Parser: 'Trình phân tích',
       Page: 'Trang',
+      AgentRunner: 'Trình chạy tác tử',
     },
     uploadLocal: 'Tải lên cục bộ',
     debugging: 'Gỡ lỗi',
@@ -739,6 +795,7 @@ const viVN = {
       KnowledgeEngine: 'Công cụ tri thức',
       Parser: 'Trình phân tích',
       Page: 'Trang',
+      AgentRunner: 'Trình chạy tác tử',
     },
     filterByType: 'Loại',
     allTypes: 'Tất cả loại',
@@ -973,14 +1030,14 @@ const viVN = {
       selectSkills: 'Chọn kỹ năng',
       noSkillsAvailable: 'Không có kỹ năng khả dụng',
       mcpServersScopeTooltip:
-        'Tại đây chỉ kiểm soát máy chủ MCP được liên kết với Pipeline. Công cụ và tài nguyên MCP cụ thể được chọn trong AI Feature > Local Agent.',
+        'Tại đây chỉ kiểm soát máy chủ MCP được liên kết với Pipeline. Công cụ và tài nguyên MCP cụ thể được chọn trong AI Feature > Agent Runner.',
       enableAllMCPServersTooltip:
         'Khi bật, mọi máy chủ MCP đã cấu hình và bật sẽ trở thành ứng viên cho công cụ và tài nguyên MCP trong AI Feature.',
     },
-    localAgent: {
+    agentRunner: {
       toolsTitle: 'Công cụ',
       toolsDescription:
-        'Chọn công cụ plugin, MCP và công cụ tích hợp sẵn cho Local Agent này.',
+        'Chọn công cụ plugin, MCP và công cụ tích hợp sẵn cho Agent Runner này.',
       toolsScopeTooltip:
         'Công cụ MCP chỉ đến từ máy chủ MCP đã liên kết trong Tiện ích mở rộng. Hãy liên kết máy chủ tại đó trước nếu muốn chọn thêm tại đây.',
       enableAllTools: 'Bật tất cả công cụ',
@@ -998,7 +1055,7 @@ const viVN = {
       selectTools: 'Chọn công cụ',
       resourcesTitle: 'Tài nguyên',
       resourcesDescription:
-        'Chọn tài nguyên MCP và kho tri thức cho Local Agent này.',
+        'Chọn tài nguyên MCP và kho tri thức cho Agent Runner này.',
       knowledgeBases: 'Kho tri thức',
       mcpResources: 'Tài nguyên MCP',
       mcpResourcesScopeTooltip:
@@ -1620,11 +1677,6 @@ const viVN = {
     aiEngine: {
       title: 'Chọn công cụ AI',
       description: 'Chọn công cụ AI sẽ cung cấp trí tuệ cho Bot của bạn.',
-    },
-    spaceBanner: {
-      message:
-        'Kết nối với LangBot Space để nhận tín dụng dùng thử mô hình miễn phí và thiết lập tức thì không cần cấu hình!',
-      action: 'Ủy quyền với Space',
     },
     config: {
       botInfo: 'Thông tin Bot',

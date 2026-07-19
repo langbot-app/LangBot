@@ -15,7 +15,7 @@ import langbot_plugin.api.entities.builtin.provider.session as provider_session
 from langbot.libs.dingtalk_api.api import DingTalkClient
 import datetime
 from langbot.pkg.platform.logger import EventLogger
-from langbot.pkg.provider.runners.difysvapi import _format_human_input_text
+from langbot.pkg.platform.human_input import format_human_input_text
 
 
 class DingTalkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
@@ -1171,7 +1171,7 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 parts.append(form_content)
             display_text = '\n\n'.join(parts)
         else:
-            display_text = _format_human_input_text(
+            display_text = format_human_input_text(
                 form_data.get('node_title', ''),
                 form_data.get('form_content', ''),
                 form_data.get('actions', []) or [],

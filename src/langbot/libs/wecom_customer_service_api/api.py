@@ -207,7 +207,33 @@ class WecomCSClient:
                 return await self.send_text_msg(open_kfid, external_userid, msgid, content)
             if data['errcode'] != 0:
                 await self.logger.error(f'发送消息失败：{data}')
-                raise Exception('Failed to send message')
+                raise Exception(f'Failed to send message: {data}')
+            return data
+
+    async def send_image_msg(self, open_kfid: str, external_userid: str, msgid: str, media_id: str):
+        if not await self.check_access_token():
+            self.access_token = await self.get_access_token(self.secret)
+
+        url = f'{self.base_url}/kf/send_msg?access_token={self.access_token}'
+        payload = {
+            'touser': external_userid,
+            'open_kfid': open_kfid,
+            'msgid': msgid,
+            'msgtype': 'image',
+            'image': {
+                'media_id': media_id,
+            },
+        }
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post(url, json=payload)
+            data = response.json()
+            if data['errcode'] == 40014 or data['errcode'] == 42001:
+                self.access_token = await self.get_access_token(self.secret)
+                return await self.send_image_msg(open_kfid, external_userid, msgid, media_id)
+            if data['errcode'] != 0:
+                await self.logger.error(f'发送图片消息失败：{data}')
+                raise Exception('Failed to send image message')
             return data
 
     async def handle_callback_request(self):
@@ -322,7 +348,7 @@ class WecomCSClient:
         if not await self.check_access_token():
             self.access_token = await self.get_access_token(self.secret)
 
-        url = self.base_url + '/media/upload?access_token=' + self.access_token + '&type=file'
+        url = self.base_url + '/media/upload?access_token=' + self.access_token + '&type=image'
         file_bytes = None
         file_name = 'uploaded_file.txt'
 
@@ -368,7 +394,7 @@ class WecomCSClient:
                 self.access_token = await self.get_access_token(self.secret)
                 media_id = await self.upload_to_work(image)
             if data.get('errcode', 0) != 0:
-                raise Exception('failed to upload file')
+                raise Exception(f'failed to upload image: {data}')
 
             media_id = data.get('media_id')
             return media_id
