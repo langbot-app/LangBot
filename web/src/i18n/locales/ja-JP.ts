@@ -169,6 +169,7 @@ const jaJP = {
     actions: 'アクション',
     apiKeyCreatedMessage:
       'この API キーをコピーしてください。もしボタンが無効な場合は手動でコピーしてください。',
+    apiKeyStoredSecurely: 'シークレットは作成時のみ表示されます',
     none: 'なし',
     more: 'もっと見る ({{count}})',
     less: '折りたたむ',
@@ -1279,6 +1280,76 @@ const jaJP = {
     spaceEmailMismatch:
       'Spaceログインのメールアドレスがローカルアカウントのメールアドレスと一致しません',
   },
+  workspace: {
+    title: 'ワークスペース',
+    description: 'メンバー、ロール、招待リンクを管理します',
+    selectTitle: 'ワークスペースを選択',
+    selectDescription: 'LangBot で使用するワークスペースを選択してください。',
+    selectionLoadFailed:
+      'ワークスペースを読み込めませんでした。もう一度お試しください。',
+    switchWorkspace: 'ワークスペースを切り替え',
+    ossSingletonDescription:
+      'このセルフホストインスタンスには1つのワークスペースがあり、複数のユーザーを追加できます。',
+    cloudManagedDescription:
+      'このワークスペースのメンバー、招待、請求は LangBot Cloud ポータルで管理されます。',
+    loadFailed: 'ワークスペース情報の読み込みに失敗しました',
+    members: 'メンバー',
+    you: 'あなた',
+    inviteMember: 'メンバーを招待',
+    inviteDescription:
+      '現在のワークスペースにユーザーを追加する一度限りのリンクを作成します。',
+    emailPlaceholder: 'member@example.com',
+    createInvitation: '招待を作成',
+    invitationCreated: '招待を作成しました',
+    invitationCreateFailed: '招待の作成に失敗しました',
+    oneTimeLinkWarning:
+      'このリンクを今すぐコピーしてください。シークレットは一度だけ表示され、LangBotには保存されません。',
+    copyInvitation: '招待リンクをコピー',
+    invitationCopied: '招待リンクをコピーしました',
+    pendingInvitations: '保留中の招待',
+    expiresAt: '{{date}} に期限切れ',
+    revokeInvitation: '招待を取り消す',
+    invitationRevoked: '招待を取り消しました',
+    invitationRevokeFailed: '招待の取り消しに失敗しました',
+    acceptInvitation: '招待を承認',
+    invitedToWorkspace: '{{workspace}} に招待されました',
+    checkingInvitation: '招待を確認しています...',
+    invitationMissing: '招待リンクにシークレットがありません。',
+    invitationExpired: 'この招待は期限切れです。',
+    invitationAlreadyRevoked: 'この招待は取り消されました。',
+    invitationAlreadyUsed: 'この招待はすでに使用されています。',
+    invitationInvalid: 'この招待は無効か、利用できなくなっています。',
+    invitationAccepted: '招待を承認しました',
+    invitationAcceptFailed: '招待の承認に失敗しました',
+    invitationEmailMismatch: 'この招待は別のメールアドレスに送られたものです。',
+    existingAccountLoginRequired:
+      'このメールアドレスのアカウントは既に存在します。ログインしてください。',
+    acceptAsCurrentAccount: '現在のアカウントで承認',
+    registerAndAccept: 'アカウントを作成して承認',
+    alreadyHaveAccount: 'アカウントを持っています',
+    confirmPassword: 'パスワードを確認',
+    passwordMinimum: 'パスワードは8文字以上にしてください。',
+    passwordMismatch: 'パスワードが一致しません。',
+    backToLogin: 'ログインに戻る',
+    memberUpdated: 'メンバーのロールを更新しました',
+    memberUpdateFailed: 'メンバーのロール更新に失敗しました',
+    removeMember: 'メンバーを削除',
+    removeMemberConfirm: 'このメンバーをワークスペースから削除しますか？',
+    memberRemoved: 'メンバーを削除しました',
+    memberRemoveFailed: 'メンバーの削除に失敗しました',
+    transferOwnership: '所有権を移譲',
+    types: {
+      personal: '個人',
+      team: 'チーム',
+    },
+    roles: {
+      owner: '所有者',
+      admin: '管理者',
+      developer: '開発者',
+      operator: 'オペレーター',
+      viewer: '閲覧者',
+    },
+  },
   monitoring: {
     title: 'ダッシュボード',
     description:
@@ -1531,6 +1602,7 @@ const jaJP = {
   settingsDialog: {
     title: '設定',
     nav: {
+      workspace: 'ワークスペース',
       models: 'モデル',
       api: 'API',
       storage: 'ストレージ',

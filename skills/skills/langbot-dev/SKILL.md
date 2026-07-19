@@ -65,10 +65,23 @@ Route auth is declared per-route via `AuthType` in
 - `API_KEY` — `X-API-Key` or `Authorization: Bearer <key>`.
 - `USER_TOKEN_OR_API_KEY` — either.
 
-API keys are verified by `apikey_service.verify_api_key()`, which accepts:
-1. the **global key** from `config.yaml` `api.global_api_key` (no DB, no login,
-   no `lbk_` prefix required), then
-2. **web-UI keys** (DB-stored, `lbk_` prefix).
+Authenticated routes receive an immutable `RequestContext` containing the
+principal, authorized Workspace membership, fixed-role permissions, instance,
+request id, and placement generation. A browser's `X-Workspace-Id` is only a
+selector and is always checked against the Account membership. Tenant services
+must accept this context (or an explicit trusted execution context) and fail
+closed when it is absent.
+
+API-key authentication accepts:
+
+1. the **global key** from `config.yaml` `api.global_api_key` only for a
+   community instance with exactly one local Workspace, then
+2. **web-UI keys** whose one-time `lbk_` secret is stored only as a hash and is
+   bound to one Workspace, explicit scopes, status, and optional expiry.
+
+An API key derives its Workspace from the key record and ignores a caller's
+Workspace selector. Public Bot/Webhook routes similarly derive Workspace from
+the opaque owning resource rather than a header.
 
 Route groups self-register via `@group.group_class(name, path)` and are
 discovered by `importutil.import_modules_in_pkg`.

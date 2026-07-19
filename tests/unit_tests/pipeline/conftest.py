@@ -17,6 +17,7 @@ from unittest.mock import AsyncMock, Mock
 # this, running a stage test in isolation triggers a circular-import error:
 #   stage.py → core.app → pipelinemgr → stage.stage_class (not yet bound).
 import langbot.pkg.pipeline.pipelinemgr  # noqa: F401
+from langbot.pkg.api.http.context import ExecutionContext
 
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
@@ -40,6 +41,14 @@ class MockApplication:
         self.query_pool = self._create_mock_query_pool()
         self.instance_config = self._create_mock_instance_config()
         self.task_mgr = self._create_mock_task_manager()
+        self.workspace_service = AsyncMock()
+        self.workspace_service.get_execution_binding = AsyncMock(
+            return_value=Mock(
+                instance_uuid='test-instance',
+                workspace_uuid='test-workspace',
+                placement_generation=1,
+            )
+        )
         # Skill manager is optional; PreProcessor only touches it for the
         # local-agent runner. None keeps the skill-binding branch inert.
         self.skill_mgr = None
@@ -83,6 +92,7 @@ class MockApplication:
         query_pool.cached_queries = {}
         query_pool.queries = []
         query_pool.condition = AsyncMock()
+        query_pool.remove_query = AsyncMock(return_value=True)
         return query_pool
 
     def _create_mock_instance_config(self):
@@ -191,6 +201,9 @@ def sample_query(sample_message_chain, sample_message_event, mock_adapter):
 
     # Use model_construct to bypass Pydantic validation for test purposes
     query = pipeline_query.Query.model_construct(
+        instance_uuid='test-instance',
+        workspace_uuid='test-workspace',
+        placement_generation=1,
         query_id='test-query-id',
         launcher_type=provider_session.LauncherTypes.PERSON,
         launcher_id=12345,
@@ -218,6 +231,17 @@ def sample_query(sample_message_chain, sample_message_event, mock_adapter):
         resp_messages=[],
         resp_message_chain=None,
         current_stage_name=None,
+    )
+    object.__setattr__(
+        query,
+        '_execution_context',
+        ExecutionContext(
+            instance_uuid='test-instance',
+            workspace_uuid='test-workspace',
+            placement_generation=1,
+            bot_uuid='test-bot-uuid',
+            pipeline_uuid='test-pipeline-uuid',
+        ),
     )
     return query
 

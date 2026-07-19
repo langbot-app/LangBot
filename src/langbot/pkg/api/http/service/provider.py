@@ -7,6 +7,9 @@ import sqlalchemy
 
 from ....core import app
 from ....entity.persistence import model as persistence_model
+from ....workspace.errors import WorkspaceNotFoundError
+from .secrets import contains_secret_placeholder, redact_secrets, restore_secret_placeholders
+from .tenant import TenantContext, require_workspace_uuid, scope_statement
 
 
 class ModelProviderService:
@@ -35,9 +38,15 @@ class ModelProviderService:
 
         return normalized_keys
 
-    async def get_providers(self) -> list[dict]:
+    async def get_providers(self, context: TenantContext, include_secret: bool = False) -> list[dict]:
         """Get all providers"""
-        result = await self.ap.persistence_mgr.execute_async(sqlalchemy.select(persistence_model.ModelProvider))
+        result = await self.ap.persistence_mgr.execute_async(
+            scope_statement(
+                sqlalchemy.select(persistence_model.ModelProvider),
+                persistence_model.ModelProvider,
+                context,
+            )
+        )
         providers = result.all()
         providers_list = []
         for p in providers:
@@ -50,14 +59,25 @@ class ModelProviderService:
                     provider_dict['api_keys'] = json.loads(provider_dict['api_keys'])
                 except Exception:
                     provider_dict['api_keys'] = []
+            if not include_secret:
+                provider_dict = redact_secrets(provider_dict)
             providers_list.append(provider_dict)
         return providers_list
 
-    async def get_provider(self, provider_uuid: str) -> dict | None:
+    async def get_provider(
+        self,
+        context: TenantContext,
+        provider_uuid: str,
+        include_secret: bool = False,
+    ) -> dict | None:
         """Get a single provider by UUID"""
         result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(persistence_model.ModelProvider).where(
-                persistence_model.ModelProvider.uuid == provider_uuid
+            scope_statement(
+                sqlalchemy.select(persistence_model.ModelProvider).where(
+                    persistence_model.ModelProvider.uuid == provider_uuid
+                ),
+                persistence_model.ModelProvider,
+                context,
             )
         )
         provider = result.first()
@@ -72,103 +92,171 @@ class ModelProviderService:
                 provider_dict['api_keys'] = json.loads(provider_dict['api_keys'])
             except Exception:
                 provider_dict['api_keys'] = []
+        if not include_secret:
+            provider_dict = redact_secrets(provider_dict)
         return provider_dict
 
-    async def create_provider(self, provider_data: dict) -> str:
+    async def create_provider(self, context: TenantContext, provider_data: dict) -> str:
         """Create a new provider"""
+        provider_data = provider_data.copy()
         provider_data['uuid'] = str(uuid.uuid4())
-        provider_data['api_keys'] = self._normalize_api_keys(provider_data.get('api_keys'))
+        provider_data['workspace_uuid'] = require_workspace_uuid(context)
+        provider_data['api_keys'] = self._normalize_api_keys(
+            restore_secret_placeholders(provider_data.get('api_keys'), sensitive=True)
+        )
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.insert(persistence_model.ModelProvider).values(**provider_data)
         )
 
         # load to runtime
-        runtime_provider = await self.ap.model_mgr.load_provider(provider_data)
-        self.ap.model_mgr.provider_dict[runtime_provider.provider_entity.uuid] = runtime_provider
+        runtime_provider = await self.ap.model_mgr.load_provider(context, provider_data)
+        await self.ap.model_mgr.cache_provider(context, runtime_provider)
         return provider_data['uuid']
 
-    async def update_provider(self, provider_uuid: str, provider_data: dict) -> None:
+    async def update_provider(self, context: TenantContext, provider_uuid: str, provider_data: dict) -> None:
         """Update an existing provider"""
-        if 'uuid' in provider_data:
-            del provider_data['uuid']
+        provider_data = provider_data.copy()
+        provider_data.pop('uuid', None)
+        provider_data.pop('workspace_uuid', None)
         if 'api_keys' in provider_data:
-            provider_data['api_keys'] = self._normalize_api_keys(provider_data.get('api_keys'))
-        await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.update(persistence_model.ModelProvider)
-            .where(persistence_model.ModelProvider.uuid == provider_uuid)
-            .values(**provider_data)
+            submitted_keys = provider_data.get('api_keys')
+            if contains_secret_placeholder(submitted_keys, sensitive=True):
+                current_provider = await self.get_provider(context, provider_uuid, include_secret=True)
+                if current_provider is None:
+                    raise WorkspaceNotFoundError('Provider not found')
+                submitted_keys = restore_secret_placeholders(
+                    submitted_keys,
+                    current_provider.get('api_keys', []),
+                    sensitive=True,
+                )
+            provider_data['api_keys'] = self._normalize_api_keys(submitted_keys)
+        result = await self.ap.persistence_mgr.execute_async(
+            scope_statement(
+                sqlalchemy.update(persistence_model.ModelProvider)
+                .where(persistence_model.ModelProvider.uuid == provider_uuid)
+                .values(**provider_data),
+                persistence_model.ModelProvider,
+                context,
+            )
         )
-        await self.ap.model_mgr.reload_provider(provider_uuid)
+        if getattr(result, 'rowcount', None) == 0:
+            raise WorkspaceNotFoundError('Provider not found')
+        await self.ap.model_mgr.reload_provider(context, provider_uuid)
 
-    async def delete_provider(self, provider_uuid: str) -> None:
+    async def delete_provider(self, context: TenantContext, provider_uuid: str) -> None:
         """Delete a provider (only if no models reference it)"""
+        workspace_uuid = require_workspace_uuid(context)
         # Check if any models use this provider
         llm_result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(persistence_model.LLMModel).where(
-                persistence_model.LLMModel.provider_uuid == provider_uuid
+            scope_statement(
+                sqlalchemy.select(persistence_model.LLMModel).where(
+                    persistence_model.LLMModel.provider_uuid == provider_uuid
+                ),
+                persistence_model.LLMModel,
+                workspace_uuid,
             )
         )
         if llm_result.first() is not None:
             raise ValueError('Cannot delete provider: LLM models still reference it')
 
         embedding_result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(persistence_model.EmbeddingModel).where(
-                persistence_model.EmbeddingModel.provider_uuid == provider_uuid
+            scope_statement(
+                sqlalchemy.select(persistence_model.EmbeddingModel).where(
+                    persistence_model.EmbeddingModel.provider_uuid == provider_uuid
+                ),
+                persistence_model.EmbeddingModel,
+                workspace_uuid,
             )
         )
         if embedding_result.first() is not None:
             raise ValueError('Cannot delete provider: Embedding models still reference it')
 
         rerank_result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(persistence_model.RerankModel).where(
-                persistence_model.RerankModel.provider_uuid == provider_uuid
+            scope_statement(
+                sqlalchemy.select(persistence_model.RerankModel).where(
+                    persistence_model.RerankModel.provider_uuid == provider_uuid
+                ),
+                persistence_model.RerankModel,
+                workspace_uuid,
             )
         )
         if rerank_result.first() is not None:
             raise ValueError('Cannot delete provider: Rerank models still reference it')
 
-        await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.delete(persistence_model.ModelProvider).where(
-                persistence_model.ModelProvider.uuid == provider_uuid
+        result = await self.ap.persistence_mgr.execute_async(
+            scope_statement(
+                sqlalchemy.delete(persistence_model.ModelProvider).where(
+                    persistence_model.ModelProvider.uuid == provider_uuid
+                ),
+                persistence_model.ModelProvider,
+                workspace_uuid,
             )
         )
+        if getattr(result, 'rowcount', None) == 0:
+            raise WorkspaceNotFoundError('Provider not found')
 
-        await self.ap.model_mgr.remove_provider(provider_uuid)
+        await self.ap.model_mgr.remove_provider(context, provider_uuid)
 
-    async def get_provider_model_counts(self, provider_uuid: str) -> dict:
+    async def get_provider_model_counts(self, context: TenantContext, provider_uuid: str) -> dict:
         """Get count of models using this provider"""
+        workspace_uuid = require_workspace_uuid(context)
+        if await self.get_provider(context, provider_uuid) is None:
+            raise WorkspaceNotFoundError('Provider not found')
         llm_result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(sqlalchemy.func.count())
-            .select_from(persistence_model.LLMModel)
-            .where(persistence_model.LLMModel.provider_uuid == provider_uuid)
+            scope_statement(
+                sqlalchemy.select(sqlalchemy.func.count())
+                .select_from(persistence_model.LLMModel)
+                .where(persistence_model.LLMModel.provider_uuid == provider_uuid),
+                persistence_model.LLMModel,
+                workspace_uuid,
+            )
         )
         llm_count = llm_result.scalar() or 0
 
         embedding_result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(sqlalchemy.func.count())
-            .select_from(persistence_model.EmbeddingModel)
-            .where(persistence_model.EmbeddingModel.provider_uuid == provider_uuid)
+            scope_statement(
+                sqlalchemy.select(sqlalchemy.func.count())
+                .select_from(persistence_model.EmbeddingModel)
+                .where(persistence_model.EmbeddingModel.provider_uuid == provider_uuid),
+                persistence_model.EmbeddingModel,
+                workspace_uuid,
+            )
         )
         embedding_count = embedding_result.scalar() or 0
 
         rerank_result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(sqlalchemy.func.count())
-            .select_from(persistence_model.RerankModel)
-            .where(persistence_model.RerankModel.provider_uuid == provider_uuid)
+            scope_statement(
+                sqlalchemy.select(sqlalchemy.func.count())
+                .select_from(persistence_model.RerankModel)
+                .where(persistence_model.RerankModel.provider_uuid == provider_uuid),
+                persistence_model.RerankModel,
+                workspace_uuid,
+            )
         )
         rerank_count = rerank_result.scalar() or 0
 
         return {'llm_count': llm_count, 'embedding_count': embedding_count, 'rerank_count': rerank_count}
 
-    async def find_or_create_provider(self, requester: str, base_url: str, api_keys: list) -> str:
+    async def find_or_create_provider(
+        self,
+        context: TenantContext,
+        requester: str,
+        base_url: str,
+        api_keys: list,
+    ) -> str:
         """Find existing provider or create new one"""
-        api_keys = self._normalize_api_keys(api_keys)
+        workspace_uuid = require_workspace_uuid(context)
+        api_keys = self._normalize_api_keys(restore_secret_placeholders(api_keys, sensitive=True))
 
         # Try to find existing provider with same config
         result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(persistence_model.ModelProvider).where(
-                persistence_model.ModelProvider.requester == requester,
-                persistence_model.ModelProvider.base_url == base_url,
+            scope_statement(
+                sqlalchemy.select(persistence_model.ModelProvider).where(
+                    persistence_model.ModelProvider.requester == requester,
+                    persistence_model.ModelProvider.base_url == base_url,
+                ),
+                persistence_model.ModelProvider,
+                workspace_uuid,
             )
         )
         for provider in result.all():
@@ -187,29 +275,38 @@ class ModelProviderService:
                 pass
 
         return await self.create_provider(
+            context,
             {
                 'name': provider_name,
                 'requester': requester,
                 'base_url': base_url,
                 'api_keys': api_keys,
-            }
+            },
         )
 
-    async def update_space_model_provider_api_keys(self, api_key: str) -> None:
+    async def update_space_model_provider_api_keys(self, context: TenantContext, api_key: str) -> None:
         """Update Space model provider API keys"""
-        await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.update(persistence_model.ModelProvider)
-            .where(persistence_model.ModelProvider.uuid == '00000000-0000-0000-0000-000000000000')
-            .values(api_keys=self._normalize_api_keys(api_key))
+        result = await self.ap.persistence_mgr.execute_async(
+            scope_statement(
+                sqlalchemy.update(persistence_model.ModelProvider)
+                .where(persistence_model.ModelProvider.uuid == '00000000-0000-0000-0000-000000000000')
+                .values(api_keys=self._normalize_api_keys(api_key)),
+                persistence_model.ModelProvider,
+                context,
+            )
         )
-        await self.ap.model_mgr.reload_provider('00000000-0000-0000-0000-000000000000')
+        if getattr(result, 'rowcount', None) == 0:
+            raise WorkspaceNotFoundError('Provider not found')
+        await self.ap.model_mgr.reload_provider(context, '00000000-0000-0000-0000-000000000000')
 
-    async def scan_provider_models(self, provider_uuid: str, model_type: str | None = None) -> dict:
-        provider = await self.get_provider(provider_uuid)
+    async def scan_provider_models(
+        self, context: TenantContext, provider_uuid: str, model_type: str | None = None
+    ) -> dict:
+        provider = await self.get_provider(context, provider_uuid, include_secret=True)
         if provider is None:
-            raise ValueError('provider not found')
+            raise WorkspaceNotFoundError('Provider not found')
 
-        runtime_provider = await self.ap.model_mgr.load_provider(provider)
+        runtime_provider = await self.ap.model_mgr.load_provider(context, provider)
 
         try:
             scan_result = await runtime_provider.requester.scan_models(
@@ -230,8 +327,10 @@ class ModelProviderService:
             scanned_models = scan_result
             debug_info = None
 
-        llm_models = await self.ap.llm_model_service.get_llm_models_by_provider(provider_uuid)
-        embedding_models = await self.ap.embedding_models_service.get_embedding_models_by_provider(provider_uuid)
+        llm_models = await self.ap.llm_model_service.get_llm_models_by_provider(context, provider_uuid)
+        embedding_models = await self.ap.embedding_models_service.get_embedding_models_by_provider(
+            context, provider_uuid
+        )
         existing_llm_names = {model['name'] for model in llm_models}
         existing_embedding_names = {model['name'] for model in embedding_models}
 

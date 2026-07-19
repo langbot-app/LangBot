@@ -4,6 +4,7 @@ import logging
 import asyncio
 import traceback
 import os
+import sqlalchemy
 
 from ..platform import botmgr as im_mgr
 from ..platform.webhook_pusher import WebhookPusher
@@ -45,6 +46,10 @@ from ..vector import mgr as vectordb_mgr
 from ..telemetry import telemetry as telemetry_module
 from ..survey import manager as survey_module
 from ..skill import manager as skill_mgr
+from ..workspace import service as workspace_service_module
+from ..workspace import collaboration as workspace_collaboration_module
+from ..api.http.context import ExecutionContext, PrincipalContext, PrincipalType
+from ..entity.persistence.workspace import WorkspaceExecutionState, WorkspaceExecutionStatus
 
 
 class Application:
@@ -118,6 +123,10 @@ class Application:
     logger: logging.Logger = None
 
     persistence_mgr: persistencemgr.PersistenceManager = None
+
+    workspace_service: workspace_service_module.WorkspaceService = None
+
+    workspace_collaboration_service: workspace_collaboration_module.WorkspaceCollaborationService = None
 
     vector_db_mgr: vectordb_mgr.VectorDBManager = None
 
@@ -235,16 +244,31 @@ class Application:
                     check_interval_seconds = check_interval_hours * 3600
                     while True:
                         try:
-                            deleted = await self.monitoring_service.cleanup_expired_records(
-                                retention_days,
-                                batch_size=delete_batch_size,
-                            )
-                            total_deleted = sum(deleted.values())
-                            if total_deleted > 0:
-                                self.logger.info(
-                                    f'Monitoring auto-cleanup: deleted {total_deleted} expired records '
-                                    f'(retention={retention_days}d): {deleted}'
+                            execution_states = await self.persistence_mgr.execute_async(
+                                sqlalchemy.select(WorkspaceExecutionState).where(
+                                    WorkspaceExecutionState.instance_uuid == self.workspace_service.instance_uuid,
+                                    WorkspaceExecutionState.state == WorkspaceExecutionStatus.ACTIVE.value,
+                                    WorkspaceExecutionState.write_fenced == sqlalchemy.false(),
                                 )
+                            )
+                            for execution_state in execution_states.all():
+                                context = ExecutionContext(
+                                    instance_uuid=execution_state.instance_uuid,
+                                    workspace_uuid=execution_state.workspace_uuid,
+                                    placement_generation=execution_state.active_generation,
+                                    trigger_principal=PrincipalContext(PrincipalType.SYSTEM),
+                                )
+                                deleted = await self.monitoring_service.cleanup_expired_records(
+                                    context,
+                                    retention_days,
+                                    batch_size=delete_batch_size,
+                                )
+                                total_deleted = sum(deleted.values())
+                                if total_deleted > 0:
+                                    self.logger.info(
+                                        f'Monitoring auto-cleanup: deleted {total_deleted} expired records '
+                                        f'for Workspace {context.workspace_uuid} (retention={retention_days}d): {deleted}'
+                                    )
                         except Exception as e:
                             self.logger.warning(f'Monitoring auto-cleanup error: {e}')
                         await asyncio.sleep(check_interval_seconds)
@@ -268,10 +292,27 @@ class Application:
                     check_interval_seconds = check_interval_hours * 3600
                     while True:
                         try:
-                            deleted = await self.maintenance_service.cleanup_expired_files()
-                            total_deleted = sum(deleted.values())
-                            if total_deleted > 0:
-                                self.logger.info(f'Storage maintenance: deleted expired files: {deleted}')
+                            execution_states = await self.persistence_mgr.execute_async(
+                                sqlalchemy.select(WorkspaceExecutionState).where(
+                                    WorkspaceExecutionState.instance_uuid == self.workspace_service.instance_uuid,
+                                    WorkspaceExecutionState.state == WorkspaceExecutionStatus.ACTIVE.value,
+                                    WorkspaceExecutionState.write_fenced == sqlalchemy.false(),
+                                )
+                            )
+                            for execution_state in execution_states.all():
+                                context = ExecutionContext(
+                                    instance_uuid=execution_state.instance_uuid,
+                                    workspace_uuid=execution_state.workspace_uuid,
+                                    placement_generation=execution_state.active_generation,
+                                    trigger_principal=PrincipalContext(PrincipalType.SYSTEM),
+                                )
+                                deleted = await self.maintenance_service.cleanup_expired_files(context)
+                                total_deleted = sum(deleted.values())
+                                if total_deleted > 0:
+                                    self.logger.info(
+                                        f'Storage maintenance for Workspace {context.workspace_uuid}: '
+                                        f'deleted expired files: {deleted}'
+                                    )
                         except Exception as e:
                             self.logger.warning(f'Storage maintenance error: {e}')
                         await asyncio.sleep(check_interval_seconds)

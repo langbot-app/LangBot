@@ -8,8 +8,11 @@ Run: uv run pytest tests/integration/api/test_embed.py -q
 
 from __future__ import annotations
 
+import json
+
 import pytest
 from unittest.mock import MagicMock, AsyncMock, Mock
+from types import SimpleNamespace
 
 from tests.factories import FakeApp
 
@@ -80,10 +83,18 @@ def fake_embed_app():
 
     mock_runtime_bot = Mock()
     mock_runtime_bot.bot_entity = mock_bot_entity
+    mock_runtime_bot.execution_context = SimpleNamespace(
+        instance_uuid='instance-test',
+        workspace_uuid='workspace-test',
+        placement_generation=1,
+    )
 
     # Platform manager with bots
     app.platform_mgr = Mock()
     app.platform_mgr.bots = [mock_runtime_bot]
+    app.platform_mgr.resolve_public_bot = AsyncMock(
+        side_effect=lambda route_key: mock_runtime_bot if route_key == mock_bot_entity.uuid else None
+    )
 
     # WebSocket proxy bot with adapter
     mock_websocket_adapter = Mock()
@@ -94,6 +105,16 @@ def fake_embed_app():
     mock_ws_proxy_bot = Mock()
     mock_ws_proxy_bot.adapter = mock_websocket_adapter
     app.platform_mgr.websocket_proxy_bot = mock_ws_proxy_bot
+    app.platform_mgr.get_websocket_proxy_bot = AsyncMock(return_value=mock_ws_proxy_bot)
+    app.workspace_service = SimpleNamespace(
+        get_execution_binding=AsyncMock(
+            return_value=SimpleNamespace(
+                instance_uuid='instance-test',
+                workspace_uuid='workspace-test',
+                placement_generation=1,
+            )
+        )
+    )
 
     # Monitoring service for feedback
     app.monitoring_service = Mock()
@@ -117,12 +138,13 @@ class TestEmbedWidgetEndpoint:
     """Tests for widget.js endpoint."""
 
     @pytest.mark.asyncio
-    async def test_get_widget_js_success(self, quart_test_client):
+    async def test_get_widget_js_success(self, quart_test_client, fake_embed_app):
         """GET /api/v1/embed/{bot_uuid}/widget.js returns JS."""
         response = await quart_test_client.get('/api/v1/embed/a1b2c3d4-5678-90ab-cdef-123456789abc/widget.js')
 
         assert response.status_code == 200
         assert 'javascript' in response.content_type
+        fake_embed_app.platform_mgr.resolve_public_bot.assert_any_await('a1b2c3d4-5678-90ab-cdef-123456789abc')
 
     @pytest.mark.asyncio
     async def test_get_widget_js_invalid_uuid(self, quart_test_client):
@@ -203,9 +225,8 @@ class TestEmbedMessagesEndpoint:
         data = await response.get_json()
         assert data['code'] == 0
         assert 'messages' in data['data']
-        fake_embed_app.platform_mgr.websocket_proxy_bot.adapter.get_websocket_messages.assert_called_with(
-            'test-pipeline-uuid', 'person', SESSION_ID
-        )
+        proxy_bot = fake_embed_app.platform_mgr.get_websocket_proxy_bot.return_value
+        proxy_bot.adapter.get_websocket_messages.assert_called_with('test-pipeline-uuid', 'person', SESSION_ID)
 
     @pytest.mark.asyncio
     async def test_get_messages_group_success(self, quart_test_client):
@@ -253,9 +274,8 @@ class TestEmbedResetEndpoint:
         assert response.status_code == 200
         data = await response.get_json()
         assert data['code'] == 0
-        fake_embed_app.platform_mgr.websocket_proxy_bot.adapter.reset_session.assert_called_with(
-            'test-pipeline-uuid', 'person', SESSION_ID
-        )
+        proxy_bot = fake_embed_app.platform_mgr.get_websocket_proxy_bot.return_value
+        proxy_bot.adapter.reset_session.assert_called_with('test-pipeline-uuid', 'person', SESSION_ID)
 
     @pytest.mark.asyncio
     async def test_reset_session_requires_session_id(self, quart_test_client):
@@ -316,3 +336,85 @@ class TestEmbedFeedbackEndpoint:
         )
 
         assert response.status_code == 400
+
+
+@pytest.mark.usefixtures('mock_circular_import_chain')
+class TestEmbedWebSocketEndpoint:
+    """The public socket authenticates before resolving shared runtime state."""
+
+    @pytest.mark.asyncio
+    async def test_authenticates_before_connecting(self, quart_test_client, fake_embed_app):
+        async with quart_test_client.websocket(
+            f'/api/v1/embed/a1b2c3d4-5678-90ab-cdef-123456789abc/ws/connect'
+            f'?session_type=person&session_id={SESSION_ID}',
+            headers={'Origin': 'http://localhost'},
+        ) as websocket:
+            await websocket.send(json.dumps({'type': 'authenticate', 'token': ''}))
+            connected = json.loads(await websocket.receive())
+            assert connected['type'] == 'connected'
+            assert connected['bot_uuid'] == 'a1b2c3d4-5678-90ab-cdef-123456789abc'
+            await websocket.send(json.dumps({'type': 'disconnect'}))
+
+        fake_embed_app.workspace_service.get_execution_binding.assert_awaited_with(
+            'workspace-test',
+            expected_generation=1,
+        )
+
+    @pytest.mark.asyncio
+    async def test_rejects_non_auth_first_frame_before_runtime_lookup(self, quart_test_client, fake_embed_app):
+        fake_embed_app.platform_mgr.get_websocket_proxy_bot.reset_mock()
+
+        async with quart_test_client.websocket(
+            f'/api/v1/embed/a1b2c3d4-5678-90ab-cdef-123456789abc/ws/connect'
+            f'?session_type=person&session_id={SESSION_ID}',
+            headers={'Origin': 'http://localhost'},
+        ) as websocket:
+            await websocket.send(json.dumps({'type': 'message', 'message': []}))
+            response = json.loads(await websocket.receive())
+            assert response == {'type': 'error', 'message': 'Unauthorized'}
+
+        fake_embed_app.platform_mgr.get_websocket_proxy_bot.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_rejects_invalid_turnstile_session_before_runtime_lookup(self, quart_test_client, fake_embed_app):
+        fake_embed_app.platform_mgr.get_websocket_proxy_bot.reset_mock()
+        config = fake_embed_app.platform_mgr.resolve_public_bot.side_effect(
+            'a1b2c3d4-5678-90ab-cdef-123456789abc'
+        ).bot_entity.adapter_config
+        config['turnstile_secret_key'] = 'test-secret'
+        try:
+            async with quart_test_client.websocket(
+                f'/api/v1/embed/a1b2c3d4-5678-90ab-cdef-123456789abc/ws/connect'
+                f'?session_type=person&session_id={SESSION_ID}',
+                headers={'Origin': 'http://localhost'},
+            ) as websocket:
+                await websocket.send(json.dumps({'type': 'authenticate', 'token': 'invalid'}))
+                response = json.loads(await websocket.receive())
+                assert response == {'type': 'error', 'message': 'Unauthorized'}
+        finally:
+            config['turnstile_secret_key'] = ''
+
+        fake_embed_app.platform_mgr.get_websocket_proxy_bot.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_rejects_message_when_bot_is_disabled_after_connect(self, quart_test_client, fake_embed_app):
+        runtime_bot = fake_embed_app.platform_mgr.resolve_public_bot.side_effect('a1b2c3d4-5678-90ab-cdef-123456789abc')
+        adapter = fake_embed_app.platform_mgr.get_websocket_proxy_bot.return_value.adapter
+        adapter.handle_websocket_message.reset_mock()
+
+        async with quart_test_client.websocket(
+            f'/api/v1/embed/a1b2c3d4-5678-90ab-cdef-123456789abc/ws/connect'
+            f'?session_type=person&session_id={SESSION_ID}',
+            headers={'Origin': 'http://localhost'},
+        ) as websocket:
+            await websocket.send(json.dumps({'type': 'authenticate', 'token': ''}))
+            assert json.loads(await websocket.receive())['type'] == 'connected'
+            runtime_bot.bot_entity.enable = False
+            try:
+                await websocket.send(json.dumps({'type': 'message', 'message': [{'type': 'text', 'text': 'hi'}]}))
+                response = json.loads(await websocket.receive())
+                assert response == {'type': 'error', 'message': 'Bot is unavailable'}
+            finally:
+                runtime_bot.bot_entity.enable = True
+
+        adapter.handle_websocket_message.assert_not_awaited()

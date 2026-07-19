@@ -8,6 +8,7 @@ import zipfile
 from typing import Any
 import typing
 import os
+import secrets
 import sys
 import httpx
 import sqlalchemy
@@ -32,8 +33,17 @@ from langbot_plugin.api.entities.builtin.command import (
     errors as command_errors,
 )
 from langbot_plugin.runtime.plugin.mgr import PluginInstallSource
+from langbot_plugin.runtime.security import (
+    PLUGIN_RUNTIME_CONTROL_TOKEN_ENV,
+    PLUGIN_RUNTIME_CONTROL_TOKEN_HEADER,
+    validate_runtime_secret,
+)
+from langbot_plugin.entities.io.context import ActionContext
 from ..core import taskmgr
 from ..entity.persistence import plugin as persistence_plugin
+from ..api.http.context import ExecutionContext
+from ..api.http.service.tenant import TenantContext, require_workspace_uuid
+from ..workspace.errors import WorkspaceNotFoundError
 
 
 class PluginRuntimeNotConnectedError(RuntimeError):
@@ -66,10 +76,68 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         runtime_disconnect_callback: typing.Callable[
             [PluginRuntimeConnector], typing.Coroutine[typing.Any, typing.Any, None]
         ],
+        action_context: ActionContext | None = None,
     ):
         super().__init__(ap)
         self.runtime_disconnect_callback = runtime_disconnect_callback
         self.is_enable_plugin = self.ap.instance_config.data.get('plugin', {}).get('enable', True)
+        self._configured_action_context = (
+            ActionContext.model_validate(action_context).without_installation() if action_context is not None else None
+        )
+        self._control_token = str(os.environ.get(PLUGIN_RUNTIME_CONTROL_TOKEN_ENV) or '').strip()
+
+    def _requires_explicit_workspace_binding(self) -> bool:
+        """Return whether this process may host more than the OSS singleton."""
+
+        workspace_service = getattr(self.ap, 'workspace_service', None)
+        policy = getattr(workspace_service, 'policy', None)
+        return getattr(policy, 'multi_workspace_enabled', False) is True
+
+    def _control_headers(self, *, allow_generate: bool) -> dict[str, str]:
+        if not self._control_token and allow_generate:
+            self._control_token = secrets.token_urlsafe(48)
+        try:
+            self._control_token = validate_runtime_secret(
+                self._control_token,
+                name=PLUGIN_RUNTIME_CONTROL_TOKEN_ENV,
+            )
+        except ValueError as exc:
+            raise PluginRuntimeNotConnectedError(
+                f'{PLUGIN_RUNTIME_CONTROL_TOKEN_ENV} must be configured with a strong shared secret '
+                'for an external Plugin Runtime'
+            ) from exc
+        return {PLUGIN_RUNTIME_CONTROL_TOKEN_HEADER: self._control_token}
+
+    async def _resolve_action_context(self) -> ActionContext:
+        """Resolve the trusted connector binding; never use plugin input."""
+
+        workspace_service = getattr(self.ap, 'workspace_service', None)
+        if workspace_service is None:
+            raise RuntimeError('Plugin Runtime Workspace binding is unavailable')
+
+        if self._configured_action_context is not None:
+            configured = self._configured_action_context
+            binding = await workspace_service.get_execution_binding(
+                configured.workspace_uuid,
+                expected_generation=configured.placement_generation,
+            )
+            if binding.instance_uuid != configured.instance_uuid:
+                raise RuntimeError('Plugin Runtime Workspace binding belongs to another instance')
+            return ActionContext(
+                instance_uuid=binding.instance_uuid,
+                workspace_uuid=binding.workspace_uuid,
+                placement_generation=binding.placement_generation,
+            )
+
+        if self._requires_explicit_workspace_binding():
+            raise RuntimeError('Cloud plugin Runtime connectors require an explicit projected Workspace binding')
+
+        binding = await workspace_service.get_local_execution_binding()
+        return ActionContext(
+            instance_uuid=binding.instance_uuid,
+            workspace_uuid=binding.workspace_uuid,
+            placement_generation=binding.placement_generation,
+        )
 
     async def heartbeat_loop(self):
         while True:
@@ -84,6 +152,8 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         if not self.is_enable_plugin:
             self.ap.logger.info('Plugin system is disabled.')
             return
+        if self._configured_action_context is None and self._requires_explicit_workspace_binding():
+            raise RuntimeError('Cloud plugin Runtime connectors require an explicit projected Workspace binding')
 
         async def new_connection_callback(connection: base_connection.Connection):
             async def disconnect_callback(
@@ -99,7 +169,13 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                     )
                     return False
 
-            self.handler = handler.RuntimeConnectionHandler(connection, disconnect_callback, self.ap)
+            action_context = await self._resolve_action_context()
+            self.handler = handler.RuntimeConnectionHandler(
+                connection,
+                disconnect_callback,
+                self.ap,
+                action_context,
+            )
 
             self.handler_task = asyncio.create_task(self.handler.run())
             _ = await self.handler.ping()
@@ -107,12 +183,13 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             # downloads plugins from the same Space LangBot is bound to, rather
             # than relying on the runtime's own env/default.
             space_url = self.ap.instance_config.data.get('space', {}).get('url', '').rstrip('/')
-            if space_url:
-                try:
-                    await self.handler.set_runtime_config(cloud_service_url=space_url)
+            try:
+                await self.handler.set_runtime_config(cloud_service_url=space_url or None)
+                if space_url:
                     self.ap.logger.info(f'Pushed marketplace URL to plugin runtime: {space_url}')
-                except Exception as e:
-                    self.ap.logger.warning(f'Failed to push runtime config: {e}')
+            except Exception as e:
+                self.ap.logger.warning(f'Failed to bind plugin runtime config: {e}')
+                raise
             self.ap.logger.info('Connected to plugin runtime.')
             await self.handler_task
 
@@ -120,6 +197,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
 
         if platform.get_platform() == 'docker' or platform.use_websocket_to_connect_plugin_runtime():  # use websocket
             self.ap.logger.info('use websocket to connect to plugin runtime')
+            control_headers = self._control_headers(allow_generate=False)
             ws_url = self.ap.instance_config.data.get('plugin', {}).get(
                 'runtime_ws_url', 'ws://langbot_plugin_runtime:5400/control/ws'
             )
@@ -137,6 +215,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             self.ctrl = ws_client_controller.WebSocketClientController(
                 ws_url=ws_url,
                 make_connection_failed_callback=make_connection_failed_callback,
+                additional_headers=control_headers,
             )
             task = self.ctrl.run(new_connection_callback)
         elif platform.get_platform() == 'win32':
@@ -145,7 +224,13 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             # We have to launch runtime via cmd but communicate via ws.
             self.ap.logger.info('(windows) use cmd to launch plugin runtime and communicate via ws')
 
-            await self._start_runtime_subprocess('-m', 'langbot_plugin.cli.__init__', 'rt')
+            control_headers = self._control_headers(allow_generate=True)
+            await self._start_runtime_subprocess(
+                '-m',
+                'langbot_plugin.cli.__init__',
+                'rt',
+                env_overrides={PLUGIN_RUNTIME_CONTROL_TOKEN_ENV: self._control_token},
+            )
 
             ws_url = 'ws://localhost:5400/control/ws'
 
@@ -164,6 +249,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             self.ctrl = ws_client_controller.WebSocketClientController(
                 ws_url=ws_url,
                 make_connection_failed_callback=make_connection_failed_callback,
+                additional_headers=control_headers,
             )
             task = self.ctrl.run(new_connection_callback)
 
@@ -192,6 +278,48 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             raise PluginRuntimeNotConnectedError('Plugin runtime is not connected')
 
         return await self.handler.ping()
+
+    async def require_workspace_context(self, context: TenantContext) -> ExecutionContext:
+        """Fence an HTTP/runtime caller to this connector's one Workspace.
+
+        A Plugin Runtime connection is deliberately not a cross-Workspace
+        router.  Calls from another Workspace therefore look like an absent
+        resource instead of being forwarded to the bound Runtime.
+        """
+
+        workspace_uuid = require_workspace_uuid(context)
+        instance_uuid = str(getattr(context, 'instance_uuid', '') or '').strip()
+        generation = getattr(context, 'placement_generation', None)
+        if not instance_uuid or isinstance(generation, bool) or not isinstance(generation, int) or generation <= 0:
+            raise WorkspaceNotFoundError('Plugin resource not found')
+
+        binding = await self.ap.workspace_service.get_execution_binding(
+            workspace_uuid,
+            expected_generation=generation,
+        )
+        if binding.instance_uuid != instance_uuid:
+            raise WorkspaceNotFoundError('Plugin resource not found')
+
+        execution_context = ExecutionContext(
+            instance_uuid=instance_uuid,
+            workspace_uuid=workspace_uuid,
+            placement_generation=generation,
+            trigger_principal=getattr(context, 'principal', None),
+        )
+        if not self.is_enable_plugin:
+            return execution_context
+        if not hasattr(self, 'handler'):
+            raise PluginRuntimeNotConnectedError('Plugin runtime is not connected')
+
+        bound_context = self.handler.require_bound_action_context().without_installation()
+        if (
+            bound_context.instance_uuid != instance_uuid
+            or bound_context.workspace_uuid != workspace_uuid
+            or bound_context.placement_generation != generation
+        ):
+            raise WorkspaceNotFoundError('Plugin resource not found')
+
+        return execution_context
 
     def _inspect_plugin_package(
         self,
@@ -231,6 +359,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
 
     async def _install_mcp_from_marketplace(
         self,
+        execution_context: ExecutionContext,
         mcp_data: dict[str, Any],
         task_context: taskmgr.TaskContext | None = None,
     ):
@@ -243,9 +372,6 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         for ``http``/``sse`` it preserves ``url``/``headers``/``timeout``/
         ``ssereadtimeout``.
         """
-        from ..entity.persistence import mcp as persistence_mcp
-        import uuid
-
         mode = mcp_data.get('mode') or 'stdio'
         extra_args = mcp_data.get('extra_args') or {}
         # The MCP transport selection was simplified to two modes: 'stdio'
@@ -263,18 +389,12 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         # Use __ instead of / to avoid URL routing issues with slashes
         name = f'{mcp_data.get("author", "")}__{mcp_data.get("name", "")}'
 
-        # Check if MCP server already exists
-        existing = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(persistence_mcp.MCPServer).where(persistence_mcp.MCPServer.name == name)
-        )
-        if existing.scalar_one_or_none():
+        existing = await self.ap.mcp_service.get_mcp_server_by_name(execution_context, name)
+        if existing is not None:
             self.ap.logger.info(f'MCP server {name} already exists, skipping installation')
             return
 
-        # Create MCP server record
-        server_uuid = str(uuid.uuid4())
         server_data = {
-            'uuid': server_uuid,
             'name': name,
             'enable': True,
             'mode': mode,
@@ -282,23 +402,13 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             'readme': readme,
         }
 
-        await self.ap.persistence_mgr.execute_async(sqlalchemy.insert(persistence_mcp.MCPServer).values(server_data))
-
-        # Start the MCP server
-        result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(persistence_mcp.MCPServer).where(persistence_mcp.MCPServer.uuid == server_uuid)
-        )
-        server_entity = result.first()
-        if server_entity:
-            server_config = self.ap.persistence_mgr.serialize_model(persistence_mcp.MCPServer, server_entity)
-            if self.ap.tool_mgr.mcp_tool_loader:
-                mcp_task = asyncio.create_task(self.ap.tool_mgr.mcp_tool_loader.host_mcp_server(server_config))
-                self.ap.tool_mgr.mcp_tool_loader._hosted_mcp_tasks.append(mcp_task)
+        await self.ap.mcp_service.create_mcp_server(execution_context, server_data)
 
         self.ap.logger.info(f'Installed MCP server {name} from marketplace')
 
     async def _install_skill_from_zip(
         self,
+        execution_context: ExecutionContext,
         file_bytes: bytes,
         filename: str,
         task_context: taskmgr.TaskContext | None = None,
@@ -312,6 +422,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
 
         # Install from ZIP using skill service
         result = await skill_service.install_from_zip_upload(
+            execution_context,
             file_bytes=file_bytes,
             filename=filename + '.zip',
         )
@@ -380,6 +491,12 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         plugin_name = install_info.get('plugin_name')
 
         if install_source == PluginInstallSource.MARKETPLACE:
+            action_context = self.handler.require_bound_action_context()
+            execution_context = ExecutionContext(
+                instance_uuid=action_context.instance_uuid,
+                workspace_uuid=action_context.workspace_uuid,
+                placement_generation=action_context.placement_generation,
+            )
             # Handle marketplace plugin/mcp/skill installation
             plugin_author = install_info.get('plugin_author', '')
             plugin_name = install_info.get('plugin_name', '')
@@ -397,7 +514,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                         self.ap.logger.info(f'Installing MCP from marketplace: {plugin_author}/{plugin_name}')
                         if task_context:
                             task_context.set_current_action('installing mcp server')
-                        await self._install_mcp_from_marketplace(mcp_data, task_context)
+                        await self._install_mcp_from_marketplace(execution_context, mcp_data, task_context)
                         # Best-effort install report (bumps marketplace install_count).
                         try:
                             await client.post(
@@ -440,7 +557,12 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                         self.ap.logger.info(f'Downloaded skill ZIP ({file_size} bytes)')
 
                         # Install skill from ZIP using skill service
-                        await self._install_skill_from_zip(file_bytes, f'{plugin_author}-{plugin_name}', task_context)
+                        await self._install_skill_from_zip(
+                            execution_context,
+                            file_bytes,
+                            f'{plugin_author}-{plugin_name}',
+                            task_context,
+                        )
                         return
                     elif skill_resp.status_code == 404:
                         # Try plugin endpoint - get versions and download
@@ -645,6 +767,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
 
             # Fetch all timestamps in a single query using OR conditions
             if plugin_ids:
+                action_context = self.handler.require_bound_action_context()
                 conditions = [
                     sqlalchemy.and_(
                         persistence_plugin.PluginSetting.plugin_author == author,
@@ -658,7 +781,9 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                         persistence_plugin.PluginSetting.plugin_author,
                         persistence_plugin.PluginSetting.plugin_name,
                         persistence_plugin.PluginSetting.created_at,
-                    ).where(sqlalchemy.or_(*conditions))
+                    )
+                    .where(persistence_plugin.PluginSetting.workspace_uuid == action_context.workspace_uuid)
+                    .where(sqlalchemy.or_(*conditions))
                 )
 
                 for row in result:
@@ -780,13 +905,19 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         session: provider_session.Session,
         query_id: int,
         bound_plugins: list[str] | None = None,
+        query_uuid: str | None = None,
     ) -> dict[str, Any]:
         if not self.is_enable_plugin:
             return {'error': 'Tool not found: plugin system is disabled'}
 
         # Pass include_plugins to runtime for validation
         return await self.handler.call_tool(
-            tool_name, parameters, session.model_dump(serialize_as_any=True), query_id, include_plugins=bound_plugins
+            tool_name,
+            parameters,
+            session.model_dump(serialize_as_any=True),
+            query_id,
+            query_uuid=query_uuid,
+            include_plugins=bound_plugins,
         )
 
     async def list_commands(self, bound_plugins: list[str] | None = None) -> list[ComponentManifest]:

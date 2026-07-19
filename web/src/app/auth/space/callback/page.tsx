@@ -1,6 +1,10 @@
 import { useEffect, useState, useCallback, Suspense, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { httpClient } from '@/app/infra/http/HttpClient';
+import {
+  beginAuthenticatedSession,
+  bootstrapWorkspaceSession,
+} from '@/app/infra/http';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import {
@@ -32,19 +36,21 @@ const pendingSpaceOAuthLogins = new Map<
 
 function getOrCreateSpaceOAuthLoginPromise(
   authCode: string,
+  state: string,
 ): Promise<SpaceOAuthLoginResult> {
-  const pendingRequest = pendingSpaceOAuthLogins.get(authCode);
+  const requestKey = `${authCode}:${state}`;
+  const pendingRequest = pendingSpaceOAuthLogins.get(requestKey);
   if (pendingRequest) {
     return pendingRequest;
   }
 
   const requestPromise = httpClient
-    .exchangeSpaceOAuthCode(authCode)
+    .exchangeSpaceOAuthCode(authCode, state)
     .finally(() => {
-      pendingSpaceOAuthLogins.delete(authCode);
+      pendingSpaceOAuthLogins.delete(requestKey);
     });
 
-  pendingSpaceOAuthLogins.set(authCode, requestPromise);
+  pendingSpaceOAuthLogins.set(requestKey, requestPromise);
   return requestPromise;
 }
 
@@ -64,23 +70,31 @@ function SpaceOAuthCallbackContent() {
   const [localEmail, setLocalEmail] = useState<string>('');
 
   const handleOAuthCallback = useCallback(
-    async (authCode: string) => {
+    async (authCode: string, state: string) => {
       try {
-        const response = await getOrCreateSpaceOAuthLoginPromise(authCode);
+        const response = await getOrCreateSpaceOAuthLoginPromise(
+          authCode,
+          state,
+        );
         if (!isMountedRef.current) {
           return;
         }
 
-        localStorage.setItem('token', response.token);
-        if (response.user) {
-          localStorage.setItem('userEmail', response.user);
+        beginAuthenticatedSession(response.token, response.user);
+        const workspaceResult = await bootstrapWorkspaceSession();
+        if (workspaceResult.status === 'unavailable') {
+          throw new Error('No Workspace is available for this Account');
         }
         setStatus('success');
         toast.success(t('common.spaceLoginSuccess'));
 
         // If wizard state exists, redirect back to wizard instead of home
         const wizardState = localStorage.getItem('langbot_wizard_state');
-        const redirectTo = wizardState ? '/wizard' : '/home';
+        const destination = wizardState ? '/wizard' : '/home';
+        const redirectTo =
+          workspaceResult.status === 'selection-required'
+            ? `/workspaces/select?returnTo=${encodeURIComponent(destination)}`
+            : destination;
         setTimeout(() => {
           navigate(redirectTo);
         }, 1000);
@@ -113,14 +127,19 @@ function SpaceOAuthCallbackContent() {
           return;
         }
 
-        localStorage.setItem('token', response.token);
-        if (response.user) {
-          localStorage.setItem('userEmail', response.user);
+        beginAuthenticatedSession(response.token, response.user);
+        const workspaceResult = await bootstrapWorkspaceSession();
+        if (workspaceResult.status === 'unavailable') {
+          throw new Error('No Workspace is available for this Account');
         }
         setStatus('success');
         toast.success(t('account.bindSpaceSuccess'));
+        const redirectTo =
+          workspaceResult.status === 'selection-required'
+            ? '/workspaces/select?returnTo=%2Fhome'
+            : '/home';
         setTimeout(() => {
-          navigate('/home');
+          navigate(redirectTo);
         }, 1000);
       } catch (err) {
         if (!isMountedRef.current) {
@@ -181,8 +200,12 @@ function SpaceOAuthCallbackContent() {
       setLocalEmail(localStorage.getItem('userEmail') || '');
       setStatus('confirm');
     } else {
-      // Normal login/register mode
-      handleOAuthCallback(authCode);
+      if (!state) {
+        setStatus('error');
+        setErrorMessage(t('common.spaceLoginFailed'));
+        return;
+      }
+      handleOAuthCallback(authCode, state);
     }
     return () => {
       isMountedRef.current = false;

@@ -85,12 +85,14 @@ class SpaceService:
 
     def get_oauth_authorize_url(self, redirect_uri: str, state: str = '') -> str:
         """Get the Space OAuth authorization URL for redirect"""
+        from urllib.parse import urlencode
+
         space_config = self._get_space_config()
         authorize_url = space_config['oauth_authorize_url']
-        params = f'redirect_uri={redirect_uri}'
+        params = {'redirect_uri': redirect_uri}
         if state:
-            params += f'&state={state}'
-        return f'{authorize_url}?{params}'
+            params['state'] = state
+        return f'{authorize_url}?{urlencode(params)}'
 
     async def exchange_oauth_code(self, code: str) -> typing.Dict:
         """Exchange OAuth authorization code for tokens"""

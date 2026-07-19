@@ -1,137 +1,395 @@
-"""Unit tests for RAG knowledge base manager.
-
-Tests cover:
-- RAGManager CRUD operations
-- RuntimeKnowledgeBase getters
-- Knowledge engine enrichment
-- KB loading and removal
-"""
+"""Tests for Workspace-scoped RAG manager and runtime knowledge bases."""
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock
+
 import pytest
-import uuid
-from unittest.mock import Mock, AsyncMock
-from importlib import import_module
+
+from langbot.pkg.api.http.context import ExecutionContext
+from langbot.pkg.entity.persistence.rag import KnowledgeBase
+from langbot.pkg.rag.knowledge.kbmgr import RAGManager, RuntimeKnowledgeBase
+from langbot.pkg.workspace.errors import WorkspaceNotFoundError
 
 
-def get_rag_module():
-    """Lazy import to avoid circular import issues."""
-    return import_module('langbot.pkg.rag.knowledge.kbmgr')
+CONTEXT_A = ExecutionContext(
+    instance_uuid='instance-a',
+    workspace_uuid='workspace-a',
+    placement_generation=5,
+)
+CONTEXT_B = ExecutionContext(
+    instance_uuid='instance-a',
+    workspace_uuid='workspace-b',
+    placement_generation=5,
+)
 
 
-def create_mock_app():
-    """Create mock Application for testing."""
-    mock_app = Mock()
-    mock_app.logger = Mock()
-    mock_app.persistence_mgr = AsyncMock()
-    mock_app.persistence_mgr.execute_async = AsyncMock()
-    mock_app.persistence_mgr.serialize_model = Mock(return_value={})
-    mock_app.plugin_connector = AsyncMock()
-    mock_app.plugin_connector.is_enable_plugin = True
-    mock_app.storage_mgr = Mock()
-    mock_app.storage_mgr.storage_provider = AsyncMock()
-    mock_app.task_mgr = AsyncMock()
-    mock_app.task_mgr.create_user_task = Mock(return_value=Mock(id=1))
-    return mock_app
+class _Result:
+    def __init__(self, rows=(), *, first=None):
+        self.rows = list(rows)
+        self._first = first
+
+    def all(self):
+        return self.rows
+
+    def first(self):
+        return self._first
 
 
-def create_mock_kb_entity():
-    """Create mock KnowledgeBase entity."""
-    mock_kb = Mock()
-    mock_kb.uuid = str(uuid.uuid4())
-    mock_kb.name = 'Test KB'
-    mock_kb.description = 'Test description'
-    mock_kb.knowledge_engine_plugin_id = 'author/engine'
-    mock_kb.collection_id = mock_kb.uuid
-    mock_kb.creation_settings = {}
-    mock_kb.retrieval_settings = {}
-    return mock_kb
+def _entity(*, kb_uuid='kb-a', workspace_uuid='workspace-a', plugin_id='author/engine'):
+    return KnowledgeBase(
+        uuid=kb_uuid,
+        workspace_uuid=workspace_uuid,
+        name='Test KB',
+        description='description',
+        knowledge_engine_plugin_id=plugin_id,
+        collection_id=kb_uuid,
+        creation_settings={},
+        retrieval_settings={},
+    )
 
 
+def _app():
+    return SimpleNamespace(
+        logger=Mock(),
+        persistence_mgr=SimpleNamespace(
+            execute_async=AsyncMock(return_value=_Result()),
+            serialize_model=Mock(
+                side_effect=lambda _model, row: {
+                    'uuid': row.uuid,
+                    'workspace_uuid': row.workspace_uuid,
+                    'name': row.name,
+                    'description': row.description,
+                    'knowledge_engine_plugin_id': row.knowledge_engine_plugin_id,
+                    'collection_id': row.collection_id,
+                    'creation_settings': row.creation_settings,
+                    'retrieval_settings': row.retrieval_settings,
+                }
+            ),
+        ),
+        plugin_connector=SimpleNamespace(
+            is_enable_plugin=True,
+            require_workspace_context=AsyncMock(side_effect=lambda context: context),
+            list_knowledge_engines=AsyncMock(
+                return_value=[
+                    {
+                        'plugin_id': 'author/engine',
+                        'name': {'en_US': 'Engine'},
+                        'capabilities': ['doc_ingestion'],
+                    }
+                ]
+            ),
+            rag_on_kb_create=AsyncMock(),
+            rag_on_kb_delete=AsyncMock(),
+            call_rag_ingest=AsyncMock(return_value={'status': 'success'}),
+            call_rag_retrieve=AsyncMock(return_value={'results': []}),
+            call_rag_delete_document=AsyncMock(return_value=True),
+            call_parser=AsyncMock(),
+        ),
+        workspace_service=SimpleNamespace(
+            get_execution_binding=AsyncMock(
+                side_effect=lambda workspace_uuid, **_kwargs: SimpleNamespace(
+                    instance_uuid='instance-a',
+                    workspace_uuid=workspace_uuid,
+                    placement_generation=5,
+                )
+            )
+        ),
+        storage_mgr=SimpleNamespace(storage_provider=AsyncMock()),
+        task_mgr=SimpleNamespace(create_user_task=Mock(return_value=SimpleNamespace(id='task-a'))),
+    )
+
+
+@pytest.mark.asyncio
+async def test_create_binds_workspace_and_uses_tuple_runtime_key():
+    app = _app()
+    manager = RAGManager(app)
+
+    kb = await manager.create_knowledge_base(
+        CONTEXT_A,
+        name='Created',
+        knowledge_engine_plugin_id='author/engine',
+        creation_settings={'model': 'embedding-a'},
+    )
+
+    assert kb.workspace_uuid == 'workspace-a'
+    assert ('workspace-a', kb.uuid) in manager.knowledge_bases
+    app.plugin_connector.rag_on_kb_create.assert_awaited_once_with(
+        'author/engine',
+        kb.uuid,
+        {'model': 'embedding-a'},
+    )
+
+
+@pytest.mark.asyncio
+async def test_create_rejects_unknown_engine_and_rolls_back_plugin_failure():
+    app = _app()
+    manager = RAGManager(app)
+    app.plugin_connector.list_knowledge_engines.return_value = []
+    with pytest.raises(ValueError, match='not found'):
+        await manager.create_knowledge_base(
+            CONTEXT_A,
+            name='Unknown',
+            knowledge_engine_plugin_id='missing/engine',
+            creation_settings={},
+        )
+
+    app.plugin_connector.list_knowledge_engines.return_value = [{'plugin_id': 'author/engine'}]
+    app.plugin_connector.rag_on_kb_create.side_effect = RuntimeError('plugin failed')
+    with pytest.raises(RuntimeError, match='plugin failed'):
+        await manager.create_knowledge_base(
+            CONTEXT_A,
+            name='Rollback',
+            knowledge_engine_plugin_id='author/engine',
+            creation_settings={},
+        )
+    assert manager.knowledge_bases == {}
+
+
+@pytest.mark.asyncio
+async def test_runtime_retrieve_carries_context_and_merges_settings_without_mutation():
+    app = _app()
+    entity = _entity()
+    entity.retrieval_settings = {'top_k': 10, 'model': 'default'}
+    app.plugin_connector.call_rag_retrieve.return_value = {
+        'results': [
+            {
+                'id': 'entry-a',
+                'content': [{'type': 'text', 'text': 'hello'}],
+                'metadata': {},
+                'distance': 0.2,
+            }
+        ]
+    }
+    runtime = RuntimeKnowledgeBase(app, entity, CONTEXT_A)
+    overrides = {'top_k': 2, 'filters': {'file_id': 'file-a'}}
+
+    results = await runtime.retrieve(CONTEXT_A, 'query', settings=overrides)
+
+    assert results[0].id == 'entry-a'
+    assert overrides == {'top_k': 2, 'filters': {'file_id': 'file-a'}}
+    payload = app.plugin_connector.call_rag_retrieve.await_args.args[1]
+    assert payload['knowledge_base_id'] == 'kb-a'
+    assert payload['collection_id'] == 'kb-a'
+    assert payload['retrieval_settings']['top_k'] == 2
+    assert payload['filters'] == {'file_id': 'file-a'}
+
+
+@pytest.mark.asyncio
+async def test_runtime_rejects_cross_workspace_and_stale_contexts():
+    app = _app()
+    runtime = RuntimeKnowledgeBase(app, _entity(), CONTEXT_A)
+
+    with pytest.raises(WorkspaceNotFoundError):
+        await runtime.retrieve(CONTEXT_B, 'query')
+    stale = CONTEXT_A.__class__(
+        instance_uuid='instance-a',
+        workspace_uuid='workspace-a',
+        placement_generation=4,
+    )
+    with pytest.raises(WorkspaceNotFoundError):
+        await runtime.retrieve(stale, 'query')
+    app.plugin_connector.call_rag_retrieve.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_runtime_retrieve_fails_before_bound_connector_on_generation_mismatch():
+    app = _app()
+    app.plugin_connector.require_workspace_context.side_effect = WorkspaceNotFoundError('Plugin resource not found')
+    runtime = RuntimeKnowledgeBase(app, _entity(), CONTEXT_A)
+
+    with pytest.raises(WorkspaceNotFoundError, match='Plugin resource not found'):
+        await runtime.retrieve(CONTEXT_A, 'query')
+
+    app.plugin_connector.call_rag_retrieve.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ('operation', 'connector_method'),
+    [
+        ('create', 'rag_on_kb_create'),
+        ('ingest', 'call_rag_ingest'),
+        ('delete', 'call_rag_delete_document'),
+    ],
+)
+async def test_runtime_plugin_mutations_fail_before_mismatched_connector(operation, connector_method):
+    app = _app()
+    app.plugin_connector.require_workspace_context.side_effect = WorkspaceNotFoundError('Plugin resource not found')
+    runtime = RuntimeKnowledgeBase(app, _entity(), CONTEXT_A)
+
+    with pytest.raises(WorkspaceNotFoundError, match='Plugin resource not found'):
+        if operation == 'create':
+            await runtime._on_kb_create(CONTEXT_A)
+        elif operation == 'ingest':
+            await runtime._ingest_document(CONTEXT_A, {'filename': 'document.pdf'}, 'storage/path')
+        else:
+            await runtime._delete_document(CONTEXT_A, 'file-a')
+
+    getattr(app.plugin_connector, connector_method).assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_create_fails_before_engine_discovery_on_connector_workspace_mismatch():
+    app = _app()
+    app.plugin_connector.require_workspace_context.side_effect = WorkspaceNotFoundError('Plugin resource not found')
+    manager = RAGManager(app)
+
+    with pytest.raises(WorkspaceNotFoundError, match='Plugin resource not found'):
+        await manager.create_knowledge_base(
+            CONTEXT_A,
+            name='Other workspace',
+            knowledge_engine_plugin_id='author/engine',
+            creation_settings={},
+        )
+
+    app.plugin_connector.list_knowledge_engines.assert_not_awaited()
+    app.persistence_mgr.execute_async.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_ingestion_payload_uses_host_owned_kb_collection():
+    app = _app()
+    runtime = RuntimeKnowledgeBase(app, _entity(), CONTEXT_A)
+    metadata = {'filename': 'document.pdf'}
+
+    await runtime._ingest_document(CONTEXT_A, metadata, 'uploads/document.pdf')
+
+    payload = app.plugin_connector.call_rag_ingest.await_args.args[1]
+    assert payload['knowledge_base_id'] == 'kb-a'
+    assert payload['collection_id'] == 'kb-a'
+    assert payload['file_object']['metadata']['knowledge_base_id'] == 'kb-a'
+
+
+@pytest.mark.asyncio
+async def test_delete_file_checks_workspace_and_parent_before_plugin_call():
+    app = _app()
+    runtime = RuntimeKnowledgeBase(app, _entity(), CONTEXT_A)
+    app.persistence_mgr.execute_async.return_value = _Result(first=('file-a',))
+
+    await runtime.delete_file(CONTEXT_A, 'file-a')
+    app.plugin_connector.call_rag_delete_document.assert_awaited_once_with(
+        'author/engine',
+        'file-a',
+        'kb-a',
+    )
+
+    missing_app = _app()
+    missing = RuntimeKnowledgeBase(missing_app, _entity(), CONTEXT_A)
+    with pytest.raises(WorkspaceNotFoundError):
+        await missing.delete_file(CONTEXT_A, 'file-other')
+    missing_app.plugin_connector.call_rag_delete_document.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_manager_get_remove_and_delete_are_workspace_scoped():
+    app = _app()
+    manager = RAGManager(app)
+    runtime = await manager.load_knowledge_base(CONTEXT_A, _entity())
+
+    assert await manager.get_knowledge_base_by_uuid(CONTEXT_A, 'kb-a') is runtime
+    assert await manager.get_knowledge_base_by_uuid(CONTEXT_B, 'kb-a') is None
+    await manager.remove_knowledge_base_from_runtime(CONTEXT_B, 'kb-a')
+    assert await manager.get_knowledge_base_by_uuid(CONTEXT_A, 'kb-a') is runtime
+    await manager.delete_knowledge_base(CONTEXT_A, 'kb-a')
+    app.plugin_connector.rag_on_kb_delete.assert_awaited_once()
+    assert await manager.get_knowledge_base_by_uuid(CONTEXT_A, 'kb-a') is None
+
+
+@pytest.mark.asyncio
+async def test_details_queries_require_workspace_and_enrich_engine():
+    app = _app()
+    row_a = _entity()
+    app.persistence_mgr.execute_async.return_value = _Result([row_a], first=row_a)
+    manager = RAGManager(app)
+
+    listed = await manager.get_all_knowledge_base_details(CONTEXT_A)
+    fetched = await manager.get_knowledge_base_details(CONTEXT_A, 'kb-a')
+    assert listed[0]['knowledge_engine']['plugin_id'] == 'author/engine'
+    assert fetched['knowledge_engine']['capabilities'] == ['doc_ingestion']
+
+
+@pytest.mark.asyncio
+async def test_load_dict_filters_computed_fields_and_requires_matching_workspace():
+    app = _app()
+    manager = RAGManager(app)
+    runtime = await manager.load_knowledge_base(
+        CONTEXT_A,
+        {
+            'uuid': 'kb-a',
+            'workspace_uuid': 'workspace-a',
+            'name': 'KB',
+            'description': '',
+            'knowledge_engine_plugin_id': 'author/engine',
+            'collection_id': 'kb-a',
+            'creation_settings': {},
+            'retrieval_settings': {},
+            'knowledge_engine': {'computed': True},
+        },
+    )
+    assert runtime.get_uuid() == 'kb-a'
+
+    with pytest.raises(WorkspaceNotFoundError):
+        await manager.load_knowledge_base(CONTEXT_B, _entity())
+
+
+# Preserve the complete pre-tenancy RAG manager regression matrix.  Every
+# runtime operation now carries the immutable ExecutionContext, and cache
+# assertions use the Workspace + resource tuple key introduced for isolation.
 class TestRAGManagerCreateKnowledgeBase:
-    """Tests for create_knowledge_base method."""
-
     @pytest.mark.asyncio
     async def test_creates_kb_with_valid_engine(self):
-        """Test creates KB when engine plugin exists."""
-        rag_module = get_rag_module()
-        mock_app = create_mock_app()
-
-        # Mock valid engine list
-        mock_app.plugin_connector.list_knowledge_engines = AsyncMock(
-            return_value=[{'plugin_id': 'author/engine', 'name': 'Engine'}]
-        )
-        mock_app.persistence_mgr.execute_async = AsyncMock()
-        mock_app.plugin_connector.rag_on_kb_create = AsyncMock()
-
-        manager = rag_module.RAGManager(mock_app)
+        app = _app()
+        manager = RAGManager(app)
 
         kb = await manager.create_knowledge_base(
+            CONTEXT_A,
             name='Test KB',
             knowledge_engine_plugin_id='author/engine',
             creation_settings={'model': 'test'},
         )
 
         assert kb.name == 'Test KB'
+        assert kb.workspace_uuid == CONTEXT_A.workspace_uuid
         assert kb.knowledge_engine_plugin_id == 'author/engine'
 
     @pytest.mark.asyncio
     async def test_raises_when_engine_not_found(self):
-        """Test raises ValueError when engine plugin not found."""
-        rag_module = get_rag_module()
-        mock_app = create_mock_app()
+        app = _app()
+        app.plugin_connector.list_knowledge_engines.return_value = []
 
-        # Mock empty engine list
-        mock_app.plugin_connector.list_knowledge_engines = AsyncMock(return_value=[])
-
-        manager = rag_module.RAGManager(mock_app)
-
-        with pytest.raises(ValueError) as exc_info:
-            await manager.create_knowledge_base(
+        with pytest.raises(ValueError, match='not found'):
+            await RAGManager(app).create_knowledge_base(
+                CONTEXT_A,
                 name='Test KB',
                 knowledge_engine_plugin_id='unknown/engine',
                 creation_settings={},
             )
 
-        assert 'not found' in str(exc_info.value)
-
     @pytest.mark.asyncio
     async def test_rollback_on_plugin_create_failure(self):
-        """Test that DB entry is rolled back when plugin create fails."""
-        rag_module = get_rag_module()
-        mock_app = create_mock_app()
+        app = _app()
+        app.plugin_connector.rag_on_kb_create.side_effect = RuntimeError('Plugin error')
+        manager = RAGManager(app)
 
-        mock_app.plugin_connector.list_knowledge_engines = AsyncMock(return_value=[{'plugin_id': 'author/engine'}])
-        mock_app.persistence_mgr.execute_async = AsyncMock()
-        mock_app.plugin_connector.rag_on_kb_create = AsyncMock(side_effect=Exception('Plugin error'))
-
-        manager = rag_module.RAGManager(mock_app)
-
-        with pytest.raises(Exception):
+        with pytest.raises(RuntimeError, match='Plugin error'):
             await manager.create_knowledge_base(
+                CONTEXT_A,
                 name='Test KB',
                 knowledge_engine_plugin_id='author/engine',
                 creation_settings={},
             )
 
-        # Should have called delete to rollback
-        # Check that delete was called (for rollback)
-        assert len(manager.knowledge_bases) == 0
+        assert manager.knowledge_bases == {}
+        assert app.persistence_mgr.execute_async.await_count == 2
 
     @pytest.mark.asyncio
     async def test_sets_default_retrieval_settings(self):
-        """Test that empty retrieval_settings defaults to {}."""
-        rag_module = get_rag_module()
-        mock_app = create_mock_app()
+        app = _app()
 
-        mock_app.plugin_connector.list_knowledge_engines = AsyncMock(return_value=[{'plugin_id': 'author/engine'}])
-        mock_app.persistence_mgr.execute_async = AsyncMock()
-        mock_app.plugin_connector.rag_on_kb_create = AsyncMock()
-
-        manager = rag_module.RAGManager(mock_app)
-
-        kb = await manager.create_knowledge_base(
+        kb = await RAGManager(app).create_knowledge_base(
+            CONTEXT_A,
             name='Test KB',
             knowledge_engine_plugin_id='author/engine',
             creation_settings={},
@@ -142,419 +400,289 @@ class TestRAGManagerCreateKnowledgeBase:
 
     @pytest.mark.asyncio
     async def test_skips_validation_when_plugin_disabled(self):
-        """Test that engine validation is skipped when plugin disabled."""
-        rag_module = get_rag_module()
-        mock_app = create_mock_app()
-        mock_app.plugin_connector.is_enable_plugin = False
-        mock_app.persistence_mgr.execute_async = AsyncMock()
-        mock_app.plugin_connector.rag_on_kb_create = AsyncMock()
+        app = _app()
+        app.plugin_connector.is_enable_plugin = False
 
-        manager = rag_module.RAGManager(mock_app)
-
-        # Should not raise even though engine list would be empty
-        kb = await manager.create_knowledge_base(
+        kb = await RAGManager(app).create_knowledge_base(
+            CONTEXT_A,
             name='Test KB',
             knowledge_engine_plugin_id='any/engine',
             creation_settings={},
         )
 
         assert kb.knowledge_engine_plugin_id == 'any/engine'
+        app.plugin_connector.list_knowledge_engines.assert_not_awaited()
 
 
 class TestRuntimeKnowledgeBaseOnKBCreate:
-    """Tests for _on_kb_create method."""
-
     @pytest.mark.asyncio
     async def test_calls_plugin_on_create(self):
-        """Test that plugin is notified on KB create."""
-        rag_module = get_rag_module()
-        mock_app = create_mock_app()
-        mock_kb = create_mock_kb_entity()
-        mock_kb.creation_settings = {'model': 'test'}
+        app = _app()
+        entity = _entity()
+        entity.creation_settings = {'model': 'test'}
 
-        mock_app.plugin_connector.rag_on_kb_create = AsyncMock()
+        await RuntimeKnowledgeBase(app, entity, CONTEXT_A)._on_kb_create(CONTEXT_A)
 
-        runtime_kb = rag_module.RuntimeKnowledgeBase(mock_app, mock_kb)
-        await runtime_kb._on_kb_create()
-
-        mock_app.plugin_connector.rag_on_kb_create.assert_called_once_with(
-            'author/engine', mock_kb.uuid, {'model': 'test'}
+        app.plugin_connector.rag_on_kb_create.assert_awaited_once_with(
+            'author/engine',
+            entity.uuid,
+            {'model': 'test'},
         )
 
     @pytest.mark.asyncio
     async def test_skips_when_no_plugin_id(self):
-        """Test that create notification is skipped when no plugin."""
-        rag_module = get_rag_module()
-        mock_app = create_mock_app()
-        mock_kb = create_mock_kb_entity()
-        mock_kb.knowledge_engine_plugin_id = None
+        app = _app()
 
-        runtime_kb = rag_module.RuntimeKnowledgeBase(mock_app, mock_kb)
-        await runtime_kb._on_kb_create()
+        await RuntimeKnowledgeBase(
+            app,
+            _entity(plugin_id=None),
+            CONTEXT_A,
+        )._on_kb_create(CONTEXT_A)
 
-        mock_app.plugin_connector.rag_on_kb_create.assert_not_called()
+        app.plugin_connector.rag_on_kb_create.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_raises_on_plugin_error(self):
-        """Test that exception is raised when plugin fails."""
-        rag_module = get_rag_module()
-        mock_app = create_mock_app()
-        mock_kb = create_mock_kb_entity()
+        app = _app()
+        app.plugin_connector.rag_on_kb_create.side_effect = RuntimeError('Plugin failed')
 
-        mock_app.plugin_connector.rag_on_kb_create = AsyncMock(side_effect=Exception('Plugin failed'))
-
-        runtime_kb = rag_module.RuntimeKnowledgeBase(mock_app, mock_kb)
-
-        with pytest.raises(Exception):
-            await runtime_kb._on_kb_create()
+        with pytest.raises(RuntimeError, match='Plugin failed'):
+            await RuntimeKnowledgeBase(app, _entity(), CONTEXT_A)._on_kb_create(CONTEXT_A)
 
 
 class TestRuntimeKnowledgeBaseDeleteFile:
-    """Tests for delete_file method."""
-
     @pytest.mark.asyncio
     async def test_delete_file_calls_plugin_and_db(self):
-        """Test that delete_file calls plugin and removes DB record."""
-        rag_module = get_rag_module()
-        mock_app = create_mock_app()
-        mock_kb = create_mock_kb_entity()
+        app = _app()
+        app.persistence_mgr.execute_async.return_value = _Result(first=('file-uuid',))
 
-        mock_app.plugin_connector.call_rag_delete_document = AsyncMock(return_value=True)
+        await RuntimeKnowledgeBase(app, _entity(), CONTEXT_A).delete_file(
+            CONTEXT_A,
+            'file-uuid',
+        )
 
-        runtime_kb = rag_module.RuntimeKnowledgeBase(mock_app, mock_kb)
-        await runtime_kb.delete_file('file-uuid')
-
-        mock_app.plugin_connector.call_rag_delete_document.assert_called_once()
-        mock_app.persistence_mgr.execute_async.assert_called()
+        app.plugin_connector.call_rag_delete_document.assert_awaited_once_with(
+            'author/engine',
+            'file-uuid',
+            'kb-a',
+        )
+        assert app.persistence_mgr.execute_async.await_count == 2
 
 
 class TestRuntimeKnowledgeBaseIngestDocument:
-    """Tests for _ingest_document method."""
-
     @pytest.mark.asyncio
     async def test_ingest_calls_plugin(self):
-        """Test that ingest calls plugin connector."""
-        rag_module = get_rag_module()
-        mock_app = create_mock_app()
-        mock_kb = create_mock_kb_entity()
+        app = _app()
 
-        mock_app.plugin_connector.call_rag_ingest = AsyncMock(return_value={'status': 'success'})
-
-        runtime_kb = rag_module.RuntimeKnowledgeBase(mock_app, mock_kb)
-
-        result = await runtime_kb._ingest_document(
+        result = await RuntimeKnowledgeBase(app, _entity(), CONTEXT_A)._ingest_document(
+            CONTEXT_A,
             {'filename': 'test.pdf'},
             'storage/path',
         )
 
-        assert result['status'] == 'success'
-        mock_app.plugin_connector.call_rag_ingest.assert_called_once()
+        assert result == {'status': 'success'}
+        app.plugin_connector.call_rag_ingest.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_ingest_raises_when_no_plugin_id(self):
-        """Test that ValueError is raised when no plugin ID."""
-        rag_module = get_rag_module()
-        mock_app = create_mock_app()
-        mock_kb = create_mock_kb_entity()
-        mock_kb.knowledge_engine_plugin_id = None
+        app = _app()
 
-        runtime_kb = rag_module.RuntimeKnowledgeBase(mock_app, mock_kb)
-
-        with pytest.raises(ValueError) as exc_info:
-            await runtime_kb._ingest_document({'filename': 'test.pdf'}, 'path')
-
-        assert 'Plugin ID required' in str(exc_info.value)
+        with pytest.raises(ValueError, match='Plugin ID required'):
+            await RuntimeKnowledgeBase(
+                app,
+                _entity(plugin_id=None),
+                CONTEXT_A,
+            )._ingest_document(CONTEXT_A, {'filename': 'test.pdf'}, 'path')
 
 
 class TestRAGManagerLoadKnowledgeBasesFromDB:
-    """Tests for load_knowledge_bases_from_db method."""
-
     @pytest.mark.asyncio
     async def test_loads_all_kbs_from_db(self):
-        """Test that all KBs are loaded from database."""
-        rag_module = get_rag_module()
-        mock_app = create_mock_app()
+        app = _app()
+        kb1 = _entity(kb_uuid='kb-1')
+        kb2 = _entity(kb_uuid='kb-2')
+        app.persistence_mgr.execute_async.return_value = _Result([kb1, kb2])
+        manager = RAGManager(app)
 
-        mock_kb1 = create_mock_kb_entity()
-        mock_kb2 = create_mock_kb_entity()
-        mock_app.persistence_mgr.execute_async = AsyncMock(
-            return_value=Mock(all=Mock(return_value=[mock_kb1, mock_kb2]))
-        )
-
-        manager = rag_module.RAGManager(mock_app)
         await manager.load_knowledge_bases_from_db()
 
-        assert len(manager.knowledge_bases) == 2
+        assert set(manager.knowledge_bases) == {
+            ('workspace-a', 'kb-1'),
+            ('workspace-a', 'kb-2'),
+        }
 
     @pytest.mark.asyncio
     async def test_handles_load_error_gracefully(self):
-        """Test that load errors are logged but not raised."""
-        rag_module = get_rag_module()
-        mock_app = create_mock_app()
+        app = _app()
+        app.persistence_mgr.execute_async.return_value = _Result([_entity()])
+        app.workspace_service.get_execution_binding.side_effect = RuntimeError('binding unavailable')
+        manager = RAGManager(app)
 
-        # KB that will cause initialize to fail
-        mock_kb = create_mock_kb_entity()
-
-        mock_app.persistence_mgr.execute_async = AsyncMock(return_value=Mock(all=Mock(return_value=[mock_kb])))
-
-        # Make initialize fail by having plugin_connector throw error
-        mock_app.plugin_connector.rag_on_kb_create = AsyncMock(side_effect=Exception('Init failed'))
-
-        manager = rag_module.RAGManager(mock_app)
-        # Should not raise - errors are caught
         await manager.load_knowledge_bases_from_db()
 
-        # KB should still be loaded (initialize just passes)
-        # The error would come from runtime_kb.initialize which we can't easily mock
-        # So we just verify it doesn't crash
+        assert manager.knowledge_bases == {}
+        app.logger.error.assert_called_once()
 
 
 class TestRuntimeKnowledgeBaseGetters:
-    """Tests for RuntimeKnowledgeBase getter methods."""
-
     def test_get_uuid_returns_entity_uuid(self):
-        """Test get_uuid returns KB entity UUID."""
-        rag_module = get_rag_module()
-        mock_app = create_mock_app()
-        mock_kb = create_mock_kb_entity()
+        entity = _entity()
 
-        runtime_kb = rag_module.RuntimeKnowledgeBase(mock_app, mock_kb)
-
-        assert runtime_kb.get_uuid() == mock_kb.uuid
+        assert RuntimeKnowledgeBase(_app(), entity, CONTEXT_A).get_uuid() == entity.uuid
 
     def test_get_name_returns_entity_name(self):
-        """Test get_name returns KB entity name."""
-        rag_module = get_rag_module()
-        mock_app = create_mock_app()
-        mock_kb = create_mock_kb_entity()
+        entity = _entity()
 
-        runtime_kb = rag_module.RuntimeKnowledgeBase(mock_app, mock_kb)
-
-        assert runtime_kb.get_name() == mock_kb.name
+        assert RuntimeKnowledgeBase(_app(), entity, CONTEXT_A).get_name() == entity.name
 
     def test_get_knowledge_engine_plugin_id_returns_plugin_id(self):
-        """Test get_knowledge_engine_plugin_id returns plugin ID."""
-        rag_module = get_rag_module()
-        mock_app = create_mock_app()
-        mock_kb = create_mock_kb_entity()
+        runtime = RuntimeKnowledgeBase(_app(), _entity(), CONTEXT_A)
 
-        runtime_kb = rag_module.RuntimeKnowledgeBase(mock_app, mock_kb)
-
-        assert runtime_kb.get_knowledge_engine_plugin_id() == 'author/engine'
+        assert runtime.get_knowledge_engine_plugin_id() == 'author/engine'
 
     def test_get_knowledge_engine_plugin_id_returns_empty_when_none(self):
-        """Test returns empty string when plugin_id is None."""
-        rag_module = get_rag_module()
-        mock_app = create_mock_app()
-        mock_kb = create_mock_kb_entity()
-        mock_kb.knowledge_engine_plugin_id = None
+        runtime = RuntimeKnowledgeBase(_app(), _entity(plugin_id=None), CONTEXT_A)
 
-        runtime_kb = rag_module.RuntimeKnowledgeBase(mock_app, mock_kb)
-
-        assert runtime_kb.get_knowledge_engine_plugin_id() == ''
+        assert runtime.get_knowledge_engine_plugin_id() == ''
 
 
 class TestRuntimeKnowledgeBaseRetrieve:
-    """Tests for RuntimeKnowledgeBase retrieve method."""
-
     @pytest.mark.asyncio
     async def test_retrieve_merges_settings(self):
-        """Test that retrieve merges stored and request settings."""
-        rag_module = get_rag_module()
-        mock_app = create_mock_app()
-        mock_kb = create_mock_kb_entity()
-        mock_kb.retrieval_settings = {'top_k': 10, 'model': 'default'}
+        app = _app()
+        entity = _entity()
+        entity.retrieval_settings = {'top_k': 10, 'model': 'default'}
+        app.plugin_connector.call_rag_retrieve.return_value = {
+            'results': [
+                {
+                    'id': 'doc1',
+                    'content': [{'type': 'text', 'text': 'test content'}],
+                    'metadata': {},
+                    'distance': 0.1,
+                }
+            ]
+        }
 
-        # Mock plugin connector response with valid RetrievalResultEntry fields
-        # content must be list of ContentElement dicts
-        mock_app.plugin_connector.call_rag_retrieve = AsyncMock(
-            return_value={
-                'results': [
-                    {
-                        'id': 'doc1',
-                        'content': [{'type': 'text', 'text': 'test content'}],
-                        'metadata': {},
-                        'distance': 0.1,
-                    }
-                ]
-            }
+        results = await RuntimeKnowledgeBase(app, entity, CONTEXT_A).retrieve(
+            CONTEXT_A,
+            'query text',
+            settings={'top_k': 20},
         )
 
-        runtime_kb = rag_module.RuntimeKnowledgeBase(mock_app, mock_kb)
-
-        # Override top_k in request
-        results = await runtime_kb.retrieve('query text', settings={'top_k': 20})
-
         assert len(results) == 1
-        # Check that merged settings were passed (top_k overridden)
-        call_args = mock_app.plugin_connector.call_rag_retrieve.call_args
-        assert call_args[0][1]['retrieval_settings']['top_k'] == 20
+        payload = app.plugin_connector.call_rag_retrieve.await_args.args[1]
+        assert payload['retrieval_settings'] == {'top_k': 20, 'model': 'default'}
 
     @pytest.mark.asyncio
     async def test_retrieve_adds_default_top_k(self):
-        """Test that default top_k=5 is added when not specified."""
-        rag_module = get_rag_module()
-        mock_app = create_mock_app()
-        mock_kb = create_mock_kb_entity()
-        mock_kb.retrieval_settings = {}
+        app = _app()
 
-        mock_app.plugin_connector.call_rag_retrieve = AsyncMock(return_value={'results': []})
+        await RuntimeKnowledgeBase(app, _entity(), CONTEXT_A).retrieve(
+            CONTEXT_A,
+            'query text',
+        )
 
-        runtime_kb = rag_module.RuntimeKnowledgeBase(mock_app, mock_kb)
-
-        await runtime_kb.retrieve('query text')
-
-        call_args = mock_app.plugin_connector.call_rag_retrieve.call_args
-        assert call_args[0][1]['retrieval_settings']['top_k'] == 5
+        payload = app.plugin_connector.call_rag_retrieve.await_args.args[1]
+        assert payload['retrieval_settings']['top_k'] == 5
 
     @pytest.mark.asyncio
     async def test_retrieve_converts_dict_to_entry(self):
-        """Test that dict results are converted to RetrievalResultEntry."""
-        rag_module = get_rag_module()
-        mock_app = create_mock_app()
-        mock_kb = create_mock_kb_entity()
+        app = _app()
+        app.plugin_connector.call_rag_retrieve.return_value = {
+            'results': [
+                {
+                    'id': 'doc1',
+                    'content': [{'type': 'text', 'text': 'test content'}],
+                    'metadata': {'source': 'file.pdf'},
+                    'distance': 0.15,
+                }
+            ]
+        }
 
-        # Mock response with valid RetrievalResultEntry fields
-        # content must be list of ContentElement dicts
-        mock_app.plugin_connector.call_rag_retrieve = AsyncMock(
-            return_value={
-                'results': [
-                    {
-                        'id': 'doc1',
-                        'content': [{'type': 'text', 'text': 'test content'}],
-                        'metadata': {'source': 'file.pdf'},
-                        'distance': 0.15,
-                    }
-                ]
-            }
+        results = await RuntimeKnowledgeBase(app, _entity(), CONTEXT_A).retrieve(
+            CONTEXT_A,
+            'query',
         )
 
-        runtime_kb = rag_module.RuntimeKnowledgeBase(mock_app, mock_kb)
-
-        results = await runtime_kb.retrieve('query')
-
         assert len(results) == 1
-        # Result should be RetrievalResultEntry
-        assert hasattr(results[0], 'content')
         assert results[0].id == 'doc1'
+        assert hasattr(results[0], 'content')
 
 
 class TestRuntimeKnowledgeBaseDispose:
-    """Tests for RuntimeKnowledgeBase dispose method."""
-
     @pytest.mark.asyncio
     async def test_dispose_calls_on_kb_delete(self):
-        """Test that dispose calls _on_kb_delete."""
-        rag_module = get_rag_module()
-        mock_app = create_mock_app()
-        mock_kb = create_mock_kb_entity()
+        app = _app()
 
-        mock_app.plugin_connector.rag_on_kb_delete = AsyncMock()
+        await RuntimeKnowledgeBase(app, _entity(), CONTEXT_A).dispose(CONTEXT_A)
 
-        runtime_kb = rag_module.RuntimeKnowledgeBase(mock_app, mock_kb)
-
-        await runtime_kb.dispose()
-
-        mock_app.plugin_connector.rag_on_kb_delete.assert_called_once()
+        app.plugin_connector.rag_on_kb_delete.assert_awaited_once_with(
+            'author/engine',
+            'kb-a',
+        )
 
     @pytest.mark.asyncio
     async def test_dispose_skips_when_no_plugin_id(self):
-        """Test that dispose skips when no plugin ID."""
-        rag_module = get_rag_module()
-        mock_app = create_mock_app()
-        mock_kb = create_mock_kb_entity()
-        mock_kb.knowledge_engine_plugin_id = None
+        app = _app()
 
-        runtime_kb = rag_module.RuntimeKnowledgeBase(mock_app, mock_kb)
+        await RuntimeKnowledgeBase(
+            app,
+            _entity(plugin_id=None),
+            CONTEXT_A,
+        ).dispose(CONTEXT_A)
 
-        await runtime_kb.dispose()
-
-        # Should not call plugin connector
-        mock_app.plugin_connector.rag_on_kb_delete.assert_not_called()
+        app.plugin_connector.rag_on_kb_delete.assert_not_awaited()
 
 
 class TestRAGManagerInit:
-    """Tests for RAGManager initialization."""
-
     def test_init_stores_app_reference(self):
-        """Test that __init__ stores Application reference."""
-        rag_module = get_rag_module()
-        mock_app = create_mock_app()
+        app = _app()
 
-        manager = rag_module.RAGManager(mock_app)
-
-        assert manager.ap is mock_app
+        assert RAGManager(app).ap is app
 
     def test_init_creates_empty_knowledge_bases_dict(self):
-        """Test that knowledge_bases starts as empty dict."""
-        rag_module = get_rag_module()
-        mock_app = create_mock_app()
-
-        manager = rag_module.RAGManager(mock_app)
-
-        assert manager.knowledge_bases == {}
+        assert RAGManager(_app()).knowledge_bases == {}
 
 
 class TestRAGManagerGetKnowledgeBase:
-    """Tests for RAGManager get methods."""
-
     @pytest.mark.asyncio
     async def test_get_knowledge_base_by_uuid_returns_runtime_kb(self):
-        """Test get_knowledge_base_by_uuid returns loaded KB."""
-        rag_module = get_rag_module()
-        mock_app = create_mock_app()
+        app = _app()
+        manager = RAGManager(app)
+        runtime = RuntimeKnowledgeBase(app, _entity(), CONTEXT_A)
+        manager.knowledge_bases[('workspace-a', 'kb-a')] = runtime
 
-        manager = rag_module.RAGManager(mock_app)
-        mock_kb = create_mock_kb_entity()
+        result = await manager.get_knowledge_base_by_uuid(CONTEXT_A, 'kb-a')
 
-        # Manually add to knowledge_bases
-        runtime_kb = rag_module.RuntimeKnowledgeBase(mock_app, mock_kb)
-        manager.knowledge_bases[mock_kb.uuid] = runtime_kb
-
-        result = await manager.get_knowledge_base_by_uuid(mock_kb.uuid)
-
-        assert result is runtime_kb
+        assert result is runtime
 
     @pytest.mark.asyncio
     async def test_get_knowledge_base_by_uuid_returns_none_when_not_found(self):
-        """Test returns None when KB not in runtime."""
-        rag_module = get_rag_module()
-        mock_app = create_mock_app()
-
-        manager = rag_module.RAGManager(mock_app)
-
-        result = await manager.get_knowledge_base_by_uuid('nonexistent-uuid')
-
-        assert result is None
+        assert (
+            await RAGManager(_app()).get_knowledge_base_by_uuid(
+                CONTEXT_A,
+                'nonexistent-uuid',
+            )
+            is None
+        )
 
     @pytest.mark.asyncio
     async def test_remove_knowledge_base_from_runtime(self):
-        """Test remove_knowledge_base_from_runtime removes KB."""
-        rag_module = get_rag_module()
-        mock_app = create_mock_app()
+        app = _app()
+        manager = RAGManager(app)
+        manager.knowledge_bases[('workspace-a', 'kb-a')] = RuntimeKnowledgeBase(
+            app,
+            _entity(),
+            CONTEXT_A,
+        )
 
-        manager = rag_module.RAGManager(mock_app)
-        mock_kb = create_mock_kb_entity()
+        await manager.remove_knowledge_base_from_runtime(CONTEXT_A, 'kb-a')
 
-        # Add to knowledge_bases
-        runtime_kb = rag_module.RuntimeKnowledgeBase(mock_app, mock_kb)
-        manager.knowledge_bases[mock_kb.uuid] = runtime_kb
-
-        await manager.remove_knowledge_base_from_runtime(mock_kb.uuid)
-
-        assert mock_kb.uuid not in manager.knowledge_bases
+        assert ('workspace-a', 'kb-a') not in manager.knowledge_bases
 
 
 class TestRAGManagerEnrichKB:
-    """Tests for _enrich_kb_dict method."""
-
     def test_enrich_adds_engine_info_from_map(self):
-        """Test that engine info is added from engine_map."""
-        rag_module = get_rag_module()
-        mock_app = create_mock_app()
-
-        manager = rag_module.RAGManager(mock_app)
-
         kb_dict = {'knowledge_engine_plugin_id': 'author/engine'}
         engine_map = {
             'author/engine': {
@@ -564,208 +692,133 @@ class TestRAGManagerEnrichKB:
             }
         }
 
-        manager._enrich_kb_dict(kb_dict, engine_map)
+        RAGManager(_app())._enrich_kb_dict(kb_dict, engine_map)
 
-        assert 'knowledge_engine' in kb_dict
         assert kb_dict['knowledge_engine']['plugin_id'] == 'author/engine'
         assert kb_dict['knowledge_engine']['capabilities'] == ['doc_ingestion', 'search']
 
     def test_enrich_uses_fallback_when_engine_not_in_map(self):
-        """Test that fallback info is used when engine not found."""
-        rag_module = get_rag_module()
-        mock_app = create_mock_app()
-
-        manager = rag_module.RAGManager(mock_app)
-
         kb_dict = {'knowledge_engine_plugin_id': 'unknown/engine'}
-        engine_map = {}
 
-        manager._enrich_kb_dict(kb_dict, engine_map)
+        RAGManager(_app())._enrich_kb_dict(kb_dict, {})
 
-        assert 'knowledge_engine' in kb_dict
         assert kb_dict['knowledge_engine']['plugin_id'] == 'unknown/engine'
         assert kb_dict['knowledge_engine']['capabilities'] == []
 
     def test_enrich_uses_fallback_when_no_plugin_id(self):
-        """Test that fallback is used when no plugin ID."""
-        rag_module = get_rag_module()
-        mock_app = create_mock_app()
-
-        manager = rag_module.RAGManager(mock_app)
-
         kb_dict = {}
-        engine_map = {}
 
-        manager._enrich_kb_dict(kb_dict, engine_map)
+        RAGManager(_app())._enrich_kb_dict(kb_dict, {})
 
-        assert 'knowledge_engine' in kb_dict
-        # Should have Internal (Legacy) name
+        assert kb_dict['knowledge_engine']['plugin_id'] is None
         assert 'en_US' in kb_dict['knowledge_engine']['name']
 
     def test_enrich_converts_string_name_to_i18n(self):
-        """Test that engine name is converted to i18n dict."""
-        rag_module = get_rag_module()
-        mock_app = create_mock_app()
-
-        manager = rag_module.RAGManager(mock_app)
-
         kb_dict = {'knowledge_engine_plugin_id': 'author/engine'}
         engine_map = {
             'author/engine': {
                 'plugin_id': 'author/engine',
-                'name': 'Simple Name',  # String, not dict
+                'name': 'Simple Name',
                 'capabilities': [],
             }
         }
 
-        manager._enrich_kb_dict(kb_dict, engine_map)
+        RAGManager(_app())._enrich_kb_dict(kb_dict, engine_map)
 
-        # Name should be converted to i18n dict
-        engine_name = kb_dict['knowledge_engine']['name']
-        assert isinstance(engine_name, dict)
-        assert engine_name['en_US'] == 'Simple Name'
+        assert kb_dict['knowledge_engine']['name'] == {
+            'en_US': 'Simple Name',
+            'zh_Hans': 'Simple Name',
+        }
 
 
 class TestRAGManagerDeleteKnowledgeBase:
-    """Tests for delete_knowledge_base method."""
-
     @pytest.mark.asyncio
     async def test_delete_removes_from_runtime_and_disposes(self):
-        """Test that delete removes KB and calls dispose."""
-        rag_module = get_rag_module()
-        mock_app = create_mock_app()
+        app = _app()
+        manager = RAGManager(app)
+        manager.knowledge_bases[('workspace-a', 'kb-a')] = RuntimeKnowledgeBase(
+            app,
+            _entity(),
+            CONTEXT_A,
+        )
 
-        manager = rag_module.RAGManager(mock_app)
-        mock_kb = create_mock_kb_entity()
+        await manager.delete_knowledge_base(CONTEXT_A, 'kb-a')
 
-        # Add to knowledge_bases
-        runtime_kb = rag_module.RuntimeKnowledgeBase(mock_app, mock_kb)
-        manager.knowledge_bases[mock_kb.uuid] = runtime_kb
-
-        await manager.delete_knowledge_base(mock_kb.uuid)
-
-        assert mock_kb.uuid not in manager.knowledge_bases
+        assert ('workspace-a', 'kb-a') not in manager.knowledge_bases
+        app.plugin_connector.rag_on_kb_delete.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_delete_logs_warning_when_not_in_runtime(self):
-        """Test that warning is logged when KB not in runtime."""
-        rag_module = get_rag_module()
-        mock_app = create_mock_app()
+        app = _app()
 
-        manager = rag_module.RAGManager(mock_app)
+        await RAGManager(app).delete_knowledge_base(CONTEXT_A, 'nonexistent-uuid')
 
-        await manager.delete_knowledge_base('nonexistent-uuid')
-
-        mock_app.logger.warning.assert_called_once()
+        app.logger.warning.assert_called_once()
 
 
 class TestRAGManagerGetAllDetails:
-    """Tests for get_all_knowledge_base_details method."""
-
     @pytest.mark.asyncio
     async def test_returns_empty_list_when_no_kbs(self):
-        """Test returns empty list when no knowledge bases."""
-        rag_module = get_rag_module()
-        mock_app = create_mock_app()
-        mock_app.persistence_mgr.execute_async = AsyncMock(return_value=Mock(all=Mock(return_value=[])))
-
-        manager = rag_module.RAGManager(mock_app)
-        result = await manager.get_all_knowledge_base_details()
-
-        assert result == []
+        assert await RAGManager(_app()).get_all_knowledge_base_details(CONTEXT_A) == []
 
     @pytest.mark.asyncio
     async def test_enriches_each_kb_with_engine_info(self):
-        """Test that each KB is enriched with engine info."""
-        rag_module = get_rag_module()
-        mock_app = create_mock_app()
+        app = _app()
+        app.persistence_mgr.execute_async.return_value = _Result([_entity()])
 
-        # Mock DB result
-        mock_kb_row = Mock()
-        mock_app.persistence_mgr.execute_async = AsyncMock(return_value=Mock(all=Mock(return_value=[mock_kb_row])))
-        mock_app.persistence_mgr.serialize_model = Mock(
-            return_value={'uuid': 'kb1', 'knowledge_engine_plugin_id': 'author/engine'}
-        )
-        mock_app.plugin_connector.list_knowledge_engines = AsyncMock(
-            return_value=[{'plugin_id': 'author/engine', 'name': 'Engine', 'capabilities': ['search']}]
-        )
-
-        manager = rag_module.RAGManager(mock_app)
-        result = await manager.get_all_knowledge_base_details()
+        result = await RAGManager(app).get_all_knowledge_base_details(CONTEXT_A)
 
         assert len(result) == 1
-        assert 'knowledge_engine' in result[0]
+        assert result[0]['knowledge_engine']['plugin_id'] == 'author/engine'
 
 
 class TestRAGManagerGetDetails:
-    """Tests for get_knowledge_base_details method."""
-
     @pytest.mark.asyncio
     async def test_returns_none_when_kb_not_found(self):
-        """Test returns None when KB doesn't exist."""
-        rag_module = get_rag_module()
-        mock_app = create_mock_app()
-        mock_app.persistence_mgr.execute_async = AsyncMock(return_value=Mock(first=Mock(return_value=None)))
-
-        manager = rag_module.RAGManager(mock_app)
-        result = await manager.get_knowledge_base_details('nonexistent')
-
-        assert result is None
+        assert (
+            await RAGManager(_app()).get_knowledge_base_details(
+                CONTEXT_A,
+                'nonexistent',
+            )
+            is None
+        )
 
     @pytest.mark.asyncio
     async def test_returns_enriched_kb_dict(self):
-        """Test returns enriched KB dict when found."""
-        rag_module = get_rag_module()
-        mock_app = create_mock_app()
+        app = _app()
+        app.persistence_mgr.execute_async.return_value = _Result(first=_entity())
 
-        mock_kb_row = Mock()
-        mock_app.persistence_mgr.execute_async = AsyncMock(return_value=Mock(first=Mock(return_value=mock_kb_row)))
-        mock_app.persistence_mgr.serialize_model = Mock(
-            return_value={'uuid': 'kb1', 'knowledge_engine_plugin_id': 'author/engine'}
-        )
-        mock_app.plugin_connector.list_knowledge_engines = AsyncMock(
-            return_value=[{'plugin_id': 'author/engine', 'name': 'Engine', 'capabilities': []}]
-        )
-
-        manager = rag_module.RAGManager(mock_app)
-        result = await manager.get_knowledge_base_details('kb1')
+        result = await RAGManager(app).get_knowledge_base_details(CONTEXT_A, 'kb-a')
 
         assert result is not None
-        assert 'knowledge_engine' in result
+        assert result['knowledge_engine']['plugin_id'] == 'author/engine'
 
 
 class TestRAGManagerLoadKnowledgeBase:
-    """Tests for load_knowledge_base method."""
-
     @pytest.mark.asyncio
     async def test_loads_kb_entity_into_runtime(self):
-        """Test that KB entity is loaded into runtime."""
-        rag_module = get_rag_module()
-        mock_app = create_mock_app()
+        manager = RAGManager(_app())
 
-        manager = rag_module.RAGManager(mock_app)
-        mock_kb = create_mock_kb_entity()
+        result = await manager.load_knowledge_base(CONTEXT_A, _entity())
 
-        result = await manager.load_knowledge_base(mock_kb)
-
-        assert mock_kb.uuid in manager.knowledge_bases
-        assert result.get_uuid() == mock_kb.uuid
+        assert ('workspace-a', 'kb-a') in manager.knowledge_bases
+        assert result.get_uuid() == 'kb-a'
 
     @pytest.mark.asyncio
     async def test_load_handles_dict_entity(self):
-        """Test that dict entity is converted to KB object."""
-        rag_module = get_rag_module()
-        mock_app = create_mock_app()
-
-        manager = rag_module.RAGManager(mock_app)
-
+        manager = RAGManager(_app())
         kb_dict = {
             'uuid': 'kb-uuid',
+            'workspace_uuid': 'workspace-a',
             'name': 'Test',
+            'description': '',
             'knowledge_engine_plugin_id': 'author/engine',
-            'knowledge_engine': {'name': 'should_be_filtered'},  # non-db field
+            'collection_id': 'kb-uuid',
+            'creation_settings': {},
+            'retrieval_settings': {},
+            'knowledge_engine': {'name': 'should_be_filtered'},
         }
 
-        await manager.load_knowledge_base(kb_dict)
+        await manager.load_knowledge_base(CONTEXT_A, kb_dict)
 
-        assert 'kb-uuid' in manager.knowledge_bases
+        assert ('workspace-a', 'kb-uuid') in manager.knowledge_bases

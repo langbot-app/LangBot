@@ -6,7 +6,7 @@ import os
 import shutil
 import shlex
 import threading
-from contextlib import suppress, AsyncExitStack
+from contextlib import suppress, AsyncExitStack, asynccontextmanager
 from typing import TYPE_CHECKING, Any
 
 import pydantic
@@ -94,6 +94,60 @@ class MCPServerBoxConfig(pydantic.BaseModel):
 _HANDSHAKE_ATTEMPT_TIMEOUT_SEC = 10.0
 
 
+@asynccontextmanager
+async def authenticated_websocket_client(url: str, headers: dict[str, str]):
+    """MCP WebSocket transport with host-only Box relay headers.
+
+    The upstream MCP helper does not expose WebSocket handshake headers. This
+    mirrors that transport while keeping the Box control token out of the URL,
+    JSON-RPC payloads, and logs.
+    """
+
+    import json
+
+    import anyio
+    import mcp.types as mcp_types
+    from mcp.shared.message import SessionMessage
+    from pydantic import ValidationError
+    from websockets.asyncio.client import connect as ws_connect
+    from websockets.typing import Subprotocol
+
+    read_stream_writer, read_stream = anyio.create_memory_object_stream(0)
+    write_stream, write_stream_reader = anyio.create_memory_object_stream(0)
+
+    async with ws_connect(
+        url,
+        subprotocols=[Subprotocol('mcp')],
+        additional_headers=dict(headers),
+        proxy=None,
+    ) as websocket:
+
+        async def ws_reader():
+            async with read_stream_writer:
+                async for raw_text in websocket:
+                    try:
+                        message = mcp_types.JSONRPCMessage.model_validate_json(raw_text)
+                        await read_stream_writer.send(SessionMessage(message))
+                    except ValidationError as exc:  # pragma: no cover - upstream parity
+                        await read_stream_writer.send(exc)
+
+        async def ws_writer():
+            async with write_stream_reader:
+                async for session_message in write_stream_reader:
+                    payload = session_message.message.model_dump(
+                        by_alias=True,
+                        mode='json',
+                        exclude_none=True,
+                    )
+                    await websocket.send(json.dumps(payload))
+
+        async with anyio.create_task_group() as task_group:
+            task_group.start_soon(ws_reader)
+            task_group.start_soon(ws_writer)
+            yield read_stream, write_stream
+            task_group.cancel_scope.cancel()
+
+
 class _TransferredStack:
     """Adapts an already-populated AsyncExitStack into an async context manager
     so ownership of its resources can be transferred into another exit stack.
@@ -149,6 +203,7 @@ class BoxStdioSessionRuntime:
         resolved_host_path = self.resolve_host_path() if host_path is ... else host_path
         return BoxWorkspaceSession(
             self.ap.box_service,
+            self.owner.execution_context,
             self.owner._build_box_session_id(),
             host_path=resolved_host_path,
             host_path_mode=self.config.host_path_mode,
@@ -250,7 +305,11 @@ class BoxStdioSessionRuntime:
                 if install_cmd:
                     payload = self._wrap_process_payload_with_python_env(payload, process_cwd)
                 payload['process_id'] = self.process_id
-                await workspace.box_service.start_managed_process(workspace.session_id, payload)
+                await workspace.box_service.start_managed_process(
+                    workspace.execution_context,
+                    workspace.session_id,
+                    payload,
+                )
             except Exception:
                 self.owner.error_phase = MCPSessionErrorPhase.PROCESS_START
                 raise
@@ -260,7 +319,10 @@ class BoxStdioSessionRuntime:
                 f'process_id={self.process_id} (transport reconnect)'
             )
 
-        websocket_url = workspace.get_managed_process_websocket_url(self.process_id)
+        (
+            websocket_url,
+            websocket_headers,
+        ) = await workspace.get_managed_process_websocket_connection(self.process_id)
 
         # Attach the WS transport + MCP session ONCE, on the owner's exit stack,
         # in the same task as the serve loop that follows. websocket_client and
@@ -278,7 +340,12 @@ class BoxStdioSessionRuntime:
         # attempt re-attaches to the same live process; once it has finished
         # cold start the handshake succeeds and stays healthy.
         try:
-            transport = await self.owner.exit_stack.enter_async_context(websocket_client(websocket_url))
+            transport_context = (
+                authenticated_websocket_client(websocket_url, websocket_headers)
+                if websocket_headers
+                else websocket_client(websocket_url)
+            )
+            transport = await self.owner.exit_stack.enter_async_context(transport_context)
             read_stream, write_stream = transport
             self.owner.session = await self.owner.exit_stack.enter_async_context(
                 ClientSession(read_stream, write_stream)

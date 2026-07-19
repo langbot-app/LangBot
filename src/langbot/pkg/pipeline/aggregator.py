@@ -1,10 +1,4 @@
-"""Message Aggregator Module
-
-This module provides message aggregation/debounce functionality.
-When users send multiple messages consecutively, the aggregator will wait
-for a configurable delay period and merge them into a single message
-before processing.
-"""
+"""Workspace-scoped message aggregation and debounce support."""
 
 from __future__ import annotations
 
@@ -13,96 +7,114 @@ import time
 import typing
 from dataclasses import dataclass, field
 
-import langbot_plugin.api.entities.builtin.platform.message as platform_message
-import langbot_plugin.api.entities.builtin.platform.events as platform_events
-import langbot_plugin.api.entities.builtin.provider.session as provider_session
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
+import langbot_plugin.api.entities.builtin.platform.events as platform_events
+import langbot_plugin.api.entities.builtin.platform.message as platform_message
+import langbot_plugin.api.entities.builtin.provider.session as provider_session
+
+from ..api.http.context import ExecutionContext
+from .pool import ExecutionContextMismatchError
+from ..workspace.errors import WorkspaceError, WorkspaceInvariantError
 
 if typing.TYPE_CHECKING:
     from ..core import app
 
-# Maximum number of messages to buffer before forcing a flush
 MAX_BUFFER_MESSAGES = 10
+
+AggregationKey = tuple[
+    str,
+    str,
+    int,
+    str,
+    str | None,
+    str,
+    int | str,
+]
 
 
 @dataclass
 class PendingMessage:
-    """A pending message waiting to be aggregated"""
+    """A pending message carrying its trusted execution scope."""
 
+    execution_context: ExecutionContext
     bot_uuid: str
     launcher_type: provider_session.LauncherTypes
-    launcher_id: typing.Union[int, str]
-    sender_id: typing.Union[int, str]
+    launcher_id: int | str
+    sender_id: int | str
     message_event: platform_events.MessageEvent
     message_chain: platform_message.MessageChain
     adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter
-    pipeline_uuid: typing.Optional[str]
+    pipeline_uuid: str | None
     routed_by_rule: bool = False
     timestamp: float = field(default_factory=time.time)
 
 
 @dataclass
 class SessionBuffer:
-    """Buffer for a single session's pending messages"""
+    """Pending messages for one scoped aggregation key."""
 
-    session_id: str
+    aggregation_key: AggregationKey
+    execution_context: ExecutionContext
     messages: list[PendingMessage] = field(default_factory=list)
-    timer_task: typing.Optional[asyncio.Task] = None
+    timer_task: asyncio.Task | None = None
     last_message_time: float = field(default_factory=time.time)
 
 
 class MessageAggregator:
-    """Message aggregator that buffers and merges consecutive messages
-
-    This class implements a debounce mechanism for incoming messages.
-    When a message arrives, it starts a timer. If more messages arrive
-    before the timer expires, they are buffered. When the timer expires,
-    all buffered messages are merged and sent to the query pool.
-    """
+    """Debounce consecutive messages without crossing Workspace boundaries."""
 
     ap: app.Application
-
-    buffers: dict[str, SessionBuffer]
-    """Session ID -> SessionBuffer mapping"""
-
+    buffers: dict[AggregationKey, SessionBuffer]
     lock: asyncio.Lock
-    """Lock for thread-safe buffer operations"""
 
     def __init__(self, ap: app.Application):
         self.ap = ap
         self.buffers = {}
         self.lock = asyncio.Lock()
 
-    def _get_session_id(
+    def _get_aggregation_key(
         self,
+        execution_context: ExecutionContext,
         bot_uuid: str,
         launcher_type: provider_session.LauncherTypes,
-        launcher_id: typing.Union[int, str],
-    ) -> str:
-        """Generate a unique session ID"""
-        return f'{bot_uuid}:{launcher_type.value}:{launcher_id}'
+        launcher_id: int | str,
+        pipeline_uuid: str | None,
+    ) -> AggregationKey:
+        """Build a key that cannot alias another Workspace, bot, or pipeline."""
 
-    async def _get_aggregation_config(self, pipeline_uuid: typing.Optional[str]) -> tuple[bool, float]:
-        """Get aggregation configuration for a pipeline
+        return (
+            execution_context.instance_uuid,
+            execution_context.workspace_uuid,
+            execution_context.placement_generation,
+            bot_uuid,
+            pipeline_uuid,
+            launcher_type.value,
+            launcher_id,
+        )
 
-        Returns:
-            tuple: (enabled, delay_seconds)
-        """
+    async def _get_aggregation_config(
+        self,
+        execution_context: ExecutionContext,
+        pipeline_uuid: str | None,
+    ) -> tuple[bool, float]:
+        """Return aggregation enablement and a clamped debounce delay."""
+
         default_enabled = False
         default_delay = 1.5
 
         if pipeline_uuid is None:
             return default_enabled, default_delay
 
-        # Get pipeline from pipeline manager
-        pipeline = await self.ap.pipeline_mgr.get_pipeline_by_uuid(pipeline_uuid)
+        pipeline = await self.ap.pipeline_mgr.get_pipeline_by_uuid(
+            execution_context,
+            pipeline_uuid,
+        )
         if pipeline is None:
             return default_enabled, default_delay
 
         config = pipeline.pipeline_entity.config or {}
         trigger_config = config.get('trigger', {})
         aggregation_config = trigger_config.get('message-aggregation', {})
-
         enabled = aggregation_config.get('enabled', default_enabled)
 
         delay_raw = aggregation_config.get('delay', default_delay)
@@ -111,33 +123,31 @@ class MessageAggregator:
         except (TypeError, ValueError):
             delay = default_delay
 
-        # Clamp delay to valid range
-        delay = max(1.0, min(10.0, delay))
-
-        return enabled, delay
+        return enabled, max(1.0, min(10.0, delay))
 
     async def add_message(
         self,
         bot_uuid: str,
         launcher_type: provider_session.LauncherTypes,
-        launcher_id: typing.Union[int, str],
-        sender_id: typing.Union[int, str],
+        launcher_id: int | str,
+        sender_id: int | str,
         message_event: platform_events.MessageEvent,
         message_chain: platform_message.MessageChain,
         adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
-        pipeline_uuid: typing.Optional[str] = None,
+        pipeline_uuid: str | None = None,
         routed_by_rule: bool = False,
+        execution_context: ExecutionContext | None = None,
     ) -> None:
-        """Add a message to the aggregation buffer
+        """Buffer or directly enqueue a message in its trusted Workspace."""
 
-        If aggregation is disabled for the pipeline, the message is sent
-        directly to the query pool. Otherwise, it's buffered and will be
-        merged with other messages from the same session.
-        """
-        enabled, delay = await self._get_aggregation_config(pipeline_uuid)
+        execution_context = await self.ap.query_pool.resolve_execution_context(
+            execution_context,
+            bot_uuid=bot_uuid,
+            pipeline_uuid=pipeline_uuid,
+        )
+        enabled, delay = await self._get_aggregation_config(execution_context, pipeline_uuid)
 
         if not enabled:
-            # Aggregation disabled, send directly to query pool
             await self.ap.query_pool.add_query(
                 bot_uuid=bot_uuid,
                 launcher_type=launcher_type,
@@ -148,12 +158,19 @@ class MessageAggregator:
                 adapter=adapter,
                 pipeline_uuid=pipeline_uuid,
                 routed_by_rule=routed_by_rule,
+                execution_context=execution_context,
             )
             return
 
-        session_id = self._get_session_id(bot_uuid, launcher_type, launcher_id)
-
+        aggregation_key = self._get_aggregation_key(
+            execution_context,
+            bot_uuid,
+            launcher_type,
+            launcher_id,
+            pipeline_uuid,
+        )
         pending_msg = PendingMessage(
+            execution_context=execution_context,
             bot_uuid=bot_uuid,
             launcher_type=launcher_type,
             launcher_id=launcher_id,
@@ -167,106 +184,122 @@ class MessageAggregator:
 
         force_flush = False
         async with self.lock:
-            if session_id in self.buffers:
-                buffer = self.buffers[session_id]
-                # Cancel existing timer (just cancel, don't await inside lock)
+            buffer = self.buffers.get(aggregation_key)
+            if buffer is None:
+                buffer = SessionBuffer(
+                    aggregation_key=aggregation_key,
+                    execution_context=execution_context,
+                    messages=[pending_msg],
+                )
+                self.buffers[aggregation_key] = buffer
+            else:
+                if buffer.execution_context != execution_context:
+                    raise ExecutionContextMismatchError('Aggregation buffer ExecutionContext changed for the same key')
                 if buffer.timer_task and not buffer.timer_task.done():
                     buffer.timer_task.cancel()
                 buffer.messages.append(pending_msg)
-            else:
-                buffer = SessionBuffer(
-                    session_id=session_id,
-                    messages=[pending_msg],
-                )
-                self.buffers[session_id] = buffer
 
             buffer.last_message_time = time.time()
-
-            # Check if buffer reached max capacity
             if len(buffer.messages) >= MAX_BUFFER_MESSAGES:
                 force_flush = True
             else:
-                # Start new timer
-                buffer.timer_task = asyncio.create_task(self._delayed_flush(session_id, delay))
+                buffer.timer_task = asyncio.create_task(self._delayed_flush(aggregation_key, delay, execution_context))
 
         if force_flush:
-            await self._flush_buffer(session_id)
+            await self._flush_buffer(aggregation_key, execution_context)
 
-    async def _delayed_flush(self, session_id: str, delay: float) -> None:
-        """Wait for delay then flush the buffer"""
+    async def _delayed_flush(
+        self,
+        aggregation_key: AggregationKey,
+        delay: float,
+        execution_context: ExecutionContext,
+    ) -> None:
+        """Flush after the debounce delay using the captured context."""
+
         try:
             await asyncio.sleep(delay)
-            await self._flush_buffer(session_id)
+            await self._flush_buffer(aggregation_key, execution_context)
         except asyncio.CancelledError:
-            # Timer was cancelled, new message arrived
             pass
-
-    async def _flush_buffer(self, session_id: str) -> None:
-        """Flush the buffer for a session, merging all messages"""
-        async with self.lock:
-            buffer = self.buffers.pop(session_id, None)
-
-        if buffer is None or not buffer.messages:
-            return
-
-        if len(buffer.messages) == 1:
-            # Only one message, no need to merge
-            msg = buffer.messages[0]
-            await self.ap.query_pool.add_query(
-                bot_uuid=msg.bot_uuid,
-                launcher_type=msg.launcher_type,
-                launcher_id=msg.launcher_id,
-                sender_id=msg.sender_id,
-                message_event=msg.message_event,
-                message_chain=msg.message_chain,
-                adapter=msg.adapter,
-                pipeline_uuid=msg.pipeline_uuid,
-                routed_by_rule=msg.routed_by_rule,
+        except WorkspaceError as exc:
+            self.ap.logger.info(
+                f'Dropped an aggregated message because its Workspace execution binding is stale: {exc}'
             )
+
+    async def _flush_buffer(
+        self,
+        aggregation_key: AggregationKey,
+        execution_context: ExecutionContext,
+    ) -> None:
+        """Flush one buffer only when the captured scope still matches."""
+
+        async with self.lock:
+            buffer = self.buffers.get(aggregation_key)
+            if buffer is None:
+                return
+            if buffer.execution_context != execution_context:
+                raise ExecutionContextMismatchError('Timer ExecutionContext does not match the aggregation buffer')
+            self.buffers.pop(aggregation_key)
+
+        if not buffer.messages:
             return
 
-        # Merge multiple messages
-        merged_msg = self._merge_messages(buffer.messages)
+        message = buffer.messages[0] if len(buffer.messages) == 1 else self._merge_messages(buffer.messages)
+        binding = await self.ap.workspace_service.get_execution_binding(
+            execution_context.workspace_uuid,
+            expected_generation=execution_context.placement_generation,
+        )
+        if binding.instance_uuid != execution_context.instance_uuid:
+            raise WorkspaceInvariantError('Aggregation buffer instance does not match the active Workspace binding')
         await self.ap.query_pool.add_query(
-            bot_uuid=merged_msg.bot_uuid,
-            launcher_type=merged_msg.launcher_type,
-            launcher_id=merged_msg.launcher_id,
-            sender_id=merged_msg.sender_id,
-            message_event=merged_msg.message_event,
-            message_chain=merged_msg.message_chain,
-            adapter=merged_msg.adapter,
-            pipeline_uuid=merged_msg.pipeline_uuid,
-            routed_by_rule=merged_msg.routed_by_rule,
+            bot_uuid=message.bot_uuid,
+            launcher_type=message.launcher_type,
+            launcher_id=message.launcher_id,
+            sender_id=message.sender_id,
+            message_event=message.message_event,
+            message_chain=message.message_chain,
+            adapter=message.adapter,
+            pipeline_uuid=message.pipeline_uuid,
+            routed_by_rule=message.routed_by_rule,
+            execution_context=message.execution_context,
         )
 
     def _merge_messages(self, messages: list[PendingMessage]) -> PendingMessage:
-        """Merge multiple messages into one
+        """Merge message chains after proving all messages share one scope."""
 
-        The merged message uses the first message as base and combines
-        all message chains with newline separators.
-        The original message_event is kept unmodified to preserve
-        message metadata (message_id, etc.) for reply/quote.
-        """
+        if not messages:
+            raise ValueError('At least one pending message is required')
         if len(messages) == 1:
             return messages[0]
 
         base_msg = messages[0]
+        base_key = self._get_aggregation_key(
+            base_msg.execution_context,
+            base_msg.bot_uuid,
+            base_msg.launcher_type,
+            base_msg.launcher_id,
+            base_msg.pipeline_uuid,
+        )
+        for message in messages[1:]:
+            message_key = self._get_aggregation_key(
+                message.execution_context,
+                message.bot_uuid,
+                message.launcher_type,
+                message.launcher_id,
+                message.pipeline_uuid,
+            )
+            if message_key != base_key or message.execution_context != base_msg.execution_context:
+                raise ExecutionContextMismatchError('Cannot merge pending messages from different execution scopes')
 
-        # Build merged message chain
         merged_chain = platform_message.MessageChain([])
-
-        for i, msg in enumerate(messages):
-            if i > 0:
-                # Add newline separator between messages
+        for index, message in enumerate(messages):
+            if index > 0:
                 merged_chain.append(platform_message.Plain(text='\n'))
-
-            # Copy all components from this message
-            for component in msg.message_chain:
+            for component in message.message_chain:
                 merged_chain.append(component)
 
-        # Keep message_event unmodified (preserves original message_id and
-        # metadata for reply/quote), only pass merged chain separately
         return PendingMessage(
+            execution_context=base_msg.execution_context,
             bot_uuid=base_msg.bot_uuid,
             launcher_type=base_msg.launcher_type,
             launcher_id=base_msg.launcher_id,
@@ -275,22 +308,23 @@ class MessageAggregator:
             message_chain=merged_chain,
             adapter=base_msg.adapter,
             pipeline_uuid=base_msg.pipeline_uuid,
-            routed_by_rule=any(msg.routed_by_rule for msg in messages),
+            routed_by_rule=any(message.routed_by_rule for message in messages),
         )
 
     async def flush_all(self) -> None:
-        """Flush all pending buffers immediately
+        """Flush all pending buffers without dropping their captured scopes."""
 
-        This is useful during shutdown to ensure no messages are lost.
-        """
-        # Snapshot session IDs and cancel all timers under lock
         async with self.lock:
-            session_ids = list(self.buffers.keys())
-            for sid in session_ids:
-                buffer = self.buffers.get(sid)
-                if buffer and buffer.timer_task and not buffer.timer_task.done():
+            pending_buffers = [(key, buffer.execution_context) for key, buffer in self.buffers.items()]
+            for buffer in self.buffers.values():
+                if buffer.timer_task and not buffer.timer_task.done():
                     buffer.timer_task.cancel()
 
-        # Flush each buffer outside the lock
-        for session_id in session_ids:
-            await self._flush_buffer(session_id)
+        for aggregation_key, execution_context in pending_buffers:
+            try:
+                await self._flush_buffer(aggregation_key, execution_context)
+            except WorkspaceError as exc:
+                self.ap.logger.info(
+                    'Dropped an aggregated message during shutdown because its '
+                    f'Workspace execution binding is stale: {exc}'
+                )

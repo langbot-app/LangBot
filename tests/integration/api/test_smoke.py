@@ -288,6 +288,24 @@ class TestUserInitEndpoint:
         assert data['msg'] == 'ok'
         assert data['data']['initialized'] is False
 
+    @pytest.mark.asyncio
+    async def test_account_info_exposes_instance_capabilities_not_first_account(self, quart_test_client, fake_api_app):
+        fake_api_app.user_service.is_initialized.return_value = True
+        fake_api_app.user_service.get_first_user = AsyncMock(
+            side_effect=AssertionError('public login bootstrap must not inspect an account')
+        )
+
+        response = await quart_test_client.get('/api/v1/user/account-info')
+
+        assert response.status_code == 200
+        data = await response.get_json()
+        assert data['data'] == {
+            'initialized': True,
+            'password_login_enabled': True,
+            'space_login_enabled': True,
+        }
+        fake_api_app.user_service.get_first_user.assert_not_awaited()
+
 
 @pytest.mark.usefixtures('mock_circular_import_chain')
 class TestRealImports:

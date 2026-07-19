@@ -10,11 +10,72 @@ from __future__ import annotations
 
 import pytest
 import asyncio
+from types import SimpleNamespace
 from unittest.mock import Mock
 from importlib import import_module
 
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
+
+from langbot.pkg.api.http.context import ExecutionContext
+from langbot.pkg.pipeline.pool import (
+    ExecutionContextMismatchError,
+    ExecutionContextRequiredError,
+)
+
+
+TEST_CONTEXT = ExecutionContext(
+    instance_uuid='instance-test',
+    workspace_uuid='workspace-test',
+    placement_generation=1,
+)
+TEST_BOT_UUID = 'bot-123'
+
+
+def bind_query_context(query, *, context=TEST_CONTEXT, bot_uuid=TEST_BOT_UUID):
+    """Attach the trusted runtime scope expected by the session manager."""
+    query.bot_uuid = bot_uuid
+    query._execution_context = context
+    return query
+
+
+def bind_session_context(session, query):
+    """Make a mocked legacy Session belong to the Query execution scope."""
+    session.bot_uuid = query.bot_uuid
+    session._langbot_session_key = (
+        TEST_CONTEXT.instance_uuid,
+        TEST_CONTEXT.workspace_uuid,
+        TEST_CONTEXT.placement_generation,
+        query.bot_uuid,
+        query.launcher_type.value,
+        query.launcher_id,
+    )
+    return session
+
+
+def scoped_query(
+    *,
+    workspace_uuid='workspace-test',
+    bot_uuid=TEST_BOT_UUID,
+    placement_generation=1,
+    pipeline_uuid=None,
+):
+    """Create a small Query-like object with a complete trusted scope."""
+    context = ExecutionContext(
+        instance_uuid='instance-test',
+        workspace_uuid=workspace_uuid,
+        placement_generation=placement_generation,
+        bot_uuid=bot_uuid,
+        pipeline_uuid=pipeline_uuid,
+        query_uuid=f'query-{workspace_uuid}-{bot_uuid}',
+    )
+    return SimpleNamespace(
+        launcher_type=provider_session.LauncherTypes.PERSON,
+        launcher_id='same-launcher',
+        sender_id='same-sender',
+        bot_uuid=bot_uuid,
+        _execution_context=context,
+    )
 
 
 def get_session_module():
@@ -71,7 +132,7 @@ class TestSessionManagerGetSession:
         query.launcher_type = provider_session.LauncherTypes.PERSON
         query.launcher_id = '12345'
         query.sender_id = '12345'
-        return query
+        return bind_query_context(query)
 
     @pytest.mark.asyncio
     async def test_creates_new_session_when_not_found(self, mock_app_with_config, sample_query):
@@ -126,11 +187,13 @@ class TestSessionManagerGetSession:
         query1.launcher_type = provider_session.LauncherTypes.PERSON
         query1.launcher_id = 'user1'
         query1.sender_id = 'user1'
+        bind_query_context(query1)
 
         query2 = Mock(spec=pipeline_query.Query)
         query2.launcher_type = provider_session.LauncherTypes.PERSON
         query2.launcher_id = 'user2'
         query2.sender_id = 'user2'
+        bind_query_context(query2)
 
         session1 = await manager.get_session(query1)
         session2 = await manager.get_session(query2)
@@ -149,11 +212,13 @@ class TestSessionManagerGetSession:
         query1.launcher_type = provider_session.LauncherTypes.PERSON
         query1.launcher_id = 'same_id'
         query1.sender_id = 'same_id'
+        bind_query_context(query1)
 
         query2 = Mock(spec=pipeline_query.Query)
         query2.launcher_type = provider_session.LauncherTypes.GROUP
         query2.launcher_id = 'same_id'
         query2.sender_id = 'same_id'
+        bind_query_context(query2)
 
         session1 = await manager.get_session(query1)
         session2 = await manager.get_session(query2)
@@ -191,7 +256,7 @@ class TestSessionManagerGetConversation:
         query.launcher_type = provider_session.LauncherTypes.PERSON
         query.launcher_id = '12345'
         query.sender_id = '12345'
-        return query
+        return bind_query_context(query)
 
     @pytest.mark.asyncio
     async def test_creates_conversation_with_prompt(self, mock_app_with_config, sample_query, sample_session):
@@ -199,6 +264,7 @@ class TestSessionManagerGetConversation:
         sessionmgr = get_session_module()
 
         manager = sessionmgr.SessionManager(mock_app_with_config)
+        bind_session_context(sample_session, sample_query)
 
         prompt_config = [{'role': 'system', 'content': 'You are a helpful assistant.'}]
         pipeline_uuid = 'pipeline-123'
@@ -222,6 +288,7 @@ class TestSessionManagerGetConversation:
         sessionmgr = get_session_module()
 
         manager = sessionmgr.SessionManager(mock_app_with_config)
+        bind_session_context(sample_session, sample_query)
 
         prompt_config = [{'role': 'system', 'content': 'You are a helpful assistant.'}]
         pipeline_uuid = 'pipeline-123'
@@ -244,14 +311,15 @@ class TestSessionManagerGetConversation:
         sessionmgr = get_session_module()
 
         manager = sessionmgr.SessionManager(mock_app_with_config)
+        bind_session_context(sample_session, sample_query)
 
         prompt_config = [{'role': 'system', 'content': 'You are a helpful assistant.'}]
 
         # First call with pipeline1
-        conv1 = await manager.get_conversation(sample_query, sample_session, prompt_config, 'pipeline-1', 'bot-1')
+        conv1 = await manager.get_conversation(sample_query, sample_session, prompt_config, 'pipeline-1', TEST_BOT_UUID)
 
         # Second call with different pipeline should create new conversation
-        conv2 = await manager.get_conversation(sample_query, sample_session, prompt_config, 'pipeline-2', 'bot-2')
+        conv2 = await manager.get_conversation(sample_query, sample_session, prompt_config, 'pipeline-2', TEST_BOT_UUID)
 
         assert conv1 is not conv2
         assert len(sample_session.conversations) == 2
@@ -263,6 +331,7 @@ class TestSessionManagerGetConversation:
         sessionmgr = get_session_module()
 
         manager = sessionmgr.SessionManager(mock_app_with_config)
+        bind_session_context(sample_session, sample_query)
 
         prompt_config = [{'role': 'system', 'content': 'You are a helpful assistant.'}]
 
@@ -278,6 +347,7 @@ class TestSessionManagerGetConversation:
         sessionmgr = get_session_module()
 
         manager = sessionmgr.SessionManager(mock_app_with_config)
+        bind_session_context(sample_session, sample_query)
 
         prompt_config = [{'role': 'system', 'content': 'System message'}, {'role': 'user', 'content': 'User message'}]
 
@@ -287,3 +357,72 @@ class TestSessionManagerGetConversation:
 
         assert conversation.prompt.name == 'default'
         assert len(conversation.prompt.messages) == 2
+
+
+class TestSessionManagerWorkspaceIsolation:
+    """Regression coverage for workspace, bot, and placement fencing."""
+
+    @staticmethod
+    def manager():
+        mock_app = Mock()
+        mock_app.instance_config.data = {'concurrency': {'session': 5}}
+        return get_session_module().SessionManager(mock_app)
+
+    @pytest.mark.asyncio
+    async def test_get_session_requires_trusted_query_scope(self):
+        query = SimpleNamespace(
+            launcher_type=provider_session.LauncherTypes.PERSON,
+            launcher_id='same-launcher',
+            sender_id='same-sender',
+            bot_uuid=TEST_BOT_UUID,
+        )
+
+        with pytest.raises(ExecutionContextRequiredError):
+            await self.manager().get_session(query)
+
+    @pytest.mark.asyncio
+    async def test_same_launcher_in_two_workspaces_does_not_share_session(self):
+        manager = self.manager()
+
+        first = await manager.get_session(scoped_query(workspace_uuid='workspace-a'))
+        second = await manager.get_session(scoped_query(workspace_uuid='workspace-b'))
+
+        assert first is not second
+        assert len(manager.session_list) == 2
+
+    @pytest.mark.asyncio
+    async def test_same_launcher_in_two_bots_does_not_share_session(self):
+        manager = self.manager()
+
+        first = await manager.get_session(scoped_query(bot_uuid='bot-a'))
+        second = await manager.get_session(scoped_query(bot_uuid='bot-b'))
+
+        assert first is not second
+
+    @pytest.mark.asyncio
+    async def test_new_placement_generation_does_not_reuse_old_session(self):
+        manager = self.manager()
+
+        first = await manager.get_session(scoped_query(placement_generation=1))
+        second = await manager.get_session(scoped_query(placement_generation=2))
+
+        assert first is not second
+
+    @pytest.mark.asyncio
+    async def test_conversation_rejects_session_from_another_workspace(self):
+        manager = self.manager()
+        query_a = scoped_query(workspace_uuid='workspace-a')
+        query_b = scoped_query(workspace_uuid='workspace-b')
+        session_a = await manager.get_session(query_a)
+
+        with pytest.raises(ExecutionContextMismatchError):
+            await manager.get_conversation(query_b, session_a, [], 'pipeline-1', TEST_BOT_UUID)
+
+    @pytest.mark.asyncio
+    async def test_conversation_rejects_substituted_bot_argument(self):
+        manager = self.manager()
+        query = scoped_query(bot_uuid='bot-a')
+        session = await manager.get_session(query)
+
+        with pytest.raises(ExecutionContextMismatchError):
+            await manager.get_conversation(query, session, [], 'pipeline-1', 'bot-b')

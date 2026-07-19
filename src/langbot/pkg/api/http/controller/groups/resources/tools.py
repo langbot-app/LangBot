@@ -2,21 +2,28 @@ from __future__ import annotations
 
 import quart
 
+from ....authz import Permission
+from ....context import RequestContext
 from ... import group
 
 
 @group.group_class('tools', '/api/v1/tools')
 class ToolsRouterGroup(group.RouterGroup):
     async def initialize(self) -> None:
-        @self.route('', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
-        async def _() -> str:
+        @self.route(
+            '',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN,
+            permission=Permission.RESOURCE_VIEW,
+        )
+        async def _(request_context: RequestContext) -> str:
             """获取所有可用工具列表"""
             pipeline_uuid = quart.request.args.get('pipeline_uuid') or quart.request.args.get('pipeline_id')
             bound_plugins: list[str] | None = None
             bound_mcp_servers: list[str] | None = None
 
             if pipeline_uuid:
-                pipeline = await self.ap.pipeline_service.get_pipeline(pipeline_uuid)
+                pipeline = await self.ap.pipeline_service.get_pipeline(request_context, pipeline_uuid)
                 if pipeline is None:
                     return self.http_status(404, -1, 'pipeline not found')
 
@@ -35,6 +42,7 @@ class ToolsRouterGroup(group.RouterGroup):
             return self.success(
                 data={
                     'tools': await self.ap.tool_mgr.get_tool_catalog(
+                        request_context,
                         bound_plugins,
                         bound_mcp_servers,
                         include_skill_authoring=True,
@@ -42,10 +50,15 @@ class ToolsRouterGroup(group.RouterGroup):
                 }
             )
 
-        @self.route('/<tool_name>', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
-        async def _(tool_name: str) -> str:
+        @self.route(
+            '/<tool_name>',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN,
+            permission=Permission.RESOURCE_VIEW,
+        )
+        async def _(tool_name: str, request_context: RequestContext) -> str:
             """获取特定工具详情"""
-            tools = await self.ap.tool_mgr.get_all_tools(include_skill_authoring=True)
+            tools = await self.ap.tool_mgr.get_all_tools(request_context, include_skill_authoring=True)
 
             for tool in tools:
                 if tool.name == tool_name:

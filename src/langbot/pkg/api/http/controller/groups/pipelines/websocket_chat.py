@@ -1,64 +1,157 @@
-"""WebSocket聊天路由 - 支持双向实时通信"""
+"""Authenticated dashboard WebSocket chat routes."""
+
+from __future__ import annotations
 
 import asyncio
 import datetime
 import json
 import logging
+import uuid
 
 import quart
 
+from ....authz import Permission, permissions_for_role, require_permission
+from ....context import PrincipalContext, PrincipalType, RequestContext, WorkspaceContext
 from ... import group
-from ......platform.sources.websocket_manager import ws_connection_manager
+from ......platform.sources.websocket_manager import WebSocketScope, ws_connection_manager
 
 logger = logging.getLogger(__name__)
+_AUTH_TIMEOUT_SECONDS = 10.0
 
 
 @group.group_class('websocket_chat', '/api/v1/pipelines/<pipeline_uuid>/ws')
 class WebSocketChatRouterGroup(group.RouterGroup):
+    async def _authenticate_websocket(self) -> tuple[RequestContext, str]:
+        """Authenticate the first dashboard WebSocket message.
+
+        Browsers cannot attach the normal Authorization/X-Workspace-Id headers
+        to a WebSocket handshake.  The client therefore sends one auth frame
+        immediately after opening the socket; no connection is registered and
+        no runtime object is resolved before this method succeeds.
+        """
+
+        raw_message = await asyncio.wait_for(quart.websocket.receive(), timeout=_AUTH_TIMEOUT_SECONDS)
+        payload = json.loads(raw_message)
+        if not isinstance(payload, dict) or payload.get('type') != 'authenticate':
+            raise ValueError('Authentication is required')
+
+        token = str(payload.get('token') or '').strip()
+        workspace_uuid = str(payload.get('workspace_uuid') or '').strip()
+        if not token or not workspace_uuid:
+            raise ValueError('Authentication is required')
+
+        account, _ = await self._authenticate_account(token)
+        account_uuid = getattr(account, 'uuid', None)
+        collaboration_service = getattr(self.ap, 'workspace_collaboration_service', None)
+        if not isinstance(account_uuid, str) or collaboration_service is None:
+            raise ValueError('Workspace authentication is unavailable')
+
+        access = await collaboration_service.resolve_account_workspace(account_uuid, workspace_uuid)
+        request_context = RequestContext(
+            instance_uuid=access.execution.instance_uuid,
+            placement_generation=access.execution.placement_generation,
+            request_id=quart.websocket.headers.get('X-Request-Id') or str(uuid.uuid4()),
+            auth_type=group.AuthType.USER_TOKEN.value,
+            principal=PrincipalContext(
+                principal_type=PrincipalType.ACCOUNT,
+                account_uuid=account_uuid,
+            ),
+            workspace=WorkspaceContext(
+                workspace_uuid=access.workspace.uuid,
+                membership_uuid=access.membership.uuid,
+                role=access.membership.role,
+                permissions=permissions_for_role(access.membership.role),
+                membership_revision=access.membership.projection_revision,
+            ),
+        )
+        require_permission(request_context, Permission.RUNTIME_OPERATE)
+        return request_context, token
+
+    async def _revalidate_websocket_authorization(
+        self,
+        request_context: RequestContext,
+        token: str,
+    ) -> None:
+        """Recheck revocable account, membership, permission, and placement state."""
+
+        account, _ = await self._authenticate_account(token)
+        account_uuid = getattr(account, 'uuid', None)
+        if account_uuid != request_context.account_uuid:
+            raise ValueError('WebSocket account changed')
+
+        collaboration_service = getattr(self.ap, 'workspace_collaboration_service', None)
+        if collaboration_service is None or not isinstance(account_uuid, str):
+            raise ValueError('Workspace authentication is unavailable')
+        access = await collaboration_service.resolve_account_workspace(
+            account_uuid,
+            request_context.workspace_uuid,
+        )
+        if (
+            access.workspace.uuid != request_context.workspace_uuid
+            or access.membership.uuid != request_context.workspace.membership_uuid
+            or access.membership.projection_revision != request_context.workspace.membership_revision
+            or access.execution.instance_uuid != request_context.instance_uuid
+            or access.execution.placement_generation != request_context.placement_generation
+        ):
+            raise ValueError('WebSocket authorization changed')
+
+        current_context = RequestContext(
+            instance_uuid=access.execution.instance_uuid,
+            placement_generation=access.execution.placement_generation,
+            request_id=request_context.request_id,
+            auth_type=request_context.auth_type,
+            principal=request_context.principal,
+            workspace=WorkspaceContext(
+                workspace_uuid=access.workspace.uuid,
+                membership_uuid=access.membership.uuid,
+                role=access.membership.role,
+                permissions=permissions_for_role(access.membership.role),
+                membership_revision=access.membership.projection_revision,
+            ),
+            entitlement_revision=request_context.entitlement_revision,
+        )
+        require_permission(current_context, Permission.RUNTIME_OPERATE)
+
+    async def _get_scoped_adapter(self, request_context: RequestContext, pipeline_uuid: str):
+        pipeline = await self.ap.pipeline_service.get_pipeline(request_context, pipeline_uuid)
+        if pipeline is None:
+            return None
+        proxy_bot = await self.ap.platform_mgr.get_websocket_proxy_bot(request_context)
+        return proxy_bot.adapter
+
     async def initialize(self) -> None:
-        # 直接使用 quart_app 注册 WebSocket 路由
         @self.quart_app.websocket(self.path + '/connect')
         async def websocket_connect(pipeline_uuid: str):
-            """
-            建立WebSocket连接
+            """Open one authenticated dashboard debug connection."""
 
-            URL参数:
-                - pipeline_uuid: 流水线UUID
-                - session_type: 会话类型 (person/group)
-            """
+            await quart.websocket.accept()
             try:
-                # 获取参数 - 在WebSocket上下文中使用 quart.websocket.args
-                session_type = quart.websocket.args.get('session_type', 'person')
+                request_context, token = await self._authenticate_websocket()
+            except Exception:
+                await quart.websocket.send(json.dumps({'type': 'error', 'message': 'Unauthorized'}))
+                return
 
-                if session_type not in ['person', 'group']:
-                    await quart.websocket.send(
-                        json.dumps({'type': 'error', 'message': 'session_type must be person or group'})
-                    )
+            session_type = quart.websocket.args.get('session_type', 'person')
+            if session_type not in ['person', 'group']:
+                await quart.websocket.send(
+                    json.dumps({'type': 'error', 'message': 'session_type must be person or group'})
+                )
+                return
+
+            try:
+                websocket_adapter = await self._get_scoped_adapter(request_context, pipeline_uuid)
+                if websocket_adapter is None:
+                    await quart.websocket.send(json.dumps({'type': 'error', 'message': 'Pipeline not found'}))
                     return
 
-                # 获取WebSocket适配器
-                websocket_adapter = self.ap.platform_mgr.websocket_proxy_bot.adapter
-
-                if not websocket_adapter:
-                    await quart.websocket.send(json.dumps({'type': 'error', 'message': 'WebSocket adapter not found'}))
-                    return
-
-                # Dashboard pipeline-debug sessions must always run under the
-                # built-in websocket_proxy_bot identity. We deliberately do NOT
-                # resolve a web_page_bot owner here — even if one is bound to
-                # the same pipeline, debug requests must not be attributed to
-                # it. The embed widget path (`/api/v1/embed/<bot>/ws/connect`)
-                # is the one that carries the page-bot identity.
-
-                # 注册连接
                 connection = await ws_connection_manager.add_connection(
                     websocket=quart.websocket._get_current_object(),
+                    scope=WebSocketScope.from_context(request_context),
                     pipeline_uuid=pipeline_uuid,
                     session_type=session_type,
                     metadata={'user_agent': quart.websocket.headers.get('User-Agent', '')},
                 )
 
-                # 发送连接成功消息
                 await quart.websocket.send(
                     json.dumps(
                         {
@@ -72,182 +165,180 @@ class WebSocketChatRouterGroup(group.RouterGroup):
                 )
 
                 logger.debug(
-                    f'WebSocket connection established: {connection.connection_id} '
-                    f'(pipeline={pipeline_uuid}, session_type={session_type})'
+                    f'Dashboard WebSocket connected: {connection.connection_id} '
+                    f'(workspace={connection.workspace_uuid}, pipeline={pipeline_uuid}, '
+                    f'session_type={session_type})'
                 )
 
-                # 创建接收和发送任务
-                receive_task = asyncio.create_task(self._handle_receive(connection, websocket_adapter))
+                receive_task = asyncio.create_task(
+                    self._handle_receive(
+                        connection,
+                        websocket_adapter,
+                        request_context,
+                        token,
+                    )
+                )
                 send_task = asyncio.create_task(self._handle_send(connection))
-
-                # 等待任务完成
                 try:
                     await asyncio.gather(receive_task, send_task)
-                except Exception as e:
-                    logger.error(f'WebSocket task execution error: {e}')
+                except Exception as exc:
+                    logger.error(f'WebSocket task execution error: {exc}')
                 finally:
-                    # 清理连接
                     await ws_connection_manager.remove_connection(connection.connection_id)
-                    logger.debug(f'WebSocket connection cleaned: {connection.connection_id}')
 
-            except Exception as e:
-                logger.error(f'WebSocket connection error: {e}', exc_info=True)
+            except Exception:
+                logger.error('Dashboard WebSocket connection error', exc_info=True)
                 try:
-                    await quart.websocket.send(json.dumps({'type': 'error', 'message': str(e)}))
-                except:
+                    await quart.websocket.send(json.dumps({'type': 'error', 'message': 'Internal server error'}))
+                except Exception:
                     pass
 
-        @self.route('/messages/<session_type>', methods=['GET'])
-        async def get_messages(pipeline_uuid: str, session_type: str) -> str:
-            """获取消息历史"""
-            try:
-                if session_type not in ['person', 'group']:
-                    return self.http_status(400, -1, 'session_type must be person or group')
+        @self.route(
+            '/messages/<session_type>',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RUNTIME_OPERATE,
+        )
+        async def get_messages(
+            pipeline_uuid: str,
+            session_type: str,
+            request_context: RequestContext,
+        ) -> str:
+            if session_type not in ['person', 'group']:
+                return self.http_status(400, -1, 'session_type must be person or group')
 
-                websocket_adapter = self.ap.platform_mgr.websocket_proxy_bot.adapter
+            websocket_adapter = await self._get_scoped_adapter(request_context, pipeline_uuid)
+            if websocket_adapter is None:
+                return self.http_status(404, -1, 'Pipeline not found')
+            messages = websocket_adapter.get_websocket_messages(pipeline_uuid, session_type)
+            return self.success(data={'messages': messages})
 
-                if not websocket_adapter:
-                    return self.http_status(404, -1, 'WebSocket adapter not found')
+        @self.route(
+            '/reset/<session_type>',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RUNTIME_OPERATE,
+        )
+        async def reset_session(
+            pipeline_uuid: str,
+            session_type: str,
+            request_context: RequestContext,
+        ) -> str:
+            if session_type not in ['person', 'group']:
+                return self.http_status(400, -1, 'session_type must be person or group')
 
-                messages = websocket_adapter.get_websocket_messages(pipeline_uuid, session_type)
+            websocket_adapter = await self._get_scoped_adapter(request_context, pipeline_uuid)
+            if websocket_adapter is None:
+                return self.http_status(404, -1, 'Pipeline not found')
+            websocket_adapter.reset_session(pipeline_uuid, session_type)
+            return self.success(data={'message': 'Session reset successfully'})
 
-                return self.success(data={'messages': messages})
+        @self.route(
+            '/connections',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RUNTIME_OPERATE,
+        )
+        async def get_connections(pipeline_uuid: str, request_context: RequestContext) -> str:
+            if await self.ap.pipeline_service.get_pipeline(request_context, pipeline_uuid) is None:
+                return self.http_status(404, -1, 'Pipeline not found')
 
-            except Exception as e:
-                return self.http_status(500, -1, f'Internal server error: {str(e)}')
-
-        @self.route('/reset/<session_type>', methods=['POST'])
-        async def reset_session(pipeline_uuid: str, session_type: str) -> str:
-            """重置会话"""
-            try:
-                if session_type not in ['person', 'group']:
-                    return self.http_status(400, -1, 'session_type must be person or group')
-
-                websocket_adapter = self.ap.platform_mgr.websocket_proxy_bot.adapter
-
-                if not websocket_adapter:
-                    return self.http_status(404, -1, 'WebSocket adapter not found')
-
-                websocket_adapter.reset_session(pipeline_uuid, session_type)
-
-                return self.success(data={'message': 'Session reset successfully'})
-
-            except Exception as e:
-                return self.http_status(500, -1, f'Internal server error: {str(e)}')
-
-        @self.route('/connections', methods=['GET'])
-        async def get_connections(pipeline_uuid: str) -> str:
-            """获取当前连接统计"""
-            try:
-                stats = ws_connection_manager.get_stats()
-                connections = await ws_connection_manager.get_connections_by_pipeline(pipeline_uuid)
-
-                return self.success(
-                    data={
-                        'stats': stats,
-                        'connections': [
-                            {
-                                'connection_id': conn.connection_id,
-                                'session_type': conn.session_type,
-                                'created_at': conn.created_at.isoformat(),
-                                'last_active': conn.last_active.isoformat(),
-                                'is_active': conn.is_active,
-                            }
-                            for conn in connections
-                        ],
-                    }
-                )
-
-            except Exception as e:
-                return self.http_status(500, -1, f'Internal server error: {str(e)}')
-
-        @self.route('/broadcast', methods=['POST'])
-        async def broadcast_message(pipeline_uuid: str) -> str:
-            """向所有连接广播消息（后端主动推送）"""
-            try:
-                data = await quart.request.get_json()
-                message = data.get('message')
-
-                if not message:
-                    return self.http_status(400, -1, 'message is required')
-
-                # 广播消息
-                broadcast_data = {
-                    'type': 'broadcast',
-                    'message': message,
-                    'timestamp': datetime.datetime.now().isoformat(),
+            scope = WebSocketScope.from_context(request_context)
+            stats = ws_connection_manager.get_stats(scope=scope)
+            connections = await ws_connection_manager.get_connections_by_pipeline(
+                pipeline_uuid,
+                scope=scope,
+            )
+            return self.success(
+                data={
+                    'stats': stats,
+                    'connections': [
+                        {
+                            'connection_id': connection.connection_id,
+                            'session_type': connection.session_type,
+                            'created_at': connection.created_at.isoformat(),
+                            'last_active': connection.last_active.isoformat(),
+                            'is_active': connection.is_active,
+                        }
+                        for connection in connections
+                    ],
                 }
+            )
 
-                await ws_connection_manager.broadcast_to_pipeline(pipeline_uuid, broadcast_data)
+        @self.route(
+            '/broadcast',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RUNTIME_OPERATE,
+        )
+        async def broadcast_message(pipeline_uuid: str, request_context: RequestContext) -> str:
+            if await self.ap.pipeline_service.get_pipeline(request_context, pipeline_uuid) is None:
+                return self.http_status(404, -1, 'Pipeline not found')
 
-                return self.success(data={'message': 'Broadcast sent successfully'})
+            data = await quart.request.get_json()
+            message = data.get('message')
+            if not message:
+                return self.http_status(400, -1, 'message is required')
 
-            except Exception as e:
-                return self.http_status(500, -1, f'Internal server error: {str(e)}')
+            broadcast_data = {
+                'type': 'broadcast',
+                'message': message,
+                'timestamp': datetime.datetime.now().isoformat(),
+            }
+            await ws_connection_manager.broadcast_to_pipeline(
+                pipeline_uuid,
+                broadcast_data,
+                scope=WebSocketScope.from_context(request_context),
+            )
+            return self.success(data={'message': 'Broadcast sent successfully'})
 
-    async def _handle_receive(self, connection, websocket_adapter):
-        """处理接收消息的任务"""
+    async def _handle_receive(
+        self,
+        connection,
+        websocket_adapter,
+        request_context: RequestContext,
+        token: str,
+    ):
         try:
             while connection.is_active:
-                # 接收消息
                 message = await quart.websocket.receive()
-
-                # 更新活跃时间
                 await ws_connection_manager.update_activity(connection.connection_id)
 
                 try:
                     data = json.loads(message)
                     message_type = data.get('type', 'message')
-
                     if message_type == 'ping':
-                        # 心跳响应
                         await connection.send_queue.put(
                             {'type': 'pong', 'timestamp': datetime.datetime.now().isoformat()}
                         )
-
                     elif message_type == 'message':
-                        # 处理用户消息
-                        logger.debug(f'收到消息: {data} from {connection.connection_id}')
-
-                        # 处理消息（不等待响应，响应会通过broadcast异步发送）
-                        # owner_bot is intentionally NOT passed: the dashboard
-                        # debug WebSocket must always run under the proxy bot,
-                        # never under a coincidentally-bound web_page_bot.
+                        try:
+                            await self._revalidate_websocket_authorization(request_context, token)
+                        except Exception:
+                            await connection.send_queue.put({'type': 'error', 'message': 'Unauthorized'})
+                            break
                         await websocket_adapter.handle_websocket_message(connection, data)
-
                     elif message_type == 'disconnect':
-                        # 客户端主动断开
-                        logger.debug(f'Client disconnected: {connection.connection_id}')
                         break
-
                     else:
-                        logger.warning(f'Unknown message type: {message_type}')
-
+                        logger.warning(f'Unknown WebSocket message type: {message_type}')
                 except json.JSONDecodeError:
-                    logger.error(f'Invalid JSON message: {message}')
                     await connection.send_queue.put({'type': 'error', 'message': 'Invalid JSON format'})
 
-        except Exception as e:
-            logger.error(f'Receive message error: {e}', exc_info=True)
+        except Exception:
+            logger.error('Dashboard WebSocket receive error', exc_info=True)
         finally:
             connection.is_active = False
 
     async def _handle_send(self, connection):
-        """处理发送消息的任务"""
         try:
-            while connection.is_active:
-                # 从队列获取消息
+            while connection.is_active or not connection.send_queue.empty():
                 try:
                     message = await asyncio.wait_for(connection.send_queue.get(), timeout=1.0)
-
-                    # 发送消息
                     await quart.websocket.send(json.dumps(message))
-
                 except asyncio.TimeoutError:
-                    # 超时继续循环
                     continue
-
-        except Exception as e:
-            logger.error(f'Send message error: {e}', exc_info=True)
+        except Exception:
+            logger.error('Dashboard WebSocket send error', exc_info=True)
         finally:
             connection.is_active = False

@@ -58,19 +58,9 @@ export default function AccountSettingsPanel({
   const handleBindSpace = async () => {
     setSpaceBindLoading(true);
     try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        toast.error(t('common.error'));
-        setSpaceBindLoading(false);
-        return;
-      }
       const currentOrigin = window.location.origin;
       const redirectUri = `${currentOrigin}/auth/space/callback?mode=bind`;
-      // Pass token as state for security verification
-      const response = await httpClient.getSpaceAuthorizeUrl(
-        redirectUri,
-        token,
-      );
+      const response = await httpClient.getSpaceBindAuthorizeUrl(redirectUri);
       window.location.href = response.authorize_url;
     } catch {
       toast.error(t('common.spaceLoginFailed'));

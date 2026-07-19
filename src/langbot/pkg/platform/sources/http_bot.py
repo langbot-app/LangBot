@@ -311,17 +311,39 @@ class HttpBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
     async def _reset_session(self, launcher_type: str, launcher_id: str) -> bool:
         """Drop the matching session so the next message starts a fresh conversation."""
+        execution_context = getattr(self.logger, 'execution_context', None)
+        if (
+            execution_context is None
+            or not execution_context.instance_uuid
+            or not execution_context.workspace_uuid
+            or execution_context.placement_generation <= 0
+            or not self.bot_uuid
+        ):
+            raise RuntimeError('http_bot reset requires a trusted execution scope')
+        expected_prefix = (
+            execution_context.instance_uuid,
+            execution_context.workspace_uuid,
+            execution_context.placement_generation,
+            self.bot_uuid,
+            launcher_type,
+        )
+
         sess_mgr = self.ap.sess_mgr
         before = len(sess_mgr.session_list)
         sess_mgr.session_list = [
-            s
-            for s in sess_mgr.session_list
-            if not (
-                str(s.launcher_type.value if hasattr(s.launcher_type, 'value') else s.launcher_type) == launcher_type
-                and str(s.launcher_id) == launcher_id
-            )
+            s for s in sess_mgr.session_list if not self._matches_session_scope(s, expected_prefix, launcher_id)
         ]
         return len(sess_mgr.session_list) < before
+
+    @staticmethod
+    def _matches_session_scope(session, expected_prefix: tuple[str, str, int, str, str], launcher_id: str) -> bool:
+        session_key = getattr(session, '_langbot_session_key', None)
+        return (
+            isinstance(session_key, tuple)
+            and len(session_key) == 6
+            and session_key[:5] == expected_prefix
+            and str(session_key[5]) == launcher_id
+        )
 
     # -- outbound -------------------------------------------------------------
 

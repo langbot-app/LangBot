@@ -167,6 +167,7 @@ const enUS = {
     actions: 'Actions',
     apiKeyCreatedMessage:
       'Please copy this API key, if the button is invalid, please copy manually.',
+    apiKeyStoredSecurely: 'Secret shown only when created',
     none: 'None',
     more: 'More ({{count}})',
     less: 'Less',
@@ -1274,6 +1275,77 @@ const enUS = {
     spaceEmailMismatch:
       'Space login email does not match the local account email',
   },
+  workspace: {
+    title: 'Workspace',
+    description: 'Manage members, roles, and invitation links',
+    selectTitle: 'Choose a Workspace',
+    selectDescription: 'Select where you want to continue in LangBot.',
+    selectionLoadFailed:
+      'Your Workspaces could not be loaded. Please try again.',
+    switchWorkspace: 'Switch Workspace',
+    ossSingletonDescription:
+      'This self-hosted instance has one Workspace and can include multiple users.',
+    cloudManagedDescription:
+      'Membership, invitations, and billing for this Workspace are managed in the LangBot Cloud portal.',
+    loadFailed: 'Failed to load Workspace information',
+    members: 'Members',
+    you: 'You',
+    inviteMember: 'Invite a member',
+    inviteDescription:
+      'Create a one-time link to add another user to this Workspace.',
+    emailPlaceholder: 'member@example.com',
+    createInvitation: 'Create invitation',
+    invitationCreated: 'Invitation created',
+    invitationCreateFailed: 'Failed to create invitation',
+    oneTimeLinkWarning:
+      'Copy this link now. The secret is shown only once and is not stored by LangBot.',
+    copyInvitation: 'Copy invitation link',
+    invitationCopied: 'Invitation link copied',
+    pendingInvitations: 'Pending invitations',
+    expiresAt: 'Expires {{date}}',
+    revokeInvitation: 'Revoke invitation',
+    invitationRevoked: 'Invitation revoked',
+    invitationRevokeFailed: 'Failed to revoke invitation',
+    acceptInvitation: 'Accept invitation',
+    invitedToWorkspace: 'You were invited to {{workspace}}',
+    checkingInvitation: 'Checking this invitation...',
+    invitationMissing: 'The invitation secret is missing from this link.',
+    invitationExpired: 'This invitation has expired.',
+    invitationAlreadyRevoked: 'This invitation was revoked.',
+    invitationAlreadyUsed: 'This invitation was already used.',
+    invitationInvalid: 'This invitation is invalid or no longer available.',
+    invitationAccepted: 'Invitation accepted',
+    invitationAcceptFailed: 'Failed to accept invitation',
+    invitationEmailMismatch:
+      'This invitation belongs to a different email address.',
+    existingAccountLoginRequired:
+      'An account already exists for this email. Sign in to continue.',
+    acceptAsCurrentAccount: 'Accept with current account',
+    registerAndAccept: 'Create account and accept',
+    alreadyHaveAccount: 'I already have an account',
+    confirmPassword: 'Confirm password',
+    passwordMinimum: 'Password must contain at least 8 characters.',
+    passwordMismatch: 'The passwords do not match.',
+    backToLogin: 'Back to sign in',
+    memberUpdated: 'Member role updated',
+    memberUpdateFailed: 'Failed to update member role',
+    removeMember: 'Remove member',
+    removeMemberConfirm: 'Remove this member from the Workspace?',
+    memberRemoved: 'Member removed',
+    memberRemoveFailed: 'Failed to remove member',
+    transferOwnership: 'Transfer ownership',
+    types: {
+      personal: 'Personal',
+      team: 'Team',
+    },
+    roles: {
+      owner: 'Owner',
+      admin: 'Admin',
+      developer: 'Developer',
+      operator: 'Operator',
+      viewer: 'Viewer',
+    },
+  },
   monitoring: {
     title: 'Dashboard',
     description: 'Monitor bot activities, LLM calls, and system performance',
@@ -1525,6 +1597,7 @@ const enUS = {
   settingsDialog: {
     title: 'Settings',
     nav: {
+      workspace: 'Workspace',
       models: 'Models',
       api: 'API',
       storage: 'Storage',

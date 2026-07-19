@@ -67,7 +67,11 @@ class PluginToolLoader(loader.ToolLoader):
     async def invoke_tool(self, name: str, parameters: dict, query: pipeline_query.Query) -> typing.Any:
         try:
             return await self.ap.plugin_connector.call_tool(
-                name, parameters, session=query.session, query_id=query.query_id
+                name,
+                parameters,
+                session=query.session,
+                query_id=query.query_id,
+                query_uuid=query.query_uuid,
             )
         except Exception as e:
             self.ap.logger.error(f'执行函数 {name} 时发生错误: {e}')

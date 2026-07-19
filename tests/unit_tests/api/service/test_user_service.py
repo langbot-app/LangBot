@@ -14,15 +14,58 @@ Source: src/langbot/pkg/api/http/service/user.py
 from __future__ import annotations
 
 import pytest
+import jwt
+import datetime
 from unittest.mock import AsyncMock, Mock
 from types import SimpleNamespace
 
 from langbot.pkg.api.http.service.user import UserService
-from langbot.pkg.entity.persistence.user import User
+from langbot.pkg.entity.persistence.user import AccountStatus, User
 from langbot.pkg.entity.errors.account import AccountEmailMismatchError
 
 
 pytestmark = pytest.mark.asyncio
+
+
+class TestSpaceOAuthState:
+    async def test_login_state_is_opaque_single_use(self):
+        service = UserService(SimpleNamespace())
+
+        state = await service.issue_space_oauth_state('login')
+
+        assert state.count('.') == 0
+        assert await service.consume_space_oauth_state(state, 'login') is None
+        with pytest.raises(ValueError, match='Invalid or expired OAuth state'):
+            await service.consume_space_oauth_state(state, 'login')
+
+    async def test_bind_state_resolves_only_bound_active_account(self):
+        service = UserService(SimpleNamespace())
+        account = SimpleNamespace(uuid='account-a', status=AccountStatus.ACTIVE.value)
+        service.get_user_by_uuid = AsyncMock(return_value=account)
+
+        state = await service.issue_space_oauth_state('bind', account_uuid='account-a')
+
+        assert await service.consume_space_oauth_state(state, 'bind') is account
+        service.get_user_by_uuid.assert_awaited_once_with('account-a')
+
+    async def test_state_purpose_mismatch_is_rejected_and_consumed(self):
+        service = UserService(SimpleNamespace())
+        state = await service.issue_space_oauth_state('login')
+
+        with pytest.raises(ValueError, match='Invalid or expired OAuth state'):
+            await service.consume_space_oauth_state(state, 'bind')
+        with pytest.raises(ValueError, match='Invalid or expired OAuth state'):
+            await service.consume_space_oauth_state(state, 'login')
+
+    async def test_expired_state_is_rejected(self):
+        service = UserService(SimpleNamespace())
+        state = await service.issue_space_oauth_state('login')
+        digest = service._space_oauth_state_digest(state)
+        purpose, account_uuid, _ = service._space_oauth_states[digest]
+        service._space_oauth_states[digest] = (purpose, account_uuid, 0)
+
+        with pytest.raises(ValueError, match='Invalid or expired OAuth state'):
+            await service.consume_space_oauth_state(state, 'login')
 
 
 def _create_mock_user(
@@ -309,6 +352,50 @@ class TestUserServiceVerifyJwtToken:
         with pytest.raises(Exception):  # jwt.DecodeError or similar
             await service.verify_jwt_token('invalid.token.here')
 
+    async def test_verify_jwt_token_rejects_foreign_audience(self):
+        ap = SimpleNamespace()
+        ap.instance_config = SimpleNamespace()
+        ap.instance_config.data = {'system': {'jwt': {'secret': 'test_secret', 'expire': 3600}}}
+        service = UserService(ap)
+        token = jwt.encode(
+            {
+                'user': 'verify@example.com',
+                'iss': 'langbot-core',
+                'aud': 'langbot-instance:another-instance',
+                'exp': datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=1),
+            },
+            'test_secret',
+            algorithm='HS256',
+        )
+
+        with pytest.raises(jwt.InvalidAudienceError):
+            await service.verify_jwt_token(token)
+
+    async def test_verify_jwt_token_accepts_legacy_community_token_only_in_oss(self):
+        ap = SimpleNamespace()
+        ap.instance_config = SimpleNamespace()
+        ap.instance_config.data = {'system': {'jwt': {'secret': 'test_secret', 'expire': 3600}}}
+        ap.workspace_service = SimpleNamespace(
+            instance_uuid='instance-a',
+            policy=SimpleNamespace(multi_workspace_enabled=False),
+        )
+        service = UserService(ap)
+        legacy_token = jwt.encode(
+            {
+                'user': 'legacy@example.com',
+                'iss': 'LangBot-community',
+                'exp': datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=1),
+            },
+            'test_secret',
+            algorithm='HS256',
+        )
+
+        assert await service.verify_jwt_token(legacy_token) == 'legacy@example.com'
+
+        ap.workspace_service.policy.multi_workspace_enabled = True
+        with pytest.raises(jwt.MissingRequiredClaimError):
+            await service.verify_jwt_token(legacy_token)
+
 
 class TestUserServiceResetPassword:
     """Tests for reset_password method."""
@@ -547,6 +634,44 @@ class TestUserServiceCreateOrUpdateSpaceUser:
                 api_key='key',
                 expires_in=3600,
             )
+
+    async def test_unknown_space_subject_cannot_claim_existing_account_by_email(self):
+        """An OAuth login collision requires the explicit account-bound bind flow."""
+        existing_user = _create_mock_user(
+            email='owner@example.com',
+            account_type='local',
+            space_account_uuid=None,
+        )
+        ap = SimpleNamespace(
+            persistence_mgr=SimpleNamespace(execute_async=AsyncMock()),
+            provider_service=SimpleNamespace(update_space_model_provider_api_keys=AsyncMock()),
+            space_service=SimpleNamespace(
+                get_user_info_raw=AsyncMock(
+                    return_value={
+                        'account': {
+                            'uuid': 'attacker-space-subject',
+                            'email': 'owner@example.com',
+                        },
+                        'api_key': 'attacker-api-key',
+                    }
+                )
+            ),
+        )
+        service = UserService(ap)
+        service.get_user_by_space_account_uuid = AsyncMock(return_value=None)
+        service.get_user_by_email = AsyncMock(return_value=existing_user)
+        service.generate_jwt_token = AsyncMock(return_value='must-not-be-issued')
+
+        with pytest.raises(AccountEmailMismatchError):
+            await service.authenticate_space_user(
+                'attacker-access-token',
+                'attacker-refresh-token',
+                3600,
+            )
+
+        ap.persistence_mgr.execute_async.assert_not_awaited()
+        ap.provider_service.update_space_model_provider_api_keys.assert_not_awaited()
+        service.generate_jwt_token.assert_not_awaited()
 
     async def test_create_or_update_space_user_no_expiry(self):
         """Creates Space user without token expiry."""

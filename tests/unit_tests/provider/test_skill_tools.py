@@ -7,6 +7,37 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
+from langbot.pkg.api.http.context import ExecutionContext
+
+
+_CONTEXT = ExecutionContext(
+    instance_uuid='instance-a',
+    workspace_uuid='workspace-a',
+    placement_generation=1,
+    query_uuid='query-a',
+)
+
+
+def _make_query(*, variables=None, **kwargs):
+    return SimpleNamespace(
+        query_id=kwargs.pop('query_id', 'query-a'),
+        query_uuid=kwargs.pop('query_uuid', 'query-a'),
+        instance_uuid=kwargs.pop('instance_uuid', _CONTEXT.instance_uuid),
+        workspace_uuid=kwargs.pop('workspace_uuid', _CONTEXT.workspace_uuid),
+        placement_generation=kwargs.pop('placement_generation', _CONTEXT.placement_generation),
+        variables={} if variables is None else variables,
+        **kwargs,
+    )
+
+
+def _make_skill_manager(skills: dict[str, dict], **kwargs):
+    return SimpleNamespace(
+        skills=skills,
+        get_skills=Mock(return_value=skills),
+        get_skill_by_name=Mock(side_effect=lambda _context, name: skills.get(name)),
+        **kwargs,
+    )
+
 
 def _make_ap(logger=None):
     ap = SimpleNamespace()
@@ -51,14 +82,14 @@ class TestSkillManagerCache:
         mgr = SkillManager(ap)
 
         # Empty cache → returns False
-        assert mgr.refresh_skill_from_disk('test-skill') is False
+        assert mgr.refresh_skill_from_disk(_CONTEXT, 'test-skill') is False
 
         # Cache populated → returns True; method does NOT mutate the cache
         cached = _make_skill_data(name='test-skill', instructions='Cached')
-        mgr.skills['test-skill'] = cached
-        assert mgr.refresh_skill_from_disk('test-skill') is True
-        assert mgr.skills['test-skill'] is cached
-        assert mgr.refresh_skill_from_disk('') is False
+        mgr._skills_by_scope[mgr._scope_key(_CONTEXT)] = {'test-skill': cached}
+        assert mgr.refresh_skill_from_disk(_CONTEXT, 'test-skill') is True
+        assert mgr.get_skills(_CONTEXT)['test-skill'] is cached
+        assert mgr.refresh_skill_from_disk(_CONTEXT, '') is False
 
     @pytest.mark.asyncio
     async def test_reload_skills_drops_box_skills_with_missing_package_root(self):
@@ -85,9 +116,9 @@ class TestSkillManagerCache:
             ap.box_service = box_service
             mgr = SkillManager(ap)
 
-            await mgr.reload_skills()
+            await mgr.reload_skills(_CONTEXT)
 
-        assert list(mgr.skills) == ['alive']
+        assert list(mgr.get_skills(_CONTEXT)) == ['alive']
         # Warning fired with the dropped skill name so operators can see it.
         warning_messages = [str(call.args[0]) for call in ap.logger.warning.call_args_list]
         assert any('ghost' in msg and 'package_root missing' in msg for msg in warning_messages)
@@ -116,9 +147,9 @@ class TestSkillManagerCache:
         ap.box_service = box_service
         mgr = SkillManager(ap)
 
-        await mgr.reload_skills()
+        await mgr.reload_skills(_CONTEXT)
 
-        assert sorted(mgr.skills) == ['alpha', 'beta']
+        assert sorted(mgr.get_skills(_CONTEXT)) == ['alpha', 'beta']
         # No skill dropped → no "package_root missing" warning.
         warning_messages = [str(call.args[0]) for call in ap.logger.warning.call_args_list]
         assert not any('package_root missing' in msg for msg in warning_messages)
@@ -141,12 +172,12 @@ class TestSkillActivationHelper:
 
         ap = _make_ap()
         mgr = SkillManager(ap)
-        mgr.skills = {
+        mgr._skills_by_scope[mgr._scope_key(_CONTEXT)] = {
             'primary': _make_skill_data(name='primary', instructions='Primary instructions'),
         }
         ap.skill_mgr = mgr
 
-        query = SimpleNamespace(variables={})
+        query = _make_query()
 
         assert register_activated_skill(ap, query, 'primary') is True
         assert set(query.variables[ACTIVATED_SKILLS_KEY].keys()) == {'primary'}
@@ -159,10 +190,10 @@ class TestSkillActivationHelper:
 
         ap = _make_ap()
         mgr = SkillManager(ap)
-        mgr.skills = {'primary': _make_skill_data(name='primary')}
+        mgr._skills_by_scope[mgr._scope_key(_CONTEXT)] = {'primary': _make_skill_data(name='primary')}
         ap.skill_mgr = mgr
 
-        query = SimpleNamespace(variables={})
+        query = _make_query()
 
         assert register_activated_skill(ap, query, 'missing') is False
         assert ACTIVATED_SKILLS_KEY not in query.variables
@@ -171,7 +202,7 @@ class TestSkillActivationHelper:
         from langbot.pkg.skill.activation import register_activated_skill
 
         ap = _make_ap()  # no skill_mgr attribute
-        query = SimpleNamespace(variables={})
+        query = _make_query()
 
         assert register_activated_skill(ap, query, 'primary') is False
 
@@ -181,13 +212,13 @@ class TestSkillPathHelpers:
         from langbot.pkg.provider.tools.loaders.skill import PIPELINE_BOUND_SKILLS_KEY, get_visible_skills
 
         ap = _make_ap()
-        ap.skill_mgr = SimpleNamespace(
-            skills={
+        ap.skill_mgr = _make_skill_manager(
+            {
                 'visible': _make_skill_data(name='visible'),
                 'hidden': _make_skill_data(name='hidden'),
             }
         )
-        query = SimpleNamespace(variables={PIPELINE_BOUND_SKILLS_KEY: ['visible']})
+        query = _make_query(variables={PIPELINE_BOUND_SKILLS_KEY: ['visible']})
 
         result = get_visible_skills(ap, query)
 
@@ -202,13 +233,13 @@ class TestSkillPathHelpers:
         )
 
         ap = _make_ap()
-        ap.skill_mgr = SimpleNamespace(
-            skills={
+        ap.skill_mgr = _make_skill_manager(
+            {
                 'visible': _make_skill_data(name='visible'),
                 'hidden': _make_skill_data(name='hidden'),
             }
         )
-        query = SimpleNamespace(variables={PIPELINE_BOUND_SKILLS_KEY: ['visible']})
+        query = _make_query(variables={PIPELINE_BOUND_SKILLS_KEY: ['visible']})
 
         restored = restore_activated_skills(ap, query, ['visible', 'hidden', 'visible', ''])
 
@@ -223,8 +254,8 @@ class TestSkillPathHelpers:
         )
 
         ap = _make_ap()
-        ap.skill_mgr = SimpleNamespace(skills={'demo': _make_skill_data(name='demo')})
-        query = SimpleNamespace(variables={PIPELINE_BOUND_SKILLS_KEY: ['demo']})
+        ap.skill_mgr = _make_skill_manager({'demo': _make_skill_data(name='demo')})
+        query = _make_query(variables={PIPELINE_BOUND_SKILLS_KEY: ['demo']})
 
         skill, rewritten = resolve_virtual_skill_path(
             ap,
@@ -292,13 +323,10 @@ class TestSkillToolLoader:
 
         skill = _make_skill_data(name='demo', package_root='/data/skills/demo', instructions='Step 1')
         ap = _make_ap()
-        ap.skill_mgr = SimpleNamespace(
-            skills={'demo': skill},
-            get_skill_by_name=lambda name: skill if name == 'demo' else None,
-        )
+        ap.skill_mgr = _make_skill_manager({'demo': skill})
 
         loader = SkillToolLoader(ap)
-        query = SimpleNamespace(variables={})
+        query = _make_query()
 
         result = await loader.invoke_tool(ACTIVATE_SKILL_TOOL_NAME, {'skill_name': 'demo'}, query)
 
@@ -317,10 +345,7 @@ class TestSkillToolLoader:
         )
 
         ap = _make_ap()
-        ap.skill_mgr = SimpleNamespace(
-            skills={'demo': _make_skill_data(name='demo')},
-            get_skill_by_name=lambda name: None,
-        )
+        ap.skill_mgr = _make_skill_manager({'demo': _make_skill_data(name='demo')})
 
         loader = SkillToolLoader(ap)
 
@@ -328,7 +353,7 @@ class TestSkillToolLoader:
             await loader.invoke_tool(
                 ACTIVATE_SKILL_TOOL_NAME,
                 {'skill_name': 'ghost'},
-                SimpleNamespace(variables={}),
+                _make_query(),
             )
 
     @pytest.mark.asyncio
@@ -362,18 +387,19 @@ class TestSkillToolLoader:
             result = await loader.invoke_tool(
                 REGISTER_SKILL_TOOL_NAME,
                 {'path': '/workspace/repo'},
-                SimpleNamespace(),
+                _make_query(),
             )
 
-        ap.skill_service.scan_directory_async.assert_awaited_once_with(os.path.realpath(repo_dir))
+        ap.skill_service.scan_directory_async.assert_awaited_once_with(_CONTEXT, os.path.realpath(repo_dir))
         ap.skill_service.create_skill.assert_awaited_once_with(
+            _CONTEXT,
             {
                 'name': 'cloned-skill',
                 'display_name': 'Cloned Skill',
                 'description': 'Imported from clone',
                 'instructions': 'Do work',
                 'package_root': os.path.realpath(repo_dir),
-            }
+            },
         )
         assert result['registered'] is True
         assert result['skill_name'] == 'cloned-skill'
@@ -397,7 +423,7 @@ class TestSkillToolLoader:
                 await loader.invoke_tool(
                     REGISTER_SKILL_TOOL_NAME,
                     {'path': '/workspace/../../etc'},
-                    SimpleNamespace(),
+                    _make_query(),
                 )
 
     @pytest.mark.asyncio
@@ -417,7 +443,7 @@ class TestSkillToolLoader:
                 await loader.invoke_tool(
                     REGISTER_SKILL_TOOL_NAME,
                     {'path': '/workspace/foo'},
-                    SimpleNamespace(),
+                    _make_query(),
                 )
 
     @pytest.mark.asyncio
@@ -428,7 +454,7 @@ class TestSkillToolLoader:
         ap.skill_mgr = SimpleNamespace(skills={})
         ap.box_service = SimpleNamespace(
             available=True,
-            get_status=AsyncMock(return_value={'backend': {'available': False}}),
+            get_backend_status=AsyncMock(return_value={'backend': {'available': False}}),
         )
 
         loader = SkillToolLoader(ap)
@@ -443,10 +469,10 @@ class TestSkillToolLoader:
         from langbot.pkg.provider.tools.loaders.skill_authoring import SkillToolLoader
 
         ap = _make_ap()
-        ap.skill_mgr = SimpleNamespace(skills={'demo': _make_skill_data(name='demo')})
+        ap.skill_mgr = _make_skill_manager({'demo': _make_skill_data(name='demo')})
         ap.box_service = SimpleNamespace(
             available=True,
-            get_status=AsyncMock(return_value={'backend': {'available': True}}),
+            get_backend_status=AsyncMock(return_value={'backend': {'available': True}}),
         )
 
         loader = SkillToolLoader(ap)
@@ -472,13 +498,13 @@ class TestNativeToolLoaderSkillPaths:
 
             ap = _make_ap()
             ap.box_service = SimpleNamespace(available=True, default_workspace=tmpdir)
-            ap.skill_mgr = SimpleNamespace(skills={'demo': _make_skill_data(name='demo', package_root=tmpdir)})
+            ap.skill_mgr = _make_skill_manager({'demo': _make_skill_data(name='demo', package_root=tmpdir)})
             loader = NativeToolLoader(ap)
 
             result = await loader.invoke_tool(
                 'read',
                 {'path': '/workspace/.skills/demo/SKILL.md'},
-                SimpleNamespace(query_id='q1', variables={PIPELINE_BOUND_SKILLS_KEY: ['demo']}),
+                _make_query(query_id='q1', variables={PIPELINE_BOUND_SKILLS_KEY: ['demo']}),
             )
 
             assert result['ok'] is True
@@ -500,7 +526,7 @@ class TestNativeToolLoaderSkillPaths:
             ap.skill_mgr = SimpleNamespace(refresh_skill_from_disk=Mock())
             loader = NativeToolLoader(ap)
 
-            query = SimpleNamespace(query_id='q1', launcher_type='person', launcher_id='123', variables={})
+            query = _make_query(query_id='q1', launcher_type='person', launcher_id='123')
             register_activated_skill(query, _make_skill_data(name='demo', package_root=tmpdir))
 
             result = await loader.invoke_tool(
@@ -516,7 +542,7 @@ class TestNativeToolLoaderSkillPaths:
             tool_parameters = ap.box_service.execute_tool.await_args.args[0]
             assert tool_parameters['command'] == 'python /workspace/.skills/demo/scripts/run.py'
             assert tool_parameters['workdir'] == '/workspace/.skills/demo'
-            ap.skill_mgr.refresh_skill_from_disk.assert_called_once_with('demo')
+            ap.skill_mgr.refresh_skill_from_disk.assert_called_once_with(_CONTEXT, 'demo')
 
     @pytest.mark.asyncio
     async def test_write_requires_skill_activation(self):
@@ -526,10 +552,10 @@ class TestNativeToolLoaderSkillPaths:
         with tempfile.TemporaryDirectory() as tmpdir:
             ap = _make_ap()
             ap.box_service = SimpleNamespace(available=True, default_workspace=tmpdir)
-            ap.skill_mgr = SimpleNamespace(skills={'demo': _make_skill_data(name='demo', package_root=tmpdir)})
+            ap.skill_mgr = _make_skill_manager({'demo': _make_skill_data(name='demo', package_root=tmpdir)})
             loader = NativeToolLoader(ap)
 
-            query = SimpleNamespace(query_id='q1', variables={PIPELINE_BOUND_SKILLS_KEY: ['demo']})
+            query = _make_query(query_id='q1', variables={PIPELINE_BOUND_SKILLS_KEY: ['demo']})
 
             with pytest.raises(ValueError, match='Skill "demo" is not available at this path'):
                 await loader.invoke_tool(

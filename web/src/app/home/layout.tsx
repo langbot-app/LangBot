@@ -14,10 +14,10 @@ import {
 } from '@/app/home/components/home-sidebar/SidebarDataContext';
 import { I18nObject } from '@/app/infra/entities/common';
 import {
-  userInfo,
+  bootstrapWorkspaceSession,
   systemInfo,
-  initializeUserInfo,
   initializeSystemInfo,
+  useCurrentWorkspace,
 } from '@/app/infra/http';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Link } from 'react-router-dom';
@@ -43,6 +43,7 @@ import {
   PluginInstallProgressDialog,
 } from '@/app/home/plugins/components/plugin-install-task';
 import { setDocumentTitle } from '@/hooks/useDocumentTitle';
+import WorkspaceSwitcher from '@/app/home/components/workspace-settings/WorkspaceSwitcher';
 
 // Routes that belong to the "Extensions" section
 const EXTENSIONS_ROUTES = [
@@ -82,8 +83,6 @@ function isExtensionsRoute(pathname: string): boolean {
 }
 
 const HOME_CONTENT_MAX_WIDTH = 'max-w-[1360px]';
-const BACKEND_UNAVAILABLE_RETURN_TO_STORAGE_KEY =
-  'langbot_backend_unavailable_return_to';
 
 export default function HomeLayout({
   children,
@@ -92,45 +91,78 @@ export default function HomeLayout({
 }>) {
   const navigate = useNavigate();
   const location = useLocation();
+  const currentWorkspace = useCurrentWorkspace();
+  const [identityReady, setIdentityReady] = useState(false);
 
-  // Initialize user info if not already initialized
-  useEffect(() => {
-    if (!userInfo) {
-      initializeUserInfo();
-    }
-  }, []);
-
-  // Auto-redirect to wizard on first visit (wizard not yet completed on this instance)
+  // Resolve the instance, Account, and Workspace before mounting any
+  // Workspace-owned page. The second system-info read uses the now-stable
+  // selector and therefore returns the selected Workspace's wizard metadata.
   useEffect(() => {
     let cancelled = false;
-
-    const checkWizard = async () => {
-      try {
-        // Always re-fetch to ensure we have the latest wizard_status from backend
-        await initializeSystemInfo({ throwOnError: true });
-        if (!cancelled && systemInfo.wizard_status === 'none') {
-          navigate('/wizard', { replace: true });
-        }
-      } catch {
-        if (!cancelled) {
-          const returnTo = `${location.pathname}${location.search}${location.hash}`;
-          sessionStorage.setItem(
-            BACKEND_UNAVAILABLE_RETURN_TO_STORAGE_KEY,
-            returnTo,
+    bootstrapWorkspaceSession()
+      .then(async (result) => {
+        if (result.status === 'selection-required') {
+          const returnTo = `${location.pathname}${location.search}`;
+          navigate(
+            `/workspaces/select?returnTo=${encodeURIComponent(returnTo)}`,
+            { replace: true },
           );
-          navigate('/backend-unavailable', {
-            replace: true,
-            state: { from: returnTo },
-          });
+          return false;
         }
-      }
-    };
-    checkWizard();
-
+        if (result.status === 'unavailable') {
+          throw new Error('No Workspace is available for this Account');
+        }
+        await initializeSystemInfo({ throwOnError: true });
+        return true;
+      })
+      .then((ready) => {
+        if (!cancelled && ready) setIdentityReady(true);
+      })
+      .catch(() => {
+        if (!cancelled) navigate('/login', { replace: true });
+      });
     return () => {
       cancelled = true;
     };
-  }, [location.hash, location.pathname, location.search, navigate]);
+  }, [location.pathname, location.search, navigate]);
+
+  // A read-only member may view resources but must not enter mutation-only
+  // routes. The backend remains the authoritative authorization boundary.
+  useEffect(() => {
+    if (!identityReady || !currentWorkspace) return;
+    if (currentWorkspace.permissions.includes('resource.manage')) return;
+
+    const params = new URLSearchParams(location.search);
+    const createOnlyRoute =
+      location.pathname === '/home/add-extension' ||
+      params.get('id') === 'new' ||
+      (location.pathname === '/home/skills' &&
+        params.get('action') === 'create');
+    if (createOnlyRoute) {
+      const fallback =
+        location.pathname === '/home/add-extension'
+          ? '/home/extensions'
+          : location.pathname;
+      navigate(fallback, { replace: true });
+    }
+  }, [
+    currentWorkspace,
+    identityReady,
+    location.pathname,
+    location.search,
+    navigate,
+  ]);
+
+  // Auto-redirect only after the Workspace bootstrap above has loaded the
+  // selected Workspace's wizard state.
+  useEffect(() => {
+    if (!identityReady) return;
+    if (systemInfo.wizard_status === 'none') {
+      navigate('/wizard', { replace: true });
+    }
+  }, [identityReady, navigate]);
+
+  if (!identityReady) return <div />;
 
   return (
     <SidebarDataProvider>
@@ -233,6 +265,7 @@ function HomeLayoutInner({ children }: { children: React.ReactNode }) {
                 )}
               </BreadcrumbList>
             </Breadcrumb>
+            <WorkspaceSwitcher className="ml-auto w-44" />
           </div>
         </header>
 

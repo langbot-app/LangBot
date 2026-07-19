@@ -23,6 +23,9 @@ from pydantic import AnyUrl
 
 from .. import loader
 from ....core import app
+from ....api.http.context import ExecutionContext
+from ....api.http.service.tenant import TenantContext, require_workspace_uuid
+from ....workspace.errors import WorkspaceError, WorkspaceInvariantError
 import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
 from ....entity.persistence import mcp as persistence_mcp
@@ -209,6 +212,8 @@ class _CallerReconnect(Exception):
 class RuntimeMCPSession:
     """运行时 MCP 会话"""
 
+    _FENCE_POLL_INTERVAL = 5.0
+
     ap: app.Application
 
     server_name: str
@@ -248,11 +253,19 @@ class RuntimeMCPSession:
 
     _box_stdio_runtime: BoxStdioSessionRuntime
 
-    def __init__(self, server_name: str, server_config: dict, enable: bool, ap: app.Application):
+    def __init__(
+        self,
+        server_name: str,
+        server_config: dict,
+        enable: bool,
+        ap: app.Application,
+        execution_context: ExecutionContext,
+    ):
         self.server_name = server_name
         self.server_uuid = server_config.get('uuid', '')
         self.server_config = server_config
         self.ap = ap
+        self.execution_context = execution_context
         self.enable = enable
         self.session = None
 
@@ -294,6 +307,47 @@ class RuntimeMCPSession:
 
         self._box_stdio_runtime = BoxStdioSessionRuntime(self)
         self.box_config = self._box_stdio_runtime.config
+
+    async def _assert_execution_active(self) -> None:
+        """Fail closed when this long-lived session belongs to a stale placement."""
+
+        binding = await self.ap.workspace_service.get_execution_binding(
+            self.execution_context.workspace_uuid,
+            expected_generation=self.execution_context.placement_generation,
+        )
+        if binding.instance_uuid != self.execution_context.instance_uuid:
+            raise WorkspaceInvariantError('MCP session instance does not match the active Workspace binding')
+
+    async def _monitor_execution_fence(self) -> None:
+        """Poll the placement fence while an MCP transport is idle."""
+
+        while not self._shutdown_event.is_set():
+            await asyncio.sleep(self._FENCE_POLL_INTERVAL)
+            if self._shutdown_event.is_set():
+                return
+            await self._assert_execution_active()
+
+    async def _sleep_with_execution_fence(self, delay: float) -> None:
+        """Back off without reconnecting after the captured placement expires."""
+
+        await self._assert_execution_active()
+        try:
+            await asyncio.wait_for(self._shutdown_event.wait(), timeout=delay)
+        except asyncio.TimeoutError:
+            pass
+        if not self._shutdown_event.is_set():
+            await self._assert_execution_active()
+
+    def _stop_for_stale_execution(self, error: WorkspaceError) -> None:
+        """Mark the session terminal without retrying a fenced placement."""
+
+        self.status = MCPSessionStatus.ERROR
+        self.error_message = 'Workspace execution binding is stale'
+        self._shutdown_event.set()
+        self._ready_event.set()
+        self.ap.logger.info(
+            f'MCP session {self.server_name} stopped because its Workspace execution binding is stale: {error}'
+        )
 
     async def _init_stdio_python_server(self):
         if self._uses_box_stdio():
@@ -423,6 +477,7 @@ class RuntimeMCPSession:
     async def _lifecycle_loop(self):
         """Manage the full MCP session lifecycle in a background task."""
         try:
+            await self._assert_execution_active()
             if self.server_config['mode'] == 'stdio':
                 await self._init_stdio_python_server()
             elif self.server_config['mode'] == 'remote':
@@ -432,9 +487,11 @@ class RuntimeMCPSession:
             elif self.server_config['mode'] == 'http':
                 await self._init_streamable_http_server()
             else:
-                raise ValueError(f'Unknown MCP server mode: {self.server_name}: {self.server_config}')
+                raise ValueError(f'Unknown MCP server mode for {self.server_name}')
 
+            await self._assert_execution_active()
             await self.refresh()
+            await self._assert_execution_active()
 
             self.status = MCPSessionStatus.CONNECTED
 
@@ -446,12 +503,16 @@ class RuntimeMCPSession:
                 monitor_task = asyncio.create_task(self._box_stdio_runtime.monitor_process_health())
                 shutdown_task = asyncio.create_task(self._shutdown_event.wait())
                 reconnect_task = asyncio.create_task(self._reconnect_event.wait())
+                fence_task = asyncio.create_task(self._monitor_execution_fence())
                 done, pending = await asyncio.wait(
-                    [shutdown_task, monitor_task, reconnect_task],
+                    [shutdown_task, monitor_task, reconnect_task, fence_task],
                     return_when=asyncio.FIRST_COMPLETED,
                 )
                 for task in pending:
                     task.cancel()
+                await asyncio.gather(*pending, return_exceptions=True)
+                if fence_task in done and not self._shutdown_event.is_set():
+                    fence_task.result()
                 if reconnect_task in done and not self._shutdown_event.is_set():
                     self._reconnect_event.clear()
                     self.ap.logger.info(
@@ -487,12 +548,16 @@ class RuntimeMCPSession:
             else:
                 shutdown_task = asyncio.create_task(self._shutdown_event.wait())
                 reconnect_task = asyncio.create_task(self._reconnect_event.wait())
+                fence_task = asyncio.create_task(self._monitor_execution_fence())
                 done, pending = await asyncio.wait(
-                    [shutdown_task, reconnect_task],
+                    [shutdown_task, reconnect_task, fence_task],
                     return_when=asyncio.FIRST_COMPLETED,
                 )
                 for task in pending:
                     task.cancel()
+                await asyncio.gather(*pending, return_exceptions=True)
+                if fence_task in done and not self._shutdown_event.is_set():
+                    fence_task.result()
                 if reconnect_task in done and not self._shutdown_event.is_set():
                     self._reconnect_event.clear()
                     self.ap.logger.info(
@@ -555,7 +620,11 @@ class RuntimeMCPSession:
                 self.status = MCPSessionStatus.CONNECTING
                 self.error_message = None
                 self.error_phase = None
-                await asyncio.sleep(1)
+                try:
+                    await self._sleep_with_execution_fence(1)
+                except WorkspaceError as fence_error:
+                    self._stop_for_stale_execution(fence_error)
+                    return
                 continue
             except _CallerReconnect:
                 # A tool/resource call hit a server-expired session and asked us
@@ -572,6 +641,7 @@ class RuntimeMCPSession:
                 self.error_message = None
                 self.error_phase = None
                 try:
+                    await self._assert_execution_active()
                     if self.server_config['mode'] == 'stdio':
                         await self._init_stdio_python_server()
                     elif self.server_config['mode'] == 'remote':
@@ -581,8 +651,12 @@ class RuntimeMCPSession:
                     elif self.server_config['mode'] == 'http':
                         await self._init_streamable_http_server()
                     await self.refresh()
+                    await self._assert_execution_active()
                     self.status = MCPSessionStatus.CONNECTED
                     self.ap.logger.info(f'MCP session {self.server_name} reconnected successfully after session expiry')
+                except WorkspaceError as reconnect_err:
+                    self._stop_for_stale_execution(reconnect_err)
+                    return
                 except Exception as reconnect_err:
                     self.status = MCPSessionStatus.ERROR
                     self.error_message = str(reconnect_err)
@@ -610,8 +684,15 @@ class RuntimeMCPSession:
                 self.status = MCPSessionStatus.CONNECTING
                 self.error_message = None
                 self.error_phase = None
-                await asyncio.sleep(2)
+                try:
+                    await self._sleep_with_execution_fence(2)
+                except WorkspaceError as fence_error:
+                    self._stop_for_stale_execution(fence_error)
+                    return
                 continue
+            except WorkspaceError as e:
+                self._stop_for_stale_execution(e)
+                return
             except Exception as e:
                 self.retry_count = attempt + 1
                 if self._shutdown_event.is_set():
@@ -639,7 +720,11 @@ class RuntimeMCPSession:
                 self.status = MCPSessionStatus.CONNECTING
                 self.error_message = None
                 self.error_phase = None
-                await asyncio.sleep(delay)
+                try:
+                    await self._sleep_with_execution_fence(delay)
+                except WorkspaceError as fence_error:
+                    self._stop_for_stale_execution(fence_error)
+                    return
                 attempt += 1
 
     @staticmethod
@@ -722,6 +807,7 @@ class RuntimeMCPSession:
 
         Returns True if reconnection succeeded within the timeout.
         """
+        await self._assert_execution_active()
         if self._shutdown_event.is_set():
             return False
 
@@ -732,6 +818,7 @@ class RuntimeMCPSession:
 
         try:
             await asyncio.wait_for(reconnected_event.wait(), timeout=self._RECONNECT_WAIT_TIMEOUT)
+            await self._assert_execution_active()
             return self.status == MCPSessionStatus.CONNECTED
         except asyncio.TimeoutError:
             self.ap.logger.warning(f'MCP session {self.server_name} reconnect timed out')
@@ -747,6 +834,7 @@ class RuntimeMCPSession:
         if not self.enable:
             return
 
+        await self._assert_execution_active()
         # Create background task for lifecycle management with retry
         self._lifecycle_task = asyncio.create_task(self._lifecycle_loop_with_retry())
 
@@ -758,11 +846,13 @@ class RuntimeMCPSession:
             self.status = MCPSessionStatus.ERROR
             raise Exception(f'Connection timeout after {startup_timeout} seconds')
 
+        await self._assert_execution_active()
         # Check for errors
         if self.status == MCPSessionStatus.ERROR:
             raise Exception('Connection failed, please check URL')
 
     async def refresh(self):
+        await self._assert_execution_active()
         if not self.session:
             return
 
@@ -778,6 +868,7 @@ class RuntimeMCPSession:
             self.resource_capabilities = {}
 
         tools = await self.session.list_tools()
+        await self._assert_execution_active()
 
         self.ap.logger.debug(f'Refresh MCP tools: {tools}')
 
@@ -799,34 +890,44 @@ class RuntimeMCPSession:
             )
 
         await self._refresh_resources()
+        await self._assert_execution_active()
 
     async def _refresh_resources(self):
+        await self._assert_execution_active()
         if not self.session:
             return
 
         try:
             cursor: str | None = None
             for _ in range(MCP_RESOURCE_DISCOVERY_MAX_PAGES):
+                await self._assert_execution_active()
                 resources_result = await self.session.list_resources(cursor)
+                await self._assert_execution_active()
                 for resource in resources_result.resources:
                     self.resources.append(_resource_to_dict(resource))
                 cursor = getattr(resources_result, 'nextCursor', None)
                 if not cursor:
                     break
             self.ap.logger.debug(f'Refresh MCP resources: {len(self.resources)} resources found')
+        except WorkspaceError:
+            raise
         except Exception as e:
             self.ap.logger.debug(f'MCP server {self.server_name} does not support resources or failed to list: {e}')
 
         try:
             cursor = None
             for _ in range(MCP_RESOURCE_DISCOVERY_MAX_PAGES):
+                await self._assert_execution_active()
                 templates_result = await self.session.list_resource_templates(cursor)
+                await self._assert_execution_active()
                 for template in templates_result.resourceTemplates:
                     self.resource_templates.append(_resource_template_to_dict(template))
                 cursor = getattr(templates_result, 'nextCursor', None)
                 if not cursor:
                     break
             self.ap.logger.debug(f'Refresh MCP resource templates: {len(self.resource_templates)} templates found')
+        except WorkspaceError:
+            raise
         except Exception as e:
             self.ap.logger.debug(
                 f'MCP server {self.server_name} does not support resource templates or failed to list: {e}'
@@ -945,12 +1046,15 @@ class RuntimeMCPSession:
         arguments: dict,
         query: pipeline_query.Query | None = None,
     ) -> list[provider_message.ContentElement]:
+        await self._assert_execution_active()
         for attempt in range(2):
             if not self.session:
                 raise Exception('MCP session is not connected')
 
             try:
+                await self._assert_execution_active()
                 result = await self.session.call_tool(tool_name, arguments)
+                await self._assert_execution_active()
             except Exception as e:
                 if attempt == 0 and self._is_session_terminated(e):
                     self.ap.logger.warning(
@@ -1016,6 +1120,7 @@ class RuntimeMCPSession:
         query: pipeline_query.Query | None = None,
     ) -> dict:
         """Read a resource by URI with safety limits and audit metadata."""
+        await self._assert_execution_active()
         if not self.session:
             raise Exception('MCP session is not connected')
 
@@ -1042,7 +1147,9 @@ class RuntimeMCPSession:
             if not self.session:
                 raise Exception('MCP session is not connected')
             try:
+                await self._assert_execution_active()
                 result = await self.session.read_resource(AnyUrl(uri))
+                await self._assert_execution_active()
                 break
             except Exception as e:
                 if attempt == 0 and self._is_session_terminated(e):
@@ -1123,6 +1230,7 @@ class RuntimeMCPSession:
             'cache_hit': False,
             'warnings': warnings,
         }
+        await self._assert_execution_active()
         self._resource_cache[cache_key] = {'cached_at': now, 'envelope': envelope}
         self._record_resource_read_trace(query, envelope)
         return envelope
@@ -1157,7 +1265,11 @@ class RuntimeMCPSession:
     def get_runtime_info_dict(self) -> dict:
         info = {
             'status': self.status.value,
-            'error_message': self.error_message,
+            # Raw transport exceptions may echo command arguments, headers, or
+            # environment values. Detailed diagnostics belong in AUDIT_VIEW
+            # logs; resource-list responses expose only a stable status.
+            'error_message': 'MCP runtime failed' if self.error_message else None,
+            'error_code': 'runtime_error' if self.error_message else None,
             'error_phase': self.error_phase.value if self.error_phase else None,
             'retry_count': self.retry_count,
             'tool_count': len(self.get_tools()),
@@ -1246,6 +1358,37 @@ class RuntimeMCPSession:
         await self._box_stdio_runtime.cleanup_session()
 
 
+def _execution_context_from_tenant(context: TenantContext) -> ExecutionContext:
+    workspace_uuid = require_workspace_uuid(context)
+    instance_uuid = str(getattr(context, 'instance_uuid', '') or '').strip()
+    generation = getattr(context, 'placement_generation', None)
+    if not instance_uuid:
+        raise ValueError('MCP runtime requires an explicit instance UUID')
+    if isinstance(generation, bool) or not isinstance(generation, int) or generation <= 0:
+        raise ValueError('MCP runtime requires a positive placement generation')
+    return ExecutionContext(
+        instance_uuid=instance_uuid,
+        workspace_uuid=workspace_uuid,
+        placement_generation=generation,
+        bot_uuid=getattr(context, 'bot_uuid', None),
+        pipeline_uuid=getattr(context, 'pipeline_uuid', None),
+        query_uuid=getattr(context, 'query_uuid', None),
+    )
+
+
+def _execution_context_from_query(query: pipeline_query.Query) -> ExecutionContext:
+    return _execution_context_from_tenant(
+        ExecutionContext(
+            instance_uuid=str(getattr(query, 'instance_uuid', '') or ''),
+            workspace_uuid=str(getattr(query, 'workspace_uuid', '') or ''),
+            placement_generation=getattr(query, 'placement_generation', 0) or 0,
+            bot_uuid=getattr(query, 'bot_uuid', None),
+            pipeline_uuid=getattr(query, 'pipeline_uuid', None),
+            query_uuid=getattr(query, 'query_uuid', None),
+        )
+    )
+
+
 # @loader.loader_class('mcp')
 class MCPLoader(loader.ToolLoader):
     """MCP 工具加载器。
@@ -1253,7 +1396,7 @@ class MCPLoader(loader.ToolLoader):
     在此加载器中管理所有与 MCP Server 的连接。
     """
 
-    sessions: dict[str, RuntimeMCPSession]
+    sessions: dict[tuple[str, str, int, str], RuntimeMCPSession]
 
     _last_listed_functions: list[resource_tool.LLMTool]
 
@@ -1264,6 +1407,21 @@ class MCPLoader(loader.ToolLoader):
         self.sessions = {}
         self._last_listed_functions = []
         self._hosted_mcp_tasks = []
+
+    async def _assert_execution_active(
+        self,
+        context: TenantContext,
+    ) -> ExecutionContext:
+        """Validate a caller's placement before accessing an MCP session."""
+
+        execution_context = _execution_context_from_tenant(context)
+        binding = await self.ap.workspace_service.get_execution_binding(
+            execution_context.workspace_uuid,
+            expected_generation=execution_context.placement_generation,
+        )
+        if binding.instance_uuid != execution_context.instance_uuid:
+            raise WorkspaceInvariantError('MCP caller instance does not match the active Workspace binding')
+        return execution_context
 
     async def initialize(self):
         await self.load_mcp_servers_from_db()
@@ -1278,15 +1436,51 @@ class MCPLoader(loader.ToolLoader):
 
         for server in servers:
             config = self.ap.persistence_mgr.serialize_model(persistence_mcp.MCPServer, server)
+            try:
+                binding = await self.ap.workspace_service.get_execution_binding(server.workspace_uuid)
+                execution_context = ExecutionContext(
+                    instance_uuid=binding.instance_uuid,
+                    workspace_uuid=binding.workspace_uuid,
+                    placement_generation=binding.placement_generation,
+                )
+            except Exception as exc:
+                self.ap.logger.warning(
+                    f'Skipping MCP server {server.uuid}: Workspace execution binding is unavailable: {exc}'
+                )
+                continue
 
-            task = asyncio.create_task(self.host_mcp_server(config))
+            task = asyncio.create_task(self.host_mcp_server(execution_context, config))
             self._hosted_mcp_tasks.append(task)
 
-    async def host_mcp_server(self, server_config: dict):
+    @staticmethod
+    def _scope_key(context: TenantContext) -> tuple[str, str, int]:
+        execution_context = _execution_context_from_tenant(context)
+        return (
+            execution_context.instance_uuid,
+            execution_context.workspace_uuid,
+            execution_context.placement_generation,
+        )
+
+    @classmethod
+    def _session_key(cls, context: TenantContext, server_name: str) -> tuple[str, str, int, str]:
+        return (*cls._scope_key(context), server_name)
+
+    def _sessions_for_context(self, context: TenantContext) -> list[RuntimeMCPSession]:
+        scope_key = self._scope_key(context)
+        return [session for key, session in self.sessions.items() if key[:3] == scope_key]
+
+    async def host_mcp_server(self, context: TenantContext, server_config: dict):
+        execution_context = await self._assert_execution_active(context)
+        configured_workspace = str(server_config.get('workspace_uuid') or '').strip()
+        if configured_workspace and configured_workspace != execution_context.workspace_uuid:
+            raise ValueError('MCP server configuration belongs to another Workspace')
+        server_config = dict(server_config)
+        server_config['workspace_uuid'] = execution_context.workspace_uuid
         self.ap.logger.debug(f'Loading MCP server {server_config}')
         try:
-            session = await self.load_mcp_server(server_config)
-            self.sessions[server_config['name']] = session
+            session = await self.load_mcp_server(execution_context, server_config)
+            await self._assert_execution_active(execution_context)
+            self.sessions[self._session_key(execution_context, server_config['name'])] = session
         except Exception as e:
             self.ap.logger.error(
                 f'Failed to load MCP server from db: {server_config["name"]}({server_config["uuid"]}): {e}\n{traceback.format_exc()}'
@@ -1295,6 +1489,7 @@ class MCPLoader(loader.ToolLoader):
 
         self.ap.logger.debug(f'Starting MCP server {server_config["name"]}({server_config["uuid"]})')
         try:
+            await self._assert_execution_active(execution_context)
             await session.start()
         except Exception as e:
             self.ap.logger.error(
@@ -1304,7 +1499,7 @@ class MCPLoader(loader.ToolLoader):
 
         self.ap.logger.debug(f'Started MCP server {server_config["name"]}({server_config["uuid"]})')
 
-    async def load_mcp_server(self, server_config: dict) -> RuntimeMCPSession:
+    async def load_mcp_server(self, context: TenantContext, server_config: dict) -> RuntimeMCPSession:
         """加载 MCP 服务器到运行时
 
         Args:
@@ -1314,6 +1509,13 @@ class MCPLoader(loader.ToolLoader):
                 - enable: 是否启用
                 - extra_args: 额外的配置参数 (可选)
         """
+        execution_context = await self._assert_execution_active(context)
+        server_config = dict(server_config)
+        configured_workspace = str(server_config.get('workspace_uuid') or '').strip()
+        if configured_workspace and configured_workspace != execution_context.workspace_uuid:
+            raise ValueError('MCP server configuration belongs to another Workspace')
+        server_config['workspace_uuid'] = execution_context.workspace_uuid
+
         uuid_ = server_config.get('uuid')
         is_transient = False
         if not uuid_:
@@ -1339,7 +1541,7 @@ class MCPLoader(loader.ToolLoader):
             **extra_args,
         }
 
-        session = RuntimeMCPSession(name, mixed_config, enable, self.ap)
+        session = RuntimeMCPSession(name, mixed_config, enable, self.ap, execution_context)
 
         return session
 
@@ -1348,9 +1550,13 @@ class MCPLoader(loader.ToolLoader):
         v = getattr(query, 'variables', None) or {}
         return v.get('_pipeline_bound_mcp_servers', None)
 
-    def _eligible_sessions_for_bound(self, bound_mcp_servers: list[str] | None) -> list[RuntimeMCPSession]:
+    def _eligible_sessions_for_bound(
+        self,
+        context: TenantContext,
+        bound_mcp_servers: list[str] | None,
+    ) -> list[RuntimeMCPSession]:
         out: list[RuntimeMCPSession] = []
-        for session in self.sessions.values():
+        for session in self._sessions_for_context(context):
             if not session.enable:
                 continue
             if session.status != MCPSessionStatus.CONNECTED:
@@ -1362,10 +1568,14 @@ class MCPLoader(loader.ToolLoader):
             out.append(session)
         return out
 
-    def _eligible_resource_sessions_for_bound(self, bound_mcp_servers: list[str] | None) -> list[RuntimeMCPSession]:
+    def _eligible_resource_sessions_for_bound(
+        self,
+        context: TenantContext,
+        bound_mcp_servers: list[str] | None,
+    ) -> list[RuntimeMCPSession]:
         return [
             session
-            for session in self._eligible_sessions_for_bound(bound_mcp_servers)
+            for session in self._eligible_sessions_for_bound(context, bound_mcp_servers)
             if session.has_resource_support()
         ]
 
@@ -1396,12 +1606,13 @@ class MCPLoader(loader.ToolLoader):
         ]
 
     async def _invoke_mcp_list_resources(self, parameters: dict, query: pipeline_query.Query) -> typing.Any:
+        execution_context = _execution_context_from_query(query)
         server_name = parameters.get('server_name') if parameters else None
         if not server_name or not isinstance(server_name, str):
             return [provider_message.ContentElement.from_text('Error: "server_name" (string) is required.')]
 
         bound = self._get_bound_mcp_from_query(query)
-        allowed = {s.server_name for s in self._eligible_resource_sessions_for_bound(bound)}
+        allowed = {s.server_name for s in self._eligible_resource_sessions_for_bound(execution_context, bound)}
         if server_name not in allowed:
             return [
                 provider_message.ContentElement.from_text(
@@ -1411,7 +1622,7 @@ class MCPLoader(loader.ToolLoader):
                 )
             ]
 
-        session = self.get_session(server_name)
+        session = self.get_session(execution_context, server_name)
         if session is None or session.status != MCPSessionStatus.CONNECTED:
             return [provider_message.ContentElement.from_text(f'Error: MCP server not connected: {server_name!r}')]
 
@@ -1428,6 +1639,7 @@ class MCPLoader(loader.ToolLoader):
         return [provider_message.ContentElement.from_text(json.dumps(body, ensure_ascii=False, indent=2))]
 
     async def _invoke_mcp_read_resource(self, parameters: dict, query: pipeline_query.Query) -> typing.Any:
+        execution_context = _execution_context_from_query(query)
         server_name = parameters.get('server_name') if parameters else None
         uri = parameters.get('uri') if parameters else None
         if not server_name or not isinstance(server_name, str):
@@ -1436,7 +1648,7 @@ class MCPLoader(loader.ToolLoader):
             return [provider_message.ContentElement.from_text('Error: "uri" (string) is required.')]
 
         bound = self._get_bound_mcp_from_query(query)
-        allowed = {s.server_name for s in self._eligible_resource_sessions_for_bound(bound)}
+        allowed = {s.server_name for s in self._eligible_resource_sessions_for_bound(execution_context, bound)}
         if server_name not in allowed:
             return [
                 provider_message.ContentElement.from_text(
@@ -1445,7 +1657,7 @@ class MCPLoader(loader.ToolLoader):
                 )
             ]
 
-        session = self.get_session(server_name)
+        session = self.get_session(execution_context, server_name)
         if session is None or session.status != MCPSessionStatus.CONNECTED:
             return [provider_message.ContentElement.from_text(f'Error: MCP server not connected: {server_name!r}')]
 
@@ -1496,13 +1708,15 @@ class MCPLoader(loader.ToolLoader):
 
     async def get_tools(
         self,
+        context: TenantContext,
         bound_mcp_servers: list[str] | None = None,
         *,
         include_resource_tools: bool = True,
     ) -> list[resource_tool.LLMTool]:
+        await self._assert_execution_active(context)
         all_functions: list[resource_tool.LLMTool] = []
 
-        for session in self.sessions.values():
+        for session in self._sessions_for_context(context):
             # If bound_mcp_servers is specified, only include tools from those servers
             if bound_mcp_servers is not None:
                 if session.server_uuid in bound_mcp_servers:
@@ -1511,7 +1725,7 @@ class MCPLoader(loader.ToolLoader):
                 # If no bound servers specified, include all tools
                 all_functions.extend(session.get_tools())
 
-        if include_resource_tools and self._eligible_resource_sessions_for_bound(bound_mcp_servers):
+        if include_resource_tools and self._eligible_resource_sessions_for_bound(context, bound_mcp_servers):
             all_functions.extend(self._mcp_synthetic_resource_tools())
 
         self._last_listed_functions = all_functions
@@ -1520,13 +1734,15 @@ class MCPLoader(loader.ToolLoader):
 
     async def get_tool_catalog(
         self,
+        context: TenantContext,
         bound_mcp_servers: list[str] | None = None,
         *,
         include_resource_tools: bool = False,
     ) -> list[dict[str, typing.Any]]:
+        await self._assert_execution_active(context)
         items: list[dict[str, typing.Any]] = []
 
-        for session in self.sessions.values():
+        for session in self._sessions_for_context(context):
             if bound_mcp_servers is not None and session.server_uuid not in bound_mcp_servers:
                 continue
             for tool in session.get_tools():
@@ -1542,7 +1758,7 @@ class MCPLoader(loader.ToolLoader):
                     }
                 )
 
-        if include_resource_tools and self._eligible_resource_sessions_for_bound(bound_mcp_servers):
+        if include_resource_tools and self._eligible_resource_sessions_for_bound(context, bound_mcp_servers):
             for tool in self._mcp_synthetic_resource_tools():
                 items.append(
                     {
@@ -1558,18 +1774,20 @@ class MCPLoader(loader.ToolLoader):
 
         return items
 
-    async def has_tool(self, name: str) -> bool:
+    async def has_tool(self, context: TenantContext, name: str) -> bool:
         """检查工具是否存在"""
+        await self._assert_execution_active(context)
         if name in (MCP_TOOL_LIST_RESOURCES, MCP_TOOL_READ_RESOURCE):
-            return bool(self._eligible_resource_sessions_for_bound(None))
-        for session in self.sessions.values():
+            return bool(self._eligible_resource_sessions_for_bound(context, None))
+        for session in self._sessions_for_context(context):
             for function in session.get_tools():
                 if function.name == name:
                     return True
         return False
 
-    async def get_tool(self, name: str) -> resource_tool.LLMTool | None:
-        for session in self.sessions.values():
+    async def get_tool(self, context: TenantContext, name: str) -> resource_tool.LLMTool | None:
+        await self._assert_execution_active(context)
+        for session in self._sessions_for_context(context):
             for function in session.get_tools():
                 if function.name == name:
                     return function
@@ -1577,6 +1795,7 @@ class MCPLoader(loader.ToolLoader):
 
     async def invoke_tool(self, name: str, parameters: dict, query: pipeline_query.Query) -> typing.Any:
         """执行工具调用"""
+        execution_context = await self._assert_execution_active(_execution_context_from_query(query))
         if name == MCP_TOOL_LIST_RESOURCES:
             if getattr(query, 'variables', {}).get('_pipeline_mcp_resource_agent_read_enabled', True) is False:
                 return [provider_message.ContentElement.from_text('Error: MCP resource agent reads are disabled.')]
@@ -1586,7 +1805,7 @@ class MCPLoader(loader.ToolLoader):
                 return [provider_message.ContentElement.from_text('Error: MCP resource agent reads are disabled.')]
             return await self._invoke_mcp_read_resource(parameters, query)
 
-        for session in self.sessions.values():
+        for session in self._sessions_for_context(execution_context):
             for function in session.get_tools():
                 if function.name == name:
                     self.ap.logger.debug(f'Invoking MCP tool: {name} with parameters: {parameters}')
@@ -1600,22 +1819,25 @@ class MCPLoader(loader.ToolLoader):
 
         raise ValueError(f'Tool not found: {name}')
 
-    async def get_resources(self, server_name: str) -> list[dict]:
+    async def get_resources(self, context: TenantContext, server_name: str) -> list[dict]:
         """Get resources from a specific MCP server."""
-        session = self.get_session(server_name)
+        await self._assert_execution_active(context)
+        session = self.get_session(context, server_name)
         if session is None:
             raise ValueError(f'MCP server not found: {server_name}')
         return session.get_resources()
 
-    async def get_resource_templates(self, server_name: str) -> list[dict]:
+    async def get_resource_templates(self, context: TenantContext, server_name: str) -> list[dict]:
         """Get resource templates from a specific MCP server."""
-        session = self.get_session(server_name)
+        await self._assert_execution_active(context)
+        session = self.get_session(context, server_name)
         if session is None:
             raise ValueError(f'MCP server not found: {server_name}')
         return session.get_resource_templates()
 
     async def read_resource_envelope(
         self,
+        context: TenantContext,
         server_name: str,
         uri: str,
         *,
@@ -1626,7 +1848,8 @@ class MCPLoader(loader.ToolLoader):
         query: pipeline_query.Query | None = None,
     ) -> dict:
         """Read a resource from a specific MCP server and return metadata plus contents."""
-        session = self.get_session(server_name)
+        await self._assert_execution_active(context)
+        session = self.get_session(context, server_name)
         if session is None:
             raise ValueError(f'MCP server not found: {server_name}')
         return await session.read_resource_envelope(
@@ -1638,24 +1861,28 @@ class MCPLoader(loader.ToolLoader):
             query=query,
         )
 
-    async def read_resource(self, server_name: str, uri: str) -> list[dict]:
+    async def read_resource(self, context: TenantContext, server_name: str, uri: str) -> list[dict]:
         """Read a resource from a specific MCP server."""
-        envelope = await self.read_resource_envelope(server_name, uri)
+        envelope = await self.read_resource_envelope(context, server_name, uri)
         return envelope['contents']
 
-    def get_session_by_uuid(self, server_uuid: str) -> RuntimeMCPSession | None:
-        for session in self.sessions.values():
+    def get_session_by_uuid(self, context: TenantContext, server_uuid: str) -> RuntimeMCPSession | None:
+        for session in self._sessions_for_context(context):
             if session.server_uuid == server_uuid:
                 return session
         return None
 
-    def _resolve_attachment_session(self, attachment: dict) -> RuntimeMCPSession | None:
+    def _resolve_attachment_session(
+        self,
+        context: TenantContext,
+        attachment: dict,
+    ) -> RuntimeMCPSession | None:
         server_uuid = attachment.get('server_uuid') or attachment.get('server_id')
         server_name = attachment.get('server_name')
         if server_uuid:
-            return self.get_session_by_uuid(server_uuid)
+            return self.get_session_by_uuid(context, server_uuid)
         if server_name:
-            return self.get_session(server_name)
+            return self.get_session(context, server_name)
         return None
 
     async def build_resource_context_for_query(
@@ -1666,6 +1893,7 @@ class MCPLoader(loader.ToolLoader):
         default_max_bytes: int = MCP_RESOURCE_CONTEXT_MAX_BYTES,
     ) -> str:
         """Build host-controlled MCP resource context for the current query."""
+        execution_context = await self._assert_execution_active(_execution_context_from_query(query))
         if getattr(query, 'variables', {}).get('_pipeline_mcp_resource_agent_read_enabled', True) is False:
             return ''
 
@@ -1674,7 +1902,7 @@ class MCPLoader(loader.ToolLoader):
             return ''
 
         bound = self._get_bound_mcp_from_query(query)
-        eligible = self._eligible_resource_sessions_for_bound(bound)
+        eligible = self._eligible_resource_sessions_for_bound(execution_context, bound)
         eligible_by_uuid = {session.server_uuid: session for session in eligible}
         eligible_by_name = {session.server_name: session for session in eligible}
 
@@ -1682,6 +1910,7 @@ class MCPLoader(loader.ToolLoader):
         remaining_tokens = default_max_tokens
 
         for raw_attachment in attachments:
+            await self._assert_execution_active(execution_context)
             if remaining_tokens <= 0:
                 break
             if not isinstance(raw_attachment, dict) or raw_attachment.get('enabled') is False:
@@ -1696,7 +1925,7 @@ class MCPLoader(loader.ToolLoader):
             if not uri or not isinstance(uri, str):
                 continue
 
-            session = self._resolve_attachment_session(attachment)
+            session = self._resolve_attachment_session(execution_context, attachment)
             if session is None:
                 continue
             if session.server_uuid not in eligible_by_uuid and session.server_name not in eligible_by_name:
@@ -1714,6 +1943,8 @@ class MCPLoader(loader.ToolLoader):
                     source='preloaded',
                     query=query,
                 )
+            except WorkspaceError:
+                raise
             except Exception as e:
                 self.ap.logger.warning(f'Failed to preload MCP resource {uri!r} from {session.server_name!r}: {e}')
                 continue
@@ -1753,37 +1984,40 @@ class MCPLoader(loader.ToolLoader):
                 pass
         return context
 
-    async def remove_mcp_server(self, server_name: str):
+    async def remove_mcp_server(self, context: TenantContext, server_name: str):
         """移除 MCP 服务器"""
-        if server_name not in self.sessions:
+        await self._assert_execution_active(context)
+        key = self._session_key(context, server_name)
+        if key not in self.sessions:
             self.ap.logger.warning(f'MCP server {server_name} not found in sessions, skipping removal')
             return
 
-        session = self.sessions.pop(server_name)
+        session = self.sessions.pop(key)
         await session.shutdown()
         self.ap.logger.info(f'Removed MCP server: {server_name}')
 
-    def get_session(self, server_name: str) -> RuntimeMCPSession | None:
+    def get_session(self, context: TenantContext, server_name: str) -> RuntimeMCPSession | None:
         """获取指定名称的 MCP 会话"""
-        return self.sessions.get(server_name)
+        return self.sessions.get(self._session_key(context, server_name))
 
-    def has_session(self, server_name: str) -> bool:
+    def has_session(self, context: TenantContext, server_name: str) -> bool:
         """检查是否存在指定名称的 MCP 会话"""
-        return server_name in self.sessions
+        return self._session_key(context, server_name) in self.sessions
 
-    def get_all_server_names(self) -> list[str]:
+    def get_all_server_names(self, context: TenantContext) -> list[str]:
         """获取所有已加载的 MCP 服务器名称"""
-        return list(self.sessions.keys())
+        return [session.server_name for session in self._sessions_for_context(context)]
 
-    def get_server_tool_count(self, server_name: str) -> int:
+    def get_server_tool_count(self, context: TenantContext, server_name: str) -> int:
         """获取指定服务器的工具数量"""
-        session = self.get_session(server_name)
+        session = self.get_session(context, server_name)
         return len(session.get_tools()) if session else 0
 
-    def get_all_servers_info(self) -> dict[str, dict]:
+    def get_all_servers_info(self, context: TenantContext) -> dict[str, dict]:
         """获取所有服务器的信息"""
         info = {}
-        for server_name, session in self.sessions.items():
+        for session in self._sessions_for_context(context):
+            server_name = session.server_name
             tools = session.get_tools()
             info[server_name] = {
                 'name': server_name,
@@ -1797,11 +2031,13 @@ class MCPLoader(loader.ToolLoader):
     async def shutdown(self):
         """关闭所有工具"""
         self.ap.logger.info('Shutting down all MCP sessions...')
-        for server_name, session in list(self.sessions.items()):
+        for key, session in list(self.sessions.items()):
             try:
                 await session.shutdown()
-                self.ap.logger.debug(f'Shutdown MCP session: {server_name}')
+                self.ap.logger.debug(f'Shutdown MCP session: {session.server_name}')
             except Exception as e:
-                self.ap.logger.error(f'Error shutting down MCP session {server_name}: {e}\n{traceback.format_exc()}')
+                self.ap.logger.error(
+                    f'Error shutting down MCP session {session.server_name}: {e}\n{traceback.format_exc()}'
+                )
         self.sessions.clear()
         self.ap.logger.info('All MCP sessions shutdown complete')

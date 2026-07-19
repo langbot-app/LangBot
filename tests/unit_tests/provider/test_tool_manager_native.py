@@ -12,6 +12,14 @@ import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 
 from langbot.pkg.provider.tools.loaders.native import NativeToolLoader
 from langbot.pkg.provider.tools.toolmgr import ToolManager
+from langbot.pkg.api.http.context import ExecutionContext
+
+
+_CONTEXT = ExecutionContext(
+    instance_uuid='instance-a',
+    workspace_uuid='workspace-a',
+    placement_generation=1,
+)
 
 
 class StubLoader:
@@ -72,7 +80,7 @@ async def test_tool_manager_omits_skill_authoring_tools_by_default():
     manager.plugin_tool_loader = StubLoader([make_tool('plugin_tool')])
     manager.mcp_tool_loader = StubLoader([make_tool('mcp_tool')])
 
-    tools = await manager.get_all_tools()
+    tools = await manager.get_all_tools(_CONTEXT)
 
     assert [tool.name for tool in tools] == ['exec', 'plugin_tool', 'mcp_tool']
 
@@ -85,7 +93,7 @@ async def test_tool_manager_includes_skill_authoring_tools_when_requested():
     manager.plugin_tool_loader = StubLoader([make_tool('plugin_tool')])
     manager.mcp_tool_loader = StubLoader([make_tool('mcp_tool')])
 
-    tools = await manager.get_all_tools(include_skill_authoring=True)
+    tools = await manager.get_all_tools(_CONTEXT, include_skill_authoring=True)
 
     assert [tool.name for tool in tools] == ['exec', 'activate', 'plugin_tool', 'mcp_tool']
 
@@ -102,7 +110,7 @@ async def test_tool_manager_catalog_labels_tool_sources():
     )
     manager.mcp_tool_loader = StubLoader([make_tool('mcp_tool')])
 
-    catalog = await manager.get_tool_catalog(include_skill_authoring=True)
+    catalog = await manager.get_tool_catalog(_CONTEXT, include_skill_authoring=True)
 
     assert [(item['name'], item['source'], item['source_name']) for item in catalog] == [
         ('exec', 'builtin', 'LangBot'),
@@ -139,7 +147,7 @@ async def test_native_tool_loader_hides_tools_when_box_unavailable():
 async def test_native_tool_loader_exposes_all_tools_when_box_available():
     box_service = SimpleNamespace(
         available=True,
-        get_status=AsyncMock(return_value={'backend': {'available': True}}),
+        get_backend_status=AsyncMock(return_value={'backend': {'available': True}}),
     )
     loader = NativeToolLoader(SimpleNamespace(box_service=box_service, logger=Mock()))
     await loader.initialize()
@@ -156,15 +164,26 @@ async def test_native_tool_loader_exposes_all_tools_when_box_available():
 
 def _make_loader_with_workspace(tmpdir: str) -> tuple[NativeToolLoader, Mock]:
     logger = Mock()
-    box_service = SimpleNamespace(available=True, default_workspace=tmpdir)
+    box_service = SimpleNamespace(
+        available=True,
+        default_workspace=tmpdir,
+        _tenant_workspace=Mock(return_value=tmpdir),
+    )
     ap = SimpleNamespace(box_service=box_service, logger=logger)
     return NativeToolLoader(ap), logger
 
 
-def _make_query() -> Mock:
-    q = Mock()
-    q.query_id = 'test-query-1'
-    return q
+def _make_query() -> SimpleNamespace:
+    return SimpleNamespace(
+        query_id='test-query-1',
+        query_uuid='test-query-1',
+        instance_uuid=_CONTEXT.instance_uuid,
+        workspace_uuid=_CONTEXT.workspace_uuid,
+        placement_generation=_CONTEXT.placement_generation,
+        bot_uuid=None,
+        pipeline_uuid=None,
+        variables={},
+    )
 
 
 @pytest.mark.asyncio
@@ -376,13 +395,13 @@ async def test_box_availability_helper_handles_unavailable_and_errors():
 
     unavailable_backend = SimpleNamespace(
         available=True,
-        get_status=AsyncMock(return_value={'backend': {'available': False}}),
+        get_backend_status=AsyncMock(return_value={'backend': {'available': False}}),
     )
     assert await is_box_backend_available(SimpleNamespace(box_service=unavailable_backend)) is False
 
     failing_backend = SimpleNamespace(
         available=True,
-        get_status=AsyncMock(side_effect=RuntimeError('box unavailable')),
+        get_backend_status=AsyncMock(side_effect=RuntimeError('box unavailable')),
     )
     assert await is_box_backend_available(SimpleNamespace(box_service=failing_backend)) is False
 

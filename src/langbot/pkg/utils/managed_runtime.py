@@ -28,7 +28,11 @@ class ManagedRuntimeConnector:
         self.runtime_subprocess = None
         self.runtime_subprocess_task = None
 
-    async def _start_runtime_subprocess(self, *args: str) -> None:
+    async def _start_runtime_subprocess(
+        self,
+        *args: str,
+        env_overrides: dict[str, str] | None = None,
+    ) -> None:
         """Launch a local runtime as a subprocess of the current Python interpreter.
 
         If a subprocess is already running (no *returncode* yet), this is a no-op.
@@ -38,6 +42,8 @@ class ManagedRuntimeConnector:
 
         python_path = sys.executable
         env = os.environ.copy()
+        if env_overrides:
+            env.update(env_overrides)
         self.runtime_subprocess = await asyncio.create_subprocess_exec(
             python_path,
             *args,

@@ -11,6 +11,7 @@ import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
 import langbot_plugin.api.entities.builtin.rag.context as rag_context
 
+from ...pipeline.pool import get_query_execution_context
 
 rag_combined_prompt_template = """
 The following are relevant context entries retrieved from the knowledge base. 
@@ -227,7 +228,10 @@ class LocalAgentRunner(runner.RequestRunner):
         # Primary model
         if query.use_llm_model_uuid:
             try:
-                primary = await self.ap.model_mgr.get_model_by_uuid(query.use_llm_model_uuid)
+                primary = await self.ap.model_mgr.get_model_by_uuid(
+                    get_query_execution_context(query),
+                    query.use_llm_model_uuid,
+                )
                 candidates.append(primary)
             except ValueError:
                 self.ap.logger.warning(f'Primary model {query.use_llm_model_uuid} not found')
@@ -236,7 +240,10 @@ class LocalAgentRunner(runner.RequestRunner):
         fallback_uuids = (query.variables or {}).get('_fallback_model_uuids', [])
         for fb_uuid in fallback_uuids:
             try:
-                fb_model = await self.ap.model_mgr.get_model_by_uuid(fb_uuid)
+                fb_model = await self.ap.model_mgr.get_model_by_uuid(
+                    get_query_execution_context(query),
+                    fb_uuid,
+                )
                 candidates.append(fb_model)
             except ValueError:
                 self.ap.logger.warning(f'Fallback model {fb_uuid} not found, skipping')
@@ -346,12 +353,13 @@ class LocalAgentRunner(runner.RequestRunner):
         if kb_uuids and user_message_text:
             # only support text for now
             all_results: list[rag_context.RetrievalResultEntry] = []
+            execution_context = get_query_execution_context(query)
 
             kb_engine_plugins: set[str] = set()
 
             # Retrieve from each knowledge base
             for kb_uuid in kb_uuids:
-                kb = await self.ap.rag_mgr.get_knowledge_base_by_uuid(kb_uuid)
+                kb = await self.ap.rag_mgr.get_knowledge_base_by_uuid(execution_context, kb_uuid)
 
                 if not kb:
                     self.ap.logger.warning(f'Knowledge base {kb_uuid} not found, skipping')
@@ -364,6 +372,7 @@ class LocalAgentRunner(runner.RequestRunner):
                 kb_engine_plugins.add(engine_plugin_id)
 
                 result = await kb.retrieve(
+                    execution_context,
                     user_message_text,
                     settings={
                         'bot_uuid': query.bot_uuid or '',
@@ -398,7 +407,10 @@ class LocalAgentRunner(runner.RequestRunner):
             )
             if all_results and rerank_model_uuid:
                 try:
-                    rerank_model = await self.ap.model_mgr.get_rerank_model_by_uuid(rerank_model_uuid)
+                    rerank_model = await self.ap.model_mgr.get_rerank_model_by_uuid(
+                        execution_context,
+                        rerank_model_uuid,
+                    )
                     rerank_top_k = int(local_agent_config.get('rerank-top-k', 5))
 
                     doc_texts = []
@@ -411,6 +423,7 @@ class LocalAgentRunner(runner.RequestRunner):
                         model=rerank_model,
                         query=user_message_text,
                         documents=doc_texts_capped,
+                        execution_context=execution_context,
                     )
 
                     scored = sorted(scores, key=lambda x: x.get('relevance_score', 0), reverse=True)

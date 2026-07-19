@@ -178,6 +178,12 @@ In this repo:
 - `pkg/provider/tools/loaders/native.py`, `mcp_stdio.py`, and skill loaders depend on Box availability.
 - `pkg/skill/manager.py` loads skills from the Box runtime, falling back to local `data/skills` when needed.
 
+Durable Box Workspace storage is shared across placement generations, but
+sandbox sessions and managed processes are generation-scoped. LangBot validates
+the current execution binding before an MCP stdio relay attach and sends the
+Workspace/generation binding in authenticated headers, so a placement cutover
+retires stale processes and closes already-attached relays.
+
 In `langbot-plugin-sdk`:
 
 - `src/langbot_plugin/box/server.py` implements `lbp box` and the WebSocket endpoints on `:5410`.

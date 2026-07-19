@@ -11,7 +11,7 @@ async def is_box_backend_available(ap: Any) -> bool:
     if not getattr(box_service, 'available', False):
         return False
     try:
-        status = await box_service.get_status()
+        status = await box_service.get_backend_status()
         backend_info = status.get('backend', {})
         return bool(backend_info.get('available', False))
     except Exception:

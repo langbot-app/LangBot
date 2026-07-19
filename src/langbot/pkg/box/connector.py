@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import secrets
 import sys
 import typing
 from typing import TYPE_CHECKING
@@ -15,6 +16,17 @@ from langbot_plugin.runtime.io.connection import Connection
 from langbot_plugin.box.client import ActionRPCBoxClient
 from langbot_plugin.box.errors import BoxRuntimeUnavailableError
 from langbot_plugin.box.actions import LangBotToBoxAction
+from langbot_plugin.box.security import (
+    BOX_CONTROL_TOKEN_ENV,
+    BOX_CONTROL_TOKEN_HEADER,
+    BOX_INSTANCE_HEADER,
+    BOX_PLACEMENT_GENERATION_HEADER,
+    BOX_TRUSTED_INSTANCE_ENV,
+    BOX_WORKSPACE_HEADER,
+    normalize_instance_uuid,
+    validate_control_token,
+)
+from langbot_plugin.entities.io.context import ActionContext
 
 from ..utils import platform
 from ..utils.managed_runtime import ManagedRuntimeConnector
@@ -119,6 +131,8 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
         self._relay_host = parsed.hostname or '127.0.0.1'
         self._relay_port = parsed.port or _DEFAULT_PORT
         self._filtered_box_config = _filter_config_for_runtime(_get_box_config(ap))
+        self._trusted_instance_uuid = normalize_instance_uuid(self.ap.workspace_service.instance_uuid)
+        self._control_token = str(os.environ.get(BOX_CONTROL_TOKEN_ENV) or '').strip()
 
     def uses_websocket(self) -> bool:
         """Whether the connector should use WebSocket to reach the Box runtime.
@@ -181,8 +195,11 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
         from langbot_plugin.runtime.io.controllers.stdio.client import StdioClientController
 
         self.ap.logger.info('Use stdio to connect to box runtime')
+        self._ensure_control_token(allow_generate=True)
         python_path = sys.executable
         env = os.environ.copy()
+        env[BOX_CONTROL_TOKEN_ENV] = self._control_token
+        env[BOX_TRUSTED_INSTANCE_ENV] = self._trusted_instance_uuid
         if self._filtered_box_config:
             env['LANGBOT_BOX_CONFIG'] = json.dumps(self._filtered_box_config)
 
@@ -215,7 +232,10 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
         """Launch box server as detached subprocess, then connect via WS (Windows)."""
         self.ap.logger.info('(windows) Use cmd to launch box runtime and communicate via ws')
 
+        self._ensure_control_token(allow_generate=True)
         env = os.environ.copy()
+        env[BOX_CONTROL_TOKEN_ENV] = self._control_token
+        env[BOX_TRUSTED_INSTANCE_ENV] = self._trusted_instance_uuid
         if self._filtered_box_config:
             env['LANGBOT_BOX_CONFIG'] = json.dumps(self._filtered_box_config)
 
@@ -238,6 +258,7 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
 
     async def _connect_remote_ws(self) -> None:
         """Connect to a remote (or Docker) box server via WebSocket."""
+        self._ensure_control_token(allow_generate=False)
         ws_url = self._resolve_rpc_ws_url()
         self.ap.logger.info(f'Use WebSocket to connect to box runtime ({ws_url})')
         await self._connect_ws(ws_url, 'WebSocket')
@@ -281,7 +302,11 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
             if self.runtime_disconnect_callback is not None:
                 await self.runtime_disconnect_callback(self)
 
-        ctrl = WebSocketClientController(ws_url=ws_url, make_connection_failed_callback=on_connect_failed)
+        ctrl = WebSocketClientController(
+            ws_url=ws_url,
+            make_connection_failed_callback=on_connect_failed,
+            additional_headers=self.get_control_headers(),
+        )
         self._ctrl_task = asyncio.create_task(
             ctrl.run(self._make_connection_callback(transport_name, connected, connect_error))
         )
@@ -293,6 +318,41 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
 
         if connect_error:
             raise BoxRuntimeUnavailableError(f'box runtime connection failed: {connect_error[0]}')
+
+    def _ensure_control_token(self, *, allow_generate: bool) -> str:
+        if not self._control_token and allow_generate:
+            self._control_token = secrets.token_urlsafe(48)
+        try:
+            self._control_token = validate_control_token(self._control_token)
+        except ValueError as exc:
+            raise BoxRuntimeUnavailableError(
+                f'{BOX_CONTROL_TOKEN_ENV} must be configured with a strong shared secret for an external Box runtime'
+            ) from exc
+        return self._control_token
+
+    def get_control_headers(self) -> dict[str, str]:
+        """Headers for the instance-authenticated RPC control handshake."""
+
+        self._ensure_control_token(allow_generate=False)
+        return {
+            BOX_CONTROL_TOKEN_HEADER: self._control_token,
+            BOX_INSTANCE_HEADER: self._trusted_instance_uuid,
+        }
+
+    def get_relay_headers(
+        self,
+        action_context: ActionContext,
+    ) -> dict[str, str]:
+        """Return authenticated, placement-scoped relay handshake headers."""
+
+        context = ActionContext.model_validate(action_context).without_installation()
+        if context.instance_uuid != self._trusted_instance_uuid:
+            raise BoxRuntimeUnavailableError('Box relay context belongs to another LangBot instance')
+        return {
+            **self.get_control_headers(),
+            BOX_WORKSPACE_HEADER: context.workspace_uuid,
+            BOX_PLACEMENT_GENERATION_HEADER: str(context.placement_generation),
+        }
 
     def _make_connection_callback(
         self,

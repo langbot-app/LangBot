@@ -12,6 +12,8 @@ import httpx
 
 from ....core import app
 from ....skill.utils import parse_frontmatter
+from ..context import ExecutionContext
+from .tenant import TenantContext, require_workspace_uuid
 
 
 _PUBLIC_SKILL_FIELDS = (
@@ -75,75 +77,112 @@ class SkillService:
         """Backwards-compatible alias preserved for clarity at call sites."""
         self._require_box(action)
 
+    async def _execution_context(self, context: TenantContext) -> ExecutionContext:
+        workspace_uuid = require_workspace_uuid(context)
+        instance_uuid = str(getattr(context, 'instance_uuid', '') or '').strip()
+        generation = getattr(context, 'placement_generation', None)
+        if not instance_uuid or isinstance(generation, bool) or not isinstance(generation, int) or generation <= 0:
+            raise ValueError('Skill operations require an explicit fenced execution context')
+        binding = await self.ap.workspace_service.get_execution_binding(
+            workspace_uuid,
+            expected_generation=generation,
+        )
+        if binding.instance_uuid != instance_uuid:
+            raise ValueError('Skill execution context belongs to another LangBot instance')
+        return ExecutionContext(
+            instance_uuid=instance_uuid,
+            workspace_uuid=workspace_uuid,
+            placement_generation=generation,
+            bot_uuid=getattr(context, 'bot_uuid', None),
+            pipeline_uuid=getattr(context, 'pipeline_uuid', None),
+            query_uuid=getattr(context, 'query_uuid', None),
+        )
+
     @staticmethod
     def _serialize_skill(skill: dict) -> dict:
         return {field: skill.get(field) for field in _PUBLIC_SKILL_FIELDS if field in skill}
 
-    async def list_skills(self) -> list[dict]:
+    async def list_skills(self, context: TenantContext) -> list[dict]:
+        execution_context = await self._execution_context(context)
         # When Box is unavailable, surface an empty list rather than raising —
         # the skills page should render cleanly, and the UI separately renders
         # a "Box disabled / unavailable" banner via useBoxStatus.
         box_service = self._box_service()
         if box_service is None:
             return []
-        return [self._serialize_skill(skill) for skill in await box_service.list_skills()]
+        return [self._serialize_skill(skill) for skill in await box_service.list_skills(execution_context)]
 
-    async def get_skill(self, skill_name: str) -> Optional[dict]:
+    async def get_skill(self, context: TenantContext, skill_name: str) -> Optional[dict]:
+        execution_context = await self._execution_context(context)
         box_service = self._box_service()
         if box_service is None:
             return None
-        skill = await box_service.get_skill(skill_name)
+        skill = await box_service.get_skill(execution_context, skill_name)
         return self._serialize_skill(skill) if skill else None
 
-    async def get_skill_by_name(self, name: str) -> Optional[dict]:
-        return await self.get_skill(name)
+    async def get_skill_by_name(self, context: TenantContext, name: str) -> Optional[dict]:
+        return await self.get_skill(context, name)
 
-    async def create_skill(self, data: dict) -> dict:
+    async def create_skill(self, context: TenantContext, data: dict) -> dict:
+        execution_context = await self._execution_context(context)
         box_service = self._require_box('Creating a skill')
-        created = await box_service.create_skill(data)
-        await self._reload_skills()
+        created = await box_service.create_skill(execution_context, data)
+        await self._reload_skills(execution_context)
         return self._serialize_skill(created)
 
-    async def update_skill(self, skill_name: str, data: dict) -> dict:
+    async def update_skill(self, context: TenantContext, skill_name: str, data: dict) -> dict:
+        execution_context = await self._execution_context(context)
         box_service = self._require_box('Editing a skill')
-        updated = await box_service.update_skill(skill_name, data)
-        await self._reload_skills()
+        updated = await box_service.update_skill(execution_context, skill_name, data)
+        await self._reload_skills(execution_context)
         return self._serialize_skill(updated)
 
-    async def delete_skill(self, skill_name: str) -> bool:
+    async def delete_skill(self, context: TenantContext, skill_name: str) -> bool:
+        execution_context = await self._execution_context(context)
         box_service = self._require_box('Deleting a skill')
-        await box_service.delete_skill(skill_name)
-        await self._reload_skills()
+        await box_service.delete_skill(execution_context, skill_name)
+        await self._reload_skills(execution_context)
         return True
 
     async def list_skill_files(
         self,
+        context: TenantContext,
         skill_name: str,
         path: str = '.',
         include_hidden: bool = False,
         max_entries: int = 200,
     ) -> dict:
+        execution_context = await self._execution_context(context)
         box_service = self._require_box('Browsing skill files')
-        return await box_service.list_skill_files(skill_name, path, include_hidden, max_entries)
+        return await box_service.list_skill_files(execution_context, skill_name, path, include_hidden, max_entries)
 
-    async def read_skill_file(self, skill_name: str, path: str) -> dict:
+    async def read_skill_file(self, context: TenantContext, skill_name: str, path: str) -> dict:
+        execution_context = await self._execution_context(context)
         box_service = self._require_box('Reading a skill file')
-        return await box_service.read_skill_file(skill_name, path)
+        return await box_service.read_skill_file(execution_context, skill_name, path)
 
-    async def write_skill_file(self, skill_name: str, path: str, content: str) -> dict:
+    async def write_skill_file(self, context: TenantContext, skill_name: str, path: str, content: str) -> dict:
+        execution_context = await self._execution_context(context)
         box_service = self._require_box('Editing skill files')
-        result = await box_service.write_skill_file(skill_name, path, content)
-        await self._reload_skills()
+        result = await box_service.write_skill_file(execution_context, skill_name, path, content)
+        await self._reload_skills(execution_context)
         return result
 
-    async def install_from_github(self, data: dict) -> list[dict]:
+    async def install_from_github(self, context: TenantContext, data: dict) -> list[dict]:
+        execution_context = await self._execution_context(context)
         box_service = self._require_box('Installing a skill from GitHub')
         owner = str(data['owner']).strip()
         repo = str(data['repo']).strip()
         release_tag = str(data.get('release_tag', '')).strip()
         raw_asset_url = str(data['asset_url']).strip()
         if self._is_github_skill_md_url(raw_asset_url):
-            return await self._install_github_skill_md(raw_asset_url, owner=owner, repo=repo, data=data)
+            return await self._install_github_skill_md(
+                execution_context,
+                raw_asset_url,
+                owner=owner,
+                repo=repo,
+                data=data,
+            )
 
         asset_url = self._validate_github_asset_url(raw_asset_url, owner=owner, repo=repo, release_tag=release_tag)
         source_subdir = str(data.get('source_subdir', '') or '').strip()
@@ -151,29 +190,37 @@ class SkillService:
         zip_bytes = await self._download_github_asset(asset_url)
         filename = f'{repo}-{release_tag.lstrip("v").replace("/", "-") or "source"}.zip'
         installed = await box_service.install_skill_zip(
+            execution_context,
             zip_bytes,
             filename,
             source_paths=data.get('source_paths') or [],
             source_path=str(data.get('source_path', '') or ''),
             source_subdir=source_subdir,
         )
-        await self._reload_skills()
+        await self._reload_skills(execution_context)
         return [self._serialize_skill(skill) for skill in installed]
 
-    async def preview_install_from_github(self, data: dict) -> list[dict]:
+    async def preview_install_from_github(self, context: TenantContext, data: dict) -> list[dict]:
+        execution_context = await self._execution_context(context)
         box_service = self._require_box('Previewing a skill from GitHub')
         owner = str(data['owner']).strip()
         repo = str(data['repo']).strip()
         release_tag = str(data.get('release_tag', '')).strip()
         raw_asset_url = str(data['asset_url']).strip()
         if self._is_github_skill_md_url(raw_asset_url):
-            return await self._preview_github_skill_md(raw_asset_url, owner=owner, repo=repo)
+            return await self._preview_github_skill_md(
+                execution_context,
+                raw_asset_url,
+                owner=owner,
+                repo=repo,
+            )
 
         asset_url = self._validate_github_asset_url(raw_asset_url, owner=owner, repo=repo, release_tag=release_tag)
         source_subdir = str(data.get('source_subdir', '') or '').strip()
 
         zip_bytes = await self._download_github_asset(asset_url)
         return await box_service.preview_skill_zip(
+            execution_context,
             zip_bytes,
             f'{repo}-{release_tag.lstrip("v").replace("/", "-") or "source"}.zip',
             source_subdir=source_subdir,
@@ -181,27 +228,45 @@ class SkillService:
 
     async def install_from_zip_upload(
         self,
+        context: TenantContext,
         *,
         file_bytes: bytes,
         filename: str,
         source_paths: list[str] | None = None,
         source_path: str = '',
     ) -> list[dict]:
+        execution_context = await self._execution_context(context)
         box_service = self._require_box('Installing a skill from upload')
         installed = await box_service.install_skill_zip(
+            execution_context,
             file_bytes,
             filename,
             source_paths=source_paths or [],
             source_path=source_path,
         )
-        await self._reload_skills()
+        await self._reload_skills(execution_context)
         return [self._serialize_skill(skill) for skill in installed]
 
-    async def preview_install_from_zip_upload(self, *, file_bytes: bytes, filename: str) -> list[dict]:
+    async def preview_install_from_zip_upload(
+        self,
+        context: TenantContext,
+        *,
+        file_bytes: bytes,
+        filename: str,
+    ) -> list[dict]:
+        execution_context = await self._execution_context(context)
         box_service = self._require_box('Previewing a skill upload')
-        return await box_service.preview_skill_zip(file_bytes, filename)
+        return await box_service.preview_skill_zip(execution_context, file_bytes, filename)
 
-    async def _install_github_skill_md(self, asset_url: str, *, owner: str, repo: str, data: dict) -> list[dict]:
+    async def _install_github_skill_md(
+        self,
+        context: TenantContext,
+        asset_url: str,
+        *,
+        owner: str,
+        repo: str,
+        data: dict,
+    ) -> list[dict]:
         box_service = self._require_box('Installing a skill from GitHub')
         zip_bytes, filename, _package_name = await self._download_github_skill_directory_as_zip(
             asset_url,
@@ -210,38 +275,48 @@ class SkillService:
         )
 
         installed = await box_service.install_skill_zip(
+            context,
             zip_bytes,
             filename,
             source_paths=data.get('source_paths') or [],
             source_path=str(data.get('source_path', '') or ''),
             target_suffix='',
         )
-        await self._reload_skills()
+        await self._reload_skills(context)
         return [self._serialize_skill(skill) for skill in installed]
 
-    async def _preview_github_skill_md(self, asset_url: str, *, owner: str, repo: str) -> list[dict]:
+    async def _preview_github_skill_md(
+        self,
+        context: TenantContext,
+        asset_url: str,
+        *,
+        owner: str,
+        repo: str,
+    ) -> list[dict]:
         box_service = self._require_box('Previewing a skill from GitHub')
         zip_bytes, _filename, package_name = await self._download_github_skill_directory_as_zip(
             asset_url,
             owner=owner,
             repo=repo,
         )
-        return await box_service.preview_skill_zip(zip_bytes, f'{package_name}.zip', target_suffix='')
+        return await box_service.preview_skill_zip(context, zip_bytes, f'{package_name}.zip', target_suffix='')
 
-    async def reload_skills(self) -> list[dict]:
-        await self._reload_skills()
-        return await self.list_skills()
+    async def reload_skills(self, context: TenantContext) -> list[dict]:
+        execution_context = await self._execution_context(context)
+        await self._reload_skills(execution_context)
+        return await self.list_skills(execution_context)
 
-    async def scan_directory_async(self, path: str) -> dict:
+    async def scan_directory_async(self, context: TenantContext, path: str) -> dict:
+        execution_context = await self._execution_context(context)
         box_service = self._require_box('Scanning a skill directory')
-        return await box_service.scan_skill_directory(path)
+        return await box_service.scan_skill_directory(execution_context, path)
 
-    async def _reload_skills(self) -> None:
+    async def _reload_skills(self, context: TenantContext) -> None:
         skill_mgr = getattr(self.ap, 'skill_mgr', None)
         reload_skills = getattr(skill_mgr, 'reload_skills', None)
         if not callable(reload_skills):
             return
-        result = reload_skills()
+        result = reload_skills(context)
         if inspect.isawaitable(result):
             await result
 

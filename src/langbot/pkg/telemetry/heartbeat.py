@@ -99,8 +99,8 @@ async def build_heartbeat_payload(ap: core_app.Application) -> dict:
     # Skill count (from Box runtime via skill manager)
     try:
         skill_mgr = getattr(ap, 'skill_mgr', None)
-        if skill_mgr is not None and getattr(skill_mgr, 'skills', None) is not None:
-            features['skill_count'] = len(skill_mgr.skills)
+        if skill_mgr is not None:
+            features['skill_count'] = skill_mgr.total_cached_skill_count()
     except Exception:
         pass
 

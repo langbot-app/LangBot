@@ -11,11 +11,15 @@ import sqlalchemy
 from ....core import app
 from ....entity.persistence import bstorage as persistence_bstorage
 from ....entity.persistence import monitoring as persistence_monitoring
+from ..authz import WorkspaceRequiredError
+from ..context import ExecutionContext
+from .tenant import TenantContext, require_workspace_uuid
 
 
 LOG_FILE_PATTERN = re.compile(r'^langbot-(\d{4}-\d{2}-\d{2})\.log(?:\.\d+)?$')
 DEFAULT_UPLOAD_FILE_RETENTION_DAYS = 7
 DEFAULT_LOG_RETENTION_DAYS = 3
+UPLOAD_OWNER_TYPES = ('upload_image', 'upload_document', 'upload')
 
 
 class MaintenanceService:
@@ -26,7 +30,10 @@ class MaintenanceService:
     def __init__(self, ap: app.Application) -> None:
         self.ap = ap
 
-    async def cleanup_expired_files(self) -> dict[str, int]:
+    async def cleanup_expired_files(self, context: ExecutionContext) -> dict[str, int]:
+        if not isinstance(context, ExecutionContext):
+            raise WorkspaceRequiredError('Storage cleanup requires an ExecutionContext')
+        require_workspace_uuid(context)
         cleanup_cfg = self.ap.instance_config.data.get('storage', {}).get('cleanup', {})
         upload_retention_days = self._positive_int(
             cleanup_cfg.get('uploaded_file_retention_days'),
@@ -40,11 +47,14 @@ class MaintenanceService:
         )
 
         return {
-            'uploaded_files': await self._cleanup_expired_uploaded_files(upload_retention_days),
-            'log_files': self._cleanup_expired_log_files(log_retention_days),
+            'uploaded_files': await self._cleanup_expired_uploaded_files(context, upload_retention_days),
+            'log_files': self._cleanup_expired_log_files(log_retention_days)
+            if await self._is_oss_singleton(context)
+            else 0,
         }
 
-    async def get_storage_analysis(self) -> dict[str, Any]:
+    async def get_storage_analysis(self, context: TenantContext) -> dict[str, Any]:
+        require_workspace_uuid(context)
         cleanup_cfg = self.ap.instance_config.data.get('storage', {}).get('cleanup', {})
         upload_retention_days = self._positive_int(
             cleanup_cfg.get('uploaded_file_retention_days'),
@@ -62,15 +72,20 @@ class MaintenanceService:
         database_path = (
             Path(database_cfg.get('sqlite', {}).get('path', 'data/langbot.db')) if database_type == 'sqlite' else None
         )
-        roots: list[tuple[str, Path | None]] = [
-            ('database', database_path),
-            ('logs', Path('data/logs')),
-            ('storage', Path('data/storage')),
-            ('vector_store', Path('data/chroma')),
-            ('plugins', Path('data/plugins')),
-            ('mcp', Path('data/mcp')),
-            ('temp', Path('data/temp')),
-        ]
+        is_oss_singleton = await self._is_oss_singleton(context)
+        if is_oss_singleton:
+            roots: list[tuple[str, Path | None]] = [
+                ('database', database_path),
+                ('logs', Path('data/logs')),
+                ('storage', Path('data/storage')),
+                ('vector_store', Path('data/chroma')),
+                ('plugins', Path('data/plugins')),
+                ('mcp', Path('data/mcp')),
+                ('temp', Path('data/temp')),
+            ]
+        else:
+            scoped_storage_path = Path('data/storage') / self.ap.storage_mgr.scoped_prefix(context)
+            roots = [('storage', scoped_storage_path)]
 
         sections = []
         for key, path in roots:
@@ -84,10 +99,10 @@ class MaintenanceService:
                 }
             )
 
-        monitoring_counts = await self._monitoring_counts()
-        binary_storage = await self._binary_storage_stats()
-        upload_candidates = await self._expired_uploaded_candidates(upload_retention_days)
-        log_candidates = self._expired_log_candidates(log_retention_days)
+        monitoring_counts = await self._monitoring_counts(context)
+        binary_storage = await self._binary_storage_stats(context)
+        upload_candidates = await self._expired_uploaded_candidates(context, upload_retention_days)
+        log_candidates = self._expired_log_candidates(log_retention_days) if is_oss_singleton else []
 
         return {
             'generated_at': datetime.datetime.now(datetime.timezone.utc).isoformat(),
@@ -105,14 +120,32 @@ class MaintenanceService:
                 'uploaded_files': upload_candidates,
                 'log_files': log_candidates,
             },
-            'tasks': self.ap.task_mgr.get_stats() if self.ap.task_mgr else {},
+            'tasks': self.ap.task_mgr.get_stats() if is_oss_singleton and self.ap.task_mgr else {},
         }
 
-    async def _cleanup_expired_uploaded_files(self, retention_days: int) -> int:
+    async def _is_oss_singleton(self, context: TenantContext) -> bool:
+        try:
+            await self.ap.workspace_service.get_local_execution_binding(
+                require_workspace_uuid(context),
+                expected_generation=getattr(context, 'placement_generation', None),
+            )
+        except Exception:
+            return False
+        return True
+
+    async def _cleanup_expired_uploaded_files(
+        self,
+        context: ExecutionContext,
+        retention_days: int,
+    ) -> int:
         provider = self.ap.storage_mgr.storage_provider
         provider_name = provider.__class__.__name__
         if provider_name == 'LocalStorageProvider':
-            candidates = self._expired_local_upload_candidates(retention_days, include_paths=True)
+            candidates = self._expired_local_upload_candidates(
+                context,
+                retention_days,
+                include_paths=True,
+            )
             deleted = 0
             for item in candidates:
                 try:
@@ -125,47 +158,65 @@ class MaintenanceService:
             return deleted
 
         if provider_name == 'S3StorageProvider':
-            return await self._cleanup_expired_s3_uploaded_files(retention_days)
+            return await self._cleanup_expired_s3_uploaded_files(context, retention_days)
 
         return 0
 
-    async def _expired_uploaded_candidates(self, retention_days: int) -> list[dict[str, Any]]:
+    async def _expired_uploaded_candidates(
+        self,
+        context: TenantContext,
+        retention_days: int,
+    ) -> list[dict[str, Any]]:
         provider_name = self.ap.storage_mgr.storage_provider.__class__.__name__
         if provider_name == 'LocalStorageProvider':
-            return self._expired_local_upload_candidates(retention_days)
+            return self._expired_local_upload_candidates(context, retention_days)
         if provider_name == 'S3StorageProvider':
-            return await self._expired_s3_upload_candidates(retention_days)
+            return await self._expired_s3_upload_candidates(context, retention_days)
         return []
 
-    async def _cleanup_expired_s3_uploaded_files(self, retention_days: int) -> int:
+    async def _cleanup_expired_s3_uploaded_files(
+        self,
+        context: ExecutionContext,
+        retention_days: int,
+    ) -> int:
         provider = self.ap.storage_mgr.storage_provider
-        candidates = await self._expired_s3_upload_candidates(retention_days)
+        candidates = await self._expired_s3_upload_candidates(context, retention_days)
         deleted = 0
         for item in candidates:
             await provider.delete(item['key'])
             deleted += 1
         return deleted
 
-    async def _expired_s3_upload_candidates(self, retention_days: int) -> list[dict[str, Any]]:
+    async def _expired_s3_upload_candidates(
+        self,
+        context: TenantContext,
+        retention_days: int,
+    ) -> list[dict[str, Any]]:
         provider = self.ap.storage_mgr.storage_provider
         cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=retention_days)
         candidates = []
         paginator = provider.s3_client.get_paginator('list_objects_v2')
 
-        for page in paginator.paginate(Bucket=provider.bucket_name):
-            for obj in page.get('Contents', []):
-                key = obj.get('Key', '')
-                last_modified = obj.get('LastModified')
-                if not self._is_uploaded_file_key(key):
-                    continue
-                if last_modified and last_modified < cutoff:
-                    candidates.append(
-                        {
-                            'key': key,
-                            'size_bytes': obj.get('Size', 0),
-                            'modified_at': last_modified.isoformat(),
-                        }
-                    )
+        seen_prefixes: set[str] = set()
+        for owner_type in UPLOAD_OWNER_TYPES:
+            prefix = self.ap.storage_mgr.scoped_prefix(context, owner_type=owner_type)
+            if prefix in seen_prefixes:
+                continue
+            seen_prefixes.add(prefix)
+            for page in paginator.paginate(Bucket=provider.bucket_name, Prefix=prefix):
+                for obj in page.get('Contents', []):
+                    key = obj.get('Key', '')
+                    last_modified = obj.get('LastModified')
+                    if not self._is_uploaded_file_key(context, key):
+                        continue
+                    if last_modified and last_modified < cutoff:
+                        candidates.append(
+                            {
+                                'key': key,
+                                'size_bytes': obj.get('Size', 0),
+                                'modified_at': last_modified.isoformat(),
+                            }
+                        )
 
         return candidates
 
@@ -182,28 +233,39 @@ class MaintenanceService:
         return deleted
 
     def _expired_local_upload_candidates(
-        self, retention_days: int, include_paths: bool = False
+        self,
+        context: TenantContext,
+        retention_days: int,
+        include_paths: bool = False,
     ) -> list[dict[str, Any]]:
         storage_root = Path('data/storage')
-        if not storage_root.exists():
-            return []
-
         cutoff = datetime.datetime.now().timestamp() - retention_days * 86400
         candidates = []
-        for entry in storage_root.iterdir():
-            if not entry.is_file() or not self._is_uploaded_file_key(entry.name):
+        seen_roots: set[Path] = set()
+        for owner_type in UPLOAD_OWNER_TYPES:
+            scoped_root = storage_root / self.ap.storage_mgr.scoped_prefix(context, owner_type=owner_type)
+            if scoped_root in seen_roots:
                 continue
-            stat = entry.stat()
-            if stat.st_mtime >= cutoff:
+            seen_roots.add(scoped_root)
+            if not scoped_root.exists():
                 continue
-            item = {
-                'key': entry.name,
-                'size_bytes': stat.st_size,
-                'modified_at': datetime.datetime.fromtimestamp(stat.st_mtime, datetime.timezone.utc).isoformat(),
-            }
-            if include_paths:
-                item['path'] = str(entry)
-            candidates.append(item)
+            for entry in scoped_root.rglob('*'):
+                if not entry.is_file():
+                    continue
+                stat = entry.stat()
+                if stat.st_mtime >= cutoff:
+                    continue
+                item = {
+                    'key': entry.relative_to(storage_root).as_posix(),
+                    'size_bytes': stat.st_size,
+                    'modified_at': datetime.datetime.fromtimestamp(
+                        stat.st_mtime,
+                        datetime.timezone.utc,
+                    ).isoformat(),
+                }
+                if include_paths:
+                    item['path'] = str(entry)
+                candidates.append(item)
         return candidates
 
     def _expired_log_candidates(self, retention_days: int, include_paths: bool = False) -> list[dict[str, Any]]:
@@ -236,33 +298,51 @@ class MaintenanceService:
             candidates.append(item)
         return candidates
 
-    def _is_uploaded_file_key(self, key: str) -> bool:
-        return '/' not in key and not key.startswith('plugin_config_')
+    def _is_uploaded_file_key(self, context: TenantContext, key: str) -> bool:
+        return any(
+            key.startswith(self.ap.storage_mgr.scoped_prefix(context, owner_type=owner_type))
+            and self.ap.storage_mgr.is_scoped_object_key(key, expected_owner_type=owner_type)
+            for owner_type in UPLOAD_OWNER_TYPES
+        )
 
-    async def _monitoring_counts(self) -> dict[str, int]:
+    async def _monitoring_counts(self, context: TenantContext) -> dict[str, int]:
+        workspace_uuid = require_workspace_uuid(context)
         tables = {
-            'messages': persistence_monitoring.MonitoringMessage.id,
-            'llm_calls': persistence_monitoring.MonitoringLLMCall.id,
-            'tool_calls': persistence_monitoring.MonitoringToolCall.id,
-            'embedding_calls': persistence_monitoring.MonitoringEmbeddingCall.id,
-            'errors': persistence_monitoring.MonitoringError.id,
-            'sessions': persistence_monitoring.MonitoringSession.session_id,
-            'feedback': persistence_monitoring.MonitoringFeedback.id,
+            'messages': (persistence_monitoring.MonitoringMessage, persistence_monitoring.MonitoringMessage.id),
+            'llm_calls': (persistence_monitoring.MonitoringLLMCall, persistence_monitoring.MonitoringLLMCall.id),
+            'tool_calls': (persistence_monitoring.MonitoringToolCall, persistence_monitoring.MonitoringToolCall.id),
+            'embedding_calls': (
+                persistence_monitoring.MonitoringEmbeddingCall,
+                persistence_monitoring.MonitoringEmbeddingCall.id,
+            ),
+            'errors': (persistence_monitoring.MonitoringError, persistence_monitoring.MonitoringError.id),
+            'sessions': (
+                persistence_monitoring.MonitoringSession,
+                persistence_monitoring.MonitoringSession.session_id,
+            ),
+            'feedback': (persistence_monitoring.MonitoringFeedback, persistence_monitoring.MonitoringFeedback.id),
         }
         counts: dict[str, int] = {}
-        for key, column in tables.items():
-            result = await self.ap.persistence_mgr.execute_async(sqlalchemy.select(sqlalchemy.func.count(column)))
+        for key, (model, column) in tables.items():
+            result = await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.select(sqlalchemy.func.count(column)).where(model.workspace_uuid == workspace_uuid)
+            )
             counts[key] = result.scalar() or 0
         return counts
 
-    async def _binary_storage_stats(self) -> dict[str, Any]:
+    async def _binary_storage_stats(self, context: TenantContext) -> dict[str, Any]:
+        workspace_uuid = require_workspace_uuid(context)
         count_result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(sqlalchemy.func.count(persistence_bstorage.BinaryStorage.unique_key))
+            sqlalchemy.select(sqlalchemy.func.count(persistence_bstorage.BinaryStorage.unique_key)).where(
+                persistence_bstorage.BinaryStorage.workspace_uuid == workspace_uuid
+            )
         )
         size_bytes = None
         try:
             size_result = await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.select(sqlalchemy.func.sum(sqlalchemy.func.length(persistence_bstorage.BinaryStorage.value)))
+                sqlalchemy.select(
+                    sqlalchemy.func.sum(sqlalchemy.func.length(persistence_bstorage.BinaryStorage.value))
+                ).where(persistence_bstorage.BinaryStorage.workspace_uuid == workspace_uuid)
             )
             size_bytes = size_result.scalar() or 0
         except Exception as e:

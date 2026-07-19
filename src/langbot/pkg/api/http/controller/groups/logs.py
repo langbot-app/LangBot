@@ -3,14 +3,23 @@ from __future__ import annotations
 
 import quart
 
+from ...authz import Permission
+from ...context import RequestContext
 from .. import group
 
 
 @group.group_class('logs', '/api/v1/logs')
 class LogsRouterGroup(group.RouterGroup):
     async def initialize(self) -> None:
-        @self.route('', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
-        async def _() -> str:
+        @self.route('', methods=['GET'], permission=Permission.AUDIT_VIEW)
+        async def _(request_context: RequestContext) -> str:
+            # The process log is instance-global.  It is safe to expose only in
+            # the OSS singleton Workspace; SaaS must use Workspace-scoped
+            # observability records instead of leaking another tenant's lines.
+            await self.ap.workspace_service.get_local_execution_binding(
+                request_context.workspace_uuid,
+                expected_generation=request_context.placement_generation,
+            )
             start_page_number = int(quart.request.args.get('start_page_number', 0))
             start_offset = int(quart.request.args.get('start_offset', 0))
 

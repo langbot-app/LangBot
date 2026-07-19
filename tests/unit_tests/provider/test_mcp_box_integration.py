@@ -154,7 +154,16 @@ def mcp_module():
 def _make_ap():
     ap = Mock()
     ap.logger = Mock()
+    ap.workspace_service = Mock()
+    ap.workspace_service.get_execution_binding = AsyncMock(
+        return_value=SimpleNamespace(
+            instance_uuid='instance-a',
+            workspace_uuid='workspace-a',
+            placement_generation=1,
+        )
+    )
     ap.box_service = Mock()
+    ap.box_service.get_managed_process_websocket_connection = AsyncMock(return_value=('ws://box.example/process', {}))
     return ap
 
 
@@ -166,6 +175,11 @@ def _make_session(mcp_module, server_config: dict, ap=None):
         server_config=server_config,
         enable=True,
         ap=ap,
+        execution_context=mcp_module.ExecutionContext(
+            instance_uuid='instance-a',
+            workspace_uuid='workspace-a',
+            placement_generation=1,
+        ),
     )
 
 
@@ -417,7 +431,7 @@ class TestBuildBoxSessionPayload:
         payload = s._build_box_session_payload('session-123')
         assert payload['image'] == 'node:20'
         assert payload['cpus'] == 2.0
-        assert payload["memory_mb"] == 1024
+        assert payload['memory_mb'] == 1024
         assert payload['pids_limit'] == 256
 
     def test_none_fields_excluded(self, mcp_module):
@@ -590,6 +604,26 @@ class TestGetRuntimeInfoDict:
         info = s.get_runtime_info_dict()
         assert info['status'] == 'connecting'
         assert 'box_session_id' not in info
+
+    def test_runtime_error_detail_never_echoes_secret_config(self, mcp_module):
+        s = _make_session(
+            mcp_module,
+            {
+                'name': 'test',
+                'uuid': 'test-uuid',
+                'mode': 'invalid',
+                'headers': {'Authorization': 'Bearer TOPSECRET'},
+                'env': {'API_KEY': 'TOPSECRET'},
+            },
+        )
+        s.status = mcp_module.MCPSessionStatus.ERROR
+        s.error_message = f'Unknown MCP server mode: {s.server_config}'
+
+        info = s.get_runtime_info_dict()
+
+        assert info['error_message'] == 'MCP runtime failed'
+        assert info['error_code'] == 'runtime_error'
+        assert 'TOPSECRET' not in str(info)
 
     def test_runtime_tools_include_parameters(self, mcp_module):
         s = _make_session(
@@ -774,12 +808,16 @@ async def test_init_box_stdio_server_stages_host_path_in_shared_workspace(mcp_mo
         async def initialize(self):
             return None
 
+    captured_transport = {}
+
     @asynccontextmanager
-    async def fake_websocket_client(_url: str):
+    async def fake_authenticated_websocket_client(url: str, headers: dict[str, str]):
+        captured_transport['url'] = url
+        captured_transport['headers'] = headers
         yield ('read-stream', 'write-stream')
 
     mcp_stdio_module.ClientSession = FakeClientSession
-    mcp_stdio_module.websocket_client = fake_websocket_client
+    mcp_stdio_module.authenticated_websocket_client = fake_authenticated_websocket_client
 
     ap = _make_ap()
     ap.box_service.available = True
@@ -790,7 +828,17 @@ async def test_init_box_stdio_server_stages_host_path_in_shared_workspace(mcp_mo
         execute=AsyncMock(return_value=SimpleNamespace(ok=True, stderr='', exit_code=0))
     )
     ap.box_service.start_managed_process = AsyncMock(return_value={})
-    ap.box_service.get_managed_process_websocket_url = Mock(return_value='ws://box.example/process')
+    ap.box_service.get_managed_process_websocket_connection = AsyncMock(
+        return_value=(
+            'ws://box.example/process',
+            {
+                'X-LangBot-Box-Control-Token': 'secret-token',
+                'X-LangBot-Instance-Id': 'instance-a',
+                'X-LangBot-Workspace-Id': 'workspace-a',
+                'X-LangBot-Placement-Generation': '1',
+            },
+        )
+    )
 
     host_path = tmp_path / 'mcp-source'
     host_path.mkdir()
@@ -814,7 +862,8 @@ async def test_init_box_stdio_server_stages_host_path_in_shared_workspace(mcp_mo
     await session.exit_stack.aclose()
 
     assert ap.box_service.create_session.await_count == 1
-    session_payload = ap.box_service.create_session.await_args.args[0]
+    assert ap.box_service.create_session.await_args.args[0] == session.execution_context
+    session_payload = ap.box_service.create_session.await_args.args[1]
     assert session_payload['session_id'] == 'mcp-shared'
     assert 'host_path' not in session_payload
     assert ap.box_service.build_spec.call_count == 1
@@ -824,11 +873,22 @@ async def test_init_box_stdio_server_stages_host_path_in_shared_workspace(mcp_mo
     staged_file = tmp_path / 'shared-box-workspace' / '.mcp' / 'u1' / 'workspace' / 'server.py'
     assert staged_file.read_text(encoding='utf-8') == 'print("hello")\n'
 
-    process_payload = ap.box_service.start_managed_process.await_args.args[1]
+    assert ap.box_service.start_managed_process.await_args.args[0] == session.execution_context
+    process_payload = ap.box_service.start_managed_process.await_args.args[2]
     assert process_payload['process_id'] == 'u1'
     assert process_payload['command'] == 'python'
     assert process_payload['args'] == ['/workspace/.mcp/u1/workspace/server.py']
     assert process_payload['cwd'] == '/workspace/.mcp/u1/workspace'
+    assert captured_transport == {
+        'url': 'ws://box.example/process',
+        'headers': {
+            'X-LangBot-Box-Control-Token': 'secret-token',
+            'X-LangBot-Instance-Id': 'instance-a',
+            'X-LangBot-Workspace-Id': 'workspace-a',
+            'X-LangBot-Placement-Generation': '1',
+        },
+    }
+    assert 'secret-token' not in captured_transport['url']
 
 
 @pytest.mark.asyncio
@@ -867,7 +927,7 @@ async def test_stdio_handshake_raises_coldstart_retry_while_process_alive(mcp_mo
     ap.box_service.available = True
     ap.box_service.create_session = AsyncMock(return_value={})
     ap.box_service.start_managed_process = AsyncMock(return_value={})
-    ap.box_service.get_managed_process_websocket_url = Mock(return_value='ws://box/p')
+    ap.box_service.get_managed_process_websocket_connection = AsyncMock(return_value=('ws://box/p', {}))
 
     session = _make_session(
         mcp_module,
@@ -933,7 +993,7 @@ async def test_stdio_handshake_raises_fatal_when_process_exited(mcp_module, tmp_
     ap.box_service.available = True
     ap.box_service.create_session = AsyncMock(return_value={})
     ap.box_service.start_managed_process = AsyncMock(return_value={})
-    ap.box_service.get_managed_process_websocket_url = Mock(return_value='ws://box/p')
+    ap.box_service.get_managed_process_websocket_connection = AsyncMock(return_value=('ws://box/p', {}))
 
     session = _make_session(
         mcp_module,

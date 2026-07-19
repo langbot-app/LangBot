@@ -4,6 +4,7 @@ import re
 import typing
 
 from ....box import workspace as box_workspace
+from ....api.http.context import ExecutionContext
 
 if typing.TYPE_CHECKING:
     from ....core import app
@@ -36,7 +37,15 @@ def get_visible_skills(ap: app.Application, query: pipeline_query.Query) -> dict
     if skill_mgr is None:
         return {}
 
-    visible_skills = getattr(skill_mgr, 'skills', {})
+    execution_context = ExecutionContext(
+        instance_uuid=str(getattr(query, 'instance_uuid', '') or ''),
+        workspace_uuid=str(getattr(query, 'workspace_uuid', '') or ''),
+        placement_generation=getattr(query, 'placement_generation', 0) or 0,
+        bot_uuid=getattr(query, 'bot_uuid', None),
+        pipeline_uuid=getattr(query, 'pipeline_uuid', None),
+        query_uuid=getattr(query, 'query_uuid', None),
+    )
+    visible_skills = skill_mgr.get_skills(execution_context)
     bound_skills = get_bound_skill_names(query)
     if bound_skills is None:
         return visible_skills

@@ -15,6 +15,7 @@ from langbot_plugin.box.backend import BaseSandboxBackend
 from langbot_plugin.box.client import BoxRuntimeClient, ActionRPCBoxClient
 from langbot_plugin.box.errors import (
     BoxBackendUnavailableError,
+    BoxError,
     BoxSessionConflictError,
     BoxSessionNotFoundError,
     BoxValidationError,
@@ -30,9 +31,27 @@ from langbot_plugin.box.models import (
     BoxSpec,
 )
 from langbot_plugin.box.runtime import BoxRuntime
+from langbot_plugin.box.security import (
+    BOX_CONTROL_TOKEN_HEADER,
+    BOX_INSTANCE_HEADER,
+    BOX_PLACEMENT_GENERATION_HEADER,
+    BOX_WORKSPACE_HEADER,
+)
+from langbot_plugin.entities.io.context import ActionContext
+from langbot.pkg.api.http.context import ExecutionContext
 from langbot.pkg.box.service import BoxService
 
 _UTC = dt.timezone.utc
+_CONTEXT = ExecutionContext(
+    instance_uuid='instance-a',
+    workspace_uuid='workspace-a',
+    placement_generation=1,
+)
+_ACTION_CONTEXT = ActionContext(
+    instance_uuid=_CONTEXT.instance_uuid,
+    workspace_uuid=_CONTEXT.workspace_uuid,
+    placement_generation=_CONTEXT.placement_generation,
+)
 
 
 class _InProcessBoxRuntimeClient(BoxRuntimeClient):
@@ -44,37 +63,55 @@ class _InProcessBoxRuntimeClient(BoxRuntimeClient):
     async def initialize(self):
         await self._runtime.initialize()
 
-    async def execute(self, spec):
+    async def execute(self, spec, *, action_context=None):
         return await self._runtime.execute(spec)
 
     async def shutdown(self):
         await self._runtime.shutdown()
 
-    async def get_status(self):
+    async def get_status(self, *, action_context=None):
         return await self._runtime.get_status()
 
-    async def get_sessions(self):
+    async def get_sessions(self, *, action_context=None):
         return self._runtime.get_sessions()
 
     async def get_backend_info(self):
         return await self._runtime.get_backend_info()
 
-    async def delete_session(self, session_id):
+    async def delete_session(self, session_id, *, action_context=None):
         await self._runtime.delete_session(session_id)
 
-    async def create_session(self, spec):
+    async def create_session(self, spec, *, action_context=None):
         return await self._runtime.create_session(spec)
 
-    async def start_managed_process(self, session_id: str, spec: BoxManagedProcessSpec):
+    async def start_managed_process(
+        self,
+        session_id: str,
+        spec: BoxManagedProcessSpec,
+        *,
+        action_context=None,
+    ):
         return await self._runtime.start_managed_process(session_id, spec)
 
-    async def get_managed_process(self, session_id: str, process_id: str = 'default'):
+    async def get_managed_process(
+        self,
+        session_id: str,
+        process_id: str = 'default',
+        *,
+        action_context=None,
+    ):
         return self._runtime.get_managed_process(session_id, process_id)
 
-    async def stop_managed_process(self, session_id: str, process_id: str = 'default'):
+    async def stop_managed_process(
+        self,
+        session_id: str,
+        process_id: str = 'default',
+        *,
+        action_context=None,
+    ):
         await self._runtime.stop_managed_process(session_id, process_id)
 
-    async def get_session(self, session_id: str):
+    async def get_session(self, session_id: str, *, action_context=None):
         return self._runtime.get_session(session_id)
 
     async def init(self, config: dict) -> None:
@@ -134,6 +171,12 @@ class FakeBackend(BaseSandboxBackend):
 def make_query(query_id: int = 42) -> pipeline_query.Query:
     return pipeline_query.Query.model_construct(
         query_id=query_id,
+        query_uuid=f'query-{query_id}',
+        instance_uuid=_CONTEXT.instance_uuid,
+        workspace_uuid=_CONTEXT.workspace_uuid,
+        placement_generation=_CONTEXT.placement_generation,
+        bot_uuid='bot-a',
+        pipeline_uuid='pipeline-a',
         launcher_type='person',
         launcher_id='test_user',
         sender_id='test_user',
@@ -170,8 +213,19 @@ def make_app(
     if workspace_quota_mb is not None:
         box_config['local']['workspace_quota_mb'] = workspace_quota_mb
 
+    workspace_service = SimpleNamespace(
+        instance_uuid=_CONTEXT.instance_uuid,
+        get_execution_binding=AsyncMock(
+            return_value=SimpleNamespace(
+                instance_uuid=_CONTEXT.instance_uuid,
+                workspace_uuid=_CONTEXT.workspace_uuid,
+                placement_generation=_CONTEXT.placement_generation,
+            )
+        ),
+    )
     return SimpleNamespace(
         logger=logger,
+        workspace_service=workspace_service,
         instance_config=SimpleNamespace(
             data={
                 'box': box_config,
@@ -289,10 +343,75 @@ async def test_box_service_get_sessions_delegates_to_client():
     service = BoxService(make_app(Mock()), client=client)
     service._available = True
 
-    sessions = await service.get_sessions()
+    sessions = await service.get_sessions(_CONTEXT)
 
     assert sessions == [{'session_id': 'test-session'}]
     client.get_sessions.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_box_service_relay_connection_is_binding_checked_and_scoped():
+    app = make_app(Mock())
+    client = Mock()
+    client.get_managed_process_websocket_url = Mock(
+        return_value='ws://box/v1/sessions/physical/managed-process/server-a/ws'
+    )
+    connector = Mock()
+    connector.ws_relay_base_url = 'http://box:5410'
+    connector.get_relay_headers = Mock(
+        return_value={
+            BOX_CONTROL_TOKEN_HEADER: 'secret',
+            BOX_INSTANCE_HEADER: _CONTEXT.instance_uuid,
+            BOX_WORKSPACE_HEADER: _CONTEXT.workspace_uuid,
+            BOX_PLACEMENT_GENERATION_HEADER: '1',
+        }
+    )
+    service = BoxService(app, client=client)
+    service._runtime_connector = connector
+
+    url, headers = await service.get_managed_process_websocket_connection(
+        _CONTEXT,
+        'mcp-shared',
+        'server-a',
+    )
+
+    assert url == 'ws://box/v1/sessions/physical/managed-process/server-a/ws'
+    assert headers[BOX_WORKSPACE_HEADER] == _CONTEXT.workspace_uuid
+    assert headers[BOX_PLACEMENT_GENERATION_HEADER] == '1'
+    app.workspace_service.get_execution_binding.assert_awaited_once_with(
+        _CONTEXT.workspace_uuid,
+        expected_generation=_CONTEXT.placement_generation,
+    )
+    action_context = connector.get_relay_headers.call_args.args[0]
+    assert action_context == _ACTION_CONTEXT
+    client.get_managed_process_websocket_url.assert_called_once_with(
+        'mcp-shared',
+        'http://box:5410',
+        'server-a',
+        action_context=_ACTION_CONTEXT,
+    )
+
+
+@pytest.mark.asyncio
+async def test_box_service_relay_connection_rejects_stale_binding():
+    app = make_app(Mock())
+    app.workspace_service.get_execution_binding.return_value = SimpleNamespace(
+        instance_uuid=_CONTEXT.instance_uuid,
+        workspace_uuid=_CONTEXT.workspace_uuid,
+        placement_generation=2,
+    )
+    client = Mock()
+    service = BoxService(app, client=client)
+    service._runtime_connector = Mock()
+
+    with pytest.raises(BoxValidationError, match='stale Workspace placement'):
+        await service.get_managed_process_websocket_connection(
+            _CONTEXT,
+            'mcp-shared',
+            'server-a',
+        )
+
+    service._runtime_connector.get_relay_headers.assert_not_called()
 
 
 def test_box_service_dispose_delegates_to_internal_connector(monkeypatch: pytest.MonkeyPatch):
@@ -369,7 +488,14 @@ async def test_box_service_session_id_uses_query_attributes_without_variables():
     service = BoxService(make_app(logger), client=_InProcessBoxRuntimeClient(logger, runtime))
     await service.initialize()
 
-    query = pipeline_query.Query.model_construct(query_id=7, launcher_type='group', launcher_id='room-1')
+    query = pipeline_query.Query.model_construct(
+        query_id=7,
+        instance_uuid=_CONTEXT.instance_uuid,
+        workspace_uuid=_CONTEXT.workspace_uuid,
+        placement_generation=_CONTEXT.placement_generation,
+        launcher_type='group',
+        launcher_id='room-1',
+    )
     result = await service.execute_tool({'command': 'pwd'}, query)
 
     assert result['session_id'] == 'group_room-1'
@@ -385,7 +511,12 @@ async def test_box_service_session_id_falls_back_to_query_id_for_synthetic_queri
     service = BoxService(make_app(logger), client=_InProcessBoxRuntimeClient(logger, runtime))
     await service.initialize()
 
-    query = pipeline_query.Query.model_construct(query_id=7)
+    query = pipeline_query.Query.model_construct(
+        query_id=7,
+        instance_uuid=_CONTEXT.instance_uuid,
+        workspace_uuid=_CONTEXT.workspace_uuid,
+        placement_generation=_CONTEXT.placement_generation,
+    )
     result = await service.execute_tool({'command': 'pwd'}, query)
 
     assert result['session_id'] == 'query_7'
@@ -407,8 +538,22 @@ async def test_box_service_forced_global_scope_overrides_pipeline_template():
     await service.initialize()
 
     # Two distinct callers that would otherwise get separate sandboxes.
-    q1 = pipeline_query.Query.model_construct(query_id=1, launcher_type='group', launcher_id='room-1')
-    q2 = pipeline_query.Query.model_construct(query_id=2, launcher_type='person', launcher_id='alice')
+    q1 = pipeline_query.Query.model_construct(
+        query_id=1,
+        instance_uuid=_CONTEXT.instance_uuid,
+        workspace_uuid=_CONTEXT.workspace_uuid,
+        placement_generation=_CONTEXT.placement_generation,
+        launcher_type='group',
+        launcher_id='room-1',
+    )
+    q2 = pipeline_query.Query.model_construct(
+        query_id=2,
+        instance_uuid=_CONTEXT.instance_uuid,
+        workspace_uuid=_CONTEXT.workspace_uuid,
+        placement_generation=_CONTEXT.placement_generation,
+        launcher_type='person',
+        launcher_id='alice',
+    )
 
     r1 = await service.execute_tool({'command': 'pwd'}, q1)
     r2 = await service.execute_tool({'command': 'pwd'}, q2)
@@ -511,7 +656,7 @@ async def test_box_service_uses_default_workspace_when_host_path_omitted(tmp_pat
     assert result['ok'] is True
     assert backend.start_calls == ['person_test_user']
     assert backend.exec_calls == [('person_test_user', 'pwd')]
-    assert backend.start_specs[0].host_path == os.path.realpath(host_dir)
+    assert backend.start_specs[0].host_path == service._tenant_workspace(_CONTEXT)
 
 
 @pytest.mark.asyncio
@@ -954,10 +1099,15 @@ async def test_box_service_rejects_execution_when_workspace_already_exceeds_quot
     runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
     host_dir = tmp_path / 'quota-workspace'
     host_dir.mkdir()
-    (host_dir / 'already-too-large.bin').write_bytes(b'x' * (2 * 1024 * 1024))
     app = make_app(logger, [str(tmp_path)], workspace_quota_mb=1)
     app.instance_config.data['box']['local']['default_workspace'] = str(host_dir)
     service = BoxService(app, client=_InProcessBoxRuntimeClient(logger, runtime))
+
+    tenant_host_dir = service._tenant_workspace(_CONTEXT)
+    assert tenant_host_dir is not None
+    os.makedirs(tenant_host_dir, exist_ok=True)
+    with open(os.path.join(tenant_host_dir, 'already-too-large.bin'), 'wb') as handle:
+        handle.write(b'x' * (2 * 1024 * 1024))
 
     await service.initialize()
 
@@ -1097,7 +1247,7 @@ async def test_service_records_errors_on_failure():
     with pytest.raises(Exception):
         await service.execute_tool({'command': 'echo hello'}, make_query(50))
 
-    errors = service.get_recent_errors()
+    errors = service.get_recent_errors(_CONTEXT)
     assert len(errors) == 1
     assert errors[0]['type'] == 'BoxBackendUnavailableError'
     assert errors[0]['query_id'] == '50'
@@ -1116,7 +1266,7 @@ async def test_service_error_ring_buffer_capped():
         with pytest.raises(Exception):
             await service.execute_tool({'command': 'fail'}, make_query(100 + i))
 
-    errors = service.get_recent_errors()
+    errors = service.get_recent_errors(_CONTEXT)
     assert len(errors) == 50
     # Oldest should have been evicted, newest kept
     assert errors[0]['query_id'] == '110'
@@ -1131,7 +1281,7 @@ async def test_service_get_status_aggregates_runtime_and_profile():
     service = BoxService(make_app(logger), client=_InProcessBoxRuntimeClient(logger, runtime))
     await service.initialize()
 
-    status = await service.get_status()
+    status = await service.get_status(_CONTEXT)
     assert status['profile'] == 'default'
     assert status['backend']['name'] == 'fake'
     assert status['backend']['available'] is True
@@ -1175,7 +1325,12 @@ async def _make_rpc_pair(runtime: BoxRuntime):
 
     client_conn, server_conn = _make_queue_connection_pair()
 
-    server_handler = BoxServerHandler(server_conn, runtime)
+    server_handler = BoxServerHandler(
+        server_conn,
+        runtime,
+        host_control_authenticated=True,
+        trusted_instance_uuid=_CONTEXT.instance_uuid,
+    )
     server_task = asyncio.create_task(server_handler.run())
 
     client_handler = Handler.__new__(Handler)
@@ -1199,7 +1354,7 @@ async def test_rpc_client_execute():
     client, server_task, client_task = await _make_rpc_pair(runtime)
     try:
         spec = BoxSpec.model_validate({'cmd': 'echo remote', 'session_id': 'r-1'})
-        result = await client.execute(spec)
+        result = await client.execute(spec, action_context=_ACTION_CONTEXT)
 
         assert result.session_id == 'r-1'
         assert result.status == BoxExecutionStatus.COMPLETED
@@ -1221,11 +1376,39 @@ async def test_rpc_client_get_sessions():
     client, server_task, client_task = await _make_rpc_pair(runtime)
     try:
         spec = BoxSpec.model_validate({'cmd': 'echo hi', 'session_id': 'r-2'})
-        await client.execute(spec)
+        await client.execute(spec, action_context=_ACTION_CONTEXT)
 
-        sessions = await client.get_sessions()
+        sessions = await client.get_sessions(action_context=_ACTION_CONTEXT)
         assert len(sessions) == 1
         assert sessions[0]['session_id'] == 'r-2'
+    finally:
+        server_task.cancel()
+        client_task.cancel()
+        await runtime.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_rpc_generation_advance_retires_old_session_and_rejects_old_context():
+    logger = Mock()
+    backend = FakeBackend(logger)
+    runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
+    await runtime.initialize()
+    second_context = _ACTION_CONTEXT.model_copy(update={'placement_generation': 2})
+
+    client, server_task, client_task = await _make_rpc_pair(runtime)
+    try:
+        spec = BoxSpec.model_validate({'cmd': 'echo generation', 'session_id': 'shared'})
+        await client.execute(spec, action_context=_ACTION_CONTEXT)
+        await client.execute(spec, action_context=second_context)
+
+        assert len(backend.start_calls) == 2
+        assert backend.start_calls[0] != backend.start_calls[1]
+        assert backend.stop_calls == [backend.start_calls[0]]
+        assert [session['session_id'] for session in await client.get_sessions(action_context=second_context)] == [
+            'shared'
+        ]
+        with pytest.raises(BoxError, match='Stale Box placement generation'):
+            await client.execute(spec, action_context=_ACTION_CONTEXT)
     finally:
         server_task.cancel()
         client_task.cancel()
@@ -1241,7 +1424,7 @@ async def test_rpc_client_get_status():
 
     client, server_task, client_task = await _make_rpc_pair(runtime)
     try:
-        status = await client.get_status()
+        status = await client.get_status(action_context=_ACTION_CONTEXT)
 
         assert 'backend' in status
         assert 'active_sessions' in status
@@ -1283,11 +1466,11 @@ async def test_rpc_client_delete_session():
     client, server_task, client_task = await _make_rpc_pair(runtime)
     try:
         spec = BoxSpec.model_validate({'cmd': 'echo hi', 'session_id': 'r-del-1'})
-        await client.execute(spec)
+        await client.execute(spec, action_context=_ACTION_CONTEXT)
 
-        await client.delete_session('r-del-1')
+        await client.delete_session('r-del-1', action_context=_ACTION_CONTEXT)
 
-        sessions = await client.get_sessions()
+        sessions = await client.get_sessions(action_context=_ACTION_CONTEXT)
         assert len(sessions) == 0
     finally:
         server_task.cancel()
@@ -1305,7 +1488,7 @@ async def test_rpc_client_delete_session_raises_not_found():
     client, server_task, client_task = await _make_rpc_pair(runtime)
     try:
         with pytest.raises(BoxSessionNotFoundError):
-            await client.delete_session('nonexistent')
+            await client.delete_session('nonexistent', action_context=_ACTION_CONTEXT)
     finally:
         server_task.cancel()
         client_task.cancel()
@@ -1322,11 +1505,11 @@ async def test_rpc_client_create_session():
     client, server_task, client_task = await _make_rpc_pair(runtime)
     try:
         spec = BoxSpec.model_validate({'cmd': 'placeholder', 'session_id': 'r-create-1'})
-        info = await client.create_session(spec)
+        info = await client.create_session(spec, action_context=_ACTION_CONTEXT)
         assert info['session_id'] == 'r-create-1'
         assert info['backend_name'] == 'fake'
 
-        sessions = await client.get_sessions()
+        sessions = await client.get_sessions(action_context=_ACTION_CONTEXT)
         assert len(sessions) == 1
     finally:
         server_task.cancel()
@@ -1344,11 +1527,11 @@ async def test_rpc_client_exec_raises_conflict_error():
     client, server_task, client_task = await _make_rpc_pair(runtime)
     try:
         spec1 = BoxSpec.model_validate({'cmd': 'echo first', 'session_id': 'r-conflict-1', 'network': 'off'})
-        await client.execute(spec1)
+        await client.execute(spec1, action_context=_ACTION_CONTEXT)
 
         spec2 = BoxSpec.model_validate({'cmd': 'echo second', 'session_id': 'r-conflict-1', 'network': 'on'})
         with pytest.raises(BoxSessionConflictError):
-            await client.execute(spec2)
+            await client.execute(spec2, action_context=_ACTION_CONTEXT)
     finally:
         server_task.cancel()
         client_task.cancel()
@@ -1447,7 +1630,7 @@ class TestBoxDisabledByConfig:
         service = BoxService(make_app(logger, enabled=False), client=Mock(spec=BoxRuntimeClient))
         await service.initialize()
 
-        status = await service.get_status()
+        status = await service.get_status(_CONTEXT)
 
         assert status['available'] is False
         assert status['enabled'] is False
@@ -1462,7 +1645,7 @@ class TestBoxDisabledByConfig:
 
         await service.initialize()
 
-        status = await service.get_status()
+        status = await service.get_status(_CONTEXT)
         assert status['available'] is False
         assert status['enabled'] is True
         assert 'docker daemon' in status['connector_error']
@@ -1486,7 +1669,7 @@ class TestBoxDisabledByConfig:
         service = BoxService(make_app(logger, enabled=True), client=client)
         await service.initialize()
 
-        status = await service.get_status()
+        status = await service.get_status(_CONTEXT)
         assert status['available'] is False
         assert status['enabled'] is True
         # The detailed backend object is preserved for the dialog
@@ -1507,7 +1690,7 @@ class TestBoxDisabledByConfig:
         service = BoxService(make_app(logger, enabled=True), client=client)
         await service.initialize()
 
-        status = await service.get_status()
+        status = await service.get_status(_CONTEXT)
         assert status['available'] is True
         assert status['backend'] == {'name': 'docker', 'available': True}
         # No spurious connector_error overlay when everything is healthy
@@ -1537,7 +1720,7 @@ class TestBuildSkillExtraMounts:
 
     def _make_service(self, logger, skills, *, shares_filesystem=True):
         app = make_app(logger)
-        app.skill_mgr = SimpleNamespace(skills=skills)
+        app.skill_mgr = SimpleNamespace(skills=skills, get_skills=Mock(return_value=skills))
         client = Mock(spec=BoxRuntimeClient)
         service = BoxService(app, client=client)
         # Tests construct BoxService with an injected client (no connector), so
@@ -1795,14 +1978,17 @@ class TestAttachmentHostPath:
     """
 
     def _service_with_workspace(self, tmp_path):
-        ws = str(tmp_path / 'box' / 'default')
-        os.makedirs(ws, exist_ok=True)
+        default_workspace = str(tmp_path / 'box' / 'default')
+        os.makedirs(default_workspace, exist_ok=True)
         app = make_app(Mock(), allowed_mount_roots=[str(tmp_path)], host_root=str(tmp_path / 'box'))
         service = BoxService(app, client=Mock(spec=BoxRuntimeClient))
         service._available = True
         # Force the default_workspace to our tmp dir so _host_query_dir resolves.
-        service.default_workspace = ws
-        return service, ws
+        service.default_workspace = default_workspace
+        tenant_workspace = service._tenant_workspace(_CONTEXT)
+        assert tenant_workspace is not None
+        os.makedirs(tenant_workspace, exist_ok=True)
+        return service, tenant_workspace
 
     @pytest.mark.asyncio
     async def test_inbound_writes_to_host_no_exec(self, tmp_path):
@@ -1923,9 +2109,10 @@ class TestAttachmentHostPath:
         assert os.path.isdir(ws)
 
     @pytest.mark.asyncio
-    async def test_purge_attachment_dirs_falls_back_to_exec_for_root_owned(self, tmp_path, monkeypatch):
-        # When the host delete cannot remove a dir (root-owned container output),
-        # purge must fall back to deleting from inside the sandbox via exec.
+    async def test_purge_attachment_dirs_never_uses_unscoped_exec_for_root_owned(self, tmp_path, monkeypatch):
+        # Startup has no trusted Workspace context. If host deletion cannot
+        # remove root-owned output, cleanup must fail closed instead of issuing
+        # an unscoped Box exec that could cross a tenant boundary.
         service, ws = self._service_with_workspace(tmp_path)
         outbox = os.path.join(ws, 'outbox')
         os.makedirs(os.path.join(outbox, '0'), exist_ok=True)
@@ -1942,18 +2129,17 @@ class TestAttachmentHostPath:
 
         monkeypatch.setattr(_shutil, 'rmtree', fake_rmtree)
 
-        executed = {}
-        spec_obj = object()
-        service.build_spec = Mock(return_value=spec_obj)
-        service.client.execute = AsyncMock(side_effect=lambda s: executed.setdefault('spec', s))
+        service.build_spec = Mock()
+        service.client.execute = AsyncMock()
 
         await service._purge_attachment_dirs()
 
-        # build_spec was asked to rm the surviving outbox via exec.
-        cmd = service.build_spec.call_args.args[0]['cmd']
-        assert 'rm -rf' in cmd and '/workspace/outbox' in cmd
-        assert '/workspace/inbox' not in cmd  # inbox was host-deletable
-        service.client.execute.assert_awaited_once_with(spec_obj)
+        assert os.path.isdir(outbox)
+        service.build_spec.assert_not_called()
+        service.client.execute.assert_not_awaited()
+        assert any(
+            'no trusted Workspace context' in str(call.args[0]) for call in service.ap.logger.warning.call_args_list
+        )
 
     @pytest.mark.asyncio
     async def test_purge_attachment_dirs_noop_without_workspace(self):

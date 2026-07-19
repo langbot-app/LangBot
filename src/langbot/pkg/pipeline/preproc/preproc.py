@@ -8,6 +8,7 @@ import langbot_plugin.api.entities.events as events
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
+from ...pipeline.pool import get_query_execution_context
 
 
 @stage.stage_class('PreProcessor')
@@ -70,7 +71,10 @@ class PreProcessor(stage.PipelineStage):
 
             if primary_uuid:
                 try:
-                    llm_model = await self.ap.model_mgr.get_model_by_uuid(primary_uuid)
+                    llm_model = await self.ap.model_mgr.get_model_by_uuid(
+                        get_query_execution_context(query),
+                        primary_uuid,
+                    )
                 except ValueError:
                     self.ap.logger.warning(f'LLM model {primary_uuid} not found or not configured')
 
@@ -79,7 +83,10 @@ class PreProcessor(stage.PipelineStage):
                 valid_fallbacks = []
                 for fb_uuid in fallback_uuids:
                     try:
-                        await self.ap.model_mgr.get_model_by_uuid(fb_uuid)
+                        await self.ap.model_mgr.get_model_by_uuid(
+                            get_query_execution_context(query),
+                            fb_uuid,
+                        )
                         valid_fallbacks.append(fb_uuid)
                     except ValueError:
                         self.ap.logger.warning(f'Fallback model {fb_uuid} not found, skipping')
@@ -131,6 +138,7 @@ class PreProcessor(stage.PipelineStage):
                     bound_mcp_servers = query.variables.get('_pipeline_bound_mcp_servers', None)
                     include_mcp_resource_tools = query.variables.get('_pipeline_mcp_resource_agent_read_enabled', True)
                     all_tools = await self.ap.tool_mgr.get_all_tools(
+                        get_query_execution_context(query),
                         bound_plugins,
                         bound_mcp_servers,
                         include_skill_authoring=include_skill_authoring,
@@ -149,6 +157,7 @@ class PreProcessor(stage.PipelineStage):
                 bound_mcp_servers = query.variables.get('_pipeline_bound_mcp_servers', None)
                 include_mcp_resource_tools = query.variables.get('_pipeline_mcp_resource_agent_read_enabled', True)
                 all_tools = await self.ap.tool_mgr.get_all_tools(
+                    get_query_execution_context(query),
                     bound_plugins,
                     bound_mcp_servers,
                     include_skill_authoring=include_skill_authoring,
@@ -279,7 +288,13 @@ class PreProcessor(stage.PipelineStage):
         #      relied on this injection; without it the LLM never discovers
         #      the skills are there and just calls native tools instead.
         if selected_runner == 'local-agent' and self.ap.skill_mgr:
-            pipeline_data = await self.ap.pipeline_service.get_pipeline(query.pipeline_uuid)
+            skill_execution_context = get_query_execution_context(query)
+            await self.ap.skill_mgr.ensure_loaded(skill_execution_context)
+            pipeline_data = await self.ap.pipeline_service.get_pipeline(
+                query.workspace_uuid,
+                query.pipeline_uuid,
+                include_secret=True,
+            )
             extensions_prefs = (pipeline_data or {}).get('extensions_preferences', {})
             enable_all_skills = extensions_prefs.get('enable_all_skills', True)
 
@@ -291,6 +306,7 @@ class PreProcessor(stage.PipelineStage):
             query.variables['_pipeline_bound_skills'] = bound_skills
 
             skill_addition = self.ap.skill_mgr.build_skill_aware_prompt_addition(
+                skill_execution_context,
                 bound_skills=bound_skills,
             )
             if skill_addition:
@@ -319,13 +335,13 @@ class PreProcessor(stage.PipelineStage):
                     f'Skill index injected into system prompt: '
                     f'pipeline={query.pipeline_uuid} '
                     f'bound_skills={bound_skills or "all"} '
-                    f'loaded_skills={len(self.ap.skill_mgr.skills)}'
+                    f'loaded_skills={len(self.ap.skill_mgr.get_skills(skill_execution_context))}'
                 )
             else:
                 self.ap.logger.debug(
                     f'No skills available for prompt injection: '
                     f'pipeline={query.pipeline_uuid} '
-                    f'loaded_skills={len(self.ap.skill_mgr.skills)} '
+                    f'loaded_skills={len(self.ap.skill_mgr.get_skills(skill_execution_context))} '
                     f'bound_skills={bound_skills}'
                 )
 

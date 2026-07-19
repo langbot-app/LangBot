@@ -14,6 +14,7 @@ import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
+from langbot.pkg.api.http.context import ExecutionContext
 
 
 # Counter for generating unique IDs
@@ -194,7 +195,20 @@ def _base_query(
     for key, value in overrides.items():
         base_data[key] = value
 
-    return pipeline_query.Query.model_construct(**base_data)
+    query = pipeline_query.Query.model_construct(**base_data)
+    object.__setattr__(
+        query,
+        '_execution_context',
+        ExecutionContext(
+            instance_uuid='test-instance',
+            workspace_uuid='test-workspace',
+            placement_generation=1,
+            bot_uuid=query.bot_uuid,
+            pipeline_uuid=query.pipeline_uuid,
+            query_uuid=query.query_uuid,
+        ),
+    )
+    return query
 
 
 def text_query(

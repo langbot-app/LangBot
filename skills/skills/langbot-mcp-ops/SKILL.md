@@ -29,13 +29,19 @@ Authorization: Bearer <api-key>
 
 Two kinds of key are accepted:
 
-1. **Web-UI key** — created in the web UI (sidebar → API Keys), prefixed `lbk_`,
-   stored in the database.
+1. **Web-UI key** — created in the web UI (sidebar → API Keys), prefixed `lbk_`.
+   The secret is shown once; only its SHA-256 hash is stored. Each key is bound
+   to one Workspace and has explicit scopes, status, optional expiry, and
+   last-used metadata. The key determines the Workspace; callers cannot switch
+   it with `X-Workspace-Id`.
 2. **Global API key** — set in `data/config.yaml` under `api.global_api_key`.
    Requires no login session and no DB record; does not need the `lbk_` prefix.
-   Leave empty to disable. See the `langbot-deploy` skill for config details.
+   It is accepted only by a community instance with exactly one local
+   Workspace and is disabled for SaaS multi-Workspace operation. Leave empty to
+   disable. See the `langbot-deploy` skill for config details.
 
-Requests without a valid key get `401 Unauthorized`.
+Invalid, revoked, or expired keys get `401 Unauthorized`. A valid key whose
+scopes do not authorize a tool gets `403 Forbidden`.
 
 ## Client configuration
 
@@ -66,7 +72,9 @@ The tools wrap the LangBot service layer. Current tools (v1):
 
 Mutating tools (`create_*`, `update_*`) take a JSON object matching the same
 shape as the corresponding HTTP API request body. Discover resources with the
-`list_*` / `get_*` tools before mutating; identifiers are UUIDs.
+`list_*` / `get_*` tools before mutating; identifiers are UUIDs. Reads require
+`resource.view`; mutations require `resource.manage`. All service calls inherit
+the immutable Workspace context authenticated at the MCP transport boundary.
 
 ## How to use
 
@@ -93,7 +101,8 @@ shape as the corresponding HTTP API request body. Discover resources with the
 - `/mcp` is the **server** LangBot exposes. The `/api/v1/mcp` routes are the
   **client** side (managing external MCP servers LangBot connects to). Don't
   confuse them.
-- A `401` means the key is wrong, missing, or (for the global key)
-  `api.global_api_key` is empty in config.yaml.
+- A `401` means the key is wrong, missing, revoked, expired, or (for the global
+  key) `api.global_api_key` is empty or the instance is not an OSS singleton.
+- A `403` means the key is valid but lacks the permission required by the tool.
 - The global key is plaintext in config.yaml — only enable it on trusted/internal
   deployments and serve over HTTPS.

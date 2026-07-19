@@ -210,7 +210,15 @@ def pipeline_app():
     mock_conversation.update_time = None
     mock_conversation.create_time = None
 
-    app.sess_mgr.get_session = AsyncMock(return_value=mock_session)
+    async def get_scoped_session(query):
+        context = query._execution_context
+        mock_session.instance_uuid = context.instance_uuid
+        mock_session.workspace_uuid = context.workspace_uuid
+        mock_session.placement_generation = context.placement_generation
+        mock_session.bot_uuid = query.bot_uuid
+        return mock_session
+
+    app.sess_mgr.get_session = AsyncMock(side_effect=get_scoped_session)
     app.sess_mgr.get_conversation = AsyncMock(return_value=mock_conversation)
 
     # Model mock for PreProcessor

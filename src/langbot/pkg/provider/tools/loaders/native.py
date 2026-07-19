@@ -11,6 +11,7 @@ from .. import loader
 from ..errors import ToolNotFoundError
 from .availability import is_box_backend_available
 from . import skill as skill_loader
+from ....api.http.context import ExecutionContext
 
 EXEC_TOOL_NAME = 'exec'
 READ_TOOL_NAME = 'read'
@@ -55,6 +56,17 @@ class NativeToolLoader(loader.ToolLoader):
     async def _check_backend_available(self) -> bool:
         """Check if the box backend is truly available (not just the runtime)."""
         return await is_box_backend_available(self.ap)
+
+    @staticmethod
+    def _execution_context(query: pipeline_query.Query) -> ExecutionContext:
+        return ExecutionContext(
+            instance_uuid=str(getattr(query, 'instance_uuid', '') or ''),
+            workspace_uuid=str(getattr(query, 'workspace_uuid', '') or ''),
+            placement_generation=getattr(query, 'placement_generation', 0) or 0,
+            bot_uuid=getattr(query, 'bot_uuid', None),
+            pipeline_uuid=getattr(query, 'pipeline_uuid', None),
+            query_uuid=getattr(query, 'query_uuid', None),
+        )
 
     async def get_tools(self, bound_plugins: list[str] | None = None) -> list[resource_tool.LLMTool]:
         if not self._is_sandbox_available():
@@ -142,7 +154,7 @@ class NativeToolLoader(loader.ToolLoader):
         result = self._normalize_exec_result(result)
 
         if selected_skill is not None:
-            self._refresh_skill_from_disk(selected_skill)
+            self._refresh_skill_from_disk(query, selected_skill)
         return result
 
     def _resolve_host_path(
@@ -162,7 +174,11 @@ class NativeToolLoader(loader.ToolLoader):
         )
 
         box_service = self.ap.box_service
-        host_root = selected_skill.get('package_root') if selected_skill is not None else box_service.default_workspace
+        host_root = (
+            selected_skill.get('package_root')
+            if selected_skill is not None
+            else box_service._tenant_workspace(self._execution_context(query))
+        )
         if not host_root:
             raise ValueError('No host workspace configured for file operations.')
 
@@ -522,11 +538,19 @@ else:
                 return self._read_text_file_preview(host_path, parameters)
 
             try:
-                result = await self.ap.box_service.read_skill_file(selected_skill['name'], relative)
+                result = await self.ap.box_service.read_skill_file(
+                    self._execution_context(query),
+                    selected_skill['name'],
+                    relative,
+                )
                 return self._build_read_result_from_text(str(result.get('content', '')), parameters)
             except Exception:
                 try:
-                    result = await self.ap.box_service.list_skill_files(selected_skill['name'], relative)
+                    result = await self.ap.box_service.list_skill_files(
+                        self._execution_context(query),
+                        selected_skill['name'],
+                        relative,
+                    )
                     entries = [entry['name'] for entry in result.get('entries', [])]
                     return self._build_directory_result(entries)
                 except Exception as exc:
@@ -562,8 +586,9 @@ else:
             if encoding != 'text':
                 return {'ok': False, 'error': 'base64 writes to skill packages are not supported.'}
             selected_skill, relative = skill_request
-            await self.ap.box_service.write_skill_file(selected_skill['name'], relative, content)
-            await self.ap.skill_mgr.reload_skills()
+            execution_context = self._execution_context(query)
+            await self.ap.box_service.write_skill_file(execution_context, selected_skill['name'], relative, content)
+            await self.ap.skill_mgr.reload_skills(execution_context)
             return {'ok': True, 'path': path}
 
         host_path, selected_skill = self._resolve_host_path(
@@ -579,7 +604,7 @@ else:
             self._write_host_file(host_path, content, parameters)
         except ValueError as exc:
             return {'ok': False, 'error': str(exc)}
-        self._refresh_skill_from_disk(selected_skill)
+        self._refresh_skill_from_disk(query, selected_skill)
         return {'ok': True, 'path': path}
 
     async def _invoke_edit(self, parameters: dict, query: pipeline_query.Query) -> dict:
@@ -603,7 +628,11 @@ else:
         ):
             selected_skill, relative = skill_request
             try:
-                result = await self.ap.box_service.read_skill_file(selected_skill['name'], relative)
+                result = await self.ap.box_service.read_skill_file(
+                    self._execution_context(query),
+                    selected_skill['name'],
+                    relative,
+                )
             except Exception:
                 return {'ok': False, 'error': f'File not found: {path}'}
             content = result.get('content', '')
@@ -613,8 +642,14 @@ else:
             if count > 1:
                 return {'ok': False, 'error': f'old_string matches {count} locations; provide a more unique string.'}
             new_content = content.replace(old_string, new_string, 1)
-            await self.ap.box_service.write_skill_file(selected_skill['name'], relative, new_content)
-            await self.ap.skill_mgr.reload_skills()
+            execution_context = self._execution_context(query)
+            await self.ap.box_service.write_skill_file(
+                execution_context,
+                selected_skill['name'],
+                relative,
+                new_content,
+            )
+            await self.ap.skill_mgr.reload_skills(execution_context)
             return {'ok': True, 'path': path}
 
         host_path, selected_skill = self._resolve_host_path(
@@ -637,10 +672,10 @@ else:
         new_content = content.replace(old_string, new_string, 1)
         with open(host_path, 'w', encoding='utf-8') as f:
             f.write(new_content)
-        self._refresh_skill_from_disk(selected_skill)
+        self._refresh_skill_from_disk(query, selected_skill)
         return {'ok': True, 'path': path}
 
-    def _refresh_skill_from_disk(self, selected_skill: dict | None) -> None:
+    def _refresh_skill_from_disk(self, query: pipeline_query.Query, selected_skill: dict | None) -> None:
         if selected_skill is None:
             return
 
@@ -650,7 +685,7 @@ else:
 
         refresh_skill = getattr(skill_mgr, 'refresh_skill_from_disk', None)
         if callable(refresh_skill):
-            refresh_skill(selected_skill.get('name', ''))
+            refresh_skill(self._execution_context(query), selected_skill.get('name', ''))
 
     def _is_sandbox_available(self) -> bool:
         """Check if sandbox backend is available.

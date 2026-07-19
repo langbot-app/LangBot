@@ -1,8 +1,74 @@
-import quart
-import mimetypes
 import asyncio
-from ... import group
+import dataclasses
+import mimetypes
+
+import quart
+
+from langbot.pkg.api.http.authz import Permission
+from langbot.pkg.api.http.context import RequestContext
 from langbot.pkg.utils import importutil
+
+from ... import group
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class _AdapterSessionScope:
+    """Immutable tenant and principal binding for a credential exchange."""
+
+    instance_uuid: str
+    workspace_uuid: str
+    placement_generation: int
+    principal_type: str
+    account_uuid: str | None
+    api_key_uuid: str | None
+
+    @classmethod
+    def from_request_context(cls, request_context: RequestContext) -> '_AdapterSessionScope':
+        principal = request_context.principal
+        return cls(
+            instance_uuid=request_context.instance_uuid,
+            workspace_uuid=request_context.workspace_uuid,
+            placement_generation=request_context.placement_generation,
+            principal_type=principal.principal_type.value,
+            account_uuid=principal.account_uuid,
+            api_key_uuid=principal.api_key_uuid,
+        )
+
+    def matches(self, request_context: RequestContext) -> bool:
+        """Return whether a request is from the exact initiating tenant principal."""
+
+        return self == self.from_request_context(request_context)
+
+
+def _bind_session_scope(session: dict, request_context: RequestContext) -> None:
+    session['scope'] = _AdapterSessionScope.from_request_context(request_context)
+
+
+def _get_owned_session(
+    sessions: dict[str, dict],
+    session_id: str,
+    request_context: RequestContext,
+) -> dict | None:
+    """Resolve a session without revealing sessions owned by another scope."""
+
+    session = sessions.get(session_id)
+    scope = session.get('scope') if session is not None else None
+    if not isinstance(scope, _AdapterSessionScope) or not scope.matches(request_context):
+        return None
+    return session
+
+
+def _pop_owned_session(
+    sessions: dict[str, dict],
+    session_id: str,
+    request_context: RequestContext,
+) -> dict | None:
+    """Remove an owned session without allowing cross-scope cancellation."""
+
+    session = _get_owned_session(sessions, session_id, request_context)
+    if session is None:
+        return None
+    return sessions.pop(session_id, None)
 
 
 def _decrypt_qqofficial_secret(encrypted_b64: str, key: bytes) -> str:
@@ -84,8 +150,8 @@ class AdaptersRouterGroup(group.RouterGroup):
                 if session and session.get('task') and not session['task'].done():
                     session['task'].cancel()
 
-        @self.route('/lark/create-app', methods=['POST'])
-        async def _() -> str:
+        @self.route('/lark/create-app', methods=['POST'], permission=Permission.RESOURCE_MANAGE)
+        async def _(request_context: RequestContext) -> str:
             """Start Feishu one-click app registration. Returns session_id + QR code URL."""
             import uuid
             import time
@@ -106,6 +172,7 @@ class AdaptersRouterGroup(group.RouterGroup):
                 'error': None,
                 'created_at': time.time(),
             }
+            _bind_session_scope(session, request_context)
             _create_app_sessions[session_id] = session
 
             def on_qr_code(info):
@@ -160,10 +227,15 @@ class AdaptersRouterGroup(group.RouterGroup):
                 }
             )
 
-        @self.route('/lark/create-app/status/<session_id>', methods=['GET'])
-        async def _(session_id: str) -> str:
+        @self.route(
+            '/lark/create-app/status/<session_id>',
+            methods=['GET'],
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def _(session_id: str, request_context: RequestContext) -> str:
             """Poll registration status."""
-            session = _create_app_sessions.get(session_id)
+            _cleanup_expired_sessions()
+            session = _get_owned_session(_create_app_sessions, session_id, request_context)
             if not session:
                 return self.http_status(404, -1, 'Session not found')
 
@@ -179,10 +251,16 @@ class AdaptersRouterGroup(group.RouterGroup):
 
             return self.success(data=data)
 
-        @self.route('/lark/create-app/<session_id>', methods=['DELETE'])
-        async def _(session_id: str) -> str:
+        @self.route(
+            '/lark/create-app/<session_id>',
+            methods=['DELETE'],
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def _(session_id: str, request_context: RequestContext) -> str:
             """Cancel and clean up a registration session."""
-            session = _create_app_sessions.pop(session_id, None)
+            session = _pop_owned_session(_create_app_sessions, session_id, request_context)
+            if session is None:
+                return self.http_status(404, -1, 'Session not found')
             if session and session.get('task') and not session['task'].done():
                 session['task'].cancel()
             return self.success(data={})
@@ -206,8 +284,8 @@ class AdaptersRouterGroup(group.RouterGroup):
                 if session and session.get('task') and not session['task'].done():
                     session['task'].cancel()
 
-        @self.route('/weixin/login', methods=['POST'])
-        async def _() -> str:
+        @self.route('/weixin/login', methods=['POST'], permission=Permission.RESOURCE_MANAGE)
+        async def _(request_context: RequestContext) -> str:
             """Start WeChat QR code login. Returns session_id + QR code data URL."""
             import uuid
             import time
@@ -229,6 +307,7 @@ class AdaptersRouterGroup(group.RouterGroup):
                 'error': None,
                 'created_at': time.time(),
             }
+            _bind_session_scope(session, request_context)
             _weixin_login_sessions[session_id] = session
 
             client = OpenClawWeixinClient(
@@ -290,10 +369,15 @@ class AdaptersRouterGroup(group.RouterGroup):
                 }
             )
 
-        @self.route('/weixin/login/status/<session_id>', methods=['GET'])
-        async def _(session_id: str) -> str:
+        @self.route(
+            '/weixin/login/status/<session_id>',
+            methods=['GET'],
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def _(session_id: str, request_context: RequestContext) -> str:
             """Poll WeChat login status."""
-            session = _weixin_login_sessions.get(session_id)
+            _cleanup_expired_weixin_sessions()
+            session = _get_owned_session(_weixin_login_sessions, session_id, request_context)
             if not session:
                 return self.http_status(404, -1, 'Session not found')
 
@@ -317,10 +401,16 @@ class AdaptersRouterGroup(group.RouterGroup):
 
             return self.success(data=data)
 
-        @self.route('/weixin/login/<session_id>', methods=['DELETE'])
-        async def _(session_id: str) -> str:
+        @self.route(
+            '/weixin/login/<session_id>',
+            methods=['DELETE'],
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def _(session_id: str, request_context: RequestContext) -> str:
             """Cancel and clean up a WeChat login session."""
-            session = _weixin_login_sessions.pop(session_id, None)
+            session = _pop_owned_session(_weixin_login_sessions, session_id, request_context)
+            if session is None:
+                return self.http_status(404, -1, 'Session not found')
             if session and session.get('task') and not session['task'].done():
                 session['task'].cancel()
             return self.success(data={})
@@ -344,8 +434,8 @@ class AdaptersRouterGroup(group.RouterGroup):
                 if session and session.get('task') and not session['task'].done():
                     session['task'].cancel()
 
-        @self.route('/dingtalk/create-app', methods=['POST'])
-        async def _() -> str:
+        @self.route('/dingtalk/create-app', methods=['POST'], permission=Permission.RESOURCE_MANAGE)
+        async def _(request_context: RequestContext) -> str:
             """Start DingTalk one-click app creation via Device Flow. Returns session_id + QR code URL."""
             import uuid
             import time
@@ -368,6 +458,7 @@ class AdaptersRouterGroup(group.RouterGroup):
                 'device_code': None,
                 'interval': 5,
             }
+            _bind_session_scope(session, request_context)
             _dingtalk_sessions[session_id] = session
 
             async def run_device_flow():
@@ -491,11 +582,15 @@ class AdaptersRouterGroup(group.RouterGroup):
                 }
             )
 
-        @self.route('/dingtalk/create-app/status/<session_id>', methods=['GET'])
-        async def _(session_id: str) -> str:
+        @self.route(
+            '/dingtalk/create-app/status/<session_id>',
+            methods=['GET'],
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def _(session_id: str, request_context: RequestContext) -> str:
             """Poll DingTalk Device Flow status."""
             _cleanup_expired_dingtalk_sessions()
-            session = _dingtalk_sessions.get(session_id)
+            session = _get_owned_session(_dingtalk_sessions, session_id, request_context)
             if not session:
                 return self.http_status(404, -1, 'Session not found')
 
@@ -511,10 +606,16 @@ class AdaptersRouterGroup(group.RouterGroup):
 
             return self.success(data=data)
 
-        @self.route('/dingtalk/create-app/<session_id>', methods=['DELETE'])
-        async def _(session_id: str) -> str:
+        @self.route(
+            '/dingtalk/create-app/<session_id>',
+            methods=['DELETE'],
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def _(session_id: str, request_context: RequestContext) -> str:
             """Cancel and clean up a DingTalk Device Flow session."""
-            session = _dingtalk_sessions.pop(session_id, None)
+            session = _pop_owned_session(_dingtalk_sessions, session_id, request_context)
+            if session is None:
+                return self.http_status(404, -1, 'Session not found')
             if session and session.get('task') and not session['task'].done():
                 session['task'].cancel()
             return self.success(data={})
@@ -538,8 +639,8 @@ class AdaptersRouterGroup(group.RouterGroup):
                 if session and session.get('task') and not session['task'].done():
                     session['task'].cancel()
 
-        @self.route('/wecombot/create-bot', methods=['POST'])
-        async def _() -> str:
+        @self.route('/wecombot/create-bot', methods=['POST'], permission=Permission.RESOURCE_MANAGE)
+        async def _(request_context: RequestContext) -> str:
             """Start WeComBot one-click creation via QR code. Returns session_id + QR code URL."""
             import uuid
             import time
@@ -563,6 +664,7 @@ class AdaptersRouterGroup(group.RouterGroup):
                 'scode': None,
                 'task': None,
             }
+            _bind_session_scope(session, request_context)
             _wecombot_sessions[session_id] = session
 
             async def run_qr_flow():
@@ -655,11 +757,15 @@ class AdaptersRouterGroup(group.RouterGroup):
                 }
             )
 
-        @self.route('/wecombot/create-bot/status/<session_id>', methods=['GET'])
-        async def _(session_id: str) -> str:
+        @self.route(
+            '/wecombot/create-bot/status/<session_id>',
+            methods=['GET'],
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def _(session_id: str, request_context: RequestContext) -> str:
             """Poll WeComBot creation status."""
             _cleanup_expired_wecombot_sessions()
-            session = _wecombot_sessions.get(session_id)
+            session = _get_owned_session(_wecombot_sessions, session_id, request_context)
             if not session:
                 return self.http_status(404, -1, 'Session not found')
 
@@ -675,10 +781,16 @@ class AdaptersRouterGroup(group.RouterGroup):
 
             return self.success(data=data)
 
-        @self.route('/wecombot/create-bot/<session_id>', methods=['DELETE'])
-        async def _(session_id: str) -> str:
+        @self.route(
+            '/wecombot/create-bot/<session_id>',
+            methods=['DELETE'],
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def _(session_id: str, request_context: RequestContext) -> str:
             """Cancel and clean up a WeComBot creation session."""
-            session = _wecombot_sessions.pop(session_id, None)
+            session = _pop_owned_session(_wecombot_sessions, session_id, request_context)
+            if session is None:
+                return self.http_status(404, -1, 'Session not found')
             if session and session.get('task') and not session['task'].done():
                 session['task'].cancel()
             return self.success(data={})
@@ -702,8 +814,8 @@ class AdaptersRouterGroup(group.RouterGroup):
                 if session and session.get('task') and not session['task'].done():
                     session['task'].cancel()
 
-        @self.route('/qqofficial/bind', methods=['POST'])
-        async def _() -> str:
+        @self.route('/qqofficial/bind', methods=['POST'], permission=Permission.RESOURCE_MANAGE)
+        async def _(request_context: RequestContext) -> str:
             """Start QQ Official QR binding. Returns session_id + QR URL.
 
             Flow: generate a local AES-256 key, register it with
@@ -739,6 +851,7 @@ class AdaptersRouterGroup(group.RouterGroup):
                 'bind_key_bytes': bind_key_bytes,
                 'interval': 2,
             }
+            _bind_session_scope(session, request_context)
             _qqofficial_sessions[session_id] = session
 
             async def run_qr_binding():
@@ -870,11 +983,15 @@ class AdaptersRouterGroup(group.RouterGroup):
                 }
             )
 
-        @self.route('/qqofficial/bind/status/<session_id>', methods=['GET'])
-        async def _(session_id: str) -> str:
+        @self.route(
+            '/qqofficial/bind/status/<session_id>',
+            methods=['GET'],
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def _(session_id: str, request_context: RequestContext) -> str:
             """Poll QQ Official QR binding status."""
             _cleanup_expired_qqofficial_sessions()
-            session = _qqofficial_sessions.get(session_id)
+            session = _get_owned_session(_qqofficial_sessions, session_id, request_context)
             if not session:
                 return self.http_status(404, -1, 'Session not found')
 
@@ -892,10 +1009,16 @@ class AdaptersRouterGroup(group.RouterGroup):
 
             return self.success(data=data)
 
-        @self.route('/qqofficial/bind/<session_id>', methods=['DELETE'])
-        async def _(session_id: str) -> str:
+        @self.route(
+            '/qqofficial/bind/<session_id>',
+            methods=['DELETE'],
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def _(session_id: str, request_context: RequestContext) -> str:
             """Cancel and clean up a QQ Official QR binding session."""
-            session = _qqofficial_sessions.pop(session_id, None)
+            session = _pop_owned_session(_qqofficial_sessions, session_id, request_context)
+            if session is None:
+                return self.http_status(404, -1, 'Session not found')
             if session and session.get('task') and not session['task'].done():
                 session['task'].cancel()
             return self.success(data={})

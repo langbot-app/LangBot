@@ -18,6 +18,7 @@ import { userInfo } from '@/app/infra/http';
 
 interface ModelItemProps {
   model: LLMModel | EmbeddingModel;
+  canManage: boolean;
   modelType: ModelType;
   isLangBotModels: boolean;
   editModelPopoverOpen: string | null;
@@ -71,6 +72,7 @@ function convertExtraArgsToArray(extraArgs?: object): ExtraArg[] {
 
 export default function ModelItem({
   model,
+  canManage,
   modelType,
   isLangBotModels,
   editModelPopoverOpen,
@@ -149,7 +151,7 @@ export default function ModelItem({
 
   // Check if popover should be disabled (space models when not logged in)
   const isPopoverDisabled =
-    isLangBotModels && userInfo?.account_type !== 'space';
+    !canManage || (isLangBotModels && userInfo?.account_type !== 'space');
 
   return (
     <Popover
@@ -193,7 +195,7 @@ export default function ModelItem({
                 </Badge>
               )}
           </div>
-          {!isLangBotModels && (
+          {canManage && !isLangBotModels && (
             <Popover
               open={isDeleteOpen}
               onOpenChange={(open) =>

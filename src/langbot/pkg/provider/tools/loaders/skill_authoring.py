@@ -7,6 +7,7 @@ import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 
 from .. import loader
 from .availability import is_box_backend_available
+from ....api.http.context import ExecutionContext
 
 # Align with Claude Code's Skill tool design:
 # - activate: Activate a skill via Tool Call, returns SKILL.md content
@@ -67,7 +68,7 @@ class SkillToolLoader(loader.ToolLoader):
         if name == ACTIVATE_SKILL_TOOL_NAME:
             return await self._invoke_activate_skill(parameters, query)
         if name == REGISTER_SKILL_TOOL_NAME:
-            return await self._invoke_register_skill(parameters)
+            return await self._invoke_register_skill(parameters, query)
         raise ValueError(f'Unknown skill tool: {name}')
 
     async def shutdown(self):
@@ -120,7 +121,7 @@ class SkillToolLoader(loader.ToolLoader):
             'content': result_content,
         }
 
-    async def _invoke_register_skill(self, parameters: dict) -> typing.Any:
+    async def _invoke_register_skill(self, parameters: dict, query) -> typing.Any:
         """Register a skill from sandbox directory to data/skills/."""
         sandbox_path = str(parameters.get('path', '') or '').strip()
         if not sandbox_path:
@@ -135,7 +136,15 @@ class SkillToolLoader(loader.ToolLoader):
             raise ValueError('Skill service not available')
 
         # Scan and register the skill
-        scanned = await skill_service.scan_directory_async(host_path)
+        execution_context = ExecutionContext(
+            instance_uuid=str(getattr(query, 'instance_uuid', '') or ''),
+            workspace_uuid=str(getattr(query, 'workspace_uuid', '') or ''),
+            placement_generation=getattr(query, 'placement_generation', 0) or 0,
+            bot_uuid=getattr(query, 'bot_uuid', None),
+            pipeline_uuid=getattr(query, 'pipeline_uuid', None),
+            query_uuid=getattr(query, 'query_uuid', None),
+        )
+        scanned = await skill_service.scan_directory_async(execution_context, host_path)
 
         # Override name if provided
         skill_name = str(parameters.get('name') or scanned['name']).strip()
@@ -144,13 +153,14 @@ class SkillToolLoader(loader.ToolLoader):
 
         # Create the skill
         created = await skill_service.create_skill(
+            execution_context,
             {
                 'name': skill_name,
                 'display_name': str(parameters.get('display_name') or scanned.get('display_name', '')).strip(),
                 'description': str(parameters.get('description') or scanned.get('description', '')).strip(),
                 'instructions': str(parameters.get('instructions') or scanned.get('instructions', '')),
                 'package_root': host_path,
-            }
+            },
         )
 
         return {

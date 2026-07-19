@@ -8,14 +8,22 @@ and error handling without calling real LLM APIs.
 from __future__ import annotations
 
 import pytest
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 from langbot.pkg.provider.modelmgr.modelmgr import ModelManager
 from langbot.pkg.provider.modelmgr import requester
 from langbot.pkg.entity.persistence import model as persistence_model
 from langbot.pkg.entity.errors import provider as provider_errors
 from langbot.pkg.provider.modelmgr import token
-from tests.unit_tests.provider.conftest import _make_mock_result, _make_row_mock
+from langbot.pkg.api.http.context import ExecutionContext
+from langbot.pkg.workspace.entities import WorkspaceExecutionBinding
+from langbot.pkg.workspace.errors import WorkspaceGenerationMismatchError
+from tests.unit_tests.provider.conftest import (
+    TEST_EXECUTION_CONTEXT,
+    TEST_WORKSPACE_UUID,
+    _make_mock_result,
+    _make_row_mock,
+)
 
 
 # ============================================================================
@@ -91,13 +99,15 @@ async def test_model_manager_load_models_from_db(fake_requester_registry, fake_p
 
     # Check providers loaded
     assert len(model_mgr.provider_dict) == 2
-    assert fake_persistence_data['provider_uuid'] in model_mgr.provider_dict
-    assert fake_persistence_data['provider_uuid2'] in model_mgr.provider_dict
+    assert {provider.provider_entity.uuid for provider in model_mgr.provider_dict.values()} == {
+        fake_persistence_data['provider_uuid'],
+        fake_persistence_data['provider_uuid2'],
+    }
 
     # Check models loaded
-    assert len(model_mgr.llm_models) == 2
-    assert len(model_mgr.embedding_models) == 1
-    assert len(model_mgr.rerank_models) == 1
+    assert len(model_mgr.llm_model_dict) == 2
+    assert len(model_mgr.embedding_model_dict) == 1
+    assert len(model_mgr.rerank_model_dict) == 1
 
 
 @pytest.mark.asyncio
@@ -118,7 +128,7 @@ async def test_model_manager_load_provider_unknown_requester(mock_app_for_modelm
     }
 
     with pytest.raises(provider_errors.RequesterNotFoundError) as exc_info:
-        await model_mgr.load_provider(provider_info)
+        await model_mgr.load_provider(TEST_EXECUTION_CONTEXT, provider_info)
 
     assert exc_info.value.requester_name == 'non-existent-requester'
 
@@ -137,7 +147,7 @@ async def test_model_manager_load_provider_from_dict(fake_requester_registry):
         'api_keys': ['dict-key'],
     }
 
-    runtime_provider = await model_mgr.load_provider(provider_info)
+    runtime_provider = await model_mgr.load_provider(TEST_EXECUTION_CONTEXT, provider_info)
 
     assert runtime_provider.provider_entity.uuid == 'dict-provider-uuid'
     assert runtime_provider.provider_entity.name == 'Dict Provider'
@@ -154,7 +164,7 @@ async def test_model_manager_load_provider_from_entity(fake_requester_registry, 
 
     provider_entity = fake_persistence_data['providers'][0]
 
-    runtime_provider = await model_mgr.load_provider(provider_entity)
+    runtime_provider = await model_mgr.load_provider(TEST_EXECUTION_CONTEXT, provider_entity)
 
     assert runtime_provider.provider_entity.uuid == provider_entity.uuid
     assert runtime_provider.requester is not None
@@ -181,7 +191,7 @@ async def test_model_manager_get_model_by_uuid(fake_requester_registry, fake_per
     model_mgr.ap.persistence_mgr.execute_async = fake_execute
     await model_mgr.initialize()
 
-    model = await model_mgr.get_model_by_uuid('test-llm-uuid-1')
+    model = await model_mgr.get_model_by_uuid(TEST_EXECUTION_CONTEXT, 'test-llm-uuid-1')
 
     assert model.model_entity.uuid == 'test-llm-uuid-1'
     assert model.model_entity.name == 'TestLLM-1'
@@ -194,7 +204,7 @@ async def test_model_manager_get_model_by_uuid_not_found(fake_requester_registry
     await model_mgr.initialize()
 
     with pytest.raises(ValueError) as exc_info:
-        await model_mgr.get_model_by_uuid('unknown-model-uuid')
+        await model_mgr.get_model_by_uuid(TEST_EXECUTION_CONTEXT, 'unknown-model-uuid')
 
     assert 'unknown-model-uuid' in str(exc_info.value)
 
@@ -215,7 +225,10 @@ async def test_model_manager_get_embedding_model_by_uuid(fake_requester_registry
     model_mgr.ap.persistence_mgr.execute_async = fake_execute
     await model_mgr.initialize()
 
-    model = await model_mgr.get_embedding_model_by_uuid('test-embedding-uuid-1')
+    model = await model_mgr.get_embedding_model_by_uuid(
+        TEST_EXECUTION_CONTEXT,
+        'test-embedding-uuid-1',
+    )
 
     assert model.model_entity.uuid == 'test-embedding-uuid-1'
 
@@ -227,7 +240,10 @@ async def test_model_manager_get_embedding_model_by_uuid_not_found(fake_requeste
     await model_mgr.initialize()
 
     with pytest.raises(ValueError):
-        await model_mgr.get_embedding_model_by_uuid('unknown-embedding-uuid')
+        await model_mgr.get_embedding_model_by_uuid(
+            TEST_EXECUTION_CONTEXT,
+            'unknown-embedding-uuid',
+        )
 
 
 @pytest.mark.asyncio
@@ -246,7 +262,7 @@ async def test_model_manager_get_rerank_model_by_uuid(fake_requester_registry, f
     model_mgr.ap.persistence_mgr.execute_async = fake_execute
     await model_mgr.initialize()
 
-    model = await model_mgr.get_rerank_model_by_uuid('test-rerank-uuid-1')
+    model = await model_mgr.get_rerank_model_by_uuid(TEST_EXECUTION_CONTEXT, 'test-rerank-uuid-1')
 
     assert model.model_entity.uuid == 'test-rerank-uuid-1'
 
@@ -258,7 +274,7 @@ async def test_model_manager_get_rerank_model_by_uuid_not_found(fake_requester_r
     await model_mgr.initialize()
 
     with pytest.raises(ValueError):
-        await model_mgr.get_rerank_model_by_uuid('unknown-rerank-uuid')
+        await model_mgr.get_rerank_model_by_uuid(TEST_EXECUTION_CONTEXT, 'unknown-rerank-uuid')
 
 
 # ============================================================================
@@ -282,12 +298,12 @@ async def test_model_manager_remove_llm_model(fake_requester_registry, fake_pers
     model_mgr.ap.persistence_mgr.execute_async = fake_execute
     await model_mgr.initialize()
 
-    assert len(model_mgr.llm_models) == 2
+    assert len(model_mgr.llm_model_dict) == 2
 
-    await model_mgr.remove_llm_model('test-llm-uuid-1')
+    await model_mgr.remove_llm_model(TEST_EXECUTION_CONTEXT, 'test-llm-uuid-1')
 
-    assert len(model_mgr.llm_models) == 1
-    assert model_mgr.llm_models[0].model_entity.uuid == 'test-llm-uuid-2'
+    assert len(model_mgr.llm_model_dict) == 1
+    assert next(iter(model_mgr.llm_model_dict.values())).model_entity.uuid == 'test-llm-uuid-2'
 
 
 @pytest.mark.asyncio
@@ -306,12 +322,12 @@ async def test_model_manager_remove_llm_model_not_found(fake_requester_registry,
     model_mgr.ap.persistence_mgr.execute_async = fake_execute
     await model_mgr.initialize()
 
-    original_count = len(model_mgr.llm_models)
+    original_count = len(model_mgr.llm_model_dict)
 
     # Removing unknown model should do nothing (no error)
-    await model_mgr.remove_llm_model('unknown-model-uuid')
+    await model_mgr.remove_llm_model(TEST_EXECUTION_CONTEXT, 'unknown-model-uuid')
 
-    assert len(model_mgr.llm_models) == original_count
+    assert len(model_mgr.llm_model_dict) == original_count
 
 
 @pytest.mark.asyncio
@@ -330,11 +346,11 @@ async def test_model_manager_remove_embedding_model(fake_requester_registry, fak
     model_mgr.ap.persistence_mgr.execute_async = fake_execute
     await model_mgr.initialize()
 
-    assert len(model_mgr.embedding_models) == 1
+    assert len(model_mgr.embedding_model_dict) == 1
 
-    await model_mgr.remove_embedding_model('test-embedding-uuid-1')
+    await model_mgr.remove_embedding_model(TEST_EXECUTION_CONTEXT, 'test-embedding-uuid-1')
 
-    assert len(model_mgr.embedding_models) == 0
+    assert len(model_mgr.embedding_model_dict) == 0
 
 
 @pytest.mark.asyncio
@@ -353,11 +369,11 @@ async def test_model_manager_remove_rerank_model(fake_requester_registry, fake_p
     model_mgr.ap.persistence_mgr.execute_async = fake_execute
     await model_mgr.initialize()
 
-    assert len(model_mgr.rerank_models) == 1
+    assert len(model_mgr.rerank_model_dict) == 1
 
-    await model_mgr.remove_rerank_model('test-rerank-uuid-1')
+    await model_mgr.remove_rerank_model(TEST_EXECUTION_CONTEXT, 'test-rerank-uuid-1')
 
-    assert len(model_mgr.rerank_models) == 0
+    assert len(model_mgr.rerank_model_dict) == 0
 
 
 @pytest.mark.asyncio
@@ -376,11 +392,17 @@ async def test_model_manager_remove_provider(fake_requester_registry, fake_persi
     model_mgr.ap.persistence_mgr.execute_async = fake_execute
     await model_mgr.initialize()
 
-    assert fake_persistence_data['provider_uuid'] in model_mgr.provider_dict
+    assert any(
+        provider.provider_entity.uuid == fake_persistence_data['provider_uuid']
+        for provider in model_mgr.provider_dict.values()
+    )
 
-    await model_mgr.remove_provider(fake_persistence_data['provider_uuid'])
+    await model_mgr.remove_provider(TEST_EXECUTION_CONTEXT, fake_persistence_data['provider_uuid'])
 
-    assert fake_persistence_data['provider_uuid'] not in model_mgr.provider_dict
+    assert all(
+        provider.provider_entity.uuid != fake_persistence_data['provider_uuid']
+        for provider in model_mgr.provider_dict.values()
+    )
 
 
 # ============================================================================
@@ -498,7 +520,7 @@ async def test_model_manager_init_temporary_runtime_llm_model(fake_requester_reg
         'extra_args': {'temperature': 0.5},
     }
 
-    runtime_model = await model_mgr.init_temporary_runtime_llm_model(model_info)
+    runtime_model = await model_mgr.init_temporary_runtime_llm_model(TEST_EXECUTION_CONTEXT, model_info)
 
     assert runtime_model.model_entity.uuid == 'temp-model-uuid'
     assert runtime_model.model_entity.name == 'TempModel'
@@ -528,7 +550,10 @@ async def test_model_manager_init_temporary_runtime_embedding_model(fake_request
         'extra_args': {'dimensions': 512},
     }
 
-    runtime_model = await model_mgr.init_temporary_runtime_embedding_model(model_info)
+    runtime_model = await model_mgr.init_temporary_runtime_embedding_model(
+        TEST_EXECUTION_CONTEXT,
+        model_info,
+    )
 
     assert runtime_model.model_entity.uuid == 'temp-embedding-uuid'
     assert runtime_model.model_entity.name == 'TempEmbedding'
@@ -553,7 +578,10 @@ async def test_model_manager_init_temporary_runtime_rerank_model(fake_requester_
         'extra_args': {},
     }
 
-    runtime_model = await model_mgr.init_temporary_runtime_rerank_model(model_info)
+    runtime_model = await model_mgr.init_temporary_runtime_rerank_model(
+        TEST_EXECUTION_CONTEXT,
+        model_info,
+    )
 
     assert runtime_model.model_entity.uuid == 'temp-rerank-uuid'
     assert runtime_model.model_entity.name == 'TempRerank'
@@ -589,12 +617,16 @@ async def test_model_manager_reload_provider(fake_requester_registry, fake_persi
     model_mgr.ap.persistence_mgr.execute_async = fake_execute
     await model_mgr.initialize()
 
-    original_provider = model_mgr.provider_dict[fake_persistence_data['provider_uuid']]
+    original_provider = await model_mgr.get_provider_by_uuid(
+        TEST_EXECUTION_CONTEXT,
+        fake_persistence_data['provider_uuid'],
+    )
     original_base_url = original_provider.provider_entity.base_url
 
     # Setup for reload - return updated provider
     async def reload_execute(query):
         updated_provider = persistence_model.ModelProvider(
+            workspace_uuid=TEST_WORKSPACE_UUID,
             uuid=fake_persistence_data['provider_uuid'],
             name='Updated Provider',
             requester='fake-requester',
@@ -605,9 +637,12 @@ async def test_model_manager_reload_provider(fake_requester_registry, fake_persi
 
     model_mgr.ap.persistence_mgr.execute_async = reload_execute
 
-    await model_mgr.reload_provider(fake_persistence_data['provider_uuid'])
+    await model_mgr.reload_provider(TEST_EXECUTION_CONTEXT, fake_persistence_data['provider_uuid'])
 
-    updated_provider = model_mgr.provider_dict[fake_persistence_data['provider_uuid']]
+    updated_provider = await model_mgr.get_provider_by_uuid(
+        TEST_EXECUTION_CONTEXT,
+        fake_persistence_data['provider_uuid'],
+    )
     assert updated_provider.provider_entity.base_url == 'https://updated.example.com'
     assert updated_provider.provider_entity.base_url != original_base_url
 
@@ -624,7 +659,7 @@ async def test_model_manager_reload_provider_not_found(fake_requester_registry):
     model_mgr.ap.persistence_mgr.execute_async = fake_execute
 
     with pytest.raises(provider_errors.ProviderNotFoundError) as exc_info:
-        await model_mgr.reload_provider('unknown-provider-uuid')
+        await model_mgr.reload_provider(TEST_EXECUTION_CONTEXT, 'unknown-provider-uuid')
 
     assert exc_info.value.provider_name == 'unknown-provider-uuid'
 
@@ -643,7 +678,11 @@ async def test_model_manager_load_llm_model_with_provider(
 
     model_entity = fake_persistence_data['llm_models'][0]
 
-    runtime_model = await model_mgr.load_llm_model_with_provider(model_entity, runtime_provider)
+    runtime_model = await model_mgr.load_llm_model_with_provider(
+        TEST_EXECUTION_CONTEXT,
+        model_entity,
+        runtime_provider,
+    )
 
     assert runtime_model.model_entity.uuid == model_entity.uuid
     assert runtime_model.provider is runtime_provider
@@ -659,7 +698,11 @@ async def test_model_manager_load_llm_model_with_provider_from_row(
     model_entity = fake_persistence_data['llm_models'][0]
     row_mock = _make_row_mock(model_entity)
 
-    runtime_model = await model_mgr.load_llm_model_with_provider(row_mock, runtime_provider)
+    runtime_model = await model_mgr.load_llm_model_with_provider(
+        TEST_EXECUTION_CONTEXT,
+        row_mock,
+        runtime_provider,
+    )
 
     assert runtime_model.model_entity.uuid == model_entity.uuid
 
@@ -673,7 +716,11 @@ async def test_model_manager_load_embedding_model_with_provider(
 
     model_entity = fake_persistence_data['embedding_models'][0]
 
-    runtime_model = await model_mgr.load_embedding_model_with_provider(model_entity, runtime_provider)
+    runtime_model = await model_mgr.load_embedding_model_with_provider(
+        TEST_EXECUTION_CONTEXT,
+        model_entity,
+        runtime_provider,
+    )
 
     assert runtime_model.model_entity.uuid == model_entity.uuid
     assert runtime_model.provider is runtime_provider
@@ -692,6 +739,7 @@ async def test_model_manager_load_rerank_model_with_provider(fake_requester_regi
     )
     await requester_inst.initialize()
     provider = requester.RuntimeProvider(
+        execution_context=TEST_EXECUTION_CONTEXT,
         provider_entity=provider_entity,
         token_mgr=token_mgr,
         requester=requester_inst,
@@ -699,7 +747,11 @@ async def test_model_manager_load_rerank_model_with_provider(fake_requester_regi
 
     model_entity = fake_persistence_data['rerank_models'][0]
 
-    runtime_model = await model_mgr.load_rerank_model_with_provider(model_entity, provider)
+    runtime_model = await model_mgr.load_rerank_model_with_provider(
+        TEST_EXECUTION_CONTEXT,
+        model_entity,
+        provider,
+    )
 
     assert runtime_model.model_entity.uuid == model_entity.uuid
     assert runtime_model.provider is provider
@@ -723,6 +775,7 @@ async def test_model_manager_logs_warning_for_missing_provider(fake_requester_re
         elif 'llm_models' in query_str:
             # Return model with missing provider
             fake_model = persistence_model.LLMModel(
+                workspace_uuid=TEST_WORKSPACE_UUID,
                 uuid='model-with-missing-provider',
                 name='MissingProviderModel',
                 provider_uuid='missing-provider-uuid',
@@ -736,7 +789,7 @@ async def test_model_manager_logs_warning_for_missing_provider(fake_requester_re
     await model_mgr.initialize()
 
     # Should have logged warning and skipped the model
-    assert len(model_mgr.llm_models) == 0
+    assert len(model_mgr.llm_model_dict) == 0
     model_mgr.ap.logger.warning.assert_called()
 
 
@@ -750,6 +803,7 @@ async def test_model_manager_handles_requester_not_found_gracefully(fake_request
         if 'model_providers' in query_str:
             # Return provider with unknown requester
             fake_provider = persistence_model.ModelProvider(
+                workspace_uuid=TEST_WORKSPACE_UUID,
                 uuid='provider-with-unknown-requester',
                 name='Unknown Requester Provider',
                 requester='unknown-requester-name',
@@ -759,6 +813,7 @@ async def test_model_manager_handles_requester_not_found_gracefully(fake_request
             return _make_mock_result([_make_row_mock(fake_provider)])
         elif 'llm_models' in query_str:
             fake_model = persistence_model.LLMModel(
+                workspace_uuid=TEST_WORKSPACE_UUID,
                 uuid='model-uuid',
                 name='Model',
                 provider_uuid='provider-with-unknown-requester',
@@ -773,7 +828,7 @@ async def test_model_manager_handles_requester_not_found_gracefully(fake_request
 
     # Provider should be skipped
     assert len(model_mgr.provider_dict) == 0
-    assert len(model_mgr.llm_models) == 0
+    assert len(model_mgr.llm_model_dict) == 0
     model_mgr.ap.logger.warning.assert_called()
 
 
@@ -788,6 +843,85 @@ def test_requester_not_found_error_str():
 
     assert str(error) == 'Requester test-requester not found'
     assert error.requester_name == 'test-requester'
+
+
+@pytest.mark.asyncio
+async def test_runtime_cache_isolates_same_resource_uuid_between_workspaces(fake_requester_registry):
+    """A UUID collision cannot select another Workspace's runtime object."""
+
+    model_mgr = fake_requester_registry
+    await model_mgr.initialize()
+    contexts = {
+        workspace_uuid: ExecutionContext(
+            instance_uuid='test-instance',
+            workspace_uuid=workspace_uuid,
+            placement_generation=1,
+        )
+        for workspace_uuid in ('workspace-a', 'workspace-b')
+    }
+
+    async def resolve_binding(workspace_uuid, *, expected_generation=None):
+        assert expected_generation in (None, 1)
+        return WorkspaceExecutionBinding(
+            instance_uuid='test-instance',
+            workspace_uuid=workspace_uuid,
+            placement_generation=1,
+            write_fenced=False,
+            state='active',
+        )
+
+    model_mgr.ap.workspace_service.get_execution_binding = AsyncMock(side_effect=resolve_binding)
+    for workspace_uuid, context in contexts.items():
+        provider = await model_mgr.load_provider(
+            context,
+            {
+                'uuid': 'shared-provider',
+                'name': f'Provider {workspace_uuid}',
+                'requester': 'fake-requester',
+                'base_url': f'https://{workspace_uuid}.example.com',
+                'api_keys': [],
+            },
+        )
+        await model_mgr.cache_provider(context, provider)
+        runtime_model = await model_mgr.load_llm_model_with_provider(
+            context,
+            persistence_model.LLMModel(
+                workspace_uuid=workspace_uuid,
+                uuid='shared-model',
+                name=f'Model {workspace_uuid}',
+                provider_uuid='shared-provider',
+                abilities=[],
+                extra_args={},
+            ),
+            provider,
+        )
+        await model_mgr.cache_llm_model(context, runtime_model)
+
+    workspace_a_model = await model_mgr.get_model_by_uuid(contexts['workspace-a'], 'shared-model')
+    workspace_b_model = await model_mgr.get_model_by_uuid(contexts['workspace-b'], 'shared-model')
+
+    assert workspace_a_model.model_entity.name == 'Model workspace-a'
+    assert workspace_b_model.model_entity.name == 'Model workspace-b'
+    assert workspace_a_model is not workspace_b_model
+
+
+@pytest.mark.asyncio
+async def test_runtime_cache_rejects_stale_placement_generation(fake_requester_registry):
+    """A stale generation is fenced before any cached model can be returned."""
+
+    model_mgr = fake_requester_registry
+    await model_mgr.initialize()
+    stale_context = TEST_EXECUTION_CONTEXT
+
+    async def reject_stale(_workspace_uuid, *, expected_generation=None):
+        if expected_generation == stale_context.placement_generation:
+            raise WorkspaceGenerationMismatchError('stale generation')
+        raise AssertionError('lookup must include the supplied generation')
+
+    model_mgr.ap.workspace_service.get_execution_binding = AsyncMock(side_effect=reject_stale)
+
+    with pytest.raises(WorkspaceGenerationMismatchError, match='stale generation'):
+        await model_mgr.get_model_by_uuid(stale_context, 'any-model')
 
 
 def test_provider_not_found_error_str():

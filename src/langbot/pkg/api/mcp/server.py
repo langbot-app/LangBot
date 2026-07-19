@@ -22,6 +22,9 @@ import typing
 
 from mcp.server.fastmcp import FastMCP
 
+from ..http.authz import Permission, require_permission
+from .context import get_request_context
+
 if typing.TYPE_CHECKING:
     from ...core import app as app_module
 
@@ -44,6 +47,12 @@ the same shape as the LangBot HTTP API request bodies.
 def _dump(value: typing.Any) -> str:
     """Serialize a tool result to a compact JSON string for the agent."""
     return json.dumps(value, ensure_ascii=False, default=str)
+
+
+def _authorized(permission: Permission):
+    context = get_request_context()
+    require_permission(context, permission)
+    return context
 
 
 class LangBotMCPServer:
@@ -72,6 +81,7 @@ class LangBotMCPServer:
         # ----- System (read-only) -------------------------------------- #
         @mcp.tool(description='Get basic LangBot system/runtime information (version, edition).')
         async def get_system_info() -> str:
+            _authorized(Permission.WORKSPACE_VIEW)
             version = None
             try:
                 version = ap.ver_mgr.get_current_version()
@@ -87,11 +97,13 @@ class LangBotMCPServer:
         # ----- Bots ---------------------------------------------------- #
         @mcp.tool(description='List all messaging-platform bots. Secrets are redacted.')
         async def list_bots() -> str:
-            return _dump(await ap.bot_service.get_bots(include_secret=False))
+            context = _authorized(Permission.RESOURCE_VIEW)
+            return _dump(await ap.bot_service.get_bots(context, include_secret=False))
 
         @mcp.tool(description='Get a single bot by its UUID. Secrets are redacted.')
         async def get_bot(bot_uuid: str) -> str:
-            return _dump(await ap.bot_service.get_bot(bot_uuid, include_secret=False))
+            context = _authorized(Permission.RESOURCE_VIEW)
+            return _dump(await ap.bot_service.get_bot(context, bot_uuid, include_secret=False))
 
         @mcp.tool(
             description=(
@@ -101,26 +113,31 @@ class LangBotMCPServer:
             )
         )
         async def create_bot(bot_data: dict) -> str:
-            return _dump({'uuid': await ap.bot_service.create_bot(bot_data)})
+            context = _authorized(Permission.RESOURCE_MANAGE)
+            return _dump({'uuid': await ap.bot_service.create_bot(context, bot_data)})
 
         @mcp.tool(description='Update a bot by UUID. `bot_data` matches the PUT bot body.')
         async def update_bot(bot_uuid: str, bot_data: dict) -> str:
-            await ap.bot_service.update_bot(bot_uuid, bot_data)
+            context = _authorized(Permission.RESOURCE_MANAGE)
+            await ap.bot_service.update_bot(context, bot_uuid, bot_data)
             return _dump({'ok': True})
 
         @mcp.tool(description='Delete a bot by UUID.')
         async def delete_bot(bot_uuid: str) -> str:
-            await ap.bot_service.delete_bot(bot_uuid)
+            context = _authorized(Permission.RESOURCE_MANAGE)
+            await ap.bot_service.delete_bot(context, bot_uuid)
             return _dump({'ok': True})
 
         # ----- Pipelines ----------------------------------------------- #
         @mcp.tool(description='List all pipelines.')
         async def list_pipelines() -> str:
-            return _dump(await ap.pipeline_service.get_pipelines())
+            context = _authorized(Permission.RESOURCE_VIEW)
+            return _dump(await ap.pipeline_service.get_pipelines(context))
 
         @mcp.tool(description='Get a single pipeline by UUID.')
         async def get_pipeline(pipeline_uuid: str) -> str:
-            return _dump(await ap.pipeline_service.get_pipeline(pipeline_uuid))
+            context = _authorized(Permission.RESOURCE_VIEW)
+            return _dump(await ap.pipeline_service.get_pipeline(context, pipeline_uuid))
 
         @mcp.tool(
             description=(
@@ -129,49 +146,59 @@ class LangBotMCPServer:
             )
         )
         async def create_pipeline(pipeline_data: dict) -> str:
-            return _dump({'uuid': await ap.pipeline_service.create_pipeline(pipeline_data)})
+            context = _authorized(Permission.RESOURCE_MANAGE)
+            return _dump({'uuid': await ap.pipeline_service.create_pipeline(context, pipeline_data)})
 
         @mcp.tool(description='Update a pipeline by UUID. `pipeline_data` matches the PUT body.')
         async def update_pipeline(pipeline_uuid: str, pipeline_data: dict) -> str:
-            await ap.pipeline_service.update_pipeline(pipeline_uuid, pipeline_data)
+            context = _authorized(Permission.RESOURCE_MANAGE)
+            await ap.pipeline_service.update_pipeline(context, pipeline_uuid, pipeline_data)
             return _dump({'ok': True})
 
         @mcp.tool(description='Delete a pipeline by UUID.')
         async def delete_pipeline(pipeline_uuid: str) -> str:
-            await ap.pipeline_service.delete_pipeline(pipeline_uuid)
+            context = _authorized(Permission.RESOURCE_MANAGE)
+            await ap.pipeline_service.delete_pipeline(context, pipeline_uuid)
             return _dump({'ok': True})
 
         # ----- Models -------------------------------------------------- #
         @mcp.tool(description='List all configured LLM models. Secrets are redacted.')
         async def list_llm_models() -> str:
-            return _dump(await ap.llm_model_service.get_llm_models(include_secret=False))
+            context = _authorized(Permission.RESOURCE_VIEW)
+            return _dump(await ap.llm_model_service.get_llm_models(context, include_secret=False))
 
         @mcp.tool(description='Get a single LLM model by UUID.')
         async def get_llm_model(model_uuid: str) -> str:
-            return _dump(await ap.llm_model_service.get_llm_model(model_uuid))
+            context = _authorized(Permission.RESOURCE_VIEW)
+            return _dump(await ap.llm_model_service.get_llm_model(context, model_uuid, include_secret=False))
 
         @mcp.tool(description='List all configured embedding models.')
         async def list_embedding_models() -> str:
-            return _dump(await ap.embedding_models_service.get_embedding_models())
+            context = _authorized(Permission.RESOURCE_VIEW)
+            return _dump(await ap.embedding_models_service.get_embedding_models(context, include_secret=False))
 
         @mcp.tool(description='List all model providers (OpenAI-compatible, Anthropic, etc.).')
         async def list_model_providers() -> str:
-            return _dump(await ap.provider_service.get_providers())
+            context = _authorized(Permission.RESOURCE_VIEW)
+            return _dump(await ap.provider_service.get_providers(context, include_secret=False))
 
         # ----- Knowledge bases ----------------------------------------- #
         @mcp.tool(description='List all knowledge bases (RAG).')
         async def list_knowledge_bases() -> str:
-            return _dump(await ap.knowledge_service.get_knowledge_bases())
+            context = _authorized(Permission.RESOURCE_VIEW)
+            return _dump(await ap.knowledge_service.get_knowledge_bases(context))
 
         @mcp.tool(description='Get a single knowledge base by UUID.')
         async def get_knowledge_base(kb_uuid: str) -> str:
-            return _dump(await ap.knowledge_service.get_knowledge_base(kb_uuid))
+            context = _authorized(Permission.RESOURCE_VIEW)
+            return _dump(await ap.knowledge_service.get_knowledge_base(context, kb_uuid))
 
         @mcp.tool(
             description=('Retrieve (semantic search) from a knowledge base. Returns the matched chunks for `query`.')
         )
         async def retrieve_knowledge_base(kb_uuid: str, query: str) -> str:
-            return _dump(await ap.knowledge_service.retrieve_knowledge_base(kb_uuid, query))
+            context = _authorized(Permission.RESOURCE_VIEW)
+            return _dump(await ap.knowledge_service.retrieve_knowledge_base(context, kb_uuid, query))
 
         # ----- MCP servers (LangBot as MCP client) --------------------- #
         @mcp.tool(
@@ -180,16 +207,19 @@ class LangBotMCPServer:
             )
         )
         async def list_mcp_servers() -> str:
-            return _dump(await ap.mcp_service.get_mcp_servers())
+            context = _authorized(Permission.RESOURCE_VIEW)
+            return _dump(await ap.mcp_service.get_mcp_servers(context))
 
         # ----- Skills -------------------------------------------------- #
         @mcp.tool(description='List installed skills.')
         async def list_skills() -> str:
-            return _dump(await ap.skill_service.list_skills())
+            context = _authorized(Permission.RESOURCE_VIEW)
+            return _dump(await ap.skill_service.list_skills(context))
 
         @mcp.tool(description='Get a single skill by name.')
         async def get_skill(skill_name: str) -> str:
-            return _dump(await ap.skill_service.get_skill(skill_name))
+            context = _authorized(Permission.RESOURCE_VIEW)
+            return _dump(await ap.skill_service.get_skill(context, skill_name))
 
     # ------------------------------------------------------------------ #
     # ASGI app

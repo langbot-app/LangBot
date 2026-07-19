@@ -47,6 +47,12 @@ def _do_stamp(connection: Connection, revision: str = 'head') -> None:
     command.stamp(cfg, revision)
 
 
+def _do_downgrade(connection: Connection, revision: str) -> None:
+    """Synchronous downgrade — runs inside run_sync."""
+    cfg = _build_config(connection)
+    command.downgrade(cfg, revision)
+
+
 def _do_get_current(connection: Connection) -> str | None:
     """Get current alembic revision synchronously."""
     ctx = MigrationContext.configure(connection)
@@ -70,6 +76,13 @@ async def run_alembic_stamp(async_engine: AsyncEngine, revision: str = 'head') -
     """Stamp the database with a revision without running migrations."""
     async with async_engine.connect() as conn:
         await conn.run_sync(_do_stamp, revision)
+        await conn.commit()
+
+
+async def run_alembic_downgrade(async_engine: AsyncEngine, revision: str) -> None:
+    """Run Alembic downgrade to the given revision."""
+    async with async_engine.connect() as conn:
+        await conn.run_sync(_do_downgrade, revision)
         await conn.commit()
 
 
@@ -121,6 +134,7 @@ if __name__ == '__main__':
             print('Commands:')
             print('  autogenerate "message"  — Generate migration from ORM model diff')
             print('  upgrade [revision]      — Upgrade database (default: head)')
+            print('  downgrade <revision>    — Downgrade database to a revision')
             print('  stamp [revision]        — Stamp revision without running (default: head)')
             print('  current                 — Show current revision')
             sys.exit(1)
@@ -140,6 +154,13 @@ if __name__ == '__main__':
             rev = sys.argv[2] if len(sys.argv) > 2 else 'head'
             asyncio.run(run_alembic_stamp(engine, rev))
             print(f'Stamped: {rev}')
+        elif cmd == 'downgrade':
+            if len(sys.argv) < 3:
+                print('Usage: python -m langbot.pkg.persistence.alembic_runner downgrade <revision>')
+                sys.exit(1)
+            rev = sys.argv[2]
+            asyncio.run(run_alembic_downgrade(engine, rev))
+            print(f'Downgraded to: {rev}')
         elif cmd == 'current':
             rev = asyncio.run(get_alembic_current(engine))
             print(f'Current revision: {rev}')

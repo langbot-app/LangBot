@@ -16,6 +16,18 @@ from langbot.pkg.provider.modelmgr import token
 from langbot.pkg.provider.modelmgr.modelmgr import ModelManager
 from langbot.pkg.entity.persistence import model as persistence_model
 from langbot.pkg.discover import engine as discover_engine
+from langbot.pkg.api.http.context import ExecutionContext
+from langbot.pkg.workspace.entities import WorkspaceExecutionBinding
+
+
+TEST_INSTANCE_UUID = 'test-instance'
+TEST_WORKSPACE_UUID = 'test-workspace'
+TEST_GENERATION = 1
+TEST_EXECUTION_CONTEXT = ExecutionContext(
+    instance_uuid=TEST_INSTANCE_UUID,
+    workspace_uuid=TEST_WORKSPACE_UUID,
+    placement_generation=TEST_GENERATION,
+)
 
 
 class FakeProviderAPIRequester(requester.ProviderAPIRequester):
@@ -157,6 +169,26 @@ def mock_app_for_modelmgr():
     app.llm_model_service = AsyncMock()
     app.embedding_models_service = AsyncMock()
     app.monitoring_service = AsyncMock()
+    app.workspace_service = SimpleNamespace(
+        get_execution_binding=AsyncMock(
+            return_value=WorkspaceExecutionBinding(
+                instance_uuid=TEST_INSTANCE_UUID,
+                workspace_uuid=TEST_WORKSPACE_UUID,
+                placement_generation=TEST_GENERATION,
+                write_fenced=False,
+                state='active',
+            )
+        ),
+        get_local_execution_binding=AsyncMock(
+            return_value=WorkspaceExecutionBinding(
+                instance_uuid=TEST_INSTANCE_UUID,
+                workspace_uuid=TEST_WORKSPACE_UUID,
+                placement_generation=TEST_GENERATION,
+                write_fenced=False,
+                state='active',
+            )
+        ),
+    )
 
     return app
 
@@ -184,6 +216,7 @@ def fake_persistence_data():
 
     providers = [
         persistence_model.ModelProvider(
+            workspace_uuid=TEST_WORKSPACE_UUID,
             uuid=provider_uuid,
             name='Test Provider',
             requester='fake-requester',
@@ -191,6 +224,7 @@ def fake_persistence_data():
             api_keys=['test-api-key-1', 'test-api-key-2'],
         ),
         persistence_model.ModelProvider(
+            workspace_uuid=TEST_WORKSPACE_UUID,
             uuid=provider_uuid2,
             name='Test Provider 2',
             requester='another-fake-requester',
@@ -201,6 +235,7 @@ def fake_persistence_data():
 
     llm_models = [
         persistence_model.LLMModel(
+            workspace_uuid=TEST_WORKSPACE_UUID,
             uuid='test-llm-uuid-1',
             name='TestLLM-1',
             provider_uuid=provider_uuid,
@@ -208,6 +243,7 @@ def fake_persistence_data():
             extra_args={'temperature': 0.7},
         ),
         persistence_model.LLMModel(
+            workspace_uuid=TEST_WORKSPACE_UUID,
             uuid='test-llm-uuid-2',
             name='TestLLM-2',
             provider_uuid=provider_uuid,
@@ -218,6 +254,7 @@ def fake_persistence_data():
 
     embedding_models = [
         persistence_model.EmbeddingModel(
+            workspace_uuid=TEST_WORKSPACE_UUID,
             uuid='test-embedding-uuid-1',
             name='TestEmbedding-1',
             provider_uuid=provider_uuid,
@@ -227,6 +264,7 @@ def fake_persistence_data():
 
     rerank_models = [
         persistence_model.RerankModel(
+            workspace_uuid=TEST_WORKSPACE_UUID,
             uuid='test-rerank-uuid-1',
             name='TestRerank-1',
             provider_uuid=provider_uuid2,
@@ -252,6 +290,7 @@ def runtime_provider(fake_persistence_data, mock_app_for_modelmgr):
     requester_inst = FakeProviderAPIRequester(mock_app_for_modelmgr, {'base_url': provider_entity.base_url})
 
     return requester.RuntimeProvider(
+        execution_context=TEST_EXECUTION_CONTEXT,
         provider_entity=provider_entity,
         token_mgr=token_mgr,
         requester=requester_inst,
@@ -263,6 +302,7 @@ def runtime_llm_model(fake_persistence_data, runtime_provider):
     """Provides a RuntimeLLMModel instance for testing."""
     model_entity = fake_persistence_data['llm_models'][0]
     return requester.RuntimeLLMModel(
+        execution_context=TEST_EXECUTION_CONTEXT,
         model_entity=model_entity,
         provider=runtime_provider,
     )
@@ -273,6 +313,7 @@ def runtime_embedding_model(fake_persistence_data, runtime_provider):
     """Provides a RuntimeEmbeddingModel instance for testing."""
     model_entity = fake_persistence_data['embedding_models'][0]
     return requester.RuntimeEmbeddingModel(
+        execution_context=TEST_EXECUTION_CONTEXT,
         model_entity=model_entity,
         provider=runtime_provider,
     )
@@ -286,6 +327,7 @@ def runtime_rerank_model(fake_persistence_data, mock_app_for_modelmgr):
     requester_inst = AnotherFakeRequester(mock_app_for_modelmgr, {'base_url': provider_entity.base_url})
 
     provider = requester.RuntimeProvider(
+        execution_context=TEST_EXECUTION_CONTEXT,
         provider_entity=provider_entity,
         token_mgr=token_mgr,
         requester=requester_inst,
@@ -293,6 +335,7 @@ def runtime_rerank_model(fake_persistence_data, mock_app_for_modelmgr):
 
     model_entity = fake_persistence_data['rerank_models'][0]
     return requester.RuntimeRerankModel(
+        execution_context=TEST_EXECUTION_CONTEXT,
         model_entity=model_entity,
         provider=provider,
     )

@@ -1,4 +1,4 @@
-import { BaseHttpClient } from './BaseHttpClient';
+import { BaseHttpClient, type RequestConfig } from './BaseHttpClient';
 import {
   ApiRespProviderRequesters,
   ApiRespProviderRequester,
@@ -61,6 +61,14 @@ import type { PluginLogEntry } from '@/app/infra/entities/plugin';
 import type { I18nObject } from '@/app/infra/entities/common';
 import { GetBotLogsRequest } from '@/app/infra/http/requestParam/bots/GetBotLogsRequest';
 import { GetBotLogsResponse } from '@/app/infra/http/requestParam/bots/GetBotLogsResponse';
+import type {
+  CurrentWorkspace,
+  Workspace,
+  WorkspaceInvitation,
+  WorkspaceMembership,
+  WorkspaceBootstrapResponse,
+  WorkspaceRole,
+} from '@/app/infra/entities/workspace';
 
 /**
  * 后端服务客户端
@@ -1067,19 +1075,29 @@ export class BackendClient extends BaseHttpClient {
 
   // ============ User API ============
   public checkIfInited(): Promise<{ initialized: boolean }> {
-    return this.get('/api/v1/user/init');
+    return this.get('/api/v1/user/init', undefined, { skipWorkspace: true });
   }
 
   public initUser(user: string, password: string): Promise<object> {
-    return this.post('/api/v1/user/init', { user, password });
+    return this.post(
+      '/api/v1/user/init',
+      { user, password },
+      { skipWorkspace: true },
+    );
   }
 
   public authUser(user: string, password: string): Promise<ApiRespUserToken> {
-    return this.post('/api/v1/user/auth', { user, password });
+    return this.post(
+      '/api/v1/user/auth',
+      { user, password },
+      { skipWorkspace: true },
+    );
   }
 
   public checkUserToken(): Promise<ApiRespUserToken> {
-    return this.get('/api/v1/user/check-token');
+    return this.get('/api/v1/user/check-token', undefined, {
+      skipWorkspace: true,
+    });
   }
 
   public resetPassword(
@@ -1087,51 +1105,165 @@ export class BackendClient extends BaseHttpClient {
     recoveryKey: string,
     newPassword: string,
   ): Promise<{ user: string }> {
-    return this.post('/api/v1/user/reset-password', {
-      user,
-      recovery_key: recoveryKey,
-      new_password: newPassword,
-    });
+    return this.post(
+      '/api/v1/user/reset-password',
+      {
+        user,
+        recovery_key: recoveryKey,
+        new_password: newPassword,
+      },
+      { skipWorkspace: true },
+    );
   }
 
   public changePassword(
     currentPassword: string,
     newPassword: string,
   ): Promise<{ user: string }> {
-    return this.post('/api/v1/user/change-password', {
-      current_password: currentPassword,
-      new_password: newPassword,
-    });
+    return this.post(
+      '/api/v1/user/change-password',
+      {
+        current_password: currentPassword,
+        new_password: newPassword,
+      },
+      { skipWorkspace: true },
+    );
   }
 
   public getUserInfo(): Promise<{
+    account_uuid: string;
     user: string;
     account_type: 'local' | 'space';
     has_password: boolean;
   }> {
-    return this.get('/api/v1/user/info');
+    return this.get('/api/v1/user/info', undefined, { skipWorkspace: true });
   }
 
   public getSpaceCredits(): Promise<{ credits: number | null }> {
-    return this.get('/api/v1/user/space-credits');
+    return this.get('/api/v1/user/space-credits', undefined, {
+      skipWorkspace: true,
+    });
   }
 
   public getAccountInfo(): Promise<{
     initialized: boolean;
-    account_type?: 'local' | 'space';
-    has_password?: boolean;
+    password_login_enabled?: boolean;
+    space_login_enabled?: boolean;
   }> {
-    return this.get('/api/v1/user/account-info');
+    return this.get('/api/v1/user/account-info', undefined, {
+      skipWorkspace: true,
+    });
+  }
+
+  // ============ Workspace API ============
+  public getWorkspaceBootstrap(): Promise<WorkspaceBootstrapResponse> {
+    return this.get('/api/v1/workspaces/bootstrap', undefined, {
+      skipWorkspace: true,
+    });
+  }
+
+  public getWorkspaces(): Promise<{ workspaces: Workspace[] }> {
+    return this.get('/api/v1/workspaces');
+  }
+
+  public getCurrentWorkspace(): Promise<CurrentWorkspace> {
+    return this.get('/api/v1/workspaces/current');
+  }
+
+  public getWorkspace(
+    workspaceUuid: string,
+  ): Promise<{ workspace: Workspace }> {
+    return this.get(`/api/v1/workspaces/${workspaceUuid}`);
+  }
+
+  public getWorkspaceMembers(
+    workspaceUuid: string,
+  ): Promise<{ members: WorkspaceMembership[] }> {
+    return this.get(`/api/v1/workspaces/${workspaceUuid}/members`);
+  }
+
+  public createWorkspaceInvitation(
+    workspaceUuid: string,
+    email: string,
+    role: Exclude<WorkspaceRole, 'owner'>,
+  ): Promise<{ invitation: WorkspaceInvitation; token: string }> {
+    return this.post(`/api/v1/workspaces/${workspaceUuid}/invitations`, {
+      email,
+      role,
+    });
+  }
+
+  public getWorkspaceInvitations(
+    workspaceUuid: string,
+  ): Promise<{ invitations: WorkspaceInvitation[] }> {
+    return this.get(`/api/v1/workspaces/${workspaceUuid}/invitations`);
+  }
+
+  public revokeWorkspaceInvitation(
+    workspaceUuid: string,
+    invitationUuid: string,
+  ): Promise<object> {
+    return this.delete(
+      `/api/v1/workspaces/${workspaceUuid}/invitations/${invitationUuid}`,
+    );
+  }
+
+  public inspectWorkspaceInvitation(
+    token: string,
+  ): Promise<{ invitation: WorkspaceInvitation; workspace: Workspace }> {
+    return this.post(
+      '/api/v1/invitations/inspect',
+      { token },
+      { skipWorkspace: true },
+    );
+  }
+
+  public acceptWorkspaceInvitation(
+    token: string,
+    registration?: { email: string; password: string },
+  ): Promise<{ token: string; workspace_uuid: string }> {
+    return this.post(
+      '/api/v1/invitations/accept',
+      {
+        token,
+        registration,
+      },
+      { skipWorkspace: true },
+    );
+  }
+
+  public updateWorkspaceMemberRole(
+    workspaceUuid: string,
+    accountUuid: string,
+    role: WorkspaceRole,
+  ): Promise<{ member: WorkspaceMembership }> {
+    return this.patch(
+      `/api/v1/workspaces/${workspaceUuid}/members/${accountUuid}`,
+      { role },
+    );
+  }
+
+  public removeWorkspaceMember(
+    workspaceUuid: string,
+    accountUuid: string,
+  ): Promise<object> {
+    return this.delete(
+      `/api/v1/workspaces/${workspaceUuid}/members/${accountUuid}`,
+    );
   }
 
   public setPassword(
     newPassword: string,
     currentPassword?: string,
   ): Promise<{ user: string }> {
-    return this.post('/api/v1/user/set-password', {
-      new_password: newPassword,
-      current_password: currentPassword,
-    });
+    return this.post(
+      '/api/v1/user/set-password',
+      {
+        new_password: newPassword,
+        current_password: currentPassword,
+      },
+      { skipWorkspace: true },
+    );
   }
 
   public async bindSpaceAccount(
@@ -1142,10 +1274,11 @@ export class BackendClient extends BaseHttpClient {
     user: string;
     account_type: 'local' | 'space';
   }> {
-    const response = await this.instance.post('/api/v1/user/bind-space', {
-      code,
-      state,
-    });
+    const response = await this.instance.post(
+      '/api/v1/user/bind-space',
+      { code, state },
+      { skipWorkspace: true } as RequestConfig,
+    );
     if (response.data.code !== 0) {
       throw {
         code: response.data.code,
@@ -1156,26 +1289,38 @@ export class BackendClient extends BaseHttpClient {
   }
 
   // ============ Space OAuth API (Redirect Flow) ============
-  public getSpaceAuthorizeUrl(
-    redirectUri: string,
-    state?: string,
-  ): Promise<{
+  public getSpaceAuthorizeUrl(redirectUri: string): Promise<{
     authorize_url: string;
   }> {
-    const params: Record<string, string> = { redirect_uri: redirectUri };
-    if (state) {
-      params.state = state;
-    }
-    return this.get('/api/v1/user/space/authorize-url', params);
+    return this.get(
+      '/api/v1/user/space/authorize-url',
+      { redirect_uri: redirectUri },
+      { skipWorkspace: true },
+    );
   }
 
-  public async exchangeSpaceOAuthCode(code: string): Promise<{
+  public getSpaceBindAuthorizeUrl(redirectUri: string): Promise<{
+    authorize_url: string;
+  }> {
+    return this.get(
+      '/api/v1/user/space/bind-authorize-url',
+      { redirect_uri: redirectUri },
+      { skipWorkspace: true },
+    );
+  }
+
+  public async exchangeSpaceOAuthCode(
+    code: string,
+    state: string,
+  ): Promise<{
     token: string;
     user: string;
   }> {
-    const response = await this.instance.post('/api/v1/user/space/callback', {
-      code,
-    });
+    const response = await this.instance.post(
+      '/api/v1/user/space/callback',
+      { code, state },
+      { skipWorkspace: true } as RequestConfig,
+    );
     if (response.data.code !== 0) {
       throw {
         code: response.data.code,

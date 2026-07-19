@@ -14,6 +14,15 @@ from importlib import import_module
 import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 
+from langbot.pkg.api.http.context import ExecutionContext
+
+
+_CONTEXT = ExecutionContext(
+    instance_uuid='instance-a',
+    workspace_uuid='workspace-a',
+    placement_generation=1,
+)
+
 
 def get_toolmgr_module():
     """Lazy import to avoid circular import issues."""
@@ -188,6 +197,10 @@ class TestToolManagerExecuteFuncCall:
     def sample_query(self):
         """Create sample query for testing."""
         query = Mock(spec=pipeline_query.Query)
+        query.bot_uuid = None
+        query.pipeline_uuid = None
+        query.query_uuid = None
+        query._execution_context = _CONTEXT
         return query
 
     @pytest.mark.asyncio

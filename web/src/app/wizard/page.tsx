@@ -18,7 +18,7 @@ import { httpClient } from '@/app/infra/http/HttpClient';
 import {
   userInfo,
   systemInfo,
-  initializeUserInfo,
+  bootstrapWorkspaceSession,
   initializeSystemInfo,
 } from '@/app/infra/http';
 import {
@@ -129,8 +129,16 @@ export default function WizardPage() {
     let cancelled = false;
     (async () => {
       try {
-        // Initialize user/system info (wizard is outside /home layout)
-        await Promise.all([initializeUserInfo(), initializeSystemInfo()]);
+        // Resolve the Account's Workspace before loading scoped wizard data.
+        const workspaceResult = await bootstrapWorkspaceSession();
+        if (workspaceResult.status === 'selection-required') {
+          navigate('/workspaces/select?returnTo=%2Fwizard', { replace: true });
+          return;
+        }
+        if (workspaceResult.status === 'unavailable') {
+          throw new Error('No Workspace is available for this Account');
+        }
+        await initializeSystemInfo({ throwOnError: true });
 
         const [adaptersResp, metadataResp] = await Promise.all([
           httpClient.getAdapters(),
@@ -191,7 +199,7 @@ export default function WizardPage() {
     return () => {
       cancelled = true;
     };
-  }, [t]);
+  }, [navigate, t]);
 
   // ---- Derived data ----
 

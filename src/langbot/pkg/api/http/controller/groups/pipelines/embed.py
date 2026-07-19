@@ -21,9 +21,10 @@ import quart
 
 from ... import group
 from ......utils import paths
-from ......platform.sources.websocket_manager import is_valid_session_id, ws_connection_manager
+from ......platform.sources.websocket_manager import WebSocketScope, is_valid_session_id, ws_connection_manager
 
 logger = logging.getLogger(__name__)
+_AUTH_TIMEOUT_SECONDS = 10.0
 
 # Cache the widget template content
 _widget_template_cache: str | None = None
@@ -58,37 +59,31 @@ def _get_logo_bytes() -> bytes:
 class EmbedRouterGroup(group.RouterGroup):
     # -- helpers -------------------------------------------------------------
 
-    def _resolve_bot(self, bot_uuid: str):
+    async def _resolve_bot(self, bot_uuid: str):
         """Resolve *bot_uuid* to ``(runtime_bot, pipeline_uuid)``.
 
         Returns ``(None, None)`` when the bot does not exist, is not a
         ``web_page_bot``, is disabled, or has no pipeline bound.
         """
-        for bot in self.ap.platform_mgr.bots:
-            if (
-                bot.bot_entity.uuid == bot_uuid
-                and bot.bot_entity.adapter == 'web_page_bot'
-                and bot.bot_entity.enable
-                and bot.bot_entity.use_pipeline_uuid
-            ):
-                return bot, bot.bot_entity.use_pipeline_uuid
+        bot = await self.ap.platform_mgr.resolve_public_bot(bot_uuid)
+        if (
+            bot is not None
+            and bot.bot_entity.adapter == 'web_page_bot'
+            and bot.bot_entity.enable
+            and bot.bot_entity.use_pipeline_uuid
+        ):
+            return bot, bot.bot_entity.use_pipeline_uuid
         return None, None
 
-    def _get_bot_config(self, bot_uuid: str) -> dict:
-        for bot in self.ap.platform_mgr.bots:
-            if bot.bot_entity.uuid == bot_uuid and bot.bot_entity.adapter == 'web_page_bot':
-                return bot.bot_entity.adapter_config
-        return {}
+    @staticmethod
+    def _get_bot_config(runtime_bot) -> dict:
+        return runtime_bot.bot_entity.adapter_config
 
-    async def _verify_session_token(self, request, bot_uuid: str) -> bool:
-        config = self._get_bot_config(bot_uuid)
+    def _verify_session_token_value(self, token: str, runtime_bot) -> bool:
+        config = self._get_bot_config(runtime_bot)
         secret = config.get('turnstile_secret_key', '')
         if not secret:
             return True
-        auth_header = request.headers.get('Authorization', '')
-        if not auth_header.startswith('Bearer '):
-            return False
-        token = auth_header[7:]
         try:
             ts_str, mac = token.split('.', 1)
             ts = float(ts_str)
@@ -99,6 +94,50 @@ class EmbedRouterGroup(group.RouterGroup):
         except Exception:
             return False
 
+    async def _verify_session_token(self, request, runtime_bot) -> bool:
+        auth_header = request.headers.get('Authorization', '')
+        token = auth_header[7:] if auth_header.startswith('Bearer ') else ''
+        return self._verify_session_token_value(token, runtime_bot)
+
+    async def _authenticate_websocket(self, runtime_bot) -> None:
+        """Require the embed session token as the first WebSocket frame."""
+
+        raw_message = await asyncio.wait_for(quart.websocket.receive(), timeout=_AUTH_TIMEOUT_SECONDS)
+        payload = json.loads(raw_message)
+        if not isinstance(payload, dict) or payload.get('type') != 'authenticate':
+            raise ValueError('Authentication is required')
+        token = str(payload.get('token') or '')
+        if not self._verify_session_token_value(token, runtime_bot):
+            raise ValueError('Authentication is required')
+
+    async def _assert_execution_active(self, runtime_bot) -> None:
+        context = runtime_bot.execution_context
+        await self.ap.workspace_service.get_execution_binding(
+            context.workspace_uuid,
+            expected_generation=context.placement_generation,
+        )
+
+    async def _resolve_connected_bot(self, owner_bot, pipeline_uuid: str):
+        """Re-resolve mutable bot state before every public message."""
+        current_bot, current_pipeline_uuid = await self._resolve_bot(owner_bot.bot_entity.uuid)
+        if current_bot is None or current_pipeline_uuid != pipeline_uuid:
+            raise RuntimeError('Bot is unavailable')
+
+        owner_context = owner_bot.execution_context
+        current_context = current_bot.execution_context
+        if (
+            current_context.instance_uuid,
+            current_context.workspace_uuid,
+            current_context.placement_generation,
+        ) != (
+            owner_context.instance_uuid,
+            owner_context.workspace_uuid,
+            owner_context.placement_generation,
+        ):
+            raise RuntimeError('Bot is unavailable')
+        await self._assert_execution_active(current_bot)
+        return current_bot
+
     # -- routes --------------------------------------------------------------
 
     async def initialize(self) -> None:
@@ -106,7 +145,7 @@ class EmbedRouterGroup(group.RouterGroup):
         async def verify_turnstile(bot_uuid: str) -> str:
             if not _is_valid_uuid(bot_uuid):
                 return self.http_status(400, -1, 'Invalid bot_uuid format')
-            runtime_bot, pipeline_uuid = self._resolve_bot(bot_uuid)
+            runtime_bot, pipeline_uuid = await self._resolve_bot(bot_uuid)
             if runtime_bot is None:
                 return self.http_status(404, -1, 'Bot not found or not available')
             try:
@@ -115,7 +154,7 @@ class EmbedRouterGroup(group.RouterGroup):
                 if not token:
                     return self.http_status(400, -1, 'Token is required')
 
-                config = self._get_bot_config(bot_uuid)
+                config = self._get_bot_config(runtime_bot)
                 secret = config.get('turnstile_secret_key', '')
                 if not secret:
                     ts = time.time()
@@ -146,7 +185,7 @@ class EmbedRouterGroup(group.RouterGroup):
             """Serve the embed widget JavaScript with injected configuration."""
             if not _is_valid_uuid(bot_uuid):
                 return self.http_status(400, -1, 'Invalid bot_uuid format')
-            runtime_bot, pipeline_uuid = self._resolve_bot(bot_uuid)
+            runtime_bot, pipeline_uuid = await self._resolve_bot(bot_uuid)
             if runtime_bot is None:
                 return quart.Response(
                     '// Bot not found or not available', status=404, content_type='application/javascript'
@@ -164,7 +203,7 @@ class EmbedRouterGroup(group.RouterGroup):
             if not re.match(r'^https?://[a-zA-Z0-9._:/-]+$', base_url):
                 base_url = quart.request.host_url.rstrip('/')
 
-            config = self._get_bot_config(bot_uuid)
+            config = self._get_bot_config(runtime_bot)
             site_key = config.get('turnstile_site_key', '')
             locale = config.get('language', 'en_US') or 'en_US'
             bubble_icon = config.get('bubble_icon', 'logo') or 'logo'
@@ -194,10 +233,10 @@ class EmbedRouterGroup(group.RouterGroup):
         async def get_embed_messages(bot_uuid: str, session_type: str) -> str:
             if not _is_valid_uuid(bot_uuid):
                 return self.http_status(400, -1, 'Invalid bot_uuid format')
-            runtime_bot, pipeline_uuid = self._resolve_bot(bot_uuid)
+            runtime_bot, pipeline_uuid = await self._resolve_bot(bot_uuid)
             if runtime_bot is None:
                 return self.http_status(404, -1, 'Bot not found or not available')
-            if not await self._verify_session_token(quart.request, bot_uuid):
+            if not await self._verify_session_token(quart.request, runtime_bot):
                 return self.http_status(403, -1, 'Unauthorized or session expired')
             try:
                 if session_type not in ['person', 'group']:
@@ -207,7 +246,8 @@ class EmbedRouterGroup(group.RouterGroup):
                 if not is_valid_session_id(session_id):
                     return self.http_status(400, -1, 'Valid session_id is required')
 
-                websocket_adapter = self.ap.platform_mgr.websocket_proxy_bot.adapter
+                proxy_bot = await self.ap.platform_mgr.get_websocket_proxy_bot(runtime_bot.execution_context)
+                websocket_adapter = proxy_bot.adapter
                 if not websocket_adapter:
                     return self.http_status(404, -1, 'WebSocket adapter not found')
 
@@ -222,10 +262,10 @@ class EmbedRouterGroup(group.RouterGroup):
         async def reset_embed_session(bot_uuid: str, session_type: str) -> str:
             if not _is_valid_uuid(bot_uuid):
                 return self.http_status(400, -1, 'Invalid bot_uuid format')
-            runtime_bot, pipeline_uuid = self._resolve_bot(bot_uuid)
+            runtime_bot, pipeline_uuid = await self._resolve_bot(bot_uuid)
             if runtime_bot is None:
                 return self.http_status(404, -1, 'Bot not found or not available')
-            if not await self._verify_session_token(quart.request, bot_uuid):
+            if not await self._verify_session_token(quart.request, runtime_bot):
                 return self.http_status(403, -1, 'Unauthorized or session expired')
             try:
                 if session_type not in ['person', 'group']:
@@ -235,7 +275,8 @@ class EmbedRouterGroup(group.RouterGroup):
                 if not is_valid_session_id(session_id):
                     return self.http_status(400, -1, 'Valid session_id is required')
 
-                websocket_adapter = self.ap.platform_mgr.websocket_proxy_bot.adapter
+                proxy_bot = await self.ap.platform_mgr.get_websocket_proxy_bot(runtime_bot.execution_context)
+                websocket_adapter = proxy_bot.adapter
                 if not websocket_adapter:
                     return self.http_status(404, -1, 'WebSocket adapter not found')
 
@@ -250,10 +291,10 @@ class EmbedRouterGroup(group.RouterGroup):
         async def submit_feedback(bot_uuid: str) -> str:
             if not _is_valid_uuid(bot_uuid):
                 return self.http_status(400, -1, 'Invalid bot_uuid format')
-            runtime_bot, pipeline_uuid = self._resolve_bot(bot_uuid)
+            runtime_bot, pipeline_uuid = await self._resolve_bot(bot_uuid)
             if runtime_bot is None:
                 return self.http_status(404, -1, 'Bot not found or not available')
-            if not await self._verify_session_token(quart.request, bot_uuid):
+            if not await self._verify_session_token(quart.request, runtime_bot):
                 return self.http_status(403, -1, 'Unauthorized or session expired')
             try:
                 data = await quart.request.get_json()
@@ -266,6 +307,7 @@ class EmbedRouterGroup(group.RouterGroup):
                 feedback_id = f'embed_{uuid.uuid4().hex[:12]}'
 
                 await self.ap.monitoring_service.record_feedback(
+                    runtime_bot.execution_context,
                     feedback_id=feedback_id,
                     feedback_type=feedback_type,
                     bot_id=runtime_bot.bot_entity.uuid,
@@ -286,11 +328,12 @@ class EmbedRouterGroup(group.RouterGroup):
         @self.quart_app.websocket(self.path + '/<bot_uuid>/ws/connect')
         async def embed_websocket_connect(bot_uuid: str):
             """WebSocket connection for embed widget, keyed by bot_uuid."""
+            await quart.websocket.accept()
             if not _is_valid_uuid(bot_uuid):
                 await quart.websocket.send(json.dumps({'type': 'error', 'message': 'Invalid bot_uuid format'}))
                 return
 
-            runtime_bot, pipeline_uuid = self._resolve_bot(bot_uuid)
+            runtime_bot, pipeline_uuid = await self._resolve_bot(bot_uuid)
             if runtime_bot is None:
                 await quart.websocket.send(json.dumps({'type': 'error', 'message': 'Bot not found or not available'}))
                 return
@@ -307,14 +350,23 @@ class EmbedRouterGroup(group.RouterGroup):
                 await quart.websocket.send(json.dumps({'type': 'error', 'message': 'Valid session_id is required'}))
                 return
 
-            websocket_adapter = self.ap.platform_mgr.websocket_proxy_bot.adapter
-            if not websocket_adapter:
-                await quart.websocket.send(json.dumps({'type': 'error', 'message': 'WebSocket adapter not found'}))
+            try:
+                await self._authenticate_websocket(runtime_bot)
+                await self._assert_execution_active(runtime_bot)
+            except Exception:
+                await quart.websocket.send(json.dumps({'type': 'error', 'message': 'Unauthorized'}))
                 return
 
             try:
+                proxy_bot = await self.ap.platform_mgr.get_websocket_proxy_bot(runtime_bot.execution_context)
+                websocket_adapter = proxy_bot.adapter
+                if not websocket_adapter:
+                    await quart.websocket.send(json.dumps({'type': 'error', 'message': 'WebSocket adapter not found'}))
+                    return
+
                 connection = await ws_connection_manager.add_connection(
                     websocket=quart.websocket._get_current_object(),
+                    scope=WebSocketScope.from_context(runtime_bot.execution_context),
                     pipeline_uuid=pipeline_uuid,
                     session_type=session_type,
                     session_id=session_id,
@@ -338,7 +390,9 @@ class EmbedRouterGroup(group.RouterGroup):
                     f'(bot={bot_uuid}, pipeline={pipeline_uuid}, session_type={session_type})'
                 )
 
-                receive_task = asyncio.create_task(self._handle_receive(connection, websocket_adapter, runtime_bot))
+                receive_task = asyncio.create_task(
+                    self._handle_receive(connection, websocket_adapter, runtime_bot, pipeline_uuid)
+                )
                 send_task = asyncio.create_task(self._handle_send(connection))
 
                 try:
@@ -357,7 +411,7 @@ class EmbedRouterGroup(group.RouterGroup):
 
     # -- WebSocket receive/send helpers --------------------------------------
 
-    async def _handle_receive(self, connection, websocket_adapter, owner_bot):
+    async def _handle_receive(self, connection, websocket_adapter, owner_bot, pipeline_uuid: str):
         try:
             while connection.is_active:
                 message = await quart.websocket.receive()
@@ -372,7 +426,12 @@ class EmbedRouterGroup(group.RouterGroup):
                             {'type': 'pong', 'timestamp': datetime.datetime.now().isoformat()}
                         )
                     elif message_type == 'message':
-                        await websocket_adapter.handle_websocket_message(connection, data, owner_bot=owner_bot)
+                        try:
+                            current_bot = await self._resolve_connected_bot(owner_bot, pipeline_uuid)
+                        except Exception:
+                            await connection.send_queue.put({'type': 'error', 'message': 'Bot is unavailable'})
+                            break
+                        await websocket_adapter.handle_websocket_message(connection, data, owner_bot=current_bot)
                     elif message_type == 'disconnect':
                         break
 
@@ -386,7 +445,7 @@ class EmbedRouterGroup(group.RouterGroup):
 
     async def _handle_send(self, connection):
         try:
-            while connection.is_active:
+            while connection.is_active or not connection.send_queue.empty():
                 try:
                     message = await asyncio.wait_for(connection.send_queue.get(), timeout=1.0)
                     await quart.websocket.send(json.dumps(message))

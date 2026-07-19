@@ -98,6 +98,15 @@ class TaskWrapper:
     scopes: list[core_entities.LifecycleControlScope]
     """Task scope"""
 
+    instance_uuid: str | None
+    """Owning LangBot instance for a tenant user task."""
+
+    workspace_uuid: str | None
+    """Owning Workspace for a tenant user task."""
+
+    placement_generation: int | None
+    """Workspace execution fence captured when the task was created."""
+
     def __init__(
         self,
         ap: app.Application,
@@ -108,6 +117,9 @@ class TaskWrapper:
         label: str = '',
         context: TaskContext = None,
         scopes: list[core_entities.LifecycleControlScope] = [core_entities.LifecycleControlScope.APPLICATION],
+        instance_uuid: str | None = None,
+        workspace_uuid: str | None = None,
+        placement_generation: int | None = None,
     ):
         self.id = TaskWrapper._id_index
         TaskWrapper._id_index += 1
@@ -120,6 +132,9 @@ class TaskWrapper:
         self.label = label if label != '' else name
         self.task.set_name(name)
         self.scopes = scopes
+        self.instance_uuid = instance_uuid
+        self.workspace_uuid = workspace_uuid
+        self.placement_generation = placement_generation
         self.created_at = time.time()
 
     def assume_exception(self):
@@ -155,6 +170,8 @@ class TaskWrapper:
             'kind': self.kind,
             'name': self.name,
             'label': self.label,
+            'workspace_uuid': self.workspace_uuid,
+            'placement_generation': self.placement_generation,
             'scopes': [scope.value for scope in self.scopes],
             'created_at': self.created_at,
             'task_context': self.task_context.to_dict(),
@@ -193,8 +210,23 @@ class AsyncTaskManager:
         label: str = '',
         context: TaskContext = None,
         scopes: list[core_entities.LifecycleControlScope] = [core_entities.LifecycleControlScope.APPLICATION],
+        instance_uuid: str | None = None,
+        workspace_uuid: str | None = None,
+        placement_generation: int | None = None,
     ) -> TaskWrapper:
-        wrapper = TaskWrapper(self.ap, coro, task_type, kind, name, label, context, scopes)
+        wrapper = TaskWrapper(
+            self.ap,
+            coro,
+            task_type,
+            kind,
+            name,
+            label,
+            context,
+            scopes,
+            instance_uuid,
+            workspace_uuid,
+            placement_generation,
+        )
         self.tasks.append(wrapper)
         wrapper.task.add_done_callback(lambda _: self._prune_completed_tasks())
         self._prune_completed_tasks()
@@ -208,8 +240,22 @@ class AsyncTaskManager:
         label: str = '',
         context: TaskContext = None,
         scopes: list[core_entities.LifecycleControlScope] = [core_entities.LifecycleControlScope.APPLICATION],
+        instance_uuid: str | None = None,
+        workspace_uuid: str | None = None,
+        placement_generation: int | None = None,
     ) -> TaskWrapper:
-        return self.create_task(coro, 'user', kind, name, label, context, scopes)
+        return self.create_task(
+            coro,
+            'user',
+            kind,
+            name,
+            label,
+            context,
+            scopes,
+            instance_uuid,
+            workspace_uuid,
+            placement_generation,
+        )
 
     async def wait_all(self):
         await asyncio.gather(*[t.task for t in self.tasks], return_exceptions=True)
@@ -221,12 +267,20 @@ class AsyncTaskManager:
         self,
         type: str = None,
         kind: str = None,
+        *,
+        instance_uuid: str | None = None,
+        workspace_uuid: str | None = None,
+        placement_generation: int | None = None,
     ) -> dict:
         return {
             'tasks': [
                 t.to_dict()
                 for t in self.tasks
-                if (type is None or t.task_type == type) and (kind is None or t.kind == kind)
+                if (type is None or t.task_type == type)
+                and (kind is None or t.kind == kind)
+                and (instance_uuid is None or t.instance_uuid == instance_uuid)
+                and (workspace_uuid is None or t.workspace_uuid == workspace_uuid)
+                and (placement_generation is None or t.placement_generation == placement_generation)
             ],
             'id_index': TaskWrapper._id_index,
         }
@@ -240,9 +294,21 @@ class AsyncTaskManager:
             'id_index': TaskWrapper._id_index,
         }
 
-    def get_task_by_id(self, id: int) -> TaskWrapper | None:
+    def get_task_by_id(
+        self,
+        id: int,
+        *,
+        instance_uuid: str | None = None,
+        workspace_uuid: str | None = None,
+        placement_generation: int | None = None,
+    ) -> TaskWrapper | None:
         for t in self.tasks:
-            if t.id == id:
+            if (
+                t.id == id
+                and (instance_uuid is None or t.instance_uuid == instance_uuid)
+                and (workspace_uuid is None or t.workspace_uuid == workspace_uuid)
+                and (placement_generation is None or t.placement_generation == placement_generation)
+            ):
                 return t
         return None
 

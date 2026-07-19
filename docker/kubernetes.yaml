@@ -4,6 +4,10 @@
 # Full deployment guide (zh/en/ja): https://docs.langbot.app -> Installation -> Kubernetes
 #
 # Usage:
+#   kubectl -n langbot create secret generic langbot-plugin-runtime-control \
+#     --from-literal=token="$(openssl rand -hex 32)"
+#   kubectl -n langbot create secret generic langbot-box-control \
+#     --from-literal=token="$(openssl rand -hex 32)"
 #   kubectl apply -f kubernetes.yaml
 #
 # Prerequisites:
@@ -127,6 +131,11 @@ spec:
             configMapKeyRef:
               name: langbot-config
               key: TZ
+        - name: LANGBOT_PLUGIN_RUNTIME_CONTROL_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: langbot-plugin-runtime-control
+              key: token
         volumeMounts:
         - name: plugin-data
           mountPath: /app/data/plugins
@@ -246,9 +255,14 @@ spec:
             configMapKeyRef:
               name: langbot-config
               key: TZ
+        - name: LANGBOT_BOX_CONTROL_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: langbot-box-control
+              key: token
         # The Box runtime does NOT read box.local.* / BOX__* from its own env;
-        # it receives its configuration from LangBot via the INIT RPC action.
-        # Do not add BOX__* here — they would be silently ignored.
+        # it receives its functional configuration from LangBot via INIT.
+        # LANGBOT_BOX_CONTROL_TOKEN is the security-only exception.
         volumeMounts:
         # Box workspace root — identical path on node, box, and sandbox
         # containers (see the IMPORTANT note above).
@@ -352,6 +366,11 @@ spec:
             configMapKeyRef:
               name: langbot-config
               key: PLUGIN__RUNTIME_WS_URL
+        - name: LANGBOT_PLUGIN_RUNTIME_CONTROL_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: langbot-plugin-runtime-control
+              key: token
         # Box (sandbox) runtime endpoint. Connects LangBot to the langbot-box
         # Service over WebSocket. Remove this (and the langbot-box Deployment)
         # and set BOX__ENABLED=false if you do not want the sandbox.
@@ -360,6 +379,13 @@ spec:
             configMapKeyRef:
               name: langbot-config
               key: BOX__RUNTIME__ENDPOINT
+        # Same Secret as langbot-box. It authenticates the RPC and managed-
+        # process relay handshakes and is never put in a URL or RPC payload.
+        - name: LANGBOT_BOX_CONTROL_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: langbot-box-control
+              key: token
         # box.local.* config — forwarded to the Box runtime via INIT RPC. The
         # host_root MUST match the box-root hostPath mountPath below AND the box
         # Deployment's box-root mountPath, so that skill package paths resolve

@@ -19,6 +19,7 @@ from ....provider import runners
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
+from ...pool import get_query_execution_context
 
 
 importutil.import_modules_in_pkg(runners)
@@ -198,7 +199,10 @@ class ChatMessageHandler(handler.MessageHandler):
                     model_name = None
                     try:
                         if runner_name == 'local-agent' and getattr(query, 'use_llm_model_uuid', None):
-                            m = await self.ap.model_mgr.get_model_by_uuid(query.use_llm_model_uuid)
+                            m = await self.ap.model_mgr.get_model_by_uuid(
+                                get_query_execution_context(query),
+                                query.use_llm_model_uuid,
+                            )
                             if m and getattr(m, 'model_entity', None):
                                 model_name = getattr(m.model_entity, 'name', None)
                     except Exception:

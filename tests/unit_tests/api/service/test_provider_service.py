@@ -19,9 +19,12 @@ from types import SimpleNamespace
 
 from langbot.pkg.api.http.service.provider import ModelProviderService
 from langbot.pkg.entity.persistence.model import ModelProvider, LLMModel, EmbeddingModel, RerankModel
+from langbot.pkg.workspace.errors import WorkspaceNotFoundError
 
 
 pytestmark = pytest.mark.asyncio
+
+WORKSPACE_UUID = 'workspace-a'
 
 
 def _create_mock_provider(
@@ -86,7 +89,9 @@ class TestModelProviderServiceGetProviders:
         service = ModelProviderService(ap)
 
         # Execute
-        result = await service.get_providers()
+        result = await service.get_providers(
+            WORKSPACE_UUID,
+        )
 
         # Verify
         assert result == []
@@ -115,7 +120,9 @@ class TestModelProviderServiceGetProviders:
         service = ModelProviderService(ap)
 
         # Execute
-        result = await service.get_providers()
+        result = await service.get_providers(
+            WORKSPACE_UUID,
+        )
 
         # Verify
         assert len(result) == 2
@@ -143,7 +150,10 @@ class TestModelProviderServiceGetProviders:
         service = ModelProviderService(ap)
 
         # Execute
-        result = await service.get_providers()
+        result = await service.get_providers(
+            WORKSPACE_UUID,
+            include_secret=True,
+        )
 
         # Verify - api_keys should be parsed from string
         assert result[0]['api_keys'] == ['key1', 'key2']
@@ -169,10 +179,40 @@ class TestModelProviderServiceGetProviders:
         service = ModelProviderService(ap)
 
         # Execute
-        result = await service.get_providers()
+        result = await service.get_providers(
+            WORKSPACE_UUID,
+        )
 
         # Verify - invalid JSON returns empty list
         assert result[0]['api_keys'] == []
+
+    async def test_get_providers_masks_api_keys_for_resource_view(self):
+        ap = SimpleNamespace()
+        provider = _create_mock_provider(
+            api_keys=['first', 'second'],
+            base_url=(
+                'https://provider-user:provider-password@api.provider.invalid/v1?access_token=url-secret&region=sg'
+            ),
+        )
+        ap.persistence_mgr = SimpleNamespace(
+            execute_async=AsyncMock(return_value=_create_mock_result([provider])),
+            serialize_model=Mock(
+                return_value={
+                    'uuid': provider.uuid,
+                    'name': provider.name,
+                    'base_url': provider.base_url,
+                    'api_keys': provider.api_keys,
+                }
+            ),
+        )
+
+        result = await ModelProviderService(ap).get_providers(
+            WORKSPACE_UUID,
+            include_secret=False,
+        )
+
+        assert result[0]['api_keys'] == ['***', '***']
+        assert result[0]['base_url'] == ('https://***@api.provider.invalid/v1?access_token=***&region=sg')
 
 
 class TestModelProviderServiceGetProvider:
@@ -199,7 +239,7 @@ class TestModelProviderServiceGetProvider:
         service = ModelProviderService(ap)
 
         # Execute
-        result = await service.get_provider('found-uuid')
+        result = await service.get_provider(WORKSPACE_UUID, 'found-uuid')
 
         # Verify
         assert result is not None
@@ -217,7 +257,7 @@ class TestModelProviderServiceGetProvider:
         service = ModelProviderService(ap)
 
         # Execute
-        result = await service.get_provider('nonexistent-uuid')
+        result = await service.get_provider(WORKSPACE_UUID, 'nonexistent-uuid')
 
         # Verify
         assert result is None
@@ -239,6 +279,7 @@ class TestModelProviderServiceCreateProvider:
         runtime_provider.provider_entity = Mock()
         runtime_provider.provider_entity.uuid = 'generated-uuid'
         ap.model_mgr.load_provider = AsyncMock(return_value=runtime_provider)
+        ap.model_mgr.cache_provider = AsyncMock()
 
         ap.persistence_mgr.execute_async = AsyncMock()
 
@@ -246,12 +287,13 @@ class TestModelProviderServiceCreateProvider:
 
         # Execute
         provider_uuid = await service.create_provider(
+            WORKSPACE_UUID,
             {
                 'name': 'New Provider',
                 'requester': 'openai',
                 'base_url': 'https://api.openai.com',
                 'api_keys': ['key'],
-            }
+            },
         )
 
         # Verify - UUID is generated
@@ -270,6 +312,7 @@ class TestModelProviderServiceCreateProvider:
         runtime_provider.provider_entity = Mock()
         runtime_provider.provider_entity.uuid = 'runtime-uuid'
         ap.model_mgr.load_provider = AsyncMock(return_value=runtime_provider)
+        ap.model_mgr.cache_provider = AsyncMock()
 
         ap.persistence_mgr.execute_async = AsyncMock()
 
@@ -277,12 +320,13 @@ class TestModelProviderServiceCreateProvider:
 
         # Execute
         result_uuid = await service.create_provider(
+            WORKSPACE_UUID,
             {
                 'name': 'Runtime Provider',
                 'requester': 'openai',
                 'base_url': 'https://api.openai.com',
                 'api_keys': ['key'],
-            }
+            },
         )
 
         # Verify - provider added to runtime dict and UUID generated
@@ -307,6 +351,7 @@ class TestModelProviderServiceUpdateProvider:
 
         # Execute
         await service.update_provider(
+            WORKSPACE_UUID,
             'existing-uuid',
             {
                 'uuid': 'should-be-removed',  # Will be removed
@@ -315,7 +360,7 @@ class TestModelProviderServiceUpdateProvider:
         )
 
         # Verify - reload called
-        ap.model_mgr.reload_provider.assert_called_once_with('existing-uuid')
+        ap.model_mgr.reload_provider.assert_called_once_with(WORKSPACE_UUID, 'existing-uuid')
 
     async def test_update_provider_reloads_runtime(self):
         """Reloads provider in runtime after update."""
@@ -330,7 +375,7 @@ class TestModelProviderServiceUpdateProvider:
         service = ModelProviderService(ap)
 
         # Execute
-        await service.update_provider('update-uuid', {'name': 'New Name'})
+        await service.update_provider(WORKSPACE_UUID, 'update-uuid', {'name': 'New Name'})
 
         # Verify
         ap.model_mgr.reload_provider.assert_called_once()
@@ -354,7 +399,7 @@ class TestModelProviderServiceDeleteProvider:
 
         # Execute & Verify
         with pytest.raises(ValueError, match='Cannot delete provider: LLM models'):
-            await service.delete_provider('provider-with-llm')
+            await service.delete_provider(WORKSPACE_UUID, 'provider-with-llm')
 
     async def test_delete_provider_with_embedding_models_raises_error(self):
         """Raises ValueError when Embedding models reference provider."""
@@ -387,7 +432,7 @@ class TestModelProviderServiceDeleteProvider:
 
         # Execute & Verify - should raise embedding error (LLM check passes, embedding check fails)
         with pytest.raises(ValueError, match='Cannot delete provider: Embedding models'):
-            await service.delete_provider('provider-with-embedding')
+            await service.delete_provider(WORKSPACE_UUID, 'provider-with-embedding')
 
     async def test_delete_provider_with_rerank_models_raises_error(self):
         """Raises ValueError when Rerank models reference provider."""
@@ -420,7 +465,7 @@ class TestModelProviderServiceDeleteProvider:
 
         # Execute & Verify - should raise rerank error (LLM and embedding checks pass, rerank check fails)
         with pytest.raises(ValueError, match='Cannot delete provider: Rerank models'):
-            await service.delete_provider('provider-with-rerank')
+            await service.delete_provider(WORKSPACE_UUID, 'provider-with-rerank')
 
     async def test_delete_provider_no_models_success(self):
         """Deletes provider when no models reference it."""
@@ -439,10 +484,10 @@ class TestModelProviderServiceDeleteProvider:
         service = ModelProviderService(ap)
 
         # Execute
-        await service.delete_provider('provider-no-models')
+        await service.delete_provider(WORKSPACE_UUID, 'provider-no-models')
 
         # Verify - delete and remove called
-        ap.model_mgr.remove_provider.assert_called_once_with('provider-no-models')
+        ap.model_mgr.remove_provider.assert_called_once_with(WORKSPACE_UUID, 'provider-no-models')
 
 
 class TestModelProviderServiceGetProviderModelCounts:
@@ -476,9 +521,10 @@ class TestModelProviderServiceGetProviderModelCounts:
         ap.persistence_mgr.execute_async = AsyncMock(side_effect=mock_execute)
 
         service = ModelProviderService(ap)
+        service.get_provider = AsyncMock(return_value={'uuid': 'provider-uuid'})
 
         # Execute
-        result = await service.get_provider_model_counts('provider-uuid')
+        result = await service.get_provider_model_counts(WORKSPACE_UUID, 'provider-uuid')
 
         # Verify
         assert result['llm_count'] == 3
@@ -497,9 +543,10 @@ class TestModelProviderServiceGetProviderModelCounts:
         ap.persistence_mgr.execute_async = AsyncMock(return_value=zero_result)
 
         service = ModelProviderService(ap)
+        service.get_provider = AsyncMock(return_value={'uuid': 'empty-provider'})
 
         # Execute
-        result = await service.get_provider_model_counts('empty-provider')
+        result = await service.get_provider_model_counts(WORKSPACE_UUID, 'empty-provider')
 
         # Verify
         assert result['llm_count'] == 0
@@ -530,6 +577,7 @@ class TestModelProviderServiceFindOrCreateProvider:
 
         # Execute
         result = await service.find_or_create_provider(
+            WORKSPACE_UUID,
             requester='openai',
             base_url='https://api.openai.com',
             api_keys=['key1', 'key2'],  # Same keys (sorted)
@@ -558,6 +606,7 @@ class TestModelProviderServiceFindOrCreateProvider:
 
         # Execute with reversed key order
         result = await service.find_or_create_provider(
+            WORKSPACE_UUID,
             requester='openai',
             base_url='https://api.openai.com',
             api_keys=['key2', 'key1'],  # Different order, should still match
@@ -578,6 +627,7 @@ class TestModelProviderServiceFindOrCreateProvider:
         runtime_provider.provider_entity = Mock()
         runtime_provider.provider_entity.uuid = None  # Will be set by uuid.uuid4()
         ap.model_mgr.load_provider = AsyncMock(return_value=runtime_provider)
+        ap.model_mgr.cache_provider = AsyncMock()
 
         # Mock no existing providers
         mock_result = _create_mock_result([])
@@ -587,6 +637,7 @@ class TestModelProviderServiceFindOrCreateProvider:
 
         # Execute
         result = await service.find_or_create_provider(
+            WORKSPACE_UUID,
             requester='new-requester',
             base_url='https://new.api.com',
             api_keys=['new-key'],
@@ -610,6 +661,7 @@ class TestModelProviderServiceFindOrCreateProvider:
         runtime_provider.provider_entity = Mock()
         runtime_provider.provider_entity.uuid = 'parsed-url-uuid'
         ap.model_mgr.load_provider = AsyncMock(return_value=runtime_provider)
+        ap.model_mgr.cache_provider = AsyncMock()
 
         mock_result = _create_mock_result([])
         ap.persistence_mgr.execute_async = AsyncMock(return_value=mock_result)
@@ -618,6 +670,7 @@ class TestModelProviderServiceFindOrCreateProvider:
 
         # Execute
         result_uuid = await service.find_or_create_provider(
+            WORKSPACE_UUID,
             requester='custom',
             base_url='https://api.example.com/v1',
             api_keys=['key'],
@@ -644,17 +697,20 @@ class TestModelProviderServiceUpdateSpaceModelProviderApiKeys:
         service = ModelProviderService(ap)
 
         # Execute
-        await service.update_space_model_provider_api_keys('space-api-key')
+        await service.update_space_model_provider_api_keys(WORKSPACE_UUID, 'space-api-key')
 
         # Verify - update and reload called for Space provider UUID
-        ap.model_mgr.reload_provider.assert_called_once_with('00000000-0000-0000-0000-000000000000')
+        ap.model_mgr.reload_provider.assert_called_once_with(
+            WORKSPACE_UUID,
+            '00000000-0000-0000-0000-000000000000',
+        )
 
 
 class TestModelProviderServiceScanProviderModels:
     """Tests for scan_provider_models method."""
 
     async def test_scan_provider_not_found_raises_error(self):
-        """Raises ValueError when provider not found."""
+        """Raises a non-enumerating not-found error when provider is outside the Workspace."""
         # Setup
         ap = SimpleNamespace()
         ap.persistence_mgr = SimpleNamespace()
@@ -665,8 +721,8 @@ class TestModelProviderServiceScanProviderModels:
         service = ModelProviderService(ap)
 
         # Execute & Verify
-        with pytest.raises(ValueError, match='provider not found'):
-            await service.scan_provider_models('nonexistent-uuid')
+        with pytest.raises(WorkspaceNotFoundError, match='Provider not found'):
+            await service.scan_provider_models(WORKSPACE_UUID, 'nonexistent-uuid')
 
     async def test_scan_provider_returns_models_list(self):
         """Returns scanned models list."""
@@ -718,7 +774,7 @@ class TestModelProviderServiceScanProviderModels:
         service = ModelProviderService(ap)
 
         # Execute
-        result = await service.scan_provider_models('scan-uuid')
+        result = await service.scan_provider_models(WORKSPACE_UUID, 'scan-uuid')
 
         # Verify
         assert 'models' in result
@@ -771,7 +827,7 @@ class TestModelProviderServiceScanProviderModels:
         service = ModelProviderService(ap)
 
         # Execute - filter for LLM only
-        result = await service.scan_provider_models('filter-uuid', model_type='llm')
+        result = await service.scan_provider_models(WORKSPACE_UUID, 'filter-uuid', model_type='llm')
 
         # Verify - only LLM models returned
         assert len(result['models']) == 1
@@ -810,7 +866,7 @@ class TestModelProviderServiceScanProviderModels:
 
         # Execute & Verify
         with pytest.raises(ValueError, match='current provider does not support model scanning'):
-            await service.scan_provider_models('no-scan-uuid')
+            await service.scan_provider_models(WORKSPACE_UUID, 'no-scan-uuid')
 
     async def test_scan_provider_marks_already_added_models(self):
         """Marks models that are already added."""
@@ -860,7 +916,7 @@ class TestModelProviderServiceScanProviderModels:
         service = ModelProviderService(ap)
 
         # Execute
-        result = await service.scan_provider_models('already-added-uuid')
+        result = await service.scan_provider_models(WORKSPACE_UUID, 'already-added-uuid')
 
         # Verify - existing model marked as already_added
         existing_model = next(m for m in result['models'] if m['name'] == 'Existing Model')
@@ -868,3 +924,46 @@ class TestModelProviderServiceScanProviderModels:
 
         new_model = next(m for m in result['models'] if m['name'] == 'New Model')
         assert new_model['already_added'] is False
+
+
+class TestProviderSecretRoundtrip:
+    async def test_masked_api_keys_update_preserves_existing_values(self):
+        write_result = Mock(rowcount=1)
+        ap = SimpleNamespace(
+            persistence_mgr=SimpleNamespace(execute_async=AsyncMock(return_value=write_result)),
+            model_mgr=SimpleNamespace(reload_provider=AsyncMock()),
+        )
+        service = ModelProviderService(ap)
+        service.get_provider = AsyncMock(
+            return_value={
+                'uuid': 'provider-secret',
+                'api_keys': ['first-secret', 'second-secret'],
+            }
+        )
+
+        await service.update_provider(
+            WORKSPACE_UUID,
+            'provider-secret',
+            {'name': 'Updated', 'api_keys': ['***', 'replacement-secret']},
+        )
+
+        statement = ap.persistence_mgr.execute_async.await_args.args[0]
+        stored_api_keys = next(value.value for column, value in statement._values.items() if column.key == 'api_keys')
+        assert stored_api_keys == ['first-secret', 'replacement-secret']
+
+    async def test_extra_masked_api_key_is_rejected(self):
+        ap = SimpleNamespace(
+            persistence_mgr=SimpleNamespace(execute_async=AsyncMock()),
+            model_mgr=SimpleNamespace(reload_provider=AsyncMock()),
+        )
+        service = ModelProviderService(ap)
+        service.get_provider = AsyncMock(return_value={'uuid': 'provider-secret', 'api_keys': ['only-secret']})
+
+        with pytest.raises(ValueError, match='no existing value'):
+            await service.update_provider(
+                WORKSPACE_UUID,
+                'provider-secret',
+                {'api_keys': ['***', '***']},
+            )
+
+        ap.persistence_mgr.execute_async.assert_not_awaited()

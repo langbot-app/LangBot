@@ -33,6 +33,8 @@ import langbot_plugin.api.entities.builtin.platform.entities as platform_entitie
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 
+from langbot.pkg.api.http.context import ExecutionContext
+
 
 class OpenClawWeixinMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
     """Converts between LangBot MessageChain and OpenClaw WeChat message items."""
@@ -278,8 +280,22 @@ class OpenClawWeixinAdapter(abstract_platform_adapter.AbstractMessagePlatformAda
             return
         try:
             ap = self.logger.ap
+            execution_context = getattr(self.logger, 'execution_context', None)
+            if not isinstance(execution_context, ExecutionContext):
+                raise RuntimeError('Weixin Bot config persistence requires an ExecutionContext')
+            if execution_context.bot_uuid != self._bot_uuid:
+                raise RuntimeError('Weixin Bot UUID does not match its ExecutionContext')
+
+            binding = await ap.workspace_service.get_execution_binding(
+                execution_context.workspace_uuid,
+                expected_generation=execution_context.placement_generation,
+            )
+            if binding.instance_uuid != execution_context.instance_uuid:
+                raise RuntimeError('Weixin Bot Workspace belongs to another LangBot instance')
+
             await ap.persistence_mgr.execute_async(
                 sqlalchemy.update(persistence_bot.Bot)
+                .where(persistence_bot.Bot.workspace_uuid == execution_context.workspace_uuid)
                 .where(persistence_bot.Bot.uuid == self._bot_uuid)
                 .values(adapter_config=self.config)
             )

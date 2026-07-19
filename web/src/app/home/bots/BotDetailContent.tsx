@@ -29,11 +29,17 @@ import { useTranslation } from 'react-i18next';
 import { Settings, FileText, Users, RefreshCw, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { useCurrentWorkspace } from '@/app/infra/http';
 
 export default function BotDetailContent({ id }: { id: string }) {
   const isCreateMode = id === 'new';
   const navigate = useNavigate();
   const { t } = useTranslation();
+  const currentWorkspace = useCurrentWorkspace();
+  const canManage =
+    currentWorkspace?.permissions.includes('resource.manage') ?? false;
+  const canViewAudit =
+    currentWorkspace?.permissions.includes('audit.view') ?? false;
   const { refreshBots, bots, setDetailEntityName } = useSidebarData();
 
   // Set breadcrumb entity name
@@ -131,19 +137,23 @@ export default function BotDetailContent({ id }: { id: string }) {
         {/* Header */}
         <div className="flex items-center justify-between pb-4 shrink-0">
           <h1 className="text-xl font-semibold">{t('bots.createBot')}</h1>
-          <Button type="submit" form="bot-form">
-            {t('common.submit')}
-          </Button>
+          {canManage && (
+            <Button type="submit" form="bot-form">
+              {t('common.submit')}
+            </Button>
+          )}
         </div>
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto min-h-0">
           <div className="mx-auto max-w-3xl pb-8">
-            <BotForm
-              initBotId={undefined}
-              onFormSubmit={handleFormSubmit}
-              onNewBotCreated={handleNewBotCreated}
-            />
+            <fieldset className="contents" disabled={!canManage}>
+              <BotForm
+                initBotId={undefined}
+                onFormSubmit={handleFormSubmit}
+                onNewBotCreated={handleNewBotCreated}
+              />
+            </fieldset>
           </div>
         </div>
       </div>
@@ -164,6 +174,7 @@ export default function BotDetailContent({ id }: { id: string }) {
                   id="bot-enable-switch"
                   checked={botEnabled}
                   onCheckedChange={handleEnableToggle}
+                  disabled={!canManage}
                 />
                 <Label
                   htmlFor="bot-enable-switch"
@@ -174,14 +185,16 @@ export default function BotDetailContent({ id }: { id: string }) {
               </div>
             )}
           </div>
-          <Button
-            type="submit"
-            form="bot-form"
-            disabled={!formDirty}
-            className={activeTab !== 'config' ? 'invisible' : ''}
-          >
-            {t('common.save')}
-          </Button>
+          {canManage && (
+            <Button
+              type="submit"
+              form="bot-form"
+              disabled={!formDirty}
+              className={activeTab !== 'config' ? 'invisible' : ''}
+            >
+              {t('common.save')}
+            </Button>
+          )}
         </div>
 
         {/* Horizontal Tabs */}
@@ -197,14 +210,18 @@ export default function BotDetailContent({ id }: { id: string }) {
                 <Settings className="size-3.5" />
                 {t('bots.configuration')}
               </TabsTrigger>
-              <TabsTrigger value="logs" className="gap-1.5">
-                <FileText className="size-3.5" />
-                {t('bots.logs')}
-              </TabsTrigger>
-              <TabsTrigger value="sessions" className="gap-1.5">
-                <Users className="size-3.5" />
-                {t('bots.sessionMonitor.title')}
-              </TabsTrigger>
+              {canViewAudit && (
+                <TabsTrigger value="logs" className="gap-1.5">
+                  <FileText className="size-3.5" />
+                  {t('bots.logs')}
+                </TabsTrigger>
+              )}
+              {canViewAudit && (
+                <TabsTrigger value="sessions" className="gap-1.5">
+                  <Users className="size-3.5" />
+                  {t('bots.sessionMonitor.title')}
+                </TabsTrigger>
+              )}
             </TabsList>
             {activeTab === 'sessions' && (
               <button
@@ -239,60 +256,68 @@ export default function BotDetailContent({ id }: { id: string }) {
             className="flex-1 min-h-0 overflow-y-auto mt-4"
           >
             <div className="mx-auto max-w-3xl space-y-6 pb-8">
-              <BotForm
-                initBotId={id}
-                onFormSubmit={handleFormSubmit}
-                onNewBotCreated={handleNewBotCreated}
-                onDirtyChange={setFormDirty}
-              />
+              <fieldset className="contents" disabled={!canManage}>
+                <BotForm
+                  initBotId={id}
+                  onFormSubmit={handleFormSubmit}
+                  onNewBotCreated={handleNewBotCreated}
+                  onDirtyChange={setFormDirty}
+                />
+              </fieldset>
 
               {/* Card: Danger Zone */}
-              <Card className="border-destructive/50">
-                <CardHeader>
-                  <CardTitle className="text-destructive">
-                    {t('bots.dangerZone')}
-                  </CardTitle>
-                  <CardDescription>
-                    {t('bots.dangerZoneDescription')}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-1">
-                      <p className="text-sm font-medium">
-                        {t('bots.deleteBotAction')}
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        {t('bots.deleteBotHint')}
-                      </p>
+              {canManage && (
+                <Card className="border-destructive/50">
+                  <CardHeader>
+                    <CardTitle className="text-destructive">
+                      {t('bots.dangerZone')}
+                    </CardTitle>
+                    <CardDescription>
+                      {t('bots.dangerZoneDescription')}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-1">
+                        <p className="text-sm font-medium">
+                          {t('bots.deleteBotAction')}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          {t('bots.deleteBotHint')}
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => setShowDeleteConfirm(true)}
+                      >
+                        <Trash2 className="size-4 mr-1.5" />
+                        {t('common.delete')}
+                      </Button>
                     </div>
-                    <Button
-                      type="button"
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => setShowDeleteConfirm(true)}
-                    >
-                      <Trash2 className="size-4 mr-1.5" />
-                      {t('common.delete')}
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
+              )}
             </div>
           </TabsContent>
 
           {/* Tab: Logs */}
-          <TabsContent
-            value="logs"
-            className="flex-1 min-h-0 overflow-y-auto mt-4"
-          >
-            <BotLogListComponent botId={id} />
-          </TabsContent>
+          {canViewAudit && (
+            <TabsContent
+              value="logs"
+              className="flex-1 min-h-0 overflow-y-auto mt-4"
+            >
+              <BotLogListComponent botId={id} />
+            </TabsContent>
+          )}
 
           {/* Tab: Sessions */}
-          <TabsContent value="sessions" className="flex-1 min-h-0 mt-4">
-            <BotSessionMonitor ref={sessionMonitorRef} botId={id} />
-          </TabsContent>
+          {canViewAudit && (
+            <TabsContent value="sessions" className="flex-1 min-h-0 mt-4">
+              <BotSessionMonitor ref={sessionMonitorRef} botId={id} />
+            </TabsContent>
+          )}
         </Tabs>
       </div>
 

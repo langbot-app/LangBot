@@ -13,12 +13,17 @@ CI runs automatically with PostgreSQL service container.
 
 from __future__ import annotations
 
+import logging
 import os
 import pytest
+import sqlalchemy as sa
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy import text
 
 from langbot.pkg.entity.persistence.base import Base
+from langbot.pkg.entity.persistence.user import User
+from langbot.pkg.persistence.mgr import PersistenceManager
 from langbot.pkg.persistence.alembic_runner import (
     run_alembic_upgrade,
     run_alembic_stamp,
@@ -27,6 +32,10 @@ from langbot.pkg.persistence.alembic_runner import (
 )
 from alembic.config import Config
 from alembic.script import ScriptDirectory
+from langbot.pkg.utils import constants
+from langbot.pkg.workspace.collaboration import normalize_email
+
+from .resource_migration_support import TENANT_TABLES, create_legacy_resource_schema
 
 
 def _get_script_head() -> str:
@@ -130,6 +139,27 @@ class TestPostgreSQLMigrationBaseline:
         rev = await get_alembic_current(postgres_engine)
         assert rev == '0001_baseline'
 
+    @pytest.mark.asyncio
+    async def test_fresh_postgres_schema_accepts_application_casefold_identity(
+        self,
+        postgres_engine,
+        clean_tables,
+        clean_alembic_version,
+    ):
+        canonical_email = normalize_email('Ꭰ@Example.COM')
+        async with postgres_engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+            await conn.execute(
+                sa.insert(User).values(
+                    uuid='00000000-0000-0000-0000-000000000099',
+                    user=canonical_email,
+                    normalized_email=canonical_email,
+                    password='hash',
+                )
+            )
+        async with postgres_engine.connect() as conn:
+            assert await conn.scalar(sa.select(User.normalized_email)) == 'Ꭰ@example.com'
+
 
 class TestPostgreSQLMigrationUpgrade:
     """Tests for upgrade to head workflow on PostgreSQL."""
@@ -223,3 +253,175 @@ class TestPostgreSQLMigrationGetCurrent:
 
         rev = await get_alembic_current(postgres_engine)
         assert rev == '0001_baseline'
+
+
+class TestPostgreSQLWorkspaceMigration:
+    """Focused coverage for upgrading a pre-tenancy PostgreSQL instance."""
+
+    @pytest.mark.asyncio
+    async def test_postgres_legacy_instance_gets_default_workspace(
+        self,
+        postgres_engine,
+        clean_tables,
+        clean_alembic_version,
+        monkeypatch,
+    ):
+        legacy_metadata = sa.MetaData()
+        metadata_table = sa.Table(
+            'metadata',
+            legacy_metadata,
+            sa.Column('key', sa.String(255), primary_key=True),
+            sa.Column('value', sa.String(255)),
+        )
+        users = sa.Table(
+            'users',
+            legacy_metadata,
+            sa.Column('id', sa.Integer, primary_key=True),
+            sa.Column('user', sa.String(255), nullable=False),
+            sa.Column('password', sa.String(255), nullable=False),
+            sa.Column(
+                'account_type',
+                sa.String(32),
+                nullable=False,
+                server_default='local',
+            ),
+            sa.Column('created_at', sa.DateTime, server_default=text('now()')),
+            sa.Column('updated_at', sa.DateTime, server_default=text('now()')),
+        )
+        async with postgres_engine.begin() as conn:
+            await conn.run_sync(legacy_metadata.create_all)
+            await conn.execute(metadata_table.insert().values(key='database_version', value='25'))
+            await conn.execute(metadata_table.insert().values(key='instance_uuid', value='instance_postgres_test'))
+            await conn.execute(users.insert().values(user='owner@example.com', password='owner-hash'))
+
+        await run_alembic_stamp(postgres_engine, '0008_mcp_resource_prefs')
+        monkeypatch.setattr(constants, 'instance_id', 'instance_postgres_test')
+        database = type('Database', (), {'get_engine': lambda self: postgres_engine})()
+        application = type('Application', (), {})()
+        application.logger = logging.getLogger('postgres-workspace-startup-test')
+        manager = PersistenceManager(application)
+        manager.db = database
+
+        await manager.create_tables()
+        async with postgres_engine.connect() as conn:
+            tables_before_migration = set(
+                await conn.run_sync(lambda sync_conn: sa.inspect(sync_conn).get_table_names())
+            )
+        assert 'workspaces' not in tables_before_migration
+
+        await manager._run_alembic_migrations()
+
+        async with postgres_engine.connect() as conn:
+            account = (await conn.execute(text('SELECT uuid, status, source FROM users'))).mappings().one()
+            workspace = (
+                (await conn.execute(text('SELECT * FROM workspaces WHERE source = :source'), {'source': 'local'}))
+                .mappings()
+                .one()
+            )
+            membership = (await conn.execute(text('SELECT * FROM workspace_memberships'))).mappings().one()
+            execution_state = (await conn.execute(text('SELECT * FROM workspace_execution_states'))).mappings().one()
+
+        assert account['status'] == 'active'
+        assert account['source'] == 'local'
+        assert workspace['instance_uuid'] == 'instance_postgres_test'
+        assert workspace['created_by_account_uuid'] == account['uuid']
+        assert membership['account_uuid'] == account['uuid']
+        assert membership['role'] == 'owner'
+        assert execution_state['active_generation'] == 1
+        assert execution_state['write_fenced'] is False
+
+
+class TestPostgreSQLResourceTenancyMigration:
+    """Legacy backfill and scoped-key enforcement on real PostgreSQL."""
+
+    @pytest.mark.asyncio
+    async def test_postgres_resources_are_backfilled_and_scoped(
+        self,
+        postgres_engine,
+        clean_tables,
+        clean_alembic_version,
+    ):
+        await create_legacy_resource_schema(
+            postgres_engine,
+            instance_uuid='postgres-resource-migration-test',
+        )
+        async with postgres_engine.begin() as conn:
+            await conn.execute(text('UPDATE users SET "user" = \'Straße@Example.COM\''))
+            await conn.execute(
+                text('INSERT INTO users ("user", password) VALUES (:email, :password)'),
+                {'email': 'Ꭰ@Example.COM', 'password': 'cherokee-hash'},
+            )
+        await run_alembic_stamp(postgres_engine, '0008_mcp_resource_prefs')
+        await run_alembic_upgrade(postgres_engine, 'head')
+
+        async with postgres_engine.connect() as conn:
+            workspace_uuid = await conn.scalar(text("SELECT uuid FROM workspaces WHERE source = 'local'"))
+            for table_name in TENANT_TABLES:
+                count, distinct_workspaces = (
+                    await conn.execute(text(f'SELECT COUNT(*), COUNT(DISTINCT workspace_uuid) FROM {table_name}'))
+                ).one()
+                assert (count, distinct_workspaces) == (1, 1), table_name
+                columns = await conn.run_sync(
+                    lambda sync_conn, name=table_name: {
+                        column['name']: column for column in sa.inspect(sync_conn).get_columns(name)
+                    }
+                )
+                assert columns['workspace_uuid']['nullable'] is False, table_name
+
+            api_columns = await conn.run_sync(
+                lambda sync_conn: {column['name'] for column in sa.inspect(sync_conn).get_columns('api_keys')}
+            )
+            assert 'key' not in api_columns
+            assert await conn.scalar(text('SELECT scopes FROM api_keys')) == ['*']
+            assert (await conn.execute(text('SELECT normalized_email FROM users ORDER BY id'))).scalars().all() == [
+                'strasse@example.com',
+                'Ꭰ@example.com',
+            ]
+
+        second_workspace_uuid = '00000000-0000-0000-0000-000000000002'
+        async with postgres_engine.begin() as conn:
+            await conn.execute(
+                text(
+                    'INSERT INTO workspaces '
+                    '(uuid, instance_uuid, name, slug, type, status, source, projection_revision) '
+                    "VALUES (:uuid, 'postgres-resource-migration-test', 'Second', 'second', "
+                    "'team', 'active', 'cloud_projection', 0)"
+                ),
+                {'uuid': second_workspace_uuid},
+            )
+            await conn.execute(
+                text(
+                    'INSERT INTO mcp_servers (uuid, workspace_uuid, name, enable, updated_at) '
+                    "VALUES ('mcp-2', :workspace_uuid, 'shared-name', true, now())"
+                ),
+                {'workspace_uuid': second_workspace_uuid},
+            )
+            await conn.execute(
+                text(
+                    'INSERT INTO plugin_settings '
+                    '(workspace_uuid, plugin_author, plugin_name, enabled) '
+                    "VALUES (:workspace_uuid, 'author', 'plugin', true)"
+                ),
+                {'workspace_uuid': second_workspace_uuid},
+            )
+
+        with pytest.raises(IntegrityError):
+            async with postgres_engine.begin() as conn:
+                await conn.execute(
+                    text(
+                        'INSERT INTO mcp_servers '
+                        '(uuid, workspace_uuid, name, enable, updated_at) '
+                        "VALUES ('mcp-duplicate', :workspace_uuid, 'shared-name', true, now())"
+                    ),
+                    {'workspace_uuid': workspace_uuid},
+                )
+
+        with pytest.raises(IntegrityError):
+            async with postgres_engine.begin() as conn:
+                await conn.execute(
+                    text(
+                        'INSERT INTO llm_models (uuid, workspace_uuid, name, provider_uuid) '
+                        "VALUES ('cross-workspace-model', :workspace_uuid, 'model', 'provider-1')"
+                    ),
+                    {'workspace_uuid': second_workspace_uuid},
+                )

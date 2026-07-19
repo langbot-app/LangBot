@@ -8,13 +8,21 @@ API keys can be managed through the web interface:
 
 1. Log in to the LangBot web interface
 2. Click the "API Keys" button at the bottom of the sidebar
-3. Create, view, copy, or delete API keys as needed
+3. Create an API key and copy its secret immediately
+4. Revoke keys that are no longer needed
+
+Database-backed API-key secrets are returned exactly once. LangBot stores only
+a SHA-256 lookup hash, so an existing secret cannot be displayed or recovered
+later. Each key belongs to one Workspace, has explicit permission scopes, and
+may have an expiry. The Workspace is derived from the authenticated key; an
+`X-Workspace-Id` header cannot redirect it to another tenant.
 
 ## Global API Key (config.yaml)
 
 In addition to web-UI-created keys (stored in the database, prefixed `lbk_`),
 LangBot supports a **global API key** defined directly in `data/config.yaml`.
-This is useful for automated deployments, infrastructure-as-code, and AI agents
+This is a Community-edition bootstrap option for automated deployments,
+infrastructure-as-code, and AI agents
 that need API/MCP access **without a login session and without creating a
 database record first**.
 
@@ -27,10 +35,12 @@ api:
 
 Behavior:
 
-- When `api.global_api_key` is a non-empty string, that exact value is accepted
-  anywhere a normal API key is accepted — the `X-API-Key` header or
-  `Authorization: Bearer <key>` — across the HTTP service API **and the MCP
-  server**.
+- In Community edition's singleton Workspace, a non-empty
+  `api.global_api_key` is bound to that Workspace and accepted across the HTTP
+  service API and the MCP server.
+- The global config key is rejected when multi-Workspace SaaS mode is enabled;
+  SaaS automation must use a database-backed Workspace key or a closed control
+  plane credential.
 - The global key does **not** require the `lbk_` prefix; use any sufficiently
   strong secret.
 - Leave it empty (`''`, the default) to disable it entirely; only database-backed
@@ -38,9 +48,10 @@ Behavior:
 - Existing installs are unaffected until you add the key — config completion only
   backfills top-level keys, and the lookup is defensive when the field is absent.
 
-> **Security:** the global key is stored in plaintext in `config.yaml`. Only
-> enable it on trusted/internal deployments, keep the file permissions tight,
-> always serve over HTTPS, and rotate the value if it may have leaked.
+> **Security:** the global key is stored in plaintext in `config.yaml` and has
+> the singleton Workspace's full fixed permission set. Only enable it on
+> trusted/internal Community deployments, keep file permissions tight, always
+> serve over HTTPS, and rotate it if it may have leaked.
 
 ## Using API Keys
 
@@ -60,7 +71,9 @@ Authorization: Bearer lbk_your_api_key_here
 
 ## Available APIs
 
-All existing LangBot APIs now support **both user token and API key authentication**. This means you can use API keys to access:
+Endpoints that declare API-key authentication accept either a user token or a
+Workspace API key. The key must include the permission required by the route.
+This includes:
 
 - **Model Management** - `/api/v1/provider/models/llm` and `/api/v1/provider/models/embedding`
 - **Bot Management** - `/api/v1/platform/bots`
@@ -227,6 +240,11 @@ or
 }
 ```
 
+### 403 Forbidden
+
+The key is valid for its Workspace but does not include the fixed permission
+required by the route.
+
 ### 500 Internal Server Error
 
 ```json
@@ -240,7 +258,7 @@ or
 
 1. **Keep API keys secure**: Store them securely and never commit them to version control
 2. **Use HTTPS**: Always use HTTPS in production to encrypt API key transmission
-3. **Rotate keys regularly**: Create new API keys periodically and delete old ones
+3. **Rotate keys regularly**: Create new API keys periodically and revoke old ones
 4. **Use descriptive names**: Give your API keys meaningful names to track their usage
 5. **Delete unused keys**: Remove API keys that are no longer needed
 6. **Use X-API-Key header**: Prefer using the `X-API-Key` header for clarity
@@ -317,7 +335,6 @@ curl -X POST \
 
 ## Notes
 
-- The same endpoints work for both the web UI (with user tokens) and external services (with API keys)
+- API-key-enabled endpoints use the same resource shapes as the web UI
 - No need to learn different API paths - use the existing API documentation with API key authentication
-- All endpoints that previously required user authentication now also accept API keys
-
+- API keys never select a Workspace from a request header; their persisted binding is authoritative

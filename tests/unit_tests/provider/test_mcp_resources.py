@@ -8,6 +8,7 @@ import httpx
 import pytest
 from mcp import types as mcp_types
 
+from langbot.pkg.api.http.context import ExecutionContext
 from langbot.pkg.provider.tools.loaders.mcp import (
     MCP_RESOURCE_CONTEXT_QUERY_KEY,
     MCP_RESOURCE_TRACE_QUERY_KEY,
@@ -18,10 +19,30 @@ from langbot.pkg.provider.tools.loaders.mcp import (
     RuntimeMCPSession,
 )
 from langbot.pkg.telemetry import features as telemetry_features
+from langbot.pkg.workspace.errors import WorkspaceGenerationMismatchError
+
+
+TEST_EXECUTION_CONTEXT = ExecutionContext(
+    instance_uuid='instance-a',
+    workspace_uuid='workspace-a',
+    placement_generation=1,
+    query_uuid='query-a',
+)
 
 
 def _app() -> SimpleNamespace:
-    return SimpleNamespace(logger=Mock())
+    return SimpleNamespace(
+        logger=Mock(),
+        workspace_service=SimpleNamespace(
+            get_execution_binding=AsyncMock(
+                return_value=SimpleNamespace(
+                    instance_uuid='instance-a',
+                    workspace_uuid='workspace-a',
+                    placement_generation=1,
+                )
+            )
+        ),
+    )
 
 
 def _connected_session(
@@ -30,8 +51,15 @@ def _connected_session(
     uuid: str = 'srv-1',
     resources: list[dict] | None = None,
     templates: list[dict] | None = None,
+    execution_context: ExecutionContext = TEST_EXECUTION_CONTEXT,
 ) -> RuntimeMCPSession:
-    session = RuntimeMCPSession(name, {'uuid': uuid, 'mode': 'remote'}, True, _app())
+    session = RuntimeMCPSession(
+        name,
+        {'uuid': uuid, 'mode': 'remote'},
+        True,
+        _app(),
+        execution_context,
+    )
     session.status = MCPSessionStatus.CONNECTED
     session.session = SimpleNamespace(read_resource=AsyncMock())
     session.resources = resources or [
@@ -51,8 +79,20 @@ def _connected_session(
     return session
 
 
-def _query() -> SimpleNamespace:
-    return SimpleNamespace(variables={})
+def _query(variables: dict | None = None, context: ExecutionContext = TEST_EXECUTION_CONTEXT) -> SimpleNamespace:
+    return SimpleNamespace(
+        instance_uuid=context.instance_uuid,
+        workspace_uuid=context.workspace_uuid,
+        placement_generation=context.placement_generation,
+        bot_uuid=context.bot_uuid,
+        pipeline_uuid=context.pipeline_uuid,
+        query_uuid=context.query_uuid,
+        variables=variables or {},
+    )
+
+
+def _register_session(loader: MCPLoader, session: RuntimeMCPSession) -> None:
+    loader.sessions[loader._session_key(session.execution_context, session.server_name)] = session
 
 
 def _http_status_error(status_code: int) -> httpx.HTTPStatusError:
@@ -68,6 +108,7 @@ async def test_remote_transport_falls_back_to_sse_for_compatible_http_status_in_
         {'uuid': 'srv-1', 'mode': 'remote', 'url': 'https://example.com/mcp'},
         True,
         _app(),
+        TEST_EXECUTION_CONTEXT,
     )
     session._init_streamable_http_server = AsyncMock(
         side_effect=ExceptionGroup('transport failed', [_http_status_error(405)])
@@ -87,6 +128,7 @@ async def test_remote_transport_does_not_fallback_for_auth_http_status():
         {'uuid': 'srv-1', 'mode': 'remote', 'url': 'https://example.com/mcp'},
         True,
         _app(),
+        TEST_EXECUTION_CONTEXT,
     )
     error = _http_status_error(403)
     session._init_streamable_http_server = AsyncMock(side_effect=error)
@@ -244,10 +286,18 @@ def test_resource_uri_allowed_supports_listed_templates_conservatively():
 async def test_mcp_loader_can_hide_synthetic_resource_tools():
     loader = MCPLoader(_app())
     session = _connected_session()
-    loader.sessions = {'docs': session}
+    _register_session(loader, session)
 
-    with_resource_tools = await loader.get_tools(['srv-1'], include_resource_tools=True)
-    without_resource_tools = await loader.get_tools(['srv-1'], include_resource_tools=False)
+    with_resource_tools = await loader.get_tools(
+        TEST_EXECUTION_CONTEXT,
+        ['srv-1'],
+        include_resource_tools=True,
+    )
+    without_resource_tools = await loader.get_tools(
+        TEST_EXECUTION_CONTEXT,
+        ['srv-1'],
+        include_resource_tools=False,
+    )
 
     assert {tool.name for tool in with_resource_tools} == {
         MCP_TOOL_LIST_RESOURCES,
@@ -260,9 +310,9 @@ async def test_mcp_loader_can_hide_synthetic_resource_tools():
 async def test_mcp_loader_refuses_resource_tool_calls_when_agent_read_disabled():
     loader = MCPLoader(_app())
     session = _connected_session()
-    loader.sessions = {'docs': session}
-    query = SimpleNamespace(
-        variables={
+    _register_session(loader, session)
+    query = _query(
+        {
             '_pipeline_bound_mcp_servers': ['srv-1'],
             '_pipeline_mcp_resource_agent_read_enabled': False,
         }
@@ -301,9 +351,10 @@ async def test_build_resource_context_for_query_uses_only_bound_attached_text_re
             )
         ]
     )
-    loader.sessions = {'docs': docs, 'other': other}
-    query = SimpleNamespace(
-        variables={
+    _register_session(loader, docs)
+    _register_session(loader, other)
+    query = _query(
+        {
             '_pipeline_bound_mcp_servers': ['srv-1'],
             '_pipeline_mcp_resource_attachments': [
                 {'server_uuid': 'srv-1', 'server_name': 'docs', 'uri': 'file:///README.md', 'mode': 'pinned'},
@@ -321,3 +372,88 @@ async def test_build_resource_context_for_query_uses_only_bound_attached_text_re
     assert query.variables[MCP_RESOURCE_CONTEXT_QUERY_KEY]['resource_count'] == 1
     docs.session.read_resource.assert_awaited_once()
     other.session.read_resource.assert_not_called()
+
+
+def test_mcp_loader_session_keys_do_not_collide_between_workspaces():
+    loader = MCPLoader(_app())
+    workspace_b = ExecutionContext(
+        instance_uuid='instance-a',
+        workspace_uuid='workspace-b',
+        placement_generation=1,
+        query_uuid='query-b',
+    )
+    session_a = _connected_session(name='docs', uuid='srv-a')
+    session_b = _connected_session(
+        name='docs',
+        uuid='srv-b',
+        execution_context=workspace_b,
+    )
+    _register_session(loader, session_a)
+    _register_session(loader, session_b)
+
+    assert len(loader.sessions) == 2
+    assert loader.get_session(TEST_EXECUTION_CONTEXT, 'docs') is session_a
+    assert loader.get_session(workspace_b, 'docs') is session_b
+    assert loader.get_session(TEST_EXECUTION_CONTEXT, 'docs') is not loader.get_session(workspace_b, 'docs')
+
+
+@pytest.mark.asyncio
+async def test_mcp_tool_result_is_discarded_when_generation_changes_during_call():
+    session = _connected_session()
+    binding = SimpleNamespace(
+        instance_uuid='instance-a',
+        workspace_uuid='workspace-a',
+        placement_generation=1,
+    )
+    session.ap.workspace_service.get_execution_binding.side_effect = [
+        binding,
+        binding,
+        WorkspaceGenerationMismatchError('generation changed during tool call'),
+    ]
+    session.session = SimpleNamespace(call_tool=AsyncMock(return_value=SimpleNamespace(isError=False, content=[])))
+
+    with pytest.raises(WorkspaceGenerationMismatchError):
+        await session.invoke_mcp_tool('side_effecting_tool', {})
+
+    session.session.call_tool.assert_awaited_once_with('side_effecting_tool', {})
+
+
+@pytest.mark.asyncio
+async def test_mcp_resource_cache_is_not_served_to_stale_generation():
+    session = _connected_session()
+    session._resource_cache[('file:///README.md', 10, None, False)] = {
+        'cached_at': 0,
+        'envelope': {'contents': [{'type': 'text', 'text': 'stale'}]},
+    }
+    session.ap.workspace_service.get_execution_binding.side_effect = WorkspaceGenerationMismatchError(
+        'stale generation'
+    )
+
+    with pytest.raises(WorkspaceGenerationMismatchError):
+        await session.read_resource_envelope('file:///README.md', max_bytes=10)
+
+    session.session.read_resource.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_mcp_idle_lifecycle_stops_without_retry_after_generation_bump():
+    session = _connected_session()
+    session.server_config.update({'mode': 'remote', 'url': 'https://example.com/mcp'})
+    session._FENCE_POLL_INTERVAL = 0
+    session._init_remote_server = AsyncMock()
+    session.refresh = AsyncMock()
+    session._assert_execution_active = AsyncMock(
+        side_effect=[
+            None,
+            None,
+            None,
+            WorkspaceGenerationMismatchError('generation changed while idle'),
+        ]
+    )
+
+    await session._lifecycle_loop_with_retry()
+
+    session._init_remote_server.assert_awaited_once_with()
+    assert session.status == MCPSessionStatus.ERROR
+    assert session.error_message == 'Workspace execution binding is stale'
+    assert session._shutdown_event.is_set()

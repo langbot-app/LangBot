@@ -12,7 +12,15 @@ import pytest
 from aiohttp import web
 from mcp import types as mcp_types
 
+from langbot.pkg.api.http.context import ExecutionContext
 from langbot.pkg.provider.tools.loaders.mcp import RuntimeMCPSession
+
+
+TEST_EXECUTION_CONTEXT = ExecutionContext(
+    instance_uuid='instance-a',
+    workspace_uuid='workspace-a',
+    placement_generation=1,
+)
 
 
 class _TransportProbe:
@@ -133,6 +141,7 @@ def _session(url: str, *, timeout: float = 2) -> RuntimeMCPSession:
         {'uuid': 'srv-1', 'mode': 'remote', 'url': url, 'timeout': timeout},
         True,
         app,
+        TEST_EXECUTION_CONTEXT,
     )
 
 

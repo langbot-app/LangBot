@@ -10,13 +10,56 @@ from unittest.mock import AsyncMock, MagicMock, Mock
 import pytest
 
 from langbot_plugin.entities.io.actions.enums import PluginToRuntimeAction
+from langbot_plugin.entities.io.context import ActionContext
 
 
 def make_handler(app):
     """Create a RuntimeConnectionHandler with mocked external connection."""
     from langbot.pkg.plugin.handler import RuntimeConnectionHandler
 
-    return RuntimeConnectionHandler(Mock(), AsyncMock(return_value=True), app)
+    workspace_context = ActionContext(
+        instance_uuid='instance-a',
+        workspace_uuid='workspace-a',
+        placement_generation=1,
+    )
+    app.workspace_service = SimpleNamespace(
+        get_execution_binding=AsyncMock(
+            return_value=SimpleNamespace(
+                instance_uuid=workspace_context.instance_uuid,
+                workspace_uuid=workspace_context.workspace_uuid,
+                placement_generation=workspace_context.placement_generation,
+            )
+        )
+    )
+    runtime_handler = RuntimeConnectionHandler(
+        Mock(),
+        AsyncMock(return_value=True),
+        app,
+        workspace_context,
+    )
+    installation_uuid = runtime_handler._remember_installation(
+        workspace_context,
+        'test-author',
+        'test-plugin',
+    )
+    runtime_handler.bind_action_context(workspace_context.for_installation(installation_uuid))
+    query_pool = getattr(app, 'query_pool', None)
+    if query_pool is not None and hasattr(query_pool, 'cached_queries'):
+
+        def scoped_query(query):
+            if query is not None:
+                query.instance_uuid = workspace_context.instance_uuid
+                query.workspace_uuid = workspace_context.workspace_uuid
+                query.placement_generation = workspace_context.placement_generation
+            return query
+
+        query_pool.get_query = AsyncMock(
+            side_effect=lambda workspace_uuid, query_uuid: scoped_query(query_pool.cached_queries.get(query_uuid))
+        )
+        query_pool.get_query_by_legacy_id = AsyncMock(
+            side_effect=lambda workspace_uuid, query_id: scoped_query(query_pool.cached_queries.get(query_id))
+        )
+    return runtime_handler
 
 
 class TestHandlerQueryVariables:

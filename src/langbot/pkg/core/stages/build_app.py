@@ -39,6 +39,11 @@ from ...vector import mgr as vectordb_mgr
 from .. import taskmgr
 from ...telemetry import telemetry as telemetry_module
 from ...survey import manager as survey_module
+from ...workspace import service as workspace_service_module
+from ...workspace import collaboration as workspace_collaboration_module
+from ...workspace import policy as workspace_policy_module
+from ...api.http.context import ExecutionContext, PrincipalContext, PrincipalType
+from ...api.http.authz import WorkspaceRequiredError
 
 
 @stage.stage_class('BuildAppStage')
@@ -52,9 +57,6 @@ class BuildAppStage(stage.BootingStage):
         discover = discover_engine.ComponentDiscoveryEngine(ap)
         discover.discover_blueprint('templates/components.yaml')
         ap.discover = discover
-
-        user_service_inst = user_service.UserService(ap)
-        ap.user_service = user_service_inst
 
         space_service_inst = space_service.SpaceService(ap)
         ap.space_service = space_service_inst
@@ -100,8 +102,6 @@ class BuildAppStage(stage.BootingStage):
         await ver_mgr.initialize()
         ap.ver_mgr = ver_mgr
 
-        ap.query_pool = pool.QueryPool()
-
         log_cache = logcache.LogCache()
         ap.log_cache = log_cache
 
@@ -112,6 +112,43 @@ class BuildAppStage(stage.BootingStage):
         persistence_mgr_inst = persistencemgr.PersistenceManager(ap)
         ap.persistence_mgr = persistence_mgr_inst
         await persistence_mgr_inst.initialize()
+
+        # The open-source Core is intentionally single-Workspace.  A mutable
+        # config value such as ``system.edition`` is product metadata, not a
+        # trust credential, and must never activate SaaS routing.  The closed
+        # Cloud bootstrap will install its verified policy only after checking
+        # a signed InstanceManifest; until that bootstrap exists, fail closed.
+        workspace_policy = workspace_policy_module.open_core_workspace_policy()
+        workspace_service_inst = workspace_service_module.WorkspaceService(
+            ap,
+            policy=workspace_policy,
+        )
+        if not workspace_policy.multi_workspace_enabled:
+            await workspace_service_inst.ensure_singleton_workspace()
+        ap.workspace_service = workspace_service_inst
+
+        ap.workspace_collaboration_service = workspace_collaboration_module.WorkspaceCollaborationService(
+            ap,
+            workspace_service_inst,
+        )
+
+        user_service_inst = user_service.UserService(ap)
+        ap.user_service = user_service_inst
+
+        async def resolve_singleton_execution_context() -> ExecutionContext:
+            if workspace_policy.multi_workspace_enabled:
+                raise WorkspaceRequiredError('Cloud runtime work requires an explicit Workspace context')
+            binding = await workspace_service_inst.get_local_execution_binding()
+            return ExecutionContext(
+                instance_uuid=binding.instance_uuid,
+                workspace_uuid=binding.workspace_uuid,
+                placement_generation=binding.placement_generation,
+                trigger_principal=PrincipalContext(PrincipalType.SYSTEM),
+            )
+
+        ap.query_pool = pool.QueryPool(
+            singleton_context_resolver=resolve_singleton_execution_context,
+        )
 
         # Telemetry manager: attach to app so other components can call via self.ap.telemetry
         telemetry_inst = telemetry_module.TelemetryManager(ap)

@@ -120,6 +120,7 @@ export default function BotForm({
   // Track whether initial data loading is complete.
   // setValue calls during init should NOT mark the form as dirty.
   const isInitializing = useRef(true);
+  const initializationSequence = useRef(0);
 
   const [adapterNameToDynamicConfigMap, setAdapterNameToDynamicConfigMap] =
     useState(new Map<string, IDynamicFormItemSchema[]>());
@@ -141,7 +142,7 @@ export default function BotForm({
   const [dynamicFormConfigList, setDynamicFormConfigList] = useState<
     IDynamicFormItemSchema[]
   >([]);
-  const [, setIsLoading] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
   const [webhookUrl, setWebhookUrl] = useState<string>('');
   const [extraWebhookUrl, setExtraWebhookUrl] = useState<string>('');
 
@@ -162,50 +163,55 @@ export default function BotForm({
   }, [isDirty, onDirtyChange]);
 
   useEffect(() => {
-    setBotFormValues();
-  }, []);
+    void setBotFormValues();
+    return () => {
+      // React StrictMode may start the effect twice. Invalidate the older
+      // request so it cannot reset fields after the user starts editing.
+      initializationSequence.current += 1;
+    };
+  }, [initBotId]);
 
-  function setBotFormValues() {
+  async function setBotFormValues() {
+    const sequence = ++initializationSequence.current;
     isInitializing.current = true;
-    initBotFormComponent().then(() => {
-      if (initBotId) {
-        getBotConfig(initBotId)
-          .then((val) => {
-            // Use form.reset() to set values AND update the dirty baseline,
-            // so isDirty stays false after initial load.
-            form.reset({
-              name: val.name,
-              description: val.description,
-              adapter: val.adapter,
-              adapter_config: val.adapter_config,
-              enable: val.enable,
-              use_pipeline_uuid: val.use_pipeline_uuid || '',
-              pipeline_routing_rules: val.pipeline_routing_rules || [],
-            });
-            handleAdapterSelect(val.adapter);
+    setIsLoading(true);
+    try {
+      await initBotFormComponent();
+      if (sequence !== initializationSequence.current) return;
 
-            if (val.webhook_full_url) {
-              setWebhookUrl(val.webhook_full_url);
-            } else {
-              setWebhookUrl('');
-            }
-            setExtraWebhookUrl(val.extra_webhook_full_url || '');
-          })
-          .catch((err) => {
-            toast.error(
-              t('bots.getBotConfigError') + (err as CustomApiError).msg,
-            );
-          })
-          .finally(() => {
-            isInitializing.current = false;
-          });
+      if (initBotId) {
+        const val = await getBotConfig(initBotId);
+        if (sequence !== initializationSequence.current) return;
+
+        // Use form.reset() to set values AND update the dirty baseline,
+        // so isDirty stays false after initial load.
+        form.reset({
+          name: val.name,
+          description: val.description,
+          adapter: val.adapter,
+          adapter_config: val.adapter_config,
+          enable: val.enable,
+          use_pipeline_uuid: val.use_pipeline_uuid || '',
+          pipeline_routing_rules: val.pipeline_routing_rules || [],
+        });
+        handleAdapterSelect(val.adapter);
+        setWebhookUrl(val.webhook_full_url || '');
+        setExtraWebhookUrl(val.extra_webhook_full_url || '');
       } else {
         form.reset();
         setWebhookUrl('');
         setExtraWebhookUrl('');
-        isInitializing.current = false;
       }
-    });
+    } catch (err) {
+      if (sequence === initializationSequence.current) {
+        toast.error(t('bots.getBotConfigError') + (err as CustomApiError).msg);
+      }
+    } finally {
+      if (sequence === initializationSequence.current) {
+        isInitializing.current = false;
+        setIsLoading(false);
+      }
+    }
   }
 
   async function initBotFormComponent() {
@@ -373,10 +379,6 @@ export default function BotForm({
         .createBot(newBot)
         .then((res) => {
           toast.success(t('bots.createSuccess'));
-          initBotId = res.uuid;
-
-          setBotFormValues();
-
           onNewBotCreated(res.uuid);
         })
         .catch((err) => {
@@ -395,243 +397,256 @@ export default function BotForm({
         id="bot-form"
         onSubmit={form.handleSubmit(onDynamicFormSubmit)}
         className="space-y-6"
+        aria-busy={isLoading}
       >
-        {/* Card 1: Basic Information */}
-        <Card>
-          <CardHeader>
-            <CardTitle>{t('bots.basicInfo')}</CardTitle>
-            <CardDescription>{t('bots.basicInfoDescription')}</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <FormField
-              control={form.control}
-              name="name"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>
-                    {t('bots.botName')}
-                    <span className="text-destructive">*</span>
-                  </FormLabel>
-                  <FormControl>
-                    <Input {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="description"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t('bots.botDescription')}</FormLabel>
-                  <FormControl>
-                    <Input {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          </CardContent>
-        </Card>
-
-        {/* Card 2: Pipeline Binding (edit mode only) */}
-        {initBotId && (
+        <fieldset className="contents" disabled={isLoading}>
+          {/* Card 1: Basic Information */}
           <Card>
             <CardHeader>
-              <CardTitle>{t('bots.routingConnection')}</CardTitle>
+              <CardTitle>{t('bots.basicInfo')}</CardTitle>
               <CardDescription>
-                {t('bots.routingConnectionDescription')}
+                {t('bots.basicInfoDescription')}
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-4">
               <FormField
                 control={form.control}
-                name="use_pipeline_uuid"
+                name="name"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t('bots.bindPipeline')}</FormLabel>
+                    <FormLabel>
+                      {t('bots.botName')}
+                      <span className="text-destructive">*</span>
+                    </FormLabel>
                     <FormControl>
-                      <Select onValueChange={field.onChange} {...field}>
-                        <SelectTrigger>
-                          {field.value ? (
-                            (() => {
-                              const pipeline = pipelineNameList.find(
-                                (p) => p.value === field.value,
-                              );
-                              return (
-                                <div className="flex items-center gap-2">
-                                  {pipeline?.emoji && (
-                                    <span className="text-sm shrink-0">
-                                      {pipeline.emoji}
-                                    </span>
-                                  )}
-                                  <span>{pipeline?.label ?? field.value}</span>
-                                </div>
-                              );
-                            })()
-                          ) : (
-                            <SelectValue
-                              placeholder={t('bots.selectPipeline')}
-                            />
-                          )}
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectGroup>
-                            {pipelineNameList.map((item) => (
-                              <SelectItem key={item.value} value={item.value}>
-                                <div className="flex items-center gap-2">
-                                  {item.emoji && (
-                                    <span className="text-sm shrink-0">
-                                      {item.emoji}
-                                    </span>
-                                  )}
-                                  <span>{item.label}</span>
-                                </div>
-                              </SelectItem>
-                            ))}
-                          </SelectGroup>
-                        </SelectContent>
-                      </Select>
+                      <Input {...field} />
                     </FormControl>
+                    <FormMessage />
                   </FormItem>
                 )}
               />
-
-              {/* Pipeline Routing Rules */}
-              <RoutingRulesEditor
-                form={form}
-                pipelineNameList={pipelineNameList}
+              <FormField
+                control={form.control}
+                name="description"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('bots.botDescription')}</FormLabel>
+                    <FormControl>
+                      <Input {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
             </CardContent>
           </Card>
-        )}
 
-        {/* Card 3: Adapter Configuration */}
-        <Card>
-          <CardHeader>
-            <CardTitle>{t('bots.adapterConfig')}</CardTitle>
-            <CardDescription>
-              {t('bots.adapterConfigDescription')}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <FormField
-              control={form.control}
-              name="adapter"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>
-                    {t('bots.platformAdapter')}
-                    <span className="text-destructive">*</span>
-                  </FormLabel>
-                  <FormControl>
-                    <div className="flex items-center gap-2">
-                      <Select
-                        onValueChange={(value) => {
-                          field.onChange(value);
-                          handleAdapterSelect(value);
-                        }}
-                        value={field.value}
-                      >
-                        <SelectTrigger className="w-[240px]">
-                          {field.value ? (
-                            <div className="flex items-center gap-2">
-                              <img
-                                src={httpClient.getAdapterIconURL(field.value)}
-                                alt=""
-                                className="h-5 w-5 rounded"
+          {/* Card 2: Pipeline Binding (edit mode only) */}
+          {initBotId && (
+            <Card>
+              <CardHeader>
+                <CardTitle>{t('bots.routingConnection')}</CardTitle>
+                <CardDescription>
+                  {t('bots.routingConnectionDescription')}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <FormField
+                  control={form.control}
+                  name="use_pipeline_uuid"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('bots.bindPipeline')}</FormLabel>
+                      <FormControl>
+                        <Select onValueChange={field.onChange} {...field}>
+                          <SelectTrigger>
+                            {field.value ? (
+                              (() => {
+                                const pipeline = pipelineNameList.find(
+                                  (p) => p.value === field.value,
+                                );
+                                return (
+                                  <div className="flex items-center gap-2">
+                                    {pipeline?.emoji && (
+                                      <span className="text-sm shrink-0">
+                                        {pipeline.emoji}
+                                      </span>
+                                    )}
+                                    <span>
+                                      {pipeline?.label ?? field.value}
+                                    </span>
+                                  </div>
+                                );
+                              })()
+                            ) : (
+                              <SelectValue
+                                placeholder={t('bots.selectPipeline')}
                               />
-                              <span>
-                                {adapterNameList.find(
-                                  (a) => a.value === field.value,
-                                )?.label ?? field.value}
-                              </span>
-                            </div>
-                          ) : (
-                            <SelectValue
-                              placeholder={t('bots.selectAdapter')}
-                            />
-                          )}
-                        </SelectTrigger>
-                        <SelectContent>
-                          {groupedAdapters.map((group) => (
-                            <SelectGroup
-                              key={group.categoryId ?? 'uncategorized'}
-                            >
-                              {group.categoryId && (
-                                <SelectLabel>
-                                  {getCategoryLabel(t, group.categoryId)}
-                                </SelectLabel>
-                              )}
-                              {group.items.map((item) => (
+                            )}
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectGroup>
+                              {pipelineNameList.map((item) => (
                                 <SelectItem key={item.value} value={item.value}>
                                   <div className="flex items-center gap-2">
-                                    <img
-                                      src={httpClient.getAdapterIconURL(
-                                        item.value,
-                                      )}
-                                      alt=""
-                                      className="h-5 w-5 rounded"
-                                    />
+                                    {item.emoji && (
+                                      <span className="text-sm shrink-0">
+                                        {item.emoji}
+                                      </span>
+                                    )}
                                     <span>{item.label}</span>
                                   </div>
                                 </SelectItem>
                               ))}
                             </SelectGroup>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {currentAdapter &&
-                        (() => {
-                          const docUrl = getAdapterDocUrl(
-                            adapterHelpLinks[currentAdapter],
-                            i18n.language,
-                          );
-                          return docUrl ? (
-                            <a
-                              href={docUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex shrink-0 items-center gap-1 text-xs text-primary hover:underline"
-                            >
-                              {t('bots.viewAdapterDocs')}
-                              <ExternalLink className="h-3 w-3" />
-                            </a>
-                          ) : null;
-                        })()}
-                    </div>
-                  </FormControl>
-                  {currentAdapter && adapterDescriptionList[currentAdapter] && (
-                    <FormDescription>
-                      {adapterDescriptionList[currentAdapter]}
-                    </FormDescription>
+                          </SelectContent>
+                        </Select>
+                      </FormControl>
+                    </FormItem>
                   )}
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+                />
 
-            {showDynamicForm && dynamicFormConfigList.length > 0 && (
-              <DynamicFormComponent
-                itemConfigList={dynamicFormConfigList}
-                initialValues={currentAdapterConfig}
-                onSubmit={(values) => {
-                  form.setValue('adapter_config', values, {
-                    shouldDirty: !isInitializing.current,
-                  });
-                }}
-                systemContext={{
-                  webhook_url: webhookUrl,
-                  extra_webhook_url: extraWebhookUrl,
-                  bot_uuid: initBotId || '',
-                  adapter_config: form.getValues('adapter_config') || {},
-                  outbound_ips: systemInfo.outbound_ips,
-                }}
+                {/* Pipeline Routing Rules */}
+                <RoutingRulesEditor
+                  form={form}
+                  pipelineNameList={pipelineNameList}
+                />
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Card 3: Adapter Configuration */}
+          <Card>
+            <CardHeader>
+              <CardTitle>{t('bots.adapterConfig')}</CardTitle>
+              <CardDescription>
+                {t('bots.adapterConfigDescription')}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <FormField
+                control={form.control}
+                name="adapter"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>
+                      {t('bots.platformAdapter')}
+                      <span className="text-destructive">*</span>
+                    </FormLabel>
+                    <FormControl>
+                      <div className="flex items-center gap-2">
+                        <Select
+                          onValueChange={(value) => {
+                            field.onChange(value);
+                            handleAdapterSelect(value);
+                          }}
+                          value={field.value}
+                        >
+                          <SelectTrigger className="w-[240px]">
+                            {field.value ? (
+                              <div className="flex items-center gap-2">
+                                <img
+                                  src={httpClient.getAdapterIconURL(
+                                    field.value,
+                                  )}
+                                  alt=""
+                                  className="h-5 w-5 rounded"
+                                />
+                                <span>
+                                  {adapterNameList.find(
+                                    (a) => a.value === field.value,
+                                  )?.label ?? field.value}
+                                </span>
+                              </div>
+                            ) : (
+                              <SelectValue
+                                placeholder={t('bots.selectAdapter')}
+                              />
+                            )}
+                          </SelectTrigger>
+                          <SelectContent>
+                            {groupedAdapters.map((group) => (
+                              <SelectGroup
+                                key={group.categoryId ?? 'uncategorized'}
+                              >
+                                {group.categoryId && (
+                                  <SelectLabel>
+                                    {getCategoryLabel(t, group.categoryId)}
+                                  </SelectLabel>
+                                )}
+                                {group.items.map((item) => (
+                                  <SelectItem
+                                    key={item.value}
+                                    value={item.value}
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      <img
+                                        src={httpClient.getAdapterIconURL(
+                                          item.value,
+                                        )}
+                                        alt=""
+                                        className="h-5 w-5 rounded"
+                                      />
+                                      <span>{item.label}</span>
+                                    </div>
+                                  </SelectItem>
+                                ))}
+                              </SelectGroup>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {currentAdapter &&
+                          (() => {
+                            const docUrl = getAdapterDocUrl(
+                              adapterHelpLinks[currentAdapter],
+                              i18n.language,
+                            );
+                            return docUrl ? (
+                              <a
+                                href={docUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex shrink-0 items-center gap-1 text-xs text-primary hover:underline"
+                              >
+                                {t('bots.viewAdapterDocs')}
+                                <ExternalLink className="h-3 w-3" />
+                              </a>
+                            ) : null;
+                          })()}
+                      </div>
+                    </FormControl>
+                    {currentAdapter &&
+                      adapterDescriptionList[currentAdapter] && (
+                        <FormDescription>
+                          {adapterDescriptionList[currentAdapter]}
+                        </FormDescription>
+                      )}
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
-            )}
-          </CardContent>
-        </Card>
+
+              {showDynamicForm && dynamicFormConfigList.length > 0 && (
+                <DynamicFormComponent
+                  itemConfigList={dynamicFormConfigList}
+                  initialValues={currentAdapterConfig}
+                  onSubmit={(values) => {
+                    form.setValue('adapter_config', values, {
+                      shouldDirty: !isInitializing.current,
+                    });
+                  }}
+                  systemContext={{
+                    webhook_url: webhookUrl,
+                    extra_webhook_url: extraWebhookUrl,
+                    bot_uuid: initBotId || '',
+                    adapter_config: form.getValues('adapter_config') || {},
+                    outbound_ips: systemInfo.outbound_ips,
+                  }}
+                />
+              )}
+            </CardContent>
+          </Card>
+        </fieldset>
       </form>
     </Form>
   );
