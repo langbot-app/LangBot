@@ -10,11 +10,13 @@ import {
   setDebugChatStreamOutput,
 } from "./lib/debug-chat.mjs";
 import {
+  beginBackendLogCapture,
   createBrowser,
   ensureAuthenticatedBrowser,
   ensureEvidence,
   evidencePaths,
   exitCode,
+  finishBackendLogCapture,
   localIsoWithOffset,
   pathExists,
   safeScreenshot,
@@ -25,6 +27,7 @@ import {
 const caseId = env.LBS_CASE_ID || "pipeline-debug-chat";
 const paths = evidencePaths(caseId);
 await ensureEvidence(paths);
+const backendLogCapture = await beginBackendLogCapture(paths.evidenceDir);
 
 const expectedText = env.LANGBOT_E2E_EXPECTED_TEXT || "OK";
 const prompt = env.LANGBOT_E2E_PROMPT || `请只回复 ${expectedText}，用于前端调试测试。`;
@@ -1062,6 +1065,12 @@ try {
     result.pipeline_config_restore = restoreDiagnostic;
   }
   if (browser) await browser.close().catch(() => {});
+  const backendLog = await finishBackendLogCapture(backendLogCapture);
+  if (backendLog) {
+    result.evidence.backend_log = backendLog.path;
+    result.backend_log = backendLog;
+    if (!result.evidence_collected.includes("backend_log")) result.evidence_collected.push("backend_log");
+  }
   const finishedAt = new Date();
   result.finished_at = finishedAt.toISOString();
   result.finished_at_local = localIsoWithOffset(finishedAt);

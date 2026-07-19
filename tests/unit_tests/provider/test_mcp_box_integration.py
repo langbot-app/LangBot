@@ -6,6 +6,7 @@ triggering the circular import chain through the app module.
 
 from __future__ import annotations
 
+import asyncio
 import importlib
 import importlib.util
 import os
@@ -680,14 +681,29 @@ class TestGetRuntimeInfoDict:
         # ... but are isolated by distinct process_ids within that session.
         assert transient._box_stdio_runtime.process_id != live._box_stdio_runtime.process_id
 
-    def test_stdio_session_refuses_when_box_unavailable(self, mcp_module):
-        """Policy: when Box is configured but unavailable (disabled in config
-        OR connection failed), stdio MCP servers are NOT treated as box-stdio.
-        ``_init_stdio_python_server`` will raise a clear refusal at start
-        time; until then, the runtime info simply omits box_session_id so the
-        UI can render the disabled state cleanly."""
+    def test_stdio_session_keeps_box_transport_while_runtime_reconnects(self, mcp_module):
         ap = _make_ap()
         ap.box_service.available = False
+        ap.box_service.enabled = True
+        s = _make_session(
+            mcp_module,
+            {
+                'name': 'test',
+                'uuid': 'test-uuid',
+                'mode': 'stdio',
+                'command': 'python',
+                'args': [],
+            },
+            ap=ap,
+        )
+        info = s.get_runtime_info_dict()
+        assert info['box_session_id'] == 'mcp-shared'
+        assert info['box_enabled'] is True
+
+    def test_stdio_session_refuses_when_box_is_disabled(self, mcp_module):
+        ap = _make_ap()
+        ap.box_service.available = False
+        ap.box_service.enabled = False
         s = _make_session(
             mcp_module,
             {
@@ -755,6 +771,216 @@ class TestBoxConfigParsing:
         assert isinstance(s.box_config, mcp_module.MCPServerBoxConfig)
         assert s.box_config.image is None
         assert s.box_config.host_path_mode == 'ro'
+
+
+@pytest.mark.asyncio
+async def test_lifecycle_cleanup_timeout_does_not_block_box_stdio_retry(mcp_module, monkeypatch):
+    class HangingExitStack:
+        async def aclose(self):
+            await asyncio.Event().wait()
+
+    session = _make_session(
+        mcp_module,
+        {
+            'name': 'cleanup-timeout',
+            'uuid': 'cleanup-timeout-uuid',
+            'mode': 'stdio',
+            'command': 'python',
+            'args': [],
+        },
+    )
+    session.exit_stack = HangingExitStack()
+    session.functions.append(Mock())
+    session.resources.append({'uri': 'test://stale'})
+    session.session = Mock()
+    session._cleanup_box_stdio_session = AsyncMock()
+    monkeypatch.setattr(mcp_module, 'MCP_TRANSPORT_CLEANUP_TIMEOUT_SECONDS', 0.01)
+
+    await asyncio.wait_for(session._cleanup_lifecycle_attempt(), timeout=1)
+
+    assert isinstance(session.exit_stack, mcp_module.AsyncExitStack)
+    assert session.functions == []
+    assert session.resources == []
+    assert session.session is None
+    session._cleanup_box_stdio_session.assert_awaited_once()
+    session.ap.logger.warning.assert_called_once_with(
+        'Timed out cleaning up MCP transport for cleanup-timeout; continuing lifecycle recovery'
+    )
+
+
+@pytest.mark.asyncio
+async def test_lifecycle_transport_cleanup_error_is_recovery_warning(mcp_module):
+    class FailingExitStack:
+        async def aclose(self):
+            raise RuntimeError('transport already closed')
+
+    session = _make_session(
+        mcp_module,
+        {
+            'name': 'cleanup-error',
+            'uuid': 'cleanup-error-uuid',
+            'mode': 'stdio',
+            'command': 'python',
+            'args': [],
+        },
+    )
+    session.exit_stack = FailingExitStack()
+    session._cleanup_box_stdio_session = AsyncMock()
+
+    await session._cleanup_lifecycle_attempt()
+
+    session.ap.logger.warning.assert_called_once_with(
+        'Error cleaning up MCP transport for cleanup-error; '
+        'continuing lifecycle recovery: RuntimeError: transport already closed'
+    )
+    session.ap.logger.error.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_unexpected_box_stdio_transport_cancellation_becomes_retryable_error(mcp_module, monkeypatch):
+    session = _make_session(
+        mcp_module,
+        {
+            'name': 'cancelled-transport',
+            'uuid': 'cancelled-transport-uuid',
+            'mode': 'stdio',
+            'command': 'python',
+            'args': [],
+        },
+    )
+    session._uses_box_stdio = Mock(return_value=True)
+    lifecycle_calls = 0
+
+    async def cancelled_then_shutdown():
+        nonlocal lifecycle_calls
+        lifecycle_calls += 1
+        if lifecycle_calls == 1:
+            raise asyncio.CancelledError()
+        session._shutdown_event.set()
+
+    session._lifecycle_loop = AsyncMock(side_effect=cancelled_then_shutdown)
+    session._cleanup_box_stdio_session = AsyncMock()
+    session.functions.append(Mock())
+    session.resources.append({'uri': 'test://stale'})
+    session.resource_templates.append({'uri_template': 'test://{id}'})
+    session.resource_capabilities = {'subscribe': True}
+    session._resource_cache[('test://stale', 1, None, False)] = {'content': 'stale'}
+    session.session = Mock()
+    monkeypatch.setattr(session, '_RETRY_DELAYS', [0, 0, 0])
+
+    await session._lifecycle_loop_with_retry()
+
+    assert session._lifecycle_loop.await_count == 2
+    assert session.functions == []
+    assert session.resources == []
+    assert session.resource_templates == []
+    assert session.resource_capabilities == {}
+    assert session._resource_cache == {}
+    assert session.session is None
+    session.ap.logger.error.assert_called_once_with(
+        'Error in MCP session lifecycle cancelled-transport: '
+        'Box MCP transport task was cancelled unexpectedly'
+    )
+
+
+@pytest.mark.asyncio
+async def test_cancelled_lifecycle_closes_transport_in_its_own_task(mcp_module):
+    class TrackingExitStack:
+        def __init__(self):
+            self.close_task = None
+
+        async def aclose(self):
+            self.close_task = asyncio.current_task()
+
+    session = _make_session(
+        mcp_module,
+        {
+            'name': 'same-task-cleanup',
+            'uuid': 'same-task-cleanup-uuid',
+            'mode': 'stdio',
+            'command': 'python',
+            'args': [],
+        },
+    )
+    transport_stack = TrackingExitStack()
+    session.exit_stack = transport_stack
+    session._init_stdio_python_server = AsyncMock(side_effect=asyncio.CancelledError())
+    session._cleanup_box_stdio_session = AsyncMock()
+
+    lifecycle_task = asyncio.create_task(session._lifecycle_loop())
+    with pytest.raises(asyncio.CancelledError):
+        await lifecycle_task
+
+    assert transport_stack.close_task is lifecycle_task
+    session._cleanup_box_stdio_session.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_connected_lifecycle_failures_receive_fresh_retry_budgets(mcp_module, monkeypatch):
+    session = _make_session(
+        mcp_module,
+        {
+            'name': 'repeated-runtime-recovery',
+            'uuid': 'repeated-runtime-recovery-uuid',
+            'mode': 'stdio',
+            'command': 'python',
+            'args': [],
+        },
+    )
+    session._uses_box_stdio = Mock(return_value=True)
+    session._cleanup_box_stdio_session = AsyncMock()
+    lifecycle_calls = 0
+
+    async def connected_then_failed_repeatedly():
+        nonlocal lifecycle_calls
+        lifecycle_calls += 1
+        if lifecycle_calls <= 4:
+            session._connection_generation += 1
+            raise RuntimeError(f'runtime failure {lifecycle_calls}')
+        session._shutdown_event.set()
+
+    session._lifecycle_loop = AsyncMock(side_effect=connected_then_failed_repeatedly)
+    monkeypatch.setattr(session, '_MAX_RETRIES', 1)
+    monkeypatch.setattr(session, '_RETRY_DELAYS', [0])
+
+    await session._lifecycle_loop_with_retry()
+
+    assert session._lifecycle_loop.await_count == 5
+    assert session.retry_count == 4
+    assert session.status != mcp_module.MCPSessionStatus.ERROR
+
+
+@pytest.mark.asyncio
+async def test_unexpected_box_stdio_lifecycle_return_is_retried(mcp_module, monkeypatch):
+    session = _make_session(
+        mcp_module,
+        {
+            'name': 'ended-transport',
+            'uuid': 'ended-transport-uuid',
+            'mode': 'stdio',
+            'command': 'python',
+            'args': [],
+        },
+    )
+    session._uses_box_stdio = Mock(return_value=True)
+    session._cleanup_box_stdio_session = AsyncMock()
+    lifecycle_calls = 0
+
+    async def ended_then_shutdown():
+        nonlocal lifecycle_calls
+        lifecycle_calls += 1
+        if lifecycle_calls == 2:
+            session._shutdown_event.set()
+
+    session._lifecycle_loop = AsyncMock(side_effect=ended_then_shutdown)
+    monkeypatch.setattr(session, '_RETRY_DELAYS', [0, 0, 0])
+
+    await session._lifecycle_loop_with_retry()
+
+    assert session._lifecycle_loop.await_count == 2
+    session.ap.logger.error.assert_called_once_with(
+        'Error in MCP session lifecycle ended-transport: Box MCP lifecycle ended unexpectedly'
+    )
 
 
 @pytest.mark.asyncio

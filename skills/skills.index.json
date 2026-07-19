@@ -155,6 +155,7 @@
         "agent-runner-release-preflight",
         "agent-runner-runtime-chaos",
         "bot-event-routing-product-flow",
+        "box-mcp-heartbeat-recovery",
         "dify-agent-debug-chat",
         "langbot-fake-provider-debug-chat-cross-pipeline-isolation",
         "langbot-fake-provider-debug-chat-fault-recovery",
@@ -565,6 +566,37 @@
             "screenshot",
             "console",
             "api_diagnostic"
+          ]
+        },
+        {
+          "id": "box-mcp-heartbeat-recovery",
+          "title": "Box heartbeat restores an existing stdio MCP tool session",
+          "mode": "probe",
+          "area": "reliability",
+          "type": "chaos",
+          "priority": "p1",
+          "risk": "high",
+          "ci_eligible": false,
+          "tags": [
+            "box",
+            "mcp",
+            "stdio",
+            "reliability",
+            "chaos",
+            "fault-injection"
+          ],
+          "automation": "skills/langbot-testing/probes/box-mcp-heartbeat-recovery.mjs",
+          "setup_automation": [],
+          "setup_provides_env": [],
+          "evidence_required": [
+            "ui",
+            "screenshot",
+            "console",
+            "network",
+            "metrics",
+            "api_diagnostic",
+            "resource_log",
+            "filesystem"
           ]
         },
         {
@@ -2231,7 +2263,8 @@
           "kind": "python",
           "path": "fixtures/mcp/qa_mcp_echo_server.py",
           "related_cases": [
-            "mcp-stdio-tool-call"
+            "mcp-stdio-tool-call",
+            "box-mcp-heartbeat-recovery"
           ]
         },
         {

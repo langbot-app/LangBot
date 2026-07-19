@@ -28,6 +28,11 @@ automation_env:
   - LANGBOT_LOCAL_AGENT_PIPELINE_NAME
 automation_pipeline_url_env: LANGBOT_LOCAL_AGENT_PIPELINE_URL
 automation_pipeline_name_env: LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+automation_expected_runner_id: "plugin:langbot-team/LocalAgent/default"
+automation_extensions_patch_json: '{"enable_all_plugins":false,"bound_plugins":[{"author":"langbot-team","name":"LocalAgent"},{"author":"qa","name":"plugin-smoke"}],"enable_all_mcp_servers":false,"bound_mcp_servers":[],"enable_all_skills":false,"bound_skills":[]}'
+automation_restore_extensions: "1"
+automation_reset_debug_chat: "1"
+automation_debug_chat_session_type: "person"
 automation_prompt: "qa-effective-prompt"
 automation_expected_text: "PROMPT_PREPROCESS_OK"
 automation_response_timeout_ms: "180000"

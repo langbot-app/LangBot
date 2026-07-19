@@ -125,3 +125,24 @@ async def test_box_runtime_connector_heartbeat_failure_requests_reconnect(monkey
     await heartbeat
 
     assert callbacks == [connector]
+
+
+@pytest.mark.asyncio
+async def test_box_runtime_stdio_disconnect_requests_reconnect(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr('langbot.pkg.utils.platform.standalone_box', False)
+    logger = Mock()
+    on_disconnect = AsyncMock()
+    handler = SimpleNamespace(
+        call_action=AsyncMock(return_value={}),
+        run=AsyncMock(return_value=None),
+    )
+    monkeypatch.setattr('langbot.pkg.box.connector.Handler', Mock(return_value=handler))
+    connector = BoxRuntimeConnector(make_app(logger), runtime_disconnect_callback=on_disconnect)
+    connected = asyncio.Event()
+
+    callback = connector._make_connection_callback('stdio', connected, [])
+    await callback(Mock())
+
+    assert connected.is_set()
+    on_disconnect.assert_awaited_once_with(connector)
+    logger.error.assert_called_once_with('Disconnected from Box runtime, trying to reconnect...')

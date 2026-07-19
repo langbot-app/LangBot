@@ -41,7 +41,7 @@
     "title": "MCP stdio qa_mcp_echo server",
     "kind": "python",
     "path": "fixtures/mcp/qa_mcp_echo_server.py",
-    "related_cases": ["mcp-stdio-tool-call"],
+    "related_cases": ["mcp-stdio-tool-call", "box-mcp-heartbeat-recovery"],
     "checks": ["exists", "direct_mcp_script", "langbot_registration_script"]
   },
   {

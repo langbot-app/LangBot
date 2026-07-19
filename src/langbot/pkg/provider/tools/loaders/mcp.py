@@ -45,6 +45,7 @@ MCP_RESOURCE_CONTEXT_MAX_BYTES = 96 * 1024
 MCP_RESOURCE_TRACE_QUERY_KEY = '_mcp_resource_reads'
 MCP_RESOURCE_LINKS_QUERY_KEY = '_mcp_resource_links'
 MCP_RESOURCE_CONTEXT_QUERY_KEY = '_mcp_resource_context'
+MCP_TRANSPORT_CLEANUP_TIMEOUT_SECONDS = 5.0
 
 TEXT_LIKE_MIME_TYPES = {
     'application/json',
@@ -282,6 +283,7 @@ class RuntimeMCPSession:
         # together, instead of each racing to rebuild the session itself.
         self._reconnect_event = asyncio.Event()
         self._reconnected_event: asyncio.Event | None = None
+        self._connection_generation = 0
         # Set transiently when a WS transport drop should NOT stop the managed
         # process (it will be re-attached on the next initialize()).
         self._preserve_managed_process = False
@@ -423,6 +425,7 @@ class RuntimeMCPSession:
 
     async def _lifecycle_loop(self):
         """Manage the full MCP session lifecycle in a background task."""
+        wait_tasks: list[asyncio.Task] = []
         try:
             if self.server_config['mode'] == 'stdio':
                 await self._init_stdio_python_server()
@@ -438,6 +441,7 @@ class RuntimeMCPSession:
             await self.refresh()
 
             self.status = MCPSessionStatus.CONNECTED
+            self._connection_generation += 1
 
             # Notify start() that connection is established
             self._ready_event.set()
@@ -447,8 +451,9 @@ class RuntimeMCPSession:
                 monitor_task = asyncio.create_task(self._box_stdio_runtime.monitor_process_health())
                 shutdown_task = asyncio.create_task(self._shutdown_event.wait())
                 reconnect_task = asyncio.create_task(self._reconnect_event.wait())
+                wait_tasks = [shutdown_task, monitor_task, reconnect_task]
                 done, pending = await asyncio.wait(
-                    [shutdown_task, monitor_task, reconnect_task],
+                    wait_tasks,
                     return_when=asyncio.FIRST_COMPLETED,
                 )
                 for task in pending:
@@ -516,31 +521,31 @@ class RuntimeMCPSession:
             # are exhausted or on success.
             raise  # Re-raise so _lifecycle_loop_with_retry can catch it
         finally:
-            # Clean up all resources in the same task
-            try:
-                if self.exit_stack:
-                    await self.exit_stack.aclose()
-                    self.exit_stack = AsyncExitStack()
-                self.functions.clear()
-                self.resources.clear()
-                self.session = None
-            except Exception as e:
-                self.ap.logger.error(f'Error cleaning up MCP session {self.server_name}: {e}\n{traceback.format_exc()}')
-            finally:
-                # On a transport-only reconnect the managed process is healthy
-                # and will be re-attached on the next initialize(); do NOT stop
-                # it. Any other exit path fully tears the session down.
-                if getattr(self, '_preserve_managed_process', False):
-                    self._preserve_managed_process = False
-                else:
-                    await self._cleanup_box_stdio_session()
+            for task in wait_tasks:
+                if not task.done():
+                    task.cancel()
+            # AsyncExitStack contains AnyIO cancel scopes that must exit in
+            # the same task where their contexts were entered.
+            await self._cleanup_lifecycle_attempt()
 
     async def _lifecycle_loop_with_retry(self):
         """Wrap _lifecycle_loop with retry and exponential backoff."""
         attempt = 0
         while attempt <= self._MAX_RETRIES:
+            connection_generation_before = self._connection_generation
             try:
-                await self._lifecycle_loop()
+                lifecycle_task = asyncio.create_task(self._lifecycle_loop())
+                try:
+                    await lifecycle_task
+                except asyncio.CancelledError as exc:
+                    if self._shutdown_event.is_set():
+                        return
+                    if not self._uses_box_stdio():
+                        raise
+                    error = self._prepare_box_transport_retry('Box MCP transport task was cancelled unexpectedly')
+                    raise error from exc
+                if self._uses_box_stdio() and not self._shutdown_event.is_set():
+                    raise self._prepare_box_transport_retry('Box MCP lifecycle ended unexpectedly')
                 return  # Normal shutdown, don't retry
             except _TransportReconnect as e:
                 # Transient WS transport drop while the managed process is still
@@ -614,9 +619,15 @@ class RuntimeMCPSession:
                 await asyncio.sleep(2)
                 continue
             except Exception as e:
-                self.retry_count = attempt + 1
+                self.retry_count += 1
                 if self._shutdown_event.is_set():
                     return  # Shutdown requested, don't retry
+                # A lifecycle that reached CONNECTED proved its preceding
+                # startup attempt was healthy. Give a later runtime failure a
+                # fresh consecutive-startup retry budget instead of exhausting
+                # the budget across the entire process lifetime.
+                if self._connection_generation > connection_generation_before:
+                    attempt = 0
                 # BOX_UNAVAILABLE is a deliberate refusal, not a transient
                 # failure — retrying produces log spam and a misleading
                 # "Failed after N attempts" message. Surface it immediately.
@@ -635,13 +646,65 @@ class RuntimeMCPSession:
                     f'MCP session {self.server_name} failed (attempt {attempt + 1}), '
                     f'retrying in {delay}s: {self._describe_exception(e)}'
                 )
-                await self._cleanup_box_stdio_session()
                 # Reset status for retry
                 self.status = MCPSessionStatus.CONNECTING
                 self.error_message = None
                 self.error_phase = None
                 await asyncio.sleep(delay)
                 attempt += 1
+
+    def _prepare_box_transport_retry(self, message: str) -> RuntimeError:
+        error = RuntimeError(message)
+        self.status = MCPSessionStatus.ERROR
+        self.error_message = str(error)
+        self.error_phase = MCPSessionErrorPhase.RELAY_CONNECT
+        self.ap.logger.error(f'Error in MCP session lifecycle {self.server_name}: {error}')
+        self.functions.clear()
+        self.resources.clear()
+        self.resource_templates.clear()
+        self.resource_capabilities = {}
+        self._resource_cache.clear()
+        self.session = None
+        return error
+
+    async def _cleanup_lifecycle_attempt(self) -> None:
+        stale_exit_stack = self.exit_stack
+        self.exit_stack = AsyncExitStack()
+        try:
+            async with asyncio.timeout(MCP_TRANSPORT_CLEANUP_TIMEOUT_SECONDS):
+                await stale_exit_stack.aclose()
+        except TimeoutError:
+            self.ap.logger.warning(
+                f'Timed out cleaning up MCP transport for {self.server_name}; continuing lifecycle recovery'
+            )
+        except asyncio.CancelledError:
+            self.ap.logger.warning(
+                f'MCP transport cleanup was cancelled for {self.server_name}; continuing lifecycle recovery'
+            )
+        except Exception as e:
+            self.ap.logger.warning(
+                f'Error cleaning up MCP transport for {self.server_name}; '
+                f'continuing lifecycle recovery: {self._describe_exception(e)}'
+            )
+
+        self.functions.clear()
+        self.resources.clear()
+        self.resource_templates.clear()
+        self.resource_capabilities = {}
+        self._resource_cache.clear()
+        self.session = None
+        if self._preserve_managed_process:
+            self._preserve_managed_process = False
+            return
+        try:
+            await asyncio.wait_for(
+                self._cleanup_box_stdio_session(),
+                timeout=MCP_TRANSPORT_CLEANUP_TIMEOUT_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            self.ap.logger.warning(
+                f'Timed out cleaning up MCP managed process for {self.server_name}; continuing lifecycle recovery'
+            )
 
     @staticmethod
     def _describe_exception(exc: BaseException) -> str:

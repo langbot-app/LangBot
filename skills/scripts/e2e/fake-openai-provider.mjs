@@ -585,10 +585,18 @@ function buildResponse(payload) {
     return buildSummaryResponse(text);
   }
 
+  if (/qa-effective-prompt/i.test(current) && /PROMPT_PREPROCESS_OK/.test(text)) {
+    return { role: "assistant", content: "PROMPT_PREPROCESS_OK" };
+  }
+
   const pluginTool = firstToolName(tools, ["qa_plugin_echo"]);
   const pluginFailTool = firstToolName(tools, ["qa_plugin_fail"]);
   const pluginSleepTool = firstToolName(tools, ["qa_plugin_sleep"]);
   const mcpTool = firstToolName(tools, ["qa_mcp_echo"]);
+  const requestedMcpEchoText = current.match(
+    /qa_mcp_echo[\s\S]*?exactly this text:\s*([A-Za-z0-9_:-]+)/i,
+  )?.[1] || "mcp-ok-local-agent";
+  const expectedMcpEchoResult = `qa_mcp_echo:${requestedMcpEchoText}`;
 
   if (/STEERING_NO_FOLLOWUP|qa_plugin_sleep|steering-e2e-anchor|qa_steering_sentinel_6194/i.test(current || text)) {
     if (text.includes(STEERING_FOLLOWUP_SENTINEL) && text.includes(STEERING_SLEEP_RESULT)) {
@@ -620,9 +628,9 @@ function buildResponse(payload) {
   if (/COMBO_CONTEXT_PRESSURE_READY/.test(current)) return { role: "assistant", content: "COMBO_CONTEXT_PRESSURE_READY" };
   if (/CONTEXT_PRESSURE_READY/.test(current)) return { role: "assistant", content: "CONTEXT_PRESSURE_READY" };
 
-  if (/qa_mcp_echo:mcp-ok-local-agent/.test(text)) return { role: "assistant", content: "qa_mcp_echo:mcp-ok-local-agent" };
-  if (/qa_mcp_echo|mcp-ok-local-agent/i.test(current || text) && mcpTool && !/qa_mcp_echo:mcp-ok-local-agent/.test(text)) {
-    return toolCall("call_qa_mcp_echo", mcpTool, { text: "mcp-ok-local-agent" });
+  if (text.includes(expectedMcpEchoResult)) return { role: "assistant", content: expectedMcpEchoResult };
+  if (/qa_mcp_echo|mcp-ok-local-agent/i.test(current || text) && mcpTool && !text.includes(expectedMcpEchoResult)) {
+    return toolCall("call_qa_mcp_echo", mcpTool, { text: requestedMcpEchoText });
   }
 
   if (/LOOP_LIMIT|loop-limit-repeat-local-agent|iteration limit/i.test(current || text) && pluginTool) {

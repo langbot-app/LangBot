@@ -5,8 +5,8 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import datetime
 import json
-import os
 import pathlib
 import re
 import sys
@@ -47,7 +47,48 @@ def load_json(value: str | None, *, field: str, failures: list[dict]) -> object:
         return {}
 
 
-async def audit(repo: pathlib.Path, run_id: str | None) -> dict:
+def parse_created_after(value: str | None) -> datetime.datetime | None:
+    if not value:
+        return None
+    parsed = datetime.datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.tzinfo is not None:
+        parsed = parsed.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+    return parsed
+
+
+def event_matches_tool_call(data_json: str | None, tool_name: str, parameters: dict | None) -> bool:
+    try:
+        data = json.loads(data_json or "{}")
+    except (TypeError, ValueError):
+        return False
+    if not isinstance(data, dict) or data.get("tool_name") != tool_name:
+        return False
+    return parameters is None or data.get("parameters") == parameters
+
+
+def collect_result_texts(value: object) -> list[str]:
+    texts: list[str] = []
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if key == "text" and isinstance(item, str):
+                texts.append(item)
+            else:
+                texts.extend(collect_result_texts(item))
+    elif isinstance(value, list):
+        for item in value:
+            texts.extend(collect_result_texts(item))
+    return texts
+
+
+async def audit(
+    repo: pathlib.Path,
+    run_id: str | None,
+    *,
+    created_after: datetime.datetime | None = None,
+    expected_tool_name: str | None = None,
+    expected_parameters: dict | None = None,
+    expected_result_text: str | None = None,
+) -> dict:
     engine = create_async_engine(database_url(repo))
     failures: list[dict] = []
     warnings: list[dict] = []
@@ -58,12 +99,41 @@ async def audit(repo: pathlib.Path, run_id: str | None) -> dict:
                     sqlalchemy.text("SELECT * FROM agent_run WHERE run_id = :run_id"),
                     {"run_id": run_id},
                 )).mappings().first()
+            elif expected_tool_name:
+                query = "SELECT * FROM agent_run"
+                params = {}
+                if created_after is not None:
+                    query += " WHERE created_at >= :created_after"
+                    params["created_after"] = created_after
+                query += " ORDER BY id DESC LIMIT 100"
+                candidates = (await connection.execute(sqlalchemy.text(query), params)).mappings().all()
+                run_row = None
+                for candidate in candidates:
+                    started_rows = (await connection.execute(
+                        sqlalchemy.text(
+                            "SELECT data_json FROM agent_run_event "
+                            "WHERE run_id = :run_id AND type = 'tool.call.started' ORDER BY sequence"
+                        ),
+                        {"run_id": str(candidate["run_id"])},
+                    )).mappings().all()
+                    if any(
+                        event_matches_tool_call(row.get("data_json"), expected_tool_name, expected_parameters)
+                        for row in started_rows
+                    ):
+                        run_row = candidate
+                        break
             else:
                 run_row = (await connection.execute(
                     sqlalchemy.text("SELECT * FROM agent_run ORDER BY id DESC LIMIT 1")
                 )).mappings().first()
             if run_row is None:
-                return {"status": "env_issue", "reason": "No matching AgentRunner run exists.", "failures": [], "warnings": []}
+                status = "fail" if expected_tool_name else "env_issue"
+                return {
+                    "status": status,
+                    "reason": "No AgentRunner run contains the expected tool call." if expected_tool_name else "No matching AgentRunner run exists.",
+                    "failures": [{"kind": "expected_tool_call_missing"}] if expected_tool_name else [],
+                    "warnings": [],
+                }
 
             selected_run_id = str(run_row["run_id"])
             event_rows = (await connection.execute(
@@ -173,6 +243,36 @@ async def audit(repo: pathlib.Path, run_id: str | None) -> dict:
     if not tools:
         warnings.append({"kind": "no_authorized_tools", "reason": "The run authorization snapshot exposes no tools."})
 
+    expected_call_summary = None
+    if expected_tool_name:
+        matching_starts = [
+            item
+            for items in starts.values()
+            for item in items
+            if item["tool_name"] == expected_tool_name
+            and (expected_parameters is None or item["data"].get("parameters") == expected_parameters)
+        ]
+        if len(matching_starts) != 1:
+            failures.append({"kind": "expected_tool_call_count", "actual": len(matching_starts), "expected": 1})
+        matching_completions = []
+        for started in matching_starts:
+            call_id = str(started["data"].get("tool_call_id", ""))
+            matching_completions.extend(completions.get(call_id, []))
+        result_text_match = expected_result_text is None or any(
+            expected_result_text in collect_result_texts(completed["data"].get("result"))
+            for completed in matching_completions
+        )
+        if expected_result_text is not None and not result_text_match:
+            failures.append({"kind": "expected_tool_result_text_missing"})
+        expected_call_summary = {
+            "tool_name": expected_tool_name,
+            "parameters_match_required": expected_parameters is not None,
+            "matched_started_count": len(matching_starts),
+            "matched_completed_count": len(matching_completions),
+            "result_text_match_required": expected_result_text is not None,
+            "result_text_match": result_text_match,
+        }
+
     metrics = {
         "event_count": len(event_rows),
         "tool_call_started": sum(len(items) for items in starts.values()),
@@ -193,6 +293,7 @@ async def audit(repo: pathlib.Path, run_id: str | None) -> dict:
             "finished_at": str(run_row["finished_at"]),
         },
         "metrics": metrics,
+        "expected_tool_call": expected_call_summary,
         "failures": failures,
         "warnings": warnings,
     }
@@ -202,10 +303,28 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo", required=True)
     parser.add_argument("--run-id")
+    parser.add_argument("--created-after")
+    parser.add_argument("--expected-tool-name")
+    parser.add_argument("--expected-parameters-json")
+    parser.add_argument("--expected-result-text")
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
     try:
-        report = asyncio.run(audit(pathlib.Path(args.repo).resolve(), args.run_id))
+        expected_parameters = None
+        if args.expected_parameters_json:
+            expected_parameters = json.loads(args.expected_parameters_json)
+            if not isinstance(expected_parameters, dict):
+                raise ValueError("--expected-parameters-json must decode to an object")
+        if (expected_parameters is not None or args.expected_result_text) and not args.expected_tool_name:
+            raise ValueError("--expected-tool-name is required with expected parameters or result text")
+        report = asyncio.run(audit(
+            pathlib.Path(args.repo).resolve(),
+            args.run_id,
+            created_after=parse_created_after(args.created_after),
+            expected_tool_name=args.expected_tool_name,
+            expected_parameters=expected_parameters,
+            expected_result_text=args.expected_result_text,
+        ))
     except Exception as exc:  # noqa: BLE001 - probe must classify environment failures
         report = {"status": "env_issue", "reason": str(exc), "failures": [], "warnings": []}
     pathlib.Path(args.output).write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")

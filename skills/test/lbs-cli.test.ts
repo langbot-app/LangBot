@@ -58,7 +58,9 @@ import {
   minExpectedOccurrences,
 } from "../scripts/e2e/lib/debug-chat.mjs";
 import {
+  beginBackendLogCapture,
   ensureAuthenticatedBrowser,
+  finishBackendLogCapture,
   resolveLangBotRepo,
   scanBrowserDiagnostics,
 } from "../scripts/e2e/lib/langbot-e2e.mjs";
@@ -91,6 +93,26 @@ test("e2e helpers resolve embedded LangBot repo from skills cwd", async () => {
     );
 
     assert.equal(await resolveLangBotRepo("", skills), repo);
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("e2e helpers capture only the current backend log window", async () => {
+  const tmp = mkdtempSync(join(tmpdir(), "lbs-backend-log-window-"));
+  try {
+    const source = join(tmp, "backend-source.log");
+    writeFileSync(source, "old startup line\n");
+    const capture = await beginBackendLogCapture(tmp, source);
+    appendFileSync(source, "current request line\ncurrent completion line\n");
+
+    const completed = await finishBackendLogCapture(capture);
+
+    assert.ok(completed);
+    assert.equal(
+      readFileSync(completed.path, "utf8"),
+      "current request line\ncurrent completion line\n",
+    );
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }
@@ -3494,6 +3516,81 @@ test("fake provider returns IMAGE_OK only when image metadata is present", async
       "IMAGE_OK",
     );
     assert.equal(await request("Say hello for a plain text request."), "OK");
+  } finally {
+    await provider.stop();
+  }
+});
+
+test("fake provider requires the effective system prompt before returning its sentinel", async () => {
+  const provider = await startFakeProviderForTest();
+  try {
+    const withEffectivePrompt = fakeProviderMessage(
+      await requestFakeProvider(provider, {
+        messages: [
+          {
+            role: "system",
+            content:
+              "When the current user message contains qa-effective-prompt, reply only PROMPT_PREPROCESS_OK.",
+          },
+          { role: "user", content: "qa-effective-prompt" },
+        ],
+      }),
+    );
+    assert.equal(withEffectivePrompt.content, "PROMPT_PREPROCESS_OK");
+
+    const withoutEffectivePrompt = fakeProviderMessage(
+      await requestFakeProvider(provider, {
+        messages: [{ role: "user", content: "qa-effective-prompt" }],
+      }),
+    );
+    assert.equal(withoutEffectivePrompt.content, "OK");
+  } finally {
+    await provider.stop();
+  }
+});
+
+test("fake provider preserves a unique qa_mcp_echo probe value across the tool loop", async () => {
+  const provider = await startFakeProviderForTest();
+  const tool = {
+    type: "function",
+    function: {
+      name: "qa_mcp_echo",
+      parameters: {
+        type: "object",
+        properties: { text: { type: "string" } },
+      },
+    },
+  };
+  try {
+    const initial = fakeProviderMessage(
+      await requestFakeProvider(provider, {
+        tools: [tool],
+        messages: [{
+          role: "user",
+          content: "Call qa_mcp_echo with exactly this text: box-recovery-unique-42. Return only the tool result.",
+        }],
+      }),
+    );
+    assert.equal(initial.tool_calls?.[0]?.function?.name, "qa_mcp_echo");
+    assert.deepEqual(
+      JSON.parse(initial.tool_calls?.[0]?.function?.arguments || "{}"),
+      { text: "box-recovery-unique-42" },
+    );
+
+    const completed = fakeProviderMessage(
+      await requestFakeProvider(provider, {
+        tools: [tool],
+        messages: [
+          {
+            role: "user",
+            content: "Call qa_mcp_echo with exactly this text: box-recovery-unique-42. Return only the tool result.",
+          },
+          initial,
+          { role: "tool", tool_call_id: initial.tool_calls?.[0]?.id, content: "qa_mcp_echo:box-recovery-unique-42" },
+        ],
+      }),
+    );
+    assert.equal(completed.content, "qa_mcp_echo:box-recovery-unique-42");
   } finally {
     await provider.stop();
   }

@@ -10,11 +10,13 @@ import {
   waitForDebugChatTextStable,
 } from "./lib/debug-chat.mjs";
 import {
+  beginBackendLogCapture,
   createBrowser,
   ensureAuthenticatedBrowser,
   ensureEvidence,
   evidencePaths,
   exitCode,
+  finishBackendLogCapture,
   localIsoWithOffset,
   loadEnvFiles,
   pathExists,
@@ -27,6 +29,7 @@ await loadEnvFiles();
 const caseId = env.LBS_CASE_ID || "local-agent-steering-debug-chat";
 const paths = evidencePaths(caseId);
 await ensureEvidence(paths);
+const backendLogCapture = await beginBackendLogCapture(paths.evidenceDir);
 
 const backendUrl = (env.LANGBOT_BACKEND_URL || "").replace(/\/$/, "");
 const pipelineUrl = env.LANGBOT_E2E_PIPELINE_URL || env.LANGBOT_LOCAL_AGENT_PIPELINE_URL || env.LANGBOT_PIPELINE_URL || "";
@@ -190,6 +193,12 @@ try {
 } finally {
   if (browser?.page) await safeScreenshot(browser.page, paths.screenshot);
   if (browser) await browser.close().catch(() => {});
+  const backendLog = await finishBackendLogCapture(backendLogCapture);
+  if (backendLog) {
+    result.evidence.backend_log = backendLog.path;
+    result.backend_log = backendLog;
+    if (!result.evidence_collected.includes("backend_log")) result.evidence_collected.push("backend_log");
+  }
   const finishedAt = new Date();
   result.finished_at = finishedAt.toISOString();
   result.finished_at_local = localIsoWithOffset(finishedAt);

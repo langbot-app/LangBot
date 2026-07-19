@@ -50,6 +50,38 @@ export async function ensureEvidence(paths) {
   await appendFile(paths.networkLog, "", "utf8");
 }
 
+export async function beginBackendLogCapture(evidenceDir, sourcePath = env.LANGBOT_BACKEND_LOG || "") {
+  if (!sourcePath) return null;
+  const source = resolve(sourcePath);
+  try {
+    const info = await stat(source);
+    return {
+      source,
+      start_offset: info.size,
+      target: resolve(evidenceDir, "backend.log"),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function finishBackendLogCapture(capture) {
+  if (!capture) return null;
+  try {
+    const content = await readFile(capture.source);
+    const start = content.length >= capture.start_offset ? capture.start_offset : 0;
+    const window = content.subarray(start);
+    if (window.length === 0) return null;
+    await writeFile(capture.target, window);
+    return {
+      path: capture.target,
+      bytes: window.length,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function pathExists(path) {
   try {
     await stat(path);

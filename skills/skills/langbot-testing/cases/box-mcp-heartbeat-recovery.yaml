@@ -1,0 +1,85 @@
+id: box-mcp-heartbeat-recovery
+title: "Box heartbeat restores an existing stdio MCP tool session"
+mode: probe
+area: reliability
+type: chaos
+priority: p1
+risk: high
+ci_eligible: false
+tags:
+  - box
+  - mcp
+  - stdio
+  - reliability
+  - chaos
+  - fault-injection
+skills:
+  - langbot-env-setup
+  - langbot-testing
+env:
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_E2E_LOGIN_USER
+  - LANGBOT_REPO
+  - LANGBOT_LOCAL_AGENT_PIPELINE_URL
+  - LANGBOT_MCP_QA_STDIO_SERVER_UUID
+automation: skills/langbot-testing/probes/box-mcp-heartbeat-recovery.mjs
+automation_env:
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_E2E_LOGIN_USER
+  - LANGBOT_REPO
+  - LANGBOT_BROWSER_PROFILE
+  - LANGBOT_CHROMIUM_EXECUTABLE
+  - LANGBOT_LOCAL_AGENT_PIPELINE_URL
+  - LANGBOT_MCP_QA_STDIO_SERVER_UUID
+metrics_thresholds_json: '{"recovery_duration_ms":{"max":30000},"mcp_retry_count_increased":{"min":1},"debug_chat_status":{"equals":"pass"},"ledger_tool_call_status":{"equals":"pass"}}'
+fault_model_json: '{"target":"local Box runtime child owned by the active LangBot checkout","fault":"SIGTERM","blast_radius":"one local development instance","expected_recovery":"heartbeat replaces Box, existing MCP session reconnects, and a fresh browser Debug Chat tool call passes without MCP registration"}'
+load_profile_json: '{"requests":1,"concurrency":1,"classification":"recovery-not-throughput-benchmark"}'
+preconditions:
+  - "Run only against a disposable local LangBot development instance; never use a shared or production-like backend."
+  - "The selected Local Agent pipeline uses a model route that supports qa_mcp_echo tool calls."
+  - "qa-local-stdio is already connected and LANGBOT_MCP_QA_STDIO_SERVER_UUID points to it."
+steps:
+  - "Verify Box is available, the saved MCP server is connected, and qa_mcp_echo is globally visible."
+  - "Select exactly one Box child whose parent is main.py running from LANGBOT_REPO; abort on zero or multiple matches."
+  - "Send SIGTERM to that Box child and poll process, Box status, MCP runtime info, and global tools for up to 30 seconds."
+  - "Without running MCP setup or registration, reset Debug Chat and call qa_mcp_echo with a unique per-run value through the browser."
+  - "Audit the matching AgentRunner ledger run and require the exact qa_mcp_echo arguments plus the complete tool result text."
+checks:
+  - "The old Box PID exits and a new Box PID appears under the same LangBot parent."
+  - "Box returns available=true with at least one active session and managed process."
+  - "The MCP server returns connected, tool_count>=1, and a retry_count greater than preflight."
+  - "A new browser assistant message contains the unique recovery value."
+  - "The run ledger proves qa_mcp_echo was invoked with the exact unique value and completed with the full qa_mcp_echo result."
+cleanup:
+  - "The probe waits for heartbeat recovery and does not spawn Box or re-register MCP. If recovery times out, restart only the disposable local LangBot instance before further tests."
+evidence_required:
+  - ui
+  - screenshot
+  - console
+  - network
+  - metrics
+  - api_diagnostic
+  - resource_log
+  - filesystem
+diagnostics:
+  - "Set LANGBOT_BOX_RUNTIME_PID only after manually verifying the exact Box process when more than one local instance is running."
+  - "resource-log.json records each recovery poll; api-diagnostic.json retains preflight, recovered MCP state, browser, and ledger findings even when a later assertion fails."
+  - "ledger-audit.json distinguishes a real tool invocation from a model merely repeating the prompt token."
+  - "This case intentionally has no MCP registration setup step because registration during recovery would mask the product behavior under test."
+success_patterns:
+  - "Connected to Box runtime via stdio"
+  - "Box runtime reconnected, sandbox features restored"
+failure_patterns:
+  - "Box/MCP did not recover"
+  - "Expected exactly one local Box child"
+  - "Recovered Debug Chat tool call failed"
+  - "Recovered Debug Chat ledger audit failed"
+expected_failures:
+  - "Disconnected from Box runtime, trying to reconnect"
+  - "Box MCP transport task was cancelled unexpectedly"
+troubleshooting:
+  - backend-not-listening
+  - debug-chat-history-contaminates-automation
+  - local-agent-model-route-unavailable
