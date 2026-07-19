@@ -1,397 +1,465 @@
-# Cloud v2 多租户架构待决策项
+# Cloud v2 多租户架构决策与待决策项
 
-状态：`OPEN`
+状态：`PARTIALLY_DECIDED — MVP target confirmed, implementation pending`
 创建日期：2026-07-19
+最近更新：2026-07-19
 
-本文只记录架构质疑、候选方案和决策条件，不代表最终结论。在正式决策前，
-[implementation-decisions.md](./implementation-decisions.md) 中已经落地的方案仍是当前实现基线；
-正式结论需要再同步回主架构、决策日志、实施清单和协议设计。
+本文记录 Cloud v2 多租户架构中已经确认的首期决策、明确淘汰的方案和仍需在后续阶段决定的扩展项。
+“已决定”表示实现目标已经确定，不表示代码已经完成。正式实现时还需要把结论同步到
+[implementation-decisions.md](./implementation-decisions.md)、主架构、实施清单、配置模板和协议设计。
 
 ## 0. 已确认的 SaaS 拓扑前提
 
 1. SaaS 只有一个逻辑 LangBot 实例，全部 Workspace 都是该实例内的租户。
 2. 产品和领域模型中不引入 Cell 内多个 CloudInstance、Workspace Placement 或 Workspace 到 CloudInstance 的路由。
-3. 当前不实现分布式，但必须允许同一个逻辑实例未来运行多个 Core replica、Runtime supervisor replica、
-   Box gateway/worker 和 PostgreSQL shard；这些只是内部实现，不成为新的租户或产品实体。
+3. 当前不实现分布式，但同一个逻辑实例未来可以运行多个 Core、Plugin Runtime 和 Box Runtime replica，
+   也可以增加 PostgreSQL shard；这些只是内部实现，不成为新的租户或产品实体。
 4. 所有副本共享稳定的 `instance_uuid`；`replica_id`、`worker_id` 和进程地址是短期运行身份，不能写进业务资源的永久主键。
-5. `workspace_uuid` 始终是数据、任务和运行时的分片键。当前所有 Workspace 可以路由到同一个副本和数据库，
-   将来可以在不改变外部 API 的情况下路由到不同副本或 shard。
-6. generation/epoch 继续保留，但语义是执行所有权、故障转移和任务撤销，不再代表 Workspace 在多个 CloudInstance 之间 Placement。
-7. 新增 Account 或 Workspace 只新增数据行；不能因为未来可能分布式而提前创建租户专属部署、数据库或队列。
+5. `workspace_uuid` 始终是数据、任务和运行时的租户键，也是未来内部路由与分片的候选键。
+6. generation/epoch 的语义是执行所有权、故障转移和任务撤销，不代表 Workspace 在多个 CloudInstance 之间 Placement。
+7. 注册 Account 时自动创建 Workspace，但只新增目录记录和业务行，不创建租户专属部署、数据库、队列或 Runtime。
+8. OSS 仍是单租户 LangBot 实例，但允许该 Workspace 内存在多个用户；只有 SaaS 开启多 Workspace 租户模式。
 
-“单个 LangBot 实例”表示单个逻辑服务和安全域，不等于永远只能有一个 OS 进程或一个 Kubernetes replica。
-当前代码字段 `placement_generation` 在完成架构迁移前继续兼容，但目标语义和候选命名是 `execution_generation`。
+“单个 LangBot 实例”表示单个逻辑服务和安全域，不等于永远只有一个 OS 进程或一个 Kubernetes replica。
+当前代码字段 `placement_generation` 在完成架构迁移前继续兼容，目标语义和候选命名是 `execution_generation`。
+
+### 0.1 本轮确认的首期决策
+
+| 编号  | 结论                                                                                                                                               | 首期状态                           |
+| ----- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| D-001 | 一个共享 Plugin Runtime 控制面；每个运行中的 plugin installation 独占一个 nsjail 子进程；只有 digest 相同且已验证的代码/依赖 artifact 可以只读共享 | `DECIDED — implementation pending` |
+| D-002 | 一个共享 Box Runtime；Cloud 固定使用 nsjail；符合套餐的 Workspace 最多一个持久 `global` 逻辑 sandbox，普通执行按需启动 nsjail 进程                 | `DECIDED — implementation pending` |
+| D-003 | SaaS 业务数据使用 PostgreSQL shared schema、应用层作用域和 RLS 双重隔离；pgvector 使用同一 PostgreSQL，作为 SaaS 默认向量后端                      | `DECIDED — implementation pending` |
+| D-004 | stdio MCP 与 Box availability 解耦；Cloud v2 首期强制关闭 stdio MCP，避免为每个 Workspace 创建额外的 `mcp-shared` persistent sandbox               | `DECIDED — implementation pending` |
+
+Workspace 的具体创建、释放、数据导出和单 Workspace 恢复机制不在本轮决定；本文只保证这些后续能力不会改变稳定的
+`workspace_uuid`，也不会要求重建租户专属部署。
 
 ## 1. 本轮重构的最高目标
 
-本轮 Cloud v2 重构的核心目标是：
+> 共享可信控制面和基础设施池，隔离不可信执行单元；减少独立部署、扩缩容和运维组件，使新增 Account 或 Workspace 的静态成本接近零。
 
-> 共享可信控制面和基础设施池，隔离不可信执行单元；减少需要独立部署、扩缩容和运维的组件，使新增 Account 或 Workspace 的静态成本接近零。
-
-这里的“减少组件”主要指减少独立 Deployment、Service、数据库、消息系统和租户专属常驻进程，
-不是通过合并安全边界来减少代码模块或必要的隔离进程。
+这里的“减少组件”指减少独立 Deployment、Service、数据库、消息系统和租户专属常驻控制面，
+不是通过合并安全边界来减少必要的隔离进程。
 
 统一评估原则：
 
-1. 注册一个新 Account、创建一个空 Workspace，不应创建 Deployment、Pod、数据库、schema 或常驻 Runtime。
-2. 闲置 Workspace 不应占用 Plugin 或 Box worker；成本应随实际使用增长。
-3. 可信 gateway、supervisor、scheduler、artifact cache 和 worker pool 可以多租户共享。
-4. 一个不可信插件进程或 Box sandbox 不能同时服务多个 Workspace。
-5. 默认使用共享池；dedicated 只作为高隔离、大客户或合规套餐，不另造一套协议。
-6. 优先复用 PostgreSQL transaction、outbox、advisory lock 和现有对象存储；没有明确容量证据前不新增 Kafka、专用 Runtime 数据库或专用租户调度数据库。
-7. “多租户”必须同时覆盖身份、路由、存储、缓存、日志、配额、撤销和故障恢复，不能只给请求增加 `workspace_uuid`。
+1. 注册 Account、自动创建空 Workspace 时，不启动 Plugin worker 或 Box sandbox。
+2. 启用插件后，每个 installation 的常驻成本来自其独立安全边界；首次使用托管 sandbox 后，符合套餐的 Workspace 才承担一个持久逻辑 session 的成本。
+3. 可信 supervisor、artifact cache、数据库连接池和 Runtime 容量可以多租户共享。
+4. 一个不可信插件进程不能服务多个 installation；一个 sandbox/session 不能服务多个 Workspace。
+5. 默认使用共享 Runtime；dedicated 只作为未来高隔离、大客户或合规资源等级，不建立第二套外部协议。
+6. 没有明确容量证据前，不新增 Kafka、Redis、Runtime 专用数据库、Box 专用数据库或租户级调度服务。
+7. 多租户隔离必须覆盖身份、路由、存储、缓存、日志、配额、撤销和故障恢复，不能只给请求增加 `workspace_uuid`。
 
-## 2. 统一的候选方案框架
-
-确认“单个逻辑 LangBot 实例”后，候选方案不再比较多个产品级实例拓扑，而是比较同一逻辑实例的演进阶段：
+## 2. 首期部署形态与未来演进
 
 ```mermaid
 flowchart LR
-    Traffic["SaaS traffic"] --> Core["One logical LangBot instance<br/>1 replica now, N replicas later"]
-    Core --> PluginSupervisor["Shared Plugin Runtime Supervisor<br/>1 replica now, N replicas later"]
-    Core --> BoxScheduler["Shared Box Gateway<br/>1 replica now, N replicas later"]
-    PluginSupervisor --> PA["Workspace A / Plugin X worker"]
-    PluginSupervisor --> PB["Workspace B / Plugin X worker"]
-    BoxScheduler --> BA["Workspace A sandbox"]
-    BoxScheduler --> BB["Workspace B sandbox"]
-    Core --> Resolver["In-process WorkspaceDatabaseResolver<br/>primary now, internal shards later"]
-    Resolver --> PG["Shared PostgreSQL business schema"]
+    Traffic["SaaS traffic"] --> Core["One logical LangBot instance<br/>1 Core replica in MVP"]
+    Core --> PluginRuntime["Shared Plugin Runtime<br/>trusted supervisor"]
+    Core --> BoxRuntime["Shared Box Runtime<br/>nsjail backend"]
+    PluginRuntime --> PA["Workspace A / installation 1<br/>isolated nsjail process"]
+    PluginRuntime --> PB["Workspace B / installation 2<br/>isolated nsjail process"]
+    BoxRuntime --> BA["Workspace A<br/>one persistent global logical session"]
+    BoxRuntime --> BB["Workspace B<br/>one persistent global logical session"]
+    Core --> PG["Shared PostgreSQL business schema<br/>RLS + pgvector"]
 ```
 
-| 档位                       | 内部部署形态                                                                                                                             | 新 Workspace 静态成本             | 启用条件                   |
-| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- | -------------------------- |
-| M0. 单副本 MVP             | 一个 Core replica；一个共享 Plugin Supervisor；一个共享 Box Gateway；一个 PostgreSQL business shard；worker 与 sandbox 按需创建          | 只新增 Workspace 目录记录和业务行 | 当前默认候选               |
-| M1. 同逻辑实例内部横向扩展 | Core、Plugin Supervisor、Box Gateway/worker 按容量增加 replica；PostgreSQL 可增加共享 shard；owner 由内部 lease 和 generation fence 决定 | 仍不创建 Workspace 专属部署       | 出现明确容量或可用性证据后 |
-| M2. Dedicated 资源档位     | 特定 workload 或 Workspace 使用独享 worker pool、sandbox class 或 PostgreSQL shard，但沿用相同身份、协议、schema 和控制面                | 只由购买 dedicated 的客户承担     | 合规、数据驻留或超大负载   |
+| 档位                       | 内部部署形态                                                                                                                                                | 新 Workspace 静态成本         | 启用条件                 |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- | ------------------------ |
+| M0. 单副本 MVP             | 一个 Core、一个共享 Plugin Runtime、一个共享 Box Runtime、一个 PostgreSQL business database；插件按启用状态运行，托管 sandbox 按首次使用与 entitlement 创建 | 只新增 Workspace 业务行       | 当前已确认目标           |
+| M1. 同逻辑实例内部横向扩展 | Core、Plugin Runtime、Box Runtime 按容量增加 replica；运行所有权由内部 lease 和 generation fence 决定；PostgreSQL 可增加共享 shard                          | 不创建 Workspace 专属部署     | 出现容量或可用性证据后   |
+| M2. Dedicated 资源档位     | 特定 workload 使用独享 worker pool、sandbox class 或 PostgreSQL shard，但沿用相同身份、协议、schema 和控制面                                                | 仅由购买 dedicated 的客户承担 | 合规、数据驻留或超大负载 |
 
 M1 是 M0 的透明扩容，M2 是相同架构下的资源等级；两者都不是新的 LangBot 实例、Cell 或 CloudInstance。
 外部 API 只认识稳定的 `instance_uuid` 和 `workspace_uuid`，不认识 replica、worker、pool 或 shard。
 
-Plugin Supervisor 与 Core 在 M0 可以共用一个 Deployment/Pod，但保持独立进程；Box worker 需要更高的宿主机权限，
-应与 Plugin Supervisor 使用不同的进程身份和 worker pool。两者可以复用 tenant context、generation fence、quota、
-owner abstraction 和审计 library，不为“统一控制面”额外增加一个 Runtime Gateway 服务。
+Plugin Runtime 与 Core 在 M0 是否共用 Pod 仍可按发布和故障域决定；即使共用 Pod，也必须使用独立容器和 security context，
+Core 不能继承 Plugin Runtime 所需的 nsjail/cgroup 权限。Box Runtime 同样使用独立进程身份和安全配置，
+不与 Plugin Runtime 合并成一个高权限进程。
 
-## 3. D-001：Plugin Runtime 控制面是否多租户
+## 3. D-001：Plugin Runtime 多租户控制面
 
-### 3.1 质疑
+状态：`DECIDED — MVP target confirmed, implementation pending`
 
-当前决策是 “Plugin Runtime binds to exactly one Workspace”。新的质疑是：
+### 3.1 当前实现事实
 
-> Plugin Runtime 的可信控制面应服务多个 Workspace，但每个插件执行进程必须只属于一个 Workspace，不能跨租户复用。
+- SDK `RuntimeContext` 和 Core `PluginRuntimeConnector` 当前都绑定一个 Workspace，Runtime 只有一个全局 PluginManager。
+- 插件已经是直接子进程，但当前由 `asyncio.create_subprocess_exec` 启动，没有 nsjail 或同等级内核隔离。
+- 插件包目录当前按 author/name 组织，依赖安装会修改 Runtime 的全局 Python 环境，不能直接作为共享多租户写入边界。
+- 生产 `run-plugin` 路径仍会读取插件目录中的 `.env`；公开 SaaS 不能让 artifact 自行注入 Runtime secret。
+- 当前控制协议已有 `SET_RUNTIME_CONFIG`，可以由 Core 把验证后的实例级 worker policy 下发给 Runtime，
+  但该控制 handler 当前仍要求单 Workspace context；目标协议必须先解除控制连接的 Workspace 绑定。
+- LangBot 的配置加载器原生支持把 `A__B__C` 环境变量映射到 `data/config.yaml` 的嵌套字段；
+  数值和布尔字段必须先出现在配置模板中，才能稳定保留类型。
+- 现有镜像和 Box backend 已包含 nsjail、mount namespace、private `/proc`、rlimit 和 cgroup v2 相关实现，可复用隔离参数生成逻辑。
+- 当前 installation identity 及持久化模型还没有完整的随机 `installation_uuid`、`artifact_digest`、`runtime_revision`
+  和 desired-state 字段；它们是目标模型，不是现有能力。
 
-状态：`OPEN`，当前决策被质疑但尚未废止。
+### 3.2 已确认的不变量
 
-### 3.2 当前实现事实
+1. 每个运行中的 plugin installation 独占一个 worker process tree，任何时刻都不能与其他 installation 共用；
+   停用或删除的 installation 可以没有进程。
+2. 插件进程只绑定一个
+   `(instance_uuid, workspace_uuid, execution_generation, installation_uuid, runtime_revision, artifact_digest)`，且运行期间不可重绑。
+3. 插件不能通过 payload、Host API 参数、环境变量或重连选择 Workspace。
+4. 插件进程的 home、tmp、可写数据、secret、进程视图和配额必须按 installation 隔离。
+5. 只有 `artifact_digest` 相同且完整性已验证的代码文件和依赖环境可以只读共享；
+   同名同版本但 digest 不同的 artifact 不能共享。配置、持久数据和运行进程不能共享。
+6. generation、installation revision 或 capability 被撤销后，旧进程必须失去 Host API 和副作用权限。
+7. Supervisor 不在自身解释器中加载第三方插件代码。
 
-- SDK `RuntimeContext` 只有一个不可重绑的 `workspace_binding`。
-- Runtime 只有一个全局 control handler 和 PluginManager；插件、handler、任务与安装目录都处于 Runtime 全局集合。
-- Core `PluginRuntimeConnector` 也绑定一个 `ActionContext`，并拒绝其他 Workspace。
-- 插件本身已经以子进程运行，但包目录只按 author/name 组织，依赖安装会修改 Runtime 全局 Python 环境；
-  包、依赖、debug 凭证和 supervisor 状态尚未按多租户 registry 设计。
-- 如果直接按 Workspace 复制当前 Runtime，会复制 Deployment、固定内存、控制连接和本地存储，空 Workspace 也产生常驻成本。
+### 3.3 首期执行模型
 
-### 3.3 不可妥协的不变量
+- 整个 SaaS 实例共享一个可信 Plugin Runtime Supervisor；新 Workspace 不创建专属 Runtime、连接、卷或进程。
+- Supervisor 的控制连接只绑定稳定 `instance_uuid` 和短期 Runtime identity，不绑定某个 Workspace。
+  每条 installation desired-state 命令都携带并验证完整的 installation binding；每个 worker action context 在注册后永久绑定该 tuple。
+- 安装并启用插件后，Supervisor 在自己的 Runtime 容器内直接启动一个 nsjail 子进程；
+  不再为每个插件创建 nested container、Pod、sidecar 或租户级 Runtime service。
+- 为兼容现有事件监听和定时任务语义，首期继续采用“enabled installation 保持 resident”，不做 idle eviction；
+  停用、删除、revision/generation 变化或 entitlement 撤销时停止并按需重建。
+- 子进程使用一次性 registration capability 向 Supervisor 注册；capability 由可信 desired state 派生并绑定完整 installation tuple，
+  不是插件直接建立 Core Host connection，也不能只绑定 author/name/path。Supervisor/Core 据此注入 tenant context，
+  丢弃插件 payload 中自带的 scope 字段。
+- Supervisor 的进程表、nsjail root/tmp 和 artifact cache 都是可重建运行态；PostgreSQL 中的 installation desired state 才是权威业务状态。
+- M0 不增加 Runtime 专用数据库、Redis、Kafka、scheduler 或 artifact service；Core 重连后向 Supervisor replay desired state。
 
-1. 一个插件执行进程只能绑定一个
-   `(instance_uuid, workspace_uuid, execution_generation, installation_uuid)`；当前协议字段
-   `placement_generation` 只作为迁移期兼容名称。
-2. 插件不能通过 payload、Host API 参数或重连选择 Workspace。
-3. 插件进程的 cwd、tmp、可写目录、secret、日志、配额和网络策略不能跨 Workspace。
-4. 相同 artifact 或 dependency cache 可以只读共享，但执行进程、配置和持久数据不能共享。
-5. generation、installation revision 或 installation UUID 变化后，旧进程必须失去 Host API 和副作用权限。
-6. Supervisor 不能直接加载第三方插件代码；插件代码只在隔离 worker 中执行。
+### 3.4 nsjail 和文件边界
 
-### 3.4 候选方案与淘汰结论
+首期目标目录模型：
 
-| 状态           | 方案                                                   | 部署与执行模型                                                                                 | 结论                                         |
-| -------------- | ------------------------------------------------------ | ---------------------------------------------------------------------------------------------- | -------------------------------------------- |
-| MVP 首选候选   | R0. 单副本共享 Supervisor + installation 独立 worker   | 所有 Workspace 共用可信 Supervisor；只有启用的 installation 才创建一个不可重绑的进程或 sandbox | 新租户静态成本近零，隔离边界清晰             |
-| 未来演进       | R1. 同一逻辑 Runtime 服务增加 replica                  | 按 `(workspace_uuid, installation_uuid)` 分配 owner；replica 和地址不进入业务身份              | R0 的透明扩容，不是另一套架构                |
-| Dedicated 例外 | R2. 独享 Runtime worker pool                           | 特定 workload 使用独立容量池或更强 sandbox，仍走 R0/R1 的协议和 installation 身份              | 套餐资源等级，不创建租户专属控制面           |
-| 淘汰           | X1. 每 Workspace 一个 Runtime                          | 每个 Workspace 复制 Deployment、Service/PVC 和控制连接                                         | 组件和空闲成本随 Workspace 线性增长          |
-| 淘汰           | X2. 同一个插件进程处理多个 Workspace                   | 插件代码根据请求 context 切换租户                                                              | 全局变量、依赖和本地状态无法成为可信隔离边界 |
-| 淘汰为默认     | X3. 每 Workspace 一个 worker 承载该 Workspace 全部插件 | 同租户插件共享解释器、依赖环境和故障域                                                         | 可作为受信兼容层，不作为公开 SaaS 默认       |
-| MVP 不引入     | X4. Runtime 专用数据库、Redis、Kafka 或独立 scheduler  | 为未来分布式提前拆分新的常驻服务                                                               | 当前没有容量依据，增加组件和运维面           |
+```text
+data/plugin-runtime/
+├── artifacts/sha256/<artifact_digest>/code/   # digest 校验后只读共享
+├── envs/<environment_digest>/                 # 可选，只读共享依赖环境
+└── installations/<installation_uuid>/
+    ├── home/                                  # 私有可写
+    ├── tmp/                                   # 私有可写、可清理
+    └── data/                                  # 私有持久数据
+```
 
-### 3.5 当前倾向（非决策）
+- artifact 只有在内容摘要和完整性校验一致时才允许共享，不能只凭 author/name/version 复用目录；
+  cache 接受哪些签名/来源以及如何撤销和 GC，仍是实现前需要补充的供应链规则。
+- artifact 与共享依赖环境以只读 mount 进入 nsjail；installation 的 home/tmp/data 使用独立可写 mount。
+- 插件 cwd 可以是其私有 mount namespace 内的只读 `/plugin`，不要求为每个 installation 复制代码；
+  必须私有的是 home/tmp/data 等所有可写路径。
+- nsjail 必须启用 mount、PID、IPC、UTS 和 private `/proc` 等必要 namespace，插件不能枚举或 signal 其他插件及 Runtime 进程，
+  不能读取 Runtime 文件系统、宿主机路径、其他 installation 目录或平台 metadata endpoint。
+- 公开 SaaS 禁止从插件 artifact 自动加载 `.env`。secret 只能由可信控制面按 installation 注入，且不能进入共享 artifact/cache。
+- 插件需要外网时使用受控 egress；不得通过共享 host network 访问 Core loopback、Box Runtime、数据库或其他内部服务。
+- Cloud 部署必须提供可用的 cgroup v2 delegation 和所需 namespace 权限；如果硬 CPU/内存/PID 限制不可用，
+  Plugin Runtime readiness 必须失败，不能只记录告警后降级为普通子进程。
 
-当前倾向是 M0/R0；R1 只作为不改变协议的扩容路径，R2 只作为资源例外：
+### 3.5 统一资源上限与配置
 
-- 把“只绑定一个 Workspace”的边界从整个 Plugin Runtime 下沉到每个插件 installation worker 和它的 Host connection。
-- Runtime Supervisor 以整个逻辑 SaaS 实例为共享边界，持有多租户 registry、调度、artifact cache 和进程生命周期。
-- M0 中 Runtime Supervisor 与 Core 优先共用一个 Deployment/Pod、保持独立进程，并通过一条本地 Unix socket、stdio
-  或 loopback multiplexed connection 通信；不创建独立 Runtime Service。
-- Core 与 Supervisor 之间的每个 action 都携带可信的
-  `instance_uuid + workspace_uuid + execution_generation`，多条 Workspace-bound connection 只作为 v1 迁移兼容路径。
-- 插件进程使用一次性 capability 注册，capability 至少绑定
-  `instance_uuid + workspace_uuid + execution_generation + installation_uuid + runtime_revision + artifact_digest`。
-- Supervisor 使用进程的不可变 binding 注入 Host API context，继续丢弃插件 payload 中的 scope 字段。
-- 新 Account 或 Workspace 不创建专属 Runtime、连接、目录、卷或进程；安装并启用插件后才创建 worker。
-  无后台任务的插件可 idle eviction，有常驻事件或定时任务的插件按 entitlement 保持 resident。
-- artifact 与 venv 可以按 digest 只读复用；安装实例使用私有运行目录。公开 SaaS 的第三方插件最终应使用 cgroup 加内核级 sandbox，单纯同 UID 子进程只适合作为受信插件兼容层。
+首期资源规格完全由 LangBot 实例配置决定，manifest 不能声明、放宽或覆盖资源。以下数值是建议默认值，
+最终仍由同一实例的 `data/config.yaml` 统一配置：
 
-为了减少组件，MVP 不新增 Runtime 专用数据库或消息队列：PostgreSQL 中的 plugin installation 记录保存 desired state，
-Core 连接或重连时向可重建的 Supervisor replay；Supervisor 只保存运行态和缓存。M0 只有一个 owner，
-不实现分布式 lease coordinator，但 owner store、幂等 reconcile 和 generation fence 必须是可替换边界。
+```yaml
+plugin:
+  worker:
+    max_cpus: 1.0
+    max_memory_mb: 512
+    max_pids: 128
+    max_open_files: 256
+    max_file_size_mb: 512
+```
 
-进入 R1 前，才启用 PostgreSQL-backed、带 expiry 和 fencing token 的 installation owner lease；同一 installation
-同时只能有一个 owner。优先保持 Core 与 Runtime replica 1:1 共置，只有出现独立扩缩容证据时才拆成共享 Runtime pool。
-本地 artifact cache 继续可重建，不为跨 replica 缓存另建服务。
+配置文件路径为 `data/config.yaml`，沿用现有原生环境变量覆写：
 
-### 3.6 需要正式决定的问题
+- `PLUGIN__WORKER__MAX_CPUS`
+- `PLUGIN__WORKER__MAX_MEMORY_MB`
+- `PLUGIN__WORKER__MAX_PIDS`
+- `PLUGIN__WORKER__MAX_OPEN_FILES`
+- `PLUGIN__WORKER__MAX_FILE_SIZE_MB`
 
-- M0 中 Core 与 Supervisor 共置是否存在无法接受的发布、资源或故障域约束；若存在，是否接受一个 SaaS 实例共享的独立 Runtime Deployment 作为部署妥协。
-- 公共 SaaS 首版是否强制容器/nsjail，还是允许受信插件使用普通进程。
-- 默认是否保持“每 installation 一个进程”；是否允许同 Workspace 的受信插件合并 worker。
-- 插件 manifest 如何声明 `on_demand`、`resident`、后台任务和资源规格。
-- content-addressed artifact/venv cache 的版本、签名、淘汰和供应链校验规则。
-- Runtime protocol v1 的多条 Workspace-bound connection 保留多久；v2 的目标协议固定为 multiplexed connection。
-- R1 的启用阈值、lease expiry、fencing token 和 owner 转移顺序；这些在 M0 定义接口，但不部署多副本协调器。
+Core 启动时校验配置并通过现有 `SET_RUNTIME_CONFIG` 下发不可变 `PluginWorkerPolicy`。
+Runtime 不读取另一份环境变量配置，避免两个配置源不一致。CPU、内存和 PID 使用 cgroup 硬限制，
+open files/file size 使用 rlimit。Cloud deployment profile 固定使用 nsjail，不能通过插件 manifest 或 SaaS 环境变量降级为普通进程。
+installation data 的总空间硬配额需要 filesystem project quota 或独立 quota volume，不能用目录扫描伪装成硬限制；
+该字段在选定可原子拒绝写入的存储机制前不进入首期配置。
 
-### 3.7 决策验收条件
+### 3.6 淘汰与暂缓方案
 
-- 两个 Workspace 同时安装同名、同版本和不同版本插件，进程、配置、storage、日志和 Host API 均不可串租户。
-- 一个插件 worker 崩溃、超额或被撤销，只影响对应 installation。
-- 新建但不使用插件的 Workspace 不增加常驻进程。
-- Supervisor 重启可由 PostgreSQL desired state 恢复，不依赖本地租户状态作为权威真相。
-- 旧 generation 的插件回调、消息、副作用和存储访问全部失败关闭。
+| 状态       | 方案                                               | 结论                                                     |
+| ---------- | -------------------------------------------------- | -------------------------------------------------------- |
+| 淘汰       | 每 Workspace 一个 Plugin Runtime                   | 部署、连接和固定内存随 Workspace 线性增长                |
+| 淘汰       | 一个插件进程服务多个 Workspace/installation        | 全局状态、本地文件和依赖无法形成可信租户边界             |
+| 淘汰       | 同 Workspace 多插件合并到一个 worker               | 与“每 installation 独立进程”冲突，扩大故障和权限边界     |
+| 淘汰       | manifest 自行声明 CPU、内存或更高限额              | 首期统一执行实例级最大值                                 |
+| MVP 不引入 | Runtime 专用数据库、Redis、Kafka 或独立 scheduler  | 当前无容量证据，会增加组件和运维面                       |
+| 后续演进   | 多 Supervisor replica、owner lease、dedicated pool | 保留接口，达到容量或可用性阈值后再决定具体存储与调度方式 |
 
-## 4. D-002：Box 控制面是否多租户
+后续仍需决定的只有：Core/Supervisor 是否共置、artifact/venv cache 的签名/来源/撤销/GC 规范、v1 connection 的兼容期限，
+以及进入多 replica 后的 lease TTL、fencing token 和 owner 转移顺序。这些不改变“每 installation 一个隔离进程”的首期边界。
 
-### 4.1 质疑
+### 3.7 验收条件
 
-新的质疑是：
+- 两个 Workspace 安装 digest 相同且已验证的 artifact 时，共享目录仍为只读，进程、配置、data、home、tmp、日志和 Host API 完全隔离；
+  同名同版本但 digest 不同的 artifact 绝不共享目录。
+- 插件不能读取其他 installation 文件、枚举或 signal 其他进程，也不能修改共享代码/依赖目录。
+- CPU、内存、PID、open files 和单文件上限在真实 nsjail/cgroup 环境中生效；超额只终止或拒绝对应 installation。
+- 修改 manifest 不能改变任何资源上限。
+- 旧 generation/revision 的回调、消息、副作用和存储访问全部失败关闭。
+- Runtime 重启能从业务 desired state 恢复，不依赖本地进程表作为权威真相。
 
-> Box 的 gateway、调度和 worker pool 应在整个逻辑 SaaS 实例内共享，不应按 Workspace 或用户复制；每个 sandbox、session 和 managed process 仍必须是单租户执行边界。
+## 4. D-002：Box 多租户控制面和套餐边界
 
-状态：`OPEN`。
+状态：`DECIDED — MVP target confirmed, implementation pending`
 
-### 4.2 当前实现事实
+### 4.1 当前实现事实
 
-- Box 已经用 `instance_uuid + workspace_uuid` 派生持久 namespace，并用 generation 派生运行时 namespace。
-- Box server 的 generation fence 已按 `(instance_uuid, workspace_uuid)` 建索引，说明一个进程内已有多 Workspace 数据结构基础。
-- RPC 控制连接仍通过共享 secret 绑定整个 trusted instance，无法区分未来的 Core replica 身份和权限。
-  当前单 replica 可工作，但不能直接作为多 replica owner 与故障转移协议。
-- generation、活跃任务和 stale-session 目录主要保存在单进程内存中；多副本 gateway 无法共享 owner 和 fence 状态。
-- 当前远程 connector 是 Core 到 Box 的长连接，不是可被多个 Core replica 共享的 session scheduler。
-- `INIT`、`SHUTDOWN` 和 backend 配置仍是整个 Box 进程的全局操作，不能直接暴露给多租户 Core 连接。
-- 当前 orphan cleanup 不能区分其他 gateway/worker replica 的有效容器；现有 Kubernetes 方案挂载 `docker.sock`，
-  不能直接作为整个 SaaS 实例共享的安全边界。
+- Box 已经按 `instance_uuid + workspace_uuid` 派生持久 namespace，并按 generation 派生运行 namespace；
+  单个 server/control connection 已有服务多个 Workspace 的数据结构基础。
+- 当前 nsjail backend 的 session 是“逻辑 session + 共享 host workspace 目录”。每次普通 `exec` 都启动一个 one-shot nsjail 进程，
+  命令结束后进程退出；managed process 才会保持对应 nsjail 进程运行。
+- `persistent=True` 会让 session 跳过 300 秒 TTL reaper 和普通 shutdown 清理，但 Runtime 重启不会恢复内存中的 session 或运行进程。
+- 现有 `{global}` 强制 session ID 只覆盖部分 Agent 执行入口，不能单独保证所有入口最多一个 session，也不会自动设置 `persistent=True`。
+- 当前没有 `max_sessions_per_workspace`，调用其他入口仍可能使用不同逻辑 session ID，必须在 Box admission 层补最终门禁。
+- nsjail 文件机制不是对象存储同步算法，而是把 Box Runtime 容器中的 Workspace host path bind mount 到 sandbox 的 `/workspace`。
+- 当前 nsjail 在不可写/不可用的 cgroup v2 环境会降级并告警，无法保证共享 SaaS 的硬内存隔离。
 
-### 4.3 不可妥协的不变量
+### 4.2 首期套餐与 entitlement 模型
 
-1. 一个 sandbox、session 或 managed process 在生命周期内只能属于一个
-   `(instance_uuid, workspace_uuid, execution_generation)`；当前协议字段
-   `placement_generation` 只作为迁移期兼容名称。
-2. Workspace 不能指定 host path、特权挂载、worker 节点或其他租户的 session ID。
-3. persistent Workspace data 与 ephemeral generation/session data 必须使用不同 namespace 和生命周期。
-4. generation 切换必须撤销旧 attach token、stdin/stdout relay、进程和不可回滚副作用。
-5. 配额、公平调度、网络策略、CPU、内存、PID、磁盘和端口都按不可变 Workspace/workload context 执行；
-   进入 B1 后该 context 必须由 workload lease 证明。
-6. warm pool 可以共享镜像和空闲容量，但不能并发共享一个未重置的 sandbox。
+- 闭源订阅管理/Control Plane 负责把套餐映射为版本化 entitlement；Core 和 Box Runtime 不硬编码 `plan == pro`。
+- 首期复用 Cloud Control Plane（可结合现有 Space 的订阅模块）承载闭源套餐、计费和 entitlement 投影，
+  不再拆一个独立 billing/tenant microservice；开源 Core 只实现通用 capability 和数值限额。
+- 首期套餐投影为：Pro 的 `managed_sandbox_sessions = 1`，其他套餐为 `0`。建议 capability 形态：
 
-### 4.4 候选方案与淘汰结论
+```json
+{
+  "features": {
+    "managed_sandbox": true,
+    "external_sandbox": false,
+    "mcp_stdio": false
+  },
+  "limits": {
+    "managed_sandbox_sessions": 1
+  }
+}
+```
 
-| 状态           | 方案                                  | 部署与执行模型                                                                                                       | 结论                                      |
-| -------------- | ------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
-| MVP 首选候选   | B0. 单副本共享 Box Gateway            | 整个逻辑 SaaS 实例只有一个 gateway/runtime；它承担控制入口、本地调度和 session supervision；sandbox 按需创建且单租户 | 新 Workspace 静态成本近零                 |
-| 未来演进       | B1. 共享 Gateway 与 worker 横向扩容   | 多个 gateway replica 位于同一稳定内部地址后；session owner 使用 lease；worker capacity 独立扩缩容                    | B0 的透明扩容，不改变外部协议             |
-| Dedicated 例外 | B2. 独享 worker pool 或 sandbox class | 特定 workload 使用独立节点池、网络策略或 microVM 等级，仍通过同一 Gateway 协议                                       | 套餐资源等级，不创建 Workspace 专属控制面 |
-| 淘汰           | X1. 每 Workspace 一个 Box service     | Workspace 创建时复制 gateway、Service、存储和固定容量                                                                | 组件与空闲成本随 Workspace 线性增长       |
-| 淘汰为 SaaS    | X2. 每 Core replica 一个 Box sidecar  | Core 扩容时复制 Box 控制面并产生重复 session owner                                                                   | 只保留 OSS 本地部署兼容                   |
-| 淘汰           | X3. 多 Workspace 并发共享活 sandbox   | 只依赖目录、UID 或进程 namespace 切租户                                                                              | 不足以承载不可信代码                      |
+- `box.enabled` 只表示当前 LangBot 实例是否部署了 Box Runtime，不能替代 Workspace entitlement。
+- 工具发现层根据 entitlement 隐藏/禁用托管 sandbox。Core 校验 Control Plane 的 entitlement 后，
+  通过受认证控制连接向 Box Runtime 下发短期 `SandboxAdmissionGrant`，绑定
+  `instance_uuid + workspace_uuid + execution_generation + entitlement_revision + expires_at + max_sessions + max_managed_processes`。
+  Runtime 只验证和执行该内部 grant，不理解 Pro 等套餐名称，也不相信业务调用方提交的 plan、session ID 或 host path。
+- entitlement 缺失、过期或无法验证时失败关闭。并发创建必须用原子 admission 保证同一 Workspace 永远不超过一个 managed session。
+- entitlement 被撤销后停止 managed process 并关闭逻辑 session；Workspace 数据保留/删除策略随未来 Workspace 释放机制一并决定。
 
-### 4.5 当前倾向（非决策）
+### 4.3 Cloud nsjail 执行模型
 
-当前倾向是 M0/B0；B1 只作为不改变协议的扩容路径，B2 只作为资源例外：
+- 整个逻辑 SaaS 实例共享一个 Box Runtime 控制面；不创建每 Workspace Box service、worker pool、PVC、bucket、scheduler、Redis 或 Box 数据库。
+- Cloud 显式固定 `box.backend: nsjail`。sandbox 直接作为 Box Runtime 容器内的 nsjail 子进程运行，
+  不创建 nested Docker container、独立 Pod、microVM 或 warm pool，也不挂宿主机 `docker.sock`。
+- 符合 entitlement 的 Workspace 首次使用时懒创建一个逻辑 session，内部固定 ID 为 `global`，并强制 `persistent=True`；
+  外部调用方不能选择或覆盖 session ID、persistence、host path 或 backend。
+- “全局 sandbox 一直存活”在当前机制中的精确定义是：每个合资格 Workspace 最多一个稳定的 `global` 逻辑 session，
+  它不被 TTL reaper 回收，其 `/workspace` 持久保存；普通命令仍按需启动并退出 nsjail 进程，不能承诺一个空闲 OS 进程永久驻留。
+- Box Runtime 重启后，旧进程、attach token、root/tmp/home 和内存 session 状态失效；下一次使用时以相同 Workspace namespace 懒重建
+  `global` session。持久 `/workspace` 必须继续存在，旧 generation 权限必须失败关闭。
+- 共享 Box Runtime 采用单 owner 的 M0 实现；未来多 replica 才引入 session owner lease 和跨 replica 路由，
+  但 session handle 永远不包含 replica 地址。
+- Cloud 首期强制 `network=off`，调用方和 WebUI 不能覆盖。当前 `network=on` 会关闭 nsjail 的独立 network namespace，
+  不能用于共享 SaaS。未来如需联网，必须先实现每 session 独立 netns 和受控 egress，再单独开放。
+- Cloud 首期禁止 `START_MANAGED_PROCESS`，`SandboxAdmissionGrant.max_managed_processes` 固定为 `0`；
+  普通 exec 在同一 Workspace 的 `global` session 内串行执行。未来开放 resident process 前必须增加数量和聚合 CPU/内存上限。
 
-- 整个 SaaS 实例部署一个共享 Box Gateway/Runtime，不增加独立 scheduler service、worker registry、Redis 或 Box 专用数据库。
-- gateway 在 M0 同时承担可信控制入口、本地调度和 session supervisor；sandbox 本身仍是独立容器、Pod 或 microVM。
-- 新 Workspace 只新增数据行和稳定的逻辑 storage key prefix/metadata；prefix 在首次写入时懒创建，
-  不能对应租户专属 bucket、PVC、volume 或常驻目录。第一次执行时才创建 sandbox；warm pool 不是 MVP 必需组件。
-- sandbox 以 session 或 managed workload 为隔离单元，不能同时承载多个 Workspace；空闲 sandbox 可以彻底销毁或证明已重置后回到 warm pool。
-- Core 使用服务身份连接 gateway，请求携带可信的
-  `instance_uuid + workspace_uuid + execution_generation`；gateway 派生物理 session ID、路径和 worker，外部请求不能直接选择。
-- `INIT` 改为运维级版本化配置；普通 Core 连接不能执行关闭整个 SaaS Box gateway 的 `SHUTDOWN`。
-- M0 不实现分布式 session lease。定义可替换的 `SessionOwnershipStore`，首版使用单 owner 实现；
-  权威 execution generation 和 managed workload desired state 仍保存在 PostgreSQL。
-- gateway 重启可以使临时 session 失效并按需重建；持久 Workspace 数据不能依赖 gateway 本地磁盘。
-- 配额由 gateway 强制执行；M0 使用本地并发计数和 PostgreSQL usage/outbox，不新增 Redis。
-- persistent skill/workspace data 使用稳定 Workspace namespace；运行态文件、端口和进程使用 generation/session namespace。
-- 共享 SaaS worker 不直接向 gateway 暴露宿主机 `docker.sock`；选择受限 K8s workload API、gVisor、Kata、microVM
-  或同等级边界，由后续隔离实现决策确定。
+### 4.4 文件与资源边界
 
-进入 B1 前，才启用 PostgreSQL-backed session directory、带 CAS/fencing token 的 owner lease 和跨 replica 路由；
-session handle 保持不透明，不包含 replica 地址。只有 PostgreSQL 无法满足已测量吞吐时才增加 Redis。
-worker capacity、预拉镜像、warm pool 和 dedicated pool 可以独立扩展，但不改变 Workspace 或 session 的外部身份。
+- 文件机制沿用当前 nsjail 方案：Box-owned durable volume 上的 Workspace 目录只 bind mount 到对应租户的 `/workspace`；
+  不在首期新增对象存储双向同步服务或文件服务。
+- `/workspace` 的持久性来自独立 durable host path，而不是 `persistent=True`；后者只禁止 TTL/普通 shutdown 回收逻辑 session。
+  Box Runtime 容器必须挂载持久卷，Workspace 数据不能只放在容器可写层。root/tmp/home 可以在 Runtime 重启时丢失。
+- Cloud MVP 要求 Core 与 Box Runtime 以相同路径挂载同一持久卷并沿用直接文件读写；现有 exec/base64 fallback 的单文件上限
+  低于正常附件上限，不能当作等价 Cloud 文件机制。无法共享路径时必须先扩展传输协议，否则 deployment readiness 失败。
+- 现有执行前后目录扫描只能提供软检查，不能阻止单次命令写满共享卷。生产 Cloud 的 Workspace 总空间上限必须由
+  Box-owned volume 的 filesystem project quota/subvolume quota 在写入点原子执行；Box Runtime 负责设置和验证，不能因 Core 看不到路径而跳过。
+- Cloud 的 nsjail CPU、内存、PID、单文件和总空间限制使用运维配置统一设置；套餐只决定 session 数量，
+  不允许 Workspace 放宽 sandbox 上限。
+- Box Runtime 必须在 cgroup v2 hard limit、namespace 和 mount 条件满足后才通过 readiness；不能在共享 SaaS 中告警后降级运行。
+- 同 Workspace 的 `global` session 可以复用持久 `/workspace`，但不同 Workspace 即使使用相同文件名、进程名或逻辑 session ID，
+  物理 namespace、路径、进程和 capability 也必须完全隔离；Cloud 首期没有可暴露端口或共享网络 namespace。
 
-Plugin Supervisor 与 Box Gateway 可以共享 tenant context、quota、审计和 ownership library，但 M0 不额外增加一个位于 Core
-与两者之间的 Runtime Gateway Deployment。Box worker 所需的宿主机权限和网络策略更高，不应与 Plugin Supervisor
-运行在同一个高权限进程或安全池中。
+### 4.5 非 Pro 和未来外部 E2B
 
-### 4.6 需要正式决定的问题
+- 非 Pro Workspace 在首期没有 Cloud managed sandbox，直接调用内部 API 也必须被拒绝。
+- 未来允许 Workspace 在 WebUI 配置自己购买的远程 E2B endpoint/template/secret；它属于 tenant-owned external sandbox，
+  不消耗 Cloud 的 `managed_sandbox_sessions` 配额，也不能读取其他 Workspace 的凭证。
+- 当前 Box Runtime 只有实例级全局 backend 和 E2B credential，WebUI 也没有 Workspace 级配置，因此 BYOK E2B 明确不在首期实现。
+- 未来实现时在共享 Box Runtime 内增加按可信 Workspace context 选择 backend/provider 的 registry，
+  仍不创建租户专属 Box 控制面或新协议。
 
-- Box sandbox 的默认生命周期是每请求、每会话还是可恢复的长会话。
-- 首版隔离实现选 nsjail、rootless container、microVM，还是按 workload 风险分层。
-- 哪些 session 或 managed workload 必须在 gateway 重启后恢复；哪些允许 fail closed 后由调用方重建。
-- `SessionOwnershipStore` 的接口、session handle 和 attach capability 需要预留哪些 B1 字段，且不让 M0 提前实现分布式协调。
-- persistent skill/workspace 文件由对象存储同步、共享卷还是专用文件服务提供。
-- warm pool 的重置证明、镜像版本、容量水位和跨租户复用条件。
-- B1 的启用阈值、lease TTL、owner 转移和 worker 故障恢复语义。
-- Box Gateway 是否可以在不持有宿主机高权限的前提下与其他控制模块共置；在证明前保持独立进程身份。
+### 4.6 淘汰与暂缓方案
 
-### 4.7 决策验收条件
+| 状态       | 方案                                             | 结论                                                     |
+| ---------- | ------------------------------------------------ | -------------------------------------------------------- |
+| 淘汰       | 每 Workspace 一个 Box service                    | 组件和空闲成本随 Workspace 线性增长                      |
+| 淘汰       | 多 Workspace 共享一个活 sandbox/session          | 不能承载不可信代码                                       |
+| 淘汰为 MVP | Docker、独立 Pod、microVM 或 warm pool           | Cloud v2 首期固定使用 Runtime 容器内 nsjail              |
+| 淘汰为 MVP | 非 Pro 使用 Cloud managed sandbox                | 首期数值 entitlement 为 0                                |
+| 后续演进   | 多 Box Runtime replica、dedicated pool、BYOK E2B | 保留 provider/ownership 接口，有真实容量或产品需求后实现 |
 
-- 两个 Workspace 使用相同逻辑 session ID、端口、进程名和文件名时完全隔离。
-- 一个 Workspace 的高负载、超额、sandbox escape 测试或 generation 切换不影响其他 Workspace 的数据与授权。
-- 空 Workspace 不占 Box worker；短任务可以复用 warm capacity，而不是创建租户专属 service。
-- M0 gateway 重启后，旧 attach token 和旧 generation 必须失败关闭，临时 session 可以安全重建。
-- 进入 B1 后，任一 gateway replica 重启不产生第二个 owner，也不能让旧 owner 恢复副作用权限。
-- attach token 不能跨 Workspace、generation、session 或用途重放。
+### 4.7 验收条件
 
-## 5. D-003：SaaS 业务数据库使用 PostgreSQL 的租户拓扑
+- Pro entitlement 首次使用时懒创建一个 persistent `global` session；重复和并发请求都不能产生第二个 session。
+- 非 Pro、entitlement 缺失/过期及伪造 plan 的 API 直调全部失败关闭。
+- TTL 不回收 persistent session；Runtime 重启后进程和临时目录失效，但 `/workspace` 保留并能在下一次使用时安全重建。
+- 两个 Workspace 的文件、进程、session、attach token 和 generation 完全隔离；network/managed-process 请求在首期失败关闭。
+- Core 与 Box Runtime 使用同一路径的共享持久卷；filesystem quota 在 Box Runtime 写入点真实生效，现有目录扫描不被当作硬配额。
+- cgroup hard limit 不可用时 Cloud Box Runtime readiness 失败。
 
-### 5.1 已知方向与待决策点
+## 5. D-003：SaaS PostgreSQL 与 pgvector
 
-已知方向：SaaS 多租户版本使用 PostgreSQL 作为业务数据库。
+状态：`DECIDED — MVP target confirmed, implementation pending`
 
-仍待决定的不是数据库产品，而是租户拓扑：
+当前实现仍有明确差距：Cloud 模板默认 Chroma；pgvector adapter 使用独立 engine、全局 `id` 和固定 `vector(1536)`，
+没有持久化 `workspace_uuid/knowledge_base_uuid`，并会在应用启动时执行 `CREATE EXTENSION/create_all`；
+当前 persistence helper 也不能保证 `SET LOCAL` 与业务查询处于同一 transaction。以下均是目标约束，不是现状描述。
 
-> Workspace 使用共享 database/shared schema、schema-per-tenant、database-per-tenant，还是共享默认加 dedicated 逃生通道。
+### 5.1 已确认的数据库边界
 
-状态：`OPEN`。
+- PostgreSQL 是 SaaS 的业务数据库，不把它扩展成通用 Runtime coordinator、Box session directory 或新控制面数据库。
+- M0 使用一个 PostgreSQL business database/shared schema 承载全部 Workspace。创建 Workspace 不创建 database、schema、role 或专属连接池。
+- 业务行显式携带 `workspace_uuid`；Repository/Service 的应用层 scope 是第一道边界，PostgreSQL RLS 是第二道边界。
+- 应用角色不得拥有 `BYPASSRLS`，关键租户表使用 `FORCE ROW LEVEL SECURITY`；migration/repair/audit 使用独立受控角色。
+- 每个租户事务通过 `SET LOCAL` 设置 tenant context，并由统一 `TenantUnitOfWork` 保证设置 context 和业务查询使用同一事务/连接。
+  禁止使用连接级 session variable 或 `search_path`，避免连接池、PgBouncer、异常回滚和后台任务串租户。
+- 一个 `TenantUnitOfWork` 只能访问一个 Workspace。业务写入与对应 business outbox 在同一事务中提交；
+  写入可以校验由执行层传入的 generation/fencing token，但 Runtime owner、lease 和 Box session directory 不由业务 PostgreSQL 承担。
+- SaaS schema、extension 和 policy 只由 release migration job 创建；应用启动角色不执行 `CREATE EXTENSION`、`create_all` 或自动 migration。
+- OSS 继续默认 SQLite，并保留自托管 PostgreSQL 选项；Cloud RLS 约束不让 OSS 强制依赖 PostgreSQL。
 
-### 5.2 当前实现事实
+### 5.2 pgvector 首期方案
 
-- Core 已支持 SQLAlchemy `asyncpg` 和 PostgreSQL Alembic migration，但连接配置仍是单数据库基础实现。
-- 租户业务表已经具有非空 `workspace_uuid`、Workspace 复合唯一键、部分复合外键和作用域索引。
-- Repository/Service 已执行应用层 Workspace scoping，但尚未建立生产 SaaS 的 RLS、transaction-local tenant context、连接池和在线迁移规范。
-- 当前 Cloud v2 文档仍保留 Cell/CloudInstance 级 database 或 schema namespace，与已确认的单逻辑实例前提冲突，
-  而且会增加数据库逻辑单元、连接池和迁移次数。
-- 当前 `execute_async` 风格不能表达完整的 tenant transaction、RLS context、generation fence 与 outbox 原子提交，
-  需要统一的 `TenantUnitOfWork`。
-- Core 启动路径仍会创建表和执行 migration；共享 SaaS schema 需要独立 migration job 和 revision compatibility gate。
-- 数据库元数据绑定稳定的 SaaS `instance_uuid` 是合理的，但不能假设数据库只有一个 Core 进程 owner；
-  未来 replica/shard 的运行所有权由 lease/ExecutionState 表达，不能改变业务实例身份。
+- SaaS 使用 pgvector 作为默认向量数据库，并与业务表使用同一个 PostgreSQL cluster/database；
+  vector schema 可以使用独立 adapter、受控 role 和有上限的 pool，但不新增 Chroma、Milvus 或独立向量数据库服务。
+- OSS 默认仍是 SQLite + Chroma，用户可以显式选择 pgvector；Cloud 配置 pgvector 失败时必须启动失败，不能静默回退到 Chroma。
+- 向量表必须显式保存 `workspace_uuid` 和 `knowledge_base_uuid`，并至少以
+  `(workspace_uuid, knowledge_base_uuid, vector_id)` 建立唯一键/主键和查询条件；服务端生成的 collection name/hash 不是安全边界。
+- pgvector adapter 复用相同的 tenant-context/RLS 契约，每次向量操作在自己的事务中执行 `SET LOCAL`；
+  是否复用普通业务 UoW、role 或 connection pool 由实现决定，但 adapter 不能丢弃 tenant metadata。
+- `vector(1536)` 不能继续作为无条件硬编码。首期使用无 typmod 的 `vector` 列和显式 `embedding_dimension`，
+  以 `CHECK (vector_dims(embedding) = embedding_dimension)` 校验；release migration 为允许的维度创建带 dimension predicate 的 expression/partial ANN index。
+  知识库/model 元数据必须选择已启用维度，写入和查询 mismatch 或未启用维度时失败关闭，不能截断、补齐、退化为无界扫描或换后端。
+- `vector` extension、表、索引和 RLS 由 release migration 创建。应用进程不在启动时执行 DDL。
 
-### 5.3 候选方案
+### 5.3 候选拓扑与未来演进
 
-| 状态           | 方案                                                        | 阶段与形态                                                                                       | 新增 Workspace 成本                   | 结论                                     |
-| -------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------- | ---------------------------------------- |
-| MVP 首选候选   | P0. 单 shared database/shared schema                        | 一个 PostgreSQL business database/schema 承载全部 Workspace；应用层 `workspace_uuid` scope + RLS | 只新增 Workspace 目录记录和业务行     | 一套 pool、一套 migration                |
-| 未来演进       | P1. 多 shared database shard                                | 增加内部 PostgreSQL shard；每个 shard 仍使用相同 shared schema 并承载多个 Workspace              | 仍只新增业务行，不创建租户级数据库    | 成本按 shard 数而不是 Workspace 数增长   |
-| Dedicated 例外 | P2. Dedicated shard                                         | 合规、驻留或超大 workload 独占一个 shard；schema、migration 和应用协议与共享 shard 相同          | 仅购买 dedicated 的客户产生独立资源   | P1 的容量特例，不是第二套代码路径        |
-| 淘汰           | X1. Schema per Workspace                                    | 每 Workspace 创建 schema、管理 `search_path` 并执行 migration                                    | schema、catalog 和 migration 线性增长 | 不适合 SaaS 默认拓扑                     |
-| 淘汰为默认     | X2. Database per Workspace                                  | 每 Workspace 创建 database、role、pool、备份和 migration                                         | 与用户数量线性增长                    | 只由 P2 shard abstraction 表达 dedicated |
-| 淘汰           | X3. Database/schema per Core replica、Cell 或 CloudInstance | 数据库拓扑绑定计算副本或已删除的产品实体                                                         | 扩容计算会复制数据库运维单元          | 概念与成本目标均错误                     |
+| 状态     | 方案                                      | 结论                                                                        |
+| -------- | ----------------------------------------- | --------------------------------------------------------------------------- |
+| 首期决定 | P0. shared database/shared schema         | 一个 pool、一套 migration；应用 scope + RLS                                 |
+| 后续演进 | P1. 多 shared database shard              | 每个 shard 仍承载多个 Workspace，并使用相同 schema；有容量/地域证据后再设计 |
+| 后续例外 | P2. dedicated shard                       | 只作为合规、驻留或超大 workload 的资源等级，不建立第二套代码路径            |
+| 淘汰     | schema/database per Workspace             | catalog、pool、migration、备份成本随 Workspace 线性增长                     |
+| 淘汰     | database/schema per replica/Cell/Instance | 把业务数据拓扑错误绑定到计算副本或已删除的产品实体                          |
 
-### 5.4 当前倾向（非决策）
+M0 不提前增加始终返回 `primary` 的 resolver、shard router 或 shard binding。
+P1 的 resolver、映射、在线迁移、连接池预算、shard-affine replica 和 dedicated shard 细节等到出现容量、地域或合规需求时再设计。
 
-当前倾向是 M0/P0；出现容量、地域或故障域证据后演进到 P1，P2 只作为资源例外；X1、X2、X3 不进入 SaaS 默认架构：
+### 5.4 备份与生命周期边界
 
-- SaaS 对外始终只有一个稳定的逻辑 LangBot 实例、`instance_uuid`、Workspace URL 和 API；Core replica、
-  PostgreSQL shard 和内部 worker 都不是产品实体。
-- M0 只部署一个 PostgreSQL business database/schema。所有 Workspace 共享表结构，业务行必须带全局唯一
-  `workspace_uuid`；创建 Workspace 不创建 database、schema、role、连接池或部署单元。
-- M0 不建设独立 shard router 服务。Persistence 层只预留进程内 `WorkspaceDatabaseResolver`，其单库实现始终返回
-  `primary`；这是代码边界，不是新增组件。
-- M0 不持久化 shard binding。进入 P1 时才在现有全局 Workspace directory aggregate 上增加
-  `business_shard_id` 和 binding revision，并统一回填 `primary`；不新增 binding/Placement 表、服务或事件流。
-  该映射不能重新引入 Workspace Placement、CloudInstance 或 Cell 实体，也不能暴露给外部 API。
-- 首次扩展计算时，多个 Core replica 仍连接同一个 shared database；数据库与 Core replica 没有一一对应关系。
-  Runtime owner、任务故障转移和 write fence 继续由 execution generation 与 owner abstraction 表达。
-- 单库达到明确容量、地域或故障域阈值后才增加 PostgreSQL shard。每个 shard 承载多个 Workspace，
-  使用相同 schema 和 migration；Workspace 到 shard 使用显式可迁移目录映射，不使用固定 UUID hash。
-- P1 不允许每个 Core replica 为所有 shard 建立常驻连接池。resolver 必须使用有上限的 lazy pool，
-  或把 Core replica 分成 shard-affine group；具体选择在启用 P1 前根据流量决定，M0 不新增数据库代理。
-- 一个业务 `TenantUnitOfWork` 只能访问一个 Workspace 和一个 shard，禁止跨 shard transaction。
-  全局目录、计费和聚合使用 Control Plane 数据或异步 outbox，不把跨 shard JOIN 变成业务依赖。
-- Workspace 跨 shard 迁移使用 snapshot/delta、execution generation write fence、outbox drain 和 binding revision CAS；
-  切换不改变 Workspace UUID、实例身份或外部路由。
-- P2 复用同一 shard abstraction，只是容量上独占或少量 Workspace 共用，不建立 dedicated 产品代码路径。
-- 应用层 Repository/Service scope 继续保留；SaaS PostgreSQL 从第一版启用 RLS 作为第二道防线，而不是以后再补。
-- 应用连接角色不得拥有 `BYPASSRLS`，关键表使用 `FORCE ROW LEVEL SECURITY`；migration、repair 和审计使用不同的受控角色。
-- 每个业务事务使用 `SET LOCAL` 写入 tenant context，绝不依赖连接级 session variable 或 `search_path`，避免 PgBouncer/SQLAlchemy 复用连接时串租户。
-- RLS 主要校验稳定的 `workspace_uuid`；execution generation write fence 放在 `TenantUnitOfWork` 的事务锁中，
-  不把复杂状态查询塞进每张表的 RLS policy。
-- 跨 Workspace parent-child 关系继续使用复合外键；M0 不预先对普通业务表做 Workspace hash partition。
-  Monitoring/Usage 达到明确数据量后才按时间分区；database shard 与 table partition 是不同问题。
-- execution generation 的写 fence 使用 PostgreSQL row/advisory lock，并与业务写入、outbox 同事务提交。
-- M0 用 PostgreSQL outbox polling 代替 Kafka，并保存 Runtime desired state、execution generation 与 usage；
-  临时 owner 和 session directory 仍使用单 owner implementation。进入 M1 前优先把 CAS lease 和必要目录状态放入
-  PostgreSQL；只有达到容量边界后才引入 Redis 或其他协调组件。
-- SaaS migration 由独立 release job 对每个 shard 执行；M0 只有一次。未来迁移次数是 O(shards)，不能退化为 O(workspaces)。
+- PostgreSQL PITR 是 database/cluster 级恢复手段，不等同于单 Workspace 恢复。
+- Workspace 创建、释放、export、delete、单 Workspace restore 和在线迁移机制本轮暂缓，后续单独决策；
+  首期不以尚未设计的 export 能力作为数据库架构验收条件。
+- 除关系业务数据和 pgvector 的向量/检索字段外，大对象、插件 artifact 和 sandbox 文件仍存放在对象存储或 Runtime 持久卷；
+  PostgreSQL 保存相应业务元数据和稳定引用。
+- tenant-visible usage/billing 业务行可以进入 PostgreSQL；基础设施 log/metric/trace 不进入业务数据库。
+  高增长业务表在有数据量证据后再决定 retention、时间分区或分析存储。
 
-Control Plane 数据与 Core 业务数据应保持逻辑 database/schema 和角色隔离。MVP 可以在同一个物理 PostgreSQL cluster
-上使用不同 database/schema/role 来减少托管组件，但不能让 Core 应用角色访问 Control Plane 表；
-未来因容量或数据驻留进行物理分片时，仍属于同一个逻辑 LangBot 实例。
+### 5.5 验收条件
 
-OSS 继续默认 SQLite，并保留 PostgreSQL 自托管选项；RLS 和共享 SaaS pool 是 Cloud PostgreSQL adapter 的附加防御，
-不能把开源单 Workspace 强制改为依赖 PostgreSQL。
-
-### 5.5 备份、恢复和数据生命周期
-
-- PITR 是 SaaS database/cluster 级恢复手段，不能直接等同于单 Workspace 恢复。
-- 必须提供 Workspace 级逻辑导出、删除、迁移和选择性恢复工具；恢复时重写或验证 Workspace/instance/generation 归属。
-- 大对象仍进入对象存储，PostgreSQL 保存稳定引用、checksum 和 owner；不要把插件包、文档原文和 sandbox 文件全部塞进业务表。
-- Monitoring 等高增长表需要 retention、按时间分区和归档策略；在容量证据出现前先留在 PostgreSQL，避免过早引入分析数据库。
-- 是否首版同时使用 pgvector 以减少向量数据库组件，是独立待决策项，不由“业务数据库使用 PostgreSQL”自动推出。
-
-### 5.6 需要正式决定的问题
-
-- SaaS 是否从第一版强制 RLS；当前倾向是“是”。
-- 进入 P1 时，`business_shard_id` 与 binding revision 如何加入现有全局 Workspace directory aggregate，
-  Core projection 如何 fail closed，且不新建 Placement 模型。
-- 单个 business database 的容量、地域和故障域阈值；何时启用 P1，以及 Workspace 在线搬迁的 SLA。
-- P1 使用 bounded lazy pool 还是 shard-affine Core replica group，以及允许的全局连接预算。
-- Control Plane 与 Core 是否允许共用物理 PostgreSQL cluster、但使用独立 database/schema/role。
-- Runtime/Box 从 M0 进入 M1 时，哪些 owner lease 和 session directory 状态复用 PostgreSQL，何时才有证据增加 Redis。
-- Workspace 级 export、delete、restore 和合规审计的产品 SLA。
-- pgvector 是否作为 SaaS MVP 默认向量后端，以进一步减少组件。
-
-### 5.7 决策验收条件
-
-- 在故意遗漏应用层 Workspace filter 的测试查询中，RLS 仍阻止跨租户读取和写入。
-- PgBouncer transaction pooling、异常回滚、连接复用和后台任务场景不会残留 tenant context。
-- migration 只执行一次即可覆盖共享 schema 中所有 Workspace，不产生租户级 schema drift。
-- generation fence、业务写入和 outbox 在同一事务内具备可证明的提交顺序。
-- 单 Workspace 可导出、删除和迁移，不依赖恢复整个 SaaS database。
+- 故意遗漏应用层 Workspace filter 时，RLS 仍阻止跨租户读写。
+- 连接池/事务池复用、异常回滚、并发请求和后台任务不会残留 tenant context；如部署 PgBouncer，也必须覆盖 transaction pooling。
+- migration 对 shared schema 只执行一次，不产生 Workspace 级 schema drift；应用启动角色不能执行 DDL。
+- 业务写入和对应 business outbox 在同一事务内具备可证明的提交顺序；外部 generation/fencing token 校验失败时不产生写入。
+- pgvector 使用真实 PostgreSQL 集成测试覆盖：两个 Workspace 使用相同 `vector_id`、猜测其他 Workspace ID、
+  故意遗漏 scope、连接复用、CRUD 和后台任务，全部不能越权。
+- embedding dimension 不匹配或 pgvector extension 不可用时失败关闭，不回退到其他向量后端。
 - 新建 Workspace 只新增目录与业务行，不创建 database、schema、role 或专属连接池。
-- 进入 P1 后，连接池数量有显式上限，不形成无界的 `Core replicas × PostgreSQL shards` all-to-all 连接。
 
-## 6. 三项决策之间的关系
+## 6. D-004：stdio MCP 独立开关
 
-三项质疑指向同一个架构原则：
+状态：`DECIDED — MVP target confirmed, implementation pending`
 
-> 多租户共享的是可信控制面、连接池、缓存和容量池；租户独占的是不可信执行进程、sandbox、secret 和数据作用域。
+### 6.1 当前问题
 
-建议讨论顺序：
+- 当前 stdio MCP 的启用条件只检查 transport 为 `stdio` 且 Box available，没有独立 feature gate。
+- 所有 stdio MCP 当前使用固定的 `mcp-shared` 逻辑 session，并强制 `persistent=True`。
+- 如果多租户 Cloud 仅通过 `box.enabled` 开放能力，每个配置 stdio MCP 的 Workspace 都会额外保留一个 persistent sandbox，
+  绕过“每 Workspace 最多一个 managed `global` sandbox”的成本和套餐边界。
 
-1. 先确认 M0/M1/M2 是三种运行档位而不是三套产品拓扑，并明确 M0 不因预留分布式而新增服务。
-2. 再决定 Plugin Runtime 的新边界，因为它会明确 “shared supervisor / tenant worker” 的通用 owner abstraction。
-3. 决定 Box，复用或修正同一套 tenant context、generation、quota 和 worker ownership 语义。
-4. 最后确定 PostgreSQL tenant context、RLS、shard resolver 和 outbox 持久化方式，为前两者提供最小共享状态底座。
-5. 三项都确定后，删除主架构中的 Cell/CloudInstance 产品模型，改成“单逻辑实例、当前单副本、内部可水平扩展”的拓扑。
+### 6.2 首期决定
 
-## 7. 当前不做分布式时仍必须保留的能力
+新增独立实例配置：
+
+```yaml
+mcp:
+  stdio:
+    enabled: true
+```
+
+- OSS 默认 `true`，保持当前本地部署兼容；Cloud v2 通过 `MCP__STDIO__ENABLED=false` 强制关闭。
+- 该开关与 `box.enabled`、`managed_sandbox` entitlement 和 sandbox session 数量相互独立，不能从任一条件推导。
+- 后续如开放给特定套餐，可在实例开关之上再叠加 Workspace capability；实例开关为 `false` 时任何 entitlement 都不能绕过。
+- HTTP/SSE/其他远程 MCP transport 不受此开关影响。
+
+### 6.3 强制检查点
+
+开关必须同时覆盖：
+
+1. MCP create；
+2. MCP update 到 stdio；
+3. transient connection test；
+4. Core 启动时加载已有 stdio 配置；
+5. RuntimeMCPSession/loader 的最终执行门禁；
+6. WebUI transport selector 和错误提示。
+
+不能只在 WebUI 隐藏选项。Cloud 配置关闭时，已有 stdio 记录保留但不自动启动，并返回明确的 feature-disabled 错误；
+最终 gate 必须位于 Box 分支和 legacy host-stdio 分支之前，不能误报为 `box_unavailable`，
+也不得创建 `mcp-shared` session 或 stdio 子进程。
+
+### 6.4 验收条件
+
+- Cloud 即使 `box.enabled=true` 且 Workspace 拥有一个 managed sandbox，也无法 create/update/test/start 任何 stdio MCP。
+- 直接调用 API、重放旧配置和启动 bootstrap 都失败关闭，且不会产生 `mcp-shared` session、nsjail 进程或额外配额占用。
+- OSS 默认行为保持兼容；HTTP/SSE MCP 正常工作。
+
+## 7. 四项决策之间的关系
+
+四项决策共同遵循：
+
+> 多租户共享可信控制面、连接池、只读 artifact 和基础容量；租户独占不可信执行进程、sandbox、secret、可写文件和数据作用域。
+
+- Plugin Runtime 通过“共享 Supervisor + 每 installation 独立 nsjail 进程”降低控制面数量，同时保留进程级租户隔离。
+- Box 通过“共享 Runtime + 每个合资格 Workspace 一个持久逻辑 session + one-shot nsjail exec”避免每租户部署服务和空闲容器。
+- stdio MCP 独立关闭，防止从 Box availability 隐式产生第二套 persistent sandbox。
+- PostgreSQL 和 pgvector 共享数据库组件，但使用显式 tenant key、应用层 scope 和 RLS 防止共享存储变成共享权限。
+- 订阅管理只在闭源 Control Plane 维护套餐与计费规则，并向开源 Core 投影签名/版本化 entitlement；
+  Core/Runtime 执行通用 capability 和数值限额，不复制套餐名称或计费逻辑。
+
+## 8. 当前不做分布式时仍保留的能力
 
 1. 所有运行时协议继续携带稳定 `instance_uuid`、`workspace_uuid` 和 execution generation；不能依赖进程地址表达身份。
-2. Core、Plugin Supervisor 和 Box Gateway 的本地内存不能成为 durable desired state 或撤销状态的唯一真相；
-   M0 的临时 owner 可以是单进程实现，但必须在重启时 fail closed，并隐藏在可替换的 ownership store 后。
-3. 创建、重试、回调、outbox 和 worker 注册都有稳定 idempotency key；重复投递不会产生第二个 owner 或副作用。
-4. Plugin installation 和 Box session 从 M0 起使用稳定 owner abstraction；启用第二个 replica 前必须切换到有期限、
-   可续租、带 fencing token 的 CAS lease，且外部协议和永久标识不改变。
-5. Repository/UoW 不允许无边界跨 Workspace 事务；`workspace_uuid` 从第一天就是可用于数据库分片的路由键。
+2. Core、Plugin Runtime 和 Box Runtime 的本地进程表不能成为 durable desired state 或撤销状态的唯一真相。
+3. 创建、重试、回调、outbox 和 worker 注册使用稳定 idempotency key；重复投递不能产生第二个 owner 或副作用。
+4. Plugin installation 和 Box session 使用稳定 owner abstraction；启用第二个 replica 前再实现带 expiry、CAS 和 fencing token 的 lease。
+   具体 lease store 后续决定，不预设复用业务 PostgreSQL，更不因此新增 Runtime/Box 数据库。
+5. Repository/UoW 不允许无边界跨 Workspace 事务；`workspace_uuid` 从第一天就是内部路由与分片候选键。
 6. schema migration、任务扫描、监控聚合和运维接口不能假设永远只有一个 Core 进程。
 7. 外部 API 不暴露 replica、worker 或 shard 标识；未来扩容不改变 Workspace URL、UUID 或客户端协议。
-8. 只有出现容量、可用性或地域需求时才增加 replica/shard；预留协议不等于现在部署额外组件。
+8. 只有出现容量、可用性、地域或合规需求时才增加 replica/shard；预留协议不等于现在部署额外组件。
 
-## 8. 本轮明确不做的事情
+## 9. 本轮明确不做的事情
 
-- 不因提出质疑而立即修改现有 Plugin/Box 协议或数据库 migration。
-- 不把待决策倾向写成已完成承诺。
-- 不为减少组件而允许第三方插件进程或 Box sandbox 跨 Workspace 共享。
-- 不在缺少容量证据时引入新的 broker、租户数据库或专用调度服务。
-- 不因预留未来分片而新增独立 shard router；M0 只保留进程内 resolver interface。
-- 不修改旧 Space 部署模型；Cloud v2 仍按绿地方案设计。
+- 不合并 plugin installation 进程，即使插件和版本完全相同；只允许共享摘要校验后的只读代码/依赖文件。
+- 不允许插件 manifest 声明或覆盖 CPU、内存、PID、文件或存储上限。
+- 不为每个 Workspace 创建 Plugin Runtime、Box service、database、schema、role、bucket、PVC 或消息队列。
+- 不在 Cloud v2 首期使用 Docker sandbox、microVM、warm pool 或非 Pro managed sandbox。
+- 不在首期实现 Workspace 级 BYOK E2B WebUI 配置。
+- 不在 Cloud v2 首期支持 stdio MCP，也不让 Box availability 隐式开启它。
+- 不把业务 PostgreSQL 用作未决定的 Runtime/Box 通用协调数据库，不在缺少容量证据时引入 Redis、Kafka 或新 scheduler。
+- 不在本轮实现 Workspace export、释放、单租户恢复或在线迁移；具体生命周期另行决策。
 - 不实现多个 CloudInstance、Workspace Placement 或 Cell Router；未来分布式只作为单逻辑实例内部的副本和分片能力。
+- 不修改旧 Space 部署模型；Cloud v2 继续按绿地方案设计。
