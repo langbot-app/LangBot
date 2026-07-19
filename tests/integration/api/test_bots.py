@@ -231,7 +231,7 @@ class TestBotLogsEndpoint:
         assert 'total_count' in data['data']
 
     @pytest.mark.asyncio
-    async def test_viewer_cannot_read_message_logs(self, quart_test_client, fake_bot_app):
+    async def test_viewer_can_read_ordinary_bot_logs(self, quart_test_client, fake_bot_app):
         access = fake_bot_app.workspace_collaboration_service.resolve_account_workspace.return_value
         original_role = access.membership.role
         access.membership.role = 'viewer'
@@ -245,9 +245,9 @@ class TestBotLogsEndpoint:
         finally:
             access.membership.role = original_role
 
-        assert response.status_code == 403
-        assert (await response.get_json())['code'] == 'permission_denied'
-        fake_bot_app.bot_service.list_event_logs.assert_not_awaited()
+        assert response.status_code == 200
+        assert (await response.get_json())['code'] == 0
+        fake_bot_app.bot_service.list_event_logs.assert_awaited_once()
 
 
 @pytest.mark.usefixtures('mock_circular_import_chain')

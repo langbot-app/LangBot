@@ -35,6 +35,7 @@ from .tenant_uow import (
     PersistenceScopeBoundary,
     PersistenceScopeKind,
     TenantScopeRequiredError,
+    TenantScopedAsyncSession,
     TenantUnitOfWork,
 )
 
@@ -1700,9 +1701,9 @@ class PersistenceManager:
         calls retain normal ORM result semantics.
         """
 
-        await session.flush()
-        connection = await session.connection()
-        return await connection.execute(*args, **kwargs)
+        if not isinstance(session, TenantScopedAsyncSession):
+            raise TypeError('Scoped Core execution requires a TenantScopedAsyncSession')
+        return await session.execute_on_transaction_connection(*args, **kwargs)
 
     def tenant_uow(self, workspace_uuid: str) -> TenantUnitOfWork:
         return self._scoped_uow(PersistenceScope.workspace(workspace_uuid))

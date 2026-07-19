@@ -72,7 +72,7 @@ class BotsRouterGroup(group.RouterGroup):
             '/<bot_uuid>/logs',
             methods=['POST'],
             auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
-            permission=Permission.AUDIT_VIEW,
+            permission=Permission.RESOURCE_VIEW,
         )
         async def _(bot_uuid: str, request_context: RequestContext) -> str:
             json_data = await quart.request.json

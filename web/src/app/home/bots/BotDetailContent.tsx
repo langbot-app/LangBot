@@ -38,8 +38,8 @@ export default function BotDetailContent({ id }: { id: string }) {
   const currentWorkspace = useCurrentWorkspace();
   const canManage =
     currentWorkspace?.permissions.includes('resource.manage') ?? false;
-  const canViewAudit =
-    currentWorkspace?.permissions.includes('audit.view') ?? false;
+  const canViewMonitoring =
+    currentWorkspace?.permissions.includes('resource.view') ?? false;
   const { refreshBots, bots, setDetailEntityName } = useSidebarData();
 
   // Set breadcrumb entity name
@@ -210,13 +210,13 @@ export default function BotDetailContent({ id }: { id: string }) {
                 <Settings className="size-3.5" />
                 {t('bots.configuration')}
               </TabsTrigger>
-              {canViewAudit && (
+              {canViewMonitoring && (
                 <TabsTrigger value="logs" className="gap-1.5">
                   <FileText className="size-3.5" />
                   {t('bots.logs')}
                 </TabsTrigger>
               )}
-              {canViewAudit && (
+              {canViewMonitoring && (
                 <TabsTrigger value="sessions" className="gap-1.5">
                   <Users className="size-3.5" />
                   {t('bots.sessionMonitor.title')}
@@ -303,7 +303,7 @@ export default function BotDetailContent({ id }: { id: string }) {
           </TabsContent>
 
           {/* Tab: Logs */}
-          {canViewAudit && (
+          {canViewMonitoring && (
             <TabsContent
               value="logs"
               className="flex-1 min-h-0 overflow-y-auto mt-4"
@@ -313,7 +313,7 @@ export default function BotDetailContent({ id }: { id: string }) {
           )}
 
           {/* Tab: Sessions */}
-          {canViewAudit && (
+          {canViewMonitoring && (
             <TabsContent value="sessions" className="flex-1 min-h-0 mt-4">
               <BotSessionMonitor ref={sessionMonitorRef} botId={id} />
             </TabsContent>

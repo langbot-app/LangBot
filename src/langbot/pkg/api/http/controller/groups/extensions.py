@@ -23,10 +23,20 @@ class ExtensionsRouterGroup(group.RouterGroup):
         async def _(request_context: RequestContext) -> quart.Response:
             if self.ap.plugin_connector.is_enable_plugin:
                 await self.ap.plugin_connector.require_workspace_context(request_context)
+
+            async def read_in_task_scope(operation):
+                tenant_scope = getattr(getattr(self.ap, 'persistence_mgr', None), 'tenant_scope', None)
+                if callable(tenant_scope):
+                    async with tenant_scope(request_context.workspace_uuid):
+                        return await operation()
+                return await operation()
+
             plugins, mcp_servers, skills = await asyncio.gather(
-                self.ap.plugin_connector.list_plugins(),
-                self.ap.mcp_service.get_mcp_servers(request_context, contain_runtime_info=True),
-                self.ap.skill_service.list_skills(request_context),
+                read_in_task_scope(self.ap.plugin_connector.list_plugins),
+                read_in_task_scope(
+                    lambda: self.ap.mcp_service.get_mcp_servers(request_context, contain_runtime_info=True)
+                ),
+                read_in_task_scope(lambda: self.ap.skill_service.list_skills(request_context)),
                 return_exceptions=True,
             )
 

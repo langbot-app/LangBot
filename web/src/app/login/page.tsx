@@ -49,6 +49,14 @@ const formSchema = (t: (key: string) => string) =>
     password: z.string().min(1, t('common.emptyPassword')),
   });
 
+const TERMINAL_INVITATION_ERROR_CODES = new Set([
+  'invitation_invalid',
+  'invitation_expired',
+  'invitation_revoked',
+  'invitation_used',
+  'invitation_email_mismatch',
+]);
+
 export default function Login() {
   const navigate = useNavigate();
   const { t } = useTranslation();
@@ -121,7 +129,10 @@ export default function Login() {
       .catch(() => {});
   }
 
-  async function finishLogin(token: string, username?: string) {
+  async function finishLogin(
+    token: string,
+    username?: string,
+  ): Promise<boolean> {
     beginAuthenticatedSession(token, username);
 
     const invitationToken = getPendingInvitationToken();
@@ -133,10 +144,24 @@ export default function Login() {
         beginAuthenticatedSession(response.token, username);
         preferredWorkspaceUuid = response.workspace_uuid;
         clearPendingInvitationToken();
-      } catch {
-        navigate('/invitations/accept', { replace: true });
-        toast.error(t('workspace.invitationAcceptFailed'));
-        return;
+      } catch (error) {
+        const apiError = error as { code?: string };
+        const errorCode =
+          typeof apiError.code === 'string'
+            ? apiError.code
+            : 'invitation_accept_failed';
+        const invitationPath = TERMINAL_INVITATION_ERROR_CODES.has(errorCode)
+          ? `/invitations/accept?error=${encodeURIComponent(errorCode)}`
+          : '/invitations/accept';
+        navigate(invitationPath, { replace: true });
+        toast.error(
+          t(
+            errorCode === 'invitation_email_mismatch'
+              ? 'workspace.invitationEmailMismatch'
+              : 'workspace.invitationAcceptFailed',
+          ),
+        );
+        return false;
       }
     }
 
@@ -145,12 +170,13 @@ export default function Login() {
     });
     if (result.status === 'selection-required') {
       navigate('/workspaces/select?returnTo=%2Fhome', { replace: true });
-      return;
+      return true;
     }
     if (result.status === 'unavailable') {
       throw new Error('No Workspace is available for this Account');
     }
     navigate('/home');
+    return true;
   }
 
   function onSubmit(values: z.infer<ReturnType<typeof formSchema>>) {
@@ -161,8 +187,9 @@ export default function Login() {
     httpClient
       .authUser(username, password)
       .then(async (res) => {
-        await finishLogin(res.token, username);
-        toast.success(t('common.loginSuccess'));
+        if (await finishLogin(res.token, username)) {
+          toast.success(t('common.loginSuccess'));
+        }
       })
       .catch(() => {
         toast.error(t('common.loginFailed'));

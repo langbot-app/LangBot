@@ -37,6 +37,7 @@ from langbot.pkg.persistence.mgr import PersistenceManager, PersistenceMode
 from langbot.pkg.persistence.tenant_uow import (
     TENANT_POLICY_NAME,
     TENANT_TABLE_COLUMNS,
+    ScopedSessionTransactionError,
     TenantUnitOfWork,
     TransactionRollbackOnlyError,
 )
@@ -55,6 +56,7 @@ from langbot.pkg.workspace.policy import CloudWorkspacePolicy
 from langbot.pkg.workspace.service import WorkspaceService
 from langbot.pkg.api.http.authz import Permission
 from langbot.pkg.api.http.controller import group as http_group
+from langbot.pkg.api.http.controller.groups.knowledge.migration import _CURRENT_KNOWLEDGE_BASE
 from langbot.pkg.api.http.controller.groups.system import SystemRouterGroup
 from langbot.pkg.api.http.controller.groups.webhooks import WebhookRouterGroup
 from langbot.pkg.api.http.context import ExecutionContext, RequestContext
@@ -340,6 +342,57 @@ class TestPostgreSQLMigrationUpgrade:
 
         rev2 = await get_alembic_current(postgres_engine)
         assert rev2 == rev1, f'Expected {rev1}, got {rev2}'
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize('settings_type', ['TEXT', 'JSON'])
+    async def test_legacy_knowledge_restore_statement_accepts_historical_and_fresh_settings_types(
+        self,
+        postgres_engine,
+        clean_tables,
+        clean_alembic_version,
+        settings_type,
+    ):
+        timestamp = datetime.datetime(2026, 7, 20, 3, 0, 0, 123456)
+        async with postgres_engine.begin() as conn:
+            await conn.execute(
+                text(f"""
+                    CREATE TABLE knowledge_bases (
+                        uuid TEXT PRIMARY KEY,
+                        workspace_uuid TEXT NOT NULL,
+                        name TEXT,
+                        description TEXT,
+                        emoji TEXT,
+                        created_at TIMESTAMP,
+                        updated_at TIMESTAMP,
+                        knowledge_engine_plugin_id TEXT,
+                        collection_id TEXT,
+                        creation_settings {settings_type},
+                        retrieval_settings {settings_type}
+                    )
+                """)
+            )
+            await conn.execute(
+                _CURRENT_KNOWLEDGE_BASE.insert().values(
+                    uuid=f'kb-{settings_type.lower()}',
+                    workspace_uuid='workspace-a',
+                    name='Legacy KB',
+                    description='Compatibility probe',
+                    emoji='📚',
+                    created_at=timestamp,
+                    updated_at=timestamp,
+                    knowledge_engine_plugin_id='langbot-team/LangRAG',
+                    collection_id=f'kb-{settings_type.lower()}',
+                    creation_settings='{"embedding_model_uuid": "embedding-model"}',
+                    retrieval_settings='{"top_k": 5}',
+                )
+            )
+            row = (
+                await conn.execute(
+                    text('SELECT created_at, creation_settings::text AS creation_settings FROM knowledge_bases')
+                )
+            ).one()
+            assert row.created_at == timestamp
+            assert 'embedding_model_uuid' in row.creation_settings
 
 
 class TestPostgreSQLMigrationGetCurrent:
@@ -680,27 +733,23 @@ class TestPostgreSQLTenantRuntime:
             for workspace_uuid, slug in ((workspace_a, 'workspace-a'), (workspace_b, 'workspace-b')):
                 async with TenantUnitOfWork(release_engine, workspace_uuid) as uow:
                     await uow.execute(
-                        text(
-                            """
-                            INSERT INTO workspaces
-                                (uuid, instance_uuid, name, slug, type, status, source, projection_revision)
-                            VALUES
-                                (:uuid, :instance_uuid, :name, :slug, 'team', 'active', 'cloud_projection', 0)
-                            """
-                        ),
-                        {
-                            'uuid': workspace_uuid,
-                            'instance_uuid': instance_uuid,
-                            'name': slug,
-                            'slug': slug,
-                        },
+                        sa.insert(Workspace).values(
+                            uuid=workspace_uuid,
+                            instance_uuid=instance_uuid,
+                            name=slug,
+                            slug=slug,
+                            type='team',
+                            status='active',
+                            source='cloud_projection',
+                            projection_revision=0,
+                        )
                     )
                     await uow.execute(
-                        text(
-                            'INSERT INTO workspace_metadata (workspace_uuid, key, value) '
-                            "VALUES (:workspace_uuid, 'seed', :value)"
-                        ),
-                        {'workspace_uuid': workspace_uuid, 'value': slug},
+                        sa.insert(WorkspaceMetadata).values(
+                            workspace_uuid=workspace_uuid,
+                            key='seed',
+                            value=slug,
+                        )
                     )
 
             await create_role(runtime_role)
@@ -721,32 +770,39 @@ class TestPostgreSQLTenantRuntime:
                     )
 
             async with TenantUnitOfWork(runtime_engine, workspace_a) as uow:
-                assert (await uow.execute(text('SELECT uuid FROM workspaces'))).scalars().all() == [workspace_a]
-                assert (
-                    await uow.execute(
-                        text('SELECT uuid FROM workspaces WHERE uuid = :workspace_uuid'),
-                        {'workspace_uuid': workspace_b},
-                    )
-                ).all() == []
+                assert (await uow.execute(sa.select(Workspace.uuid))).scalars().all() == [workspace_a]
+                assert (await uow.execute(sa.select(Workspace.uuid).where(Workspace.uuid == workspace_b))).all() == []
 
             with pytest.raises(sa.exc.DBAPIError):
                 async with TenantUnitOfWork(runtime_engine, workspace_a) as uow:
                     await uow.execute(
-                        text(
-                            'INSERT INTO workspace_metadata (workspace_uuid, key, value) '
-                            "VALUES (:workspace_uuid, 'cross-scope', 'rejected')"
-                        ),
-                        {'workspace_uuid': workspace_b},
+                        sa.insert(WorkspaceMetadata).values(
+                            workspace_uuid=workspace_b,
+                            key='cross-scope',
+                            value='rejected',
+                        )
                     )
 
             async with TenantUnitOfWork(runtime_engine, workspace_a) as uow:
-                assert (await uow.execute(text('SELECT value FROM workspace_metadata'))).scalars().all() == [
-                    'workspace-a'
-                ]
+                assert (await uow.execute(sa.select(WorkspaceMetadata.value))).scalars().all() == ['workspace-a']
             async with TenantUnitOfWork(runtime_engine, workspace_b) as uow:
-                assert (await uow.execute(text('SELECT value FROM workspace_metadata'))).scalars().all() == [
-                    'workspace-b'
-                ]
+                assert (await uow.execute(sa.select(WorkspaceMetadata.value))).scalars().all() == ['workspace-b']
+
+            with pytest.raises(TransactionRollbackOnlyError, match='transaction was rolled back'):
+                async with TenantUnitOfWork(runtime_engine, workspace_a) as uow:
+                    with pytest.raises(ScopedSessionTransactionError, match='SQL function'):
+                        await uow.execute(
+                            sa.select(
+                                sa.func.query_to_xml(
+                                    sa.literal("SELECT set_config('langbot.workspace_uuid', 'workspace-b', true)"),
+                                    sa.literal(True),
+                                    sa.literal(False),
+                                    sa.literal(''),
+                                )
+                            )
+                        )
+                    assert (await uow.execute(sa.select(Workspace.uuid))).scalars().all() == [workspace_a]
+
             async with runtime_engine.connect() as conn:
                 setting = await conn.scalar(text("SELECT current_setting('langbot.workspace_uuid', true)"))
                 assert setting in (None, '')
@@ -755,16 +811,20 @@ class TestPostgreSQLTenantRuntime:
             with pytest.raises(RuntimeError, match='force rollback'):
                 async with TenantUnitOfWork(runtime_engine, workspace_a) as uow:
                     await uow.execute(
-                        text(
-                            'INSERT INTO workspace_metadata (workspace_uuid, key, value) '
-                            "VALUES (:workspace_uuid, 'rolled-back', 'no')"
-                        ),
-                        {'workspace_uuid': workspace_a},
+                        sa.insert(WorkspaceMetadata).values(
+                            workspace_uuid=workspace_a,
+                            key='rolled-back',
+                            value='no',
+                        )
                     )
                     raise RuntimeError('force rollback')
             async with TenantUnitOfWork(runtime_engine, workspace_a) as uow:
                 assert (
-                    await uow.session.scalar(text("SELECT COUNT(*) FROM workspace_metadata WHERE key = 'rolled-back'"))
+                    await uow.session.scalar(
+                        sa.select(sa.func.count())
+                        .select_from(WorkspaceMetadata)
+                        .where(WorkspaceMetadata.key == 'rolled-back')
+                    )
                     == 0
                 )
             async with runtime_engine.connect() as conn:

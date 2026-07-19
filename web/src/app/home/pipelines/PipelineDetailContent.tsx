@@ -19,8 +19,8 @@ export default function PipelineDetailContent({ id }: { id: string }) {
     currentWorkspace?.permissions.includes('resource.manage') ?? false;
   const canOperate =
     currentWorkspace?.permissions.includes('runtime.operate') ?? false;
-  const canViewAudit =
-    currentWorkspace?.permissions.includes('audit.view') ?? false;
+  const canViewMonitoring =
+    currentWorkspace?.permissions.includes('resource.view') ?? false;
   const { refreshPipelines, pipelines, setDetailEntityName } = useSidebarData();
 
   // Set breadcrumb entity name
@@ -129,7 +129,7 @@ export default function PipelineDetailContent({ id }: { id: string }) {
               )}
             </TabsTrigger>
           )}
-          {canViewAudit && (
+          {canViewMonitoring && (
             <TabsTrigger value="monitoring" className="gap-1.5">
               <BarChart3 className="size-3.5" />
               {t('pipelines.monitoring.title')}
@@ -170,7 +170,7 @@ export default function PipelineDetailContent({ id }: { id: string }) {
         )}
 
         {/* Tab: Monitoring */}
-        {canViewAudit && (
+        {canViewMonitoring && (
           <TabsContent
             value="monitoring"
             className="flex-1 min-h-0 overflow-y-auto mt-4"
