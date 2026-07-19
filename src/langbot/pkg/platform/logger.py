@@ -8,9 +8,11 @@ import pydantic
 import traceback
 import uuid
 
-from ..core import app
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.definition.abstract.platform.event_logger as abstract_platform_event_logger
+
+if typing.TYPE_CHECKING:
+    from ..core import app
 
 
 class EventLogLevel(enum.Enum):

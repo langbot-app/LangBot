@@ -109,6 +109,7 @@ async def test_handle_websocket_message_marks_event_with_pipeline_uuid():
     connection = SimpleNamespace(
         pipeline_uuid='pipeline-123',
         session_type='person',
+        session_id=None,
         connection_id='conn-1',
     )
 
