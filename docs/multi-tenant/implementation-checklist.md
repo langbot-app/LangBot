@@ -1,6 +1,8 @@
 # Multi-tenant implementation checklist
 
-This checklist turns the Workspace architecture into implementation and verification gates.
+This checklist turns the Workspace architecture into implementation and
+verification gates. Exact commands and observed results are recorded in the
+[verification report](./verification-report.md).
 
 ## Scope guard
 
