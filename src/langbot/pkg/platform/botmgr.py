@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+import functools
 import json
 import re
 import traceback
@@ -14,6 +15,7 @@ from ..discover import engine
 
 from ..entity.persistence import bot as persistence_bot
 from ..entity.persistence import pipeline as persistence_pipeline
+from ..entity.persistence import workspace as persistence_workspace
 
 from ..entity.errors import platform as platform_errors
 from ..api.http.context import ExecutionContext, PrincipalContext, PrincipalType, RequestContext
@@ -256,6 +258,24 @@ class RuntimeBot:
             await self.logger.error(f'Failed to record discarded message: {e}')
 
     async def initialize(self):
+        def tenant_scoped_listener(listener):
+            """Bind adapter callbacks to a Workspace without holding a DB transaction."""
+
+            @functools.wraps(listener)
+            async def wrapped(*args, **kwargs):
+                tenant_scope = getattr(self.ap.persistence_mgr, 'tenant_scope', None)
+                cloud_runtime = (
+                    getattr(getattr(self.ap.persistence_mgr, 'mode', None), 'value', None) == 'cloud_runtime'
+                )
+                if cloud_runtime:
+                    if not callable(tenant_scope):
+                        raise RuntimeError('Cloud platform callbacks require an explicit tenant scope')
+                    async with tenant_scope(self.workspace_uuid):
+                        return await listener(*args, **kwargs)
+                return await listener(*args, **kwargs)
+
+            return wrapped
+
         async def on_friend_message(
             event: platform_events.FriendMessage,
             adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
@@ -396,8 +416,8 @@ class RuntimeBot:
             else:
                 await self.logger.info('Pipeline skipped for group message due to webhook response')
 
-        self.adapter.register_listener(platform_events.FriendMessage, on_friend_message)
-        self.adapter.register_listener(platform_events.GroupMessage, on_group_message)
+        self.adapter.register_listener(platform_events.FriendMessage, tenant_scoped_listener(on_friend_message))
+        self.adapter.register_listener(platform_events.GroupMessage, tenant_scoped_listener(on_group_message))
 
         # Register feedback listener (only effective on adapters that support it)
         async def on_feedback(
@@ -444,7 +464,7 @@ class RuntimeBot:
             except Exception:
                 await self.logger.error(f'Failed to record feedback: {traceback.format_exc()}')
 
-        self.adapter.register_listener(platform_events.FeedbackEvent, on_feedback)
+        self.adapter.register_listener(platform_events.FeedbackEvent, tenant_scoped_listener(on_feedback))
 
     async def run(self):
         async def exception_wrapper():
@@ -642,14 +662,51 @@ class PlatformManager:
 
         self.bots = []
 
-        result = await self.ap.persistence_mgr.execute_async(sqlalchemy.select(persistence_bot.Bot))
+        instance_uow = getattr(self.ap.persistence_mgr, 'instance_discovery_uow', None)
+        tenant_scope = getattr(self.ap.persistence_mgr, 'tenant_scope', None)
+        if callable(instance_uow) and callable(tenant_scope):
+            async with instance_uow(self.ap.workspace_service.instance_uuid) as discovery:
+                workspace_uuids = list(
+                    (
+                        await discovery.session.scalars(
+                            sqlalchemy.select(persistence_workspace.WorkspaceExecutionState.workspace_uuid)
+                            .where(
+                                persistence_workspace.WorkspaceExecutionState.instance_uuid
+                                == self.ap.workspace_service.instance_uuid,
+                                persistence_workspace.WorkspaceExecutionState.state
+                                == persistence_workspace.WorkspaceExecutionStatus.ACTIVE.value,
+                                persistence_workspace.WorkspaceExecutionState.write_fenced.is_(False),
+                            )
+                            .order_by(persistence_workspace.WorkspaceExecutionState.workspace_uuid)
+                        )
+                    ).all()
+                )
+        else:
+            # Compatibility for lightweight tests and pre-tenancy managers.
+            result = await self.ap.persistence_mgr.execute_async(sqlalchemy.select(persistence_bot.Bot))
+            workspace_uuids = sorted({bot.workspace_uuid for bot in result.all()})
 
-        bots = result.all()
-
-        for bot in bots:
-            # load all bots here, enable or disable will be handled in runtime
+        for workspace_uuid in workspace_uuids:
             try:
-                binding = await self.ap.workspace_service.get_execution_binding(bot.workspace_uuid)
+                if callable(tenant_scope):
+                    async with tenant_scope(workspace_uuid):
+                        await self._load_workspace_bots(workspace_uuid)
+                else:
+                    await self._load_workspace_bots(workspace_uuid)
+            except Exception as e:
+                self.ap.logger.error(
+                    f'Failed to load Workspace bots for {workspace_uuid}: {e}\n{traceback.format_exc()}'
+                )
+
+    async def _load_workspace_bots(self, workspace_uuid: str) -> None:
+        result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(persistence_bot.Bot)
+            .where(persistence_bot.Bot.workspace_uuid == workspace_uuid)
+            .order_by(persistence_bot.Bot.uuid)
+        )
+        for bot in result.all():
+            try:
+                binding = await self.ap.workspace_service.get_execution_binding(workspace_uuid)
                 execution_context = ExecutionContext(
                     instance_uuid=binding.instance_uuid,
                     workspace_uuid=binding.workspace_uuid,

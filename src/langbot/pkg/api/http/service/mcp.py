@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import copy
 import re
 import uuid
@@ -8,6 +7,7 @@ import uuid
 import sqlalchemy
 
 from ....core import app, taskmgr
+from ....core.task_boundary import create_detached_task
 from ....entity.persistence import mcp as persistence_mcp
 from ....entity.persistence import plugin as persistence_plugin
 from ....provider.tools.loaders.mcp import MCPSessionStatus, RuntimeMCPSession
@@ -249,7 +249,10 @@ class MCPService:
         await self.ap.persistence_mgr.execute_async(sqlalchemy.insert(persistence_mcp.MCPServer).values(payload))
         created = await self._get_mcp_server_by_uuid_raw(execution_context, payload['uuid'])
         if created and self.ap.tool_mgr.mcp_tool_loader:
-            task = asyncio.create_task(self.ap.tool_mgr.mcp_tool_loader.host_mcp_server(execution_context, created))
+            task = create_detached_task(
+                self.ap.tool_mgr.mcp_tool_loader.host_mcp_server(execution_context, created),
+                after_commit_manager=self.ap.persistence_mgr,
+            )
             self.ap.tool_mgr.mcp_tool_loader._hosted_mcp_tasks.append(task)
         return payload['uuid']
 
@@ -351,7 +354,10 @@ class MCPService:
         if old_enable and loader.has_session(execution_context, old_name):
             await loader.remove_mcp_server(execution_context, old_name)
         if new_enable:
-            task = asyncio.create_task(loader.host_mcp_server(execution_context, updated))
+            task = create_detached_task(
+                loader.host_mcp_server(execution_context, updated),
+                after_commit_manager=self.ap.persistence_mgr,
+            )
             loader._hosted_mcp_tasks.append(task)
 
     async def delete_mcp_server(self, context: TenantContext, server_uuid: str) -> None:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import abc
 
+import sqlalchemy
 import sqlalchemy.ext.asyncio as sqlalchemy_asyncio
 
 from ..core import app
@@ -30,8 +31,14 @@ class BaseDatabaseManager(abc.ABC):
 
     engine: sqlalchemy_asyncio.AsyncEngine
 
-    def __init__(self, ap: app.Application) -> None:
+    def __init__(
+        self,
+        ap: app.Application,
+        *,
+        url_override: sqlalchemy.engine.URL | None = None,
+    ) -> None:
         self.ap = ap
+        self.url_override = url_override
 
     @abc.abstractmethod
     async def initialize(self) -> None:

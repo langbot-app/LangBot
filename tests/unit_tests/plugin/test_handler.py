@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, Mock
 import pytest
 
 from langbot_plugin.entities.io.actions.enums import PluginToRuntimeAction
-from langbot_plugin.entities.io.context import ActionContext
+from langbot_plugin.entities.io.context import ActionContext, InstallationBinding
 
 
 def make_handler(app):
@@ -35,14 +35,19 @@ def make_handler(app):
         Mock(),
         AsyncMock(return_value=True),
         app,
-        workspace_context,
     )
-    installation_uuid = runtime_handler._remember_installation(
-        workspace_context,
-        'test-author',
-        'test-plugin',
+    installation_binding = InstallationBinding(
+        **workspace_context.model_dump(exclude_none=True),
+        installation_uuid='00000000-0000-4000-8000-000000000001',
+        runtime_revision=1,
+        artifact_digest='a' * 64,
     )
-    runtime_handler.bind_action_context(workspace_context.for_installation(installation_uuid))
+    runtime_handler.register_installation_binding(
+        installation_binding,
+        plugin_author='test-author',
+        plugin_name='test-plugin',
+    )
+    runtime_handler._current_action_context.set(installation_binding)
     query_pool = getattr(app, 'query_pool', None)
     if query_pool is not None and hasattr(query_pool, 'cached_queries'):
 

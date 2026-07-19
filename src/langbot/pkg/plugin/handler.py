@@ -4,15 +4,26 @@ import inspect
 import typing
 from typing import Any
 import base64
+import contextlib
+import contextvars
 import traceback
-import uuid
 from dataclasses import dataclass
 
 import sqlalchemy
 
 from langbot_plugin.runtime.io import handler
 from langbot_plugin.runtime.io.connection import Connection
-from langbot_plugin.entities.io.context import ActionContext
+from langbot_plugin.entities.io.context import (
+    ActionContext,
+    ApplyPluginInstallationRequest,
+    InstallationBinding,
+    PluginInstallationDesiredState,
+    PluginWorkerPolicy,
+    ReconcilePluginInstallationsRequest,
+    RemovePluginInstallationRequest,
+    RuntimeConfig,
+    RuntimeIdentity,
+)
 from langbot_plugin.entities.io.actions.enums import (
     CommonAction,
     RuntimeToLangBotAction,
@@ -61,6 +72,9 @@ class _PluginInstallationIdentity:
     workspace_uuid: str
     plugin_author: str
     plugin_name: str
+    installation_uuid: str
+    runtime_revision: int
+    artifact_digest: str
 
 
 _UNTRUSTED_SCOPE_FIELDS = frozenset(
@@ -71,12 +85,13 @@ _UNTRUSTED_SCOPE_FIELDS = frozenset(
         'workspace_uuid',
         'placement_generation',
         'installation_uuid',
+        'runtime_revision',
+        'artifact_digest',
     }
 )
 
 _RUNTIME_SCOPED_ACTIONS = frozenset(
     {
-        CommonAction.PING.value,
         CommonAction.FILE_CHUNK.value,
         RuntimeToLangBotAction.INITIALIZE_PLUGIN_SETTINGS.value,
         RuntimeToLangBotAction.GET_PLUGIN_SETTINGS.value,
@@ -89,113 +104,129 @@ class RuntimeConnectionHandler(handler.Handler):
 
     ap: app.Application
 
-    @staticmethod
-    def derive_installation_uuid(
-        action_context: ActionContext,
-        plugin_author: str,
-        plugin_name: str,
-    ) -> str:
-        """Derive the current stable installation capability without trusting plugin data."""
-
-        return str(
-            uuid.uuid5(
-                uuid.NAMESPACE_URL,
-                'langbot:plugin-installation:'
-                f'{action_context.instance_uuid}:{action_context.workspace_uuid}:'
-                f'{plugin_author}/{plugin_name}',
-            )
-        )
-
     def validate_inbound_action_context(
         self,
         action: str,
         action_context: ActionContext | None,
     ) -> ActionContext | None:
-        """Keep a validated child installation capability from the request envelope."""
+        """Require a complete installation tuple on every tenant action."""
 
-        validated = super().validate_inbound_action_context(action, action_context)
-        if action_context is not None and action_context.installation_uuid is not None:
-            # The base handler already checked instance, Workspace and placement
-            # generation against this connector's immutable binding.  The
-            # installation is resolved against trusted Host state asynchronously
-            # before dispatch.
+        if action == CommonAction.PING.value:
+            if action_context is not None:
+                raise ValueError('PING does not accept an installation binding')
+            return None
+        if isinstance(action_context, InstallationBinding):
             return action_context
-        return validated
+        if self._allow_legacy_oss_context(action, action_context):
+            return action_context
+        raise ValueError(f'{action} requires a complete InstallationBinding context')
+
+    def _allow_legacy_oss_context(self, action: str, action_context: ActionContext | None) -> bool:
+        """Keep pre-v4 local plugins usable without weakening shared Runtime."""
+
+        if not (
+            getattr(getattr(self.ap, 'deployment', None), 'mode', 'oss') == 'oss'
+            and isinstance(action_context, ActionContext)
+            and not isinstance(action_context, InstallationBinding)
+        ):
+            return False
+        if action in {
+            RuntimeToLangBotAction.INITIALIZE_PLUGIN_SETTINGS.value,
+            RuntimeToLangBotAction.GET_PLUGIN_SETTINGS.value,
+            CommonAction.FILE_CHUNK.value,
+        }:
+            return True
+        # Pre-v4 OSS workers receive this capability from Core's settings
+        # response, but their pinned SDK cannot carry revision/digest fields.
+        # Shared Runtime never enters this compatibility branch.
+        return bool(action_context.installation_uuid)
 
     def _require_runtime_action_context(self) -> ActionContext:
-        action_context = self.current_action_context or self.bound_action_context
+        action_context = self.current_action_context
         if action_context is None:
             raise ValueError('Plugin Runtime action is missing a trusted Workspace context')
-
-        bound = self.require_bound_action_context()
-        if not bound.same_workspace(action_context):
-            raise ValueError('Plugin Runtime action context does not match its connector binding')
         return action_context
-
-    def _remember_installation(
-        self,
-        action_context: ActionContext,
-        plugin_author: str,
-        plugin_name: str,
-    ) -> str:
-        installation_uuid = self.derive_installation_uuid(
-            action_context,
-            plugin_author,
-            plugin_name,
-        )
-        self._installation_bindings[installation_uuid] = _PluginInstallationIdentity(
-            workspace_uuid=action_context.workspace_uuid,
-            plugin_author=plugin_author,
-            plugin_name=plugin_name,
-        )
-        return installation_uuid
 
     async def _resolve_installation_identity(
         self,
-        action_context: ActionContext,
+        action_context: InstallationBinding,
     ) -> _PluginInstallationIdentity:
-        installation_uuid = action_context.installation_uuid
-        if installation_uuid is None:
-            raise ValueError('Plugin action is missing installation_uuid')
-
-        identity = self._installation_bindings.get(installation_uuid)
-        if identity is not None:
-            if identity.workspace_uuid != action_context.workspace_uuid:
-                raise ValueError('Plugin installation belongs to another Workspace')
+        cached = self._installation_bindings.get(action_context.installation_uuid)
+        if cached is not None:
+            cached_binding, identity = cached
+            if cached_binding != action_context:
+                raise ValueError('Plugin installation revision or artifact is stale')
             return identity
 
-        # A control connection may reconnect while the Runtime keeps plugin
-        # processes alive. Rebuild the capability map from Workspace-scoped
-        # settings instead of accepting an installation asserted by the peer.
         result = await self.ap.persistence_mgr.execute_async(
             sqlalchemy.select(
                 persistence_plugin.PluginSetting.plugin_author,
                 persistence_plugin.PluginSetting.plugin_name,
-            ).where(persistence_plugin.PluginSetting.workspace_uuid == action_context.workspace_uuid)
-        )
-        for setting in result.all():
-            candidate_uuid = self.derive_installation_uuid(
-                action_context,
-                setting.plugin_author,
-                setting.plugin_name,
+                persistence_plugin.PluginSetting.installation_uuid,
+                persistence_plugin.PluginSetting.runtime_revision,
+                persistence_plugin.PluginSetting.artifact_digest,
             )
-            if candidate_uuid == installation_uuid:
-                return self._installation_bindings.setdefault(
-                    installation_uuid,
-                    _PluginInstallationIdentity(
-                        workspace_uuid=action_context.workspace_uuid,
-                        plugin_author=setting.plugin_author,
-                        plugin_name=setting.plugin_name,
-                    ),
-                )
+            .where(persistence_plugin.PluginSetting.workspace_uuid == action_context.workspace_uuid)
+            .where(persistence_plugin.PluginSetting.installation_uuid == action_context.installation_uuid)
+        )
+        setting = result.first()
+        if setting is None:
+            raise ValueError('Plugin installation is not registered in this Workspace')
+        if (
+            setting.runtime_revision != action_context.runtime_revision
+            or setting.artifact_digest != action_context.artifact_digest
+        ):
+            raise ValueError('Plugin installation revision or artifact is stale')
+        identity = _PluginInstallationIdentity(
+            workspace_uuid=action_context.workspace_uuid,
+            plugin_author=setting.plugin_author,
+            plugin_name=setting.plugin_name,
+            installation_uuid=setting.installation_uuid,
+            runtime_revision=setting.runtime_revision,
+            artifact_digest=setting.artifact_digest,
+        )
+        self._installation_bindings[action_context.installation_uuid] = (action_context, identity)
+        return identity
 
-        raise ValueError('Plugin installation is not registered in this Workspace')
+    async def _resolve_legacy_oss_installation_identity(
+        self,
+        action_context: ActionContext,
+    ) -> _PluginInstallationIdentity:
+        if not action_context.installation_uuid:
+            raise ValueError('Legacy OSS plugin action is missing its installation capability')
+        result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(
+                persistence_plugin.PluginSetting.plugin_author,
+                persistence_plugin.PluginSetting.plugin_name,
+                persistence_plugin.PluginSetting.installation_uuid,
+                persistence_plugin.PluginSetting.runtime_revision,
+                persistence_plugin.PluginSetting.artifact_digest,
+            )
+            .where(persistence_plugin.PluginSetting.workspace_uuid == action_context.workspace_uuid)
+            .where(persistence_plugin.PluginSetting.installation_uuid == action_context.installation_uuid)
+        )
+        setting = result.first()
+        if setting is None:
+            raise ValueError('Plugin installation is not registered in this Workspace')
+        return _PluginInstallationIdentity(
+            workspace_uuid=action_context.workspace_uuid,
+            plugin_author=setting.plugin_author,
+            plugin_name=setting.plugin_name,
+            installation_uuid=setting.installation_uuid,
+            runtime_revision=setting.runtime_revision,
+            artifact_digest=setting.artifact_digest,
+        )
 
     async def _require_plugin_action_context(
         self,
     ) -> tuple[ActionContext, _PluginInstallationIdentity]:
         action_context = self._require_runtime_action_context()
-        identity = await self._resolve_installation_identity(action_context)
+        if isinstance(action_context, InstallationBinding):
+            identity = await self._resolve_installation_identity(action_context)
+        elif self._allow_legacy_oss_context('plugin_action', action_context):
+            identity = await self._resolve_legacy_oss_installation_identity(action_context)
+        else:
+            raise ValueError('Plugin action requires a complete InstallationBinding context')
         return action_context, identity
 
     async def _require_active_action_context(self, action_context: ActionContext) -> None:
@@ -215,25 +246,53 @@ class RuntimeConnectionHandler(handler.Handler):
         ):
             raise ValueError('Plugin Runtime action uses a stale Workspace execution binding')
 
+    @contextlib.asynccontextmanager
+    async def _tenant_action_scope(self, action_context: ActionContext):
+        """Bind Runtime-origin work to the trusted Workspace database scope.
+
+        Cloud persistence deliberately rejects unscoped access and PostgreSQL
+        RLS reads the Workspace id from each short database transaction. The
+        wire envelope is validated before this helper is entered, so plugin
+        payload fields can never select the scope. A transaction-free boundary
+        avoids reserving one pooled connection across provider and network waits.
+        """
+
+        persistence_mgr = getattr(self.ap, 'persistence_mgr', None)
+        if persistence_mgr is None:
+            yield
+            return
+        tenant_scope_descriptor = getattr(type(persistence_mgr), 'tenant_scope', None)
+        if not callable(tenant_scope_descriptor):
+            # Lightweight test doubles and older OSS persistence managers do
+            # not expose the transaction-free scope API.
+            yield
+            return
+        async with persistence_mgr.tenant_scope(action_context.workspace_uuid):
+            yield
+
     def _secure_plugin_actions(self) -> None:
         """Wrap plugin-origin actions with installation validation and payload scrubbing."""
 
         for action_name, action_handler in list(self.actions.items()):
-            if action_name in _RUNTIME_SCOPED_ACTIONS:
+            if action_name == CommonAction.PING.value:
                 continue
 
             async def secured_action(
                 data: dict[str, Any],
                 *,
                 _action_handler=action_handler,
+                _runtime_scoped=action_name in _RUNTIME_SCOPED_ACTIONS,
             ) -> handler.ActionResponse:
-                action_context, _ = await self._require_plugin_action_context()
-                await self._require_active_action_context(action_context)
-                safe_data = {key: value for key, value in data.items() if key not in _UNTRUSTED_SCOPE_FIELDS}
-                response = _action_handler(safe_data)
-                if inspect.isawaitable(response):
-                    response = await response
-                return response
+                action_context = self._require_runtime_action_context()
+                async with self._tenant_action_scope(action_context):
+                    if not _runtime_scoped:
+                        action_context, _ = await self._require_plugin_action_context()
+                    await self._require_active_action_context(action_context)
+                    safe_data = {key: value for key, value in data.items() if key not in _UNTRUSTED_SCOPE_FIELDS}
+                    response = _action_handler(safe_data)
+                    if inspect.isawaitable(response):
+                        response = await response
+                    return response
 
             self.actions[action_name] = secured_action
 
@@ -252,6 +311,31 @@ class RuntimeConnectionHandler(handler.Handler):
         if setting is None:
             raise ValueError('Plugin installation setting was not found')
         return setting
+
+    async def _get_plugin_setting_by_name(
+        self,
+        action_context: ActionContext,
+        plugin_author: str,
+        plugin_name: str,
+    ):
+        result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(persistence_plugin.PluginSetting)
+            .where(persistence_plugin.PluginSetting.workspace_uuid == action_context.workspace_uuid)
+            .where(persistence_plugin.PluginSetting.plugin_author == plugin_author)
+            .where(persistence_plugin.PluginSetting.plugin_name == plugin_name)
+        )
+        return result.first()
+
+    @staticmethod
+    def _require_setting_binding(setting, action_context: InstallationBinding) -> None:
+        if setting is None:
+            raise ValueError('Plugin installation setting was not found')
+        if (
+            setting.installation_uuid != action_context.installation_uuid
+            or setting.runtime_revision != action_context.runtime_revision
+            or setting.artifact_digest != action_context.artifact_digest
+        ):
+            raise ValueError('Plugin installation binding does not match the active setting')
 
     async def _resolve_query(
         self,
@@ -355,18 +439,24 @@ class RuntimeConnectionHandler(handler.Handler):
         connection: Connection,
         disconnect_callback: typing.Callable[[], typing.Coroutine[typing.Any, typing.Any, bool]],
         ap: app.Application,
-        action_context: ActionContext,
     ):
         super().__init__(connection, disconnect_callback)
         self.ap = ap
-        self.bind_action_context(action_context.without_installation())
-        self._installation_bindings: dict[str, _PluginInstallationIdentity] = {}
+        self._outbound_installation_context: contextvars.ContextVar[InstallationBinding | None] = (
+            contextvars.ContextVar(
+                f'{self.__class__.__name__}_{id(self)}_outbound_installation',
+                default=None,
+            )
+        )
+        self._installation_bindings: dict[
+            str,
+            tuple[InstallationBinding, _PluginInstallationIdentity],
+        ] = {}
 
         @self.action(RuntimeToLangBotAction.INITIALIZE_PLUGIN_SETTINGS)
         async def initialize_plugin_settings(data: dict[str, Any]) -> handler.ActionResponse:
             """Initialize plugin settings"""
             action_context = self._require_runtime_action_context()
-            await self._require_active_action_context(action_context)
             # check if exists plugin setting
             plugin_author = data['plugin_author']
             plugin_name = data['plugin_name']
@@ -374,38 +464,36 @@ class RuntimeConnectionHandler(handler.Handler):
             install_info = data['install_info']
 
             try:
-                result = await self.ap.persistence_mgr.execute_async(
-                    sqlalchemy.select(persistence_plugin.PluginSetting)
-                    .where(persistence_plugin.PluginSetting.workspace_uuid == action_context.workspace_uuid)
-                    .where(persistence_plugin.PluginSetting.plugin_author == plugin_author)
-                    .where(persistence_plugin.PluginSetting.plugin_name == plugin_name)
+                setting = await self._get_plugin_setting_by_name(
+                    action_context,
+                    plugin_author,
+                    plugin_name,
                 )
-
-                setting = result.first()
-
-                if setting is not None:
-                    # delete plugin setting
+                if isinstance(action_context, InstallationBinding):
+                    self._require_setting_binding(setting, action_context)
+                elif setting is None:
+                    # OSS debug and pre-v4 data/plugins are the only callers
+                    # allowed to create settings without a desired-state row.
                     await self.ap.persistence_mgr.execute_async(
-                        sqlalchemy.delete(persistence_plugin.PluginSetting)
+                        sqlalchemy.insert(persistence_plugin.PluginSetting).values(
+                            workspace_uuid=action_context.workspace_uuid,
+                            plugin_author=plugin_author,
+                            plugin_name=plugin_name,
+                            install_source=install_source,
+                            install_info=install_info,
+                            enabled=True,
+                            priority=0,
+                            config={},
+                        )
+                    )
+                else:
+                    await self.ap.persistence_mgr.execute_async(
+                        sqlalchemy.update(persistence_plugin.PluginSetting)
                         .where(persistence_plugin.PluginSetting.workspace_uuid == action_context.workspace_uuid)
                         .where(persistence_plugin.PluginSetting.plugin_author == plugin_author)
                         .where(persistence_plugin.PluginSetting.plugin_name == plugin_name)
+                        .values(install_source=install_source, install_info=install_info)
                     )
-
-                # create plugin setting
-                await self.ap.persistence_mgr.execute_async(
-                    sqlalchemy.insert(persistence_plugin.PluginSetting).values(
-                        workspace_uuid=action_context.workspace_uuid,
-                        plugin_author=plugin_author,
-                        plugin_name=plugin_name,
-                        install_source=install_source,
-                        install_info=install_info,
-                        # inherit from existing setting
-                        enabled=setting.enabled if setting is not None else True,
-                        priority=setting.priority if setting is not None else 0,
-                        config=setting.config if setting is not None else {},  # noqa: F821
-                    )
-                )
 
                 return handler.ActionResponse.success(
                     data={},
@@ -421,16 +509,16 @@ class RuntimeConnectionHandler(handler.Handler):
             """Get plugin settings"""
 
             action_context = self._require_runtime_action_context()
-            await self._require_active_action_context(action_context)
             plugin_author = data['plugin_author']
             plugin_name = data['plugin_name']
 
-            result = await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.select(persistence_plugin.PluginSetting)
-                .where(persistence_plugin.PluginSetting.workspace_uuid == action_context.workspace_uuid)
-                .where(persistence_plugin.PluginSetting.plugin_author == plugin_author)
-                .where(persistence_plugin.PluginSetting.plugin_name == plugin_name)
+            setting = await self._get_plugin_setting_by_name(
+                action_context,
+                plugin_author,
+                plugin_name,
             )
+            if isinstance(action_context, InstallationBinding):
+                self._require_setting_binding(setting, action_context)
 
             data = {
                 'enabled': True,
@@ -438,14 +526,10 @@ class RuntimeConnectionHandler(handler.Handler):
                 'plugin_config': {},
                 'install_source': 'local',
                 'install_info': {},
-                'installation_uuid': self._remember_installation(
-                    action_context,
-                    plugin_author,
-                    plugin_name,
-                ),
+                'installation_uuid': None,
+                'runtime_revision': None,
+                'artifact_digest': None,
             }
-
-            setting = result.first()
 
             if setting is not None:
                 data['enabled'] = setting.enabled
@@ -453,6 +537,9 @@ class RuntimeConnectionHandler(handler.Handler):
                 data['plugin_config'] = setting.config
                 data['install_source'] = setting.install_source
                 data['install_info'] = setting.install_info
+                data['installation_uuid'] = setting.installation_uuid
+                data['runtime_revision'] = setting.runtime_revision
+                data['artifact_digest'] = setting.artifact_digest
 
             return handler.ActionResponse.success(
                 data=data,
@@ -1369,24 +1456,144 @@ class RuntimeConnectionHandler(handler.Handler):
 
         self._secure_plugin_actions()
 
-    async def ping(self) -> dict[str, Any]:
-        """Ping the runtime"""
-        return await self.call_action(
-            CommonAction.PING,
-            {},
-            timeout=10,
+    @contextlib.contextmanager
+    def installation_scope(self, binding: InstallationBinding | None):
+        """Attach one immutable installation tuple to nested wire actions."""
+
+        token = self._outbound_installation_context.set(binding)
+        try:
+            yield
+        finally:
+            self._outbound_installation_context.reset(token)
+
+    def register_installation_binding(
+        self,
+        binding: InstallationBinding,
+        *,
+        plugin_author: str,
+        plugin_name: str,
+    ) -> None:
+        """Install Core's current desired-state fence for inbound actions."""
+
+        existing = self._installation_bindings.get(binding.installation_uuid)
+        if existing is not None:
+            existing_binding = existing[0]
+            if existing_binding.workspace_uuid != binding.workspace_uuid:
+                raise ValueError('Plugin installation cannot move between Workspaces')
+            if binding.placement_generation < existing_binding.placement_generation or (
+                binding.placement_generation == existing_binding.placement_generation
+                and binding.runtime_revision < existing_binding.runtime_revision
+            ):
+                raise ValueError('Cannot register a stale plugin installation binding')
+        self._installation_bindings[binding.installation_uuid] = (
+            binding,
+            _PluginInstallationIdentity(
+                workspace_uuid=binding.workspace_uuid,
+                plugin_author=plugin_author,
+                plugin_name=plugin_name,
+                installation_uuid=binding.installation_uuid,
+                runtime_revision=binding.runtime_revision,
+                artifact_digest=binding.artifact_digest,
+            ),
         )
 
-    async def set_runtime_config(self, cloud_service_url: str | None) -> dict[str, Any]:
-        """Push runtime configuration (e.g. marketplace URL) to the runtime."""
-        data = {}
-        if cloud_service_url:
-            data['cloud_service_url'] = cloud_service_url
-        return await self.call_action(
-            LangBotToRuntimeAction.SET_RUNTIME_CONFIG,
-            data,
-            timeout=10,
+    def unregister_installation_binding(self, binding: InstallationBinding) -> None:
+        existing = self._installation_bindings.get(binding.installation_uuid)
+        if existing is not None and existing[0] == binding:
+            self._installation_bindings.pop(binding.installation_uuid, None)
+
+    def resolve_outbound_action_context(
+        self,
+        action_context: InstallationBinding | ActionContext | dict[str, Any] | None,
+    ) -> InstallationBinding | ActionContext | None:
+        if action_context is not None:
+            return super().resolve_outbound_action_context(action_context)
+        inbound_context = self.current_action_context
+        if inbound_context is not None:
+            return inbound_context
+        return self._outbound_installation_context.get()
+
+    def require_outbound_installation_context(self) -> InstallationBinding:
+        binding = self._outbound_installation_context.get()
+        if not isinstance(binding, InstallationBinding):
+            raise ValueError('Host plugin action requires an InstallationBinding scope')
+        return binding
+
+    async def ping(self) -> dict[str, Any]:
+        """Ping the runtime"""
+        with self.installation_scope(None):
+            return await self.call_action(
+                CommonAction.PING,
+                {},
+                timeout=10,
+            )
+
+    async def set_runtime_config(
+        self,
+        *,
+        runtime_identity: RuntimeIdentity,
+        worker_policy: PluginWorkerPolicy,
+        runtime_profile: typing.Literal['oss_dev', 'shared'],
+        cloud_service_url: str | None,
+    ) -> dict[str, Any]:
+        """Push the instance-scoped, immutable Runtime handshake."""
+
+        runtime_config = RuntimeConfig(
+            runtime_identity=runtime_identity,
+            worker_policy=worker_policy,
+            runtime_profile=runtime_profile,
+            cloud_service_url=cloud_service_url,
         )
+        with self.installation_scope(None):
+            return await self.call_action(
+                LangBotToRuntimeAction.SET_RUNTIME_CONFIG,
+                runtime_config.model_dump(exclude_none=True),
+                timeout=10,
+            )
+
+    async def reconcile_plugin_installations(
+        self,
+        installations: tuple[PluginInstallationDesiredState, ...],
+    ) -> dict[str, Any]:
+        request = ReconcilePluginInstallationsRequest(installations=installations)
+        with self.installation_scope(None):
+            return await self.call_action(
+                LangBotToRuntimeAction.RECONCILE_PLUGIN_INSTALLATIONS,
+                request.model_dump(),
+                timeout=120,
+            )
+
+    async def apply_plugin_installation(
+        self,
+        binding: InstallationBinding,
+        *,
+        artifact_package: bytes | None,
+        enabled: bool,
+    ) -> dict[str, Any]:
+        with self.installation_scope(binding):
+            artifact_file_key = None
+            if artifact_package is not None:
+                artifact_file_key = await self.send_file(artifact_package, 'lbpkg')
+            request = ApplyPluginInstallationRequest(
+                artifact_file_key=artifact_file_key,
+                enabled=enabled,
+            )
+            return await self.call_action(
+                LangBotToRuntimeAction.APPLY_PLUGIN_INSTALLATION,
+                request.model_dump(exclude_none=True),
+                timeout=120,
+            )
+
+    async def remove_plugin_installation(
+        self,
+        binding: InstallationBinding,
+    ) -> dict[str, Any]:
+        with self.installation_scope(binding):
+            return await self.call_action(
+                LangBotToRuntimeAction.REMOVE_PLUGIN_INSTALLATION,
+                RemovePluginInstallationRequest().model_dump(),
+                timeout=120,
+            )
 
     async def install_plugin(
         self, install_source: str, install_info: dict[str, Any]
@@ -1455,7 +1662,7 @@ class RuntimeConnectionHandler(handler.Handler):
 
     async def set_plugin_config(self, plugin_author: str, plugin_name: str, config: dict[str, Any]) -> dict[str, Any]:
         """Set plugin config"""
-        action_context = self.require_bound_action_context()
+        action_context = self.require_outbound_installation_context()
         # update plugin setting
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.update(persistence_plugin.PluginSetting)
@@ -1642,12 +1849,7 @@ class RuntimeConnectionHandler(handler.Handler):
 
     async def cleanup_plugin_data(self, plugin_author: str, plugin_name: str) -> None:
         """Cleanup plugin settings and binary storage"""
-        action_context = self.require_bound_action_context()
-        installation_uuid = self.derive_installation_uuid(
-            action_context,
-            plugin_author,
-            plugin_name,
-        )
+        action_context = self.require_outbound_installation_context()
         # Delete plugin settings
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.delete(persistence_plugin.PluginSetting)
@@ -1664,9 +1866,6 @@ class RuntimeConnectionHandler(handler.Handler):
             .where(persistence_bstorage.BinaryStorage.owner_type == 'plugin')
             .where(persistence_bstorage.BinaryStorage.owner == owner)
         )
-        installation_bindings = getattr(self, '_installation_bindings', None)
-        if installation_bindings is not None:
-            installation_bindings.pop(installation_uuid, None)
 
     async def call_tool(
         self,
@@ -1744,11 +1943,12 @@ class RuntimeConnectionHandler(handler.Handler):
 
     async def get_debug_info(self) -> dict[str, Any]:
         """Get debug information including debug key and WS URL"""
-        result = await self.call_action(
-            LangBotToRuntimeAction.GET_DEBUG_INFO,
-            {},
-            timeout=10,
-        )
+        with self.installation_scope(None):
+            result = await self.call_action(
+                LangBotToRuntimeAction.GET_DEBUG_INFO,
+                {},
+                timeout=10,
+            )
         return result
 
     # ================= RAG Capability Callers (LangBot -> Runtime) =================

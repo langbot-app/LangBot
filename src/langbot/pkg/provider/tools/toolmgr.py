@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import typing
 import time
+import inspect
 from typing import TYPE_CHECKING
 
 import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
@@ -35,6 +36,36 @@ class ToolManager:
     def __init__(self, ap: app.Application):
         self.ap = ap
 
+    async def _bind_plugin_workspace(self, context: TenantContext) -> None:
+        """Select the tenant before any plugin catalog lookup.
+
+        Tool discovery happens before invocation, so relying on ``call_tool``
+        to bind the Workspace is too late and can expose another task's
+        catalog in a shared Runtime.
+        """
+
+        connector = getattr(self.ap, 'plugin_connector', None)
+        require_context = getattr(connector, 'require_workspace_context', None)
+        if require_context is None:
+            return
+        result = require_context(context)
+        if inspect.isawaitable(result):
+            await result
+
+    async def _workspace_sandbox_available(self, context: TenantContext) -> bool:
+        """Resolve the Workspace capability before exposing sandbox tools."""
+
+        box_service = getattr(self.ap, 'box_service', None)
+        checker = getattr(box_service, 'is_workspace_sandbox_available', None)
+        if not callable(checker):
+            # Compatibility for OSS embedders and isolated manager tests. The
+            # BoxService execution path remains the final authority.
+            return True
+        try:
+            return bool(await checker(context))
+        except Exception:
+            return False
+
     async def initialize(self):
         from langbot.pkg.utils import importutil
         from langbot.pkg.provider.tools import loaders
@@ -65,10 +96,13 @@ class ToolManager:
         include_skill_authoring: bool = False,
         include_mcp_resource_tools: bool = True,
     ) -> list[resource_tool.LLMTool]:
+        await self._bind_plugin_workspace(context)
         all_functions: list[resource_tool.LLMTool] = []
 
-        all_functions.extend(await self.native_tool_loader.get_tools())
-        if include_skill_authoring:
+        sandbox_available = await self._workspace_sandbox_available(context)
+        if sandbox_available:
+            all_functions.extend(await self.native_tool_loader.get_tools())
+        if include_skill_authoring and sandbox_available:
             all_functions.extend(await self.skill_tool_loader.get_tools())
         all_functions.extend(await self.plugin_tool_loader.get_tools(bound_plugins))
         all_functions.extend(
@@ -89,6 +123,7 @@ class ToolManager:
         include_skill_authoring: bool = False,
         include_mcp_resource_tools: bool = False,
     ) -> list[dict[str, typing.Any]]:
+        await self._bind_plugin_workspace(context)
         catalog: list[dict[str, typing.Any]] = []
 
         def append_tools(source: str, source_name: str, tools: list[resource_tool.LLMTool]) -> None:
@@ -104,8 +139,10 @@ class ToolManager:
                     }
                 )
 
-        append_tools('builtin', 'LangBot', await self.native_tool_loader.get_tools())
-        if include_skill_authoring:
+        sandbox_available = await self._workspace_sandbox_available(context)
+        if sandbox_available:
+            append_tools('builtin', 'LangBot', await self.native_tool_loader.get_tools())
+        if include_skill_authoring and sandbox_available:
             append_tools('skill', 'LangBot', await self.skill_tool_loader.get_tools())
         catalog.extend(await self.plugin_tool_loader.get_tool_catalog(bound_plugins))
 
@@ -121,12 +158,18 @@ class ToolManager:
 
     async def get_tool_by_name(self, context: TenantContext, name: str) -> tool_loader.ToolLookupResult | None:
         """Get tool by name from any active loader."""
-        for active_loader in (
-            self.native_tool_loader,
-            self.plugin_tool_loader,
-            self.skill_tool_loader,
-        ):
+        await self._bind_plugin_workspace(context)
+        sandbox_available = await self._workspace_sandbox_available(context)
+        if sandbox_available:
+            tool = await self.native_tool_loader.get_tool(name)
+            if tool:
+                return tool
+        for active_loader in (self.plugin_tool_loader,):
             tool = await active_loader.get_tool(name)
+            if tool:
+                return tool
+        if sandbox_available:
+            tool = await self.skill_tool_loader.get_tool(name)
             if tool:
                 return tool
 
@@ -237,7 +280,10 @@ class ToolManager:
     async def execute_func_call(self, name: str, parameters: dict, query: pipeline_query.Query) -> typing.Any:
         from langbot.pkg.telemetry import features as telemetry_features
 
-        if await self.native_tool_loader.has_tool(name):
+        execution_context = get_query_execution_context(query)
+        await self._bind_plugin_workspace(execution_context)
+        sandbox_available = await self._workspace_sandbox_available(execution_context)
+        if sandbox_available and await self.native_tool_loader.has_tool(name):
             telemetry_features.increment(query, 'tool_calls', 'native')
             return await self._invoke_tool_with_monitoring(
                 source='native',
@@ -255,7 +301,6 @@ class ToolManager:
                 query=query,
                 invoke=lambda: self.plugin_tool_loader.invoke_tool(name, parameters, query),
             )
-        execution_context = get_query_execution_context(query)
         if await self.mcp_tool_loader.has_tool(execution_context, name):
             telemetry_features.increment(query, 'tool_calls', 'mcp')
             return await self._invoke_tool_with_monitoring(
@@ -265,7 +310,7 @@ class ToolManager:
                 query=query,
                 invoke=lambda: self.mcp_tool_loader.invoke_tool(name, parameters, query),
             )
-        if await self.skill_tool_loader.has_tool(name):
+        if sandbox_available and await self.skill_tool_loader.has_tool(name):
             telemetry_features.increment(query, 'tool_calls', 'skill')
             return await self._invoke_tool_with_monitoring(
                 source='skill',

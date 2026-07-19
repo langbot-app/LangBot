@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import datetime
+from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
 import sqlalchemy
-from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from langbot.pkg.api.http.authz import WorkspaceRequiredError
 from langbot.pkg.api.http.context import ExecutionContext
@@ -17,6 +18,7 @@ from langbot.pkg.entity.persistence.workspace import Workspace, WorkspaceExecuti
 from langbot.pkg.rag.knowledge.kbmgr import RAGManager
 from langbot.pkg.rag.service.runtime import RAGRuntimeService
 from langbot.pkg.vector.mgr import VectorDBManager
+from langbot.pkg.vector.vdbs.pgvector_db import PgVectorDatabase
 from langbot.pkg.workspace.errors import WorkspaceNotFoundError
 from langbot.pkg.workspace.policy import CloudWorkspacePolicy, SingleWorkspacePolicy
 from langbot.pkg.workspace.service import WorkspaceService
@@ -41,6 +43,13 @@ class _PersistenceManager:
             result = await connection.execute(*args, **kwargs)
             await connection.commit()
             return result
+
+    @asynccontextmanager
+    async def tenant_uow(self, _workspace_uuid):
+        # This lightweight fixture does not emulate PostgreSQL RLS; production
+        # persistence tests cover the transaction-bound unit of work itself.
+        async with AsyncSession(self.engine, expire_on_commit=False) as session, session.begin():
+            yield SimpleNamespace(session=session)
 
     @staticmethod
     def serialize_model(model, row, masked_columns=()):
@@ -348,3 +357,34 @@ async def test_stale_generation_is_rejected_before_vector_access(tenant_rag):
     with pytest.raises(Exception, match='generation'):
         await manager.upsert(stale, 'kb-a', [[0.1]], ['a'])
     assert database.collections == []
+
+
+async def test_pgvector_first_write_binds_dimension_and_later_mismatch_fails(tenant_rag):
+    app, engine = tenant_rag
+    manager = VectorDBManager(app)
+    pgvector = object.__new__(PgVectorDatabase)
+    pgvector.allowed_dimensions = frozenset({1, 2})
+    pgvector.add_embeddings = AsyncMock()
+    pgvector.search = AsyncMock(return_value={'ids': [[]], 'distances': [[]], 'metadatas': [[]]})
+    manager.vector_db = pgvector
+    context = _context(WORKSPACE_A)
+
+    await manager.upsert(context, 'kb-a', [[0.1]], ['chunk-a'])
+    scope = pgvector.add_embeddings.await_args.kwargs['scope']
+    assert scope.workspace_uuid == WORKSPACE_A
+    assert scope.knowledge_base_uuid == 'kb-a'
+    assert scope.embedding_dimension == 1
+
+    async with engine.connect() as connection:
+        selected_dimension = await connection.scalar(
+            sqlalchemy.select(KnowledgeBase.embedding_dimension).where(
+                KnowledgeBase.workspace_uuid == WORKSPACE_A,
+                KnowledgeBase.uuid == 'kb-a',
+            )
+        )
+    assert selected_dimension == 1
+
+    with pytest.raises(ValueError, match='dimension is 1, not 2'):
+        await manager.upsert(context, 'kb-a', [[0.1, 0.2]], ['chunk-b'])
+    with pytest.raises(ValueError, match='not enabled'):
+        await manager.search(context, 'kb-a', [0.1, 0.2, 0.3], 3)

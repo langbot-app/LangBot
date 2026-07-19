@@ -170,37 +170,89 @@ class ApiKeyService:
         if not secret.startswith('lbk_'):
             return None
         secret_hash = self._hash_secret(secret)
-        result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(apikey.ApiKey).where(apikey.ApiKey.key_hash == secret_hash)
-        )
-        key = result.first()
-        if key is None or key.status != apikey.ApiKeyStatus.ACTIVE.value:
+        current_session = getattr(self.ap.persistence_mgr, 'current_session', lambda: None)
+        discovery_uow = getattr(self.ap.persistence_mgr, 'api_key_discovery_uow', None)
+        if current_session() is None and callable(discovery_uow):
+            async with discovery_uow(secret_hash) as discovery:
+                key = await discovery.session.scalar(
+                    sqlalchemy.select(apikey.ApiKey).where(apikey.ApiKey.key_hash == secret_hash)
+                )
+        else:
+            result = await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.select(apikey.ApiKey).where(apikey.ApiKey.key_hash == secret_hash)
+            )
+            key = result.first()
+        if key is None:
             return None
+        discovered_workspace_uuid = key.workspace_uuid
+        discovered_key_id = key.id
         now = self._utcnow()
-        if key.expires_at is not None and key.expires_at <= now:
-            return None
 
-        raw_scopes = list(key.scopes or [])
+        async def bind_and_record_use() -> tuple[typing.Any, typing.Any] | None:
+            # Re-read inside the tenant transaction. A revoke/expiry racing
+            # discovery must not result in an authenticated identity.
+            active_session = current_session()
+            if active_session is not None:
+                scoped_key = await active_session.scalar(
+                    sqlalchemy.select(apikey.ApiKey).where(
+                        apikey.ApiKey.id == discovered_key_id,
+                        apikey.ApiKey.workspace_uuid == discovered_workspace_uuid,
+                        apikey.ApiKey.key_hash == secret_hash,
+                    )
+                )
+            else:  # compatibility for isolated service tests
+                scoped_result = await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.select(apikey.ApiKey).where(
+                        apikey.ApiKey.id == discovered_key_id,
+                        apikey.ApiKey.workspace_uuid == discovered_workspace_uuid,
+                        apikey.ApiKey.key_hash == secret_hash,
+                    )
+                )
+                scoped_key = scoped_result.first()
+            if scoped_key is None or scoped_key.status != apikey.ApiKeyStatus.ACTIVE.value:
+                return None
+            if scoped_key.expires_at is not None and scoped_key.expires_at <= now:
+                return None
+
+            binding = await self.ap.workspace_service.get_execution_binding(discovered_workspace_uuid)
+            updated = await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.update(apikey.ApiKey)
+                .where(
+                    apikey.ApiKey.id == scoped_key.id,
+                    apikey.ApiKey.workspace_uuid == discovered_workspace_uuid,
+                    apikey.ApiKey.key_hash == secret_hash,
+                    apikey.ApiKey.status == apikey.ApiKeyStatus.ACTIVE.value,
+                )
+                .values(last_used_at=now)
+                .returning(apikey.ApiKey.id)
+            )
+            # Authentication and revocation race on this atomic predicate. If
+            # revoke won, no active row is returned and the stale object read
+            # above must never become an authenticated identity.
+            if updated.scalar_one_or_none() is None:
+                return None
+            return binding, scoped_key
+
+        tenant_uow = getattr(self.ap.persistence_mgr, 'tenant_uow', None)
+        if current_session() is None and callable(tenant_uow):
+            async with tenant_uow(discovered_workspace_uuid):
+                bound = await bind_and_record_use()
+        else:
+            bound = await bind_and_record_use()
+        if bound is None:
+            return None
+        binding, scoped_key = bound
+        raw_scopes = list(scoped_key.scopes or [])
         permissions = (
             frozenset(permission.value for permission in Permission)
             if '*' in raw_scopes
             else frozenset(self._normalize_scopes(raw_scopes))
         )
-        binding = await self.ap.workspace_service.get_execution_binding(key.workspace_uuid)
-        await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.update(apikey.ApiKey)
-            .where(
-                apikey.ApiKey.id == key.id,
-                apikey.ApiKey.workspace_uuid == key.workspace_uuid,
-                apikey.ApiKey.key_hash == secret_hash,
-            )
-            .values(last_used_at=now)
-        )
         return ApiKeyIdentity(
             instance_uuid=binding.instance_uuid,
             workspace_uuid=binding.workspace_uuid,
             placement_generation=binding.placement_generation,
-            api_key_uuid=key.uuid,
+            api_key_uuid=scoped_key.uuid,
             permissions=permissions,
         )
 

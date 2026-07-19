@@ -30,6 +30,20 @@ HEARTBEAT_INTERVAL_SECONDS = 24 * 3600
 async def _count(ap: core_app.Application, table) -> int:
     """Count rows in a persistence table; -1 when unavailable."""
     try:
+        persistence_mgr = ap.persistence_mgr
+        cloud_runtime = getattr(getattr(persistence_mgr, 'mode', None), 'value', None) == 'cloud_runtime'
+        if cloud_runtime:
+            tenant_uow = getattr(persistence_mgr, 'tenant_uow', None)
+            if not callable(tenant_uow):
+                return -1
+            total = 0
+            for binding in await ap.workspace_service.list_active_execution_bindings():
+                async with tenant_uow(binding.workspace_uuid):
+                    result = await persistence_mgr.execute_async(
+                        sqlalchemy.select(sqlalchemy.func.count()).select_from(table)
+                    )
+                    total += int(result.scalar() or 0)
+            return total
         result = await ap.persistence_mgr.execute_async(sqlalchemy.select(sqlalchemy.func.count()).select_from(table))
         return int(result.scalar() or 0)
     except Exception:

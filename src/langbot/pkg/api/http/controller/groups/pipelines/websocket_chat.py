@@ -13,6 +13,7 @@ import quart
 from ....authz import Permission, permissions_for_role, require_permission
 from ....context import PrincipalContext, PrincipalType, RequestContext, WorkspaceContext
 from ... import group
+from ......core.task_boundary import run_in_workspace_uow
 from ......platform.sources.websocket_manager import WebSocketScope, ws_connection_manager
 
 logger = logging.getLogger(__name__)
@@ -113,7 +114,11 @@ class WebSocketChatRouterGroup(group.RouterGroup):
         require_permission(current_context, Permission.RUNTIME_OPERATE)
 
     async def _get_scoped_adapter(self, request_context: RequestContext, pipeline_uuid: str):
-        pipeline = await self.ap.pipeline_service.get_pipeline(request_context, pipeline_uuid)
+        pipeline = await run_in_workspace_uow(
+            self.ap,
+            request_context.workspace_uuid,
+            lambda: self.ap.pipeline_service.get_pipeline(request_context, pipeline_uuid),
+        )
         if pipeline is None:
             return None
         proxy_bot = await self.ap.platform_mgr.get_websocket_proxy_bot(request_context)

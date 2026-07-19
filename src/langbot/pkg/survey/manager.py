@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import typing
 import httpx
@@ -10,6 +11,7 @@ import sqlalchemy
 
 from ..core import app as core_app
 from ..entity.persistence.metadata import Metadata
+from ..persistence.tenant_uow import CrossScopeTransactionError
 from ..utils import constants
 
 SURVEY_TRIGGERED_KEY = 'survey_triggered_events'
@@ -36,15 +38,41 @@ class SurveyManager:
         await self._load_triggered_events()
         await self._load_bot_response_count()
 
+    @contextlib.asynccontextmanager
+    async def _instance_transaction(self):
+        """Bind instance-global survey metadata to an explicit Cloud transaction."""
+
+        persistence_mgr = self.ap.persistence_mgr
+        try:
+            active_session = getattr(persistence_mgr, 'current_session', lambda: None)()
+        except CrossScopeTransactionError:
+            # A newly-created child task inherited its parent's ContextVar;
+            # opening an explicit UoW below gives it an independent session.
+            active_session = None
+        if active_session is not None:
+            yield
+            return
+
+        cloud_runtime = getattr(getattr(persistence_mgr, 'mode', None), 'value', None) == 'cloud_runtime'
+        if cloud_runtime:
+            instance_uow = getattr(persistence_mgr, 'instance_discovery_uow', None)
+            if not callable(instance_uow):
+                raise RuntimeError('Cloud survey metadata requires an explicit instance UoW')
+            async with instance_uow(self.ap.workspace_service.instance_uuid):
+                yield
+            return
+        yield
+
     async def _load_triggered_events(self):
         """Load previously triggered events from metadata table."""
         try:
-            result = await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.select(Metadata).where(Metadata.key == SURVEY_TRIGGERED_KEY)
-            )
-            row = result.first()
-            if row:
-                self._triggered_events = set(json.loads(row[0].value))
+            async with self._instance_transaction():
+                result = await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.select(Metadata.value).where(Metadata.key == SURVEY_TRIGGERED_KEY)
+                )
+                value = result.scalar_one_or_none()
+                if value is not None:
+                    self._triggered_events = set(json.loads(value))
         except Exception:
             self._triggered_events = set()
 
@@ -52,17 +80,18 @@ class SurveyManager:
         """Persist triggered events to metadata table."""
         try:
             value = json.dumps(list(self._triggered_events))
-            result = await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.select(Metadata).where(Metadata.key == SURVEY_TRIGGERED_KEY)
-            )
-            if result.first():
-                await self.ap.persistence_mgr.execute_async(
-                    sqlalchemy.update(Metadata).where(Metadata.key == SURVEY_TRIGGERED_KEY).values(value=value)
+            async with self._instance_transaction():
+                result = await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.select(Metadata.value).where(Metadata.key == SURVEY_TRIGGERED_KEY)
                 )
-            else:
-                await self.ap.persistence_mgr.execute_async(
-                    sqlalchemy.insert(Metadata).values(key=SURVEY_TRIGGERED_KEY, value=value)
-                )
+                if result.scalar_one_or_none() is not None:
+                    await self.ap.persistence_mgr.execute_async(
+                        sqlalchemy.update(Metadata).where(Metadata.key == SURVEY_TRIGGERED_KEY).values(value=value)
+                    )
+                else:
+                    await self.ap.persistence_mgr.execute_async(
+                        sqlalchemy.insert(Metadata).values(key=SURVEY_TRIGGERED_KEY, value=value)
+                    )
         except Exception as e:
             self.ap.logger.debug(f'Failed to save survey triggered events: {e}')
 
@@ -75,12 +104,13 @@ class SurveyManager:
     async def _load_bot_response_count(self):
         """Load the persisted successful bot response count from metadata table."""
         try:
-            result = await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.select(Metadata).where(Metadata.key == BOT_RESPONSE_COUNT_KEY)
-            )
-            row = result.first()
-            if row:
-                self._bot_response_count = int(row[0].value)
+            async with self._instance_transaction():
+                result = await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.select(Metadata.value).where(Metadata.key == BOT_RESPONSE_COUNT_KEY)
+                )
+                value = result.scalar_one_or_none()
+                if value is not None:
+                    self._bot_response_count = int(value)
         except Exception:
             self._bot_response_count = 0
 
@@ -88,17 +118,18 @@ class SurveyManager:
         """Persist the successful bot response count to metadata table."""
         try:
             value = str(self._bot_response_count)
-            result = await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.select(Metadata).where(Metadata.key == BOT_RESPONSE_COUNT_KEY)
-            )
-            if result.first():
-                await self.ap.persistence_mgr.execute_async(
-                    sqlalchemy.update(Metadata).where(Metadata.key == BOT_RESPONSE_COUNT_KEY).values(value=value)
+            async with self._instance_transaction():
+                result = await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.select(Metadata.value).where(Metadata.key == BOT_RESPONSE_COUNT_KEY)
                 )
-            else:
-                await self.ap.persistence_mgr.execute_async(
-                    sqlalchemy.insert(Metadata).values(key=BOT_RESPONSE_COUNT_KEY, value=value)
-                )
+                if result.scalar_one_or_none() is not None:
+                    await self.ap.persistence_mgr.execute_async(
+                        sqlalchemy.update(Metadata).where(Metadata.key == BOT_RESPONSE_COUNT_KEY).values(value=value)
+                    )
+                else:
+                    await self.ap.persistence_mgr.execute_async(
+                        sqlalchemy.insert(Metadata).values(key=BOT_RESPONSE_COUNT_KEY, value=value)
+                    )
         except Exception as e:
             self.ap.logger.debug(f'Failed to save survey bot response count: {e}')
 

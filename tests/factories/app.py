@@ -82,6 +82,9 @@ class FakeApp:
     def _create_mock_persistence_manager(self):
         persistence_mgr = AsyncMock()
         persistence_mgr.execute_async = AsyncMock()
+        # AsyncMock invents arbitrary callable attributes on access. Keep the
+        # optional production UoW hook explicitly absent unless a test opts in.
+        persistence_mgr.tenant_uow = None
         return persistence_mgr
 
     def _create_mock_query_pool(self):

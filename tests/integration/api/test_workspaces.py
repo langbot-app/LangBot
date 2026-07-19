@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 from types import SimpleNamespace
 
@@ -13,11 +14,13 @@ from langbot.pkg.api.http.controller.groups.workspaces import (
     InvitationsRouterGroup,
     WorkspacesRouterGroup,
 )
+from langbot.pkg.api.http.controller.groups.system import SystemRouterGroup
 from langbot.pkg.api.http.controller.groups.apikeys import ApiKeysRouterGroup
 from langbot.pkg.api.http.controller.groups.user import UserRouterGroup
 from langbot.pkg.api.http.service.apikey import ApiKeyService
 from langbot.pkg.api.http.service.user import ControlPlaneDirectoryRequiredError, UserService
 from langbot.pkg.entity.persistence.base import Base
+from langbot.pkg.entity.persistence.metadata import WorkspaceMetadata
 from langbot.pkg.entity.persistence.user import User
 from langbot.pkg.entity.persistence.workspace import (
     Workspace,
@@ -25,34 +28,13 @@ from langbot.pkg.entity.persistence.workspace import (
     WorkspaceInvitation,
     WorkspaceMembership,
 )
+from langbot.pkg.persistence.mgr import PersistenceManager
 from langbot.pkg.workspace.collaboration import WorkspaceCollaborationService
 from langbot.pkg.workspace.service import WorkspaceService
 from langbot.pkg.workspace.policy import CloudWorkspacePolicy
 
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
-
-
-class _PersistenceManager:
-    def __init__(self, engine):
-        self.engine = engine
-
-    def get_db_engine(self):
-        return self.engine
-
-    async def execute_async(self, *args, **kwargs):
-        async with self.engine.connect() as connection:
-            result = await connection.execute(*args, **kwargs)
-            await connection.commit()
-            return result
-
-    @staticmethod
-    def serialize_model(model, row, masked_columns=()):
-        return {
-            column.name: getattr(row, column.name)
-            for column in model.__table__.columns
-            if column.name not in masked_columns
-        }
 
 
 @pytest.fixture
@@ -62,7 +44,8 @@ async def workspace_api(tmp_path):
         await connection.run_sync(Base.metadata.create_all)
 
     application = SimpleNamespace()
-    application.persistence_mgr = _PersistenceManager(engine)
+    application.persistence_mgr = PersistenceManager(application)
+    application.persistence_mgr.db = SimpleNamespace(get_engine=lambda: engine)
     application.instance_config = SimpleNamespace(
         data={
             'system': {
@@ -85,19 +68,27 @@ async def workspace_api(tmp_path):
     application.user_service = UserService(application)
     application.apikey_service = ApiKeyService(application)
 
-    owner = await application.user_service.create_initial_account(
-        'owner@example.com',
-        'owner-password',
-    )
-    owner_token = await application.user_service.generate_jwt_token(owner)
-
     quart_app = Quart(__name__)
     await WorkspacesRouterGroup(application, quart_app).initialize()
     await InvitationsRouterGroup(application, quart_app).initialize()
     await ApiKeysRouterGroup(application, quart_app).initialize()
     await UserRouterGroup(application, quart_app).initialize()
+    await SystemRouterGroup(application, quart_app).initialize()
 
-    yield application, quart_app.test_client(), engine, owner_token
+    client = quart_app.test_client()
+    init_response = await client.post(
+        '/api/v1/user/init',
+        json={'user': 'owner@example.com', 'password': 'owner-password'},
+    )
+    assert init_response.status_code == 200
+    auth_response = await client.post(
+        '/api/v1/user/auth',
+        json={'user': 'owner@example.com', 'password': 'owner-password'},
+    )
+    assert auth_response.status_code == 200
+    owner_token = (await auth_response.get_json())['data']['token']
+
+    yield application, client, engine, owner_token
     await engine.dispose()
 
 
@@ -106,6 +97,56 @@ def _auth(token: str, workspace_uuid: str | None = None) -> dict[str, str]:
     if workspace_uuid is not None:
         headers['X-Workspace-Id'] = workspace_uuid
     return headers
+
+
+async def test_fresh_sqlite_login_returns_current_workspace_and_user_info(workspace_api):
+    _, client, _, owner_token = workspace_api
+
+    current_response = await client.get('/api/v1/workspaces/current', headers=_auth(owner_token))
+    assert current_response.status_code == 200
+    current = (await current_response.get_json())['data']
+    assert current['workspace']['uuid']
+    assert current['membership']['email'] == 'owner@example.com'
+    assert current['membership']['role'] == 'owner'
+
+    info_response = await client.get('/api/v1/user/info', headers=_auth(owner_token))
+    assert info_response.status_code == 200
+    info = (await info_response.get_json())['data']
+    assert info['account_uuid'] == current['membership']['account_uuid']
+    assert info['user'] == 'owner@example.com'
+
+
+async def test_authenticated_system_info_reads_workspace_wizard_metadata(workspace_api):
+    application, client, _, owner_token = workspace_api
+
+    current_response = await client.get('/api/v1/workspaces/current', headers=_auth(owner_token))
+    workspace_uuid = (await current_response.get_json())['data']['workspace']['uuid']
+    progress = {'step': 3, 'selected_adapter': 'telegram'}
+    await application.persistence_mgr.execute_async(
+        sqlalchemy.insert(WorkspaceMetadata),
+        [
+            {
+                'workspace_uuid': workspace_uuid,
+                'key': 'wizard_status',
+                'value': 'completed',
+            },
+            {
+                'workspace_uuid': workspace_uuid,
+                'key': 'wizard_progress',
+                'value': json.dumps(progress),
+            },
+        ],
+    )
+
+    response = await client.get(
+        '/api/v1/system/info',
+        headers=_auth(owner_token, workspace_uuid),
+    )
+
+    assert response.status_code == 200
+    data = (await response.get_json())['data']
+    assert data['wizard_status'] == 'completed'
+    assert data['wizard_progress'] == progress
 
 
 async def test_owner_invites_second_account_and_secret_is_not_persisted(workspace_api):

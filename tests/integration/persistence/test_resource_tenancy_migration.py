@@ -195,10 +195,16 @@ async def test_sqlite_scoped_keys_allow_cross_workspace_but_reject_same_workspac
             await conn.execute(
                 sa.text(
                     'INSERT INTO plugin_settings '
-                    '(workspace_uuid, plugin_author, plugin_name, enabled) '
-                    "VALUES (:workspace_uuid, 'author', 'plugin', 1)"
+                    '(workspace_uuid, plugin_author, plugin_name, enabled, '
+                    'installation_uuid, artifact_digest, runtime_revision) '
+                    "VALUES (:workspace_uuid, 'author', 'plugin', 1, "
+                    ':installation_uuid, :artifact_digest, 1)'
                 ),
-                {'workspace_uuid': second_workspace_uuid},
+                {
+                    'workspace_uuid': second_workspace_uuid,
+                    'installation_uuid': str(uuid.uuid4()),
+                    'artifact_digest': hashlib.sha256(b'test-plugin-artifact').hexdigest(),
+                },
             )
             await conn.execute(
                 sa.text(

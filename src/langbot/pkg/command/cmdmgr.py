@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import typing
+import inspect
 
 from ..core import app
 from . import operator
@@ -62,6 +63,12 @@ class CommandManager:
         bound_plugins: list[str] | None = None,
     ) -> typing.AsyncGenerator[command_context.CommandReturn, None]:
         """执行命令"""
+
+        require_context = getattr(self.ap.plugin_connector, 'require_workspace_context', None)
+        if require_context is not None:
+            result = require_context(context)
+            if inspect.isawaitable(result):
+                await result
 
         command_list = await self.ap.plugin_connector.list_commands(bound_plugins)
 

@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import contextvars
 import io
 import zipfile
+from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
@@ -54,7 +56,7 @@ def _make_app() -> Mock:
     storage_mgr.storage_provider.delete = AsyncMock()
     app.storage_mgr = storage_mgr
     app.persistence_mgr = Mock()
-    app.persistence_mgr.execute_async = AsyncMock()
+    app.persistence_mgr.execute_async = AsyncMock(return_value=SimpleNamespace(rowcount=1))
     app.plugin_connector = Mock()
     app.plugin_connector.require_workspace_context = AsyncMock(side_effect=lambda context: context)
     app.workspace_service = SimpleNamespace(
@@ -202,6 +204,36 @@ class TestStoreZipFile:
 
 
 class TestStoreFileTask:
+    @pytest.mark.asyncio
+    async def test_store_file_task_opens_uow_before_first_database_helper(self):
+        kb = _make_kb()
+        active_workspace = contextvars.ContextVar('rag_task_workspace', default=None)
+        observed = []
+
+        @asynccontextmanager
+        async def tenant_uow(workspace_uuid):
+            token = active_workspace.set(workspace_uuid)
+            try:
+                yield
+            finally:
+                active_workspace.reset(token)
+
+        kb.ap.persistence_mgr.mode = SimpleNamespace(value='cloud_runtime')
+        kb.ap.persistence_mgr.tenant_uow = tenant_uow
+
+        async def assert_execution_context(_context):
+            observed.append(active_workspace.get())
+
+        kb._assert_execution_context = AsyncMock(side_effect=assert_execution_context)
+        kb._set_file_status = AsyncMock(side_effect=[True, True])
+        kb._ingest_document = AsyncMock(return_value={'status': 'completed'})
+        object_key = _upload_key('scoped.pdf')
+        file_obj = SimpleNamespace(uuid='file-uuid', file_name=object_key, extension='pdf')
+
+        await kb._store_file_task(CONTEXT, file_obj, Mock())
+
+        assert observed[0] == WORKSPACE_A
+
     @pytest.mark.asyncio
     async def test_store_file_task_marks_completed_and_cleans_storage(self):
         kb = _make_kb()

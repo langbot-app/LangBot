@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
@@ -106,3 +107,33 @@ async def test_background_plugin_operation_refences_captured_generation(plugin_r
         await router._run_fenced_plugin_operation(CONTEXT, operation)
 
     operation.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_background_plugin_operation_revalidates_inside_short_tenant_uow(plugin_router_cls):
+    scopes = []
+
+    @asynccontextmanager
+    async def tenant_uow(workspace_uuid):
+        scopes.append(workspace_uuid)
+        yield
+
+    connector = SimpleNamespace(
+        require_workspace_context=AsyncMock(side_effect=lambda context: context),
+    )
+    operation = AsyncMock(return_value='done')
+    router = object.__new__(plugin_router_cls)
+    router.ap = SimpleNamespace(
+        plugin_connector=connector,
+        persistence_mgr=SimpleNamespace(
+            mode=SimpleNamespace(value='cloud_runtime'),
+            tenant_uow=tenant_uow,
+        ),
+    )
+
+    result = await router._run_fenced_plugin_operation(CONTEXT, operation)
+
+    assert result == 'done'
+    assert scopes == [CONTEXT.workspace_uuid]
+    connector.require_workspace_context.assert_awaited_once_with(CONTEXT)
+    operation.assert_awaited_once()

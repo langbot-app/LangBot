@@ -1,6 +1,9 @@
+import io
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
+import zipfile
 
+import httpx
 import pytest
 
 from langbot.pkg.api.http.context import ExecutionContext
@@ -115,3 +118,52 @@ class TestRequireBoxForWrite:
         service = SkillService(self._ap_with_disabled_box())
         with pytest.raises(ValueError, match='Reading a skill file'):
             await service.read_skill_file(_CONTEXT, 'x', 'a.txt')
+
+
+class TestGithubSkillArchiveLimits:
+    @staticmethod
+    def _service() -> SkillService:
+        return SkillService(SimpleNamespace())
+
+    @pytest.mark.asyncio
+    async def test_download_rejects_declared_oversized_archive(self, monkeypatch):
+        import langbot.pkg.api.http.service.skill as skill_module
+
+        real_client = httpx.AsyncClient
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                headers={'content-length': str(10 * 1024 * 1024 + 1)},
+                content=b'',
+                request=request,
+            )
+
+        monkeypatch.setattr(
+            skill_module.httpx,
+            'AsyncClient',
+            lambda **_kwargs: real_client(transport=httpx.MockTransport(handler)),
+        )
+
+        with pytest.raises(ValueError, match='compressed size limit'):
+            await self._service()._download_github_asset('https://codeload.github.com/o/r/zip/main')
+
+    def test_copy_rejects_high_compression_ratio_before_extracting(self):
+        source_buffer = io.BytesIO()
+        with zipfile.ZipFile(source_buffer, 'w', zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr('repo-main/skill/SKILL.md', b'---\nname: safe\n---\n')
+            archive.writestr('repo-main/skill/bomb.bin', b'0' * (1024 * 1024))
+
+        source_buffer.seek(0)
+        target_buffer = io.BytesIO()
+        with (
+            zipfile.ZipFile(source_buffer, 'r') as source_zip,
+            zipfile.ZipFile(target_buffer, 'w', zipfile.ZIP_DEFLATED) as target_zip,
+        ):
+            with pytest.raises(ValueError, match='compression-ratio limit'):
+                self._service()._copy_github_skill_directory_to_zip(
+                    source_zip,
+                    target_zip,
+                    'repo-main/skill',
+                    'safe',
+                )

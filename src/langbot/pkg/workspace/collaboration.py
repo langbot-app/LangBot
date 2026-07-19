@@ -155,8 +155,20 @@ class WorkspaceCollaborationService:
     ) -> ResolvedWorkspaceAccess:
         """Resolve a selector against an active Account membership."""
 
+        normalized_workspace_uuid = requested_workspace_uuid.strip() if requested_workspace_uuid else None
+        if normalized_workspace_uuid is None and self.policy.multi_workspace_enabled:
+            raise WorkspaceNotFoundError('A Workspace selector is required')
+        tenant_uow = getattr(self.ap.persistence_mgr, 'tenant_uow', None)
+        if session is None and normalized_workspace_uuid is not None and callable(tenant_uow):
+            async with tenant_uow(normalized_workspace_uuid) as uow:
+                return await self.resolve_account_workspace(
+                    account_uuid,
+                    normalized_workspace_uuid,
+                    session=uow.session,
+                )
+
         async def operation(active_session: AsyncSession) -> ResolvedWorkspaceAccess:
-            workspace_uuid = requested_workspace_uuid.strip() if requested_workspace_uuid else None
+            workspace_uuid = normalized_workspace_uuid
             if workspace_uuid is None:
                 if self.policy.multi_workspace_enabled:
                     raise WorkspaceNotFoundError('A Workspace selector is required')
@@ -195,6 +207,40 @@ class WorkspaceCollaborationService:
         *,
         session: AsyncSession | None = None,
     ) -> list[ResolvedWorkspaceAccess]:
+        current_session = getattr(self.ap.persistence_mgr, 'current_session', lambda: None)
+        account_uow = getattr(self.ap.persistence_mgr, 'account_discovery_uow', None)
+        tenant_uow = getattr(self.ap.persistence_mgr, 'tenant_uow', None)
+        if session is None and current_session() is None and callable(account_uow) and callable(tenant_uow):
+            # Discovery exposes only this Account's active Membership rows.
+            # Each resulting Workspace is then re-read under its own tenant
+            # transaction; directory discovery never grants business access.
+            async with account_uow(account_uuid) as discovery:
+                workspace_uuids = list(
+                    (
+                        await discovery.session.scalars(
+                            sqlalchemy.select(WorkspaceMembership.workspace_uuid)
+                            .where(
+                                WorkspaceMembership.account_uuid == account_uuid,
+                                WorkspaceMembership.status == MembershipStatus.ACTIVE.value,
+                            )
+                            .order_by(WorkspaceMembership.workspace_uuid)
+                        )
+                    ).all()
+                )
+
+            accesses: list[ResolvedWorkspaceAccess] = []
+            for workspace_uuid in workspace_uuids:
+                async with tenant_uow(workspace_uuid) as workspace_uow:
+                    accesses.append(
+                        await self.resolve_account_workspace(
+                            account_uuid,
+                            workspace_uuid,
+                            session=workspace_uow.session,
+                        )
+                    )
+            accesses.sort(key=lambda access: (access.workspace.created_at, access.workspace.uuid))
+            return accesses
+
         async def operation(active_session: AsyncSession) -> list[ResolvedWorkspaceAccess]:
             statement = (
                 sqlalchemy.select(WorkspaceMembership, Workspace)
@@ -346,6 +392,18 @@ class WorkspaceCollaborationService:
         *,
         session: AsyncSession | None = None,
     ) -> tuple[WorkspaceInvitation, Workspace]:
+        if session is None:
+            scoped_session = getattr(self.ap.persistence_mgr, 'current_session', lambda: None)()
+            invitation_uow = getattr(self.ap.persistence_mgr, 'invitation_discovery_uow', None)
+            tenant_uow = getattr(self.ap.persistence_mgr, 'tenant_uow', None)
+            if scoped_session is None and callable(invitation_uow) and callable(tenant_uow):
+                token_hash = hash_invitation_token(token)
+                async with invitation_uow(token_hash) as discovery:
+                    invitation = await self._get_invitation_by_token(discovery.session, token, for_update=False)
+                    workspace_uuid = invitation.workspace_uuid
+                async with tenant_uow(workspace_uuid) as workspace_uow:
+                    return await self.inspect_invitation(token, session=workspace_uow.session)
+
         async def operation(active_session: AsyncSession) -> tuple[WorkspaceInvitation, Workspace]:
             invitation = await self._get_invitation_by_token(active_session, token, for_update=True)
             self._validate_invitation_state(invitation)
@@ -365,6 +423,18 @@ class WorkspaceCollaborationService:
         *,
         session: AsyncSession | None = None,
     ) -> WorkspaceMembership:
+        if session is None:
+            scoped_session = getattr(self.ap.persistence_mgr, 'current_session', lambda: None)()
+            invitation_uow = getattr(self.ap.persistence_mgr, 'invitation_discovery_uow', None)
+            tenant_uow = getattr(self.ap.persistence_mgr, 'tenant_uow', None)
+            if scoped_session is None and callable(invitation_uow) and callable(tenant_uow):
+                token_digest = hash_invitation_token(token)
+                async with invitation_uow(token_digest) as discovery:
+                    invitation = await self._get_invitation_by_token(discovery.session, token, for_update=False)
+                    workspace_uuid = invitation.workspace_uuid
+                async with tenant_uow(workspace_uuid) as workspace_uow:
+                    return await self.accept_invitation(token, account_uuid, session=workspace_uow.session)
+
         async def operation(active_session: AsyncSession) -> WorkspaceMembership:
             invitation = await self._get_invitation_by_token(active_session, token, for_update=True)
             self._validate_invitation_state(invitation)
@@ -677,6 +747,14 @@ class WorkspaceCollaborationService:
     ) -> T:
         if session is not None:
             return await operation(session)
+        current_session = getattr(self.ap.persistence_mgr, 'current_session', lambda: None)()
+        if current_session is not None:
+            return await operation(current_session)
+        if getattr(getattr(self.ap.persistence_mgr, 'mode', None), 'value', None) == 'cloud_runtime':
+            require_current_session = getattr(self.ap.persistence_mgr, 'require_current_session', None)
+            if callable(require_current_session):
+                require_current_session()
+            raise RuntimeError('Cloud collaboration services require an explicit persistence unit of work')
         async with self._session_factory()() as owned_session:
             if read_only:
                 return await operation(owned_session)

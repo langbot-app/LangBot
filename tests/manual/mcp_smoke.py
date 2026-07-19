@@ -46,6 +46,13 @@ def build_ap() -> SimpleNamespace:
         )
 
     ap.apikey_service = SimpleNamespace(authenticate_api_key=authenticate_api_key)
+
+    @contextlib.asynccontextmanager
+    async def tenant_scope(workspace_uuid: str):
+        assert workspace_uuid == 'workspace-1'
+        yield
+
+    ap.persistence_mgr = SimpleNamespace(tenant_scope=tenant_scope)
     ap.bot_service = SimpleNamespace(
         get_bots=AsyncMock(return_value=[{'uuid': 'bot-1', 'name': 'Demo Bot', 'adapter': 'telegram'}])
     )

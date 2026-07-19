@@ -84,3 +84,26 @@ async def test_resolver_rejects_same_revision_with_different_contents():
     await resolver.resolve('workspace-a', now=150)
     with pytest.raises(EntitlementUnavailableError, match='conflicting contents'):
         await resolver.resolve('workspace-a', now=150)
+
+
+@pytest.mark.asyncio
+async def test_resolver_checks_deployment_admission_before_and_after_provider_call():
+    checks = 0
+
+    def require_admission() -> None:
+        nonlocal checks
+        checks += 1
+        if checks == 2:
+            raise RuntimeError('manifest expired during provider call')
+
+    provider = AsyncMock()
+    provider.get_workspace_entitlement = AsyncMock(return_value=_snapshot())
+    resolver = EntitlementResolver(
+        'instance-a',
+        provider,
+        deployment_admission=require_admission,
+    )
+
+    with pytest.raises(RuntimeError, match='expired during provider call'):
+        await resolver.resolve('workspace-a', now=150)
+    assert checks == 2

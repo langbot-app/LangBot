@@ -86,6 +86,7 @@ async def plugin_security_api(plugin_module):
     }
 
     application = Mock()
+    application.deployment = SimpleNamespace(multi_workspace_enabled=False)
     application.user_service.get_authenticated_account = AsyncMock(side_effect=lambda token: accounts[token])
     application.workspace_collaboration_service.resolve_account_workspace = AsyncMock(
         side_effect=lambda account_uuid, _workspace_uuid: _access(account_uuid)
@@ -112,6 +113,7 @@ async def plugin_security_api(plugin_module):
     persistence_result = Mock()
     persistence_result.scalar_one_or_none.return_value = RAW_CONFIG
     application.persistence_mgr.execute_async = AsyncMock(return_value=persistence_result)
+    application.persistence_mgr.tenant_uow = None
 
     quart_app = quart.Quart(__name__)
     router = plugin_module.PluginsRouterGroup(application, quart_app)
@@ -246,3 +248,25 @@ async def test_viewer_cannot_read_plugin_runtime_logs(plugin_security_api):
     assert response.status_code == 403
     assert (await response.get_json())['code'] == 'permission_denied'
     application.plugin_connector.get_plugin_logs.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_github_install_rejects_internal_asset_url_before_task_creation(
+    plugin_security_api,
+):
+    application, client, _ = plugin_security_api
+
+    response = await client.post(
+        '/api/v1/plugins/install/github',
+        headers=_headers('manager-token'),
+        json={
+            'asset_url': 'http://169.254.169.254/latest/meta-data',
+            'owner': 'langbot-app',
+            'repo': 'demo-plugin',
+            'release_tag': 'v1.0.0',
+        },
+    )
+
+    assert response.status_code == 400
+    assert 'HTTPS GitHub release asset URL' in (await response.get_json())['msg']
+    application.task_mgr.create_user_task.assert_not_called()

@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 from langbot_plugin.entities.io.actions.enums import PluginToRuntimeAction, RuntimeToLangBotAction
-from langbot_plugin.entities.io.context import ActionContext
+from langbot_plugin.entities.io.context import ActionContext, InstallationBinding
 
 from langbot.pkg.api.http.context import ExecutionContext
 from langbot.pkg.storage.mgr import StorageMgr
@@ -52,14 +52,19 @@ def make_handler(app, workspace_context: ActionContext | None = None):
         Mock(),
         AsyncMock(return_value=True),
         app,
-        workspace_context,
     )
-    installation_uuid = runtime_handler._remember_installation(
-        workspace_context,
-        'test-author',
-        'test-plugin',
+    installation_binding = InstallationBinding(
+        **workspace_context.model_dump(exclude_none=True),
+        installation_uuid='00000000-0000-4000-8000-000000000001',
+        runtime_revision=1,
+        artifact_digest='a' * 64,
     )
-    runtime_handler.bind_action_context(workspace_context.for_installation(installation_uuid))
+    runtime_handler.register_installation_binding(
+        installation_binding,
+        plugin_author='test-author',
+        plugin_name='test-plugin',
+    )
+    runtime_handler._current_action_context.set(installation_binding)
     query_pool = getattr(app, 'query_pool', None)
     if query_pool is not None and hasattr(query_pool, 'cached_queries'):
 
@@ -169,13 +174,10 @@ class TestInitializePluginSettings:
         return mock_app
 
     @pytest.mark.asyncio
-    async def test_creates_new_setting_when_not_exists(self, app):
-        """New plugin settings use default enabled, priority and config values."""
+    async def test_rejects_desired_installation_when_setting_not_exists(self, app):
+        """A desired-state worker cannot create an unowned Core setting row."""
         runtime_handler = make_handler(app)
-        app.persistence_mgr.execute_async.side_effect = [
-            make_result(),
-            Mock(),
-        ]
+        app.persistence_mgr.execute_async.return_value = make_result()
 
         response = await runtime_handler.actions[RuntimeToLangBotAction.INITIALIZE_PLUGIN_SETTINGS.value](
             {
@@ -186,34 +188,23 @@ class TestInitializePluginSettings:
             }
         )
 
-        assert response.code == 0
-        assert app.persistence_mgr.execute_async.await_count == 2
-        insert_params = compiled_params(app.persistence_mgr.execute_async.await_args_list[1].args[0])
-        assert insert_params == {
-            'workspace_uuid': 'workspace-a',
-            'plugin_author': 'test-author',
-            'plugin_name': 'test-plugin',
-            'install_source': 'local',
-            'install_info': {'path': '/test'},
-            'enabled': True,
-            'priority': 0,
-            'config': {},
-        }
+        assert response.code != 0
+        assert 'Plugin installation setting was not found' in response.message
+        app.persistence_mgr.execute_async.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_inherits_values_from_existing_setting(self, app):
-        """Existing settings are replaced while preserving user-controlled values."""
+    async def test_existing_desired_setting_remains_core_owned(self, app):
+        """Runtime initialization validates identity without rewriting Core state."""
         runtime_handler = make_handler(app)
         existing_setting = SimpleNamespace(
             enabled=False,
             priority=5,
             config={'key': 'value'},
+            installation_uuid='00000000-0000-4000-8000-000000000001',
+            runtime_revision=1,
+            artifact_digest='a' * 64,
         )
-        app.persistence_mgr.execute_async.side_effect = [
-            make_result(existing_setting),
-            Mock(),
-            Mock(),
-        ]
+        app.persistence_mgr.execute_async.return_value = make_result(existing_setting)
 
         response = await runtime_handler.actions[RuntimeToLangBotAction.INITIALIZE_PLUGIN_SETTINGS.value](
             {
@@ -225,13 +216,7 @@ class TestInitializePluginSettings:
         )
 
         assert response.code == 0
-        assert app.persistence_mgr.execute_async.await_count == 3
-        insert_params = compiled_params(app.persistence_mgr.execute_async.await_args_list[2].args[0])
-        assert insert_params['enabled'] is False
-        assert insert_params['priority'] == 5
-        assert insert_params['config'] == {'key': 'value'}
-        assert insert_params['install_source'] == 'github'
-        assert insert_params['install_info'] == {'repo': 'author/name'}
+        app.persistence_mgr.execute_async.assert_awaited_once()
 
 
 class TestSetBinaryStorage:
@@ -367,31 +352,18 @@ class TestGetPluginSettings:
         return mock_app
 
     @pytest.mark.asyncio
-    async def test_returns_defaults_when_setting_not_found(self, app):
-        """Default plugin settings are returned when no persisted row exists."""
+    async def test_rejects_desired_installation_when_setting_not_found(self, app):
+        """A desired-state worker cannot synthesize settings for a missing row."""
         runtime_handler = make_handler(app)
         app.persistence_mgr.execute_async.return_value = make_result()
 
-        response = await runtime_handler.actions[RuntimeToLangBotAction.GET_PLUGIN_SETTINGS.value](
-            {
-                'plugin_author': 'test-author',
-                'plugin_name': 'test-plugin',
-            }
-        )
-
-        assert response.code == 0
-        assert response.data == {
-            'enabled': True,
-            'priority': 0,
-            'plugin_config': {},
-            'install_source': 'local',
-            'install_info': {},
-            'installation_uuid': runtime_handler.derive_installation_uuid(
-                runtime_handler.require_bound_action_context(),
-                'test-author',
-                'test-plugin',
-            ),
-        }
+        with pytest.raises(ValueError, match='Plugin installation setting was not found'):
+            await runtime_handler.actions[RuntimeToLangBotAction.GET_PLUGIN_SETTINGS.value](
+                {
+                    'plugin_author': 'test-author',
+                    'plugin_name': 'test-plugin',
+                }
+            )
 
     @pytest.mark.asyncio
     async def test_returns_actual_values_when_setting_exists(self, app):
@@ -403,6 +375,9 @@ class TestGetPluginSettings:
             config={'custom': 'config'},
             install_source='github',
             install_info={'repo': 'test/repo'},
+            installation_uuid='00000000-0000-4000-8000-000000000001',
+            runtime_revision=1,
+            artifact_digest='a' * 64,
         )
         app.persistence_mgr.execute_async.return_value = make_result(setting)
 
@@ -420,11 +395,9 @@ class TestGetPluginSettings:
             'plugin_config': {'custom': 'config'},
             'install_source': 'github',
             'install_info': {'repo': 'test/repo'},
-            'installation_uuid': runtime_handler.derive_installation_uuid(
-                runtime_handler.require_bound_action_context(),
-                'test-author',
-                'test-plugin',
-            ),
+            'installation_uuid': '00000000-0000-4000-8000-000000000001',
+            'runtime_revision': 1,
+            'artifact_digest': 'a' * 64,
         }
 
 
