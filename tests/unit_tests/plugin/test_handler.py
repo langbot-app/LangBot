@@ -274,6 +274,24 @@ class TestHandlerPluginDiagnostic:
             plugin_handler.LangBotToRuntimeAction = original
 
 
+class TestHandlerKnowledgeRetrieval:
+    @pytest.mark.asyncio
+    async def test_retrieve_knowledge_allows_runtime_to_finish_inner_timeout(self):
+        app = SimpleNamespace()
+        runtime_handler = make_handler(app)
+        runtime_handler.call_action = AsyncMock(return_value={'results': []})
+
+        result = await runtime_handler.retrieve_knowledge(
+            'langbot-team',
+            'LangRAG',
+            '',
+            {'query': 'sentinel'},
+        )
+
+        assert result == {'results': []}
+        assert runtime_handler.call_action.await_args.kwargs['timeout'] == 180
+
+
 class TestConstantsSemanticVersion:
     """Tests for version constant access."""
 

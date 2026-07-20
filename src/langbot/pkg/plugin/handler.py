@@ -1944,7 +1944,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 'retriever_name': retriever_name,
                 'retrieval_context': retrieval_context,
             },
-            timeout=30,
+            timeout=180,
         )
         return result
 
