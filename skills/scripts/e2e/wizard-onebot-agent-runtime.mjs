@@ -204,9 +204,16 @@ try {
   result.visible_signals.push("bot-created", "adapter-enabled");
 
   await page.getByRole("button", { name: /Next|下一步|次へ/ }).click();
-  await page
-    .getByText(/Local Agent|本地 Agent/)
-    .first()
+  const localAgentTitle = page
+    .getByText(/^(Local Agent|本地 Agent)$/)
+    .first();
+  const localAgentCard = localAgentTitle.locator(
+    'xpath=ancestor::*[@data-slot="card"][1]',
+  );
+  await localAgentCard
+    .getByRole("button", {
+      name: /Use This Runner|使用此运行器|この Runner を使用/,
+    })
     .click();
   await page.waitForFunction(
     () =>

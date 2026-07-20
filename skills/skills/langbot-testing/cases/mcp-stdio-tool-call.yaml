@@ -16,34 +16,32 @@ skills:
 env:
   - LANGBOT_FRONTEND_URL
   - LANGBOT_BACKEND_URL
-  - LANGBOT_LOCAL_AGENT_PIPELINE_URL
-  - LANGBOT_LOCAL_AGENT_PIPELINE_NAME
-env_optional:
-  - LANGBOT_E2E_FAKE_PROVIDER_BASE_URL
+  - LANGBOT_FAKE_PROVIDER_PIPELINE_URL
+  - LANGBOT_FAKE_PROVIDER_PIPELINE_NAME
 automation: scripts/e2e/pipeline-debug-chat.mjs
 automation_env:
   - LANGBOT_FRONTEND_URL
   - LANGBOT_BACKEND_URL
   - LANGBOT_BROWSER_PROFILE
   - LANGBOT_CHROMIUM_EXECUTABLE
-  - LANGBOT_LOCAL_AGENT_PIPELINE_URL
-  - LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+  - LANGBOT_FAKE_PROVIDER_PIPELINE_URL
+  - LANGBOT_FAKE_PROVIDER_PIPELINE_NAME
   - LANGBOT_MCP_QA_STDIO_SERVER_UUID
-automation_pipeline_url_env: LANGBOT_LOCAL_AGENT_PIPELINE_URL
-automation_pipeline_name_env: LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+automation_pipeline_url_env: LANGBOT_FAKE_PROVIDER_PIPELINE_URL
+automation_pipeline_name_env: LANGBOT_FAKE_PROVIDER_PIPELINE_NAME
 automation_expected_runner_id: "plugin:langbot-team/LocalAgent/default"
 automation_extensions_patch_json: '{"enable_all_plugins":false,"bound_plugins":[{"author":"langbot-team","name":"LocalAgent"}],"enable_all_mcp_servers":false,"bound_mcp_servers":["${LANGBOT_MCP_QA_STDIO_SERVER_UUID}"],"enable_all_skills":false,"bound_skills":[]}'
 automation_restore_extensions: "1"
 automation_reset_debug_chat: "1"
 automation_prompt: "Call the qa_mcp_echo MCP tool with exactly this text: mcp-ok-local-agent. Return only the tool result."
 automation_expected_text: "qa_mcp_echo:mcp-ok-local-agent"
-automation_response_timeout_ms: "180000"
+automation_response_timeout_ms: "60000"
 setup_automation:
-  - "node:scripts/e2e/ensure-local-agent-pipeline.mjs --write-env"
+  - "node:scripts/e2e/ensure-fake-provider-pipeline.mjs --write-env"
   - "case:mcp-stdio-register"
 setup_provides_env:
-  - LANGBOT_LOCAL_AGENT_PIPELINE_URL
-  - LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+  - LANGBOT_FAKE_PROVIDER_PIPELINE_URL
+  - LANGBOT_FAKE_PROVIDER_PIPELINE_NAME
   - LANGBOT_MCP_QA_STDIO_SERVER_UUID
 failure_patterns:
   - "qa-plugin-smoke:mcp-ok-local-agent"
@@ -54,7 +52,7 @@ failure_patterns:
   - "no available channel for model"
 preconditions:
   - "box.local.allowed_mount_roots includes the bundled MCP fixture directory when LangBot runs stdio MCP servers through Box."
-  - "The selected model route supports function/tool calling, or LANGBOT_E2E_FAKE_PROVIDER_BASE_URL points to scripts/e2e/fake-openai-provider.mjs."
+  - "The target is a local test instance where the QA-owned fake provider/model/pipeline may be created or updated."
 steps:
   - "Open LANGBOT_FRONTEND_URL."
   - "Navigate to MCP Servers."
@@ -66,7 +64,7 @@ steps:
   - "Confirm the server detail page shows Tools: 1 and qa_mcp_echo."
   - "Open the target local-agent pipeline."
   - "Use runner Default or the pluginized langbot-team/LocalAgent runner."
-  - "Select a model with function-calling ability that is known to work with tools in the current environment."
+  - "Use the QA fake-provider pipeline prepared by setup automation."
   - "Open Debug Chat."
   - "Send: Call the qa_mcp_echo tool with exactly this text: mcp-ok-local-agent. Return only the tool result."
 checks:
@@ -84,7 +82,8 @@ evidence_required:
   - api_diagnostic
   - metrics
 diagnostics:
-  - "For token-free deterministic UI coverage, start scripts/e2e/fake-openai-provider.mjs and pass LANGBOT_E2E_FAKE_PROVIDER_BASE_URL to this case; setup will bind the local-agent pipeline to that fake OpenAI-compatible model."
+  - "The required release case uses the QA fake-provider pipeline so model instruction-following variance cannot hide or mimic an MCP bridge regression."
+  - "Run a separate optional live-provider tool smoke when evaluating a specific provider/model route."
   - "Run node scripts/e2e/mcp-stdio-fixture.mjs to verify the bundled stdio fixture can list and call qa_mcp_echo without involving a model provider."
   - "Run node scripts/e2e/mcp-stdio-register.mjs to upsert qa-local-stdio in LangBot and verify /api/v1/tools exposes qa_mcp_echo."
   - "If backend logs show host_path is outside allowed_mount_roots, add the fixture directory to box.local.allowed_mount_roots in the local LangBot data config."

@@ -3708,7 +3708,7 @@ test("MCP stdio tool-call case setups pipeline and registered MCP server", () =>
     assert.deepEqual(
       run.setup_automation.map((item: { entry: string }) => item.entry),
       [
-        "node:scripts/e2e/ensure-local-agent-pipeline.mjs --write-env",
+        "node:scripts/e2e/ensure-fake-provider-pipeline.mjs --write-env",
         "case:mcp-stdio-register",
       ],
     );
@@ -3739,8 +3739,8 @@ test("MCP stdio tool-call case setups pipeline and registered MCP server", () =>
     assert.equal(planResult.code, 0);
     const plan = JSON.parse(planResult.output);
     assert.deepEqual(plan.setup_provides_env, [
-      "LANGBOT_LOCAL_AGENT_PIPELINE_URL",
-      "LANGBOT_LOCAL_AGENT_PIPELINE_NAME",
+      "LANGBOT_FAKE_PROVIDER_PIPELINE_URL",
+      "LANGBOT_FAKE_PROVIDER_PIPELINE_NAME",
       "LANGBOT_MCP_QA_STDIO_SERVER_UUID",
     ]);
     assert.ok(
@@ -4581,6 +4581,47 @@ test("test report classifies model route failures as env_issue", () => {
         (finding: { severity?: string; troubleshooting_id?: string }) =>
           finding.severity === "env_issue" &&
           finding.troubleshooting_id === "local-agent-model-route-unavailable",
+      ),
+    );
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("test report classifies provider quota tracebacks as env_issue", () => {
+  const tmp = mkdtempSync(join(tmpdir(), "lbs-report-quota-env-issue-"));
+  try {
+    const logPath = join(tmp, "backend.log");
+    writeFileSync(
+      logPath,
+      [
+        "[05-21 10:31:00.000] chat.py (2) - [ERROR] : Request Failed: Traceback (most recent call last):",
+        "  File \"provider.py\", line 1, in invoke",
+        "openai.PermissionDeniedError: insufficient user quota",
+        "[05-21 10:31:01.000] pipeline.py (3) - [ERROR] : runner.llm_error All models failed during streaming setup: insufficient user quota",
+      ].join("\n"),
+    );
+
+    const result = capture(() =>
+      commandTestReport(
+        ctx([
+          "test",
+          "report",
+          "local-agent-complex-coding-task-debug-chat",
+          "--backend-log",
+          logPath,
+          "--json",
+        ]),
+      ),
+    );
+    assert.equal(result.code, 0);
+    const report = JSON.parse(result.output);
+    assert.equal(report.log_guard.status, "env_issue");
+    assert.ok(
+      report.log_guard.findings.some(
+        (finding: { severity?: string; pattern?: string }) =>
+          finding.severity === "env_issue" &&
+          finding.pattern === "insufficient user quota",
       ),
     );
   } finally {

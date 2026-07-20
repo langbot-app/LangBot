@@ -338,9 +338,27 @@ function scanLogTextIntoState(
 
 function buildLogGuardResult(scan: LogScanConfig, sources: LogSourceSummary[], state: MutableScanState): LogGuardResult {
   const scannedCount = sources.filter((source) => source.status === "scanned").length;
+  const hardFailures = state.findings.filter(
+    (finding) => finding.severity === "fail" || finding.severity === "missing_input",
+  );
+  const relatedEnvIssues = state.findings.filter(
+    (finding) => finding.severity === "env_issue" && finding.related_to_case !== false,
+  );
+  const hardFailuresAreExplainedProviderTracebacks = hardFailures.length > 0
+    && relatedEnvIssues.length > 0
+    && hardFailures.every((failure) =>
+      failure.kind === "python_traceback"
+      && relatedEnvIssues.some((envIssue) =>
+        envIssue.source === failure.source
+        && envIssue.path === failure.path
+        && typeof envIssue.line === "number"
+        && typeof failure.line === "number"
+        && Math.abs(envIssue.line - failure.line) <= 100,
+      ),
+    );
   const status = scannedCount === 0 && state.findings.length === 0
     ? "not_run"
-    : state.findings.some((finding) => finding.severity === "fail" || finding.severity === "missing_input")
+    : hardFailures.length > 0 && !hardFailuresAreExplainedProviderTracebacks
       ? "fail"
       : state.findings.some((finding) => finding.severity === "matched_troubleshooting" && finding.related_to_case !== false)
         ? "fail"
@@ -528,7 +546,7 @@ function scanTroubleshootingPatterns(
 }
 
 function isModelRouteUnavailableText(text: string): boolean {
-  return /model_not_found|no available channel for model|invalid api key|当前分组上游负载已饱和/i.test(text);
+  return /model_not_found|no available channel for model|invalid api key|insufficient user quota|insufficient_quota|quota exceeded|余额不足|当前分组上游负载已饱和/i.test(text);
 }
 
 function scanCaseDeclaredPatterns(

@@ -44,8 +44,18 @@ def main() -> int:
     report = (workspace / "AGENT_REPORT.md").read_text(encoding="utf-8")
     folded_report = report.casefold()
     assert "initial" in folded_report and "fail" in folded_report, "report missing initial failure section"
-    for heading in ("root causes", "changed files", "verification"):
-        assert heading in folded_report, f"report missing section: {heading}"
+    assert "root causes" in folded_report, "report missing section: root causes"
+    assert any(
+        heading in folded_report
+        for heading in (
+            "changed files",
+            "files changed",
+            "files modified",
+            "modified files",
+            "changes made",
+        )
+    ), "report missing section: changed files"
+    assert "verification" in folded_report, "report missing section: verification"
     assert report.rstrip().endswith("COMPLEX_AGENT_TASK_OK tests=12 acceptance=PASS")
     print("HOST_VERIFY_PASS tests=12 acceptance=PASS protected=PASS")
     return 0

@@ -22,4 +22,5 @@ Do not add Space model concurrency to these gates. Provider concurrency mixes ex
 - Repository contract failure: fix the owning repository and add the narrowest deterministic regression.
 - Browser workflow failure: correlate the screenshot, console, network, and backend log from the same run.
 - Complex Agent failure: inspect `ledger-audit.json` before blaming the model. Tool pairing, authorization, JSON, and timeout failures are product signals.
+- A provider-origin malformed tool-argument payload is a recovery warning only when the ledger keeps a paired error result, a later tool call succeeds, and the run completes. Malformed persisted event JSON and unrecovered tool-argument errors remain release failures.
 - Packaging `env_issue`: restore isolated build dependency access, then rerun packaging only. It must not mask passing or failing runtime contracts.

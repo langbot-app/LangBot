@@ -16,6 +16,8 @@ import sqlalchemy
 import yaml
 from sqlalchemy.ext.asyncio import create_async_engine
 
+from agent_run_ledger_policy import classify_invalid_tool_argument_errors, load_ledger_json
+
 
 def database_url(repo: pathlib.Path) -> str:
     config = yaml.safe_load((repo / "data/config.yaml").read_text(encoding="utf-8")) or {}
@@ -35,16 +37,6 @@ def database_url(repo: pathlib.Path) -> str:
         name = values.get("database", "postgres")
         return f"postgresql+asyncpg://{user}:{password}@{host}:{port}/{name}"
     raise RuntimeError(f"Unsupported database backend: {kind}")
-
-
-def load_json(value: str | None, *, field: str, failures: list[dict]) -> object:
-    if not value:
-        return {}
-    try:
-        return json.loads(value)
-    except (TypeError, ValueError) as exc:
-        failures.append({"kind": "invalid_json", "field": field, "reason": str(exc)})
-        return {}
 
 
 def parse_created_after(value: str | None) -> datetime.datetime | None:
@@ -143,7 +135,11 @@ async def audit(
     finally:
         await engine.dispose()
 
-    authorization = load_json(run_row.get("authorization_json"), field="agent_run.authorization_json", failures=failures)
+    authorization = load_ledger_json(
+        run_row.get("authorization_json"),
+        field="agent_run.authorization_json",
+        failures=failures,
+    )
     tools = authorization.get("resources", {}).get("tools", []) if isinstance(authorization, dict) else []
     allowed_tools: dict[str, dict] = {}
     incomplete_tool_metadata: list[dict] = []
@@ -173,7 +169,13 @@ async def audit(
     event_types: list[str] = []
     invalid_event_json = 0
     suspicious_errors: list[dict] = []
-    forbidden_pattern = re.compile(r"invalid json(?: arguments)?|unauthori[sz]ed|permission denied|forbidden|timed?\s*out|timeout", re.I)
+    invalid_tool_argument_errors: list[dict] = []
+    successful_tool_completion_sequences: list[int] = []
+    forbidden_pattern = re.compile(
+        r"invalid json(?! arguments)|unauthori[sz]ed|permission denied|forbidden|timed?\s*out|timeout",
+        re.I,
+    )
+    invalid_tool_arguments_pattern = re.compile(r"invalid json arguments", re.I)
 
     def error_surface(value: object) -> list[str]:
         """Collect diagnostic fields without treating normal tool parameters as errors."""
@@ -192,7 +194,11 @@ async def audit(
         event_type = str(row["type"])
         event_types.append(event_type)
         before = len(failures)
-        data = load_json(row.get("data_json"), field=f"agent_run_event[{row['sequence']}].data_json", failures=failures)
+        data = load_ledger_json(
+            row.get("data_json"),
+            field=f"agent_run_event[{row['sequence']}].data_json",
+            failures=failures,
+        )
         invalid_event_json += int(len(failures) > before)
         if not isinstance(data, dict):
             failures.append({"kind": "invalid_event_payload", "sequence": row["sequence"], "type": event_type})
@@ -206,12 +212,20 @@ async def audit(
                 starts.setdefault(call_id, []).append(item)
             else:
                 completions.setdefault(call_id, []).append(item)
+                if not data.get("error") and data.get("result") is not None:
+                    successful_tool_completion_sequences.append(row["sequence"])
         diagnostic_text = "\n".join(error_surface(data))
         if event_type == "run.failed":
             diagnostic_text += "\n" + json.dumps(data, ensure_ascii=True)
         match = forbidden_pattern.search(diagnostic_text)
         if match:
             suspicious_errors.append({"sequence": row["sequence"], "type": event_type, "signal": match.group(0)})
+        elif event_type == "tool.call.completed":
+            match = invalid_tool_arguments_pattern.search(diagnostic_text)
+            if match:
+                invalid_tool_argument_errors.append(
+                    {"sequence": row["sequence"], "type": event_type, "signal": match.group(0)}
+                )
 
     if run_row["status"] != "completed":
         failures.append({"kind": "run_status", "actual": run_row["status"], "expected": "completed"})
@@ -236,6 +250,18 @@ async def audit(
             unauthorized_calls.append({"tool_call_id": call_id, "tool_name": started[0]["tool_name"]})
     if unauthorized_calls:
         failures.append({"kind": "unauthorized_tool_calls", "calls": unauthorized_calls})
+    unrecovered_argument_errors, recovered_argument_warnings = classify_invalid_tool_argument_errors(
+        invalid_tool_argument_errors,
+        successful_tool_completion_sequences=successful_tool_completion_sequences,
+        run_completed=(
+            run_row["status"] == "completed"
+            and "run.completed" in event_types
+            and "run.failed" not in event_types
+        ),
+    )
+    if unrecovered_argument_errors:
+        suspicious_errors.extend(unrecovered_argument_errors)
+    warnings.extend(recovered_argument_warnings)
     if suspicious_errors:
         failures.append({"kind": "forbidden_error_signals", "events": suspicious_errors})
     if not event_rows:
@@ -281,6 +307,7 @@ async def audit(
         "authorized_tool_count": len(allowed_tools),
         "invalid_event_json": invalid_event_json,
         "suspicious_error_count": len(suspicious_errors),
+        "recovered_tool_argument_error_count": len(recovered_argument_warnings),
     }
     return {
         "status": "pass" if not failures else "fail",

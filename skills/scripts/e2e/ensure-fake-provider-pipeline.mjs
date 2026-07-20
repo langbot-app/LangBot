@@ -148,7 +148,7 @@ try {
     modelUuid: model.uuid,
   });
   Object.assign(result, pipeline);
-  result.pipeline_url = `${frontendUrl.replace(/\/$/, "")}/home/pipelines?id=${encodeURIComponent(pipeline.pipeline_id)}`;
+  result.pipeline_url = `${frontendUrl.replace(/\/$/, "")}/home/agents?id=${encodeURIComponent(pipeline.pipeline_id)}`;
 
   const runConfig = await configureFakeProvider(fakeProvider.url, targetFakeProviderConfig(), true);
   result.fake_provider.config = runConfig.config || targetFakeProviderConfig();
@@ -425,7 +425,7 @@ async function ensureModel({ backendUrl, token, providerUuid, name }) {
   const body = {
     name,
     provider_uuid: providerUuid,
-    abilities: [],
+    abilities: ["func_call", "vision"],
     context_length: positiveInteger(env.LANGBOT_FAKE_PROVIDER_CONTEXT_LENGTH, 8192),
     extra_args: {},
     prefered_ranking: 0,

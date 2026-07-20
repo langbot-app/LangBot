@@ -121,7 +121,7 @@ Each probe writes `automation-result.json` and probe logs under
 | Plugin tool error recovery | `local-agent-tool-error-recovery-debug-chat` | Tool execution errors are serialized into model-facing tool results and the model can produce a final answer instead of failing the run. |
 | Parallel plugin tool batch | `local-agent-parallel-tools-rag-compaction-debug-chat` | Local-agent executes multiple same-turn plugin tool calls and returns both results with RAG and compacted history. |
 | MCP registration | `mcp-stdio-register` | The deterministic stdio MCP server is registered and exposes `qa_mcp_echo`. |
-| MCP tool loop | `mcp-stdio-tool-call` | Local-agent can call the registered MCP tool through the same tool loop. |
+| MCP tool loop | `mcp-stdio-tool-call` | Local-agent can call the registered MCP tool through the same tool loop using the deterministic QA fake provider. |
 | Multimodal input | `local-agent-multimodal-debug-chat` | Image upload and structured input reach the runner. |
 | Multimodal plus RAG | `local-agent-rag-multimodal-debug-chat` | RAG still works when structured image input is present. |
 | ACP external harness execution | `acp-agent-runner-debug-chat` | ACP executes the configured coding agent and returns visible Debug Chat output. |

@@ -1537,12 +1537,12 @@
           ],
           "automation": "scripts/e2e/pipeline-debug-chat.mjs",
           "setup_automation": [
-            "node:scripts/e2e/ensure-local-agent-pipeline.mjs --write-env",
+            "node:scripts/e2e/ensure-fake-provider-pipeline.mjs --write-env",
             "case:mcp-stdio-register"
           ],
           "setup_provides_env": [
-            "LANGBOT_LOCAL_AGENT_PIPELINE_URL",
-            "LANGBOT_LOCAL_AGENT_PIPELINE_NAME",
+            "LANGBOT_FAKE_PROVIDER_PIPELINE_URL",
+            "LANGBOT_FAKE_PROVIDER_PIPELINE_NAME",
             "LANGBOT_MCP_QA_STDIO_SERVER_UUID"
           ],
           "evidence_required": [
@@ -2458,7 +2458,8 @@
             "local-agent-plugin-tool-call-debug-chat",
             "mcp-stdio-tool-call",
             "local-agent-multimodal-debug-chat",
-            "local-agent-nonstreaming-debug-chat"
+            "local-agent-nonstreaming-debug-chat",
+            "local-agent-complex-coding-task-debug-chat"
           ]
         },
         {

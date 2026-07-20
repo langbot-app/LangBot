@@ -85,10 +85,15 @@ extension binding uses this UUID, not the human-readable server name.
 
 ## Local-Agent Tool Call Check
 
-1. Open the target pipeline.
-2. Confirm `Extensions` allows the MCP server, or that all MCP servers are enabled.
-3. Use runner `Default` or the pluginized `langbot-team/LocalAgent` runner.
-4. Select a model with function-calling ability that is known to work with tools in the current environment.
+The required release case prepares and uses the dedicated QA fake-provider
+pipeline. This keeps the host, LocalAgent, MCP discovery, function-call
+conversion, tool execution, and result-return path deterministic. A real model
+that ignores the tool instruction must not be reported as an MCP bridge failure.
+
+1. Run `node scripts/e2e/ensure-fake-provider-pipeline.mjs --write-env`.
+2. Open `LANGBOT_FAKE_PROVIDER_PIPELINE_URL`.
+3. Confirm `Extensions` allows the MCP server, or that all MCP servers are enabled.
+4. Confirm the pipeline uses the pluginized `langbot-team/LocalAgent` runner.
 5. Open `Debug Chat`.
 6. Ask:
 
@@ -111,3 +116,7 @@ qa-plugin-smoke:mcp-ok-local-agent
 That proves a plugin tool was called, not the MCP server.
 
 If the provider returns `model_not_found` or `no available channel` only when tools are supplied, switch to a known-good function-calling model before diagnosing MCP or local-agent. That failure means the selected model route is unavailable for the requested tool-call shape.
+
+Run a real-provider tool smoke separately when validating a particular model
+route. It measures provider tool-use behavior in addition to the LangBot path
+and is therefore not the deterministic release gate.

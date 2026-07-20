@@ -119,7 +119,7 @@ try {
   result.pipeline_id = pipeline.id;
   result.pipeline_name = pipeline.name || pipelineName;
   if (!result.pipeline_url && env.LANGBOT_FRONTEND_URL) {
-    result.pipeline_url = `${env.LANGBOT_FRONTEND_URL.replace(/\/$/, "")}/home/pipelines?id=${encodeURIComponent(pipeline.id)}`;
+    result.pipeline_url = `${env.LANGBOT_FRONTEND_URL.replace(/\/$/, "")}/home/agents?id=${encodeURIComponent(pipeline.id)}`;
   }
 
   if (resetBeforeRun) {

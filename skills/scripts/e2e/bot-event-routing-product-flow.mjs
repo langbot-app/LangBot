@@ -111,7 +111,13 @@ try {
     { exact: true },
   );
   await noEventRoutes.waitFor();
-  await messageBehavior.waitFor();
+  try {
+    await messageBehavior.waitFor({ timeout: 5_000 });
+  } catch {
+    // Async adapter fields can rerender once after the first menu click.
+    await addBehavior.click();
+    await messageBehavior.waitFor();
+  }
   await page.waitForTimeout(250);
   await safeScreenshot(page, scenarioMenuScreenshot);
   await messageBehavior.click();

@@ -19,7 +19,8 @@ steps:
   - "Read the active LangBot database configuration and inspect the selected run and its ordered events."
   - "Verify completed terminal state, run.completed, paired tool.call.started/completed events, stable tool names, and monotonic ordering."
   - "Compare called tools with the authorization snapshot and validate each advertised tool has owner/source, description, and parameter schema."
-  - "Reject malformed event JSON and invalid-JSON, timeout, forbidden, permission-denied, or unauthorized signals."
+  - "Reject malformed persisted event JSON, unrecovered invalid tool arguments, timeout, forbidden, permission-denied, or unauthorized signals."
+  - "Record a malformed model tool-argument payload as a recovery warning only when a later tool call succeeds and the run completes."
 checks:
   - "ledger-audit.json status is pass."
   - "metrics has equal tool_call_started and tool_call_completed counts."
