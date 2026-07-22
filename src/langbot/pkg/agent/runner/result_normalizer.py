@@ -1,4 +1,5 @@
 """Agent result normalizer for converting AgentRunResult to Pipeline messages."""
+
 from __future__ import annotations
 
 import typing
@@ -57,7 +58,7 @@ class AgentResultNormalizer:
     - state.updated
     - run.completed
     - run.failed
-    - action.requested (log only, don't execute)
+    - action.requested (non-whitelisted actions are telemetry only)
     """
 
     ap: app.Application
@@ -91,6 +92,7 @@ class AgentResultNormalizer:
         # Validate result size
         try:
             import json
+
             result_json = json.dumps(result_dict)
             if len(result_json) > MAX_RESULT_SIZE_BYTES:
                 self.ap.logger.warning(
@@ -120,16 +122,12 @@ class AgentResultNormalizer:
 
         elif result_type == 'tool.call.started':
             # Log only, don't yield to pipeline
-            self.ap.logger.debug(
-                f'Runner {descriptor.id} tool call started: {data.get("tool_name", "unknown")}'
-            )
+            self.ap.logger.debug(f'Runner {descriptor.id} tool call started: {data.get("tool_name", "unknown")}')
             return None
 
         elif result_type == 'tool.call.completed':
             # Log only, don't yield to pipeline
-            self.ap.logger.debug(
-                f'Runner {descriptor.id} tool call completed: {data.get("tool_name", "unknown")}'
-            )
+            self.ap.logger.debug(f'Runner {descriptor.id} tool call completed: {data.get("tool_name", "unknown")}')
             return None
 
         elif result_type == 'state.updated':
@@ -161,10 +159,9 @@ class AgentResultNormalizer:
             )
 
         elif result_type == 'action.requested':
-            # Reserved for EBA - log only, don't execute
+            # The orchestrator consumes whitelisted actions before normalization.
             self.ap.logger.info(
-                f'Runner {descriptor.id} requested action (not executed in current phase): '
-                f'{data.get("action", "unknown")}'
+                f'Runner {descriptor.id} requested unsupported action (not executed): {data.get("action", "unknown")}'
             )
             return None
 

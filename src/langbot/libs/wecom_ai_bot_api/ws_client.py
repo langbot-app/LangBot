@@ -430,6 +430,8 @@ class WecomBotWsClient:
             card_payload: ``{"msgtype": "template_card", "template_card": {...}}``
                 as produced by :func:`build_button_interaction_payload`.
         """
+        if card_payload.get('msgtype') != 'template_card' or not isinstance(card_payload.get('template_card'), dict):
+            raise ValueError('invalid WeCom template_card payload')
         req_id = _generate_req_id(CMD_SEND_MSG)
         body = dict(card_payload)
         body['chatid'] = chat_id

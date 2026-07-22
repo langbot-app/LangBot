@@ -13,6 +13,10 @@ from langbot.pkg.platform.adapters.qqofficial.errors import NotSupportedError
 from langbot.pkg.platform.adapters.qqofficial.event_converter import QQOfficialEventConverter
 from langbot.pkg.platform.adapters.qqofficial.message_converter import QQOfficialMessageConverter
 from langbot.pkg.platform.adapters.qqofficial.platform_api import PLATFORM_API_MAP
+from langbot.pkg.platform.adapters.qqofficial.interaction import (
+    build_interaction_keyboard,
+    interaction_event_from_payload,
+)
 from langbot_plugin.api.definition.abstract.platform.event_logger import AbstractEventLogger
 from langbot_plugin.api.entities.builtin.platform import entities as platform_entities
 from langbot_plugin.api.entities.builtin.platform import events as platform_events
@@ -49,10 +53,20 @@ class DummyQQOfficialClient:
         self.access_token_expiry_time = None
         self.handle_unified_webhook = AsyncMock(return_value='success')
         self.connect_gateway_loop = AsyncMock()
+        self.send_markdown_keyboard = AsyncMock(return_value={'id': 'keyboard-message'})
+        self.ack_interaction = AsyncMock()
+        self._interaction_handler = None
 
     def on_message(self, msg_type: str):
         def decorator(func):
             self._message_handlers.setdefault(msg_type, []).append(func)
+            return func
+
+        return decorator
+
+    def on_interaction(self):
+        def decorator(func):
+            self._interaction_handler = func
             return func
 
         return decorator
@@ -111,7 +125,7 @@ def manifest() -> dict:
         / 'qqofficial'
         / 'manifest.yaml'
     )
-    return yaml.safe_load(manifest_path.read_text())
+    return yaml.safe_load(manifest_path.read_text(encoding='utf-8'))
 
 
 def make_adapter(enable_webhook: bool = True) -> QQOfficialAdapter:
@@ -162,6 +176,54 @@ def test_qqofficial_platform_api_map_matches_manifest():
     manifest_actions = {item['action'] for item in manifest()['spec']['platform_specific_apis']}
 
     assert set(PLATFORM_API_MAP) == manifest_actions
+
+
+def test_qqofficial_interaction_keyboard_contains_only_host_token_and_index():
+    keyboard = build_interaction_keyboard(
+        {'actions': [{'id': 'approve', 'label': 'Approve', 'style': 'primary'}]},
+        'callback-token',
+    )
+
+    button = keyboard['content']['rows'][0]['buttons'][0]
+    assert button['action']['data'] == 'lbi:callback-token:a:0'
+
+
+@pytest.mark.asyncio
+async def test_qqofficial_interaction_delivery_and_callback_event():
+    adapter = make_adapter()
+    result = await adapter.call_platform_api(
+        'interaction.request',
+        {
+            'callback_token': 'callback-token',
+            'reply_target': {
+                'target_type': 'group',
+                'target_id': 'group-openid',
+                'message_id': 'msg-1',
+            },
+            'request': {
+                'interaction_id': 'form-1',
+                'title': 'Approve?',
+                'actions': [{'id': 'approve', 'label': 'Approve'}],
+                'fallback_text': 'Reply approve.',
+            },
+        },
+    )
+
+    assert result == {'ok': True, 'message_id': 'keyboard-message', 'rich': True}
+    assert adapter.bot.send_markdown_keyboard.await_args.kwargs['msg_id'] == 'msg-1'
+
+    event = interaction_event_from_payload(
+        {
+            'id': 'interaction-id',
+            'chat_type': 1,
+            'group_openid': 'group-openid',
+            'member_openid': 'user-openid',
+            'data': {'resolved': {'button_data': 'lbi:callback-token:a:0'}},
+        }
+    )
+    assert event.action == 'interaction.submitted'
+    assert event.data['action_ref'] == 0
+    assert event.data['actor_id'] == 'user-openid'
 
 
 @pytest.mark.asyncio

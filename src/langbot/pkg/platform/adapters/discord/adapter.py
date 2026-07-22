@@ -13,6 +13,12 @@ from langbot.pkg.platform.adapters.discord.api_impl import DiscordAPIMixin
 from langbot.pkg.platform.adapters.discord.event_converter import DiscordEventConverter
 from langbot.pkg.platform.adapters.discord.message_converter import DiscordMessageConverter
 from langbot.pkg.platform.adapters.discord.platform_api import PLATFORM_API_MAP
+from langbot.pkg.platform.adapters.discord.interaction import (
+    interaction_delivery_capabilities,
+    interaction_event_from_component,
+    parse_interaction_custom_id,
+    send_interaction,
+)
 from langbot_plugin.api.entities.builtin.platform import events as platform_events
 from langbot_plugin.api.entities.builtin.platform import message as platform_message
 
@@ -62,6 +68,25 @@ class DiscordAdapter(DiscordAPIMixin, abstract_platform_adapter.AbstractPlatform
                         await adapter_self._dispatch_eba_event(eba_event)
                 except Exception:
                     await adapter_self.logger.error(f'Error in discord on_message: {traceback.format_exc()}')
+
+            async def on_interaction(self: discord.Client, interaction: discord.Interaction):
+                custom_id = (interaction.data or {}).get('custom_id') if isinstance(interaction.data, dict) else None
+                try:
+                    parsed = parse_interaction_custom_id(custom_id)
+                except ValueError:
+                    if not interaction.response.is_done():
+                        await interaction.response.send_message('Invalid or expired action', ephemeral=True)
+                    return
+                if parsed is None:
+                    return
+                if not interaction.response.is_done():
+                    await interaction.response.defer()
+                try:
+                    await adapter_self._dispatch_eba_event(interaction_event_from_component(interaction, parsed))
+                    if interaction.message is not None:
+                        await interaction.message.edit(view=None)
+                except Exception:
+                    await adapter_self.logger.error(f'Error in Discord interaction callback: {traceback.format_exc()}')
 
             async def on_message_edit(self: discord.Client, before: discord.Message, after: discord.Message):
                 await adapter_self._dispatch_gateway_tuple(
@@ -176,7 +201,11 @@ class DiscordAdapter(DiscordAPIMixin, abstract_platform_adapter.AbstractPlatform
             'kick_member',
             'leave_group',
             'call_platform_api',
+            'interaction.request',
         ]
+
+    def get_interaction_capabilities(self) -> dict[str, typing.Any]:
+        return interaction_delivery_capabilities()
 
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
         content, files = await self.message_converter.yiri2target(message)
@@ -238,6 +267,8 @@ class DiscordAdapter(DiscordAPIMixin, abstract_platform_adapter.AbstractPlatform
         self.listeners.pop(event_type, None)
 
     async def call_platform_api(self, action: str, params: dict = {}) -> dict:
+        if action == 'interaction.request':
+            return await send_interaction(self, params)
         handler = PLATFORM_API_MAP.get(action)
         if handler is None:
             from langbot_plugin.api.entities.builtin.platform.errors import NotSupportedError

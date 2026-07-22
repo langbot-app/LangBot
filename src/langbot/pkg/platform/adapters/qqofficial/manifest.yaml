@@ -107,6 +107,7 @@ spec:
       - get_group_member_list
       - get_group_member_info
       - call_platform_api
+      - interaction.request
 
   platform_specific_apis:
     - action: check_access_token

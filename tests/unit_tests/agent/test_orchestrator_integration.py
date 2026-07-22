@@ -17,6 +17,7 @@ from langbot.pkg.agent.runner.query_entry_adapter import QueryEntryAdapter
 from langbot.pkg.agent.runner.binding_resolver import AgentBindingResolver
 from langbot.pkg.agent.runner.session_registry import get_session_registry
 from langbot.pkg.agent.runner.run_ledger_store import RunLedgerStore
+from langbot.pkg.agent.runner.interaction_store import InteractionStore
 from langbot.pkg.agent.runner.persistent_state_store import reset_persistent_state_store
 from langbot_plugin.api.entities.builtin.platform import entities as platform_entities
 from langbot_plugin.api.entities.builtin.platform import events as platform_events
@@ -410,6 +411,67 @@ async def test_orchestrator_runs_fake_plugin_with_authorized_context(clean_agent
     assert session_during_run['authorization']['authorized_ids']['tool'] == {'langbot/test-tool/search'}
     assert session_during_run['authorization']['authorized_ids']['skill'] == {'demo'}
     assert await get_session_registry().get(context['run_id']) is None
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_consumes_interaction_request_before_message_output(clean_agent_state):
+    """Whitelisted interaction actions are delivered and never emitted as messages."""
+    db_engine = clean_agent_state
+    descriptor = make_descriptor()
+    # The local SDK pin predates this contract; these become typed fields with SDK 0.5.0a3.
+    descriptor.capabilities.__dict__['interactions'] = True
+    descriptor.permissions.__dict__['interactions'] = ['request']
+    plugin_connector = FakePluginConnector(
+        results=[
+            {
+                'type': 'action.requested',
+                'data': {
+                    'action': 'interaction.requested',
+                    'payload': {
+                        'interaction_id': 'approval-1',
+                        'kind': 'choice',
+                        'title': 'Approve request?',
+                        'actions': [
+                            {'id': 'approve', 'label': 'Approve', 'style': 'primary'},
+                            {'id': 'reject', 'label': 'Reject', 'style': 'danger'},
+                        ],
+                        'fallback_text': 'Reply approve or reject.',
+                    },
+                },
+            },
+            {
+                'type': 'message.completed',
+                'data': {'message': {'role': 'assistant', 'content': 'Waiting for approval'}},
+            },
+        ]
+    )
+    ap = FakeApplication(plugin_connector, db_engine)
+    orchestrator = AgentRunOrchestrator(ap, FakeRegistry(descriptor))
+    query = make_query()
+    query.adapter = types.SimpleNamespace(
+        get_supported_apis=lambda: ['interaction.request'],
+        call_platform_api=AsyncMock(return_value={'ok': True}),
+    )
+
+    messages = [message async for message in orchestrator.run_from_query(query)]
+
+    assert [message.content for message in messages] == ['Waiting for approval']
+    query.adapter.call_platform_api.assert_awaited_once()
+    action, params = query.adapter.call_platform_api.await_args.args
+    assert action == 'interaction.request'
+    assert params['reply_target'] == {
+        'target_type': 'person',
+        'target_id': 'user_001',
+        'message_id': 'msg_001',
+    }
+    assert params['callback_token']
+
+    run_id = plugin_connector.contexts[0]['run_id']
+    request = await InteractionStore(db_engine).get_request(run_id, 'approval-1')
+    assert request is not None
+    assert request['status'] == 'pending'
+    assert request['processor_type'] == 'pipeline'
+    assert request['processor_id'] == 'pipeline_001'
 
 
 @pytest.mark.asyncio

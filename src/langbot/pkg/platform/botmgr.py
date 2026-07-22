@@ -996,6 +996,27 @@ class RuntimeBot:
         elif getattr(event, 'session_id', None):
             conversation_id = str(getattr(event, 'session_id'))
 
+        delivery_data: dict[str, typing.Any] = {
+            'surface': 'platform',
+            'reply_target': {
+                'target_type': target_type,
+                'target_id': target_id,
+                'message_id': getattr(event, 'message_id', None),
+                **target_metadata,
+            },
+            'supports_streaming': False,
+            'supports_edit': 'edit_message' in supported_apis,
+            'supports_reaction': bool({'add_reaction', 'remove_reaction'} & set(supported_apis)),
+            'platform_capabilities': {
+                'adapter': adapter.__class__.__name__,
+                'event_type': event_type,
+                'supported_apis': supported_apis,
+            },
+        }
+        interaction_capabilities = self._get_adapter_interaction_capabilities(adapter, supported_apis)
+        if interaction_capabilities is not None:
+            delivery_data['interactions'] = interaction_capabilities
+
         return AgentEventEnvelope(
             event_id=f'platform:{self.bot_entity.uuid}:{event_id}',
             event_type=event_type,
@@ -1009,23 +1030,7 @@ class RuntimeBot:
             actor=self._infer_actor_context(event),
             subject=self._infer_subject_context(event),
             input=self._build_agent_input(event),
-            delivery=DeliveryContext(
-                surface='platform',
-                reply_target={
-                    'target_type': target_type,
-                    'target_id': target_id,
-                    'message_id': getattr(event, 'message_id', None),
-                    **target_metadata,
-                },
-                supports_streaming=False,
-                supports_edit='edit_message' in supported_apis,
-                supports_reaction=bool({'add_reaction', 'remove_reaction'} & set(supported_apis)),
-                platform_capabilities={
-                    'adapter': adapter.__class__.__name__,
-                    'event_type': event_type,
-                    'supported_apis': supported_apis,
-                },
-            ),
+            delivery=DeliveryContext.model_validate(delivery_data),
             raw_ref=RawEventRef(ref_id=str(event_id), storage_key=None),
             data=self._compact_event_data(event),
         )
@@ -1044,6 +1049,22 @@ class RuntimeBot:
         if not isinstance(declared_apis, (list, tuple, set)):
             return []
         return list(dict.fromkeys(api_name for api_name in declared_apis if isinstance(api_name, str) and api_name))
+
+    @staticmethod
+    def _get_adapter_interaction_capabilities(
+        adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
+        supported_apis: list[str],
+    ) -> dict[str, typing.Any] | None:
+        if 'interactions' not in DeliveryContext.model_fields or 'interaction.request' not in supported_apis:
+            return None
+        get_capabilities = getattr(adapter, 'get_interaction_capabilities', None)
+        if not callable(get_capabilities):
+            return None
+        try:
+            capabilities = get_capabilities()
+        except Exception:
+            return None
+        return capabilities if isinstance(capabilities, dict) else None
 
     @staticmethod
     def _agent_product_to_binding(
@@ -1068,9 +1089,15 @@ class RuntimeBot:
             runner_config=runner_config,
             resource_policy=ResourcePolicyProjector.from_runner_config(runner_config),
             state_policy=StatePolicy(state_scopes=['conversation', 'actor', 'subject', 'runner']),
-            delivery_policy=DeliveryPolicy(enable_streaming=False, enable_reply=True),
+            delivery_policy=DeliveryPolicy(
+                enable_streaming=False,
+                enable_reply=True,
+                enable_interactions=True,
+            ),
             enabled=True,
             agent_id=agent.get('uuid'),
+            processor_type='agent',
+            processor_id=agent.get('uuid'),
         )
 
     @staticmethod
@@ -1137,6 +1164,10 @@ class RuntimeBot:
         event: platform_events.EBAEvent,
         adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
     ) -> None:
+        if isinstance(event, platform_events.PlatformSpecificEvent) and event.action == 'interaction.submitted':
+            await self._handle_interaction_submission(event, adapter)
+            return
+
         event.bot_uuid = self.bot_entity.uuid
         plugin_event = self._eba_event_to_plugin_event(event)
 
@@ -1303,7 +1334,11 @@ class RuntimeBot:
         envelope = self._eba_event_to_agent_envelope(event, adapter)
         outputs: list[provider_message.Message | provider_message.MessageChunk] = []
         try:
-            async for output in self.ap.agent_run_orchestrator.run(envelope, binding):
+            async for output in self.ap.agent_run_orchestrator.run(
+                envelope,
+                binding,
+                adapter_context={'_delivery_adapter': adapter},
+            ):
                 outputs.append(output)
         except Exception:
             return await self._record_event_route_trace(
@@ -1408,6 +1443,7 @@ class RuntimeBot:
         adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
         pipeline_uuid_override: str | None = None,
         routed_by_event_binding: bool = False,
+        variables: dict[str, typing.Any] | None = None,
     ) -> None:
         is_group_message = isinstance(event, platform_events.GroupMessage)
         launcher_kind = 'group' if is_group_message else 'person'
@@ -1475,7 +1511,196 @@ class RuntimeBot:
             adapter=adapter,
             pipeline_uuid=pipeline_uuid,
             routed_by_rule=routed_by_rule,
+            variables=variables,
         )
+
+    async def _handle_interaction_submission(
+        self,
+        event: platform_events.PlatformSpecificEvent,
+        adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
+    ) -> None:
+        """Consume a platform interaction callback and resume its original processor."""
+        data = event.data if isinstance(event.data, dict) else {}
+        callback_token = str(data.get('callback_token') or '')
+        actor_id = str(data.get('actor_id') or data.get('user_id') or '') or None
+        target_type = str(data.get('target_type') or '') or None
+        target_id = str(data.get('target_id') or data.get('chat_id') or '') or None
+        conversation_id = f'{target_type}_{target_id}' if target_type and target_id else None
+        submission = {
+            'interaction_id': data.get('interaction_id'),
+            'action_id': data.get('action_id'),
+            'values': data.get('values') if isinstance(data.get('values'), dict) else {},
+            'submitted_at': int(event.timestamp) if event.timestamp else None,
+        }
+        for ref_name in ('action_ref', 'field_ref', 'option_ref'):
+            if data.get(ref_name) is not None:
+                submission[ref_name] = data[ref_name]
+
+        record = await self.ap.agent_run_orchestrator.interaction_manager.consume_callback(
+            callback_token=callback_token,
+            submission=submission,
+            bot_id=self.bot_entity.uuid,
+            conversation_id=conversation_id,
+            actor_id=actor_id,
+        )
+        await self.ap.agent_run_orchestrator.interaction_manager.acknowledge_submission(record, adapter)
+
+        if record['processor_type'] == 'agent':
+            await self._resume_agent_interaction(record, event, adapter, actor_id)
+            return
+        if record['processor_type'] != 'pipeline':
+            raise ValueError(f'Unsupported interaction processor type: {record["processor_type"]}')
+
+        pipeline = await self.ap.pipeline_service.get_pipeline(record['processor_id'])
+        if not pipeline:
+            raise ValueError(f'Interaction target Pipeline is unavailable: {record["processor_id"]}')
+        current_runner_id = RunnerConfigResolver.resolve_runner_id(pipeline.get('config') or {})
+        if current_runner_id != record['runner_id']:
+            raise ValueError('Interaction target Pipeline runner changed after the request was created')
+
+        message_components: list[platform_message.MessageComponent] = []
+        callback_message_id = data.get('message_id')
+        if callback_message_id:
+            message_components.append(
+                platform_message.Source(
+                    id=str(callback_message_id),
+                    time=int(event.timestamp) if event.timestamp else int(time.time()),
+                )
+            )
+        message_components.append(
+            platform_message.Plain(text=str(data.get('display_text') or data.get('action_id') or 'submitted'))
+        )
+        message_chain = platform_message.MessageChain(message_components)
+        delivery_target = record.get('delivery_target') or {}
+        original_target_type = delivery_target.get('target_type')
+        original_target_id = delivery_target.get('target_id')
+        if original_target_type == 'group':
+            group = platform_entities.Group(
+                id=original_target_id,
+                name='',
+                permission=platform_entities.Permission.Member,
+            )
+            message_event: platform_events.MessageEvent = platform_events.GroupMessage(
+                sender=platform_entities.GroupMember(
+                    id=actor_id or '',
+                    member_name='',
+                    permission=platform_entities.Permission.Member,
+                    group=group,
+                ),
+                message_chain=message_chain,
+                time=event.timestamp,
+                source_platform_object=event.source_platform_object,
+            )
+        else:
+            message_event = platform_events.FriendMessage(
+                sender=platform_entities.Friend(id=actor_id or '', nickname='', remark=''),
+                message_chain=message_chain,
+                time=event.timestamp,
+                source_platform_object=event.source_platform_object,
+            )
+
+        launcher_type = (
+            provider_session.LauncherTypes.GROUP
+            if original_target_type == 'group'
+            else provider_session.LauncherTypes.PERSON
+        )
+        await self.ap.msg_aggregator.add_message(
+            bot_uuid=self.bot_entity.uuid,
+            launcher_type=launcher_type,
+            launcher_id=original_target_id or target_id or actor_id or '',
+            sender_id=actor_id or '',
+            message_event=message_event,
+            message_chain=message_chain,
+            adapter=adapter,
+            pipeline_uuid=record['processor_id'],
+            routed_by_rule=True,
+            variables={'_interaction_submission': record['submission']},
+        )
+
+    async def _resume_agent_interaction(
+        self,
+        record: dict[str, typing.Any],
+        event: platform_events.PlatformSpecificEvent,
+        adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
+        actor_id: str | None,
+    ) -> None:
+        """Resume the exact independent Agent that produced an interaction."""
+        agent = await self.ap.agent_service.get_agent(record['processor_id'])
+        if not agent or agent.get('kind') != 'agent' or not agent.get('enabled', True):
+            raise ValueError(f'Interaction target Agent is unavailable: {record["processor_id"]}')
+
+        binding = self._agent_product_to_binding(
+            agent,
+            {'id': record['binding_id']},
+            'interaction.submitted',
+            self.bot_entity.uuid,
+        )
+        if binding is None or binding.runner_id != record['runner_id']:
+            raise ValueError('Interaction target Agent runner changed after the request was created')
+        binding.binding_id = record['binding_id']
+
+        submission = record['submission']
+        display_text = str(
+            (submission or {}).get('action_id')
+            or (event.data if isinstance(event.data, dict) else {}).get('display_text')
+            or 'submitted'
+        )
+        input_data: dict[str, typing.Any] = {
+            'text': display_text,
+            'contents': [{'type': 'text', 'text': display_text}],
+            'attachments': [],
+        }
+        if 'interaction' in AgentInput.model_fields:
+            input_data['interaction'] = submission
+
+        delivery_target = record.get('delivery_target') or {}
+        supported_apis = self._get_adapter_supported_apis(adapter)
+        delivery_data: dict[str, typing.Any] = {
+            'surface': 'platform',
+            'reply_target': delivery_target,
+            'supports_streaming': False,
+            'supports_edit': 'edit_message' in supported_apis,
+            'supports_reaction': bool({'add_reaction', 'remove_reaction'} & set(supported_apis)),
+            'platform_capabilities': {
+                'adapter': adapter.__class__.__name__,
+                'event_type': 'interaction.submitted',
+                'supported_apis': supported_apis,
+            },
+        }
+        interaction_capabilities = self._get_adapter_interaction_capabilities(adapter, supported_apis)
+        if interaction_capabilities is not None:
+            delivery_data['interactions'] = interaction_capabilities
+
+        envelope = AgentEventEnvelope(
+            event_id=f'interaction:{record["id"]}:{uuid.uuid4()}',
+            event_type='interaction.submitted',
+            event_time=int(event.timestamp) if event.timestamp else int(time.time()),
+            source='platform',
+            source_event_type='interaction.submitted',
+            bot_id=self.bot_entity.uuid,
+            workspace_id=record.get('workspace_id'),
+            conversation_id=record.get('conversation_id'),
+            thread_id=record.get('thread_id'),
+            actor=ActorContext(actor_type='user', actor_id=actor_id),
+            subject=SubjectContext(
+                subject_type='interaction',
+                subject_id=record['interaction_id'],
+                data={'action_id': (submission or {}).get('action_id')},
+            ),
+            input=AgentInput.model_validate(input_data),
+            delivery=DeliveryContext.model_validate(delivery_data),
+            raw_ref=RawEventRef(ref_id=f'interaction:{record["id"]}', storage_key=None),
+            data={'interaction': submission},
+        )
+
+        outputs: list[provider_message.Message | provider_message.MessageChunk] = []
+        async for output in self.ap.agent_run_orchestrator.run(
+            envelope,
+            binding,
+            adapter_context={'_delivery_adapter': adapter},
+        ):
+            outputs.append(output)
+        await self._deliver_agent_outputs(envelope, outputs, adapter=adapter)
 
     async def _dispatch_eba_message_to_pipeline(
         self,
@@ -1523,8 +1748,20 @@ class RuntimeBot:
                 return
             await self._handle_platform_event(self._legacy_message_to_eba_event(event, adapter), adapter)
 
-        self.adapter.register_listener(platform_events.FriendMessage, on_friend_message)
-        self.adapter.register_listener(platform_events.GroupMessage, on_group_message)
+        get_supported_events = getattr(self.adapter, 'get_supported_events', None)
+        supported_events: list[str] = []
+        if callable(get_supported_events):
+            try:
+                supported_events = list(get_supported_events() or [])
+            except Exception:
+                supported_events = []
+
+        # EBA adapters emit MessageReceivedEvent directly. Registering both
+        # entry paths would process each native message twice because these
+        # adapters also expose legacy conversion for compatibility consumers.
+        if 'message.received' not in supported_events:
+            self.adapter.register_listener(platform_events.FriendMessage, on_friend_message)
+            self.adapter.register_listener(platform_events.GroupMessage, on_group_message)
 
         # Register feedback listener (only effective on adapters that support it)
         async def on_feedback(

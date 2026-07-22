@@ -60,6 +60,7 @@ spec:
       - kick_member
       - leave_group
       - call_platform_api
+      - interaction.request
 
   platform_specific_apis:
     - action: get_channel

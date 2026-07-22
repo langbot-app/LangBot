@@ -164,6 +164,96 @@ async def test_runtime_pipeline_execute(mock_app, sample_query):
     mock_stage.process.assert_called_once()
 
 
+@pytest.mark.asyncio
+async def test_runtime_pipeline_delivers_latest_chunk_as_final(mock_app, sample_query):
+    """The terminal chunk, not the first chunk, controls final stream delivery."""
+    pipelinemgr = get_pipelinemgr_module()
+    persistence_pipeline = get_persistence_pipeline_module()
+    entities = get_entities_module()
+    provider_message = import_module('langbot_plugin.api.entities.builtin.provider.message')
+
+    pipeline_entity = Mock(spec=persistence_pipeline.LegacyPipeline)
+    pipeline_entity.config = sample_query.pipeline_config
+    pipeline_entity.extensions_preferences = {'plugins': []}
+    runtime_pipeline = pipelinemgr.RuntimePipeline(mock_app, pipeline_entity, [])
+
+    first_chunk = provider_message.MessageChunk(role='assistant', content='Starting', is_final=False)
+    final_chunk = provider_message.MessageChunk(role='assistant', content='Done', is_final=True)
+    sample_query.resp_messages = [first_chunk, final_chunk]
+    sample_query.adapter.is_stream_output_supported = AsyncMock(return_value=True)
+    result = entities.StageProcessResult(
+        result_type=entities.ResultType.CONTINUE,
+        new_query=sample_query,
+        user_notice='StartingDone',
+    )
+
+    await runtime_pipeline._check_output(sample_query, result)
+
+    sample_query.adapter.reply_message_chunk.assert_awaited_once()
+    call = sample_query.adapter.reply_message_chunk.await_args.kwargs
+    assert call['bot_message'] is final_chunk
+    assert call['is_final'] is True
+
+
+@pytest.mark.asyncio
+async def test_response_back_stage_delivers_latest_chunk_as_final(mock_app, sample_query):
+    respback = import_module('langbot.pkg.pipeline.respback.respback')
+    provider_message = import_module('langbot_plugin.api.entities.builtin.provider.message')
+    platform_message = import_module('langbot_plugin.api.entities.builtin.platform.message')
+
+    first_chunk = provider_message.MessageChunk(role='assistant', content='Starting', is_final=False)
+    final_chunk = provider_message.MessageChunk(role='assistant', content='Done', is_final=True)
+    sample_query.resp_messages = [first_chunk, final_chunk]
+    sample_query.resp_message_chain = [platform_message.MessageChain([platform_message.Plain(text='StartingDone')])]
+    sample_query.pipeline_config['output']['force-delay'] = {'min': 0, 'max': 0}
+    sample_query.adapter.is_stream_output_supported = AsyncMock(return_value=True)
+
+    await respback.SendResponseBackStage(mock_app).process(sample_query, 'response-back')
+
+    sample_query.adapter.reply_message_chunk.assert_awaited_once()
+    call = sample_query.adapter.reply_message_chunk.await_args.kwargs
+    assert call['bot_message'] is final_chunk
+    assert call['is_final'] is True
+
+
+@pytest.mark.asyncio
+async def test_response_back_stage_keeps_consuming_after_stream_delivery_failure(mock_app, sample_query):
+    respback = import_module('langbot.pkg.pipeline.respback.respback')
+    provider_message = import_module('langbot_plugin.api.entities.builtin.provider.message')
+    platform_message = import_module('langbot_plugin.api.entities.builtin.platform.message')
+
+    chunk = provider_message.MessageChunk(role='assistant', content='Progress', is_final=False)
+    sample_query.resp_messages = [chunk]
+    sample_query.resp_message_chain = [platform_message.MessageChain([platform_message.Plain(text='Progress')])]
+    sample_query.pipeline_config['output']['force-delay'] = {'min': 0, 'max': 0}
+    sample_query.adapter.is_stream_output_supported = AsyncMock(return_value=True)
+    sample_query.adapter.reply_message_chunk.side_effect = RuntimeError('stream update failed')
+
+    result = await respback.SendResponseBackStage(mock_app).process(sample_query, 'response-back')
+
+    assert result.result_type.name == 'CONTINUE'
+    sample_query.adapter.reply_message.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_response_back_stage_falls_back_to_plain_message_for_failed_final_chunk(mock_app, sample_query):
+    respback = import_module('langbot.pkg.pipeline.respback.respback')
+    provider_message = import_module('langbot_plugin.api.entities.builtin.provider.message')
+    platform_message = import_module('langbot_plugin.api.entities.builtin.platform.message')
+
+    chunk = provider_message.MessageChunk(role='assistant', content='Final answer', is_final=True)
+    sample_query.resp_messages = [chunk]
+    sample_query.resp_message_chain = [platform_message.MessageChain([platform_message.Plain(text='Final answer')])]
+    sample_query.pipeline_config['output']['force-delay'] = {'min': 0, 'max': 0}
+    sample_query.adapter.is_stream_output_supported = AsyncMock(return_value=True)
+    sample_query.adapter.reply_message_chunk.side_effect = RuntimeError('stream update failed')
+
+    result = await respback.SendResponseBackStage(mock_app).process(sample_query, 'response-back')
+
+    assert result.result_type.name == 'CONTINUE'
+    sample_query.adapter.reply_message.assert_awaited_once()
+
+
 def test_runtime_pipeline_prefers_runner_mcp_resources(mock_app):
     """Runner resource selection should override extension preferences."""
     pipelinemgr = get_pipelinemgr_module()

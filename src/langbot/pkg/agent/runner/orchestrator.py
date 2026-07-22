@@ -22,6 +22,7 @@ from .execution_context import (
 )
 from .host_models import AgentBinding, AgentEventEnvelope
 from .invoker import AgentRunnerInvoker
+from .interaction_manager import InteractionManager
 from .query_bridge import QueryRunBridge
 from .registry import AgentRunnerRegistry
 from .resource_builder import AgentResourceBuilder
@@ -51,6 +52,7 @@ class AgentRunOrchestrator:
     binding_resolver: AgentBindingResolver
     query_bridge: QueryRunBridge
     invoker: AgentRunnerInvoker
+    interaction_manager: InteractionManager
     journal: AgentRunJournal
     _session_registry: AgentRunSessionRegistry
 
@@ -67,6 +69,7 @@ class AgentRunOrchestrator:
         self.binding_resolver = AgentBindingResolver()
         self.query_bridge = QueryRunBridge(self.binding_resolver)
         self.invoker = AgentRunnerInvoker(ap)
+        self.interaction_manager = InteractionManager(ap)
         self.journal = AgentRunJournal(ap)
         self._session_registry = get_session_registry()
 
@@ -130,6 +133,8 @@ class AgentRunOrchestrator:
         run_authorization = {
             'runner_id': descriptor.id,
             'binding_id': binding.binding_id,
+            'processor_type': binding.processor_type,
+            'processor_id': binding.processor_id,
             'plugin_identity': descriptor.get_plugin_id(),
             'resources': resources,
             'available_apis': available_apis,
@@ -251,6 +256,17 @@ class AgentRunOrchestrator:
                     )
                     await self.result_normalizer.normalize(result_dict, descriptor)
                     continue
+
+                if result_type == 'action.requested':
+                    if await self.interaction_manager.handle_result(
+                        result_dict=result_dict,
+                        event=event,
+                        binding=binding,
+                        descriptor=descriptor,
+                        run_id=run_id,
+                        adapter_context=adapter_context,
+                    ):
+                        continue
 
                 if result_type == 'run.completed':
                     terminal_status = 'completed'

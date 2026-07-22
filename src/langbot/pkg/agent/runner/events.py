@@ -1,4 +1,5 @@
 """Canonical AgentRunner event names reserved for future EBA integration."""
+
 from __future__ import annotations
 
 
@@ -14,6 +15,9 @@ GROUP_MEMBER_JOINED = 'group.member_joined'
 FRIEND_REQUEST_RECEIVED = 'friend.request_received'
 """A new friend/contact request was received."""
 
+INTERACTION_SUBMITTED = 'interaction.submitted'
+"""A user submitted a Host-rendered structured interaction."""
+
 
 RESERVED_EVENT_TYPES = frozenset(
     {
@@ -21,5 +25,6 @@ RESERVED_EVENT_TYPES = frozenset(
         MESSAGE_RECALLED,
         GROUP_MEMBER_JOINED,
         FRIEND_REQUEST_RECEIVED,
+        INTERACTION_SUBMITTED,
     }
 )

@@ -90,6 +90,19 @@ spec:
       required: true
       default: "填写你的卡片template_id"
 
+    - name: human_input_card_template_id
+      label:
+        en_US: Human Input Card Template ID
+        zh_Hans: 人工输入卡片模板 ID
+        zh_Hant: 人工輸入卡片範本 ID
+      description:
+        en_US: Import the bundled `src/langbot/templates/dingtalk_human_input_card.json`, then enter its DingTalk template ID here. It contains the `content`, `btns`, `input_*`, `select_*`, and `index_o` variables required for native interactions.
+        zh_Hans: 可选。模板需包含 `content`、`btns`、`input_*`、`select_*` 和 `index_o` 变量以支持原生交互。
+        zh_Hant: 可選。範本需包含 `content`、`btns`、`input_*`、`select_*` 和 `index_o` 變數以支援原生互動。
+      type: string
+      required: false
+      default: ""
+
   supported_events:
     - message.received
     - feedback.received
@@ -108,6 +121,7 @@ spec:
       - get_friend_list
       - get_file_url
       - call_platform_api
+      - interaction.request
 
   platform_specific_apis:
     - action: check_access_token

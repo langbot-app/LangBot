@@ -199,6 +199,29 @@ class TestQueryPoolAddQuery:
             call_kwargs = MockQuery.call_args[1]
             assert call_kwargs['variables']['_routed_by_rule'] is True
 
+    async def test_add_query_merges_control_variables(self):
+        """Caller-provided control variables are preserved with routing metadata."""
+        pool = QueryPool()
+        mock_query = Mock(query_id=0)
+
+        with patch('langbot.pkg.pipeline.pool.pipeline_query.Query') as MockQuery:
+            MockQuery.return_value = mock_query
+            await pool.add_query(
+                bot_uuid='bot1',
+                launcher_type=Mock(),
+                launcher_id=1,
+                sender_id=1,
+                message_event=Mock(),
+                message_chain=Mock(),
+                adapter=Mock(),
+                routed_by_rule=True,
+                variables={'_interaction_submission': {'interaction_id': 'form-1'}},
+            )
+
+        variables = MockQuery.call_args.kwargs['variables']
+        assert variables['_routed_by_rule'] is True
+        assert variables['_interaction_submission'] == {'interaction_id': 'form-1'}
+
     async def test_add_query_notifier_condition(self):
         """add_query notifies waiting consumers."""
         pool = QueryPool()

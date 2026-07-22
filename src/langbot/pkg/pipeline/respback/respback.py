@@ -43,9 +43,12 @@ class SendResponseBackStage(stage.PipelineStage):
         response_index = len(query.resp_message_chain) - 1
         message_chain = query.resp_message_chain[-1]
 
+        is_streaming_response = False
+        is_final = False
         try:
-            if await query.adapter.is_stream_output_supported() and has_chunks:
-                is_final = [msg.is_final for msg in query.resp_messages][-1]
+            is_streaming_response = await query.adapter.is_stream_output_supported() and has_chunks
+            if is_streaming_response:
+                is_final = query.resp_messages[-1].is_final
                 await query.adapter.reply_message_chunk(
                     message_source=query.message_event,
                     bot_message=query.resp_messages[-1],
@@ -68,6 +71,24 @@ class SendResponseBackStage(stage.PipelineStage):
                 e,
             )
             plugin_diagnostics.clear_response_source(query, response_index)
+            if is_streaming_response:
+                self.ap.logger.warning(
+                    'Streaming response delivery failed; continuing runner event consumption: %s',
+                    e,
+                )
+                if is_final:
+                    try:
+                        await query.adapter.reply_message(
+                            message_source=query.message_event,
+                            message=message_chain,
+                            quote_origin=quote_origin,
+                        )
+                    except Exception as fallback_error:
+                        self.ap.logger.warning(
+                            'Final non-streaming response fallback also failed: %s',
+                            fallback_error,
+                        )
+                return entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
             raise
         plugin_diagnostics.clear_response_source(query, response_index)
 

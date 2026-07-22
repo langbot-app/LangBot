@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from langbot.pkg.entity.persistence import (
     agent as agent_models,
+    agent_interaction as agent_interaction_models,
     agent_run as agent_run_models,
     agent_runner_state as agent_runner_state_models,
     bot as bot_models,
@@ -57,7 +58,7 @@ class TestAlembicRevisionGraph:
         revisions = list(script.walk_revisions())
 
         assert script.get_bases() == ['0001_baseline']
-        assert script.get_heads() == ['0012_monitoring_tool_calls']
+        assert script.get_heads() == ['0014_interaction_delivery']
         assert all(len(item.revision) <= 32 for item in revisions), {
             item.revision: len(item.revision) for item in revisions if len(item.revision) > 32
         }
@@ -194,6 +195,7 @@ class TestSQLiteMigrationUpgrade:
 
         expected_agent_tables = {
             agent_models.Agent.__tablename__,
+            agent_interaction_models.AgentInteraction.__tablename__,
             agent_run_models.AgentRun.__tablename__,
             agent_run_models.AgentRunEvent.__tablename__,
             agent_run_models.AgentRuntime.__tablename__,

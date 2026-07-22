@@ -14,6 +14,11 @@ from langbot.pkg.platform.adapters.dingtalk.api_impl import DingTalkAPIMixin
 from langbot.pkg.platform.adapters.dingtalk.event_converter import DingTalkEventConverter
 from langbot.pkg.platform.adapters.dingtalk.message_converter import DingTalkMessageConverter
 from langbot.pkg.platform.adapters.dingtalk.platform_api import PLATFORM_API_MAP
+from langbot.pkg.platform.adapters.dingtalk.interaction import (
+    interaction_delivery_capabilities,
+    interaction_event_from_native,
+    send_interaction,
+)
 from langbot_plugin.api.entities.builtin.platform import entities as platform_entities
 from langbot_plugin.api.entities.builtin.platform import events as platform_events
 from langbot_plugin.api.entities.builtin.platform import message as platform_message
@@ -27,6 +32,9 @@ class DingTalkCardCallbackHandler(dingtalk_stream.CallbackHandler):
 
     async def process(self, message: dingtalk_stream.CallbackMessage):
         callback = dingtalk_stream.CardCallbackMessage.from_dict(message.data or {})
+        content = dict(callback.content) if isinstance(callback.content, dict) else {}
+        if isinstance(message.data, dict):
+            content['_raw_callback'] = message.data
         event = DingTalkEvent.from_payload(
             {
                 'conversation_type': 'CardCallback',
@@ -35,7 +43,7 @@ class DingTalkCardCallbackHandler(dingtalk_stream.CallbackHandler):
                     'extension': callback.extension,
                     'corp_id': callback.corp_id,
                     'user_id': callback.user_id,
-                    'content': callback.content,
+                    'content': content,
                     'space_id': callback.space_id,
                     'card_instance_id': callback.card_instance_id,
                 },
@@ -61,6 +69,7 @@ class DingTalkAdapter(DingTalkAPIMixin, abstract_platform_adapter.AbstractPlatfo
     _message_cache: dict[str, platform_events.MessageReceivedEvent] = {}
     _user_cache: dict[str, platform_entities.User] = {}
     _group_cache: dict[str, platform_entities.UserGroup] = {}
+    interaction_callback_contexts: dict[str, dict[str, typing.Any]] = {}
 
     class Config:
         arbitrary_types_allowed = True
@@ -89,6 +98,7 @@ class DingTalkAdapter(DingTalkAPIMixin, abstract_platform_adapter.AbstractPlatfo
             _message_cache={},
             _user_cache={},
             _group_cache={},
+            interaction_callback_contexts={},
         )
         self._register_native_handlers()
 
@@ -100,7 +110,7 @@ class DingTalkAdapter(DingTalkAPIMixin, abstract_platform_adapter.AbstractPlatfo
         ]
 
     def get_supported_apis(self) -> list[str]:
-        return [
+        apis = [
             'send_message',
             'reply_message',
             'get_message',
@@ -112,6 +122,16 @@ class DingTalkAdapter(DingTalkAPIMixin, abstract_platform_adapter.AbstractPlatfo
             'get_file_url',
             'call_platform_api',
         ]
+        if self.config.get('human_input_card_template_id') and hasattr(self.bot, 'create_and_deliver_card'):
+            apis.append('interaction.request')
+        return apis
+
+    def get_interaction_capabilities(self) -> dict[str, typing.Any]:
+        return interaction_delivery_capabilities()
+
+    @staticmethod
+    def _plain_message(text: str) -> platform_message.MessageChain:
+        return platform_message.MessageChain([platform_message.Plain(text=text)])
 
     async def send_message(
         self,
@@ -184,6 +204,8 @@ class DingTalkAdapter(DingTalkAPIMixin, abstract_platform_adapter.AbstractPlatfo
         return bool(self.config.get('enable-stream-reply', False))
 
     async def call_platform_api(self, action: str, params: dict = {}) -> dict:
+        if action == 'interaction.request' and action in self.get_supported_apis():
+            return await send_interaction(self, params)
         handler = PLATFORM_API_MAP.get(action)
         if handler is None:
             raise NotSupportedError(f'call_platform_api:{action}')
@@ -233,6 +255,10 @@ class DingTalkAdapter(DingTalkAPIMixin, abstract_platform_adapter.AbstractPlatfo
 
     async def _handle_native_event(self, event: DingTalkEvent):
         try:
+            interaction_event = interaction_event_from_native(event, self.interaction_callback_contexts)
+            if interaction_event is not None:
+                await self._dispatch_eba_event(interaction_event)
+                return
             await self.logger.debug(
                 'DingTalk EBA event received: '
                 f'conversation={event.conversation}, message_id={getattr(event.incoming_message, "message_id", None)}'

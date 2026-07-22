@@ -139,6 +139,9 @@ class DeliveryPolicy(pydantic.BaseModel):
     enable_reply: bool = True
     """Whether reply is enabled."""
 
+    enable_interactions: bool = False
+    """Whether the binding permits structured interaction delivery."""
+
     max_message_size: int | None = None
     """Maximum message size."""
 
@@ -153,6 +156,12 @@ class AgentConfig(pydantic.BaseModel):
 
     agent_id: str | None = None
     """Host-side Agent/config identifier."""
+
+    processor_type: typing.Literal['agent', 'pipeline'] = 'agent'
+    """Product processor kind represented by this runtime config."""
+
+    processor_id: str | None = None
+    """Stable product processor identifier."""
 
     runner_id: str
     """Runner ID to invoke."""
@@ -215,3 +224,9 @@ class AgentBinding(pydantic.BaseModel):
 
     agent_id: str | None = None
     """Host-side Agent/config identifier for this binding."""
+
+    processor_type: typing.Literal['agent', 'pipeline'] = 'agent'
+    """Product processor kind selected for this binding."""
+
+    processor_id: str | None = None
+    """Stable product processor identifier used for callback resume."""

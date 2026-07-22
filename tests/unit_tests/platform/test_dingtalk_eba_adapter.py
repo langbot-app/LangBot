@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import pathlib
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -13,6 +14,7 @@ from langbot.pkg.platform.adapters.dingtalk.adapter import DingTalkAdapter
 from langbot.pkg.platform.adapters.dingtalk.event_converter import DingTalkEventConverter
 from langbot.pkg.platform.adapters.dingtalk.message_converter import DingTalkMessageConverter
 from langbot.pkg.platform.adapters.dingtalk.platform_api import PLATFORM_API_MAP
+from langbot.pkg.platform.adapters.dingtalk.interaction import interaction_event_from_native
 from langbot_plugin.api.definition.abstract.platform.event_logger import AbstractEventLogger
 from langbot_plugin.api.entities.builtin.platform import entities as platform_entities
 from langbot_plugin.api.entities.builtin.platform import events as platform_events
@@ -49,6 +51,7 @@ class DummyDingTalkClient(DingTalkClient):
         self.download_image = AsyncMock(return_value='data:image/png;base64,BBBB')
         self.create_and_card = AsyncMock(return_value=('card', 'card-id'))
         self.send_card_message = AsyncMock()
+        self.create_and_deliver_card = AsyncMock(return_value=True)
         self.start = AsyncMock()
         self.stop = AsyncMock()
 
@@ -71,7 +74,7 @@ def manifest() -> dict:
         / 'dingtalk'
         / 'manifest.yaml'
     )
-    return yaml.safe_load(manifest_path.read_text())
+    return yaml.safe_load(manifest_path.read_text(encoding='utf-8'))
 
 
 def make_adapter() -> DingTalkAdapter:
@@ -84,6 +87,7 @@ def make_adapter() -> DingTalkAdapter:
         'enable-stream-reply': False,
         'card_auto_layout': False,
         'card_template_id': 'template-id',
+        'human_input_card_template_id': 'human-input-template-id',
     }
     with patch('langbot.pkg.platform.adapters.dingtalk.adapter.DingTalkClient', DummyDingTalkClient):
         return DingTalkAdapter(config, DummyLogger())
@@ -155,6 +159,36 @@ def test_dingtalk_platform_api_map_matches_manifest():
     manifest_actions = {item['action'] for item in manifest()['spec']['platform_specific_apis']}
 
     assert set(PLATFORM_API_MAP) == manifest_actions
+
+
+def test_dingtalk_human_input_card_template_matches_interaction_contract():
+    template_path = (
+        pathlib.Path(__file__).parents[3] / 'src' / 'langbot' / 'templates' / 'dingtalk_human_input_card.json'
+    )
+    exported_template = json.loads(template_path.read_text(encoding='utf-8'))
+    editor_data = json.loads(exported_template['editorData'])
+    variable_ids = {item['id'] for item in editor_data['variableList']}
+    serialized_editor = json.dumps(editor_data, ensure_ascii=False)
+
+    assert exported_template['type'] == 'im'
+    assert exported_template['mode'] == 'card'
+    assert {
+        'content',
+        'btns',
+        'input_visible',
+        'input_title',
+        'input_placeholder',
+        'input_value',
+        'select_visible',
+        'select_placeholder',
+        'select_options',
+        'select_index',
+        'index_o',
+    } <= variable_ids
+    assert '"componentName": "Input"' in serialized_editor
+    assert '"componentName": "SelectBlock"' in serialized_editor
+    assert '__built_in_inputResult__' in serialized_editor
+    assert '__built_in_selectResult__' in serialized_editor
 
 
 @pytest.mark.asyncio
@@ -313,3 +347,178 @@ async def test_dingtalk_send_reply_and_platform_api_use_underlying_client():
 
     assert token_status == {'valid': True}
     assert file_url == {'url': 'https://example.test/file'}
+
+
+@pytest.mark.asyncio
+async def test_dingtalk_interaction_delivery_and_callback_event():
+    adapter = make_adapter()
+    result = await adapter.call_platform_api(
+        'interaction.request',
+        {
+            'callback_token': 'callback-token',
+            'reply_target': {'target_type': 'group', 'target_id': 'group-1'},
+            'request': {
+                'interaction_id': 'form-1',
+                'title': 'Approve?',
+                'actions': [{'id': 'approve', 'label': 'Approve', 'style': 'primary'}],
+                'fallback_text': 'Reply approve.',
+            },
+        },
+    )
+
+    assert result['rich'] is True
+    kwargs = adapter.bot.create_and_deliver_card.await_args.kwargs
+    assert kwargs['card_template_id'] == 'human-input-template-id'
+    assert kwargs['open_space_id'] == 'dtv1.card//IM_GROUP.group-1'
+    assert kwargs['card_param_map']['btns'][0]['event']['params']['actionId'] == 'lbi:callback-token:a:0'
+
+    native = dingtalk_card_callback_event(
+        content={'actionId': 'lbi:callback-token:a:0'},
+        space_id='dtv1.card//IM_GROUP.group-1',
+    )
+    event = interaction_event_from_native(native)
+    assert event.action == 'interaction.submitted'
+    assert event.data['action_ref'] == 0
+    assert event.data['actor_id'] == 'user-1'
+    assert event.data['target_id'] == 'group-1'
+
+
+@pytest.mark.asyncio
+async def test_dingtalk_native_input_uses_template_variables_and_submits_value():
+    adapter = make_adapter()
+    result = await adapter.call_platform_api(
+        'interaction.request',
+        {
+            'callback_token': 'callback-token',
+            'reply_target': {'target_type': 'group', 'target_id': 'group-1'},
+            'request': {
+                'interaction_id': 'form-1',
+                'title': 'Add context',
+                'fields': [
+                    {
+                        'id': 'comment',
+                        'label': 'Comment',
+                        'type': 'textarea',
+                        'required': True,
+                        'placeholder': 'Explain the decision',
+                    }
+                ],
+                'actions': [],
+                'fallback_text': 'Reply with a comment.',
+            },
+        },
+    )
+
+    params = adapter.bot.create_and_deliver_card.await_args.kwargs['card_param_map']
+    assert params['input_visible'] == 'true'
+    assert params['input_title'] == 'Comment'
+    assert params['input_placeholder'] == 'Explain the decision'
+    assert params['select_visible'] == ''
+    assert params['btns'] == []
+    assert result['message_id'] in adapter.interaction_callback_contexts
+
+    native = dingtalk_card_callback_event(
+        content={
+            'outTrackId': result['message_id'],
+            'params': {'input': 'Looks good'},
+        },
+        space_id='dtv1.card//IM_GROUP.group-1',
+    )
+    event = interaction_event_from_native(native, adapter.interaction_callback_contexts)
+
+    assert event.data['callback_token'] == 'callback-token'
+    assert event.data['values'] == {'comment': 'Looks good'}
+    assert result['message_id'] not in adapter.interaction_callback_contexts
+
+
+@pytest.mark.asyncio
+async def test_dingtalk_native_select_uses_select_block_and_normalizes_callback():
+    adapter = make_adapter()
+    result = await adapter.call_platform_api(
+        'interaction.request',
+        {
+            'callback_token': 'callback-token',
+            'reply_target': {'target_type': 'person', 'target_id': 'user-1'},
+            'request': {
+                'interaction_id': 'form-1',
+                'title': 'Priority',
+                'fields': [
+                    {
+                        'id': 'priority',
+                        'label': 'Priority',
+                        'type': 'select',
+                        'options': [
+                            {'value': 'normal', 'label': 'Normal'},
+                            {'value': 'urgent', 'label': 'Urgent'},
+                        ],
+                    }
+                ],
+                'actions': [],
+                'fallback_text': 'Choose a priority.',
+            },
+        },
+    )
+
+    params = adapter.bot.create_and_deliver_card.await_args.kwargs['card_param_map']
+    assert params['select_visible'] == 'true'
+    assert [option['value'] for option in params['index_o']] == ['normal', 'urgent']
+    assert params['input_visible'] == ''
+
+    native = dingtalk_card_callback_event(
+        content={
+            'out_track_id': result['message_id'],
+            'params': {'select': '{"index": 1, "value": "urgent"}'},
+        },
+        space_id='dtv1.card//IM_ROBOT.user-1',
+    )
+    event = interaction_event_from_native(native, adapter.interaction_callback_contexts)
+
+    assert event.data['target_type'] == 'person'
+    assert event.data['target_id'] == 'user-1'
+    assert event.data['values'] == {'priority': 'urgent'}
+
+
+@pytest.mark.asyncio
+async def test_dingtalk_adapter_dispatches_native_input_submission():
+    adapter = make_adapter()
+    calls: list[platform_events.Event] = []
+
+    async def listener(event, adapter):
+        calls.append(event)
+
+    adapter.register_listener(platform_events.PlatformSpecificEvent, listener)
+    result = await adapter.call_platform_api(
+        'interaction.request',
+        {
+            'callback_token': 'callback-token',
+            'reply_target': {'target_type': 'group', 'target_id': 'group-1'},
+            'request': {
+                'interaction_id': 'form-1',
+                'title': 'Score',
+                'fields': [
+                    {
+                        'id': 'score',
+                        'label': 'Score',
+                        'type': 'number',
+                    }
+                ],
+                'actions': [],
+                'fallback_text': 'Reply with a score.',
+            },
+        },
+    )
+    native = dingtalk_card_callback_event(
+        content={
+            'outTrackId': result['message_id'],
+            'params': {'inputResult': '42.5'},
+        },
+        space_id='dtv1.card//IM_GROUP.group-1',
+    )
+
+    await adapter._handle_native_event(native)
+
+    assert len(calls) == 1
+    assert calls[0].action == 'interaction.submitted'
+    assert calls[0].data['callback_token'] == 'callback-token'
+    assert calls[0].data['values'] == {'score': 42.5}
+    assert result['message_id'] not in adapter.interaction_callback_contexts

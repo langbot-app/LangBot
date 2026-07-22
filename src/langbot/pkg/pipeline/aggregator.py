@@ -38,6 +38,7 @@ class PendingMessage:
     adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter
     pipeline_uuid: typing.Optional[str]
     routed_by_rule: bool = False
+    variables: dict[str, typing.Any] | None = None
     timestamp: float = field(default_factory=time.time)
 
 
@@ -127,6 +128,7 @@ class MessageAggregator:
         adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
         pipeline_uuid: typing.Optional[str] = None,
         routed_by_rule: bool = False,
+        variables: dict[str, typing.Any] | None = None,
     ) -> None:
         """Add a message to the aggregation buffer
 
@@ -135,6 +137,8 @@ class MessageAggregator:
         merged with other messages from the same session.
         """
         enabled, delay = await self._get_aggregation_config(pipeline_uuid)
+        if variables:
+            enabled = False
 
         if not enabled:
             # Aggregation disabled, send directly to query pool
@@ -148,6 +152,7 @@ class MessageAggregator:
                 adapter=adapter,
                 pipeline_uuid=pipeline_uuid,
                 routed_by_rule=routed_by_rule,
+                variables=variables,
             )
             return
 
@@ -163,6 +168,7 @@ class MessageAggregator:
             adapter=adapter,
             pipeline_uuid=pipeline_uuid,
             routed_by_rule=routed_by_rule,
+            variables=variables,
         )
 
         force_flush = False
@@ -222,6 +228,7 @@ class MessageAggregator:
                 adapter=msg.adapter,
                 pipeline_uuid=msg.pipeline_uuid,
                 routed_by_rule=msg.routed_by_rule,
+                variables=msg.variables,
             )
             return
 
@@ -237,6 +244,7 @@ class MessageAggregator:
             adapter=merged_msg.adapter,
             pipeline_uuid=merged_msg.pipeline_uuid,
             routed_by_rule=merged_msg.routed_by_rule,
+            variables=merged_msg.variables,
         )
 
     def _merge_messages(self, messages: list[PendingMessage]) -> PendingMessage:
@@ -276,6 +284,7 @@ class MessageAggregator:
             adapter=base_msg.adapter,
             pipeline_uuid=base_msg.pipeline_uuid,
             routed_by_rule=any(msg.routed_by_rule for msg in messages),
+            variables=base_msg.variables,
         )
 
     async def flush_all(self) -> None:

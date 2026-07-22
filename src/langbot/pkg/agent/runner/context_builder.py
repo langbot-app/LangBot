@@ -45,6 +45,7 @@ class AgentInput(typing.TypedDict):
     text: str | None
     contents: list[dict[str, typing.Any]]
     attachments: list[dict[str, typing.Any]]
+    interaction: typing.NotRequired[dict[str, typing.Any] | None]
 
 
 class AgentRunState(typing.TypedDict):
@@ -299,6 +300,11 @@ class AgentRunContextBuilder:
                 a.model_dump(mode='json') if hasattr(a, 'model_dump') else a for a in event.input.attachments
             ],
         }
+        if getattr(event.input, 'interaction', None) is not None:
+            interaction = event.input.interaction
+            input['interaction'] = (
+                interaction.model_dump(mode='json') if hasattr(interaction, 'model_dump') else interaction
+            )
 
         # Build context access (no history inlined by default for Protocol v1)
         # Populate with actual values from stores
@@ -333,6 +339,11 @@ class AgentRunContextBuilder:
             'max_message_size': event.delivery.max_message_size,
             'platform_capabilities': event.delivery.platform_capabilities,
         }
+        if getattr(event.delivery, 'interactions', None) is not None:
+            interactions = event.delivery.interactions
+            delivery_context['interactions'] = (
+                interactions.model_dump(mode='json') if hasattr(interactions, 'model_dump') else interactions
+            )
 
         # Build adapter context (empty for event-first)
         adapter_context = {

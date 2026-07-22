@@ -73,7 +73,7 @@ class TestEventRouteTrace:
 
         captured_envelopes = []
 
-        async def fake_run(envelope, binding):
+        async def fake_run(envelope, binding, adapter_context=None):
             captured_envelopes.append(envelope)
             yield provider_message.Message(role='assistant', content='test response')
 
@@ -157,7 +157,7 @@ class TestEventRouteTrace:
         }
         runner_calls = []
 
-        async def fake_run(envelope, binding):
+        async def fake_run(envelope, binding, adapter_context=None):
             runner_calls.append((envelope, binding))
             if False:
                 yield None
@@ -378,6 +378,53 @@ class TestRuntimeBotLifecycle:
         bot.adapter.kill.assert_awaited_once()
         task_mgr.cancel_task.assert_not_called()
 
+    @pytest.mark.asyncio
+    async def test_initialize_uses_only_eba_message_listener_for_eba_adapter(self):
+        """An EBA-native message must not also enter through the legacy compatibility listener."""
+        from langbot.pkg.platform.botmgr import RuntimeBot
+        from langbot_plugin.api.entities.builtin.platform import events as platform_events
+
+        listeners = {}
+        adapter = SimpleNamespace(
+            get_supported_events=Mock(return_value=['message.received']),
+            register_listener=Mock(side_effect=lambda event_type, callback: listeners.setdefault(event_type, callback)),
+        )
+        bot = RuntimeBot(
+            ap=SimpleNamespace(),
+            bot_entity=SimpleNamespace(enable=True),
+            adapter=adapter,
+            logger=Mock(),
+        )
+
+        await bot.initialize()
+
+        assert platform_events.EBAEvent in listeners
+        assert platform_events.FriendMessage not in listeners
+        assert platform_events.GroupMessage not in listeners
+
+    @pytest.mark.asyncio
+    async def test_initialize_keeps_legacy_message_listeners_for_legacy_adapter(self):
+        """Adapters without EBA message support retain the compatibility entry path."""
+        from langbot.pkg.platform.botmgr import RuntimeBot
+        from langbot_plugin.api.entities.builtin.platform import events as platform_events
+
+        listeners = {}
+        adapter = SimpleNamespace(
+            register_listener=Mock(side_effect=lambda event_type, callback: listeners.setdefault(event_type, callback)),
+        )
+        bot = RuntimeBot(
+            ap=SimpleNamespace(),
+            bot_entity=SimpleNamespace(enable=True),
+            adapter=adapter,
+            logger=Mock(),
+        )
+
+        await bot.initialize()
+
+        assert platform_events.FriendMessage in listeners
+        assert platform_events.GroupMessage in listeners
+        assert platform_events.EBAEvent in listeners
+
 
 class TestEBAEventBindings:
     """Test RuntimeBot EBA event binding helpers."""
@@ -482,8 +529,11 @@ class TestEBAEventBindings:
         assert binding.resource_policy.allowed_tool_names is None
         assert binding.delivery_policy.enable_streaming is False
         assert binding.delivery_policy.enable_reply is True
+        assert binding.delivery_policy.enable_interactions is True
         assert binding.state_policy.state_scopes == ['conversation', 'actor', 'subject', 'runner']
         assert binding.agent_id == 'agent-1'
+        assert binding.processor_type == 'agent'
+        assert binding.processor_id == 'agent-1'
 
     def test_agent_product_to_binding_projects_selected_tool_policy(self):
         """Independent Agents use the same standard runner resource fields as Pipelines."""
@@ -512,6 +562,174 @@ class TestEBAEventBindings:
         assert binding.resource_policy.allow_all_tools is False
         assert binding.resource_policy.allowed_tool_names == ['exec', 'plugin_tool']
         assert binding.resource_policy.allowed_kb_uuids == ['kb-1']
+
+
+class TestInteractionResumeRouting:
+    """Interaction callbacks resume the processor that created the request."""
+
+    @staticmethod
+    def _event():
+        from langbot_plugin.api.entities.builtin.platform.events import PlatformSpecificEvent
+
+        return PlatformSpecificEvent(
+            action='interaction.submitted',
+            timestamp=1234,
+            data={
+                'callback_token': 'callback-token',
+                'interaction_id': 'form-1',
+                'action_id': 'approve',
+                'values': {'name': 'Alice'},
+                'actor_id': 'user-1',
+                'target_type': 'group',
+                'target_id': 'chat-1',
+                'message_id': 'card-message-1',
+            },
+        )
+
+    @staticmethod
+    def _record(processor_type: str):
+        return {
+            'id': 1,
+            'interaction_id': 'form-1',
+            'binding_id': 'binding-1',
+            'runner_id': 'plugin:test/Dify/default',
+            'processor_type': processor_type,
+            'processor_id': f'{processor_type}-1',
+            'workspace_id': None,
+            'conversation_id': 'group_chat-1',
+            'thread_id': None,
+            'delivery_target': {'target_type': 'group', 'target_id': 'chat-1'},
+            'submission': {
+                'interaction_id': 'form-1',
+                'action_id': 'approve',
+                'values': {'name': 'Alice'},
+                'submitted_at': 1234,
+            },
+        }
+
+    @staticmethod
+    def _make_bot(record):
+        from langbot.pkg.platform.botmgr import RuntimeBot
+
+        bot = object.__new__(RuntimeBot)
+        bot.bot_entity = SimpleNamespace(uuid='bot-1', name='Test', event_bindings=[])
+        interaction_manager = SimpleNamespace(
+            consume_callback=AsyncMock(return_value=record),
+            acknowledge_submission=AsyncMock(),
+        )
+        bot.ap = SimpleNamespace(
+            agent_run_orchestrator=SimpleNamespace(interaction_manager=interaction_manager),
+            msg_aggregator=SimpleNamespace(add_message=AsyncMock()),
+            pipeline_service=SimpleNamespace(
+                get_pipeline=AsyncMock(
+                    return_value={
+                        'uuid': record['processor_id'],
+                        'config': {
+                            'ai': {
+                                'runner': {'id': record['runner_id']},
+                                'runner_config': {record['runner_id']: {}},
+                            }
+                        },
+                    }
+                )
+            ),
+        )
+        return bot
+
+    @pytest.mark.asyncio
+    async def test_pipeline_callback_bypasses_route_table_and_targets_original_pipeline(self):
+        bot = self._make_bot(self._record('pipeline'))
+        adapter = SimpleNamespace()
+
+        await bot._handle_interaction_submission(self._event(), adapter)
+
+        bot.ap.msg_aggregator.add_message.assert_awaited_once()
+        kwargs = bot.ap.msg_aggregator.add_message.await_args.kwargs
+        assert kwargs['pipeline_uuid'] == 'pipeline-1'
+        assert kwargs['routed_by_rule'] is True
+        assert kwargs['variables']['_interaction_submission']['interaction_id'] == 'form-1'
+        assert kwargs['message_chain'].message_id == 'card-message-1'
+        assert kwargs['message_event'].message_chain.message_id == 'card-message-1'
+        manager = bot.ap.agent_run_orchestrator.interaction_manager
+        manager.consume_callback.assert_awaited_once_with(
+            callback_token='callback-token',
+            submission={
+                'interaction_id': 'form-1',
+                'action_id': 'approve',
+                'values': {'name': 'Alice'},
+                'submitted_at': 1234,
+            },
+            bot_id='bot-1',
+            conversation_id='group_chat-1',
+            actor_id='user-1',
+        )
+
+    @pytest.mark.asyncio
+    async def test_callback_forwards_compact_platform_references(self):
+        bot = self._make_bot(self._record('pipeline'))
+        adapter = SimpleNamespace()
+        event = self._event()
+        event.data.pop('interaction_id')
+        event.data.pop('action_id')
+        event.data['action_ref'] = 1
+
+        await bot._handle_interaction_submission(event, adapter)
+
+        manager = bot.ap.agent_run_orchestrator.interaction_manager
+        submission = manager.consume_callback.await_args.kwargs['submission']
+        assert submission['action_ref'] == 1
+        assert submission['interaction_id'] is None
+
+    @pytest.mark.asyncio
+    async def test_pipeline_callback_rejects_changed_runner(self):
+        bot = self._make_bot(self._record('pipeline'))
+        bot.ap.pipeline_service.get_pipeline.return_value['config']['ai']['runner']['id'] = 'plugin:test/Other/default'
+
+        with pytest.raises(ValueError, match='Pipeline runner changed'):
+            await bot._handle_interaction_submission(self._event(), SimpleNamespace())
+
+        bot.ap.msg_aggregator.add_message.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_agent_callback_targets_original_agent_and_runner(self):
+        import langbot_plugin.api.entities.builtin.provider.message as provider_message
+
+        captured = []
+
+        async def fake_run(envelope, binding, adapter_context=None):
+            captured.append((envelope, binding, adapter_context))
+            yield provider_message.Message(role='assistant', content='approved')
+
+        bot = self._make_bot(self._record('agent'))
+        bot.ap.agent_service = SimpleNamespace(
+            get_agent=AsyncMock(
+                return_value={
+                    'uuid': 'agent-1',
+                    'kind': 'agent',
+                    'enabled': True,
+                    'config': {
+                        'runner': {'id': 'plugin:test/Dify/default'},
+                        'runner_config': {'plugin:test/Dify/default': {}},
+                    },
+                }
+            )
+        )
+        bot.ap.agent_run_orchestrator.run = fake_run
+        adapter = SimpleNamespace(
+            get_supported_apis=Mock(return_value=['send_message']),
+            send_message=AsyncMock(),
+        )
+
+        await bot._handle_interaction_submission(self._event(), adapter)
+
+        envelope, binding, adapter_context = captured[0]
+        assert envelope.event_type == 'interaction.submitted'
+        assert envelope.data['interaction']['action_id'] == 'approve'
+        assert binding.binding_id == 'binding-1'
+        assert binding.processor_type == 'agent'
+        assert binding.processor_id == 'agent-1'
+        assert adapter_context == {'_delivery_adapter': adapter}
+        adapter.send_message.assert_awaited_once()
 
     def test_agent_product_to_binding_does_not_fallback_to_component_ref(self):
         """An empty config runner stays unconfigured even if component_ref is stale."""

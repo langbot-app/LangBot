@@ -6,6 +6,7 @@ import {
   PipelineConfigStage,
 } from '@/app/infra/entities/pipeline';
 import DynamicFormComponent from '@/app/home/components/dynamic-form/DynamicFormComponent';
+import { getDefaultValues } from '@/app/home/components/dynamic-form/DynamicFormItemConfig';
 import { Button } from '@/components/ui/button';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -350,10 +351,38 @@ export default function PipelineFormComponent({
 
     const currentValues =
       (form.getValues(formName) as Record<string, unknown>) || {};
-    form.setValue(formName, {
+    const nextValues: Record<string, unknown> = {
       ...currentValues,
       [stageName]: values,
-    });
+    };
+
+    if (formName === 'ai' && stageName === 'runner') {
+      const selectedRunner = (values as Record<string, unknown>).id;
+      const runnerConfigs =
+        currentValues.runner_config &&
+        typeof currentValues.runner_config === 'object' &&
+        !Array.isArray(currentValues.runner_config)
+          ? (currentValues.runner_config as Record<string, unknown>)
+          : {};
+
+      if (
+        typeof selectedRunner === 'string' &&
+        selectedRunner &&
+        !(selectedRunner in runnerConfigs)
+      ) {
+        const runnerStage = aiConfigTabSchema?.stages.find(
+          (stage) => stage.name === selectedRunner,
+        );
+        if (runnerStage) {
+          nextValues.runner_config = {
+            ...runnerConfigs,
+            [selectedRunner]: getDefaultValues(runnerStage.config),
+          };
+        }
+      }
+    }
+
+    form.setValue(formName, nextValues);
 
     if (isFirstEmission) {
       initializedStagesRef.current.add(stageKey);

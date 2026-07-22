@@ -179,7 +179,7 @@ class RuntimePipeline:
                     bot_message=query.resp_messages[-1],
                     message=result.user_notice,
                     quote_origin=query.pipeline_config['output']['misc']['quote-origin'],
-                    is_final=[msg.is_final for msg in query.resp_messages][-1],
+                    is_final=query.resp_messages[-1].is_final,
                 )
             else:
                 await query.adapter.reply_message(

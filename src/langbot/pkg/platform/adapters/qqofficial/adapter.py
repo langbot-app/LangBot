@@ -23,6 +23,11 @@ from langbot.pkg.platform.adapters.qqofficial.event_converter import (
 )
 from langbot.pkg.platform.adapters.qqofficial.message_converter import QQOfficialMessageConverter
 from langbot.pkg.platform.adapters.qqofficial.platform_api import PLATFORM_API_MAP
+from langbot.pkg.platform.adapters.qqofficial.interaction import (
+    interaction_delivery_capabilities,
+    interaction_event_from_payload,
+    send_interaction,
+)
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
 import langbot_plugin.api.definition.abstract.platform.event_logger as abstract_platform_logger
 from langbot_plugin.api.entities.builtin.platform import entities as platform_entities
@@ -117,7 +122,15 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
             'get_group_member_list',
             'get_group_member_info',
             'call_platform_api',
+            'interaction.request',
         ]
+
+    def get_interaction_capabilities(self) -> dict[str, typing.Any]:
+        return interaction_delivery_capabilities()
+
+    @staticmethod
+    def _plain_message(text: str) -> platform_message.MessageChain:
+        return platform_message.MessageChain([platform_message.Plain(text=text)])
 
     async def send_message(
         self,
@@ -149,6 +162,8 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
         return platform_events.MessageResult(message_id=source.d_id or source.id, raw={'results': raw})
 
     async def call_platform_api(self, action: str, params: dict = {}) -> dict:
+        if action == 'interaction.request':
+            return await send_interaction(self, params)
         handler = PLATFORM_API_MAP.get(action)
         if handler is None:
             raise NotSupportedError(f'call_platform_api:{action}')
@@ -295,6 +310,15 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
             | BOT_REMOVED_EVENT_TYPES
         ):
             self.bot.on_message(event_type)(self._handle_native_event)
+
+        @self.bot.on_interaction()
+        async def on_interaction(event_data: dict, ws_event_id: str | None):
+            interaction_id = str(event_data.get('id') or '')
+            if interaction_id:
+                await self.bot.ack_interaction(interaction_id)
+            event = interaction_event_from_payload(event_data)
+            if event is not None:
+                await self._dispatch_eba_event(event)
 
     async def _handle_native_event(self, event: QQOfficialEvent):
         self.bot_account_id = self.config.get('appid', self.bot_account_id)

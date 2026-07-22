@@ -34,6 +34,12 @@ from langbot.pkg.platform.adapters.telegram.message_converter import TelegramMes
 from langbot.pkg.platform.adapters.telegram.event_converter import TelegramEventConverter, LegacyEventConverter
 from langbot.pkg.platform.adapters.telegram.api_impl import TelegramAPIMixin
 from langbot.pkg.platform.adapters.telegram.platform_api import PLATFORM_API_MAP
+from langbot.pkg.platform.adapters.telegram.interaction import (
+    interaction_delivery_capabilities,
+    interaction_event_from_update,
+    parse_interaction_callback,
+    send_interaction,
+)
 
 
 class TelegramAdapter(TelegramAPIMixin, abstract_platform_adapter.AbstractPlatformAdapter):
@@ -79,6 +85,23 @@ class TelegramAdapter(TelegramAPIMixin, abstract_platform_adapter.AbstractPlatfo
                 return
 
             try:
+                if update.callback_query:
+                    try:
+                        interaction_callback = parse_interaction_callback(update.callback_query.data)
+                    except ValueError:
+                        await update.callback_query.answer(text='Invalid or expired action', show_alert=True)
+                        await self.logger.warning('Rejected malformed Telegram interaction callback')
+                        return
+                    if interaction_callback is not None:
+                        await update.callback_query.answer()
+                        event = interaction_event_from_update(update, interaction_callback)
+                        await self._dispatch_eba_event(event)
+                        try:
+                            await update.callback_query.edit_message_reply_markup(reply_markup=None)
+                        except Exception:
+                            await self.logger.warning('Failed to clear Telegram interaction buttons')
+                        return
+
                 # Legacy event type callbacks (compat with existing botmgr FriendMessage / GroupMessage listeners)
                 if update.message and (
                     platform_events.FriendMessage in self.listeners or platform_events.GroupMessage in self.listeners
@@ -176,7 +199,11 @@ class TelegramAdapter(TelegramAPIMixin, abstract_platform_adapter.AbstractPlatfo
             'kick_member',
             'leave_group',
             'call_platform_api',
+            'interaction.request',
         ]
+
+    def get_interaction_capabilities(self) -> dict[str, typing.Any]:
+        return interaction_delivery_capabilities()
 
     # ---- Message Send / Reply (preserving original logic) ----
 
@@ -410,6 +437,8 @@ class TelegramAdapter(TelegramAPIMixin, abstract_platform_adapter.AbstractPlatfo
         params: dict = {},
     ) -> dict:
         """Call a Telegram-specific platform API."""
+        if action == 'interaction.request':
+            return await send_interaction(self.bot, params)
         handler = PLATFORM_API_MAP.get(action)
         if handler is None:
             from langbot_plugin.api.entities.builtin.platform.errors import NotSupportedError

@@ -143,6 +143,7 @@ spec:
       - get_group_member_info
       - get_group_member_list
       - call_platform_api
+      - interaction.request
 
   platform_specific_apis:
     - action: is_websocket_mode

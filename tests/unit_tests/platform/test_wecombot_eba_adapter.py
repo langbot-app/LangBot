@@ -11,6 +11,10 @@ from langbot.pkg.platform.adapters.wecombot.adapter import WecomBotAdapter
 from langbot.pkg.platform.adapters.wecombot.event_converter import WecomBotEventConverter
 from langbot.pkg.platform.adapters.wecombot.message_converter import WecomBotMessageConverter
 from langbot.pkg.platform.adapters.wecombot.platform_api import PLATFORM_API_MAP
+from langbot.pkg.platform.adapters.wecombot.interaction import (
+    build_interaction_card,
+    interaction_event_from_native,
+)
 from langbot_plugin.api.definition.abstract.platform.event_logger import AbstractEventLogger
 from langbot_plugin.api.entities.builtin.platform import entities as platform_entities
 from langbot_plugin.api.entities.builtin.platform import events as platform_events
@@ -44,6 +48,7 @@ class DummyWecomBotWsClient:
         self.reply_text = AsyncMock(return_value={'reply': True})
         self.push_stream_chunk = AsyncMock(return_value=True)
         self.set_message = AsyncMock(return_value={'set': True})
+        self.send_template_card = AsyncMock(return_value={'sent': True})
 
     def on_message(self, msg_type: str):
         def decorator(func):
@@ -82,7 +87,7 @@ def manifest() -> dict:
         / 'wecombot'
         / 'manifest.yaml'
     )
-    return yaml.safe_load(manifest_path.read_text())
+    return yaml.safe_load(manifest_path.read_text(encoding='utf-8'))
 
 
 def make_adapter(enable_webhook: bool = False) -> WecomBotAdapter:
@@ -147,6 +152,52 @@ def test_wecombot_platform_api_map_matches_manifest():
     manifest_actions = {item['action'] for item in manifest()['spec']['platform_specific_apis']}
 
     assert set(PLATFORM_API_MAP) == manifest_actions
+
+
+def test_wecombot_interaction_card_uses_host_callback_token_and_index():
+    card = build_interaction_card(
+        {'title': 'Approve?', 'actions': [{'id': 'approve', 'label': 'Approve'}]},
+        'callback-token',
+    )
+
+    button = card['template_card']['button_list'][0]
+    assert button['key'] == 'lbi:callback-token:a:0'
+
+
+@pytest.mark.asyncio
+async def test_wecombot_interaction_delivery_and_callback_event():
+    adapter = make_adapter()
+    result = await adapter.call_platform_api(
+        'interaction.request',
+        {
+            'callback_token': 'callback-token',
+            'reply_target': {'target_type': 'group', 'target_id': 'group-1'},
+            'request': {
+                'interaction_id': 'form-1',
+                'title': 'Approve?',
+                'actions': [{'id': 'approve', 'label': 'Approve'}],
+                'fallback_text': 'Reply approve.',
+            },
+        },
+    )
+
+    assert result['rich'] is True
+    adapter.bot.send_template_card.assert_awaited_once()
+
+    native = wecombot_event(type='group', msgtype='event')
+    native['event'] = {
+        'eventtype': 'template_card_event',
+        'template_card_event': {'EventKey': 'lbi:callback-token:a:0'},
+    }
+    event = interaction_event_from_native(native)
+    assert event.action == 'interaction.submitted'
+    assert event.data['action_ref'] == 0
+    assert event.data['target_id'] == 'group-1'
+
+    native['event']['template_card_event'] = {'button': {'key': 'lbi:callback-token:f:0:2'}}
+    nested_event = interaction_event_from_native(native)
+    assert nested_event.data['field_ref'] == 0
+    assert nested_event.data['option_ref'] == 2
 
 
 @pytest.mark.asyncio
@@ -271,4 +322,6 @@ async def test_wecombot_send_reply_feedback_and_platform_api_use_underlying_clie
 async def test_wecombot_webhook_mode_rejects_proactive_send():
     adapter = make_adapter(enable_webhook=True)
     with pytest.raises(NotSupportedError):
-        await adapter.send_message('person', 'user-1', platform_message.MessageChain([platform_message.Plain(text='hi')]))
+        await adapter.send_message(
+            'person', 'user-1', platform_message.MessageChain([platform_message.Plain(text='hi')])
+        )

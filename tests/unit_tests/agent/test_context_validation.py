@@ -1,4 +1,5 @@
 """Test that LangBot context builder output validates against SDK AgentRunContext."""
+
 from __future__ import annotations
 
 import pytest
@@ -31,7 +32,7 @@ class TestContextValidation:
         """Create a mock application."""
         mock_app = MagicMock(spec=app.Application)
         mock_app.ver_mgr = MagicMock()
-        mock_app.ver_mgr.get_current_version = MagicMock(return_value="1.0.0")
+        mock_app.ver_mgr.get_current_version = MagicMock(return_value='1.0.0')
         mock_app.persistence_mgr = MagicMock()
         mock_app.persistence_mgr.get_db_engine = MagicMock()
         mock_app.logger = MagicMock()
@@ -44,35 +45,35 @@ class TestContextValidation:
         from langbot_plugin.api.entities.builtin.agent_runner.delivery import DeliveryContext
 
         return AgentEventEnvelope(
-            event_id="evt_1",
-            event_type="message.received",
+            event_id='evt_1',
+            event_type='message.received',
             event_time=1700000000,
-            source="platform",
-            source_event_type="platform.message",
-            bot_id="bot_1",
-            workspace_id="workspace_1",
-            conversation_id="conv_1",
+            source='platform',
+            source_event_type='platform.message',
+            bot_id='bot_1',
+            workspace_id='workspace_1',
+            conversation_id='conv_1',
             thread_id=None,
             actor=ActorContext(
-                actor_type="user",
-                actor_id="user_1",
-                actor_name="Test User",
+                actor_type='user',
+                actor_id='user_1',
+                actor_name='Test User',
             ),
             subject=None,
-            input=EventInput(text="Hello world"),
-            delivery=DeliveryContext(surface="test"),
-            data={"platform_event_id": "source_evt_1"},
+            input=EventInput(text='Hello world'),
+            delivery=DeliveryContext(surface='test'),
+            data={'platform_event_id': 'source_evt_1'},
         )
 
     def _make_binding(self) -> AgentBinding:
         """Create a test binding."""
         return AgentBinding(
-            binding_id="binding_1",
-            scope=BindingScope(scope_type="agent", scope_id="pipeline_1"),
-            event_types=["message.received"],
-            runner_id="plugin:test/plugin/runner",
-            runner_config={"timeout": 300},
-            agent_id="pipeline_1",
+            binding_id='binding_1',
+            scope=BindingScope(scope_type='agent', scope_id='pipeline_1'),
+            event_types=['message.received'],
+            runner_id='plugin:test/plugin/runner',
+            runner_config={'timeout': 300},
+            agent_id='pipeline_1',
             enabled=True,
         )
 
@@ -91,16 +92,16 @@ class TestContextValidation:
     def _make_descriptor(self):
         """Create a mock runner descriptor."""
         return AgentRunnerDescriptor(
-            id="plugin:test/plugin/runner",
-            source="plugin",
-            label={"en_US": "Test Runner"},
-            plugin_author="test",
-            plugin_name="plugin",
-            runner_name="runner",
+            id='plugin:test/plugin/runner',
+            source='plugin',
+            label={'en_US': 'Test Runner'},
+            plugin_author='test',
+            plugin_name='plugin',
+            runner_name='runner',
             permissions={
-                "history": ["page", "search"],
-                "events": ["get", "page"],
-                "storage": ["plugin", "workspace"],
+                'history': ['page', 'search'],
+                'events': ['get', 'page'],
+                'storage': ['plugin', 'workspace'],
             },
         )
 
@@ -118,12 +119,14 @@ class TestContextValidation:
         # Mock persistent state store to return empty state snapshot
         with patch('langbot.pkg.agent.runner.context_builder.get_persistent_state_store') as mock_get_store:
             mock_store = AsyncMock()
-            mock_store.build_snapshot_from_event = AsyncMock(return_value={
-                'conversation': {},
-                'actor': {},
-                'subject': {},
-                'runner': {},
-            })
+            mock_store.build_snapshot_from_event = AsyncMock(
+                return_value={
+                    'conversation': {},
+                    'actor': {},
+                    'subject': {},
+                    'runner': {},
+                }
+            )
             mock_get_store.return_value = mock_store
 
             # Build context
@@ -152,27 +155,69 @@ class TestContextValidation:
         assert isinstance(validated.resources, AgentResources)
         assert validated.runtime is not None
         assert isinstance(validated.runtime, AgentRuntimeContext)
-        assert "protocol_version" not in validated.runtime.model_dump()
-        assert "sdk_protocol_version" not in validated.runtime.model_dump()
-        assert "sdk_protocol_version" not in context_dict["runtime"]
+        assert 'protocol_version' not in validated.runtime.model_dump()
+        assert 'sdk_protocol_version' not in validated.runtime.model_dump()
+        assert 'sdk_protocol_version' not in context_dict['runtime']
 
         # Verify event context
-        assert validated.event.event_id == "evt_1"
-        assert validated.event.event_type == "message.received"
-        assert validated.event.source == "platform"
-        assert validated.event.source_event_type == "platform.message"
-        assert validated.event.data == {"platform_event_id": "source_evt_1"}
+        assert validated.event.event_id == 'evt_1'
+        assert validated.event.event_type == 'message.received'
+        assert validated.event.source == 'platform'
+        assert validated.event.source_event_type == 'platform.message'
+        assert validated.event.data == {'platform_event_id': 'source_evt_1'}
 
         # Verify conversation context uses SDK field names
         assert validated.conversation is not None
-        assert validated.conversation.bot_id == "bot_1"
-        assert validated.conversation.workspace_id == "workspace_1"
+        assert validated.conversation.bot_id == 'bot_1'
+        assert validated.conversation.workspace_id == 'workspace_1'
 
         # Verify delivery context
-        assert validated.delivery.surface == "test"
+        assert validated.delivery.surface == 'test'
 
         # Verify input
-        assert validated.input.text == "Hello world"
+        assert validated.input.text == 'Hello world'
+
+    @pytest.mark.asyncio
+    async def test_build_context_preserves_interaction_protocol_fields(self):
+        """Validated submissions and delivery capabilities survive the final context projection."""
+        from langbot_plugin.api.entities.builtin.agent_runner.interaction import (
+            InteractionDeliveryCapabilities,
+            InteractionSubmission,
+        )
+
+        mock_app = self._make_mock_app()
+        builder = AgentRunContextBuilder(mock_app)
+        event = self._make_event_envelope()
+        event.event_type = 'interaction.submitted'
+        event.input.interaction = InteractionSubmission(
+            interaction_id='form-1',
+            action_id='approve',
+            values={'comment': 'looks good'},
+        )
+        event.delivery.interactions = InteractionDeliveryCapabilities(
+            field_types=['text', 'select'],
+            action_styles=['primary'],
+        )
+
+        with patch('langbot.pkg.agent.runner.context_builder.get_persistent_state_store') as mock_get_store:
+            mock_store = AsyncMock()
+            mock_store.build_snapshot_from_event = AsyncMock(
+                return_value={'conversation': {}, 'actor': {}, 'subject': {}, 'runner': {}}
+            )
+            mock_get_store.return_value = mock_store
+            context_dict = await builder.build_context_from_event(
+                event=event,
+                binding=self._make_binding(),
+                descriptor=self._make_descriptor(),
+                resources=self._make_resources(),
+            )
+
+        validated = AgentRunContext.model_validate(context_dict)
+        assert validated.input.interaction is not None
+        assert validated.input.interaction.interaction_id == 'form-1'
+        assert validated.input.interaction.values == {'comment': 'looks good'}
+        assert validated.delivery.interactions is not None
+        assert validated.delivery.interactions.field_types == ['text', 'select']
 
     @pytest.mark.asyncio
     async def test_build_context_from_event_populates_model_context_window(self):
@@ -207,12 +252,14 @@ class TestContextValidation:
 
         with patch('langbot.pkg.agent.runner.context_builder.get_persistent_state_store') as mock_get_store:
             mock_store = AsyncMock()
-            mock_store.build_snapshot_from_event = AsyncMock(return_value={
-                'conversation': {},
-                'actor': {},
-                'subject': {},
-                'runner': {},
-            })
+            mock_store.build_snapshot_from_event = AsyncMock(
+                return_value={
+                    'conversation': {},
+                    'actor': {},
+                    'subject': {},
+                    'runner': {},
+                }
+            )
             mock_get_store.return_value = mock_store
 
             context_dict = await builder.build_context_from_event(
@@ -265,37 +312,39 @@ class TestContextValidation:
         mock_app = self._make_mock_app()
         builder = AgentRunContextBuilder(mock_app)
         event = AgentEventEnvelope(
-            event_id="evt_recall_1",
-            event_type="message.recalled",
+            event_id='evt_recall_1',
+            event_type='message.recalled',
             event_time=1700000001,
-            source="platform",
-            source_event_type="platform.message.recall",
-            bot_id="bot_1",
-            workspace_id="workspace_1",
-            conversation_id="conv_1",
-            actor=ActorContext(actor_type="user", actor_id="user_1"),
+            source='platform',
+            source_event_type='platform.message.recall',
+            bot_id='bot_1',
+            workspace_id='workspace_1',
+            conversation_id='conv_1',
+            actor=ActorContext(actor_type='user', actor_id='user_1'),
             subject=SubjectContext(
-                subject_type="message",
-                subject_id="message_1",
-                data={"recalled_message_id": "message_1", "reason": "user_recall"},
+                subject_type='message',
+                subject_id='message_1',
+                data={'recalled_message_id': 'message_1', 'reason': 'user_recall'},
             ),
             input=EventInput(text=None),
-            delivery=DeliveryContext(surface="test"),
-            data={"source_event_id": "source_recall_1"},
+            delivery=DeliveryContext(surface='test'),
+            data={'source_event_id': 'source_recall_1'},
         )
         binding = self._make_binding()
-        binding.event_types = ["message.recalled"]
+        binding.event_types = ['message.recalled']
         resources = self._make_resources()
         descriptor = self._make_descriptor()
 
         with patch('langbot.pkg.agent.runner.context_builder.get_persistent_state_store') as mock_get_store:
             mock_store = AsyncMock()
-            mock_store.build_snapshot_from_event = AsyncMock(return_value={
-                'conversation': {},
-                'actor': {},
-                'subject': {},
-                'runner': {},
-            })
+            mock_store.build_snapshot_from_event = AsyncMock(
+                return_value={
+                    'conversation': {},
+                    'actor': {},
+                    'subject': {},
+                    'runner': {},
+                }
+            )
             mock_get_store.return_value = mock_store
 
             context_dict = await builder.build_context_from_event(
@@ -307,12 +356,12 @@ class TestContextValidation:
 
         validated = AgentRunContext.model_validate(context_dict)
 
-        assert validated.event.event_type == "message.recalled"
+        assert validated.event.event_type == 'message.recalled'
         assert validated.input.text is None
         assert validated.subject is not None
-        assert validated.subject.subject_type == "message"
-        assert validated.subject.subject_id == "message_1"
-        assert validated.subject.data == {"recalled_message_id": "message_1", "reason": "user_recall"}
+        assert validated.subject.subject_type == 'message'
+        assert validated.subject.subject_id == 'message_1'
+        assert validated.subject.data == {'recalled_message_id': 'message_1', 'reason': 'user_recall'}
 
     @pytest.mark.asyncio
     async def test_build_context_from_event_has_no_legacy_top_level_fields(self):
@@ -328,12 +377,14 @@ class TestContextValidation:
         # Mock persistent state store to return empty state snapshot
         with patch('langbot.pkg.agent.runner.context_builder.get_persistent_state_store') as mock_get_store:
             mock_store = AsyncMock()
-            mock_store.build_snapshot_from_event = AsyncMock(return_value={
-                'conversation': {},
-                'actor': {},
-                'subject': {},
-                'runner': {},
-            })
+            mock_store.build_snapshot_from_event = AsyncMock(
+                return_value={
+                    'conversation': {},
+                    'actor': {},
+                    'subject': {},
+                    'runner': {},
+                }
+            )
             mock_get_store.return_value = mock_store
 
             context_dict = await builder.build_context_from_event(
@@ -344,16 +395,16 @@ class TestContextValidation:
             )
 
         # Protocol v1 does NOT have these as core fields
-        assert 'messages' not in context_dict, "messages should not be top-level in Protocol v1"
-        assert 'prompt' not in context_dict, "prompt should not be top-level in Protocol v1"
-        assert 'params' not in context_dict, "params should not be top-level in Protocol v1"
+        assert 'messages' not in context_dict, 'messages should not be top-level in Protocol v1'
+        assert 'prompt' not in context_dict, 'prompt should not be top-level in Protocol v1'
+        assert 'params' not in context_dict, 'params should not be top-level in Protocol v1'
 
         # Protocol v1 DOES have these
-        assert 'delivery' in context_dict, "delivery is REQUIRED in Protocol v1"
-        assert 'context' in context_dict, "context (ContextAccess) is REQUIRED in Protocol v1"
-        assert 'bootstrap' not in context_dict, "Host must not inline bootstrap/history windows"
-        assert 'adapter' in context_dict, "adapter should exist"
-        assert 'metadata' in context_dict, "metadata should exist"
+        assert 'delivery' in context_dict, 'delivery is REQUIRED in Protocol v1'
+        assert 'context' in context_dict, 'context (ContextAccess) is REQUIRED in Protocol v1'
+        assert 'bootstrap' not in context_dict, 'Host must not inline bootstrap/history windows'
+        assert 'adapter' in context_dict, 'adapter should exist'
+        assert 'metadata' in context_dict, 'metadata should exist'
 
     @pytest.mark.asyncio
     async def test_build_context_from_event_event_is_not_none(self):
@@ -369,12 +420,14 @@ class TestContextValidation:
         # Mock persistent state store to return empty state snapshot
         with patch('langbot.pkg.agent.runner.context_builder.get_persistent_state_store') as mock_get_store:
             mock_store = AsyncMock()
-            mock_store.build_snapshot_from_event = AsyncMock(return_value={
-                'conversation': {},
-                'actor': {},
-                'subject': {},
-                'runner': {},
-            })
+            mock_store.build_snapshot_from_event = AsyncMock(
+                return_value={
+                    'conversation': {},
+                    'actor': {},
+                    'subject': {},
+                    'runner': {},
+                }
+            )
             mock_get_store.return_value = mock_store
 
             context_dict = await builder.build_context_from_event(
@@ -385,7 +438,7 @@ class TestContextValidation:
             )
 
         # event is REQUIRED in Protocol v1
-        assert context_dict.get('event') is not None, "event is REQUIRED for Protocol v1"
+        assert context_dict.get('event') is not None, 'event is REQUIRED for Protocol v1'
 
         # Validate
         validated = AgentRunContext.model_validate(context_dict)
@@ -405,12 +458,14 @@ class TestContextValidation:
         # Mock persistent state store to return empty state snapshot
         with patch('langbot.pkg.agent.runner.context_builder.get_persistent_state_store') as mock_get_store:
             mock_store = AsyncMock()
-            mock_store.build_snapshot_from_event = AsyncMock(return_value={
-                'conversation': {},
-                'actor': {},
-                'subject': {},
-                'runner': {},
-            })
+            mock_store.build_snapshot_from_event = AsyncMock(
+                return_value={
+                    'conversation': {},
+                    'actor': {},
+                    'subject': {},
+                    'runner': {},
+                }
+            )
             mock_get_store.return_value = mock_store
 
             context_dict = await builder.build_context_from_event(
@@ -421,7 +476,7 @@ class TestContextValidation:
             )
 
         # delivery is REQUIRED in Protocol v1
-        assert context_dict.get('delivery') is not None, "delivery is REQUIRED for Protocol v1"
+        assert context_dict.get('delivery') is not None, 'delivery is REQUIRED for Protocol v1'
 
         # Validate
         validated = AgentRunContext.model_validate(context_dict)

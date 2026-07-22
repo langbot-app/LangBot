@@ -14,6 +14,11 @@ from langbot.pkg.platform.adapters.wecombot.api_impl import WecomBotAPIMixin
 from langbot.pkg.platform.adapters.wecombot.event_converter import WecomBotEventConverter
 from langbot.pkg.platform.adapters.wecombot.message_converter import WecomBotMessageConverter
 from langbot.pkg.platform.adapters.wecombot.platform_api import PLATFORM_API_MAP
+from langbot.pkg.platform.adapters.wecombot.interaction import (
+    interaction_delivery_capabilities,
+    interaction_event_from_native,
+    send_interaction,
+)
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
 import langbot_plugin.api.definition.abstract.platform.event_logger as abstract_platform_logger
 from langbot_plugin.api.entities.builtin.platform import entities as platform_entities
@@ -100,7 +105,7 @@ class WecomBotAdapter(WecomBotAPIMixin, abstract_platform_adapter.AbstractPlatfo
         ]
 
     def get_supported_apis(self) -> list[str]:
-        return [
+        apis = [
             'send_message',
             'reply_message',
             'get_message',
@@ -111,6 +116,16 @@ class WecomBotAdapter(WecomBotAPIMixin, abstract_platform_adapter.AbstractPlatfo
             'get_group_member_list',
             'call_platform_api',
         ]
+        if not self.config.get('enable-webhook', False) and hasattr(self.bot, 'send_template_card'):
+            apis.append('interaction.request')
+        return apis
+
+    def get_interaction_capabilities(self) -> dict[str, typing.Any]:
+        return interaction_delivery_capabilities()
+
+    @staticmethod
+    def _plain_message(text: str) -> platform_message.MessageChain:
+        return platform_message.MessageChain([platform_message.Plain(text=text)])
 
     async def send_message(
         self,
@@ -163,6 +178,8 @@ class WecomBotAdapter(WecomBotAPIMixin, abstract_platform_adapter.AbstractPlatfo
         return self.config.get('enable-stream-reply', True)
 
     async def call_platform_api(self, action: str, params: dict = {}) -> dict:
+        if action == 'interaction.request' and 'interaction.request' in self.get_supported_apis():
+            return await send_interaction(self, params)
         handler = PLATFORM_API_MAP.get(action)
         if handler is None:
             raise NotSupportedError(f'call_platform_api:{action}')
@@ -229,6 +246,15 @@ class WecomBotAdapter(WecomBotAPIMixin, abstract_platform_adapter.AbstractPlatfo
             self.bot.on_feedback()(self._handle_feedback)
         if hasattr(self.bot, 'on_message'):
             self.bot.on_message('event')(self._handle_native_event)
+            self.bot.on_message('template_card_event')(self._handle_interaction_event)
+
+    async def _handle_interaction_event(self, event: WecomBotEvent):
+        try:
+            interaction_event = interaction_event_from_native(event)
+            if interaction_event is not None:
+                await self._dispatch_eba_event(interaction_event)
+        except Exception:
+            await self.logger.error(f'Error in WeComBot interaction callback: {traceback.format_exc()}')
 
     async def _handle_native_event(self, event: WecomBotEvent):
         try:
@@ -277,6 +303,8 @@ class WecomBotAdapter(WecomBotAPIMixin, abstract_platform_adapter.AbstractPlatfo
 
     def _cleanup_stream_mapping(self):
         now = time.time()
-        expired = [key for key, (_, ts) in self._stream_to_monitoring_msg.items() if now - ts > self._STREAM_MAPPING_TTL]
+        expired = [
+            key for key, (_, ts) in self._stream_to_monitoring_msg.items() if now - ts > self._STREAM_MAPPING_TTL
+        ]
         for key in expired:
             del self._stream_to_monitoring_msg[key]

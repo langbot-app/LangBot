@@ -42,7 +42,7 @@ class QueryPool:
         adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
         pipeline_uuid: typing.Optional[str] = None,
         routed_by_rule: bool = False,
-        variables: typing.Optional[dict[str, typing.Any]] = None,
+        variables: dict[str, typing.Any] | None = None,
     ) -> pipeline_query.Query:
         async with self.condition:
             query_id = self.query_id_counter

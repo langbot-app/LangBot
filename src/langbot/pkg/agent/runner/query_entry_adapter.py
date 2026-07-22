@@ -7,6 +7,7 @@ Protocol v1 architecture without exposing Query internals to runners.
 from __future__ import annotations
 
 import hashlib
+import math
 import typing
 
 from langbot_plugin.api.entities.builtin.pipeline import query as pipeline_query
@@ -129,16 +130,25 @@ class QueryEntryAdapter:
         delivery_policy = DeliveryPolicy(
             enable_streaming=True,
             enable_reply=True,
+            enable_interactions=True,
+        )
+        variables = getattr(query, 'variables', None) or {}
+        event_type = (
+            runner_events.INTERACTION_SUBMITTED
+            if isinstance(variables.get('_interaction_submission'), dict)
+            else runner_events.MESSAGE_RECEIVED
         )
 
         return AgentConfig(
             agent_id=agent_id,
+            processor_type='pipeline',
+            processor_id=agent_id,
             runner_id=runner_id,
             runner_config=runner_config,
             resource_policy=resource_policy,
             state_policy=state_policy,
             delivery_policy=delivery_policy,
-            event_types=[runner_events.MESSAGE_RECEIVED],
+            event_types=[event_type],
             enabled=True,
             metadata={'source': 'pipeline_adapter'},
         )
@@ -217,21 +227,36 @@ class QueryEntryAdapter:
         if message_id == -1:
             message_id = None
 
-        event_time = None
-        if message_event:
-            event_time = getattr(message_event, 'time', None)
-        if isinstance(event_time, (int, float)):
-            event_time = int(event_time)
+        event_time = cls._normalize_event_time(getattr(message_event, 'time', None) if message_event else None)
+
+        variables = getattr(query, 'variables', None) or {}
+        interaction = variables.get('_interaction_submission')
+        event_type = runner_events.MESSAGE_RECEIVED
+        if isinstance(interaction, dict):
+            event_type = runner_events.INTERACTION_SUBMITTED
+            event_data['interaction'] = interaction
 
         source_event_id = str(message_id or query.query_id)
         return AgentEventContext(
             event_id=cls._build_scoped_event_id(query, source_event_id, event_time),
-            event_type=runner_events.MESSAGE_RECEIVED,
+            event_type=event_type,
             event_time=event_time,
             source='host_adapter',
             source_event_type=source_event_type,
             data=event_data,
         )
+
+    @staticmethod
+    def _normalize_event_time(value: typing.Any) -> int | None:
+        """Normalize legacy second/millisecond/microsecond Unix timestamps."""
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return None
+        timestamp = float(value)
+        if not math.isfinite(timestamp):
+            return None
+        while abs(timestamp) > 10_000_000_000:
+            timestamp /= 1000
+        return int(timestamp)
 
     @classmethod
     def _compact_event_data(
@@ -370,6 +395,15 @@ class QueryEntryAdapter:
         if launcher_type is not None:
             launcher_type_value = getattr(launcher_type, 'value', launcher_type)
 
+        variables = getattr(query, 'variables', None) or {}
+        interaction = variables.get('_interaction_submission')
+        if isinstance(interaction, dict):
+            return SubjectContext(
+                subject_type='interaction',
+                subject_id=str(interaction.get('interaction_id') or ''),
+                data={'action_id': interaction.get('action_id')},
+            )
+
         return SubjectContext(
             subject_type='message',
             subject_id=str(message_id or query_id or ''),
@@ -435,11 +469,16 @@ class QueryEntryAdapter:
 
         attachments = cls._build_attachments(query, contents)
 
-        return AgentInput(
-            text=text,
-            contents=contents,
-            attachments=attachments,
-        )
+        input_data: dict[str, typing.Any] = {
+            'text': text,
+            'contents': contents,
+            'attachments': attachments,
+        }
+        variables = getattr(query, 'variables', None) or {}
+        interaction = variables.get('_interaction_submission')
+        if isinstance(interaction, dict) and 'interaction' in AgentInput.model_fields:
+            input_data['interaction'] = interaction
+        return AgentInput.model_validate(input_data)
 
     @classmethod
     def _build_attachments(
@@ -570,16 +609,42 @@ class QueryEntryAdapter:
     ) -> DeliveryContext:
         """Build DeliveryContext from Query."""
         message_chain = getattr(query, 'message_chain', None)
-        return DeliveryContext(
-            surface='platform',
-            reply_target={
+        launcher_type = getattr(query, 'launcher_type', None)
+        target_type = getattr(launcher_type, 'value', launcher_type)
+        target_id = getattr(query, 'launcher_id', None)
+        adapter = getattr(query, 'adapter', None)
+        supported_apis: list[str] = []
+        get_supported_apis = getattr(adapter, 'get_supported_apis', None)
+        if callable(get_supported_apis):
+            try:
+                declared_apis = get_supported_apis()
+                if isinstance(declared_apis, (list, tuple, set)):
+                    supported_apis = list(dict.fromkeys(api for api in declared_apis if isinstance(api, str) and api))
+            except Exception:
+                pass
+
+        delivery_data: dict[str, typing.Any] = {
+            'surface': 'platform',
+            'reply_target': {
+                'target_type': target_type,
+                'target_id': target_id,
                 'message_id': getattr(message_chain, 'message_id', None),
             },
-            supports_streaming=True,
-            supports_edit=False,
-            supports_reaction=False,
-            platform_capabilities={},
-        )
+            'supports_streaming': True,
+            'supports_edit': 'edit_message' in supported_apis,
+            'supports_reaction': bool({'add_reaction', 'remove_reaction'} & set(supported_apis)),
+            'platform_capabilities': {
+                'adapter': adapter.__class__.__name__ if adapter is not None else None,
+                'supported_apis': supported_apis,
+            },
+        }
+        if 'interactions' in DeliveryContext.model_fields and 'interaction.request' in supported_apis:
+            get_capabilities = getattr(adapter, 'get_interaction_capabilities', None)
+            if callable(get_capabilities):
+                capabilities = get_capabilities()
+                if isinstance(capabilities, dict):
+                    delivery_data['interactions'] = capabilities
+        return DeliveryContext.model_validate(delivery_data)
 
     @classmethod
     def _build_raw_ref(

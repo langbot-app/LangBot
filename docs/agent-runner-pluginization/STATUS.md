@@ -21,11 +21,12 @@
 | Steering control path | Done | claim 异常不再逃逸 consumer loop；queue 有上限；未 pull 的 claimed 输入在 run 结束时写 `steering.dropped` 审计终态。 |
 | SDK v1 contract closure | Done | SDK 提供 `AgentAPIError` / `AgentAPIException`、typed `SteeringPullResult`、未知 result type 宽容解析、result `sequence` 注入与取消传播。 |
 | EBA processor routing | Done; release gate 5/5 pass | Bot `event_bindings`、Pipeline / Agent 平级路由、WebUI dry-run / 合成测试 / 状态、OneBot 非消息事件到 Agent 及平台回复已闭环；隔离空白实例已验证从 Space 安装并注册 LocalAgent。 |
+| Structured interactions | Cross-repo unit-pass; provider E2E pending | Host 已完成 `interaction.requested` 白名单、持久化 callback correlation、TTL/作用域/幂等校验和 Pipeline/Agent 原处理器恢复；六个平台已接入按钮/单选投递，Lark 和 DingTalk 进一步支持原生单字段 `text` / `textarea` / `number` / `select` 控件。SDK typed contract、通用 Runner 脚手架和 DifyAgent `workflow_paused` plugin-storage continuation 已落入对应仓库。 |
 
 ## Spec 与实现已知差距
 
-- `action.requested` 仍只作为 telemetry / reserved surface；platform action executor 不在本分支执行。
-- `action.requested` 权限模型完成前，DeliveryContext 的 adapter capability 投影只用于输出决策，不提供平台动作执行权限。
+- `action.requested` 是严格白名单协议面：当前只执行 `interaction.requested`；其它 action 仍只记录 telemetry，不提供通用 platform action executor。
+- 结构化交互 SDK typed contract 与 DifyAgent continuation 已实现；SDK 正式发布、真实 Dify 凭据 E2E，以及需要长驻双向进程的 Claude Code 权限确认仍是后续验收项。Host 不持有 provider 私有 token。
 - State 与 storage 的长期类型边界仍可继续收窄；当前合同只要求 JSON-safe state 与受控 storage API。
 - `ToolResource.parameters` 已作为 best-effort full schema 由 Host 在构造 `ctx.resources` 时一次塞齐；无 schema 时 runner 仍需兼容 `parameters=None` 或按需调用 detail API。
 - EventLog / Transcript 已提供显式 cleanup primitive；长期 retention 默认值、TTL 调度接入和 sandbox/workspace 文件清理仍是运维收尾项，应在 Runtime Control Plane 产品化前补齐。
@@ -40,7 +41,8 @@
 | `plugin:langbot-team/LocalAgent/default` | Unit-pass; Marketplace UI pass; Debug Chat E2E pass | 2026-07-12 隔离 first-run 实例从真实 AgentRunner catalog 安装 `langbot-team/LocalAgent` 0.1.0，Host 注册 `plugin:langbot-team/LocalAgent/default`，Wizard 自动选中并解锁后续操作。2026-07-15 `2026-07-15-08-44-10-770-08-00-sandbox-skill-authoring-edit-existing-e2e` 使用真实 `gpt-5.5` 完成 Skill 创建、注册、同 Query 激活、已激活包编辑与脚本执行；三阶段 UI、浏览器诊断和结构化文件系统检查全部通过，每阶段恰好新增一个 Bot 气泡，p95 14.6 秒、错误率 0。 |
 | `plugin:langbot-team/ACPAgentRunner/default` | Unit-pass; Debug Chat E2E pass | 2026-07-15 从本地 0.1.4 发布包安装并注册 PascalCase runner，remote-ssh Claude ACP 通过反向隧道调用 run-scoped `langbot_get_current_event`，97.8 秒返回可见结果；Host 将增量 delta 和 `message.completed` 聚合为一个完整 Bot 气泡。 |
 | `plugin:langbot-team/ClaudeCodeAgent/default` / `plugin:langbot-team/CodexAgent/default` | Unit-pass; E2E pending | 通过 runner 仓库单测覆盖 session、run_id 注入和 LangBot MCP gateway；真实 harness E2E 取决于对应运行环境、CLI/daemon 可用性和 provider 登录态。 |
-| Dify / n8n / Coze / DashScope / Langflow / Tbox / DeerFlow / WeKnora | Unit-pass; credential smoke optional | 2026-06-13 plugin layout / parser tests 通过；真实服务凭据 smoke 非每轮必跑。 |
+| Dify | Human-input unit-pass; credential E2E pending | `langbot-agent-runner/dify-agent` 已实现 `workflow_paused`、原子字段/确认交互、plugin-storage continuation、Dify submit/events 恢复与再次暂停；真实 Dify 凭据 E2E 待执行。 |
+| n8n / Coze / DashScope / Langflow / Tbox / DeerFlow / WeKnora | Unit-pass; credential smoke optional | 2026-06-13 plugin layout / parser tests 通过；真实服务凭据 smoke 非每轮必跑。 |
 
 ## Host / SDK 验收状态
 

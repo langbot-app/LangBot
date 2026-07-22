@@ -13,6 +13,11 @@ import langbot.pkg.platform.adapters.discord.adapter as discord_adapter_module
 from langbot.pkg.platform.adapters.discord.event_converter import DiscordEventConverter
 from langbot.pkg.platform.adapters.discord.message_converter import DiscordMessageConverter
 from langbot.pkg.platform.adapters.discord.platform_api import PLATFORM_API_MAP
+from langbot.pkg.platform.adapters.discord.interaction import (
+    build_interaction_view,
+    interaction_event_from_component,
+    parse_interaction_custom_id,
+)
 from langbot_plugin.api.definition.abstract.platform.event_logger import AbstractEventLogger
 from langbot_plugin.api.entities.builtin.platform import entities as platform_entities
 from langbot_plugin.api.entities.builtin.platform import events as platform_events
@@ -48,7 +53,7 @@ def manifest() -> dict:
         / 'discord'
         / 'manifest.yaml'
     )
-    return yaml.safe_load(manifest_path.read_text())
+    return yaml.safe_load(manifest_path.read_text(encoding='utf-8'))
 
 
 def test_discord_supported_events_match_manifest():
@@ -66,6 +71,64 @@ def test_discord_platform_api_map_matches_manifest():
     manifest_actions = {item['action'] for item in manifest()['spec']['platform_specific_apis']}
 
     assert set(PLATFORM_API_MAP) == manifest_actions
+
+
+def test_discord_interaction_custom_id_parser_uses_host_indexes():
+    assert parse_interaction_custom_id('lbi:token:a:2') == {
+        'callback_token': 'token',
+        'action_ref': 2,
+    }
+    assert parse_interaction_custom_id('lbi:token:f:0:3') == {
+        'callback_token': 'token',
+        'field_ref': 0,
+        'option_ref': 3,
+    }
+
+
+@pytest.mark.asyncio
+async def test_discord_interaction_view_and_delivery():
+    adapter = make_adapter()
+    channel = SimpleNamespace(send=AsyncMock(return_value=SimpleNamespace(id=321)))
+    adapter._get_channel = AsyncMock(return_value=channel)
+    request = {
+        'interaction_id': 'form-1',
+        'title': 'Approve?',
+        'actions': [{'id': 'approve', 'label': 'Approve', 'style': 'primary'}],
+        'fallback_text': 'Reply approve.',
+    }
+
+    view = build_interaction_view(request, 'callback-token')
+    assert view.children[0].custom_id == 'lbi:callback-token:a:0'
+
+    result = await adapter.call_platform_api(
+        'interaction.request',
+        {
+            'request': request,
+            'callback_token': 'callback-token',
+            'reply_target': {'target_type': 'group', 'target_id': '789'},
+        },
+    )
+
+    assert result == {'ok': True, 'message_id': 321, 'rich': True}
+    assert channel.send.await_args.kwargs['view'].children[0].label == 'Approve'
+
+
+def test_discord_interaction_component_builds_scoped_host_event():
+    interaction = SimpleNamespace(
+        user=SimpleNamespace(id=123),
+        channel=SimpleNamespace(id=789),
+        guild=SimpleNamespace(id=456),
+    )
+
+    event = interaction_event_from_component(
+        interaction,
+        {'callback_token': 'callback-token', 'action_ref': 0},
+    )
+
+    assert event.action == 'interaction.submitted'
+    assert event.data['actor_id'] == '123'
+    assert event.data['target_type'] == 'group'
+    assert event.data['target_id'] == '789'
 
 
 @pytest.mark.asyncio

@@ -406,10 +406,11 @@ class LegacyEventConverter(abstract_platform_adapter.AbstractEventConverter):
                 source_platform_object=event,
             )
         else:
+            sender = event.message.from_user
             return legacy_events.GroupMessage(
                 sender=legacy_entities.GroupMember(
-                    id=event.effective_chat.id,
-                    member_name=event.effective_chat.title,
+                    id=sender.id if sender else '',
+                    member_name=sender.first_name if sender else '',
                     permission=legacy_entities.Permission.Member,
                     group=legacy_entities.Group(
                         id=event.effective_chat.id,

@@ -367,6 +367,36 @@ class TestMessageAggregatorAddMessage:
         assert len(agg.buffers) == 1
 
     @pytest.mark.asyncio
+    async def test_control_variables_bypass_aggregation(self):
+        """Interaction callbacks must not merge with nearby chat messages."""
+        aggregator = get_aggregator_module()
+        app = make_aggregator_app()
+        mock_pipeline = Mock()
+        mock_pipeline.pipeline_entity = Mock()
+        mock_pipeline.pipeline_entity.config = {'trigger': {'message-aggregation': {'enabled': True, 'delay': 10.0}}}
+        app.pipeline_mgr.get_pipeline_by_uuid = AsyncMock(return_value=mock_pipeline)
+        agg = aggregator.MessageAggregator(app)
+
+        chain = text_chain('approve')
+        await agg.add_message(
+            bot_uuid='test-bot',
+            launcher_type=provider_session.LauncherTypes.PERSON,
+            launcher_id=12345,
+            sender_id=12345,
+            message_event=friend_message_event(chain),
+            message_chain=chain,
+            adapter=mock_adapter(),
+            pipeline_uuid='test-pipeline',
+            variables={'_interaction_submission': {'interaction_id': 'form-1'}},
+        )
+
+        assert agg.buffers == {}
+        app.query_pool.add_query.assert_awaited_once()
+        assert app.query_pool.add_query.call_args.kwargs['variables'] == {
+            '_interaction_submission': {'interaction_id': 'form-1'}
+        }
+
+    @pytest.mark.asyncio
     async def test_max_buffer_flushes_immediately(self):
         """Reaching MAX_BUFFER_MESSAGES should flush immediately."""
         aggregator = get_aggregator_module()

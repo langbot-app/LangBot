@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import json
 import pathlib
 import asyncio
+import time
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import yaml
@@ -12,6 +14,11 @@ from langbot.pkg.platform.adapters.lark.adapter import LarkAdapter
 from langbot.pkg.platform.adapters.lark.event_converter import LarkEventConverter
 from langbot.pkg.platform.adapters.lark.message_converter import LarkMessageConverter
 from langbot.pkg.platform.adapters.lark.platform_api import PLATFORM_API_MAP
+from langbot.pkg.platform.adapters.lark.interaction import (
+    build_interaction_card,
+    interaction_delivery_capabilities,
+    interaction_event_from_callback,
+)
 from langbot_plugin.api.definition.abstract.platform.event_logger import AbstractEventLogger
 from langbot_plugin.api.entities.builtin.platform import entities as platform_entities
 from langbot_plugin.api.entities.builtin.platform import events as platform_events
@@ -66,6 +73,7 @@ class DummyAPIClient:
                 message=SimpleNamespace(
                     acreate=AsyncMock(return_value=DummyResponse()),
                     areply=AsyncMock(return_value=DummyResponse()),
+                    aupdate=AsyncMock(return_value=DummyResponse()),
                     aget=AsyncMock(return_value=DummyResponse(SimpleNamespace(items=[]))),
                 ),
                 chat=SimpleNamespace(
@@ -89,8 +97,12 @@ class DummyAPIClient:
         )
         self.cardkit = SimpleNamespace(
             v1=SimpleNamespace(
-                card=SimpleNamespace(create=AsyncMock(return_value=DummyResponse(SimpleNamespace(card_id='card-id')))),
-                card_element=SimpleNamespace(content=AsyncMock(return_value=DummyResponse())),
+                card=SimpleNamespace(
+                    create=MagicMock(return_value=DummyResponse(SimpleNamespace(card_id='card-id'))),
+                    acreate=AsyncMock(return_value=DummyResponse(SimpleNamespace(card_id='card-id'))),
+                    aupdate=AsyncMock(return_value=DummyResponse()),
+                ),
+                card_element=SimpleNamespace(content=MagicMock(return_value=DummyResponse())),
             )
         )
 
@@ -114,7 +126,7 @@ def manifest() -> dict:
         / 'lark'
         / 'manifest.yaml'
     )
-    return yaml.safe_load(path.read_text())
+    return yaml.safe_load(path.read_text(encoding='utf-8'))
 
 
 def make_adapter(config: dict | None = None) -> LarkAdapter:
@@ -324,3 +336,550 @@ async def test_lark_send_reply_platform_api_and_modes():
     with pytest.raises(asyncio.CancelledError):
         await task
     webhook_adapter.bot._connect.assert_not_awaited()
+
+
+def test_lark_interaction_card_uses_host_callback_token_and_indexes():
+    card = build_interaction_card(
+        {
+            'title': 'Approve?',
+            'actions': [{'id': 'approve', 'label': 'Approve', 'style': 'primary'}],
+        },
+        'callback-token',
+        {'target_type': 'group', 'target_id': 'chat-1'},
+    )
+
+    assert card['schema'] == '2.0'
+    button = card['body']['elements'][-1]['columns'][0]['elements'][0]
+    assert button['behaviors'][0]['value'] == {'lbi': 'callback-token', 't': 'group', 'ck': 1, 'a': 0}
+
+
+def test_lark_interaction_card_uses_native_text_input_form():
+    card = build_interaction_card(
+        {
+            'title': 'Add context',
+            'fields': [
+                {
+                    'id': 'comment',
+                    'label': 'Comment',
+                    'type': 'textarea',
+                    'required': True,
+                    'placeholder': 'Explain the decision',
+                }
+            ],
+            'actions': [],
+        },
+        'callback-token',
+        {'target_type': 'group', 'target_id': 'chat-1'},
+    )
+
+    form = next(element for element in card['body']['elements'] if element['tag'] == 'form')
+    field, submit = form['elements']
+    assert field['tag'] == 'input'
+    assert field['input_type'] == 'multiline_text'
+    assert field['required'] is True
+    assert submit['form_action_type'] == 'submit'
+    assert submit['behaviors'][0]['value'] == {
+        'lbi': 'callback-token',
+        't': 'group',
+        'ck': 1,
+        'fm': {'lbi_field_0': 'comment'},
+        'ft': {'comment': 'textarea'},
+    }
+
+
+def test_lark_interaction_card_uses_native_select_and_declares_fields():
+    card = build_interaction_card(
+        {
+            'title': 'Priority',
+            'fields': [
+                {
+                    'id': 'priority',
+                    'label': 'Priority',
+                    'type': 'select',
+                    'required': True,
+                    'options': [
+                        {'value': 'normal', 'label': 'Normal'},
+                        {'value': 'urgent', 'label': 'Urgent'},
+                    ],
+                }
+            ],
+            'actions': [],
+        },
+        'callback-token',
+        {'target_type': 'person', 'target_id': 'user-1'},
+    )
+
+    form = next(element for element in card['body']['elements'] if element['tag'] == 'form')
+    label, select, submit = form['elements']
+    assert label == {'tag': 'markdown', 'content': '**Priority***'}
+    assert select['tag'] == 'select_static'
+    assert [option['value'] for option in select['options']] == ['normal', 'urgent']
+    assert submit['form_action_type'] == 'submit'
+    assert interaction_delivery_capabilities()['field_types'] == ['text', 'textarea', 'number', 'select']
+    assert interaction_delivery_capabilities()['supports_updates'] is True
+
+
+@pytest.mark.asyncio
+async def test_lark_interaction_request_sends_interactive_message():
+    adapter = make_adapter()
+
+    result = await adapter.call_platform_api(
+        'interaction.request',
+        {
+            'callback_token': 'callback-token',
+            'reply_target': {'target_type': 'person', 'target_id': 'user-1'},
+            'request': {
+                'interaction_id': 'form-1',
+                'title': 'Approve?',
+                'actions': [{'id': 'approve', 'label': 'Approve'}],
+                'fallback_text': 'Reply approve.',
+            },
+        },
+    )
+
+    assert result['rich'] is True
+    assert result['card_id'] == 'card-id'
+    adapter.api_client.cardkit.v1.card.acreate.assert_awaited_once()
+    request = adapter.api_client.im.v1.message.acreate.await_args.args[0]
+    assert request.receive_id_type == 'open_id'
+    assert request.request_body.msg_type == 'interactive'
+    assert json.loads(request.request_body.content) == {'type': 'card', 'data': {'card_id': 'card-id'}}
+
+
+@pytest.mark.asyncio
+async def test_lark_interaction_request_updates_existing_message():
+    adapter = make_adapter()
+
+    result = await adapter.call_platform_api(
+        'interaction.request',
+        {
+            'callback_token': 'next-token',
+            'reply_target': {'target_type': 'person', 'target_id': 'user-1'},
+            'update_target': {
+                'message_id': 'card-message-1',
+                'card_id': 'card-id',
+                'sequence': 0,
+                'rich': True,
+            },
+            'request': {
+                'interaction_id': 'form-2',
+                'title': 'Choose action',
+                'actions': [{'id': 'approve', 'label': 'Approve'}],
+                'fallback_text': 'Reply approve.',
+            },
+        },
+    )
+
+    assert result == {
+        'ok': True,
+        'message_id': 'card-message-1',
+        'card_id': 'card-id',
+        'sequence': 1,
+        'rich': True,
+        'updated': True,
+    }
+    adapter.api_client.im.v1.message.acreate.assert_not_awaited()
+    update_request = adapter.api_client.cardkit.v1.card.aupdate.await_args.args[0]
+    assert update_request.card_id == 'card-id'
+    assert update_request.request_body.sequence == 1
+    card = json.loads(update_request.request_body.card.data)
+    assert card['header']['title']['content'] == 'Choose action'
+    button = card['body']['elements'][-1]['columns'][0]['elements'][0]
+    assert button['behaviors'][0]['value']['lbi'] == 'next-token'
+
+
+@pytest.mark.asyncio
+async def test_lark_interaction_acknowledge_replaces_controls_with_summary():
+    adapter = make_adapter()
+
+    result = await adapter.call_platform_api(
+        'interaction.acknowledge',
+        {
+            'update_target': {
+                'message_id': 'card-message-1',
+                'card_id': 'card-id',
+                'sequence': 0,
+                'rich': True,
+            },
+            'request': {
+                'title': 'Manual review',
+                'fields': [{'id': 'comment', 'label': 'Comment'}],
+            },
+            'submission': {'values': {'comment': 'Looks good'}},
+        },
+    )
+
+    assert result['updated'] is True
+    update_request = adapter.api_client.cardkit.v1.card.aupdate.await_args.args[0]
+    card = json.loads(update_request.request_body.card.data)
+    content = card['body']['elements'][-1]['content']
+    assert content == '✅ Comment：Looks good'
+
+
+@pytest.mark.asyncio
+async def test_lark_interaction_keeps_prior_values_through_next_action_and_final_acknowledgement():
+    adapter = make_adapter()
+    update_target = {
+        'message_id': 'card-message-1',
+        'card_id': 'card-id',
+        'sequence': 1,
+        'rich': True,
+        'submitted_values': [{'label': 'Question', 'value': '123'}],
+    }
+
+    action_result = await adapter.call_platform_api(
+        'interaction.request',
+        {
+            'callback_token': 'next-token',
+            'reply_target': {'target_type': 'person', 'target_id': 'user-1'},
+            'update_target': update_target,
+            'request': {
+                'interaction_id': 'action-1',
+                'title': 'Manual review',
+                'actions': [{'id': 'or', 'label': 'or'}],
+                'fallback_text': 'Reply or.',
+            },
+        },
+    )
+
+    action_update = adapter.api_client.cardkit.v1.card.aupdate.await_args.args[0]
+    action_card = json.loads(action_update.request_body.card.data)
+    assert '✅ Question：123' in action_card['body']['elements'][0]['content']
+    assert action_result['submitted_values'] == [{'label': 'Question', 'value': '123'}]
+
+    final_result = await adapter.call_platform_api(
+        'interaction.acknowledge',
+        {
+            'update_target': action_result,
+            'request': {
+                'title': 'Manual review',
+                'actions': [{'id': 'or', 'label': 'or'}],
+            },
+            'submission': {'action_id': 'or', 'values': {}},
+        },
+    )
+
+    final_update = adapter.api_client.cardkit.v1.card.aupdate.await_args.args[0]
+    final_card = json.loads(final_update.request_body.card.data)
+    final_content = final_card['body']['elements'][-1]['content']
+    assert '✅ Action：or' in final_content
+    assert '✅ Question：123' in final_card['body']['elements'][0]['content']
+    assert final_result['submitted_values'] == [
+        {'label': 'Question', 'value': '123'},
+        {'label': 'Action', 'value': 'or'},
+    ]
+
+
+def test_lark_dify_layout_keeps_prompts_next_to_submitted_values():
+    prior_values = [
+        {
+            'description': '11\n请输入你的问题',
+            'label': 'us_input',
+            'value': '回复我你好',
+        }
+    ]
+    select_card = build_interaction_card(
+        {
+            'title': '人工介入',
+            'description': '请选择你的答案',
+            'fields': [
+                {
+                    'id': 'field_2',
+                    'label': 'xiala',
+                    'type': 'select',
+                    'options': [
+                        {'value': '1', 'label': '1'},
+                        {'value': '2', 'label': '2'},
+                    ],
+                }
+            ],
+            'actions': [],
+        },
+        'callback-token',
+        {'target_type': 'person', 'target_id': 'user-1'},
+        prior_values,
+    )
+
+    select_elements = select_card['body']['elements']
+    assert select_elements[0]['content'] == '11\n请输入你的问题\n✅ us_input：回复我你好'
+    assert select_elements[1]['content'] == '请选择你的答案'
+    assert select_elements[2]['tag'] == 'form'
+
+    action_card = build_interaction_card(
+        {
+            'title': '人工介入',
+            'description': None,
+            'fields': [],
+            'actions': [{'id': 'action_1', 'label': 'or'}],
+        },
+        'callback-token',
+        {'target_type': 'person', 'target_id': 'user-1'},
+        [
+            *prior_values,
+            {
+                'description': '请选择你的答案',
+                'label': 'xiala',
+                'value': '1',
+            },
+        ],
+    )
+
+    action_elements = action_card['body']['elements']
+    assert [element['content'] for element in action_elements[:2]] == [
+        '11\n请输入你的问题\n✅ us_input：回复我你好',
+        '请选择你的答案\n✅ xiala：1',
+    ]
+    assert action_elements[2]['columns'][0]['elements'][0]['text']['content'] == 'or'
+
+
+def test_lark_message_id_from_card_callback_source():
+    adapter = make_adapter()
+    callback_source = SimpleNamespace(
+        event=SimpleNamespace(context=SimpleNamespace(open_message_id='card-message-1')),
+    )
+
+    assert (
+        adapter._message_id_from_source(SimpleNamespace(message_id=None, source_platform_object=callback_source))
+        == 'card-message-1'
+    )
+    assert (
+        adapter._message_id_from_source(
+            SimpleNamespace(
+                message_id=None,
+                source_platform_object={'event': {'context': {'open_message_id': 'webhook-message-1'}}},
+            )
+        )
+        == 'webhook-message-1'
+    )
+
+
+@pytest.mark.asyncio
+async def test_lark_streaming_card_uses_strictly_increasing_sequences():
+    adapter = make_adapter()
+    adapter.card_id_dict['response-1'] = 'stream-card-1'
+    adapter.card_sequence_dict['stream-card-1'] = 0
+    adapter.message_converter.yiri2target = AsyncMock(return_value=([[{'tag': 'text', 'text': 'answer'}]], []))
+    bot_message = SimpleNamespace(resp_message_id='response-1', msg_sequence=1, tool_calls=None)
+    source = SimpleNamespace(source_platform_object=None)
+    message = platform_message.MessageChain([platform_message.Plain(text='answer')])
+
+    await adapter.reply_message_chunk(source, bot_message, message)
+    first_request = adapter.api_client.cardkit.v1.card_element.content.call_args.args[0]
+    assert first_request.request_body.sequence == 1
+
+    bot_message.msg_sequence = 2
+    await adapter.reply_message_chunk(source, bot_message, message)
+    assert adapter.api_client.cardkit.v1.card_element.content.call_count == 1
+
+    bot_message.msg_sequence = 8
+    await adapter.reply_message_chunk(source, bot_message, message)
+    second_request = adapter.api_client.cardkit.v1.card_element.content.call_args.args[0]
+    assert second_request.request_body.sequence == 2
+
+    bot_message.msg_sequence = 9
+    await adapter.reply_message_chunk(source, bot_message, message, is_final=True)
+    final_request = adapter.api_client.cardkit.v1.card_element.content.call_args.args[0]
+    assert final_request.request_body.sequence == 3
+    assert 'response-1' not in adapter.card_id_dict
+    assert 'stream-card-1' not in adapter.card_sequence_dict
+    assert 'stream-card-1' not in adapter.card_last_update_dict
+
+
+@pytest.mark.asyncio
+async def test_lark_streaming_card_updates_sparse_chunks_without_waiting_for_eighth():
+    adapter = make_adapter()
+    adapter.card_id_dict['response-1'] = 'stream-card-1'
+    adapter.card_sequence_dict['stream-card-1'] = 1
+    adapter.card_last_update_dict['stream-card-1'] = time.monotonic() - 2
+    adapter.message_converter.yiri2target = AsyncMock(return_value=([[{'tag': 'text', 'text': 'new progress'}]], []))
+    bot_message = SimpleNamespace(resp_message_id='response-1', msg_sequence=2, tool_calls=None)
+    source = SimpleNamespace(source_platform_object=None)
+    message = platform_message.MessageChain([platform_message.Plain(text='new progress')])
+
+    await adapter.reply_message_chunk(source, bot_message, message)
+
+    request = adapter.api_client.cardkit.v1.card_element.content.call_args.args[0]
+    assert request.request_body.sequence == 2
+
+
+@pytest.mark.asyncio
+async def test_lark_streaming_card_uses_cumulative_runner_content():
+    adapter = make_adapter()
+    adapter.card_id_dict['response-1'] = 'stream-card-1'
+    adapter.card_sequence_dict['stream-card-1'] = 0
+    adapter.message_converter.yiri2target = AsyncMock(
+        return_value=([[{'tag': 'text', 'text': 'latest chunk only'}]], [])
+    )
+    bot_message = SimpleNamespace(
+        resp_message_id='response-1',
+        msg_sequence=2,
+        all_content='first chunk\n\nlatest chunk only',
+        tool_calls=None,
+    )
+    source = SimpleNamespace(source_platform_object=None)
+    message = platform_message.MessageChain([platform_message.Plain(text='latest chunk only')])
+
+    await adapter.reply_message_chunk(source, bot_message, message)
+
+    request = adapter.api_client.cardkit.v1.card_element.content.call_args.args[0]
+    assert request.request_body.content == 'first chunk\n\nlatest chunk only'
+    adapter.message_converter.yiri2target.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_lark_streaming_card_first_real_runner_chunk_uses_sequence_one():
+    adapter = make_adapter()
+    adapter.card_id_dict['response-1'] = 'stream-card-1'
+    adapter.card_sequence_dict['stream-card-1'] = 0
+    adapter.message_converter.yiri2target = AsyncMock(return_value=([[{'tag': 'text', 'text': 'answer'}]], []))
+    bot_message = SimpleNamespace(resp_message_id='response-1', msg_sequence=1, tool_calls=None)
+    source = SimpleNamespace(source_platform_object=None)
+    message = platform_message.MessageChain([platform_message.Plain(text='answer')])
+
+    await adapter.reply_message_chunk(source, bot_message, message, is_final=True)
+
+    request = adapter.api_client.cardkit.v1.card_element.content.call_args.args[0]
+    assert request.request_body.sequence == 1
+
+
+@pytest.mark.asyncio
+async def test_lark_streaming_card_falls_back_to_full_card_update_when_stream_closes():
+    adapter = make_adapter()
+    adapter.card_id_dict['response-1'] = 'stream-card-1'
+    adapter.card_sequence_dict['stream-card-1'] = 1
+    adapter.card_last_update_dict['stream-card-1'] = time.monotonic() - 2
+    closed_response = DummyResponse(ok=False)
+    closed_response.code = 300309
+    closed_response.msg = 'streaming mode is closed'
+    adapter.api_client.cardkit.v1.card_element.content.return_value = closed_response
+    adapter.message_converter.yiri2target = AsyncMock(
+        return_value=([[{'tag': 'text', 'text': 'continued progress'}]], [])
+    )
+    bot_message = SimpleNamespace(resp_message_id='response-1', msg_sequence=2, tool_calls=None)
+    source = SimpleNamespace(source_platform_object=None)
+    message = platform_message.MessageChain([platform_message.Plain(text='continued progress')])
+
+    await adapter.reply_message_chunk(source, bot_message, message)
+
+    update_request = adapter.api_client.cardkit.v1.card.aupdate.await_args.args[0]
+    updated_card = json.loads(update_request.request_body.card.data)
+    assert update_request.request_body.sequence == 3
+    assert updated_card['config'] == {'update_multi': True}
+    assert updated_card['body']['elements'][0]['content'] == 'continued progress'
+    assert 'stream-card-1' in adapter.closed_streaming_cards
+
+    bot_message.msg_sequence = 3
+    adapter.card_last_update_dict['stream-card-1'] = time.monotonic() - 2
+    await adapter.reply_message_chunk(source, bot_message, message, is_final=True)
+
+    assert adapter.api_client.cardkit.v1.card_element.content.call_count == 1
+    assert adapter.api_client.cardkit.v1.card.aupdate.await_count == 2
+    assert 'stream-card-1' not in adapter.closed_streaming_cards
+
+
+def test_lark_interaction_callback_builds_scoped_host_event():
+    callback = SimpleNamespace(
+        event=SimpleNamespace(
+            action=SimpleNamespace(value={'lbi': 'callback-token', 't': 'group', 'a': 1}),
+            operator=SimpleNamespace(open_id='user-1'),
+            context=SimpleNamespace(open_chat_id='chat-1', open_message_id='card-message-1'),
+        )
+    )
+
+    event = interaction_event_from_callback(callback)
+
+    assert event.action == 'interaction.submitted'
+    assert event.data['callback_token'] == 'callback-token'
+    assert event.data['action_ref'] == 1
+    assert event.data['actor_id'] == 'user-1'
+    assert event.data['target_id'] == 'chat-1'
+    assert event.data['message_id'] == 'card-message-1'
+
+
+def test_lark_native_form_callback_submits_typed_field_value():
+    callback = SimpleNamespace(
+        event=SimpleNamespace(
+            action=SimpleNamespace(
+                value={
+                    'lbi': 'callback-token',
+                    't': 'person',
+                    'fm': {'lbi_field_0': 'score'},
+                    'ft': {'score': 'number'},
+                },
+                form_value={'lbi_field_0': '42.5'},
+            ),
+            operator=SimpleNamespace(open_id='user-1'),
+            context=SimpleNamespace(open_chat_id='chat-1'),
+        )
+    )
+
+    event = interaction_event_from_callback(callback)
+
+    assert event.data['callback_token'] == 'callback-token'
+    assert event.data['target_type'] == 'person'
+    assert event.data['target_id'] == 'user-1'
+    assert event.data['values'] == {'score': 42.5}
+
+
+@pytest.mark.asyncio
+async def test_lark_webhook_dispatches_native_form_submission():
+    adapter = make_adapter({'enable-webhook': True})
+    calls: list[platform_events.Event] = []
+
+    async def listener(event, adapter):
+        calls.append(event)
+
+    adapter.register_listener(platform_events.PlatformSpecificEvent, listener)
+    payload = {
+        'schema': '2.0',
+        'header': {'event_type': 'card.action.trigger'},
+        'event': {
+            'action': {
+                'value': {
+                    'lbi': 'callback-token',
+                    't': 'group',
+                    'fm': {'lbi_field_0': 'comment'},
+                    'ft': {'comment': 'textarea'},
+                },
+                'form_value': {'lbi_field_0': 'Looks good'},
+            },
+            'operator': {'open_id': 'user-1'},
+            'context': {'open_chat_id': 'chat-1', 'open_message_id': 'card-message-1'},
+        },
+    }
+    request = SimpleNamespace(json=asyncio.sleep(0, result=payload))
+
+    response = await adapter.handle_unified_webhook('bot-1', '', request)
+
+    assert response['toast'] == {'type': 'success', 'content': 'Submitted / 已提交'}
+    assert response['card']['type'] == 'raw'
+    assert response['card']['data']['elements'][0]['text']['content'] == '**Submitted / 已提交**'
+    assert len(calls) == 1
+    assert calls[0].action == 'interaction.submitted'
+    assert calls[0].data['callback_token'] == 'callback-token'
+    assert calls[0].data['values'] == {'comment': 'Looks good'}
+    assert calls[0].data['message_id'] == 'card-message-1'
+
+
+@pytest.mark.asyncio
+async def test_lark_webhook_cardkit_submission_uses_async_card_update_only():
+    adapter = make_adapter({'enable-webhook': True})
+
+    async def listener(event, adapter):
+        pass
+
+    adapter.register_listener(platform_events.PlatformSpecificEvent, listener)
+    payload = {
+        'schema': '2.0',
+        'header': {'event_type': 'card.action.trigger'},
+        'event': {
+            'action': {'value': {'lbi': 'callback-token', 't': 'group', 'ck': 1, 'a': 0}},
+            'operator': {'open_id': 'user-1'},
+            'context': {'open_chat_id': 'chat-1', 'open_message_id': 'card-message-1'},
+        },
+    }
+    request = SimpleNamespace(json=asyncio.sleep(0, result=payload))
+
+    response = await adapter.handle_unified_webhook('bot-1', '', request)
+
+    assert response == {'toast': {'type': 'success', 'content': 'Submitted / 已提交'}}
