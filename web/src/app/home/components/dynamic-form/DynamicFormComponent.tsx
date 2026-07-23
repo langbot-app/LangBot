@@ -15,6 +15,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import DynamicFormItemComponent from '@/app/home/components/dynamic-form/DynamicFormItemComponent';
+import { normalizeDynamicFormValuesForSave } from '@/app/home/components/dynamic-form/DynamicFormSaveValues';
 import QrCodeLoginDialog, {
   QrLoginPlatform,
 } from '@/app/home/components/qrcode-login/QrCodeLoginDialog';
@@ -631,12 +632,9 @@ export default function DynamicFormComponent({
     // even if the user saves without modifying any field.
     // form.watch(callback) only fires on subsequent changes, not on mount.
     const formValues = form.getValues();
-    const initialFinalValues = editableValueSpecs.reduce(
-      (acc, item) => {
-        acc[item.name] = formValues[item.name] ?? item.default;
-        return acc;
-      },
-      {} as Record<string, object>,
+    const initialFinalValues = normalizeDynamicFormValuesForSave(
+      editableValueSpecs,
+      formValues as Record<string, unknown>,
     );
     onSubmitRef.current?.(initialFinalValues);
 
@@ -651,12 +649,9 @@ export default function DynamicFormComponent({
 
     const subscription = form.watch(() => {
       const formValues = form.getValues();
-      const finalValues = editableValueSpecs.reduce(
-        (acc, item) => {
-          acc[item.name] = formValues[item.name] ?? item.default;
-          return acc;
-        },
-        {} as Record<string, object>,
+      const finalValues = normalizeDynamicFormValuesForSave(
+        editableValueSpecs,
+        formValues as Record<string, unknown>,
       );
       onSubmitRef.current?.(finalValues);
       previousInitialValues.current = finalValues as Record<string, object>;

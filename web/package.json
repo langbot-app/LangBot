@@ -6,6 +6,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
+    "test:unit": "node --test tests/unit/*.test.mjs",
     "test:e2e": "playwright test",
     "lint": "eslint .",
     "format": "prettier --write ."
