@@ -1776,18 +1776,31 @@ class TestInboundOutboundRoundTrip:
 
         calls = []
 
-        async def fake_execute_tool(parameters, q):
-            calls.append(parameters['command'])
-            if 'os.walk' in parameters['command']:
-                return {
-                    'ok': True,
-                    'stdout': '[{"name": "out.png", "b64": "QUJD"}]',
-                    'stderr': '',
-                }
-            # the rm -rf cleanup call
-            return {'ok': True, 'stdout': '', 'stderr': ''}
+        from langbot_plugin.box.models import BoxExecutionResult, BoxExecutionStatus
 
-        service.execute_tool = AsyncMock(side_effect=fake_execute_tool)
+        async def fake_client_execute(spec):
+            cmd = spec.cmd
+            calls.append(cmd)
+            if 'os.walk' in cmd:
+                return BoxExecutionResult(
+                    session_id='s',
+                    backend_name='test',
+                    status=BoxExecutionStatus.COMPLETED,
+                    exit_code=0,
+                    stdout='[{"name": "out.png", "b64": "QUJD"}]',
+                    duration_ms=10,
+                )
+            # the rm -rf cleanup call
+            return BoxExecutionResult(
+                session_id='s',
+                backend_name='test',
+                status=BoxExecutionStatus.COMPLETED,
+                exit_code=0,
+                stdout='',
+                duration_ms=10,
+            )
+
+        service.client.execute = AsyncMock(side_effect=fake_client_execute)
 
         attachments = await service.collect_outbound_attachments(query)
         assert len(attachments) == 1
@@ -1806,13 +1819,30 @@ class TestInboundOutboundRoundTrip:
 
         calls = []
 
-        async def fake_execute_tool(parameters, q):
-            calls.append(parameters['command'])
-            if 'os.walk' in parameters['command']:
-                return {'ok': True, 'stdout': '[]', 'stderr': ''}
-            return {'ok': True, 'stdout': '', 'stderr': ''}
+        from langbot_plugin.box.models import BoxExecutionResult, BoxExecutionStatus
 
-        service.execute_tool = AsyncMock(side_effect=fake_execute_tool)
+        async def fake_client_execute(spec):
+            cmd = spec.cmd
+            calls.append(cmd)
+            if 'os.walk' in cmd:
+                return BoxExecutionResult(
+                    session_id='s',
+                    backend_name='test',
+                    status=BoxExecutionStatus.COMPLETED,
+                    exit_code=0,
+                    stdout='[]',
+                    duration_ms=10,
+                )
+            return BoxExecutionResult(
+                session_id='s',
+                backend_name='test',
+                status=BoxExecutionStatus.COMPLETED,
+                exit_code=0,
+                stdout='',
+                duration_ms=10,
+            )
+
+        service.client.execute = AsyncMock(side_effect=fake_client_execute)
         assert await service.collect_outbound_attachments(query) == []
         # cleanup (rm -rf) is issued unconditionally now
         assert any('rm -rf' in c for c in calls)

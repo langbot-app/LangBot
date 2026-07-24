@@ -744,8 +744,9 @@ class BoxService:
     async def _read_outbox_via_exec(self, query: pipeline_query.Query) -> list[dict]:
         """Fallback: read the outbox over the exec channel (E2B / remote).
 
-        Note: exec stdout is truncated by ``output_limit_chars``, so this path
-        only reliably transfers small files. The host path is preferred.
+        Uses ``client.execute`` directly (bypassing ``_serialize_result``)
+        so stdout is NOT truncated by ``output_limit_chars`` - the raw
+        base64 payload can be far larger than the 4000-char display limit.
         """
         import json as _json
 
@@ -771,14 +772,22 @@ class BoxService:
             "            out.append({'name': rel, 'b64': base64.b64encode(data).decode('ascii')})\n"
             'print(json.dumps(out))\n'
         )
-        result = await self.execute_tool(
-            {'command': f"python3 - <<'LBPY'\n{script}\nLBPY", 'timeout_sec': 120},
-            query,
-        )
-        if not result.get('ok'):
+        spec_payload: dict = {
+            'cmd': f"python3 - <<'LBPY'\n{script}\nLBPY",
+            'timeout_sec': 120,
+            'session_id': self.resolve_box_session_id(query),
+        }
+        if 'extra_mounts' not in spec_payload:
+            spec_payload['extra_mounts'] = self.build_skill_extra_mounts(query)
+        try:
+            spec = self.build_spec(spec_payload)
+            result = await self.client.execute(spec)
+        except Exception:
+            return []
+        if not result.ok:
             return []
         try:
-            return _json.loads(str(result.get('stdout') or '').strip().splitlines()[-1])
+            return _json.loads(str(result.stdout or '').strip().splitlines()[-1])
         except Exception:
             return []
 
