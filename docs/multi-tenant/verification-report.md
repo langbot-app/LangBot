@@ -12,14 +12,17 @@ production Cloud deployment may enable `CLOUD_V2_ENABLED` yet.
 
 ## Repository refs and scope
 
-- LangBot Core: branch `feat/multi-tenants`
-- langbot-plugin-sdk: branch `feat/multi-tenants`, commit
-  `e7d946af4a6b1494fbe74627c1815ace19ac8991`
-- langbot-space: branch `feat/cloud-v2-control-plane`
+- LangBot Core: branch `feat/multi-tenants`, commit
+  `e8a09b7537ef285a967f24add05fdb9bb557b97e`
+- langbot-plugin-sdk: branch `feat/multi-tenants`, head
+  `ca545d079ca1657a5d4efb4e31bfeafe1a374a46`
+- langbot-space: branch `feat/cloud-v2-control-plane`, head
+  `ce41ff370e94a405f70e2fbb2f99b0946e0e0387`
 - Closed Core adapter: `langbot-space/cloud-adapter`
 - SDK protocol/package version: `0.4.18`
 
-Core pins the exact pushed SDK commit above. Cloud v2 is a greenfield
+Core pins SDK commit `e7d946af4a6b1494fbe74627c1815ace19ac8991`;
+the SDK branch head adds CI-only follow-up. Cloud v2 is a greenfield
 multi-Workspace deployment and does not provision one Pod, database, queue, or
 Runtime per tenant. Legacy Space Pods remain a compatibility surface only.
 
@@ -50,6 +53,15 @@ Runtime per tenant. Legacy Space Pods remain a compatibility surface only.
 - Subscription changes use Workspace advisory locking, expected entitlement
   revision, one-live-order uniqueness, idempotent usage ingestion, period-end
   downgrade, renewal, and lazy expiry settlement.
+- Account provisioning and quota projection into New API use PostgreSQL
+  transactional outboxes, replica-safe claims, retry/backoff, revision fencing,
+  and database-enforced identity/user/token ownership. No additional service is
+  introduced.
+- EPay and Stripe callbacks are bound to the locked order's provider identity,
+  amount, currency, channel/session, expiry, and provider transaction ID.
+  Replays are idempotent, EPay is CNY-only, credential rotation is supported by
+  encrypted per-order snapshots, and permanent fulfillment conflicts are
+  retained for reconciliation.
 - Directory snapshot and per-Workspace delta reads use repeatable-read,
   read-only transactions with a high-water cursor. Core stores a replica-local
   consumer cursor and shared PostgreSQL projection state, snapshot coverage,
@@ -152,8 +164,10 @@ absolute nsjail mount-source normalization.
 ### Space backend, adapter, and frontend
 
 ```text
-go test ./...
-  passed
+MIGRATIONS_TEST_DSN=... MIGRATIONS_TEST_DSN_FRESH=... \
+  go test -count=1 ./...
+go vet ./...
+  passed against PostgreSQL 16
 
 fresh PostgreSQL app startup, partial-baseline migration,
 Cloud v2 migration rerun, and control-plane integration
@@ -163,14 +177,15 @@ closed adapter pytest and Ruff
   passed
 
 pnpm exec tsc --noEmit
-targeted ESLint for changed Cloud files
-pnpm build
-  passed; 47 routes generated
+pnpm check:i18n
+pnpm check:cloud-checkout-currency
+  passed; 7 checkout/currency cases
 ```
 
-The PostgreSQL checks started from an empty database and verified all 32
+The PostgreSQL checks started from an empty database and verified all 34
 registered migrations in order, Cloud v2 Free/Pro seeds, legacy plan seeds,
-Cloud columns/indexes, and repeatable reruns.
+Cloud columns/indexes, payment callback constraints, New API outbox/ownership
+constraints, and repeatable reruns.
 
 ## Cross-service and browser E2E
 
@@ -193,15 +208,24 @@ database:
 
 A real local browser operated the Space frontend and backend:
 
-1. An owner logged in and saw the automatically created personal Workspace.
-2. A second Account invited the owner as admin to another Workspace.
-3. The selector showed both Workspaces and switched between them without stale
-   subscription or usage state crossing the selection.
-4. Each Workspace showed its own Free entitlement and limits.
-5. Pro checkout opened for the selected Workspace. With no configured payment
-   channels, confirmation was visibly disabled and no order was created.
-6. No browser errors occurred; only the pre-existing i18next warning for the
-   short `en` locale was observed.
+1. An existing legacy-Pod owner logged in and saw the automatically created
+   personal Workspace on Free.
+2. The page showed Free and Pro Workspace plans while retaining the legacy Pro
+   instance card, its Online state, URL, version, billing period, and actions.
+3. Annual Pro checkout through the configured EPay/Alipay rail was re-quoted
+   from the displayed USD plan price to `¥490.00 CNY`.
+4. The browser reached the EPay gateway with `money=490.00`; no USD amount was
+   sent through the CNY-only rail.
+5. A valid signed `TRADE_SUCCESS` callback returned `success`. An exact replay
+   also returned `success`, leaving one successful order and one Pro Workspace
+   subscription.
+6. Refreshing payment state cleared the pending indicator. The page then showed
+   the Pro annual period and managed-sandbox entitlement while the legacy Pod
+   remained Online.
+
+The browser run used the real Space UI and HTTP handlers. Its disposable local
+development harness added a same-origin Next.js rewrite only in the temporary
+worktree; that harness change was removed after the run.
 
 The legacy feature-flag branch was then covered by API/static checks and the
 production build: false or missing `cloud_v2_enabled` renders the original
@@ -233,13 +257,8 @@ Cloud v2 must remain disabled until these gates are closed:
   Runtime-level circuit breaker, then passes systemic-failure injection.
 - M0 rolls Core and Plugin Runtime together until authenticated Runtime takeover
   or an owner lease/fencing protocol exists.
-- Account registration moves New API provisioning to an in-process,
-  transactional outbox reconciler keyed by Space Account UUID.
-- EPay and Stripe fulfillment bind provider identity, amount, currency,
-  channel/session, payment status, and expiry to the locked order transaction;
-  provider transaction IDs are unique and replay-safe.
-- Payment-session creation and stale `processing` orders gain in-process
-  reconciliation.
+- Payment operations add scheduled reconciliation and alerting for stale
+  `processing` orders and persisted permanent fulfillment conflicts.
 - Cloud v2 subscription service periods are stored immutably and included in
   recognized-revenue reporting.
 - Production migration Job, backup/rollback, PostgreSQL credential/network
