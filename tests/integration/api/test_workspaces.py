@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 import sqlalchemy
@@ -97,6 +98,19 @@ def _auth(token: str, workspace_uuid: str | None = None) -> dict[str, str]:
     if workspace_uuid is not None:
         headers['X-Workspace-Id'] = workspace_uuid
     return headers
+
+
+async def test_account_bootstrap_uses_the_account_resolved_from_the_token(workspace_api):
+    application, client, _, owner_token = workspace_api
+    account = await application.user_service.get_authenticated_account(owner_token)
+
+    application.user_service.get_authenticated_account = AsyncMock(return_value=account)
+    application.user_service.get_user_by_email = AsyncMock(return_value=None)
+
+    response = await client.get('/api/v1/workspaces/bootstrap', headers=_auth(owner_token))
+
+    assert response.status_code == 200
+    application.user_service.get_user_by_email.assert_not_awaited()
 
 
 async def test_fresh_sqlite_login_returns_current_workspace_and_user_info(workspace_api):

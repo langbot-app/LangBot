@@ -61,7 +61,7 @@ def _invitation_payload(invitation: WorkspaceInvitation) -> dict[str, typing.Any
 class WorkspacesRouterGroup(group.RouterGroup):
     async def initialize(self) -> None:
         @self.route('/bootstrap', methods=['GET'], auth_type=group.AuthType.ACCOUNT_TOKEN)
-        async def _(user_email: str) -> typing.Any:
+        async def _(account) -> typing.Any:
             """List the active Workspaces available to an authenticated Account.
 
             This account-only endpoint intentionally runs before Workspace
@@ -69,9 +69,6 @@ class WorkspacesRouterGroup(group.RouterGroup):
             choose a default Workspace for a multi-membership Account.
             """
 
-            account = await self.ap.user_service.get_user_by_email(user_email)
-            if account is None:
-                return self.http_status(401, 'invalid_authentication', 'Account not found')
             accesses = await self.ap.workspace_collaboration_service.list_account_workspaces(account.uuid)
             return self.success(
                 data={
@@ -88,10 +85,7 @@ class WorkspacesRouterGroup(group.RouterGroup):
             )
 
         @self.route('', methods=['GET'], auth_type=group.AuthType.ACCOUNT_TOKEN)
-        async def _(user_email: str) -> typing.Any:
-            account = await self.ap.user_service.get_user_by_email(user_email)
-            if account is None:
-                return self.http_status(401, 'invalid_authentication', 'Account not found')
+        async def _(account) -> typing.Any:
             accesses = await self.ap.workspace_collaboration_service.list_account_workspaces(account.uuid)
             return self.success(data={'workspaces': [_workspace_payload(access.workspace) for access in accesses]})
 

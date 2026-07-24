@@ -85,8 +85,8 @@ class UserRouterGroup(group.RouterGroup):
             return self.success(data={'token': token})
 
         @self.route('/check-token', methods=['GET'], auth_type=group.AuthType.ACCOUNT_TOKEN)
-        async def _(user_email: str) -> str:
-            token = await self.ap.user_service.generate_jwt_token(user_email)
+        async def _(account) -> str:
+            token = await self.ap.user_service.generate_jwt_token(account)
 
             return self.success(data={'token': token})
 

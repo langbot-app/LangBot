@@ -93,11 +93,11 @@ class RouterGroup(abc.ABC):
                         return self.http_status(401, -1, 'No valid user token provided')
 
                     try:
-                        _, user_email = await self._authenticate_account(token)
+                        account, user_email = await self._authenticate_account(token)
                         # Account-token routes deliberately stop before Workspace
                         # selection. They may bootstrap a selector, but cannot
                         # receive RequestContext or enforce Workspace permissions.
-                        self._inject_handler_context(f, kwargs, user_email, None)
+                        self._inject_handler_context(f, kwargs, user_email, None, account)
                     except Exception as e:
                         return self._auth_error_response(e)
 
@@ -357,10 +357,13 @@ class RouterGroup(abc.ABC):
         kwargs: dict[str, typing.Any],
         user_email: str | None,
         request_context: RequestContext | None,
+        account: typing.Any = None,
     ) -> None:
-        parameters = handler.__code__.co_varnames
+        parameters = inspect.signature(handler).parameters
         if user_email is not None and 'user_email' in parameters:
             kwargs['user_email'] = user_email
+        if account is not None and 'account' in parameters:
+            kwargs['account'] = account
         if request_context is not None:
             if 'request_context' in parameters:
                 kwargs['request_context'] = request_context
