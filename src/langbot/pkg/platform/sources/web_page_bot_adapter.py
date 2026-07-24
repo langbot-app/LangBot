@@ -63,10 +63,11 @@ class WebPageBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
         message: platform_message.MessageChain,
         quote_origin: bool = False,
         is_final: bool = False,
+        keep_stream: bool = False,
     ) -> dict:
         if self._ws_adapter is not None:
             return await self._ws_adapter.reply_message_chunk(
-                message_source, bot_message, message, quote_origin, is_final
+                message_source, bot_message, message, quote_origin, is_final, keep_stream=keep_stream
             )
         return {}
 

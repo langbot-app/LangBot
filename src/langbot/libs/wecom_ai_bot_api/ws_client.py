@@ -433,7 +433,9 @@ class WecomBotWsClient:
         body['chatid'] = chat_id
         return await self._send_reply(req_id, body, cmd=CMD_SEND_MSG)
 
-    async def push_stream_chunk(self, msg_id: str, content: str, is_final: bool = False) -> bool:
+    async def push_stream_chunk(
+        self, msg_id: str, content: str, is_final: bool = False, keep_stream: bool = False
+    ) -> bool:
         """Push a streaming chunk for a given message ID.
 
         Compatible interface with WecomBotClient.push_stream_chunk.
@@ -442,6 +444,9 @@ class WecomBotWsClient:
             msg_id: The original message ID.
             content: The cumulative content from the pipeline.
             is_final: Whether this is the final chunk.
+            keep_stream: When True, keep the stream session alive even on
+                is_final so a subsequent round (e.g. tool-call loop) can
+                reuse the same stream_id.
 
         Returns:
             True if the stream session exists and chunk was sent.
@@ -490,7 +495,7 @@ class WecomBotWsClient:
             # every frame must contain the complete snapshot, not only a delta.
             await self.reply_stream(req_id, stream_id, next_content, finish=is_final, feedback_id=feedback_id)
             self._stream_last_content[msg_id] = next_content
-            if is_final:
+            if is_final and not keep_stream:
                 self._stream_ids.pop(msg_id, None)
                 self._stream_last_content.pop(msg_id, None)
                 self._stream_sessions.pop(msg_id, None)

@@ -230,6 +230,7 @@ class FakePlatform:
         message: platform_message.MessageChain,
         quote_origin: bool = False,
         is_final: bool = False,
+        keep_stream: bool = False,
     ):
         """Simulate streaming reply (captures for assertions)."""
         if self._raise_error:
@@ -244,6 +245,7 @@ class FakePlatform:
                 'message': message,
                 'quote_origin': quote_origin,
                 'is_final': is_final,
+                'keep_stream': keep_stream,
             }
         )
 
