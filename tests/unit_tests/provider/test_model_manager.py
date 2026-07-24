@@ -8,6 +8,7 @@ and error handling without calling real LLM APIs.
 from __future__ import annotations
 
 import pytest
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 from langbot.pkg.provider.modelmgr.modelmgr import ModelManager
@@ -68,6 +69,20 @@ async def test_model_manager_skips_space_sync_when_disabled(mock_app_for_modelmg
 
     # Should not call space_service if disabled
     app.space_service.get_models.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_model_manager_skips_legacy_space_sync_in_cloud_runtime(mock_app_for_modelmgr):
+    """Cloud startup must not resolve an OSS-local Workspace for legacy model sync."""
+    app = mock_app_for_modelmgr
+    app.instance_config.data = {'space': {'disable_models_service': False}}
+    app.persistence_mgr.mode = SimpleNamespace(value='cloud_runtime')
+
+    model_mgr = ModelManager(app)
+    model_mgr.load_models_from_db = AsyncMock()
+    await model_mgr.initialize()
+
+    app.workspace_service.get_local_execution_binding.assert_not_awaited()
 
 
 # ============================================================================

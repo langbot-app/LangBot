@@ -161,9 +161,14 @@ class ModelManager:
             self.ap.logger.info('LangBot Space Models service is disabled, skipping sync.')
             return
 
-        # Space model synchronization is a legacy OSS-singleton facility. A
-        # cloud instance must receive tenant model projections from its control
-        # plane and must never infer one Workspace for this global operation.
+        # Space model synchronization is a legacy OSS-singleton facility. Cloud
+        # receives tenant model projections from its control plane and must not
+        # resolve an OSS-local Workspace outside a tenant-scoped unit of work.
+        cloud_runtime = getattr(getattr(self.ap.persistence_mgr, 'mode', None), 'value', None) == 'cloud_runtime'
+        if cloud_runtime:
+            self.ap.logger.info('Skipping legacy LangBot Space model sync in Cloud Runtime.')
+            return
+
         try:
             binding = await self.ap.workspace_service.get_local_execution_binding()
         except WorkspaceError as exc:
