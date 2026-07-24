@@ -351,6 +351,7 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
             make_connection_failed_callback=on_connect_failed,
             additional_headers=self.get_control_headers(),
         )
+        self._ctrl = ctrl
         self._ctrl_task = asyncio.create_task(
             ctrl.run(self._make_connection_callback(transport_name, connected, connect_error, self._generation))
         )

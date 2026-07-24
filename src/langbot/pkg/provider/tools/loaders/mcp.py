@@ -33,7 +33,13 @@ from ....workspace.errors import WorkspaceError, WorkspaceInvariantError
 import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
 from ....entity.persistence import mcp as persistence_mcp
-from .mcp_stdio import BoxStdioSessionRuntime, MCPServerBoxConfig, MCPSessionErrorPhase, _ColdStartRetry  # noqa: F401
+from .mcp_stdio import (
+    BoxStdioSessionRuntime,
+    MCPServerBoxConfig as MCPServerBoxConfig,  # noqa: F401 - public re-export
+    MCPSessionErrorPhase,
+    _ColdStartRetry,
+    _get_default_memory_mb,
+)
 from .mcp_policy import require_stdio_mcp_enabled, stdio_mcp_enabled
 
 # Synthesized LLM tools for MCP resources (not from server tools/list).
@@ -320,6 +326,26 @@ class RuntimeMCPSession:
 
         self._box_stdio_runtime = BoxStdioSessionRuntime(self)
         self.box_config = self._box_stdio_runtime.config
+
+    def _parse_tool_call_timeout(self, value: typing.Any) -> float:
+        """Return a safe tool-call timeout; zero explicitly disables it."""
+
+        try:
+            timeout = -1 if isinstance(value, bool) else float(value)
+            if timeout > 0:
+                # Validate the exact conversion used for each call here, so a
+                # finite-but-enormous manual config cannot fail at invocation.
+                timedelta(seconds=timeout)
+        except (TypeError, ValueError, OverflowError):
+            timeout = -1
+
+        if not math.isfinite(timeout) or timeout < 0:
+            self.ap.logger.warning(
+                f'Invalid MCP tool call timeout {value!r} for {self.server_name}; '
+                f'using {MCP_TOOL_CALL_TIMEOUT_DEFAULT_SECONDS:g} seconds'
+            )
+            return MCP_TOOL_CALL_TIMEOUT_DEFAULT_SECONDS
+        return timeout
 
     async def _assert_execution_active(self) -> None:
         """Fail closed when this long-lived session belongs to a stale placement."""
@@ -723,7 +749,11 @@ class RuntimeMCPSession:
                         self.status = MCPSessionStatus.CONNECTING
                         self.error_message = None
                         self.error_phase = None
-                        await asyncio.sleep(1)
+                        try:
+                            await self._sleep_with_execution_fence(1)
+                        except WorkspaceError as fence_error:
+                            self._stop_for_stale_execution(fence_error)
+                            return
                         continue
                     # Explicitly disabled Box is a deliberate refusal, not a
                     # transient failure. Surface it immediately without log
@@ -1082,7 +1112,12 @@ class RuntimeMCPSession:
 
             try:
                 await self._assert_execution_active()
-                result = await self.session.call_tool(tool_name, arguments)
+                read_timeout = timedelta(seconds=self.tool_call_timeout_sec) if self.tool_call_timeout_sec > 0 else None
+                result = await self.session.call_tool(
+                    tool_name,
+                    arguments,
+                    read_timeout_seconds=read_timeout,
+                )
                 await self._assert_execution_active()
             except Exception as e:
                 if self._is_tool_call_timeout(e):
@@ -2144,7 +2179,15 @@ class MCPLoader(loader.ToolLoader):
     async def shutdown(self):
         """关闭所有工具"""
         self.ap.logger.info('Shutting down all MCP sessions...')
-        for key, session in list(self.sessions.items()):
+
+        hosted_tasks = [task for task in self._hosted_mcp_tasks if not task.done()]
+        for task in hosted_tasks:
+            task.cancel()
+        if hosted_tasks:
+            await asyncio.gather(*hosted_tasks, return_exceptions=True)
+        self._hosted_mcp_tasks.clear()
+
+        async def shutdown_session(session: RuntimeMCPSession) -> None:
             try:
                 await session.shutdown()
                 self.ap.logger.debug(f'Shutdown MCP session: {session.server_name}')
@@ -2152,5 +2195,7 @@ class MCPLoader(loader.ToolLoader):
                 self.ap.logger.error(
                     f'Error shutting down MCP session {session.server_name}: {e}\n{traceback.format_exc()}'
                 )
+
+        await asyncio.gather(*(shutdown_session(session) for session in list(self.sessions.values())))
         self.sessions.clear()
         self.ap.logger.info('All MCP sessions shutdown complete')

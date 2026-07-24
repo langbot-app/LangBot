@@ -48,6 +48,7 @@ from ..skill import manager as skill_mgr
 from ..workspace import service as workspace_service_module
 from ..workspace import collaboration as workspace_collaboration_module
 from ..cloud import bootstrap as cloud_bootstrap_module
+from ..cloud import directory_projection as cloud_directory_projection_module
 from ..cloud import entitlements as cloud_entitlements_module
 from ..api.http.context import ExecutionContext, PrincipalContext, PrincipalType
 
@@ -132,7 +133,11 @@ class Application:
 
     deployment_admission: cloud_bootstrap_module.DeploymentAdmissionGuard = None
 
+    manifest_refresh_service: cloud_bootstrap_module.CloudManifestRefreshService | None = None
+
     entitlement_resolver: cloud_entitlements_module.EntitlementResolver | None = None
+
+    directory_projection_service: cloud_directory_projection_module.DirectoryProjectionService | None = None
 
     vector_db_mgr: vectordb_mgr.VectorDBManager = None
 
@@ -189,6 +194,19 @@ class Application:
 
     async def run(self):
         try:
+            if self.directory_projection_service is not None:
+                self.task_mgr.create_task(
+                    self.directory_projection_service.run(),
+                    name='cloud-directory-projection',
+                    scopes=[core_entities.LifecycleControlScope.APPLICATION],
+                )
+            if self.manifest_refresh_service is not None:
+                self.task_mgr.create_task(
+                    self.manifest_refresh_service.run(),
+                    name='cloud-manifest-refresh',
+                    scopes=[core_entities.LifecycleControlScope.APPLICATION],
+                )
+
             await self.plugin_connector.initialize_plugins()
 
             # 后续可能会允许动态重启其他任务
@@ -374,6 +392,10 @@ class Application:
             if self.plugin_connector is not None:
                 with contextlib.suppress(Exception):
                     await self.plugin_connector.aclose()
+            manifest_provider = getattr(self.deployment, 'manifest_provider', None)
+            if manifest_provider is not None:
+                with contextlib.suppress(Exception):
+                    await manifest_provider.aclose()
 
             if self.task_mgr is not None:
                 tasks = [wrapper.task for wrapper in self.task_mgr.tasks if not wrapper.task.done()]

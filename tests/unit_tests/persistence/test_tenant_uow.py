@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextvars
+import datetime
 from types import SimpleNamespace
 
 import pytest
@@ -15,6 +16,10 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, registry, rel
 from sqlalchemy.sql import quoted_name
 
 from langbot.pkg.core.task_boundary import create_detached_task
+from langbot.pkg.entity.persistence.cloud_directory import (
+    DirectoryProjectionInbox,
+    DirectoryProjectionState,
+)
 from langbot.pkg.entity.persistence.user import User
 from langbot.pkg.persistence.mgr import PersistenceManager, PersistenceMode
 from langbot.pkg.persistence.tenant_uow import (
@@ -155,6 +160,54 @@ async def test_manager_reuses_one_session_and_rejects_cross_workspace(tmp_path) 
 
         async with engine.connect() as conn:
             assert (await conn.execute(sa.select(table.c.id))).scalars().all() == [1]
+    finally:
+        await engine.dispose()
+
+
+async def test_directory_projection_uow_is_instance_scoped_and_not_workspace_nestable(tmp_path) -> None:
+    engine = create_async_engine(f'sqlite+aiosqlite:///{tmp_path / "directory-projection-uow.db"}')
+    manager = PersistenceManager(object(), mode=PersistenceMode.CLOUD_RUNTIME)
+    manager.db = SimpleNamespace(get_engine=lambda: engine)
+    fingerprint = 'a' * 64
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(DirectoryProjectionState.__table__.create)
+            await conn.run_sync(DirectoryProjectionInbox.__table__.create)
+
+        async with manager.directory_projection_uow('instance-a') as uow:
+            assert manager.current_scope() is not None
+            assert manager.current_scope().kind is PersistenceScopeKind.DIRECTORY_PROJECTION
+            assert manager.current_scope().settings == (('langbot.directory_instance_uuid', 'instance-a'),)
+            manager.require_current_session(PersistenceScopeKind.DIRECTORY_PROJECTION)
+            uow.session.add(
+                DirectoryProjectionState(
+                    instance_uuid='instance-a',
+                    cursor=1,
+                    snapshot_fingerprint=fingerprint,
+                    last_applied_at=datetime.datetime.now(datetime.UTC),
+                )
+            )
+            uow.session.add(
+                DirectoryProjectionInbox(
+                    instance_uuid='instance-a',
+                    event_uuid='00000000-0000-0000-0000-000000000001',
+                    cursor=1,
+                    event_type='workspace.changed',
+                    revision=1,
+                    fingerprint=fingerprint,
+                )
+            )
+            with pytest.raises(CrossScopeTransactionError, match='while directory_projection scope is active'):
+                async with manager.tenant_uow('workspace-a'):
+                    pass
+
+        async with manager.tenant_scope('workspace-a'):
+            with pytest.raises(CrossScopeTransactionError, match='while workspace scope is active'):
+                async with manager.directory_projection_uow('instance-a'):
+                    pass
+
+        with pytest.raises(ValueError, match='must not be empty'):
+            manager.directory_projection_uow('  ')
     finally:
         await engine.dispose()
 

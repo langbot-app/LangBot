@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import importlib.metadata
 import inspect
@@ -7,9 +8,10 @@ import os
 import threading
 import time
 from collections.abc import Awaitable, Callable
-from typing import Any, Protocol
+from typing import Any, Protocol, runtime_checkable
 
 from ..workspace.policy import CloudWorkspacePolicy, SingleWorkspacePolicy
+from .directory import DirectoryProjectionProvider
 from .entitlements import EntitlementProvider, OpenSourceEntitlementProvider
 
 
@@ -26,6 +28,17 @@ class CloudRuntimeUnavailableError(CloudBootstrapError):
     """The verified Cloud receipt no longer admits runtime work."""
 
 
+@runtime_checkable
+class CloudManifestProvider(Protocol):
+    """Closed adapter responsible for renewing the signed deployment receipt."""
+
+    async def refresh_manifest(self) -> VerifiedCloudDeployment:
+        """Fetch, verify, and return the newest deployment receipt."""
+
+    async def aclose(self) -> None:
+        """Release control-plane transport resources."""
+
+
 @dataclasses.dataclass(frozen=True, slots=True)
 class OpenSourceDeployment:
     """Default deployment selected when no closed bootstrap is installed."""
@@ -35,6 +48,8 @@ class OpenSourceDeployment:
     entitlement_provider: OpenSourceEntitlementProvider = dataclasses.field(
         default_factory=OpenSourceEntitlementProvider
     )
+    directory_provider: None = None
+    manifest_provider: None = None
     persistence_mode: str = 'oss_compat'
     required_vector_backend: str | None = None
 
@@ -63,6 +78,8 @@ class VerifiedCloudDeployment:
     capabilities: frozenset[str]
     tenant_isolation_version: int
     entitlement_provider: EntitlementProvider
+    directory_provider: DirectoryProjectionProvider
+    manifest_provider: CloudManifestProvider
     verification_key_id: str
     mode: str = dataclasses.field(default='cloud', init=False)
     workspace_policy: CloudWorkspacePolicy = dataclasses.field(default_factory=CloudWorkspacePolicy, init=False)
@@ -89,6 +106,10 @@ class VerifiedCloudDeployment:
             raise CloudBootstrapError('Verified Cloud Manifest does not grant multi_workspace_v2')
         if not isinstance(self.entitlement_provider, EntitlementProvider):
             raise CloudBootstrapError('Verified Cloud bootstrap did not provide an entitlement adapter')
+        if not isinstance(self.directory_provider, DirectoryProjectionProvider):
+            raise CloudBootstrapError('Verified Cloud bootstrap did not provide a directory adapter')
+        if not isinstance(self.manifest_provider, CloudManifestProvider):
+            raise CloudBootstrapError('Verified Cloud bootstrap did not provide a Manifest renewal adapter')
 
     def validate_instance_config(self, config: dict[str, Any]) -> None:
         if config.get('database', {}).get('use') != 'postgresql':
@@ -260,6 +281,67 @@ class DeploymentAdmissionGuard:
         if deadline is None or monotonic_now >= deadline:
             raise CloudRuntimeUnavailableError('Verified Cloud Manifest is expired')
         return deployment
+
+
+class CloudManifestRefreshService:
+    """Renew a short-lived verified Manifest before runtime admission expires."""
+
+    def __init__(
+        self,
+        admission: DeploymentAdmissionGuard,
+        provider: CloudManifestProvider,
+        logger: Any,
+        *,
+        wall_time: Callable[[], float] = time.time,
+        refresh_margin_seconds: int = 180,
+        maximum_sleep_seconds: int = 300,
+    ) -> None:
+        if not isinstance(provider, CloudManifestProvider):
+            raise TypeError('Cloud Manifest refresh requires a CloudManifestProvider')
+        if refresh_margin_seconds < 120:
+            raise ValueError('Cloud Manifest refresh margin must be at least 120 seconds')
+        if maximum_sleep_seconds <= 0:
+            raise ValueError('Cloud Manifest refresh maximum sleep must be positive')
+        self.admission = admission
+        self.provider = provider
+        self.logger = logger
+        self._wall_time = wall_time
+        self.refresh_margin_seconds = refresh_margin_seconds
+        self.maximum_sleep_seconds = maximum_sleep_seconds
+
+    def next_refresh_delay(self) -> float:
+        deployment = self.admission.deployment
+        if not isinstance(deployment, VerifiedCloudDeployment):
+            return float(self.maximum_sleep_seconds)
+        remaining = deployment.expires_at - self._wall_time()
+        return max(
+            5.0,
+            min(
+                float(self.maximum_sleep_seconds),
+                remaining - self.refresh_margin_seconds,
+            ),
+        )
+
+    async def refresh_once(self) -> VerifiedCloudDeployment:
+        candidate = await self.provider.refresh_manifest()
+        if not isinstance(candidate, VerifiedCloudDeployment):
+            raise CloudBootstrapError('Cloud Manifest provider returned an invalid deployment receipt')
+        self.admission.replace(candidate)
+        return candidate
+
+    async def run(self) -> None:
+        retry_delay = 5.0
+        while True:
+            try:
+                await asyncio.sleep(self.next_refresh_delay())
+                await self.refresh_once()
+                retry_delay = 5.0
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                self.logger.exception('Cloud Manifest refresh failed')
+                await asyncio.sleep(retry_delay)
+                retry_delay = min(retry_delay * 2, 30.0)
 
 
 async def _invoke_provider(

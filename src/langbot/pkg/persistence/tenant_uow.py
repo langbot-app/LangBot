@@ -14,7 +14,9 @@ import sqlalchemy
 import sqlalchemy.ext.asyncio as sqlalchemy_asyncio
 import sqlalchemy.orm as sqlalchemy_orm
 from pgvector.sqlalchemy import Vector
+from sqlalchemy.dialects.postgresql.dml import OnConflictDoNothing as PostgreSQLOnConflictDoNothing
 from sqlalchemy.dialects.postgresql.dml import OnConflictDoUpdate as PostgreSQLOnConflictDoUpdate
+from sqlalchemy.dialects.sqlite.dml import OnConflictDoNothing as SQLiteOnConflictDoNothing
 from sqlalchemy.dialects.sqlite.dml import OnConflictDoUpdate as SQLiteOnConflictDoUpdate
 
 
@@ -24,12 +26,15 @@ API_KEY_HASH_SETTING = 'langbot.api_key_hash'
 INVITATION_HASH_SETTING = 'langbot.invitation_hash'
 INSTANCE_SETTING = 'langbot.instance_uuid'
 IDENTITY_DIGEST_SETTING = 'langbot.identity_digest'
+DIRECTORY_INSTANCE_SETTING = 'langbot.directory_instance_uuid'
 
 TENANT_POLICY_NAME = 'langbot_workspace_isolation'
+LOCAL_DIRECTORY_WRITE_POLICY_NAME = 'langbot_workspace_local_directory_write'
 ACCOUNT_DISCOVERY_POLICY_NAME = 'langbot_account_discovery'
 API_KEY_DISCOVERY_POLICY_NAME = 'langbot_api_key_discovery'
 INVITATION_DISCOVERY_POLICY_NAME = 'langbot_invitation_discovery'
 INSTANCE_DISCOVERY_POLICY_NAME = 'langbot_instance_discovery'
+DIRECTORY_PROJECTION_POLICY_NAME = 'langbot_directory_projection'
 
 # Keep this contract explicit. A new tenant-owned table must be added to both
 # this runtime list and the corresponding Alembic migration before release.
@@ -67,6 +72,19 @@ TENANT_TABLE_COLUMNS: dict[str, str] = {
     'langbot_vectors': 'workspace_uuid',
 }
 
+DIRECTORY_PROJECTION_TABLE_COLUMNS: dict[str, str] = {
+    'directory_projection_states': 'instance_uuid',
+    'directory_projection_inbox': 'instance_uuid',
+}
+
+DIRECTORY_PROJECTED_TENANT_TABLES = frozenset(
+    {
+        'workspaces',
+        'workspace_memberships',
+        'workspace_execution_states',
+    }
+)
+
 
 class PersistenceScopeKind(enum.StrEnum):
     WORKSPACE = 'workspace'
@@ -75,6 +93,7 @@ class PersistenceScopeKind(enum.StrEnum):
     INVITATION_DISCOVERY = 'invitation_discovery'
     INSTANCE_DISCOVERY = 'instance_discovery'
     IDENTITY_DISCOVERY = 'identity_discovery'
+    DIRECTORY_PROJECTION = 'directory_projection'
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -107,6 +126,14 @@ class PersistenceScope:
     @classmethod
     def identity(cls, identity_digest: str) -> PersistenceScope:
         return cls._one(PersistenceScopeKind.IDENTITY_DISCOVERY, IDENTITY_DIGEST_SETTING, identity_digest)
+
+    @classmethod
+    def directory(cls, instance_uuid: str) -> PersistenceScope:
+        return cls._one(
+            PersistenceScopeKind.DIRECTORY_PROJECTION,
+            DIRECTORY_INSTANCE_SETTING,
+            instance_uuid,
+        )
 
     @classmethod
     def _one(cls, kind: PersistenceScopeKind, setting: str, value: str) -> PersistenceScope:
@@ -188,7 +215,9 @@ _ALLOWED_SCOPED_STATEMENT_TYPES = (
     sqlalchemy.sql.selectable.SelectBase,
 )
 _ALLOWED_SCOPED_POST_VALUES_TYPES = (
+    PostgreSQLOnConflictDoNothing,
     PostgreSQLOnConflictDoUpdate,
+    SQLiteOnConflictDoNothing,
     SQLiteOnConflictDoUpdate,
 )
 
@@ -853,6 +882,7 @@ class TenantScopedAsyncSession(sqlalchemy_asyncio.AsyncSession):
             INVITATION_HASH_SETTING,
             INSTANCE_SETTING,
             IDENTITY_DIGEST_SETTING,
+            DIRECTORY_INSTANCE_SETTING,
         }:
             self._reject_transaction_escape('unknown tenant scope configuration')
         self._require_owner_task()
@@ -1230,7 +1260,14 @@ class TenantUnitOfWork:
                 # It must still never switch directly to another Workspace.
                 workspace_to_discovery = (
                     active_scope.scope.kind == PersistenceScopeKind.WORKSPACE
-                    and self.scope.kind != PersistenceScopeKind.WORKSPACE
+                    and self.scope.kind
+                    in {
+                        PersistenceScopeKind.ACCOUNT_DISCOVERY,
+                        PersistenceScopeKind.API_KEY_DISCOVERY,
+                        PersistenceScopeKind.INVITATION_DISCOVERY,
+                        PersistenceScopeKind.INSTANCE_DISCOVERY,
+                        PersistenceScopeKind.IDENTITY_DISCOVERY,
+                    }
                 )
                 if not workspace_to_discovery:
                     raise CrossScopeTransactionError(

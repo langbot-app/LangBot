@@ -148,7 +148,8 @@ M1 是 M0 的透明扩容，M2 是相同架构下的资源等级。外部 API �
 
 ### 4.4 组件边界
 
-- Core、Plugin Runtime 和 Box Runtime 可以由发布与故障域决定是否共用 Pod，但必须保持独立进程身份、容器和 security context。
+- Core、Plugin Runtime 和 Box Runtime 必须保持独立进程身份、容器和 security context。M0 中 Core 与 Plugin Runtime
+  需要处于同一 rollout/restart unit；在实现受认证 takeover 或 owner lease/fencing 前，Core 不能单独重启后接管仍存活的 Runtime。
 - Core 不能继承 nsjail、cgroup 或 mount namespace 所需的高权限。
 - Plugin Runtime 与 Box Runtime 不合并为一个高权限进程。
 - MVP 不新增 Runtime 专用数据库、Box 专用数据库、Kafka、Redis、租户级 scheduler 或 artifact service。
@@ -321,7 +322,9 @@ delegated issuers and keyset revision
 ### 7.2 DirectoryEvent 与目录新鲜度
 
 Control Plane 通过 transactional outbox 发布 Account、Workspace 和 Membership 的版本化事件。
-Core 使用 inbox 按 `event_id` 去重，以 aggregate revision 拒绝旧写，并追踪连续应用水位。
+Core 使用 inbox 按 `event_id` 去重，以 aggregate revision 拒绝旧写，并追踪连续应用水位。启动时读取一个 PostgreSQL
+`REPEATABLE READ` 事务内生成的签名全量 snapshot；运行时先消费携带当前 high-water 的签名事件页，再只请求该页涉及的 Workspace 签名增量。
+增量响应不携带新的事件 cursor，因此即使其内容已包含并发提交的后续 revision，也不能跳过尚未消费的事件。
 
 要求：
 
@@ -329,6 +332,10 @@ Core 使用 inbox 按 `event_id` 去重，以 aggregate revision 拒绝旧写，
 - 重复、乱序、延迟、断流和全量 replay 都安全。
 - 删除使用 tombstone。
 - 新实例先导入带 high watermark 的 snapshot，再消费增量。
+- 常态目录更新成本与本页发生变化的 Workspace 数量相关，不得为每个 `directory.changed` 重新读取和投影全部 Workspace。
+- 每个 Core replica 独立保存进程内消费 cursor，以确保各自的 entitlement cache 都看到事件；共享 PostgreSQL 保存投影
+  high-water mark、全量 snapshot coverage 和 inbox。同一事件被多个 replica 消费时，第二个 replica 验证已有 receipt；
+  snapshot coverage 内缺少的 receipt 可以补写，coverage 之外缺失则失败关闭。只有本地 cursor 追平签名 high-water 后才续期 ready。
 - projection 未就绪或落后于授权 lease 要求时，交互与自动化请求按策略失败关闭。
 - SaaS pending Invitation、email 和 token hash 不进入 Core 投影。
 
@@ -630,8 +637,8 @@ installation 总磁盘配额需要可原子拒绝写入的 quota provider，不�
 - Runtime 重连执行实例范围 full reconciliation，清理 stale worker 并恢复 enabled installation。
 - dependency preparation 失败记录在对应 installation，不启动半就绪 worker，也不阻塞其他 installation。
 - desired semantics 要求 enabled installation 常驻，不做 idle eviction；是否按负载回收以后再决定。
-- 当前 Supervisor 可在 Runtime 重连或 Core apply/reconcile 时恢复 desired state，但尚未为意外退出的 worker
-  实现带有界 backoff 的 completion callback；这项可靠性缺口在 Cloud 激活前必须补齐并验证。
+- 当前 Supervisor 已在意外退出时通过 completion callback 和有界指数 backoff 恢复 enabled worker。
+  Cloud 激活前仍需加入 jitter、全局重启并发上限和 Runtime 级 circuit breaker，并验证系统性故障不会形成跨租户重启风暴。
 
 真实 Linux/nsjail/cgroup 与受控 egress 的 Cloud 部署验证尚未完成，是生产激活门禁。
 
@@ -813,7 +820,7 @@ SaaS：
 2. 普通业务写入贯穿 commit 的 generation-aware fence，以及与外部副作用同事务的 business outbox。
 3. generation cutover 后稳定的 durable object identity 或原子对象引用迁移。
 4. 所有 tenant-configurable outbound URL 的 SSRF 防护与 tenant-safe egress；Plugin Runtime 还需在真实 Linux/nsjail/cgroup v2 环境验证 namespace、资源限制和文件隔离。
-5. Plugin Runtime 对意外退出的 enabled worker 实现 completion callback、有界 backoff 和自动恢复，并验证不会形成跨租户重启风暴。
+5. Plugin Runtime 已实现意外退出 worker 的 completion callback、有界 backoff 和自动恢复；Cloud 激活前增加全局重启风暴抑制并完成故障注入验证。
 6. Plugin installation data 的 production hard disk quota provider，能够在写入边界原子拒绝超额，不能以目录扫描代替。
 7. Box Runtime 的 production hard quota provider，包括 Workspace、Skill、root/tmp/home 的 byte 与 inode quota；真实部署还必须在启动和重连时通过共享卷 marker challenge。
 8. PostgreSQL runtime credential 的专用 endpoint 或 HBA/proxy 跨 database 隔离证明、生产 migration/rollback 流程，以及 legacy pgvector migration 失败后精确恢复 RLS/FORCE 并可安全重试的集成证据。

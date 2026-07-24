@@ -508,7 +508,7 @@ class TestSkillToolLoader:
         ap.skill_mgr = SimpleNamespace(skills={'demo': _make_skill_data(name='demo')})
         ap.box_service = SimpleNamespace(
             available=False,
-            get_status=AsyncMock(return_value={'backend': {'available': True}}),
+            get_backend_status=AsyncMock(return_value={'backend': {'available': True}}),
         )
 
         loader = SkillToolLoader(ap)

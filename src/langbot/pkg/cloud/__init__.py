@@ -2,10 +2,23 @@
 
 from .bootstrap import (
     CloudBootstrapError,
+    CloudManifestProvider,
+    CloudManifestRefreshService,
     OpenSourceDeployment,
     VerifiedCloudDeployment,
     resolve_deployment,
 )
+from .directory import (
+    DirectoryDelta,
+    DirectoryEvent,
+    DirectoryEventBatch,
+    DirectoryMember,
+    DirectoryProjectionProvider,
+    DirectoryProjectionUnavailableError,
+    DirectorySnapshot,
+    DirectoryWorkspace,
+)
+from .directory_projection import DirectoryProjectionService
 from .entitlements import (
     EntitlementProvider,
     EntitlementResolver,
@@ -16,6 +29,17 @@ from .entitlements import (
 
 __all__ = [
     'CloudBootstrapError',
+    'CloudManifestProvider',
+    'CloudManifestRefreshService',
+    'DirectoryDelta',
+    'DirectoryEvent',
+    'DirectoryEventBatch',
+    'DirectoryMember',
+    'DirectoryProjectionProvider',
+    'DirectoryProjectionService',
+    'DirectoryProjectionUnavailableError',
+    'DirectorySnapshot',
+    'DirectoryWorkspace',
     'EntitlementProvider',
     'EntitlementResolver',
     'EntitlementSnapshot',

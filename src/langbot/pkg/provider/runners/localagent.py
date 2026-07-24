@@ -224,12 +224,13 @@ class LocalAgentRunner(runner.RequestRunner):
     ) -> list[modelmgr_requester.RuntimeLLMModel]:
         """Build ordered list of models to try: primary model + fallback models."""
         candidates = []
+        execution_context = get_query_execution_context(query)
 
         # Primary model
         if query.use_llm_model_uuid:
             try:
                 primary = await self.ap.model_mgr.get_model_by_uuid(
-                    get_query_execution_context(query),
+                    execution_context,
                     query.use_llm_model_uuid,
                 )
                 candidates.append(primary)
@@ -241,7 +242,7 @@ class LocalAgentRunner(runner.RequestRunner):
         for fb_uuid in fallback_uuids:
             try:
                 fb_model = await self.ap.model_mgr.get_model_by_uuid(
-                    get_query_execution_context(query),
+                    execution_context,
                     fb_uuid,
                 )
                 candidates.append(fb_model)

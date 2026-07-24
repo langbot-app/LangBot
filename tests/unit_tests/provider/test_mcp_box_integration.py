@@ -829,7 +829,7 @@ class TestGetRuntimeInfoDict:
         assert ap.box_service.available is True
 
     @pytest.mark.asyncio
-    async def test_enabled_box_timeout_does_not_exhaust_mcp_retry_budget(self, mcp_module, monkeypatch):
+    async def test_enabled_box_timeout_does_not_exhaust_mcp_retry_budget(self, mcp_module):
         ap = _make_ap()
         ap.box_service.available = False
         ap.box_service.enabled = True
@@ -854,14 +854,13 @@ class TestGetRuntimeInfoDict:
                 raise RuntimeError('Box runtime is not available after 1 seconds')
 
         session._lifecycle_loop = lifecycle
-        sleep = AsyncMock()
-        monkeypatch.setattr(mcp_module.asyncio, 'sleep', sleep)
+        session._sleep_with_execution_fence = AsyncMock()
 
         await session._lifecycle_loop_with_retry()
 
         assert attempts == 2
         assert session.retry_count == 0
-        sleep.assert_awaited_once_with(1)
+        session._sleep_with_execution_fence.assert_awaited_once_with(1)
 
     @pytest.mark.asyncio
     async def test_disabled_box_still_stops_mcp_retry_loop(self, mcp_module):

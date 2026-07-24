@@ -40,6 +40,7 @@ from ...survey import manager as survey_module
 from ...workspace import service as workspace_service_module
 from ...workspace import collaboration as workspace_collaboration_module
 from ...cloud import bootstrap as cloud_bootstrap
+from ...cloud.directory_projection import DirectoryProjectionService
 from ...cloud.entitlements import EntitlementResolver
 from ...api.http.context import ExecutionContext, PrincipalContext, PrincipalType
 from ...api.http.authz import WorkspaceRequiredError
@@ -62,6 +63,15 @@ class BuildAppStage(stage.BootingStage):
         ap.deployment_admission = cloud_bootstrap.DeploymentAdmissionGuard(
             constants.instance_id,
             deployment,
+        )
+        ap.manifest_refresh_service = (
+            cloud_bootstrap.CloudManifestRefreshService(
+                ap.deployment_admission,
+                deployment.manifest_provider,
+                ap.logger,
+            )
+            if deployment.multi_workspace_enabled
+            else None
         )
         ap.entitlement_resolver = (
             EntitlementResolver(
@@ -136,6 +146,15 @@ class BuildAppStage(stage.BootingStage):
         )
         ap.persistence_mgr = persistence_mgr_inst
         await persistence_mgr_inst.initialize()
+
+        if deployment.multi_workspace_enabled:
+            directory_projection_service = DirectoryProjectionService(
+                ap,
+                deployment.directory_provider,
+                constants.instance_id,
+            )
+            await directory_projection_service.initialize()
+            ap.directory_projection_service = directory_projection_service
 
         workspace_policy = deployment.workspace_policy
         workspace_service_inst = workspace_service_module.WorkspaceService(

@@ -2,7 +2,7 @@
 
 状态：`DECIDED — Core isolation kernel implemented; SaaS activation gates remain`
 创建日期：2026-07-19
-最近更新：2026-07-20
+最近更新：2026-07-24
 
 本文记录 Cloud v2 多租户架构中已经确认的首期决策、明确淘汰的方案和仍需在后续阶段决定的扩展项。
 本文同时记录实现状态。“实现完成”仅指开源 Core/SDK 的隔离内核和 fail-closed 门禁，
@@ -28,10 +28,11 @@
 
 | 编号  | 结论                                                                                                                                          | 首期状态                                                             |
 | ----- | --------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| D-001 | 一个共享 Plugin Runtime 控制面；每个运行中的 plugin installation 独占一个 nsjail 子进程；只有 digest 相同且已验证的代码 artifact 可以只读共享 | `FOUNDATION IMPLEMENTED — Linux/egress, crash recovery and disk-quota gates pending` |
+| D-001 | 一个共享 Plugin Runtime 控制面；每个运行中的 plugin installation 独占一个 nsjail 子进程；只有 digest 相同且已验证的代码 artifact 可以只读共享 | `FOUNDATION VERIFIED — egress, total disk-quota and restart-storm gates pending` |
 | D-002 | 一个共享 Box Runtime；Cloud 固定使用 nsjail；符合套餐的 Workspace 最多一个持久 `global` 逻辑 sandbox，普通执行按需启动 nsjail 进程            | `IMPLEMENTED FAIL-CLOSED — hard filesystem quota provider pending`   |
 | D-003 | SaaS 业务数据使用 PostgreSQL shared schema、应用层作用域和 RLS 双重隔离；pgvector 使用同一 PostgreSQL，作为 SaaS 默认向量后端                 | `PARTIALLY IMPLEMENTED — transaction/outbox/deployment gates remain` |
 | D-004 | stdio MCP 与 Box availability 解耦；Cloud v2 首期强制关闭 stdio MCP，避免为每个 Workspace 创建额外的 `mcp-shared` persistent sandbox          | `IMPLEMENTED`                                                        |
+| D-005 | 目录启动使用事务一致的全量快照，运行时按事件涉及的 Workspace 拉取增量；每个 Core replica 独立消费事件，共享 PostgreSQL 投影和 inbox           | `IMPLEMENTED — production fault injection pending`                   |
 
 Workspace 的具体创建、释放、数据导出和单 Workspace 恢复机制不在本轮决定；本文只保证这些后续能力不会改变稳定的
 `workspace_uuid`，也不会要求重建租户专属部署。
@@ -76,13 +77,15 @@ flowchart LR
 M1 是 M0 的透明扩容，M2 是相同架构下的资源等级；两者都不是新的 LangBot 实例、Cell 或 CloudInstance。
 外部 API 只认识稳定的 `instance_uuid` 和 `workspace_uuid`，不认识 replica、worker、pool 或 shard。
 
-Plugin Runtime 与 Core 在 M0 是否共用 Pod 仍可按发布和故障域决定；即使共用 Pod，也必须使用独立容器和 security context，
-Core 不能继承 Plugin Runtime 所需的 nsjail/cgroup 权限。Box Runtime 同样使用独立进程身份和安全配置，
+Plugin Runtime 与 Core 在 M0 使用独立容器和 security context，Core 不能继承 Plugin Runtime 所需的
+nsjail/cgroup 权限。当前 Runtime 在进程生命周期内绑定首次认证的 `runtime_id`，因此 M0 必须把 Core 与
+Plugin Runtime 放在同一 rollout/restart unit 中协调重启；在实现受认证 takeover 或 owner lease/fencing 前，
+不能单独滚动 Core 并让它接管仍存活的 Runtime。Box Runtime 同样使用独立进程身份和安全配置，
 不与 Plugin Runtime 合并成一个高权限进程。
 
 ## 3. D-001：Plugin Runtime 多租户控制面
 
-状态：`FOUNDATION IMPLEMENTED — Cloud deployment and worker-recovery gates pending`
+状态：`FOUNDATION VERIFIED — Cloud egress, total disk-quota and restart-storm gates pending`
 
 ### 3.1 已实现的基础
 
@@ -116,8 +119,8 @@ Core 不能继承 Plugin Runtime 所需的 nsjail/cgroup 权限。Box Runtime �
 - 安装并启用插件后，Supervisor 在自己的 Runtime 容器内直接启动一个 nsjail 子进程；
   不再为每个插件创建 nested container、Pod、sidecar 或租户级 Runtime service。
 - desired semantics 要求 enabled installation 保持 resident，不做 idle eviction；停用、删除、revision/generation 变化或 entitlement 撤销时停止并按需重建。
-  当前实现只会在 Runtime 重连或 Core apply/reconcile 时恢复意外退出的 worker，尚缺 completion callback、有界 backoff 和跨租户重启风暴抑制；
-  这属于 Cloud 激活门禁，不能把 desired semantics 描述成已经具备即时自愈。
+  当前 Supervisor 已通过 completion callback 和有界指数 backoff 恢复意外退出的 worker；尚缺 jitter、全局重启并发上限和 Runtime 级 circuit breaker，
+  因而系统性依赖或宿主故障下的跨租户重启风暴抑制仍是 Cloud 激活门禁。
 - 子进程使用一次性 registration capability 向 Supervisor 注册；capability 由可信 desired state 派生并绑定完整 installation tuple，
   不是插件直接建立 Core Host connection，也不能只绑定 author/name/path。Supervisor/Core 据此注入 tenant context，
   丢弃插件 payload 中自带的 scope 字段。
@@ -473,9 +476,9 @@ mcp:
 - 直接调用 API、重放旧配置和启动 bootstrap 都失败关闭，且不会产生 `mcp-shared` session、nsjail 进程或额外配额占用。
 - OSS 默认行为保持兼容；HTTP/SSE MCP 正常工作。
 
-## 7. 四项决策之间的关系
+## 7. 五项决策之间的关系
 
-四项决策共同遵循：
+五项决策共同遵循：
 
 > 多租户共享可信控制面、连接池、只读 artifact 和基础容量；租户独占不可信执行进程、sandbox、secret、可写文件和数据作用域。
 
@@ -485,6 +488,7 @@ mcp:
 - PostgreSQL 和 pgvector 共享数据库组件，但使用显式 tenant key、应用层 scope 和 RLS 防止共享存储变成共享权限。
 - 订阅管理只在闭源 Control Plane 维护套餐与计费规则，并向开源 Core 投影签名/版本化 entitlement；
   Core/Runtime 执行通用 capability 和数值限额，不复制套餐名称或计费逻辑。
+- 目录同步只在启动或恢复时读取全量快照；常态变更按 Workspace 聚合为签名增量，新增租户不会使每次目录事件退化为全实例重投影。
 
 ## 8. 当前不做分布式时仍保留的能力
 
@@ -497,6 +501,9 @@ mcp:
 6. schema migration、任务扫描、监控聚合和运维接口不能假设永远只有一个 Core 进程。
 7. 外部 API 不暴露 replica、worker 或 shard 标识；未来扩容不改变 Workspace URL、UUID 或客户端协议。
 8. 只有出现容量、可用性、地域或合规需求时才增加 replica/shard；预留协议不等于现在部署额外组件。
+9. 每个 Core replica 保存自己的事件消费 cursor，因为 entitlement cache 是进程本地状态；PostgreSQL 中的 projection high-water mark
+   、snapshot coverage 和 inbox 仍由所有 replica 共享，用于幂等投影和冲突检测。事件页携带签名 high-water，副本追平前不能续期
+   ready；不能让一个 replica 的共享 cursor 使其他 replica 跳过本地 cache 刷新。
 
 ## 9. 本轮明确不做的事情
 

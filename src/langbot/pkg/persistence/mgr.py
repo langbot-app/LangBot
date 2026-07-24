@@ -27,10 +27,15 @@ from .tenant_uow import (
     ACCOUNT_DISCOVERY_POLICY_NAME,
     INSTANCE_DISCOVERY_POLICY_NAME,
     INVITATION_DISCOVERY_POLICY_NAME,
+    LOCAL_DIRECTORY_WRITE_POLICY_NAME,
     TENANT_POLICY_NAME,
     TENANT_SETTING,
     TENANT_TABLE_COLUMNS,
     CrossScopeTransactionError,
+    DIRECTORY_INSTANCE_SETTING,
+    DIRECTORY_PROJECTED_TENANT_TABLES,
+    DIRECTORY_PROJECTION_POLICY_NAME,
+    DIRECTORY_PROJECTION_TABLE_COLUMNS,
     PersistenceScope,
     PersistenceScopeBoundary,
     PersistenceScopeKind,
@@ -74,6 +79,8 @@ _ALEMBIC_TENANT_TABLES = {
     'monitoring_embedding_calls',
     'monitoring_feedback',
     'langbot_vectors',
+    'directory_projection_states',
+    'directory_projection_inbox',
 }
 
 _PRE_WORKSPACE_ALEMBIC_REVISIONS = {
@@ -1345,6 +1352,7 @@ class PersistenceManager:
         engine = self.get_db_engine()
         if engine.dialect.name != 'postgresql':
             raise RuntimeError('PostgreSQL tenant schema validation requires PostgreSQL')
+        rls_table_names = tuple(sorted(set(TENANT_TABLE_COLUMNS) | set(DIRECTORY_PROJECTION_TABLE_COLUMNS)))
 
         table_query = sqlalchemy.text(
             """
@@ -1408,7 +1416,7 @@ class PersistenceManager:
                     await conn.execute(
                         table_query,
                         {
-                            'table_names': tuple(TENANT_TABLE_COLUMNS),
+                            'table_names': rls_table_names,
                         },
                     )
                 )
@@ -1419,7 +1427,7 @@ class PersistenceManager:
                 (
                     await conn.execute(
                         policy_query,
-                        {'table_names': tuple(TENANT_TABLE_COLUMNS)},
+                        {'table_names': rls_table_names},
                     )
                 )
                 .mappings()
@@ -1427,7 +1435,7 @@ class PersistenceManager:
             )
 
         by_table = {row['table_name']: row for row in rows}
-        missing_tables = set(TENANT_TABLE_COLUMNS) - set(by_table)
+        missing_tables = set(rls_table_names) - set(by_table)
         if missing_tables:
             raise RuntimeError(f'PostgreSQL tenant tables are missing: {sorted(missing_tables)!r}')
 
@@ -1472,7 +1480,7 @@ class PersistenceManager:
 
     @staticmethod
     def _expected_postgres_tenant_policies() -> dict[str, dict[str, dict[str, str | None]]]:
-        """Return the exact PostgreSQL 16 policy expressions emitted by 0011."""
+        """Return the exact PostgreSQL 16 policy expressions emitted by 0011/0014."""
 
         def setting(name: str) -> str:
             return f"NULLIF(current_setting('{name}'::text, true), ''::text)"
@@ -1486,6 +1494,39 @@ class PersistenceManager:
                     'using_expression': expression,
                     'check_expression': expression,
                 }
+            }
+
+        local_workspace_expression = (
+            f"(((uuid)::text = {setting(TENANT_SETTING)}) AND ((source)::text = 'local'::text))"
+        )
+        local_membership_expression = (
+            f'(((workspace_uuid)::text = {setting(TENANT_SETTING)}) AND (EXISTS ( SELECT 1\n'
+            '   FROM workspaces local_workspace\n'
+            '  WHERE (((local_workspace.uuid)::text = (workspace_memberships.workspace_uuid)::text) '
+            "AND ((local_workspace.source)::text = 'local'::text)))))"
+        )
+        local_execution_expression = (
+            f'(((workspace_uuid)::text = {setting(TENANT_SETTING)}) AND (EXISTS ( SELECT 1\n'
+            '   FROM workspaces local_workspace\n'
+            '  WHERE (((local_workspace.uuid)::text = (workspace_execution_states.workspace_uuid)::text) '
+            "AND ((local_workspace.source)::text = 'local'::text)))))"
+        )
+        for table_name, local_write_expression in {
+            'workspaces': local_workspace_expression,
+            'workspace_memberships': local_membership_expression,
+            'workspace_execution_states': local_execution_expression,
+        }.items():
+            tenant_column = TENANT_TABLE_COLUMNS[table_name]
+            tenant_expression = f'(({tenant_column})::text = {setting(TENANT_SETTING)})'
+            policies[table_name][TENANT_POLICY_NAME] = {
+                'command': 'r',
+                'using_expression': tenant_expression,
+                'check_expression': None,
+            }
+            policies[table_name][LOCAL_DIRECTORY_WRITE_POLICY_NAME] = {
+                'command': '*',
+                'using_expression': local_write_expression,
+                'check_expression': local_write_expression,
             }
 
         policies['workspace_memberships'][ACCOUNT_DISCOVERY_POLICY_NAME] = {
@@ -1517,6 +1558,48 @@ class PersistenceManager:
             ),
             'check_expression': None,
         }
+
+        directory_setting = setting(DIRECTORY_INSTANCE_SETTING)
+        workspace_expression = (
+            f"(((instance_uuid)::text = {directory_setting}) AND ((source)::text = 'cloud_projection'::text))"
+        )
+        membership_expression = (
+            '(EXISTS ( SELECT 1\n'
+            '   FROM workspaces directory_workspace\n'
+            '  WHERE (((directory_workspace.uuid)::text = (workspace_memberships.workspace_uuid)::text) '
+            f'AND ((directory_workspace.instance_uuid)::text = {directory_setting}) '
+            "AND ((directory_workspace.source)::text = 'cloud_projection'::text))))"
+        )
+        execution_expression = (
+            f'(((instance_uuid)::text = {directory_setting}) '
+            "AND ((source)::text = 'cloud'::text) "
+            'AND (EXISTS ( SELECT 1\n'
+            '   FROM workspaces directory_workspace\n'
+            '  WHERE (((directory_workspace.uuid)::text = (workspace_execution_states.workspace_uuid)::text) '
+            f'AND ((directory_workspace.instance_uuid)::text = {directory_setting}) '
+            "AND ((directory_workspace.source)::text = 'cloud_projection'::text)))))"
+        )
+        directory_tenant_expressions = {
+            'workspaces': workspace_expression,
+            'workspace_memberships': membership_expression,
+            'workspace_execution_states': execution_expression,
+        }
+        for table_name in DIRECTORY_PROJECTED_TENANT_TABLES:
+            expression = directory_tenant_expressions[table_name]
+            policies[table_name][DIRECTORY_PROJECTION_POLICY_NAME] = {
+                'command': '*',
+                'using_expression': expression,
+                'check_expression': expression,
+            }
+        for table_name, instance_column in DIRECTORY_PROJECTION_TABLE_COLUMNS.items():
+            expression = f'(({instance_column})::text = {directory_setting})'
+            policies[table_name] = {
+                DIRECTORY_PROJECTION_POLICY_NAME: {
+                    'command': '*',
+                    'using_expression': expression,
+                    'check_expression': expression,
+                }
+            }
         return policies
 
     async def write_space_model_providers(self):
@@ -1728,6 +1811,9 @@ class PersistenceManager:
 
     def instance_discovery_uow(self, instance_uuid: str) -> TenantUnitOfWork:
         return self._scoped_uow(PersistenceScope.instance(instance_uuid))
+
+    def directory_projection_uow(self, instance_uuid: str) -> TenantUnitOfWork:
+        return self._scoped_uow(PersistenceScope.directory(instance_uuid))
 
     def identity_discovery_uow(self, identity_digest: str) -> TenantUnitOfWork:
         return self._scoped_uow(PersistenceScope.identity(identity_digest))

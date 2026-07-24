@@ -177,6 +177,7 @@ class WorkspaceService:
         """
 
         self._require_deployment_admission()
+        self._require_directory_projection()
 
         tenant_uow = getattr(self.ap.persistence_mgr, 'tenant_uow', None)
         if session is None and workspace_uuid is not None and callable(tenant_uow):
@@ -247,6 +248,7 @@ class WorkspaceService:
         binding = await self._run(operation, session=session)
         # The database lookup can cross the Manifest expiry boundary. Never
         # return a binding that is already invalid at a side-effect boundary.
+        self._require_directory_projection()
         self._require_deployment_admission()
         return binding
 
@@ -500,3 +502,15 @@ class WorkspaceService:
         guard = getattr(self.ap, 'deployment_admission', None)
         if guard is not None:
             guard.require_active()
+
+    def _require_directory_projection(self) -> None:
+        deployment = getattr(self.ap, 'deployment', None)
+        if deployment is None or not getattr(deployment, 'multi_workspace_enabled', False):
+            return
+        projection = getattr(self.ap, 'directory_projection_service', None)
+        if projection is None:
+            raise WorkspaceExecutionUnavailableError('Cloud directory projection is unavailable')
+        try:
+            projection.require_ready()
+        except RuntimeError as exc:
+            raise WorkspaceExecutionUnavailableError(str(exc)) from exc

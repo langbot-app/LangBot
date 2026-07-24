@@ -207,6 +207,21 @@ async def test_native_tool_loader_exposes_all_tools_when_box_available():
 
 
 @pytest.mark.asyncio
+async def test_native_tool_loader_refreshes_after_box_recovers():
+    box_service = SimpleNamespace(
+        available=False,
+        get_backend_status=AsyncMock(return_value={'backend': {'available': True}}),
+    )
+    loader = NativeToolLoader(SimpleNamespace(box_service=box_service, logger=Mock()))
+    await loader.initialize()
+    assert await loader.get_tools() == []
+
+    box_service.available = True
+
+    assert [tool.name for tool in await loader.get_tools()] == ['exec', 'read', 'write', 'edit', 'glob', 'grep']
+
+
+@pytest.mark.asyncio
 async def test_native_tool_loader_rechecks_admission_at_the_final_invoke_boundary():
     box_service = SimpleNamespace(
         available=True,

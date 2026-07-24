@@ -1,257 +1,252 @@
-# Multi-tenant isolation kernel verification report
+# Cloud v2 multi-tenant verification report
 
-Date: 2026-07-20
+Date: 2026-07-24
 
-Status: `CORE ISOLATION FOUNDATION VERIFIED — SAAS ACTIVATION REMAINS DISABLED`
+Status: `FOUNDATION AND CONTROL PLANE VERIFIED — PRODUCTION ACTIVATION REMAINS GATED`
 
-This report records the final implementation and verification evidence for the
-shared Workspace isolation foundation. It does not claim that the closed SaaS
-Control Plane, billing system, or greenfield Cloud v2 deployment is
-production-ready.
+This report records the implementation and verification evidence for one
+logical LangBot instance serving multiple Workspace tenants. It covers the
+open-source Core, the shared Plugin/Box runtimes, the closed Space adapter, and
+the Space Cloud v2 modular-monolith control plane. It does not claim that the
+production Cloud deployment may enable `CLOUD_V2_ENABLED` yet.
 
 ## Repository refs and scope
 
-- LangBot branch: `feat/multi-tenants`
-- LangBot implementation commit:
-  `90a977488212d3f3f50fb92d94e3fcae60f27eab`
-- LangBot base: `origin/master` at
-  `6baeb032a7f76c65337b51c7b58593de4687a61c`
-- Plugin SDK branch: `feat/multi-tenants`
-- Plugin SDK commit and LangBot dependency pin:
-  `95a1805af2038c745de2c018a00db1305089a32e`
-- No tracked `langbot-space` change was made. Cloud v2 does not extend or
-  preserve the legacy per-account instance/pod deployment topology.
+- LangBot Core: branch `feat/multi-tenants`
+- langbot-plugin-sdk: branch `feat/multi-tenants`, commit
+  `e7d946af4a6b1494fbe74627c1815ace19ac8991`
+- langbot-space: branch `feat/cloud-v2-control-plane`
+- Closed Core adapter: `langbot-space/cloud-adapter`
+- SDK protocol/package version: `0.4.18`
 
-The SDK protocol is versioned as 0.4.15 and is intentionally consumed from the
-exact pushed Git commit above. Publishing the release and replacing the Git
-pin with a registry pin remain merge-to-master release work; no registry
-release was performed here.
+Core pins the exact pushed SDK commit above. Cloud v2 is a greenfield
+multi-Workspace deployment and does not provision one Pod, database, queue, or
+Runtime per tenant. Legacy Space Pods remain a compatibility surface only.
 
-## Implemented boundaries
+## Implemented product and security boundaries
 
-### Workspace, identity, and authorization
+### Workspace and identity
 
-- Community bootstraps exactly one local Workspace per LangBot instance while
-  allowing multiple Accounts, memberships, invitations, and role-based
-  permissions inside it. A mutable edition setting cannot activate SaaS
-  multi-Workspace routing.
-- Each Account registration resolves or creates its local singleton Workspace.
-  Invitation acceptance is one-time, email-bound, and survives the signed-out
-  login transition without exposing the invitation secret in URLs after the
-  initial fragment capture.
-- The Account-token Workspace discovery route is intentionally separate from
-  Workspace-authorized routes. `X-Workspace-Id` becomes authority only after
-  membership resolution; API keys and public resources derive Workspace from
-  their trusted owner.
-- Ordinary monitoring uses `resource.view`. Export remains `data.export`,
-  privileged runtime/system audit remains `audit.view`, and frontend controls
-  follow the same permission split.
+- SaaS has one stable `instance_uuid`; `workspace_uuid` is the tenant key.
+- Registering an Account creates its personal Workspace and owner Membership in
+  the same PostgreSQL transaction.
+- A Workspace may contain multiple users with owner, admin, and member roles.
+  Invitation acceptance is token-hash based, email-bound, single-use,
+  concurrency-safe, and member-limit checked while locked.
+- Community remains exactly one local Workspace while supporting multiple
+  Accounts and fixed RBAC roles. Installing the closed adapter is required to
+  inject the SaaS policy; configuration alone cannot activate it.
+- Disabled or deleted Accounts cannot use password/code/OAuth login, sessions,
+  refresh/access tokens, or personal access tokens.
 
-### Persistence and PostgreSQL
+### Closed Space control plane
 
-- PostgreSQL uses one shared business schema with application scope plus exact
-  `ENABLE` and `FORCE ROW LEVEL SECURITY` policies. Tenant UoWs keep `SET LOCAL`
-  and business SQL on one owned root transaction and one task.
-- The public tenant Session accepts only structured SQLAlchemy query/DML trees.
-  Raw/textual SQL, textual modifiers, custom AST/compiler nodes, unapproved
-  functions/operators/types/casts, hidden dialect values, foreign binds,
-  loader/execution options, Session event callbacks, ORM SQL-expression
-  attributes, transaction control, and live-result escape fail closed and make
-  the root transaction rollback-only.
-- The SQL guard is a trusted-Core misuse boundary, not an in-process Python
-  sandbox. Mapped metadata and registered compilers are trusted boot-time code;
-  plugins remain out of process. SQLAlchemy dialect-private container fields
-  are pinned and covered by regression tests before dependency upgrades.
-- Legacy local RAG restore remains structured and tenant-fenced while accepting
-  SQLite string-valued timestamps and both historical PostgreSQL `TEXT` and
-  fresh-schema `JSON` settings columns.
-- The one-shot release migrator owns DDL and grants a distinct runtime role only
-  the required business-table DML, `alembic_version` read access, sequence
-  access, database `CONNECT`, and schema `USAGE`. Runtime startup reruns the
-  role, ACL, schema, session, extension, routine, parameter, and RLS audit.
-- pgvector is stored in the same business database with Workspace-scoped keys,
-  checked dimensions, release-created partial ANN indexes, and RLS.
+- `CLOUD_V2_ENABLED` defaults to false. Invalid or incomplete configuration
+  fails startup, and disabled endpoints return 503.
+- Space owns Workspace/Membership/Invitation, versioned plans, subscriptions,
+  entitlements, usage events, directory outbox, and signed instance manifests.
+- Free and Pro are Workspace plans. Pro projects one managed global sandbox;
+  Free projects none. Both force stdio MCP off in the first release.
+- Subscription changes use Workspace advisory locking, expected entitlement
+  revision, one-live-order uniqueness, idempotent usage ingestion, period-end
+  downgrade, renewal, and lazy expiry settlement.
+- Directory snapshot and per-Workspace delta reads use repeatable-read,
+  read-only transactions with a high-water cursor. Core stores a replica-local
+  consumer cursor and shared PostgreSQL projection state, snapshot coverage,
+  and inbox rows.
+- The `/cloud` page selects a Workspace and shows its independent subscription,
+  entitlement, limits, and usage. When Cloud v2 is disabled or the backend does
+  not expose the feature field, the complete legacy Welcome/Pod UI is used.
 
-### Shared Plugin Runtime and Box
+### PostgreSQL and pgvector
 
-- One instance-scoped Plugin Runtime supervisor serves multiple Workspaces.
-  Every enabled installation still owns one nsjail worker with an immutable
-  instance/Workspace/generation/installation/revision/artifact binding.
-- Verified same-digest code and dependency environments may be mounted
-  read-only and reused. Plugin processes and writable installation state are
-  never merged, including for the same plugin and version.
-- Runtime limits come only from instance configuration with native environment
-  overrides. Plugin manifests cannot raise limits. Shared mode rejects legacy
-  global plugin directories and legacy lifecycle control paths.
-- One shared Box control plane admits at most one persistent logical `global`
-  sandbox for an entitled Workspace. Admission is entitlement-gated,
-  generation-fenced, shared-volume-challenged, quota-aware, and fixed to
-  nsjail. Plain nsjail correctly fails Cloud readiness without a hard quota
-  provider.
-- stdio MCP has an independent gate and is forced off by Cloud bootstrap even
-  when Box is available.
+- SaaS business data uses one PostgreSQL shared schema with application scope
+  plus forced RLS. Cloud directory writes are separated from local tenant
+  writes.
+- Projected Account and Membership revisions are monotonic. Tombstones remove
+  memberships, and stale revisions cannot resurrect them.
+- pgvector shares the business PostgreSQL database and remains
+  Workspace-scoped.
+- Space runs versioned SQL migrations before application seeds. A fresh
+  database, a partial pre-migration database, and an existing-baseline path
+  converge without startup-time `AutoMigrate`.
+
+### Shared Plugin Runtime
+
+- One instance-scoped trusted Supervisor serves multiple Workspaces.
+- Every enabled installation has its own nsjail process bound to
+  `(instance, workspace, execution generation, installation, runtime revision,
+  artifact digest)`.
+- Verified same-digest code and dependency files are mounted read-only and may
+  be shared; home, tmp, data, process namespace, registration capability, and
+  cgroup are private.
+- Instance configuration owns CPU, memory, PID, open-file, and file-size
+  limits. Plugin manifests cannot increase them.
+- Memory includes swap: nsjail receives `memory.max` and `swap.max=0`.
+- Unexpected worker exit is recovered by a completion callback with bounded
+  per-installation exponential backoff. Remove, reconcile, Runtime shutdown,
+  and container SIGTERM perform a graceful-to-SIGKILL bounded reap.
+
+### Shared Box Runtime and MCP
+
+- One shared Box control plane serves Workspace-bound logical sessions.
+- Cloud grants allow at most one persistent `global` session for an entitled
+  Workspace and no managed processes in the first release.
+- Cloud is fixed to nsjail and network-off. Core and Box prove the shared
+  durable Workspace mount with an authenticated marker challenge.
+- stdio MCP is independently gated and forced off for Cloud v2.
+- The current nsjail Box backend does not provide hard byte/inode quotas, so
+  Cloud readiness correctly fails closed instead of silently using a soft
+  directory scan.
 
 ## Automated verification
 
-### LangBot backend and static checks
+### LangBot Core
 
 ```text
-uv run pytest -q --tb=short
-  2527 passed, 32 skipped, 177 warnings in 73.37s
+uv run --no-sync pytest -q
+  2590 passed, 32 skipped, 177 warnings
 
-focused tenant UoW and legacy RAG compatibility suite
-  120 passed, 10 warnings in 1.30s
+real PostgreSQL migration, pgvector, and release-migrator suites
+  21 passed, 11 warnings
 
-uv run ruff check .
-  passed
-
-changed Python format check
-  15 files already formatted
-
+uv run --no-sync ruff check .
+uv lock --check
 git diff --check
   passed
 ```
 
-The full suite includes startup E2E, the fresh SQLite registration/Workspace
-journey, API authorization, storage, RAG, Plugin, MCP, and 18 Docker-backed Box
-integration cases.
+The full suite ran without the closed adapter installed, proving the open-source
+single-Workspace/multi-user path remains standalone. Focused closed-adapter,
+directory projection, runtime connector, Box cleanup, and configuration suites
+also passed with the adapter installed.
 
-### Real PostgreSQL 16 and pgvector
+### Plugin SDK and real Linux runtime
 
 ```text
-test_migrations_postgres.py
-test_pgvector_postgres.py
-test_release_migration_postgres.py
-  21 passed, 11 warnings in 11.61s
+SDK full suite
+  1226 passed, 22 existing warnings
+
+Ruff check and format check
+git diff --check
+  passed
 ```
 
-The real-database suite covers fresh and upgraded RLS schemas, two-Workspace
-isolation, pgvector CRUD and ANN indexes, least-privilege runtime bootstrap,
-release locking, historical/fresh RAG settings column compatibility, and
-transaction-scope escape rejection. Negative tests inject and reject role
-membership, grant options, persistent GUCs, extra schemas and relations,
-column ACLs, explicit routine and parameter ACLs, runtime-owned and
-`SECURITY DEFINER` routines, extra/runtime-owned extensions, and foreign data
-wrappers, servers, and user mappings.
+A privileged Linux test container with host cgroup namespace ran one shared
+Runtime and two Workspace installations:
 
-Alembic has exactly one head: `0013_tenant_pgvector`.
+- both workers referenced the same artifact inode;
+- home, tmp, and data inodes were distinct;
+- each plugin saw only PID 1 in its private PID namespace;
+- a tampered binding and an unknown installation were rejected;
+- the control token was absent from worker environments;
+- cgroups were distinct with `memory.max=134217728`, `memory.swap.max=0`,
+  `pids.max=32`, and `cpu.max=500000 1000000`;
+- touching 256 MiB exited with code 137 without swap growth;
+- the 32nd fork failed with `EAGAIN`;
+- reconcile and container SIGTERM removed the worker cgroups.
 
-### Plugin SDK and Box Runtime
+The same run started the Runtime from a non-root working directory, covering
+absolute nsjail mount-source normalization.
+
+### Space backend, adapter, and frontend
 
 ```text
-Plugin SDK full suite
-  1160 passed, 18 warnings
-
-Plugin SDK Ruff and action consistency checks
+go test ./...
   passed
 
-Docker-backed Box integration suite
-  18 passed, 33 warnings
+fresh PostgreSQL app startup, partial-baseline migration,
+Cloud v2 migration rerun, and control-plane integration
+  passed
+
+closed adapter pytest and Ruff
+  passed
+
+pnpm exec tsc --noEmit
+targeted ESLint for changed Cloud files
+pnpm build
+  passed; 47 routes generated
 ```
 
-The LangBot environment resolves `langbot-plugin==0.4.15` from the same exact
-SDK commit recorded above. The SDK local ref and remote
-`refs/heads/feat/multi-tenants` were independently verified equal.
+The PostgreSQL checks started from an empty database and verified all 32
+registered migrations in order, Cloud v2 Free/Pro seeds, legacy plan seeds,
+Cloud columns/indexes, and repeatable reruns.
 
-### Frontend
+## Cross-service and browser E2E
 
-```text
-pnpm lint
-  0 errors, 34 existing warnings
+### Signed Space-to-Core directory projection
 
-VITE_API_BASE_URL=/ pnpm build
-  passed; 3168 modules transformed
+Using an isolated Space PostgreSQL database and a migrated Core PostgreSQL
+database:
 
-pnpm exec playwright test --project=chromium
-  43 passed in 22.2s
-```
+1. Space issued a signed manifest for the fixed LangBot instance.
+2. Space returned a directory snapshot at cursor 5 containing two Workspaces,
+   two projected Accounts, and owner/admin memberships.
+3. Core verified the signature, instance, release, validity window, and
+   capability before injecting the Cloud Workspace policy.
+4. Core stored both Workspaces, all active Memberships, both projected
+   Accounts, snapshot coverage, inbox entries, and cursor 5.
+5. Account-field-only projection revisions and Workspace directory revisions
+   remained independent, and cross-Workspace Account conflicts failed closed.
 
-The frontend suite includes Viewer monitoring visibility, privileged control
-hiding, stable terminal invitation states, email-mismatch login handoff, and a
-temporary invitation-accept failure that retains the authenticated session and
-succeeds on retry.
+### Real browser Cloud v2 flow
 
-### Packaging and deployment configuration
+A real local browser operated the Space frontend and backend:
 
-- `uv lock --check` resolved 277 packages and passed.
-- Changed TypeScript/TSX files passed Prettier verification.
-- `docker compose -f docker/docker-compose.yaml config --quiet` passed with the
-  existing warning that the top-level `version` field is obsolete.
-- The staged high-signal credential scan found no private key or provider
-  token.
+1. An owner logged in and saw the automatically created personal Workspace.
+2. A second Account invited the owner as admin to another Workspace.
+3. The selector showed both Workspaces and switched between them without stale
+   subscription or usage state crossing the selection.
+4. Each Workspace showed its own Free entitlement and limits.
+5. Pro checkout opened for the selected Workspace. With no configured payment
+   channels, confirmation was visibly disabled and no order was created.
+6. No browser errors occurred; only the pre-existing i18next warning for the
+   short `en` locale was observed.
 
-## Real browser E2E
+The legacy feature-flag branch was then covered by API/static checks and the
+production build: false or missing `cloud_v2_enabled` renders the original
+Welcome/Pod client; a failed web-config request renders an explicit retry
+instead of guessing a deployment mode.
 
-A production frontend and backend were run against an isolated temporary
-SQLite data directory and operated through a real local Chrome session:
+### Deliberate Core startup failure
 
-1. The first Account registered and automatically received the default
-   singleton Workspace as owner.
-2. Skipping the setup wizard reached `/home/monitoring`; reload and a new tab
-   recovered the authenticated Account, membership, and Workspace selection.
-3. The owner invited a Viewer. After signing out, the second Account registered
-   through the invitation and joined the same Workspace.
-4. Owner and Admin could read overview/export/audit/API-key surfaces and reach
-   resource-write validation. Runtime debug mutation remained disabled.
-5. Developer retained ordinary resource management and monitoring, while
-   export, audit, and API-key management returned 403.
-6. Operator and Viewer retained ordinary monitoring reads while resource
-   writes, export, audit, API-key management, and runtime mutation returned 403.
-7. The UI matched the server matrix: Add/API Key/Export controls appeared only
-   with their permissions, while ordinary monitoring refresh remained visible
-   to read-only members.
-8. A second Workspace creation attempt returned 403 `edition_limit`, proving
-   Community remains single-Workspace and multi-user.
-9. Used, revoked, expired, and email-mismatched invitation paths produced
-   stable visible states. The mismatch survived login without a contradictory
-   generic success toast.
+Core completed signed manifest verification and directory projection, then
+stopped at the Box readiness gate because the current nsjail backend cannot
+prove hard Workspace byte/inode quota enforcement. Connector shutdown and
+reconnect tasks were cleanly reaped; no event-loop or never-awaited coroutine
+warning remained.
 
-The server was stopped, port 15321 was verified free, and temporary artifacts
-were moved to the system Trash for recoverable cleanup. No invitation secret,
-password, token, or provider credential is recorded in this report.
+This is a successful fail-closed acceptance result, not a passing production
+Cloud boot.
 
-## Deliberately incomplete SaaS activation gates
+## Remaining production activation gates
 
-Multi-Workspace activation remains unavailable in the open-source bootstrap.
-Cloud v2 must stay disabled until all of the following are implemented and
-independently verified:
+Cloud v2 must remain disabled until these gates are closed:
 
-- the closed Control Plane owns the Account/Workspace directory, memberships,
-  invitations, monotonic execution generations, entitlements, usage,
-  subscriptions, and billing;
-- ordinary tenant writes hold a generation-aware fence through commit, and a
-  generation-stamped outbox or equivalent atomic publish fence protects
-  external side effects;
-- durable object references survive generation cutovers without stranding
-  files, images, plugin artifacts, or knowledge-base content;
-- every tenant-configurable outbound path has complete SSRF/egress policy, and
-  Plugin Runtime has production Linux namespace, cgroup v2, and network
-  isolation evidence;
-- an unexpectedly exited enabled plugin worker is restored by a completion
-  callback with bounded backoff and cross-tenant restart-storm isolation;
-- plugin installation data has an operator-owned hard disk quota, not a
-  directory-scan approximation;
-- Box supplies and proves hard byte/inode quotas for Workspace, Skill, root,
-  home, and temporary storage, and the production shared volume passes the
-  authenticated marker challenge;
-- production PostgreSQL uses a dedicated endpoint/cluster, or a tested
-  HBA/proxy policy proves the runtime credential can connect only to the target
-  business database;
-- the release migrator is deployed as a one-shot Job with credential issuance,
-  backup, rollback, failure/retry, and orchestration procedures;
-- OAuth exchange, directory projection, leases, snapshots, event replay, and
-  outbox state use durable shared stores suitable for horizontally scaled
-  replicas;
-- Workspace release, export, deletion, restore, and disaster-recovery semantics
-  are decided and implemented; and
-- production Runtime restart, crash, partition, revocation, and fault-injection
-  acceptance is completed against the closed Control Plane and greenfield
-  Cloud v2 deployment.
+- Box provides and proves hard byte and inode quotas for Workspace, Skill,
+  root, home, and tmp storage.
+- Plugin installation writable data receives an operator-owned hard total
+  disk quota.
+- Plugin and future networked Box workloads have tenant-safe egress/SSRF
+  policy.
+- Plugin Runtime adds jitter, global restart concurrency limiting, and a
+  Runtime-level circuit breaker, then passes systemic-failure injection.
+- M0 rolls Core and Plugin Runtime together until authenticated Runtime takeover
+  or an owner lease/fencing protocol exists.
+- Account registration moves New API provisioning to an in-process,
+  transactional outbox reconciler keyed by Space Account UUID.
+- EPay and Stripe fulfillment bind provider identity, amount, currency,
+  channel/session, payment status, and expiry to the locked order transaction;
+  provider transaction IDs are unique and replay-safe.
+- Payment-session creation and stale `processing` orders gain in-process
+  reconciliation.
+- Cloud v2 subscription service periods are stored immutably and included in
+  recognized-revenue reporting.
+- Production migration Job, backup/rollback, PostgreSQL credential/network
+  boundaries, horizontal-replica fault injection, Workspace release/export,
+  deletion, and restore semantics are completed.
 
-The following product work is also deliberately deferred: WebUI configuration
-for tenant-provided remote E2B, multi-replica lease storage and sharding rules,
-artifact signing/garbage collection, custom roles, SSO, and SCIM.
-
-These are explicit release gates, not hidden fallbacks. The current branches
-are a verified isolation foundation on which the closed SaaS system can be
-built; they are not a production Cloud activation.
+These gates intentionally add no tenant-specific service. They are implemented
+inside the existing Space, Core, Plugin Runtime, Box Runtime, and PostgreSQL
+components to preserve the architecture goal: near-zero static cost for a new
+Workspace.

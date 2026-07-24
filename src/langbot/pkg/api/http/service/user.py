@@ -109,11 +109,14 @@ class UserService:
             return await asyncio.to_thread(argon2.PasswordHasher().hash, password)
 
     def _require_local_directory(self) -> None:
-        workspace_service = getattr(self.ap, 'workspace_service', None)
-        if workspace_service is not None and workspace_service.policy.multi_workspace_enabled:
+        if self._uses_control_plane_directory():
             raise ControlPlaneDirectoryRequiredError(
                 'Cloud Accounts and directory changes are managed by the SaaS control plane'
             )
+
+    def _uses_control_plane_directory(self) -> bool:
+        workspace_service = getattr(self.ap, 'workspace_service', None)
+        return bool(workspace_service is not None and workspace_service.policy.multi_workspace_enabled)
 
     async def _verify_password(self, hashed_password: str, password: str) -> None:
         async with self._password_hash_lock:
@@ -427,6 +430,15 @@ class UserService:
         expires_in: int = 0,
     ) -> user.User:
         """Create or update a Space user account (only if system not initialized or user exists)"""
+        if self._uses_control_plane_directory():
+            return await self._update_projected_space_user(
+                space_account_uuid=space_account_uuid,
+                email=email,
+                access_token=access_token,
+                refresh_token=refresh_token,
+                api_key=api_key,
+                expires_in=expires_in,
+            )
         self._require_local_directory()
         expires_at = datetime.datetime.now() + datetime.timedelta(seconds=expires_in) if expires_in > 0 else None
 
@@ -506,6 +518,52 @@ class UserService:
             if created_user is not None:
                 await self._update_space_provider_for_account(created_user, api_key)
             return created_user
+
+    async def _update_projected_space_user(
+        self,
+        *,
+        space_account_uuid: str,
+        email: str,
+        access_token: str,
+        refresh_token: str,
+        api_key: str,
+        expires_in: int,
+    ) -> user.User:
+        """Attach OAuth credentials to an already projected Cloud Account."""
+
+        normalized_email = normalize_email(email)
+        expires_at = datetime.datetime.now() + datetime.timedelta(seconds=expires_in) if expires_in > 0 else None
+        async with self._create_user_lock:
+            projected = await self.get_user_by_space_account_uuid(space_account_uuid)
+            if (
+                projected is None
+                or projected.uuid != space_account_uuid
+                or projected.normalized_email != normalized_email
+                or projected.source != user.AccountSource.CLOUD_PROJECTION.value
+                or projected.account_type != 'space'
+            ):
+                raise ControlPlaneDirectoryRequiredError('Space Account is not present in the verified Cloud directory')
+            self._require_active_account(projected)
+            await self._identity_execute(
+                sqlalchemy.update(user.User)
+                .where(
+                    user.User.uuid == projected.uuid,
+                    user.User.space_account_uuid == space_account_uuid,
+                    user.User.source == user.AccountSource.CLOUD_PROJECTION.value,
+                )
+                .values(
+                    space_access_token=access_token,
+                    space_refresh_token=refresh_token,
+                    space_api_key=api_key,
+                    space_access_token_expires_at=expires_at,
+                ),
+                f'space:{space_account_uuid}',
+            )
+            refreshed = await self.get_user_by_space_account_uuid(space_account_uuid)
+            if refreshed is None:
+                raise ControlPlaneDirectoryRequiredError('Space Account disappeared from the verified Cloud directory')
+            self._require_active_account(refreshed)
+            return refreshed
 
     async def authenticate_space_user(
         self, access_token: str, refresh_token: str, expires_in: int = 0

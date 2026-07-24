@@ -19,8 +19,11 @@ import datetime
 from unittest.mock import AsyncMock, Mock
 from types import SimpleNamespace
 
-from langbot.pkg.api.http.service.user import UserService
-from langbot.pkg.entity.persistence.user import AccountStatus, User
+from langbot.pkg.api.http.service.user import (
+    ControlPlaneDirectoryRequiredError,
+    UserService,
+)
+from langbot.pkg.entity.persistence.user import AccountSource, AccountStatus, User
 from langbot.pkg.entity.errors.account import AccountEmailMismatchError
 
 
@@ -562,6 +565,62 @@ class TestUserServiceCreateOrUpdateSpaceUser:
         # Verify - update was called and user returned
         ap.persistence_mgr.execute_async.assert_called()
         assert updated_user.space_account_uuid == 'existing-space-uuid'
+
+    async def test_cloud_login_updates_only_the_projected_space_account(self):
+        projected = SimpleNamespace(
+            uuid='projected-space-uuid',
+            user='Cloud Owner',
+            normalized_email='owner@example.com',
+            password='',
+            account_type='space',
+            status=AccountStatus.ACTIVE.value,
+            source=AccountSource.CLOUD_PROJECTION.value,
+            projection_revision=7,
+            space_account_uuid='projected-space-uuid',
+        )
+        persistence = SimpleNamespace(execute_async=AsyncMock())
+        ap = SimpleNamespace(
+            persistence_mgr=persistence,
+            workspace_service=SimpleNamespace(policy=SimpleNamespace(multi_workspace_enabled=True)),
+        )
+        service = UserService(ap)
+        service.get_user_by_space_account_uuid = AsyncMock(side_effect=[projected, projected])
+
+        result = await service.create_or_update_space_user(
+            space_account_uuid='projected-space-uuid',
+            email='OWNER@example.com',
+            access_token='access-token',
+            refresh_token='refresh-token',
+            api_key='api-key',
+            expires_in=3600,
+        )
+
+        assert result is projected
+        persistence.execute_async.assert_awaited_once()
+
+    async def test_cloud_login_never_creates_an_unprojected_account(self):
+        persistence = SimpleNamespace(execute_async=AsyncMock())
+        ap = SimpleNamespace(
+            persistence_mgr=persistence,
+            workspace_service=SimpleNamespace(policy=SimpleNamespace(multi_workspace_enabled=True)),
+        )
+        service = UserService(ap)
+        service.get_user_by_space_account_uuid = AsyncMock(return_value=None)
+
+        with pytest.raises(
+            ControlPlaneDirectoryRequiredError,
+            match='verified Cloud directory',
+        ):
+            await service.create_or_update_space_user(
+                space_account_uuid='unknown-space-uuid',
+                email='unknown@example.com',
+                access_token='access-token',
+                refresh_token='refresh-token',
+                api_key='api-key',
+                expires_in=3600,
+            )
+
+        persistence.execute_async.assert_not_awaited()
 
     async def test_create_or_update_new_space_user_first_init(self):
         """Creates new Space user on first initialization."""

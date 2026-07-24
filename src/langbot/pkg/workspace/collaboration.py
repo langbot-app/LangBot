@@ -25,7 +25,7 @@ from ..entity.persistence.workspace import (
     WorkspaceStatus,
 )
 from .entities import WorkspaceExecutionBinding
-from .errors import WorkspaceNotFoundError
+from .errors import WorkspaceExecutionUnavailableError, WorkspaceInvariantError, WorkspaceNotFoundError
 from .policy import CloudWorkspacePolicy, SingleWorkspacePolicy
 from .service import WorkspaceService
 
@@ -231,13 +231,22 @@ class WorkspaceCollaborationService:
             accesses: list[ResolvedWorkspaceAccess] = []
             for workspace_uuid in workspace_uuids:
                 async with tenant_uow(workspace_uuid) as workspace_uow:
-                    accesses.append(
-                        await self.resolve_account_workspace(
-                            account_uuid,
-                            workspace_uuid,
-                            session=workspace_uow.session,
+                    try:
+                        accesses.append(
+                            await self.resolve_account_workspace(
+                                account_uuid,
+                                workspace_uuid,
+                                session=workspace_uow.session,
+                            )
                         )
-                    )
+                    except (
+                        WorkspaceExecutionUnavailableError,
+                        WorkspaceInvariantError,
+                        WorkspaceNotFoundError,
+                    ) as exc:
+                        self.ap.logger.warning(
+                            f'Skipping inactive Workspace discovery projection {workspace_uuid!r}: {exc}'
+                        )
             accesses.sort(key=lambda access: (access.workspace.created_at, access.workspace.uuid))
             return accesses
 

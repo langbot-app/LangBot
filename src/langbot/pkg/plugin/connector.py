@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import contextvars
 import hashlib
 import io
@@ -73,6 +74,10 @@ _GITHUB_ASSET_HOSTS = frozenset(
     }
 )
 _HTTP_REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
+_CONNECT_TIMEOUT_SEC = 30.0
+_HEARTBEAT_INTERVAL_SEC = 20.0
+_HEARTBEAT_FAILURE_THRESHOLD = 3
+_RECONNECT_MAX_DELAY_SEC = 60.0
 
 
 class PluginRuntimeNotConnectedError(RuntimeError):
@@ -139,6 +144,24 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         self._installation_failures: dict[str, dict[str, str]] = {}
         self._state_lock = asyncio.Lock()
         self._control_token = str(os.environ.get(PLUGIN_RUNTIME_CONTROL_TOKEN_ENV) or '').strip()
+        self._transport_task: asyncio.Task | None = None
+        self._reconnect_task: asyncio.Task | None = None
+        self._generation = 0
+        self._connected = asyncio.Event()
+
+    def _runtime_handler(self) -> handler.RuntimeConnectionHandler:
+        runtime_handler = getattr(self, 'handler', None)
+        if runtime_handler is None:
+            raise PluginRuntimeNotConnectedError('Plugin runtime is not connected')
+        return runtime_handler
+
+    def _runtime_available(self) -> bool:
+        runtime_handler = getattr(self, 'handler', None)
+        if runtime_handler is None:
+            return False
+        # Unit-level and explicitly injected handlers do not own a transport.
+        # A managed transport must also have completed its handshake.
+        return self._transport_task is None or self._connected.is_set()
 
     def _load_worker_policy(self) -> PluginWorkerPolicy:
         """Validate the instance policy without consulting plugin manifests."""
@@ -351,8 +374,9 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         desired_states: list[PluginInstallationDesiredState] = []
         for setting in settings:
             binding = self._binding_from_setting(execution_context, setting)
-            if hasattr(self, 'handler'):
-                self.handler.register_installation_binding(
+            runtime_handler = getattr(self, 'handler', None)
+            if runtime_handler is not None:
+                runtime_handler.register_installation_binding(
                     binding,
                     plugin_author=setting.plugin_author,
                     plugin_name=setting.plugin_name,
@@ -371,7 +395,8 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         *,
         artifact_package: bytes | None = None,
     ) -> dict[str, Any]:
-        result = await self.handler.apply_plugin_installation(
+        runtime_handler = self._runtime_handler()
+        result = await runtime_handler.apply_plugin_installation(
             desired.binding,
             artifact_package=artifact_package,
             enabled=desired.enabled,
@@ -396,7 +421,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                 f'Durable plugin artifact {desired.binding.artifact_digest} is missing for '
                 f'installation {desired.binding.installation_uuid}'
             )
-        repaired = await self.handler.apply_plugin_installation(
+        repaired = await runtime_handler.apply_plugin_installation(
             desired.binding,
             artifact_package=persisted_package,
             enabled=desired.enabled,
@@ -559,6 +584,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
     async def _prepare_connected_runtime(self) -> None:
         """Handshake follow-up: pin OSS compatibility, then replay authority."""
 
+        runtime_handler = self._runtime_handler()
         workspace_service = getattr(self.ap, 'workspace_service', None)
         if workspace_service is None:
             raise RuntimeError('Plugin Runtime requires the Workspace projection service')
@@ -580,15 +606,15 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             # One fully-bound action releases the SDK's deliberately retained
             # pre-v4 data/plugins/debug compatibility path. Shared mode never
             # creates this bridge.
-            with self.handler.installation_scope(bridge):
-                await self.handler.list_plugins()
+            with runtime_handler.installation_scope(bridge):
+                await runtime_handler.list_plugins()
             desired_states = await self._load_workspace_desired_states(execution_context)
             self._workspace_installations[execution_context.workspace_uuid] = {
                 state.binding.installation_uuid for state in desired_states
             }
             self._known_desired_states.update({state.binding.installation_uuid: state for state in desired_states})
 
-        result = await self.handler.reconcile_plugin_installations(tuple(self._known_desired_states.values()))
+        result = await runtime_handler.reconcile_plugin_installations(tuple(self._known_desired_states.values()))
         await self._repair_reconcile_missing_artifacts(self._known_desired_states, result)
         self._record_reconcile_failures(self._known_desired_states, result)
 
@@ -604,8 +630,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         Runtime reconcile.
         """
 
-        if not hasattr(self, 'handler'):
-            raise PluginRuntimeNotConnectedError('Plugin runtime is not connected')
+        runtime_handler = self._runtime_handler()
         async with self._state_lock:
             all_states: dict[str, PluginInstallationDesiredState] = {}
             workspace_installations: dict[str, set[str]] = {}
@@ -619,12 +644,12 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                     if state.binding.installation_uuid in all_states:
                         raise ValueError('Duplicate plugin installation UUID across projected Workspaces')
                     all_states[state.binding.installation_uuid] = state
-            result = await self.handler.reconcile_plugin_installations(tuple(all_states.values()))
+            result = await runtime_handler.reconcile_plugin_installations(tuple(all_states.values()))
             await self._repair_reconcile_missing_artifacts(all_states, result)
             self._record_reconcile_failures(all_states, result)
             for installation_uuid, previous in tuple(self._known_desired_states.items()):
                 if installation_uuid not in all_states:
-                    self.handler.unregister_installation_binding(previous.binding)
+                    runtime_handler.unregister_installation_binding(previous.binding)
             self._known_desired_states = all_states
             self._workspace_installations = workspace_installations
             return result
@@ -652,6 +677,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
     async def _synchronize_workspace(self, execution_context: ExecutionContext) -> None:
         if not self.is_enable_plugin or not hasattr(self, 'handler'):
             return
+        runtime_handler = self._runtime_handler()
         desired_states = await self._load_workspace_desired_states(execution_context)
         desired_by_uuid = {state.binding.installation_uuid: state for state in desired_states}
         async with self._state_lock:
@@ -659,8 +685,8 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             for installation_uuid in previous_ids - set(desired_by_uuid):
                 previous = self._known_desired_states.get(installation_uuid)
                 if previous is not None:
-                    await self.handler.remove_plugin_installation(previous.binding)
-                    self.handler.unregister_installation_binding(previous.binding)
+                    await runtime_handler.remove_plugin_installation(previous.binding)
+                    runtime_handler.unregister_installation_binding(previous.binding)
                     self._known_desired_states.pop(installation_uuid, None)
                     self._installation_failures.pop(installation_uuid, None)
 
@@ -755,48 +781,152 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                     await notify_disconnect()
                     return False
 
-            self.handler = handler.RuntimeConnectionHandler(
-                connection,
-                disconnect_callback,
-                self.ap,
-            )
-
-            self.handler_task = asyncio.create_task(self.handler.run())
-            _ = await self.handler.ping()
-            # Push the configured marketplace (Space) URL to the runtime so it
-            # downloads plugins from the same Space LangBot is bound to, rather
-            # than relying on the runtime's own env/default.
-            space_url = self.ap.instance_config.data.get('space', {}).get('url', '').rstrip('/')
-            try:
-                if self.runtime_identity is None or self.worker_policy is None:  # pragma: no cover
-                    raise RuntimeError('Plugin Runtime identity or worker policy was not loaded')
-                await self.handler.set_runtime_config(
-                    runtime_identity=self.runtime_identity,
-                    worker_policy=self.worker_policy,
-                    runtime_profile=self.runtime_profile,
-                    cloud_service_url=space_url or None,
+                runtime_handler = handler.RuntimeConnectionHandler(
+                    connection,
+                    disconnect_callback,
+                    self.ap,
                 )
-                if space_url:
-                    self.ap.logger.info(f'Pushed marketplace URL to plugin runtime: {space_url}')
-            except Exception as e:
-                self.ap.logger.warning(f'Failed to bind plugin runtime config: {e}')
-                raise
-            await self._prepare_connected_runtime()
-            self.ap.logger.info('Connected to instance-scoped plugin runtime.')
-            await self.handler_task
+                self.handler = runtime_handler
+                self.handler_task = asyncio.create_task(runtime_handler.run())
+                try:
+                    await runtime_handler.ping()
+                    if self.runtime_identity is None or self.worker_policy is None:  # pragma: no cover
+                        raise RuntimeError('Plugin Runtime identity or worker policy was not loaded')
+                    space_url = self.ap.instance_config.data.get('space', {}).get('url', '').rstrip('/')
+                    await runtime_handler.set_runtime_config(
+                        runtime_identity=self.runtime_identity,
+                        worker_policy=self.worker_policy,
+                        runtime_profile=self.runtime_profile,
+                        cloud_service_url=space_url or None,
+                    )
+                    if space_url:
+                        self.ap.logger.info(f'Pushed marketplace URL to plugin runtime: {space_url}')
+                    await self._prepare_connected_runtime()
+                    if generation == self._generation and not self._closing:
+                        connection_ready = True
+                        self._connected.set()
+                        self.ap.logger.info('Connected to instance-scoped plugin runtime.')
+                    await self.handler_task
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:
+                    if not self._connected.is_set():
+                        connect_errors.append(exc)
+                        self._connected.set()
+                finally:
+                    if generation == self._generation and not self._closing:
+                        self._connected.clear()
+                        if getattr(self, 'handler', None) is runtime_handler:
+                            del self.handler
+                        await notify_disconnect()
 
-            task_coro: typing.Coroutine
+            task_coro: typing.Coroutine[Any, Any, Any]
             if platform.get_platform() == 'docker' or platform.use_websocket_to_connect_plugin_runtime():
+                self.ap.logger.info('use websocket to connect to plugin runtime')
+                control_headers = self._control_headers(allow_generate=False)
                 ws_url = self.ap.instance_config.data.get('plugin', {}).get(
                     'runtime_ws_url',
                     'ws://langbot_plugin_runtime:5400/control/ws',
                 )
 
-        if platform.get_platform() == 'docker' or platform.use_websocket_to_connect_plugin_runtime():  # use websocket
-            self.ap.logger.info('use websocket to connect to plugin runtime')
-            control_headers = self._control_headers(allow_generate=False)
-            ws_url = self.ap.instance_config.data.get('plugin', {}).get(
-                'runtime_ws_url', 'ws://langbot_plugin_runtime:5400/control/ws'
+                async def connection_failed(
+                    ctrl: ws_client_controller.WebSocketClientController,
+                    exc: Exception | None = None,
+                ) -> None:
+                    del ctrl
+                    connect_errors.append(exc or RuntimeError('WebSocket connection failed'))
+                    self._connected.set()
+
+                self.ctrl = ws_client_controller.WebSocketClientController(
+                    ws_url=ws_url,
+                    make_connection_failed_callback=connection_failed,
+                    additional_headers=control_headers,
+                )
+                task_coro = self.ctrl.run(new_connection_callback)
+            elif platform.get_platform() == 'win32':
+                # Windows cannot use the stdio subprocess transport, so launch
+                # a managed runtime and authenticate its WebSocket controller.
+                self.ap.logger.info('(windows) use cmd to launch plugin runtime and communicate via ws')
+                control_headers = self._control_headers(allow_generate=True)
+                await self._start_runtime_subprocess(
+                    '-m',
+                    'langbot_plugin.cli.__init__',
+                    'rt',
+                    env_overrides={PLUGIN_RUNTIME_CONTROL_TOKEN_ENV: self._control_token},
+                )
+                ws_url = 'ws://localhost:5400/control/ws'
+
+                async def connection_failed(
+                    ctrl: ws_client_controller.WebSocketClientController,
+                    exc: Exception | None = None,
+                ) -> None:
+                    del ctrl
+                    connect_errors.append(exc or RuntimeError('WebSocket connection failed'))
+                    self._connected.set()
+
+                self.ctrl = ws_client_controller.WebSocketClientController(
+                    ws_url=ws_url,
+                    make_connection_failed_callback=connection_failed,
+                    additional_headers=control_headers,
+                )
+                task_coro = self.ctrl.run(new_connection_callback)
+            else:
+                self.ap.logger.info('use stdio to connect to plugin runtime')
+                self.ctrl = stdio_client_controller.StdioClientController(
+                    command=sys.executable,
+                    args=['-m', 'langbot_plugin.cli.__init__', 'rt', '-s'],
+                    env=os.environ.copy(),
+                    capture_stderr=False,
+                )
+                task_coro = self.ctrl.run(new_connection_callback)
+
+            self._transport_task = asyncio.create_task(task_coro)
+            try:
+                await asyncio.wait_for(self._connected.wait(), timeout=_CONNECT_TIMEOUT_SEC)
+            except asyncio.TimeoutError as exc:
+                await self._stop_transport()
+                raise PluginRuntimeNotConnectedError('Plugin runtime did not become ready within 30 seconds') from exc
+            if connect_errors:
+                await self._stop_transport()
+                raise PluginRuntimeNotConnectedError(f'Plugin runtime connection failed: {connect_errors[-1]}')
+
+            if self.heartbeat_task is None or self.heartbeat_task.done():
+                self.heartbeat_task = asyncio.create_task(self.heartbeat_loop())
+
+    def schedule_reconnect(self) -> None:
+        if self._closing or not self.is_enable_plugin:
+            return
+        if self._reconnect_task is not None and not self._reconnect_task.done():
+            return
+        self._reconnect_task = asyncio.create_task(self._reconnect_loop())
+
+    async def _reconnect_loop(self) -> None:
+        delay = 1.0
+        try:
+            while not self._closing:
+                try:
+                    await self.initialize()
+                    return
+                except Exception as exc:
+                    self.ap.logger.warning(f'Plugin runtime reconnection failed: {exc}; retrying in {delay:.0f}s')
+                    await asyncio.sleep(delay)
+                    delay = min(delay * 2, _RECONNECT_MAX_DELAY_SEC)
+        finally:
+            self._reconnect_task = None
+
+    async def _stop_transport(self) -> None:
+        self._connected.clear()
+        runtime_handler = getattr(self, 'handler', None)
+        if runtime_handler is not None:
+            with contextlib.suppress(Exception):
+                await runtime_handler.close()
+            if getattr(self, 'handler', None) is runtime_handler:
+                del self.handler
+        tasks = [
+            task
+            for task in (
+                getattr(self, 'handler_task', None),
+                self._transport_task,
             )
             if task is not None and task is not asyncio.current_task()
         ]
@@ -812,73 +942,20 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             with contextlib.suppress(Exception):
                 await close_ctrl()
 
-            async def make_connection_failed_callback(
-                ctrl: ws_client_controller.WebSocketClientController,
-                exc: Exception = None,
-            ) -> None:
-                if exc is not None:
-                    self.ap.logger.error(f'Failed to connect to plugin runtime({ws_url}): {exc}')
-                else:
-                    self.ap.logger.error(f'Failed to connect to plugin runtime({ws_url}), trying to reconnect...')
-                await self.runtime_disconnect_callback(self)
-
-            self.ctrl = ws_client_controller.WebSocketClientController(
-                ws_url=ws_url,
-                make_connection_failed_callback=make_connection_failed_callback,
-                additional_headers=control_headers,
-            )
-            task = self.ctrl.run(new_connection_callback)
-        elif platform.get_platform() == 'win32':
-            # Due to Windows's lack of supports for both stdio and subprocess:
-            # See also: https://docs.python.org/zh-cn/3.13/library/asyncio-platforms.html
-            # We have to launch runtime via cmd but communicate via ws.
-            self.ap.logger.info('(windows) use cmd to launch plugin runtime and communicate via ws')
-
-            control_headers = self._control_headers(allow_generate=True)
-            await self._start_runtime_subprocess(
-                '-m',
-                'langbot_plugin.cli.__init__',
-                'rt',
-                env_overrides={PLUGIN_RUNTIME_CONTROL_TOKEN_ENV: self._control_token},
-            )
-
-            ws_url = 'ws://localhost:5400/control/ws'
-
-            async def make_connection_failed_callback(
-                ctrl: ws_client_controller.WebSocketClientController,
-                exc: Exception = None,
-            ) -> None:
-                if exc is not None:
-                    self.ap.logger.error(f'(windows) Failed to connect to plugin runtime({ws_url}): {exc}')
-                else:
-                    self.ap.logger.error(
-                        f'(windows) Failed to connect to plugin runtime({ws_url}), trying to reconnect...'
-                    )
-                await self.runtime_disconnect_callback(self)
-
-            self.ctrl = ws_client_controller.WebSocketClientController(
-                ws_url=ws_url,
-                make_connection_failed_callback=make_connection_failed_callback,
-                additional_headers=control_headers,
-            )
-            task = self.ctrl.run(new_connection_callback)
-
-        else:  # stdio
-            self.ap.logger.info('use stdio to connect to plugin runtime')
-            # cmd: lbp rt -s
-            python_path = sys.executable
-            env = os.environ.copy()
-            self.ctrl = stdio_client_controller.StdioClientController(
-                command=python_path,
-                args=['-m', 'langbot_plugin.cli.__init__', 'rt', '-s'],
-                env=env,
-            )
-            task = self.ctrl.run(new_connection_callback)
-
-        if self.heartbeat_task is None:
-            self.heartbeat_task = asyncio.create_task(self.heartbeat_loop())
-
-        asyncio.create_task(task)
+    async def aclose(self) -> None:
+        self._closing = True
+        self._generation += 1
+        reconnect_task = self._reconnect_task
+        self._reconnect_task = None
+        if reconnect_task is not None and reconnect_task is not asyncio.current_task():
+            reconnect_task.cancel()
+            await asyncio.gather(reconnect_task, return_exceptions=True)
+        if self.heartbeat_task is not None:
+            self.heartbeat_task.cancel()
+            await asyncio.gather(self.heartbeat_task, return_exceptions=True)
+            self.heartbeat_task = None
+        await self._stop_transport()
+        await self._close_managed_subprocess()
 
     async def initialize_plugins(self):
         pass
@@ -1001,12 +1078,13 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         component_kind: typing.Literal['tool', 'command'],
         include_plugins: list[str] | None,
     ) -> InstallationBinding:
+        runtime_handler = self._runtime_handler()
         for binding in await self._operation_bindings(include_plugins=include_plugins):
-            with self.handler.installation_scope(binding):
+            with runtime_handler.installation_scope(binding):
                 components = (
-                    await self.handler.list_tools(include_plugins=include_plugins)
+                    await runtime_handler.list_tools(include_plugins=include_plugins)
                     if component_kind == 'tool'
-                    else await self.handler.list_commands(include_plugins=include_plugins)
+                    else await runtime_handler.list_commands(include_plugins=include_plugins)
                 )
             for component in components:
                 manifest = ComponentManifest.model_validate(component)
@@ -1467,6 +1545,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         install_info: dict[str, Any],
         task_context: taskmgr.TaskContext | None = None,
     ) -> None:
+        runtime_handler = self._runtime_handler()
         execution_context = await self._current_execution_context()
         plugin_author = str(install_info.get('plugin_author') or '')
         plugin_name = str(install_info.get('plugin_name') or '')
@@ -1521,7 +1600,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         except Exception:
             await self._delete_artifact_if_unreferenced(execution_context, artifact_digest)
             raise
-        self.handler.register_installation_binding(
+        runtime_handler.register_installation_binding(
             binding,
             plugin_author=plugin_author,
             plugin_name=plugin_name,
@@ -1538,8 +1617,8 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         if previous_digest is not None and not previous_was_durable and self.runtime_profile == 'oss_dev':
             bridge = self._legacy_oss_bridge_binding(execution_context)
             try:
-                with self.handler.installation_scope(bridge):
-                    async for _ in self.handler.delete_plugin(plugin_author, plugin_name):
+                with runtime_handler.installation_scope(bridge):
+                    async for _ in runtime_handler.delete_plugin(plugin_author, plugin_name):
                         pass
             except Exception as exc:
                 self.ap.logger.debug(f'Legacy OSS plugin cleanup skipped: {exc}')
@@ -1570,6 +1649,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         delete_data: bool = False,
         task_context: taskmgr.TaskContext | None = None,
     ) -> dict[str, Any]:
+        runtime_handler = self._runtime_handler()
         execution_context, setting = await self._setting_for_plugin(plugin_author, plugin_name)
         binding = self._binding_from_setting(execution_context, setting)
         is_legacy_oss = self.runtime_profile == 'oss_dev' and (
@@ -1578,11 +1658,11 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         )
         if is_legacy_oss:
             bridge = self._legacy_oss_bridge_binding(execution_context)
-            with self.handler.installation_scope(bridge):
-                async for _ in self.handler.delete_plugin(plugin_author, plugin_name):
+            with runtime_handler.installation_scope(bridge):
+                async for _ in runtime_handler.delete_plugin(plugin_author, plugin_name):
                     pass
-        await self.handler.remove_plugin_installation(binding)
-        self.handler.unregister_installation_binding(binding)
+        await runtime_handler.remove_plugin_installation(binding)
+        runtime_handler.unregister_installation_binding(binding)
 
         async def delete(execute):
             await execute(
@@ -1629,11 +1709,12 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         if not self.is_enable_plugin or not self._runtime_available():
             return []
 
+        runtime_handler = self._runtime_handler()
         plugins: list[dict[str, Any]] = []
         seen_plugin_ids: set[str] = set()
         for binding in await self._operation_bindings():
-            with self.handler.installation_scope(binding):
-                scoped_plugins = await self.handler.list_plugins()
+            with runtime_handler.installation_scope(binding):
+                scoped_plugins = await runtime_handler.list_plugins()
             for plugin in scoped_plugins:
                 metadata = plugin.get('manifest', {}).get('manifest', {}).get('metadata', {})
                 plugin_id = f'{metadata.get("author", "")}/{metadata.get("name", "")}'
@@ -1685,11 +1766,13 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         return plugins
 
     async def get_plugin_info(self, author: str, plugin_name: str) -> dict[str, Any]:
+        runtime_handler = self._runtime_handler()
         binding = await self._target_binding(author, plugin_name)
-        with self.handler.installation_scope(binding):
-            return await self.handler.get_plugin_info(author, plugin_name)
+        with runtime_handler.installation_scope(binding):
+            return await runtime_handler.get_plugin_info(author, plugin_name)
 
     async def set_plugin_config(self, plugin_author: str, plugin_name: str, config: dict[str, Any]) -> dict[str, Any]:
+        runtime_handler = self._runtime_handler()
         execution_context, setting = await self._setting_for_plugin(plugin_author, plugin_name)
         next_revision = setting.runtime_revision + 1
         statement = (
@@ -1716,7 +1799,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             runtime_revision=next_revision,
             artifact_digest=setting.artifact_digest,
         )
-        self.handler.register_installation_binding(
+        runtime_handler.register_installation_binding(
             binding,
             plugin_author=plugin_author,
             plugin_name=plugin_name,
@@ -1731,22 +1814,24 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         )
         if is_legacy_oss:
             bridge = self._legacy_oss_bridge_binding(execution_context)
-            with self.handler.installation_scope(bridge):
-                await self.handler.set_plugin_config(plugin_author, plugin_name, config)
+            with runtime_handler.installation_scope(bridge):
+                await runtime_handler.set_plugin_config(plugin_author, plugin_name, config)
         else:
             await self._apply_desired_state(desired)
         self._known_desired_states[binding.installation_uuid] = desired
         return {}
 
     async def get_plugin_icon(self, plugin_author: str, plugin_name: str) -> dict[str, Any]:
+        runtime_handler = self._runtime_handler()
         binding = await self._target_binding(plugin_author, plugin_name)
-        with self.handler.installation_scope(binding):
-            return await self.handler.get_plugin_icon(plugin_author, plugin_name)
+        with runtime_handler.installation_scope(binding):
+            return await runtime_handler.get_plugin_icon(plugin_author, plugin_name)
 
     async def get_plugin_readme(self, plugin_author: str, plugin_name: str, language: str = 'en') -> str:
+        runtime_handler = self._runtime_handler()
         binding = await self._target_binding(plugin_author, plugin_name)
-        with self.handler.installation_scope(binding):
-            return await self.handler.get_plugin_readme(plugin_author, plugin_name, language)
+        with runtime_handler.installation_scope(binding):
+            return await runtime_handler.get_plugin_readme(plugin_author, plugin_name, language)
 
     async def get_plugin_logs(
         self,
@@ -1755,14 +1840,16 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         limit: int = 200,
         level: str | None = None,
     ) -> list[dict[str, Any]]:
+        runtime_handler = self._runtime_handler()
         binding = await self._target_binding(plugin_author, plugin_name)
-        with self.handler.installation_scope(binding):
-            return await self.handler.get_plugin_logs(plugin_author, plugin_name, limit, level)
+        with runtime_handler.installation_scope(binding):
+            return await runtime_handler.get_plugin_logs(plugin_author, plugin_name, limit, level)
 
     async def get_plugin_assets(self, plugin_author: str, plugin_name: str, filepath: str) -> dict[str, Any]:
+        runtime_handler = self._runtime_handler()
         binding = await self._target_binding(plugin_author, plugin_name)
-        with self.handler.installation_scope(binding):
-            return await self.handler.get_plugin_assets(plugin_author, plugin_name, filepath)
+        with runtime_handler.installation_scope(binding):
+            return await runtime_handler.get_plugin_assets(plugin_author, plugin_name, filepath)
 
     async def handle_page_api(
         self,
@@ -1773,9 +1860,10 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         method: str,
         body: Any = None,
     ) -> dict[str, Any]:
+        runtime_handler = self._runtime_handler()
         binding = await self._target_binding(plugin_author, plugin_name)
-        with self.handler.installation_scope(binding):
-            return await self.handler.handle_page_api(plugin_author, plugin_name, page_id, endpoint, method, body)
+        with runtime_handler.installation_scope(binding):
+            return await runtime_handler.handle_page_api(plugin_author, plugin_name, page_id, endpoint, method, body)
 
     async def get_debug_info(self) -> dict[str, Any]:
         """Get debug information including debug key and WS URL"""
@@ -1800,11 +1888,12 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             event_ctx._response_sources = []
             return event_ctx
 
+        runtime_handler = self._runtime_handler()
         emitted_plugins: list[Any] = []
         response_sources: list[dict[str, Any]] = []
         for binding in await self._operation_bindings(include_plugins=bound_plugins):
-            with self.handler.installation_scope(binding):
-                result = await self.handler.emit_event(
+            with runtime_handler.installation_scope(binding):
+                result = await runtime_handler.emit_event(
                     event_ctx.model_dump(serialize_as_any=False),
                     include_plugins=bound_plugins,
                 )
@@ -1821,18 +1910,19 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         if not self.is_enable_plugin or not self._runtime_available():
             return
         try:
+            runtime_handler = self._runtime_handler()
             plugin_ref = diagnostic.get('plugin') if isinstance(diagnostic, dict) else None
             if isinstance(plugin_ref, dict):
                 author = plugin_ref.get('author') or plugin_ref.get('plugin_author')
                 name = plugin_ref.get('name') or plugin_ref.get('plugin_name')
                 if author and name:
                     binding = await self._target_binding(str(author), str(name))
-                    with self.handler.installation_scope(binding):
-                        await self.handler.notify_plugin_diagnostic(diagnostic)
+                    with runtime_handler.installation_scope(binding):
+                        await runtime_handler.notify_plugin_diagnostic(diagnostic)
                     return
             for binding in await self._operation_bindings():
-                with self.handler.installation_scope(binding):
-                    await self.handler.notify_plugin_diagnostic(diagnostic)
+                with runtime_handler.installation_scope(binding):
+                    await runtime_handler.notify_plugin_diagnostic(diagnostic)
         except Exception as e:
             self.ap.logger.debug(f'Plugin diagnostic forwarding skipped: {e}')
 
@@ -1840,11 +1930,12 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         if not self.is_enable_plugin or not self._runtime_available():
             return []
 
+        runtime_handler = self._runtime_handler()
         tools: list[ComponentManifest] = []
         seen: set[tuple[str, str]] = set()
         for binding in await self._operation_bindings(include_plugins=bound_plugins):
-            with self.handler.installation_scope(binding):
-                scoped = await self.handler.list_tools(include_plugins=bound_plugins)
+            with runtime_handler.installation_scope(binding):
+                scoped = await runtime_handler.list_tools(include_plugins=bound_plugins)
             for raw_tool in scoped:
                 tool = ComponentManifest.model_validate(raw_tool)
                 key = (str(tool.owner), tool.metadata.name)
@@ -1878,8 +1969,9 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             component_kind='tool',
             include_plugins=bound_plugins,
         )
-        with self.handler.installation_scope(binding):
-            return await self.handler.call_tool(
+        runtime_handler = self._runtime_handler()
+        with runtime_handler.installation_scope(binding):
+            return await runtime_handler.call_tool(
                 tool_name,
                 parameters,
                 session.model_dump(serialize_as_any=True),
@@ -1892,11 +1984,12 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         if not self.is_enable_plugin or not self._runtime_available():
             return []
 
+        runtime_handler = self._runtime_handler()
         commands: list[ComponentManifest] = []
         seen: set[tuple[str, str]] = set()
         for binding in await self._operation_bindings(include_plugins=bound_plugins):
-            with self.handler.installation_scope(binding):
-                scoped = await self.handler.list_commands(include_plugins=bound_plugins)
+            with runtime_handler.installation_scope(binding):
+                scoped = await runtime_handler.list_commands(include_plugins=bound_plugins)
             for raw_command in scoped:
                 command = ComponentManifest.model_validate(raw_command)
                 key = (str(command.owner), command.metadata.name)
@@ -1925,8 +2018,9 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             component_kind='command',
             include_plugins=bound_plugins,
         )
-        with self.handler.installation_scope(binding):
-            gen = self.handler.execute_command(
+        runtime_handler = self._runtime_handler()
+        with runtime_handler.installation_scope(binding):
+            gen = runtime_handler.execute_command(
                 command_ctx.model_dump(serialize_as_any=True),
                 include_plugins=bound_plugins,
             )
@@ -1944,9 +2038,15 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         if not self.is_enable_plugin or not self._runtime_available():
             return {'results': []}
 
+        runtime_handler = self._runtime_handler()
         binding = await self._target_binding(plugin_author, plugin_name)
-        with self.handler.installation_scope(binding):
-            return await self.handler.retrieve_knowledge(plugin_author, plugin_name, retriever_name, retrieval_context)
+        with runtime_handler.installation_scope(binding):
+            return await runtime_handler.retrieve_knowledge(
+                plugin_author,
+                plugin_name,
+                retriever_name,
+                retrieval_context,
+            )
 
     def dispose(self):
         """Best-effort synchronous compatibility wrapper; prefer ``aclose``."""
@@ -1997,41 +2097,47 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             context_data: IngestionContext data.
         """
         plugin_author, plugin_name = self._parse_plugin_id(plugin_id)
+        runtime_handler = self._runtime_handler()
         binding = await self._target_binding(plugin_author, plugin_name)
-        with self.handler.installation_scope(binding):
-            return await self.handler.rag_ingest_document(plugin_author, plugin_name, context_data)
+        with runtime_handler.installation_scope(binding):
+            return await runtime_handler.rag_ingest_document(plugin_author, plugin_name, context_data)
 
     async def call_rag_delete_document(self, plugin_id: str, document_id: str, kb_id: str) -> bool:
         plugin_author, plugin_name = self._parse_plugin_id(plugin_id)
+        runtime_handler = self._runtime_handler()
         binding = await self._target_binding(plugin_author, plugin_name)
-        with self.handler.installation_scope(binding):
-            return await self.handler.rag_delete_document(plugin_author, plugin_name, document_id, kb_id)
+        with runtime_handler.installation_scope(binding):
+            return await runtime_handler.rag_delete_document(plugin_author, plugin_name, document_id, kb_id)
 
     async def get_rag_creation_schema(self, plugin_id: str) -> dict[str, Any]:
         plugin_author, plugin_name = self._parse_plugin_id(plugin_id)
+        runtime_handler = self._runtime_handler()
         binding = await self._target_binding(plugin_author, plugin_name)
-        with self.handler.installation_scope(binding):
-            return await self.handler.get_rag_creation_schema(plugin_author, plugin_name)
+        with runtime_handler.installation_scope(binding):
+            return await runtime_handler.get_rag_creation_schema(plugin_author, plugin_name)
 
     async def get_rag_retrieval_schema(self, plugin_id: str) -> dict[str, Any]:
         plugin_author, plugin_name = self._parse_plugin_id(plugin_id)
+        runtime_handler = self._runtime_handler()
         binding = await self._target_binding(plugin_author, plugin_name)
-        with self.handler.installation_scope(binding):
-            return await self.handler.get_rag_retrieval_schema(plugin_author, plugin_name)
+        with runtime_handler.installation_scope(binding):
+            return await runtime_handler.get_rag_retrieval_schema(plugin_author, plugin_name)
 
     async def rag_on_kb_create(self, plugin_id: str, kb_id: str, config: dict[str, Any]) -> dict[str, Any]:
         """Notify plugin about KB creation."""
         plugin_author, plugin_name = self._parse_plugin_id(plugin_id)
+        runtime_handler = self._runtime_handler()
         binding = await self._target_binding(plugin_author, plugin_name)
-        with self.handler.installation_scope(binding):
-            return await self.handler.rag_on_kb_create(plugin_author, plugin_name, kb_id, config)
+        with runtime_handler.installation_scope(binding):
+            return await runtime_handler.rag_on_kb_create(plugin_author, plugin_name, kb_id, config)
 
     async def rag_on_kb_delete(self, plugin_id: str, kb_id: str) -> dict[str, Any]:
         """Notify plugin about KB deletion."""
         plugin_author, plugin_name = self._parse_plugin_id(plugin_id)
+        runtime_handler = self._runtime_handler()
         binding = await self._target_binding(plugin_author, plugin_name)
-        with self.handler.installation_scope(binding):
-            return await self.handler.rag_on_kb_delete(plugin_author, plugin_name, kb_id)
+        with runtime_handler.installation_scope(binding):
+            return await runtime_handler.rag_on_kb_delete(plugin_author, plugin_name, kb_id)
 
     async def call_rag_retrieve(self, plugin_id: str, retrieval_context: dict[str, Any]) -> dict[str, Any]:
         """Call plugin to retrieve knowledge.
@@ -2041,9 +2147,10 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             retrieval_context: RetrievalContext data.
         """
         plugin_author, plugin_name = self._parse_plugin_id(plugin_id)
+        runtime_handler = self._runtime_handler()
         binding = await self._target_binding(plugin_author, plugin_name)
-        with self.handler.installation_scope(binding):
-            return await self.handler.retrieve_knowledge(plugin_author, plugin_name, '', retrieval_context)
+        with runtime_handler.installation_scope(binding):
+            return await runtime_handler.retrieve_knowledge(plugin_author, plugin_name, '', retrieval_context)
 
     async def list_knowledge_engines(self) -> list[dict[str, Any]]:
         """List all available Knowledge Engines from plugins.
@@ -2053,11 +2160,12 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         if not self.is_enable_plugin or not self._runtime_available():
             return []
 
+        runtime_handler = self._runtime_handler()
         engines: list[dict[str, Any]] = []
         seen: set[tuple[str, str]] = set()
         for binding in await self._operation_bindings():
-            with self.handler.installation_scope(binding):
-                scoped = await self.handler.list_knowledge_engines()
+            with runtime_handler.installation_scope(binding):
+                scoped = await runtime_handler.list_knowledge_engines()
             for engine in scoped:
                 key = (str(engine.get('plugin_id', '')), str(engine.get('name', '')))
                 if key not in seen:
@@ -2069,11 +2177,12 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         """List all available parsers from plugins."""
         if not self.is_enable_plugin or not self._runtime_available():
             return []
+        runtime_handler = self._runtime_handler()
         parsers: list[dict[str, Any]] = []
         seen: set[tuple[str, str]] = set()
         for binding in await self._operation_bindings():
-            with self.handler.installation_scope(binding):
-                scoped = await self.handler.list_parsers()
+            with runtime_handler.installation_scope(binding):
+                scoped = await runtime_handler.list_parsers()
             for parser in scoped:
                 key = (str(parser.get('plugin_id', '')), str(parser.get('name', '')))
                 if key not in seen:
@@ -2084,6 +2193,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
     async def call_parser(self, plugin_id: str, context_data: dict[str, Any], file_bytes: bytes) -> dict[str, Any]:
         """Call plugin to parse a document."""
         plugin_author, plugin_name = self._parse_plugin_id(plugin_id)
+        runtime_handler = self._runtime_handler()
         binding = await self._target_binding(plugin_author, plugin_name)
-        with self.handler.installation_scope(binding):
-            return await self.handler.parse_document(plugin_author, plugin_name, context_data, file_bytes)
+        with runtime_handler.installation_scope(binding):
+            return await runtime_handler.parse_document(plugin_author, plugin_name, context_data, file_bytes)

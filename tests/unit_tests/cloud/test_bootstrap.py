@@ -7,6 +7,7 @@ import pytest
 
 from langbot.pkg.cloud.bootstrap import (
     CloudBootstrapError,
+    CloudManifestRefreshService,
     CloudRuntimeUnavailableError,
     DeploymentAdmissionGuard,
     OpenSourceDeployment,
@@ -33,7 +34,38 @@ class _Entitlements:
         )
 
 
+class _Directory:
+    async def fetch_snapshot(self, instance_uuid: str):
+        del instance_uuid
+        raise AssertionError('not used by bootstrap contract tests')
+
+    async def fetch_events(self, instance_uuid: str, after_cursor: int, limit: int):
+        del instance_uuid, after_cursor, limit
+        raise AssertionError('not used by bootstrap contract tests')
+
+    async def fetch_workspaces(self, instance_uuid: str, workspace_uuids: tuple[str, ...]):
+        del instance_uuid, workspace_uuids
+        raise AssertionError('not used by bootstrap contract tests')
+
+
+class _Manifest:
+    def __init__(self):
+        self.candidate = None
+        self.closed = False
+
+    async def refresh_manifest(self):
+        if self.candidate is None:
+            raise AssertionError('no refreshed Manifest was configured')
+        return self.candidate
+
+    async def aclose(self) -> None:
+        self.closed = True
+
+
 class _Provider:
+    def __init__(self):
+        self.manifest_provider = _Manifest()
+
     def bootstrap(self, *, instance_uuid: str, instance_config: dict):
         del instance_config
         return VerifiedCloudDeployment(
@@ -45,6 +77,8 @@ class _Provider:
             capabilities=frozenset({'multi_workspace_v2'}),
             tenant_isolation_version=2,
             entitlement_provider=_Entitlements(),
+            directory_provider=_Directory(),
+            manifest_provider=self.manifest_provider,
             verification_key_id='root-2026',
         )
 
@@ -289,3 +323,30 @@ async def test_deployment_admission_accepts_only_monotonic_non_conflicting_renew
     conflicting = dataclasses.replace(renewed, manifest_jti='different')
     with pytest.raises(CloudRuntimeUnavailableError, match='conflicting'):
         guard.replace(conflicting)
+
+
+async def test_manifest_refresh_replaces_receipt_before_short_ttl_expires():
+    wall = [1_000.0]
+    provider = _Provider()
+    current = dataclasses.replace(
+        provider.bootstrap(instance_uuid='instance-a', instance_config={}),
+        expires_at=1_300,
+    )
+    guard = DeploymentAdmissionGuard('instance-a', current, wall_time=lambda: wall[0])
+    renewed = dataclasses.replace(
+        current,
+        manifest_jti='manifest-renewed',
+        manifest_generation=current.manifest_generation + 1,
+        expires_at=2_000,
+    )
+    provider.manifest_provider.candidate = renewed
+    service = CloudManifestRefreshService(
+        guard,
+        provider.manifest_provider,
+        SimpleNamespace(exception=lambda *_: None),
+        wall_time=lambda: wall[0],
+    )
+
+    assert service.next_refresh_delay() == 120
+    assert await service.refresh_once() is renewed
+    assert guard.deployment is renewed

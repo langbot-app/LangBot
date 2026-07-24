@@ -145,7 +145,37 @@ class BoxService:
             self._available = False
             self._connector_error = str(exc)
             if self._cloud_managed:
+                await self._abort_failed_cloud_initialization()
                 raise
+
+    async def _abort_failed_cloud_initialization(self) -> None:
+        """Close a connected Cloud transport before propagating readiness failure.
+
+        Connector initialization starts control and heartbeat tasks before Core
+        performs the stricter Cloud readiness challenge. If that challenge
+        fails, startup must remain fail-closed without leaving those tasks free
+        to schedule reconnect work while the application loop is unwinding.
+        """
+
+        self._closing = True
+        self._available = False
+        reconnect_task = self._reconnect_task
+        self._reconnect_task = None
+        self._reconnecting = False
+        if reconnect_task is not None and reconnect_task is not asyncio.current_task():
+            reconnect_task.cancel()
+            await asyncio.gather(reconnect_task, return_exceptions=True)
+
+        connector = self._runtime_connector
+        if connector is None:
+            return
+        connector.runtime_disconnect_callback = None
+        try:
+            await connector.aclose()
+        except Exception:
+            # Cleanup failure must not replace the readiness error which caused
+            # Cloud startup to fail closed.
+            self.ap.logger.exception('Failed to close Box runtime after Cloud readiness validation failed')
 
     async def _on_runtime_disconnect(self, connector: BoxRuntimeConnector) -> None:
         """Called by the connector when the Box runtime connection drops.
@@ -156,13 +186,28 @@ class BoxService:
         """
         if not self._enabled or self._closing:
             return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        if loop.is_closed():
+            return
         if self._reconnect_task is not None and not self._reconnect_task.done():
             return  # Another reconnect loop is already running
         self._reconnecting = True
         self._available = False
         self._connector_error = 'Disconnected from Box runtime'
         self.ap.logger.warning('Box runtime disconnected, sandbox features temporarily disabled.')
-        self._reconnect_task = asyncio.create_task(self._reconnect_loop(connector))
+        reconnect = self._reconnect_loop(connector)
+        try:
+            self._reconnect_task = loop.create_task(reconnect)
+        except RuntimeError:
+            # The loop may begin closing between get_running_loop() and task
+            # creation. Explicitly close the coroutine so shutdown emits no
+            # "coroutine was never awaited" warning.
+            reconnect.close()
+            self._reconnecting = False
+            self._reconnect_task = None
 
     async def _reconnect_loop(self, connector: BoxRuntimeConnector) -> None:
         """Retry reconnection with exponential backoff (3s → 60s max)."""
@@ -173,9 +218,11 @@ class BoxService:
                 self.ap.logger.info(f'Attempting to reconnect to Box runtime in {delay}s...')
                 await asyncio.sleep(delay)
                 try:
-                    connector.dispose()
-                    await connector.initialize()
+                    await connector.reconnect()
+                    self._ensure_default_workspace()
                     await self._verify_cloud_runtime()
+                    if not self._cloud_managed:
+                        await self._purge_attachment_dirs()
                     self._available = True
                     self._connector_error = ''
                     skill_mgr = getattr(self.ap, 'skill_mgr', None)

@@ -31,7 +31,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 from sqlalchemy import text
 
+from langbot.pkg.cloud.directory import DirectoryEvent, DirectoryEventBatch
+from langbot.pkg.cloud.directory_projection import DirectoryProjectionService
 from langbot.pkg.entity.persistence.base import Base
+from langbot.pkg.entity.persistence.cloud_directory import (
+    DirectoryProjectionInbox,
+    DirectoryProjectionState,
+)
 from langbot.pkg.entity.persistence.user import User
 from langbot.pkg.persistence.mgr import PersistenceManager, PersistenceMode
 from langbot.pkg.persistence.tenant_uow import (
@@ -80,6 +86,17 @@ from langbot.pkg.provider.tools.loaders.mcp import MCPLoader
 from langbot.pkg.rag.knowledge.kbmgr import RAGManager
 
 from .resource_migration_support import TENANT_TABLES, create_legacy_resource_schema
+
+
+class _NoopDirectoryProjectionProvider:
+    async def fetch_snapshot(self, instance_uuid: str):
+        raise AssertionError(f'Unexpected snapshot fetch for {instance_uuid}')
+
+    async def fetch_events(self, instance_uuid: str, after_cursor: int, limit: int):
+        raise AssertionError(f'Unexpected event fetch for {instance_uuid} after {after_cursor} with limit {limit}')
+
+    async def fetch_workspaces(self, instance_uuid: str, workspace_uuids: tuple[str, ...]):
+        raise AssertionError(f'Unexpected delta fetch for {instance_uuid}: {workspace_uuids!r}')
 
 
 def _get_script_head() -> str:
@@ -648,6 +665,10 @@ class TestPostgreSQLTenantRuntime:
         instance_uuid = 'cloud-runtime-persistence-test'
         workspace_a = '10000000-0000-0000-0000-000000000001'
         workspace_b = '20000000-0000-0000-0000-000000000002'
+        workspace_other = '30000000-0000-0000-0000-000000000003'
+        workspace_local = '40000000-0000-0000-0000-000000000004'
+        directory_account = '50000000-0000-0000-0000-000000000005'
+        workspace_projected = '60000000-0000-0000-0000-000000000006'
         role_suffix = uuid.uuid4().hex[:12]
         runtime_role = f'lb_runtime_{role_suffix}'
         bypass_role = f'lb_bypass_{role_suffix}'
@@ -730,17 +751,22 @@ class TestPostgreSQLTenantRuntime:
             assert {row['relname'] for row in rls_rows} == set(TENANT_TABLE_COLUMNS)
             assert all(row['relrowsecurity'] and row['relforcerowsecurity'] and row['has_policy'] for row in rls_rows)
 
-            for workspace_uuid, slug in ((workspace_a, 'workspace-a'), (workspace_b, 'workspace-b')):
+            for workspace_uuid, slug, target_instance, source in (
+                (workspace_a, 'workspace-a', instance_uuid, 'cloud_projection'),
+                (workspace_b, 'workspace-b', instance_uuid, 'cloud_projection'),
+                (workspace_other, 'workspace-other', 'other-instance', 'cloud_projection'),
+                (workspace_local, 'workspace-local', instance_uuid, 'local'),
+            ):
                 async with TenantUnitOfWork(release_engine, workspace_uuid) as uow:
                     await uow.execute(
                         sa.insert(Workspace).values(
                             uuid=workspace_uuid,
-                            instance_uuid=instance_uuid,
+                            instance_uuid=target_instance,
                             name=slug,
                             slug=slug,
                             type='team',
                             status='active',
-                            source='cloud_projection',
+                            source=source,
                             projection_revision=0,
                         )
                     )
@@ -751,6 +777,30 @@ class TestPostgreSQLTenantRuntime:
                             value=slug,
                         )
                     )
+            async with release_engine.begin() as conn:
+                await conn.execute(
+                    sa.insert(User).values(
+                        uuid=directory_account,
+                        user='directory@example.com',
+                        normalized_email='directory@example.com',
+                        password='closed-directory',
+                        account_type='space',
+                        status='active',
+                        source='cloud_projection',
+                        projection_revision=1,
+                    )
+                )
+            async with TenantUnitOfWork(release_engine, workspace_local) as uow:
+                uow.session.add(
+                    WorkspaceMembership(
+                        uuid=str(uuid.uuid4()),
+                        workspace_uuid=workspace_local,
+                        account_uuid=directory_account,
+                        role='owner',
+                        status='active',
+                        projection_revision=1,
+                    )
+                )
 
             await create_role(runtime_role)
             runtime_engine = create_async_engine(role_url(runtime_role), pool_size=1, max_overflow=0)
@@ -843,6 +893,161 @@ class TestPostgreSQLTenantRuntime:
             await cloud_manager.initialize()
             cloud_manager.create_tables.assert_not_awaited()
             cloud_manager._run_alembic_migrations.assert_not_awaited()
+
+            directory_fingerprint = hashlib.sha256(b'directory-snapshot').hexdigest()
+            async with cloud_manager.directory_projection_uow(instance_uuid) as directory:
+                assert set((await directory.session.scalars(sa.select(Workspace.uuid))).all()) == {
+                    workspace_a,
+                    workspace_b,
+                }
+                directory.session.add(
+                    Workspace(
+                        uuid=workspace_projected,
+                        instance_uuid=instance_uuid,
+                        name='workspace-projected',
+                        slug='workspace-projected',
+                        type='team',
+                        status='active',
+                        source='cloud_projection',
+                        projection_revision=1,
+                    )
+                )
+                await directory.session.flush()
+                directory.session.add(
+                    WorkspaceMembership(
+                        uuid=str(uuid.uuid4()),
+                        workspace_uuid=workspace_projected,
+                        account_uuid=directory_account,
+                        role='owner',
+                        status='active',
+                        projection_revision=1,
+                    )
+                )
+                directory.session.add(
+                    WorkspaceExecutionState(
+                        workspace_uuid=workspace_projected,
+                        instance_uuid=instance_uuid,
+                        active_generation=1,
+                        state='active',
+                        write_fenced=False,
+                        source='cloud',
+                        desired_state_revision=1,
+                    )
+                )
+                directory.session.add(
+                    DirectoryProjectionState(
+                        instance_uuid=instance_uuid,
+                        cursor=1,
+                        snapshot_fingerprint=directory_fingerprint,
+                        last_applied_at=datetime.datetime.now(datetime.UTC),
+                    )
+                )
+                directory.session.add(
+                    DirectoryProjectionInbox(
+                        instance_uuid=instance_uuid,
+                        event_uuid=str(uuid.uuid4()),
+                        cursor=1,
+                        event_type='workspace.changed',
+                        revision=1,
+                        fingerprint=directory_fingerprint,
+                    )
+                )
+                await directory.session.flush()
+                assert await directory.session.scalar(sa.select(sa.func.count()).select_from(WorkspaceMembership)) == 1
+                assert (await directory.session.execute(sa.select(WorkspaceMetadata))).all() == []
+
+            async with cloud_manager.tenant_uow(workspace_projected) as tenant:
+                workspace_update = await tenant.session.execute(
+                    sa.update(Workspace)
+                    .where(Workspace.uuid == workspace_projected)
+                    .values(name='tenant-must-not-update-cloud')
+                )
+                membership_update = await tenant.session.execute(
+                    sa.update(WorkspaceMembership)
+                    .where(WorkspaceMembership.workspace_uuid == workspace_projected)
+                    .values(role='admin')
+                )
+                execution_update = await tenant.session.execute(
+                    sa.update(WorkspaceExecutionState)
+                    .where(WorkspaceExecutionState.workspace_uuid == workspace_projected)
+                    .values(write_fenced=True)
+                )
+                assert workspace_update.rowcount == 0
+                assert membership_update.rowcount == 0
+                assert execution_update.rowcount == 0
+
+            async with cloud_manager.tenant_uow(workspace_local) as tenant:
+                local_update = await tenant.session.execute(
+                    sa.update(Workspace).where(Workspace.uuid == workspace_local).values(name='tenant-can-update-local')
+                )
+                assert local_update.rowcount == 1
+
+            async with cloud_manager.directory_projection_uow(instance_uuid) as directory:
+                local_update = await directory.session.execute(
+                    sa.update(Workspace)
+                    .where(Workspace.uuid == workspace_local)
+                    .values(name='directory-must-not-update-local')
+                )
+                assert local_update.rowcount == 0
+
+            projection_application = SimpleNamespace(
+                persistence_mgr=cloud_manager,
+                logger=logging.getLogger('postgres-directory-projection-concurrency'),
+            )
+            first_projection = DirectoryProjectionService(
+                projection_application,
+                _NoopDirectoryProjectionProvider(),
+                instance_uuid,
+            )
+            second_projection = DirectoryProjectionService(
+                projection_application,
+                _NoopDirectoryProjectionProvider(),
+                instance_uuid,
+            )
+            concurrent_event = DirectoryEvent(
+                cursor=2,
+                uuid='70000000-0000-0000-0000-000000000007',
+                aggregate_uuid=workspace_projected,
+                event_type='entitlement.changed',
+                revision=2,
+                payload={
+                    'workspace_uuid': workspace_projected,
+                    'entitlement_revision': 2,
+                },
+                created_at=datetime.datetime.now(datetime.UTC),
+            )
+            concurrent_batch = DirectoryEventBatch(
+                instance_uuid=instance_uuid,
+                after_cursor=1,
+                cursor=2,
+                high_water_cursor=2,
+                events=[concurrent_event],
+            )
+            await asyncio.gather(
+                first_projection.apply_event_batch(concurrent_batch),
+                second_projection.apply_event_batch(concurrent_batch),
+            )
+            async with cloud_manager.directory_projection_uow(instance_uuid) as directory:
+                projection_state = await directory.session.get(DirectoryProjectionState, instance_uuid)
+                concurrent_receipts = (
+                    await directory.session.scalars(
+                        sa.select(DirectoryProjectionInbox).where(
+                            DirectoryProjectionInbox.event_uuid == concurrent_event.uuid
+                        )
+                    )
+                ).all()
+                assert projection_state.cursor == 2
+                assert len(concurrent_receipts) == 1
+                assert concurrent_receipts[0].applied_at is not None
+
+            async with cloud_manager.tenant_uow(workspace_a) as tenant:
+                assert (await tenant.session.execute(sa.select(DirectoryProjectionState))).all() == []
+                assert (await tenant.session.execute(sa.select(DirectoryProjectionInbox))).all() == []
+
+            async with cloud_manager.instance_discovery_uow(instance_uuid) as discovery:
+                assert (await discovery.session.execute(sa.select(DirectoryProjectionState))).all() == []
+                update_result = await discovery.session.execute(sa.update(DirectoryProjectionState).values(cursor=2))
+                assert update_result.rowcount == 0
 
             with pytest.raises(TransactionRollbackOnlyError, match='after-commit work was cancelled'):
                 async with cloud_manager.tenant_uow(workspace_a):

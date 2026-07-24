@@ -13,7 +13,7 @@ This log records implementation choices made while delivering the Workspace arch
 - Decision: Community builds create exactly one Workspace per LangBot instance and allow multiple Accounts through invitations.
 - Reason: This preserves a simple self-hosted deployment while making authorization and ownership explicit. Creating a second Workspace is an edition error, not a hidden fallback.
 - SaaS boundary: Multi-Workspace directory, execution ownership, entitlement, and billing are the responsibility of a separate closed SaaS Control Plane. Core consumes a validated projection and remains the final isolation and authorization enforcement point; it does not become the SaaS system of record or billing engine.
-- Deployment boundary: Cloud v2 is a greenfield deployment design. The previous per-account instance/pod scheme is not migrated, preserved for compatibility, or extended by this implementation. Existing OAuth, marketplace, and payment concepts may be reused only through explicit adapters where they still fit; `langbot-space` itself is not changed.
+- Deployment boundary: Cloud v2 is a greenfield deployment design. The previous per-account instance/pod scheme is not migrated or extended and remains available only for existing subscriptions. Existing OAuth, marketplace, and payment rails are reused through explicit adapters where they still fit; new Workspace, subscription, entitlement, directory, and usage modules live alongside the legacy Pod flow in `langbot-space`.
 
 ### Workspace selection is trusted only after authentication
 
@@ -41,7 +41,7 @@ This log records implementation choices made while delivering the Workspace arch
 - Decision: One instance-scoped Plugin Runtime control plane serves all Workspaces in the logical LangBot instance. Each running plugin installation has its own nsjail worker with an immutable binding containing `instance_uuid`, `workspace_uuid`, `execution_generation` (stored as the compatibility field `placement_generation` until the schema rename), `installation_uuid`, `runtime_revision`, and verified artifact digest; enabled-resident is the desired semantic. A worker never routes actions for another Workspace or installation, and plugin-supplied scope fields are stripped.
 - Isolation: Plugin code is mounted read-only. Home, tmp, and data paths are installation-scoped; process, file-descriptor, file-size, CPU, memory, and PID limits come only from `data/config.yaml` (including native environment overrides), never from a plugin manifest. Cloud requires nsjail and delegated cgroup v2 hard limits or fails closed.
 - Cost boundary: Identical verified package bytes share one digest-addressed code cache. A dependency environment is keyed by the artifact and requirements digests, Python ABI, Runtime version, and installer schema, then atomically published read-only for reuse. Installations and processes are not merged, even for the same plugin and version. Registration creates database desired state only; a worker is launched only for an enabled installation.
-- Recovery: PostgreSQL installation desired state and durable binary storage are authoritative. Runtime reconnect performs an instance-wide full reconciliation, removes stale workers, and can replay a verified package after Runtime-local cache loss. Dependency preparation failure is recorded per installation with `dependency_prepare_failed`; it prevents that worker launch without blocking recovery of other desired installations, and the same revision can be retried. Enabled-resident is the desired semantic, but the current Supervisor restores an unexpectedly exited worker only on the next Core apply/reconcile; a completion callback, bounded backoff, and cross-tenant restart-storm isolation remain Cloud activation gates.
+- Recovery: PostgreSQL installation desired state and durable binary storage are authoritative. Runtime reconnect performs an instance-wide full reconciliation, removes stale workers, and can replay a verified package after Runtime-local cache loss. Dependency preparation failure is recorded per installation with `dependency_prepare_failed`; it prevents that worker launch without blocking recovery of other desired installations, and the same revision can be retried. The installation Supervisor now restores an unexpectedly exited enabled worker through a completion callback with bounded exponential backoff. Jitter, global restart concurrency limits, and a Runtime-wide circuit breaker are still required to prove that an infrastructure-wide failure cannot create a cross-tenant restart storm.
 - Compatibility: Older SDK payloads and legacy `data/plugins` remain an OSS-only bridge. Shared mode requires complete bindings and rejects incomplete context.
 - Reason: Sharing the supervisor and immutable code cache removes per-Workspace service cost without turning an untrusted plugin process into a cross-tenant router.
 
@@ -83,8 +83,8 @@ This log records implementation choices made while delivering the Workspace arch
 
 ### Unreleased SDK protocol is pinned reproducibly without publishing
 
-- Decision: The SDK tenancy protocol is versioned as 0.4.15. This task does not create a GitHub release or publish PyPI because the user authorized pushing code, not a package release. After the SDK feature branch is final, LangBot's feature branch temporarily pins the exact pushed SDK Git commit. Before merging to master, the release gate is to publish `langbot-plugin==0.4.15` and replace the Git pin with the registry pin.
-- Reason: PyPI 0.4.14 does not contain `ActionContext`; pinning it makes clean installs fail, while pinning an unpublished 0.4.15 makes dependency sync impossible. An exact Git commit is reproducible and keeps the feature branch testable without expanding release authority.
+- Decision: The SDK tenancy protocol is versioned as 0.4.18. This task does not create a GitHub release or publish PyPI because the user authorized pushing code, not a package release. After the SDK feature branch is final, LangBot's feature branch temporarily pins the exact pushed SDK Git commit. Before merging to master, the release gate is to publish `langbot-plugin==0.4.18` and replace the Git pin with the registry pin.
+- Reason: The current registry release does not contain the complete tenant action context and shared Runtime hardening. An exact Git commit is reproducible and keeps the feature branch testable without expanding release authority.
 
 ### Cloud directory writes stay outside Core
 
@@ -240,5 +240,33 @@ This log records implementation choices made while delivering the Workspace arch
 ### Shared Plugin Runtime starts only from verified desired state
 
 - Decision: SDK shared mode waits for immutable runtime configuration before inspecting plugin state, never scans or launches legacy `data/plugins`, and rejects legacy install/restart/delete/upgrade control actions. Worker RPC files use installation-private directories with aggregate size enforcement, and resident nsjail workers explicitly disable the default 600-second wall-time limit.
-- Remaining gate: Unexpected worker exit is still recovered only by the next Core apply/reconcile. Completion callbacks, bounded backoff, hard installation disk quota, and production Linux/cgroup/egress evidence remain Cloud activation requirements.
+- Remaining gate: completion-callback recovery and bounded per-installation backoff are implemented. Cross-tenant restart-storm suppression, hard installation disk quota, and production egress policy remain Cloud activation requirements; Linux nsjail/cgroup CPU, memory-plus-swap, PID, namespace, and cgroup-reaping behavior have real-container evidence.
 - Reason: A shared supervisor reduces per-Workspace services only if legacy global paths, writable transfer state, and lifecycle defaults cannot bypass installation isolation.
+
+## 2026-07-24
+
+### Cloud v2 remains a modular monolith with one closed adapter
+
+- Decision: Workspace directory, plans, subscriptions, payment fulfillment, entitlements, usage, and signed runtime feeds are implemented as modules in the existing Space service and PostgreSQL database. The only separately packaged closed component is the thin Core bootstrap/control-plane adapter; it verifies signed data and owns no business state.
+- Compatibility: The legacy Pod card and fulfillment path remain visible only to accounts with old subscriptions. New purchases create Workspace subscriptions and never provision a per-user LangBot Pod.
+- Reason: A separate tenancy or billing service would add deployment, queue, network, and consistency cost without providing an isolation boundary. The signed adapter keeps SaaS logic closed while Core retains the ORM, RLS, authorization, and runtime enforcement boundary.
+
+### Registration creates data, not infrastructure
+
+- Decision: Account registration and personal Workspace creation share one transaction and include an active owner membership, Free subscription, entitlement snapshot, and outbox notifications. Repair is idempotent for older accounts. Empty Workspace creation starts no Plugin worker, Box sandbox, database, queue, bucket, or tenant service.
+- Activation: This automatic Cloud v2 transaction is enabled only when Space has an explicit valid `CLOUD_V2_INSTANCE_UUID`. A legacy marketplace-only Space deployment with no Cloud v2 instance configured keeps its existing Account registration path; Cloud v2 internal endpoints still fail closed instead of inventing an instance identity.
+- Billing boundary: Core and runtimes consume only generic capability and numeric-limit entitlements. They never branch on `free` or `pro`; plan names, prices, payment providers, and fulfillment stay in Space.
+- Reason: This keeps the marginal cost of a new user close to a few PostgreSQL rows while preserving an immediate, usable Workspace.
+
+### Directory bootstrap is full; steady-state projection is per Workspace
+
+- Decision: Space generates the initial signed directory snapshot and its outbox high-water mark in one read-only PostgreSQL `REPEATABLE READ` transaction. After bootstrap, each event page names affected Workspaces and Core fetches one signed `directory.delta` for that set. Missing requested Workspaces are tombstones; unrelated Workspaces are untouched.
+- Cursor boundary: A delta carries no event cursor. Each signed event page carries the transaction-consistent current high-water mark, while Core advances only to the final event it actually consumed, even when the authoritative delta already contains a later revision. Event payload Workspace and revision fields must exactly match the signed event envelope; readiness is renewed only after the replica-local cursor reaches the signed high-water and the shared projection is not ahead.
+- Replica boundary: Every Core replica owns a process-local consumer cursor because its verified entitlement cache is process-local. Replicas share the PostgreSQL projection high-water mark and inbox. The state separately records which cursor range was atomically subsumed by a full snapshot, so a lagging replica can add missing receipts within that coverage and refresh its local caches without repeating tenant mutations; a missing receipt beyond snapshot coverage fails closed.
+- Reason: A shared consumer cursor would let one replica starve another replica's local cache, while a full snapshot on every change would make steady-state cost grow with every registered Workspace.
+
+### Cloud OAuth can authenticate only an existing projected Account
+
+- Decision: In multi-Workspace Cloud mode, Space OAuth may refresh tokens only for an active `cloud_projection` Account whose Space subject UUID and normalized email exactly match. It cannot create an Account, relink by email, mutate directory identity, or choose a Workspace.
+- Redirect boundary: When Cloud v2 configures its Core public URL, Space issues authorization codes only to that exact callback origin or the explicitly retained legacy managed-Pod domain. Community installations remain dynamic OAuth clients because they cannot pre-register with the public Space service: the consent screen displays their hostname, and only HTTPS or loopback HTTP with the fixed callback path is accepted. Remote HTTP, userinfo, fragments, arbitrary callback paths, and unrecognized query parameters always fail closed.
+- Reason: Space is the SaaS identity and directory authority, but Core remains the authentication enforcement point. Projected-only matching avoids split-brain identities; redirect allowlisting prevents bearer authorization-code exfiltration.

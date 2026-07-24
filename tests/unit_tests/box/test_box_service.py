@@ -253,6 +253,46 @@ async def test_box_service_without_explicit_client_initializes_internal_connecto
     connector.initialize.assert_awaited_once()
 
 
+@pytest.mark.asyncio
+async def test_cloud_initialize_validation_failure_closes_connector_and_cancels_reconnect(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    logger = Mock()
+    app = make_app(logger)
+    app.deployment = SimpleNamespace(multi_workspace_enabled=True)
+    app.instance_config.data['box'].update(
+        {
+            'backend': 'nsjail',
+            'admission': {'required': True, 'workspace_quota_mb': 32},
+        }
+    )
+    connector = Mock()
+    connector.client = Mock(spec=BoxRuntimeClient)
+    connector.initialize = AsyncMock()
+    connector.aclose = AsyncMock()
+    connector.runtime_disconnect_callback = Mock()
+    monkeypatch.setattr('langbot.pkg.box.service.BoxRuntimeConnector', Mock(return_value=connector))
+    service = BoxService(app)
+    service._ensure_default_workspace = Mock()
+    readiness_error = BoxValidationError('Cloud Box nsjail isolation readiness failed')
+    service._verify_cloud_runtime = AsyncMock(side_effect=readiness_error)
+    reconnect_task = asyncio.create_task(asyncio.Event().wait())
+    service._reconnect_task = reconnect_task
+    service._reconnecting = True
+
+    with pytest.raises(BoxValidationError) as exc_info:
+        await service.initialize()
+
+    assert exc_info.value is readiness_error
+    assert service.available is False
+    assert service._closing is True
+    assert service._reconnecting is False
+    assert service._reconnect_task is None
+    assert reconnect_task.cancelled()
+    assert connector.runtime_disconnect_callback is None
+    connector.aclose.assert_awaited_once()
+
+
 class TestSharesFilesystemWithBox:
     """``shares_filesystem_with_box`` must reflect the real LangBot<->Box
     filesystem topology, which is derived from the connector transport:
@@ -1786,6 +1826,57 @@ class TestBoxDisabledByConfig:
         await service._on_runtime_disconnect(connector=Mock())
 
         assert service._reconnecting is False
+
+
+@pytest.mark.asyncio
+async def test_disconnect_callback_does_not_schedule_on_closing_event_loop(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    service = BoxService(make_app(Mock()), client=Mock(spec=BoxRuntimeClient))
+    closed_loop = Mock()
+    closed_loop.is_closed.return_value = True
+    monkeypatch.setattr('langbot.pkg.box.service.asyncio.get_running_loop', Mock(return_value=closed_loop))
+
+    await service._on_runtime_disconnect(connector=Mock())
+
+    closed_loop.create_task.assert_not_called()
+    assert service._reconnect_task is None
+    assert service._reconnecting is False
+
+
+@pytest.mark.asyncio
+async def test_disconnect_callback_closes_reconnect_coroutine_when_task_creation_races_with_loop_close(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    service = BoxService(make_app(Mock()), client=Mock(spec=BoxRuntimeClient))
+    loop = Mock()
+    loop.is_closed.return_value = False
+    loop.create_task.side_effect = RuntimeError('event loop is closed')
+    monkeypatch.setattr('langbot.pkg.box.service.asyncio.get_running_loop', Mock(return_value=loop))
+
+    async def reconnect():
+        await asyncio.Event().wait()
+
+    reconnect_coroutine = reconnect()
+    service._reconnect_loop = Mock(return_value=reconnect_coroutine)
+
+    await service._on_runtime_disconnect(connector=Mock())
+
+    loop.create_task.assert_called_once_with(reconnect_coroutine)
+    assert reconnect_coroutine.cr_frame is None
+    assert service._reconnect_task is None
+    assert service._reconnecting is False
+
+
+def test_disconnect_callback_does_not_schedule_without_running_event_loop():
+    service = BoxService(make_app(Mock()), client=Mock(spec=BoxRuntimeClient))
+    callback = service._on_runtime_disconnect(connector=Mock())
+
+    with pytest.raises(StopIteration):
+        callback.send(None)
+
+    assert service._reconnect_task is None
+    assert service._reconnecting is False
 
 
 class TestBuildSkillExtraMounts:

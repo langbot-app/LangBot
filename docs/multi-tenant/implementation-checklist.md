@@ -8,7 +8,7 @@ verification gates. Exact commands and observed results are recorded in the
 
 - [x] LangBot uses branch feat/multi-tenants.
 - [x] langbot-plugin-sdk uses branch feat/multi-tenants.
-- [x] langbot-space has no changes made by this implementation; Cloud v2 does not extend the legacy Space deployment scheme.
+- [x] langbot-space implements the greenfield Cloud v2 modular-monolith control plane without extending the legacy per-account Pod topology; the old Pod UI remains available when Cloud v2 is disabled and only retained Pods appear in the v2 view.
 - [x] Unrelated untracked files in either repository remain untouched.
 - [x] Open-source startup cannot enable SaaS multi-workspace through edition flags or unsigned configuration.
 
@@ -20,18 +20,22 @@ deployment. The feature branch delivers the Core isolation kernel, not the
 closed SaaS product or a production Cloud v2 deployment. Checked implementation
 items later in this document do not supersede these gates.
 
-- [ ] The closed Control Plane owns the global Account, Workspace, Membership, and Invitation directory.
+- [x] The closed Control Plane owns the global Account, Workspace, Membership, and Invitation directory.
 - [ ] The closed Control Plane execution-ownership module issues monotonic generations and owner leases for projected Workspaces.
-- [ ] Core verifies a signed `InstanceManifest` before the closed bootstrap can inject `CloudWorkspacePolicy`.
+- [x] Core verifies a signed `InstanceManifest` before the closed bootstrap can inject `CloudWorkspacePolicy`.
 - [ ] Tenant database writes hold a generation-aware shared transaction fence through commit, while execution-owner cutovers take the exclusive fence.
 - [ ] Business writes and non-transactional side effects use a generation-stamped outbox or equivalent publish fence.
 - [ ] Durable object references survive an execution-generation change through stable published keys or an explicitly atomic key/reference migration.
 - [ ] The SaaS runtime pools enforce tenant-safe egress and SSRF controls for Webhooks, providers, MCP servers, and every tenant-configurable outbound URL.
-- [ ] Entitlement checks, usage aggregation, subscription lifecycle, and billing are implemented in the closed Control Plane.
+- [ ] Entitlement checks, usage aggregation, and subscription lifecycle are implemented in the closed Control Plane; production activation still requires provider callback amount/currency/session/expiry binding inside the locked fulfillment transaction.
+- [ ] Account registration persists a `new_api.provision_account` outbox item with the Account and personal Workspace, and an in-process reconciler provisions New API idempotently after commit.
+- [ ] EPay and Stripe callbacks bind provider identity, amount, currency, channel/session, payment status, and expiry to the locked order before entitlement fulfillment.
 - [ ] OAuth state and directory projection use an atomic shared store suitable for horizontally scaled SaaS services.
 - [ ] A greenfield Cloud v2 deployment is designed and validated independently of the legacy Space deployment scheme.
-- [ ] The Plugin Runtime deployment provides delegated cgroup v2 and tenant-safe egress; the shared profile refuses to run without hard CPU, memory, and PID limits.
-- [ ] The Plugin Runtime Supervisor automatically restores an unexpectedly exited enabled worker with bounded backoff and cannot create a cross-tenant restart storm.
+- [ ] The Plugin Runtime shared profile refuses to run without delegated cgroup v2 CPU, memory-plus-swap, and PID limits, all verified in a real Linux container; production tenant-safe egress remains incomplete.
+- [x] The Plugin Runtime Supervisor automatically restores an unexpectedly exited enabled worker with bounded per-installation backoff.
+- [ ] Jitter, a global restart concurrency limit, and a Runtime-level circuit breaker prevent a systemic failure from creating a cross-tenant restart storm.
+- [ ] Until authenticated Runtime takeover or an owner lease/fence exists, the M0 deployment rolls Core and Plugin Runtime together and forbids an independent Core-only rollout.
 - [ ] Plugin installation data has an operator-owned hard disk quota provider that atomically rejects writes over the limit; directory scans are not accepted as enforcement.
 - [ ] The Box deployment provides an operator-owned quota provider that proves hard byte and inode limits for Workspace, Skill, root, tmp, and home storage.
 - [ ] Core and Box Runtime mount the same durable volume and pass the authenticated marker challenge during startup and reconnect.
@@ -281,7 +285,7 @@ Each row type must have a non-null Workspace UUID, scoped indexes, scoped unique
 ## 10. Completion evidence
 
 - [x] LangBot and SDK branch refs are recorded in the verification report.
-- [x] Space git diff is empty relative to the pre-work snapshot.
+- [x] Space contains the closed adapter package and Cloud v2 control plane, billing, migration, and Workspace UI changes; unrelated pre-existing files remain unstaged.
 - [x] Migration output is captured for SQLite and PostgreSQL.
 - [x] Test commands and results are recorded.
 - [x] Browser E2E actions and observed results are recorded.

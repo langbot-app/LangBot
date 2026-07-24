@@ -124,6 +124,7 @@ async def test_invoke_mcp_tool_uses_configurable_request_timeout():
         },
         True,
         _app(),
+        TEST_EXECUTION_CONTEXT,
     )
     session.session = SimpleNamespace(call_tool=AsyncMock(return_value=_tool_result()))
 
@@ -148,6 +149,7 @@ async def test_invoke_mcp_tool_zero_timeout_disables_request_deadline():
         },
         True,
         _app(),
+        TEST_EXECUTION_CONTEXT,
     )
     session.session = SimpleNamespace(call_tool=AsyncMock(return_value=_tool_result()))
 
@@ -171,6 +173,7 @@ async def test_invoke_mcp_tool_timeout_is_not_retried_and_session_remains_usable
         },
         True,
         _app(),
+        TEST_EXECUTION_CONTEXT,
     )
     timeout = McpError(
         mcp_types.ErrorData(
@@ -205,6 +208,7 @@ def test_invalid_tool_call_timeout_falls_back_to_default(invalid_timeout):
         },
         True,
         ap,
+        TEST_EXECUTION_CONTEXT,
     )
 
     assert session.tool_call_timeout_sec == MCP_TOOL_CALL_TIMEOUT_DEFAULT_SECONDS
@@ -525,7 +529,11 @@ async def test_mcp_tool_result_is_discarded_when_generation_changes_during_call(
     with pytest.raises(WorkspaceGenerationMismatchError):
         await session.invoke_mcp_tool('side_effecting_tool', {})
 
-    session.session.call_tool.assert_awaited_once_with('side_effecting_tool', {})
+    session.session.call_tool.assert_awaited_once_with(
+        'side_effecting_tool',
+        {},
+        read_timeout_seconds=timedelta(seconds=MCP_TOOL_CALL_TIMEOUT_DEFAULT_SECONDS),
+    )
 
 
 @pytest.mark.asyncio
@@ -567,3 +575,43 @@ async def test_mcp_idle_lifecycle_stops_without_retry_after_generation_bump():
     assert session.status == MCPSessionStatus.ERROR
     assert session.error_message == 'Workspace execution binding is stale'
     assert session._shutdown_event.is_set()
+
+
+@pytest.mark.asyncio
+async def test_mcp_loader_shutdown_cancels_startup_tasks_and_closes_sessions_concurrently():
+    loader = MCPLoader(_app())
+    hosted_cancelled = asyncio.Event()
+
+    async def pending_host():
+        try:
+            await asyncio.Event().wait()
+        finally:
+            hosted_cancelled.set()
+
+    hosted_task = asyncio.create_task(pending_host())
+    await asyncio.sleep(0)
+    loader._hosted_mcp_tasks = [hosted_task]
+
+    started: set[str] = set()
+    all_started = asyncio.Event()
+
+    class Session:
+        def __init__(self, name: str):
+            self.name = name
+            self.server_name = name
+
+        async def shutdown(self):
+            started.add(self.name)
+            if len(started) == 2:
+                all_started.set()
+            await all_started.wait()
+
+    loader.sessions = {'one': Session('one'), 'two': Session('two')}
+
+    await asyncio.wait_for(loader.shutdown(), timeout=1)
+
+    assert hosted_cancelled.is_set()
+    assert hosted_task.cancelled()
+    assert started == {'one', 'two'}
+    assert loader._hosted_mcp_tasks == []
+    assert loader.sessions == {}

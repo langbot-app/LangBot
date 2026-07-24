@@ -13,7 +13,7 @@ from aiohttp import web
 from mcp import types as mcp_types
 
 from langbot.pkg.api.http.context import ExecutionContext
-from langbot.pkg.provider.tools.loaders.mcp import RuntimeMCPSession
+from langbot.pkg.provider.tools.loaders.mcp import MCPToolCallTimeoutError, RuntimeMCPSession
 
 
 TEST_EXECUTION_CONTEXT = ExecutionContext(
@@ -159,7 +159,21 @@ def _session(
     timeout: float = 2,
     tool_call_timeout_sec: float = 300,
 ) -> RuntimeMCPSession:
-    app = cast(Any, SimpleNamespace(logger=Mock()))
+    app = cast(
+        Any,
+        SimpleNamespace(
+            logger=Mock(),
+            workspace_service=SimpleNamespace(
+                get_execution_binding=AsyncMock(
+                    return_value=SimpleNamespace(
+                        instance_uuid=TEST_EXECUTION_CONTEXT.instance_uuid,
+                        workspace_uuid=TEST_EXECUTION_CONTEXT.workspace_uuid,
+                        placement_generation=TEST_EXECUTION_CONTEXT.placement_generation,
+                    )
+                )
+            ),
+        ),
+    )
     return RuntimeMCPSession(
         'remote-transport-test',
         {
