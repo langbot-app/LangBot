@@ -130,6 +130,22 @@ async def test_fresh_sqlite_login_returns_current_workspace_and_user_info(worksp
     assert info['user'] == 'owner@example.com'
 
 
+async def test_user_info_uses_the_account_resolved_from_the_token(workspace_api):
+    application, client, _, owner_token = workspace_api
+    account = await application.user_service.get_authenticated_account(owner_token)
+
+    application.user_service.get_authenticated_account = AsyncMock(return_value=account)
+    application.user_service.get_user_by_email = AsyncMock(return_value=None)
+
+    response = await client.get('/api/v1/user/info', headers=_auth(owner_token))
+
+    assert response.status_code == 200
+    info = (await response.get_json())['data']
+    assert info['account_uuid'] == account.uuid
+    assert info['user'] == account.user
+    application.user_service.get_user_by_email.assert_not_awaited()
+
+
 async def test_authenticated_system_info_reads_workspace_wizard_metadata(workspace_api):
     application, client, _, owner_token = workspace_api
 

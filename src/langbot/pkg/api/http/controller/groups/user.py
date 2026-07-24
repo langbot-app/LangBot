@@ -222,20 +222,15 @@ class UserRouterGroup(group.RouterGroup):
             except Exception:
                 raise
 
-        @self.route('/info', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
-        async def _(user_email: str) -> str:
-            """Get current user information including account type"""
-            user_obj = await self.ap.user_service.get_user_by_email(user_email)
-
-            if user_obj is None:
-                return self.http_status(404, -1, 'User not found')
-
+        @self.route('/info', methods=['GET'], auth_type=group.AuthType.ACCOUNT_TOKEN)
+        async def _(account) -> str:
+            """Get current Account information without re-querying under Workspace RLS."""
             return self.success(
                 data={
-                    'account_uuid': user_obj.uuid,
-                    'user': user_obj.user,
-                    'account_type': user_obj.account_type,
-                    'has_password': bool(user_obj.password and user_obj.password.strip()),
+                    'account_uuid': account.uuid,
+                    'user': account.user,
+                    'account_type': account.account_type,
+                    'has_password': bool(account.password and account.password.strip()),
                 }
             )
 
