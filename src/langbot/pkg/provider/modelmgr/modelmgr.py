@@ -164,7 +164,8 @@ class ModelManager:
         # Space model synchronization is a legacy OSS-singleton facility. Cloud
         # receives tenant model projections from its control plane and must not
         # resolve an OSS-local Workspace outside a tenant-scoped unit of work.
-        cloud_runtime = getattr(getattr(self.ap.persistence_mgr, 'mode', None), 'value', None) == 'cloud_runtime'
+        persistence_mgr = getattr(self.ap, 'persistence_mgr', None)
+        cloud_runtime = getattr(getattr(persistence_mgr, 'mode', None), 'value', None) == 'cloud_runtime'
         if cloud_runtime:
             self.ap.logger.info('Skipping legacy LangBot Space model sync in Cloud Runtime.')
             return
