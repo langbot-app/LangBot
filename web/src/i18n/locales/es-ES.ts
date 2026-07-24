@@ -713,6 +713,7 @@ const esES = {
     notFound: 'No se encontró la información del plugin',
     sortBy: 'Ordenar por',
     sort: {
+      hottest: 'Más populares',
       recentlyAdded: 'Añadidos recientemente',
       recentlyUpdated: 'Actualizados recientemente',
       mostDownloads: 'Más descargas',
@@ -720,6 +721,9 @@ const esES = {
     },
     downloads: 'descargas',
     download: 'Descargar',
+    like: 'Me gusta',
+    unlike: 'Ya no me gusta',
+    likeFailed: 'No se pudo actualizar el Me gusta. Inténtalo de nuevo.',
     repository: 'Repositorio',
     downloadFailed: 'Error en la descarga',
     noReadme: 'Este plugin no proporciona documentación README',

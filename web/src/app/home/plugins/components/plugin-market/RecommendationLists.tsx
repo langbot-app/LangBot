@@ -40,6 +40,7 @@ function pluginToVO(
     description:
       extractI18nObject(plugin.description) || t('market.noDescription'),
     installCount: plugin.install_count,
+    likeCount: plugin.like_count || 0,
     iconURL,
     githubURL: plugin.repository,
     version: plugin.latest_version,

@@ -24,6 +24,9 @@ dependencies:
   '@dnd-kit/utilities':
     specifier: ^3.2.2
     version: 3.2.2(react@19.2.1)
+  '@fingerprintjs/fingerprintjs':
+    specifier: ^4.6.2
+    version: 4.6.2
   '@hookform/resolvers':
     specifier: ^5.0.1
     version: 5.2.2(react-hook-form@7.71.1)
@@ -421,6 +424,12 @@ packages:
       '@eslint/core': 0.17.0
       levn: 0.4.1
     dev: true
+
+  /@fingerprintjs/fingerprintjs@4.6.2:
+    resolution: {integrity: sha512-g8mXuqcFKbgH2CZKwPfVtsUJDHyvcgIABQI7Y0tzWEFXpGxJaXuAuzlifT2oTakjDBLTK4Gaa9/5PERDhqUjtw==}
+    dependencies:
+      tslib: 2.8.1
+    dev: false
 
   /@floating-ui/core@1.7.4:
     resolution: {integrity: sha512-C3HlIdsBxszvm5McXlB8PeOEWfBhcGBTZGkGlWc2U0KFY5IwG5OQEuQ8rq52DZmcHDlPLd+YFBK+cZcytwIFWg==}

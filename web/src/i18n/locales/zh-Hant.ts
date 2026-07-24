@@ -668,6 +668,7 @@ const zhHant = {
     notFound: '插件資訊未找到',
     sortBy: '排序方式',
     sort: {
+      hottest: '熱度最高',
       recentlyAdded: '最近新增',
       recentlyUpdated: '最近更新',
       mostDownloads: '最多下載',
@@ -675,6 +676,9 @@ const zhHant = {
     },
     downloads: '次下載',
     download: '下載',
+    like: '按讚',
+    unlike: '取消按讚',
+    likeFailed: '按讚失敗，請稍後重試',
     repository: '代碼倉庫',
     downloadFailed: '下載失敗',
     noReadme: '該插件沒有提供 README 文件',

@@ -706,6 +706,7 @@ const jaJP = {
     notFound: 'プラグイン情報が見つかりません',
     sortBy: '並び順',
     sort: {
+      hottest: '人気順',
       recentlyAdded: '最近追加',
       recentlyUpdated: '最近更新',
       mostDownloads: 'ダウンロード数多',
@@ -713,6 +714,9 @@ const jaJP = {
     },
     downloads: '回ダウンロード',
     download: 'ダウンロード',
+    like: 'いいね',
+    unlike: 'いいねを解除',
+    likeFailed: 'いいねを更新できませんでした。もう一度お試しください。',
     repository: 'リポジトリ',
     downloadFailed: 'ダウンロード失敗',
     noReadme: 'このプラグインはREADMEドキュメントを提供していません',

@@ -690,6 +690,7 @@ const thTH = {
     notFound: 'ไม่พบข้อมูลปลั๊กอิน',
     sortBy: 'เรียงตาม',
     sort: {
+      hottest: 'ยอดนิยมที่สุด',
       recentlyAdded: 'เพิ่มล่าสุด',
       recentlyUpdated: 'อัปเดตล่าสุด',
       mostDownloads: 'ดาวน์โหลดมากที่สุด',
@@ -697,6 +698,9 @@ const thTH = {
     },
     downloads: 'ดาวน์โหลด',
     download: 'ดาวน์โหลด',
+    like: 'ถูกใจ',
+    unlike: 'เลิกถูกใจ',
+    likeFailed: 'อัปเดตการถูกใจไม่สำเร็จ โปรดลองอีกครั้ง',
     repository: 'Repository',
     downloadFailed: 'ดาวน์โหลดล้มเหลว',
     noReadme: 'ปลั๊กอินนี้ไม่มีเอกสาร README',

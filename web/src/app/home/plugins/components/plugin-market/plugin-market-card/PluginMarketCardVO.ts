@@ -5,6 +5,7 @@ export interface IPluginMarketCardVO {
   label: string;
   description: string;
   installCount: number;
+  likeCount?: number;
   iconURL: string;
   githubURL: string;
   version: string;
@@ -22,6 +23,7 @@ export class PluginMarketCardVO implements IPluginMarketCardVO {
   iconURL: string;
   githubURL: string;
   installCount: number;
+  likeCount: number;
   version: string;
   components?: Record<string, number>;
   tags?: string[];
@@ -35,6 +37,7 @@ export class PluginMarketCardVO implements IPluginMarketCardVO {
     this.iconURL = prop.iconURL;
     this.githubURL = prop.githubURL;
     this.installCount = prop.installCount;
+    this.likeCount = prop.likeCount ?? 0;
     this.pluginId = prop.pluginId;
     this.version = prop.version;
     this.components = prop.components;

@@ -48,6 +48,8 @@ export interface PluginV4 {
   repository: string;
   tags: string[];
   install_count: number;
+  like_count?: number;
+  hot_score?: number;
   latest_version: string;
   components: Record<string, number>;
   status: PluginV4Status;

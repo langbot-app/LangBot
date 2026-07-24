@@ -700,6 +700,7 @@ const enUS = {
     notFound: 'Plugin information not found',
     sortBy: 'Sort by',
     sort: {
+      hottest: 'Most Popular',
       recentlyAdded: 'Recently Added',
       recentlyUpdated: 'Recently Updated',
       mostDownloads: 'Most Downloads',
@@ -707,6 +708,9 @@ const enUS = {
     },
     downloads: 'downloads',
     download: 'Download',
+    like: 'Like',
+    unlike: 'Unlike',
+    likeFailed: 'Failed to update like. Please try again.',
     repository: 'Repository',
     downloadFailed: 'Download failed',
     noReadme: 'This plugin does not provide README documentation',

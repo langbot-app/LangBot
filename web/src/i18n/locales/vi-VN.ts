@@ -705,6 +705,7 @@ const viVN = {
     notFound: 'Không tìm thấy thông tin plugin',
     sortBy: 'Sắp xếp theo',
     sort: {
+      hottest: 'Phổ biến nhất',
       recentlyAdded: 'Mới thêm gần đây',
       recentlyUpdated: 'Mới cập nhật gần đây',
       mostDownloads: 'Tải nhiều nhất',
@@ -712,6 +713,9 @@ const viVN = {
     },
     downloads: 'lượt tải',
     download: 'Tải xuống',
+    like: 'Thích',
+    unlike: 'Bỏ thích',
+    likeFailed: 'Không thể cập nhật lượt thích. Vui lòng thử lại.',
     repository: 'Kho lưu trữ',
     downloadFailed: 'Tải xuống thất bại',
     noReadme: 'Plugin này không cung cấp tài liệu README',

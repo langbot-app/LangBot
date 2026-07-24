@@ -668,6 +668,7 @@ const zhHans = {
     notFound: '插件信息未找到',
     sortBy: '排序方式',
     sort: {
+      hottest: '热度最高',
       recentlyAdded: '最近新增',
       recentlyUpdated: '最近更新',
       mostDownloads: '最多下载',
@@ -675,6 +676,9 @@ const zhHans = {
     },
     downloads: '次下载',
     download: '下载',
+    like: '点赞',
+    unlike: '取消点赞',
+    likeFailed: '点赞失败，请稍后重试',
     repository: '代码仓库',
     downloadFailed: '下载失败',
     noReadme: '该插件没有提供 README 文档',

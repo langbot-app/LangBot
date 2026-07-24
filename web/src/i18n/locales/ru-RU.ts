@@ -711,6 +711,7 @@ const ruRU = {
     notFound: 'Информация о плагине не найдена',
     sortBy: 'Сортировать по',
     sort: {
+      hottest: 'По популярности',
       recentlyAdded: 'Недавно добавленные',
       recentlyUpdated: 'Недавно обновлённые',
       mostDownloads: 'Больше всего загрузок',
@@ -718,6 +719,9 @@ const ruRU = {
     },
     downloads: 'загрузок',
     download: 'Скачать',
+    like: 'Нравится',
+    unlike: 'Убрать отметку',
+    likeFailed: 'Не удалось обновить отметку. Повторите попытку.',
     repository: 'Репозиторий',
     downloadFailed: 'Ошибка загрузки',
     noReadme: 'Этот плагин не предоставляет документацию README',
