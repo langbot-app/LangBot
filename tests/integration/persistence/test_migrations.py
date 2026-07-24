@@ -10,6 +10,7 @@ Run: uv run pytest tests/integration/persistence/test_migrations.py -q
 from __future__ import annotations
 
 import json
+import hashlib
 
 import pytest
 import sqlalchemy as sa
@@ -58,7 +59,7 @@ class TestAlembicRevisionGraph:
         revisions = list(script.walk_revisions())
 
         assert script.get_bases() == ['0001_baseline']
-        assert script.get_heads() == ['0014_interaction_delivery']
+        assert script.get_heads() == ['0015_official_runner_ids']
         assert all(len(item.revision) <= 32 for item in revisions), {
             item.revision: len(item.revision) for item in revisions if len(item.revision) > 32
         }
@@ -344,6 +345,166 @@ class TestSQLiteMigrationUpgrade:
             'pipeline-no-voice': [{'field': 'message_element_types', 'operator': 'not_contains', 'value': 'Voice'}],
             'pipeline-default': [],
         }
+
+    @pytest.mark.asyncio
+    async def test_official_runner_ids_migrate_without_losing_config_or_state(self, sqlite_engine):
+        """0015 rewrites persisted official Runner identities and state scope keys."""
+        old_dify = 'plugin:langbot/dify-agent/default'
+        new_dify = 'plugin:langbot-team/DifyAgent/default'
+        old_codex = 'plugin:langbot/codex-agent/default'
+        new_codex = 'plugin:langbot-team/CodexAgent/default'
+        binding_id = f'pipeline_pipeline-1_{old_dify}'
+        scope_payload = {
+            'version': 2,
+            'scope': 'conversation',
+            'runner_id': old_dify,
+            'binding_identity': binding_id,
+            'bot_id': 'bot-1',
+            'workspace_id': None,
+            'conversation_id': 'conversation-1',
+            'thread_id': None,
+        }
+        old_scope_key = (
+            'conversation:v2:'
+            + hashlib.sha256(json.dumps(scope_payload, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+        )
+
+        async with sqlite_engine.begin() as conn:
+            await conn.execute(sa.text('CREATE TABLE legacy_pipelines (uuid TEXT PRIMARY KEY, config JSON NOT NULL)'))
+            await conn.execute(
+                sa.text('CREATE TABLE agents (uuid TEXT PRIMARY KEY, component_ref TEXT, config JSON NOT NULL)')
+            )
+            await conn.execute(
+                sa.text(
+                    'CREATE TABLE workflows ('
+                    'uuid TEXT PRIMARY KEY, definition JSON NOT NULL, global_config JSON NOT NULL'
+                    ')'
+                )
+            )
+            await conn.execute(
+                sa.text(
+                    'CREATE TABLE agent_runner_state ('
+                    'id INTEGER PRIMARY KEY, runner_id TEXT NOT NULL, binding_identity TEXT NOT NULL, '
+                    'scope TEXT NOT NULL, scope_key TEXT NOT NULL, state_key TEXT NOT NULL, '
+                    'bot_id TEXT, workspace_id TEXT, conversation_id TEXT, thread_id TEXT, '
+                    'actor_type TEXT, actor_id TEXT, subject_type TEXT, subject_id TEXT, '
+                    'UNIQUE(scope_key, state_key)'
+                    ')'
+                )
+            )
+            for table_name, columns in {
+                'agent_run': 'id INTEGER PRIMARY KEY, runner_id TEXT NOT NULL, binding_id TEXT',
+                'agent_interaction': 'id INTEGER PRIMARY KEY, runner_id TEXT NOT NULL, binding_id TEXT',
+                'event_log': 'id INTEGER PRIMARY KEY, runner_id TEXT',
+                'transcript': 'id INTEGER PRIMARY KEY, runner_id TEXT',
+            }.items():
+                await conn.execute(sa.text(f'CREATE TABLE {table_name} ({columns})'))
+
+            pipeline_config = {
+                'ai': {
+                    'runner': {'id': old_dify},
+                    'runner_config': {
+                        old_dify: {'api-key': 'preserved-secret'},
+                        old_codex: {'workspace': 'K:/workspace'},
+                    },
+                }
+            }
+            await conn.execute(
+                sa.text('INSERT INTO legacy_pipelines (uuid, config) VALUES (:uuid, :config)'),
+                {'uuid': 'pipeline-1', 'config': json.dumps(pipeline_config)},
+            )
+            await conn.execute(
+                sa.text('INSERT INTO agents (uuid, component_ref, config) VALUES (:uuid, :ref, :config)'),
+                {'uuid': 'agent-1', 'ref': old_codex, 'config': json.dumps({'runner': {'id': old_codex}})},
+            )
+            await conn.execute(
+                sa.text(
+                    'INSERT INTO workflows (uuid, definition, global_config) '
+                    'VALUES (:uuid, :definition, :global_config)'
+                ),
+                {
+                    'uuid': 'workflow-1',
+                    'definition': json.dumps({'runner_id': old_dify}),
+                    'global_config': json.dumps({'runner_id': old_codex}),
+                },
+            )
+            await conn.execute(
+                sa.text(
+                    'INSERT INTO agent_runner_state ('
+                    'id, runner_id, binding_identity, scope, scope_key, state_key, bot_id, '
+                    'workspace_id, conversation_id, thread_id, actor_type, actor_id, subject_type, subject_id'
+                    ') VALUES ('
+                    '1, :runner_id, :binding_identity, :scope, :scope_key, :state_key, :bot_id, '
+                    'NULL, :conversation_id, NULL, NULL, NULL, NULL, NULL'
+                    ')'
+                ),
+                {
+                    'runner_id': old_dify,
+                    'binding_identity': binding_id,
+                    'scope': 'conversation',
+                    'scope_key': old_scope_key,
+                    'state_key': 'external.conversation_id',
+                    'bot_id': 'bot-1',
+                    'conversation_id': 'conversation-1',
+                },
+            )
+            for table_name in ('agent_run', 'agent_interaction'):
+                await conn.execute(
+                    sa.text(
+                        f'INSERT INTO {table_name} (id, runner_id, binding_id) VALUES (1, :runner_id, :binding_id)'
+                    ),
+                    {'runner_id': old_dify, 'binding_id': binding_id},
+                )
+            for table_name in ('event_log', 'transcript'):
+                await conn.execute(
+                    sa.text(f'INSERT INTO {table_name} (id, runner_id) VALUES (1, :runner_id)'),
+                    {'runner_id': old_codex},
+                )
+
+        await run_alembic_stamp(sqlite_engine, '0014_interaction_delivery')
+        await run_alembic_upgrade(sqlite_engine, 'head')
+
+        async with sqlite_engine.connect() as conn:
+            pipeline_raw = (
+                await conn.execute(sa.text("SELECT config FROM legacy_pipelines WHERE uuid = 'pipeline-1'"))
+            ).scalar_one()
+            agent_row = (
+                await conn.execute(sa.text("SELECT component_ref, config FROM agents WHERE uuid = 'agent-1'"))
+            ).one()
+            workflow_row = (
+                await conn.execute(sa.text("SELECT definition, global_config FROM workflows WHERE uuid = 'workflow-1'"))
+            ).one()
+            state_row = (
+                await conn.execute(
+                    sa.text('SELECT runner_id, binding_identity, scope_key FROM agent_runner_state WHERE id = 1')
+                )
+            ).one()
+            direct_runner_ids = {
+                table_name: (
+                    await conn.execute(sa.text(f'SELECT runner_id FROM {table_name} WHERE id = 1'))
+                ).scalar_one()
+                for table_name in ('agent_run', 'agent_interaction', 'event_log', 'transcript')
+            }
+
+        pipeline = json.loads(pipeline_raw)
+        assert pipeline['ai']['runner']['id'] == new_dify
+        assert pipeline['ai']['runner_config'][new_dify] == {'api-key': 'preserved-secret'}
+        assert pipeline['ai']['runner_config'][new_codex] == {'workspace': 'K:/workspace'}
+        assert old_dify not in pipeline['ai']['runner_config']
+        assert agent_row.component_ref == new_codex
+        assert json.loads(agent_row.config)['runner']['id'] == new_codex
+        assert json.loads(workflow_row.definition)['runner_id'] == new_dify
+        assert json.loads(workflow_row.global_config)['runner_id'] == new_codex
+        assert state_row.runner_id == new_dify
+        assert state_row.binding_identity == f'pipeline_pipeline-1_{new_dify}'
+        assert state_row.scope_key != old_scope_key
+        assert direct_runner_ids == {
+            'agent_run': new_dify,
+            'agent_interaction': new_dify,
+            'event_log': new_codex,
+            'transcript': new_codex,
+        }
+        assert await get_alembic_current(sqlite_engine) == '0015_official_runner_ids'
 
 
 class TestSQLiteMigrationFreshDatabase:
