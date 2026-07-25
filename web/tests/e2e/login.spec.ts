@@ -88,8 +88,15 @@ test('multi-Workspace login waits for an explicit selection', async ({
   await page.getByRole('button', { name: /Beta Workspace/ }).click();
 
   await expect(page).toHaveURL(/\/home(?:\/monitoring)?$/);
+  const workspaceSwitcher = page
+    .getByRole('button', {
+      name: /Switch Workspace/,
+    })
+    .first();
+  await expect(workspaceSwitcher).toBeVisible();
+  await workspaceSwitcher.click();
   await expect(
-    page.getByRole('combobox', { name: 'Switch Workspace' }),
+    page.getByRole('menuitem', { name: 'Workspace Settings' }),
   ).toBeVisible();
   expect(selectedWorkspaceHeaders).toContain('workspace-beta');
   expect(accountScopedRequests.length).toBeGreaterThan(0);
