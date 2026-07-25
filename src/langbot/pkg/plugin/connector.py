@@ -133,7 +133,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             'shared' if getattr(getattr(ap, 'deployment', None), 'mode', 'oss') == 'cloud' else 'oss_dev'
         )
         self.runtime_identity: RuntimeIdentity | None = None
-        self._runtime_id = str(uuid.uuid4())
+        self._runtime_id = self._build_runtime_id()
         self.worker_policy: PluginWorkerPolicy | None = None
         self._execution_context: contextvars.ContextVar[ExecutionContext | None] = contextvars.ContextVar(
             f'{self.__class__.__name__}_{id(self)}_execution_context',
@@ -148,6 +148,12 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         self._reconnect_task: asyncio.Task | None = None
         self._generation = 0
         self._connected = asyncio.Event()
+
+    @staticmethod
+    def _build_runtime_id() -> str:
+        """Return the durable identity of this instance's shared Runtime."""
+
+        return f'{constants.instance_id}:plugin-runtime'
 
     def _runtime_handler(self) -> handler.RuntimeConnectionHandler:
         runtime_handler = getattr(self, 'handler', None)
