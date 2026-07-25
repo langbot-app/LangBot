@@ -70,7 +70,10 @@ test('links Cloud workspace managers to the Space member invitation surface', ()
 
 test('keeps workspace plan and settings controls on the workspace row', () => {
   assert.match(workspaceSwitcherSource, /entry\.plan_name/);
-  assert.match(workspaceSwitcherSource, /aria-label=\{t\('workspace\.settings'\)\}/);
+  assert.match(
+    workspaceSwitcherSource,
+    /aria-label=\{t\('workspace\.settings'\)\}/,
+  );
   assert.match(workspaceSwitcherSource, /className="size-8"/);
   assert.doesNotMatch(workspaceSwitcherSource, /workspace\.currentPlan/);
   assert.doesNotMatch(workspaceSwitcherSource, /workspace\.upgradePlan/);
