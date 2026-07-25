@@ -94,10 +94,14 @@ test('moves Cloud plan upgrades into Workspace Settings', () => {
   assert.ok(toolbarEnd < membersHeading && membersHeading < cloudInvite);
 });
 
-test('fills 80 percent of the sidebar, centers the trigger, and truncates long names', () => {
+test('aligns the workspace trigger with navigation entries on both sides and truncates long names', () => {
   assert.match(
     homeSidebarSource,
-    /<WorkspaceSwitcher className="mx-auto w-4\/5/,
+    /<div className="px-2[^>]*>[\s\S]*<WorkspaceSwitcher className="w-full/,
+  );
+  assert.doesNotMatch(
+    homeSidebarSource,
+    /WorkspaceSwitcher className="[^"]*w-4\/5/,
   );
   assert.match(workspaceSwitcherSource, /h-9/);
   assert.match(workspaceSwitcherSource, /w-64/);
