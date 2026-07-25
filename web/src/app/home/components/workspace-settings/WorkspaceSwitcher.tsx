@@ -40,7 +40,7 @@ export default function WorkspaceSwitcher({
   const workspaces = useWorkspaceBootstrap();
   const isCloud = currentWorkspace?.workspace.source === 'cloud_projection';
 
-  if (!currentWorkspace || (!isCloud && workspaces.length <= 1)) return null;
+  if (!currentWorkspace) return null;
 
   const cloudPortalUrl = `${systemInfo.cloud_service_url.replace(/\/$/, '')}/cloud?workspace=${encodeURIComponent(currentWorkspace.workspace.uuid)}`;
 

@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Copy, Loader2, Trash2, UserPlus, Users } from 'lucide-react';
+import {
+  Copy,
+  ExternalLink,
+  Loader2,
+  Trash2,
+  UserPlus,
+  Users,
+} from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
@@ -27,12 +34,11 @@ import type {
   WorkspaceMembership,
   WorkspaceRole,
 } from '@/app/infra/entities/workspace';
-import { backendClient } from '@/app/infra/http';
+import { backendClient, systemInfo } from '@/app/infra/http';
 import {
   PanelBody,
   PanelToolbar,
 } from '@/app/home/components/settings-dialog/panel-layout';
-import WorkspaceSwitcher from './WorkspaceSwitcher';
 
 interface WorkspaceSettingsPanelProps {
   active: boolean;
@@ -77,6 +83,13 @@ export default function WorkspaceSettingsPanel({
     !isCloudProjection && permissions.has('member.remove');
   const canTransferOwner =
     !isCloudProjection && permissions.has('owner.transfer');
+  const canManageCloudMembers =
+    isCloudProjection &&
+    (workspaceInfo?.membership.role === 'owner' ||
+      workspaceInfo?.membership.role === 'admin');
+  const cloudMembersURL = workspaceInfo
+    ? `${systemInfo.cloud_service_url.replace(/\/$/, '')}/cloud?workspace=${encodeURIComponent(workspaceInfo.workspace.uuid)}#workspace-members`
+    : '';
 
   const loadWorkspace = useCallback(async () => {
     setLoading(true);
@@ -203,11 +216,19 @@ export default function WorkspaceSettingsPanel({
             )}
           </p>
         </div>
-        <WorkspaceSwitcher className="ml-auto" />
         {workspaceInfo && (
           <Badge variant="secondary">
             {t(`workspace.roles.${workspaceInfo.membership.role}`)}
           </Badge>
+        )}
+        {canManageCloudMembers && (
+          <Button asChild size="sm" variant="outline">
+            <a href={cloudMembersURL} target="_blank" rel="noopener noreferrer">
+              <UserPlus />
+              {t('workspace.inviteMember')}
+              <ExternalLink className="size-3.5" />
+            </a>
+          </Button>
         )}
       </PanelToolbar>
 

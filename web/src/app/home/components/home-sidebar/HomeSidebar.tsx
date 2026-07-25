@@ -1915,6 +1915,10 @@ export default function HomeSidebar({
           </SidebarMenu>
         </SidebarHeader>
 
+        <div className="px-2 group-data-[collapsible=icon]:px-0">
+          <WorkspaceSwitcher className="w-full group-data-[collapsible=icon]:min-w-0 group-data-[collapsible=icon]:px-2" />
+        </div>
+
         {/* Navigation items grouped by section */}
         <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
           <SidebarContent ref={navigationContentRef} className="min-h-0 pb-8">
@@ -1970,11 +1974,6 @@ export default function HomeSidebar({
 
         {/* Footer */}
         <SidebarFooter>
-          {currentWorkspace?.workspace.source === 'cloud_projection' && (
-            <div className="px-2 group-data-[collapsible=icon]:px-0">
-              <WorkspaceSwitcher className="w-full group-data-[collapsible=icon]:min-w-0 group-data-[collapsible=icon]:px-2" />
-            </div>
-          )}
           {/* Models entry */}
           <SidebarMenu>
             <SidebarMenuItem>

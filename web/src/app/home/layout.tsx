@@ -43,7 +43,6 @@ import {
   PluginInstallProgressDialog,
 } from '@/app/home/plugins/components/plugin-install-task';
 import { setDocumentTitle } from '@/hooks/useDocumentTitle';
-import WorkspaceSwitcher from '@/app/home/components/workspace-settings/WorkspaceSwitcher';
 
 // Routes that belong to the "Extensions" section
 const EXTENSIONS_ROUTES = [
@@ -265,7 +264,6 @@ function HomeLayoutInner({ children }: { children: React.ReactNode }) {
                 )}
               </BreadcrumbList>
             </Breadcrumb>
-            <WorkspaceSwitcher className="ml-auto w-44" />
           </div>
         </header>
 
