@@ -1916,7 +1916,7 @@ export default function HomeSidebar({
         </SidebarHeader>
 
         <div className="px-2 group-data-[collapsible=icon]:px-0">
-          <WorkspaceSwitcher className="w-1/2 max-w-36 group-data-[collapsible=icon]:min-w-0 group-data-[collapsible=icon]:px-2" />
+          <WorkspaceSwitcher className="mx-auto w-4/5 group-data-[collapsible=icon]:min-w-0 group-data-[collapsible=icon]:px-2" />
         </div>
 
         {/* Navigation items grouped by section */}
