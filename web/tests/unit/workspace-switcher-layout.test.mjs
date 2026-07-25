@@ -77,6 +77,8 @@ test('keeps workspace plan and settings controls on the workspace row', () => {
   assert.match(workspaceSwitcherSource, /className="size-8"/);
   assert.doesNotMatch(workspaceSwitcherSource, /workspace\.currentPlan/);
   assert.doesNotMatch(workspaceSwitcherSource, /workspace\.upgradePlan/);
+  assert.doesNotMatch(workspaceSwitcherSource, /workspace\.roles/);
+  assert.doesNotMatch(workspaceSwitcherSource, /entry\.membership\.role/);
 });
 
 test('moves Cloud plan upgrades into Workspace Settings', () => {

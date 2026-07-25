@@ -71,9 +71,6 @@ export default function WorkspaceSwitcher({
                   {entry.plan_name || t('workspace.planUnavailable')}
                 </span>
               )}
-              <span className="text-xs text-muted-foreground">
-                {t(`workspace.roles.${entry.membership.role}`)}
-              </span>
               {selected && <Check className="size-4" />}
               {selected && (
                 <Button
