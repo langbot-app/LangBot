@@ -1,15 +1,8 @@
-import {
-  Building2,
-  Check,
-  ExternalLink,
-  Settings,
-  Sparkles,
-} from 'lucide-react';
+import { Building2, Check, Settings } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import {
   switchWorkspaceAndReload,
-  systemInfo,
   useCurrentWorkspace,
   useWorkspaceBootstrap,
 } from '@/app/infra/http';
@@ -19,7 +12,6 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
@@ -38,11 +30,8 @@ export default function WorkspaceSwitcher({
   const { t } = useTranslation();
   const currentWorkspace = useCurrentWorkspace();
   const workspaces = useWorkspaceBootstrap();
-  const isCloud = currentWorkspace?.workspace.source === 'cloud_projection';
 
   if (!currentWorkspace) return null;
-
-  const cloudPortalUrl = `${systemInfo.cloud_service_url.replace(/\/$/, '')}/cloud?workspace=${encodeURIComponent(currentWorkspace.workspace.uuid)}`;
 
   return (
     <DropdownMenu>
@@ -50,65 +39,63 @@ export default function WorkspaceSwitcher({
         <Button
           variant="outline"
           size="sm"
-          className={cn('min-w-44 max-w-64 justify-start', className)}
+          className={cn(
+            'h-11 min-w-52 max-w-72 justify-start px-3 text-[15px]',
+            className,
+          )}
           aria-label={t('workspace.switchWorkspace')}
         >
           <Building2 className="size-4 shrink-0" />
           <span className="truncate">{currentWorkspace.workspace.name}</span>
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="min-w-64">
-        <DropdownMenuLabel>{t('workspace.switchWorkspace')}</DropdownMenuLabel>
+      <DropdownMenuContent align="end" className="min-w-80 p-2">
+        <DropdownMenuLabel className="px-3 py-2 text-sm">
+          {t('workspace.switchWorkspace')}
+        </DropdownMenuLabel>
         {workspaces.map((entry) => {
           const selected =
             entry.workspace.uuid === currentWorkspace.workspace.uuid;
           return (
             <DropdownMenuItem
               key={entry.workspace.uuid}
+              className="min-h-14 gap-3 px-3 py-2"
               onClick={() => {
                 if (!selected)
                   void switchWorkspaceAndReload(entry.workspace.uuid);
               }}
             >
-              <Building2 className="size-4" />
-              <span className="min-w-0 flex-1 truncate">
+              <Building2 className="size-5" />
+              <span className="min-w-0 flex-1 truncate font-medium">
                 {entry.workspace.name}
               </span>
+              {entry.workspace.source === 'cloud_projection' && (
+                <span className="rounded-md border bg-muted px-2 py-0.5 text-[11px] font-medium uppercase text-muted-foreground">
+                  {entry.plan_name || t('workspace.planUnavailable')}
+                </span>
+              )}
               <span className="text-xs text-muted-foreground">
                 {t(`workspace.roles.${entry.membership.role}`)}
               </span>
               {selected && <Check className="size-4" />}
+              {selected && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-8"
+                  aria-label={t('workspace.settings')}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    requestWorkspaceSettings();
+                  }}
+                >
+                  <Settings className="size-4" />
+                </Button>
+              )}
             </DropdownMenuItem>
           );
         })}
-        <DropdownMenuSeparator />
-        {isCloud && (
-          <>
-            <DropdownMenuLabel className="flex items-center justify-between gap-3 font-normal">
-              <span className="text-muted-foreground">
-                {t('workspace.currentPlan')}
-              </span>
-              <span className="font-medium text-foreground">
-                {currentWorkspace.plan_name || t('workspace.planUnavailable')}
-              </span>
-            </DropdownMenuLabel>
-            <DropdownMenuItem asChild>
-              <a
-                href={cloudPortalUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <Sparkles className="size-4" />
-                {t('workspace.upgradePlan')}
-                <ExternalLink className="ml-auto size-3.5" />
-              </a>
-            </DropdownMenuItem>
-          </>
-        )}
-        <DropdownMenuItem onClick={requestWorkspaceSettings}>
-          <Settings className="size-4" />
-          {t('workspace.settings')}
-        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );

@@ -67,3 +67,22 @@ test('links Cloud workspace managers to the Space member invitation surface', ()
   assert.match(workspaceSettingsPanelSource, /#workspace-members/);
   assert.match(workspaceSettingsPanelSource, /workspace\.inviteMember/);
 });
+
+test('keeps workspace plan and settings controls on the workspace row', () => {
+  assert.match(workspaceSwitcherSource, /entry\.plan_name/);
+  assert.match(workspaceSwitcherSource, /aria-label=\{t\('workspace\.settings'\)\}/);
+  assert.match(workspaceSwitcherSource, /className="size-8"/);
+  assert.doesNotMatch(workspaceSwitcherSource, /workspace\.currentPlan/);
+  assert.doesNotMatch(workspaceSwitcherSource, /workspace\.upgradePlan/);
+});
+
+test('moves Cloud plan upgrades into Workspace Settings', () => {
+  assert.match(workspaceSettingsPanelSource, /workspace\.upgradePlan/);
+  assert.match(workspaceSettingsPanelSource, /cloudPortalURL/);
+  assert.match(workspaceSettingsPanelSource, /step=plan/);
+});
+
+test('uses a larger workspace trigger and menu surface', () => {
+  assert.match(workspaceSwitcherSource, /h-11/);
+  assert.match(workspaceSwitcherSource, /min-w-80/);
+});

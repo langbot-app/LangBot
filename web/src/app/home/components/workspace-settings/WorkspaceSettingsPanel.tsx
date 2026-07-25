@@ -90,6 +90,9 @@ export default function WorkspaceSettingsPanel({
   const cloudMembersURL = workspaceInfo
     ? `${systemInfo.cloud_service_url.replace(/\/$/, '')}/cloud?workspace=${encodeURIComponent(workspaceInfo.workspace.uuid)}#workspace-members`
     : '';
+  const cloudPortalURL = workspaceInfo
+    ? `${systemInfo.cloud_service_url.replace(/\/$/, '')}/cloud?workspace=${encodeURIComponent(workspaceInfo.workspace.uuid)}&step=plan`
+    : '';
 
   const loadWorkspace = useCallback(async () => {
     setLoading(true);
@@ -220,6 +223,14 @@ export default function WorkspaceSettingsPanel({
           <Badge variant="secondary">
             {t(`workspace.roles.${workspaceInfo.membership.role}`)}
           </Badge>
+        )}
+        {isCloudProjection && workspaceInfo && (
+          <Button asChild size="sm" variant="outline">
+            <a href={cloudPortalURL} target="_blank" rel="noopener noreferrer">
+              {t('workspace.upgradePlan')}
+              <ExternalLink className="size-3.5" />
+            </a>
+          </Button>
         )}
         {canManageCloudMembers && (
           <Button asChild size="sm" variant="outline">
