@@ -1227,6 +1227,10 @@ const zhHans = {
     selectDescription: '选择你要进入的 LangBot 工作区。',
     selectionLoadFailed: '无法加载你的工作区，请重试。',
     switchWorkspace: '切换工作区',
+    settings: '工作区设置',
+    currentPlan: '当前计划',
+    planUnavailable: '暂不可用',
+    upgradePlan: '切换或升级计划',
     ossSingletonDescription:
       '当前自托管实例只有一个工作区，但可以包含多个用户。',
     cloudManagedDescription:

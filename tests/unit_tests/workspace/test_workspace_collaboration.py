@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from contextlib import asynccontextmanager
 from types import SimpleNamespace
 
 import pytest
@@ -207,6 +208,36 @@ async def test_workspace_selector_requires_membership(collaboration_context):
 
     with pytest.raises(WorkspaceNotFoundError):
         await service.resolve_account_workspace(outsider.uuid, workspace.uuid)
+
+
+async def test_cloud_member_listing_opens_workspace_uow_when_request_scope_has_closed(
+    collaboration_context,
+):
+    service, _, session_factory, _, workspace, owner_membership = collaboration_context
+    entered_workspaces: list[str] = []
+
+    @asynccontextmanager
+    async def tenant_uow(workspace_uuid: str):
+        entered_workspaces.append(workspace_uuid)
+        async with session_factory.begin() as session:
+            yield SimpleNamespace(session=session)
+
+    service.ap.persistence_mgr = SimpleNamespace(
+        mode=SimpleNamespace(value='cloud_runtime'),
+        current_session=lambda: None,
+        tenant_uow=tenant_uow,
+        require_current_session=lambda: (_ for _ in ()).throw(
+            AssertionError('list_members must open a Workspace UoW')
+        ),
+        get_db_engine=lambda: session_factory.kw['bind'],
+    )
+
+    members = await service.list_members(workspace.uuid, owner_membership)
+
+    assert entered_workspaces == [workspace.uuid]
+    assert [(member.email, member.membership.role) for member in members] == [
+        ('owner@example.com', 'owner')
+    ]
 
 
 async def test_cloud_directory_requires_explicit_selector_and_rejects_local_mutation(

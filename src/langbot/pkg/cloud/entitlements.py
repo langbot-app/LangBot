@@ -18,10 +18,11 @@ class EntitlementUnavailableError(RuntimeError):
 
 
 class EntitlementSnapshot(pydantic.BaseModel):
-    """Plan-agnostic capability projection consumed by open-source Core.
+    """Capability projection consumed by open-source Core.
 
-    Product and billing names deliberately do not appear here.  The closed
-    Control Plane maps subscriptions to these generic features and limits.
+    Admission and quota decisions use normalized features/limits rather than
+    product plan names. ``plan_name`` is signed display metadata for Cloud UI
+    only and must never drive authorization or quota enforcement.
     """
 
     model_config = pydantic.ConfigDict(frozen=True, extra='forbid')
@@ -34,6 +35,9 @@ class EntitlementSnapshot(pydantic.BaseModel):
     expires_at: int = pydantic.Field(gt=0)
     features: dict[str, bool] = pydantic.Field(default_factory=dict)
     limits: dict[str, int] = pydantic.Field(default_factory=dict)
+    # Signed display metadata for Cloud UI only. Admission and quota decisions
+    # must continue to use generic ``features`` and ``limits`` exclusively.
+    plan_name: str | None = pydantic.Field(default=None, min_length=1, max_length=128)
 
     @pydantic.field_validator('features')
     @classmethod

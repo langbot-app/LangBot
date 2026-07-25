@@ -36,6 +36,7 @@ import {
   Server,
   Puzzle,
   RefreshCcw,
+  UsersRound,
 } from 'lucide-react';
 import { useTheme } from '@/components/providers/theme-provider';
 
@@ -61,6 +62,9 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { LanguageSelector } from '@/components/ui/language-selector';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import WorkspaceSwitcher, {
+  OPEN_WORKSPACE_SETTINGS_EVENT,
+} from '@/app/home/components/workspace-settings/WorkspaceSwitcher';
 import NewVersionDialog from '@/app/home/components/new-version-dialog/NewVersionDialog';
 import SettingsDialog, {
   SettingsSection,
@@ -1676,6 +1680,19 @@ export default function HomeSidebar({
     });
   }
 
+  useEffect(() => {
+    const openWorkspaceSettings = () => openSettings('workspace');
+    window.addEventListener(
+      OPEN_WORKSPACE_SETTINGS_EVENT,
+      openWorkspaceSettings,
+    );
+    return () =>
+      window.removeEventListener(
+        OPEN_WORKSPACE_SETTINGS_EVENT,
+        openWorkspaceSettings,
+      );
+  });
+
   function handleSettingsSectionChange(section: SettingsSection) {
     setSettingsSection(section);
     const params = new URLSearchParams(searchParams.toString());
@@ -1953,6 +1970,11 @@ export default function HomeSidebar({
 
         {/* Footer */}
         <SidebarFooter>
+          {currentWorkspace?.workspace.source === 'cloud_projection' && (
+            <div className="px-2 group-data-[collapsible=icon]:px-0">
+              <WorkspaceSwitcher className="w-full group-data-[collapsible=icon]:min-w-0 group-data-[collapsible=icon]:px-2" />
+            </div>
+          )}
           {/* Models entry */}
           <SidebarMenu>
             <SidebarMenuItem>
@@ -2067,6 +2089,15 @@ export default function HomeSidebar({
                     >
                       <Settings />
                       {t('account.settings')}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => {
+                        setUserMenuOpen(false);
+                        openSettings('workspace');
+                      }}
+                    >
+                      <UsersRound />
+                      {t('workspace.settings')}
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       onClick={() => {

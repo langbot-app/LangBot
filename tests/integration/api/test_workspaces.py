@@ -468,6 +468,22 @@ async def test_cloud_projection_is_selected_explicitly_and_directory_writes_use_
         cloud_workspace_uuid,
     }
 
+    class PlanResolver:
+        async def resolve(self, workspace_uuid: str, *, minimum_revision: int = 0):
+            from langbot.pkg.cloud.entitlements import EntitlementSnapshot
+
+            assert workspace_uuid == cloud_workspace_uuid
+            return EntitlementSnapshot(
+                instance_uuid='instance-workspace-api',
+                workspace_uuid=workspace_uuid,
+                entitlement_revision=max(12, minimum_revision),
+                status='active',
+                not_before=1,
+                expires_at=4102444800,
+                plan_name='free',
+            )
+
+    application.entitlement_resolver = PlanResolver()
     current_response = await client.get(
         '/api/v1/workspaces/current',
         headers=_auth(owner_token, cloud_workspace_uuid),
@@ -477,6 +493,7 @@ async def test_cloud_projection_is_selected_explicitly_and_directory_writes_use_
     assert current['workspace']['uuid'] == cloud_workspace_uuid
     assert current['workspace']['source'] == 'cloud_projection'
     assert current['placement_generation'] == 12
+    assert current['plan_name'] == 'free'
 
     create_workspace = await client.post(
         '/api/v1/workspaces',

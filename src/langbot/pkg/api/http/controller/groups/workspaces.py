@@ -106,12 +106,21 @@ class WorkspacesRouterGroup(group.RouterGroup):
             if account is None:
                 return self.http_status(401, 'invalid_authentication', 'Account not found')
             workspace = await self.ap.workspace_service.get_workspace(request_context.workspace_uuid)
+            plan_name: str | None = None
+            resolver = getattr(self.ap, 'entitlement_resolver', None)
+            if workspace.source == WorkspaceSource.CLOUD_PROJECTION.value and resolver is not None:
+                entitlement = await resolver.resolve(
+                    workspace.uuid,
+                    minimum_revision=request_context.entitlement_revision,
+                )
+                plan_name = entitlement.plan_name
             return self.success(
                 data={
                     'workspace': _workspace_payload(workspace),
                     'membership': _membership_payload(membership, email=account.user),
                     'permissions': sorted(request_context.workspace.permissions),
                     'placement_generation': request_context.placement_generation,
+                    'plan_name': plan_name,
                 }
             )
 

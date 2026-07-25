@@ -19,7 +19,7 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   beginAuthenticatedSession,
   bootstrapWorkspaceSession,
@@ -66,6 +66,7 @@ export default function Login() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [retrying, setRetrying] = useState(false);
+  const autoSpaceLoginStarted = useRef(false);
 
   const form = useForm<z.infer<ReturnType<typeof formSchema>>>({
     resolver: zodResolver(formSchema(t)),
@@ -196,7 +197,7 @@ export default function Login() {
       });
   }
 
-  const handleSpaceLoginClick = async () => {
+  const handleSpaceLoginClick = useCallback(async () => {
     setSpaceLoading(true);
     try {
       const currentOrigin = window.location.origin;
@@ -207,7 +208,20 @@ export default function Login() {
       toast.error(t('common.spaceLoginFailed'));
       setSpaceLoading(false);
     }
-  };
+  }, [t]);
+
+  useEffect(() => {
+    if (
+      loading ||
+      !showSpaceLogin ||
+      autoSpaceLoginStarted.current ||
+      new URLSearchParams(window.location.search).get('auto') !== 'space'
+    ) {
+      return;
+    }
+    autoSpaceLoginStarted.current = true;
+    void handleSpaceLoginClick();
+  }, [handleSpaceLoginClick, loading, showSpaceLogin]);
 
   if (loading) {
     return (

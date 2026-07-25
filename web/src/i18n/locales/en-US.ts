@@ -1293,6 +1293,10 @@ const enUS = {
     selectionLoadFailed:
       'Your Workspaces could not be loaded. Please try again.',
     switchWorkspace: 'Switch Workspace',
+    settings: 'Workspace Settings',
+    currentPlan: 'Current plan',
+    planUnavailable: 'Unavailable',
+    upgradePlan: 'Change or upgrade plan',
     ossSingletonDescription:
       'This self-hosted instance has one Workspace and can include multiple users.',
     cloudManagedDescription:

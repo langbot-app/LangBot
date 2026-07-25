@@ -31,6 +31,8 @@ export interface CurrentWorkspace {
   membership: WorkspaceMembership;
   permissions: string[];
   placement_generation: number;
+  /** Signed Cloud display metadata; never used for client-side authorization. */
+  plan_name?: string | null;
 }
 
 /** Account-scoped Workspace entry returned before a Workspace is selected. */

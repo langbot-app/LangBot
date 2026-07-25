@@ -281,6 +281,17 @@ class WorkspaceCollaborationService:
         *,
         session: AsyncSession | None = None,
     ) -> list[WorkspaceMemberView]:
+        if session is None:
+            current_session = getattr(self.ap.persistence_mgr, 'current_session', lambda: None)()
+            tenant_uow: typing.Any = getattr(self.ap.persistence_mgr, 'tenant_uow', None)
+            if current_session is None and callable(tenant_uow):
+                async with tenant_uow(workspace_uuid) as workspace_uow:
+                    return await self.list_members(
+                        workspace_uuid,
+                        actor,
+                        session=workspace_uow.session,
+                    )
+
         async def operation(active_session: AsyncSession) -> list[WorkspaceMemberView]:
             await self._load_actor(active_session, workspace_uuid, actor)
             statement = (
