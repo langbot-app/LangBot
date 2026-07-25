@@ -83,9 +83,28 @@ test('moves Cloud plan upgrades into Workspace Settings', () => {
   assert.match(workspaceSettingsPanelSource, /workspace\.upgradePlan/);
   assert.match(workspaceSettingsPanelSource, /cloudPortalURL/);
   assert.match(workspaceSettingsPanelSource, /step=plan/);
+  const toolbarEnd = workspaceSettingsPanelSource.indexOf('</PanelToolbar>');
+  const membersHeading =
+    workspaceSettingsPanelSource.indexOf('workspace.members');
+  const cloudInvite = workspaceSettingsPanelSource.indexOf(
+    'href={cloudMembersURL}',
+  );
+  assert.ok(toolbarEnd < membersHeading && membersHeading < cloudInvite);
 });
 
-test('uses a larger workspace trigger and menu surface', () => {
-  assert.match(workspaceSwitcherSource, /h-11/);
-  assert.match(workspaceSwitcherSource, /min-w-80/);
+test('keeps the workspace trigger compact and truncates long names', () => {
+  assert.match(homeSidebarSource, /<WorkspaceSwitcher className="w-1\/2/);
+  assert.match(workspaceSwitcherSource, /h-9/);
+  assert.match(workspaceSwitcherSource, /w-64/);
+  assert.doesNotMatch(workspaceSwitcherSource, /min-w-80/);
+  assert.match(workspaceSwitcherSource, /max-w-\[7rem\][^>]*truncate/);
+});
+
+test('uses an infrastructure-level Box health endpoint in monitoring', () => {
+  const statusCardSource = readSource(
+    'src/app/home/monitoring/components/overview-cards/SystemStatusCards.tsx',
+  );
+  const backendClientSource = readSource('src/app/infra/http/BackendClient.ts');
+  assert.match(backendClientSource, /getBoxRuntimeStatus/);
+  assert.match(statusCardSource, /getBoxRuntimeStatus/);
 });

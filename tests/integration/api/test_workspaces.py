@@ -484,6 +484,12 @@ async def test_cloud_projection_is_selected_explicitly_and_directory_writes_use_
             )
 
     application.entitlement_resolver = PlanResolver()
+    bootstrap_with_plans = await client.get('/api/v1/workspaces/bootstrap', headers=_auth(owner_token))
+    bootstrap_by_uuid = {
+        item['workspace']['uuid']: item for item in (await bootstrap_with_plans.get_json())['data']['workspaces']
+    }
+    assert bootstrap_by_uuid[cloud_workspace_uuid]['plan_name'] == 'free'
+    assert bootstrap_by_uuid[singleton_uuid]['plan_name'] is None
     current_response = await client.get(
         '/api/v1/workspaces/current',
         headers=_auth(owner_token, cloud_workspace_uuid),

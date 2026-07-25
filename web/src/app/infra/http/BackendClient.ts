@@ -1067,6 +1067,10 @@ export class BackendClient extends BaseHttpClient {
     return this.get('/api/v1/plugins/debug-info');
   }
 
+  public getBoxRuntimeStatus(): Promise<ApiRespBoxStatus> {
+    return this.get('/api/v1/box/runtime-status');
+  }
+
   public getBoxStatus(): Promise<ApiRespBoxStatus> {
     return this.get('/api/v1/box/status');
   }

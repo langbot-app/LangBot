@@ -39,17 +39,14 @@ export default function WorkspaceSwitcher({
         <Button
           variant="outline"
           size="sm"
-          className={cn(
-            'h-11 min-w-52 max-w-72 justify-start px-3 text-[15px]',
-            className,
-          )}
+          className={cn('h-9 min-w-0 justify-start px-2.5 text-sm', className)}
           aria-label={t('workspace.switchWorkspace')}
         >
           <Building2 className="size-4 shrink-0" />
           <span className="truncate">{currentWorkspace.workspace.name}</span>
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="min-w-80 p-2">
+      <DropdownMenuContent align="start" className="w-64 p-1.5">
         <DropdownMenuLabel className="px-3 py-2 text-sm">
           {t('workspace.switchWorkspace')}
         </DropdownMenuLabel>
@@ -59,14 +56,14 @@ export default function WorkspaceSwitcher({
           return (
             <DropdownMenuItem
               key={entry.workspace.uuid}
-              className="min-h-14 gap-3 px-3 py-2"
+              className="min-h-11 gap-2 px-2 py-1.5"
               onClick={() => {
                 if (!selected)
                   void switchWorkspaceAndReload(entry.workspace.uuid);
               }}
             >
-              <Building2 className="size-5" />
-              <span className="min-w-0 flex-1 truncate font-medium">
+              <Building2 className="size-4 shrink-0" />
+              <span className="max-w-[7rem] min-w-0 flex-1 truncate font-medium">
                 {entry.workspace.name}
               </span>
               {entry.workspace.source === 'cloud_projection' && (

@@ -28,6 +28,18 @@ class BoxRouterGroup(group.RouterGroup):
             return self.success(data=status)
 
         @self.route(
+            '/runtime-status',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN,
+            permission=Permission.RESOURCE_VIEW,
+        )
+        async def _(request_context: RequestContext) -> str:
+            del request_context
+            status = await self.ap.box_service.get_backend_status()
+            status['hidden'] = should_hide_box_runtime_status(constants.edition, status.get('enabled'))
+            return self.success(data=status)
+
+        @self.route(
             '/sessions',
             methods=['GET'],
             auth_type=group.AuthType.USER_TOKEN,

@@ -42,6 +42,9 @@ async def box_security_api():
         side_effect=lambda account_uuid, _workspace_uuid: _access(account_uuid)
     )
     application.box_service.get_status = AsyncMock(return_value={'enabled': True})
+    application.box_service.get_backend_status = AsyncMock(
+        return_value={'available': True, 'enabled': True, 'backend': {'name': 'nsjail'}}
+    )
     application.box_service.get_sessions = AsyncMock(return_value=[{'session_id': 'private-session'}])
     application.box_service.get_recent_errors = Mock(return_value=[{'error': 'private error'}])
     application.box_service.managed_admission_required = False
@@ -99,3 +102,18 @@ async def test_box_status_returns_explicit_403_when_workspace_has_no_managed_san
     assert response.status_code == 403
     payload = await response.get_json()
     assert payload['code'] == 'managed_sandbox_unavailable'
+
+
+@pytest.mark.asyncio
+async def test_runtime_status_reports_connector_health_without_consuming_workspace_entitlement(box_security_api):
+    application, client = box_security_api
+    application.box_service.get_status.side_effect = EntitlementUnavailableError(
+        'Workspace entitlement does not grant managed_sandbox'
+    )
+
+    response = await client.get('/api/v1/box/runtime-status', headers=_headers('viewer-token'))
+
+    assert response.status_code == 200
+    assert (await response.get_json())['data']['available'] is True
+    application.box_service.get_backend_status.assert_awaited_once()
+    application.box_service.get_status.assert_not_awaited()

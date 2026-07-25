@@ -70,19 +70,26 @@ class WorkspacesRouterGroup(group.RouterGroup):
             """
 
             accesses = await self.ap.workspace_collaboration_service.list_account_workspaces(account.uuid)
-            return self.success(
-                data={
-                    'workspaces': [
-                        {
-                            'workspace': _workspace_payload(access.workspace),
-                            'membership': _membership_payload(access.membership, email=account.user),
-                            'permissions': sorted(permissions_for_role(access.membership.role)),
-                            'placement_generation': access.execution.placement_generation,
-                        }
-                        for access in accesses
-                    ]
-                }
-            )
+            resolver = getattr(self.ap, 'entitlement_resolver', None)
+            workspaces: list[dict[str, typing.Any]] = []
+            for access in accesses:
+                plan_name: str | None = None
+                if access.workspace.source == WorkspaceSource.CLOUD_PROJECTION.value and resolver is not None:
+                    entitlement = await resolver.resolve(
+                        access.workspace.uuid,
+                        minimum_revision=access.membership.projection_revision,
+                    )
+                    plan_name = entitlement.plan_name
+                workspaces.append(
+                    {
+                        'workspace': _workspace_payload(access.workspace),
+                        'membership': _membership_payload(access.membership, email=account.user),
+                        'permissions': sorted(permissions_for_role(access.membership.role)),
+                        'placement_generation': access.execution.placement_generation,
+                        'plan_name': plan_name,
+                    }
+                )
+            return self.success(data={'workspaces': workspaces})
 
         @self.route('', methods=['GET'], auth_type=group.AuthType.ACCOUNT_TOKEN)
         async def _(account) -> typing.Any:

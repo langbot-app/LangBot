@@ -225,18 +225,9 @@ export default function WorkspaceSettingsPanel({
           </Badge>
         )}
         {isCloudProjection && workspaceInfo && (
-          <Button asChild size="sm" variant="outline">
+          <Button asChild size="sm">
             <a href={cloudPortalURL} target="_blank" rel="noopener noreferrer">
               {t('workspace.upgradePlan')}
-              <ExternalLink className="size-3.5" />
-            </a>
-          </Button>
-        )}
-        {canManageCloudMembers && (
-          <Button asChild size="sm" variant="outline">
-            <a href={cloudMembersURL} target="_blank" rel="noopener noreferrer">
-              <UserPlus />
-              {t('workspace.inviteMember')}
               <ExternalLink className="size-3.5" />
             </a>
           </Button>
@@ -315,7 +306,24 @@ export default function WorkspaceSettingsPanel({
 
         {canViewMembers && (
           <section className="space-y-3">
-            <h3 className="text-sm font-semibold">{t('workspace.members')}</h3>
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="text-sm font-semibold">
+                {t('workspace.members')}
+              </h3>
+              {canManageCloudMembers && (
+                <Button asChild size="sm" variant="outline">
+                  <a
+                    href={cloudMembersURL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <UserPlus className="size-4" />
+                    {t('workspace.inviteMember')}
+                    <ExternalLink className="size-3.5" />
+                  </a>
+                </Button>
+              )}
+            </div>
             <div className="space-y-2">
               {members.map((member) => {
                 const isSelf =
