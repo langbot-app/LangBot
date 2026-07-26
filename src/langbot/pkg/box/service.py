@@ -227,7 +227,7 @@ class BoxService:
                     self._connector_error = ''
                     skill_mgr = getattr(self.ap, 'skill_mgr', None)
                     reload_skills = getattr(skill_mgr, 'reload_skills', None)
-                    if callable(reload_skills):
+                    if callable(reload_skills) and not self._cloud_managed:
                         await reload_skills()
                     self.ap.logger.info('Box runtime reconnected, sandbox features restored.')
                     return

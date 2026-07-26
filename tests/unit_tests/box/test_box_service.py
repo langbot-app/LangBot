@@ -569,6 +569,28 @@ async def test_box_service_reconnect_restores_workspace_and_runs_cleanup(
 
 
 @pytest.mark.asyncio
+async def test_cloud_box_service_reconnect_does_not_reload_unscoped_skills(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    app = make_app(Mock())
+    app.skill_mgr = SimpleNamespace(reload_skills=AsyncMock())
+    service = BoxService(app, client=Mock(spec=BoxRuntimeClient))
+    service._cloud_managed = True
+    connector = Mock()
+    connector.reconnect = AsyncMock()
+    service._ensure_default_workspace = Mock()
+    service._verify_cloud_runtime = AsyncMock()
+    monkeypatch.setattr('langbot.pkg.box.service.asyncio.sleep', AsyncMock())
+
+    await service._reconnect_loop(connector)
+
+    connector.reconnect.assert_awaited_once()
+    service._verify_cloud_runtime.assert_awaited_once()
+    app.skill_mgr.reload_skills.assert_not_awaited()
+    assert service.available is True
+
+
+@pytest.mark.asyncio
 async def test_box_runtime_reuses_request_session():
     logger = Mock()
     backend = FakeBackend(logger)
