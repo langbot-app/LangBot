@@ -186,14 +186,10 @@ class UserService:
 
     async def get_login_capabilities(self) -> dict[str, bool]:
         """Derive enabled public login methods from all active Accounts."""
-        password_count = sqlalchemy.func.count().filter(
-            user.User.password.is_not(None), user.User.password != ''
-        )
+        password_count = sqlalchemy.func.count().filter(user.User.password.is_not(None), user.User.password != '')
         space_count = sqlalchemy.func.count().filter(user.User.space_account_uuid.is_not(None))
         result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(password_count, space_count).where(
-                user.User.status == user.AccountStatus.ACTIVE.value
-            )
+            sqlalchemy.select(password_count, space_count).where(user.User.status == user.AccountStatus.ACTIVE.value)
         )
         password_accounts, space_accounts = result.one()
         return {
