@@ -943,16 +943,21 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         if api_key:
             headers['Authorization'] = f'Bearer {api_key}'
 
+        request_args = dict(extra_args)
+        rerank_url = request_args.pop('rerank_url', None)
+        rerank_path = request_args.pop('rerank_path', 'rerank')
+
         payload: dict[str, typing.Any] = {
             'model': model_name,
             'query': query,
             'documents': documents,
             'top_n': top_n,
         }
-        if extra_args:
-            payload.update(extra_args)
+        if request_args:
+            payload.update(request_args)
 
-        rerank_url = f'{base_url}/rerank'
+        if not rerank_url:
+            rerank_url = f'{base_url}/{str(rerank_path).strip("/")}'
 
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:

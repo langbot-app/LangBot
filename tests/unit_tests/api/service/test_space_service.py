@@ -693,7 +693,7 @@ class TestSpaceServiceGetModels:
                             'uuid': 'uuid-2',
                             'model_id': 'model-2',
                             'provider': 'provider-2',
-                            'category': 'chat',
+                            'category': 'rerank',
                             'status': 'active',
                         },
                     ]
@@ -714,6 +714,7 @@ class TestSpaceServiceGetModels:
 
         # Verify
         assert len(result) == 2
+        assert result[1].category == 'rerank'
 
     async def test_get_models_api_error(self):
         """Raises ValueError on API error."""

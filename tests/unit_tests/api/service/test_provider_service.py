@@ -777,6 +777,44 @@ class TestModelProviderServiceScanProviderModels:
         assert len(result['models']) == 1
         assert result['models'][0]['type'] == 'llm'
 
+    async def test_scan_provider_marks_existing_rerank_model(self):
+        """Rerank scan results use the rerank service when computing already_added."""
+        ap = SimpleNamespace()
+        ap.persistence_mgr = SimpleNamespace()
+        ap.model_mgr = SimpleNamespace()
+        ap.llm_model_service = SimpleNamespace()
+        ap.embedding_models_service = SimpleNamespace()
+        ap.rerank_models_service = SimpleNamespace()
+
+        provider = _create_mock_provider(provider_uuid='rerank-scan-uuid')
+        ap.persistence_mgr.execute_async = AsyncMock(return_value=_create_mock_result([], first_item=provider))
+        ap.persistence_mgr.serialize_model = Mock(
+            return_value={
+                'uuid': 'rerank-scan-uuid',
+                'name': 'New API',
+                'requester': 'new-api-chat-completions',
+                'base_url': 'https://new-api.example.com/v1',
+                'api_keys': ['key'],
+            }
+        )
+
+        runtime_provider = Mock()
+        runtime_provider.token_mgr.get_token.return_value = 'token'
+        runtime_provider.requester.scan_models = AsyncMock(
+            return_value={'models': [{'id': 'Qwen3-Reranker-8B', 'type': 'rerank'}]}
+        )
+        ap.model_mgr.load_provider = AsyncMock(return_value=runtime_provider)
+        ap.llm_model_service.get_llm_models_by_provider = AsyncMock(return_value=[])
+        ap.embedding_models_service.get_embedding_models_by_provider = AsyncMock(return_value=[])
+        ap.rerank_models_service.get_rerank_models_by_provider = AsyncMock(
+            return_value=[{'name': 'Qwen3-Reranker-8B'}]
+        )
+
+        result = await ModelProviderService(ap).scan_provider_models('rerank-scan-uuid', model_type='rerank')
+
+        assert result['models'][0]['type'] == 'rerank'
+        assert result['models'][0]['already_added'] is True
+
     async def test_scan_provider_not_implemented_raises_error(self):
         """Raises ValueError when scan not implemented."""
         # Setup

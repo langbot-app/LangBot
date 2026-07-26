@@ -193,6 +193,9 @@ class ModelManager:
         existing_embedding_models = {
             m['uuid']: m for m in await self.ap.embedding_models_service.get_embedding_models()
         }
+        existing_rerank_models = {
+            m['uuid']: m for m in await self.ap.rerank_models_service.get_rerank_models()
+        }
 
         created = 0
         updated = 0
@@ -256,6 +259,33 @@ class ModelManager:
                         or existing.get('prefered_ranking') != desired['prefered_ranking']
                     ):
                         await self.ap.embedding_models_service.update_embedding_model(space_model.uuid, dict(desired))
+                        updated += 1
+
+            elif space_model.category == 'rerank':
+                existing = existing_rerank_models.get(space_model.uuid)
+                if existing is None:
+                    await self.ap.rerank_models_service.create_rerank_model(
+                        {
+                            'uuid': space_model.uuid,
+                            'name': space_model.model_id,
+                            'provider_uuid': space_model_provider.uuid,
+                            'extra_args': {},
+                            'prefered_ranking': space_model.featured_order,
+                        },
+                        preserve_uuid=True,
+                    )
+                    created += 1
+                elif existing.get('provider_uuid') == space_model_provider.uuid:
+                    desired = {
+                        'name': space_model.model_id,
+                        'provider_uuid': space_model_provider.uuid,
+                        'prefered_ranking': space_model.featured_order,
+                    }
+                    if (
+                        existing.get('name') != desired['name']
+                        or existing.get('prefered_ranking') != desired['prefered_ranking']
+                    ):
+                        await self.ap.rerank_models_service.update_rerank_model(space_model.uuid, dict(desired))
                         updated += 1
 
         if created or updated:

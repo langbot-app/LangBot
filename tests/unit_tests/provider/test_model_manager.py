@@ -8,7 +8,8 @@ and error handling without calling real LLM APIs.
 from __future__ import annotations
 
 import pytest
-from unittest.mock import Mock
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock
 
 from langbot.pkg.provider.modelmgr.modelmgr import ModelManager
 from langbot.pkg.provider.modelmgr import requester
@@ -60,6 +61,48 @@ async def test_model_manager_skips_space_sync_when_disabled(mock_app_for_modelmg
 
     # Should not call space_service if disabled
     app.space_service.get_models.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_sync_new_models_from_space_creates_rerank_models(mock_app_for_modelmgr):
+    """Space rerank entries are discovered and persisted under the shared provider."""
+    app = mock_app_for_modelmgr
+    provider = persistence_model.ModelProvider(
+        uuid='space-provider',
+        name='LangBot Space',
+        requester='space-chat-completions',
+        base_url='https://api.langbot.cloud/v1',
+        api_keys=['space-key'],
+    )
+    app.persistence_mgr.execute_async = AsyncMock(return_value=_make_mock_result([provider], first_item=provider))
+    app.space_service.get_models = AsyncMock(
+        return_value=[
+            SimpleNamespace(
+                uuid='rerank-model-uuid',
+                model_id='Qwen3-Reranker-8B',
+                category='rerank',
+                featured_order=10,
+            )
+        ]
+    )
+    app.llm_model_service.get_llm_models = AsyncMock(return_value=[])
+    app.embedding_models_service.get_embedding_models = AsyncMock(return_value=[])
+    app.rerank_models_service = AsyncMock()
+    app.rerank_models_service.get_rerank_models = AsyncMock(return_value=[])
+
+    model_mgr = ModelManager(app)
+    await model_mgr.sync_new_models_from_space()
+
+    app.rerank_models_service.create_rerank_model.assert_awaited_once_with(
+        {
+            'uuid': 'rerank-model-uuid',
+            'name': 'Qwen3-Reranker-8B',
+            'provider_uuid': 'space-provider',
+            'extra_args': {},
+            'prefered_ranking': 10,
+        },
+        preserve_uuid=True,
+    )
 
 
 # ============================================================================
