@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import datetime
 import uuid
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
@@ -19,6 +20,7 @@ from langbot.pkg.entity.persistence.workspace import (
 )
 from langbot.pkg.workspace.collaboration import (
     InvitationEmailMismatchError,
+    InvitationExpiredError,
     InvitationRoleError,
     InvitationUsedError,
     LastOwnerError,
@@ -157,6 +159,23 @@ async def test_invitation_rejects_owner_role_and_email_mismatch(collaboration_co
     wrong_account = await _add_account(session_factory, 'wrong@example.com')
     with pytest.raises(InvitationEmailMismatchError):
         await service.accept_invitation(created.token, wrong_account.uuid)
+
+
+async def test_expired_invitation_is_inspectable_before_periodic_cleanup_deletes_it(collaboration_context):
+    service, _, session_factory, _, workspace, owner_membership = collaboration_context
+    created = await service.create_invitation(
+        workspace.uuid, owner_membership, 'expired@example.com', 'viewer'
+    )
+    async with session_factory.begin() as session:
+        invitation = await session.get(WorkspaceInvitation, created.invitation.uuid)
+        invitation.expires_at = service._utcnow() - datetime.timedelta(minutes=1)
+
+    with pytest.raises(InvitationExpiredError):
+        await service.inspect_invitation(created.token)
+
+    assert await service.cleanup_expired_invitations(retention=datetime.timedelta(0)) == 1
+    async with session_factory() as session:
+        assert await session.get(WorkspaceInvitation, created.invitation.uuid) is None
 
 
 async def test_last_owner_cannot_be_demoted(collaboration_context):

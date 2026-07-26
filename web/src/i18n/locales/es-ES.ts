@@ -83,7 +83,7 @@ const esES = {
     loading: 'Cargando...',
     fieldRequired: 'Este campo es obligatorio',
     or: 'o',
-    loginWithSpace: 'Iniciar sesión con Space',
+    loginWithSpace: 'Iniciar sesión con una cuenta de LangBot',
     spaceLoginRecommended:
       'Recomendado: Usa API de modelos oficiales estables y servicios en la nube',
     loginLocal: 'Iniciar sesión con cuenta local',
@@ -286,7 +286,7 @@ const esES = {
     searchProviders: 'Buscar proveedores...',
     langbotModelsDescription: 'Modelos en la nube impulsados por LangBot Space',
     credits: 'Créditos',
-    loginWithSpace: 'Iniciar sesión con Space',
+    loginWithSpace: 'Iniciar sesión con una cuenta de LangBot',
     loginToUseModels: 'Inicia sesión con Space para usar modelos en la nube',
     noModels: 'No hay modelos configurados',
     langbotModels: 'Modelos LangBot',

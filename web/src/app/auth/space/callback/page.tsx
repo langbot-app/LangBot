@@ -4,6 +4,7 @@ import { httpClient } from '@/app/infra/http/HttpClient';
 import {
   beginAuthenticatedSession,
   bootstrapWorkspaceSession,
+  getPendingInvitationToken,
 } from '@/app/infra/http';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
@@ -91,6 +92,10 @@ function SpaceOAuthCallbackContent() {
         }
 
         beginAuthenticatedSession(response.token, response.user);
+        if (getPendingInvitationToken()) {
+          navigate('/invitations/accept', { replace: true });
+          return;
+        }
         const workspaceResult = await bootstrapWorkspaceSession({
           preferredWorkspaceUuid: response.workspace_uuid,
         });

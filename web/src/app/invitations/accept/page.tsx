@@ -92,6 +92,7 @@ export default function AcceptInvitationPage() {
   const [errorMessage, setErrorMessage] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordRegistrationEnabled, setPasswordRegistrationEnabled] = useState(false);
 
   useEffect(() => {
     const handleHashChange = () => setInvitationHash(window.location.hash);
@@ -108,6 +109,9 @@ export default function AcceptInvitationPage() {
       'error',
     );
     setToken(invitationToken);
+    backendClient.getAccountInfo().then((info) => {
+      setPasswordRegistrationEnabled(info.password_login_enabled !== false);
+    }).catch(() => setPasswordRegistrationEnabled(false));
     if (!invitationToken) {
       setErrorMessage(t('workspace.invitationMissing'));
       setStatus('error');
@@ -210,6 +214,15 @@ export default function AcceptInvitationPage() {
     });
   }
 
+  function switchAccount() {
+    clearUserInfo();
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('token');
+      localStorage.removeItem('userEmail');
+    }
+    navigate('/login?invitation=1&auto=space', { replace: true });
+  }
+
   function returnToLogin() {
     clearUserInfo();
     if (typeof window !== 'undefined') {
@@ -221,6 +234,11 @@ export default function AcceptInvitationPage() {
 
   const hasLoginToken =
     typeof window !== 'undefined' && Boolean(localStorage.getItem('token'));
+  const currentEmail =
+    typeof window !== 'undefined' ? localStorage.getItem('userEmail') : null;
+  const currentAccountMatches =
+    currentEmail?.trim().toLocaleLowerCase() ===
+    view?.invitation.normalized_email.toLocaleLowerCase();
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-50 p-4 dark:bg-neutral-900">
@@ -285,7 +303,7 @@ export default function AcceptInvitationPage() {
                 </div>
               )}
 
-              {hasLoginToken ? (
+              {hasLoginToken && currentAccountMatches ? (
                 <Button
                   className="w-full"
                   disabled={status === 'submitting'}
@@ -296,7 +314,16 @@ export default function AcceptInvitationPage() {
                   )}
                   {t('workspace.acceptAsCurrentAccount')}
                 </Button>
-              ) : (
+              ) : hasLoginToken ? (
+                <div className="space-y-3">
+                  <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
+                    {t('workspace.invitationEmailMismatch')}
+                  </div>
+                  <Button className="w-full" onClick={switchAccount}>
+                    {t('workspace.switchAccount')}
+                  </Button>
+                </div>
+              ) : passwordRegistrationEnabled ? (
                 <>
                   <div className="space-y-2">
                     <label
@@ -370,6 +397,10 @@ export default function AcceptInvitationPage() {
                     {t('workspace.alreadyHaveAccount')}
                   </Button>
                 </>
+              ) : (
+                <Button className="w-full" onClick={() => navigate('/login?invitation=1&auto=space')}>
+                  {t('common.loginWithSpace')}
+                </Button>
               )}
             </div>
           )}

@@ -75,6 +75,8 @@ class UserRouterGroup(group.RouterGroup):
 
         @self.route('/auth', methods=['POST'], auth_type=group.AuthType.NONE)
         async def _() -> str:
+            if getattr(getattr(self.ap, 'deployment', None), 'mode', 'oss') == 'cloud':
+                return self.http_status(403, 'password_login_disabled', 'Password login is disabled on LangBot Cloud')
             json_data = await quart.request.json
 
             try:
@@ -293,7 +295,7 @@ class UserRouterGroup(group.RouterGroup):
                     # Login is selected per account in a multi-user instance. A public
                     # bootstrap endpoint must never project one user's authentication
                     # methods onto every other user or disclose that user's state.
-                    'password_login_enabled': True,
+                    'password_login_enabled': getattr(getattr(self.ap, 'deployment', None), 'mode', 'oss') != 'cloud',
                     'space_login_enabled': True,
                 }
             )

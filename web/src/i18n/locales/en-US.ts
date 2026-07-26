@@ -80,7 +80,7 @@ const enUS = {
     loading: 'Loading...',
     fieldRequired: 'This field is required',
     or: 'or',
-    loginWithSpace: 'Login with Space',
+    loginWithSpace: 'Login with LangBot Account',
     spaceLoginRecommended:
       'Recommended: Use official stable model APIs and cloud services',
     loginLocal: 'Login with local account',
@@ -277,7 +277,7 @@ const enUS = {
     searchProviders: 'Search providers...',
     langbotModelsDescription: 'Cloud models powered by LangBot Space',
     credits: 'Credits',
-    loginWithSpace: 'Login with Space',
+    loginWithSpace: 'Login with LangBot Account',
     loginToUseModels: 'Login with Space to use cloud models',
     noModels: 'No models configured',
     langbotModels: 'LangBot Models',
@@ -1339,6 +1339,7 @@ const enUS = {
     existingAccountLoginRequired:
       'An account already exists for this email. Sign in to continue.',
     acceptAsCurrentAccount: 'Accept with current account',
+    switchAccount: 'Switch account',
     registerAndAccept: 'Create account and accept',
     alreadyHaveAccount: 'I already have an account',
     confirmPassword: 'Confirm password',

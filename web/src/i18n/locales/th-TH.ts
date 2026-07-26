@@ -80,7 +80,7 @@ const thTH = {
     loading: 'กำลังโหลด...',
     fieldRequired: 'ช่องนี้จำเป็นต้องกรอก',
     or: 'หรือ',
-    loginWithSpace: 'เข้าสู่ระบบด้วย Space',
+    loginWithSpace: 'เข้าสู่ระบบด้วยบัญชี LangBot',
     spaceLoginRecommended:
       'แนะนำ: ใช้ API โมเดลที่เสถียรอย่างเป็นทางการและบริการคลาวด์',
     loginLocal: 'เข้าสู่ระบบด้วยบัญชีท้องถิ่น',
@@ -273,7 +273,7 @@ const thTH = {
     searchProviders: 'ค้นหาผู้ให้บริการ...',
     langbotModelsDescription: 'โมเดลคลาวด์ขับเคลื่อนโดย LangBot Space',
     credits: 'เครดิต',
-    loginWithSpace: 'เข้าสู่ระบบด้วย Space',
+    loginWithSpace: 'เข้าสู่ระบบด้วยบัญชี LangBot',
     loginToUseModels: 'เข้าสู่ระบบด้วย Space เพื่อใช้โมเดลคลาวด์',
     noModels: 'ยังไม่มีโมเดลที่กำหนดค่า',
     langbotModels: 'โมเดล LangBot',

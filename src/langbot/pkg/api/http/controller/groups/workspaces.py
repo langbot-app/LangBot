@@ -329,6 +329,12 @@ class InvitationsRouterGroup(group.RouterGroup):
                 return self.success(data={'token': token, 'workspace_uuid': membership.workspace_uuid})
 
             registration = data.get('registration')
+            if getattr(getattr(self.ap, 'deployment', None), 'mode', 'oss') == 'cloud':
+                return self.http_status(
+                    401,
+                    'account_exists_login_required',
+                    'Login with your LangBot Account to accept this invitation',
+                )
             if not isinstance(registration, dict):
                 return self.http_status(
                     401,

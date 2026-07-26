@@ -234,22 +234,51 @@ class InvitationDeliveryService:
     @staticmethod
     def _plain_text(workspace_name: str, invitation_link: str) -> str:
         return (
-            f'You were invited to join {workspace_name} on LangBot.\n\n'
-            f'Open this secure invitation link to continue:\n{invitation_link}\n'
+            'You have been invited to LangBot Cloud\n\n'
+            f'Join the Workspace “{workspace_name}” to collaborate with your team.\n\n'
+            f'Accept invitation: {invitation_link}\n\n'
+            'This secure invitation expires in 7 days and can only be accepted by the email address '
+            'it was sent to. If you were not expecting it, you can safely ignore this email.\n'
         )
 
     @staticmethod
     def _html(workspace_name: str, invitation_link: str) -> str:
-        escaped_workspace = workspace_name.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-        escaped_link = (
-            invitation_link.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;')
-        )
-        return (
-            '<p>You were invited to join '
-            f'<strong>{escaped_workspace}</strong> on LangBot.</p>'
-            f'<p><a href="{escaped_link}">Accept the invitation</a></p>'
-            f'<p>{escaped_link}</p>'
-        )
+        import html
+
+        escaped_workspace = html.escape(workspace_name, quote=True)
+        escaped_link = html.escape(invitation_link, quote=True)
+        return f'''<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Join {escaped_workspace} on LangBot Cloud</title>
+</head>
+<body style="margin:0;background:#f4f7fb;color:#152033;font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;">You have been invited to join {escaped_workspace} on LangBot Cloud.</div>
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f4f7fb;padding:40px 16px;">
+    <tr><td align="center">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;background:#ffffff;border:1px solid #e5eaf2;border-radius:16px;overflow:hidden;box-shadow:0 12px 32px rgba(20,49,93,.08);">
+        <tr><td style="padding:28px 36px;background:linear-gradient(135deg,#0f172a,#1d4ed8);color:#ffffff;">
+          <div style="font-size:14px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;opacity:.78;">LangBot Cloud</div>
+          <div style="font-size:26px;font-weight:700;margin-top:8px;line-height:1.25;">You’re invited</div>
+        </td></tr>
+        <tr><td style="padding:36px;">
+          <p style="margin:0 0 18px;font-size:16px;line-height:1.65;color:#475569;">You have been invited to collaborate in this Workspace:</p>
+          <div style="margin:0 0 26px;padding:18px 20px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;font-size:18px;font-weight:700;color:#0f172a;">{escaped_workspace}</div>
+          <table role="presentation" cellspacing="0" cellpadding="0"><tr><td style="border-radius:9px;background:#2563eb;">
+            <a href="{escaped_link}" style="display:inline-block;padding:13px 22px;color:#ffffff;text-decoration:none;font-size:15px;font-weight:700;">Accept invitation</a>
+          </td></tr></table>
+          <p style="margin:26px 0 8px;font-size:14px;line-height:1.6;color:#64748b;">This invitation expires in 7 days and is bound to the email address that received it.</p>
+          <p style="margin:0 0 8px;font-size:13px;line-height:1.6;color:#94a3b8;">If the button does not work, copy and paste this URL into your browser:</p>
+          <p style="margin:0;padding:12px;background:#f8fafc;border-radius:8px;word-break:break-all;font-size:12px;line-height:1.55;color:#475569;">{escaped_link}</p>
+        </td></tr>
+        <tr><td style="padding:20px 36px;border-top:1px solid #eef2f7;font-size:12px;line-height:1.6;color:#94a3b8;">If you were not expecting this invitation, you can safely ignore this email.</td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>'''
 
     @staticmethod
     def _number(value: typing.Any, default: float) -> float:

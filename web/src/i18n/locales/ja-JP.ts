@@ -81,7 +81,7 @@ const jaJP = {
     loading: '読み込み中...',
     fieldRequired: 'この項目は必須です',
     or: 'または',
-    loginWithSpace: 'Space でログイン',
+    loginWithSpace: 'LangBot アカウントでログイン',
     spaceLoginRecommended:
       'おすすめ：公式の安定したモデル API とクラウドサービスを利用',
     loginLocal: 'ローカルアカウントでログイン',
@@ -282,7 +282,7 @@ const jaJP = {
     searchProviders: 'プロバイダーを検索...',
     langbotModelsDescription: 'LangBot Space が提供するクラウドモデル',
     credits: 'クレジット',
-    loginWithSpace: 'Space でログイン',
+    loginWithSpace: 'LangBot アカウントでログイン',
     loginToUseModels: 'Space でログインしてクラウドモデルを使用',
     noModels: 'モデルがありません',
     langbotModels: 'LangBot モデル',
@@ -1340,6 +1340,7 @@ const jaJP = {
     existingAccountLoginRequired:
       'このメールアドレスのアカウントは既に存在します。ログインしてください。',
     acceptAsCurrentAccount: '現在のアカウントで承認',
+    switchAccount: 'アカウントを切り替える',
     registerAndAccept: 'アカウントを作成して承認',
     alreadyHaveAccount: 'アカウントを持っています',
     confirmPassword: 'パスワードを確認',

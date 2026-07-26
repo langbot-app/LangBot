@@ -212,6 +212,12 @@ class Application:
                     name='cloud-manifest-refresh',
                     scopes=[core_entities.LifecycleControlScope.APPLICATION],
                 )
+            if self.workspace_collaboration_service is not None:
+                self.task_mgr.create_task(
+                    self.workspace_collaboration_service.run_expired_invitation_cleanup(),
+                    name='workspace-invitation-cleanup',
+                    scopes=[core_entities.LifecycleControlScope.APPLICATION],
+                )
 
             await self.plugin_connector.initialize_plugins()
 

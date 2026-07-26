@@ -552,6 +552,47 @@ class WorkspaceCollaborationService:
 
         return await self._run(operation, session=session)
 
+    async def cleanup_expired_invitations(
+        self,
+        *,
+        retention: datetime.timedelta = datetime.timedelta(0),
+    ) -> int:
+        """Delete expired invitation records without crossing Cloud tenant scopes."""
+        cutoff = self._utcnow() - retention
+
+        async def cleanup_session(active_session: AsyncSession, workspace_uuid: str | None = None) -> int:
+            statement = sqlalchemy.delete(WorkspaceInvitation).where(
+                WorkspaceInvitation.status.in_((InvitationStatus.PENDING.value, InvitationStatus.EXPIRED.value)),
+                WorkspaceInvitation.expires_at <= cutoff,
+            )
+            if workspace_uuid is not None:
+                statement = statement.where(WorkspaceInvitation.workspace_uuid == workspace_uuid)
+            result = await active_session.execute(statement)
+            return int(result.rowcount or 0)
+
+        if getattr(getattr(self.ap.persistence_mgr, 'mode', None), 'value', None) == 'cloud_runtime':
+            list_bindings = getattr(self.workspace_service, 'list_active_execution_bindings', None)
+            tenant_uow = getattr(self.ap.persistence_mgr, 'tenant_uow', None)
+            if not callable(list_bindings) or not callable(tenant_uow):
+                raise RuntimeError('Cloud invitation cleanup requires tenant units of work')
+            deleted = 0
+            for binding in await list_bindings():
+                async with tenant_uow(binding.workspace_uuid) as uow:
+                    deleted += await cleanup_session(uow.session, binding.workspace_uuid)
+            return deleted
+        return await self._run(cleanup_session, session=None)
+
+    async def run_expired_invitation_cleanup(self, *, interval_seconds: float = 3600) -> None:
+        """Periodically remove expired records, waiting first so expiry inspection wins."""
+        while True:
+            await asyncio.sleep(interval_seconds)
+            try:
+                await self.cleanup_expired_invitations()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                self.ap.logger.exception('Expired Workspace invitation cleanup failed')
+
     async def update_member_role(
         self,
         workspace_uuid: str,

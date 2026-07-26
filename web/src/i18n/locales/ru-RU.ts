@@ -80,7 +80,7 @@ const ruRU = {
     loading: 'Загрузка...',
     fieldRequired: 'Это поле обязательно для заполнения',
     or: 'или',
-    loginWithSpace: 'Войти через Space',
+    loginWithSpace: 'Войти с аккаунтом LangBot',
     spaceLoginRecommended:
       'Рекомендуется: Используйте официальные стабильные API моделей и облачные сервисы',
     loginLocal: 'Войти с локальной учётной записью',
@@ -284,7 +284,7 @@ const ruRU = {
     searchProviders: 'Поиск провайдеров...',
     langbotModelsDescription: 'Облачные модели на базе LangBot Space',
     credits: 'Кредиты',
-    loginWithSpace: 'Войти через Space',
+    loginWithSpace: 'Войти с аккаунтом LangBot',
     loginToUseModels: 'Войдите через Space, чтобы использовать облачные модели',
     noModels: 'Модели не настроены',
     langbotModels: 'Модели LangBot',
