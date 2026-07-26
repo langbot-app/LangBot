@@ -524,34 +524,21 @@ async def test_cloud_projection_is_selected_explicitly_and_collaboration_runs_in
 
     accept_response = await client.post(
         '/api/v1/invitations/accept',
+        headers=_auth(owner_token, cloud_workspace_uuid),
+        json={'token': created_invitation['token']},
+    )
+    assert accept_response.status_code == 400
+    assert (await accept_response.get_json())['code'] == 'invitation_email_mismatch'
+
+    registration_response = await client.post(
+        '/api/v1/invitations/accept',
         json={
             'token': created_invitation['token'],
             'registration': {'email': 'member@example.com', 'password': 'member-password'},
         },
     )
-    assert accept_response.status_code == 200
-    member_token = (await accept_response.get_json())['data']['token']
-
-    member_current = await client.get(
-        '/api/v1/workspaces/current',
-        headers=_auth(member_token, cloud_workspace_uuid),
-    )
-    assert member_current.status_code == 200
-    member_account_uuid = (await member_current.get_json())['data']['membership']['account_uuid']
-
-    update_member = await client.patch(
-        f'/api/v1/workspaces/{cloud_workspace_uuid}/members/{member_account_uuid}',
-        headers=_auth(owner_token, cloud_workspace_uuid),
-        json={'role': 'developer'},
-    )
-    assert update_member.status_code == 200
-    assert (await update_member.get_json())['data']['member']['role'] == 'developer'
-
-    remove_member = await client.delete(
-        f'/api/v1/workspaces/{cloud_workspace_uuid}/members/{member_account_uuid}',
-        headers=_auth(owner_token, cloud_workspace_uuid),
-    )
-    assert remove_member.status_code == 200
+    assert registration_response.status_code == 409
+    assert (await registration_response.get_json())['code'] == 'control_plane_required'
 
 
 async def test_account_bootstrap_does_not_disclose_non_member_workspaces(workspace_api):
