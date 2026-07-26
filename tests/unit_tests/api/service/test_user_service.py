@@ -772,9 +772,7 @@ class TestUserServiceCreateOrUpdateSpaceUser:
         provider_service = SimpleNamespace(update_space_model_provider_api_keys=AsyncMock())
         ap = SimpleNamespace(
             workspace_service=SimpleNamespace(policy=SimpleNamespace(multi_workspace_enabled=False)),
-            workspace_collaboration_service=SimpleNamespace(
-                list_account_workspaces=AsyncMock(return_value=[access])
-            ),
+            workspace_collaboration_service=SimpleNamespace(list_account_workspaces=AsyncMock(return_value=[access])),
             provider_service=provider_service,
         )
 
@@ -791,17 +789,13 @@ class TestUserServiceCreateOrUpdateSpaceUser:
         provider_service = SimpleNamespace(update_space_model_provider_api_keys=AsyncMock())
         ap = SimpleNamespace(
             workspace_service=SimpleNamespace(policy=SimpleNamespace(multi_workspace_enabled=False)),
-            workspace_collaboration_service=SimpleNamespace(
-                list_account_workspaces=AsyncMock(return_value=[access])
-            ),
+            workspace_collaboration_service=SimpleNamespace(list_account_workspaces=AsyncMock(return_value=[access])),
             provider_service=provider_service,
         )
 
         await UserService(ap)._update_space_provider_for_account(owner_account, 'owner-api-key')
 
-        provider_service.update_space_model_provider_api_keys.assert_awaited_once_with(
-            'workspace-a', 'owner-api-key'
-        )
+        provider_service.update_space_model_provider_api_keys.assert_awaited_once_with('workspace-a', 'owner-api-key')
 
     async def test_create_or_update_space_user_no_expiry(self):
         """Creates Space user without token expiry."""
@@ -849,12 +843,9 @@ class TestUserServiceCreateOrUpdateSpaceUser:
         assert result is not None
         assert result.space_account_uuid == 'noexpiry-uuid'
 
-
     async def test_bind_space_account_rejects_different_email(self):
         service = UserService(SimpleNamespace())
-        service.get_user_by_email = AsyncMock(
-            return_value=_create_mock_user(email='invited@example.com')
-        )
+        service.get_user_by_email = AsyncMock(return_value=_create_mock_user(email='invited@example.com'))
         service.ap.space_service = SimpleNamespace(
             exchange_oauth_code=AsyncMock(
                 return_value={'access_token': 'access', 'refresh_token': 'refresh', 'expires_in': 3600}
@@ -873,6 +864,18 @@ class TestUserServiceCreateOrUpdateSpaceUser:
             await service.bind_space_account('invited@example.com', 'code')
 
         service._identity_execute.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_get_workspace_owner_returns_user_object_from_core_connection_result(self):
+        service = UserService(SimpleNamespace())
+        owner = _create_mock_user('owner@example.com', password='pw')
+        service.ap.persistence_mgr = SimpleNamespace(
+            current_session=lambda: SimpleNamespace(scalar=AsyncMock(return_value=owner)),
+        )
+
+        resolved = await service.get_workspace_owner('workspace-1')
+
+        assert resolved is owner
 
 
 class TestUserServiceLoginCapabilities:

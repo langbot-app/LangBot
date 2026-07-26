@@ -199,7 +199,7 @@ class UserService:
 
     async def get_workspace_owner(self, workspace_uuid: str) -> user.User | None:
         """Resolve the active owner Account for a Workspace."""
-        result = await self.ap.persistence_mgr.execute_async(
+        statement = (
             sqlalchemy.select(user.User)
             .join(WorkspaceMembership, WorkspaceMembership.account_uuid == user.User.uuid)
             .where(
@@ -209,7 +209,10 @@ class UserService:
                 user.User.status == user.AccountStatus.ACTIVE.value,
             )
         )
-        return result.scalar_one_or_none()
+        current_session = self.ap.persistence_mgr.current_session()
+        if current_session is not None:
+            return await current_session.scalar(statement)
+        return await self._identity_scalar(statement, f'workspace-owner:{workspace_uuid}')
 
     def _session_factory(self) -> async_sessionmaker[AsyncSession]:
         return async_sessionmaker(self.ap.persistence_mgr.get_db_engine(), expire_on_commit=False)
