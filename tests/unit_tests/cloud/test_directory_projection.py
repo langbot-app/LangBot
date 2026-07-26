@@ -815,3 +815,42 @@ async def test_snapshot_for_another_instance_is_rejected(projection_context):
 
     with pytest.raises(DirectoryProjectionUnavailableError, match='another LangBot instance'):
         await service.initialize()
+
+
+async def test_core_owned_membership_survives_directory_updates_and_omission(projection_context):
+    application, session_factory = projection_context
+    service = DirectoryProjectionService(application, _Provider([_snapshot(1)]), INSTANCE_UUID)
+    await service.initialize()
+
+    async with session_factory() as session:
+        async with session.begin():
+            membership = await session.scalar(sqlalchemy.select(WorkspaceMembership))
+            membership.role = 'viewer'
+            membership.status = 'active'
+            membership.projection_revision = 0
+            session.add(
+                WorkspaceMembership(
+                    uuid=SECOND_MEMBERSHIP_UUID,
+                    workspace_uuid=WORKSPACE_UUID,
+                    account_uuid='20000000-0000-0000-0000-000000000099',
+                    role='viewer',
+                    status='active',
+                    joined_at=membership.joined_at,
+                    projection_revision=0,
+                )
+            )
+
+    projected_member = _member(revision=2).model_copy(update={'role': 'owner', 'membership_status': 'removed'})
+    projected_workspace = _workspace(revision=2).model_copy(update={'members': (projected_member,)})
+    await service.apply_snapshot(_snapshot(2, workspaces=[projected_workspace]))
+
+    async with session_factory() as session:
+        memberships = {
+            membership.uuid: membership
+            for membership in (await session.scalars(sqlalchemy.select(WorkspaceMembership))).all()
+        }
+    assert memberships[MEMBERSHIP_UUID].role == 'viewer'
+    assert memberships[MEMBERSHIP_UUID].status == 'active'
+    assert memberships[MEMBERSHIP_UUID].projection_revision == 0
+    assert memberships[SECOND_MEMBERSHIP_UUID].status == 'active'
+    assert memberships[SECOND_MEMBERSHIP_UUID].projection_revision == 0

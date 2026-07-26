@@ -234,6 +234,10 @@ class UserService:
         """Create an invited Account and accept its Membership in one transaction."""
 
         normalized_email = normalize_email(user_email)
+        if self._uses_control_plane_directory():
+            raise ControlPlaneDirectoryRequiredError(
+                'Cloud invitation registration must use a Space account to preserve control-plane identity'
+            )
         invitation, _ = await self.ap.workspace_collaboration_service.inspect_invitation(invitation_token)
         if invitation.normalized_email != normalized_email:
             from ....workspace.collaboration import InvitationEmailMismatchError

@@ -650,6 +650,11 @@ class DirectoryProjectionService:
                     )
                 )
                 continue
+            if membership.projection_revision == 0:
+                # Revision zero is Core-owned collaboration state. Directory
+                # projection seeds memberships, but must not overwrite later
+                # invitation, role, or removal decisions made by Core.
+                continue
             if membership.uuid != member.membership_uuid:
                 raise DirectoryProjectionUnavailableError('Directory membership UUID changed for one account')
             if membership.projection_revision > member.projection_revision:
@@ -664,7 +669,7 @@ class DirectoryProjectionService:
             membership.projection_revision = member.projection_revision
 
         for account_uuid, membership in existing.items():
-            if account_uuid not in included_accounts:
+            if account_uuid not in included_accounts and membership.projection_revision != 0:
                 membership.status = MembershipStatus.REMOVED.value
                 membership.projection_revision = max(
                     int(membership.projection_revision),

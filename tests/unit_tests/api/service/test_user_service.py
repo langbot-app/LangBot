@@ -639,6 +639,15 @@ class TestUserServiceCreateOrUpdateSpaceUser:
 
         persistence.execute_async.assert_not_awaited()
 
+    async def test_cloud_invitation_registration_requires_space_identity(self):
+        ap = SimpleNamespace(
+            workspace_service=SimpleNamespace(policy=SimpleNamespace(multi_workspace_enabled=True)),
+        )
+        service = UserService(ap)
+
+        with pytest.raises(ControlPlaneDirectoryRequiredError, match='Space account'):
+            await service.register_invited_account('invite-token', 'member@example.com', 'password')
+
     async def test_create_or_update_new_space_user_first_init(self):
         """Creates new Space user on first initialization."""
         # Setup
