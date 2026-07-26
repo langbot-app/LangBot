@@ -107,10 +107,15 @@ test('login preserves an explicit invitation email mismatch error', async ({
   await expect(page.getByText('Login successful')).toHaveCount(0);
 });
 
-test('a temporary accept failure keeps the authenticated invitation retryable', async ({
+test('an authenticated OSS invitation requires logout before registration', async ({
   page,
 }) => {
-  await installLangBotApiMocks(page, { authenticated: false });
+  await installLangBotApiMocks(page, {
+    storage: {
+      token: 'playwright-token',
+      userEmail: 'invited@example.com',
+    },
+  });
   await page.route('**/api/v1/invitations/inspect', async (route) => {
     await route.fulfill({
       status: 200,
@@ -119,7 +124,7 @@ test('a temporary accept failure keeps the authenticated invitation retryable', 
         code: 0,
         data: {
           invitation: {
-            uuid: 'retryable-invitation',
+            uuid: 'logout-invitation',
             workspace_uuid: 'workspace-playwright',
             normalized_email: 'invited@example.com',
             role: 'viewer',
@@ -134,49 +139,29 @@ test('a temporary accept failure keeps the authenticated invitation retryable', 
       }),
     });
   });
-  let acceptAttempts = 0;
-  await page.route('**/api/v1/invitations/accept', async (route) => {
-    acceptAttempts += 1;
-    if (acceptAttempts === 1) {
-      await route.fulfill({
-        status: 503,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          code: 'temporary_failure',
-          msg: 'Please retry',
-        }),
-      });
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        code: 0,
-        data: {
-          token: 'accepted-token',
-          workspace_uuid: 'workspace-playwright',
-        },
-        msg: 'ok',
-      }),
-    });
-  });
 
-  await page.goto('/invitations/accept#token=retryable-invitation');
-  await page.getByRole('button', { name: 'I already have an account' }).click();
-  await page
-    .getByPlaceholder('Enter email address')
-    .fill('invited@example.com');
-  await page.getByPlaceholder('Enter password').fill('password');
-  await page.getByRole('button', { name: 'Login with password' }).click();
-
-  await expect(page).toHaveURL(/\/invitations\/accept$/);
+  await page.goto('/invitations/accept#token=logout-invitation');
   await expect(
-    page.getByRole('button', { name: 'Accept with current account' }),
+    page.getByText(
+      'Sign out first, then sign in with the invited account. Your invitation will be preserved.',
+    ),
   ).toBeVisible();
   await page
-    .getByRole('button', { name: 'Accept with current account' })
+    .getByRole('button', {
+      name: 'Sign out and return to this invitation',
+    })
     .click();
-  await expect(page).toHaveURL(/\/home(?:\/monitoring)?$/);
-  expect(acceptAttempts).toBe(2);
+
+  await expect(page).toHaveURL(/\/login\?invitation=1$/);
+  expect(
+    await page.evaluate(() => ({
+      token: localStorage.getItem('token'),
+      userEmail: localStorage.getItem('userEmail'),
+      invitation: sessionStorage.getItem('langbot_pending_invitation_token'),
+    })),
+  ).toEqual({
+    token: null,
+    userEmail: null,
+    invitation: 'logout-invitation',
+  });
 });
