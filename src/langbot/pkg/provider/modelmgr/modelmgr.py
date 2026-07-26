@@ -193,9 +193,7 @@ class ModelManager:
         existing_embedding_models = {
             m['uuid']: m for m in await self.ap.embedding_models_service.get_embedding_models()
         }
-        existing_rerank_models = {
-            m['uuid']: m for m in await self.ap.rerank_models_service.get_rerank_models()
-        }
+        existing_rerank_models = {m['uuid']: m for m in await self.ap.rerank_models_service.get_rerank_models()}
 
         created = 0
         updated = 0

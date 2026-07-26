@@ -234,9 +234,7 @@ class ModelProviderService:
         embedding_models = await self.ap.embedding_models_service.get_embedding_models_by_provider(provider_uuid)
         rerank_service = getattr(self.ap, 'rerank_models_service', None)
         rerank_models = (
-            await rerank_service.get_rerank_models_by_provider(provider_uuid)
-            if rerank_service is not None
-            else []
+            await rerank_service.get_rerank_models_by_provider(provider_uuid) if rerank_service is not None else []
         )
         existing_llm_names = {model['name'] for model in llm_models}
         existing_embedding_names = {model['name'] for model in embedding_models}
