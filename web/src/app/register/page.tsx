@@ -44,7 +44,8 @@ export default function Register() {
   const navigate = useNavigate();
   const { t } = useTranslation();
   const [spaceLoading, setSpaceLoading] = useState(false);
-  const [passwordRegistrationEnabled, setPasswordRegistrationEnabled] = useState(true);
+  const [passwordRegistrationEnabled, setPasswordRegistrationEnabled] =
+    useState(true);
 
   const form = useForm<z.infer<ReturnType<typeof formSchema>>>({
     resolver: zodResolver(formSchema(t)),
@@ -58,7 +59,9 @@ export default function Register() {
     getIsInitialized();
     httpClient
       .getAccountInfo()
-      .then((info) => setPasswordRegistrationEnabled(info.password_login_enabled !== false))
+      .then((info) =>
+        setPasswordRegistrationEnabled(info.password_login_enabled !== false),
+      )
       .catch(() => setPasswordRegistrationEnabled(true));
   }, []);
 
@@ -179,57 +182,60 @@ export default function Register() {
 
               {/* Local Account Registration */}
               <Form {...form}>
-                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-              <FormField
-                control={form.control}
-                name="email"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('common.email')}</FormLabel>
-                    <FormControl>
-                      <div className="relative">
-                        <Mail className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                        <Input
-                          placeholder={t('common.enterEmail')}
-                          className="pl-10"
-                          {...field}
-                        />
-                      </div>
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                <form
+                  onSubmit={form.handleSubmit(onSubmit)}
+                  className="space-y-6"
+                >
+                  <FormField
+                    control={form.control}
+                    name="email"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('common.email')}</FormLabel>
+                        <FormControl>
+                          <div className="relative">
+                            <Mail className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                            <Input
+                              placeholder={t('common.enterEmail')}
+                              className="pl-10"
+                              {...field}
+                            />
+                          </div>
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-              <FormField
-                control={form.control}
-                name="password"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('common.password')}</FormLabel>
-                    <FormControl>
-                      <div className="relative">
-                        <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                        <Input
-                          type="password"
-                          placeholder={t('common.enterPassword')}
-                          className="pl-10"
-                          {...field}
-                        />
-                      </div>
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                  <FormField
+                    control={form.control}
+                    name="password"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('common.password')}</FormLabel>
+                        <FormControl>
+                          <div className="relative">
+                            <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                            <Input
+                              type="password"
+                              placeholder={t('common.enterPassword')}
+                              className="pl-10"
+                              {...field}
+                            />
+                          </div>
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-              <Button
-                type="submit"
-                variant="outline"
-                className="w-full cursor-pointer"
-              >
-                {t('register.registerWithPassword')}
-              </Button>
+                  <Button
+                    type="submit"
+                    variant="outline"
+                    className="w-full cursor-pointer"
+                  >
+                    {t('register.registerWithPassword')}
+                  </Button>
                 </form>
               </Form>
             </>

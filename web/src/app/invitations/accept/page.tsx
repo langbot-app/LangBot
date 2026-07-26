@@ -92,7 +92,8 @@ export default function AcceptInvitationPage() {
   const [errorMessage, setErrorMessage] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [passwordRegistrationEnabled, setPasswordRegistrationEnabled] = useState(false);
+  const [passwordRegistrationEnabled, setPasswordRegistrationEnabled] =
+    useState(false);
 
   useEffect(() => {
     const handleHashChange = () => setInvitationHash(window.location.hash);
@@ -109,9 +110,12 @@ export default function AcceptInvitationPage() {
       'error',
     );
     setToken(invitationToken);
-    backendClient.getAccountInfo().then((info) => {
-      setPasswordRegistrationEnabled(info.password_login_enabled !== false);
-    }).catch(() => setPasswordRegistrationEnabled(false));
+    backendClient
+      .getAccountInfo()
+      .then((info) => {
+        setPasswordRegistrationEnabled(info.password_login_enabled !== false);
+      })
+      .catch(() => setPasswordRegistrationEnabled(false));
     if (!invitationToken) {
       setErrorMessage(t('workspace.invitationMissing'));
       setStatus('error');
@@ -398,7 +402,10 @@ export default function AcceptInvitationPage() {
                   </Button>
                 </>
               ) : (
-                <Button className="w-full" onClick={() => navigate('/login?invitation=1&auto=space')}>
+                <Button
+                  className="w-full"
+                  onClick={() => navigate('/login?invitation=1&auto=space')}
+                >
                   {t('common.loginWithSpace')}
                 </Button>
               )}
