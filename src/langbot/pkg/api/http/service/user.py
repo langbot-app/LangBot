@@ -15,10 +15,10 @@ import uuid
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from ....entity.persistence import user
+from ....entity.persistence.workspace import MembershipRole, MembershipStatus, WorkspaceMembership
 from ....utils import constants
 from ....entity.errors import account as account_errors
 from ....workspace.collaboration import normalize_email
-from ..authz import Permission, permissions_for_role
 
 if typing.TYPE_CHECKING:
     from ....core.app import Application
@@ -151,8 +151,8 @@ class UserService:
 
         Space OAuth credentials belong to an Account, while model-provider secrets
         belong to a Workspace. Community edition has one unambiguous Workspace, so
-        the historical automatic refresh remains available to members allowed to
-        manage provider secrets. In multi-Workspace SaaS mode the OAuth callback has
+        the historical automatic refresh remains available only to the Workspace owner.
+        In multi-Workspace SaaS mode the OAuth callback has
         no trusted Workspace selector; the closed control plane or an explicit
         Workspace settings action must perform that linkage instead.
         """
@@ -170,7 +170,7 @@ class UserService:
         if len(accesses) != 1:
             return
         access = accesses[0]
-        if Permission.PROVIDER_SECRET_MANAGE.value not in permissions_for_role(access.membership.role):
+        if access.membership.role != MembershipRole.OWNER.value:
             return
         await self.ap.provider_service.update_space_model_provider_api_keys(
             access.workspace.uuid,
@@ -183,6 +183,37 @@ class UserService:
             f'instance:{self._jwt_identity()[1]}',
         )
         return account is not None
+
+    async def get_login_capabilities(self) -> dict[str, bool]:
+        """Derive enabled public login methods from all active Accounts."""
+        password_count = sqlalchemy.func.count().filter(
+            user.User.password.is_not(None), user.User.password != ''
+        )
+        space_count = sqlalchemy.func.count().filter(user.User.space_account_uuid.is_not(None))
+        result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(password_count, space_count).where(
+                user.User.status == user.AccountStatus.ACTIVE.value
+            )
+        )
+        password_accounts, space_accounts = result.one()
+        return {
+            'password_login_enabled': bool(password_accounts),
+            'space_login_enabled': bool(space_accounts),
+        }
+
+    async def get_workspace_owner(self, workspace_uuid: str) -> user.User | None:
+        """Resolve the active owner Account for a Workspace."""
+        result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(user.User)
+            .join(WorkspaceMembership, WorkspaceMembership.account_uuid == user.User.uuid)
+            .where(
+                WorkspaceMembership.workspace_uuid == workspace_uuid,
+                WorkspaceMembership.role == MembershipRole.OWNER.value,
+                WorkspaceMembership.status == MembershipStatus.ACTIVE.value,
+                user.User.status == user.AccountStatus.ACTIVE.value,
+            )
+        )
+        return result.scalar_one_or_none()
 
     def _session_factory(self) -> async_sessionmaker[AsyncSession]:
         return async_sessionmaker(self.ap.persistence_mgr.get_db_engine(), expire_on_commit=False)
@@ -230,7 +261,7 @@ class UserService:
         invitation_token: str,
         user_email: str,
         password: str,
-    ) -> tuple[user.User, typing.Any, str]:
+    ) -> tuple[user.User, typing.Any]:
         """Create an invited Account and accept its Membership in one transaction."""
 
         normalized_email = normalize_email(user_email)
@@ -261,8 +292,7 @@ class UserService:
                         account.uuid,
                         session=session,
                     )
-                token = await self.generate_jwt_token(account)
-                return account, membership, token
+                return account, membership
 
     def _new_account(self, normalized_email: str, hashed_password: str) -> user.User:
         return user.User(
@@ -497,12 +527,12 @@ class UserService:
                 # Account merely by presenting the same email. The Account
                 # owner must first authenticate locally and use the explicit,
                 # account-bound bind flow.
-                raise account_errors.AccountEmailMismatchError()
+                raise account_errors.SpaceAccountBindingRequiredError()
 
             # Check if system is already initialized
             is_initialized = await self.is_initialized()
             if is_initialized:
-                raise account_errors.AccountEmailMismatchError()
+                raise account_errors.SpaceAccountNotRegisteredError()
 
             # Create new Space user (first time initialization)
             if hasattr(self.ap.persistence_mgr, 'get_db_engine') and hasattr(self.ap, 'workspace_service'):
@@ -707,6 +737,8 @@ class UserService:
 
         if not space_account_uuid or not space_email:
             raise ValueError('Invalid Space user info')
+        if normalize_email(space_email) != normalize_email(user_email):
+            raise account_errors.AccountEmailMismatchError()
 
         # Check if this Space account is already bound to another user
         existing_space_user = await self.get_user_by_space_account_uuid(space_account_uuid)

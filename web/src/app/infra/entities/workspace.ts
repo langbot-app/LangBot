@@ -35,6 +35,12 @@ export interface CurrentWorkspace {
   plan_name?: string | null;
 }
 
+export interface WorkspaceSpaceBilling {
+  credits: number | null;
+  owner_space_bound: boolean;
+  is_workspace_owner: boolean;
+}
+
 /** Account-scoped Workspace entry returned before a Workspace is selected. */
 export type WorkspaceBootstrapEntry = CurrentWorkspace;
 

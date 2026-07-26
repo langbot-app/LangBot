@@ -69,6 +69,7 @@ import type {
   WorkspaceMembership,
   WorkspaceBootstrapResponse,
   WorkspaceRole,
+  WorkspaceSpaceBilling,
 } from '@/app/infra/entities/workspace';
 
 /**
@@ -1146,10 +1147,8 @@ export class BackendClient extends BaseHttpClient {
     return this.get('/api/v1/user/info', undefined, { skipWorkspace: true });
   }
 
-  public getSpaceCredits(): Promise<{ credits: number | null }> {
-    return this.get('/api/v1/user/space-credits', undefined, {
-      skipWorkspace: true,
-    });
+  public getWorkspaceSpaceBilling(): Promise<WorkspaceSpaceBilling> {
+    return this.get('/api/v1/user/space-credits');
   }
 
   public getAccountInfo(): Promise<{

@@ -261,6 +261,28 @@ async def test_login_callback_launch_state_selects_asserted_workspace(space_oaut
 
 
 @pytest.mark.asyncio
+async def test_space_credits_are_resolved_from_workspace_owner(space_oauth_api):
+    application, client = space_oauth_api
+    application.user_service.get_workspace_owner = AsyncMock(
+        return_value=SimpleNamespace(user='owner@example.com', space_account_uuid='space-owner')
+    )
+    application.space_service.get_credits = AsyncMock(return_value=25000)
+
+    response = await client.get(
+        '/api/v1/user/space-credits',
+        headers={'Authorization': 'Bearer account-token', 'X-Workspace-UUID': WORKSPACE_UUID},
+    )
+
+    assert response.status_code == 200
+    assert (await response.get_json())['data'] == {
+        'credits': 25000,
+        'owner_space_bound': True,
+        'is_workspace_owner': True,
+    }
+    application.space_service.get_credits.assert_awaited_once_with('owner@example.com')
+
+
+@pytest.mark.asyncio
 async def test_bind_callback_uses_opaque_state_and_never_treats_it_as_jwt(space_oauth_api):
     application, client = space_oauth_api
     application.user_service.consume_space_oauth_state.reset_mock()

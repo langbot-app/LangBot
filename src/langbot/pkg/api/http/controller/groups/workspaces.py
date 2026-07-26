@@ -311,6 +311,12 @@ class InvitationsRouterGroup(group.RouterGroup):
 
             authorization = quart.request.headers.get('Authorization', '')
             if authorization.startswith('Bearer '):
+                if getattr(getattr(self.ap, 'deployment', None), 'mode', 'oss') != 'cloud':
+                    return self.http_status(
+                        409,
+                        'invitation_logout_required',
+                        'Sign out before creating the invited local Account',
+                    )
                 try:
                     account = await self.ap.user_service.get_authenticated_account(
                         authorization.removeprefix('Bearer ')
@@ -345,7 +351,7 @@ class InvitationsRouterGroup(group.RouterGroup):
             if not isinstance(password, str) or len(password) < 8:
                 return self.http_status(400, 'invalid_password', 'Password must contain at least 8 characters')
             try:
-                _, membership, token = await self.ap.user_service.register_invited_account(
+                _, membership = await self.ap.user_service.register_invited_account(
                     invitation_token,
                     str(registration.get('email', '')),
                     password,
@@ -354,4 +360,4 @@ class InvitationsRouterGroup(group.RouterGroup):
                 return self.http_status(409, exc.code, str(exc))
             except AccountExistsLoginRequiredError as exc:
                 return self.http_status(409, exc.code, str(exc))
-            return self.success(data={'token': token, 'workspace_uuid': membership.workspace_uuid})
+            return self.success(data={'workspace_uuid': membership.workspace_uuid, 'login_required': True})

@@ -24,7 +24,11 @@ from langbot.pkg.api.http.service.user import (
     UserService,
 )
 from langbot.pkg.entity.persistence.user import AccountSource, AccountStatus, User
-from langbot.pkg.entity.errors.account import AccountEmailMismatchError
+from langbot.pkg.entity.errors.account import (
+    AccountEmailMismatchError,
+    SpaceAccountBindingRequiredError,
+    SpaceAccountNotRegisteredError,
+)
 
 
 pytestmark = pytest.mark.asyncio
@@ -97,6 +101,7 @@ def _create_mock_user(
     """Helper to create mock User entity."""
     user = Mock(spec=User)
     user.user = email
+    user.uuid = f'account-{email}'
     user.password = password
     user.account_type = account_type
     user.space_account_uuid = space_account_uuid
@@ -694,8 +699,8 @@ class TestUserServiceCreateOrUpdateSpaceUser:
         # Verify
         assert result.space_account_uuid == 'new-space-uuid'
 
-    async def test_create_or_update_space_user_already_initialized_raises_error(self):
-        """Raises AccountEmailMismatchError when system already initialized and user not found."""
+    async def test_create_or_update_space_user_already_initialized_reports_unknown_space_email(self):
+        """Unknown Space email is distinct from an existing local Account collision."""
         # Setup
         ap = SimpleNamespace()
         ap.persistence_mgr = SimpleNamespace()
@@ -710,7 +715,7 @@ class TestUserServiceCreateOrUpdateSpaceUser:
         service.is_initialized = AsyncMock(return_value=True)  # Already initialized
 
         # Execute & Verify
-        with pytest.raises(AccountEmailMismatchError):
+        with pytest.raises(SpaceAccountNotRegisteredError):
             await service.create_or_update_space_user(
                 space_account_uuid='unknown-space-uuid',
                 email='unknown@example.com',
@@ -747,7 +752,7 @@ class TestUserServiceCreateOrUpdateSpaceUser:
         service.get_user_by_email = AsyncMock(return_value=existing_user)
         service.generate_jwt_token = AsyncMock(return_value='must-not-be-issued')
 
-        with pytest.raises(AccountEmailMismatchError):
+        with pytest.raises(SpaceAccountBindingRequiredError):
             await service.authenticate_space_user(
                 'attacker-access-token',
                 'attacker-refresh-token',
@@ -757,6 +762,46 @@ class TestUserServiceCreateOrUpdateSpaceUser:
         ap.persistence_mgr.execute_async.assert_not_awaited()
         ap.provider_service.update_space_model_provider_api_keys.assert_not_awaited()
         service.generate_jwt_token.assert_not_awaited()
+
+    async def test_oss_space_provider_refresh_requires_workspace_owner(self):
+        member_account = _create_mock_user(email='member@example.com', space_account_uuid='space-member')
+        access = SimpleNamespace(
+            workspace=SimpleNamespace(uuid='workspace-a'),
+            membership=SimpleNamespace(role='admin'),
+        )
+        provider_service = SimpleNamespace(update_space_model_provider_api_keys=AsyncMock())
+        ap = SimpleNamespace(
+            workspace_service=SimpleNamespace(policy=SimpleNamespace(multi_workspace_enabled=False)),
+            workspace_collaboration_service=SimpleNamespace(
+                list_account_workspaces=AsyncMock(return_value=[access])
+            ),
+            provider_service=provider_service,
+        )
+
+        await UserService(ap)._update_space_provider_for_account(member_account, 'member-api-key')
+
+        provider_service.update_space_model_provider_api_keys.assert_not_awaited()
+
+    async def test_oss_space_provider_refresh_uses_workspace_owner_credentials(self):
+        owner_account = _create_mock_user(email='owner@example.com', space_account_uuid='space-owner')
+        access = SimpleNamespace(
+            workspace=SimpleNamespace(uuid='workspace-a'),
+            membership=SimpleNamespace(role='owner'),
+        )
+        provider_service = SimpleNamespace(update_space_model_provider_api_keys=AsyncMock())
+        ap = SimpleNamespace(
+            workspace_service=SimpleNamespace(policy=SimpleNamespace(multi_workspace_enabled=False)),
+            workspace_collaboration_service=SimpleNamespace(
+                list_account_workspaces=AsyncMock(return_value=[access])
+            ),
+            provider_service=provider_service,
+        )
+
+        await UserService(ap)._update_space_provider_for_account(owner_account, 'owner-api-key')
+
+        provider_service.update_space_model_provider_api_keys.assert_awaited_once_with(
+            'workspace-a', 'owner-api-key'
+        )
 
     async def test_create_or_update_space_user_no_expiry(self):
         """Creates Space user without token expiry."""
@@ -803,6 +848,49 @@ class TestUserServiceCreateOrUpdateSpaceUser:
         # Verify
         assert result is not None
         assert result.space_account_uuid == 'noexpiry-uuid'
+
+
+    async def test_bind_space_account_rejects_different_email(self):
+        service = UserService(SimpleNamespace())
+        service.get_user_by_email = AsyncMock(
+            return_value=_create_mock_user(email='invited@example.com')
+        )
+        service.ap.space_service = SimpleNamespace(
+            exchange_oauth_code=AsyncMock(
+                return_value={'access_token': 'access', 'refresh_token': 'refresh', 'expires_in': 3600}
+            ),
+            get_user_info_raw=AsyncMock(
+                return_value={
+                    'account': {'uuid': 'space-other', 'email': 'other@example.com'},
+                    'api_key': 'key',
+                }
+            ),
+        )
+        service.get_user_by_space_account_uuid = AsyncMock(return_value=None)
+        service._identity_execute = AsyncMock()
+
+        with pytest.raises(AccountEmailMismatchError):
+            await service.bind_space_account('invited@example.com', 'code')
+
+        service._identity_execute.assert_not_awaited()
+
+
+class TestUserServiceLoginCapabilities:
+    async def test_capabilities_are_derived_from_all_accounts(self):
+        result = SimpleNamespace(one=lambda: (2, 1))
+        ap = SimpleNamespace(persistence_mgr=SimpleNamespace(execute_async=AsyncMock(return_value=result)))
+
+        capabilities = await UserService(ap).get_login_capabilities()
+
+        assert capabilities == {'password_login_enabled': True, 'space_login_enabled': True}
+
+    async def test_capabilities_disable_absent_login_methods(self):
+        result = SimpleNamespace(one=lambda: (0, 0))
+        ap = SimpleNamespace(persistence_mgr=SimpleNamespace(execute_async=AsyncMock(return_value=result)))
+
+        capabilities = await UserService(ap).get_login_capabilities()
+
+        assert capabilities == {'password_login_enabled': False, 'space_login_enabled': False}
 
 
 class TestUserServiceCreateUserLock:

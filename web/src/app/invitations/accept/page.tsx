@@ -22,7 +22,6 @@ import type {
 } from '@/app/infra/entities/workspace';
 import {
   backendClient,
-  beginAuthenticatedSession,
   bootstrapWorkspaceSession,
   clearPendingInvitationToken,
   clearUserInfo,
@@ -168,10 +167,12 @@ export default function AcceptInvitationPage() {
         token,
         registration,
       );
-      beginAuthenticatedSession(
-        response.token,
-        registration?.email ?? view?.invitation.normalized_email,
-      );
+      if (registration) {
+        clearPendingInvitationToken();
+        toast.success(t('workspace.invitationAccepted'));
+        navigate('/login?invitation=1', { replace: true });
+        return;
+      }
       clearPendingInvitationToken();
       const workspaceResult = await bootstrapWorkspaceSession({
         preferredWorkspaceUuid: response.workspace_uuid,
@@ -218,13 +219,14 @@ export default function AcceptInvitationPage() {
     });
   }
 
-  function switchAccount() {
+  function logoutAndReturn() {
+    if (token) setPendingInvitationToken(token);
     clearUserInfo();
     if (typeof window !== 'undefined') {
       localStorage.removeItem('token');
       localStorage.removeItem('userEmail');
     }
-    navigate('/login?invitation=1&auto=space', { replace: true });
+    navigate('/login?invitation=1', { replace: true });
   }
 
   function returnToLogin() {
@@ -238,11 +240,6 @@ export default function AcceptInvitationPage() {
 
   const hasLoginToken =
     typeof window !== 'undefined' && Boolean(localStorage.getItem('token'));
-  const currentEmail =
-    typeof window !== 'undefined' ? localStorage.getItem('userEmail') : null;
-  const currentAccountMatches =
-    currentEmail?.trim().toLocaleLowerCase() ===
-    view?.invitation.normalized_email.toLocaleLowerCase();
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-50 p-4 dark:bg-neutral-900">
@@ -307,24 +304,13 @@ export default function AcceptInvitationPage() {
                 </div>
               )}
 
-              {hasLoginToken && currentAccountMatches ? (
-                <Button
-                  className="w-full"
-                  disabled={status === 'submitting'}
-                  onClick={() => void finishAcceptance()}
-                >
-                  {status === 'submitting' && (
-                    <Loader2 className="size-4 animate-spin" />
-                  )}
-                  {t('workspace.acceptAsCurrentAccount')}
-                </Button>
-              ) : hasLoginToken ? (
+              {hasLoginToken ? (
                 <div className="space-y-3">
                   <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
-                    {t('workspace.invitationEmailMismatch')}
+                    {t('workspace.authenticatedInvitationNotice')}
                   </div>
-                  <Button className="w-full" onClick={switchAccount}>
-                    {t('workspace.switchAccount')}
+                  <Button className="w-full" onClick={logoutAndReturn}>
+                    {t('workspace.logoutAndReturn')}
                   </Button>
                 </div>
               ) : passwordRegistrationEnabled ? (

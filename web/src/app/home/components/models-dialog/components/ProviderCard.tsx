@@ -44,7 +44,8 @@ interface ProviderCardProps {
   isExpanded: boolean;
   isLoading: boolean;
   models?: ProviderModels;
-  accountType: 'local' | 'space';
+  isWorkspaceOwner: boolean;
+  ownerSpaceBound: boolean;
   spaceCredits: number | null;
   // Popover states
   addModelPopoverOpen: string | null;
@@ -108,7 +109,8 @@ export default function ProviderCard({
   isExpanded,
   isLoading,
   models,
-  accountType,
+  isWorkspaceOwner,
+  ownerSpaceBound,
   spaceCredits,
   addModelPopoverOpen,
   editModelPopoverOpen,
@@ -198,7 +200,7 @@ export default function ProviderCard({
               </div>
             </div>
             <div className="flex items-center gap-1 ml-2 shrink-0">
-              {canManage && isLangBotModels && accountType !== 'space' && (
+              {isLangBotModels && isWorkspaceOwner && !ownerSpaceBound && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -208,32 +210,40 @@ export default function ProviderCard({
                   }}
                 >
                   <LogIn className="h-4 w-4 mr-1" />
-                  {t('models.loginWithSpace')}
+                  {t('models.ownerMustBindSpace')}
                 </Button>
               )}
-              {isLangBotModels &&
-                accountType === 'space' &&
-                spaceCredits !== null && (
-                  <div className="flex items-center gap-1 border rounded-md px-2 h-8 text-sm mr-2">
-                    <span>
-                      {(spaceCredits / 5000).toFixed(2)} {t('models.credits')}
-                    </span>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-5 w-5"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        window.open(
-                          `${systemInfo.cloud_service_url}/profile?tab=billing`,
-                          '_blank',
-                        );
-                      }}
-                    >
-                      <Plus className="h-3 w-3" />
-                    </Button>
-                  </div>
-                )}
+              {isLangBotModels && ownerSpaceBound && spaceCredits !== null && (
+                <div className="flex items-center gap-1 border rounded-md px-2 h-8 text-sm mr-2">
+                  <span>
+                    {(spaceCredits / 5000).toFixed(2)} {t('models.credits')}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-5 w-5"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      window.open(
+                        `${systemInfo.cloud_service_url}/profile?tab=billing`,
+                        '_blank',
+                      );
+                    }}
+                  >
+                    <Plus className="h-3 w-3" />
+                  </Button>
+                </div>
+              )}
+              {isLangBotModels && !isWorkspaceOwner && ownerSpaceBound && (
+                <span className="text-xs text-muted-foreground">
+                  {t('models.usesOwnerSpaceBilling')}
+                </span>
+              )}
+              {isLangBotModels && !isWorkspaceOwner && !ownerSpaceBound && (
+                <span className="text-xs text-muted-foreground">
+                  {t('models.ownerMustBindSpace')}
+                </span>
+              )}
               {canManage && !isLangBotModels && (
                 <>
                   <Button

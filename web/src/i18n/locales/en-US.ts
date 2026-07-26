@@ -279,6 +279,10 @@ const enUS = {
     credits: 'Credits',
     loginWithSpace: 'Login with LangBot Account',
     loginToUseModels: 'Login with Space to use cloud models',
+    ownerMustBindSpace:
+      'The Workspace owner must connect Space for LangBot Models.',
+    usesOwnerSpaceBilling:
+      "Uses the Workspace owner's Space billing and credits.",
     noModels: 'No models configured',
     langbotModels: 'LangBot Models',
     spaceTrialTooltip:
@@ -1283,7 +1287,13 @@ const enUS = {
       'Invalid bind request. Please try again from account settings.',
     setPasswordHint: 'Set a password to login with email and password',
     spaceEmailMismatch:
-      'Space login email does not match the local account email',
+      'The Space login email does not match the local account email.',
+    space_account_not_registeredTitle: 'Account not registered',
+    space_account_not_registered:
+      'No local account is registered for this Space email. Ask the Workspace owner for an invitation.',
+    space_account_binding_requiredTitle: 'Space connection required',
+    space_account_binding_required:
+      'This local account must connect Space from Account settings before using Space login.',
   },
   workspace: {
     title: 'Workspace',
@@ -1339,6 +1349,9 @@ const enUS = {
     existingAccountLoginRequired:
       'An account already exists for this email. Sign in to continue.',
     acceptAsCurrentAccount: 'Accept with current account',
+    authenticatedInvitationNotice:
+      'Sign out first, then sign in with the invited account. Your invitation will be preserved.',
+    logoutAndReturn: 'Sign out and return to this invitation',
     switchAccount: 'Switch account',
     registerAndAccept: 'Create account and accept',
     alreadyHaveAccount: 'I already have an account',

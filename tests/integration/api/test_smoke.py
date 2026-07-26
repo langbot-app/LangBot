@@ -86,7 +86,7 @@ def fake_api_app():
             'api': {'port': 5300},
             'plugin': {'enable_marketplace': True},
             'space': {'url': 'https://space.langbot.app'},
-            'system': {'allow_modify_login_info': True, 'limitation': {}},
+            'system': {'allow_modify_login_info': True, 'recovery_key': 'recovery-secret', 'limitation': {}},
         }
     )
 
@@ -291,6 +291,9 @@ class TestUserInitEndpoint:
     @pytest.mark.asyncio
     async def test_account_info_exposes_instance_capabilities_not_first_account(self, quart_test_client, fake_api_app):
         fake_api_app.user_service.is_initialized.return_value = True
+        fake_api_app.user_service.get_login_capabilities = AsyncMock(
+            return_value={'password_login_enabled': True, 'space_login_enabled': False}
+        )
         fake_api_app.user_service.get_first_user = AsyncMock(
             side_effect=AssertionError('public login bootstrap must not inspect an account')
         )
@@ -302,9 +305,31 @@ class TestUserInitEndpoint:
         assert data['data'] == {
             'initialized': True,
             'password_login_enabled': True,
-            'space_login_enabled': True,
+            'space_login_enabled': False,
         }
+        fake_api_app.user_service.get_login_capabilities.assert_awaited_once_with()
         fake_api_app.user_service.get_first_user.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_recovery_key_resets_any_existing_account(self, quart_test_client, fake_api_app, monkeypatch):
+        fake_api_app.user_service.is_initialized.return_value = True
+        fake_api_app.user_service.get_user_by_email.return_value = Mock(user='member@example.com')
+        fake_api_app.user_service.reset_password = AsyncMock()
+        monkeypatch.setattr('langbot.pkg.api.http.controller.groups.user.asyncio.sleep', AsyncMock())
+
+        response = await quart_test_client.post(
+            '/api/v1/user/reset-password',
+            json={
+                'user': 'member@example.com',
+                'recovery_key': 'recovery-secret',
+                'new_password': 'new-member-password',
+            },
+        )
+
+        assert response.status_code == 200
+        fake_api_app.user_service.reset_password.assert_awaited_once_with(
+            'member@example.com', 'new-member-password'
+        )
 
 
 @pytest.mark.usefixtures('mock_circular_import_chain')

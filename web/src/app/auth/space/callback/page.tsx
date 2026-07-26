@@ -68,6 +68,9 @@ function SpaceOAuthCallbackContent() {
     'loading' | 'confirm' | 'success' | 'error'
   >('loading');
   const [errorMessage, setErrorMessage] = useState<string>('');
+  const [terminalErrorCode, setTerminalErrorCode] = useState<
+    'space_account_not_registered' | 'space_account_binding_required' | null
+  >(null);
   const [isBindMode, setIsBindMode] = useState(false);
   const [code, setCode] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -125,7 +128,15 @@ function SpaceOAuthCallbackContent() {
         }
 
         setStatus('error');
-        const errorObj = err as { msg?: string };
+        const errorObj = err as { code?: string; msg?: string };
+        if (
+          errorObj.code === 'space_account_not_registered' ||
+          errorObj.code === 'space_account_binding_required'
+        ) {
+          setTerminalErrorCode(errorObj.code);
+          setErrorMessage(t(`account.${errorObj.code}`));
+          return;
+        }
         const errMsg = (errorObj?.msg || '').toLowerCase();
         if (errMsg.includes('account email mismatch')) {
           setErrorMessage(t('account.spaceEmailMismatch'));
@@ -168,7 +179,11 @@ function SpaceOAuthCallbackContent() {
         }
 
         setStatus('error');
-        const errorObj = err as { msg?: string };
+        const errorObj = err as { code?: string; msg?: string };
+        if (errorObj.code === 'space_account_email_mismatch') {
+          setErrorMessage(t('account.spaceEmailMismatch'));
+          return;
+        }
         const errMsg = (errorObj?.msg || '').toLowerCase();
         if (errMsg.includes('account email mismatch')) {
           setErrorMessage(t('account.spaceEmailMismatch'));
@@ -278,9 +293,11 @@ function SpaceOAuthCallbackContent() {
                 ? t('account.bindSpaceSuccess')
                 : t('common.spaceLoginSuccess'))}
             {status === 'error' &&
-              (isBindMode
-                ? t('account.bindSpaceFailed')
-                : t('common.spaceLoginError'))}
+              (terminalErrorCode
+                ? t(`account.${terminalErrorCode}Title`)
+                : isBindMode
+                  ? t('account.bindSpaceFailed')
+                  : t('common.spaceLoginError'))}
           </CardTitle>
           <CardDescription>
             {status === 'loading' &&

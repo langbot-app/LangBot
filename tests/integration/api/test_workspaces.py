@@ -231,8 +231,15 @@ async def test_owner_invites_second_account_and_secret_is_not_persisted(workspac
         },
     )
     assert accept_response.status_code == 200
-    member_auth = (await accept_response.get_json())['data']
-    assert member_auth['workspace_uuid'] == workspace_uuid
+    member_registration = (await accept_response.get_json())['data']
+    assert member_registration == {'workspace_uuid': workspace_uuid, 'login_required': True}
+
+    member_login_response = await client.post(
+        '/api/v1/user/auth',
+        json={'user': 'member@example.com', 'password': 'member-password'},
+    )
+    assert member_login_response.status_code == 200
+    member_token = (await member_login_response.get_json())['data']['token']
 
     reused_response = await client.post(
         '/api/v1/invitations/accept',
@@ -249,7 +256,7 @@ async def test_owner_invites_second_account_and_secret_is_not_persisted(workspac
 
     member_current_response = await client.get(
         '/api/v1/workspaces/current',
-        headers=_auth(member_auth['token'], workspace_uuid),
+        headers=_auth(member_token, workspace_uuid),
     )
     assert member_current_response.status_code == 200
     member_current = (await member_current_response.get_json())['data']
@@ -258,15 +265,29 @@ async def test_owner_invites_second_account_and_secret_is_not_persisted(workspac
 
     forbidden_invite = await client.post(
         f'/api/v1/workspaces/{workspace_uuid}/invitations',
-        headers=_auth(member_auth['token'], workspace_uuid),
+        headers=_auth(member_token, workspace_uuid),
         json={'email': 'third@example.com', 'role': 'viewer'},
     )
     assert forbidden_invite.status_code == 403
     assert (await forbidden_invite.get_json())['code'] == 'permission_denied'
 
 
-async def test_invitation_accept_rejects_invalid_bearer_as_authentication_failure(workspace_api):
-    _, client, _, _ = workspace_api
+async def test_oss_invitation_accept_requires_logout_before_registration(workspace_api):
+    _, client, _, owner_token = workspace_api
+
+    response = await client.post(
+        '/api/v1/invitations/accept',
+        headers={'Authorization': f'Bearer {owner_token}'},
+        json={'token': 'lbi_pending-invitation'},
+    )
+
+    assert response.status_code == 409
+    assert (await response.get_json())['code'] == 'invitation_logout_required'
+
+
+async def test_invalid_bearer_on_cloud_invitation_is_authentication_failure(workspace_api):
+    application, client, _, _ = workspace_api
+    application.deployment = SimpleNamespace(mode='cloud')
 
     response = await client.post(
         '/api/v1/invitations/accept',
@@ -368,7 +389,14 @@ async def test_api_key_secret_is_one_time_and_viewer_cannot_manage_keys(workspac
             'registration': {'email': 'viewer@example.com', 'password': 'viewer-password'},
         },
     )
-    viewer_token = (await accept_response.get_json())['data']['token']
+    assert accept_response.status_code == 200
+    assert (await accept_response.get_json())['data']['login_required'] is True
+    login_response = await client.post(
+        '/api/v1/user/auth',
+        json={'user': 'viewer@example.com', 'password': 'viewer-password'},
+    )
+    assert login_response.status_code == 200
+    viewer_token = (await login_response.get_json())['data']['token']
     forbidden = await client.post(
         '/api/v1/apikeys',
         headers=_auth(viewer_token, workspace_uuid),
@@ -382,6 +410,7 @@ async def test_cloud_projection_is_selected_explicitly_and_collaboration_runs_in
     workspace_api,
 ):
     application, client, engine, owner_token = workspace_api
+    application.deployment = SimpleNamespace(mode='cloud')
     owner_uuid = jwt.decode(
         owner_token,
         'workspace-api-secret',
@@ -537,8 +566,8 @@ async def test_cloud_projection_is_selected_explicitly_and_collaboration_runs_in
             'registration': {'email': 'member@example.com', 'password': 'member-password'},
         },
     )
-    assert registration_response.status_code == 409
-    assert (await registration_response.get_json())['code'] == 'control_plane_required'
+    assert registration_response.status_code == 401
+    assert (await registration_response.get_json())['code'] == 'account_exists_login_required'
 
 
 async def test_account_bootstrap_does_not_disclose_non_member_workspaces(workspace_api):

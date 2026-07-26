@@ -258,7 +258,7 @@ class UserRouterGroup(group.RouterGroup):
             except ControlPlaneDirectoryRequiredError as e:
                 return self.http_status(409, e.code, str(e))
             except account_errors.AccountEmailMismatchError as e:
-                return self.fail(3, str(e))
+                return self.fail(getattr(e, 'code', 3), str(e))
             except ValueError:
                 self.ap.logger.exception('Space OAuth callback failed')
                 return self.fail(1, 'Space OAuth failed')
@@ -278,10 +278,22 @@ class UserRouterGroup(group.RouterGroup):
             )
 
         @self.route('/space-credits', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
-        async def _(user_email: str) -> str:
-            """Get Space credits balance for current user"""
-            credits = await self.ap.space_service.get_credits(user_email)
-            return self.success(data={'credits': credits})
+        async def _(request_context: RequestContext) -> str:
+            """Get Space credits using only the selected Workspace owner's credentials."""
+            access = await self.ap.workspace_collaboration_service.resolve_account_workspace(
+                request_context.account_uuid,
+                request_context.workspace_uuid,
+            )
+            owner = await self.ap.user_service.get_workspace_owner(access.workspace.uuid)
+            owner_space_bound = bool(owner and owner.space_account_uuid)
+            credits = await self.ap.space_service.get_credits(owner.user) if owner_space_bound else None
+            return self.success(
+                data={
+                    'credits': credits,
+                    'owner_space_bound': owner_space_bound,
+                    'is_workspace_owner': access.membership.role == 'owner',
+                }
+            )
 
         @self.route('/account-info', methods=['GET'], auth_type=group.AuthType.NONE)
         async def _() -> str:
@@ -289,16 +301,10 @@ class UserRouterGroup(group.RouterGroup):
             if not await self.ap.user_service.is_initialized():
                 return self.success(data={'initialized': False})
 
-            return self.success(
-                data={
-                    'initialized': True,
-                    # Login is selected per account in a multi-user instance. A public
-                    # bootstrap endpoint must never project one user's authentication
-                    # methods onto every other user or disclose that user's state.
-                    'password_login_enabled': getattr(getattr(self.ap, 'deployment', None), 'mode', 'oss') != 'cloud',
-                    'space_login_enabled': True,
-                }
-            )
+            capabilities = await self.ap.user_service.get_login_capabilities()
+            if getattr(getattr(self.ap, 'deployment', None), 'mode', 'oss') == 'cloud':
+                capabilities['password_login_enabled'] = False
+            return self.success(data={'initialized': True, **capabilities})
 
         @self.route('/set-password', methods=['POST'], auth_type=group.AuthType.USER_TOKEN)
         async def _(user_email: str) -> str:
@@ -369,8 +375,13 @@ class UserRouterGroup(group.RouterGroup):
                         'account_type': updated_user.account_type,
                     }
                 )
+            except account_errors.AccountEmailMismatchError:
+                return self.http_status(
+                    409,
+                    'space_account_email_mismatch',
+                    'Bind the LangBot Account with the same email as this local Account',
+                )
             except ValueError:
-                self.ap.logger.exception('Space account binding failed')
                 return self.http_status(400, -1, 'Space account binding failed')
             except Exception:
                 raise

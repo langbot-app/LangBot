@@ -267,6 +267,8 @@ const zhHans = {
     credits: '积分',
     loginWithSpace: '使用 LangBot 账号登录',
     loginToUseModels: '通过 Space 登录以使用云端模型',
+    ownerMustBindSpace: '工作区所有者需要绑定 Space 才能使用 LangBot 模型。',
+    usesOwnerSpaceBilling: '使用工作区所有者的 Space 计费与积分。',
     noModels: '暂无模型',
     langbotModels: 'LangBot 模型',
     spaceTrialTooltip:
@@ -1219,6 +1221,12 @@ const zhHans = {
     bindSpaceInvalidState: '无效的绑定请求，请从账户设置重新发起',
     setPasswordHint: '设置密码后可使用邮箱密码登录',
     spaceEmailMismatch: 'Space登录账号邮箱与本实例账号邮箱不匹配',
+    space_account_not_registeredTitle: '账户尚未注册',
+    space_account_not_registered:
+      '此 Space 邮箱尚无本地账户，请联系工作区所有者获取邀请。',
+    space_account_binding_requiredTitle: '需要绑定 Space',
+    space_account_binding_required:
+      '此本地账户必须先在账户设置中绑定 Space，才能使用 Space 登录。',
   },
   workspace: {
     title: '工作区',
@@ -1270,6 +1278,9 @@ const zhHans = {
     invitationEmailMismatch: '此邀请属于另一个邮箱地址。',
     existingAccountLoginRequired: '此邮箱已有账户，请登录后继续。',
     acceptAsCurrentAccount: '使用当前账户接受',
+    authenticatedInvitationNotice:
+      '请先退出，再使用受邀账户登录。邀请令牌会被保留。',
+    logoutAndReturn: '退出并返回此邀请',
     switchAccount: '切换账号',
     registerAndAccept: '创建账户并接受',
     alreadyHaveAccount: '我已有账户',

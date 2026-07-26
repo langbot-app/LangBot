@@ -284,6 +284,10 @@ const jaJP = {
     credits: 'クレジット',
     loginWithSpace: 'LangBot アカウントでログイン',
     loginToUseModels: 'Space でログインしてクラウドモデルを使用',
+    ownerMustBindSpace:
+      'LangBot モデルを使うにはワークスペース所有者が Space を連携する必要があります。',
+    usesOwnerSpaceBilling:
+      'ワークスペース所有者の Space 課金とクレジットを使用します。',
     noModels: 'モデルがありません',
     langbotModels: 'LangBot モデル',
     spaceTrialTooltip:
@@ -1289,6 +1293,12 @@ const jaJP = {
       'パスワードを設定するとメールとパスワードでログインできます',
     spaceEmailMismatch:
       'Spaceログインのメールアドレスがローカルアカウントのメールアドレスと一致しません',
+    space_account_not_registeredTitle: 'アカウントが登録されていません',
+    space_account_not_registered:
+      'この Space メールアドレスのローカルアカウントはありません。ワークスペース所有者に招待を依頼してください。',
+    space_account_binding_requiredTitle: 'Space の連携が必要です',
+    space_account_binding_required:
+      'Space ログインを使用する前に、アカウント設定でこのローカルアカウントを Space に連携してください。',
   },
   workspace: {
     title: 'ワークスペース',
@@ -1340,6 +1350,9 @@ const jaJP = {
     existingAccountLoginRequired:
       'このメールアドレスのアカウントは既に存在します。ログインしてください。',
     acceptAsCurrentAccount: '現在のアカウントで承認',
+    authenticatedInvitationNotice:
+      '一度ログアウトし、招待されたアカウントでログインしてください。招待は保持されます。',
+    logoutAndReturn: 'ログアウトしてこの招待に戻る',
     switchAccount: 'アカウントを切り替える',
     registerAndAccept: 'アカウントを作成して承認',
     alreadyHaveAccount: 'アカウントを持っています',
