@@ -46,10 +46,17 @@ async def space_oauth_api():
             local_account if (state, purpose) == ('opaque-bind-state', 'bind') else None
         )
     )
+    application.user_service.consume_space_oauth_state_details = AsyncMock(
+        return_value=SimpleNamespace(launch_workspace_uuid=None)
+    )
     application.user_service.bind_space_account = AsyncMock(return_value=bound_account)
     application.user_service.generate_jwt_token = AsyncMock(return_value='rotated-account-token')
+    application.user_service.get_user_by_uuid = AsyncMock(return_value=bound_account)
     application.user_service.authenticate_space_user = AsyncMock(return_value=('space-login-token', bound_account))
     application.user_service.verify_jwt_token = AsyncMock()
+    application.space_launch_service.consume_assertion = AsyncMock(
+        return_value={'account_uuid': 'account-a', 'workspace_uuid': WORKSPACE_UUID}
+    )
     application.workspace_collaboration_service.resolve_account_workspace = AsyncMock(return_value=access)
     application.space_service.get_oauth_authorize_url = Mock(
         side_effect=lambda redirect_uri, state: f'https://space.example/authorize?state={state}'
@@ -85,6 +92,29 @@ async def test_public_login_state_is_server_issued(space_oauth_api):
     authorize_url = (await response.get_json())['data']['authorize_url']
     assert parse_qs(urlsplit(authorize_url).query)['state'] == ['opaque-login-state']
     application.user_service.issue_space_oauth_state.assert_awaited_once_with('login')
+
+
+@pytest.mark.asyncio
+async def test_cloud_launch_state_is_server_issued_and_workspace_bound(space_oauth_api):
+    application, client = space_oauth_api
+    application.deployment.multi_workspace_enabled = True
+
+    response = await client.get(
+        '/api/v1/user/space/authorize-url',
+        query_string={
+            'redirect_uri': 'http://localhost/auth/space/callback',
+            'launch_workspace_uuid': WORKSPACE_UUID,
+        },
+        headers={'Origin': 'http://localhost'},
+    )
+
+    assert response.status_code == 200
+    authorize_url = (await response.get_json())['data']['authorize_url']
+    assert parse_qs(urlsplit(authorize_url).query)['state'] == ['opaque-login-state']
+    application.user_service.issue_space_oauth_state.assert_awaited_once_with(
+        'login',
+        launch_workspace_uuid=WORKSPACE_UUID,
+    )
 
 
 @pytest.mark.asyncio
@@ -203,8 +233,31 @@ async def test_login_callback_requires_and_consumes_server_state(space_oauth_api
     assert (await missing.get_json())['code'] == 1
     assert response.status_code == 200
     assert (await response.get_json())['data']['token'] == 'space-login-token'
-    application.user_service.consume_space_oauth_state.assert_awaited_once_with('opaque-login-state', 'login')
+    application.user_service.consume_space_oauth_state_details.assert_awaited_once_with('opaque-login-state', 'login')
     application.space_service.exchange_oauth_code.assert_awaited_once_with('oauth-code')
+
+
+@pytest.mark.asyncio
+async def test_login_callback_launch_state_selects_asserted_workspace(space_oauth_api):
+    application, client = space_oauth_api
+    application.user_service.consume_space_oauth_state_details.reset_mock()
+    application.user_service.consume_space_oauth_state_details.return_value = SimpleNamespace(
+        launch_workspace_uuid=WORKSPACE_UUID
+    )
+
+    response = await client.post(
+        '/api/v1/user/space/callback',
+        json={'code': 'oauth-code', 'state': 'opaque-login-state'},
+    )
+
+    assert response.status_code == 200
+    data = (await response.get_json())['data']
+    assert data['token'] == 'space-login-token'
+    assert data['workspace_uuid'] == WORKSPACE_UUID
+    application.workspace_collaboration_service.resolve_account_workspace.assert_awaited_with(
+        'account-a',
+        WORKSPACE_UUID,
+    )
 
 
 @pytest.mark.asyncio
@@ -234,3 +287,30 @@ async def test_bind_callback_uses_opaque_state_and_never_treats_it_as_jwt(space_
     assert (await response.get_json())['data']['token'] == 'rotated-account-token'
     application.user_service.verify_jwt_token.assert_not_awaited()
     application.user_service.bind_space_account.assert_awaited_once_with('owner@example.com', 'oauth-code')
+
+
+@pytest.mark.asyncio
+async def test_direct_launch_assertion_does_not_consume_normal_oauth_state(space_oauth_api):
+    application, client = space_oauth_api
+    application.user_service.consume_space_oauth_state.reset_mock()
+    application.space_service.exchange_oauth_code.reset_mock()
+
+    response = await client.post(
+        '/api/v1/user/space/callback',
+        json={
+            'state': 'space-generated-state-is-not-oauth-state',
+            'workspace_uuid': WORKSPACE_UUID,
+            'launch_assertion': 'signed-launch-token',
+        },
+    )
+
+    assert response.status_code == 200
+    data = (await response.get_json())['data']
+    assert data['token'] == 'rotated-account-token'
+    assert data['workspace_uuid'] == WORKSPACE_UUID
+    application.space_launch_service.consume_assertion.assert_awaited_once_with(
+        'signed-launch-token',
+        expected_workspace_uuid=WORKSPACE_UUID,
+    )
+    application.user_service.consume_space_oauth_state.assert_not_awaited()
+    application.space_service.exchange_oauth_code.assert_not_awaited()

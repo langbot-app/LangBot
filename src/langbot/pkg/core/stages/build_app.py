@@ -39,7 +39,9 @@ from ...telemetry import telemetry as telemetry_module
 from ...survey import manager as survey_module
 from ...workspace import service as workspace_service_module
 from ...workspace import collaboration as workspace_collaboration_module
+from ...workspace import invitation_delivery as invitation_delivery_module
 from ...cloud import bootstrap as cloud_bootstrap
+from ...cloud import launch as cloud_launch_module
 from ...cloud.directory_projection import DirectoryProjectionService
 from ...cloud.entitlements import EntitlementResolver
 from ...api.http.context import ExecutionContext, PrincipalContext, PrincipalType
@@ -169,6 +171,8 @@ class BuildAppStage(stage.BootingStage):
             ap,
             workspace_service_inst,
         )
+        ap.invitation_delivery_service = invitation_delivery_module.InvitationDeliveryService(ap)
+        ap.space_launch_service = cloud_launch_module.SpaceLaunchService(ap)
 
         user_service_inst = user_service.UserService(ap)
         ap.user_service = user_service_inst

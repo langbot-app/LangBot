@@ -1301,7 +1301,7 @@ const jaJP = {
     ossSingletonDescription:
       'このセルフホストインスタンスには1つのワークスペースがあり、複数のユーザーを追加できます。',
     cloudManagedDescription:
-      'このワークスペースのメンバー、招待、請求は LangBot Cloud ポータルで管理されます。',
+      'このワークスペースは LangBot Cloud でホストされています。メンバーはここで管理し、請求は Cloud で開きます。',
     loadFailed: 'ワークスペース情報の読み込みに失敗しました',
     members: 'メンバー',
     you: 'あなた',
@@ -1311,9 +1311,14 @@ const jaJP = {
     emailPlaceholder: 'member@example.com',
     createInvitation: '招待を作成',
     invitationCreated: '招待を作成しました',
+    delivery: {
+      sent: '招待メールを送信しました',
+      link_only: '招待リンクを作成しました',
+      failed: '招待リンクを作成しましたが、メールを送信できませんでした',
+    },
     invitationCreateFailed: '招待の作成に失敗しました',
     oneTimeLinkWarning:
-      'このリンクを今すぐコピーしてください。シークレットは一度だけ表示され、LangBotには保存されません。',
+      'このリンクを今すぐコピーしてください。一度だけ表示されます。',
     copyInvitation: '招待リンクをコピー',
     invitationCopied: '招待リンクをコピーしました',
     pendingInvitations: '保留中の招待',
@@ -1324,7 +1329,7 @@ const jaJP = {
     acceptInvitation: '招待を承認',
     invitedToWorkspace: '{{workspace}} に招待されました',
     checkingInvitation: '招待を確認しています...',
-    invitationMissing: '招待リンクにシークレットがありません。',
+    invitationMissing: 'この招待リンクには必要な情報がありません。',
     invitationExpired: 'この招待は期限切れです。',
     invitationAlreadyRevoked: 'この招待は取り消されました。',
     invitationAlreadyUsed: 'この招待はすでに使用されています。',

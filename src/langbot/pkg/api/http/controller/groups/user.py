@@ -1,11 +1,13 @@
 import quart
 import argon2
 import asyncio
+import uuid
 from urllib.parse import parse_qs, urlsplit
 
 from .. import group
 from .....entity.errors import account as account_errors
 from ...context import RequestContext
+from .....cloud.launch import SpaceLaunchError
 from ...service.user import ControlPlaneDirectoryRequiredError, PublicRegistrationClosedError
 
 
@@ -153,7 +155,20 @@ class UserRouterGroup(group.RouterGroup):
 
             try:
                 redirect_uri = self._validate_space_redirect_uri(redirect_uri, bind=False)
-                state = await self.ap.user_service.issue_space_oauth_state('login')
+                launch_workspace_uuid = quart.request.args.get('launch_workspace_uuid')
+                if launch_workspace_uuid:
+                    if not getattr(getattr(self.ap, 'deployment', None), 'multi_workspace_enabled', False):
+                        return self.fail(1, 'Space launch requires Cloud mode')
+                    try:
+                        uuid.UUID(launch_workspace_uuid)
+                    except ValueError:
+                        return self.fail(1, 'Invalid launch Workspace')
+                    state = await self.ap.user_service.issue_space_oauth_state(
+                        'login',
+                        launch_workspace_uuid=launch_workspace_uuid,
+                    )
+                else:
+                    state = await self.ap.user_service.issue_space_oauth_state('login')
                 authorize_url = self.ap.space_service.get_oauth_authorize_url(redirect_uri, state)
                 return self.success(data={'authorize_url': authorize_url})
             except ValueError as e:
@@ -184,6 +199,14 @@ class UserRouterGroup(group.RouterGroup):
             json_data = await quart.request.json
             code = json_data.get('code')
             state = json_data.get('state')
+            launch_assertion = json_data.get('launch_assertion')
+            workspace_uuid = json_data.get('workspace_uuid')
+
+            if launch_assertion:
+                return await self._handle_space_direct_launch(
+                    str(launch_assertion),
+                    str(workspace_uuid or '') or None,
+                )
 
             if not code:
                 return self.fail(1, 'Missing authorization code')
@@ -191,7 +214,7 @@ class UserRouterGroup(group.RouterGroup):
                 return self.fail(1, 'Missing state parameter')
 
             try:
-                await self.ap.user_service.consume_space_oauth_state(state, 'login')
+                consumed_state = await self.ap.user_service.consume_space_oauth_state_details(state, 'login')
                 # Exchange code for tokens
                 token_data = await self.ap.space_service.exchange_oauth_code(code)
                 access_token = token_data.get('access_token')
@@ -205,6 +228,24 @@ class UserRouterGroup(group.RouterGroup):
                 jwt_token, user_obj = await self.ap.user_service.authenticate_space_user(
                     access_token, refresh_token, expires_in
                 )
+
+                launch_workspace_uuid = consumed_state.launch_workspace_uuid
+                if launch_workspace_uuid:
+                    try:
+                        access = await self.ap.workspace_collaboration_service.resolve_account_workspace(
+                            user_obj.uuid,
+                            launch_workspace_uuid,
+                        )
+                    except Exception:
+                        self.ap.logger.warning('Rejected Space OAuth launch for unauthorized Workspace')
+                        return self.fail(1, 'Space OAuth failed')
+                    return self.success(
+                        data={
+                            'token': jwt_token,
+                            'user': user_obj.user,
+                            'workspace_uuid': access.workspace.uuid,
+                        }
+                    )
 
                 return self.success(
                     data={
@@ -331,3 +372,36 @@ class UserRouterGroup(group.RouterGroup):
                 return self.http_status(400, -1, 'Space account binding failed')
             except Exception:
                 raise
+
+    async def _handle_space_direct_launch(
+        self,
+        launch_assertion: str,
+        workspace_uuid: str | None,
+    ) -> str:
+        try:
+            launch = await self.ap.space_launch_service.consume_assertion(
+                launch_assertion,
+                expected_workspace_uuid=workspace_uuid,
+            )
+            account = await self.ap.user_service.get_user_by_uuid(launch['account_uuid'])
+            if account is None:
+                raise SpaceLaunchError('Launch Account is not projected into Core')
+            self.ap.user_service._require_active_account(account)
+            access = await self.ap.workspace_collaboration_service.resolve_account_workspace(
+                account.uuid,
+                launch['workspace_uuid'],
+            )
+            token = await self.ap.user_service.generate_jwt_token(account)
+            return self.success(
+                data={
+                    'token': token,
+                    'user': account.user,
+                    'workspace_uuid': access.workspace.uuid,
+                }
+            )
+        except SpaceLaunchError:
+            self.ap.logger.warning('Rejected Space direct-launch assertion')
+            return self.fail(1, 'Space launch failed')
+        except Exception:
+            self.ap.logger.exception('Space direct launch failed')
+            return self.fail(1, 'Space launch failed')

@@ -1500,10 +1500,7 @@ class PersistenceManager:
             f"(((uuid)::text = {setting(TENANT_SETTING)}) AND ((source)::text = 'local'::text))"
         )
         local_membership_expression = (
-            f'(((workspace_uuid)::text = {setting(TENANT_SETTING)}) AND (EXISTS ( SELECT 1\n'
-            '   FROM workspaces local_workspace\n'
-            '  WHERE (((local_workspace.uuid)::text = (workspace_memberships.workspace_uuid)::text) '
-            "AND ((local_workspace.source)::text = 'local'::text)))))"
+            f'((workspace_uuid)::text = {setting(TENANT_SETTING)})'
         )
         local_execution_expression = (
             f'(((workspace_uuid)::text = {setting(TENANT_SETTING)}) AND (EXISTS ( SELECT 1\n'

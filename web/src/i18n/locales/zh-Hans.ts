@@ -1234,7 +1234,7 @@ const zhHans = {
     ossSingletonDescription:
       '当前自托管实例只有一个工作区，但可以包含多个用户。',
     cloudManagedDescription:
-      '此工作区的成员、邀请与计费由 LangBot Cloud 控制台统一管理。',
+      '此工作区托管于 LangBot Cloud。成员在此管理，计费在 Cloud 中打开。',
     loadFailed: '加载工作区信息失败',
     members: '成员',
     you: '你',
@@ -1243,9 +1243,13 @@ const zhHans = {
     emailPlaceholder: 'member@example.com',
     createInvitation: '创建邀请',
     invitationCreated: '邀请已创建',
+    delivery: {
+      sent: '邀请邮件已发送',
+      link_only: '邀请链接已创建',
+      failed: '邀请链接已创建，但邮件发送失败',
+    },
     invitationCreateFailed: '创建邀请失败',
-    oneTimeLinkWarning:
-      '请立即复制此链接。密钥只显示一次，LangBot 不会保存明文。',
+    oneTimeLinkWarning: '请立即复制此链接。它只显示一次。',
     copyInvitation: '复制邀请链接',
     invitationCopied: '邀请链接已复制',
     pendingInvitations: '待接受邀请',
@@ -1256,7 +1260,7 @@ const zhHans = {
     acceptInvitation: '接受邀请',
     invitedToWorkspace: '你已受邀加入 {{workspace}}',
     checkingInvitation: '正在验证邀请…',
-    invitationMissing: '邀请链接中缺少密钥。',
+    invitationMissing: '此邀请链接缺少必要信息。',
     invitationExpired: '此邀请已过期。',
     invitationAlreadyRevoked: '此邀请已被撤销。',
     invitationAlreadyUsed: '此邀请已被使用。',

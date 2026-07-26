@@ -240,7 +240,7 @@ async def test_cloud_member_listing_opens_workspace_uow_when_request_scope_has_c
     ]
 
 
-async def test_cloud_directory_requires_explicit_selector_and_rejects_local_mutation(
+async def test_cloud_directory_requires_explicit_selector_and_allows_core_membership_management(
     collaboration_context,
 ):
     _service, workspace_service, session_factory, owner, _workspace, _membership = collaboration_context
@@ -292,13 +292,34 @@ async def test_cloud_directory_requires_explicit_selector_and_rejects_local_muta
     assert access.workspace.uuid == cloud_workspace_uuid
     assert access.execution.placement_generation == 8
 
-    with pytest.raises(MembershipPermissionError, match='control plane'):
-        await cloud_service.create_invitation(
-            cloud_workspace_uuid,
-            cloud_membership,
-            'member@example.com',
-            'viewer',
-        )
+    created = await cloud_service.create_invitation(
+        cloud_workspace_uuid,
+        cloud_membership,
+        'member@example.com',
+        'viewer',
+    )
+    assert created.invitation.workspace_uuid == cloud_workspace_uuid
+    assert created.token.startswith('lbi_')
+
+    member = await _add_account(session_factory, 'member@example.com')
+    membership = await cloud_service.accept_invitation(created.token, member.uuid)
+    assert membership.workspace_uuid == cloud_workspace_uuid
+    assert membership.role == 'viewer'
+
+    updated = await cloud_service.update_member_role(
+        cloud_workspace_uuid,
+        member.uuid,
+        'developer',
+        cloud_membership,
+    )
+    assert updated.role == 'developer'
+
+    removed = await cloud_service.remove_member(
+        cloud_workspace_uuid,
+        member.uuid,
+        cloud_membership,
+    )
+    assert removed.status == 'removed'
 
 
 async def test_invitation_lock_registry_does_not_retain_sequential_tokens(collaboration_context):

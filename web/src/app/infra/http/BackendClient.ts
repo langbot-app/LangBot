@@ -65,6 +65,7 @@ import type {
   CurrentWorkspace,
   Workspace,
   WorkspaceInvitation,
+  WorkspaceInvitationDelivery,
   WorkspaceMembership,
   WorkspaceBootstrapResponse,
   WorkspaceRole,
@@ -1192,7 +1193,12 @@ export class BackendClient extends BaseHttpClient {
     workspaceUuid: string,
     email: string,
     role: Exclude<WorkspaceRole, 'owner'>,
-  ): Promise<{ invitation: WorkspaceInvitation; token: string }> {
+  ): Promise<{
+    invitation: WorkspaceInvitation;
+    token: string;
+    link: string;
+    delivery: WorkspaceInvitationDelivery;
+  }> {
     return this.post(`/api/v1/workspaces/${workspaceUuid}/invitations`, {
       email,
       role,
@@ -1318,13 +1324,21 @@ export class BackendClient extends BaseHttpClient {
   public async exchangeSpaceOAuthCode(
     code: string,
     state: string,
+    workspaceUuid?: string,
+    launchAssertion?: string,
   ): Promise<{
     token: string;
     user: string;
+    workspace_uuid?: string;
   }> {
     const response = await this.instance.post(
       '/api/v1/user/space/callback',
-      { code, state },
+      {
+        code,
+        state,
+        workspace_uuid: workspaceUuid,
+        launch_assertion: launchAssertion,
+      },
       { skipWorkspace: true } as RequestConfig,
     );
     if (response.data.code !== 0) {

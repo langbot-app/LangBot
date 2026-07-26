@@ -47,7 +47,9 @@ from ..survey import manager as survey_module
 from ..skill import manager as skill_mgr
 from ..workspace import service as workspace_service_module
 from ..workspace import collaboration as workspace_collaboration_module
+from ..workspace import invitation_delivery as invitation_delivery_module
 from ..cloud import bootstrap as cloud_bootstrap_module
+from ..cloud import launch as cloud_launch_module
 from ..cloud import directory_projection as cloud_directory_projection_module
 from ..cloud import entitlements as cloud_entitlements_module
 from ..api.http.context import ExecutionContext, PrincipalContext, PrincipalType
@@ -128,6 +130,10 @@ class Application:
     workspace_service: workspace_service_module.WorkspaceService = None
 
     workspace_collaboration_service: workspace_collaboration_module.WorkspaceCollaborationService = None
+
+    invitation_delivery_service: invitation_delivery_module.InvitationDeliveryService = None
+
+    space_launch_service: cloud_launch_module.SpaceLaunchService = None
 
     deployment: cloud_bootstrap_module.OpenSourceDeployment | cloud_bootstrap_module.VerifiedCloudDeployment = None
 

@@ -1300,7 +1300,7 @@ const enUS = {
     ossSingletonDescription:
       'This self-hosted instance has one Workspace and can include multiple users.',
     cloudManagedDescription:
-      'Membership, invitations, and billing for this Workspace are managed in the LangBot Cloud portal.',
+      'This Workspace is hosted by LangBot Cloud. Manage members here; billing opens in Cloud.',
     loadFailed: 'Failed to load Workspace information',
     members: 'Members',
     you: 'You',
@@ -1310,9 +1310,13 @@ const enUS = {
     emailPlaceholder: 'member@example.com',
     createInvitation: 'Create invitation',
     invitationCreated: 'Invitation created',
+    delivery: {
+      sent: 'Invitation sent',
+      link_only: 'Invitation link created',
+      failed: 'Invitation link created, but email could not be sent',
+    },
     invitationCreateFailed: 'Failed to create invitation',
-    oneTimeLinkWarning:
-      'Copy this link now. The secret is shown only once and is not stored by LangBot.',
+    oneTimeLinkWarning: 'Copy this link now. It is shown only once.',
     copyInvitation: 'Copy invitation link',
     invitationCopied: 'Invitation link copied',
     pendingInvitations: 'Pending invitations',
@@ -1323,7 +1327,7 @@ const enUS = {
     acceptInvitation: 'Accept invitation',
     invitedToWorkspace: 'You were invited to {{workspace}}',
     checkingInvitation: 'Checking this invitation...',
-    invitationMissing: 'The invitation secret is missing from this link.',
+    invitationMissing: 'This invitation link is missing required information.',
     invitationExpired: 'This invitation has expired.',
     invitationAlreadyRevoked: 'This invitation was revoked.',
     invitationAlreadyUsed: 'This invitation was already used.',

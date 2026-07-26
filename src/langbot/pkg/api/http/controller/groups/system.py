@@ -9,6 +9,7 @@ from .....entity.persistence.metadata import WorkspaceMetadata
 from ...authz import Permission
 from ...context import RequestContext
 from .....provider.tools.loaders.mcp_policy import stdio_mcp_enabled
+from .....workspace.invitation_delivery import InvitationDeliveryService
 
 
 @group.group_class('system', '/api/v1/system')
@@ -75,6 +76,10 @@ class SystemRouterGroup(group.RouterGroup):
             else:
                 outbound_ips = []
 
+            invitation_delivery_service = getattr(self.ap, 'invitation_delivery_service', None)
+            if invitation_delivery_service is None:
+                invitation_delivery_service = InvitationDeliveryService(self.ap)
+
             return self.success(
                 data={
                     'version': constants.semantic_version,
@@ -97,6 +102,7 @@ class SystemRouterGroup(group.RouterGroup):
                     'mcp_stdio_enabled': stdio_mcp_enabled(self.ap),
                     'limitation': self.ap.instance_config.data.get('system', {}).get('limitation', {}),
                     'outbound_ips': outbound_ips,
+                    'invitation_delivery': invitation_delivery_service.capability(),
                     'wizard_status': wizard_status,
                     'wizard_progress': wizard_progress,
                 }

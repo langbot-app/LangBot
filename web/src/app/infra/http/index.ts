@@ -30,6 +30,10 @@ export const systemInfo: ApiRespSystemInfo = {
   cloud_service_url: '',
   allow_modify_login_info: true,
   disable_models_service: false,
+  invitation_delivery: {
+    enabled: false,
+    provider: null,
+  },
   limitation: {
     max_bots: -1,
     max_pipelines: -1,

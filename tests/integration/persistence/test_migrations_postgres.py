@@ -973,7 +973,7 @@ class TestPostgreSQLTenantRuntime:
                     .values(write_fenced=True)
                 )
                 assert workspace_update.rowcount == 0
-                assert membership_update.rowcount == 0
+                assert membership_update.rowcount == 1
                 assert execution_update.rowcount == 0
 
             async with cloud_manager.tenant_uow(workspace_local) as tenant:

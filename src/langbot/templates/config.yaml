@@ -14,6 +14,30 @@ api:
     # login session and without a database record. Leave empty to disable.
     # Keep this value secret; only enable it on trusted/internal deployments.
     global_api_key: ''
+workspace:
+    invitations:
+        # Public WebUI origin used to build invitation links. Leave empty to
+        # use api.webui_url, then api.webhook_prefix. Set via
+        # WORKSPACE__INVITATIONS__PUBLIC_WEB_URL in container deployments.
+        public_web_url: ''
+        email:
+            # Optional invitation email delivery. Empty provider keeps
+            # invitations link-only. Supported: resend, smtp.
+            provider: ''
+            from: ''
+            timeout_seconds: 10
+            resend:
+                api_url: 'https://api.resend.com/emails'
+                # Secret. Set via WORKSPACE__INVITATIONS__EMAIL__RESEND__API_KEY.
+                api_key: ''
+            smtp:
+                host: ''
+                port: 587
+                username: ''
+                # Secret. Set via WORKSPACE__INVITATIONS__EMAIL__SMTP__PASSWORD.
+                password: ''
+                starttls: true
+                ssl: false
 command:
     enable: true
     prefix:

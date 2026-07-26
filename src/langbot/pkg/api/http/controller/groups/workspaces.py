@@ -11,6 +11,7 @@ from .....entity.persistence.workspace import Workspace, WorkspaceInvitation, Wo
 from .....entity.persistence.workspace import WorkspaceSource
 from .....workspace.collaboration import WorkspaceMemberView
 from .....workspace.errors import WorkspaceNotFoundError
+from .....workspace.invitation_delivery import InvitationDeliveryService
 from .. import group
 
 
@@ -153,8 +154,6 @@ class WorkspacesRouterGroup(group.RouterGroup):
         )
         async def _(workspace_uuid: str, request_context: RequestContext) -> typing.Any:
             self._require_current_workspace(workspace_uuid, request_context)
-            if await self._requires_control_plane(workspace_uuid):
-                return self._control_plane_required()
             if quart.request.method == 'GET':
                 invitations = await self.ap.workspace_collaboration_service.list_invitations(
                     workspace_uuid,
@@ -169,10 +168,20 @@ class WorkspacesRouterGroup(group.RouterGroup):
                 str(data.get('email', '')),
                 str(data.get('role', 'viewer')),
             )
+            delivery_service = self._invitation_delivery_service()
+            link = delivery_service.build_invitation_link(created.token)
+            workspace = await self.ap.workspace_service.get_workspace(workspace_uuid)
+            delivery = await delivery_service.deliver_invitation(
+                recipient_email=created.invitation.normalized_email,
+                workspace_name=workspace.name,
+                invitation_link=link,
+            )
             return self.success(
                 data={
                     'invitation': _invitation_payload(created.invitation),
                     'token': created.token,
+                    'link': link,
+                    'delivery': delivery.to_public_dict(),
                 }
             )
 
@@ -187,8 +196,6 @@ class WorkspacesRouterGroup(group.RouterGroup):
             request_context: RequestContext,
         ) -> typing.Any:
             self._require_current_workspace(workspace_uuid, request_context)
-            if await self._requires_control_plane(workspace_uuid):
-                return self._control_plane_required()
             invitation = await self.ap.workspace_collaboration_service.revoke_invitation(
                 workspace_uuid,
                 invitation_uuid,
@@ -207,8 +214,6 @@ class WorkspacesRouterGroup(group.RouterGroup):
             request_context: RequestContext,
         ) -> typing.Any:
             self._require_current_workspace(workspace_uuid, request_context)
-            if await self._requires_control_plane(workspace_uuid):
-                return self._control_plane_required()
             if quart.request.method == 'DELETE':
                 if Permission.MEMBER_REMOVE.value not in request_context.workspace.permissions:
                     return self.http_status(403, 'permission_denied', 'Member removal permission is required')
@@ -241,16 +246,12 @@ class WorkspacesRouterGroup(group.RouterGroup):
         if workspace_uuid != request_context.workspace_uuid:
             raise WorkspaceNotFoundError('Workspace not found')
 
-    async def _requires_control_plane(self, workspace_uuid: str) -> bool:
-        workspace = await self.ap.workspace_service.get_workspace(workspace_uuid)
-        return workspace.source == WorkspaceSource.CLOUD_PROJECTION.value
-
-    def _control_plane_required(self) -> typing.Any:
-        return self.http_status(
-            409,
-            'control_plane_required',
-            'Cloud Workspace membership and invitations are managed by the SaaS control plane',
-        )
+    def _invitation_delivery_service(self) -> InvitationDeliveryService:
+        service = getattr(self.ap, 'invitation_delivery_service', None)
+        if service is None:
+            service = InvitationDeliveryService(self.ap)
+            self.ap.invitation_delivery_service = service
+        return service
 
     @staticmethod
     def _member_view_payload(view: WorkspaceMemberView) -> dict[str, typing.Any]:

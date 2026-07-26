@@ -6,6 +6,7 @@ import jwt
 import datetime
 import typing
 import asyncio
+import dataclasses
 import hashlib
 import secrets
 import time
@@ -39,6 +40,13 @@ class AccountDisabledError(ValueError):
     code = 'account_disabled'
 
 
+@dataclasses.dataclass(frozen=True, slots=True)
+class SpaceOAuthStateConsumption:
+    purpose: typing.Literal['login', 'bind']
+    account: user.User | None
+    launch_workspace_uuid: str | None = None
+
+
 class UserService:
     ap: Application
     _create_user_lock: asyncio.Lock
@@ -48,7 +56,7 @@ class UserService:
         self._create_user_lock = asyncio.Lock()
         self._password_hash_lock = asyncio.Semaphore(1)
         self._space_oauth_state_lock = asyncio.Lock()
-        self._space_oauth_states: dict[str, tuple[str, str | None, float]] = {}
+        self._space_oauth_states: dict[str, tuple[str, str | None, float, str | None]] = {}
 
     @staticmethod
     def _space_oauth_state_digest(state: str) -> str:
@@ -59,6 +67,7 @@ class UserService:
         purpose: typing.Literal['login', 'bind'],
         *,
         account_uuid: str | None = None,
+        launch_workspace_uuid: str | None = None,
         ttl_seconds: int = 600,
     ) -> str:
         """Issue an opaque, single-use OAuth state without exposing a JWT."""
@@ -66,6 +75,8 @@ class UserService:
             raise ValueError('An Account is required for Space binding')
         if purpose == 'login' and account_uuid is not None:
             raise ValueError('Login state cannot be bound to an Account')
+        if purpose != 'login' and launch_workspace_uuid is not None:
+            raise ValueError('Launch Workspace state is only valid for Space login')
         if ttl_seconds <= 0:
             raise ValueError('OAuth state lifetime must be positive')
 
@@ -78,15 +89,15 @@ class UserService:
             if len(self._space_oauth_states) >= 4096:
                 oldest = min(self._space_oauth_states, key=lambda key: self._space_oauth_states[key][2])
                 self._space_oauth_states.pop(oldest, None)
-            self._space_oauth_states[digest] = (purpose, account_uuid, expires_at)
+            self._space_oauth_states[digest] = (purpose, account_uuid, expires_at, launch_workspace_uuid)
         return raw_state
 
-    async def consume_space_oauth_state(
+    async def consume_space_oauth_state_details(
         self,
         raw_state: str,
         purpose: typing.Literal['login', 'bind'],
-    ) -> user.User | None:
-        """Atomically consume OAuth state and resolve its active bind Account."""
+    ) -> SpaceOAuthStateConsumption:
+        """Atomically consume OAuth state and return any bound launch intent."""
         if not isinstance(raw_state, str) or not raw_state:
             raise ValueError('Invalid or expired OAuth state')
         digest = self._space_oauth_state_digest(raw_state)
@@ -95,14 +106,27 @@ class UserService:
         if entry is None or entry[0] != purpose or entry[2] <= time.monotonic():
             raise ValueError('Invalid or expired OAuth state')
         if purpose == 'login':
-            return None
+            return SpaceOAuthStateConsumption(
+                purpose='login',
+                account=None,
+                launch_workspace_uuid=entry[3],
+            )
 
         account_uuid = entry[1]
         account = await self.get_user_by_uuid(account_uuid or '')
         if account is None:
             raise ValueError('Invalid or expired OAuth state')
         self._require_active_account(account)
-        return account
+        return SpaceOAuthStateConsumption(purpose='bind', account=account)
+
+    async def consume_space_oauth_state(
+        self,
+        raw_state: str,
+        purpose: typing.Literal['login', 'bind'],
+    ) -> user.User | None:
+        """Atomically consume OAuth state and resolve its active bind Account."""
+        consumed = await self.consume_space_oauth_state_details(raw_state, purpose)
+        return consumed.account
 
     async def _hash_password(self, password: str) -> str:
         async with self._password_hash_lock:
@@ -209,7 +233,6 @@ class UserService:
     ) -> tuple[user.User, typing.Any, str]:
         """Create an invited Account and accept its Membership in one transaction."""
 
-        self._require_local_directory()
         normalized_email = normalize_email(user_email)
         invitation, _ = await self.ap.workspace_collaboration_service.inspect_invitation(invitation_token)
         if invitation.normalized_email != normalized_email:

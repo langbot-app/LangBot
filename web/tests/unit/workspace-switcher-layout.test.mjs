@@ -62,10 +62,11 @@ test('shows WorkspaceSwitcher for a current Cloud or OSS workspace even when it 
   );
 });
 
-test('links Cloud workspace managers to the Space member invitation surface', () => {
-  assert.match(workspaceSettingsPanelSource, /systemInfo\.cloud_service_url/);
-  assert.match(workspaceSettingsPanelSource, /#workspace-members/);
+test('keeps Cloud workspace member management in Workspace Settings', () => {
   assert.match(workspaceSettingsPanelSource, /workspace\.inviteMember/);
+  assert.doesNotMatch(workspaceSettingsPanelSource, /#workspace-members/);
+  assert.doesNotMatch(workspaceSettingsPanelSource, /cloudMembersURL/);
+  assert.doesNotMatch(workspaceSettingsPanelSource, /canManageCloudMembers/);
 });
 
 test('keeps workspace plan and settings controls on the workspace row', () => {
@@ -85,13 +86,7 @@ test('moves Cloud plan upgrades into Workspace Settings', () => {
   assert.match(workspaceSettingsPanelSource, /workspace\.upgradePlan/);
   assert.match(workspaceSettingsPanelSource, /cloudPortalURL/);
   assert.match(workspaceSettingsPanelSource, /step=plan/);
-  const toolbarEnd = workspaceSettingsPanelSource.indexOf('</PanelToolbar>');
-  const membersHeading =
-    workspaceSettingsPanelSource.indexOf('workspace.members');
-  const cloudInvite = workspaceSettingsPanelSource.indexOf(
-    'href={cloudMembersURL}',
-  );
-  assert.ok(toolbarEnd < membersHeading && membersHeading < cloudInvite);
+  assert.match(workspaceSettingsPanelSource, /systemInfo\.cloud_service_url/);
 });
 
 test('aligns the workspace trigger with navigation entries on both sides and truncates long names', () => {

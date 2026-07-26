@@ -21,7 +21,6 @@ from ..entity.persistence.workspace import (
     Workspace,
     WorkspaceInvitation,
     WorkspaceMembership,
-    WorkspaceSource,
     WorkspaceStatus,
 )
 from .entities import WorkspaceExecutionBinding
@@ -319,7 +318,7 @@ class WorkspaceCollaborationService:
         session: AsyncSession | None = None,
     ) -> list[WorkspaceInvitation]:
         async def operation(active_session: AsyncSession) -> list[WorkspaceInvitation]:
-            await self._require_local_workspace(active_session, workspace_uuid)
+            await self._require_active_workspace(active_session, workspace_uuid)
             persisted_actor = await self._load_actor(active_session, workspace_uuid, actor)
             self._require_member_manager(persisted_actor, workspace_uuid)
             await self._expire_pending_invitations(active_session, workspace_uuid=workspace_uuid)
@@ -357,7 +356,7 @@ class WorkspaceCollaborationService:
             raise InvitationError('Invitation expiry must be in the future')
 
         async def operation(active_session: AsyncSession) -> CreatedInvitation:
-            await self._require_local_workspace(active_session, workspace_uuid)
+            await self._require_active_workspace(active_session, workspace_uuid)
             persisted_actor = await self._load_actor(active_session, workspace_uuid, actor, for_update=True)
             self._require_member_manager(persisted_actor, workspace_uuid)
             existing_account = await active_session.scalar(
@@ -430,8 +429,6 @@ class WorkspaceCollaborationService:
             workspace = await active_session.get(Workspace, invitation.workspace_uuid)
             if workspace is None or workspace.status != WorkspaceStatus.ACTIVE.value:
                 raise InvitationError('The invitation Workspace is unavailable')
-            if workspace.source != WorkspaceSource.LOCAL.value:
-                raise InvitationError('Cloud invitations are managed by the SaaS control plane')
             return invitation, workspace
 
         return await self._run(operation, session=session)
@@ -458,7 +455,7 @@ class WorkspaceCollaborationService:
         async def operation(active_session: AsyncSession) -> WorkspaceMembership:
             invitation = await self._get_invitation_by_token(active_session, token, for_update=True)
             self._validate_invitation_state(invitation)
-            await self._require_local_workspace(active_session, invitation.workspace_uuid)
+            await self._require_active_workspace(active_session, invitation.workspace_uuid)
             account = await active_session.scalar(sqlalchemy.select(User).where(User.uuid == account_uuid))
             if account is None or account.status != AccountStatus.ACTIVE.value:
                 raise MembershipNotFoundError('Account not found')
@@ -531,7 +528,7 @@ class WorkspaceCollaborationService:
         session: AsyncSession | None = None,
     ) -> WorkspaceInvitation:
         async def operation(active_session: AsyncSession) -> WorkspaceInvitation:
-            await self._require_local_workspace(active_session, workspace_uuid)
+            await self._require_active_workspace(active_session, workspace_uuid)
             persisted_actor = await self._load_actor(active_session, workspace_uuid, actor, for_update=True)
             self._require_member_manager(persisted_actor, workspace_uuid)
             invitation = await active_session.scalar(
@@ -568,7 +565,7 @@ class WorkspaceCollaborationService:
             raise MembershipPermissionError('Unknown Workspace role')
 
         async def operation(active_session: AsyncSession) -> WorkspaceMembership:
-            await self._require_local_workspace(active_session, workspace_uuid)
+            await self._require_active_workspace(active_session, workspace_uuid)
             persisted_actor = await self._load_actor(active_session, workspace_uuid, actor, for_update=True)
             self._require_member_manager(persisted_actor, workspace_uuid)
             target = await self._get_active_member_for_update(
@@ -594,7 +591,7 @@ class WorkspaceCollaborationService:
         session: AsyncSession | None = None,
     ) -> WorkspaceMembership:
         async def operation(active_session: AsyncSession) -> WorkspaceMembership:
-            await self._require_local_workspace(active_session, workspace_uuid)
+            await self._require_active_workspace(active_session, workspace_uuid)
             persisted_actor = await self._load_actor(active_session, workspace_uuid, actor, for_update=True)
             self._require_member_manager(persisted_actor, workspace_uuid)
             target = await self._get_active_member_for_update(
@@ -630,7 +627,7 @@ class WorkspaceCollaborationService:
             raise InvitationError('Invitation not found')
         return invitation
 
-    async def _require_local_workspace(
+    async def _require_active_workspace(
         self,
         session: AsyncSession,
         workspace_uuid: str,
@@ -642,8 +639,6 @@ class WorkspaceCollaborationService:
             or workspace.status != WorkspaceStatus.ACTIVE.value
         ):
             raise WorkspaceNotFoundError('Workspace not found')
-        if workspace.source != WorkspaceSource.LOCAL.value:
-            raise MembershipPermissionError('Cloud Workspace directory changes are managed by the SaaS control plane')
         return workspace
 
     def _validate_invitation_state(self, invitation: WorkspaceInvitation) -> None:

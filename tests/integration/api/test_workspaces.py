@@ -53,7 +53,7 @@ async def workspace_api(tmp_path):
                 'jwt': {'secret': 'workspace-api-secret', 'expire': 3600},
                 'allow_modify_login_info': True,
             },
-            'api': {'global_api_key': ''},
+            'api': {'global_api_key': '', 'webui_url': 'https://langbot.example'},
         }
     )
     application.logger = logging.getLogger('workspace-api-test')
@@ -198,6 +198,8 @@ async def test_owner_invites_second_account_and_secret_is_not_persisted(workspac
     invite_data = (await invite_response.get_json())['data']
     invitation_token = invite_data['token']
     assert invitation_token.startswith('lbi_')
+    assert invite_data['link'] == f'https://langbot.example/invitations/accept#token={invitation_token}'
+    assert invite_data['delivery'] == {'status': 'link_only', 'provider': None}
     assert 'token_hash' not in invite_data['invitation']
 
     async with engine.connect() as connection:
@@ -376,7 +378,7 @@ async def test_api_key_secret_is_one_time_and_viewer_cannot_manage_keys(workspac
     assert (await forbidden.get_json())['code'] == 'permission_denied'
 
 
-async def test_cloud_projection_is_selected_explicitly_and_directory_writes_use_control_plane(
+async def test_cloud_projection_is_selected_explicitly_and_collaboration_runs_in_core(
     workspace_api,
 ):
     application, client, engine, owner_token = workspace_api
@@ -514,8 +516,42 @@ async def test_cloud_projection_is_selected_explicitly_and_directory_writes_use_
         headers=_auth(owner_token, cloud_workspace_uuid),
         json={'email': 'member@example.com', 'role': 'viewer'},
     )
-    assert create_invitation.status_code == 409
-    assert (await create_invitation.get_json())['code'] == 'control_plane_required'
+    assert create_invitation.status_code == 200
+    created_invitation = (await create_invitation.get_json())['data']
+    assert created_invitation['invitation']['workspace_uuid'] == cloud_workspace_uuid
+    assert created_invitation['link'].startswith('https://langbot.example/invitations/accept#token=lbi_')
+    assert created_invitation['delivery'] == {'status': 'link_only', 'provider': None}
+
+    accept_response = await client.post(
+        '/api/v1/invitations/accept',
+        json={
+            'token': created_invitation['token'],
+            'registration': {'email': 'member@example.com', 'password': 'member-password'},
+        },
+    )
+    assert accept_response.status_code == 200
+    member_token = (await accept_response.get_json())['data']['token']
+
+    member_current = await client.get(
+        '/api/v1/workspaces/current',
+        headers=_auth(member_token, cloud_workspace_uuid),
+    )
+    assert member_current.status_code == 200
+    member_account_uuid = (await member_current.get_json())['data']['membership']['account_uuid']
+
+    update_member = await client.patch(
+        f'/api/v1/workspaces/{cloud_workspace_uuid}/members/{member_account_uuid}',
+        headers=_auth(owner_token, cloud_workspace_uuid),
+        json={'role': 'developer'},
+    )
+    assert update_member.status_code == 200
+    assert (await update_member.get_json())['data']['member']['role'] == 'developer'
+
+    remove_member = await client.delete(
+        f'/api/v1/workspaces/{cloud_workspace_uuid}/members/{member_account_uuid}',
+        headers=_auth(owner_token, cloud_workspace_uuid),
+    )
+    assert remove_member.status_code == 200
 
 
 async def test_account_bootstrap_does_not_disclose_non_member_workspaces(workspace_api):

@@ -64,11 +64,28 @@ class TestSpaceOAuthState:
         service = UserService(SimpleNamespace())
         state = await service.issue_space_oauth_state('login')
         digest = service._space_oauth_state_digest(state)
-        purpose, account_uuid, _ = service._space_oauth_states[digest]
-        service._space_oauth_states[digest] = (purpose, account_uuid, 0)
+        purpose, account_uuid, _, launch_workspace_uuid = service._space_oauth_states[digest]
+        service._space_oauth_states[digest] = (purpose, account_uuid, 0, launch_workspace_uuid)
 
         with pytest.raises(ValueError, match='Invalid or expired OAuth state'):
             await service.consume_space_oauth_state(state, 'login')
+
+    async def test_login_state_can_carry_launch_workspace_without_changing_normal_return(self):
+        service = UserService(SimpleNamespace())
+        state = await service.issue_space_oauth_state(
+            'login',
+            launch_workspace_uuid='workspace-a',
+        )
+
+        assert await service.consume_space_oauth_state(state, 'login') is None
+
+        state = await service.issue_space_oauth_state(
+            'login',
+            launch_workspace_uuid='workspace-a',
+        )
+        consumed = await service.consume_space_oauth_state_details(state, 'login')
+        assert consumed.account is None
+        assert consumed.launch_workspace_uuid == 'workspace-a'
 
 
 def _create_mock_user(

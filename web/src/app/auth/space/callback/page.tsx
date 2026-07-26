@@ -27,6 +27,7 @@ import langbotIcon from '@/app/assets/langbot-logo.webp';
 type SpaceOAuthLoginResult = {
   token: string;
   user: string;
+  workspace_uuid?: string;
 };
 
 const pendingSpaceOAuthLogins = new Map<
@@ -37,15 +38,17 @@ const pendingSpaceOAuthLogins = new Map<
 function getOrCreateSpaceOAuthLoginPromise(
   authCode: string,
   state: string,
+  workspaceUuid?: string,
+  launchAssertion?: string,
 ): Promise<SpaceOAuthLoginResult> {
-  const requestKey = `${authCode}:${state}`;
+  const requestKey = `${authCode}:${state}:${workspaceUuid ?? ''}:${launchAssertion ?? ''}`;
   const pendingRequest = pendingSpaceOAuthLogins.get(requestKey);
   if (pendingRequest) {
     return pendingRequest;
   }
 
   const requestPromise = httpClient
-    .exchangeSpaceOAuthCode(authCode, state)
+    .exchangeSpaceOAuthCode(authCode, state, workspaceUuid, launchAssertion)
     .finally(() => {
       pendingSpaceOAuthLogins.delete(requestKey);
     });
@@ -70,20 +73,33 @@ function SpaceOAuthCallbackContent() {
   const [localEmail, setLocalEmail] = useState<string>('');
 
   const handleOAuthCallback = useCallback(
-    async (authCode: string, state: string) => {
+    async (
+      authCode: string,
+      state: string,
+      workspaceUuid?: string,
+      launchAssertion?: string,
+    ) => {
       try {
         const response = await getOrCreateSpaceOAuthLoginPromise(
           authCode,
           state,
+          workspaceUuid,
+          launchAssertion,
         );
         if (!isMountedRef.current) {
           return;
         }
 
         beginAuthenticatedSession(response.token, response.user);
-        const workspaceResult = await bootstrapWorkspaceSession();
+        const workspaceResult = await bootstrapWorkspaceSession({
+          preferredWorkspaceUuid: response.workspace_uuid,
+        });
         if (workspaceResult.status === 'unavailable') {
           throw new Error('No Workspace is available for this Account');
+        }
+        if (response.workspace_uuid) {
+          navigate('/home', { replace: true });
+          return;
         }
         setStatus('success');
         toast.success(t('common.spaceLoginSuccess'));
@@ -171,6 +187,8 @@ function SpaceOAuthCallbackContent() {
     const errorDescription = searchParams.get('error_description');
     const mode = searchParams.get('mode');
     const state = searchParams.get('state');
+    const workspaceUuid = searchParams.get('workspace_uuid');
+    const launchAssertion = searchParams.get('launch_assertion');
 
     if (error) {
       setStatus('error');
@@ -180,15 +198,13 @@ function SpaceOAuthCallbackContent() {
       return;
     }
 
-    if (!authCode) {
-      setStatus('error');
-      setErrorMessage(t('common.spaceLoginNoCode'));
-      return;
-    }
-
-    setCode(authCode);
-
     if (mode === 'bind') {
+      if (!authCode) {
+        setStatus('error');
+        setErrorMessage(t('common.spaceLoginNoCode'));
+        return;
+      }
+      setCode(authCode);
       // Bind mode - verify state (token) exists
       if (!state) {
         setStatus('error');
@@ -199,7 +215,20 @@ function SpaceOAuthCallbackContent() {
       setIsBindMode(true);
       setLocalEmail(localStorage.getItem('userEmail') || '');
       setStatus('confirm');
+    } else if (workspaceUuid || launchAssertion) {
+      if (!workspaceUuid || !launchAssertion) {
+        setStatus('error');
+        setErrorMessage(t('common.spaceLoginFailed'));
+        return;
+      }
+      handleOAuthCallback(authCode ?? '', state ?? '', workspaceUuid, launchAssertion);
     } else {
+      if (!authCode) {
+        setStatus('error');
+        setErrorMessage(t('common.spaceLoginNoCode'));
+        return;
+      }
+      setCode(authCode);
       if (!state) {
         setStatus('error');
         setErrorMessage(t('common.spaceLoginFailed'));

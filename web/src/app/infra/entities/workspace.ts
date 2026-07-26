@@ -51,3 +51,10 @@ export interface WorkspaceInvitation {
   expires_at: string;
   created_at: string;
 }
+
+export type WorkspaceInvitationDeliveryStatus = 'sent' | 'link_only' | 'failed';
+
+export interface WorkspaceInvitationDelivery {
+  status: WorkspaceInvitationDeliveryStatus;
+  provider: 'resend' | 'smtp' | null;
+}

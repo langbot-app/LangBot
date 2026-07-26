@@ -352,6 +352,10 @@ export interface ApiRespSystemInfo {
   enable_marketplace: boolean;
   allow_modify_login_info: boolean;
   disable_models_service: boolean;
+  invitation_delivery?: {
+    enabled: boolean;
+    provider: 'resend' | 'smtp' | null;
+  };
   limitation: SystemLimitation;
   /** Public outbound IPs of the deployment (``system.outbound_ips`` in
    *  config.yaml). Shown on adapter config forms whose platform requires

@@ -76,20 +76,10 @@ export default function WorkspaceSettingsPanel({
   const isCloudProjection =
     workspaceInfo?.workspace.source === 'cloud_projection';
   const canViewMembers = permissions.has('member.view');
-  const canInvite = !isCloudProjection && permissions.has('member.invite');
-  const canUpdateMembers =
-    !isCloudProjection && permissions.has('member.update_role');
-  const canRemoveMembers =
-    !isCloudProjection && permissions.has('member.remove');
-  const canTransferOwner =
-    !isCloudProjection && permissions.has('owner.transfer');
-  const canManageCloudMembers =
-    isCloudProjection &&
-    (workspaceInfo?.membership.role === 'owner' ||
-      workspaceInfo?.membership.role === 'admin');
-  const cloudMembersURL = workspaceInfo
-    ? `${systemInfo.cloud_service_url.replace(/\/$/, '')}/cloud?workspace=${encodeURIComponent(workspaceInfo.workspace.uuid)}#workspace-members`
-    : '';
+  const canInvite = permissions.has('member.invite');
+  const canUpdateMembers = permissions.has('member.update_role');
+  const canRemoveMembers = permissions.has('member.remove');
+  const canTransferOwner = permissions.has('owner.transfer');
   const cloudPortalURL = workspaceInfo
     ? `${systemInfo.cloud_service_url.replace(/\/$/, '')}/cloud?workspace=${encodeURIComponent(workspaceInfo.workspace.uuid)}&step=plan`
     : '';
@@ -104,7 +94,6 @@ export default function WorkspaceSettingsPanel({
         current.permissions.includes('member.view')
           ? backendClient.getWorkspaceMembers(current.workspace.uuid)
           : Promise.resolve({ members: [] }),
-        current.workspace.source === 'local' &&
         current.permissions.includes('member.invite')
           ? backendClient.getWorkspaceInvitations(current.workspace.uuid)
           : Promise.resolve({ invitations: [] }),
@@ -131,11 +120,10 @@ export default function WorkspaceSettingsPanel({
         inviteEmail.trim(),
         inviteRole,
       );
-      const link = `${window.location.origin}/invitations/accept#token=${encodeURIComponent(response.token)}`;
-      setOneTimeInviteLink(link);
+      setOneTimeInviteLink(response.link);
       setInviteEmail('');
       await loadWorkspace();
-      toast.success(t('workspace.invitationCreated'));
+      toast.success(t(`workspace.delivery.${response.delivery.status}`));
     } catch {
       toast.error(t('workspace.invitationCreateFailed'));
     } finally {
@@ -310,19 +298,6 @@ export default function WorkspaceSettingsPanel({
               <h3 className="text-sm font-semibold">
                 {t('workspace.members')}
               </h3>
-              {canManageCloudMembers && (
-                <Button asChild size="sm" variant="outline">
-                  <a
-                    href={cloudMembersURL}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <UserPlus className="size-4" />
-                    {t('workspace.inviteMember')}
-                    <ExternalLink className="size-3.5" />
-                  </a>
-                </Button>
-              )}
             </div>
             <div className="space-y-2">
               {members.map((member) => {
