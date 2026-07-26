@@ -60,6 +60,16 @@ def _invitation_payload(invitation: WorkspaceInvitation) -> dict[str, typing.Any
 
 @group.group_class('workspaces', '/api/v1/workspaces')
 class WorkspacesRouterGroup(group.RouterGroup):
+    async def _run_in_workspace_uow(
+        self, workspace_uuid: str, operation: typing.Callable[[], typing.Awaitable[typing.Any]]
+    ):
+        """Bind collaboration persistence to the selected tenant in Cloud."""
+        cloud_runtime = getattr(getattr(self.ap.persistence_mgr, 'mode', None), 'value', None) == 'cloud_runtime'
+        if cloud_runtime:
+            async with self.ap.persistence_mgr.tenant_uow(workspace_uuid):
+                return await operation()
+        return await operation()
+
     async def initialize(self) -> None:
         @self.route('/bootstrap', methods=['GET'], auth_type=group.AuthType.ACCOUNT_TOKEN)
         async def _(account) -> typing.Any:
@@ -141,10 +151,13 @@ class WorkspacesRouterGroup(group.RouterGroup):
         @self.route('/<workspace_uuid>/members', methods=['GET'], permission=Permission.MEMBER_VIEW)
         async def _(workspace_uuid: str, request_context: RequestContext) -> typing.Any:
             self._require_current_workspace(workspace_uuid, request_context)
-            members = await self.ap.workspace_collaboration_service.list_members(
-                workspace_uuid,
-                quart.g.workspace_membership,
-            )
+
+            async def list_members():
+                return await self.ap.workspace_collaboration_service.list_members(
+                    workspace_uuid, quart.g.workspace_membership
+                )
+
+            members = await self._run_in_workspace_uow(workspace_uuid, list_members)
             return self.success(data={'members': [self._member_view_payload(item) for item in members]})
 
         @self.route(
@@ -155,19 +168,26 @@ class WorkspacesRouterGroup(group.RouterGroup):
         async def _(workspace_uuid: str, request_context: RequestContext) -> typing.Any:
             self._require_current_workspace(workspace_uuid, request_context)
             if quart.request.method == 'GET':
-                invitations = await self.ap.workspace_collaboration_service.list_invitations(
-                    workspace_uuid,
-                    quart.g.workspace_membership,
-                )
+
+                async def list_invitations():
+                    return await self.ap.workspace_collaboration_service.list_invitations(
+                        workspace_uuid, quart.g.workspace_membership
+                    )
+
+                invitations = await self._run_in_workspace_uow(workspace_uuid, list_invitations)
                 return self.success(data={'invitations': [_invitation_payload(item) for item in invitations]})
 
             data = await quart.request.get_json(silent=True) or {}
-            created = await self.ap.workspace_collaboration_service.create_invitation(
-                workspace_uuid,
-                quart.g.workspace_membership,
-                str(data.get('email', '')),
-                str(data.get('role', 'viewer')),
-            )
+
+            async def create_invitation():
+                return await self.ap.workspace_collaboration_service.create_invitation(
+                    workspace_uuid,
+                    quart.g.workspace_membership,
+                    str(data.get('email', '')),
+                    str(data.get('role', 'viewer')),
+                )
+
+            created = await self._run_in_workspace_uow(workspace_uuid, create_invitation)
             delivery_service = self._invitation_delivery_service()
             link = delivery_service.build_invitation_link(created.token)
             workspace = await self.ap.workspace_service.get_workspace(workspace_uuid)
@@ -196,11 +216,13 @@ class WorkspacesRouterGroup(group.RouterGroup):
             request_context: RequestContext,
         ) -> typing.Any:
             self._require_current_workspace(workspace_uuid, request_context)
-            invitation = await self.ap.workspace_collaboration_service.revoke_invitation(
-                workspace_uuid,
-                invitation_uuid,
-                quart.g.workspace_membership,
-            )
+
+            async def revoke_invitation():
+                return await self.ap.workspace_collaboration_service.revoke_invitation(
+                    workspace_uuid, invitation_uuid, quart.g.workspace_membership
+                )
+
+            invitation = await self._run_in_workspace_uow(workspace_uuid, revoke_invitation)
             return self.success(data={'invitation': _invitation_payload(invitation)})
 
         @self.route(
@@ -217,20 +239,26 @@ class WorkspacesRouterGroup(group.RouterGroup):
             if quart.request.method == 'DELETE':
                 if Permission.MEMBER_REMOVE.value not in request_context.workspace.permissions:
                     return self.http_status(403, 'permission_denied', 'Member removal permission is required')
-                member = await self.ap.workspace_collaboration_service.remove_member(
-                    workspace_uuid,
-                    account_uuid,
-                    quart.g.workspace_membership,
-                )
+
+                async def remove_member():
+                    return await self.ap.workspace_collaboration_service.remove_member(
+                        workspace_uuid, account_uuid, quart.g.workspace_membership
+                    )
+
+                member = await self._run_in_workspace_uow(workspace_uuid, remove_member)
                 return self.success(data={'account_uuid': member.account_uuid})
 
             data = await quart.request.get_json(silent=True) or {}
-            member = await self.ap.workspace_collaboration_service.update_member_role(
-                workspace_uuid,
-                account_uuid,
-                str(data.get('role', '')),
-                quart.g.workspace_membership,
-            )
+
+            async def update_member_role():
+                return await self.ap.workspace_collaboration_service.update_member_role(
+                    workspace_uuid,
+                    account_uuid,
+                    str(data.get('role', '')),
+                    quart.g.workspace_membership,
+                )
+
+            member = await self._run_in_workspace_uow(workspace_uuid, update_member_role)
             account = await self.ap.user_service.get_user_by_uuid(member.account_uuid)
             return self.success(
                 data={
