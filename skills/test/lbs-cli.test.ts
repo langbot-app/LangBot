@@ -56,6 +56,7 @@ import {
   findNewFailureSignal,
   hasDebugChatOutcome,
   minExpectedOccurrences,
+  waitForDebugChatReady,
 } from "../scripts/e2e/lib/debug-chat.mjs";
 import {
   beginBackendLogCapture,
@@ -1897,6 +1898,26 @@ test("debug chat classifier prefers latest response leaf over body counts", () =
   assert.match(result.reason, /latest visible response leaf/);
 });
 
+test("debug chat readiness waits for the websocket to enable the input", async () => {
+  let enabledChecks = 0;
+  const input = {
+    isVisible: async () => true,
+    isEnabled: async () => {
+      enabledChecks += 1;
+      return enabledChecks >= 3;
+    },
+  };
+  const page = {
+    locator: () => ({ last: () => input }),
+    waitForTimeout: async () => {},
+  };
+
+  const result = await waitForDebugChatReady(page, 1_000);
+
+  assert.deepEqual(result, { ready: true, reason: "" });
+  assert.equal(enabledChecks, 3);
+});
+
 test("debug chat classifier distinguishes new failure signals from old history", () => {
   assert.equal(
     findNewFailureSignal(
@@ -2041,6 +2062,46 @@ test("debug chat classifier passes when expected text appears in a new assistant
   assert.equal(result.before_assistant_expected_count, 0);
   assert.equal(result.after_assistant_expected_count, 1);
   assert.equal(result.new_assistant_message_count, 1);
+});
+
+test("debug chat classifier accepts formatted responses containing every required fragment", () => {
+  const expectedTexts = ["MULTITOOL_COMBO_FINAL", "passcode-6718", "rag-7421", "tool-a", "tool-b"];
+  const result = classifyDebugChatResult({
+    beforeText: "",
+    afterText: "Bot response with formatted details",
+    expectedText: expectedTexts[0],
+    expectedTexts,
+    prompt: "Run the combined task",
+    latestExpectedLeaf: "MULTITOOL_COMBO_FINAL",
+    latestFailureLeaf: "",
+    beforeMessages: [],
+    afterMessages: [{
+      role: "assistant",
+      text: "MULTITOOL_COMBO_FINAL\n- passcode-6718\n- rag-7421\n- tool-a\n- tool-b",
+    }],
+    latestAssistantText: "MULTITOOL_COMBO_FINAL\n- passcode-6718\n- rag-7421\n- tool-a\n- tool-b",
+  });
+
+  assert.equal(result.status, "pass");
+  assert.deepEqual(result.missing_expected_texts, []);
+});
+
+test("debug chat classifier rejects formatted responses missing a required fragment", () => {
+  const result = classifyDebugChatResult({
+    beforeText: "",
+    afterText: "Bot response with incomplete details",
+    expectedText: "MULTITOOL_COMBO_FINAL",
+    expectedTexts: ["MULTITOOL_COMBO_FINAL", "tool-a", "tool-b"],
+    prompt: "Run the combined task",
+    latestExpectedLeaf: "MULTITOOL_COMBO_FINAL",
+    latestFailureLeaf: "",
+    beforeMessages: [],
+    afterMessages: [{ role: "assistant", text: "MULTITOOL_COMBO_FINAL\n- tool-a" }],
+    latestAssistantText: "MULTITOOL_COMBO_FINAL\n- tool-a",
+  });
+
+  assert.equal(result.status, "fail");
+  assert.deepEqual(result.missing_expected_texts, ["tool-b"]);
 });
 
 test("debug chat classifier rejects split non-streaming assistant messages", () => {

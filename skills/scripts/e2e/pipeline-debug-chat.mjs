@@ -142,22 +142,28 @@ function stats(values) {
 function promptStepsFromEnv() {
   const rawSteps = parseJsonEnv("LANGBOT_E2E_PROMPTS_JSON", null);
   if (rawSteps === null) {
-    return [{ prompt, expectedText, responseTimeoutMs: safeResponseTimeoutMs }];
+    return [{ prompt, expectedText, expectedTexts: [expectedText], responseTimeoutMs: safeResponseTimeoutMs }];
   }
   if (!Array.isArray(rawSteps) || rawSteps.length === 0) {
     throw new Error("LANGBOT_E2E_PROMPTS_JSON must be a non-empty JSON array.");
   }
   return rawSteps.map((item, index) => {
     if (typeof item === "string") {
-      return { prompt: item, expectedText, responseTimeoutMs: safeResponseTimeoutMs };
+      return { prompt: item, expectedText, expectedTexts: [expectedText], responseTimeoutMs: safeResponseTimeoutMs };
     }
     if (!item || typeof item !== "object" || typeof item.prompt !== "string" || !item.prompt) {
       throw new Error(`LANGBOT_E2E_PROMPTS_JSON[${index}] must be a string or an object with a prompt string.`);
     }
     const stepTimeout = Number.parseInt(String(item.response_timeout_ms || item.responseTimeoutMs || safeResponseTimeoutMs), 10);
+    const stepExpectedText = String(item.expected_text || item.expectedText || expectedText);
+    const additionalExpectedTexts = item.expected_texts || item.expectedTexts || [];
+    if (!Array.isArray(additionalExpectedTexts)) {
+      throw new Error(`LANGBOT_E2E_PROMPTS_JSON[${index}].expected_texts must be an array.`);
+    }
     return {
       prompt: item.prompt,
-      expectedText: String(item.expected_text || item.expectedText || expectedText),
+      expectedText: stepExpectedText,
+      expectedTexts: [...new Set([stepExpectedText, ...additionalExpectedTexts.map(String)].filter(Boolean))],
       responseTimeoutMs: Number.isFinite(stepTimeout) && stepTimeout > 0 ? stepTimeout : safeResponseTimeoutMs,
     };
   });
@@ -990,6 +996,7 @@ try {
           const chatResult = await runDebugChatPrompt(page, {
             prompt: step.prompt,
             expectedText: step.expectedText,
+            expectedTexts: step.expectedTexts,
             responseTimeoutMs: step.responseTimeoutMs,
             imagePath: index === 0 ? imagePath : "",
             maxNewAssistantMessages: streamOutput === false ? 1 : null,
@@ -999,6 +1006,7 @@ try {
           result.chat_results.push({
             index,
             expected_text: step.expectedText,
+            expected_texts: step.expectedTexts,
             status: chatResult.status,
             reason: chatResult.reason,
             response_duration_ms: promptDurationMs,
@@ -1010,6 +1018,7 @@ try {
             after_assistant_message_count: chatResult.after_assistant_message_count,
             new_assistant_message_count: chatResult.new_assistant_message_count,
             failure_signal: chatResult.failure_signal || "",
+            missing_expected_texts: chatResult.missing_expected_texts || [],
           });
           result.status = chatResult.status;
           result.reason = `Prompt ${index + 1}/${promptSteps.length}: ${chatResult.reason}`;

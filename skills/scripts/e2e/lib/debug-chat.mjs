@@ -65,7 +65,7 @@ async function clickDebugChatTab(page) {
   return Boolean(await clickFirstVisible(page, ["Debug Chat", "调试聊天", "调试对话"], 2_000));
 }
 
-async function waitForDebugChatReady(page, timeout = 20_000) {
+export async function waitForDebugChatReady(page, timeout = 20_000) {
   const input = debugChatInput(page);
   const visible = await input.isVisible({ timeout }).catch(() => false);
   if (!visible) {
@@ -75,7 +75,13 @@ async function waitForDebugChatReady(page, timeout = 20_000) {
     };
   }
 
-  const enabled = await input.isEnabled({ timeout }).catch(() => false);
+  const deadline = Date.now() + timeout;
+  let enabled = false;
+  while (Date.now() < deadline) {
+    enabled = await input.isEnabled().catch(() => false);
+    if (enabled) break;
+    await page.waitForTimeout(Math.min(250, Math.max(1, deadline - Date.now())));
+  }
   if (!enabled) {
     return {
       ready: false,
@@ -90,6 +96,7 @@ export function classifyDebugChatResult({
   beforeText,
   afterText,
   expectedText,
+  expectedTexts = null,
   prompt,
   latestExpectedLeaf,
   latestFailureLeaf,
@@ -99,6 +106,11 @@ export function classifyDebugChatResult({
   maxNewAssistantMessages = null,
   failureSignals = DEBUG_CHAT_FAILURE_SIGNALS,
 }) {
+  const requiredExpectedTexts = [...new Set(
+    (Array.isArray(expectedTexts) && expectedTexts.length > 0 ? expectedTexts : [expectedText])
+      .map(String)
+      .filter(Boolean),
+  )];
   const minExpectedCount = minExpectedOccurrences(beforeText, expectedText, prompt);
   const finalCount = countOccurrences(afterText, expectedText);
   const failureText = findNewFailureSignal(beforeText, afterText, failureSignals);
@@ -110,9 +122,6 @@ export function classifyDebugChatResult({
   const afterAssistantExpectedCount = hasMessageEvidence
     ? countExpectedInMessages(afterMessages, expectedText)
     : null;
-  const assistantExpectedIncreased = hasMessageEvidence
-    ? afterAssistantExpectedCount > beforeAssistantExpectedCount
-    : false;
   const beforeAssistantMessageCount = hasMessageEvidence
     ? beforeMessages.filter((message) => message.role === "assistant").length
     : null;
@@ -129,6 +138,9 @@ export function classifyDebugChatResult({
   };
 
   if (hasMessageEvidence) {
+    const missingExpectedTexts = requiredExpectedTexts.filter(
+      (text) => !String(latestAssistantText).includes(text),
+    );
     const latestAssistantFailure = findFailureSignalInText(latestAssistantText, failureSignals);
     if (latestAssistantFailure) {
       return {
@@ -153,15 +165,18 @@ export function classifyDebugChatResult({
         ...assistantMessageEvidence,
       };
     }
-    if (assistantExpectedIncreased && String(latestAssistantText).includes(expectedText)) {
+    if (newAssistantMessageCount > 0 && missingExpectedTexts.length === 0) {
       return {
         status: "pass",
-        reason: `Expected text appeared in a new assistant message: ${expectedText}`,
+        reason: requiredExpectedTexts.length === 1
+          ? `Expected text appeared in a new assistant message: ${expectedText}`
+          : `All ${requiredExpectedTexts.length} expected text fragments appeared in a new assistant message.`,
         min_expected_count: minExpectedCount,
         final_count: finalCount,
         before_assistant_expected_count: beforeAssistantExpectedCount,
         after_assistant_expected_count: afterAssistantExpectedCount,
         ...assistantMessageEvidence,
+        missing_expected_texts: [],
       };
     }
     if (failureText) {
@@ -178,12 +193,15 @@ export function classifyDebugChatResult({
     }
     return {
       status: "fail",
-      reason: `Expected text did not appear in a new assistant message. Expected assistant occurrences to increase above ${beforeAssistantExpectedCount}, saw ${afterAssistantExpectedCount}.`,
+      reason: missingExpectedTexts.length > 0
+        ? `A new assistant message was missing expected text: ${missingExpectedTexts.join(", ")}`
+        : `Expected text did not appear in a new assistant message. Expected assistant occurrences to increase above ${beforeAssistantExpectedCount}, saw ${afterAssistantExpectedCount}.`,
       min_expected_count: minExpectedCount,
       final_count: finalCount,
       before_assistant_expected_count: beforeAssistantExpectedCount,
       after_assistant_expected_count: afterAssistantExpectedCount,
       ...assistantMessageEvidence,
+      missing_expected_texts: missingExpectedTexts,
     };
   }
   if (failureText) {
@@ -327,22 +345,35 @@ export async function visibleDebugChatMessages(page) {
 
 export async function waitForExpectedDebugChatText(page, {
   expectedText,
+  expectedTexts = null,
   minExpectedCount,
+  minExpectedCounts = null,
   timeoutMs,
   beforeText = "",
   failureSignals = DEBUG_CHAT_FAILURE_SIGNALS,
 }) {
+  const requiredExpectedTexts = [...new Set(
+    (Array.isArray(expectedTexts) && expectedTexts.length > 0 ? expectedTexts : [expectedText])
+      .map(String)
+      .filter(Boolean),
+  )];
+  const expectedRequirements = requiredExpectedTexts.map((text, index) => ({
+    text,
+    min: Array.isArray(minExpectedCounts) && Number.isFinite(minExpectedCounts[index])
+      ? minExpectedCounts[index]
+      : (text === expectedText ? minExpectedCount : minExpectedOccurrences(beforeText, text, "")),
+  }));
   const failureBaselines = failureSignals.map((signal) => ({
     signal,
     count: countOccurrences(beforeText, signal),
   }));
   await page.waitForFunction(
-    ({ expected, min, failures }) => {
+    ({ requirements, failures }) => {
       const text = document.body.innerText;
-      if (text.split(expected).length - 1 >= min) return true;
+      if (requirements.every((item) => text.split(item.text).length - 1 >= item.min)) return true;
       return failures.some(({ signal, count }) => text.split(signal).length - 1 > count);
     },
-    { expected: expectedText, min: minExpectedCount, failures: failureBaselines },
+    { requirements: expectedRequirements, failures: failureBaselines },
     { timeout: timeoutMs },
   ).catch(() => {});
 }
@@ -395,6 +426,7 @@ export async function sendDebugChatPrompt(page, prompt, imagePath = "") {
 export async function runDebugChatPrompt(page, {
   prompt,
   expectedText,
+  expectedTexts = null,
   responseTimeoutMs,
   imagePath = "",
   maxNewAssistantMessages = null,
@@ -402,7 +434,15 @@ export async function runDebugChatPrompt(page, {
 }) {
   const beforeText = await bodyText(page);
   const beforeMessages = await visibleDebugChatMessages(page);
+  const requiredExpectedTexts = [...new Set(
+    (Array.isArray(expectedTexts) && expectedTexts.length > 0 ? expectedTexts : [expectedText])
+      .map(String)
+      .filter(Boolean),
+  )];
   const minExpectedCount = minExpectedOccurrences(beforeText, expectedText, prompt);
+  const minExpectedCounts = requiredExpectedTexts.map(
+    (text) => minExpectedOccurrences(beforeText, text, prompt),
+  );
   const sent = await sendDebugChatPrompt(page, prompt, imagePath);
   if (sent !== true) {
     if (sent && typeof sent === "object" && typeof sent.reason === "string") return sent;
@@ -411,7 +451,9 @@ export async function runDebugChatPrompt(page, {
 
   await waitForExpectedDebugChatText(page, {
     expectedText,
+    expectedTexts: requiredExpectedTexts,
     minExpectedCount,
+    minExpectedCounts,
     prompt,
     timeoutMs: responseTimeoutMs,
     beforeText,
@@ -430,6 +472,7 @@ export async function runDebugChatPrompt(page, {
     beforeText,
     afterText,
     expectedText,
+    expectedTexts: requiredExpectedTexts,
     prompt,
     latestExpectedLeaf,
     latestFailureLeaf,

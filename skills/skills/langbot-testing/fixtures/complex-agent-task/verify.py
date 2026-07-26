@@ -6,6 +6,18 @@ import sys
 from pathlib import Path
 
 
+def has_initial_failure_section(report: str) -> bool:
+    folded = report.casefold()
+    return any(
+        marker in folded
+        for marker in (
+            "initial fail",
+            "initially fail",
+            "baseline fail",
+        )
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--workspace", required=True)
@@ -43,7 +55,7 @@ def main() -> int:
     assert result["acceptance"] == "PASS"
     report = (workspace / "AGENT_REPORT.md").read_text(encoding="utf-8")
     folded_report = report.casefold()
-    assert "initial" in folded_report and "fail" in folded_report, "report missing initial failure section"
+    assert has_initial_failure_section(report), "report missing initial failure section"
     assert "root causes" in folded_report, "report missing section: root causes"
     assert any(
         heading in folded_report
