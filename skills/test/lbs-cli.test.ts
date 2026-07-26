@@ -3582,6 +3582,84 @@ test("fake provider returns IMAGE_OK only when image metadata is present", async
   }
 });
 
+test("fake provider can inject faults for only the selected model", async () => {
+  const provider = await startFakeProviderForTest();
+  const rootUrl = provider.baseUrl.replace(/\/v1\/?$/, "");
+  try {
+    const configured = await fetch(`${rootUrl}/__qa/config`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        config: { fail_models: ["qa-primary"] },
+        reset_request_count: true,
+      }),
+    });
+    assert.equal(configured.status, 200);
+
+    const primary = await fetch(`${provider.baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "qa-primary",
+        stream: false,
+        messages: [{ role: "user", content: "Reply OK" }],
+      }),
+    });
+    assert.equal(primary.status, 500);
+
+    const fallback = await requestFakeProvider(provider, {
+      model: "qa-fallback",
+      messages: [{ role: "user", content: "Reply OK" }],
+    });
+    assert.equal(fakeProviderMessage(fallback).content, "OK");
+
+    const state = await fetch(`${rootUrl}/__qa/config`).then((response) => response.json());
+    assert.deepEqual(
+      state.recent_requests.map((request: { model: string; status: string }) => [request.model, request.status]),
+      [["qa-primary", "http_fault"], ["qa-fallback", "ok"]],
+    );
+  } finally {
+    await provider.stop();
+  }
+});
+
+test("local-agent model failure cases expose fallback fault controls", () => {
+  const beforeFirstChunk = capture(() =>
+    commandTestRun(
+      ctx(["test", "run", "local-agent-model-fallback-before-first-chunk-debug-chat", "--dry-run", "--json"]),
+    ),
+  );
+  assert.equal(beforeFirstChunk.code, 0);
+  const fallbackRun = JSON.parse(beforeFirstChunk.output);
+  assert.equal(fallbackRun.automation.env_defaults.LANGBOT_FAKE_PROVIDER_MODEL_NAME, "qa-fallback-primary");
+  assert.equal(
+    fallbackRun.automation.env_defaults.LANGBOT_FAKE_PROVIDER_FALLBACK_MODEL_NAMES,
+    "qa-fallback-secondary",
+  );
+  assert.equal(fallbackRun.automation.env_defaults.LANGBOT_FAKE_PROVIDER_FAIL_MODELS, "qa-fallback-primary");
+
+  const postCommit = capture(() =>
+    commandTestRun(
+      ctx(["test", "run", "local-agent-streaming-post-commit-failure-debug-chat", "--dry-run", "--json"]),
+    ),
+  );
+  assert.equal(postCommit.code, 0);
+  const postCommitRun = JSON.parse(postCommit.output);
+  assert.equal(
+    postCommitRun.automation.env_defaults.LANGBOT_FAKE_PROVIDER_FAIL_AFTER_FIRST_CHUNK_MODELS,
+    "qa-post-commit-primary",
+  );
+  assert.equal(
+    postCommitRun.automation.env_defaults.LANGBOT_FAKE_PROVIDER_FAIL_AFTER_FIRST_CHUNK_DELAY_MS,
+    "1000",
+  );
+  assert.equal(
+    postCommitRun.automation.env_defaults.LANGBOT_FAKE_PROVIDER_FAIL_AFTER_FIRST_CHUNK_MODE,
+    "error_event",
+  );
+  assert.equal(postCommitRun.automation.env_defaults.LANGBOT_DEBUG_CHAT_LOAD_REQUIRE_SUCCESS, "false");
+});
+
 test("fake provider requires the effective system prompt before returning its sentinel", async () => {
   const provider = await startFakeProviderForTest();
   try {

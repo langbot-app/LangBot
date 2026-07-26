@@ -175,6 +175,7 @@
         "local-agent-complex-coding-task-debug-chat",
         "local-agent-context-compaction-debug-chat",
         "local-agent-effective-prompt-debug-chat",
+        "local-agent-model-fallback-before-first-chunk-debug-chat",
         "local-agent-multimodal-debug-chat",
         "local-agent-multitool-rag-compaction-debug-chat",
         "local-agent-nonstreaming-debug-chat",
@@ -183,6 +184,7 @@
         "local-agent-rag-debug-chat",
         "local-agent-rag-multimodal-debug-chat",
         "local-agent-steering-debug-chat",
+        "local-agent-streaming-post-commit-failure-debug-chat",
         "local-agent-tool-error-recovery-debug-chat",
         "local-agent-tool-loop-limit-debug-chat",
         "mcp-stdio-register",
@@ -1169,6 +1171,38 @@
           ]
         },
         {
+          "id": "local-agent-model-fallback-before-first-chunk-debug-chat",
+          "title": "Local Agent falls back when the primary model fails before streaming starts",
+          "mode": "probe",
+          "area": "pipeline",
+          "type": "chaos",
+          "priority": "p1",
+          "risk": "high",
+          "ci_eligible": false,
+          "tags": [
+            "local-agent",
+            "fallback",
+            "streaming",
+            "fake-provider",
+            "fault-injection"
+          ],
+          "automation": "skills/langbot-testing/probes/langbot-debug-chat-concurrency.mjs",
+          "setup_automation": [
+            "node:scripts/e2e/ensure-fake-provider-pipeline.mjs --write-env"
+          ],
+          "setup_provides_env": [
+            "LANGBOT_FAKE_PROVIDER_URL",
+            "LANGBOT_FAKE_PROVIDER_PIPELINE_URL",
+            "LANGBOT_FAKE_PROVIDER_PIPELINE_NAME"
+          ],
+          "evidence_required": [
+            "metrics",
+            "network",
+            "api_diagnostic",
+            "filesystem"
+          ]
+        },
+        {
           "id": "local-agent-multimodal-debug-chat",
           "title": "Local Agent Debug Chat preserves uploaded image input",
           "mode": "agent-browser",
@@ -1427,6 +1461,38 @@
             "console",
             "backend_log",
             "api_diagnostic"
+          ]
+        },
+        {
+          "id": "local-agent-streaming-post-commit-failure-debug-chat",
+          "title": "Local Agent does not fall back after a committed stream fails",
+          "mode": "probe",
+          "area": "pipeline",
+          "type": "chaos",
+          "priority": "p1",
+          "risk": "high",
+          "ci_eligible": false,
+          "tags": [
+            "local-agent",
+            "fallback",
+            "streaming",
+            "fake-provider",
+            "fault-injection"
+          ],
+          "automation": "skills/langbot-testing/probes/langbot-debug-chat-concurrency.mjs",
+          "setup_automation": [
+            "node:scripts/e2e/ensure-fake-provider-pipeline.mjs --write-env"
+          ],
+          "setup_provides_env": [
+            "LANGBOT_FAKE_PROVIDER_URL",
+            "LANGBOT_FAKE_PROVIDER_PIPELINE_URL",
+            "LANGBOT_FAKE_PROVIDER_PIPELINE_NAME"
+          ],
+          "evidence_required": [
+            "metrics",
+            "network",
+            "api_diagnostic",
+            "filesystem"
           ]
         },
         {
@@ -2204,6 +2270,8 @@
           ],
           "cases": [
             "local-agent-basic-debug-chat",
+            "local-agent-model-fallback-before-first-chunk-debug-chat",
+            "local-agent-streaming-post-commit-failure-debug-chat",
             "qa-plugin-smoke-live-install",
             "local-agent-effective-prompt-debug-chat",
             "local-agent-context-compaction-debug-chat",

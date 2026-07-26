@@ -209,6 +209,7 @@ function validateCaseItem(root: string, item: StructuredItem, skillNames: Set<st
     "automation_fake_provider_chunk_count",
     "automation_fake_provider_fail_first_n",
     "automation_fake_provider_fail_every_n",
+    "automation_fake_provider_fail_after_first_chunk_delay_ms",
   ]) {
     const value = scalar(item.fields, key);
     if (value && (!/^\d+$/.test(value) || Number.parseInt(value, 10) < 0)) {
@@ -236,6 +237,7 @@ function validateCaseItem(root: string, item: StructuredItem, skillNames: Set<st
     "automation_debug_chat_load_stream",
     "automation_debug_chat_load_reset",
     "automation_debug_chat_load_fail_on_final_mismatch",
+    "automation_debug_chat_load_require_success",
     "automation_fake_provider_fail_after_first_chunk",
     "automation_fake_provider_dynamic_response",
   ]) {

@@ -24,6 +24,8 @@ These browser cases are the minimum gate for a local-agent migration check:
 | Case | Path Covered | Expected Behavior |
 | --- | --- | --- |
 | `local-agent-basic-debug-chat` | Streaming LLM invocation with effective host context | Bot returns deterministic `OK`; backend logs streaming completion. |
+| `local-agent-model-fallback-before-first-chunk-debug-chat` | Primary/fallback selection before stream commitment | Provider records failed primary requests and a successful fallback request; Debug Chat completes. |
+| `local-agent-streaming-post-commit-failure-debug-chat` | Terminal provider failure after stream commitment | Provider records the primary error event, fallback request count stays zero, and Debug Chat reports a controlled failure. |
 | `local-agent-effective-prompt-debug-chat` | PromptPreProcessing and host effective prompt handoff through `ctx.adapter.extra.prompt` | Bot returns `PROMPT_PREPROCESS_OK` from the fixture prompt probe. |
 | `local-agent-context-compaction-debug-chat` | Runner-owned context budgeting and old-history compaction | Automation temporarily shrinks the runner context window, sends multi-turn Debug Chat history, and the bot still recovers the older sentinel. |
 | `local-agent-rag-debug-chat` | Knowledge-base authorization, retrieval, and RAG prompt insertion | Bot returns the KB sentinel, not a generic answer. |
@@ -52,8 +54,8 @@ These browser cases are the minimum gate for a local-agent migration check:
 | Streaming model invocation | Enable Debug Chat streaming and ask for `OK`. | UI receives incremental bot output and backend logs streaming completion. |
 | Non-streaming UI delivery | Disable Debug Chat streaming. | UI receives a final bot message without frontend streaming errors. |
 | Non-streaming model invocation | Use local-agent component tests with `runtime_metadata.streaming_supported=false` or a host adapter that does not support streaming. | Runner calls `invoke_llm` instead of `invoke_llm_stream` and emits `message.completed`. |
-| Model fallback before first chunk | Configure a failing primary and working fallback, preferably with a controlled test provider. | First model failure does not fail the run; fallback model produces the final answer. |
-| Failure after streaming commit | Use a controlled provider that emits one chunk and then fails. | Runner reports a terminal run failure and does not fallback after partial output. |
+| Model fallback before first chunk | Run `local-agent-model-fallback-before-first-chunk-debug-chat`. | Provider records both the failed primary and successful fallback model requests; the final user request succeeds. |
+| Failure after streaming commit | Run `local-agent-streaming-post-commit-failure-debug-chat`. | Provider records a post-content error event, Runner reports terminal failure, and fallback request count remains zero. |
 | No authorized model | Clear model config or configure a model not in run resources. | Runner returns `runner.no_model` instead of calling an unauthorized model. |
 | MCP tool call | Use `qa-local-stdio` and `qa_mcp_echo`. | Bot returns the exact `qa_mcp_echo:<input>` result; `/api/v1/tools` contains `qa_mcp_echo`. |
 | Plugin tool call | Install a fixture plugin exposing a deterministic tool and bind it to the pipeline. | Runner lists the plugin tool and can call it through the same tool loop as MCP tools. |

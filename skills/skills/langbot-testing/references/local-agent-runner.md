@@ -51,6 +51,8 @@ Pair a basic Debug Chat run with a deterministic plugin tool call, for example `
 Run these cases before saying the pluginized local-agent behavior is healthy:
 
 - `local-agent-basic-debug-chat`: basic streaming model invocation.
+- `local-agent-model-fallback-before-first-chunk-debug-chat`: primary model failure before the first visible chunk switches to the configured fallback.
+- `local-agent-streaming-post-commit-failure-debug-chat`: a provider error after a committed content chunk terminates the run without invoking fallback.
 - `local-agent-effective-prompt-debug-chat`: host effective prompt after PromptPreProcessing reaches the runner.
 - `local-agent-rag-debug-chat`: LangRAG retrieval reaches the runner and affects the answer.
 - `mcp-stdio-tool-call`: MCP tool discovery and local-agent tool loop.

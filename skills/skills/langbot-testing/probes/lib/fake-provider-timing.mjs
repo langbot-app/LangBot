@@ -6,8 +6,16 @@ export function summarizeFakeProviderState(state) {
   const faultRequests = chatRequests.filter((request) => (
     request?.should_fail === true
       || request?.status === "http_fault"
+      || request?.status === "mid_stream_disconnect"
+      || request?.status === "mid_stream_error_event"
       || (Number.isFinite(request?.http_status) && request.http_status >= 400)
   ));
+  const modelRequestCounts = {};
+  for (const request of chatRequests) {
+    const model = String(request?.model || "");
+    if (!model) continue;
+    modelRequestCounts[model] = (modelRequestCounts[model] || 0) + 1;
+  }
 
   return {
     status: state.status || "unknown",
@@ -16,6 +24,10 @@ export function summarizeFakeProviderState(state) {
     recent_request_count: recentRequests.length,
     chat_request_count: chatRequests.length,
     fault_count: faultRequests.length,
+    mid_stream_disconnect_count: chatRequests.filter(
+      (request) => ["mid_stream_disconnect", "mid_stream_error_event"].includes(request?.status),
+    ).length,
+    model_request_counts: modelRequestCounts,
     streamed_request_count: chatRequests.filter((request) => request?.stream === true).length,
     duration_ms: stats(chatRequests.map((request) => numberOrNull(request?.duration_ms)).filter(Number.isFinite)),
     successful_duration_ms: stats(successfulRequests.map((request) => numberOrNull(request?.duration_ms)).filter(Number.isFinite)),

@@ -1,0 +1,86 @@
+id: local-agent-streaming-post-commit-failure-debug-chat
+title: "Local Agent does not fall back after a committed stream fails"
+mode: probe
+area: pipeline
+type: chaos
+priority: p1
+risk: high
+ci_eligible: false
+tags:
+  - local-agent
+  - fallback
+  - streaming
+  - fake-provider
+  - fault-injection
+skills:
+  - langbot-env-setup
+  - langbot-testing
+env:
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_E2E_LOGIN_USER
+automation: skills/langbot-testing/probes/langbot-debug-chat-concurrency.mjs
+automation_env:
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_E2E_LOGIN_USER
+  - LANGBOT_FAKE_PROVIDER_PIPELINE_URL
+  - LANGBOT_FAKE_PROVIDER_PIPELINE_NAME
+automation_pipeline_url_env: LANGBOT_FAKE_PROVIDER_PIPELINE_URL
+automation_pipeline_name_env: LANGBOT_FAKE_PROVIDER_PIPELINE_NAME
+automation_debug_chat_load_requests: "1"
+automation_debug_chat_load_concurrency: "1"
+automation_debug_chat_load_timeout_ms: "30000"
+automation_debug_chat_load_max_error_rate: "1"
+automation_debug_chat_load_min_error_rate: "1"
+automation_debug_chat_load_min_error_count: "1"
+automation_debug_chat_load_min_provider_fault_count: "1"
+automation_debug_chat_load_require_success: "false"
+automation_debug_chat_load_expected_prefix: "POSTCOMMITQA"
+automation_debug_chat_load_prompt_template: '请只回复 "{expected}"，不要解释，不要添加其他字符。'
+automation_debug_chat_load_stream: "true"
+automation_debug_chat_load_reset: "true"
+automation_debug_chat_load_fail_on_final_mismatch: "true"
+automation_debug_chat_load_provider_model_thresholds_json: '{"qa-post-commit-primary":{"min":1},"qa-post-commit-fallback":{"max":0}}'
+automation_fake_provider_pipeline_name: "LangBot QA Post Commit Failure Debug Chat"
+automation_fake_provider_model_name: "qa-post-commit-primary"
+automation_fake_provider_fallback_model_names: "qa-post-commit-fallback"
+automation_fake_provider_fail_models: ""
+automation_fake_provider_fail_after_first_chunk_models: "qa-post-commit-primary"
+automation_fake_provider_fail_after_first_chunk_delay_ms: "1000"
+automation_fake_provider_fail_after_first_chunk_mode: "error_event"
+automation_fake_provider_first_token_delay_ms: "25"
+automation_fake_provider_chunk_delay_ms: "10"
+metrics_thresholds_json: '{"error_rate":{"min":1,"max":1},"fake_provider_fault_count_min":{"min":1},"primary_model_requests":{"min":1},"fallback_model_requests":{"max":0}}'
+fault_model_json: '{"provider_fault":"Send a provider error event for qa-post-commit-primary one second after its first content chunk","expected_behavior":"The run terminates with a controlled error and never invokes qa-post-commit-fallback after visible output is committed."}'
+setup_automation:
+  - "node:scripts/e2e/ensure-fake-provider-pipeline.mjs --write-env"
+setup_provides_env:
+  - LANGBOT_FAKE_PROVIDER_URL
+  - LANGBOT_FAKE_PROVIDER_PIPELINE_URL
+  - LANGBOT_FAKE_PROVIDER_PIPELINE_NAME
+steps:
+  - "Create a QA pipeline with a primary model that sends an error event after one content chunk and a healthy fallback model."
+  - "Send one streaming Debug Chat request and require a terminal error."
+  - "Inspect provider request records and prove the fallback model was never invoked."
+checks:
+  - "The fake provider records a mid-stream error event for qa-post-commit-primary."
+  - "The Debug Chat request terminates as an error instead of timing out or reporting success."
+  - "qa-post-commit-fallback request count remains zero."
+evidence_required:
+  - metrics
+  - network
+  - api_diagnostic
+  - filesystem
+expected_failures:
+  - "mid_stream_error_event"
+  - "failed after first chunk"
+  - "Agent runner execution failed."
+failure_patterns:
+  - "Agent runner execution failed."
+  - "Timed out after"
+  - "qa-post-commit-fallback"
+troubleshooting:
+  - backend-not-listening
+  - debug-chat-history-contaminates-automation
+diagnostics:
+  - "Use error_event rather than a bare TCP disconnect for this contract: LiteLLM may normalize an abrupt EOF into a final chunk before Local Agent can observe the transport boundary."

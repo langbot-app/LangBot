@@ -9,6 +9,8 @@ tags:
   - regression
 cases:
   - local-agent-basic-debug-chat
+  - local-agent-model-fallback-before-first-chunk-debug-chat
+  - local-agent-streaming-post-commit-failure-debug-chat
   - qa-plugin-smoke-live-install
   - local-agent-effective-prompt-debug-chat
   - local-agent-context-compaction-debug-chat

@@ -54,7 +54,11 @@ const config = {
   fault_status: integer(env.LANGBOT_FAKE_PROVIDER_FAULT_STATUS, 500),
   fail_first_n: integer(env.LANGBOT_FAKE_PROVIDER_FAIL_FIRST_N, 0),
   fail_every_n: integer(env.LANGBOT_FAKE_PROVIDER_FAIL_EVERY_N, 0),
+  fail_models: textList(env.LANGBOT_FAKE_PROVIDER_FAIL_MODELS),
   fail_after_first_chunk: bool(env.LANGBOT_FAKE_PROVIDER_FAIL_AFTER_FIRST_CHUNK, false),
+  fail_after_first_chunk_delay_ms: integer(env.LANGBOT_FAKE_PROVIDER_FAIL_AFTER_FIRST_CHUNK_DELAY_MS, 0),
+  fail_after_first_chunk_mode: faultMode(env.LANGBOT_FAKE_PROVIDER_FAIL_AFTER_FIRST_CHUNK_MODE),
+  fail_after_first_chunk_models: textList(env.LANGBOT_FAKE_PROVIDER_FAIL_AFTER_FIRST_CHUNK_MODELS),
   dynamic_response: !/^(0|false|no|off)$/i.test(env.LANGBOT_FAKE_PROVIDER_DYNAMIC_RESPONSE || ""),
   request_log_limit: integer(env.LANGBOT_FAKE_PROVIDER_REQUEST_LOG_LIMIT, 500),
 };
@@ -135,8 +139,12 @@ const server = createServer(async (request, response) => {
       requestCount += 1;
       const body = await readJson(request);
       const requestId = `chatcmpl-langbot-fake-${requestCount}`;
+      const requestModel = String(body.model || modelName);
       const shouldFail = requestCount <= config.fail_first_n
-        || (config.fail_every_n > 0 && requestCount % config.fail_every_n === 0);
+        || (config.fail_every_n > 0 && requestCount % config.fail_every_n === 0)
+        || config.fail_models.includes(requestModel);
+      const failAfterFirstChunk = config.fail_after_first_chunk
+        || config.fail_after_first_chunk_models.includes(requestModel);
       const replyMessage = buildResponse(body);
       const replyText = replyMessage.content || "";
       requestRecord = recordRequest({
@@ -144,7 +152,7 @@ const server = createServer(async (request, response) => {
         request_number: requestCount,
         path: url.pathname,
         stream: Boolean(body.stream),
-        model: body.model || "",
+        model: requestModel,
         message_count: Array.isArray(body.messages) ? body.messages.length : 0,
         should_fail: shouldFail,
         status: "running",
@@ -179,7 +187,7 @@ const server = createServer(async (request, response) => {
           requestId,
           model: body.model || modelName,
           message: replyMessage,
-          failAfterFirstChunk: config.fail_after_first_chunk,
+          failAfterFirstChunk,
           requestRecord,
           startedPerf,
         });
@@ -416,6 +424,22 @@ async function streamCompletion(response, {
       choices: [{ index: 0, delta: { content: chunks[index] }, finish_reason: null }],
     });
     if (failMidStream && index === 0) {
+      await sleep(config.fail_after_first_chunk_delay_ms);
+      if (config.fail_after_first_chunk_mode === "error_event") {
+        response.write(`data: ${JSON.stringify({
+          error: {
+            message: "LangBot fake provider injected a mid-stream error event",
+            type: "fake_provider_stream_fault",
+            code: "fake_provider_stream_fault",
+          },
+        })}\n\n`);
+        response.end();
+        finishRequestRecord(requestRecord, startedPerf, {
+          status: "mid_stream_error_event",
+          http_status: 200,
+        });
+        return;
+      }
       finishRequestRecord(requestRecord, startedPerf, {
         status: "mid_stream_disconnect",
         http_status: 200,
@@ -815,12 +839,18 @@ function applyConfig(updates) {
   assignNonNegativeInteger(updates, "chunk_count");
   assignNonNegativeInteger(updates, "fail_first_n");
   assignNonNegativeInteger(updates, "fail_every_n");
+  assignTextList(updates, "fail_models");
   assignNonNegativeInteger(updates, "request_log_limit");
   if (updates.fault_status !== undefined) {
     const parsed = Number.parseInt(String(updates.fault_status), 10);
     if (Number.isInteger(parsed) && parsed >= 400 && parsed <= 599) config.fault_status = parsed;
   }
   assignBoolean(updates, "fail_after_first_chunk");
+  assignNonNegativeInteger(updates, "fail_after_first_chunk_delay_ms");
+  if (updates.fail_after_first_chunk_mode !== undefined) {
+    config.fail_after_first_chunk_mode = faultMode(updates.fail_after_first_chunk_mode);
+  }
+  assignTextList(updates, "fail_after_first_chunk_models");
   assignBoolean(updates, "dynamic_response");
 }
 
@@ -837,4 +867,22 @@ function assignNonNegativeInteger(updates, key) {
 function assignBoolean(updates, key) {
   if (updates[key] === undefined) return;
   config[key] = bool(updates[key], config[key]);
+}
+
+function assignTextList(updates, key) {
+  if (updates[key] === undefined) return;
+  config[key] = Array.isArray(updates[key])
+    ? updates[key].map(String).map((item) => item.trim()).filter(Boolean)
+    : textList(updates[key]);
+}
+
+function textList(value) {
+  return String(value || "")
+    .split(/\r?\n|,/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function faultMode(value) {
+  return String(value || "").trim().toLowerCase() === "error_event" ? "error_event" : "disconnect";
 }
