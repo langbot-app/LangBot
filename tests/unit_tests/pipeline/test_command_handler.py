@@ -158,17 +158,21 @@ class TestCommandHandlerReal:
 
     @pytest.mark.asyncio
     async def test_admin_privilege_check(self, fake_app, mock_event_ctx, mock_execute_factory):
-        """Admin users get privilege level 2."""
+        """A per-bot admin from the database is marked as admin in command events."""
         from langbot_plugin.api.entities.builtin.provider.session import LauncherTypes
 
         command = get_command_handler()
 
-        fake_app.instance_config.data = {'admins': ['person_12345']}
+        admin_result = Mock()
+        admin_result.first.return_value = Mock()
+        fake_app.persistence_mgr.execute_async = AsyncMock(return_value=admin_result)
+        fake_app.instance_config.data = {}
         fake_app.plugin_connector.emit_event = AsyncMock(return_value=mock_event_ctx)
         fake_app.cmd_mgr.execute = mock_execute_factory()
 
         handler = command.CommandHandler(fake_app)
         query = command_query('status')
+        query.bot_uuid = 'bot-1'
         query.launcher_type = LauncherTypes.PERSON
         query.launcher_id = 12345
 
@@ -176,23 +180,28 @@ class TestCommandHandlerReal:
         async for result in handler.handle(query):
             results.append(result)
 
+        fake_app.persistence_mgr.execute_async.assert_awaited_once()
         call_args = fake_app.plugin_connector.emit_event.call_args
         event = call_args[0][0]
         assert event.is_admin is True
 
     @pytest.mark.asyncio
     async def test_non_admin_privilege_check(self, fake_app, mock_event_ctx, mock_execute_factory):
-        """Non-admin users get privilege level 1."""
+        """A launcher absent from the per-bot admin table is not an admin."""
         from langbot_plugin.api.entities.builtin.provider.session import LauncherTypes
 
         command = get_command_handler()
 
-        fake_app.instance_config.data = {'admins': ['person_12345']}
+        admin_result = Mock()
+        admin_result.first.return_value = None
+        fake_app.persistence_mgr.execute_async = AsyncMock(return_value=admin_result)
+        fake_app.instance_config.data = {}
         fake_app.plugin_connector.emit_event = AsyncMock(return_value=mock_event_ctx)
         fake_app.cmd_mgr.execute = mock_execute_factory()
 
         handler = command.CommandHandler(fake_app)
         query = command_query('status')
+        query.bot_uuid = 'bot-1'
         query.launcher_type = LauncherTypes.PERSON
         query.launcher_id = 67890
 
@@ -200,6 +209,7 @@ class TestCommandHandlerReal:
         async for result in handler.handle(query):
             results.append(result)
 
+        fake_app.persistence_mgr.execute_async.assert_awaited_once()
         call_args = fake_app.plugin_connector.emit_event.call_args
         event = call_args[0][0]
         assert event.is_admin is False

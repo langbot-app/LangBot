@@ -1,10 +1,12 @@
 from __future__ import annotations
 import typing
 
+import sqlalchemy
 
 from .. import handler
 from ... import entities
 from ... import plugin_diagnostics
+from ....entity.persistence.bot import BotAdmin
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
@@ -24,7 +26,14 @@ class CommandHandler(handler.MessageHandler):
 
         privilege = 1
 
-        if f'{query.launcher_type.value}_{query.launcher_id}' in self.ap.instance_config.data['admins']:
+        admins = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(BotAdmin).where(
+                BotAdmin.bot_uuid == (query.bot_uuid or ''),
+                BotAdmin.launcher_type == query.launcher_type.value,
+                BotAdmin.launcher_id == str(query.launcher_id),
+            )
+        )
+        if admins.first() is not None:
             privilege = 2
 
         spt = command_text.split(' ')
