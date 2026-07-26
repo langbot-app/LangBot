@@ -106,7 +106,9 @@ class InvitationDeliveryService:
                 json=payload,
             )
         if response.status_code >= 400:
-            self._log_delivery_failure(config.provider or 'resend', RuntimeError(f'Resend returned {response.status_code}'))
+            self._log_delivery_failure(
+                config.provider or 'resend', RuntimeError(f'Resend returned {response.status_code}')
+            )
             return False
         return True
 
@@ -140,11 +142,7 @@ class InvitationDeliveryService:
 
     def _email_config(self) -> _EmailConfig:
         data = getattr(getattr(self.ap, 'instance_config', None), 'data', {}) or {}
-        email = (
-            data.get('workspace', {})
-            .get('invitations', {})
-            .get('email', {})
-        )
+        email = data.get('workspace', {}).get('invitations', {}).get('email', {})
         if not isinstance(email, dict):
             email = {}
         raw_provider = self._env('WORKSPACE__INVITATIONS__EMAIL__PROVIDER', email.get('provider', ''))
@@ -189,9 +187,7 @@ class InvitationDeliveryService:
         smtp_starttls = self._bool(
             self._env('WORKSPACE__INVITATIONS__EMAIL__SMTP__STARTTLS', smtp_config.get('starttls', True))
         )
-        smtp_ssl = self._bool(
-            self._env('WORKSPACE__INVITATIONS__EMAIL__SMTP__SSL', smtp_config.get('ssl', False))
-        )
+        smtp_ssl = self._bool(self._env('WORKSPACE__INVITATIONS__EMAIL__SMTP__SSL', smtp_config.get('ssl', False)))
 
         if provider == 'resend' and not (sender and resend_api_key and resend_api_url):
             provider = None
@@ -244,14 +240,9 @@ class InvitationDeliveryService:
 
     @staticmethod
     def _html(workspace_name: str, invitation_link: str) -> str:
-        escaped_workspace = (
-            workspace_name.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-        )
+        escaped_workspace = workspace_name.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
         escaped_link = (
-            invitation_link.replace('&', '&amp;')
-            .replace('<', '&lt;')
-            .replace('>', '&gt;')
-            .replace('"', '&quot;')
+            invitation_link.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;')
         )
         return (
             '<p>You were invited to join '

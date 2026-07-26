@@ -199,8 +199,7 @@ class SpaceLaunchService:
         if not public_key_value or not key_id:
             raise SpaceLaunchError('Space launch control-plane trust is not configured')
         clock_skew = self._bounded_float(
-            os.environ.get('LANGBOT_SPACE_CONTROL_PLANE_CLOCK_SKEW_SECONDS')
-            or launch_config.get('clock_skew_seconds'),
+            os.environ.get('LANGBOT_SPACE_CONTROL_PLANE_CLOCK_SKEW_SECONDS') or launch_config.get('clock_skew_seconds'),
             default=30.0,
             minimum=0.0,
             maximum=300.0,
@@ -211,9 +210,7 @@ class SpaceLaunchService:
         digest = hashlib.sha256(jti.encode('utf-8')).hexdigest()
         now = int(self._wall_time())
         async with self._replay_lock:
-            self._consumed_jtis = {
-                existing: expiry for existing, expiry in self._consumed_jtis.items() if expiry > now
-            }
+            self._consumed_jtis = {existing: expiry for existing, expiry in self._consumed_jtis.items() if expiry > now}
             if digest in self._consumed_jtis:
                 raise SpaceLaunchError('Launch assertion has already been consumed')
             if len(self._consumed_jtis) >= 4096:

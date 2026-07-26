@@ -221,7 +221,12 @@ function SpaceOAuthCallbackContent() {
         setErrorMessage(t('common.spaceLoginFailed'));
         return;
       }
-      handleOAuthCallback(authCode ?? '', state ?? '', workspaceUuid, launchAssertion);
+      handleOAuthCallback(
+        authCode ?? '',
+        state ?? '',
+        workspaceUuid,
+        launchAssertion,
+      );
     } else {
       if (!authCode) {
         setStatus('error');
