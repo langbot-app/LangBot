@@ -428,6 +428,10 @@ export async function createBrowser(paths) {
     context = await browser.newContext({ viewport: { width: 1440, height: 960 } });
   }
   const page = context.pages()[0] || await context.newPage();
+  const navigationTimeoutMs = Number.parseInt(env.LANGBOT_E2E_NAVIGATION_TIMEOUT_MS || "30000", 10);
+  if (Number.isFinite(navigationTimeoutMs) && navigationTimeoutMs > 0) {
+    page.setDefaultNavigationTimeout(navigationTimeoutMs);
+  }
 
   page.on("console", (message) => {
     appendLine(paths.consoleLog, `[${message.type()}] ${message.text()}`).catch(() => {});
@@ -483,27 +487,40 @@ export function countOccurrences(haystack, needle) {
   return String(haystack).split(needle).length - 1;
 }
 
-export async function clickFirstVisible(page, labels, timeout = 2_000) {
-  for (const label of labels) {
-    const roleButton = page.getByRole("button", { name: label }).first();
-    if (await roleButton.isVisible({ timeout }).catch(() => false)) {
-      await roleButton.click();
-      return label;
+async function clickVisibleCandidate(page, candidates, timeout) {
+  const deadline = Date.now() + Math.max(1, timeout);
+  do {
+    for (const candidate of candidates) {
+      const count = await candidate.locator.count().catch(() => 0);
+      for (let index = 0; index < count; index += 1) {
+        const element = candidate.locator.nth(index);
+        if (!await element.isVisible().catch(() => false)) continue;
+        const remaining = Math.max(1, deadline - Date.now());
+        const clicked = await element.click({ timeout: Math.min(1_000, remaining) })
+          .then(() => true)
+          .catch(() => false);
+        if (clicked) return candidate.value;
+      }
     }
-
-    const roleLink = page.getByRole("link", { name: label }).first();
-    if (await roleLink.isVisible({ timeout }).catch(() => false)) {
-      await roleLink.click();
-      return label;
-    }
-
-    const text = page.getByText(label, { exact: false }).first();
-    if (await text.isVisible({ timeout }).catch(() => false)) {
-      await text.click();
-      return label;
-    }
-  }
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) break;
+    await page.waitForTimeout(Math.min(100, remaining));
+  } while (Date.now() < deadline);
   return null;
+}
+
+export async function clickFirstVisibleLocator(page, locators, timeout = 2_000) {
+  const candidates = locators.map((locator) => ({ locator, value: true }));
+  return Boolean(await clickVisibleCandidate(page, candidates, timeout));
+}
+
+export async function clickFirstVisible(page, labels, timeout = 2_000) {
+  const candidates = labels.flatMap((label) => [
+    { locator: page.getByRole("button", { name: label }), value: label },
+    { locator: page.getByRole("link", { name: label }), value: label },
+    { locator: page.getByText(label, { exact: false }), value: label },
+  ]);
+  return await clickVisibleCandidate(page, candidates, timeout);
 }
 
 export async function fillFirstTextInput(page, value) {

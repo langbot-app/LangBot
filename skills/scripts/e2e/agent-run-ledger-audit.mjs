@@ -57,6 +57,9 @@ try {
   const python = join(repo, ".venv", "bin", "python");
   const args = ["scripts/e2e/agent-run-ledger-audit.py", "--repo", repo, "--output", auditPath];
   if (env.LANGBOT_AGENT_RUN_ID) args.push("--run-id", env.LANGBOT_AGENT_RUN_ID);
+  if (env.LANGBOT_AGENT_TOOL_AUTHORIZATION_MODE) {
+    args.push("--tool-authorization-mode", env.LANGBOT_AGENT_TOOL_AUTHORIZATION_MODE);
+  }
   const execution = await run(python, args, process.cwd());
   const report = JSON.parse(await readFile(auditPath, "utf8"));
   result.status = report.status;

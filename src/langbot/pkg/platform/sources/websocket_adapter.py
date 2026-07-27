@@ -142,7 +142,18 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
         embed_target = self._parse_embed_target(sender_id)
         if embed_target is not None:
             return embed_target
-        return typing.cast(str, self.ap.platform_mgr.websocket_proxy_bot.bot_entity.use_pipeline_uuid), None
+        pipeline_uuid = getattr(message_source, '_langbot_pipeline_uuid', None)
+        if isinstance(pipeline_uuid, str) and pipeline_uuid:
+            return pipeline_uuid, None
+
+        legacy_pipeline_uuid = getattr(
+            self.ap.platform_mgr.websocket_proxy_bot.bot_entity,
+            'use_pipeline_uuid',
+            '',
+        )
+        if legacy_pipeline_uuid:
+            return typing.cast(str, legacy_pipeline_uuid), None
+        raise RuntimeError(f'Could not resolve WebSocket reply context for sender {sender_id!r}')
 
     async def send_message(
         self,
@@ -306,8 +317,9 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
             # 更新历史记录中的对应消息
             message_list[existing_index] = message_data
 
-        if message_is_final and resp_message_id:
-            stream_message_indexes.pop(resp_message_id, None)
+        # Keep the index for the lifetime of the history entry. Some runners
+        # emit a final delta followed by message.completed/run.completed. They
+        # all share one Host response id and must update one UI message.
 
         await ws_connection_manager.broadcast_to_pipeline(
             pipeline_uuid,

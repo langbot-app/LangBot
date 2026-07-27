@@ -60,6 +60,7 @@ import {
 } from "../scripts/e2e/lib/debug-chat.mjs";
 import {
   beginBackendLogCapture,
+  clickFirstVisible,
   ensureAuthenticatedBrowser,
   finishBackendLogCapture,
   resolveLangBotRepo,
@@ -67,6 +68,32 @@ import {
 } from "../scripts/e2e/lib/langbot-e2e.mjs";
 
 const root = process.cwd();
+
+test("clickFirstVisible waits for a later visible DOM match", async () => {
+  let pollCount = 0;
+  let clickedIndex = -1;
+  const emptyLocator = {
+    count: async () => 0,
+    nth: () => { throw new Error("empty locator has no children"); },
+  };
+  const textLocator = {
+    count: async () => 2,
+    nth: (index: number) => ({
+      isVisible: async () => index === 1 && pollCount >= 1,
+      click: async () => { clickedIndex = index; },
+    }),
+  };
+  const page = {
+    getByRole: () => emptyLocator,
+    getByText: () => textLocator,
+    waitForTimeout: async () => { pollCount += 1; },
+  };
+
+  const clicked = await clickFirstVisible(page, ["Debug Chat"], 1_000);
+
+  assert.equal(clicked, "Debug Chat");
+  assert.equal(clickedIndex, 1);
+});
 
 test("repo root detects the skills tree before generated bin exists", () => {
   const tmp = mkdtempSync(join(tmpdir(), "lbs-root-no-bin-"));
@@ -2062,6 +2089,25 @@ test("debug chat classifier passes when expected text appears in a new assistant
   assert.equal(result.before_assistant_expected_count, 0);
   assert.equal(result.after_assistant_expected_count, 1);
   assert.equal(result.new_assistant_message_count, 1);
+});
+
+test("debug chat classifier rejects a matching assistant message that is not final", () => {
+  const result = classifyDebugChatResult({
+    beforeText: "",
+    afterText: "Bot: E2E_OK:skill",
+    expectedText: "E2E_OK:skill",
+    prompt: "Run the task",
+    latestExpectedLeaf: "E2E_OK:skill",
+    latestFailureLeaf: "",
+    beforeMessages: [],
+    afterMessages: [{ role: "assistant", text: "E2E_OK:skill" }],
+    latestAssistantText: "E2E_OK:skill",
+    latestAssistantIsFinal: false,
+  });
+
+  assert.equal(result.status, "fail");
+  assert.match(result.reason, /was not final/);
+  assert.equal(result.latest_assistant_is_final, false);
 });
 
 test("debug chat classifier accepts formatted responses containing every required fragment", () => {

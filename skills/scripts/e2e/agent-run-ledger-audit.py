@@ -16,7 +16,12 @@ import sqlalchemy
 import yaml
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from agent_run_ledger_policy import classify_invalid_tool_argument_errors, load_ledger_json
+from agent_run_ledger_policy import (
+    classify_invalid_tool_argument_errors,
+    classify_tool_authorization,
+    invalid_tool_argument_error_signal,
+    load_ledger_json,
+)
 
 
 def database_url(repo: pathlib.Path) -> str:
@@ -80,6 +85,7 @@ async def audit(
     expected_tool_name: str | None = None,
     expected_parameters: dict | None = None,
     expected_result_text: str | None = None,
+    tool_authorization_mode: str = "strict",
 ) -> dict:
     engine = create_async_engine(database_url(repo))
     failures: list[dict] = []
@@ -175,7 +181,6 @@ async def audit(
         r"invalid json(?! arguments)|unauthori[sz]ed|permission denied|forbidden|timed?\s*out|timeout",
         re.I,
     )
-    invalid_tool_arguments_pattern = re.compile(r"invalid json arguments", re.I)
 
     def error_surface(value: object) -> list[str]:
         """Collect diagnostic fields without treating normal tool parameters as errors."""
@@ -221,10 +226,10 @@ async def audit(
         if match:
             suspicious_errors.append({"sequence": row["sequence"], "type": event_type, "signal": match.group(0)})
         elif event_type == "tool.call.completed":
-            match = invalid_tool_arguments_pattern.search(diagnostic_text)
-            if match:
+            signal = invalid_tool_argument_error_signal(diagnostic_text)
+            if signal:
                 invalid_tool_argument_errors.append(
-                    {"sequence": row["sequence"], "type": event_type, "signal": match.group(0)}
+                    {"sequence": row["sequence"], "type": event_type, "signal": signal}
                 )
 
     if run_row["status"] != "completed":
@@ -248,8 +253,12 @@ async def audit(
             failures.append({"kind": "tool_call_order", "tool_call_id": call_id})
         if started[0]["tool_name"] not in allowed_tools:
             unauthorized_calls.append({"tool_call_id": call_id, "tool_name": started[0]["tool_name"]})
-    if unauthorized_calls:
-        failures.append({"kind": "unauthorized_tool_calls", "calls": unauthorized_calls})
+    authorization_failures, authorization_warnings = classify_tool_authorization(
+        unauthorized_calls,
+        authorization_mode=tool_authorization_mode,
+    )
+    failures.extend(authorization_failures)
+    warnings.extend(authorization_warnings)
     unrecovered_argument_errors, recovered_argument_warnings = classify_invalid_tool_argument_errors(
         invalid_tool_argument_errors,
         successful_tool_completion_sequences=successful_tool_completion_sequences,
@@ -305,6 +314,8 @@ async def audit(
         "tool_call_completed": sum(len(items) for items in completions.values()),
         "tool_call_ids": len(all_call_ids),
         "authorized_tool_count": len(allowed_tools),
+        "tool_authorization_mode": tool_authorization_mode,
+        "runner_native_tool_call_count": len(unauthorized_calls) if tool_authorization_mode == "runner-native" else 0,
         "invalid_event_json": invalid_event_json,
         "suspicious_error_count": len(suspicious_errors),
         "recovered_tool_argument_error_count": len(recovered_argument_warnings),
@@ -334,6 +345,11 @@ def main() -> int:
     parser.add_argument("--expected-tool-name")
     parser.add_argument("--expected-parameters-json")
     parser.add_argument("--expected-result-text")
+    parser.add_argument(
+        "--tool-authorization-mode",
+        choices=("strict", "runner-native"),
+        default="strict",
+    )
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
     try:
@@ -351,6 +367,7 @@ def main() -> int:
             expected_tool_name=args.expected_tool_name,
             expected_parameters=expected_parameters,
             expected_result_text=args.expected_result_text,
+            tool_authorization_mode=args.tool_authorization_mode,
         ))
     except Exception as exc:  # noqa: BLE001 - probe must classify environment failures
         report = {"status": "env_issue", "reason": str(exc), "failures": [], "warnings": []}

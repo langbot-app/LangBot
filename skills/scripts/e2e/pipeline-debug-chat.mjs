@@ -57,6 +57,7 @@ const resetDebugChat = boolFromEnv(env.LANGBOT_E2E_RESET_DEBUG_CHAT, false);
 const restoreRunnerConfig = boolFromEnv(env.LANGBOT_E2E_RESTORE_RUNNER_CONFIG, true);
 const restoreExtensions = boolFromEnv(env.LANGBOT_E2E_RESTORE_EXTENSIONS, true);
 const debugChatSessionType = env.LANGBOT_E2E_DEBUG_CHAT_SESSION_TYPE || "person";
+const maxNewAssistantMessages = Number.parseInt(env.LANGBOT_E2E_MAX_NEW_ASSISTANT_MESSAGES || "1", 10);
 const pipelineConfigDiagnosticPath = resolve(paths.evidenceDir, "pipeline-config-diagnostic.json");
 const pipelineExtensionsDiagnosticPath = resolve(paths.evidenceDir, "pipeline-extensions-diagnostic.json");
 const debugChatResetDiagnosticPath = resolve(paths.evidenceDir, "debug-chat-reset-diagnostic.json");
@@ -873,7 +874,7 @@ try {
   result.expected_text = promptSteps.at(-1)?.expectedText || expectedText;
 
   const authDiagnostic = await ensureAuthenticatedBrowser(page, {
-    frontendUrl: env.LANGBOT_FRONTEND_URL || "",
+    frontendUrl: pipelineUrl || env.LANGBOT_FRONTEND_URL || "",
     backendUrl,
   });
   result.browser_auth = authDiagnostic;
@@ -999,7 +1000,12 @@ try {
             expectedTexts: step.expectedTexts,
             responseTimeoutMs: step.responseTimeoutMs,
             imagePath: index === 0 ? imagePath : "",
-            maxNewAssistantMessages: streamOutput === false ? 1 : null,
+            backendUrl,
+            pipelineId: result.pipeline_config?.pipeline_id || pipelineIdFromUrl(pipelineUrl),
+            sessionType: debugChatSessionType,
+            maxNewAssistantMessages: Number.isFinite(maxNewAssistantMessages) && maxNewAssistantMessages >= 0
+              ? maxNewAssistantMessages
+              : 1,
             failureSignals: failureSignals.length > 0 ? failureSignals : undefined,
           });
           const promptDurationMs = Date.now() - promptStartedAt;
@@ -1017,6 +1023,9 @@ try {
             before_assistant_message_count: chatResult.before_assistant_message_count,
             after_assistant_message_count: chatResult.after_assistant_message_count,
             new_assistant_message_count: chatResult.new_assistant_message_count,
+            latest_assistant_is_final: chatResult.latest_assistant_is_final,
+            final_assistant_wait_status: chatResult.final_assistant_wait_status,
+            final_assistant_wait_reason: chatResult.final_assistant_wait_reason,
             failure_signal: chatResult.failure_signal || "",
             missing_expected_texts: chatResult.missing_expected_texts || [],
           });
