@@ -157,7 +157,8 @@ class TelegramMessageConverter(abstract_platform_adapter.AbstractMessageConverte
 
             message_components.append(
                 platform_message.Image(
-                    base64=f'data:{file_format};base64,{base64.b64encode(file_bytes).decode("utf-8")}'
+                    url=file.file_path,
+                    base64=f'data:{file_format};base64,{base64.b64encode(file_bytes).decode("utf-8")}',
                 )
             )
 

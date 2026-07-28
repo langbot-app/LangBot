@@ -133,7 +133,9 @@ class WecomMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
         yiri_msg_list = []
         yiri_msg_list.append(platform_message.Source(id=message_id, time=datetime.datetime.now()))
         image_base64, image_format = await image.get_wecom_image_base64(pic_url=picurl)
-        yiri_msg_list.append(platform_message.Image(base64=f'data:image/{image_format};base64,{image_base64}'))
+        yiri_msg_list.append(
+            platform_message.Image(url=picurl, base64=f'data:image/{image_format};base64,{image_base64}')
+        )
         chain = platform_message.MessageChain(yiri_msg_list)
 
         return chain

@@ -783,7 +783,9 @@ class DiscordMessageConverter(abstract_platform_adapter.AbstractMessageConverter
                 image_data = await response.read()
                 image_base64 = base64.b64encode(image_data).decode('utf-8')
                 image_format = response.headers['Content-Type']
-                element_list.append(platform_message.Image(base64=f'data:{image_format};base64,{image_base64}'))
+                element_list.append(
+                    platform_message.Image(url=attachment.url, base64=f'data:{image_format};base64,{image_base64}')
+                )
 
         return platform_message.MessageChain(element_list)
 
