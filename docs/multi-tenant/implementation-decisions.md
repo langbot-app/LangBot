@@ -240,7 +240,7 @@ This log records implementation choices made while delivering the Workspace arch
 ### Shared Plugin Runtime starts only from verified desired state
 
 - Decision: SDK shared mode waits for immutable runtime configuration before inspecting plugin state, never scans or launches legacy `data/plugins`, and rejects legacy install/restart/delete/upgrade control actions. Worker RPC files use installation-private directories with aggregate size enforcement, and resident nsjail workers explicitly disable the default 600-second wall-time limit.
-- Remaining gate: completion-callback recovery and bounded per-installation backoff are implemented. Cross-tenant restart-storm suppression, hard installation disk quota, and production egress policy remain Cloud activation requirements; Linux nsjail/cgroup CPU, memory-plus-swap, PID, namespace, and cgroup-reaping behavior have real-container evidence.
+- Remaining gate: completion-callback recovery, jittered per-installation backoff, globally bounded restart launch admission, Runtime-level circuit breaking, one half-open probe, and worker ready timeout are implemented. Production cross-tenant fault injection must still prove the restart-storm controls. Hard installation disk quota and production egress policy remain Cloud activation requirements; Linux nsjail/cgroup CPU, memory-plus-swap, PID, namespace, and cgroup-reaping behavior have real-container evidence.
 - Reason: A shared supervisor reduces per-Workspace services only if legacy global paths, writable transfer state, and lifecycle defaults cannot bypass installation isolation.
 
 ## 2026-07-24

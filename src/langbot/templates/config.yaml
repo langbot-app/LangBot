@@ -227,6 +227,14 @@ plugin:
         # Includes disabled and historical installation fences retained to
         # reject stale desired-state replay.
         max_installations: 10000
+        # Restart storms are globally serialized by default. Repeated
+        # unexpected exits within the configured window open a Runtime-wide
+        # circuit; one half-open probe must remain stable before other
+        # installations may restart.
+        max_concurrent_restarts: 1
+        restart_failure_threshold: 8
+        restart_failure_window_seconds: 30.0
+        restart_circuit_open_seconds: 60.0
         # Cloud shared Runtime sets this to true and fails closed unless
         # delegated cgroup v2 controllers are available.
         require_hard_limits: false

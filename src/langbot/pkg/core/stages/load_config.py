@@ -32,6 +32,10 @@ _RUNTIME_POLICY_DEFAULTS = {
             'max_total_cpus': 8.0,
             'max_total_memory_mb': 8192,
             'max_installations': 10000,
+            'max_concurrent_restarts': 1,
+            'restart_failure_threshold': 8,
+            'restart_failure_window_seconds': 30.0,
+            'restart_circuit_open_seconds': 60.0,
             'require_hard_limits': False,
         }
     },

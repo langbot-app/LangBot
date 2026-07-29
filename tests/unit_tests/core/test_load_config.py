@@ -298,6 +298,10 @@ class TestApplyEnvOverridesToConfig:
                     'max_pids': 128,
                     'max_open_files': 256,
                     'max_file_size_mb': 512,
+                    'max_concurrent_restarts': 1,
+                    'restart_failure_threshold': 8,
+                    'restart_failure_window_seconds': 30.0,
+                    'restart_circuit_open_seconds': 60.0,
                 }
             },
             'mcp': {'stdio': {'enabled': True}},
@@ -308,6 +312,10 @@ class TestApplyEnvOverridesToConfig:
             'PLUGIN__WORKER__MAX_PIDS': '64',
             'PLUGIN__WORKER__MAX_OPEN_FILES': '128',
             'PLUGIN__WORKER__MAX_FILE_SIZE_MB': '256',
+            'PLUGIN__WORKER__MAX_CONCURRENT_RESTARTS': '2',
+            'PLUGIN__WORKER__RESTART_FAILURE_THRESHOLD': '12',
+            'PLUGIN__WORKER__RESTART_FAILURE_WINDOW_SECONDS': '45.5',
+            'PLUGIN__WORKER__RESTART_CIRCUIT_OPEN_SECONDS': '90.0',
             'MCP__STDIO__ENABLED': 'false',
         }
 
@@ -320,6 +328,10 @@ class TestApplyEnvOverridesToConfig:
             'max_pids': 64,
             'max_open_files': 128,
             'max_file_size_mb': 256,
+            'max_concurrent_restarts': 2,
+            'restart_failure_threshold': 12,
+            'restart_failure_window_seconds': 45.5,
+            'restart_circuit_open_seconds': 90.0,
         }
         assert result['mcp']['stdio']['enabled'] is False
 

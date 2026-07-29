@@ -212,7 +212,11 @@ def test_read_endpoint_snapshot_flattens_resource_metrics() -> None:
                     'blocking_executor': {
                         'pending': 0,
                         'global_rejected_total': 2,
-                    }
+                    },
+                    'restart_coordinator': {
+                        'active_launches': 1,
+                        'circuit_open_total': 3,
+                    },
                 },
             }
         )
@@ -226,6 +230,8 @@ def test_read_endpoint_snapshot_flattens_resource_metrics() -> None:
     assert metrics['http.ok'] == 1
     assert metrics['body.resources.blocking_executor.pending'] == 0
     assert metrics['body.resources.blocking_executor.global_rejected_total'] == 2
+    assert metrics['body.resources.restart_coordinator.active_launches'] == 1
+    assert metrics['body.resources.restart_coordinator.circuit_open_total'] == 3
 
 
 def test_read_endpoint_snapshot_fails_closed_on_not_ready() -> None:
@@ -380,6 +386,44 @@ def test_evaluate_gate_detects_executor_rejection_and_stuck_pending() -> None:
 
     assert any('global_rejected_total by 1' in failure for failure in result.failures)
     assert any('pending above zero' in failure for failure in result.failures)
+
+
+def test_evaluate_gate_detects_restart_circuit_and_stuck_launch() -> None:
+    prefix = 'body.resources.restart_coordinator'
+    state = _state(
+        'endpoint',
+        [
+            _sample(
+                0,
+                **{
+                    f'{prefix}.active_launches': 1,
+                    f'{prefix}.half_open_probe_inflight': 1,
+                    f'{prefix}.open_remaining_seconds': 60,
+                    f'{prefix}.circuit_open_total': 0,
+                },
+            ),
+            _sample(
+                60,
+                **{
+                    f'{prefix}.active_launches': 1,
+                    f'{prefix}.half_open_probe_inflight': 1,
+                    f'{prefix}.open_remaining_seconds': 1,
+                    f'{prefix}.circuit_open_total': 1,
+                },
+            ),
+        ],
+    )
+
+    result = soak.evaluate_gate(
+        [state],
+        analysis_start_seconds=0,
+        thresholds=_thresholds(),
+    )
+
+    assert any('circuit_open_total by 1' in failure for failure in result.failures)
+    assert any('active_launches above zero' in failure for failure in result.failures)
+    assert any('half_open_probe_inflight above zero' in failure for failure in result.failures)
+    assert any('open_remaining_seconds above zero' in failure for failure in result.failures)
 
 
 def test_evaluate_gate_detects_event_loop_stall_and_sustained_lag() -> None:

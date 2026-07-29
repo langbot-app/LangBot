@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -92,3 +93,58 @@ async def test_http_bot_bounds_inbound_listener_tasks(monkeypatch):
     await first
     await asyncio.sleep(0)
     assert adapter.inbound_tasks == set()
+
+
+def test_http_bot_outbound_state_has_a_hard_capacity(monkeypatch):
+    monkeypatch.setattr(http_bot_module, '_OUTBOUND_STATE_MAX', 2)
+    monkeypatch.setattr(http_bot_module, '_OUTBOUND_PRUNE_SCAN_MAX', 2)
+    adapter = _adapter(SimpleNamespace(), None)
+    first = adapter._outbound_state('first')
+    second = adapter._outbound_state('second')
+    first.queue.put_nowait({})
+    second.queue.put_nowait({})
+
+    with pytest.raises(RuntimeError, match='outbound session capacity reached'):
+        adapter._next_sequence('third', is_final=True)
+
+    assert len(adapter.outbound_states) == 2
+    assert adapter._next_sequence('first', is_final=True) == 1
+
+
+def test_http_bot_outbound_state_pruning_is_bounded_and_reclaims_stale(monkeypatch):
+    monkeypatch.setattr(http_bot_module, '_OUTBOUND_STATE_MAX', 2)
+    monkeypatch.setattr(http_bot_module, '_OUTBOUND_PRUNE_SCAN_MAX', 1)
+    monkeypatch.setattr(http_bot_module, '_OUTBOUND_IDLE_SECONDS', 10)
+    adapter = _adapter(SimpleNamespace(), None)
+    stale = adapter._outbound_state('stale')
+    stale.last_active = time.monotonic() - 11
+    adapter._outbound_state('active')
+
+    assert adapter._next_sequence('replacement', is_final=True) == 1
+    assert set(adapter.outbound_states) == {'active', 'replacement'}
+
+
+def test_http_bot_idempotency_cache_has_a_hard_capacity(monkeypatch):
+    monkeypatch.setattr(http_bot_module, '_IDEMPOTENCY_MAX', 2)
+    monkeypatch.setattr(http_bot_module, '_IDEMPOTENCY_PRUNE_SCAN_MAX', 1)
+    adapter = _adapter(SimpleNamespace(), None)
+
+    assert adapter._reserve_idempotency_key('first') == 'accepted'
+    assert adapter._reserve_idempotency_key('second') == 'accepted'
+    assert adapter._reserve_idempotency_key('third') == 'overloaded'
+    assert len(adapter.idempotency_cache) == 2
+    assert adapter._reserve_idempotency_key('first') == 'duplicate'
+
+
+def test_http_bot_idempotency_cache_reclaims_expired_oldest(monkeypatch):
+    monkeypatch.setattr(http_bot_module, '_IDEMPOTENCY_MAX', 2)
+    monkeypatch.setattr(http_bot_module, '_IDEMPOTENCY_PRUNE_SCAN_MAX', 1)
+    monkeypatch.setattr(http_bot_module, '_IDEMPOTENCY_TTL', 10)
+    adapter = _adapter(SimpleNamespace(), None)
+    adapter.idempotency_cache = {
+        'expired': time.monotonic() - 11,
+        'active': time.monotonic(),
+    }
+
+    assert adapter._reserve_idempotency_key('replacement') == 'accepted'
+    assert set(adapter.idempotency_cache) == {'active', 'replacement'}

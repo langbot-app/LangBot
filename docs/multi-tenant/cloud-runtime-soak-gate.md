@@ -80,6 +80,7 @@ uv run python scripts/cloud_runtime_soak.py \
 - 任一健康采样窗口的 event-loop recent max 超过 1 秒，或冷却尾段 recent p95 超过 250 ms。
 - 健康接口缺少 event-loop monitor、monitor 未持续运行，或其 sample counter 回退。
 - blocking executor rejection counter 增长。
+- Plugin Runtime restart circuit 的累计打开次数增长。
 
 负载结束后的冷却尾段还必须满足：
 
@@ -87,6 +88,8 @@ uv run python scripts/cloud_runtime_soak.py \
 - 平均 CPU 核数不超过 `--max-tail-cpu-cores`。
 - event-loop recent p95 不超过 `--max-event-loop-p95-lag-ms`。
 - blocking executor `pending` 至少回到过零；不能整个尾段持续积压。
+- Plugin Runtime restart coordinator 的 active launch、half-open probe 和
+  circuit open remaining time 必须回到零。
 - telemetry、QueryPool、MCP host/dispatch、Box creating/closing/background 等临时 gauge 不能继续增长。
 
 内存判定要求“增长量”和“斜率”同时越界，避免几 MiB allocator/page-cache 噪声在短窗口被外推成很大的每小时斜率。最终报告仍保留实际增长与斜率，人工审查时不能只看 verdict。

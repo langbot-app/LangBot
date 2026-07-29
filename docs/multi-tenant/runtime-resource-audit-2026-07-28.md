@@ -17,7 +17,7 @@
 1. 在最终 Cloud 部署权限和 cgroup 拓扑下重复 nsjail、namespace 和 delegated cgroup v2 的 CPU、内存、swap、PID、文件句柄验证。本轮一次性 Linux 容器已经证明代码路径可工作，但普通容器和仅 `--privileged` 的 private cgroup namespace 都不满足条件。
 2. 为 Cloud Box 提供并验证硬文件系统 quota provider。普通 nsjail bind mount 不能证明总字节数和 inode 硬配额，当前严格 readiness 按设计会失败关闭。
 3. 使用最终生产配置分布继续做容量测试，并据此确定单实例 Workspace placement 上限。本轮真实 PostgreSQL 16 + RLS 启动测试已经覆盖 1,000 个各带 Provider、三类 Model、Bot、Pipeline、KnowledgeBase、MCP 和 Plugin setting 的 Workspace，启动加载耗时和 SQL 次数保持线性；5,000 Workspace 的合成三代替换探针也证明旧运行时会释放。仓库已新增可同时采集 Core/Plugin/Box HTTP、进程树和 cgroup v2 的 24 小时门禁工具，并在受 CPU、memory、swap、PID 硬限制的 Linux 容器中完成短时自检；但最终生产候选拓扑的 24 小时运行仍未执行。测试中的 fake adapter/requester/Plugin handler 仍不能替代真实平台 SDK、外部连接池和插件进程的容量数据；合法活跃租户本身仍会线性占用内存。
-SDK 已先行发布到分支提交 `67be7c332ded4c1afa131b28232590cf9728f817`，本提交集中的 LangBot
+SDK 已先行发布到分支提交 `a5a96b302a5808af84bbdd28833ce050176f87e9`，本提交集中的 LangBot
 `pyproject.toml` 和 `uv.lock` 已精确钉住该提交。最终镜像仍需按待验证清单记录并核对实际安装版本。
 
 ## 覆盖范围
@@ -93,6 +93,7 @@ SDK 已先行发布到分支提交 `67be7c332ded4c1afa131b28232590cf9728f817`，
 - 修复旧 QQ `repeat_seed('')` 空输入无限循环。
 - ZIP 校验/重打包、PIL、Base64、AES、JSON 解析、fsync probe、插件 artifact/依赖文件、Skill、S3、本地存储和维护目录扫描从事件循环移到线程。
 - 公开 Slack、QQ Official、HTTP Bot、公众号、WeCom/WeComCS 回调体显式限制为 1 MiB；JSON/XML 解码移出共享事件循环。QQ、DingTalk、Satori、WeCom AI 和 WeChatPad 网关帧同样设置 1 MiB 上限或在解码前拒绝超限消息；KOOK zlib 数据使用 10 MiB 解压后硬上限，阻断小压缩包制造的大内存解压。
+- HTTP Bot 的幂等键和 outbound session 现在均在写入前执行硬容量 admission；满额时只按固定 64 项预算检查最旧记录，不能先超限后整体清空，也不再在每条回复上扫描和排序全部 session。已有 session 继续 O(1) 访问，新 session 在没有可安全回收的空闲记录时失败关闭。
 - Dashboard、Embed 和 Plugin Runtime 的协议 JSON 编解码在线程执行；Dashboard/Embed 在接收端提交 terminal error 后为发送端保留有界 drain 窗口并使用内部 sentinel 唤醒，不会因“任一方向结束即取消”在撤权错误帧发出前关闭连接。
 - 租户配置的敏感词、内容忽略和群响应正则统一使用声明为直接依赖的 `regex` 引擎：最多 64 个 pattern、单 pattern 1,024 字符、输入 1 MiB、单次总匹配 CPU 预算 50 ms，并在线程中执行。超时、非法正则和替换放大均失败关闭；灾难性 `(a+)+$` 回归在 1 ms 测试预算内被中断。
 - 原生 `read/write/edit/glob/grep` 文件工具移出事件循环并继承 Workspace 阻塞预算。目录列举、递归 walk、grep 文件/总字符、单行、pattern、结果和 regex CPU 均有硬上限；glob 只用固定大小最小堆保留最新 100 项，不再先把全部命中路径驻留内存。Box 内执行的 glob/grep 脚本同样限制命中集合、扫描量和正则时间。
@@ -100,6 +101,9 @@ SDK 已先行发布到分支提交 `67be7c332ded4c1afa131b28232590cf9728f817`，
 - DashScope、TBox 等同步第三方 SDK 的调用和生成器迭代改为在线程执行；单个同步生成器最多消费 100,000 个事件。
 - Dashboard 和 Embed WebSocket 改为任一收发 task 结束即取消并等待另一方向，避免发送端退出后接收 task 永久阻塞；两方向 task 同时继承从认证结果或 RuntimeBot 得到的可信 Workspace 阻塞预算。
 - Plugin installation 生命周期全局串行化；不同租户的依赖 pip/nsjail 准备不会在安装高峰并发抢占 CPU。
+- Plugin installation 的意外退出除了每 installation 的 jittered exponential backoff，还经过 Runtime 全局 restart launch 并发槽和失败窗口熔断。
+  熔断冷却后只允许一个 half-open probe；probe 必须完成初始化并持续稳定后才恢复其他 installation。未在 30 秒内 ready 的 worker
+  会被取消回收。健康指标输出 active launch、窗口失败数、circuit 状态和累计打开次数，24 小时门禁把 circuit 打开或尾段启动槽不归零判为失败。
 - S3 同步 SDK 使用线程执行，并通过实例级 semaphore 限制并发；默认 `storage.s3.max_concurrency=16`，可通过实例配置和环境变量覆写。
 - Box 子进程 stderr 以 64 KiB 块读取，日志最多每秒输出 4 个摘录并汇总抑制数量，避免无换行或刷屏输出制造无界缓冲与日志放大。
 - Plugin worker 日志单行最多保留 64 KiB；Box managed-process stdout relay 以固定 64 KiB 块读取，不再依赖换行符，避免超长无换行输出触发 `StreamReader` limit 或堵塞子进程。
@@ -155,15 +159,15 @@ SDK 已先行发布到分支提交 `67be7c332ded4c1afa131b28232590cf9728f817`，
 | --- | --- |
 | LangBot Ruff + `git diff --check` | 通过 |
 | Plugin SDK Ruff + `git diff --check` | 通过 |
-| LangBot 全量测试（使用本地新 SDK，含 unit/integration/Box/E2E） | `2803 passed, 33 skipped` |
-| Plugin SDK 全量测试 | `1301 passed` |
+| LangBot 全量测试（使用远端精确钉住的新 SDK，含 unit/integration/Box/E2E） | `2808 passed, 33 skipped` |
+| Plugin SDK 全量测试 | `1312 passed` |
 | 真实 PostgreSQL 16 + pgvector 迁移/RLS/发布测试（严格资源告警） | `22 passed` |
 | 真实 PostgreSQL 16 + RLS populated Cloud 启动容量 | 500 Workspace `6.178s / CPU 3.026s`；当前 1,000 Workspace 复跑 `12.109s / CPU 5.967s` |
-| 当前 Core Dockerfile Linux 镜像构建与 `regex` 导入 | 通过，image SHA `8893a14053df`；仍使用待更新的旧 SDK pin |
+| 较早 Core Dockerfile Linux 镜像构建与 `regex` 导入 | 通过，image SHA `8893a14053df`；该镜像使用旧 SDK pin，已失效，最终候选必须重建 |
 | `ResourceWarning` + `PytestUnraisableExceptionWarning` 全量门禁 | Core 与 SDK 均通过，并已固化到 pytest 配置 |
 | Plugin SDK Box 专项测试（含全局扫描回归保护） | `669 passed` |
 | Docker Compose 渲染、Compose/Kubernetes YAML 解析与 diff 检查 | 通过 |
-| Cloud soak 门禁解析/采样/判定单元测试 | `23 passed` |
+| Cloud soak 门禁解析/采样/判定单元测试 | `24 passed` |
 | Core/Plugin SDK event-loop monitor 专项测试 | 两仓各 `7 passed`，包含真实 50 ms scheduler stall |
 | Cloud soak Linux 硬限制短时自检 | 通过；CPU `0.5`、memory+swap `256 MiB`、PID `128` 均从 cgroup v2 读回，冷却尾段 verdict `pass` |
 | Core 双阶段历史 churn 资源探针（使用本地新 SDK） | audit 通过，`11.275s` |

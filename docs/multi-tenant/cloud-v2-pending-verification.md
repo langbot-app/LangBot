@@ -24,7 +24,7 @@
 - PostgreSQL 16 + RLS 的 1,000 Workspace 真实启动测试，以及 5,000
   Workspace 三代替换合成探针已通过。
 - Core 已精确钉住 Plugin SDK 提交
-  `67be7c332ded4c1afa131b28232590cf9728f817`。最终验证必须使用包含该提交的
+  `a5a96b302a5808af84bbdd28833ce050176f87e9`。最终验证必须使用包含该提交的
   Core、Plugin Runtime 和 Box Runtime 镜像，不能混用旧 SDK。
 
 以上结果是进入生产候选验证的前提，不是 SaaS 上线批准。
@@ -35,10 +35,9 @@
 
 | 编号 | 阻断项 | 完成实现后的最低验收证据 |
 | --- | --- | --- |
-| B-01 | Plugin Runtime 缺少跨 installation 的重启风暴抑制，包括 jitter、全局重启并发上限和 Runtime 级 circuit breaker | 同时使大量 worker 因系统性故障退出，证明重启速率和并发受限、控制面仍可用，且单个故障 installation 不拖垮其他租户 |
-| B-02 | Cloud 插件缺少生产 egress policy | 证明插件只能访问允许的公网目标，不能访问 Core/Box/数据库、其他内部服务、loopback、link-local 或云 metadata endpoint |
-| B-03 | Plugin installation 与 Box Workspace/Skill/root/tmp/home 缺少真实的 byte 和 inode 硬配额 provider | 在写入边界原子拒绝超额；并发写入、重启和配额耗尽后不能越界，也不能用目录扫描或事后清理冒充硬配额 |
-| B-04 | 普通业务写入尚未具备贯穿 commit 的 generation-aware fence、同事务 business outbox，以及 generation cutover 后稳定的 durable-object 引用 | 在旧 generation 与新 generation 并发、事务提交竞态和重复投递下，旧 owner 不产生业务写入或外部副作用，outbox 可幂等恢复 |
+| B-01 | Cloud 插件缺少生产 egress policy | 证明插件只能访问允许的公网目标，不能访问 Core/Box/数据库、其他内部服务、loopback、link-local 或云 metadata endpoint |
+| B-02 | Plugin installation 与 Box Workspace/Skill/root/tmp/home 缺少真实的 byte 和 inode 硬配额 provider | 在写入边界原子拒绝超额；并发写入、重启和配额耗尽后不能越界，也不能用目录扫描或事后清理冒充硬配额 |
+| B-03 | 普通业务写入尚未具备贯穿 commit 的 generation-aware fence、同事务 business outbox，以及 generation cutover 后稳定的 durable-object 引用 | 在旧 generation 与新 generation 并发、事务提交竞态和重复投递下，旧 owner 不产生业务写入或外部副作用，outbox 可幂等恢复 |
 
 任一 B 类项目未关闭时，不得把 24 小时 soak 的通过结果解释为可以上线。
 
@@ -68,7 +67,7 @@
 
 ### V-02：Box 持久卷与硬存储配额
 
-在 B-03 的 quota provider 实现后，必须验证：
+在 B-02 的 quota provider 实现后，必须验证：
 
 1. Core 与 Box Runtime 通过随机 marker challenge 证明使用同一共享持久卷。
 2. Workspace、Skill store、ephemeral root/tmp/home 的 byte 和 inode quota
@@ -125,6 +124,9 @@
    plugin worker 和缓存写入全部失败关闭。
 6. 为未来多副本预留的 replica-local cursor 语义通过故障注入：
    一个副本追平不能使另一个副本跳过本地 cache 刷新。
+7. 同时使大量 plugin worker 因系统性故障退出，证明 restart launch 全局并发受限、
+   失败阈值触发 Runtime circuit、冷却后只有一个 half-open probe，且 probe 未稳定前
+   其他 installation 不会继续重启；24 小时门禁必须把 circuit 打开判为失败。
 
 ### V-06：套餐、Box 与 stdio MCP
 
@@ -169,7 +171,8 @@ PostgreSQL/pgvector 和代表性 Workspace 配置分布，测量：
 
 1. 注册、邀请、登录和 entitlement 刷新；
 2. plugin reconcile、依赖准备、调用、崩溃与重启；
-3. Dashboard/Embed/平台 WebSocket 建连、突发消息和断连；
+3. Dashboard/Embed/平台 WebSocket 建连、突发消息和断连；HTTP Bot 覆盖
+   高基数 session/idempotency、硬容量拒绝、空闲回收及 callback 堵塞；
 4. Box session、文件同步、并发 exec、输出与清理；
 5. PostgreSQL pool 接近容量、事务超时和恢复；
 6. Core、Plugin Runtime、Box 分别 SIGTERM 和恢复。
@@ -208,5 +211,5 @@ PID limit、blocking executor rejection、超阈值 CPU throttling/event-loop la
 3. 由报告明确给出 pass/fail，不能只依赖日志中“看起来正常”；
 4. 任一生产候选输入变化后，重跑受影响的验证。
 
-在 B-01 至 B-04 全部实现，且 V-01 至 V-09 均有当前生产候选版本的通过证据前，
+在 B-01 至 B-03 全部实现，且 V-01 至 V-09 均有当前生产候选版本的通过证据前，
 Cloud v2 状态保持 `NOT APPROVED FOR SAAS ACTIVATION`。

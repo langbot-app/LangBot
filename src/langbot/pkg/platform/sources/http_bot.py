@@ -28,6 +28,7 @@ See docs/platforms/http-bot.md for the full integration guide.
 from __future__ import annotations
 
 import asyncio
+import itertools
 import json
 import time
 import typing
@@ -64,10 +65,16 @@ _MAX_BODY = 1 * 1024 * 1024
 # Idempotency dedup window (seconds) and cap.
 _IDEMPOTENCY_TTL = 600
 _IDEMPOTENCY_MAX = 4096
+_IDEMPOTENCY_PRUNE_SCAN_MAX = 64
 _OUTBOUND_QUEUE_MAX = 100
 _OUTBOUND_IDLE_SECONDS = 60
 _OUTBOUND_STATE_MAX = 4096
+_OUTBOUND_PRUNE_SCAN_MAX = 64
 _INBOUND_TASK_MAX = 100
+
+
+class _OutboundStateCapacityError(RuntimeError):
+    """Raised when a new outbound session cannot be admitted safely."""
 
 
 class _SessionOutbound:
@@ -185,14 +192,34 @@ class HttpBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         status, code = _ERR[kind]
         return quart.jsonify({'code': code, 'msg': detail or kind, 'data': None}), status
 
-    def _prune_idempotency(self) -> None:
-        now = time.time()
-        if len(self.idempotency_cache) > _IDEMPOTENCY_MAX:
-            self.idempotency_cache.clear()
-            return
-        expired = [k for k, ts in self.idempotency_cache.items() if now - ts > _IDEMPOTENCY_TTL]
-        for k in expired:
-            self.idempotency_cache.pop(k, None)
+    def _reserve_idempotency_key(self, key: str) -> str:
+        """Reserve a key without allowing unbounded state or full-map scans."""
+        now = time.monotonic()
+        accepted_at = self.idempotency_cache.get(key)
+        if accepted_at is not None:
+            if now - accepted_at <= _IDEMPOTENCY_TTL:
+                return 'duplicate'
+            self.idempotency_cache.pop(key, None)
+
+        if len(self.idempotency_cache) >= _IDEMPOTENCY_MAX:
+            self._prune_idempotency(now)
+        if len(self.idempotency_cache) >= _IDEMPOTENCY_MAX:
+            return 'overloaded'
+
+        self.idempotency_cache[key] = now
+        return 'accepted'
+
+    def _prune_idempotency(self, now: float | None = None) -> None:
+        """Remove at most a fixed number of oldest expired keys."""
+        current_time = time.monotonic() if now is None else now
+        oldest = itertools.islice(
+            self.idempotency_cache.items(),
+            _IDEMPOTENCY_PRUNE_SCAN_MAX,
+        )
+        for key, accepted_at in list(oldest):
+            if current_time - accepted_at <= _IDEMPOTENCY_TTL:
+                break
+            self.idempotency_cache.pop(key, None)
 
     def _start_inbound_task(self, coro: typing.Coroutine) -> asyncio.Task | None:
         self.inbound_tasks = {task for task in self.inbound_tasks if not task.done()}
@@ -299,10 +326,11 @@ class HttpBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         # Idempotency.
         idem = request.headers.get(signing.HEADER_IDEMPOTENCY)
         if idem:
-            self._prune_idempotency()
-            if idem in self.idempotency_cache:
+            idempotency_result = self._reserve_idempotency_key(idem)
+            if idempotency_result == 'duplicate':
                 return self._err('duplicate', 'idempotency key already accepted')
-            self.idempotency_cache[idem] = time.time()
+            if idempotency_result == 'overloaded':
+                return self._err('overloaded', 'idempotency capacity reached; retry later')
 
         try:
             event, session_id, session_type, message_id = self._build_event(data)
@@ -397,8 +425,7 @@ class HttpBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         return ''
 
     def _next_sequence(self, session_id: str, is_final: bool) -> int:
-        self._prune_outbound_states()
-        state = self.outbound_states.setdefault(session_id, _SessionOutbound())
+        state = self._outbound_state(session_id)
         state.last_active = time.monotonic()
         if state.last_was_final:
             state.sequence = 1
@@ -407,36 +434,42 @@ class HttpBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         state.last_was_final = is_final
         return state.sequence
 
+    def _outbound_state(self, session_id: str) -> _SessionOutbound:
+        state = self.outbound_states.get(session_id)
+        if state is not None:
+            # Dicts retain insertion order. Moving active sessions to the end
+            # keeps bounded admission-time pruning focused on old entries.
+            self.outbound_states.pop(session_id)
+            self.outbound_states[session_id] = state
+            return state
+
+        if len(self.outbound_states) >= _OUTBOUND_STATE_MAX:
+            self._prune_outbound_states()
+        if len(self.outbound_states) >= _OUTBOUND_STATE_MAX:
+            raise _OutboundStateCapacityError(f'http_bot outbound session capacity reached ({_OUTBOUND_STATE_MAX})')
+
+        state = _SessionOutbound()
+        self.outbound_states[session_id] = state
+        return state
+
     def _prune_outbound_states(self) -> None:
         now = time.monotonic()
-        removable = [
-            (session_id, state)
-            for session_id, state in self.outbound_states.items()
-            if (state.worker is None or state.worker.done())
-            and state.queue.empty()
-            and now - state.last_active >= _OUTBOUND_IDLE_SECONDS
-        ]
-        for session_id, state in removable:
-            if self.outbound_states.get(session_id) is state:
-                self.outbound_states.pop(session_id, None)
-
-        overflow = len(self.outbound_states) - _OUTBOUND_STATE_MAX
-        if overflow <= 0:
-            return
-        idle = sorted(
-            (
-                (session_id, state)
-                for session_id, state in self.outbound_states.items()
-                if (state.worker is None or state.worker.done()) and state.queue.empty()
-            ),
-            key=lambda item: item[1].last_active,
+        oldest = itertools.islice(
+            self.outbound_states.items(),
+            _OUTBOUND_PRUNE_SCAN_MAX,
         )
-        for session_id, state in idle[:overflow]:
+        for session_id, state in list(oldest):
+            if (
+                (state.worker is not None and not state.worker.done())
+                or not state.queue.empty()
+                or now - state.last_active < _OUTBOUND_IDLE_SECONDS
+            ):
+                continue
             if self.outbound_states.get(session_id) is state:
                 self.outbound_states.pop(session_id, None)
 
     async def _enqueue_callback(self, session_id: str, payload: dict) -> None:
-        state = self.outbound_states.setdefault(session_id, _SessionOutbound())
+        state = self._outbound_state(session_id)
         state.last_active = time.monotonic()
         if state.worker is None or state.worker.done():
             state.worker = asyncio.create_task(self._outbound_worker(session_id, state))

@@ -239,6 +239,10 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             'max_total_cpus',
             'max_total_memory_mb',
             'max_installations',
+            'max_concurrent_restarts',
+            'restart_failure_threshold',
+            'restart_failure_window_seconds',
+            'restart_circuit_open_seconds',
         ):
             if field_name in PluginWorkerPolicy.model_fields and field_name in worker:
                 policy_data[field_name] = worker.get(field_name)

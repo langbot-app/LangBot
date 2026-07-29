@@ -72,7 +72,13 @@ REJECTION_SUFFIXES = (
     '.blocking_executor.global_rejected_total',
     '.blocking_executor.scope_rejected_total',
 )
-PENDING_SUFFIX = '.blocking_executor.pending'
+RUNTIME_FAILURE_COUNTER_SUFFIXES = ('.restart_coordinator.circuit_open_total',)
+DRAIN_GAUGE_SUFFIXES = (
+    '.blocking_executor.pending',
+    '.restart_coordinator.active_launches',
+    '.restart_coordinator.half_open_probe_inflight',
+    '.restart_coordinator.open_remaining_seconds',
+)
 TRANSIENT_GAUGE_SUFFIXES = (
     '.resources.telemetry_tasks',
     '.resources.query_pool.queued',
@@ -714,10 +720,22 @@ def evaluate_gate(
                         failures.append(f'{target_id} increased {metric} by {delta:g}')
                     elif delta is not None and delta < 0:
                         failures.append(f'{target_id} monotonic counter {metric} reset; the runtime may have restarted')
-            for metric in sorted(key for key in metric_keys if key.endswith(PENDING_SUFFIX)):
-                values = [sample.metrics[metric] for sample in tail_samples if metric in sample.metrics]
-                if values and min(values) > 0:
-                    failures.append(f'{target_id} kept {metric} above zero for the entire tail')
+            for suffix in RUNTIME_FAILURE_COUNTER_SUFFIXES:
+                for metric in sorted(key for key in metric_keys if key.endswith(suffix)):
+                    delta = _counter_delta(
+                        state.baseline_metrics or first,
+                        state.last_metrics or last,
+                        metric,
+                    )
+                    if delta is not None and delta > 0:
+                        failures.append(f'{target_id} increased {metric} by {delta:g}')
+                    elif delta is not None and delta < 0:
+                        failures.append(f'{target_id} monotonic counter {metric} reset; the runtime may have restarted')
+            for suffix in DRAIN_GAUGE_SUFFIXES:
+                for metric in sorted(key for key in metric_keys if key.endswith(suffix)):
+                    values = [sample.metrics[metric] for sample in tail_samples if metric in sample.metrics]
+                    if values and min(values) > 0:
+                        failures.append(f'{target_id} kept {metric} above zero for the entire tail')
             for suffix in TRANSIENT_GAUGE_SUFFIXES:
                 for metric in sorted(key for key in metric_keys if key.endswith(suffix)):
                     growth = _counter_delta(first, last, metric)

@@ -337,6 +337,10 @@ def test_worker_policy_is_loaded_only_from_instance_configuration():
                         'max_pids': 64,
                         'max_open_files': 128,
                         'max_file_size_mb': 32,
+                        'max_concurrent_restarts': 2,
+                        'restart_failure_threshold': 12,
+                        'restart_failure_window_seconds': 45,
+                        'restart_circuit_open_seconds': 90,
                         'require_hard_limits': True,
                     },
                     # A plugin-controlled value at any other path is ignored.
@@ -354,6 +358,10 @@ def test_worker_policy_is_loaded_only_from_instance_configuration():
     assert policy.max_pids == 64
     assert policy.max_open_files == 128
     assert policy.max_file_size_mb == 32
+    assert policy.max_concurrent_restarts == 2
+    assert policy.restart_failure_threshold == 12
+    assert policy.restart_failure_window_seconds == 45
+    assert policy.restart_circuit_open_seconds == 90
     assert policy.require_hard_limits is True
 
 

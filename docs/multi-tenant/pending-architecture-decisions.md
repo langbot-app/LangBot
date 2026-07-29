@@ -28,7 +28,7 @@
 
 | 编号  | 结论                                                                                                                                          | 首期状态                                                             |
 | ----- | --------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| D-001 | 一个共享 Plugin Runtime 控制面；每个运行中的 plugin installation 独占一个 nsjail 子进程；只有 digest 相同且已验证的代码 artifact 可以只读共享 | `FOUNDATION VERIFIED — egress, total disk-quota and restart-storm gates pending` |
+| D-001 | 一个共享 Plugin Runtime 控制面；每个运行中的 plugin installation 独占一个 nsjail 子进程；只有 digest 相同且已验证的代码 artifact 可以只读共享 | `IMPLEMENTED — egress/disk-quota pending; restart-storm fault injection pending` |
 | D-002 | 一个共享 Box Runtime；Cloud 固定使用 nsjail；符合套餐的 Workspace 最多一个持久 `global` 逻辑 sandbox，普通执行按需启动 nsjail 进程            | `IMPLEMENTED FAIL-CLOSED — hard filesystem quota provider pending`   |
 | D-003 | SaaS 业务数据使用 PostgreSQL shared schema、应用层作用域和 RLS 双重隔离；pgvector 使用同一 PostgreSQL，作为 SaaS 默认向量后端                 | `PARTIALLY IMPLEMENTED — transaction/outbox/deployment gates remain` |
 | D-004 | stdio MCP 与 Box availability 解耦；Cloud v2 首期强制关闭 stdio MCP，避免为每个 Workspace 创建额外的 `mcp-shared` persistent sandbox          | `IMPLEMENTED`                                                        |
@@ -85,7 +85,7 @@ Plugin Runtime 放在同一 rollout/restart unit 中协调重启；在实现受�
 
 ## 3. D-001：Plugin Runtime 多租户控制面
 
-状态：`FOUNDATION VERIFIED — Cloud egress, total disk-quota and restart-storm gates pending`
+状态：`IMPLEMENTED — Cloud egress/disk-quota pending; restart-storm fault injection pending`
 
 ### 3.1 已实现的基础
 
@@ -119,8 +119,10 @@ Plugin Runtime 放在同一 rollout/restart unit 中协调重启；在实现受�
 - 安装并启用插件后，Supervisor 在自己的 Runtime 容器内直接启动一个 nsjail 子进程；
   不再为每个插件创建 nested container、Pod、sidecar 或租户级 Runtime service。
 - desired semantics 要求 enabled installation 保持 resident，不做 idle eviction；停用、删除、revision/generation 变化或 entitlement 撤销时停止并按需重建。
-  当前 Supervisor 已通过 completion callback 和有界指数 backoff 恢复意外退出的 worker；尚缺 jitter、全局重启并发上限和 Runtime 级 circuit breaker，
-  因而系统性依赖或宿主故障下的跨租户重启风暴抑制仍是 Cloud 激活门禁。
+  Supervisor 通过 completion callback、带 jitter 的有界指数 backoff 恢复意外退出的 worker。所有 restart launch 共用实例级并发槽；
+  在配置的失败窗口达到阈值后打开 Runtime 级 circuit breaker，冷却后只允许一个 half-open probe。
+  probe 必须完成初始化并持续稳定一个窗口后才能恢复其他 installation；未在 30 秒内 ready 的子进程会被取消回收。
+  生产候选环境仍需执行跨租户系统性故障注入，证明熔断、恢复和告警符合预期。
 - 子进程使用一次性 registration capability 向 Supervisor 注册；capability 由可信 desired state 派生并绑定完整 installation tuple，
   不是插件直接建立 Core Host connection，也不能只绑定 author/name/path。Supervisor/Core 据此注入 tenant context，
   丢弃插件 payload 中自带的 scope 字段。
@@ -178,6 +180,10 @@ plugin:
 - `PLUGIN__WORKER__MAX_PIDS`
 - `PLUGIN__WORKER__MAX_OPEN_FILES`
 - `PLUGIN__WORKER__MAX_FILE_SIZE_MB`
+- `PLUGIN__WORKER__MAX_CONCURRENT_RESTARTS`
+- `PLUGIN__WORKER__RESTART_FAILURE_THRESHOLD`
+- `PLUGIN__WORKER__RESTART_FAILURE_WINDOW_SECONDS`
+- `PLUGIN__WORKER__RESTART_CIRCUIT_OPEN_SECONDS`
 - `PLUGIN__WORKER__REQUIRE_HARD_LIMITS`
 
 Core 启动时校验配置并通过现有 `SET_RUNTIME_CONFIG` 下发不可变 `PluginWorkerPolicy`。
