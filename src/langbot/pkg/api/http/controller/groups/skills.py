@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import quart
 
+from langbot.pkg.cloud.entitlements import EntitlementFeatureUnavailableError
 from langbot_plugin.box.errors import BoxError
 
 from ...authz import Permission
@@ -23,6 +24,11 @@ class SkillsRouterGroup(group.RouterGroup):
         async def list_skills(request_context: RequestContext) -> quart.Response:
             try:
                 skills = await self.ap.skill_service.list_skills(request_context)
+            except EntitlementFeatureUnavailableError:
+                # Plans without managed sandbox support have no runnable skills.
+                # Treat that capability absence as an empty collection so the
+                # shared UI can render normally instead of surfacing a 500.
+                return self.success(data={'skills': []})
             except (ValueError, BoxError) as exc:
                 return self.http_status(400, -1, str(exc))
             return self.success(data={'skills': skills})
