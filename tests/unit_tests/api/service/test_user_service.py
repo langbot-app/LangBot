@@ -210,6 +210,41 @@ class TestUserServiceIsInitialized:
         assert result is False
 
 
+class TestUserServiceGetLoginCapabilities:
+    """Tests for public login capability discovery."""
+
+    async def test_uses_explicit_identity_discovery_scope(self):
+        discovery_result = Mock()
+        discovery_result.one = Mock(return_value=(1, 2))
+        discovery_session = SimpleNamespace(execute=AsyncMock(return_value=discovery_result))
+
+        class DiscoveryContext:
+            async def __aenter__(self):
+                return SimpleNamespace(session=discovery_session)
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+        ap = SimpleNamespace()
+        ap.persistence_mgr = SimpleNamespace(
+            current_session=Mock(return_value=None),
+            identity_discovery_uow=Mock(return_value=DiscoveryContext()),
+            execute_async=AsyncMock(side_effect=AssertionError('unscoped persistence access')),
+        )
+        ap.workspace_service = SimpleNamespace(instance_uuid='instance-a')
+        service = UserService(ap)
+
+        result = await service.get_login_capabilities()
+
+        assert result == {
+            'password_login_enabled': True,
+            'space_login_enabled': True,
+        }
+        ap.persistence_mgr.identity_discovery_uow.assert_called_once()
+        discovery_session.execute.assert_awaited_once()
+        ap.persistence_mgr.execute_async.assert_not_awaited()
+
+
 class TestUserServiceGetUserByEmail:
     """Tests for get_user_by_email method."""
 

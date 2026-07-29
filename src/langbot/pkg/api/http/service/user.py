@@ -238,12 +238,20 @@ class UserService:
         return account is not None
 
     async def get_login_capabilities(self) -> dict[str, bool]:
-        """Derive enabled public login methods from all active Accounts."""
+        """Derive enabled public login methods in an explicit discovery scope."""
         password_count = sqlalchemy.func.count().filter(user.User.password.is_not(None), user.User.password != '')
         space_count = sqlalchemy.func.count().filter(user.User.space_account_uuid.is_not(None))
-        result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(password_count, space_count).where(user.User.status == user.AccountStatus.ACTIVE.value)
+        statement = sqlalchemy.select(password_count, space_count).where(
+            user.User.status == user.AccountStatus.ACTIVE.value
         )
+        digest = hashlib.sha256(f'login-capabilities:{self._jwt_identity()[1]}'.encode('utf-8')).hexdigest()
+        current_session = getattr(self.ap.persistence_mgr, 'current_session', lambda: None)
+        identity_uow = getattr(self.ap.persistence_mgr, 'identity_discovery_uow', None)
+        if current_session() is None and callable(identity_uow):
+            async with identity_uow(digest) as discovery:
+                result = await discovery.session.execute(statement)
+        else:
+            result = await self.ap.persistence_mgr.execute_async(statement)
         password_accounts, space_accounts = result.one()
         return {
             'password_login_enabled': bool(password_accounts),
