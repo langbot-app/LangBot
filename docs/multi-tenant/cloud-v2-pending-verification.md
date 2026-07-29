@@ -28,7 +28,7 @@
 - PostgreSQL 16 + RLS 的 1,000 Workspace 真实启动测试，以及 5,000
   Workspace 三代替换合成探针已通过。
 - Core 已精确钉住 Plugin SDK 提交
-  `87d903e9b7c4e518ce066c89f65bbde4de825fc5`。最终验证必须使用包含该提交的
+  `1d65ed301a6afc52150a998043f73cd6032c8162`。最终验证必须使用包含该提交的
   Core、Plugin Runtime 和 Box Runtime 镜像，不能混用旧 SDK。
 - 独立资源复核已经移除 Cloud MCP 每会话 5 秒查询执行绑定的轮询，改由签名目录
   投影提交后向一个合并回收任务发布代次变化；工具与资源调用前后仍使用数据库

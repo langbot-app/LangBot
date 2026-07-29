@@ -163,9 +163,7 @@ async def test_invitation_rejects_owner_role_and_email_mismatch(collaboration_co
 
 async def test_expired_invitation_is_inspectable_before_periodic_cleanup_deletes_it(collaboration_context):
     service, _, session_factory, _, workspace, owner_membership = collaboration_context
-    created = await service.create_invitation(
-        workspace.uuid, owner_membership, 'expired@example.com', 'viewer'
-    )
+    created = await service.create_invitation(workspace.uuid, owner_membership, 'expired@example.com', 'viewer')
     async with session_factory.begin() as session:
         invitation = await session.get(WorkspaceInvitation, created.invitation.uuid)
         invitation.expires_at = service._utcnow() - datetime.timedelta(minutes=1)
@@ -245,18 +243,14 @@ async def test_cloud_member_listing_opens_workspace_uow_when_request_scope_has_c
         mode=SimpleNamespace(value='cloud_runtime'),
         current_session=lambda: None,
         tenant_uow=tenant_uow,
-        require_current_session=lambda: (_ for _ in ()).throw(
-            AssertionError('list_members must open a Workspace UoW')
-        ),
+        require_current_session=lambda: (_ for _ in ()).throw(AssertionError('list_members must open a Workspace UoW')),
         get_db_engine=lambda: session_factory.kw['bind'],
     )
 
     members = await service.list_members(workspace.uuid, owner_membership)
 
     assert entered_workspaces == [workspace.uuid]
-    assert [(member.email, member.membership.role) for member in members] == [
-        ('owner@example.com', 'owner')
-    ]
+    assert [(member.email, member.membership.role) for member in members] == [('owner@example.com', 'owner')]
 
 
 async def test_cloud_directory_requires_explicit_selector_and_allows_core_membership_management(
