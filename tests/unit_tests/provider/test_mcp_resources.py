@@ -558,27 +558,72 @@ async def test_mcp_resource_cache_is_not_served_to_stale_generation():
 
 
 @pytest.mark.asyncio
-async def test_mcp_idle_lifecycle_stops_without_retry_after_generation_bump():
-    session = _connected_session()
-    session.server_config.update({'mode': 'remote', 'url': 'https://example.com/mcp'})
-    session._FENCE_POLL_INTERVAL = 0
-    session._init_remote_server = AsyncMock()
-    session.refresh = AsyncMock()
-    session._assert_execution_active = AsyncMock(
-        side_effect=[
-            None,
-            None,
-            None,
-            WorkspaceGenerationMismatchError('generation changed while idle'),
-        ]
+async def test_directory_projection_retires_idle_mcp_scope_without_db_poll():
+    loader = MCPLoader(_app())
+    sessions = []
+    for index in range(100):
+        context = ExecutionContext(
+            instance_uuid='instance-a',
+            workspace_uuid=f'workspace-{index}',
+            placement_generation=1,
+        )
+        session = RuntimeMCPSession(
+            f'server-{index}',
+            {'uuid': f'srv-{index}', 'mode': 'remote'},
+            True,
+            loader.ap,
+            context,
+        )
+        session.shutdown = AsyncMock()
+        loader._register_session(context, session.server_name, session)
+        sessions.append(session)
+
+    loader.reconcile_execution_projection('instance-a', {})
+    reconcile_task = loader._projection_reconcile_task
+    assert reconcile_task is not None
+    assert len(loader._pending_projection_retirements) == 100
+
+    # A second projection coalesces into the same worker instead of creating
+    # one timer or task per Workspace.
+    loader.reconcile_execution_projection('instance-a', {})
+    assert loader._projection_reconcile_task is reconcile_task
+
+    await asyncio.wait_for(reconcile_task, timeout=1)
+
+    assert loader.sessions == {}
+    assert loader._scope_generations == {}
+    assert loader._pending_projection_retirements == set()
+    assert sum(session.shutdown.await_count for session in sessions) == 100
+    loader.ap.workspace_service.get_execution_binding.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_directory_projection_keeps_matching_and_unaffected_mcp_scopes():
+    loader = MCPLoader(_app())
+    matching = _connected_session()
+    other_context = ExecutionContext(
+        instance_uuid='instance-a',
+        workspace_uuid='workspace-b',
+        placement_generation=1,
     )
+    unaffected = _connected_session(
+        name='other',
+        uuid='srv-2',
+        execution_context=other_context,
+    )
+    _register_session(loader, matching)
+    _register_session(loader, unaffected)
 
-    await session._lifecycle_loop_with_retry()
+    loader.reconcile_execution_projection(
+        'instance-a',
+        {'workspace-a': 1},
+        affected_workspace_uuids={'workspace-a'},
+    )
+    await asyncio.sleep(0)
 
-    session._init_remote_server.assert_awaited_once_with()
-    assert session.status == MCPSessionStatus.ERROR
-    assert session.error_message == 'Workspace execution binding is stale'
-    assert session._shutdown_event.is_set()
+    assert loader.get_session(TEST_EXECUTION_CONTEXT, 'docs') is matching
+    assert loader.get_session(other_context, 'other') is unaffected
+    assert loader._projection_reconcile_task is None
 
 
 @pytest.mark.asyncio

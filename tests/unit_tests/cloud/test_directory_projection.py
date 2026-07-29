@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime
 import logging
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 import sqlalchemy
@@ -181,6 +182,12 @@ def _delta(
 
 async def test_initial_snapshot_projects_core_owned_rows(projection_context):
     application, session_factory = projection_context
+    reconcile_execution_projection = Mock()
+    application.tool_mgr = SimpleNamespace(
+        mcp_tool_loader=SimpleNamespace(
+            reconcile_execution_projection=reconcile_execution_projection,
+        )
+    )
     service = DirectoryProjectionService(
         application,
         _Provider([_snapshot(1)]),
@@ -212,6 +219,11 @@ async def test_initial_snapshot_projects_core_owned_rows(projection_context):
     assert state is not None
     assert state.cursor == 1
     assert state.snapshot_coverage_cursor == 1
+    reconcile_execution_projection.assert_called_once_with(
+        INSTANCE_UUID,
+        {WORKSPACE_UUID: 1},
+        affected_workspace_uuids=None,
+    )
 
 
 async def test_same_cursor_equivocation_and_rollback_fail_closed(projection_context):
@@ -297,6 +309,12 @@ async def test_archived_and_absent_workspaces_are_execution_fenced(projection_co
 
 async def test_event_poll_fetches_workspace_delta_and_records_receipt(projection_context):
     application, session_factory = projection_context
+    reconcile_execution_projection = Mock()
+    application.tool_mgr = SimpleNamespace(
+        mcp_tool_loader=SimpleNamespace(
+            reconcile_execution_projection=reconcile_execution_projection,
+        )
+    )
     event = DirectoryEvent(
         cursor=2,
         uuid='40000000-0000-0000-0000-000000000001',
@@ -320,6 +338,7 @@ async def test_event_poll_fetches_workspace_delta_and_records_receipt(projection
     )
     service = DirectoryProjectionService(application, provider, INSTANCE_UUID)
     await service.initialize()
+    reconcile_execution_projection.reset_mock()
 
     await service.sync_once()
 
@@ -335,6 +354,11 @@ async def test_event_poll_fetches_workspace_delta_and_records_receipt(projection
     assert inbox.applied_at is not None
     assert provider.snapshot_calls == 1
     assert provider.delta_calls == 1
+    reconcile_execution_projection.assert_called_once_with(
+        INSTANCE_UUID,
+        {WORKSPACE_UUID: 1},
+        affected_workspace_uuids={WORKSPACE_UUID},
+    )
 
 
 async def test_directory_delta_does_not_skip_unfetched_event_cursors(projection_context):

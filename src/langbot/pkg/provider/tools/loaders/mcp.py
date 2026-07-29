@@ -233,8 +233,6 @@ class MCPToolCallTimeoutError(TimeoutError):
 class RuntimeMCPSession:
     """运行时 MCP 会话"""
 
-    _FENCE_POLL_INTERVAL = 5.0
-
     ap: app.Application
 
     server_name: str
@@ -361,15 +359,6 @@ class RuntimeMCPSession:
         )
         if binding.instance_uuid != self.execution_context.instance_uuid:
             raise WorkspaceInvariantError('MCP session instance does not match the active Workspace binding')
-
-    async def _monitor_execution_fence(self) -> None:
-        """Poll the placement fence while an MCP transport is idle."""
-
-        while not self._shutdown_event.is_set():
-            await asyncio.sleep(self._FENCE_POLL_INTERVAL)
-            if self._shutdown_event.is_set():
-                return
-            await self._assert_execution_active()
 
     async def _sleep_with_execution_fence(self, delay: float) -> None:
         """Back off without reconnecting after the captured placement expires."""
@@ -576,16 +565,13 @@ class RuntimeMCPSession:
                 monitor_task = asyncio.create_task(self._box_stdio_runtime.monitor_process_health())
                 shutdown_task = asyncio.create_task(self._shutdown_event.wait())
                 reconnect_task = asyncio.create_task(self._reconnect_event.wait())
-                fence_task = asyncio.create_task(self._monitor_execution_fence())
                 done, pending = await asyncio.wait(
-                    [shutdown_task, monitor_task, reconnect_task, fence_task],
+                    [shutdown_task, monitor_task, reconnect_task],
                     return_when=asyncio.FIRST_COMPLETED,
                 )
                 for task in pending:
                     task.cancel()
                 await asyncio.gather(*pending, return_exceptions=True)
-                if fence_task in done and not self._shutdown_event.is_set():
-                    fence_task.result()
                 if reconnect_task in done and not self._shutdown_event.is_set():
                     self._reconnect_event.clear()
                     self.ap.logger.info(
@@ -621,16 +607,13 @@ class RuntimeMCPSession:
             else:
                 shutdown_task = asyncio.create_task(self._shutdown_event.wait())
                 reconnect_task = asyncio.create_task(self._reconnect_event.wait())
-                fence_task = asyncio.create_task(self._monitor_execution_fence())
                 done, pending = await asyncio.wait(
-                    [shutdown_task, reconnect_task, fence_task],
+                    [shutdown_task, reconnect_task],
                     return_when=asyncio.FIRST_COMPLETED,
                 )
                 for task in pending:
                     task.cancel()
                 await asyncio.gather(*pending, return_exceptions=True)
-                if fence_task in done and not self._shutdown_event.is_set():
-                    fence_task.result()
                 if reconnect_task in done and not self._shutdown_event.is_set():
                     self._reconnect_event.clear()
                     self.ap.logger.info(
@@ -1550,6 +1533,8 @@ class MCPLoader(loader.ToolLoader):
             set[asyncio.Task],
         ] = {}
         self._host_dispatch_tasks: set[asyncio.Task] = set()
+        self._pending_projection_retirements: set[tuple[str, str, int]] = set()
+        self._projection_reconcile_task: asyncio.Task[None] | None = None
         config = getattr(getattr(ap, 'instance_config', None), 'data', {})
         mcp_config = config.get('mcp', {}) if isinstance(config, dict) else {}
         raw_lifecycle_concurrency = mcp_config.get('lifecycle_concurrency', 16) if isinstance(mcp_config, dict) else 16
@@ -1691,7 +1676,59 @@ class MCPLoader(loader.ToolLoader):
         keys = tuple(self._session_keys_by_scope.pop(scope_key, ()))
         sessions = [session for key in keys if (session := self._sessions.pop(key, None)) is not None]
         await self._shutdown_sessions(sessions)
-        self._scope_generations.pop(scope_key[:2], None)
+        if self._scope_generations.get(scope_key[:2]) == scope_key[2]:
+            self._scope_generations.pop(scope_key[:2], None)
+
+    def reconcile_execution_projection(
+        self,
+        instance_uuid: str,
+        active_generations: typing.Mapping[str, int],
+        *,
+        affected_workspace_uuids: typing.Iterable[str] | None = None,
+    ) -> None:
+        """Queue stale MCP scopes for one coalesced, bounded cleanup worker."""
+
+        affected = None if affected_workspace_uuids is None else set(affected_workspace_uuids)
+        for workspace_scope, generation in tuple(self._scope_generations.items()):
+            scoped_instance_uuid, workspace_uuid = workspace_scope
+            if scoped_instance_uuid != instance_uuid:
+                continue
+            if affected is not None and workspace_uuid not in affected:
+                continue
+            if active_generations.get(workspace_uuid) == generation:
+                continue
+            self._pending_projection_retirements.add((*workspace_scope, generation))
+
+        if not self._pending_projection_retirements:
+            return
+        if self._projection_reconcile_task is not None and not self._projection_reconcile_task.done():
+            return
+        task = asyncio.create_task(
+            self._drain_projection_retirements(),
+            name='mcp-projection-reconcile',
+        )
+        self._projection_reconcile_task = task
+        task.add_done_callback(self._projection_reconcile_done)
+
+    async def _drain_projection_retirements(self) -> None:
+        while self._pending_projection_retirements:
+            scope_key = next(iter(self._pending_projection_retirements))
+            self._pending_projection_retirements.discard(scope_key)
+            await self._retire_runtime_scope(scope_key)
+
+    def _projection_reconcile_done(
+        self,
+        completed: asyncio.Task[None],
+    ) -> None:
+        if self._projection_reconcile_task is completed:
+            self._projection_reconcile_task = None
+        if completed.cancelled():
+            return
+        exception = completed.exception()
+        if exception is not None:
+            self.ap.logger.error(
+                f'MCP projection reconciliation failed: {exception}',
+            )
 
     async def _observe_execution_context(
         self,
@@ -1712,6 +1749,13 @@ class MCPLoader(loader.ToolLoader):
 
     async def _reset_runtime_state(self) -> None:
         """Cancel host tasks and close sessions before reload or shutdown."""
+
+        projection_task = self._projection_reconcile_task
+        self._projection_reconcile_task = None
+        self._pending_projection_retirements.clear()
+        if projection_task is not None and not projection_task.done():
+            projection_task.cancel()
+            await asyncio.gather(projection_task, return_exceptions=True)
 
         dispatch_tasks = tuple(self._host_dispatch_tasks)
         self._host_dispatch_tasks.clear()

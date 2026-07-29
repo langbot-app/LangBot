@@ -259,6 +259,7 @@ class DirectoryProjectionService:
             await session.flush()
 
         await self._reconcile_entitlement_snapshot_set(snapshot)
+        self._publish_runtime_execution_projection(snapshot.workspaces)
         self._record_success()
         self._consumer_cursor = snapshot.cursor
 
@@ -349,9 +350,48 @@ class DirectoryProjectionService:
             returned.values(),
             requested_workspace_uuids=requested,
         )
+        self._publish_runtime_execution_projection(
+            returned.values(),
+            affected_workspace_uuids=requested,
+        )
         if projection_caught_up:
             self._record_success()
         self._consumer_cursor = batch.cursor
+
+    def _publish_runtime_execution_projection(
+        self,
+        workspaces: Iterable[DirectoryWorkspace],
+        *,
+        affected_workspace_uuids: set[str] | None = None,
+    ) -> None:
+        """Retire stale runtime scopes without per-session database polling.
+
+        The signed directory transaction is already committed when this hook
+        runs. Runtime calls still validate the database fence before and after
+        side effects; this notification only releases idle resources promptly.
+        """
+
+        tool_manager = getattr(self.ap, 'tool_mgr', None)
+        mcp_loader = getattr(tool_manager, 'mcp_tool_loader', None)
+        reconcile = getattr(mcp_loader, 'reconcile_execution_projection', None)
+        if not callable(reconcile):
+            return
+        active_generations = {
+            workspace.uuid: workspace.execution_generation
+            for workspace in workspaces
+            if workspace.status == WorkspaceStatus.ACTIVE.value
+        }
+        try:
+            reconcile(
+                self.instance_uuid,
+                active_generations,
+                affected_workspace_uuids=affected_workspace_uuids,
+            )
+        except Exception:
+            # Runtime retirement is a resource cleanup path, not an execution
+            # admission boundary. Database-backed call-time fences remain
+            # authoritative if a local runtime hook fails.
+            self.ap.logger.exception('Failed to publish the Cloud execution projection to MCP runtimes')
 
     async def _reconcile_entitlement_snapshot_set(
         self,

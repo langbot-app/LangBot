@@ -397,6 +397,7 @@ def test_evaluate_gate_detects_restart_circuit_and_stuck_launch() -> None:
                 0,
                 **{
                     f'{prefix}.active_launches': 1,
+                    f'{prefix}.gate_waiters': 2,
                     f'{prefix}.half_open_probe_inflight': 1,
                     f'{prefix}.open_remaining_seconds': 60,
                     f'{prefix}.circuit_open_total': 0,
@@ -406,6 +407,7 @@ def test_evaluate_gate_detects_restart_circuit_and_stuck_launch() -> None:
                 60,
                 **{
                     f'{prefix}.active_launches': 1,
+                    f'{prefix}.gate_waiters': 2,
                     f'{prefix}.half_open_probe_inflight': 1,
                     f'{prefix}.open_remaining_seconds': 1,
                     f'{prefix}.circuit_open_total': 1,
@@ -422,8 +424,41 @@ def test_evaluate_gate_detects_restart_circuit_and_stuck_launch() -> None:
 
     assert any('circuit_open_total by 1' in failure for failure in result.failures)
     assert any('active_launches above zero' in failure for failure in result.failures)
+    assert any('gate_waiters above zero' in failure for failure in result.failures)
     assert any('half_open_probe_inflight above zero' in failure for failure in result.failures)
     assert any('open_remaining_seconds above zero' in failure for failure in result.failures)
+
+
+def test_evaluate_gate_detects_stuck_mcp_projection_cleanup() -> None:
+    prefix = 'body.resources.runtimes'
+    state = _state(
+        'endpoint',
+        [
+            _sample(
+                0,
+                **{
+                    f'{prefix}.mcp_projection_retirements': 3,
+                    f'{prefix}.mcp_projection_reconcile_active': 1,
+                },
+            ),
+            _sample(
+                60,
+                **{
+                    f'{prefix}.mcp_projection_retirements': 1,
+                    f'{prefix}.mcp_projection_reconcile_active': 1,
+                },
+            ),
+        ],
+    )
+
+    result = soak.evaluate_gate(
+        [state],
+        analysis_start_seconds=0,
+        thresholds=_thresholds(),
+    )
+
+    assert any('mcp_projection_retirements above zero' in failure for failure in result.failures)
+    assert any('mcp_projection_reconcile_active above zero' in failure for failure in result.failures)
 
 
 def test_evaluate_gate_detects_event_loop_stall_and_sustained_lag() -> None:

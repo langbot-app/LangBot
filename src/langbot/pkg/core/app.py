@@ -231,6 +231,14 @@ class Application:
             'bots': len(getattr(self.platform_mgr, '_bots_by_key', {})),
             'pipelines': len(getattr(self.pipeline_mgr, '_pipelines_by_key', {})),
             'knowledge_bases': len(getattr(self.rag_mgr, 'knowledge_bases', {})),
+            'message_aggregation_buffers': len(getattr(self.msg_aggregator, 'buffers', {})),
+            'message_aggregation_scopes': len(
+                getattr(
+                    self.msg_aggregator,
+                    '_buffer_counts_by_scope',
+                    {},
+                )
+            ),
             'plugin_installations': len(
                 getattr(
                     self.plugin_connector,
@@ -245,6 +253,18 @@ class Application:
                 'mcp_sessions': len(getattr(mcp_loader, '_sessions', {})),
                 'mcp_host_tasks': len(getattr(mcp_loader, '_hosted_mcp_tasks', ())),
                 'mcp_dispatch_tasks': len(getattr(mcp_loader, '_host_dispatch_tasks', ())),
+                'mcp_projection_retirements': len(getattr(mcp_loader, '_pending_projection_retirements', ())),
+                'mcp_projection_reconcile_active': int(
+                    (
+                        projection_task := getattr(
+                            mcp_loader,
+                            '_projection_reconcile_task',
+                            None,
+                        )
+                    )
+                    is not None
+                    and not projection_task.done()
+                ),
             }
         )
 

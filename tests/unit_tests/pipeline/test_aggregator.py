@@ -876,6 +876,57 @@ class TestMessageAggregatorWorkspaceIsolation:
         await agg.flush_all()
 
     @pytest.mark.asyncio
+    async def test_new_buffer_uses_scope_counter_without_global_scan(self):
+        class NoGlobalIterationDict(dict):
+            def __iter__(self):
+                raise AssertionError('aggregation admission scanned all buffers')
+
+            def items(self):
+                raise AssertionError('aggregation admission scanned all buffers')
+
+            def values(self):
+                raise AssertionError('aggregation admission scanned all buffers')
+
+        app = make_aggregator_app()
+        enable_aggregation(app)
+        agg = get_aggregator_module().MessageAggregator(app)
+        agg.max_buffers = 2_000
+        agg.max_buffers_per_workspace = 2_000
+        existing = {
+            (
+                'instance-test',
+                f'workspace-{index}',
+                1,
+                'bot',
+                'pipeline',
+                'person',
+                index,
+            ): object()
+            for index in range(1_000)
+        }
+        agg.buffers = NoGlobalIterationDict(existing)
+        agg._buffer_counts_by_scope = {key[:3]: 1 for key in existing}
+        context = execution_context(
+            'workspace-target',
+            pipeline_uuid='test-pipeline',
+        )
+
+        await agg.add_message(**scoped_message_kwargs(context))
+
+        key = aggregation_key(
+            context,
+            pipeline_uuid='test-pipeline',
+        )
+        assert key in agg.buffers
+        assert agg._buffer_counts_by_scope[key[:3]] == 1
+        timer_task = agg.buffers[key].timer_task
+        assert timer_task is not None
+        timer_task.cancel()
+        await asyncio.gather(timer_task, return_exceptions=True)
+        await agg._flush_buffer(key, context)
+        assert key[:3] not in agg._buffer_counts_by_scope
+
+    @pytest.mark.asyncio
     async def test_same_launcher_in_two_bots_uses_separate_buffers(self):
         app = make_aggregator_app()
         enable_aggregation(app)

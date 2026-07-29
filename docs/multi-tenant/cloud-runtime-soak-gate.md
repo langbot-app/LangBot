@@ -89,7 +89,9 @@ uv run python scripts/cloud_runtime_soak.py \
 - event-loop recent p95 不超过 `--max-event-loop-p95-lag-ms`。
 - blocking executor `pending` 至少回到过零；不能整个尾段持续积压。
 - Plugin Runtime restart coordinator 的 active launch、half-open probe 和
-  circuit open remaining time 必须回到零。
+  circuit open remaining time 必须回到零，`gate_waiters` 必须至少归零一次。
+- Core 的 MCP projection retirement queue/worker 和 message aggregation
+  buffer/scope 必须至少归零一次。
 - telemetry、QueryPool、MCP host/dispatch、Box creating/closing/background 等临时 gauge 不能继续增长。
 
 内存判定要求“增长量”和“斜率”同时越界，避免几 MiB allocator/page-cache 噪声在短窗口被外推成很大的每小时斜率。最终报告仍保留实际增长与斜率，人工审查时不能只看 verdict。

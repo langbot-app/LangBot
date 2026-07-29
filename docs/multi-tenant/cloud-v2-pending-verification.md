@@ -16,7 +16,8 @@
 
 ## 1. 当前已形成的交付基线
 
-- LangBot Core 和 Plugin SDK 的全量测试、Ruff、`git diff --check` 已通过。
+- LangBot Core 全量 `2811 passed, 33 skipped`，Plugin SDK 全量
+  `1317 passed`；两仓 Ruff、`git diff --check` 已通过。
 - Plugin Runtime 和 Box Runtime 的公开健康接口、event-loop lag 与有界
   blocking executor 指标已经过真实进程短时验证。
 - 仓库 Dockerfile 构建的 Linux/cgroup v2 短时探针已证明 CPU、memory、
@@ -24,8 +25,12 @@
 - PostgreSQL 16 + RLS 的 1,000 Workspace 真实启动测试，以及 5,000
   Workspace 三代替换合成探针已通过。
 - Core 已精确钉住 Plugin SDK 提交
-  `a5a96b302a5808af84bbdd28833ce050176f87e9`。最终验证必须使用包含该提交的
+  `c7893f8f94e83cb09ebcc98e25490fa699b0fb69`。最终验证必须使用包含该提交的
   Core、Plugin Runtime 和 Box Runtime 镜像，不能混用旧 SDK。
+- 独立资源复核已经移除 Cloud MCP 每会话 5 秒查询执行绑定的轮询，改由签名目录
+  投影提交后向一个合并回收任务发布代次变化；工具与资源调用前后仍使用数据库
+  execution fence。Plugin restart 冷却等待者、MCP 投影回收、消息聚合 buffer/scope
+  均已纳入健康快照和 soak 归零门禁。
 
 以上结果是进入生产候选验证的前提，不是 SaaS 上线批准。
 
@@ -126,7 +131,13 @@
    一个副本追平不能使另一个副本跳过本地 cache 刷新。
 7. 同时使大量 plugin worker 因系统性故障退出，证明 restart launch 全局并发受限、
    失败阈值触发 Runtime circuit、冷却后只有一个 half-open probe，且 probe 未稳定前
-   其他 installation 不会继续重启；24 小时门禁必须把 circuit 打开判为失败。
+   其他 installation 不会继续重启；冷却计时器/状态等待者数量不得超过全局 restart
+   并发，取消 probe 不得把 circuit 永久卡在 half-open；24 小时门禁必须把 circuit
+   打开或 `gate_waiters` 未归零判为失败。
+8. 使用大量空闲 remote MCP session 做 generation 切换，证明目录投影只创建一个
+   合并回收任务，不产生每 session 周期数据库查询、计时器或同时唤醒；旧 session
+   最终关闭，`mcp_projection_retirements` 和
+   `mcp_projection_reconcile_active` 在冷却期归零。
 
 ### V-06：套餐、Box 与 stdio MCP
 
@@ -160,6 +171,8 @@ PostgreSQL/pgvector 和代表性 Workspace 配置分布，测量：
 - 空 Workspace、活跃 Workspace、每个启用插件和每个 Pro sandbox 的边际
   RSS、线程、文件描述符、连接和 PostgreSQL pool 成本；
 - 启动、目录重放、批量 reconcile 和故障恢复的耗时与峰值；
+- remote MCP 数量增加及目录 generation 批量切换时的数据库 QPS、回收队列和
+  event-loop lag，确认不存在与 session 数量成比例的空闲轮询；
 - 单实例可批准的 Workspace、活跃 Bot、plugin worker 和 sandbox 上限。
 
 容量上限必须写入生产配置与告警，不能只保留在测试报告中。
@@ -173,13 +186,15 @@ PostgreSQL/pgvector 和代表性 Workspace 配置分布，测量：
 2. plugin reconcile、依赖准备、调用、崩溃与重启；
 3. Dashboard/Embed/平台 WebSocket 建连、突发消息和断连；HTTP Bot 覆盖
    高基数 session/idempotency、硬容量拒绝、空闲回收及 callback 堵塞；
+   remote MCP 覆盖大量空闲连接、批量 generation 切换和合并回收；
 4. Box session、文件同步、并发 exec、输出与清理；
 5. PostgreSQL pool 接近容量、事务超时和恢复；
 6. Core、Plugin Runtime、Box 分别 SIGTERM 和恢复。
 
 最后至少保留 30 分钟无测试流量冷却。任一健康失败、OOM/memory pressure、
 PID limit、blocking executor rejection、超阈值 CPU throttling/event-loop lag、
-冷却尾段内存持续增长或临时 gauge 不回落都判为失败。
+冷却尾段内存持续增长，或 Plugin restart `gate_waiters`、MCP 投影回收、
+消息聚合 buffer/scope 等临时 gauge 不回落都判为失败。
 
 必须归档：
 

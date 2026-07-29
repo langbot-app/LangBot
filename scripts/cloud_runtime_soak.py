@@ -76,8 +76,13 @@ RUNTIME_FAILURE_COUNTER_SUFFIXES = ('.restart_coordinator.circuit_open_total',)
 DRAIN_GAUGE_SUFFIXES = (
     '.blocking_executor.pending',
     '.restart_coordinator.active_launches',
+    '.restart_coordinator.gate_waiters',
     '.restart_coordinator.half_open_probe_inflight',
     '.restart_coordinator.open_remaining_seconds',
+    '.resources.runtimes.mcp_projection_retirements',
+    '.resources.runtimes.mcp_projection_reconcile_active',
+    '.resources.runtimes.message_aggregation_buffers',
+    '.resources.runtimes.message_aggregation_scopes',
 )
 TRANSIENT_GAUGE_SUFFIXES = (
     '.resources.telemetry_tasks',

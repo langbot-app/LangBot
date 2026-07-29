@@ -71,6 +71,10 @@ class MessageAggregator:
     def __init__(self, ap: app.Application):
         self.ap = ap
         self.buffers = {}
+        self._buffer_counts_by_scope: dict[
+            tuple[str, str, int],
+            int,
+        ] = {}
         self.lock = asyncio.Lock()
         concurrency = self.ap.instance_config.data.get('concurrency', {})
         self.max_buffers = max(int(concurrency.get('pending_queries', 1000)), 1)
@@ -194,12 +198,14 @@ class MessageAggregator:
         async with self.lock:
             buffer = self.buffers.get(aggregation_key)
             if buffer is None:
-                workspace_buffer_count = sum(
-                    1
-                    for key in self.buffers
-                    if key[0] == execution_context.instance_uuid
-                    and key[1] == execution_context.workspace_uuid
-                    and key[2] == execution_context.placement_generation
+                scope_key = (
+                    execution_context.instance_uuid,
+                    execution_context.workspace_uuid,
+                    execution_context.placement_generation,
+                )
+                workspace_buffer_count = self._buffer_counts_by_scope.get(
+                    scope_key,
+                    0,
                 )
                 if len(self.buffers) >= self.max_buffers or workspace_buffer_count >= self.max_buffers_per_workspace:
                     bypass_aggregation = True
@@ -210,6 +216,7 @@ class MessageAggregator:
                         messages=[pending_msg],
                     )
                     self.buffers[aggregation_key] = buffer
+                    self._buffer_counts_by_scope[scope_key] = workspace_buffer_count + 1
             else:
                 if buffer.execution_context != execution_context:
                     raise ExecutionContextMismatchError('Aggregation buffer ExecutionContext changed for the same key')
@@ -282,6 +289,12 @@ class MessageAggregator:
             if buffer.execution_context != execution_context:
                 raise ExecutionContextMismatchError('Timer ExecutionContext does not match the aggregation buffer')
             self.buffers.pop(aggregation_key)
+            scope_key = aggregation_key[:3]
+            scope_count = self._buffer_counts_by_scope.get(scope_key, 0)
+            if scope_count <= 1:
+                self._buffer_counts_by_scope.pop(scope_key, None)
+            else:
+                self._buffer_counts_by_scope[scope_key] = scope_count - 1
 
         if not buffer.messages:
             return
