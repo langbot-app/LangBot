@@ -15,6 +15,20 @@ from ..context import ExecutionContext
 from .tenant import TenantContext, require_workspace_uuid
 
 
+_DEFAULT_MONITORING_PAGE_ROWS = 1000
+_DEFAULT_MONITORING_EXPORT_ROWS = 10000
+_DEFAULT_MONITORING_DETAIL_ROWS = 2000
+_DEFAULT_MONITORING_TIMESERIES_BUCKETS = 1000
+_DEFAULT_MONITORING_MAX_OFFSET = 1000000
+_HARD_MAX_MONITORING_PAGE_ROWS = 5000
+_HARD_MAX_MONITORING_EXPORT_ROWS = 50000
+_HARD_MAX_MONITORING_DETAIL_ROWS = 10000
+_HARD_MAX_MONITORING_TIMESERIES_BUCKETS = 10000
+_HARD_MAX_MONITORING_OFFSET = 10000000
+_DEFAULT_CLEANUP_BATCHES_PER_TABLE = 4
+_HARD_MAX_CLEANUP_BATCHES_PER_TABLE = 100
+
+
 def _workspace_transaction(method):
     """Run an explicit service entrypoint in one Workspace transaction."""
 
@@ -38,6 +52,88 @@ class MonitoringService:
     def __init__(self, ap: app.Application) -> None:
         self.ap = ap
 
+    def _configured_query_limit(self, name: str, default: int, hard_max: int) -> int:
+        config = (
+            getattr(getattr(self.ap, 'instance_config', None), 'data', {}).get('monitoring', {}).get('query_limits', {})
+        )
+        try:
+            value = int(config.get(name, default))
+        except (TypeError, ValueError):
+            value = default
+        return min(max(value, 1), hard_max)
+
+    def normalize_page_window(self, limit: int, offset: int = 0) -> tuple[int, int]:
+        """Clamp tenant-controlled pagination before constructing a DB query."""
+
+        page_cap = self._configured_query_limit(
+            'page_rows',
+            _DEFAULT_MONITORING_PAGE_ROWS,
+            _HARD_MAX_MONITORING_PAGE_ROWS,
+        )
+        offset_cap = self._configured_query_limit(
+            'max_offset',
+            _DEFAULT_MONITORING_MAX_OFFSET,
+            _HARD_MAX_MONITORING_OFFSET,
+        )
+        try:
+            normalized_limit = int(limit)
+        except (TypeError, ValueError):
+            normalized_limit = 100
+        try:
+            normalized_offset = int(offset)
+        except (TypeError, ValueError):
+            normalized_offset = 0
+        return (
+            min(max(normalized_limit, 1), page_cap),
+            min(max(normalized_offset, 0), offset_cap),
+        )
+
+    def normalize_export_limit(self, limit: int) -> int:
+        """Clamp exports that are currently materialized as an in-memory list."""
+
+        export_cap = self._configured_query_limit(
+            'export_rows',
+            _DEFAULT_MONITORING_EXPORT_ROWS,
+            _HARD_MAX_MONITORING_EXPORT_ROWS,
+        )
+        try:
+            normalized = int(limit)
+        except (TypeError, ValueError):
+            normalized = _DEFAULT_MONITORING_EXPORT_ROWS
+        return min(max(normalized, 1), export_cap)
+
+    def _detail_limit(self) -> int:
+        return self._configured_query_limit(
+            'detail_rows',
+            _DEFAULT_MONITORING_DETAIL_ROWS,
+            _HARD_MAX_MONITORING_DETAIL_ROWS,
+        )
+
+    def _timeseries_bucket_limit(self) -> int:
+        return self._configured_query_limit(
+            'timeseries_buckets',
+            _DEFAULT_MONITORING_TIMESERIES_BUCKETS,
+            _HARD_MAX_MONITORING_TIMESERIES_BUCKETS,
+        )
+
+    @staticmethod
+    def _token_bucket_expression(
+        timestamp_column: sqlalchemy.Column,
+        *,
+        bucket: str,
+        dialect_name: str,
+    ):
+        """Build a server-side hour/day bucket for supported business databases."""
+
+        if bucket not in {'hour', 'day'}:
+            bucket = 'hour'
+        if dialect_name == 'postgresql':
+            return sqlalchemy.func.date_trunc(bucket, timestamp_column)
+        if dialect_name == 'sqlite':
+            bucket_format = '%Y-%m-%d %H:00' if bucket == 'hour' else '%Y-%m-%d'
+            return sqlalchemy.func.strftime(bucket_format, timestamp_column)
+        raise RuntimeError(f'Unsupported monitoring database dialect: {dialect_name}')
+
     @staticmethod
     def _require_write_context(context: ExecutionContext | None) -> str:
         """Reject background/runtime writes that lost their execution fence."""
@@ -57,6 +153,7 @@ class MonitoringService:
         context: ExecutionContext,
         retention_days: int,
         batch_size: int = 1000,
+        max_batches_per_table: int | None = None,
     ) -> dict[str, int]:
         """Delete monitoring records older than the specified retention period.
 
@@ -72,6 +169,24 @@ class MonitoringService:
             raise ValueError('retention_days must be >= 1')
         if batch_size < 1:
             raise ValueError('batch_size must be >= 1')
+        if max_batches_per_table is None:
+            cleanup_config = (
+                getattr(getattr(self.ap, 'instance_config', None), 'data', {})
+                .get('monitoring', {})
+                .get('auto_cleanup', {})
+            )
+            max_batches_per_table = cleanup_config.get(
+                'max_batches_per_table_per_run',
+                _DEFAULT_CLEANUP_BATCHES_PER_TABLE,
+            )
+        try:
+            max_batches_per_table = int(max_batches_per_table)
+        except (TypeError, ValueError):
+            max_batches_per_table = _DEFAULT_CLEANUP_BATCHES_PER_TABLE
+        max_batches_per_table = min(
+            max(max_batches_per_table, 1),
+            _HARD_MAX_CLEANUP_BATCHES_PER_TABLE,
+        )
 
         cutoff = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None) - datetime.timedelta(
             days=retention_days
@@ -132,6 +247,7 @@ class MonitoringService:
                     pk_column=pk_column,
                     cutoff=cutoff,
                     batch_size=batch_size,
+                    max_batches=max_batches_per_table,
                 )
             return deleted_counts
 
@@ -157,11 +273,12 @@ class MonitoringService:
         pk_column: sqlalchemy.Column,
         cutoff: datetime.datetime,
         batch_size: int,
+        max_batches: int,
     ) -> int:
         workspace_uuid = self._require_write_context(context)
         deleted_total = 0
 
-        while True:
+        for _batch_number in range(max_batches):
 
             async def delete_batch() -> tuple[int, int]:
                 select_result = await self.ap.persistence_mgr.execute_async(
@@ -739,6 +856,8 @@ class MonitoringService:
         """
         LLMCall = persistence_monitoring.MonitoringLLMCall
         workspace_uuid = require_workspace_uuid(context)
+        if bucket not in {'hour', 'day'}:
+            bucket = 'hour'
 
         conditions = [LLMCall.workspace_uuid == workspace_uuid]
         if bot_ids:
@@ -812,21 +931,29 @@ class MonitoringService:
         }
 
         # ---- Per-model breakdown ----
-        by_model_query = _apply(
-            sqlalchemy.select(
-                LLMCall.model_name,
-                sqlalchemy.func.count(LLMCall.id),
-                sqlalchemy.func.coalesce(sqlalchemy.func.sum(LLMCall.input_tokens), 0),
-                sqlalchemy.func.coalesce(sqlalchemy.func.sum(LLMCall.output_tokens), 0),
-                sqlalchemy.func.coalesce(sqlalchemy.func.sum(LLMCall.total_tokens), 0),
-                sqlalchemy.func.coalesce(sqlalchemy.func.sum(LLMCall.duration), 0),
-                sqlalchemy.func.coalesce(sqlalchemy.func.sum(LLMCall.cost), 0.0),
-                sqlalchemy.func.sum(sqlalchemy.case((LLMCall.status == 'error', 1), else_=0)),
-            ).group_by(LLMCall.model_name)
+        model_total_tokens = sqlalchemy.func.coalesce(sqlalchemy.func.sum(LLMCall.total_tokens), 0)
+        model_limit, _unused_offset = self.normalize_page_window(_HARD_MAX_MONITORING_PAGE_ROWS)
+        by_model_query = (
+            _apply(
+                sqlalchemy.select(
+                    LLMCall.model_name,
+                    sqlalchemy.func.count(LLMCall.id),
+                    sqlalchemy.func.coalesce(sqlalchemy.func.sum(LLMCall.input_tokens), 0),
+                    sqlalchemy.func.coalesce(sqlalchemy.func.sum(LLMCall.output_tokens), 0),
+                    model_total_tokens,
+                    sqlalchemy.func.coalesce(sqlalchemy.func.sum(LLMCall.duration), 0),
+                    sqlalchemy.func.coalesce(sqlalchemy.func.sum(LLMCall.cost), 0.0),
+                    sqlalchemy.func.sum(sqlalchemy.case((LLMCall.status == 'error', 1), else_=0)),
+                ).group_by(LLMCall.model_name)
+            )
+            .order_by(model_total_tokens.desc())
+            .limit(model_limit + 1)
         )
         by_model_result = await self.ap.persistence_mgr.execute_async(by_model_query)
+        by_model_rows = by_model_result.all()
+        by_model_truncated = len(by_model_rows) > model_limit
         by_model = []
-        for mrow in by_model_result.all():
+        for mrow in by_model_rows[:model_limit]:
             (
                 model_name,
                 m_calls,
@@ -851,44 +978,59 @@ class MonitoringService:
                     'avg_duration_ms': int((m_duration or 0) / m_calls) if m_calls > 0 else 0,
                 }
             )
-        by_model.sort(key=lambda x: x['total_tokens'], reverse=True)
-
         # ---- Time-bucketed series ----
-        # Use a DB-agnostic bucketing approach: fetch (timestamp, tokens) rows and
-        # aggregate in Python. The window is bounded by the time filter, so this is
-        # cheap for typical dashboard ranges (hours/days).
-        series_query = _apply(
-            sqlalchemy.select(
-                LLMCall.timestamp,
-                LLMCall.input_tokens,
-                LLMCall.output_tokens,
-                LLMCall.total_tokens,
-            ).order_by(LLMCall.timestamp.asc())
+        # Aggregate before materialization. Requests may omit their time window,
+        # so fetching every historical call and bucketing in Python is unsafe.
+        engine = self.ap.persistence_mgr.get_db_engine()
+        bucket_expression = self._token_bucket_expression(
+            LLMCall.timestamp,
+            bucket=bucket,
+            dialect_name=engine.dialect.name,
+        )
+        bucket_limit = self._timeseries_bucket_limit()
+        series_query = (
+            _apply(
+                sqlalchemy.select(
+                    bucket_expression.label('bucket'),
+                    sqlalchemy.func.coalesce(sqlalchemy.func.sum(LLMCall.input_tokens), 0),
+                    sqlalchemy.func.coalesce(sqlalchemy.func.sum(LLMCall.output_tokens), 0),
+                    sqlalchemy.func.coalesce(sqlalchemy.func.sum(LLMCall.total_tokens), 0),
+                    sqlalchemy.func.count(LLMCall.id),
+                ).group_by(bucket_expression)
+            )
+            .order_by(bucket_expression.desc())
+            .limit(bucket_limit + 1)
         )
         series_result = await self.ap.persistence_mgr.execute_async(series_query)
 
         bucket_fmt = '%Y-%m-%d %H:00' if bucket == 'hour' else '%Y-%m-%d'
-        buckets: dict[str, dict] = {}
-        for srow in series_result.all():
-            ts, s_in, s_out, s_total = srow
-            if ts is None:
+        series_rows = series_result.all()
+        timeseries_truncated = len(series_rows) > bucket_limit
+        timeseries = []
+        for bucket_value, s_in, s_out, s_total, calls in reversed(series_rows[:bucket_limit]):
+            if bucket_value is None:
                 continue
-            key = ts.strftime(bucket_fmt)
-            b = buckets.setdefault(
-                key,
-                {'bucket': key, 'input_tokens': 0, 'output_tokens': 0, 'total_tokens': 0, 'calls': 0},
+            bucket_key = (
+                bucket_value.strftime(bucket_fmt)
+                if isinstance(bucket_value, (datetime.datetime, datetime.date))
+                else str(bucket_value)
             )
-            b['input_tokens'] += int(s_in or 0)
-            b['output_tokens'] += int(s_out or 0)
-            b['total_tokens'] += int(s_total or 0)
-            b['calls'] += 1
-
-        timeseries = [buckets[k] for k in sorted(buckets.keys())]
+            timeseries.append(
+                {
+                    'bucket': bucket_key,
+                    'input_tokens': int(s_in or 0),
+                    'output_tokens': int(s_out or 0),
+                    'total_tokens': int(s_total or 0),
+                    'calls': int(calls or 0),
+                }
+            )
 
         return {
             'summary': summary,
             'by_model': by_model,
+            'by_model_truncated': by_model_truncated,
             'timeseries': timeseries,
+            'timeseries_truncated': timeseries_truncated,
             'bucket': bucket,
         }
 
@@ -904,6 +1046,7 @@ class MonitoringService:
         offset: int = 0,
     ) -> tuple[list[dict], int]:
         """Get messages with filters"""
+        limit, offset = self.normalize_page_window(limit, offset)
         workspace_uuid = require_workspace_uuid(context)
         conditions = [persistence_monitoring.MonitoringMessage.workspace_uuid == workspace_uuid]
 
@@ -958,6 +1101,7 @@ class MonitoringService:
         offset: int = 0,
     ) -> tuple[list[dict], int]:
         """Get LLM calls with filters"""
+        limit, offset = self.normalize_page_window(limit, offset)
         workspace_uuid = require_workspace_uuid(context)
         conditions = [persistence_monitoring.MonitoringLLMCall.workspace_uuid == workspace_uuid]
 
@@ -1012,6 +1156,7 @@ class MonitoringService:
         offset: int = 0,
     ) -> tuple[list[dict], int]:
         """Get tool calls with filters"""
+        limit, offset = self.normalize_page_window(limit, offset)
         workspace_uuid = require_workspace_uuid(context)
         conditions = [persistence_monitoring.MonitoringToolCall.workspace_uuid == workspace_uuid]
 
@@ -1064,6 +1209,7 @@ class MonitoringService:
         offset: int = 0,
     ) -> tuple[list[dict], int]:
         """Get embedding calls with filters"""
+        limit, offset = self.normalize_page_window(limit, offset)
         workspace_uuid = require_workspace_uuid(context)
         conditions = [persistence_monitoring.MonitoringEmbeddingCall.workspace_uuid == workspace_uuid]
 
@@ -1116,6 +1262,7 @@ class MonitoringService:
         offset: int = 0,
     ) -> tuple[list[dict], int]:
         """Get sessions with filters"""
+        limit, offset = self.normalize_page_window(limit, offset)
         workspace_uuid = require_workspace_uuid(context)
         conditions = [persistence_monitoring.MonitoringSession.workspace_uuid == workspace_uuid]
 
@@ -1171,6 +1318,7 @@ class MonitoringService:
         offset: int = 0,
     ) -> tuple[list[dict], int]:
         """Get errors with filters"""
+        limit, offset = self.normalize_page_window(limit, offset)
         workspace_uuid = require_workspace_uuid(context)
         conditions = [persistence_monitoring.MonitoringError.workspace_uuid == workspace_uuid]
 
@@ -1218,8 +1366,9 @@ class MonitoringService:
         context: TenantContext,
         session_id: str,
     ) -> dict:
-        """Get detailed analysis for a specific session"""
+        """Get bounded session details with full statistics computed in SQL."""
         workspace_uuid = require_workspace_uuid(context)
+        detail_limit = self._detail_limit()
         # Get session info
         session_query = sqlalchemy.select(persistence_monitoring.MonitoringSession).where(
             persistence_monitoring.MonitoringSession.workspace_uuid == workspace_uuid,
@@ -1236,60 +1385,99 @@ class MonitoringService:
 
         session = session_row[0] if isinstance(session_row, tuple) else session_row
 
-        # Get messages for this session
-        messages_query = (
-            sqlalchemy.select(persistence_monitoring.MonitoringMessage)
-            .where(
+        message_stats_result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(
+                sqlalchemy.func.count(persistence_monitoring.MonitoringMessage.id).label('total'),
+                sqlalchemy.func.sum(
+                    sqlalchemy.case(
+                        (persistence_monitoring.MonitoringMessage.status == 'success', 1),
+                        else_=0,
+                    )
+                ).label('success'),
+                sqlalchemy.func.sum(
+                    sqlalchemy.case(
+                        (persistence_monitoring.MonitoringMessage.status == 'error', 1),
+                        else_=0,
+                    )
+                ).label('error'),
+                sqlalchemy.func.sum(
+                    sqlalchemy.case(
+                        (persistence_monitoring.MonitoringMessage.status == 'pending', 1),
+                        else_=0,
+                    )
+                ).label('pending'),
+                sqlalchemy.func.min(persistence_monitoring.MonitoringMessage.timestamp).label('first_timestamp'),
+                sqlalchemy.func.max(persistence_monitoring.MonitoringMessage.timestamp).label('last_timestamp'),
+            ).where(
                 persistence_monitoring.MonitoringMessage.workspace_uuid == workspace_uuid,
                 persistence_monitoring.MonitoringMessage.session_id == session_id,
             )
-            .order_by(persistence_monitoring.MonitoringMessage.timestamp.asc())
         )
-        messages_result = await self.ap.persistence_mgr.execute_async(messages_query)
-        messages_rows = messages_result.all()
+        message_stats = message_stats_result.one()
 
-        # Count messages by status
-        success_messages = 0
-        error_messages = 0
-        pending_messages = 0
-        for row in messages_rows:
-            msg = row[0] if isinstance(row, tuple) else row
-            if msg.status == 'success':
-                success_messages += 1
-            elif msg.status == 'error':
-                error_messages += 1
-            elif msg.status == 'pending':
-                pending_messages += 1
-
-        # Get LLM calls for this session
-        llm_query = sqlalchemy.select(persistence_monitoring.MonitoringLLMCall).where(
-            persistence_monitoring.MonitoringLLMCall.workspace_uuid == workspace_uuid,
-            persistence_monitoring.MonitoringLLMCall.session_id == session_id,
+        llm_stats_result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(
+                sqlalchemy.func.count(persistence_monitoring.MonitoringLLMCall.id).label('total_calls'),
+                sqlalchemy.func.coalesce(
+                    sqlalchemy.func.sum(persistence_monitoring.MonitoringLLMCall.input_tokens),
+                    0,
+                ).label('total_input_tokens'),
+                sqlalchemy.func.coalesce(
+                    sqlalchemy.func.sum(persistence_monitoring.MonitoringLLMCall.output_tokens),
+                    0,
+                ).label('total_output_tokens'),
+                sqlalchemy.func.coalesce(
+                    sqlalchemy.func.sum(persistence_monitoring.MonitoringLLMCall.total_tokens),
+                    0,
+                ).label('total_tokens'),
+                sqlalchemy.func.coalesce(
+                    sqlalchemy.func.sum(persistence_monitoring.MonitoringLLMCall.duration),
+                    0,
+                ).label('total_duration'),
+                sqlalchemy.func.sum(
+                    sqlalchemy.case(
+                        (persistence_monitoring.MonitoringLLMCall.status == 'success', 1),
+                        else_=0,
+                    )
+                ).label('success_calls'),
+                sqlalchemy.func.sum(
+                    sqlalchemy.case(
+                        (persistence_monitoring.MonitoringLLMCall.status != 'success', 1),
+                        else_=0,
+                    )
+                ).label('error_calls'),
+            ).where(
+                persistence_monitoring.MonitoringLLMCall.workspace_uuid == workspace_uuid,
+                persistence_monitoring.MonitoringLLMCall.session_id == session_id,
+            )
         )
-        llm_result = await self.ap.persistence_mgr.execute_async(llm_query)
-        llm_rows = llm_result.all()
+        llm_stats = llm_stats_result.one()
 
-        # Calculate LLM statistics
-        total_llm_calls = len(llm_rows)
-        total_input_tokens = 0
-        total_output_tokens = 0
-        total_tokens = 0
-        total_duration = 0
-        success_llm_calls = 0
-        error_llm_calls = 0
-
-        for row in llm_rows:
-            llm_call = row[0] if isinstance(row, tuple) else row
-            total_input_tokens += llm_call.input_tokens
-            total_output_tokens += llm_call.output_tokens
-            total_tokens += llm_call.total_tokens
-            total_duration += llm_call.duration
-            if llm_call.status == 'success':
-                success_llm_calls += 1
-            else:
-                error_llm_calls += 1
-
-        # Get tool calls for this session
+        tool_stats_result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(
+                sqlalchemy.func.count(persistence_monitoring.MonitoringToolCall.id).label('total_calls'),
+                sqlalchemy.func.coalesce(
+                    sqlalchemy.func.sum(persistence_monitoring.MonitoringToolCall.duration),
+                    0,
+                ).label('total_duration'),
+                sqlalchemy.func.sum(
+                    sqlalchemy.case(
+                        (persistence_monitoring.MonitoringToolCall.status == 'success', 1),
+                        else_=0,
+                    )
+                ).label('success_calls'),
+                sqlalchemy.func.sum(
+                    sqlalchemy.case(
+                        (persistence_monitoring.MonitoringToolCall.status != 'success', 1),
+                        else_=0,
+                    )
+                ).label('error_calls'),
+            ).where(
+                persistence_monitoring.MonitoringToolCall.workspace_uuid == workspace_uuid,
+                persistence_monitoring.MonitoringToolCall.session_id == session_id,
+            )
+        )
+        tool_stats = tool_stats_result.one()
         tool_query = (
             sqlalchemy.select(persistence_monitoring.MonitoringToolCall)
             .where(
@@ -1297,9 +1485,12 @@ class MonitoringService:
                 persistence_monitoring.MonitoringToolCall.session_id == session_id,
             )
             .order_by(persistence_monitoring.MonitoringToolCall.timestamp.asc())
+            .limit(detail_limit + 1)
         )
         tool_result = await self.ap.persistence_mgr.execute_async(tool_query)
         tool_rows = tool_result.all()
+        tool_calls_truncated = len(tool_rows) > detail_limit
+        tool_rows = tool_rows[:detail_limit]
 
         tool_calls = [
             self.ap.persistence_mgr.serialize_model(
@@ -1308,19 +1499,6 @@ class MonitoringService:
             for row in tool_rows
         ]
 
-        total_tool_calls = len(tool_rows)
-        success_tool_calls = 0
-        error_tool_calls = 0
-        total_tool_duration = 0
-        for row in tool_rows:
-            tool_call = row[0] if isinstance(row, tuple) else row
-            total_tool_duration += tool_call.duration
-            if tool_call.status == 'success':
-                success_tool_calls += 1
-            else:
-                error_tool_calls += 1
-
-        # Get errors for this session
         error_query = (
             sqlalchemy.select(persistence_monitoring.MonitoringError)
             .where(
@@ -1328,9 +1506,12 @@ class MonitoringService:
                 persistence_monitoring.MonitoringError.session_id == session_id,
             )
             .order_by(persistence_monitoring.MonitoringError.timestamp.desc())
+            .limit(detail_limit + 1)
         )
         error_result = await self.ap.persistence_mgr.execute_async(error_query)
         error_rows = error_result.all()
+        errors_truncated = len(error_rows) > detail_limit
+        error_rows = error_rows[:detail_limit]
 
         errors = [
             self.ap.persistence_mgr.serialize_model(
@@ -1339,42 +1520,49 @@ class MonitoringService:
             for row in error_rows
         ]
 
-        # Calculate session duration
-        if messages_rows:
-            first_msg = messages_rows[0][0] if isinstance(messages_rows[0], tuple) else messages_rows[0]
-            last_msg = messages_rows[-1][0] if isinstance(messages_rows[-1], tuple) else messages_rows[-1]
-            session_duration_seconds = int((last_msg.timestamp - first_msg.timestamp).total_seconds())
+        if message_stats.first_timestamp is not None and message_stats.last_timestamp is not None:
+            session_duration_seconds = int(
+                (message_stats.last_timestamp - message_stats.first_timestamp).total_seconds()
+            )
         else:
             session_duration_seconds = 0
+        total_llm_calls = int(llm_stats.total_calls or 0)
+        total_tool_calls = int(tool_stats.total_calls or 0)
 
         return {
             'session_id': session_id,
             'found': True,
             'session': self.ap.persistence_mgr.serialize_model(persistence_monitoring.MonitoringSession, session),
             'message_stats': {
-                'total': len(messages_rows),
-                'success': success_messages,
-                'error': error_messages,
-                'pending': pending_messages,
+                'total': int(message_stats.total or 0),
+                'success': int(message_stats.success or 0),
+                'error': int(message_stats.error or 0),
+                'pending': int(message_stats.pending or 0),
             },
             'llm_stats': {
                 'total_calls': total_llm_calls,
-                'success_calls': success_llm_calls,
-                'error_calls': error_llm_calls,
-                'total_input_tokens': total_input_tokens,
-                'total_output_tokens': total_output_tokens,
-                'total_tokens': total_tokens,
-                'average_duration_ms': int(total_duration / total_llm_calls) if total_llm_calls > 0 else 0,
+                'success_calls': int(llm_stats.success_calls or 0),
+                'error_calls': int(llm_stats.error_calls or 0),
+                'total_input_tokens': int(llm_stats.total_input_tokens or 0),
+                'total_output_tokens': int(llm_stats.total_output_tokens or 0),
+                'total_tokens': int(llm_stats.total_tokens or 0),
+                'average_duration_ms': (int(llm_stats.total_duration / total_llm_calls) if total_llm_calls > 0 else 0),
             },
             'tool_calls': tool_calls,
             'tool_stats': {
                 'total_calls': total_tool_calls,
-                'success_calls': success_tool_calls,
-                'error_calls': error_tool_calls,
-                'total_duration_ms': total_tool_duration,
-                'average_duration_ms': int(total_tool_duration / total_tool_calls) if total_tool_calls > 0 else 0,
+                'success_calls': int(tool_stats.success_calls or 0),
+                'error_calls': int(tool_stats.error_calls or 0),
+                'total_duration_ms': int(tool_stats.total_duration or 0),
+                'average_duration_ms': (
+                    int(tool_stats.total_duration / total_tool_calls) if total_tool_calls > 0 else 0
+                ),
             },
             'errors': errors,
+            'detail_truncated': {
+                'tool_calls': tool_calls_truncated,
+                'errors': errors_truncated,
+            },
             'session_duration_seconds': session_duration_seconds,
         }
 
@@ -1383,8 +1571,9 @@ class MonitoringService:
         context: TenantContext,
         message_id: str,
     ) -> dict:
-        """Get detailed information for a specific message including associated LLM calls and errors"""
+        """Get bounded message details with full statistics computed in SQL."""
         workspace_uuid = require_workspace_uuid(context)
+        detail_limit = self._detail_limit()
         # Get message info
         message_query = sqlalchemy.select(persistence_monitoring.MonitoringMessage).where(
             persistence_monitoring.MonitoringMessage.workspace_uuid == workspace_uuid,
@@ -1401,7 +1590,31 @@ class MonitoringService:
 
         message = message_row[0] if isinstance(message_row, tuple) else message_row
 
-        # Get LLM calls for this message
+        llm_stats_result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(
+                sqlalchemy.func.count(persistence_monitoring.MonitoringLLMCall.id).label('total_calls'),
+                sqlalchemy.func.coalesce(
+                    sqlalchemy.func.sum(persistence_monitoring.MonitoringLLMCall.input_tokens),
+                    0,
+                ).label('total_input_tokens'),
+                sqlalchemy.func.coalesce(
+                    sqlalchemy.func.sum(persistence_monitoring.MonitoringLLMCall.output_tokens),
+                    0,
+                ).label('total_output_tokens'),
+                sqlalchemy.func.coalesce(
+                    sqlalchemy.func.sum(persistence_monitoring.MonitoringLLMCall.total_tokens),
+                    0,
+                ).label('total_tokens'),
+                sqlalchemy.func.coalesce(
+                    sqlalchemy.func.sum(persistence_monitoring.MonitoringLLMCall.duration),
+                    0,
+                ).label('total_duration'),
+            ).where(
+                persistence_monitoring.MonitoringLLMCall.workspace_uuid == workspace_uuid,
+                persistence_monitoring.MonitoringLLMCall.message_id == message_id,
+            )
+        )
+        llm_stats = llm_stats_result.one()
         llm_query = (
             sqlalchemy.select(persistence_monitoring.MonitoringLLMCall)
             .where(
@@ -1409,9 +1622,12 @@ class MonitoringService:
                 persistence_monitoring.MonitoringLLMCall.message_id == message_id,
             )
             .order_by(persistence_monitoring.MonitoringLLMCall.timestamp.asc())
+            .limit(detail_limit + 1)
         )
         llm_result = await self.ap.persistence_mgr.execute_async(llm_query)
         llm_rows = llm_result.all()
+        llm_calls_truncated = len(llm_rows) > detail_limit
+        llm_rows = llm_rows[:detail_limit]
 
         llm_calls = [
             self.ap.persistence_mgr.serialize_model(
@@ -1420,13 +1636,6 @@ class MonitoringService:
             for row in llm_rows
         ]
 
-        # Calculate LLM statistics
-        total_input_tokens = sum(call.input_tokens for call in llm_rows)
-        total_output_tokens = sum(call.output_tokens for call in llm_rows)
-        total_tokens = sum(call.total_tokens for call in llm_rows)
-        total_duration = sum(call.duration for call in llm_rows)
-
-        # Get errors for this message
         error_query = (
             sqlalchemy.select(persistence_monitoring.MonitoringError)
             .where(
@@ -1434,9 +1643,12 @@ class MonitoringService:
                 persistence_monitoring.MonitoringError.message_id == message_id,
             )
             .order_by(persistence_monitoring.MonitoringError.timestamp.asc())
+            .limit(detail_limit + 1)
         )
         error_result = await self.ap.persistence_mgr.execute_async(error_query)
         error_rows = error_result.all()
+        errors_truncated = len(error_rows) > detail_limit
+        error_rows = error_rows[:detail_limit]
 
         errors = [
             self.ap.persistence_mgr.serialize_model(
@@ -1444,6 +1656,7 @@ class MonitoringService:
             )
             for row in error_rows
         ]
+        total_llm_calls = int(llm_stats.total_calls or 0)
 
         return {
             'message_id': message_id,
@@ -1451,14 +1664,18 @@ class MonitoringService:
             'message': self.ap.persistence_mgr.serialize_model(persistence_monitoring.MonitoringMessage, message),
             'llm_calls': llm_calls,
             'llm_stats': {
-                'total_calls': len(llm_rows),
-                'total_input_tokens': total_input_tokens,
-                'total_output_tokens': total_output_tokens,
-                'total_tokens': total_tokens,
-                'total_duration_ms': total_duration,
-                'average_duration_ms': int(total_duration / len(llm_rows)) if len(llm_rows) > 0 else 0,
+                'total_calls': total_llm_calls,
+                'total_input_tokens': int(llm_stats.total_input_tokens or 0),
+                'total_output_tokens': int(llm_stats.total_output_tokens or 0),
+                'total_tokens': int(llm_stats.total_tokens or 0),
+                'total_duration_ms': int(llm_stats.total_duration or 0),
+                'average_duration_ms': (int(llm_stats.total_duration / total_llm_calls) if total_llm_calls > 0 else 0),
             },
             'errors': errors,
+            'detail_truncated': {
+                'llm_calls': llm_calls_truncated,
+                'errors': errors_truncated,
+            },
         }
 
     # ========== Export Methods ==========
@@ -1548,6 +1765,7 @@ class MonitoringService:
         limit: int = 100000,
     ) -> list[dict]:
         """Export messages as list of dictionaries for CSV conversion"""
+        limit = self.normalize_export_limit(limit)
         workspace_uuid = require_workspace_uuid(context)
         conditions = [persistence_monitoring.MonitoringMessage.workspace_uuid == workspace_uuid]
 
@@ -1603,6 +1821,7 @@ class MonitoringService:
         limit: int = 100000,
     ) -> list[dict]:
         """Export LLM calls as list of dictionaries for CSV conversion"""
+        limit = self.normalize_export_limit(limit)
         workspace_uuid = require_workspace_uuid(context)
         conditions = [persistence_monitoring.MonitoringLLMCall.workspace_uuid == workspace_uuid]
 
@@ -1657,6 +1876,7 @@ class MonitoringService:
         limit: int = 100000,
     ) -> list[dict]:
         """Export embedding calls as list of dictionaries for CSV conversion"""
+        limit = self.normalize_export_limit(limit)
         workspace_uuid = require_workspace_uuid(context)
         conditions = [persistence_monitoring.MonitoringEmbeddingCall.workspace_uuid == workspace_uuid]
 
@@ -1708,6 +1928,7 @@ class MonitoringService:
         limit: int = 100000,
     ) -> list[dict]:
         """Export errors as list of dictionaries for CSV conversion"""
+        limit = self.normalize_export_limit(limit)
         workspace_uuid = require_workspace_uuid(context)
         conditions = [persistence_monitoring.MonitoringError.workspace_uuid == workspace_uuid]
 
@@ -1758,6 +1979,7 @@ class MonitoringService:
         limit: int = 100000,
     ) -> list[dict]:
         """Export sessions as list of dictionaries for CSV conversion"""
+        limit = self.normalize_export_limit(limit)
         workspace_uuid = require_workspace_uuid(context)
         conditions = [persistence_monitoring.MonitoringSession.workspace_uuid == workspace_uuid]
 
@@ -2011,6 +2233,7 @@ class MonitoringService:
         offset: int = 0,
     ) -> tuple[list[dict], int]:
         """Get feedback list with filters."""
+        limit, offset = self.normalize_page_window(limit, offset)
         workspace_uuid = require_workspace_uuid(context)
         conditions = [persistence_monitoring.MonitoringFeedback.workspace_uuid == workspace_uuid]
 
@@ -2063,6 +2286,7 @@ class MonitoringService:
         limit: int = 100000,
     ) -> list[dict]:
         """Export feedback as list of dictionaries for CSV conversion."""
+        limit = self.normalize_export_limit(limit)
         workspace_uuid = require_workspace_uuid(context)
         conditions = [persistence_monitoring.MonitoringFeedback.workspace_uuid == workspace_uuid]
 

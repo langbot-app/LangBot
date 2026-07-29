@@ -309,13 +309,6 @@ class Application:
                     name='cloud-manifest-refresh',
                     scopes=[core_entities.LifecycleControlScope.APPLICATION],
                 )
-            if self.workspace_collaboration_service is not None:
-                self.task_mgr.create_task(
-                    self.workspace_collaboration_service.run_expired_invitation_cleanup(),
-                    name='workspace-invitation-cleanup',
-                    scopes=[core_entities.LifecycleControlScope.APPLICATION],
-                )
-
             await self.plugin_connector.initialize_plugins()
 
             # 后续可能会允许动态重启其他任务
@@ -354,73 +347,68 @@ class Application:
                     scopes=[core_entities.LifecycleControlScope.APPLICATION],
                 )
 
-            # Start monitoring data cleanup task if enabled
             monitoring_cfg = self.instance_config.data.get('monitoring', {})
             auto_cleanup_cfg = monitoring_cfg.get('auto_cleanup', {})
-            if auto_cleanup_cfg.get('enabled', True):
-                retention_days = self._get_positive_int_config(
-                    auto_cleanup_cfg.get('retention_days', 30),
-                    default=30,
-                    name='monitoring.auto_cleanup.retention_days',
-                )
-                delete_batch_size = self._get_positive_int_config(
-                    auto_cleanup_cfg.get('delete_batch_size', 1000),
-                    default=1000,
-                    name='monitoring.auto_cleanup.delete_batch_size',
-                )
-                check_interval_hours = self._get_positive_float_config(
+            monitoring_enabled = auto_cleanup_cfg.get('enabled', True)
+            retention_days = self._get_positive_int_config(
+                auto_cleanup_cfg.get('retention_days', 30),
+                default=30,
+                name='monitoring.auto_cleanup.retention_days',
+            )
+            delete_batch_size = self._get_positive_int_config(
+                auto_cleanup_cfg.get('delete_batch_size', 1000),
+                default=1000,
+                name='monitoring.auto_cleanup.delete_batch_size',
+            )
+            monitoring_interval_seconds = (
+                self._get_positive_float_config(
                     auto_cleanup_cfg.get('check_interval_hours', 1),
                     default=1,
                     name='monitoring.auto_cleanup.check_interval_hours',
                 )
+                * 3600
+            )
 
-                async def monitoring_cleanup_loop():
-                    check_interval_seconds = check_interval_hours * 3600
-                    while True:
-                        try:
-                            bindings = await self.workspace_service.list_active_execution_bindings()
-                            for binding in bindings:
-                                context = ExecutionContext(
-                                    instance_uuid=binding.instance_uuid,
-                                    workspace_uuid=binding.workspace_uuid,
-                                    placement_generation=binding.placement_generation,
-                                    trigger_principal=PrincipalContext(PrincipalType.SYSTEM),
-                                )
-                                deleted = await self.monitoring_service.cleanup_expired_records(
-                                    context,
-                                    retention_days,
-                                    batch_size=delete_batch_size,
-                                )
-                                total_deleted = sum(deleted.values())
-                                if total_deleted > 0:
-                                    self.logger.info(
-                                        f'Monitoring auto-cleanup: deleted {total_deleted} expired records '
-                                        f'for Workspace {context.workspace_uuid} (retention={retention_days}d): {deleted}'
-                                    )
-                        except Exception as e:
-                            self.logger.warning(f'Monitoring auto-cleanup error: {e}')
-                        await asyncio.sleep(check_interval_seconds)
-
-                self.task_mgr.create_task(
-                    monitoring_cleanup_loop(),
-                    name='monitoring-cleanup',
-                    scopes=[core_entities.LifecycleControlScope.APPLICATION],
-                )
-
-            # Start storage/log maintenance task if enabled
             storage_cleanup_cfg = self.instance_config.data.get('storage', {}).get('cleanup', {})
-            if storage_cleanup_cfg.get('enabled', True) and self.maintenance_service is not None:
-                check_interval_hours = self._get_positive_float_config(
+            storage_enabled = storage_cleanup_cfg.get('enabled', True) and self.maintenance_service is not None
+            storage_interval_seconds = (
+                self._get_positive_float_config(
                     storage_cleanup_cfg.get('check_interval_hours', 1),
                     default=1,
                     name='storage.cleanup.check_interval_hours',
                 )
+                * 3600
+            )
 
-                async def storage_cleanup_loop():
-                    check_interval_seconds = check_interval_hours * 3600
+            maintenance_intervals: dict[str, float] = {}
+            if monitoring_enabled:
+                maintenance_intervals['monitoring'] = monitoring_interval_seconds
+            if storage_enabled:
+                maintenance_intervals['storage'] = storage_interval_seconds
+            if self.workspace_collaboration_service is not None:
+                maintenance_intervals['invitations'] = 3600.0
+
+            if maintenance_intervals:
+
+                async def resource_maintenance_loop():
+                    """Share tenant discovery and serialize periodic maintenance."""
+
+                    loop = asyncio.get_running_loop()
+                    started_at = loop.time()
+                    next_due = {name: started_at + interval for name, interval in maintenance_intervals.items()}
                     while True:
+                        await asyncio.sleep(max(min(next_due.values()) - loop.time(), 0.0))
+                        observed_at = loop.time()
+                        due = {name for name, due_at in next_due.items() if due_at <= observed_at}
+                        if not due:
+                            continue
                         try:
                             bindings = await self.workspace_service.list_active_execution_bindings()
+                        except asyncio.CancelledError:
+                            raise
+                        except Exception as exc:
+                            self.logger.warning(f'Resource maintenance Workspace discovery failed: {exc}')
+                        else:
                             for binding in bindings:
                                 context = ExecutionContext(
                                     instance_uuid=binding.instance_uuid,
@@ -428,20 +416,59 @@ class Application:
                                     placement_generation=binding.placement_generation,
                                     trigger_principal=PrincipalContext(PrincipalType.SYSTEM),
                                 )
-                                deleted = await self.maintenance_service.cleanup_expired_files(context)
-                                total_deleted = sum(deleted.values())
-                                if total_deleted > 0:
-                                    self.logger.info(
-                                        f'Storage maintenance for Workspace {context.workspace_uuid}: '
-                                        f'deleted expired files: {deleted}'
+                                if 'monitoring' in due:
+                                    try:
+                                        deleted = await self.monitoring_service.cleanup_expired_records(
+                                            context,
+                                            retention_days,
+                                            batch_size=delete_batch_size,
+                                        )
+                                        total_deleted = sum(deleted.values())
+                                        if total_deleted > 0:
+                                            self.logger.info(
+                                                f'Monitoring auto-cleanup: deleted {total_deleted} expired records '
+                                                f'for Workspace {context.workspace_uuid} '
+                                                f'(retention={retention_days}d): {deleted}'
+                                            )
+                                    except asyncio.CancelledError:
+                                        raise
+                                    except Exception as exc:
+                                        self.logger.warning(
+                                            f'Monitoring auto-cleanup failed for '
+                                            f'Workspace {context.workspace_uuid}: {exc}'
+                                        )
+                                if 'storage' in due:
+                                    try:
+                                        deleted = await self.maintenance_service.cleanup_expired_files(context)
+                                        total_deleted = sum(deleted.values())
+                                        if total_deleted > 0:
+                                            self.logger.info(
+                                                f'Storage maintenance for Workspace {context.workspace_uuid}: '
+                                                f'deleted expired files: {deleted}'
+                                            )
+                                    except asyncio.CancelledError:
+                                        raise
+                                    except Exception as exc:
+                                        self.logger.warning(
+                                            f'Storage maintenance failed for Workspace {context.workspace_uuid}: {exc}'
+                                        )
+                            if 'invitations' in due:
+                                try:
+                                    await self.workspace_collaboration_service.cleanup_expired_invitations(
+                                        active_bindings=bindings,
                                     )
-                        except Exception as e:
-                            self.logger.warning(f'Storage maintenance error: {e}')
-                        await asyncio.sleep(check_interval_seconds)
+                                except asyncio.CancelledError:
+                                    raise
+                                except Exception as exc:
+                                    self.logger.warning(f'Expired Workspace invitation cleanup failed: {exc}')
+
+                        completed_at = loop.time()
+                        for name in due:
+                            next_due[name] = completed_at + maintenance_intervals[name]
 
                 self.task_mgr.create_task(
-                    storage_cleanup_loop(),
-                    name='storage-maintenance',
+                    resource_maintenance_loop(),
+                    name='resource-maintenance',
                     scopes=[core_entities.LifecycleControlScope.APPLICATION],
                 )
 

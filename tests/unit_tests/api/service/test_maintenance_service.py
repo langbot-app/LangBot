@@ -905,6 +905,32 @@ class TestMaintenanceServiceExpiredLocalUploadCandidates:
         # Verify - path included
         assert 'path' in result[0]
 
+    def test_expired_local_upload_candidates_respects_run_limit(self):
+        ap = SimpleNamespace(
+            logger=SimpleNamespace(warning=Mock()),
+            storage_mgr=_scoped_storage_manager(),
+            instance_config=SimpleNamespace(data={'storage': {'cleanup': {'max_files_per_run': 2}}}),
+        )
+        service = MaintenanceService(ap)
+        entries = []
+        for index in range(3):
+            entry = Mock(spec=Path)
+            entry.is_file = Mock(return_value=True)
+            entry.stat = Mock(return_value=SimpleNamespace(st_size=100, st_mtime=0))
+            entry.relative_to = Mock(return_value=Path(f'scoped/old-{index}.txt'))
+            entries.append(entry)
+
+        with patch.object(Path, 'exists', return_value=True):
+            with patch.object(Path, 'rglob', return_value=entries):
+                result = service._expired_local_upload_candidates(TEST_CONTEXT, 7)
+
+        assert [item['key'] for item in result] == [
+            'scoped/old-0.txt',
+            'scoped/old-1.txt',
+        ]
+        ap.instance_config.data['storage']['cleanup']['max_files_per_run'] = 999999
+        assert service._max_files_per_run() == 10000
+
 
 ISOLATION_WORKSPACE_A = '00000000-0000-0000-0000-00000000000a'
 ISOLATION_WORKSPACE_B = '00000000-0000-0000-0000-00000000000b'

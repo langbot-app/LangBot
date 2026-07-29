@@ -21,6 +21,8 @@ from .tenant import TenantContext, require_workspace_uuid
 LOG_FILE_PATTERN = re.compile(r'^langbot-(\d{4}-\d{2}-\d{2})\.log(?:\.\d+)?$')
 DEFAULT_UPLOAD_FILE_RETENTION_DAYS = 7
 DEFAULT_LOG_RETENTION_DAYS = 3
+DEFAULT_MAX_FILES_PER_RUN = 1000
+HARD_MAX_FILES_PER_RUN = 10000
 UPLOAD_OWNER_TYPES = ('upload_image', 'upload_document', 'upload')
 
 
@@ -50,6 +52,17 @@ class MaintenanceService:
 
     def __init__(self, ap: app.Application) -> None:
         self.ap = ap
+
+    def _max_files_per_run(self) -> int:
+        cleanup_cfg = (
+            getattr(getattr(self.ap, 'instance_config', None), 'data', {}).get('storage', {}).get('cleanup', {})
+        )
+        value = self._positive_int(
+            cleanup_cfg.get('max_files_per_run', DEFAULT_MAX_FILES_PER_RUN),
+            DEFAULT_MAX_FILES_PER_RUN,
+            'storage.cleanup.max_files_per_run',
+        )
+        return min(value, HARD_MAX_FILES_PER_RUN)
 
     @_workspace_scope
     async def cleanup_expired_files(self, context: ExecutionContext) -> dict[str, int]:
@@ -252,6 +265,7 @@ class MaintenanceService:
         provider = self.ap.storage_mgr.storage_provider
         cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=retention_days)
         candidates = []
+        max_candidates = self._max_files_per_run()
         paginator = provider.s3_client.get_paginator('list_objects_v2')
 
         seen_prefixes: set[str] = set()
@@ -274,6 +288,8 @@ class MaintenanceService:
                                 'modified_at': last_modified.isoformat(),
                             }
                         )
+                        if len(candidates) >= max_candidates:
+                            return candidates
 
         return candidates
 
@@ -310,6 +326,7 @@ class MaintenanceService:
         storage_root = Path('data/storage')
         cutoff = datetime.datetime.now().timestamp() - retention_days * 86400
         candidates = []
+        max_candidates = self._max_files_per_run()
         seen_roots: set[Path] = set()
         for owner_type in UPLOAD_OWNER_TYPES:
             scoped_root = storage_root / self.ap.storage_mgr.scoped_prefix(context, owner_type=owner_type)
@@ -335,6 +352,8 @@ class MaintenanceService:
                 if include_paths:
                     item['path'] = str(entry)
                 candidates.append(item)
+                if len(candidates) >= max_candidates:
+                    return candidates
         return candidates
 
     def _expired_log_candidates(self, retention_days: int, include_paths: bool = False) -> list[dict[str, Any]]:

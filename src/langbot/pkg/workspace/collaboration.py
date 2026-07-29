@@ -556,6 +556,7 @@ class WorkspaceCollaborationService:
         self,
         *,
         retention: datetime.timedelta = datetime.timedelta(0),
+        active_bindings: typing.Iterable[WorkspaceExecutionBinding] | None = None,
     ) -> int:
         """Delete expired invitation records without crossing Cloud tenant scopes."""
         cutoff = self._utcnow() - retention
@@ -576,7 +577,8 @@ class WorkspaceCollaborationService:
             if not callable(list_bindings) or not callable(tenant_uow):
                 raise RuntimeError('Cloud invitation cleanup requires tenant units of work')
             deleted = 0
-            for binding in await list_bindings():
+            bindings = active_bindings if active_bindings is not None else await list_bindings()
+            for binding in bindings:
                 async with tenant_uow(binding.workspace_uuid) as uow:
                     deleted += await cleanup_session(uow.session, binding.workspace_uuid)
             return deleted

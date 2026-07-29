@@ -59,6 +59,17 @@ _RUNTIME_POLICY_DEFAULTS = {
         }
     },
     'mcp': {'stdio': {'enabled': True}},
+    'monitoring': {
+        'query_limits': {
+            'page_rows': 1000,
+            'export_rows': 10000,
+            'detail_rows': 2000,
+            'timeseries_buckets': 1000,
+            'max_offset': 1000000,
+        },
+        'auto_cleanup': {'max_batches_per_table_per_run': 4},
+    },
+    'storage': {'cleanup': {'max_files_per_run': 1000}},
 }
 
 

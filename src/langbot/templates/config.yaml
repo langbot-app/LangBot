@@ -217,6 +217,9 @@ storage:
         uploaded_file_retention_days: 7
         # LangBot log files older than this many days will be deleted
         log_retention_days: 3
+        # Bound per-Workspace file cleanup and diagnostic candidate lists.
+        # Supports STORAGE__CLEANUP__MAX_FILES_PER_RUN (hard cap: 10000).
+        max_files_per_run: 1000
     s3:
         endpoint_url: ''
         access_key_id: ''
@@ -271,6 +274,22 @@ mcp:
         # MCP__STDIO__ENABLED=false even when Box Runtime is available.
         enabled: true
 monitoring:
+    query_limits:
+        # Maximum records materialized by one paginated monitoring request.
+        # Supports MONITORING__QUERY_LIMITS__PAGE_ROWS (hard cap: 5000).
+        page_rows: 1000
+        # CSV exports are currently assembled in memory. Keep this lower than
+        # the historical 100000-row default (hard cap: 50000).
+        export_rows: 10000
+        # Maximum related records returned by one session/message detail view
+        # (hard cap: 10000). Aggregate statistics remain database-computed.
+        detail_rows: 2000
+        # Token charts are grouped in SQL and return only the newest buckets
+        # (hard cap: 10000). Supports an environment variable override.
+        timeseries_buckets: 1000
+        # Bound high-offset scans that can otherwise monopolize PostgreSQL CPU
+        # (hard cap: 10000000).
+        max_offset: 1000000
     auto_cleanup:
         # Enable automatic cleanup of expired monitoring records
         enabled: true
@@ -280,6 +299,9 @@ monitoring:
         check_interval_hours: 1
         # Number of expired rows to delete per table batch
         delete_batch_size: 1000
+        # Prevent one large Workspace backlog from monopolizing PostgreSQL.
+        # Supports MONITORING__AUTO_CLEANUP__MAX_BATCHES_PER_TABLE_PER_RUN.
+        max_batches_per_table_per_run: 4
 box:
     # Master switch for the Box sandbox runtime. When false, LangBot does NOT
     # attempt to connect to a remote Box runtime nor start a local stdio Box

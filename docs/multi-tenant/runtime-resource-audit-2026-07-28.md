@@ -52,6 +52,9 @@ SDK 已先行发布到分支提交 `7c0b9827ed8597a1c84151b83fcf6307934fd944`，
 - Platform bot reload/remove/shutdown 统一串行化，旧 bot、代理、adapter 任务和进程会先停止再从注册表移除。
 - Model provider requester 新增异步关闭契约；provider reload/remove、Workspace generation 替换、全量 reload 和 Application shutdown 都会确定性关闭旧 requester，允许第三方 requester 安全持有自己的 HTTP client 或连接池。
 - Plugin Runtime、Box Runtime、stdio transport、adapter 连接和共享 HTTP client 均补齐 close/cancel/await。
+- HTTPX 有界流在超限异常或消费者取消时会立即关闭底层响应流；原来的 response hook
+  只在正常读完后由 HTTPX 自动关闭，持久客户端反复收到超大响应时可能积累未释放连接。
+  已消费响应在超限分支也会先 `aclose()` 再传播错误。
 - `Application.dispose()` 只允许一个可追踪 shutdown task；重复的信号、窗口关闭或调用方清理不会铺开多个并行停机流程。
 - Lark、微信、钉钉、企业微信和 QQ Official 的凭证交换后台任务统一进入 Application TaskManager，受全局/单 Workspace admission 约束并随应用停机取消；容量满时关闭尚未调度的 coroutine 并返回 429，不留下游离 task。
 - `TaskCapacityError` 已下沉到无 Application/controller 依赖的纯错误模块。原来的 HTTP 过载异常路径会在特定冷启动导入顺序下触发 TaskManager/controller 循环导入，把应返回的 429 变成框架 500。
@@ -110,6 +113,17 @@ SDK 已先行发布到分支提交 `7c0b9827ed8597a1c84151b83fcf6307934fd944`，
   目标的签名 delta 中作为 tombstone 返回。注册创建新个人 Workspace 前通过
   PostgreSQL transaction advisory lock 串行执行全局 active 数量准入；达到上限
   返回 503，避免多个 Space 副本同时观察到最后一个空位。
+- Monitoring 分页、offset、CSV export 和 session/message detail 均在 service
+  边界执行实例配置上限与不可放大的绝对上限；detail 的完整统计改为 SQL aggregate，
+  只物化有界的 tool/LLM/error 明细并显式返回 `detail_truncated`。默认分页 1,000、
+  export 10,000、detail 2,000，绝对上限分别为 5,000、50,000、10,000。
+- Token statistics 的时间序列不再把筛选范围内的全部 LLM call 拉回 Python 分桶；
+  PostgreSQL 使用 `date_trunc`、SQLite 使用 `strftime` 在数据库中聚合，并只返回
+  最近 1,000 个时间桶（绝对上限 10,000）。模型分组复用分页上限并在 SQL 中按 token
+  排序、限制；两类结果都返回显式的 `*_truncated` 标志。
+- Monitoring 过期数据每表每轮默认最多删除 4 个批次、绝对最多 100 个批次；本地/S3
+  过期上传文件候选和每轮删除默认最多 1,000、绝对最多 10,000。单个历史数据量异常的
+  Workspace 不再能让一次维护循环无限物化候选或持续清空全部 backlog。
 
 ### CPU 和事件循环保护
 
@@ -134,6 +148,11 @@ SDK 已先行发布到分支提交 `7c0b9827ed8597a1c84151b83fcf6307934fd944`，
 - Box session 枚举、旧 generation 回收和 admission 计数均通过 Workspace 索引执行；admission 过期回收通过最小堆执行，不再在每次 RPC 上产生 O(实例总 session/grant 数) 的扫描。
 - Model、Pipeline、RAG 和 Platform manager 均维护 Workspace 到运行时 key 的二级索引。Workspace generation 更新只清理目标 Workspace 的缓存和运行时，不再扫描实例内所有租户的 provider/model、pipeline、knowledge runtime 或 bot；回归测试使用禁止全局迭代的映射验证该边界。
 - Cloud heartbeat 直接读取已加载且有容量边界的 Pipeline、MCP、KnowledgeBase 和 Bot registry 计数，不再为每个活跃 Workspace 依次打开 Tenant UoW、执行四类 COUNT 查询；这消除了租户数增长后每日周期性形成的串行 SQL/CPU 尖峰。OSS 模式仍保留数据库统计语义。
+- 邀请、Monitoring 和 Storage 的三个周期清理 task 合并为一个
+  `resource-maintenance` 调度器。调度器先等待首个 interval，不与启动加载争抢资源；
+  同一到期周期只执行一次 active Workspace discovery，然后按 Workspace 串行运行
+  有界 job，单 Workspace 失败不跳过其他 Workspace。默认相同的一小时周期由此从
+  三次全租户发现和三个同时唤醒的任务收敛为一次发现和一个任务。
 - Cloud 启动阶段先生成一份经过部署适配器和目录投影校验的 Workspace binding 快照，Model、Platform、Pipeline、RAG 和 Plugin 初始化共用该快照，初始化完成后立即释放；避免启动期间为每个 manager 重复执行整批租户发现和投影校验。
 - Platform、Pipeline 和 RAG 的资源加载在使用已验证启动快照时不再为每个 Bot/Pipeline/KnowledgeBase 重新查询同一个 execution binding；常规请求和动态更新路径仍保留数据库 generation fence。
 - MCP 初始 host 和 shutdown burst 由实例级 semaphore/批次限制；默认 `mcp.lifecycle_concurrency=16`，支持 `MCP__LIFECYCLE_CONCURRENCY` 覆写并硬性限制最大 128。初始加载不再先为每个 server 创建一个等待 semaphore 的 task，而是由一个可取消 dispatcher 每批最多物化 `lifecycle_concurrency` 个子 task；同时去掉了 ORM server/config 的双份临时列表，避免大量租户启动时集中占用 CPU、内存、socket 和文件句柄。
@@ -187,6 +206,10 @@ SDK 已先行发布到分支提交 `7c0b9827ed8597a1c84151b83fcf6307934fd944`，
 - Core 与 SDK 各进程的通用阻塞 executor 默认使用 8 个 worker、128 个 pending 槽位、每 Workspace 4 个在途槽位；它是实例/进程级共享背压，不由 Workspace 或插件 manifest 调高，单 Workspace 配置硬性不得超过 worker 的一半。生产值应按容器 CPU 和上游阻塞时延校准，不能把 pending 当吞吐配置无限放大。
 - 插件包下载上限 64 MiB，pip stdout/stderr 保留上限各 1 MiB；这不会限制安装进程实际输出，只限制父进程内存中的诊断副本。
 - 通用远程响应和媒体默认上限 10 MiB；错误诊断正文只保留 4 KiB。Plugin binary storage 默认 10 MiB、绝对上限 64 MiB；Skill 文本、Plugin UI 和 host edit 分别限制为 1 MiB、4 MiB 和 1 MiB。
+- Monitoring 查询上限由 `monitoring.query_limits` 配置并支持原生环境变量覆写，但始终
+  受代码绝对上限约束；cleanup 的每表批次数和 Storage 每轮文件数同样采用实例配置加
+  绝对上限。时间序列默认/绝对上限为 1,000/10,000 个数据库聚合桶，模型分组复用分页
+  上限。提高这些值必须计入 V-08/V-09 的数据库 CPU 与 Core RSS 容量曲线。
 - Managed-process relay 保留 stdout 的原始换行，并按 64 KiB WebSocket frame 分块；不再承诺“一行对应一个 frame”。这是为无换行输出提供确定内存边界所需的协议收敛。
 - 本轮没有把 Pipeline、Model、KnowledgeBase 等合法租户资源改成 lazy runtime。该改动会改变启动和请求语义，留到 Workspace placement/释放机制一起设计。
 - 本轮没有为普通 nsjail 声称伪硬盘配额；严格 Cloud readiness 保持失败关闭。
@@ -197,7 +220,7 @@ SDK 已先行发布到分支提交 `7c0b9827ed8597a1c84151b83fcf6307934fd944`，
 | --- | --- |
 | LangBot Ruff + `git diff --check` | 通过 |
 | Plugin SDK Ruff + `git diff --check` | 通过 |
-| LangBot 全量测试（使用远端精确钉住的新 SDK，含 unit/integration/Box/E2E） | `2833 passed, 33 skipped` |
+| LangBot 全量测试（使用远端精确钉住的新 SDK，含 unit/integration/Box/E2E） | `2839 passed, 33 skipped` |
 | Plugin SDK 全量测试 | `1325 passed` |
 | Space Go 全量测试与闭源 Cloud Adapter 测试 | Go `go test ./...` 通过；Adapter `40 passed` |
 | Space PostgreSQL 16 Cloud v2 目录与并发容量准入 | 通过；两个注册并发争用最后一个槽位时 `1 success / 1 capacity rejection / 1 active Workspace` |
@@ -271,7 +294,7 @@ Plugin SDK audit 每个阶段执行 25,000 次 loopback RPC、5,000 次安装 bi
 
 探针要求第二阶段的结构状态与第一阶段精确相等，并对第二阶段 RSS 与 tracemalloc 增长设置失败阈值。macOS 的 RSS 来源是 `getrusage` peak，因此这里验证的是峰值增量边界而非“当前 RSS 回落”；最终 Linux 24 小时 soak 仍需采集 current RSS/PSS 和 cgroup `memory.current`。
 
-LangBot 全量测试的 33 个 skip 中，22 个是默认全量运行未提供 PostgreSQL/pgvector 而跳过的集成用例，10 个是未提供 Valkey，另 1 个是可选环境的 collection skip；真实 PostgreSQL 相关路径已由上表单独运行覆盖。Plugin SDK 的 26 个 warning 为现有 Pydantic v2 deprecation 与 aiohttp AppKey 建议；没有失败、未关闭资源或资源上限降级。Core 当前全量产生 193 个既有第三方/兼容性 warning；`ResourceWarning` 和 `PytestUnraisableExceptionWarning` 仍由 pytest 配置提升为错误，本轮没有此类泄漏告警。
+LangBot 全量测试的 33 个 skip 中，22 个是默认全量运行未提供 PostgreSQL/pgvector 而跳过的集成用例，10 个是未提供 Valkey，另 1 个是可选环境的 collection skip；真实 PostgreSQL 相关路径已由上表单独运行覆盖。Plugin SDK 的 26 个 warning 为现有 Pydantic v2 deprecation 与 aiohttp AppKey 建议；没有失败、未关闭资源或资源上限降级。Core 当前全量产生 194 个既有第三方/兼容性 warning；`ResourceWarning` 和 `PytestUnraisableExceptionWarning` 仍由 pytest 配置提升为错误，本轮没有此类泄漏告警。
 
 Linux Runtime 探针使用上述镜像并只读挂载本地最新 SDK 源码：
 

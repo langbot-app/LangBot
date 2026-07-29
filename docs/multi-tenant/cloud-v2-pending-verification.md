@@ -16,7 +16,7 @@
 
 ## 1. 当前已形成的交付基线
 
-- LangBot Core 全量 `2833 passed, 33 skipped`，Plugin SDK 全量
+- LangBot Core 全量 `2839 passed, 33 skipped`，Plugin SDK 全量
   `1325 passed`，闭源适配器 `40 passed`，Space Go 全量测试通过；三仓格式、
   静态检查和 `git diff --check` 已通过。
 - Plugin Runtime 和 Box Runtime 的公开健康接口、event-loop lag 与有界
@@ -49,6 +49,12 @@
 - Core Cloud manager 已连接一次性 PostgreSQL 16，并从 `pg_settings` 读回
   `statement_timeout=60000ms`、`lock_timeout=5000ms` 和
   `idle_in_transaction_session_timeout=60000ms`；测试结束后引擎已显式 dispose。
+- 独立异常路径复核已补齐 HTTPX 超限/取消时的底层流关闭；Monitoring 查询、导出和
+  detail 物化量均有实例上限与绝对上限，detail 统计使用数据库聚合。Token statistics
+  不再拉取全部历史 LLM call 在 Python 中分桶，而由 PostgreSQL/SQLite 聚合并只返回
+  有界的最新时间桶和模型分组，截断状态在响应中显式可见。邀请、Monitoring 和 Storage
+  周期清理已合并为一个先等待首个 interval 的调度器，同一周期只进行一次 Workspace
+  discovery；数据库删除批次和本地/S3 文件候选也有每轮硬上限。
 
 以上结果是进入生产候选验证的前提，不是 SaaS 上线批准。
 
@@ -197,6 +203,9 @@ PostgreSQL/pgvector 和代表性 Workspace 配置分布，测量：
 - 启动、目录重放、批量 reconcile 和故障恢复的耗时与峰值；
 - remote MCP 数量增加及目录 generation 批量切换时的数据库 QPS、回收队列和
   event-loop lag，确认不存在与 session 数量成比例的空闲轮询；
+- 在最大 retention/backlog 和并发 Dashboard 请求下执行不带时间范围的 Monitoring
+  overview/token statistics，验证 SQL 分桶、statement timeout、响应截断和 cleanup
+  追赶不会形成 PostgreSQL CPU 尖峰或 Core RSS 增长；
 - 单实例可批准的 Workspace、活跃 Bot、plugin worker 和 sandbox 上限。
 
 容量上限必须写入生产配置与告警，不能只保留在测试报告中。

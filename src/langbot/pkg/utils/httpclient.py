@@ -34,11 +34,22 @@ class _LimitedHTTPXAsyncByteStream(httpx.AsyncByteStream):
         self._read_bytes = 0
 
     async def __aiter__(self):
-        async for chunk in self._inner:
-            self._read_bytes += len(chunk)
-            if self._read_bytes > self._max_bytes:
-                raise RemoteResponseTooLargeError(f'Remote response exceeds the {self._max_bytes}-byte limit')
-            yield chunk
+        try:
+            async for chunk in self._inner:
+                self._read_bytes += len(chunk)
+                if self._read_bytes > self._max_bytes:
+                    raise RemoteResponseTooLargeError(f'Remote response exceeds the {self._max_bytes}-byte limit')
+                yield chunk
+        except BaseException:
+            # HTTPX only closes a response after normal stream exhaustion. If
+            # this limiter raises (or its consumer is cancelled), explicitly
+            # release the underlying connection before propagating the original
+            # failure so persistent clients cannot accumulate stranded streams.
+            try:
+                await self._inner.aclose()
+            except BaseException:
+                pass
+            raise
 
     async def aclose(self) -> None:
         await self._inner.aclose()
@@ -64,6 +75,7 @@ def httpx_response_limit_hooks(
 
         if response.is_stream_consumed:
             if len(response.content) > max_bytes:
+                await response.aclose()
                 raise RemoteResponseTooLargeError(f'Remote response exceeds the {max_bytes}-byte limit')
             return
         response.stream = _LimitedHTTPXAsyncByteStream(response.stream, max_bytes)

@@ -6,6 +6,7 @@ Tests session management, reuse, and cleanup.
 
 from __future__ import annotations
 
+import asyncio
 import threading
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -161,20 +162,55 @@ class TestReadLimited:
 
     async def test_httpx_hook_rejects_before_automatic_buffer_grows(self):
         class Source(httpx.AsyncByteStream):
+            def __init__(self):
+                self.closed = False
+
             async def __aiter__(self):
                 yield b'123'
                 yield b'45'
 
             async def aclose(self):
-                return None
+                self.closed = True
 
-        transport = httpx.MockTransport(lambda _request: httpx.Response(200, stream=Source()))
+        source = Source()
+        transport = httpx.MockTransport(lambda _request: httpx.Response(200, stream=source))
         async with httpx.AsyncClient(
             transport=transport,
             event_hooks=httpclient.httpx_response_limit_hooks(max_bytes=4),
         ) as client:
             with pytest.raises(httpclient.RemoteResponseTooLargeError, match='4-byte'):
                 await client.get('https://example.invalid')
+
+        assert source.closed
+
+    async def test_httpx_limited_stream_closes_source_when_consumer_is_cancelled(self):
+        class Source(httpx.AsyncByteStream):
+            def __init__(self):
+                self.closed = False
+
+            async def __aiter__(self):
+                yield b'123'
+                await asyncio.Event().wait()
+
+            async def aclose(self):
+                self.closed = True
+
+        source = Source()
+        stream = httpclient._LimitedHTTPXAsyncByteStream(source, max_bytes=4)
+        first_chunk_consumed = asyncio.Event()
+
+        async def consume():
+            async for _chunk in stream:
+                first_chunk_consumed.set()
+
+        task = asyncio.create_task(consume())
+        await first_chunk_consumed.wait()
+        task.cancel()
+
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        assert source.closed
 
     async def test_close_all_handles_already_closed(self):
         """close_all handles already closed sessions gracefully."""
