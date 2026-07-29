@@ -69,7 +69,19 @@ _RUNTIME_POLICY_DEFAULTS = {
         },
         'auto_cleanup': {'max_batches_per_table_per_run': 4},
     },
-    'storage': {'cleanup': {'max_files_per_run': 1000}},
+    'storage': {
+        'max_object_read_bytes': 10485760,
+        'cleanup': {'max_files_per_run': 1000},
+    },
+    'webhooks': {
+        'max_per_workspace': 16,
+        'max_inflight_requests': 16,
+    },
+    'box': {
+        'limits': {
+            'max_workspace_entries': 100000,
+        }
+    },
 }
 
 

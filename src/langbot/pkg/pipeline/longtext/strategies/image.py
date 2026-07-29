@@ -12,8 +12,19 @@ from PIL import Image, ImageDraw, ImageFont
 import functools
 
 from .. import strategy as strategy_model
+from .forward import ForwardComponentStrategy
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
+
+
+_MAX_TEXT_TO_IMAGE_CHARS = 100000
+_MAX_TEXT_TO_IMAGE_LINES = 256
+_MAX_TEXT_TO_IMAGE_PIXELS = 8_000_000
+_MAX_RENDERED_IMAGE_BYTES = 10 * 1024 * 1024
+
+
+class _TextToImageCapacityError(ValueError):
+    """The requested image would exceed a deterministic resource boundary."""
 
 
 @strategy_model.strategy_class('image')
@@ -30,6 +41,12 @@ class Text2ImageStrategy(strategy_model.LongTextStrategy):
         )
 
     async def process(self, message: str, query: pipeline_query.Query) -> list[platform_message.MessageComponent]:
+        if len(message) > _MAX_TEXT_TO_IMAGE_CHARS:
+            self.ap.logger.warning(
+                f'Text-to-image input exceeds {_MAX_TEXT_TO_IMAGE_CHARS} characters; using forward message'
+            )
+            return await ForwardComponentStrategy(self.ap).process(message, query)
+
         def render() -> str:
             render_id = f'{int(time.time())}-{uuid.uuid4().hex}'
             img_path = f'temp/{render_id}.png'
@@ -45,7 +62,12 @@ class Text2ImageStrategy(strategy_model.LongTextStrategy):
                     outfile=compressed_path,
                 )
                 with open(compressed_path, 'rb') as f:
-                    return base64.b64encode(f.read()).decode('utf-8')
+                    image_bytes = f.read(_MAX_RENDERED_IMAGE_BYTES + 1)
+                if len(image_bytes) > _MAX_RENDERED_IMAGE_BYTES:
+                    raise _TextToImageCapacityError(
+                        f'Rendered image exceeds the {_MAX_RENDERED_IMAGE_BYTES}-byte limit'
+                    )
+                return base64.b64encode(image_bytes).decode('utf-8')
             finally:
                 for path in {img_path, compressed_path}:
                     if os.path.exists(path):
@@ -53,7 +75,11 @@ class Text2ImageStrategy(strategy_model.LongTextStrategy):
 
         # Font measurement, image rendering and compression are CPU-bound PIL
         # work and must not block the shared asyncio loop for every tenant.
-        image_base64 = await asyncio.to_thread(render)
+        try:
+            image_base64 = await asyncio.to_thread(render)
+        except _TextToImageCapacityError as exc:
+            self.ap.logger.warning(f'{exc}; using forward message')
+            return await ForwardComponentStrategy(self.ap).process(message, query)
 
         return [
             platform_message.Image(
@@ -67,38 +93,7 @@ class Text2ImageStrategy(strategy_model.LongTextStrategy):
         :param path:目标字符串
         :return:<class 'list'>: <class 'list'>: [['1', 16], ['2', 35], ['1', 51]]
         """
-        kv = []
-        nums = []
-        beforeDatas = re.findall('[\\d]+', path)
-        for num in beforeDatas:
-            indexV = []
-            times = path.count(num)
-            if times > 1:
-                if num not in nums:
-                    indexs = re.finditer(num, path)
-                    for index in indexs:
-                        iV = []
-                        i = index.span()[0]
-                        iV.append(num)
-                        iV.append(i)
-                        kv.append(iV)
-                nums.append(num)
-            else:
-                index = path.find(num)
-                indexV.append(num)
-                indexV.append(index)
-                kv.append(indexV)
-        # 根据数字位置排序
-        indexSort = []
-        resultIndex = []
-        for vi in kv:
-            indexSort.append(vi[1])
-        indexSort.sort()
-        for i in indexSort:
-            for v in kv:
-                if i == v[1]:
-                    resultIndex.append(v)
-        return resultIndex
+        return [[match.group(0), match.start()] for match in re.finditer(r'\d+', path)]
 
     def get_size(self, file):
         # 获取文件大小:KB
@@ -126,9 +121,9 @@ class Text2ImageStrategy(strategy_model.LongTextStrategy):
             return infile, o_size
         outfile = self.get_outfile(infile, outfile)
         while o_size > kb:
-            im = Image.open(infile)
-            im.save(outfile, quality=quality)
-            if quality - step < 0:
+            with Image.open(infile) as im:
+                im.save(outfile, quality=quality)
+            if step <= 0 or quality - step < 0:
                 break
             quality -= step
             o_size = self.get_size(outfile)
@@ -137,12 +132,21 @@ class Text2ImageStrategy(strategy_model.LongTextStrategy):
     def _split_text_lines(self, text_str: str, text_width: int, font) -> list[str]:
         """Split text while guaranteeing that every loop iteration advances."""
 
+        if len(text_str) > _MAX_TEXT_TO_IMAGE_CHARS:
+            raise _TextToImageCapacityError(f'Text-to-image input exceeds {_MAX_TEXT_TO_IMAGE_CHARS} characters')
+
         final_lines: list[str] = []
+
+        def append_line(value: str) -> None:
+            if len(final_lines) >= _MAX_TEXT_TO_IMAGE_LINES:
+                raise _TextToImageCapacityError(f'Text-to-image output exceeds {_MAX_TEXT_TO_IMAGE_LINES} lines')
+            final_lines.append(value)
+
         text_width = max(int(text_width), 1)
         for line in text_str.replace('\t', '    ').split('\n'):
             line_width = font.getlength(line)
             if not line or line_width < text_width:
-                final_lines.append(line)
+                append_line(line)
                 continue
 
             rest_text = line
@@ -151,16 +155,18 @@ class Text2ImageStrategy(strategy_model.LongTextStrategy):
                 point = int(len(rest_text) * (text_width / line_width))
                 point = max(1, min(point, len(rest_text)))
 
-                for number, number_index in self.indexNumber(rest_text):
-                    if number_index < point < number_index + len(number) and number_index != 0:
-                        point = number_index
-                        break
+                if 0 < point < len(rest_text) and rest_text[point - 1].isdigit() and rest_text[point].isdigit():
+                    number_start = point - 1
+                    while number_start > 0 and rest_text[number_start - 1].isdigit():
+                        number_start -= 1
+                    if number_start > 0:
+                        point = number_start
 
                 point = max(1, min(point, len(rest_text)))
-                final_lines.append(rest_text[:point])
+                append_line(rest_text[:point])
                 rest_text = rest_text[point:]
                 if rest_text and font.getlength(rest_text) < text_width:
-                    final_lines.append(rest_text)
+                    append_line(rest_text)
                     break
         return final_lines
 
@@ -171,38 +177,34 @@ class Text2ImageStrategy(strategy_model.LongTextStrategy):
         width=800,
         query: pipeline_query.Query = None,
     ):
+        width = int(width)
+        if width < 1:
+            raise _TextToImageCapacityError('Text-to-image width must be positive')
         font = self.get_font(query.pipeline_config['output']['long-text-processing']['font-path'])
         text_width = max(width - 80, 1)
         final_lines = self._split_text_lines(text_str, text_width, font)
+        image_height = max(280, len(final_lines) * 35 + 65)
+        if width * image_height > _MAX_TEXT_TO_IMAGE_PIXELS:
+            raise _TextToImageCapacityError(f'Text-to-image canvas exceeds the {_MAX_TEXT_TO_IMAGE_PIXELS}-pixel limit')
         # 准备画布
-        img = Image.new('RGBA', (width, max(280, len(final_lines) * 35 + 65)), (255, 255, 255, 255))
-        draw = ImageDraw.Draw(img, mode='RGBA')
+        img = Image.new('RGBA', (width, image_height), (255, 255, 255, 255))
+        try:
+            draw = ImageDraw.Draw(img, mode='RGBA')
 
-        self.ap.logger.debug('正在绘制图片...')
-        # 绘制正文
-        line_number = 0
-        offset_x = 20
-        offset_y = 30
-        for final_line in final_lines:
-            draw.text(
-                (offset_x, offset_y + 35 * line_number),
-                final_line,
-                fill=(0, 0, 0),
-                font=font,
-            )
-            # 遍历此行,检查是否有emoji
-            idx_in_line = 0
-            for ch in final_line:
-                # 检查字符占位宽
-                char_code = ord(ch)
-                if char_code >= 127:
-                    idx_in_line += 1
-                else:
-                    idx_in_line += 0.5
+            self.ap.logger.debug('正在绘制图片...')
+            offset_x = 20
+            offset_y = 30
+            for line_number, final_line in enumerate(final_lines):
+                draw.text(
+                    (offset_x, offset_y + 35 * line_number),
+                    final_line,
+                    fill=(0, 0, 0),
+                    font=font,
+                )
 
-            line_number += 1
-
-        self.ap.logger.debug('正在保存图片...')
-        img.save(save_as)
+            self.ap.logger.debug('正在保存图片...')
+            img.save(save_as)
+        finally:
+            img.close()
 
         return save_as

@@ -15,6 +15,10 @@ if TYPE_CHECKING:
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
 
 
+_DEFAULT_MAX_INFLIGHT_WEBHOOK_REQUESTS = 16
+_HARD_MAX_INFLIGHT_WEBHOOK_REQUESTS = 128
+
+
 class WebhookPusher:
     """Push bot events to configured webhooks"""
 
@@ -24,6 +28,56 @@ class WebhookPusher:
     def __init__(self, ap: app.Application):
         self.ap = ap
         self.logger = self.ap.logger
+        self._delivery_lock = asyncio.Lock()
+        self._inflight_requests = 0
+
+    def _max_inflight_requests(self) -> int:
+        config = getattr(getattr(self.ap, 'instance_config', None), 'data', {})
+        try:
+            value = int(
+                config.get('webhooks', {}).get(
+                    'max_inflight_requests',
+                    _DEFAULT_MAX_INFLIGHT_WEBHOOK_REQUESTS,
+                )
+            )
+        except (AttributeError, TypeError, ValueError):
+            value = _DEFAULT_MAX_INFLIGHT_WEBHOOK_REQUESTS
+        return min(max(value, 1), _HARD_MAX_INFLIGHT_WEBHOOK_REQUESTS)
+
+    async def _reserve_delivery_slots(self, requested: int) -> int:
+        async with self._delivery_lock:
+            available = max(self._max_inflight_requests() - self._inflight_requests, 0)
+            admitted = min(max(requested, 0), available)
+            self._inflight_requests += admitted
+            return admitted
+
+    async def _release_delivery_slots(self, released: int) -> None:
+        async with self._delivery_lock:
+            self._inflight_requests = max(self._inflight_requests - released, 0)
+
+    async def _push_to_webhooks(self, webhooks: list[dict], payload: dict) -> list[object]:
+        """Dispatch only requests admitted by the instance-wide hard bound."""
+
+        admitted = await self._reserve_delivery_slots(len(webhooks))
+        if admitted < len(webhooks):
+            self.logger.warning(
+                'Webhook delivery capacity reached; skipped %d of %d destinations',
+                len(webhooks) - admitted,
+                len(webhooks),
+            )
+        if admitted == 0:
+            return []
+
+        tasks = [asyncio.create_task(self._push_to_webhook(webhook['url'], payload)) for webhook in webhooks[:admitted]]
+        try:
+            return await asyncio.gather(*tasks, return_exceptions=True)
+        except asyncio.CancelledError:
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            raise
+        finally:
+            await self._release_delivery_slots(admitted)
 
     async def push_person_message(
         self,
@@ -58,9 +112,7 @@ class WebhookPusher:
                 },
             }
 
-            # Push to all webhooks asynchronously
-            tasks = [self._push_to_webhook(webhook['url'], payload) for webhook in webhooks]
-            results = await asyncio.gather(*tasks, return_exceptions=True)
+            results = await self._push_to_webhooks(webhooks, payload)
 
             # Check if any webhook responded with skip_pipeline=true
             for result in results:
@@ -111,9 +163,7 @@ class WebhookPusher:
                 },
             }
 
-            # Push to all webhooks asynchronously
-            tasks = [self._push_to_webhook(webhook['url'], payload) for webhook in webhooks]
-            results = await asyncio.gather(*tasks, return_exceptions=True)
+            results = await self._push_to_webhooks(webhooks, payload)
 
             # Check if any webhook responded with skip_pipeline=true
             for result in results:

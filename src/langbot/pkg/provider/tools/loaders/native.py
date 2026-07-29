@@ -905,17 +905,27 @@ if not path.startswith('/workspace'):
     print(json.dumps({{'ok': False, 'error': 'Path must be under /workspace.'}}))
 elif not os.path.isfile(path):
     print(json.dumps({{'ok': False, 'error': f'File not found: {{path}}'}}))
+elif os.path.getsize(path) > {_MAX_HOST_EDIT_FILE_BYTES}:
+    print(json.dumps({{'ok': False, 'error': 'File exceeds the {_MAX_HOST_EDIT_FILE_BYTES}-byte edit limit.'}}))
 else:
-    with open(path, 'r', encoding='utf-8', errors='replace') as f:
-        content = f.read()
+    with open(path, 'rb') as f:
+        raw_content = f.read({_MAX_HOST_EDIT_FILE_BYTES + 1})
+    if len(raw_content) > {_MAX_HOST_EDIT_FILE_BYTES}:
+        print(json.dumps({{'ok': False, 'error': 'File exceeds the {_MAX_HOST_EDIT_FILE_BYTES}-byte edit limit.'}}))
+        raise SystemExit(0)
+    content = raw_content.decode('utf-8', errors='replace')
     count = content.count(old_string)
     if count == 0:
         print(json.dumps({{'ok': False, 'error': 'old_string not found in file.'}}))
     elif count > 1:
         print(json.dumps({{'ok': False, 'error': f'old_string matches {{count}} locations; provide a more unique string.'}}))
     else:
+        new_content = content.replace(old_string, new_string, 1)
+        if len(new_content.encode('utf-8')) > {_MAX_HOST_EDIT_FILE_BYTES}:
+            print(json.dumps({{'ok': False, 'error': 'Edited file exceeds the {_MAX_HOST_EDIT_FILE_BYTES}-byte limit.'}}))
+            raise SystemExit(0)
         with open(path, 'w', encoding='utf-8') as f:
-            f.write(content.replace(old_string, new_string, 1))
+            f.write(new_content)
         print(json.dumps({{'ok': True, 'path': path}}))
 """.strip()
         return await self._run_workspace_file_script(script, query)

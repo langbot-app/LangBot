@@ -8,6 +8,7 @@ import pytest
 from langbot.pkg.api.http.authz import WorkspaceRequiredError
 from langbot.pkg.api.http.context import ExecutionContext
 from langbot.pkg.storage.mgr import StorageMgr
+from langbot.pkg.storage.provider import HARD_MAX_STORAGE_OBJECT_BYTES
 from langbot.pkg.utils.bounded_executor import current_blocking_work_scope
 
 
@@ -200,6 +201,39 @@ async def test_opaque_object_operations_reject_cross_scope_and_owner_type(manage
         )
 
     assert object_key in manager.storage_provider.values
+
+
+@pytest.mark.asyncio
+async def test_scoped_object_reads_and_writes_have_configured_and_hard_byte_limits(manager):
+    manager.ap.instance_config = SimpleNamespace(data={'storage': {'max_object_read_bytes': 4}})
+
+    with pytest.raises(ValueError, match='4-byte write limit'):
+        await manager.save_scoped(
+            _context(WORKSPACE_A),
+            owner_type='upload',
+            owner='account:a',
+            key='oversized.bin',
+            value=b'12345',
+        )
+
+    object_key = manager.scoped_object_key(
+        _context(WORKSPACE_A),
+        owner_type='upload',
+        owner='account:a',
+        key='external.bin',
+    )
+    manager.storage_provider.values[object_key] = b'12345'
+    manager.storage_provider.load = AsyncMock(side_effect=AssertionError('oversized object must not be loaded'))
+    with pytest.raises(ValueError, match='4-byte read limit'):
+        await manager.load_scoped_object_key(
+            _context(WORKSPACE_A),
+            object_key,
+            expected_owner_type='upload',
+        )
+    manager.storage_provider.load.assert_not_awaited()
+
+    manager.ap.instance_config.data['storage']['max_object_read_bytes'] = HARD_MAX_STORAGE_OBJECT_BYTES + 1
+    assert manager._object_read_limit() == HARD_MAX_STORAGE_OBJECT_BYTES
 
 
 @pytest.mark.asyncio

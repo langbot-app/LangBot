@@ -1281,6 +1281,45 @@ async def test_box_service_rejects_and_cleans_up_when_execution_exceeds_workspac
 
 
 @pytest.mark.asyncio
+async def test_box_service_rejects_workspace_inode_bomb_before_execution(tmp_path):
+    logger = Mock()
+    backend = FakeBackend(logger)
+    runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
+    host_dir = tmp_path / 'quota-workspace-entries'
+    host_dir.mkdir()
+    app = make_app(logger, [str(tmp_path)], workspace_quota_mb=1)
+    app.instance_config.data['box']['local']['default_workspace'] = str(host_dir)
+    app.instance_config.data['box']['limits'] = {'max_workspace_entries': 2}
+    service = BoxService(app, client=_InProcessBoxRuntimeClient(logger, runtime))
+
+    tenant_host_dir = service._tenant_workspace(_CONTEXT)
+    assert tenant_host_dir is not None
+    os.makedirs(tenant_host_dir, exist_ok=True)
+    for index in range(3):
+        pathlib.Path(tenant_host_dir, f'tiny-{index}').write_bytes(b'x')
+
+    await service.initialize()
+
+    with pytest.raises(BoxValidationError, match='workspace entry limit exceeded before execution'):
+        await service.execute_tool({'command': 'echo hi'}, make_query(46))
+
+    assert backend.start_calls == []
+
+
+def test_box_service_workspace_entry_limit_is_hard_clamped():
+    app = make_app(Mock())
+    app.instance_config.data['box']['limits'] = {'max_workspace_entries': 10_000_000}
+    service = BoxService(app, client=Mock(spec=BoxRuntimeClient))
+    assert service._max_workspace_entries() == 1_000_000
+
+    app.instance_config.data['box']['limits']['max_workspace_entries'] = 0
+    assert service._max_workspace_entries() == 1
+
+    app.instance_config.data['box']['limits']['max_workspace_entries'] = 'invalid'
+    assert service._max_workspace_entries() == 100_000
+
+
+@pytest.mark.asyncio
 async def test_profile_offline_readonly_locks_read_only_rootfs():
     """offline_readonly locks read_only_rootfs so it cannot be overridden."""
     logger = Mock()
@@ -2126,7 +2165,7 @@ class TestInboundOutboundRoundTrip:
 
         async def fake_execute_tool(parameters, q):
             calls.append(parameters['command'])
-            if 'os.walk' in parameters['command']:
+            if 'os.scandir' in parameters['command']:
                 return {
                     'ok': True,
                     'stdout': '[{"name": "out.png", "b64": "QUJD"}]',
@@ -2156,7 +2195,7 @@ class TestInboundOutboundRoundTrip:
 
         async def fake_execute_tool(parameters, q):
             calls.append(parameters['command'])
-            if 'os.walk' in parameters['command']:
+            if 'os.scandir' in parameters['command']:
                 return {'ok': True, 'stdout': '[]', 'stderr': ''}
             return {'ok': True, 'stdout': '', 'stderr': ''}
 

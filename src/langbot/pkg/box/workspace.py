@@ -171,17 +171,23 @@ def wrap_python_command_with_env(
         import sys
 
         root = "{mount_path}"
+        max_manifest_bytes = 10 * 1024 * 1024
         digest = hashlib.sha256()
         manifest_files = []
         for rel in ("requirements.txt", "pyproject.toml", "setup.py", "setup.cfg"):
             path = os.path.join(root, rel)
             if not os.path.isfile(path):
                 continue
+            if os.path.getsize(path) > max_manifest_bytes:
+                raise RuntimeError(
+                    f"Python project manifest exceeds {{max_manifest_bytes}} bytes: {{rel}}"
+                )
             manifest_files.append(rel)
             with open(path, "rb") as handle:
                 digest.update(rel.encode("utf-8"))
                 digest.update(b"\\0")
-                digest.update(handle.read())
+                while chunk := handle.read(1024 * 1024):
+                    digest.update(chunk)
                 digest.update(b"\\0")
 
         print(

@@ -38,6 +38,8 @@ _INT_ADAPTER = pydantic.TypeAdapter(int)
 _UTC = _dt.timezone.utc
 _MAX_RECENT_ERRORS = 50
 _MIB = 1024 * 1024
+_DEFAULT_MAX_WORKSPACE_ENTRIES = 100_000
+_HARD_MAX_WORKSPACE_ENTRIES = 1_000_000
 
 
 def _create_shared_workspace_probe(root: str, marker_name: str, payload: bytes) -> None:
@@ -1214,25 +1216,53 @@ class BoxService:
         import json as _json
 
         target_dir = f'{self.OUTBOX_MOUNT_DIR}/{self._attachment_query_key(query)}'
-        max_bytes = self._EXEC_FALLBACK_MAX_BYTES
+        max_file_bytes = self._EXEC_FALLBACK_MAX_BYTES
+        max_files = self._ATTACHMENT_MAX_FILES
+        max_total_bytes = max_file_bytes * max_files
+        max_scan_entries = 1000
         script = (
             'import base64, json, os\n'
             f'target = {target_dir!r}\n'
-            f'max_bytes = {max_bytes}\n'
+            f'max_file_bytes = {max_file_bytes}\n'
+            f'max_files = {max_files}\n'
+            f'max_total_bytes = {max_total_bytes}\n'
+            f'max_scan_entries = {max_scan_entries}\n'
             'out = []\n'
+            'total_bytes = 0\n'
+            'scanned_entries = 0\n'
+            'stack = [target]\n'
             'if os.path.isdir(target):\n'
-            '    for root, _dirs, names in os.walk(target):\n'
-            '        for n in sorted(names):\n'
-            '            p = os.path.join(root, n)\n'
+            '    while stack and len(out) < max_files and scanned_entries < max_scan_entries:\n'
+            '        current = stack.pop()\n'
+            '        try:\n'
+            '            with os.scandir(current) as iterator:\n'
+            '                entries = sorted(iterator, key=lambda item: item.name, reverse=True)\n'
+            '        except OSError:\n'
+            '            continue\n'
+            '        for entry in entries:\n'
+            '            scanned_entries += 1\n'
+            '            if scanned_entries > max_scan_entries:\n'
+            '                break\n'
             '            try:\n'
-            '                if os.path.getsize(p) > max_bytes:\n'
+            '                if entry.is_dir(follow_symlinks=False):\n'
+            '                    stack.append(entry.path)\n'
             '                    continue\n'
-            "                with open(p, 'rb') as f:\n"
-            '                    data = f.read()\n'
+            '                if not entry.is_file(follow_symlinks=False):\n'
+            '                    continue\n'
+            '                size = entry.stat(follow_symlinks=False).st_size\n'
+            '                if size > max_file_bytes or total_bytes + size > max_total_bytes:\n'
+            '                    continue\n'
+            "                with open(entry.path, 'rb') as f:\n"
+            '                    data = f.read(max_file_bytes + 1)\n'
+            '                if len(data) > max_file_bytes or total_bytes + len(data) > max_total_bytes:\n'
+            '                    continue\n'
             '            except OSError:\n'
             '                continue\n'
-            '            rel = os.path.relpath(p, target)\n'
+            '            rel = os.path.relpath(entry.path, target)\n'
             "            out.append({'name': rel, 'b64': base64.b64encode(data).decode('ascii')})\n"
+            '            total_bytes += len(data)\n'
+            '            if len(out) >= max_files:\n'
+            '                break\n'
             'print(json.dumps(out))\n'
         )
         result = await self.execute_tool(
@@ -1888,29 +1918,50 @@ class BoxService:
         if normalized_timeout > profile.max_timeout_sec:
             params['timeout_sec'] = profile.max_timeout_sec
 
-    def _get_workspace_size_bytes(self, root: str) -> int:
-        total = 0
+    def _max_workspace_entries(self) -> int:
+        data = getattr(getattr(self.ap, 'instance_config', None), 'data', {})
+        try:
+            configured = int(
+                data.get('box', {}).get('limits', {}).get('max_workspace_entries', _DEFAULT_MAX_WORKSPACE_ENTRIES)
+            )
+        except (AttributeError, TypeError, ValueError):
+            configured = _DEFAULT_MAX_WORKSPACE_ENTRIES
+        return min(max(configured, 1), _HARD_MAX_WORKSPACE_ENTRIES)
 
-        def _walk(path: str):
-            nonlocal total
+    @staticmethod
+    def _get_workspace_usage(
+        root: str,
+        *,
+        stop_after_bytes: int,
+        max_entries: int,
+    ) -> tuple[int, int, bool]:
+        """Scan depth-first without recursion and stop at either hard bound."""
+
+        total = 0
+        entries_seen = 0
+        directories = [root]
+        while directories:
+            path = directories.pop()
             try:
                 with os.scandir(path) as entries:
                     for entry in entries:
+                        entries_seen += 1
+                        if entries_seen > max_entries:
+                            return total, entries_seen, True
                         try:
                             if entry.is_symlink():
                                 total += entry.stat(follow_symlinks=False).st_size
-                                continue
-                            if entry.is_dir(follow_symlinks=False):
-                                _walk(entry.path)
-                                continue
-                            total += entry.stat(follow_symlinks=False).st_size
+                            elif entry.is_dir(follow_symlinks=False):
+                                directories.append(entry.path)
+                            else:
+                                total += entry.stat(follow_symlinks=False).st_size
                         except FileNotFoundError:
                             continue
+                        if total > stop_after_bytes:
+                            return total, entries_seen, False
             except FileNotFoundError:
-                return
-
-        _walk(root)
-        return total
+                continue
+        return total, entries_seen, False
 
     async def _enforce_workspace_quota(self, spec: BoxSpec, *, phase: str) -> None:
         if spec.host_path is None or spec.workspace_quota_mb <= 0:
@@ -1923,15 +1974,26 @@ class BoxService:
         # Walk the workspace off the event loop — this runs on every
         # quota-enforced exec, and a large tree would otherwise block the whole
         # asyncio runtime (all bots/pipelines) for the duration of the scan.
-        used_bytes = await asyncio.to_thread(self._get_workspace_size_bytes, host_path)
         limit_bytes = spec.workspace_quota_mb * _MIB
+        max_entries = self._max_workspace_entries()
+        used_bytes, entries_seen, entry_limit_exceeded = await asyncio.to_thread(
+            self._get_workspace_usage,
+            host_path,
+            stop_after_bytes=limit_bytes,
+            max_entries=max_entries,
+        )
+        if entry_limit_exceeded:
+            raise BoxValidationError(
+                f'workspace entry limit exceeded {phase}: '
+                f'entries>{max_entries} host_path={host_path} session_id={spec.session_id}'
+            )
         if used_bytes <= limit_bytes:
             return
 
         raise BoxValidationError(
             f'workspace quota exceeded {phase}: '
             f'used={used_bytes} bytes limit={limit_bytes} bytes '
-            f'host_path={host_path} session_id={spec.session_id}'
+            f'entries={entries_seen} host_path={host_path} session_id={spec.session_id}'
         )
 
     async def _cleanup_exceeded_session(self, context: TenantContext, spec: BoxSpec) -> None:

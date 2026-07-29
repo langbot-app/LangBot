@@ -9,15 +9,15 @@
 
 ## 结论
 
-本轮已覆盖 LangBot Core、Plugin Runtime 和 Box Runtime 的主要常驻对象、后台任务、队列、网络客户端、进程生命周期及数据库连接池。本轮定位到的攻击者可控或历史累积状态均已补充容量、超时、淘汰或确定性清理边界；修正后的高基数探针没有观察到随历史请求继续增长的活跃缓存。该结论不等于证明任意生产负载下不存在资源问题，生产激活仍受下述 Linux 隔离、硬盘配额和 soak 门禁约束。
+本轮已覆盖 LangBot Core、Plugin Runtime 和 Box Runtime 的主要常驻对象、后台任务、队列、网络客户端、进程生命周期及数据库连接池。本轮定位到的攻击者可控或历史累积状态均已补充容量、超时、淘汰或确定性清理边界；修正后的高基数探针没有观察到随历史请求继续增长的活跃缓存。按本轮“代码审查 + 本地可重复测试”的验收口径，审查已经完成，未发现仍未处理的严重内存泄漏或 CPU 抢占路径。该结论不等于证明任意生产负载下不存在资源问题。
 
-代码级审查、跨仓全量测试和仓库 Dockerfile 构建的 Linux/cgroup v2 探针已经通过，但当前状态仍不能作为 Cloud 生产激活批准。完整剩余清单见
+最终 Cloud 拓扑和生产环境不是本轮完成条件。代码级审查、跨仓全量测试和仓库 Dockerfile 构建的 Linux/cgroup v2 探针已经通过，但当前状态仍不能单独作为 Cloud 生产激活批准。完整的环境侧剩余清单见
 [Cloud v2 仍待验证事项](./cloud-v2-pending-verification.md)。其中与本轮资源审查直接相关、上线前还必须完成的项目包括：
 
 1. 在最终 Cloud 部署权限和 cgroup 拓扑下重复 nsjail、namespace 和 delegated cgroup v2 的 CPU、内存、swap、PID、文件句柄验证。本轮一次性 Linux 容器已经证明代码路径可工作，但普通容器和仅 `--privileged` 的 private cgroup namespace 都不满足条件。
 2. 为 Cloud Box 提供并验证硬文件系统 quota provider。普通 nsjail bind mount 不能证明总字节数和 inode 硬配额，当前严格 readiness 按设计会失败关闭。
 3. 使用最终生产配置分布继续做容量测试，并据此确定单实例 Workspace placement 上限。本轮真实 PostgreSQL 16 + RLS 启动测试已经覆盖 1,000 个各带 Provider、三类 Model、Bot、Pipeline、KnowledgeBase、MCP 和 Plugin setting 的 Workspace，启动加载耗时和 SQL 次数保持线性；5,000 Workspace 的合成三代替换探针也证明旧运行时会释放。仓库已新增可同时采集 Core/Plugin/Box HTTP、进程树和 cgroup v2 的 24 小时门禁工具，并在受 CPU、memory、swap、PID 硬限制的 Linux 容器中完成短时自检；但最终生产候选拓扑的 24 小时运行仍未执行。测试中的 fake adapter/requester/Plugin handler 仍不能替代真实平台 SDK、外部连接池和插件进程的容量数据；合法活跃租户本身仍会线性占用内存。
-SDK 已先行发布到分支提交 `7c0b9827ed8597a1c84151b83fcf6307934fd944`，本提交集中的 LangBot
+SDK 已先行发布到分支提交 `87d903e9b7c4e518ce066c89f65bbde4de825fc5`，本提交集中的 LangBot
 `pyproject.toml` 和 `uv.lock` 已精确钉住该提交。最终镜像仍需按待验证清单记录并核对实际安装版本。
 
 ## 覆盖范围
@@ -124,6 +124,16 @@ SDK 已先行发布到分支提交 `7c0b9827ed8597a1c84151b83fcf6307934fd944`，
 - Monitoring 过期数据每表每轮默认最多删除 4 个批次、绝对最多 100 个批次；本地/S3
   过期上传文件候选和每轮删除默认最多 1,000、绝对最多 10,000。单个历史数据量异常的
   Workspace 不再能让一次维护循环无限物化候选或持续清空全部 backlog。
+- Workspace webhook 数量默认限制为 16、绝对限制为 64；管理查询和运行时 fan-out
+  都只物化有界结果。实例同时发送的 webhook 请求默认限制为 16、绝对限制为 128；
+  满载时直接跳过未获准目的地，不创建一批等待 semaphore 的 task。取消调用时会取消并
+  await 已创建的所有请求任务，归还实例槽位。
+- Local/S3 Storage 的对象读取在实际 IO 中只读取 `limit + 1` 字节，S3 body 在成功、
+  超限和异常分支都会关闭；默认单对象 10 MiB、绝对上限 64 MiB。所有 scoped load
+  以及 WebSocket attachment 都经过同一边界，写入也不能产生当前实例无法安全读取的对象。
+- Valkey Search 的批量删除改为固定页流式搜索、删除并累计计数，不再把全部匹配 key
+  保留在 Python 列表；每次删除后从 offset 0 继续，避免结果集缩短造成跳项，并设置
+  1,000 轮绝对终止条件。
 
 ### CPU 和事件循环保护
 
@@ -144,7 +154,7 @@ SDK 已先行发布到分支提交 `7c0b9827ed8597a1c84151b83fcf6307934fd944`，
 - S3 同步 SDK 使用线程执行，并通过实例级 semaphore 限制并发；默认 `storage.s3.max_concurrency=16`，可通过实例配置和环境变量覆写。
 - Box 子进程 stderr 以 64 KiB 块读取，日志最多每秒输出 4 个摘录并汇总抑制数量，避免无换行或刷屏输出制造无界缓冲与日志放大。
 - Plugin worker 日志单行最多保留 64 KiB；Box managed-process stdout relay 以固定 64 KiB 块读取，不再依赖换行符，避免超长无换行输出触发 `StreamReader` limit 或堵塞子进程。
-- Box generation fence 的代次更新改为只访问目标 Workspace 的 event 和 active-task 二级索引。原实现每次更新都会遍历全部 Workspace 的 fence/task 记录，10,000 个 Workspace 的第二阶段更新会退化为 O(N²) 并在 40 秒后仍未完成；修正后包括其他 SDK 高基数负载和本轮协议 offload 在内的当前完整双阶段探针耗时 `9.037s`。
+- Box generation fence 的代次更新改为只访问目标 Workspace 的 event 和 active-task 二级索引。原实现每次更新都会遍历全部 Workspace 的 fence/task 记录，10,000 个 Workspace 的第二阶段更新会退化为 O(N²) 并在 40 秒后仍未完成；修正后包括其他 SDK 高基数负载和本轮协议 offload 在内的当前完整双阶段探针耗时 `11.270s`。
 - Box session 枚举、旧 generation 回收和 admission 计数均通过 Workspace 索引执行；admission 过期回收通过最小堆执行，不再在每次 RPC 上产生 O(实例总 session/grant 数) 的扫描。
 - Model、Pipeline、RAG 和 Platform manager 均维护 Workspace 到运行时 key 的二级索引。Workspace generation 更新只清理目标 Workspace 的缓存和运行时，不再扫描实例内所有租户的 provider/model、pipeline、knowledge runtime 或 bot；回归测试使用禁止全局迭代的映射验证该边界。
 - Cloud heartbeat 直接读取已加载且有容量边界的 Pipeline、MCP、KnowledgeBase 和 Bot registry 计数，不再为每个活跃 Workspace 依次打开 Tenant UoW、执行四类 COUNT 查询；这消除了租户数增长后每日周期性形成的串行 SQL/CPU 尖峰。OSS 模式仍保留数据库统计语义。
@@ -161,6 +171,13 @@ SDK 已先行发布到分支提交 `7c0b9827ed8597a1c84151b83fcf6307934fd944`，
 - Workspace 阻塞预算由服务端认证后的 `RequestContext`、公开 bot 的 RuntimeBot、公开对象 key 中经 binding fence 验证的 Workspace、Platform/TaskManager 的 ExecutionContext，以及 SDK 入站 ActionContext 建立，不接受调用方伪造的租户 header。公开 webhook、公开对象下载、Dashboard/Embed WebSocket、普通 HTTP handler、Platform adapter 和 detached tenant task 均已覆盖。容量拒绝在 Core HTTP 路径返回稳定的 429，health/debug counter 分开报告 global 与 scope rejection。
 - Argon2 密码 hash/verify 只允许一个实例级在途操作，额外并发立即返回容量错误而不是在 asyncio semaphore 中无限积累等待请求；该 CPU/内存密集工作同时使用独立的 `system:authentication` 阻塞作用域。Cloud 本身仍禁用本地密码登录。
 - WeCom 扩展 API 的无限客户端超时改为 120 秒；平台 webhook 的 AES、媒体 Base64 与同步 SDK 调用均移出共享事件循环。
+- 长文本转图片限制为 100,000 字符、256 行、800 万 RGBA 像素和 10 MiB 输出；
+  超限时回退到 forward message。数字边界查找从重复 `count/find/sort` 改成线性扫描，
+  PIL image 使用显式关闭，压缩步长为零时也能终止。
+- Core 在每次 quota-enforced Box exec 前后遍历 Workspace 时使用非递归 DFS，并在
+  超过字节 quota 或默认 100,000/绝对 1,000,000 个目录项后立即停止；目录项洪泛
+  失败关闭，不再重复完整扫描 inode bomb。远程 outbox fallback 同时限制扫描项、
+  文件数、单文件和总字节，Python project manifest 使用分块 hash 并限制单文件 10 MiB。
 
 ### 插件和 Box 资源隔离
 
@@ -170,6 +187,9 @@ SDK 已先行发布到分支提交 `7c0b9827ed8597a1c84151b83fcf6307934fd944`，
 - Box nsjail 的 cgroup v2 路径现在同时设置 `memory.max` 和 `memory.swap.max=0`。修复前，48 MiB 沙盒可以把强制提交的 128 MiB 页面换出并正常退出，形成宿主 swap 抢占；修复后同一探针以 exit 137 被 cgroup 杀死。
 - 仓库 Docker Compose/Kubernetes 示例显式下发 Core、Plugin Runtime 和 Box Runtime 的 blocking executor 上限；Kubernetes Box readiness probe 从仅报告进程存活的 `/healthz` 改为 `/readyz`，使 backend 或 managed-mode 隔离检查失败时不会把 Pod 加入就绪流量。
 - 相同 digest 的已验证代码和依赖环境可只读共享，每个 installation 的 home/tmp/data 和进程独立。
+- SDK 在发布共享依赖环境前最多校验 100,000 个目录项和 2 GiB 常规文件元数据总量；
+  超限的 staging tree 会被原子清理而不会进入 worker。`requirements.txt` 和插件
+  `manifest.yaml` 都使用 `limit + 1` 有界读取，manifest 额外限制为 1 MiB。
 - Box session、managed process、completed process、admission record 和 RPC 文件均有实例级上限；Cloud entitlement 仍限制每个合资格 Workspace 一个 `global` session、零 managed process。
 - Box Runtime 对上述实例级配置再增加不可放大的硬上限：session 5,000、managed
   process 1,024、completed process 10,000、admission record 250,000、RPC 单文件
@@ -206,6 +226,12 @@ SDK 已先行发布到分支提交 `7c0b9827ed8597a1c84151b83fcf6307934fd944`，
 - Core 与 SDK 各进程的通用阻塞 executor 默认使用 8 个 worker、128 个 pending 槽位、每 Workspace 4 个在途槽位；它是实例/进程级共享背压，不由 Workspace 或插件 manifest 调高，单 Workspace 配置硬性不得超过 worker 的一半。生产值应按容器 CPU 和上游阻塞时延校准，不能把 pending 当吞吐配置无限放大。
 - 插件包下载上限 64 MiB，pip stdout/stderr 保留上限各 1 MiB；这不会限制安装进程实际输出，只限制父进程内存中的诊断副本。
 - 通用远程响应和媒体默认上限 10 MiB；错误诊断正文只保留 4 KiB。Plugin binary storage 默认 10 MiB、绝对上限 64 MiB；Skill 文本、Plugin UI 和 host edit 分别限制为 1 MiB、4 MiB 和 1 MiB。
+- Storage scoped object 默认读写上限 10 MiB、代码绝对上限 64 MiB；Webhook 默认每
+  Workspace 16 个、实例 16 个同时出站请求，代码绝对上限分别为 64 和 128。Box
+  Workspace quota 扫描默认最多访问 100,000 个目录项、绝对最多 1,000,000 个。
+- SDK 共享依赖环境在发布前最多接受 100,000 个条目、2 GiB 常规文件元数据总量；
+  artifact manifest 与 requirements 各最多 1 MiB。这些是 Runtime 控制面在启动
+  worker 前的保护，不替代最终文件系统的 byte/inode 硬配额。
 - Monitoring 查询上限由 `monitoring.query_limits` 配置并支持原生环境变量覆写，但始终
   受代码绝对上限约束；cleanup 的每表批次数和 Storage 每轮文件数同样采用实例配置加
   绝对上限。时间序列默认/绝对上限为 1,000/10,000 个数据库聚合桶，模型分组复用分页
@@ -220,8 +246,8 @@ SDK 已先行发布到分支提交 `7c0b9827ed8597a1c84151b83fcf6307934fd944`，
 | --- | --- |
 | LangBot Ruff + `git diff --check` | 通过 |
 | Plugin SDK Ruff + `git diff --check` | 通过 |
-| LangBot 全量测试（使用远端精确钉住的新 SDK，含 unit/integration/Box/E2E） | `2839 passed, 33 skipped` |
-| Plugin SDK 全量测试 | `1325 passed` |
+| LangBot 全量测试（含 unit/integration/Box/E2E） | `2855 passed, 33 skipped` |
+| Plugin SDK 全量测试 | `1328 passed` |
 | Space Go 全量测试与闭源 Cloud Adapter 测试 | Go `go test ./...` 通过；Adapter `40 passed` |
 | Space PostgreSQL 16 Cloud v2 目录与并发容量准入 | 通过；两个注册并发争用最后一个槽位时 `1 success / 1 capacity rejection / 1 active Workspace` |
 | Core PostgreSQL 16 Cloud runtime server timeout | 真实连接从 `pg_settings` 读回 `60000ms / 5000ms / 60000ms` 的 statement/lock/idle-transaction timeout，并显式 dispose |
@@ -234,9 +260,9 @@ SDK 已先行发布到分支提交 `7c0b9827ed8597a1c84151b83fcf6307934fd944`，
 | Cloud soak 门禁解析/采样/判定单元测试 | `27 passed` |
 | Core/Plugin SDK event-loop monitor 专项测试 | 两仓各 `7 passed`，包含真实 50 ms scheduler stall |
 | Cloud soak Linux 硬限制短时自检 | 通过；CPU `0.5`、memory+swap `256 MiB`、PID `128` 均从 cgroup v2 读回，冷却尾段 verdict `pass` |
-| Core 双阶段历史 churn 资源探针（使用精确钉住的新 SDK） | audit 通过，`11.895s` |
-| Core 5,000 个 populated Workspace 三代容量探针（使用精确钉住的新 SDK） | 当前复跑通过，最大替换耗时比 `1.382` |
-| Plugin SDK 双阶段资源探针 | audit 通过，`9.407s` |
+| Core 双阶段历史 churn 资源探针（使用当前本地 SDK 分支） | audit 通过，`12.559s` |
+| Core 5,000 个 populated Workspace 三代容量探针（使用当前本地 SDK 分支） | 当前复跑通过，最大替换耗时比 `1.405` |
+| Plugin SDK 双阶段资源探针 | audit 通过，`11.270s` |
 
 两个仓库新增了可重复执行的历史 churn 探针，Core 另有 populated Workspace 三代替换探针：
 
@@ -266,14 +292,14 @@ Core audit 每个阶段执行 10,000 个空 Workspace 的真实 Model/Plugin man
 - 20,000 个限流身份：rate-limit container `10,000`。
 - 10,000 个历史 task：task record `200`。
 - 5,000 次 WebSocket churn：conversation 与 stream index 均为 `200`。
-- event-loop task、线程和文件描述符保持 `1 / 1 / 6`；使用远端精确钉住 SDK 的当前复跑中，第二阶段相对第一阶段 RSS 增长 `2,605,056 bytes`、tracemalloc current 增长 `344,622 bytes`，总耗时 `11.895s`。Session 淘汰改为 Workspace 索引和最小堆后，同一 audit 工作量相对此前 `16.150s` 明显下降。
+- event-loop task、线程和文件描述符保持 `1 / 1 / 6`；使用当前本地 SDK 分支的复跑中，第二阶段相对第一阶段 RSS 增长 `2,228,224 bytes`、tracemalloc current 增长 `344,669 bytes`，总耗时 `12.559s`。Session 淘汰改为 Workspace 索引和最小堆后，同一 audit 工作量相对此前 `16.150s` 明显下降。
 
 Populated Workspace audit 为 5,000 个 Workspace 各加载一个 Provider、LLM、Embedding、Rerank、Pipeline、Bot、KnowledgeBase 和 MCP session，然后全部推进两个 generation：
 
 - 三个阶段的活跃 provider/model、pipeline、bot、knowledge 和 MCP registry 均精确维持 `5,000`，不存在按历史 generation 增长。
 - 到第三阶段，前两代的 requester、Bot adapter 和 MCP session 各 `10,000` 个全部收到确定性关闭；weak reference 断言旧代对象可被回收。
 - event-loop task、线程和文件描述符保持 `1 / 1 / 6`；使用远端精确钉住 SDK 的当前复跑中，第三阶段相对第二阶段 RSS 增长 `1,245,184 bytes`，tracemalloc current 仅增长 `2,061 bytes`。
-- 初始/第一次替换/第二次替换分别耗时 `1.660s / 2.151s / 2.296s`，最大替换耗时比为 `1.382`，未随历史代次出现 CPU 退化。
+- 初始/第一次替换/第二次替换分别耗时 `1.893s / 2.549s / 2.659s`，最大替换耗时比为 `1.405`，未随历史代次出现 CPU 退化。
 - macOS RSS sample 从初始的 `154,648,576` 增至第一阶段 `368,181,248`、第二阶段 `389,087,232` 和第三阶段 `390,332,416 bytes`；第二次替换只比第一次替换增加约 1.19 MiB，但“合法活跃租户资源的线性容量”仍必须作为 placement 容量输入。这里使用轻量 fake adapter/requester，不应把第一阶段约 204 MiB 增量外推为生产每租户成本。
 
 Plugin SDK audit 每个阶段执行 25,000 次 loopback RPC、5,000 次安装 binding 激活/撤销、10,000 个 Workspace generation 更新和 2,500 次带 Workspace 上下文的 Box session 创建/删除。第一、第二阶段的保留状态完全一致：
@@ -281,7 +307,7 @@ Plugin SDK audit 每个阶段执行 25,000 次 loopback RPC、5,000 次安装 bi
 - RPC waiter、stream queue、action task 和活跃 installation binding 均为 `0`。
 - installation watermark 为有界的 `5,000`；Workspace generation record 为有界的 `10,000`，没有等待者时 generation event 为 `0`。
 - generation active task/index、Box session、Box Workspace session index、creating/closing/background task 和 session lock 均为 `0`。
-- event-loop task 和文件描述符保持 `1 / 7`；当前复跑第二阶段相对第一阶段 RSS peak 增长 `2,670,592 bytes`、tracemalloc current 增长 `289,746 bytes`，总耗时 `9.407s`。耗时增加来自本轮把大协议消息的 JSON/Pydantic、UTF-8 编码、分片和拼接移入有界线程池；25,000 RPC/阶段的合成探针仍约为 5,300 RPC/s，结构状态和第二阶段 tracemalloc 增量保持平稳。
+- event-loop task 和文件描述符保持 `1 / 7`；当前复跑第二阶段相对第一阶段 RSS peak 增长 `2,637,824 bytes`、tracemalloc current 增长 `289,746 bytes`，总耗时 `11.270s`。耗时增加来自本轮把大协议消息的 JSON/Pydantic、UTF-8 编码、分片和拼接移入有界线程池；结构状态和第二阶段 tracemalloc 增量保持平稳。
 
 第二轮反向静态审查另外枚举了 Core 的 50 个显式 task 创建点和 204 个线程、阻塞调用及子进程调用点，以及 SDK 的 28 个显式 task 创建点和 62 个线程、阻塞调用及子进程调用点。第三轮独立复核继续从高基数定时器、目录遍历、准入全表扫描和取消竞态反推，新增关闭了 Plugin restart 冷却唤醒群、MCP idle 数据库轮询、nsjail orphan 的 O(session × process) 启动扫描、message aggregation 的 O(buffer) 准入及 Skill inode/文本列表边界。显式 task 均具有持有者、完成回调或 `finally` 回收路径；所有生产入口在第一次 `asyncio.to_thread()` 前安装有界默认 executor。Core、Plugin Runtime 和 Box 的公开 `/healthz`（Box `/readyz` 亦同）会输出各自的 aggregate runtime/resource counter 和 event-loop lag，供 soak 对比活跃量、pending、累计 capacity rejection 与调度延迟；不输出 debug key、控制 token、租户或插件身份。Plugin Runtime 的授权 debug info 复用同一资源快照，避免公开/私有指标语义漂移。
 

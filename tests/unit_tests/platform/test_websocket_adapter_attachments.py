@@ -37,6 +37,7 @@ def _make_adapter(load_return=b'hello', load_side_effect=None):
     provider.load = AsyncMock(return_value=load_return, side_effect=load_side_effect)
     storage_mgr = Mock()
     storage_mgr.storage_provider = provider
+    storage_mgr.load_scoped_object_key = AsyncMock(return_value=load_return, side_effect=load_side_effect)
     storage_mgr.scoped_prefix.return_value = _UPLOAD_PREFIX
     storage_mgr.is_scoped_object_key.return_value = True
     storage_mgr.delete_scoped_object_key = AsyncMock()
@@ -94,7 +95,7 @@ async def test_file_uses_octet_stream_fallback():
 
 @pytest.mark.asyncio
 async def test_skips_components_without_path_or_unknown_type():
-    adapter, _, provider = _make_adapter()
+    adapter, storage_mgr, provider = _make_adapter()
     chain = [
         {'type': 'Image', 'path': ''},  # no path
         {'type': 'Plain', 'path': 'storage://abc/x'},  # not a file component
@@ -102,6 +103,7 @@ async def test_skips_components_without_path_or_unknown_type():
     ]
     await adapter._process_image_components(_make_connection(), chain)
     provider.load.assert_not_awaited()
+    storage_mgr.load_scoped_object_key.assert_not_awaited()
     assert 'base64' not in chain[0]
     assert 'base64' not in chain[1]
 

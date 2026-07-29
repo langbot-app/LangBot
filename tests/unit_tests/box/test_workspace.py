@@ -65,6 +65,9 @@ def test_wrap_python_command_with_env_contains_bootstrap_and_command():
     assert '_LB_SYSTEM_PYTHON="$(command -v python3 || command -v python || true)"' in command
     assert '"$_LB_SYSTEM_PYTHON" -m venv "$_LB_VENV_DIR"' in command
     assert 'kill -0 "$_LB_LOCK_OWNER"' in command
+    assert 'max_manifest_bytes = 10 * 1024 * 1024' in command
+    assert 'handle.read(1024 * 1024)' in command
+    assert 'digest.update(handle.read())' not in command
     assert 'export VIRTUAL_ENV="$_LB_VENV_DIR"' in command
     assert command.rstrip().endswith('python script.py')
 

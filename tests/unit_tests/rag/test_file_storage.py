@@ -52,6 +52,7 @@ def _make_app() -> Mock:
     storage_mgr.storage_provider = Mock()
     storage_mgr.storage_provider.exists = AsyncMock(return_value=True)
     storage_mgr.storage_provider.load = AsyncMock()
+    storage_mgr.storage_provider.load_bounded = AsyncMock()
     storage_mgr.storage_provider.save = AsyncMock()
     storage_mgr.storage_provider.size = AsyncMock(return_value=123)
     storage_mgr.storage_provider.delete = AsyncMock()
@@ -175,7 +176,7 @@ class TestStoreZipFile:
     @pytest.mark.asyncio
     async def test_store_zip_file_extracts_supported_files_and_skips_noise(self):
         kb = _make_kb()
-        kb.ap.storage_mgr.storage_provider.load = AsyncMock(
+        kb.ap.storage_mgr.storage_provider.load_bounded = AsyncMock(
             return_value=_make_zip_bytes(
                 {
                     'doc1.pdf': b'pdf',
@@ -210,7 +211,7 @@ class TestStoreZipFile:
     @pytest.mark.asyncio
     async def test_store_zip_file_raises_when_no_supported_files(self):
         kb = _make_kb()
-        kb.ap.storage_mgr.storage_provider.load = AsyncMock(
+        kb.ap.storage_mgr.storage_provider.load_bounded = AsyncMock(
             return_value=_make_zip_bytes({'image.png': b'png', 'video.mp4': b'video'})
         )
         kb.store_file = AsyncMock()
@@ -224,7 +225,7 @@ class TestStoreZipFile:
     @pytest.mark.asyncio
     async def test_store_zip_file_rejects_too_many_documents_before_extracting(self):
         kb = _make_kb()
-        kb.ap.storage_mgr.storage_provider.load = AsyncMock(
+        kb.ap.storage_mgr.storage_provider.load_bounded = AsyncMock(
             return_value=_make_zip_bytes({f'doc-{index}.txt': b'text' for index in range(9)})
         )
         kb.store_file = AsyncMock()
@@ -239,7 +240,7 @@ class TestStoreZipFile:
     @pytest.mark.asyncio
     async def test_store_zip_file_rejects_extreme_compression_ratio_before_extracting(self):
         kb = _make_kb()
-        kb.ap.storage_mgr.storage_provider.load = AsyncMock(
+        kb.ap.storage_mgr.storage_provider.load_bounded = AsyncMock(
             return_value=_make_zip_bytes(
                 {'bomb.txt': b'A' * (1024 * 1024)},
                 compression=zipfile.ZIP_DEFLATED,

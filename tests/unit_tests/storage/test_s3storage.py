@@ -135,6 +135,16 @@ class TestS3StorageProviderWithMoto:
         assert loaded_data == test_data
 
     @pytest.mark.asyncio
+    async def test_bounded_load_rejects_oversized_object(self, mock_app_with_s3_config, s3_mock):
+        s3storage = get_s3storage_module()
+        provider = s3storage.S3StorageProvider(mock_app_with_s3_config)
+        await provider.initialize()
+        await provider.save('test/oversized.bin', b'12345')
+
+        with pytest.raises(ValueError, match='4-byte read limit'):
+            await provider.load_bounded('test/oversized.bin', max_bytes=4)
+
+    @pytest.mark.asyncio
     async def test_exists_returns_true_for_existing_object(self, mock_app_with_s3_config, s3_mock):
         """Test that exists returns True for existing object."""
         s3storage = get_s3storage_module()

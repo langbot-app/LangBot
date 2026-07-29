@@ -14,6 +14,7 @@ from .providers import localstorage
 
 
 _SAFE_OWNER_TYPE = re.compile(r'^[a-z][a-z0-9_-]{0,63}$')
+_DEFAULT_OBJECT_READ_BYTES = 10 * 1024 * 1024
 _SCOPED_KEY = re.compile(
     r'^v1/(?P<instance>[a-f0-9]{24})/'
     r'(?P<workspace>[0-9a-fA-F-]{36})/'
@@ -33,6 +34,35 @@ class StorageMgr:
 
     def __init__(self, ap: app.Application):
         self.ap = ap
+
+    def _object_read_limit(self) -> int:
+        config = getattr(getattr(self.ap, 'instance_config', None), 'data', {})
+        try:
+            configured = int(
+                config.get('storage', {}).get(
+                    'max_object_read_bytes',
+                    _DEFAULT_OBJECT_READ_BYTES,
+                )
+            )
+        except (AttributeError, TypeError, ValueError):
+            configured = _DEFAULT_OBJECT_READ_BYTES
+        return min(max(configured, 1), provider.HARD_MAX_STORAGE_OBJECT_BYTES)
+
+    async def _load_object_bounded(self, object_key: str) -> bytes:
+        max_bytes = self._object_read_limit()
+        bounded_loader = getattr(self.storage_provider, 'load_bounded', None)
+        if callable(bounded_loader):
+            return await bounded_loader(object_key, max_bytes=max_bytes)
+
+        # Compatibility for lightweight and third-party providers. Built-in
+        # providers enforce the same bound in the actual read operation.
+        object_size = await self.storage_provider.size(object_key)
+        if object_size > max_bytes:
+            raise ValueError(f'Storage object exceeds the {max_bytes}-byte read limit')
+        value = await self.storage_provider.load(object_key)
+        if len(value) > max_bytes:
+            raise ValueError(f'Storage object exceeds the {max_bytes}-byte read limit')
+        return value
 
     @staticmethod
     def _require_execution_scope(
@@ -150,6 +180,9 @@ class StorageMgr:
         preserve_suffix: bool = True,
     ) -> str:
         await self._require_active_execution_scope(context)
+        max_bytes = self._object_read_limit()
+        if len(value) > max_bytes:
+            raise ValueError(f'Storage object exceeds the {max_bytes}-byte write limit')
         object_key = self.scoped_object_key(
             context,
             owner_type=owner_type,
@@ -177,7 +210,7 @@ class StorageMgr:
             key=key,
             preserve_suffix=preserve_suffix,
         )
-        return await self.storage_provider.load(object_key)
+        return await self._load_object_bounded(object_key)
 
     async def delete_scoped(
         self,
@@ -223,7 +256,7 @@ class StorageMgr:
                 return None
             if not await self.storage_provider.exists(object_key):
                 return None
-            return await self.storage_provider.load(object_key)
+            return await self._load_object_bounded(object_key)
 
     @classmethod
     def require_scoped_object_key(
@@ -274,7 +307,7 @@ class StorageMgr:
             object_key,
             expected_owner_type=expected_owner_type,
         )
-        return await self.storage_provider.load(object_key)
+        return await self._load_object_bounded(object_key)
 
     async def size_scoped_object_key(
         self,

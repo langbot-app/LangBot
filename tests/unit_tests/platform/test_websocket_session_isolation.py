@@ -327,7 +327,7 @@ async def test_attachment_key_must_belong_to_connection_upload_scope():
     storage_mgr = Mock()
     storage_mgr.scoped_prefix.return_value = 'v1/current/upload_image/'
     storage_mgr.is_scoped_object_key.return_value = True
-    storage_mgr.storage_provider.load = AsyncMock(return_value=b'image')
+    storage_mgr.load_scoped_object_key = AsyncMock(return_value=b'image')
     storage_mgr.delete_scoped_object_key = AsyncMock()
     adapter = WebSocketAdapter.model_construct(
         ap=Mock(storage_mgr=storage_mgr),
@@ -344,6 +344,11 @@ async def test_attachment_key_must_belong_to_connection_upload_scope():
         owner_type='upload_image',
     )
     storage_mgr.is_scoped_object_key.assert_called_once_with(
+        'v1/current/upload_image/key.png',
+        expected_owner_type='upload_image',
+    )
+    storage_mgr.load_scoped_object_key.assert_awaited_once_with(
+        connection.execution_context,
         'v1/current/upload_image/key.png',
         expected_owner_type='upload_image',
     )

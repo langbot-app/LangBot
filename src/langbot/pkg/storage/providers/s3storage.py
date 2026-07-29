@@ -102,21 +102,36 @@ class S3StorageProvider(provider.StorageProvider):
         self,
         key: str,
     ) -> bytes:
+        return await self.load_bounded(key, max_bytes=provider.HARD_MAX_STORAGE_OBJECT_BYTES)
+
+    async def load_bounded(
+        self,
+        key: str,
+        *,
+        max_bytes: int,
+    ) -> bytes:
         """Load bytes from S3"""
+        max_bytes = provider.normalize_read_limit(max_bytes)
         try:
-            return await self._run_io(self._load_sync, key)
+            return await self._run_io(self._load_sync, key, max_bytes)
         except Exception as e:
             self.ap.logger.error(f'Failed to load from S3: {e}')
             raise
 
-    def _load_sync(self, key: str) -> bytes:
+    def _load_sync(self, key: str, max_bytes: int) -> bytes:
         response = self.s3_client.get_object(
             Bucket=self.bucket_name,
             Key=key,
         )
         body = response['Body']
         try:
-            return body.read()
+            declared_size = response.get('ContentLength')
+            if declared_size is not None and declared_size > max_bytes:
+                raise ValueError(f'Storage object exceeds the {max_bytes}-byte read limit')
+            value = body.read(max_bytes + 1)
+            if len(value) > max_bytes:
+                raise ValueError(f'Storage object exceeds the {max_bytes}-byte read limit')
+            return value
         finally:
             body.close()
 

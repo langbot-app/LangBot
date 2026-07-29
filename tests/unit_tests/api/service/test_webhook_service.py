@@ -50,11 +50,12 @@ def _create_mock_webhook(
     return webhook
 
 
-def _create_mock_result(items: list = None, first_item=None):
+def _create_mock_result(items: list = None, first_item=None, scalar_value=None):
     """Create mock result object for persistence queries."""
     result = Mock()
     result.all = Mock(return_value=items or [])
     result.first = Mock(return_value=first_item)
+    result.scalar = Mock(return_value=scalar_value)
     result.rowcount = 1
     return result
 
@@ -154,6 +155,8 @@ class TestWebhookServiceCreateWebhook:
             nonlocal call_count
             call_count += 1
             if call_count == 1:
+                return _create_mock_result(scalar_value=0)  # Count
+            if call_count == 2:
                 return insert_result  # Insert
             return select_result  # Select
 
@@ -205,6 +208,8 @@ class TestWebhookServiceCreateWebhook:
             nonlocal call_count
             call_count += 1
             if call_count == 1:
+                return _create_mock_result(scalar_value=0)
+            if call_count == 2:
                 return _create_write_result()  # Insert
             return _create_mock_result(first_item=created_webhook)
 
@@ -246,6 +251,8 @@ class TestWebhookServiceCreateWebhook:
             nonlocal call_count
             call_count += 1
             if call_count == 1:
+                return _create_mock_result(scalar_value=0)
+            if call_count == 2:
                 return _create_write_result()
             return _create_mock_result(first_item=created_webhook)
 
@@ -264,6 +271,42 @@ class TestWebhookServiceCreateWebhook:
 
         # Verify
         assert result['enabled'] is False
+
+    async def test_create_webhook_rejects_workspace_at_capacity(self):
+        ap = SimpleNamespace(
+            instance_config=SimpleNamespace(
+                data={'webhooks': {'max_per_workspace': 2}},
+            ),
+            persistence_mgr=SimpleNamespace(
+                execute_async=AsyncMock(return_value=_create_mock_result(scalar_value=2)),
+            ),
+        )
+
+        service = WebhookService(ap)
+
+        with pytest.raises(ValueError, match=r'Maximum number of webhooks \(2\) reached'):
+            await service.create_webhook(
+                WORKSPACE_UUID,
+                name='Too many',
+                url='https://example.invalid',
+            )
+
+        ap.persistence_mgr.execute_async.assert_awaited_once()
+
+    async def test_max_per_workspace_clamps_invalid_and_oversized_values(self):
+        ap = SimpleNamespace(
+            instance_config=SimpleNamespace(
+                data={'webhooks': {'max_per_workspace': 999999}},
+            )
+        )
+        service = WebhookService(ap)
+        assert service.max_per_workspace() == 64
+
+        ap.instance_config.data['webhooks']['max_per_workspace'] = 0
+        assert service.max_per_workspace() == 1
+
+        ap.instance_config.data['webhooks']['max_per_workspace'] = 'invalid'
+        assert service.max_per_workspace() == 16
 
 
 class TestWebhookServiceGetWebhook:

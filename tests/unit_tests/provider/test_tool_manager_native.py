@@ -585,6 +585,40 @@ async def test_host_file_api_falls_back_to_tenant_box_when_openat_is_unavailable
 
 
 @pytest.mark.asyncio
+async def test_box_workspace_edit_script_bounds_file_read_and_replacement(monkeypatch):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        box_service = SimpleNamespace(
+            available=True,
+            default_workspace=tmpdir,
+            _tenant_workspace=Mock(return_value=tmpdir),
+            execute_tool=AsyncMock(
+                return_value={
+                    'ok': True,
+                    'stdout': '{"ok": false, "error": "File exceeds limit"}',
+                    'stderr': '',
+                }
+            ),
+        )
+        loader = NativeToolLoader(SimpleNamespace(box_service=box_service, logger=Mock()))
+        monkeypatch.setattr(native_loader, '_SECURE_HOST_FILE_OPS_AVAILABLE', False)
+
+        await loader.invoke_tool(
+            'edit',
+            {
+                'path': '/workspace/file.txt',
+                'old_string': 'old',
+                'new_string': 'new',
+            },
+            _make_query(),
+        )
+
+        command = box_service.execute_tool.await_args.args[0]['command']
+        assert f'os.path.getsize(path) > {native_loader._MAX_HOST_EDIT_FILE_BYTES}' in command
+        assert f'f.read({native_loader._MAX_HOST_EDIT_FILE_BYTES + 1})' in command
+        assert f"len(new_content.encode('utf-8')) > {native_loader._MAX_HOST_EDIT_FILE_BYTES}" in command
+
+
+@pytest.mark.asyncio
 async def test_box_availability_helper_handles_unavailable_and_errors():
     from langbot.pkg.provider.tools.loaders.availability import is_box_backend_available
 

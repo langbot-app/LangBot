@@ -8,11 +8,30 @@ from .secrets import SECRET_MASK, mask_secret_value, restore_secret_placeholders
 from .tenant import TenantContext, require_workspace_uuid, scope_statement
 
 
+_DEFAULT_MAX_WEBHOOKS_PER_WORKSPACE = 16
+_HARD_MAX_WEBHOOKS_PER_WORKSPACE = 64
+
+
 class WebhookService:
     ap: app.Application
 
     def __init__(self, ap: app.Application) -> None:
         self.ap = ap
+
+    def max_per_workspace(self) -> int:
+        """Return the configured webhook cap within the process hard limit."""
+
+        config = getattr(getattr(self.ap, 'instance_config', None), 'data', {})
+        try:
+            value = int(
+                config.get('webhooks', {}).get(
+                    'max_per_workspace',
+                    _DEFAULT_MAX_WEBHOOKS_PER_WORKSPACE,
+                )
+            )
+        except (AttributeError, TypeError, ValueError):
+            value = _DEFAULT_MAX_WEBHOOKS_PER_WORKSPACE
+        return min(max(value, 1), _HARD_MAX_WEBHOOKS_PER_WORKSPACE)
 
     def _serialize_webhook(self, entity, *, include_secret: bool) -> dict:
         serialized = self.ap.persistence_mgr.serialize_model(webhook.Webhook, entity)
@@ -24,7 +43,11 @@ class WebhookService:
     async def get_webhooks(self, context: TenantContext, *, include_secret: bool = False) -> list[dict]:
         """Get all webhooks"""
         result = await self.ap.persistence_mgr.execute_async(
-            scope_statement(sqlalchemy.select(webhook.Webhook), webhook.Webhook, context)
+            scope_statement(
+                sqlalchemy.select(webhook.Webhook).order_by(webhook.Webhook.id).limit(_HARD_MAX_WEBHOOKS_PER_WORKSPACE),
+                webhook.Webhook,
+                context,
+            )
         )
 
         webhooks = result.all()
@@ -40,6 +63,15 @@ class WebhookService:
     ) -> dict:
         """Create a new webhook"""
         workspace_uuid = require_workspace_uuid(context)
+        max_webhooks = self.max_per_workspace()
+        count_result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(sqlalchemy.func.count())
+            .select_from(webhook.Webhook)
+            .where(webhook.Webhook.workspace_uuid == workspace_uuid)
+        )
+        if (count_result.scalar() or 0) >= max_webhooks:
+            raise ValueError(f'Maximum number of webhooks ({max_webhooks}) reached')
+
         url = restore_secret_placeholders(url, sensitive=True)
         webhook_data = {
             'workspace_uuid': workspace_uuid,
@@ -143,6 +175,8 @@ class WebhookService:
                 webhook.Webhook,
                 context,
             )
+            .order_by(webhook.Webhook.id)
+            .limit(self.max_per_workspace())
         )
 
         webhooks = result.all()

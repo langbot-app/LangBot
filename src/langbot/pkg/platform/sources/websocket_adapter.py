@@ -564,7 +564,11 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
                 raise ValueError('Attachment key does not belong to this WebSocket connection')
 
             try:
-                file_content = await storage_mgr.storage_provider.load(comp_path)
+                file_content = await storage_mgr.load_scoped_object_key(
+                    execution_context,
+                    comp_path,
+                    expected_owner_type='upload_image',
+                )
                 base64_str = (await asyncio.to_thread(base64.b64encode, file_content)).decode('utf-8')
 
                 lowered = comp_path.lower()

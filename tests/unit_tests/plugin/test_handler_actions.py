@@ -417,7 +417,9 @@ class TestGetConfigFile:
         mock_app.persistence_mgr = Mock()
         mock_app.persistence_mgr.execute_async = AsyncMock()
         mock_app.storage_mgr = StorageMgr(mock_app)
-        mock_app.storage_mgr.storage_provider = SimpleNamespace(load=AsyncMock(return_value=b'plugin config bytes'))
+        mock_app.storage_mgr.storage_provider = SimpleNamespace(
+            load_bounded=AsyncMock(return_value=b'plugin config bytes')
+        )
         mock_app.logger = Mock()
         return mock_app
 
@@ -461,7 +463,10 @@ class TestGetConfigFile:
 
         assert response.code == 0
         assert base64.b64decode(response.data['file_base64']) == b'plugin config bytes'
-        app.storage_mgr.storage_provider.load.assert_awaited_once_with(file_key)
+        app.storage_mgr.storage_provider.load_bounded.assert_awaited_once_with(
+            file_key,
+            max_bytes=10 * 1024 * 1024,
+        )
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
@@ -478,7 +483,7 @@ class TestGetConfigFile:
 
         assert response.code != 0
         assert 'Failed to load config file' in response.message
-        app.storage_mgr.storage_provider.load.assert_not_awaited()
+        app.storage_mgr.storage_provider.load_bounded.assert_not_awaited()
 
 
 class TestGetBinaryStorage:

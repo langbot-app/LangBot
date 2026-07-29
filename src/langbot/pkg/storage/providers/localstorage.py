@@ -51,9 +51,21 @@ class LocalStorageProvider(provider.StorageProvider):
         self,
         key: str,
     ) -> bytes:
+        return await self.load_bounded(key, max_bytes=provider.HARD_MAX_STORAGE_OBJECT_BYTES)
+
+    async def load_bounded(
+        self,
+        key: str,
+        *,
+        max_bytes: int,
+    ) -> bytes:
+        max_bytes = provider.normalize_read_limit(max_bytes)
         resolved = await asyncio.to_thread(_safe_resolve, LOCAL_STORAGE_PATH, key)
         async with aiofiles.open(resolved, 'rb') as f:
-            return await f.read()
+            value = await f.read(max_bytes + 1)
+        if len(value) > max_bytes:
+            raise ValueError(f'Storage object exceeds the {max_bytes}-byte read limit')
+        return value
 
     async def exists(
         self,

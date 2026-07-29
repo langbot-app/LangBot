@@ -50,6 +50,16 @@ concurrency:
     # Hard admission limits for queued + running pipeline queries.
     pending_queries: 1000
     pending_queries_per_workspace: 100
+webhooks:
+    # Bound database materialization and per-message outbound fan-out.
+    # Existing rows above this limit remain deletable through the management
+    # API, but only this many enabled destinations are dispatched.
+    # Supports WEBHOOKS__MAX_PER_WORKSPACE (hard cap: 64).
+    max_per_workspace: 16
+    # Instance-wide request admission. Delivery fails open when every slot is
+    # occupied instead of retaining an unbounded queue of webhook tasks.
+    # Supports WEBHOOKS__MAX_INFLIGHT_REQUESTS (hard cap: 128).
+    max_inflight_requests: 16
 cloud:
     # Operational safety ceilings for the one logical Cloud instance. These
     # are not subscription entitlements. An authoritative directory update
@@ -208,6 +218,9 @@ vdb:
         request_timeout: 5000     # per-request timeout in ms (glide default 250ms is too low for KNN)
 storage:
     use: local
+    # Bound every object materialized into Core memory. Built-in Local/S3
+    # providers enforce this while reading (hard cap: 64 MiB).
+    max_object_read_bytes: 10485760
     cleanup:
         # Enable periodic cleanup of local/S3 uploaded files and old log files
         enabled: true
@@ -319,6 +332,10 @@ box:
         max_sessions: 64
         max_managed_processes: 64
         max_completed_processes: 256
+        # Core scans a Workspace before and after quota-enforced executions.
+        # Fail closed instead of repeatedly walking an inode bomb.
+        # Supports BOX__LIMITS__MAX_WORKSPACE_ENTRIES (hard cap: 1000000).
+        max_workspace_entries: 100000
         # Retained admission fences prevent replay after entitlement expiry or
         # revocation. Fail closed before that monotonic state can grow without
         # bound; Cloud may override this with BOX__LIMITS__MAX_ADMISSION_RECORDS.

@@ -5,7 +5,9 @@
 更新日期：2026-07-29
 
 本文是 Cloud v2 首期上线前的剩余验证清单。它只记录尚不能由当前代码审查、
-单元测试、集成测试、合成容量探针或短时 Linux 容器实验替代的证据。
+单元测试、集成测试、合成容量探针或短时 Linux 容器实验替代的证据。这里的项目
+不属于 2026-07-29 代码与本地测试资源审查的完成条件，也不会让该审查持续保持未完成；
+它们只在准备最终 SaaS 激活时重新进入验收范围。
 
 相关文档：
 
@@ -16,8 +18,8 @@
 
 ## 1. 当前已形成的交付基线
 
-- LangBot Core 全量 `2839 passed, 33 skipped`，Plugin SDK 全量
-  `1325 passed`，闭源适配器 `40 passed`，Space Go 全量测试通过；三仓格式、
+- LangBot Core 全量 `2855 passed, 33 skipped`，Plugin SDK 全量
+  `1328 passed`，闭源适配器 `40 passed`，Space Go 全量测试通过；三仓格式、
   静态检查和 `git diff --check` 已通过。
 - Plugin Runtime 和 Box Runtime 的公开健康接口、event-loop lag 与有界
   blocking executor 指标已经过真实进程短时验证。
@@ -26,7 +28,7 @@
 - PostgreSQL 16 + RLS 的 1,000 Workspace 真实启动测试，以及 5,000
   Workspace 三代替换合成探针已通过。
 - Core 已精确钉住 Plugin SDK 提交
-  `7c0b9827ed8597a1c84151b83fcf6307934fd944`。最终验证必须使用包含该提交的
+  `87d903e9b7c4e518ce066c89f65bbde4de825fc5`。最终验证必须使用包含该提交的
   Core、Plugin Runtime 和 Box Runtime 镜像，不能混用旧 SDK。
 - 独立资源复核已经移除 Cloud MCP 每会话 5 秒查询执行绑定的轮询，改由签名目录
   投影提交后向一个合并回收任务发布代次变化；工具与资源调用前后仍使用数据库
