@@ -122,14 +122,55 @@ async def test_postgresql_manager_applies_explicit_bounded_pool_options(monkeypa
 
 
 @pytest.mark.asyncio
+async def test_cloud_postgresql_manager_applies_bounded_server_timeouts(monkeypatch) -> None:
+    captured_options = None
+
+    def create_engine(_url, **options):
+        nonlocal captured_options
+        captured_options = options
+        return object()
+
+    monkeypatch.setattr(postgresql.sqlalchemy_asyncio, 'create_async_engine', create_engine)
+    ap = SimpleNamespace(
+        instance_config=SimpleNamespace(
+            data={
+                'database': {
+                    'postgresql': {
+                        'statement_timeout_ms': 45_000,
+                        'lock_timeout_ms': 4_000,
+                        'idle_in_transaction_session_timeout_ms': 55_000,
+                    }
+                }
+            }
+        )
+    )
+
+    manager = postgresql.PostgreSQLDatabaseManager(ap)
+    manager.persistence_mode = 'cloud_runtime'
+    await manager.initialize()
+
+    assert captured_options['connect_args'] == {
+        'server_settings': {
+            'statement_timeout': '45000',
+            'lock_timeout': '4000',
+            'idle_in_transaction_session_timeout': '55000',
+        }
+    }
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ('name', 'value'),
     [
         ('pool_size', 0),
         ('pool_size', True),
         ('max_overflow', -1),
+        ('pool_size', 101),
+        ('max_overflow', 101),
         ('pool_timeout_seconds', 0),
+        ('pool_timeout_seconds', 301),
         ('pool_recycle_seconds', '1800'),
+        ('pool_recycle_seconds', 86401),
     ],
 )
 async def test_postgresql_manager_rejects_invalid_pool_options(name, value) -> None:
@@ -137,6 +178,45 @@ async def test_postgresql_manager_rejects_invalid_pool_options(name, value) -> N
 
     with pytest.raises(ValueError, match=rf'database\.postgresql\.{name}'):
         await postgresql.PostgreSQLDatabaseManager(ap).initialize()
+
+
+@pytest.mark.asyncio
+async def test_postgresql_manager_rejects_combined_pool_capacity_above_hard_ceiling() -> None:
+    ap = SimpleNamespace(
+        instance_config=SimpleNamespace(
+            data={
+                'database': {
+                    'postgresql': {
+                        'pool_size': 60,
+                        'max_overflow': 41,
+                    }
+                }
+            }
+        )
+    )
+
+    with pytest.raises(ValueError, match=r'pool_size \+ max_overflow'):
+        await postgresql.PostgreSQLDatabaseManager(ap).initialize()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ('name', 'value'),
+    [
+        ('statement_timeout_ms', 0),
+        ('statement_timeout_ms', 300_001),
+        ('lock_timeout_ms', 60_001),
+        ('idle_in_transaction_session_timeout_ms', True),
+        ('idle_in_transaction_session_timeout_ms', 300_001),
+    ],
+)
+async def test_cloud_postgresql_manager_rejects_unsafe_server_timeouts(name, value) -> None:
+    ap = SimpleNamespace(instance_config=SimpleNamespace(data={'database': {'postgresql': {name: value}}}))
+
+    with pytest.raises(ValueError, match=rf'database\.postgresql\.{name}'):
+        manager = postgresql.PostgreSQLDatabaseManager(ap)
+        manager.persistence_mode = 'cloud_runtime'
+        await manager.initialize()
 
 
 @pytest.mark.asyncio

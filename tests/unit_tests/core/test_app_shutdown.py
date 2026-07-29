@@ -88,6 +88,18 @@ async def test_runtime_resource_stats_are_aggregate_and_constant_time() -> None:
     app.pipeline_mgr = SimpleNamespace(_pipelines_by_key={})
     app.rag_mgr = SimpleNamespace(knowledge_bases={})
     app.plugin_connector = SimpleNamespace(_known_desired_states={'installation': object()})
+    app.persistence_mgr = SimpleNamespace(
+        get_resource_stats=lambda: {
+            'configured_capacity': 20,
+            'checked_out': 3,
+        }
+    )
+    app.directory_projection_service = SimpleNamespace(
+        resource_snapshot=lambda: {
+            'active_workspaces': 10,
+            'max_active_workspaces': 1000,
+        }
+    )
     app.tool_mgr = SimpleNamespace(
         mcp_tool_loader=SimpleNamespace(
             _sessions={},
@@ -112,6 +124,14 @@ async def test_runtime_resource_stats_are_aggregate_and_constant_time() -> None:
     assert stats['application_tasks'] == {
         'total': 5,
         'completed': 2,
+    }
+    assert stats['database_pool'] == {
+        'configured_capacity': 20,
+        'checked_out': 3,
+    }
+    assert stats['directory'] == {
+        'active_workspaces': 10,
+        'max_active_workspaces': 1000,
     }
     assert stats['query_pool'] == {
         'queued': 1,

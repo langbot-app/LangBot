@@ -16,8 +16,9 @@
 
 ## 1. 当前已形成的交付基线
 
-- LangBot Core 全量 `2811 passed, 33 skipped`，Plugin SDK 全量
-  `1317 passed`；两仓 Ruff、`git diff --check` 已通过。
+- LangBot Core 全量 `2833 passed, 33 skipped`，Plugin SDK 全量
+  `1325 passed`，闭源适配器 `40 passed`，Space Go 全量测试通过；三仓格式、
+  静态检查和 `git diff --check` 已通过。
 - Plugin Runtime 和 Box Runtime 的公开健康接口、event-loop lag 与有界
   blocking executor 指标已经过真实进程短时验证。
 - 仓库 Dockerfile 构建的 Linux/cgroup v2 短时探针已证明 CPU、memory、
@@ -25,12 +26,29 @@
 - PostgreSQL 16 + RLS 的 1,000 Workspace 真实启动测试，以及 5,000
   Workspace 三代替换合成探针已通过。
 - Core 已精确钉住 Plugin SDK 提交
-  `c7893f8f94e83cb09ebcc98e25490fa699b0fb69`。最终验证必须使用包含该提交的
+  `7c0b9827ed8597a1c84151b83fcf6307934fd944`。最终验证必须使用包含该提交的
   Core、Plugin Runtime 和 Box Runtime 镜像，不能混用旧 SDK。
 - 独立资源复核已经移除 Cloud MCP 每会话 5 秒查询执行绑定的轮询，改由签名目录
   投影提交后向一个合并回收任务发布代次变化；工具与资源调用前后仍使用数据库
   execution fence。Plugin restart 冷却等待者、MCP 投影回收、消息聚合 buffer/scope
   均已纳入健康快照和 soak 归零门禁。
+- 单实例目录现在有一致的操作容量契约：Space 在注册事务内通过 PostgreSQL
+  advisory lock 串行执行 active Workspace check-and-create；Space 全量快照只返回
+  active Workspace，并在查询阶段限制 Workspace/membership 数量；闭源适配器限制
+  解压后的 HTTP 响应字节和签名目录基数；Core 在持有目录投影行锁的事务内再次
+  COUNT active Workspace，超限时整批回滚且不推进 cursor。任何一层都不截断权威数据。
+- Core Cloud PostgreSQL pool 的 `pool_size + max_overflow` 有绝对上限 100，
+  Cloud runtime 连接默认强制 60 秒 statement/idle-transaction timeout 和 5 秒
+  lock timeout；pool 使用量、超时累计数与目录 active/max 基数进入 `/healthz`。
+  Box Runtime 的 session、process、admission record、RPC 文件和 completed retention
+  配置也有不可被实例配置放大的绝对上限。
+- Space 的 concurrent registration 容量准入已在一次性 PostgreSQL 16 上真实执行：
+  两个 Account 同时争用最后一个 Workspace 槽位时，精确一个事务成功、一个事务
+  得到 capacity error，最终 active Workspace 数为 1。active-only snapshot 与
+  archived delta tombstone 的同一真实 PostgreSQL 集成流程也通过。
+- Core Cloud manager 已连接一次性 PostgreSQL 16，并从 `pg_settings` 读回
+  `statement_timeout=60000ms`、`lock_timeout=5000ms` 和
+  `idle_in_transaction_session_timeout=60000ms`；测试结束后引擎已显式 dispose。
 
 以上结果是进入生产候选验证的前提，不是 SaaS 上线批准。
 
@@ -107,6 +125,12 @@
 - Core、Plugin Runtime、Box Runtime 的不可变镜像 digest；
 - LangBot 与 SDK commit；
 - `data/config.yaml` 的非敏感摘要和所有环境变量覆写；
+- Space 的 `CLOUD_V2_MAX_DIRECTORY_WORKSPACES` 必须与 Core
+  `cloud.directory.max_active_workspaces` 和
+  `cloud.directory.max_snapshot_workspaces` 一致；Space 的 membership 上限必须与
+  Core `cloud.directory.max_snapshot_memberships` 一致；
+- Core 的 PostgreSQL pool、statement/lock/idle-transaction timeout，以及 Plugin
+  Runtime/Box Runtime 的全部实例级资源上限；
 - PostgreSQL migration revision；
 - Cloud Adapter、Space control plane 和 workload 的版本。
 
@@ -176,6 +200,10 @@ PostgreSQL/pgvector 和代表性 Workspace 配置分布，测量：
 - 单实例可批准的 Workspace、活跃 Bot、plugin worker 和 sandbox 上限。
 
 容量上限必须写入生产配置与告警，不能只保留在测试报告中。
+代码中的默认值和绝对上限只是失控配置的最后防线，不等于生产容量结论。V-08 必须
+根据最终镜像的真实曲线把 Space 与 Core 的匹配上限调到已验证容量以内；如果最终
+批准值高于当前默认 1,000 active Workspace，必须重新执行目录启动、故障恢复和
+24 小时门禁。
 
 ### V-09：24 小时资源 soak
 
@@ -193,8 +221,12 @@ PostgreSQL/pgvector 和代表性 Workspace 配置分布，测量：
 
 最后至少保留 30 分钟无测试流量冷却。任一健康失败、OOM/memory pressure、
 PID limit、blocking executor rejection、超阈值 CPU throttling/event-loop lag、
+目录 `active_workspaces > max_active_workspaces`、数据库 pool 使用量超过配置容量、
 冷却尾段内存持续增长，或 Plugin restart `gate_waiters`、MCP 投影回收、
 消息聚合 buffer/scope 等临时 gauge 不回落都判为失败。
+标准 soak 工具已自动比较目录 active/最近批次与各自配置上限，并比较 PostgreSQL
+`checked_out` 与配置 pool 容量；名为 `core` 的标准 endpoint 缺少任一容量指标、
+current/max 只出现一半、数值非法或任一样本越界都会直接失败。
 
 必须归档：
 

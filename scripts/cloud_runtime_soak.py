@@ -93,6 +93,25 @@ TRANSIENT_GAUGE_SUFFIXES = (
     '.resources.closing_session_tasks',
     '.resources.background_tasks',
 )
+CAPACITY_GAUGE_PAIRS = (
+    (
+        '.resources.directory.active_workspaces',
+        '.resources.directory.max_active_workspaces',
+    ),
+    (
+        '.resources.directory.last_batch_workspaces',
+        '.resources.directory.max_snapshot_workspaces',
+    ),
+    (
+        '.resources.directory.last_batch_memberships',
+        '.resources.directory.max_snapshot_memberships',
+    ),
+    (
+        '.resources.database_pool.checked_out',
+        '.resources.database_pool.configured_capacity',
+    ),
+)
+REQUIRED_CORE_CAPACITY_GAUGES = frozenset(suffix for pair in CAPACITY_GAUGE_PAIRS for suffix in pair)
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -712,6 +731,17 @@ def evaluate_gate(
                 | set(state.baseline_metrics or ())
                 | set(state.last_metrics or ())
             )
+            if state.target.name == 'core':
+                for suffix in sorted(REQUIRED_CORE_CAPACITY_GAUGES):
+                    matching_metrics = sorted(key for key in metric_keys if key.endswith(suffix))
+                    if not matching_metrics:
+                        failures.append(f'{target_id} did not expose required capacity gauge {suffix}')
+                        continue
+                    for metric in matching_metrics:
+                        if any(metric not in sample.metrics for sample in tail_samples):
+                            failures.append(
+                                f'{target_id} did not expose required capacity gauge {metric} throughout the tail'
+                            )
             for suffix in REJECTION_SUFFIXES:
                 if thresholds.allow_rejections:
                     break
@@ -746,6 +776,24 @@ def evaluate_gate(
                     growth = _counter_delta(first, last, metric)
                     if growth is not None and growth > thresholds.max_transient_gauge_growth:
                         failures.append(f'{target_id} transient gauge {metric} grew by {growth:g} during the idle tail')
+            for current_suffix, capacity_suffix in CAPACITY_GAUGE_PAIRS:
+                for current_metric in sorted(key for key in metric_keys if key.endswith(current_suffix)):
+                    capacity_metric = current_metric[: -len(current_suffix)] + capacity_suffix
+                    observed = [
+                        (sample.metrics[current_metric], sample.metrics.get(capacity_metric))
+                        for sample in tail_samples
+                        if current_metric in sample.metrics
+                    ]
+                    if any(capacity is None for _current, capacity in observed):
+                        failures.append(f'{target_id} exposed {current_metric} without matching {capacity_metric}')
+                        continue
+                    if any(
+                        current < 0 or capacity is None or capacity <= 0 or current > capacity
+                        for current, capacity in observed
+                    ):
+                        failures.append(
+                            f'{target_id} exceeded or invalidated capacity pair {current_metric} <= {capacity_metric}'
+                        )
 
             loop_running_metrics = sorted(key for key in metric_keys if key.endswith('.event_loop.running'))
             if not loop_running_metrics:

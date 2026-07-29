@@ -1220,6 +1220,7 @@ class TenantUnitOfWork:
         scope: PersistenceScope | None = None,
         active_transaction: ActiveTransactionVar | None = None,
         active_scope: ActivePersistenceScopeVar | None = None,
+        on_pool_timeout: typing.Callable[[], None] | None = None,
     ) -> None:
         if (workspace_uuid is None) == (scope is None):
             raise ValueError('TenantUnitOfWork requires exactly one Workspace or persistence scope')
@@ -1229,6 +1230,7 @@ class TenantUnitOfWork:
         self.workspace_uuid = self.scope.settings[0][1] if self.scope.kind == PersistenceScopeKind.WORKSPACE else None
         self._active_transaction = active_transaction
         self._active_scope = active_scope
+        self._on_pool_timeout = on_pool_timeout
         self._session: sqlalchemy_asyncio.AsyncSession | None = None
         self._transaction: sqlalchemy_asyncio.AsyncSessionTransaction | None = None
         self._active_state: ActiveScopedTransaction | None = None
@@ -1322,7 +1324,9 @@ class TenantUnitOfWork:
                 self._context_token = self._active_transaction.set(state)
             self._database_operation_token = _DATABASE_OPERATION_TRANSACTION.set(state)
             self._owns_transaction = True
-        except BaseException:
+        except BaseException as exc:
+            if isinstance(exc, sqlalchemy.exc.TimeoutError) and self._on_pool_timeout is not None:
+                self._on_pool_timeout()
             if self._database_operation_token is not None:
                 _DATABASE_OPERATION_TRANSACTION.reset(self._database_operation_token)
                 self._database_operation_token = None

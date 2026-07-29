@@ -461,6 +461,58 @@ def test_evaluate_gate_detects_stuck_mcp_projection_cleanup() -> None:
     assert any('mcp_projection_reconcile_active above zero' in failure for failure in result.failures)
 
 
+def test_evaluate_gate_detects_directory_and_database_capacity_violation() -> None:
+    prefix = 'body.resources'
+    state = _state(
+        'endpoint',
+        [
+            _sample(
+                0,
+                **{
+                    f'{prefix}.directory.active_workspaces': 1000,
+                    f'{prefix}.directory.max_active_workspaces': 1000,
+                    f'{prefix}.database_pool.checked_out': 20,
+                    f'{prefix}.database_pool.configured_capacity': 20,
+                },
+            ),
+            _sample(
+                60,
+                **{
+                    f'{prefix}.directory.active_workspaces': 1001,
+                    f'{prefix}.directory.max_active_workspaces': 1000,
+                    f'{prefix}.database_pool.checked_out': 21,
+                    f'{prefix}.database_pool.configured_capacity': 20,
+                },
+            ),
+        ],
+    )
+
+    result = soak.evaluate_gate(
+        [state],
+        analysis_start_seconds=0,
+        thresholds=_thresholds(),
+    )
+
+    assert any('directory.active_workspaces' in failure for failure in result.failures)
+    assert any('database_pool.checked_out' in failure for failure in result.failures)
+
+
+def test_evaluate_gate_requires_capacity_gauges_from_named_core_endpoint() -> None:
+    state = _state(
+        'endpoint',
+        [_sample(0, **{'http.ok': 1}), _sample(60, **{'http.ok': 1})],
+    )
+    state.target = soak.Target(name='core', kind='endpoint', location='/core')
+
+    result = soak.evaluate_gate(
+        [state],
+        analysis_start_seconds=0,
+        thresholds=_thresholds(require_event_loop_metrics=False),
+    )
+
+    assert any('required capacity gauge' in failure for failure in result.failures)
+
+
 def test_evaluate_gate_detects_event_loop_stall_and_sustained_lag() -> None:
     prefix = 'body.resources.event_loop'
     samples = [

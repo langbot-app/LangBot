@@ -17,7 +17,7 @@
 1. 在最终 Cloud 部署权限和 cgroup 拓扑下重复 nsjail、namespace 和 delegated cgroup v2 的 CPU、内存、swap、PID、文件句柄验证。本轮一次性 Linux 容器已经证明代码路径可工作，但普通容器和仅 `--privileged` 的 private cgroup namespace 都不满足条件。
 2. 为 Cloud Box 提供并验证硬文件系统 quota provider。普通 nsjail bind mount 不能证明总字节数和 inode 硬配额，当前严格 readiness 按设计会失败关闭。
 3. 使用最终生产配置分布继续做容量测试，并据此确定单实例 Workspace placement 上限。本轮真实 PostgreSQL 16 + RLS 启动测试已经覆盖 1,000 个各带 Provider、三类 Model、Bot、Pipeline、KnowledgeBase、MCP 和 Plugin setting 的 Workspace，启动加载耗时和 SQL 次数保持线性；5,000 Workspace 的合成三代替换探针也证明旧运行时会释放。仓库已新增可同时采集 Core/Plugin/Box HTTP、进程树和 cgroup v2 的 24 小时门禁工具，并在受 CPU、memory、swap、PID 硬限制的 Linux 容器中完成短时自检；但最终生产候选拓扑的 24 小时运行仍未执行。测试中的 fake adapter/requester/Plugin handler 仍不能替代真实平台 SDK、外部连接池和插件进程的容量数据；合法活跃租户本身仍会线性占用内存。
-SDK 已先行发布到分支提交 `c7893f8f94e83cb09ebcc98e25490fa699b0fb69`，本提交集中的 LangBot
+SDK 已先行发布到分支提交 `7c0b9827ed8597a1c84151b83fcf6307934fd944`，本提交集中的 LangBot
 `pyproject.toml` 和 `uv.lock` 已精确钉住该提交。最终镜像仍需按待验证清单记录并核对实际安装版本。
 
 ## 覆盖范围
@@ -99,6 +99,17 @@ SDK 已先行发布到分支提交 `c7893f8f94e83cb09ebcc98e25490fa699b0fb69`，
 - Dify 待提交表单、用户 Space OAuth state 和 Cloud launch JTI replay cache 改为带 revision 校验的最小过期堆；Space credits 使用按时间有序的 LRU/TTL 队列。原实现会在每次攻击者可触发的请求上扫描整个历史缓存并在满容量时再次线性寻找最旧项；现在过期回收为摊销 `O(log N)` 或仅消费已过期前缀，旧堆项会忽略并按活跃状态的有界倍数压缩。
 - Cloud launch JTI cache 达到 4,096 个仍有效 token 时失败关闭，不再为了接纳新 token 淘汰仍有效的 replay 记录；否则攻击者可以在容量满后重放被提前遗忘的合法签名。
 - Entitlement resolver 现在跟随 Cloud directory 的权威 Workspace 活跃集合。全量目录投影会丢弃已 fenced/removed Workspace 的历史 entitlement snapshot，delta 批量更新不会对每个变化重复扫描；provider 请求进行中发生目录撤销时，返回前的第二次 active fence 会阻止旧结果重新写回缓存。
+- Cloud directory 的签名响应、Workspace、membership 和实例 active Workspace
+  均新增可配置操作上限与绝对上限。闭源适配器按流读取响应并在 JSON/JWS 解析前
+  拒绝超过 32 MiB 默认值的解压后正文；Manifest/entitlement/event endpoint 再
+  分别限制为 256 KiB、256 KiB 和 2 MiB。entitlement 刷新最多并发并驻留 16 个
+  原始响应，逐批验证成小型 snapshot 后释放；Core 在目录投影行锁保护的事务内检查最终
+  active 数量，超限时回滚 Workspace、Account、membership、inbox 和 cursor，不会
+  截断权威数据或让并发副本各自越过最后一个容量槽。
+- Space 全量目录只投影 active Workspace，历史 archived Workspace 只在最多 100 个
+  目标的签名 delta 中作为 tombstone 返回。注册创建新个人 Workspace 前通过
+  PostgreSQL transaction advisory lock 串行执行全局 active 数量准入；达到上限
+  返回 503，避免多个 Space 副本同时观察到最后一个空位。
 
 ### CPU 和事件循环保护
 
@@ -141,12 +152,23 @@ SDK 已先行发布到分支提交 `c7893f8f94e83cb09ebcc98e25490fa699b0fb69`，
 - 仓库 Docker Compose/Kubernetes 示例显式下发 Core、Plugin Runtime 和 Box Runtime 的 blocking executor 上限；Kubernetes Box readiness probe 从仅报告进程存活的 `/healthz` 改为 `/readyz`，使 backend 或 managed-mode 隔离检查失败时不会把 Pod 加入就绪流量。
 - 相同 digest 的已验证代码和依赖环境可只读共享，每个 installation 的 home/tmp/data 和进程独立。
 - Box session、managed process、completed process、admission record 和 RPC 文件均有实例级上限；Cloud entitlement 仍限制每个合资格 Workspace 一个 `global` session、零 managed process。
+- Box Runtime 对上述实例级配置再增加不可放大的硬上限：session 5,000、managed
+  process 1,024、completed process 10,000、admission record 250,000、RPC 单文件
+  100 MiB、completed retention 86,400 秒。初始化与远程 INIT 对错误类型、负数和
+  超上限均失败关闭，错误动态更新不会留下部分生效的 limit。
 
 ### PostgreSQL
 
 - Cloud 强制 PostgreSQL 业务库、共享 pgvector 和允许的固定向量维度。
 - pgvector Cloud 模式复用业务数据库的同一个 AsyncEngine，不创建第二个连接池。
 - `database.postgresql` 新增并校验 `pool_size`、`max_overflow`、`pool_timeout_seconds`、`pool_recycle_seconds`；默认最大连接数为 `10 + 10`。
+- `pool_size + max_overflow` 的绝对上限为 100，timeout/recycle 也有绝对上限；
+  Cloud runtime 的 asyncpg 连接默认设置 60 秒 statement timeout、5 秒 lock
+  timeout 和 60 秒 idle-in-transaction timeout，并分别限制最大 300/60/300 秒。
+  一次性 release migration 不继承这些短 runtime timeout。
+- `/healthz` 输出 pool 配置容量、checked-in/out、overflow、pool admission timeout
+  累计数和 SQL timeout 配置；目录同时输出 active/max 与最近批次
+  Workspace/membership 数，供生产 soak 和告警核对。
 - Application shutdown 显式 dispose 业务引擎；standalone pgvector 仅关闭自己拥有的引擎。
 - PersistenceManager 提供统一异步 shutdown；Cloud 常驻进程的启动失败、正常停机和一次性 release migration 的成功/异常路径都会释放数据库引擎。真实 PG catalog 测试还覆盖了“入口已经关闭后测试再次复用 manager 会重开 pool”的第二生命周期，严格资源告警模式下无 asyncpg socket/transport 遗留。
 
@@ -155,6 +177,10 @@ SDK 已先行发布到分支提交 `c7893f8f94e83cb09ebcc98e25490fa699b0fb69`，
 - 优先 fail closed 或淘汰最老的 idle cache，不允许攻击者控制的历史 key 无限驻留。
 - 插件依赖准备选择实例级串行化，以稳定 CPU/磁盘峰值；代价是批量安装耗时增加。
 - PostgreSQL 使用一个显式有界共享连接池；未拆分 pgvector pool。
+- 单实例目录的默认 active/full-snapshot Workspace 上限均为 1,000，membership
+  上限为 20,000，签名响应上限为 32 MiB；绝对上限分别为 5,000、100,000 和
+  64 MiB。Space 和 Core 必须配置为同一操作上限，生产值只能根据 V-08 容量曲线
+  向下调整或在重跑全部门禁后提高。
 - 第三方 runner 采用 1 MiB 单结果、16 MiB 单流总量和 100,000 个同步/异步事件的统一实例级安全上限；超限请求失败关闭。
 - S3 默认允许 16 个并发阻塞调用，最大配置值 128；在没有独立 worker service 的前提下限制线程池排队和上游连接压力。
 - MCP 生命周期默认并发 16、最大 128；该限制统一约束实例启动时的 session host 峰值和 shutdown 批次，不允许租户配置单独放大。
@@ -171,19 +197,22 @@ SDK 已先行发布到分支提交 `c7893f8f94e83cb09ebcc98e25490fa699b0fb69`，
 | --- | --- |
 | LangBot Ruff + `git diff --check` | 通过 |
 | Plugin SDK Ruff + `git diff --check` | 通过 |
-| LangBot 全量测试（使用远端精确钉住的新 SDK，含 unit/integration/Box/E2E） | `2811 passed, 33 skipped` |
-| Plugin SDK 全量测试 | `1317 passed` |
+| LangBot 全量测试（使用远端精确钉住的新 SDK，含 unit/integration/Box/E2E） | `2833 passed, 33 skipped` |
+| Plugin SDK 全量测试 | `1325 passed` |
+| Space Go 全量测试与闭源 Cloud Adapter 测试 | Go `go test ./...` 通过；Adapter `40 passed` |
+| Space PostgreSQL 16 Cloud v2 目录与并发容量准入 | 通过；两个注册并发争用最后一个槽位时 `1 success / 1 capacity rejection / 1 active Workspace` |
+| Core PostgreSQL 16 Cloud runtime server timeout | 真实连接从 `pg_settings` 读回 `60000ms / 5000ms / 60000ms` 的 statement/lock/idle-transaction timeout，并显式 dispose |
 | 真实 PostgreSQL 16 + pgvector 迁移/RLS/发布测试（严格资源告警） | `22 passed` |
 | 真实 PostgreSQL 16 + RLS populated Cloud 启动容量 | 500 Workspace `6.178s / CPU 3.026s`；当前 1,000 Workspace 复跑 `12.109s / CPU 5.967s` |
 | 较早 Core Dockerfile Linux 镜像构建与 `regex` 导入 | 通过，image SHA `8893a14053df`；该镜像使用旧 SDK pin，已失效，最终候选必须重建 |
 | `ResourceWarning` + `PytestUnraisableExceptionWarning` 全量门禁 | Core 与 SDK 均通过，并已固化到 pytest 配置 |
 | Plugin SDK Box 专项测试（含全局扫描回归保护） | `669 passed` |
 | Docker Compose 渲染、Compose/Kubernetes YAML 解析与 diff 检查 | 通过 |
-| Cloud soak 门禁解析/采样/判定单元测试 | `25 passed` |
+| Cloud soak 门禁解析/采样/判定单元测试 | `27 passed` |
 | Core/Plugin SDK event-loop monitor 专项测试 | 两仓各 `7 passed`，包含真实 50 ms scheduler stall |
 | Cloud soak Linux 硬限制短时自检 | 通过；CPU `0.5`、memory+swap `256 MiB`、PID `128` 均从 cgroup v2 读回，冷却尾段 verdict `pass` |
 | Core 双阶段历史 churn 资源探针（使用精确钉住的新 SDK） | audit 通过，`11.895s` |
-| Core 5,000 个 populated Workspace 三代容量探针（使用精确钉住的新 SDK） | audit 通过，最大替换耗时比 `1.435` |
+| Core 5,000 个 populated Workspace 三代容量探针（使用精确钉住的新 SDK） | 当前复跑通过，最大替换耗时比 `1.382` |
 | Plugin SDK 双阶段资源探针 | audit 通过，`9.407s` |
 
 两个仓库新增了可重复执行的历史 churn 探针，Core 另有 populated Workspace 三代替换探针：
@@ -220,9 +249,9 @@ Populated Workspace audit 为 5,000 个 Workspace 各加载一个 Provider、LLM
 
 - 三个阶段的活跃 provider/model、pipeline、bot、knowledge 和 MCP registry 均精确维持 `5,000`，不存在按历史 generation 增长。
 - 到第三阶段，前两代的 requester、Bot adapter 和 MCP session 各 `10,000` 个全部收到确定性关闭；weak reference 断言旧代对象可被回收。
-- event-loop task、线程和文件描述符保持 `1 / 1 / 6`；使用远端精确钉住 SDK 的当前复跑中，第三阶段相对第二阶段 RSS 增长 `1,261,568 bytes`，tracemalloc current 仅增长 `510 bytes`。
-- 初始/第一次替换/第二次替换分别耗时 `1.804s / 2.420s / 2.588s`，最大替换耗时比为 `1.435`，未随历史代次出现 CPU 退化。
-- macOS RSS sample 从初始的 `154,484,736` 增至第一阶段 `368,050,176`、第二阶段 `388,939,776` 和第三阶段 `390,201,344 bytes`；第二次替换只比第一次替换增加约 1.20 MiB，但“合法活跃租户资源的线性容量”仍必须作为 placement 容量输入。这里使用轻量 fake adapter/requester，不应把第一阶段约 204 MiB 增量外推为生产每租户成本。
+- event-loop task、线程和文件描述符保持 `1 / 1 / 6`；使用远端精确钉住 SDK 的当前复跑中，第三阶段相对第二阶段 RSS 增长 `1,245,184 bytes`，tracemalloc current 仅增长 `2,061 bytes`。
+- 初始/第一次替换/第二次替换分别耗时 `1.660s / 2.151s / 2.296s`，最大替换耗时比为 `1.382`，未随历史代次出现 CPU 退化。
+- macOS RSS sample 从初始的 `154,648,576` 增至第一阶段 `368,181,248`、第二阶段 `389,087,232` 和第三阶段 `390,332,416 bytes`；第二次替换只比第一次替换增加约 1.19 MiB，但“合法活跃租户资源的线性容量”仍必须作为 placement 容量输入。这里使用轻量 fake adapter/requester，不应把第一阶段约 204 MiB 增量外推为生产每租户成本。
 
 Plugin SDK audit 每个阶段执行 25,000 次 loopback RPC、5,000 次安装 binding 激活/撤销、10,000 个 Workspace generation 更新和 2,500 次带 Workspace 上下文的 Box session 创建/删除。第一、第二阶段的保留状态完全一致：
 

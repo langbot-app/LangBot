@@ -29,6 +29,7 @@ from .directory import (
     DirectoryEvent,
     DirectoryEventBatch,
     DirectoryMember,
+    DirectoryProjectionLimits,
     DirectoryProjectionProvider,
     DirectoryProjectionUnavailableError,
     DirectorySnapshot,
@@ -65,6 +66,7 @@ _MEMBERSHIP_STATUS_MAP = {
     'removed': MembershipStatus.REMOVED.value,
 }
 _INCREMENTAL_PROJECTION_FINGERPRINT = hashlib.sha256(b'langbot-directory-incremental-v1').hexdigest()
+_ACCOUNT_QUERY_CHUNK_SIZE = 500
 
 
 class _DirectorySnapshotSuperseded(DirectoryProjectionUnavailableError):
@@ -89,6 +91,7 @@ class DirectoryProjectionService:
         sync_interval_seconds: float = 5.0,
         max_staleness_seconds: float = 60.0,
         event_limit: int = 100,
+        limits: DirectoryProjectionLimits | None = None,
         monotonic_time: Callable[[], float] = time.monotonic,
     ) -> None:
         if not isinstance(provider, DirectoryProjectionProvider):
@@ -101,15 +104,21 @@ class DirectoryProjectionService:
             raise ValueError('Directory max staleness must exceed the sync interval')
         if event_limit <= 0 or event_limit > 100:
             raise ValueError('Directory event limit must be between 1 and 100')
+        if limits is not None and not isinstance(limits, DirectoryProjectionLimits):
+            raise TypeError('Directory projection limits must be a DirectoryProjectionLimits value')
         self.ap = ap
         self.provider = provider
         self.instance_uuid = instance_uuid.strip()
         self.sync_interval_seconds = float(sync_interval_seconds)
         self.max_staleness_seconds = float(max_staleness_seconds)
         self.event_limit = event_limit
+        self.limits = limits or DirectoryProjectionLimits()
         self._monotonic_time = monotonic_time
         self._last_success_monotonic: float | None = None
         self._ready = False
+        self._active_workspace_count = 0
+        self._last_batch_workspace_count = 0
+        self._last_batch_membership_count = 0
         # Every runtime replica must consume the event stream independently:
         # entitlement snapshots live in the closed adapter's process memory.
         # The database cursor remains the shared projection high-water mark,
@@ -184,6 +193,90 @@ class DirectoryProjectionService:
         if self._monotonic_time() - last_success >= self.max_staleness_seconds:
             raise DirectoryProjectionUnavailableError('Cloud directory projection is stale')
 
+    def resource_snapshot(self) -> dict[str, int]:
+        """Return aggregate, tenant-free cardinality gauges for health checks."""
+
+        return {
+            'active_workspaces': self._active_workspace_count,
+            'max_active_workspaces': self.limits.max_active_workspaces,
+            'last_batch_workspaces': self._last_batch_workspace_count,
+            'last_batch_memberships': self._last_batch_membership_count,
+            'max_snapshot_workspaces': self.limits.max_snapshot_workspaces,
+            'max_snapshot_memberships': self.limits.max_snapshot_memberships,
+        }
+
+    def _validate_batch_capacity(
+        self,
+        workspaces: tuple[DirectoryWorkspace, ...],
+        *,
+        full_snapshot: bool,
+    ) -> tuple[int, int]:
+        workspace_count = len(workspaces)
+        if full_snapshot and workspace_count > self.limits.max_snapshot_workspaces:
+            raise DirectoryProjectionUnavailableError(
+                'Directory snapshot Workspace capacity exceeded '
+                f'({workspace_count} > {self.limits.max_snapshot_workspaces})'
+            )
+
+        active_count = 0
+        membership_count = 0
+        for workspace in workspaces:
+            if workspace.status == WorkspaceStatus.ACTIVE.value:
+                active_count += 1
+            membership_count += len(workspace.members)
+            if membership_count > self.limits.max_snapshot_memberships:
+                raise DirectoryProjectionUnavailableError(
+                    'Directory membership capacity exceeded '
+                    f'({membership_count} > {self.limits.max_snapshot_memberships})'
+                )
+        if active_count > self.limits.max_active_workspaces:
+            raise DirectoryProjectionUnavailableError(
+                f'Directory active Workspace capacity exceeded ({active_count} > {self.limits.max_active_workspaces})'
+            )
+        return workspace_count, membership_count
+
+    async def _enforce_active_workspace_capacity(self, session: Any) -> int:
+        """Count the committed candidate state while holding the projection lock.
+
+        Full snapshots can validate their own active count before doing any
+        database work. Incremental deltas cannot know the instance total, so
+        every projection path also checks the database after applying fences.
+        The caller holds the per-instance DirectoryProjectionState row lock;
+        concurrent replicas therefore cannot race two individually-admitted
+        deltas above the instance ceiling.
+        """
+
+        active_count = int(
+            (
+                await session.scalar(
+                    sqlalchemy.select(sqlalchemy.func.count())
+                    .select_from(Workspace)
+                    .where(
+                        Workspace.instance_uuid == self.instance_uuid,
+                        Workspace.source == WorkspaceSource.CLOUD_PROJECTION.value,
+                        Workspace.status == WorkspaceStatus.ACTIVE.value,
+                    )
+                )
+            )
+            or 0
+        )
+        if active_count > self.limits.max_active_workspaces:
+            raise DirectoryProjectionUnavailableError(
+                f'Projected active Workspace capacity exceeded ({active_count} > {self.limits.max_active_workspaces})'
+            )
+        return active_count
+
+    def _record_batch_cardinality(
+        self,
+        *,
+        active_workspaces: int,
+        workspaces: int,
+        memberships: int,
+    ) -> None:
+        self._active_workspace_count = active_workspaces
+        self._last_batch_workspace_count = workspaces
+        self._last_batch_membership_count = memberships
+
     async def apply_snapshot(
         self,
         snapshot: DirectorySnapshot,
@@ -194,6 +287,10 @@ class DirectoryProjectionService:
 
         if not isinstance(snapshot, DirectorySnapshot):
             raise DirectoryProjectionUnavailableError('Directory provider returned an invalid snapshot')
+        workspace_count, membership_count = self._validate_batch_capacity(
+            snapshot.workspaces,
+            full_snapshot=True,
+        )
         snapshot = DirectorySnapshot.model_validate(snapshot.model_dump())
         if snapshot.instance_uuid != self.instance_uuid:
             raise DirectoryProjectionUnavailableError('Directory snapshot targets another LangBot instance')
@@ -244,9 +341,10 @@ class DirectoryProjectionService:
                 raise DirectoryProjectionUnavailableError('Directory snapshot cursor has conflicting contents')
 
             await self._record_events(session, event_list, now=now)
-            await self._apply_accounts(session, snapshot)
-            await self._apply_workspaces(session, snapshot)
+            accounts_by_uuid = await self._apply_accounts(session, snapshot)
+            await self._apply_workspaces(session, snapshot, accounts_by_uuid=accounts_by_uuid)
             await self._fence_absent_workspaces(session, snapshot)
+            active_workspace_count = await self._enforce_active_workspace_capacity(session)
 
             state.cursor = snapshot.cursor
             state.snapshot_coverage_cursor = snapshot.cursor
@@ -260,6 +358,11 @@ class DirectoryProjectionService:
 
         await self._reconcile_entitlement_snapshot_set(snapshot)
         self._publish_runtime_execution_projection(snapshot.workspaces)
+        self._record_batch_cardinality(
+            active_workspaces=active_workspace_count,
+            workspaces=workspace_count,
+            memberships=membership_count,
+        )
         self._record_success()
         self._consumer_cursor = snapshot.cursor
 
@@ -270,6 +373,10 @@ class DirectoryProjectionService:
             raise DirectoryProjectionUnavailableError('Directory provider returned an invalid delta')
         if not isinstance(batch, DirectoryEventBatch):
             raise DirectoryProjectionUnavailableError('Directory provider returned an invalid event batch')
+        workspace_count, membership_count = self._validate_batch_capacity(
+            delta.workspaces,
+            full_snapshot=False,
+        )
         delta = DirectoryDelta.model_validate(delta.model_dump())
         batch = DirectoryEventBatch.model_validate(batch.model_dump())
         self._validate_batch(batch, expected_after_cursor=batch.after_cursor)
@@ -325,8 +432,12 @@ class DirectoryProjectionService:
                     generated_at=delta.generated_at,
                     workspaces=delta.workspaces,
                 )
-                await self._apply_accounts(session, projected_delta)
-                await self._apply_workspaces(session, projected_delta)
+                accounts_by_uuid = await self._apply_accounts(session, projected_delta)
+                await self._apply_workspaces(
+                    session,
+                    projected_delta,
+                    accounts_by_uuid=accounts_by_uuid,
+                )
                 await self._fence_workspaces(
                     session,
                     {
@@ -340,6 +451,7 @@ class DirectoryProjectionService:
                 # incremental path; a later full snapshot replaces this marker.
                 state.snapshot_fingerprint = _INCREMENTAL_PROJECTION_FINGERPRINT
 
+            active_workspace_count = await self._enforce_active_workspace_capacity(session)
             state.last_applied_at = now
             state.lease_expires_at = lease_expires_at
             await self._mark_events_applied(session, batch.events, now=now)
@@ -353,6 +465,11 @@ class DirectoryProjectionService:
         self._publish_runtime_execution_projection(
             returned.values(),
             affected_workspace_uuids=requested,
+        )
+        self._record_batch_cardinality(
+            active_workspaces=active_workspace_count,
+            workspaces=workspace_count,
+            memberships=membership_count,
         )
         if projection_caught_up:
             self._record_success()
@@ -580,7 +697,7 @@ class DirectoryProjectionService:
         for row in inbox_rows:
             row.applied_at = now
 
-    async def _apply_accounts(self, session: Any, snapshot: DirectorySnapshot) -> None:
+    async def _apply_accounts(self, session: Any, snapshot: DirectorySnapshot) -> dict[str, User]:
         selected: dict[str, DirectoryMember] = {}
         emails: dict[str, str] = {}
         for workspace in snapshot.workspaces:
@@ -596,11 +713,35 @@ class DirectoryProjectionService:
                 if previous is None:
                     selected[member.account_uuid] = member
 
+        # Fetch existing UUID and email owners in bounded batches. The previous
+        # two SELECTs per unique account made a large but valid directory
+        # snapshot produce tens of thousands of serial round trips during
+        # startup. The configured membership ceiling bounds the materialized
+        # maps, while batching stays below PostgreSQL parameter limits.
+        accounts_by_uuid: dict[str, User] = {}
+        accounts_by_email: dict[str, User] = {}
+        selected_items = list(selected.items())
+        for start in range(0, len(selected_items), _ACCOUNT_QUERY_CHUNK_SIZE):
+            chunk = selected_items[start : start + _ACCOUNT_QUERY_CHUNK_SIZE]
+            account_uuids = [account_uuid for account_uuid, _member in chunk]
+            normalized_emails = [member.normalized_email for _account_uuid, member in chunk]
+            rows = (
+                await session.scalars(
+                    sqlalchemy.select(User).where(
+                        sqlalchemy.or_(
+                            User.uuid.in_(account_uuids),
+                            User.normalized_email.in_(normalized_emails),
+                        )
+                    )
+                )
+            ).all()
+            for account in rows:
+                accounts_by_uuid[account.uuid] = account
+                accounts_by_email[account.normalized_email] = account
+
         for account_uuid, member in selected.items():
-            account = await session.scalar(sqlalchemy.select(User).where(User.uuid == account_uuid))
-            email_account = await session.scalar(
-                sqlalchemy.select(User).where(User.normalized_email == member.normalized_email)
-            )
+            account = accounts_by_uuid.get(account_uuid)
+            email_account = accounts_by_email.get(member.normalized_email)
             if email_account is not None and email_account.uuid != account_uuid:
                 raise DirectoryProjectionUnavailableError('Directory account email collides with another Core account')
             if account is None:
@@ -616,6 +757,8 @@ class DirectoryProjectionService:
                     space_account_uuid=account_uuid,
                 )
                 session.add(account)
+                accounts_by_uuid[account_uuid] = account
+                accounts_by_email[member.normalized_email] = account
                 continue
             if account.source != AccountSource.CLOUD_PROJECTION.value:
                 raise DirectoryProjectionUnavailableError('Directory account UUID collides with a local Core account')
@@ -637,8 +780,15 @@ class DirectoryProjectionService:
             account.account_type = 'space'
             account.space_account_uuid = account_uuid
         await session.flush()
+        return accounts_by_uuid
 
-    async def _apply_workspaces(self, session: Any, snapshot: DirectorySnapshot) -> None:
+    async def _apply_workspaces(
+        self,
+        session: Any,
+        snapshot: DirectorySnapshot,
+        *,
+        accounts_by_uuid: dict[str, User],
+    ) -> None:
         for candidate in snapshot.workspaces:
             workspace = await session.get(Workspace, candidate.uuid)
             if workspace is None:
@@ -649,7 +799,7 @@ class DirectoryProjectionService:
                     slug=candidate.slug,
                     type=candidate.type,
                     status=candidate.status,
-                    created_by_account_uuid=await self._projected_creator_uuid(session, candidate),
+                    created_by_account_uuid=self._projected_creator_uuid(candidate, accounts_by_uuid),
                     source=WorkspaceSource.CLOUD_PROJECTION.value,
                     projection_revision=candidate.projection_revision,
                 )
@@ -661,14 +811,18 @@ class DirectoryProjectionService:
                 workspace.slug = candidate.slug
                 workspace.type = candidate.type
                 workspace.status = candidate.status
-                workspace.created_by_account_uuid = await self._projected_creator_uuid(session, candidate)
+                workspace.created_by_account_uuid = self._projected_creator_uuid(candidate, accounts_by_uuid)
                 workspace.projection_revision = candidate.projection_revision
 
             await self._apply_memberships(session, workspace, candidate)
             await self._apply_execution_state(session, workspace, candidate)
 
-    async def _projected_creator_uuid(self, session: Any, candidate: DirectoryWorkspace) -> str | None:
-        creator = await session.scalar(sqlalchemy.select(User).where(User.uuid == candidate.created_by_account_uuid))
+    @staticmethod
+    def _projected_creator_uuid(
+        candidate: DirectoryWorkspace,
+        accounts_by_uuid: dict[str, User],
+    ) -> str | None:
+        creator = accounts_by_uuid.get(candidate.created_by_account_uuid)
         if creator is None:
             if candidate.status == WorkspaceStatus.ACTIVE.value:
                 raise DirectoryProjectionUnavailableError('Active Directory Workspace creator is not projected')
@@ -801,9 +955,24 @@ class DirectoryProjectionService:
         included = {workspace.uuid for workspace in snapshot.workspaces}
         projected = (
             await session.scalars(
-                sqlalchemy.select(Workspace).where(
+                sqlalchemy.select(Workspace)
+                .outerjoin(
+                    WorkspaceExecutionState,
+                    WorkspaceExecutionState.workspace_uuid == Workspace.uuid,
+                )
+                .where(
                     Workspace.instance_uuid == self.instance_uuid,
                     Workspace.source == WorkspaceSource.CLOUD_PROJECTION.value,
+                    sqlalchemy.or_(
+                        Workspace.status.not_in(
+                            (
+                                WorkspaceStatus.ARCHIVED.value,
+                                WorkspaceStatus.DELETED.value,
+                            )
+                        ),
+                        WorkspaceExecutionState.state == WorkspaceExecutionStatus.ACTIVE.value,
+                        WorkspaceExecutionState.write_fenced == sqlalchemy.false(),
+                    ),
                 )
             )
         ).all()

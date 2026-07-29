@@ -270,3 +270,36 @@ This log records implementation choices made while delivering the Workspace arch
 - Decision: In multi-Workspace Cloud mode, Space OAuth may refresh tokens only for an active `cloud_projection` Account whose Space subject UUID and normalized email exactly match. It cannot create an Account, relink by email, mutate directory identity, or choose a Workspace.
 - Redirect boundary: When Cloud v2 configures its Core public URL, Space issues authorization codes only to that exact callback origin or the explicitly retained legacy managed-Pod domain. Community installations remain dynamic OAuth clients because they cannot pre-register with the public Space service: the consent screen displays their hostname, and only HTTPS or loopback HTTP with the fixed callback path is accepted. Remote HTTP, userinfo, fragments, arbitrary callback paths, and unrecognized query parameters always fail closed.
 - Reason: Space is the SaaS identity and directory authority, but Core remains the authentication enforcement point. Projected-only matching avoids split-brain identities; redirect allowlisting prevents bearer authorization-code exfiltration.
+
+## 2026-07-29
+
+### Directory capacity is one instance-level admission contract
+
+- Decision: Space and Core share an explicitly configured operational ceiling for active
+  Workspace and snapshot membership cardinality. Space serializes new personal-Workspace
+  creation across replicas with a PostgreSQL transaction advisory lock and rejects the
+  registration transaction before the limit is crossed. Core independently counts the
+  projected active Workspace set while holding the per-instance directory projection row
+  lock. Exceeding any limit rolls back the complete projection and does not advance its
+  cursor; neither side truncates authoritative data.
+- Snapshot boundary: A full snapshot is current desired state and contains active
+  Workspaces only. Archived Workspace revisions are retained as bounded, targeted deltas
+  so Core can validate and apply monotonic tombstones without every bootstrap carrying
+  unbounded history.
+- Memory boundary: Space bounds database result cardinality before signing. The closed
+  adapter bounds decompressed response bytes before JSON/JWS parsing and validates
+  Workspace/membership cardinality before entitlement-cache fan-out. Core schema models
+  have absolute list ceilings, validate duplicates in one pass, and bulk-read Accounts in
+  bounded chunks rather than issuing two serial queries per Account. Manifest and
+  entitlement responses have smaller endpoint-specific byte ceilings; entitlement refresh
+  validates and releases batches of at most 16 raw responses instead of retaining the
+  entire directory fan-out.
+- Operations boundary: Core health exposes aggregate active/max directory cardinality and
+  PostgreSQL pool occupancy/timeouts. The default active Workspace ceiling is 1,000, with
+  a hard code ceiling of 5,000; this is a safety stop, not a production capacity claim.
+  Space and Core configuration must match, and the approved production value comes from
+  the real V-08 capacity curve plus the V-09 24-hour soak.
+- Reason: One LangBot instance should admit new tenants at the cheapest data-only boundary,
+  while still preventing legitimate registration growth or a malformed control-plane
+  response from causing an unbounded startup allocation, database connection storm, or
+  CPU spike.

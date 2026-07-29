@@ -64,6 +64,20 @@ class TestApplyEnvOverridesToConfig:
         assert result['concurrency']['pipeline'] == 10
         assert isinstance(result['concurrency']['pipeline'], int)
 
+    def test_cloud_directory_limit_override_keeps_integer_type_on_upgraded_config(self):
+        load_config = get_load_config_module()
+        cfg = load_config._complete_runtime_policy_defaults({})
+
+        with patch.dict(
+            os.environ,
+            {'CLOUD__DIRECTORY__MAX_ACTIVE_WORKSPACES': '250'},
+            clear=True,
+        ):
+            result = load_config._apply_env_overrides_to_config(cfg)
+
+        assert result['cloud']['directory']['max_active_workspaces'] == 250
+        assert isinstance(result['cloud']['directory']['max_active_workspaces'], int)
+
     def test_override_int_value_invalid_conversion(self):
         """Test that invalid int conversion keeps string value."""
         load_config = get_load_config_module()

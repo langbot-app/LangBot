@@ -14,6 +14,25 @@ from ..bootutils import config
 
 
 _RUNTIME_POLICY_DEFAULTS = {
+    'cloud': {
+        'directory': {
+            'max_active_workspaces': 1000,
+            'max_snapshot_workspaces': 1000,
+            'max_snapshot_memberships': 20000,
+            'max_response_bytes': 33554432,
+        }
+    },
+    'database': {
+        'postgresql': {
+            'pool_size': 10,
+            'max_overflow': 10,
+            'pool_timeout_seconds': 30,
+            'pool_recycle_seconds': 1800,
+            'statement_timeout_ms': 60000,
+            'lock_timeout_ms': 5000,
+            'idle_in_transaction_session_timeout_ms': 60000,
+        }
+    },
     'system': {
         'blocking_executor': {
             'max_workers': bounded_executor.DEFAULT_MAX_WORKERS,
@@ -49,7 +68,7 @@ def _complete_runtime_policy_defaults(cfg: dict) -> dict:
     The historic config loader intentionally does not deep-complete the whole
     template.  These fields are different: their native env overrides must
     retain boolean/numeric types on upgraded instances, so their defaults must
-    exist before ``PLUGIN__...`` and ``MCP__...`` are parsed.
+    exist before ``CLOUD__...``, ``PLUGIN__...`` and ``MCP__...`` are parsed.
     """
 
     def merge(target: dict, defaults: dict, path: tuple[str, ...] = ()) -> None:

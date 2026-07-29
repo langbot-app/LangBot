@@ -268,11 +268,23 @@ class Application:
             }
         )
 
+        directory_stats = {}
+        directory_snapshot = getattr(self.directory_projection_service, 'resource_snapshot', None)
+        if callable(directory_snapshot):
+            directory_stats = directory_snapshot()
+
+        database_stats = {}
+        database_snapshot = getattr(self.persistence_mgr, 'get_resource_stats', None)
+        if callable(database_snapshot):
+            database_stats = database_snapshot()
+
         return {
             'asyncio_tasks': asyncio_tasks,
             'event_loop': self.event_loop_monitor.snapshot(),
             'blocking_executor': (self.blocking_executor.snapshot() if self.blocking_executor is not None else {}),
             'application_tasks': task_stats,
+            'database_pool': database_stats,
+            'directory': directory_stats,
             'query_pool': query_pool_stats,
             'models': model_stats,
             'runtimes': runtime_stats,

@@ -26,6 +26,7 @@ from langbot.pkg.persistence.tenant_uow import (
     CrossScopeTransactionError,
     PersistenceScopeKind,
     ScopedSessionTransactionError,
+    TenantScopedAsyncSession,
     TenantScopedSyncSession,
     TenantScopeRequiredError,
     TenantUnitOfWork,
@@ -35,6 +36,33 @@ from langbot.pkg.persistence.tenant_uow import (
 
 
 pytestmark = pytest.mark.asyncio
+
+
+async def test_tenant_uow_reports_pool_timeout_during_transaction_admission(monkeypatch) -> None:
+    engine = create_async_engine('sqlite+aiosqlite:///:memory:')
+    pool_timeouts = 0
+
+    def record_pool_timeout() -> None:
+        nonlocal pool_timeouts
+        pool_timeouts += 1
+
+    async def fail_transaction_start(self, capability):
+        del self, capability
+        raise sa.exc.TimeoutError('pool exhausted')
+
+    monkeypatch.setattr(TenantScopedAsyncSession, '_start_owned_transaction', fail_transaction_start)
+    try:
+        with pytest.raises(sa.exc.TimeoutError, match='pool exhausted'):
+            async with TenantUnitOfWork(
+                engine,
+                '10000000-0000-0000-0000-000000000001',
+                on_pool_timeout=record_pool_timeout,
+            ):
+                pass
+    finally:
+        await engine.dispose()
+
+    assert pool_timeouts == 1
 
 
 def _on_conflict_statement(*, update_value, update_key='value', index_element=None):

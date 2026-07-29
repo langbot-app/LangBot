@@ -81,6 +81,9 @@ uv run python scripts/cloud_runtime_soak.py \
 - 健康接口缺少 event-loop monitor、monitor 未持续运行，或其 sample counter 回退。
 - blocking executor rejection counter 增长。
 - Plugin Runtime restart circuit 的累计打开次数增长。
+- Core 目录 active Workspace、最近 snapshot/delta Workspace 或 membership 基数
+  超过各自配置上限，或 PostgreSQL `checked_out` 超过配置 pool 容量；相关 current/max
+  指标只出现一半或 max 非法也失败。
 
 负载结束后的冷却尾段还必须满足：
 

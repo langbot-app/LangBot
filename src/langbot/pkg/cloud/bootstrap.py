@@ -11,7 +11,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any, Protocol, runtime_checkable
 
 from ..workspace.policy import CloudWorkspacePolicy, SingleWorkspacePolicy
-from .directory import DirectoryProjectionProvider
+from .directory import DirectoryProjectionProvider, directory_projection_limits_from_config
 from .entitlements import EntitlementProvider, OpenSourceEntitlementProvider
 
 
@@ -112,6 +112,10 @@ class VerifiedCloudDeployment:
             raise CloudBootstrapError('Verified Cloud bootstrap did not provide a Manifest renewal adapter')
 
     def validate_instance_config(self, config: dict[str, Any]) -> None:
+        try:
+            directory_projection_limits_from_config(config)
+        except (TypeError, ValueError) as exc:
+            raise CloudBootstrapError(f'Cloud directory limits are invalid: {exc}') from exc
         if config.get('database', {}).get('use') != 'postgresql':
             raise CloudBootstrapError('Cloud runtime requires database.use=postgresql')
         if config.get('vdb', {}).get('use') != self.required_vector_backend:

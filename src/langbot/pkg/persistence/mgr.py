@@ -159,6 +159,7 @@ class PersistenceManager:
         for manager in database.preregistered_managers:
             if manager.name == database_type:
                 self.db = manager(self.ap, url_override=self._database_url_override)
+                self.db.persistence_mode = self.mode.value
                 await self.db.initialize()
                 selected_manager = self.db
                 break
@@ -194,6 +195,17 @@ class PersistenceManager:
         engine = getattr(db, 'engine', None)
         if engine is not None:
             await engine.dispose()
+
+    def get_resource_stats(self) -> dict[str, int]:
+        """Return database-manager-owned aggregate resource gauges."""
+
+        resource_stats = getattr(getattr(self, 'db', None), 'resource_stats', None)
+        if not callable(resource_stats):
+            return {}
+        try:
+            return resource_stats()
+        except Exception:
+            return {}
 
     @contextlib.asynccontextmanager
     async def _release_migration_lock(self) -> typing.AsyncIterator[None]:
@@ -1865,11 +1877,13 @@ class PersistenceManager:
         return active.session
 
     def _scoped_uow(self, scope: PersistenceScope) -> TenantUnitOfWork:
+        on_pool_timeout = getattr(getattr(self, 'db', None), 'record_pool_timeout', None)
         return TenantUnitOfWork(
             self.get_db_engine(),
             scope=scope,
             active_transaction=self._active_transaction,
             active_scope=self._active_scope,
+            on_pool_timeout=(on_pool_timeout if callable(on_pool_timeout) else None),
         )
 
     def _get_active_transaction(self) -> ActiveScopedTransaction | None:

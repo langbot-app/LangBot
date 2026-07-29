@@ -14,6 +14,7 @@ from langbot.pkg.cloud.directory import (
     DirectoryEvent,
     DirectoryEventBatch,
     DirectoryMember,
+    DirectoryProjectionLimits,
     DirectoryProjectionUnavailableError,
     DirectorySnapshot,
     DirectoryWorkspace,
@@ -272,6 +273,187 @@ async def test_event_limit_matches_single_delta_request_limit(projection_context
             INSTANCE_UUID,
             event_limit=101,
         )
+
+
+async def test_snapshot_capacity_rejects_atomically_before_projection(projection_context):
+    application, session_factory = projection_context
+    service = DirectoryProjectionService(
+        application,
+        _Provider([_snapshot(1)]),
+        INSTANCE_UUID,
+        limits=DirectoryProjectionLimits(
+            max_active_workspaces=1,
+            max_snapshot_workspaces=1,
+            max_snapshot_memberships=1,
+        ),
+    )
+    second_workspace = DirectoryWorkspace(
+        uuid=SECOND_WORKSPACE_UUID,
+        name='Second Workspace',
+        slug='second-workspace',
+        type='personal',
+        status='active',
+        created_by_account_uuid='20000000-0000-0000-0000-000000000002',
+        projection_revision=1,
+        execution_generation=1,
+        members=[
+            DirectoryMember(
+                membership_uuid=SECOND_MEMBERSHIP_UUID,
+                account_uuid='20000000-0000-0000-0000-000000000002',
+                normalized_email='second@example.com',
+                display_name='Second Owner',
+                account_status='active',
+                role='owner',
+                membership_status='active',
+                projection_revision=1,
+            )
+        ],
+    )
+
+    with pytest.raises(DirectoryProjectionUnavailableError, match='Workspace capacity exceeded'):
+        await service.apply_snapshot(
+            _snapshot(
+                1,
+                workspaces=[
+                    _workspace(),
+                    second_workspace,
+                ],
+            )
+        )
+
+    async with session_factory() as session:
+        assert await session.scalar(sqlalchemy.select(sqlalchemy.func.count()).select_from(Workspace)) == 0
+        assert await session.get(DirectoryProjectionState, INSTANCE_UUID) is None
+
+
+async def test_incremental_capacity_rolls_back_without_advancing_cursor(projection_context):
+    application, session_factory = projection_context
+    service = DirectoryProjectionService(
+        application,
+        _Provider([_snapshot(1)]),
+        INSTANCE_UUID,
+        limits=DirectoryProjectionLimits(
+            max_active_workspaces=1,
+            max_snapshot_workspaces=1,
+            max_snapshot_memberships=2,
+        ),
+    )
+    await service.initialize()
+
+    second_account_uuid = '20000000-0000-0000-0000-000000000002'
+    second_workspace = DirectoryWorkspace(
+        uuid=SECOND_WORKSPACE_UUID,
+        name='Second Workspace',
+        slug='second-workspace',
+        type='personal',
+        status='active',
+        created_by_account_uuid=second_account_uuid,
+        projection_revision=2,
+        execution_generation=1,
+        members=[
+            DirectoryMember(
+                membership_uuid=SECOND_MEMBERSHIP_UUID,
+                account_uuid=second_account_uuid,
+                normalized_email='second@example.com',
+                display_name='Second Owner',
+                account_status='active',
+                role='owner',
+                membership_status='active',
+                projection_revision=2,
+            )
+        ],
+    )
+    event = DirectoryEvent(
+        cursor=2,
+        uuid='40000000-0000-0000-0000-000000000002',
+        aggregate_uuid=SECOND_WORKSPACE_UUID,
+        event_type='directory.changed',
+        revision=2,
+        payload={
+            'workspace_uuid': SECOND_WORKSPACE_UUID,
+            'directory_revision': 2,
+        },
+        created_at=datetime.datetime(2026, 7, 24, 12, 2, tzinfo=datetime.UTC),
+    )
+    batch = DirectoryEventBatch(
+        instance_uuid=INSTANCE_UUID,
+        after_cursor=1,
+        cursor=2,
+        high_water_cursor=2,
+        events=[event],
+    )
+    delta = DirectoryDelta(
+        instance_uuid=INSTANCE_UUID,
+        requested_workspace_uuids=[SECOND_WORKSPACE_UUID],
+        generated_at=datetime.datetime(2026, 7, 24, 12, 2, tzinfo=datetime.UTC),
+        workspaces=[second_workspace],
+    )
+
+    with pytest.raises(DirectoryProjectionUnavailableError, match='Projected active Workspace capacity exceeded'):
+        await service.apply_delta(delta, batch)
+
+    async with session_factory() as session:
+        assert await session.get(Workspace, SECOND_WORKSPACE_UUID) is None
+        state = await session.get(DirectoryProjectionState, INSTANCE_UUID)
+        assert state is not None
+        assert state.cursor == 1
+    assert service.resource_snapshot()['active_workspaces'] == 1
+
+
+async def test_account_projection_reads_large_directory_in_bounded_batches(projection_context):
+    application, session_factory = projection_context
+    service = DirectoryProjectionService(
+        application,
+        _Provider([_snapshot(1)]),
+        INSTANCE_UUID,
+    )
+    workspaces = []
+    for number in range(501):
+        account_uuid = f'20000000-0000-0000-0000-{number:012d}'
+        workspaces.append(
+            DirectoryWorkspace(
+                uuid=f'10000000-0000-0000-0000-{number:012d}',
+                name=f'Workspace {number}',
+                slug=f'workspace-{number}',
+                type='personal',
+                status='active',
+                created_by_account_uuid=account_uuid,
+                projection_revision=1,
+                execution_generation=1,
+                members=[
+                    DirectoryMember(
+                        membership_uuid=f'30000000-0000-0000-0000-{number:012d}',
+                        account_uuid=account_uuid,
+                        normalized_email=f'owner-{number}@example.com',
+                        display_name=f'Owner {number}',
+                        account_status='active',
+                        role='owner',
+                        membership_status='active',
+                        projection_revision=1,
+                    )
+                ],
+            )
+        )
+    snapshot = _snapshot(1, workspaces=workspaces)
+    user_selects = 0
+
+    def count_user_selects(_connection, _cursor, statement, _parameters, _context, _executemany):
+        nonlocal user_selects
+        if statement.lstrip().upper().startswith('SELECT') and 'users' in statement:
+            user_selects += 1
+
+    engine = application.persistence_mgr.engine
+    sqlalchemy.event.listen(engine.sync_engine, 'before_cursor_execute', count_user_selects)
+    try:
+        async with application.persistence_mgr.directory_projection_uow(INSTANCE_UUID) as uow:
+            projected = await service._apply_accounts(uow.session, snapshot)
+    finally:
+        sqlalchemy.event.remove(engine.sync_engine, 'before_cursor_execute', count_user_selects)
+
+    assert len(projected) == 501
+    assert user_selects == 2
+    async with session_factory() as session:
+        assert await session.scalar(sqlalchemy.select(sqlalchemy.func.count()).select_from(User)) == 501
 
 
 async def test_archived_and_absent_workspaces_are_execution_fenced(projection_context):

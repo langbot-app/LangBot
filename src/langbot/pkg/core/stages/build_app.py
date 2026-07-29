@@ -42,6 +42,7 @@ from ...workspace import collaboration as workspace_collaboration_module
 from ...workspace import invitation_delivery as invitation_delivery_module
 from ...cloud import bootstrap as cloud_bootstrap
 from ...cloud import launch as cloud_launch_module
+from ...cloud.directory import directory_projection_limits_from_config
 from ...cloud.directory_projection import DirectoryProjectionService
 from ...cloud.entitlements import EntitlementResolver
 from ...api.http.context import ExecutionContext, PrincipalContext, PrincipalType
@@ -154,6 +155,7 @@ class BuildAppStage(stage.BootingStage):
                 ap,
                 deployment.directory_provider,
                 constants.instance_id,
+                limits=directory_projection_limits_from_config(ap.instance_config.data),
             )
             await directory_projection_service.initialize()
             ap.directory_projection_service = directory_projection_service

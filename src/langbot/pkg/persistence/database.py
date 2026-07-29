@@ -39,6 +39,7 @@ class BaseDatabaseManager(abc.ABC):
     ) -> None:
         self.ap = ap
         self.url_override = url_override
+        self.persistence_mode: str | None = None
 
     @abc.abstractmethod
     async def initialize(self) -> None:

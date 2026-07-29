@@ -7,8 +7,84 @@ from typing import Any, Protocol, runtime_checkable
 import pydantic
 
 
+DEFAULT_MAX_ACTIVE_WORKSPACES = 1_000
+HARD_MAX_ACTIVE_WORKSPACES = 5_000
+DEFAULT_MAX_SNAPSHOT_WORKSPACES = 1_000
+HARD_MAX_SNAPSHOT_WORKSPACES = 5_000
+DEFAULT_MAX_SNAPSHOT_MEMBERSHIPS = 20_000
+HARD_MAX_SNAPSHOT_MEMBERSHIPS = 100_000
+DEFAULT_MAX_CONTROL_PLANE_RESPONSE_BYTES = 32 * 1024 * 1024
+HARD_MAX_CONTROL_PLANE_RESPONSE_BYTES = 64 * 1024 * 1024
+
+
 class DirectoryProjectionUnavailableError(RuntimeError):
     """Raised when the verified Cloud directory cannot safely admit work."""
+
+
+class DirectoryProjectionLimits(pydantic.BaseModel):
+    """Instance-owned cardinality limits for verified Cloud directory data.
+
+    These are operational safety limits, not subscription entitlements.  Core
+    fails the complete projection transaction when a limit is exceeded instead
+    of truncating an authoritative directory and accidentally hiding tenants.
+    The closed adapter consumes the same limits before priming entitlement
+    caches, and additionally bounds the HTTP response buffered for signature
+    verification.
+    """
+
+    model_config = pydantic.ConfigDict(frozen=True, extra='forbid')
+
+    max_active_workspaces: int = pydantic.Field(
+        default=DEFAULT_MAX_ACTIVE_WORKSPACES,
+        ge=1,
+        le=HARD_MAX_ACTIVE_WORKSPACES,
+    )
+    max_snapshot_workspaces: int = pydantic.Field(
+        default=DEFAULT_MAX_SNAPSHOT_WORKSPACES,
+        ge=1,
+        le=HARD_MAX_SNAPSHOT_WORKSPACES,
+    )
+    max_snapshot_memberships: int = pydantic.Field(
+        default=DEFAULT_MAX_SNAPSHOT_MEMBERSHIPS,
+        ge=1,
+        le=HARD_MAX_SNAPSHOT_MEMBERSHIPS,
+    )
+    max_response_bytes: int = pydantic.Field(
+        default=DEFAULT_MAX_CONTROL_PLANE_RESPONSE_BYTES,
+        ge=1024 * 1024,
+        le=HARD_MAX_CONTROL_PLANE_RESPONSE_BYTES,
+    )
+
+    @pydantic.field_validator(
+        'max_active_workspaces',
+        'max_snapshot_workspaces',
+        'max_snapshot_memberships',
+        'max_response_bytes',
+        mode='before',
+    )
+    @classmethod
+    def _reject_boolean_limits(cls, value: object) -> object:
+        if isinstance(value, bool):
+            raise ValueError('must be an integer')
+        return value
+
+    @pydantic.model_validator(mode='after')
+    def _validate_workspace_limits(self) -> DirectoryProjectionLimits:
+        if self.max_snapshot_workspaces < self.max_active_workspaces:
+            raise ValueError('max_snapshot_workspaces must be greater than or equal to max_active_workspaces')
+        return self
+
+
+def directory_projection_limits_from_config(config: dict[str, Any]) -> DirectoryProjectionLimits:
+    """Parse typed Cloud directory limits from the instance configuration."""
+
+    cloud_config = config.get('cloud', {})
+    if not isinstance(cloud_config, dict):
+        raise ValueError('cloud must be a mapping')
+    directory_config = cloud_config.get('directory', {})
+    if not isinstance(directory_config, dict):
+        raise ValueError('cloud.directory must be a mapping')
+    return DirectoryProjectionLimits.model_validate(directory_config)
 
 
 class DirectoryMember(pydantic.BaseModel):
@@ -48,7 +124,10 @@ class DirectoryWorkspace(pydantic.BaseModel):
     created_by_account_uuid: str = pydantic.Field(min_length=1, max_length=36)
     projection_revision: int = pydantic.Field(ge=1)
     execution_generation: int = pydantic.Field(ge=1)
-    members: tuple[DirectoryMember, ...] = ()
+    members: tuple[DirectoryMember, ...] = pydantic.Field(
+        default=(),
+        max_length=HARD_MAX_SNAPSHOT_MEMBERSHIPS,
+    )
 
     @pydantic.field_validator('members', mode='before')
     @classmethod
@@ -57,13 +136,16 @@ class DirectoryWorkspace(pydantic.BaseModel):
 
     @pydantic.model_validator(mode='after')
     def _validate_members(self) -> DirectoryWorkspace:
-        membership_uuids = [member.membership_uuid for member in self.members]
-        account_uuids = [member.account_uuid for member in self.members]
-        if len(membership_uuids) != len(set(membership_uuids)):
-            raise ValueError('Directory Workspace contains duplicate membership UUIDs')
-        if len(account_uuids) != len(set(account_uuids)):
-            raise ValueError('Directory Workspace contains duplicate account UUIDs')
-        if self.created_by_account_uuid not in set(account_uuids):
+        membership_uuids: set[str] = set()
+        account_uuids: set[str] = set()
+        for member in self.members:
+            if member.membership_uuid in membership_uuids:
+                raise ValueError('Directory Workspace contains duplicate membership UUIDs')
+            if member.account_uuid in account_uuids:
+                raise ValueError('Directory Workspace contains duplicate account UUIDs')
+            membership_uuids.add(member.membership_uuid)
+            account_uuids.add(member.account_uuid)
+        if self.created_by_account_uuid not in account_uuids:
             raise ValueError('Directory Workspace must include its creator')
         return self
 
@@ -76,7 +158,10 @@ class DirectorySnapshot(pydantic.BaseModel):
     instance_uuid: str = pydantic.Field(min_length=1, max_length=255)
     cursor: int = pydantic.Field(ge=0)
     generated_at: datetime.datetime
-    workspaces: tuple[DirectoryWorkspace, ...] = ()
+    workspaces: tuple[DirectoryWorkspace, ...] = pydantic.Field(
+        default=(),
+        max_length=HARD_MAX_SNAPSHOT_WORKSPACES,
+    )
 
     @pydantic.field_validator('workspaces', mode='before')
     @classmethod
@@ -85,15 +170,20 @@ class DirectorySnapshot(pydantic.BaseModel):
 
     @pydantic.model_validator(mode='after')
     def _validate_workspaces(self) -> DirectorySnapshot:
-        workspace_uuids = [workspace.uuid for workspace in self.workspaces]
-        slugs = [workspace.slug for workspace in self.workspaces]
-        membership_uuids = [member.membership_uuid for workspace in self.workspaces for member in workspace.members]
-        if len(workspace_uuids) != len(set(workspace_uuids)):
-            raise ValueError('Directory snapshot contains duplicate Workspace UUIDs')
-        if len(slugs) != len(set(slugs)):
-            raise ValueError('Directory snapshot contains duplicate Workspace slugs')
-        if len(membership_uuids) != len(set(membership_uuids)):
-            raise ValueError('Directory snapshot contains duplicate membership UUIDs')
+        workspace_uuids: set[str] = set()
+        slugs: set[str] = set()
+        membership_uuids: set[str] = set()
+        for workspace in self.workspaces:
+            if workspace.uuid in workspace_uuids:
+                raise ValueError('Directory snapshot contains duplicate Workspace UUIDs')
+            if workspace.slug in slugs:
+                raise ValueError('Directory snapshot contains duplicate Workspace slugs')
+            workspace_uuids.add(workspace.uuid)
+            slugs.add(workspace.slug)
+            for member in workspace.members:
+                if member.membership_uuid in membership_uuids:
+                    raise ValueError('Directory snapshot contains duplicate membership UUIDs')
+                membership_uuids.add(member.membership_uuid)
         return self
 
 
@@ -127,17 +217,23 @@ class DirectoryDelta(pydantic.BaseModel):
         if len(requested) != len(set(requested)):
             raise ValueError('Directory delta contains duplicate requested Workspace UUIDs')
 
-        workspace_uuids = [workspace.uuid for workspace in self.workspaces]
-        slugs = [workspace.slug for workspace in self.workspaces]
-        membership_uuids = [member.membership_uuid for workspace in self.workspaces for member in workspace.members]
-        if len(workspace_uuids) != len(set(workspace_uuids)):
-            raise ValueError('Directory delta contains duplicate Workspace UUIDs')
-        if not set(workspace_uuids).issubset(set(requested)):
-            raise ValueError('Directory delta returned an unrequested Workspace')
-        if len(slugs) != len(set(slugs)):
-            raise ValueError('Directory delta contains duplicate Workspace slugs')
-        if len(membership_uuids) != len(set(membership_uuids)):
-            raise ValueError('Directory delta contains duplicate membership UUIDs')
+        requested_set = set(requested)
+        workspace_uuids: set[str] = set()
+        slugs: set[str] = set()
+        membership_uuids: set[str] = set()
+        for workspace in self.workspaces:
+            if workspace.uuid in workspace_uuids:
+                raise ValueError('Directory delta contains duplicate Workspace UUIDs')
+            if workspace.uuid not in requested_set:
+                raise ValueError('Directory delta returned an unrequested Workspace')
+            if workspace.slug in slugs:
+                raise ValueError('Directory delta contains duplicate Workspace slugs')
+            workspace_uuids.add(workspace.uuid)
+            slugs.add(workspace.slug)
+            for member in workspace.members:
+                if member.membership_uuid in membership_uuids:
+                    raise ValueError('Directory delta contains duplicate membership UUIDs')
+                membership_uuids.add(member.membership_uuid)
         return self
 
 

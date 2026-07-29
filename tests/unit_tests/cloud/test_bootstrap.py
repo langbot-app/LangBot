@@ -179,6 +179,34 @@ async def test_cloud_runtime_config_is_fail_closed(field, value, message):
 
 
 @pytest.mark.parametrize(
+    ('directory_config', 'message'),
+    [
+        ({'max_active_workspaces': 0}, 'greater than or equal to 1'),
+        ({'max_active_workspaces': True}, 'must be an integer'),
+        (
+            {
+                'max_active_workspaces': 10,
+                'max_snapshot_workspaces': 9,
+            },
+            'max_snapshot_workspaces',
+        ),
+        ({'max_response_bytes': 64 * 1024 * 1024 + 1}, 'less than or equal to'),
+    ],
+)
+async def test_cloud_directory_capacity_contract_is_fail_closed(directory_config, message):
+    config = _cloud_config()
+    config['cloud'] = {'directory': directory_config}
+
+    with pytest.raises(CloudBootstrapError, match=message):
+        await resolve_deployment(
+            instance_uuid='instance-a',
+            instance_config=config,
+            entry_points=lambda: _EntryPoints([_EntryPoint(_Provider())]),
+            now=1_000,
+        )
+
+
+@pytest.mark.parametrize(
     ('pgvector_config', 'message'),
     [
         ({'use_business_database': False, 'allowed_dimensions': [1536]}, 'use_business_database=true'),
