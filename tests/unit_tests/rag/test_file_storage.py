@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from langbot.pkg.api.http.context import ExecutionContext
+from langbot.pkg.core.taskmgr import TaskCapacityError
 from langbot.pkg.rag.knowledge.kbmgr import RuntimeKnowledgeBase
 from langbot.pkg.storage.mgr import StorageMgr
 from langbot.pkg.workspace.errors import WorkspaceNotFoundError
@@ -34,9 +35,9 @@ def _upload_key(logical_key: str, *, context: ExecutionContext = CONTEXT) -> str
     )
 
 
-def _make_zip_bytes(entries: dict[str, bytes]) -> bytes:
+def _make_zip_bytes(entries: dict[str, bytes], *, compression: int = zipfile.ZIP_STORED) -> bytes:
     buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, 'w') as zf:
+    with zipfile.ZipFile(buffer, 'w', compression=compression) as zf:
         for name, content in entries.items():
             zf.writestr(name, content)
         zf.mkdir('emptydir')
@@ -151,6 +152,24 @@ class TestStoreFile:
 
         kb.ap.storage_mgr.storage_provider.exists.assert_not_awaited()
 
+    @pytest.mark.asyncio
+    async def test_store_file_rolls_back_pending_record_when_task_capacity_is_exhausted(self):
+        kb = _make_kb()
+        object_key = _upload_key('queued.pdf')
+
+        def reject(coro, **_kwargs):
+            coro.close()
+            raise TaskCapacityError('capacity')
+
+        kb.ap.task_mgr.create_user_task.side_effect = reject
+
+        with pytest.raises(TaskCapacityError, match='capacity'):
+            await kb.store_file(CONTEXT, object_key)
+
+        statements = [str(call.args[0]) for call in kb.ap.persistence_mgr.execute_async.await_args_list]
+        assert any(statement.startswith('INSERT') for statement in statements)
+        assert any(statement.startswith('DELETE') for statement in statements)
+
 
 class TestStoreZipFile:
     @pytest.mark.asyncio
@@ -200,6 +219,39 @@ class TestStoreZipFile:
             await kb._store_zip_file(CONTEXT, _upload_key('archive.zip'))
 
         kb.store_file.assert_not_awaited()
+        kb.ap.storage_mgr.storage_provider.delete.assert_awaited_once_with(_upload_key('archive.zip'))
+
+    @pytest.mark.asyncio
+    async def test_store_zip_file_rejects_too_many_documents_before_extracting(self):
+        kb = _make_kb()
+        kb.ap.storage_mgr.storage_provider.load = AsyncMock(
+            return_value=_make_zip_bytes({f'doc-{index}.txt': b'text' for index in range(9)})
+        )
+        kb.store_file = AsyncMock()
+
+        with pytest.raises(ValueError, match='too many supported documents'):
+            await kb._store_zip_file(CONTEXT, _upload_key('archive.zip'))
+
+        kb.store_file.assert_not_awaited()
+        kb.ap.storage_mgr.storage_provider.save.assert_not_awaited()
+        kb.ap.storage_mgr.storage_provider.delete.assert_awaited_once_with(_upload_key('archive.zip'))
+
+    @pytest.mark.asyncio
+    async def test_store_zip_file_rejects_extreme_compression_ratio_before_extracting(self):
+        kb = _make_kb()
+        kb.ap.storage_mgr.storage_provider.load = AsyncMock(
+            return_value=_make_zip_bytes(
+                {'bomb.txt': b'A' * (1024 * 1024)},
+                compression=zipfile.ZIP_DEFLATED,
+            )
+        )
+        kb.store_file = AsyncMock()
+
+        with pytest.raises(ValueError, match='compression-ratio limit'):
+            await kb._store_zip_file(CONTEXT, _upload_key('archive.zip'))
+
+        kb.store_file.assert_not_awaited()
+        kb.ap.storage_mgr.storage_provider.save.assert_not_awaited()
         kb.ap.storage_mgr.storage_provider.delete.assert_awaited_once_with(_upload_key('archive.zip'))
 
 

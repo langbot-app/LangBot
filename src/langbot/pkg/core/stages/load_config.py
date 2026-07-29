@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import copy
 from typing import Any
-from langbot.pkg.utils import constants
+from langbot.pkg.utils import bounded_executor, constants
 import yaml
 import importlib.resources as resources
 import uuid
@@ -14,6 +14,13 @@ from ..bootutils import config
 
 
 _RUNTIME_POLICY_DEFAULTS = {
+    'system': {
+        'blocking_executor': {
+            'max_workers': bounded_executor.DEFAULT_MAX_WORKERS,
+            'max_pending': bounded_executor.DEFAULT_MAX_PENDING,
+            'max_inflight_per_scope': (bounded_executor.DEFAULT_MAX_INFLIGHT_PER_SCOPE),
+        }
+    },
     'plugin': {
         'worker': {
             'max_cpus': 1.0,
@@ -21,6 +28,10 @@ _RUNTIME_POLICY_DEFAULTS = {
             'max_pids': 128,
             'max_open_files': 256,
             'max_file_size_mb': 512,
+            'max_workers': 16,
+            'max_total_cpus': 8.0,
+            'max_total_memory_mb': 8192,
+            'max_installations': 10000,
             'require_hard_limits': False,
         }
     },
@@ -204,6 +215,14 @@ class LoadConfigStage(stage.BootingStage):
 
         # Apply environment variable overrides to data/config.yaml
         ap.instance_config.data = _apply_env_overrides_to_config(ap.instance_config.data)
+
+        blocking_config = ap.instance_config.data['system']['blocking_executor']
+        ap.blocking_executor = bounded_executor.configure_bounded_default_executor(
+            ap.event_loop,
+            max_workers=blocking_config['max_workers'],
+            max_pending=blocking_config['max_pending'],
+            max_inflight_per_scope=blocking_config['max_inflight_per_scope'],
+        )
 
         await ap.instance_config.dump_config()
 

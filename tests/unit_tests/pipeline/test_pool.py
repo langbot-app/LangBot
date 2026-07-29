@@ -18,6 +18,7 @@ from langbot.pkg.pipeline.pool import (
     ExecutionContextRequiredError,
     QueryNotFoundError,
     QueryPool,
+    QueryPoolCapacityError,
     get_query_execution_context,
 )
 
@@ -433,3 +434,55 @@ class TestQueryPoolWorkspaceIsolation:
         assert pool.get_query_count(workspace_b) == 1
         assert pool.get_query_count(next_generation) == 0
         assert pool.query_id_counter == 3
+
+    async def test_workspace_capacity_discards_oldest_queued_query(self):
+        pool = QueryPool(max_queries=3, max_queries_per_workspace=2)
+        first = await add_scoped_mock_query(pool, TEST_CONTEXT)
+        second = await add_scoped_mock_query(pool, TEST_CONTEXT)
+        third = await add_scoped_mock_query(pool, TEST_CONTEXT)
+
+        assert await pool.get_query(TEST_CONTEXT.workspace_uuid, first.query_uuid) is None
+        assert await pool.get_query(TEST_CONTEXT.workspace_uuid, second.query_uuid) is second
+        assert await pool.get_query(TEST_CONTEXT.workspace_uuid, third.query_uuid) is third
+        assert pool.active_query_count_by_workspace == {TEST_CONTEXT.workspace_uuid: 2}
+        assert pool.get_dropped_query_count(TEST_CONTEXT) == 1
+
+    async def test_capacity_rejects_when_every_query_is_already_running(self):
+        pool = QueryPool(max_queries=1, max_queries_per_workspace=1)
+        running = await add_scoped_mock_query(pool, TEST_CONTEXT)
+        async with pool:
+            pool.mark_query_running_locked(running)
+
+        with pytest.raises(QueryPoolCapacityError):
+            await add_scoped_mock_query(pool, TEST_CONTEXT)
+
+        assert pool.active_query_count_by_workspace == {TEST_CONTEXT.workspace_uuid: 1}
+
+    async def test_mark_query_running_keeps_active_indexes_but_removes_queue_entry(self):
+        pool = QueryPool(max_queries=1, max_queries_per_workspace=1)
+        running = await add_scoped_mock_query(pool, TEST_CONTEXT)
+
+        async with pool:
+            pool.mark_query_running_locked(running)
+
+        assert running not in pool.queries
+        assert await pool.get_query(TEST_CONTEXT.workspace_uuid, running.query_uuid) is running
+        assert pool.active_query_count_by_workspace == {TEST_CONTEXT.workspace_uuid: 1}
+
+    async def test_historical_workspace_counters_are_bounded(self):
+        pool = QueryPool(max_queries=2, max_queries_per_workspace=1)
+        contexts = [
+            ExecutionContext(
+                instance_uuid='instance-test',
+                workspace_uuid=f'workspace-{index}',
+                placement_generation=1,
+            )
+            for index in range(3)
+        ]
+
+        for context in contexts:
+            query = await add_scoped_mock_query(pool, context)
+            await pool.remove_query(query)
+
+        assert len(pool.query_count_by_scope) == 2
+        assert (contexts[0].instance_uuid, contexts[0].workspace_uuid, 1) not in pool.query_count_by_scope

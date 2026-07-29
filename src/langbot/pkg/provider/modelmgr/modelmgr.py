@@ -52,6 +52,128 @@ class ModelManager:
         self.rerank_model_dict = {}
         self.requester_components = []
         self.requester_dict = {}
+        self._scope_generations: dict[tuple[str, str], int] = {}
+        self._provider_keys_by_scope: dict[tuple[str, str], set[_CacheKey]] = {}
+        self._llm_keys_by_scope: dict[tuple[str, str], set[_CacheKey]] = {}
+        self._embedding_keys_by_scope: dict[tuple[str, str], set[_CacheKey]] = {}
+        self._rerank_keys_by_scope: dict[tuple[str, str], set[_CacheKey]] = {}
+
+    def _cache_index(self, cache: dict) -> dict[tuple[str, str], set[_CacheKey]]:
+        if cache is self.provider_dict:
+            return self._provider_keys_by_scope
+        if cache is self.llm_model_dict:
+            return self._llm_keys_by_scope
+        if cache is self.embedding_model_dict:
+            return self._embedding_keys_by_scope
+        if cache is self.rerank_model_dict:
+            return self._rerank_keys_by_scope
+        raise ValueError('Unknown model runtime cache')
+
+    def _cache_set(self, cache: dict, key: _CacheKey, value: object) -> None:
+        cache[key] = value
+        self._cache_index(cache).setdefault(key[:2], set()).add(key)
+
+    def _cache_pop(self, cache: dict, key: _CacheKey) -> object | None:
+        removed = cache.pop(key, None)
+        scope = key[:2]
+        index = self._cache_index(cache)
+        keys = index.get(scope)
+        if keys is not None:
+            keys.discard(key)
+            if not keys:
+                index.pop(scope, None)
+        if not any(
+            scope in candidate
+            for candidate in (
+                self._provider_keys_by_scope,
+                self._llm_keys_by_scope,
+                self._embedding_keys_by_scope,
+                self._rerank_keys_by_scope,
+            )
+        ):
+            self._scope_generations.pop(scope, None)
+        return removed
+
+    def _observe_execution_context(
+        self,
+        context: ExecutionContext,
+    ) -> tuple[requester.RuntimeProvider, ...]:
+        """Prune superseded runtime objects when a Workspace generation advances."""
+
+        scope = (context.instance_uuid, context.workspace_uuid)
+        previous_generation = self._scope_generations.get(scope)
+        if previous_generation is not None and context.placement_generation < previous_generation:
+            raise WorkspaceInvariantError('Model runtime placement generation rolled back')
+        if previous_generation == context.placement_generation:
+            return ()
+        retired_providers: list[requester.RuntimeProvider] = []
+        if previous_generation is not None:
+            for cache, index in (
+                (self.provider_dict, self._provider_keys_by_scope),
+                (self.llm_model_dict, self._llm_keys_by_scope),
+                (self.embedding_model_dict, self._embedding_keys_by_scope),
+                (self.rerank_model_dict, self._rerank_keys_by_scope),
+            ):
+                for key in index.pop(scope, ()):
+                    removed = cache.pop(key, None)
+                    if cache is self.provider_dict and removed is not None:
+                        retired_providers.append(removed)
+        self._scope_generations[scope] = context.placement_generation
+        return tuple(retired_providers)
+
+    async def _close_runtime_providers(
+        self,
+        providers: tuple[requester.RuntimeProvider, ...] | list[requester.RuntimeProvider],
+    ) -> None:
+        """Close each retired requester once without blocking other cleanup."""
+
+        seen: set[int] = set()
+        for provider in providers:
+            provider_id = id(provider)
+            if provider_id in seen:
+                continue
+            seen.add(provider_id)
+            try:
+                await provider.requester.aclose()
+            except Exception as exc:
+                self.ap.logger.warning(
+                    f'Failed to close model requester for provider {provider.provider_entity.uuid}: {exc}'
+                )
+
+    async def _observe_and_close_execution_context(
+        self,
+        context: ExecutionContext,
+        *,
+        retain_empty: bool = True,
+    ) -> None:
+        await self._close_runtime_providers(self._observe_execution_context(context))
+        if not retain_empty:
+            scope = (context.instance_uuid, context.workspace_uuid)
+            if not any(
+                scope in candidate
+                for candidate in (
+                    self._provider_keys_by_scope,
+                    self._llm_keys_by_scope,
+                    self._embedding_keys_by_scope,
+                    self._rerank_keys_by_scope,
+                )
+            ):
+                self._scope_generations.pop(scope, None)
+
+    async def shutdown(self) -> None:
+        """Release every requester owned by the model runtime cache."""
+
+        providers = list(self.provider_dict.values())
+        self.provider_dict = {}
+        self.llm_model_dict = {}
+        self.embedding_model_dict = {}
+        self.rerank_model_dict = {}
+        self._scope_generations = {}
+        self._provider_keys_by_scope = {}
+        self._llm_keys_by_scope = {}
+        self._embedding_keys_by_scope = {}
+        self._rerank_keys_by_scope = {}
+        await self._close_runtime_providers(providers)
 
     @staticmethod
     def _get_litellm_provider_from_manifest(component: engine.Component | None) -> str | None:
@@ -137,7 +259,17 @@ class ModelManager:
         if supplied_instance_uuid is not None and supplied_instance_uuid != binding.instance_uuid:
             raise WorkspaceInvariantError('Runtime context belongs to another LangBot instance')
 
-        return self._context_from_binding(binding, trigger_principal=trigger_principal)
+        execution_context = self._context_from_binding(binding, trigger_principal=trigger_principal)
+        scope = (
+            execution_context.instance_uuid,
+            execution_context.workspace_uuid,
+        )
+        if scope in self._scope_generations:
+            await self._observe_and_close_execution_context(
+                execution_context,
+                retain_empty=False,
+            )
+        return execution_context
 
     async def initialize(self) -> None:
         self.requester_components = self.ap.discover.get_components_by_kind('LLMAPIRequester')
@@ -199,10 +331,16 @@ class ModelManager:
         """Load every active projected Workspace into isolated runtime caches."""
 
         self.ap.logger.info('Loading models from db...')
+        await self._close_runtime_providers(list(self.provider_dict.values()))
         self.provider_dict = {}
         self.llm_model_dict = {}
         self.embedding_model_dict = {}
         self.rerank_model_dict = {}
+        self._scope_generations = {}
+        self._provider_keys_by_scope = {}
+        self._llm_keys_by_scope = {}
+        self._embedding_keys_by_scope = {}
+        self._rerank_keys_by_scope = {}
 
         list_bindings = getattr(self.ap.workspace_service, 'list_active_execution_bindings', None)
         tenant_uow = getattr(self.ap.persistence_mgr, 'tenant_uow', None)
@@ -233,6 +371,7 @@ class ModelManager:
                 binding,
                 trigger_principal=PrincipalContext(principal_type=PrincipalType.SYSTEM),
             )
+            await self._observe_and_close_execution_context(resolved)
             contexts[workspace_uuid] = resolved
             return resolved
 
@@ -243,7 +382,11 @@ class ModelManager:
             try:
                 context = await context_for(provider_entity.workspace_uuid)
                 runtime_provider = await self._build_provider(context, provider_entity)
-                self.provider_dict[self._cache_key(context, provider_entity.uuid)] = runtime_provider
+                self._cache_set(
+                    self.provider_dict,
+                    self._cache_key(context, provider_entity.uuid),
+                    runtime_provider,
+                )
             except provider_errors.RequesterNotFoundError as exc:
                 self.ap.logger.warning(
                     f'Requester {exc.requester_name} not found, skipping provider {provider_entity.uuid}'
@@ -282,7 +425,11 @@ class ModelManager:
                     )
                     continue
                 runtime_model = builder(context, model_entity, provider)
-                cache[self._cache_key(context, model_entity.uuid)] = runtime_model
+                self._cache_set(
+                    cache,
+                    self._cache_key(context, model_entity.uuid),
+                    runtime_model,
+                )
             except Exception as exc:
                 self.ap.logger.error(f'Failed to load model {model_entity.uuid}: {exc}\n{traceback.format_exc()}')
 
@@ -294,10 +441,20 @@ class ModelManager:
                 persistence_model.ModelProvider.workspace_uuid == context.workspace_uuid
             )
         )
-        for provider_entity in providers_result.all():
+        provider_entities = providers_result.all()
+        if provider_entities:
+            # Empty Workspaces are the dominant SaaS registration case. Do
+            # not retain one generation record per account until the
+            # Workspace owns an actual runtime model resource.
+            await self._observe_and_close_execution_context(context)
+        for provider_entity in provider_entities:
             try:
                 runtime_provider = await self._build_provider(context, provider_entity)
-                self.provider_dict[self._cache_key(context, provider_entity.uuid)] = runtime_provider
+                self._cache_set(
+                    self.provider_dict,
+                    self._cache_key(context, provider_entity.uuid),
+                    runtime_provider,
+                )
             except provider_errors.RequesterNotFoundError as exc:
                 self.ap.logger.warning(
                     f'Requester {exc.requester_name} not found, skipping provider {provider_entity.uuid}'
@@ -337,7 +494,11 @@ class ModelManager:
                     )
                     continue
                 runtime_model = builder(context, model_entity, provider)
-                cache[self._cache_key(context, model_entity.uuid)] = runtime_model
+                self._cache_set(
+                    cache,
+                    self._cache_key(context, model_entity.uuid),
+                    runtime_model,
+                )
             except Exception as exc:
                 self.ap.logger.error(f'Failed to load model {model_entity.uuid}: {exc}\n{traceback.format_exc()}')
 
@@ -562,7 +723,12 @@ class ModelManager:
         execution_context = await self.resolve_execution_context(context)
         self._ensure_same_scope(execution_context, provider.execution_context, resource='Provider')
         self._ensure_entity_workspace(provider.provider_entity, execution_context, resource='Provider')
-        self.provider_dict[self._cache_key(execution_context, provider.provider_entity.uuid)] = provider
+        self._observe_execution_context(execution_context)
+        self._cache_set(
+            self.provider_dict,
+            self._cache_key(execution_context, provider.provider_entity.uuid),
+            provider,
+        )
 
     async def get_provider_by_uuid(
         self,
@@ -578,7 +744,12 @@ class ModelManager:
 
     async def remove_provider(self, context: TenantContext, provider_uuid: str) -> None:
         execution_context = await self.resolve_execution_context(context)
-        self.provider_dict.pop(self._cache_key(execution_context, provider_uuid), None)
+        removed = self._cache_pop(
+            self.provider_dict,
+            self._cache_key(execution_context, provider_uuid),
+        )
+        if removed is not None:
+            await self._close_runtime_providers([removed])
 
     async def reload_provider(self, context: TenantContext, provider_uuid: str) -> None:
         execution_context = await self.resolve_execution_context(context)
@@ -593,12 +764,26 @@ class ModelManager:
             raise provider_errors.ProviderNotFoundError(provider_uuid)
 
         new_provider = await self._build_provider(execution_context, provider_entity)
-        cache_prefix = self._cache_key(execution_context, '')[:3]
-        for cache in (self.llm_model_dict, self.embedding_model_dict, self.rerank_model_dict):
-            for key, model in cache.items():
-                if key[:3] == cache_prefix and model.provider.provider_entity.uuid == provider_uuid:
+        scope = (execution_context.instance_uuid, execution_context.workspace_uuid)
+        for cache, index in (
+            (self.llm_model_dict, self._llm_keys_by_scope),
+            (self.embedding_model_dict, self._embedding_keys_by_scope),
+            (self.rerank_model_dict, self._rerank_keys_by_scope),
+        ):
+            for key in tuple(index.get(scope, ())):
+                model = cache.get(key)
+                if model is not None and model.provider.provider_entity.uuid == provider_uuid:
                     model.provider = new_provider
-        self.provider_dict[self._cache_key(execution_context, provider_uuid)] = new_provider
+        self._observe_execution_context(execution_context)
+        provider_key = self._cache_key(execution_context, provider_uuid)
+        old_provider = self.provider_dict.get(provider_key)
+        self._cache_set(
+            self.provider_dict,
+            provider_key,
+            new_provider,
+        )
+        if old_provider is not None and old_provider is not new_provider:
+            await self._close_runtime_providers([old_provider])
 
     @staticmethod
     def _coerce_model(model_info: _ModelEntity | sqlalchemy.Row, entity_type: type[_ModelEntity]) -> _ModelEntity:
@@ -689,7 +874,12 @@ class ModelManager:
     async def cache_llm_model(self, context: TenantContext, model: requester.RuntimeLLMModel) -> None:
         execution_context = await self.resolve_execution_context(context)
         self._ensure_same_scope(execution_context, model.execution_context, resource='LLM model')
-        self.llm_model_dict[self._cache_key(execution_context, model.model_entity.uuid)] = model
+        self._observe_execution_context(execution_context)
+        self._cache_set(
+            self.llm_model_dict,
+            self._cache_key(execution_context, model.model_entity.uuid),
+            model,
+        )
 
     async def cache_embedding_model(
         self,
@@ -698,12 +888,22 @@ class ModelManager:
     ) -> None:
         execution_context = await self.resolve_execution_context(context)
         self._ensure_same_scope(execution_context, model.execution_context, resource='Embedding model')
-        self.embedding_model_dict[self._cache_key(execution_context, model.model_entity.uuid)] = model
+        self._observe_execution_context(execution_context)
+        self._cache_set(
+            self.embedding_model_dict,
+            self._cache_key(execution_context, model.model_entity.uuid),
+            model,
+        )
 
     async def cache_rerank_model(self, context: TenantContext, model: requester.RuntimeRerankModel) -> None:
         execution_context = await self.resolve_execution_context(context)
         self._ensure_same_scope(execution_context, model.execution_context, resource='Rerank model')
-        self.rerank_model_dict[self._cache_key(execution_context, model.model_entity.uuid)] = model
+        self._observe_execution_context(execution_context)
+        self._cache_set(
+            self.rerank_model_dict,
+            self._cache_key(execution_context, model.model_entity.uuid),
+            model,
+        )
 
     async def get_model_by_uuid(self, context: TenantContext, model_uuid: str) -> requester.RuntimeLLMModel:
         execution_context = await self.resolve_execution_context(context)
@@ -739,15 +939,24 @@ class ModelManager:
 
     async def remove_llm_model(self, context: TenantContext, model_uuid: str) -> None:
         execution_context = await self.resolve_execution_context(context)
-        self.llm_model_dict.pop(self._cache_key(execution_context, model_uuid), None)
+        self._cache_pop(
+            self.llm_model_dict,
+            self._cache_key(execution_context, model_uuid),
+        )
 
     async def remove_embedding_model(self, context: TenantContext, model_uuid: str) -> None:
         execution_context = await self.resolve_execution_context(context)
-        self.embedding_model_dict.pop(self._cache_key(execution_context, model_uuid), None)
+        self._cache_pop(
+            self.embedding_model_dict,
+            self._cache_key(execution_context, model_uuid),
+        )
 
     async def remove_rerank_model(self, context: TenantContext, model_uuid: str) -> None:
         execution_context = await self.resolve_execution_context(context)
-        self.rerank_model_dict.pop(self._cache_key(execution_context, model_uuid), None)
+        self._cache_pop(
+            self.rerank_model_dict,
+            self._cache_key(execution_context, model_uuid),
+        )
 
     def get_available_requesters_info(self, model_type: str) -> list[dict]:
         if model_type:

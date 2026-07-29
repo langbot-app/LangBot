@@ -137,6 +137,23 @@ async def test_shared_reconnect_replays_two_workspaces_and_removes_missing_proje
 
 
 @pytest.mark.asyncio
+async def test_empty_projected_workspaces_do_not_retain_installation_sets():
+    binding_a = execution_binding('workspace-a')
+    binding_b = execution_binding('workspace-b')
+    connector = shared_connector(
+        [[binding_a, binding_b]],
+        {'workspace-a': [], 'workspace-b': []},
+    )
+    connector.handler = runtime_handler()
+
+    await connector._prepare_connected_runtime()
+
+    assert connector._workspace_installations == {}
+    assert connector._known_desired_states == {}
+    connector.handler.reconcile_plugin_installations.assert_awaited_once_with(())
+
+
+@pytest.mark.asyncio
 async def test_fresh_shared_runtime_cache_replays_persisted_local_package():
     package = b'local-lbpkg-bytes'
     digest = hashlib.sha256(package).hexdigest()

@@ -16,6 +16,8 @@ from importlib import import_module
 
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
+import langbot_plugin.api.entities.builtin.provider.message as provider_message
+import langbot_plugin.api.entities.builtin.provider.prompt as provider_prompt
 
 from langbot.pkg.api.http.context import ExecutionContext
 from langbot.pkg.pipeline.pool import (
@@ -426,3 +428,131 @@ class TestSessionManagerWorkspaceIsolation:
 
         with pytest.raises(ExecutionContextMismatchError):
             await manager.get_conversation(query, session, [], 'pipeline-1', 'bot-b')
+
+    @pytest.mark.asyncio
+    async def test_per_workspace_capacity_evicts_oldest_idle_session(self):
+        manager = self.manager()
+        manager.ap.instance_config.data['system'] = {
+            'session_retention': {
+                'max_entries': 10,
+                'max_entries_per_workspace': 2,
+            }
+        }
+        queries = []
+        sessions = []
+        for index in range(3):
+            query = scoped_query()
+            query.launcher_id = f'launcher-{index}'
+            queries.append(query)
+            sessions.append(await manager.get_session(query))
+
+        assert len(manager.session_list) == 2
+        assert sessions[0] not in manager.session_list
+        assert sessions[1:] == manager.session_list
+        assert await manager.get_session(queries[-1]) is manager.session_list[-1]
+
+    @pytest.mark.asyncio
+    async def test_new_session_does_not_scan_other_workspace_sessions(self):
+        manager = self.manager()
+        manager.ap.instance_config.data['system'] = {
+            'session_retention': {
+                'max_entries': 600,
+                'max_entries_per_workspace': 2,
+            }
+        }
+        for index in range(512):
+            query = scoped_query(workspace_uuid=f'workspace-{index}')
+            query.launcher_id = f'launcher-{index}'
+            await manager.get_session(query)
+
+        class NoGlobalIterationDict(dict):
+            def __iter__(self):
+                raise AssertionError('global session index iteration is forbidden')
+
+            def items(self):
+                raise AssertionError('global session index iteration is forbidden')
+
+            def values(self):
+                raise AssertionError('global session index iteration is forbidden')
+
+        manager._session_index = NoGlobalIterationDict(manager._session_index)
+        query = scoped_query(workspace_uuid='workspace-new')
+        query.launcher_id = 'launcher-new'
+
+        session = await manager.get_session(query)
+
+        assert session.workspace_uuid == 'workspace-new'
+        assert len(manager._session_index) == 513
+
+    @pytest.mark.asyncio
+    async def test_stale_expiry_revision_does_not_evict_recent_session(
+        self,
+        monkeypatch,
+    ):
+        sessionmgr = get_session_module()
+        manager = self.manager()
+        manager.ap.instance_config.data['system'] = {
+            'session_retention': {
+                'max_entries': 10,
+                'max_entries_per_workspace': 10,
+                'idle_ttl_seconds': 1,
+            }
+        }
+        clock = [0.0]
+        monkeypatch.setattr(sessionmgr.time, 'monotonic', lambda: clock[0])
+        first_query = scoped_query()
+        first_query.launcher_id = 'first'
+        first = await manager.get_session(first_query)
+
+        clock[0] = 0.5
+        assert await manager.get_session(first_query) is first
+
+        clock[0] = 1.25
+        second_query = scoped_query()
+        second_query.launcher_id = 'second'
+        await manager.get_session(second_query)
+        assert first in manager.session_list
+
+        clock[0] = 2.0
+        third_query = scoped_query()
+        third_query.launcher_id = 'third'
+        await manager.get_session(third_query)
+        assert first not in manager.session_list
+
+    @pytest.mark.asyncio
+    async def test_access_revision_heap_stays_bounded(self):
+        manager = self.manager()
+        query = scoped_query()
+        await manager.get_session(query)
+
+        for _ in range(1000):
+            await manager.get_session(query)
+
+        assert len(manager._session_expiry_heap) <= 64
+
+    def test_trim_conversation_drops_retained_binary_payloads(self):
+        manager = self.manager()
+        conversation = provider_session.Conversation(
+            prompt=provider_prompt.Prompt(name='test', messages=[]),
+            messages=[
+                provider_message.Message(
+                    role='user',
+                    content=[
+                        provider_message.ContentElement.from_text('hello'),
+                        provider_message.ContentElement.from_image_base64('x' * 1000000),
+                        provider_message.ContentElement.from_file_base64(
+                            'y' * 1000000,
+                            'large.bin',
+                        ),
+                    ],
+                )
+            ],
+            pipeline_uuid='pipeline-1',
+            bot_uuid=TEST_BOT_UUID,
+        )
+
+        manager.trim_conversation_messages(conversation, max_rounds=10)
+
+        content = conversation.messages[0].content
+        assert content[1].image_base64 is None
+        assert content[2].file_base64 is None

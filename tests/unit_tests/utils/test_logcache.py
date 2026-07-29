@@ -7,7 +7,13 @@ Tests log page management and pointer-based retrieval.
 from __future__ import annotations
 
 
-from langbot.pkg.utils.logcache import LogPage, LogCache, LOG_PAGE_SIZE, MAX_CACHED_PAGES
+from langbot.pkg.utils.logcache import (
+    LogPage,
+    LogCache,
+    LOG_PAGE_SIZE,
+    MAX_CACHED_PAGES,
+    MAX_LOG_LINE_CHARS,
+)
 
 
 class TestLogPage:
@@ -208,3 +214,11 @@ class TestLogCache:
         """LOG_PAGE_SIZE is defined and reasonable."""
         assert LOG_PAGE_SIZE > 0
         assert LOG_PAGE_SIZE <= 1000  # Reasonable upper bound
+
+    def test_single_log_line_is_bounded(self):
+        cache = LogCache()
+
+        cache.add_log('x' * (MAX_LOG_LINE_CHARS * 2))
+
+        assert len(cache.log_pages[0].logs[0]) == MAX_LOG_LINE_CHARS
+        assert cache.log_pages[0].logs[0].endswith('[log truncated]')

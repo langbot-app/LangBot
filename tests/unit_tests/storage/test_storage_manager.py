@@ -92,6 +92,15 @@ class TestStorageMgr:
             await storage_mgr.initialize()
             mock_init.assert_called_once()
 
+    @pytest.mark.asyncio
+    async def test_shutdown_delegates_to_active_provider(self):
+        storage_mgr = StorageMgr(Mock())
+        storage_mgr.storage_provider = Mock(shutdown=AsyncMock())
+
+        await storage_mgr.shutdown()
+
+        storage_mgr.storage_provider.shutdown.assert_awaited_once()
+
 
 class TestStorageProviderBase:
     """Test StorageProvider base class methods."""

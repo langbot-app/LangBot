@@ -5,7 +5,12 @@ from __future__ import annotations
 from unittest.mock import AsyncMock
 import pytest
 
-from langbot.pkg.vector.vdb import SearchType, VectorDatabase
+from langbot.pkg.vector.vdb import (
+    SearchType,
+    VectorDatabase,
+    remember_bounded_mapping,
+    remember_bounded_set,
+)
 
 
 class TestSearchType:
@@ -27,6 +32,18 @@ class TestSearchType:
         assert SearchType('vector') == SearchType.VECTOR
         assert SearchType('full_text') == SearchType.FULL_TEXT
         assert SearchType('hybrid') == SearchType.HYBRID
+
+
+def test_runtime_cache_helpers_bound_mapping_and_set():
+    mapping = {}
+    values = set()
+
+    for index in range(100):
+        remember_bounded_mapping(mapping, str(index), object(), 8)
+        remember_bounded_set(values, str(index), 8)
+
+    assert len(mapping) == 8
+    assert len(values) == 8
 
 
 class TestVectorDatabaseAbstractMethods:

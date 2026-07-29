@@ -4,6 +4,7 @@ import base64
 import contextlib
 import os
 import tempfile
+import threading
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
@@ -460,6 +461,24 @@ async def test_edit_rejects_missing_string():
 
 
 @pytest.mark.asyncio
+async def test_edit_rejects_oversized_host_file(monkeypatch):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        loader, _ = _make_loader_with_workspace(tmpdir)
+        with open(os.path.join(tmpdir, 'large.txt'), 'wb') as f:
+            f.write(b'12345')
+        monkeypatch.setattr(native_loader, '_MAX_HOST_EDIT_FILE_BYTES', 4)
+
+        result = await loader.invoke_tool(
+            'edit',
+            {'path': '/workspace/large.txt', 'old_string': '1', 'new_string': 'x'},
+            _make_query(),
+        )
+
+        assert result['ok'] is False
+        assert 'edit limit' in result['error']
+
+
+@pytest.mark.asyncio
 async def test_path_escape_blocked():
     with tempfile.TemporaryDirectory() as tmpdir:
         loader, _ = _make_loader_with_workspace(tmpdir)
@@ -679,6 +698,34 @@ async def test_glob_caps_match_count_and_returns_preview():
 
 
 @pytest.mark.asyncio
+async def test_glob_runs_off_event_loop_and_caps_directory_walk(monkeypatch):
+    monkeypatch.setattr(native_loader, '_FILE_WALK_MAX_ENTRIES', 10)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        loader, _ = _make_loader_with_workspace(tmpdir)
+        event_loop_thread = threading.get_ident()
+        observed_threads: list[int] = []
+        original = loader._glob_host_location
+
+        def observe(*args, **kwargs):
+            observed_threads.append(threading.get_ident())
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(loader, '_glob_host_location', observe)
+        for index in range(12):
+            with open(os.path.join(tmpdir, f'file-{index:03d}.txt'), 'w', encoding='utf-8') as f:
+                f.write(str(index))
+
+        result = await loader.invoke_tool('glob', {'path': '/workspace', 'pattern': '*.txt'}, _make_query())
+
+        assert result['ok'] is True
+        assert result['total'] == 10
+        assert result['truncated'] is True
+        assert result['truncated_by'] == 'scan'
+        assert observed_threads and observed_threads[0] != event_loop_thread
+
+
+@pytest.mark.asyncio
 async def test_grep_reports_invalid_regex_and_truncates_long_matching_lines():
     with tempfile.TemporaryDirectory() as tmpdir:
         loader, _ = _make_loader_with_workspace(tmpdir)
@@ -695,3 +742,21 @@ async def test_grep_reports_invalid_regex_and_truncates_long_matching_lines():
         assert result['truncated_by'] == 'line'
         assert result['matches'][0]['file'] == '/workspace/data.txt'
         assert result['matches'][0]['content'].endswith('... [truncated]')
+
+
+@pytest.mark.asyncio
+async def test_grep_interrupts_catastrophic_regex(monkeypatch):
+    monkeypatch.setattr(native_loader, '_GREP_REGEX_TIMEOUT_SECONDS', 0.001)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        loader, _ = _make_loader_with_workspace(tmpdir)
+        with open(os.path.join(tmpdir, 'data.txt'), 'w', encoding='utf-8') as f:
+            f.write(('a' * 100_000) + '!')
+
+        result = await loader.invoke_tool(
+            'grep',
+            {'path': '/workspace', 'pattern': r'(a+)+$'},
+            _make_query(),
+        )
+
+        assert result == {'ok': False, 'error': 'Regex search timed out'}

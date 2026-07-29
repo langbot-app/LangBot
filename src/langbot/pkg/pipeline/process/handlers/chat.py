@@ -26,6 +26,25 @@ importutil.import_modules_in_pkg(runners)
 
 
 class ChatMessageHandler(handler.MessageHandler):
+    def _response_limit(self, name: str, default: int) -> int:
+        instance_config = getattr(self.ap, 'instance_config', None)
+        data = getattr(instance_config, 'data', {})
+        if not isinstance(data, dict):
+            return default
+        value = data.get('system', {}).get('response_limits', {}).get(name, default)
+        try:
+            return max(int(value), 1)
+        except (TypeError, ValueError):
+            return default
+
+    def _check_response_size(
+        self,
+        result: provider_message.Message | provider_message.MessageChunk,
+    ) -> None:
+        content = result.content
+        if isinstance(content, str) and len(content) > self._response_limit('max_generated_chars', 1024 * 1024):
+            raise RuntimeError('Provider response exceeds the configured limit')
+
     async def handle(
         self,
         query: pipeline_query.Query,
@@ -87,6 +106,7 @@ class ChatMessageHandler(handler.MessageHandler):
                     query.user_message.content = [event_ctx.event.user_message_alter]
 
             text_length = 0
+            runner = None
             try:
                 is_stream = await query.adapter.is_stream_output_supported()
             except AttributeError:
@@ -107,6 +127,7 @@ class ChatMessageHandler(handler.MessageHandler):
                     chunk_count = 0  # Track streaming chunks to reduce excessive logging
 
                     async for result in runner.run(query):
+                        self._check_response_size(result)
                         result.resp_message_id = str(resp_message_id)
                         if query.resp_messages:
                             query.resp_messages.pop()
@@ -119,6 +140,11 @@ class ChatMessageHandler(handler.MessageHandler):
                         query.resp_messages.append(result)
 
                         chunk_count += 1
+                        if chunk_count > self._response_limit(
+                            'max_stream_chunks',
+                            100_000,
+                        ):
+                            raise RuntimeError('Provider stream exceeds the configured event limit')
                         # Only log every 10th chunk to reduce excessive logging during streaming
                         # This prevents memory overflow from thousands of log entries per conversation
                         # First chunk uses INFO level to confirm connection establishment
@@ -145,6 +171,7 @@ class ChatMessageHandler(handler.MessageHandler):
 
                 else:
                     async for result in runner.run(query):
+                        self._check_response_size(result)
                         query.resp_messages.append(result)
 
                         summary = self.format_result_log(result)
@@ -159,6 +186,10 @@ class ChatMessageHandler(handler.MessageHandler):
                 query.session.using_conversation.messages.append(query.user_message)
 
                 query.session.using_conversation.messages.extend(query.resp_messages)
+                self.ap.sess_mgr.trim_conversation_messages(
+                    query.session.using_conversation,
+                    max_rounds=query.pipeline_config['ai']['local-agent'].get('max-round', 10),
+                )
             except Exception as e:
                 error_info = f'{traceback.format_exc()}'
                 self.ap.logger.error(f'Conversation({query.query_id}) Request Failed: {error_info}')
@@ -181,6 +212,13 @@ class ChatMessageHandler(handler.MessageHandler):
                     debug_notice=traceback.format_exc(),
                 )
             finally:
+                if runner is not None:
+                    try:
+                        close_runner = getattr(runner, 'aclose', None)
+                        if close_runner is not None:
+                            await close_runner()
+                    except Exception as ex:
+                        self.ap.logger.warning(f'Failed to close request runner: {ex}')
                 # Telemetry reporting: collect minimal per-query execution info and send asynchronously
                 try:
                     end_ts = time.time()

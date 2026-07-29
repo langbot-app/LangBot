@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import lark_oapi
 import pytest
@@ -19,7 +19,9 @@ from langbot.pkg.api.http.controller.groups.platform.adapters import (
     _AdapterSessionScope,
     _bind_session_scope,
     _get_owned_session,
+    _make_room_for_session,
     _pop_owned_session,
+    _start_adapter_session_task,
 )
 
 
@@ -94,6 +96,10 @@ async def _create_client(*, role: str = 'developer'):
             ),
         )
 
+    class TestTaskManager:
+        def create_user_task(self, coro, **_kwargs):
+            return SimpleNamespace(task=asyncio.create_task(coro))
+
     application = SimpleNamespace(
         user_service=SimpleNamespace(
             get_authenticated_account=AsyncMock(side_effect=get_authenticated_account),
@@ -102,6 +108,7 @@ async def _create_client(*, role: str = 'developer'):
             resolve_account_workspace=AsyncMock(side_effect=resolve_account_workspace),
         ),
         platform_mgr=SimpleNamespace(),
+        task_mgr=TestTaskManager(),
     )
     router = AdaptersRouterGroup(application, quart_app)
     await router.initialize()
@@ -140,6 +147,58 @@ async def test_session_scope_matches_exact_tenant_placement_and_principal():
 
     assert _pop_owned_session(sessions, 'session-test', owner_context) is not None
     assert sessions == {}
+
+
+async def test_session_capacity_evicts_oldest_session_in_same_workspace():
+    owner_context = _request_context()
+    sessions: dict[str, dict] = {}
+    tasks = []
+    for index in range(10):
+        task = SimpleNamespace(done=Mock(return_value=False), cancel=Mock())
+        tasks.append(task)
+        session = {'created_at': float(index), 'task': task}
+        _bind_session_scope(session, owner_context)
+        sessions[f'session-{index}'] = session
+
+    _make_room_for_session(sessions, owner_context)
+
+    assert 'session-0' not in sessions
+    assert len(sessions) == 9
+    tasks[0].cancel.assert_called_once_with()
+
+
+async def test_adapter_session_task_uses_tenant_task_admission():
+    blocker = asyncio.Event()
+
+    async def credential_exchange():
+        await blocker.wait()
+
+    task_manager = SimpleNamespace(create_user_task=Mock())
+
+    def create_user_task(coro, **_kwargs):
+        return SimpleNamespace(task=asyncio.create_task(coro))
+
+    task_manager.create_user_task.side_effect = create_user_task
+    application = SimpleNamespace(task_mgr=task_manager)
+    request_context = _request_context()
+
+    returned = _start_adapter_session_task(
+        application,
+        credential_exchange(),
+        adapter='lark',
+        session_id='session-test',
+        request_context=request_context,
+    )
+
+    assert returned is not None
+    task_manager.create_user_task.assert_called_once()
+    kwargs = task_manager.create_user_task.call_args.kwargs
+    assert kwargs['kind'] == 'platform-adapter-credential-exchange'
+    assert kwargs['instance_uuid'] == request_context.instance_uuid
+    assert kwargs['workspace_uuid'] == request_context.workspace_uuid
+    assert kwargs['placement_generation'] == request_context.placement_generation
+    blocker.set()
+    await returned
 
 
 async def test_lark_session_status_and_delete_hide_cross_scope_sessions(monkeypatch):

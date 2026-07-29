@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 import typing
 import logging
 
 import requests
 
 from ..core import app
-from . import constants
+from . import constants, httpclient
 
 
 class VersionManager:
@@ -26,13 +27,14 @@ class VersionManager:
     async def get_release_list(self) -> list:
         """Fetch release list from Space API (cached GitHub releases)."""
         try:
-            rls_list_resp = requests.get(
-                url='https://space.langbot.app/api/v1/dist/info/releases',
+            rls_list_resp = await asyncio.to_thread(
+                requests.get,
+                'https://space.langbot.app/api/v1/dist/info/releases',
                 proxies=self.ap.proxy_mgr.get_forward_proxies(),
                 timeout=10,
             )
             rls_list_resp.raise_for_status()
-            resp_json = rls_list_resp.json()
+            resp_json = await httpclient.parse_json_response(rls_list_resp)
             if resp_json.get('code') == 0 and isinstance(resp_json.get('data'), list):
                 return resp_json['data']
             self.ap.logger.warning(f'Failed to fetch release list: unexpected response: {resp_json.get("msg", "")}')

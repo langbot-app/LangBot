@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import datetime as dt
 import time
+import weakref
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
@@ -52,7 +53,7 @@ class SandboxAdmissionController:
         self.client = client
         self.policy = policy
         self._wall_time = wall_time
-        self._locks: dict[str, asyncio.Lock] = {}
+        self._locks: weakref.WeakValueDictionary[str, asyncio.Lock] = weakref.WeakValueDictionary()
         self._highest_revisions: dict[str, int] = {}
 
     def _workspace_lock(self, workspace_uuid: str) -> asyncio.Lock:

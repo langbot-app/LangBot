@@ -139,8 +139,8 @@ class BuildAppStage(stage.BootingStage):
         ap.log_cache = log_cache
 
         storage_mgr_inst = storagemgr.StorageMgr(ap)
-        await storage_mgr_inst.initialize()
         ap.storage_mgr = storage_mgr_inst
+        await storage_mgr_inst.initialize()
 
         persistence_mgr_inst = persistencemgr.PersistenceManager(
             ap,
@@ -166,6 +166,12 @@ class BuildAppStage(stage.BootingStage):
         if not workspace_policy.multi_workspace_enabled:
             await workspace_service_inst.ensure_singleton_workspace()
         ap.workspace_service = workspace_service_inst
+        if workspace_policy.multi_workspace_enabled:
+            # Directory refresh starts in Application.run(), after this serial
+            # build graph. Share one validated immutable binding snapshot
+            # across model/platform/pipeline/RAG/plugin initialization instead
+            # of repeating tenant validation for every manager.
+            await workspace_service_inst.prime_startup_execution_bindings()
 
         ap.workspace_collaboration_service = workspace_collaboration_module.WorkspaceCollaborationService(
             ap,
@@ -188,14 +194,17 @@ class BuildAppStage(stage.BootingStage):
                 trigger_principal=PrincipalContext(PrincipalType.SYSTEM),
             )
 
+        concurrency_config = ap.instance_config.data.get('concurrency', {})
         ap.query_pool = pool.QueryPool(
             singleton_context_resolver=resolve_singleton_execution_context,
+            max_queries=int(concurrency_config.get('pending_queries', 1000)),
+            max_queries_per_workspace=int(concurrency_config.get('pending_queries_per_workspace', 100)),
         )
 
         # Telemetry manager: attach to app so other components can call via self.ap.telemetry
         telemetry_inst = telemetry_module.TelemetryManager(ap)
-        await telemetry_inst.initialize()
         ap.telemetry = telemetry_inst
+        await telemetry_inst.initialize()
 
         # Survey manager
         survey_inst = survey_module.SurveyManager(ap)
@@ -215,16 +224,16 @@ class BuildAppStage(stage.BootingStage):
         ap.sess_mgr = llm_session_mgr_inst
 
         box_service_inst = box_service.BoxService(ap)
-        await box_service_inst.initialize()
         ap.box_service = box_service_inst
+        await box_service_inst.initialize()
 
         llm_tool_mgr_inst = llm_tool_mgr.ToolManager(ap)
-        await llm_tool_mgr_inst.initialize()
         ap.tool_mgr = llm_tool_mgr_inst
+        await llm_tool_mgr_inst.initialize()
 
         im_mgr_inst = im_mgr.PlatformManager(ap=ap)
-        await im_mgr_inst.initialize()
         ap.platform_mgr = im_mgr_inst
+        await im_mgr_inst.initialize()
 
         # Initialize webhook pusher
         webhook_pusher_inst = WebhookPusher(ap)
@@ -252,12 +261,12 @@ class BuildAppStage(stage.BootingStage):
 
         # 初始化向量数据库管理器
         vectordb_mgr_inst = vectordb_mgr.VectorDBManager(ap)
-        await vectordb_mgr_inst.initialize()
         ap.vector_db_mgr = vectordb_mgr_inst
+        await vectordb_mgr_inst.initialize()
 
         http_ctrl = http_controller.HTTPController(ap)
-        await http_ctrl.initialize()
         ap.http_ctrl = http_ctrl
+        await http_ctrl.initialize()
 
         monitoring_service_inst = monitoring_service.MonitoringService(ap)
         ap.monitoring_service = monitoring_service_inst
@@ -277,6 +286,7 @@ class BuildAppStage(stage.BootingStage):
             ap.logger.warning(f'Plugin runtime unavailable during startup; reconnecting in background: {exc}')
             plugin_connector_inst.schedule_reconnect()
         ap.plugin_connector = plugin_connector_inst
+        workspace_service_inst.release_startup_execution_bindings()
 
         ctrl = controller.Controller(ap)
         ap.ctrl = ctrl

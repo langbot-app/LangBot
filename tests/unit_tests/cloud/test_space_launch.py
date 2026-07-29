@@ -86,6 +86,50 @@ async def test_consumes_valid_workspace_launch_assertion_once():
         await service.consume_assertion(token, expected_workspace_uuid=WORKSPACE_UUID)
 
 
+async def test_replay_cache_does_not_scan_all_live_assertions(monkeypatch):
+    private_key = Ed25519PrivateKey.generate()
+    now = int(time.time())
+    service = _service(private_key, now=now)
+    for index in range(512):
+        await service._consume_jti(f'jti-{index}', now + 90)
+
+    class NoGlobalIterationDict(dict):
+        def __iter__(self):
+            raise AssertionError('replay admission scanned all live assertions')
+
+        def keys(self):
+            raise AssertionError('replay admission scanned all live assertions')
+
+        def items(self):
+            raise AssertionError('replay admission scanned all live assertions')
+
+        def values(self):
+            raise AssertionError('replay admission scanned all live assertions')
+
+    guarded_jtis = NoGlobalIterationDict(service._consumed_jtis)
+    monkeypatch.setattr(service, '_consumed_jtis', guarded_jtis)
+
+    await service._consume_jti('jti-new', now + 90)
+
+    assert len(guarded_jtis) == 513
+
+
+async def test_replay_cache_fails_closed_at_capacity(monkeypatch):
+    from langbot.pkg.cloud import launch
+
+    private_key = Ed25519PrivateKey.generate()
+    now = int(time.time())
+    service = _service(private_key, now=now)
+    monkeypatch.setattr(launch, '_CONSUMED_JTI_MAX_ENTRIES', 2)
+    await service._consume_jti('jti-1', now + 90)
+    await service._consume_jti('jti-2', now + 90)
+
+    with pytest.raises(SpaceLaunchError, match='replay cache capacity'):
+        await service._consume_jti('jti-3', now + 90)
+    with pytest.raises(SpaceLaunchError, match='already been consumed'):
+        await service._consume_jti('jti-1', now + 90)
+
+
 async def test_rejects_expired_wrong_workspace_and_wrong_instance_assertions():
     private_key = Ed25519PrivateKey.generate()
     now = int(time.time())

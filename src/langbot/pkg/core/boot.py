@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import traceback
 import asyncio
+import contextlib
 import os
 
 from . import app
@@ -32,14 +33,22 @@ async def make_app(loop: asyncio.AbstractEventLoop) -> app.Application:
 
     ap.event_loop = loop
 
-    # Execute startup stage
-    for stage_name in stage_order:
-        stage_cls = stage.preregistered_stages[stage_name]
-        stage_inst = stage_cls()
+    try:
+        # Execute startup stage
+        for stage_name in stage_order:
+            stage_cls = stage.preregistered_stages[stage_name]
+            stage_inst = stage_cls()
 
-        await stage_inst.run(ap)
+            await stage_inst.run(ap)
 
-    await ap.initialize()
+        await ap.initialize()
+    except BaseException:
+        # ``main()`` cannot clean up a partially built application because
+        # ``make_app()`` has not returned it yet. Release managers, pools and
+        # child processes that earlier startup stages already attached.
+        with contextlib.suppress(BaseException):
+            await ap.shutdown()
+        raise
 
     return ap
 

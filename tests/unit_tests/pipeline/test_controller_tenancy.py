@@ -36,6 +36,7 @@ async def test_controller_drops_stale_query_before_pipeline_lookup(
     query_pool, session = _prepare_scheduler(mock_app)
     mock_app.workspace_service.get_execution_binding.side_effect = WorkspaceGenerationMismatchError('stale generation')
     controller = Controller(mock_app)
+    initial_slots = controller.semaphore._value
 
     await controller._process_query(sample_query)
 
@@ -47,6 +48,7 @@ async def test_controller_drops_stale_query_before_pipeline_lookup(
     query_pool.remove_query.assert_awaited_once_with(sample_query)
     session._semaphore.release.assert_called_once_with()
     query_pool.condition.notify_all.assert_called_once_with()
+    assert controller.semaphore._value == initial_slots
 
 
 @pytest.mark.asyncio

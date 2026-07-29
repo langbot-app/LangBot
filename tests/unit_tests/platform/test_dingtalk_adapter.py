@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from langbot.pkg.platform import botmgr as _botmgr  # noqa: F401
 from langbot.pkg.platform.sources.dingtalk import (
     DingTalkAdapter,
     _dingtalk_card_markdown,
@@ -15,6 +16,17 @@ from langbot.pkg.platform.sources.dingtalk import (
     _dingtalk_missing_completed_input_lines,
     _dingtalk_pending_input_defs,
 )
+
+
+def test_dingtalk_auxiliary_tasks_are_bounded():
+    adapter = DingTalkAdapter.model_construct()
+    adapter._background_tasks = {MagicMock(done=MagicMock(return_value=False)) for _ in range(100)}
+
+    async def callback():
+        raise AssertionError('rejected callback must not run')
+
+    assert adapter._start_background_task(callback()) is False
+    assert len(adapter._background_tasks) == 100
 
 
 def test_dingtalk_select_component_params_expose_options():

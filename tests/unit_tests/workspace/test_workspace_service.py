@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 import sqlalchemy
@@ -18,6 +19,7 @@ from langbot.pkg.entity.persistence.workspace import (
 )
 from langbot.pkg.workspace import (
     WorkspaceExecutionUnavailableError,
+    WorkspaceExecutionBinding,
     WorkspaceGenerationMismatchError,
     WorkspaceInvariantError,
     WorkspaceLimitExceededError,
@@ -235,3 +237,28 @@ async def test_cloud_policy_never_creates_or_guesses_a_workspace(workspace_test_
         await cloud_service.create_local_workspace(name='Forbidden', slug='forbidden')
 
     assert cloud_service.policy.multi_workspace_enabled is True
+
+
+async def test_startup_binding_snapshot_avoids_repeated_discovery():
+    service = WorkspaceService(
+        SimpleNamespace(persistence_mgr=SimpleNamespace()),
+        policy=CloudWorkspacePolicy(),
+        instance_uuid='instance-service-test',
+    )
+    binding = WorkspaceExecutionBinding(
+        instance_uuid='instance-service-test',
+        workspace_uuid='workspace-a',
+        placement_generation=1,
+        write_fenced=False,
+        state='active',
+    )
+    service._discover_active_execution_bindings = AsyncMock(return_value=[binding])
+
+    assert await service.prime_startup_execution_bindings() == [binding]
+    assert await service.list_active_execution_bindings() == [binding]
+    assert await service.list_active_execution_bindings() == [binding]
+    service._discover_active_execution_bindings.assert_awaited_once()
+
+    service.release_startup_execution_bindings()
+    assert await service.list_active_execution_bindings() == [binding]
+    assert service._discover_active_execution_bindings.await_count == 2

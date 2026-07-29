@@ -13,6 +13,7 @@ from __future__ import annotations
 import pytest
 import asyncio
 import contextvars
+import inspect
 import sys
 from unittest.mock import Mock, MagicMock
 from contextlib import contextmanager
@@ -264,6 +265,28 @@ class TestTaskWrapper:
         assert wrapper.kind == 'system_task'
 
         wrapper.cancel()
+
+    @pytest.mark.asyncio
+    async def test_workspace_task_sets_blocking_work_scope(self):
+        """Detached tasks recover tenant fairness from durable ownership."""
+        _, TaskWrapper, _ = get_taskmgr_classes()
+        from langbot.pkg.utils.bounded_executor import (
+            current_blocking_work_scope,
+        )
+
+        mock_app = create_mock_app()
+
+        async def read_scope():
+            return current_blocking_work_scope()
+
+        wrapper = TaskWrapper(
+            mock_app,
+            read_scope(),
+            workspace_uuid='workspace-a',
+        )
+
+        assert await wrapper.task == 'workspace-a'
+        assert current_blocking_work_scope() is None
 
     @pytest.mark.asyncio
     async def test_to_dict_serialization(self):
@@ -529,6 +552,56 @@ class TestAsyncTaskManager:
         assert wrapper.task_type == 'user'
 
         wrapper.cancel()
+
+    @pytest.mark.asyncio
+    async def test_create_user_task_enforces_workspace_active_limit_and_closes_rejected_coroutine(self):
+        """A noisy Workspace cannot accumulate unbounded background work."""
+        _, _, AsyncTaskManager = get_taskmgr_classes()
+        mock_app = create_mock_app()
+        mock_app.instance_config.data['system']['task_retention'].update(
+            {
+                'max_active_user_tasks': 10,
+                'max_active_user_tasks_per_workspace': 1,
+            }
+        )
+        manager = AsyncTaskManager(mock_app)
+
+        async def long_coro():
+            await asyncio.sleep(10)
+
+        first = manager.create_user_task(long_coro(), workspace_uuid='workspace-a')
+        rejected = long_coro()
+        with pytest.raises(RuntimeError, match='Workspace has too many active user operations'):
+            manager.create_user_task(rejected, workspace_uuid='workspace-a')
+
+        assert inspect.getcoroutinestate(rejected) == inspect.CORO_CLOSED
+        other_workspace = manager.create_user_task(long_coro(), workspace_uuid='workspace-b')
+        first.cancel()
+        other_workspace.cancel()
+
+    @pytest.mark.asyncio
+    async def test_create_user_task_enforces_instance_active_limit(self):
+        """The shared process retains a hard cap even across Workspaces."""
+        _, _, AsyncTaskManager = get_taskmgr_classes()
+        mock_app = create_mock_app()
+        mock_app.instance_config.data['system']['task_retention'].update(
+            {
+                'max_active_user_tasks': 1,
+                'max_active_user_tasks_per_workspace': 10,
+            }
+        )
+        manager = AsyncTaskManager(mock_app)
+
+        async def long_coro():
+            await asyncio.sleep(10)
+
+        first = manager.create_user_task(long_coro(), workspace_uuid='workspace-a')
+        rejected = long_coro()
+        with pytest.raises(RuntimeError, match='instance has too many active user operations'):
+            manager.create_user_task(rejected, workspace_uuid='workspace-b')
+
+        assert inspect.getcoroutinestate(rejected) == inspect.CORO_CLOSED
+        first.cancel()
 
     @pytest.mark.asyncio
     async def test_get_task_by_id(self):

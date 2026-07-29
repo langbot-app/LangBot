@@ -3,6 +3,7 @@ from __future__ import annotations
 
 LOG_PAGE_SIZE = 20
 MAX_CACHED_PAGES = 10
+MAX_LOG_LINE_CHARS = 20000
 
 
 class LogPage:
@@ -40,6 +41,10 @@ class LogCache:
 
     def add_log(self, log: str):
         """添加日志"""
+        log = str(log)
+        if len(log) > MAX_LOG_LINE_CHARS:
+            marker = '\n[log truncated]'
+            log = log[: MAX_LOG_LINE_CHARS - len(marker)] + marker
         if self.log_pages[-1].add_log(log):
             self.log_pages.append(LogPage(number=self.log_pages[-1].number + 1))
 

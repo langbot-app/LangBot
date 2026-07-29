@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 from unittest.mock import AsyncMock
 
@@ -107,3 +109,53 @@ async def test_resolver_checks_deployment_admission_before_and_after_provider_ca
     with pytest.raises(RuntimeError, match='expired during provider call'):
         await resolver.resolve('workspace-a', now=150)
     assert checks == 2
+
+
+@pytest.mark.asyncio
+async def test_directory_activity_reconciliation_drops_historical_snapshots():
+    provider = AsyncMock()
+    provider.get_workspace_entitlement = AsyncMock(return_value=_snapshot())
+    resolver = EntitlementResolver('instance-a', provider)
+    await resolver.reconcile_active_workspaces({'workspace-a', 'workspace-b'})
+    await resolver.resolve('workspace-a', now=150)
+
+    await resolver.reconcile_active_workspaces({'workspace-b'})
+
+    assert resolver.snapshot_counts() == {
+        'active_workspaces': 1,
+        'cached_snapshots': 0,
+    }
+    with pytest.raises(EntitlementUnavailableError, match='directory projection'):
+        await resolver.resolve('workspace-a', now=150)
+    provider.get_workspace_entitlement.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_directory_fence_wins_race_with_inflight_entitlement_fetch():
+    provider_started = asyncio.Event()
+    release_provider = asyncio.Event()
+
+    async def fetch(_workspace_uuid: str) -> EntitlementSnapshot:
+        provider_started.set()
+        await release_provider.wait()
+        return _snapshot()
+
+    provider = AsyncMock()
+    provider.get_workspace_entitlement = AsyncMock(side_effect=fetch)
+    resolver = EntitlementResolver('instance-a', provider)
+    await resolver.reconcile_active_workspaces({'workspace-a'})
+    resolve_task = asyncio.create_task(resolver.resolve('workspace-a', now=150))
+    await provider_started.wait()
+
+    await resolver.update_workspace_activity(
+        active_workspace_uuids=set(),
+        inactive_workspace_uuids={'workspace-a'},
+    )
+    release_provider.set()
+
+    with pytest.raises(EntitlementUnavailableError, match='directory projection'):
+        await resolve_task
+    assert resolver.snapshot_counts() == {
+        'active_workspaces': 0,
+        'cached_snapshots': 0,
+    }

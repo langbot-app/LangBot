@@ -6,6 +6,7 @@ import re
 from pathlib import PurePath
 
 from ..core import app
+from ..utils import bounded_executor
 from ..api.http.authz import WorkspaceRequiredError
 from ..api.http.context import ExecutionContext, RequestContext
 from . import provider
@@ -212,16 +213,17 @@ class StorageMgr:
             return None
         workspace_uuid = match.group('workspace')
         generation = int(match.group('generation'))
-        try:
-            await self.ap.workspace_service.get_execution_binding(
-                workspace_uuid,
-                expected_generation=generation,
-            )
-        except Exception:
-            return None
-        if not await self.storage_provider.exists(object_key):
-            return None
-        return await self.storage_provider.load(object_key)
+        with bounded_executor.blocking_work_scope(workspace_uuid):
+            try:
+                await self.ap.workspace_service.get_execution_binding(
+                    workspace_uuid,
+                    expected_generation=generation,
+                )
+            except Exception:
+                return None
+            if not await self.storage_provider.exists(object_key):
+                return None
+            return await self.storage_provider.load(object_key)
 
     @classmethod
     def require_scoped_object_key(
@@ -331,3 +333,8 @@ class StorageMgr:
             self.ap.logger.info('Initialized local storage backend.')
 
         await self.storage_provider.initialize()
+
+    async def shutdown(self) -> None:
+        storage_provider = getattr(self, 'storage_provider', None)
+        if storage_provider is not None:
+            await storage_provider.shutdown()

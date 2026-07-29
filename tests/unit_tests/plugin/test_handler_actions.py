@@ -257,7 +257,7 @@ class TestSetBinaryStorage:
         )
 
         assert response.code != 0
-        assert '2048 > 1024 bytes' in response.message
+        assert '1024-byte limit' in response.message
         app.persistence_mgr.execute_async.assert_not_awaited()
 
     @pytest.mark.asyncio
@@ -312,21 +312,25 @@ class TestSetBinaryStorage:
         )
 
         assert response.code != 0
-        assert '10485761 > 10485760 bytes' in response.message
+        assert '10485760' in response.message
         app.persistence_mgr.execute_async.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_negative_limit_disables_size_check(self, app):
-        """Negative max_value_bytes allows values larger than the normal default."""
+    async def test_negative_limit_falls_back_to_bounded_default(self, app, monkeypatch):
+        """Negative max_value_bytes cannot disable the process memory boundary."""
+        import langbot.pkg.plugin.handler as handler_module
+
         runtime_handler = make_handler(app)
         app.instance_config.data['plugin']['binary_storage']['max_value_bytes'] = -1
+        monkeypatch.setattr(handler_module, '_DEFAULT_BINARY_STORAGE_VALUE_BYTES', 1024)
 
         response = await runtime_handler.actions[RuntimeToLangBotAction.SET_BINARY_STORAGE.value](
             self.payload(b'x' * 2048)
         )
 
-        assert response.code == 0
-        assert app.persistence_mgr.execute_async.await_count == 2
+        assert response.code != 0
+        assert '1024-byte limit' in response.message
+        app.persistence_mgr.execute_async.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_zero_limit_rejects_non_empty_values(self, app):

@@ -252,8 +252,17 @@ class MCPService:
             task = create_detached_task(
                 self.ap.tool_mgr.mcp_tool_loader.host_mcp_server(execution_context, created),
                 after_commit_manager=self.ap.persistence_mgr,
+                workspace_uuid=execution_context.workspace_uuid,
             )
-            self.ap.tool_mgr.mcp_tool_loader._hosted_mcp_tasks.append(task)
+            tracker = getattr(
+                self.ap.tool_mgr.mcp_tool_loader,
+                'track_hosted_task',
+                None,
+            )
+            if callable(tracker):
+                tracker(task, execution_context)
+            else:
+                self.ap.tool_mgr.mcp_tool_loader._hosted_mcp_tasks.append(task)
         return payload['uuid']
 
     async def get_mcp_server_by_uuid(self, context: TenantContext, server_uuid: str) -> dict | None:
@@ -357,8 +366,13 @@ class MCPService:
             task = create_detached_task(
                 loader.host_mcp_server(execution_context, updated),
                 after_commit_manager=self.ap.persistence_mgr,
+                workspace_uuid=execution_context.workspace_uuid,
             )
-            loader._hosted_mcp_tasks.append(task)
+            tracker = getattr(loader, 'track_hosted_task', None)
+            if callable(tracker):
+                tracker(task, execution_context)
+            else:
+                loader._hosted_mcp_tasks.append(task)
 
     async def delete_mcp_server(self, context: TenantContext, server_uuid: str) -> None:
         execution_context = await self._execution_context(context)
@@ -420,6 +434,7 @@ class MCPService:
     async def test_mcp_server(self, context: TenantContext, server_name: str, server_data: dict) -> int:
         execution_context = await self._execution_context(context)
         runtime_mcp_session: RuntimeMCPSession | None = None
+        test_session: RuntimeMCPSession | None = None
         ctx = taskmgr.TaskContext.new()
 
         if server_name != '_':
@@ -468,16 +483,27 @@ class MCPService:
 
             coroutine = _run_and_cleanup()
 
-        wrapper = self.ap.task_mgr.create_user_task(
-            coroutine,
-            kind='mcp-operation',
-            name=f'mcp-test-{execution_context.workspace_uuid}-{server_name}',
-            label=f'Testing MCP server {server_name}',
-            context=ctx,
-            instance_uuid=execution_context.instance_uuid,
-            workspace_uuid=execution_context.workspace_uuid,
-            placement_generation=execution_context.placement_generation,
-        )
+        try:
+            wrapper = self.ap.task_mgr.create_user_task(
+                coroutine,
+                kind='mcp-operation',
+                name=f'mcp-test-{execution_context.workspace_uuid}-{server_name}',
+                label=f'Testing MCP server {server_name}',
+                context=ctx,
+                instance_uuid=execution_context.instance_uuid,
+                workspace_uuid=execution_context.workspace_uuid,
+                placement_generation=execution_context.placement_generation,
+            )
+        except taskmgr.TaskCapacityError:
+            if test_session is not None:
+                try:
+                    await test_session.shutdown()
+                except Exception as exc:
+                    self.ap.logger.warning(
+                        f'Failed to tear down rejected transient MCP test session '
+                        f'{test_session.server_name}: {type(exc).__name__}: {exc}'
+                    )
+            raise
         return wrapper.id
 
     async def get_mcp_server_logs(

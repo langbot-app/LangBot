@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import os
 import traceback
 import typing
 
@@ -26,6 +27,7 @@ from langbot.libs.openclaw_weixin_api.types import (
     WeixinMessage,
 )
 from langbot.pkg.entity.persistence import bot as persistence_bot
+from langbot.pkg.utils import httpclient
 
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
 import langbot_plugin.api.definition.abstract.platform.event_logger as abstract_platform_logger
@@ -34,6 +36,8 @@ import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 
 from langbot.pkg.api.http.context import ExecutionContext
+
+_MAX_OPENCLAW_COMPONENT_BYTES = 10 * 1024 * 1024
 
 
 class OpenClawWeixinMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
@@ -114,7 +118,12 @@ class OpenClawWeixinMessageConverter(abstract_platform_adapter.AbstractMessageCo
 
             elif item.type == MessageItem.IMAGE and item.image_item:
                 if hasattr(item.image_item, '_downloaded_bytes') and item.image_item._downloaded_bytes:
-                    b64 = base64.b64encode(item.image_item._downloaded_bytes).decode('utf-8')
+                    b64 = (
+                        await asyncio.to_thread(
+                            base64.b64encode,
+                            item.image_item._downloaded_bytes,
+                        )
+                    ).decode('utf-8')
                     components.append(platform_message.Image(base64=f'data:image/jpeg;base64,{b64}'))
                 else:
                     components.append(platform_message.Unknown(text='[Image]'))
@@ -401,19 +410,30 @@ class OpenClawWeixinAdapter(abstract_platform_adapter.AbstractMessagePlatformAda
         path_val = getattr(component, 'path', None)
 
         if b64_val:
-            return base64.b64decode(b64_val)
+            max_encoded_chars = 4 * ((_MAX_OPENCLAW_COMPONENT_BYTES + 2) // 3) + 4
+            if len(b64_val) > max_encoded_chars:
+                raise ValueError('OpenClaw media exceeds the size limit')
+            data = await asyncio.to_thread(base64.b64decode, b64_val)
+            if len(data) > _MAX_OPENCLAW_COMPONENT_BYTES:
+                raise ValueError('OpenClaw media exceeds the size limit')
+            return data
         elif url_val and url_val.startswith(('http://', 'https://')):
-            import aiohttp
-
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url_val) as resp:
-                    if resp.status == 200:
-                        return await resp.read()
+            session = httpclient.get_session()
+            async with session.get(url_val) as resp:
+                if resp.status == 200:
+                    return await httpclient.read_limited(resp)
         elif path_val:
-            import asyncio
+            if await asyncio.to_thread(os.path.getsize, path_val) > _MAX_OPENCLAW_COMPONENT_BYTES:
+                raise ValueError('OpenClaw media exceeds the size limit')
 
-            with open(path_val, 'rb') as f:
-                return await asyncio.to_thread(f.read)
+            def read_file() -> bytes:
+                with open(path_val, 'rb') as file:
+                    return file.read(_MAX_OPENCLAW_COMPONENT_BYTES + 1)
+
+            data = await asyncio.to_thread(read_file)
+            if len(data) > _MAX_OPENCLAW_COMPONENT_BYTES:
+                raise ValueError('OpenClaw media exceeds the size limit')
+            return data
         return None
 
     def register_listener(
@@ -544,6 +564,8 @@ class OpenClawWeixinAdapter(abstract_platform_adapter.AbstractMessagePlatformAda
         """Process a single inbound message from getUpdates."""
         if msg.context_token and msg.from_user_id:
             self._context_tokens[msg.from_user_id] = msg.context_token
+            while len(self._context_tokens) > 4096:
+                self._context_tokens.pop(next(iter(self._context_tokens)), None)
 
         # Download CDN media (files, images) before converting to LangBot events
         await self._download_media_items(msg)
@@ -599,6 +621,8 @@ class OpenClawWeixinAdapter(abstract_platform_adapter.AbstractMessagePlatformAda
                 await self._poll_task
             except asyncio.CancelledError:
                 pass
+        self._poll_task = None
+        self._context_tokens.clear()
         await self.client.close()
         await self.logger.info('OpenClaw WeChat adapter stopped')
         return True

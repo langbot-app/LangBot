@@ -20,6 +20,7 @@ import asyncio
 import contextlib
 import datetime
 import hashlib
+import time
 import typing
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -72,6 +73,12 @@ from langbot.pkg.api.http.service.user import UserService
 from langbot.pkg.api.mcp.context import get_request_context as get_mcp_request_context
 from langbot.pkg.api.mcp.mount import MCPMount
 from langbot.pkg.entity.persistence.apikey import ApiKey
+from langbot.pkg.entity.persistence import bot as persistence_bot
+from langbot.pkg.entity.persistence import mcp as persistence_mcp
+from langbot.pkg.entity.persistence import model as persistence_model
+from langbot.pkg.entity.persistence import pipeline as persistence_pipeline
+from langbot.pkg.entity.persistence import plugin as persistence_plugin
+from langbot.pkg.entity.persistence import rag as persistence_rag
 from langbot.pkg.entity.persistence.metadata import WorkspaceMetadata
 from langbot.pkg.entity.persistence.monitoring import MonitoringFeedback
 from langbot.pkg.entity.persistence.workspace import (
@@ -81,6 +88,9 @@ from langbot.pkg.entity.persistence.workspace import (
 )
 from langbot.pkg.platform.botmgr import PlatformManager
 from langbot.pkg.pipeline.pipelinemgr import PipelineManager
+from langbot.pkg.plugin.connector import PluginRuntimeConnector
+from langbot.pkg.provider.modelmgr import requester as model_requester
+from langbot.pkg.provider.modelmgr import token as model_token
 from langbot.pkg.provider.modelmgr.modelmgr import ModelManager
 from langbot.pkg.provider.tools.loaders.mcp import MCPLoader
 from langbot.pkg.rag.knowledge.kbmgr import RAGManager
@@ -97,6 +107,39 @@ class _NoopDirectoryProjectionProvider:
 
     async def fetch_workspaces(self, instance_uuid: str, workspace_uuids: tuple[str, ...]):
         raise AssertionError(f'Unexpected delta fetch for {instance_uuid}: {workspace_uuids!r}')
+
+
+class _CapacityPluginRuntimeHandler:
+    """Minimal shared Runtime control-plane surface for the startup probe."""
+
+    def __init__(self) -> None:
+        self.bindings: dict[str, typing.Any] = {}
+        self.reconciled: tuple[typing.Any, ...] = ()
+
+    def register_installation_binding(
+        self,
+        binding,
+        *,
+        plugin_author: str,
+        plugin_name: str,
+    ) -> None:
+        self.bindings[binding.installation_uuid] = (
+            binding,
+            plugin_author,
+            plugin_name,
+        )
+
+    def unregister_installation_binding(self, binding) -> None:
+        self.bindings.pop(binding.installation_uuid, None)
+
+    async def reconcile_plugin_installations(self, desired_states) -> dict:
+        self.reconciled = tuple(desired_states)
+        return {
+            'applied': [],
+            'removed': [],
+            'missing_artifacts': [],
+            'failed_installations': [],
+        }
 
 
 def _get_script_head() -> str:
@@ -652,6 +695,385 @@ class TestPostgreSQLTenantRuntime:
             assert visible_workspaces == 1
         finally:
             await _dispose_manager(manager)
+
+    @pytest.mark.asyncio
+    async def test_populated_cloud_startup_is_linear_and_task_bounded(
+        self,
+        postgres_url,
+        postgres_engine,
+        clean_tables,
+        clean_alembic_version,
+        monkeypatch,
+    ):
+        """Run the real Cloud startup query graph against populated RLS tenants.
+
+        The default is intentionally small enough for CI. Audit runs can raise
+        ``LANGBOT_PG_CAPACITY_WORKSPACES`` without changing the test contract.
+        Every tenant owns one representative startup resource of each kind.
+        """
+
+        workspace_count = int(os.environ.get('LANGBOT_PG_CAPACITY_WORKSPACES', '25'))
+        if not 1 <= workspace_count <= 2_000:
+            raise ValueError('LANGBOT_PG_CAPACITY_WORKSPACES must be between 1 and 2000')
+        max_elapsed_raw = os.environ.get(
+            'LANGBOT_PG_CAPACITY_MAX_SECONDS',
+        )
+        max_elapsed = float(max_elapsed_raw) if max_elapsed_raw is not None else None
+        instance_uuid = 'cloud-populated-startup-capacity-test'
+        role_name = f'lb_capacity_{uuid.uuid4().hex[:12]}'
+        role_password = f'Lb{uuid.uuid4().hex}'
+        quote = postgres_engine.dialect.identifier_preparer.quote
+        managers: list[PersistenceManager] = []
+        role_created = False
+        statement_counts = {
+            table_name: 0
+            for table_name in (
+                'model_providers',
+                'llm_models',
+                'embedding_models',
+                'rerank_models',
+                'bots',
+                'legacy_pipelines',
+                'knowledge_bases',
+                'mcp_servers',
+                'plugin_settings',
+            )
+        }
+        measured_engine = None
+        model_manager = None
+        platform_manager = None
+        mcp_loader = None
+
+        _restore_postgres_manager_registry(monkeypatch)
+        monkeypatch.setattr(constants, 'instance_id', instance_uuid)
+        release_manager = PersistenceManager(
+            _application_for_postgres_url(
+                postgres_url,
+                'postgres-capacity-release-test',
+            ),
+            mode=PersistenceMode.RELEASE_MIGRATION,
+        )
+        managers.append(release_manager)
+
+        def role_url() -> str:
+            return (
+                sa.engine.make_url(postgres_url)
+                .set(username=role_name, password=role_password)
+                .render_as_string(hide_password=False)
+            )
+
+        def count_resource_statements(
+            _conn,
+            _cursor,
+            statement,
+            _parameters,
+            _context,
+            _executemany,
+        ) -> None:
+            normalized = ' '.join(str(statement).lower().split())
+            for table_name in statement_counts:
+                if f' from {table_name}' in normalized or f' from "{table_name}"' in normalized:
+                    statement_counts[table_name] += 1
+
+        try:
+            await release_manager.initialize()
+            for index in range(workspace_count):
+                workspace_uuid = f'ca{index:06x}-0000-4000-8000-{index:012x}'
+                suffix = f'{index:06d}'
+                provider_uuid = f'capacity-provider-{suffix}'
+                async with release_manager.tenant_uow(workspace_uuid) as uow:
+                    uow.session.add(
+                        Workspace(
+                            uuid=workspace_uuid,
+                            instance_uuid=instance_uuid,
+                            name=f'Capacity {suffix}',
+                            slug=f'capacity-{suffix}',
+                            type='team',
+                            status='active',
+                            source='cloud_projection',
+                            projection_revision=1,
+                        )
+                    )
+                    await uow.session.flush()
+                    uow.session.add_all(
+                        [
+                            WorkspaceExecutionState(
+                                workspace_uuid=workspace_uuid,
+                                instance_uuid=instance_uuid,
+                                active_generation=1,
+                                state='active',
+                                write_fenced=False,
+                                source='cloud',
+                                desired_state_revision=1,
+                            ),
+                            persistence_model.ModelProvider(
+                                uuid=provider_uuid,
+                                workspace_uuid=workspace_uuid,
+                                name='Capacity Provider',
+                                requester='capacity-probe',
+                                base_url='https://capacity.invalid',
+                                api_keys=[],
+                            ),
+                        ]
+                    )
+                    await uow.session.flush()
+                    uow.session.add_all(
+                        [
+                            persistence_model.LLMModel(
+                                uuid=f'capacity-llm-{suffix}',
+                                workspace_uuid=workspace_uuid,
+                                name='Capacity LLM',
+                                provider_uuid=provider_uuid,
+                                abilities=[],
+                                extra_args={},
+                            ),
+                            persistence_model.EmbeddingModel(
+                                uuid=f'capacity-embedding-{suffix}',
+                                workspace_uuid=workspace_uuid,
+                                name='Capacity Embedding',
+                                provider_uuid=provider_uuid,
+                                extra_args={},
+                            ),
+                            persistence_model.RerankModel(
+                                uuid=f'capacity-rerank-{suffix}',
+                                workspace_uuid=workspace_uuid,
+                                name='Capacity Rerank',
+                                provider_uuid=provider_uuid,
+                                extra_args={},
+                            ),
+                            persistence_bot.Bot(
+                                uuid=f'capacity-bot-{suffix}',
+                                workspace_uuid=workspace_uuid,
+                                name='Capacity Bot',
+                                description='',
+                                adapter='capacity-probe',
+                                adapter_config={},
+                                enable=False,
+                                pipeline_routing_rules=[],
+                            ),
+                            persistence_pipeline.LegacyPipeline(
+                                uuid=f'capacity-pipeline-{suffix}',
+                                workspace_uuid=workspace_uuid,
+                                name='Capacity Pipeline',
+                                description='',
+                                for_version='capacity-probe',
+                                is_default=True,
+                                stages=[],
+                                config={},
+                                extensions_preferences={},
+                            ),
+                            persistence_rag.KnowledgeBase(
+                                uuid=f'capacity-kb-{suffix}',
+                                workspace_uuid=workspace_uuid,
+                                name='Capacity Knowledge Base',
+                                description='',
+                                collection_id=f'capacity-collection-{suffix}',
+                                legacy_vector_collection=False,
+                            ),
+                            persistence_mcp.MCPServer(
+                                uuid=f'capacity-mcp-{suffix}',
+                                workspace_uuid=workspace_uuid,
+                                name=f'capacity-mcp-{suffix}',
+                                enable=False,
+                                mode='remote',
+                                extra_args={},
+                            ),
+                            persistence_plugin.PluginSetting(
+                                workspace_uuid=workspace_uuid,
+                                plugin_author='capacity',
+                                plugin_name=f'plugin-{suffix}',
+                                installation_uuid=str(
+                                    uuid.uuid5(
+                                        uuid.NAMESPACE_URL,
+                                        f'langbot-capacity:{workspace_uuid}',
+                                    )
+                                ),
+                                artifact_digest=hashlib.sha256(workspace_uuid.encode()).hexdigest(),
+                                runtime_revision=1,
+                                enabled=False,
+                                config={},
+                                install_source='github',
+                                install_info={},
+                            ),
+                        ]
+                    )
+
+            async with postgres_engine.connect() as conn:
+                await conn.execute(text(f"CREATE ROLE {quote(role_name)} LOGIN PASSWORD '{role_password}'"))
+                role_created = True
+                await conn.execute(
+                    text(
+                        f'GRANT CONNECT ON DATABASE '
+                        f'{quote(sa.engine.make_url(postgres_url).database)} '
+                        f'TO {quote(role_name)}'
+                    )
+                )
+                await conn.execute(text(f'GRANT USAGE ON SCHEMA public TO {quote(role_name)}'))
+                await _grant_runtime_role_business_objects(
+                    conn,
+                    role_name,
+                    quote,
+                )
+
+            runtime_application = _application_for_postgres_url(
+                role_url(),
+                'postgres-capacity-runtime-test',
+            )
+            runtime_application.instance_config.data.update(
+                {
+                    'plugin': {'enable': True},
+                    'mcp': {'lifecycle_concurrency': 8},
+                }
+            )
+            runtime_application.deployment = SimpleNamespace(
+                mode='cloud',
+                multi_workspace_enabled=False,
+            )
+            runtime_application.task_mgr = SimpleNamespace(
+                cancel_by_scope=lambda *_args, **_kwargs: None,
+            )
+            cloud_manager = PersistenceManager(
+                runtime_application,
+                mode=PersistenceMode.CLOUD_RUNTIME,
+            )
+            managers.append(cloud_manager)
+            await cloud_manager.initialize()
+            runtime_application.persistence_mgr = cloud_manager
+            cloud_manager.ap = runtime_application
+            runtime_application.workspace_service = WorkspaceService(
+                runtime_application,
+                policy=CloudWorkspacePolicy(),
+                instance_uuid=instance_uuid,
+            )
+
+            measured_engine = cloud_manager.get_db_engine().sync_engine
+            sa.event.listen(
+                measured_engine,
+                'before_cursor_execute',
+                count_resource_statements,
+            )
+            wall_started = time.monotonic()
+            cpu_started = time.process_time()
+
+            bindings = await runtime_application.workspace_service.prime_startup_execution_bindings()
+            assert len(bindings) == workspace_count
+
+            model_manager = ModelManager(runtime_application)
+
+            async def build_capacity_provider(
+                context,
+                provider_entity,
+            ):
+                return model_requester.RuntimeProvider(
+                    context,
+                    provider_entity,
+                    model_token.TokenManager(
+                        provider_entity.uuid,
+                        provider_entity.api_keys or [],
+                    ),
+                    SimpleNamespace(aclose=AsyncMock()),
+                )
+
+            model_manager._build_provider = build_capacity_provider
+            await model_manager.load_models_from_db()
+
+            platform_manager = PlatformManager(runtime_application)
+            platform_manager.load_bot = AsyncMock()
+            await platform_manager.load_bots_from_db()
+
+            pipeline_manager = PipelineManager(runtime_application)
+            pipeline_manager.stage_dict = {}
+            await pipeline_manager.load_pipelines_from_db()
+
+            rag_manager = RAGManager(runtime_application)
+            await rag_manager.load_knowledge_bases_from_db()
+
+            mcp_loader = MCPLoader(runtime_application)
+            mcp_loader.host_mcp_server = AsyncMock()
+            await mcp_loader.load_mcp_servers_from_db()
+            dispatch_tasks = tuple(mcp_loader._host_dispatch_tasks)
+            if dispatch_tasks:
+                await asyncio.gather(*dispatch_tasks)
+            await asyncio.sleep(0)
+
+            plugin_connector = PluginRuntimeConnector(
+                runtime_application,
+                AsyncMock(),
+            )
+            plugin_handler = _CapacityPluginRuntimeHandler()
+            plugin_connector.handler = plugin_handler
+            contexts = [
+                ExecutionContext(
+                    instance_uuid=binding.instance_uuid,
+                    workspace_uuid=binding.workspace_uuid,
+                    placement_generation=binding.placement_generation,
+                )
+                for binding in bindings
+            ]
+            await plugin_connector.reconcile_projected_workspaces(contexts)
+
+            elapsed = time.monotonic() - wall_started
+            cpu_seconds = time.process_time() - cpu_started
+            logging.getLogger('postgres-capacity-runtime-test').info(
+                'Populated Cloud startup capacity: workspaces=%d elapsed=%.3fs cpu=%.3fs statements=%s',
+                workspace_count,
+                elapsed,
+                cpu_seconds,
+                statement_counts,
+            )
+
+            assert len(model_manager.provider_dict) == workspace_count
+            assert len(model_manager.llm_model_dict) == workspace_count
+            assert len(model_manager.embedding_model_dict) == workspace_count
+            assert len(model_manager.rerank_model_dict) == workspace_count
+            assert platform_manager.load_bot.await_count == workspace_count
+            assert len(pipeline_manager.pipelines) == workspace_count
+            assert len(rag_manager.knowledge_bases) == workspace_count
+            assert mcp_loader.host_mcp_server.await_count == workspace_count
+            assert not mcp_loader._host_dispatch_tasks
+            assert not mcp_loader._hosted_mcp_tasks
+            assert len(plugin_handler.reconciled) == workspace_count
+            assert len(plugin_handler.bindings) == workspace_count
+            assert all(count == workspace_count for count in statement_counts.values()), statement_counts
+            if max_elapsed is not None:
+                assert elapsed <= max_elapsed
+        finally:
+            cleanup_errors: list[BaseException] = []
+            if measured_engine is not None:
+                sa.event.remove(
+                    measured_engine,
+                    'before_cursor_execute',
+                    count_resource_statements,
+                )
+            if mcp_loader is not None:
+                try:
+                    await mcp_loader.shutdown()
+                except BaseException as exc:
+                    cleanup_errors.append(exc)
+            if platform_manager is not None:
+                try:
+                    await platform_manager.shutdown()
+                except BaseException as exc:
+                    cleanup_errors.append(exc)
+            if model_manager is not None:
+                try:
+                    await model_manager.shutdown()
+                except BaseException as exc:
+                    cleanup_errors.append(exc)
+            for manager in reversed(managers):
+                try:
+                    await _dispose_manager(manager)
+                except BaseException as exc:
+                    cleanup_errors.append(exc)
+            if role_created:
+                try:
+                    async with postgres_engine.connect() as conn:
+                        await conn.execute(text(f'DROP OWNED BY {quote(role_name)}'))
+                        await conn.execute(text(f'DROP ROLE {quote(role_name)}'))
+                except BaseException as exc:
+                    cleanup_errors.append(exc)
+            if cleanup_errors:
+                raise cleanup_errors[0]
 
     @pytest.mark.asyncio
     async def test_release_bootstrap_and_runtime_isolation(

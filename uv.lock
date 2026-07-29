@@ -2065,6 +2065,7 @@ dependencies = [
     { name = "qrcode" },
     { name = "quart" },
     { name = "quart-cors" },
+    { name = "regex" },
     { name = "requests" },
     { name = "ruff" },
     { name = "slack-sdk" },
@@ -2115,7 +2116,7 @@ requires-dist = [
     { name = "ebooklib", specifier = ">=0.18" },
     { name = "gewechat-client", specifier = ">=0.1.5" },
     { name = "html2text", specifier = ">=2024.2.26" },
-    { name = "langbot-plugin", git = "https://github.com/langbot-app/langbot-plugin-sdk.git?rev=0cddf3c2bea5939c67b71e488a719e9903c28d17" },
+    { name = "langbot-plugin", git = "https://github.com/langbot-app/langbot-plugin-sdk.git?rev=67be7c332ded4c1afa131b28232590cf9728f817" },
     { name = "langchain", specifier = ">=1.3.9" },
     { name = "langchain-core", specifier = ">=1.3.3" },
     { name = "langchain-text-splitters", specifier = ">=1.1.2" },
@@ -2154,6 +2155,7 @@ requires-dist = [
     { name = "qrcode", specifier = ">=7.4" },
     { name = "quart", specifier = ">=0.20.0" },
     { name = "quart-cors", specifier = ">=0.8.0" },
+    { name = "regex", specifier = ">=2026.1.15" },
     { name = "requests", specifier = ">=2.33.0" },
     { name = "ruff", specifier = ">=0.11.9" },
     { name = "slack-sdk", specifier = ">=3.35.0" },
@@ -2181,7 +2183,7 @@ dev = [
 [[package]]
 name = "langbot-plugin"
 version = "0.4.18"
-source = { git = "https://github.com/langbot-app/langbot-plugin-sdk.git?rev=0cddf3c2bea5939c67b71e488a719e9903c28d17#0cddf3c2bea5939c67b71e488a719e9903c28d17" }
+source = { git = "https://github.com/langbot-app/langbot-plugin-sdk.git?rev=67be7c332ded4c1afa131b28232590cf9728f817#67be7c332ded4c1afa131b28232590cf9728f817" }
 dependencies = [
     { name = "aiofiles" },
     { name = "aiohttp" },

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 import typing
 import json
-import base64
+import logging
 import tempfile
 import os
 
@@ -11,9 +12,12 @@ from tboxsdk.model.file import File, FileType
 
 from .. import runner
 from ...core import app
-from ...utils import image
+from ...utils import bounded_executor, image
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
+
+_MAX_TBOX_RESPONSE_CHARS = 1024 * 1024
+_MAX_TBOX_MEDIA_BYTES = 10 * 1024 * 1024
 
 
 class TboxAPIError(Exception):
@@ -22,6 +26,19 @@ class TboxAPIError(Exception):
     def __init__(self, message: str):
         self.message = message
         super().__init__(self.message)
+
+
+def _append_bounded(current: str, addition: typing.Any) -> str:
+    addition = str(addition or '')
+    if len(current) + len(addition) > _MAX_TBOX_RESPONSE_CHARS:
+        raise TboxAPIError('Tbox response exceeds the runtime limit')
+    return current + addition
+
+
+def _write_temp_media(file_bytes: bytes, suffix: str) -> str:
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp_file:
+        tmp_file.write(file_bytes)
+        return tmp_file.name
 
 
 @runner.runner_class('tbox-app-api')
@@ -42,6 +59,7 @@ class TboxAPIRunner(runner.RequestRunner):
         self.api_key = self.pipeline_config['ai']['tbox-app-api']['api-key']
 
         # 初始化Tbox client
+        logging.getLogger('tbox.client').setLevel(logging.WARNING)
         self.tbox_client = TboxClient(authorization=self.api_key)
 
     async def _preprocess_user_message(self, query: pipeline_query.Query) -> tuple[str, list[str]]:
@@ -59,19 +77,29 @@ class TboxAPIRunner(runner.RequestRunner):
                     plain_text += ce.text
                 elif ce.type == 'image_base64':
                     image_b64, image_format = await image.extract_b64_and_format(ce.image_base64)
-                    # 创建临时文件
-                    file_bytes = base64.b64decode(image_b64)
+                    file_bytes = await image.decode_base64_limited(
+                        image_b64,
+                        max_bytes=_MAX_TBOX_MEDIA_BYTES,
+                    )
+                    tmp_file_path: str | None = None
                     try:
-                        with tempfile.NamedTemporaryFile(suffix=f'.{image_format}', delete=False) as tmp_file:
-                            tmp_file.write(file_bytes)
-                            tmp_file_path = tmp_file.name
-                        file_upload_resp = self.tbox_client.upload_file(tmp_file_path)
+                        tmp_file_path = await asyncio.to_thread(
+                            _write_temp_media,
+                            file_bytes,
+                            f'.{image_format}',
+                        )
+                        file_upload_resp = await asyncio.to_thread(
+                            self.tbox_client.upload_file,
+                            tmp_file_path,
+                        )
                         image_id = file_upload_resp.get('data', '')
                         image_ids.append(image_id)
                     finally:
-                        # 清理临时文件
-                        if os.path.exists(tmp_file_path):
-                            os.unlink(tmp_file_path)
+                        if tmp_file_path and os.path.exists(tmp_file_path):
+                            await bounded_executor.run_blocking_cleanup(
+                                os.unlink,
+                                tmp_file_path,
+                            )
         elif isinstance(query.user_message.content, str):
             plain_text = query.user_message.content
 
@@ -98,18 +126,23 @@ class TboxAPIRunner(runner.RequestRunner):
             files = [File(file_id=image_id, type=FileType.IMAGE) for image_id in image_ids]
 
         # 发送对话请求
-        response = self.tbox_client.chat(
-            app_id=self.app_id,  # Tbox中智能体应用的ID
-            user_id=query.bot_uuid,  # 用户ID
-            query=plain_text,  # 用户输入的文本信息
-            stream=is_stream,  # 是否流式输出
-            conversation_id=conversation_id,  # 会话ID，为None时Tbox会自动创建一个新会话
-            files=files,  # 图片内容
+        response = await asyncio.to_thread(
+            self.tbox_client.chat,
+            app_id=self.app_id,
+            user_id=query.bot_uuid,
+            query=plain_text,
+            stream=is_stream,
+            conversation_id=conversation_id,
+            files=files,
         )
 
         if is_stream:
             # 解析Tbox流式输出内容，并发送给上游
-            for chunk in self._process_stream_message(response, query, remove_think):
+            async for chunk in self._process_stream_message(
+                response,
+                query,
+                remove_think,
+            ):
                 yield chunk
         else:
             message = self._process_non_stream_message(response, query, remove_think)
@@ -127,13 +160,16 @@ class TboxAPIRunner(runner.RequestRunner):
         thinking_content = payload.get('reasoningContent', [])
         result = ''
         if thinking_content and not remove_think:
-            result += f'<think>\n{thinking_content[0].get("text", "")}\n</think>\n'
+            result = _append_bounded(
+                result,
+                f'<think>\n{thinking_content[0].get("text", "")}\n</think>\n',
+            )
         content = payload.get('result', [])
         if content:
-            result += content[0].get('chunk', '')
+            result = _append_bounded(result, content[0].get('chunk', ''))
         return result
 
-    def _process_stream_message(
+    async def _process_stream_message(
         self, response: typing.Generator[dict], query: pipeline_query.Query, remove_think: bool
     ):
         idx_msg = 0
@@ -141,7 +177,7 @@ class TboxAPIRunner(runner.RequestRunner):
         conversation_id = None
         think_start = False
         think_end = False
-        for chunk in response:
+        async for chunk in runner.iterate_sync(response):
             if chunk.get('type', '') == 'chunk':
                 """
                 Tbox返回的消息内容chunk结构
@@ -149,7 +185,10 @@ class TboxAPIRunner(runner.RequestRunner):
                 """
                 # 如果包含思考过程，拼接</think>
                 if think_start and not think_end:
-                    pending_content += '\n</think>\n'
+                    pending_content = _append_bounded(
+                        pending_content,
+                        '\n</think>\n',
+                    )
                     think_end = True
 
                 payload = chunk.get('payload', {})
@@ -158,7 +197,10 @@ class TboxAPIRunner(runner.RequestRunner):
                     query.session.using_conversation.uuid = conversation_id
                 if payload.get('text'):
                     idx_msg += 1
-                    pending_content += payload.get('text')
+                    pending_content = _append_bounded(
+                        pending_content,
+                        payload.get('text'),
+                    )
             elif chunk.get('type', '') == 'thinking' and not remove_think:
                 """
                 Tbox返回的思考过程chunk结构
@@ -170,9 +212,15 @@ class TboxAPIRunner(runner.RequestRunner):
                     content = payload.get('ext_data', {}).get('text')
                     if not think_start:
                         think_start = True
-                        pending_content += f'<think>\n{content}'
+                        pending_content = _append_bounded(
+                            pending_content,
+                            f'<think>\n{content}',
+                        )
                     else:
-                        pending_content += content
+                        pending_content = _append_bounded(
+                            pending_content,
+                            content,
+                        )
             elif chunk.get('type', '') == 'error':
                 raise TboxAPIError(
                     f'Tbox API 请求失败: status_code={chunk.get("status_code")} message={chunk.get("message")} request_id={chunk.get("request_id")} '

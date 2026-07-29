@@ -211,6 +211,7 @@ class ComponentDiscoveryEngine:
 
     def __init__(self, ap: app.Application):
         self.ap = ap
+        self.components = {}
 
     def load_component_manifest(self, path: str, owner: str = 'builtin', no_save: bool = False) -> Component | None:
         """加载组件清单"""

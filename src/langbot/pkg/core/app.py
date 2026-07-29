@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import asyncio
+import contextlib
 import traceback
 import os
 
@@ -18,7 +19,7 @@ from ..plugin import connector as plugin_connector
 from ..pipeline import pool
 from ..pipeline import controller, pipelinemgr
 from ..pipeline import aggregator as message_aggregator
-from ..utils import version as version_mgr, proxy as proxy_mgr
+from ..utils import version as version_mgr, proxy as proxy_mgr, httpclient
 from ..persistence import mgr as persistencemgr
 from ..api.http.controller import main as http_controller
 from ..api.http.service import user as user_service
@@ -36,7 +37,7 @@ from ..api.http.service import skill as skill_service
 from ..api.http.service import maintenance as maintenance_service
 from ..discover import engine as discover_engine
 from ..storage import mgr as storagemgr
-from ..utils import logcache
+from ..utils import bounded_executor, event_loop_monitor, logcache
 from . import taskmgr
 from . import entities as core_entities
 from ..rag.knowledge import kbmgr as rag_mgr
@@ -191,14 +192,78 @@ class Application:
 
     maintenance_service: maintenance_service.MaintenanceService = None
 
+    blocking_executor: bounded_executor.BoundedThreadPoolExecutor | None = None
+    event_loop_monitor: event_loop_monitor.EventLoopLagMonitor
+
     def __init__(self):
         self._shutdown_lock = asyncio.Lock()
         self._shutdown_complete = False
+        self._shutdown_task: asyncio.Task | None = None
+        self.event_loop_monitor = event_loop_monitor.EventLoopLagMonitor()
+
+    def get_runtime_resource_stats(self) -> dict[str, object]:
+        """Return aggregate O(1) counters for liveness and soak validation."""
+
+        try:
+            asyncio_tasks = len(asyncio.all_tasks(self.event_loop))
+        except (RuntimeError, TypeError):
+            asyncio_tasks = 0
+
+        task_stats = self.task_mgr.get_stats() if self.task_mgr is not None else {}
+        query_pool_stats = {}
+        if self.query_pool is not None:
+            query_pool_stats = {
+                'queued': len(self.query_pool.queries),
+                'cached': len(self.query_pool.cached_queries),
+                'active_workspaces': len(self.query_pool.active_query_count_by_workspace),
+            }
+
+        model_stats = {}
+        if self.model_mgr is not None:
+            model_stats = {
+                'providers': len(self.model_mgr.provider_dict),
+                'llms': len(self.model_mgr.llm_model_dict),
+                'embeddings': len(self.model_mgr.embedding_model_dict),
+                'rerankers': len(self.model_mgr.rerank_model_dict),
+            }
+
+        runtime_stats = {
+            'bots': len(getattr(self.platform_mgr, '_bots_by_key', {})),
+            'pipelines': len(getattr(self.pipeline_mgr, '_pipelines_by_key', {})),
+            'knowledge_bases': len(getattr(self.rag_mgr, 'knowledge_bases', {})),
+            'plugin_installations': len(
+                getattr(
+                    self.plugin_connector,
+                    '_known_desired_states',
+                    {},
+                )
+            ),
+        }
+        mcp_loader = getattr(self.tool_mgr, 'mcp_tool_loader', None)
+        runtime_stats.update(
+            {
+                'mcp_sessions': len(getattr(mcp_loader, '_sessions', {})),
+                'mcp_host_tasks': len(getattr(mcp_loader, '_hosted_mcp_tasks', ())),
+                'mcp_dispatch_tasks': len(getattr(mcp_loader, '_host_dispatch_tasks', ())),
+            }
+        )
+
+        return {
+            'asyncio_tasks': asyncio_tasks,
+            'event_loop': self.event_loop_monitor.snapshot(),
+            'blocking_executor': (self.blocking_executor.snapshot() if self.blocking_executor is not None else {}),
+            'application_tasks': task_stats,
+            'query_pool': query_pool_stats,
+            'models': model_stats,
+            'runtimes': runtime_stats,
+            'telemetry_tasks': len(getattr(self.telemetry, 'send_tasks', ())),
+        }
 
     async def initialize(self):
         pass
 
     async def run(self):
+        self.event_loop_monitor.start()
         try:
             if self.directory_projection_service is not None:
                 self.task_mgr.create_task(
@@ -392,18 +457,36 @@ class Application:
 
             if self.task_mgr is not None:
                 self.task_mgr.cancel_by_scope(core_entities.LifecycleControlScope.APPLICATION)
+            with contextlib.suppress(Exception):
+                await self.event_loop_monitor.stop()
+            mcp_mount = getattr(self.http_ctrl, 'mcp_mount', None)
+            if mcp_mount is not None:
+                with contextlib.suppress(Exception):
+                    await mcp_mount.stop_session_manager()
             if self.platform_mgr is not None:
                 with contextlib.suppress(Exception):
                     await self.platform_mgr.shutdown()
             if self.tool_mgr is not None:
                 with contextlib.suppress(Exception):
                     await self.tool_mgr.shutdown()
+            if self.model_mgr is not None:
+                with contextlib.suppress(Exception):
+                    await self.model_mgr.shutdown()
             if self.box_service is not None:
                 with contextlib.suppress(Exception):
                     await self.box_service.shutdown()
             if self.plugin_connector is not None:
                 with contextlib.suppress(Exception):
                     await self.plugin_connector.aclose()
+            if self.telemetry is not None:
+                with contextlib.suppress(Exception):
+                    await self.telemetry.shutdown()
+            if self.vector_db_mgr is not None:
+                with contextlib.suppress(Exception):
+                    await self.vector_db_mgr.shutdown()
+            if self.storage_mgr is not None:
+                with contextlib.suppress(Exception):
+                    await self.storage_mgr.shutdown()
             manifest_provider = getattr(self.deployment, 'manifest_provider', None)
             if manifest_provider is not None:
                 with contextlib.suppress(Exception):
@@ -413,13 +496,29 @@ class Application:
                 tasks = [wrapper.task for wrapper in self.task_mgr.tasks if not wrapper.task.done()]
                 if tasks:
                     await asyncio.gather(*tasks, return_exceptions=True)
+            with contextlib.suppress(Exception):
+                await httpclient.close_all()
+            persistence_shutdown = getattr(self.persistence_mgr, 'shutdown', None)
+            if callable(persistence_shutdown):
+                with contextlib.suppress(Exception):
+                    await persistence_shutdown()
+            else:
+                # Compatibility for lightweight test/application doubles.
+                persistence_db = getattr(self.persistence_mgr, 'db', None)
+                persistence_engine = getattr(persistence_db, 'engine', None)
+                if persistence_engine is not None:
+                    with contextlib.suppress(Exception):
+                        await persistence_engine.dispose()
             self._shutdown_complete = True
 
     def dispose(self):
         """Compatibility wrapper for callers that cannot await shutdown."""
+        if self._shutdown_complete:
+            return
         loop = self.event_loop
         if loop is not None and not loop.is_closed():
-            loop.create_task(self.shutdown())
+            if self._shutdown_task is None or self._shutdown_task.done():
+                self._shutdown_task = loop.create_task(self.shutdown())
             return
         if self.plugin_connector is not None:
             self.plugin_connector.dispose()

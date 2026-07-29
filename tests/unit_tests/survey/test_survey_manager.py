@@ -29,6 +29,13 @@ def create_mock_app():
     mock_app.instance_config.data = {'space': {'url': 'https://space.example.com'}}
     mock_app.persistence_mgr = AsyncMock()
     mock_app.persistence_mgr.execute_async = AsyncMock()
+    mock_app.workspace_service.instance_uuid = 'instance-test'
+
+    def close_scheduled_coroutine(coro, **kwargs):
+        coro.close()
+        return Mock()
+
+    mock_app.task_mgr.create_task = Mock(side_effect=close_scheduled_coroutine)
     return mock_app
 
 

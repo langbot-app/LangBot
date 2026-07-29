@@ -187,6 +187,14 @@ class PersistenceManager:
         if self.mode == PersistenceMode.OSS_COMPAT:
             await self.write_space_model_providers()
 
+    async def shutdown(self) -> None:
+        """Dispose the owned database engine when initialization or runtime ends."""
+
+        db = getattr(self, 'db', None)
+        engine = getattr(db, 'engine', None)
+        if engine is not None:
+            await engine.dispose()
+
     @contextlib.asynccontextmanager
     async def _release_migration_lock(self) -> typing.AsyncIterator[None]:
         """Serialize the complete PostgreSQL migration and validation window."""

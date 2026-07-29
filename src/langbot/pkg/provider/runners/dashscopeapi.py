@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import typing
 import re
 
@@ -10,6 +11,9 @@ from ...core import app
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
 
+_MAX_DASHSCOPE_RESPONSE_CHARS = 1024 * 1024
+_MAX_DASHSCOPE_REFERENCES = 1024
+
 
 class DashscopeAPIError(Exception):
     """Dashscope API 请求失败"""
@@ -17,6 +21,13 @@ class DashscopeAPIError(Exception):
     def __init__(self, message: str):
         self.message = message
         super().__init__(self.message)
+
+
+def _append_bounded(current: str, addition: typing.Any) -> str:
+    addition = str(addition or '')
+    if len(current) + len(addition) > _MAX_DASHSCOPE_RESPONSE_CHARS:
+        raise DashscopeAPIError('Dashscope response exceeds the runtime limit')
+    return current + addition
 
 
 @runner.runner_class('dashscope-app-api')
@@ -111,18 +122,16 @@ class DashScopeAPIRunner(runner.RequestRunner):
         if remove_think:
             has_thoughts = False
         # 发送对话请求
-        response = dashscope.Application.call(
-            api_key=self.api_key,  # 智能体应用的API Key
-            app_id=self.app_id,  # 智能体应用的ID
-            prompt=plain_text,  # 用户输入的文本信息
-            stream=True,  # 流式输出
-            incremental_output=True,  # 增量输出，使用流式输出需要开启增量输出
-            session_id=query.session.using_conversation.uuid,  # 会话ID用于，多轮对话
+        response = await asyncio.to_thread(
+            dashscope.Application.call,
+            api_key=self.api_key,
+            app_id=self.app_id,
+            prompt=plain_text,
+            stream=True,
+            incremental_output=True,
+            session_id=query.session.using_conversation.uuid,
             enable_thinking=has_thoughts,
             has_thoughts=has_thoughts,
-            # rag_options={                                     # 主要用于文件交互，暂不支持
-            #     "session_file_ids": ["FILE_ID1"],             # FILE_ID1 替换为实际的临时文件ID,逗号隔开多个
-            # }
         )
         idx_chunk = 0
         try:
@@ -131,7 +140,7 @@ class DashScopeAPIRunner(runner.RequestRunner):
         except AttributeError:
             is_stream = False
         if is_stream:
-            for chunk in response:
+            async for chunk in runner.iterate_sync(response):
                 if chunk.get('status_code') != 200:
                     raise DashscopeAPIError(
                         f'Dashscope API 请求失败: status_code={chunk.get("status_code")} message={chunk.get("message")} request_id={chunk.get("request_id")} '
@@ -145,15 +154,27 @@ class DashScopeAPIRunner(runner.RequestRunner):
                 if stream_think and stream_think[0].get('thought'):
                     if not think_start:
                         think_start = True
-                        pending_content += f'<think>\n{stream_think[0].get("thought")}'
+                        pending_content = _append_bounded(
+                            pending_content,
+                            f'<think>\n{stream_think[0].get("thought")}',
+                        )
                     else:
                         # 继续输出 reasoning_content
-                        pending_content += stream_think[0].get('thought')
+                        pending_content = _append_bounded(
+                            pending_content,
+                            stream_think[0].get('thought'),
+                        )
                 elif think_start and (not stream_think or stream_think[0].get('thought') == '') and not think_end:
                     think_end = True
-                    pending_content += '\n</think>\n'
+                    pending_content = _append_bounded(
+                        pending_content,
+                        '\n</think>\n',
+                    )
                 if stream_output.get('text') is not None:
-                    pending_content += stream_output.get('text')
+                    pending_content = _append_bounded(
+                        pending_content,
+                        stream_output.get('text'),
+                    )
                 # 是否是流式最后一个chunk
                 is_final = False if stream_output.get('finish_reason', False) == 'null' else True
 
@@ -162,12 +183,14 @@ class DashScopeAPIRunner(runner.RequestRunner):
 
                 # 从模型传出的参考资料信息中提取用于替换的字典
                 if references_dict_list is not None:
-                    for doc in references_dict_list:
+                    for doc in references_dict_list[:_MAX_DASHSCOPE_REFERENCES]:
                         if doc.get('index_id') is not None:
                             references_dict[doc.get('index_id')] = doc.get('doc_name')
 
                     # 将参考资料替换到文本中
                     pending_content = self._replace_references(pending_content, references_dict)
+                    if len(pending_content) > _MAX_DASHSCOPE_RESPONSE_CHARS:
+                        raise DashscopeAPIError('Dashscope response exceeds the runtime limit')
 
                 if idx_chunk % 8 == 0 or is_final:
                     yield provider_message.MessageChunk(
@@ -178,7 +201,7 @@ class DashScopeAPIRunner(runner.RequestRunner):
             # 保存当前会话的session_id用于下次对话的语境
             query.session.using_conversation.uuid = stream_output.get('session_id')
         else:
-            for chunk in response:
+            async for chunk in runner.iterate_sync(response):
                 if chunk.get('status_code') != 200:
                     raise DashscopeAPIError(
                         f'Dashscope API 请求失败: status_code={chunk.get("status_code")} message={chunk.get("message")} request_id={chunk.get("request_id")} '
@@ -192,15 +215,27 @@ class DashScopeAPIRunner(runner.RequestRunner):
                 if stream_think and stream_think[0].get('thought'):
                     if not think_start:
                         think_start = True
-                        pending_content += f'<think>\n{stream_think[0].get("thought")}'
+                        pending_content = _append_bounded(
+                            pending_content,
+                            f'<think>\n{stream_think[0].get("thought")}',
+                        )
                     else:
                         # 继续输出 reasoning_content
-                        pending_content += stream_think[0].get('thought')
+                        pending_content = _append_bounded(
+                            pending_content,
+                            stream_think[0].get('thought'),
+                        )
                 elif think_start and (not stream_think or stream_think[0].get('thought') == '') and not think_end:
                     think_end = True
-                    pending_content += '\n</think>\n'
+                    pending_content = _append_bounded(
+                        pending_content,
+                        '\n</think>\n',
+                    )
                 if stream_output.get('text') is not None:
-                    pending_content += stream_output.get('text')
+                    pending_content = _append_bounded(
+                        pending_content,
+                        stream_output.get('text'),
+                    )
 
             # 保存当前会话的session_id用于下次对话的语境
             query.session.using_conversation.uuid = stream_output.get('session_id')
@@ -210,12 +245,14 @@ class DashScopeAPIRunner(runner.RequestRunner):
 
             # 从模型传出的参考资料信息中提取用于替换的字典
             if references_dict_list is not None:
-                for doc in references_dict_list:
+                for doc in references_dict_list[:_MAX_DASHSCOPE_REFERENCES]:
                     if doc.get('index_id') is not None:
                         references_dict[doc.get('index_id')] = doc.get('doc_name')
 
                 # 将参考资料替换到文本中
-                pending_content = self._replace_references(pending_content, references_dict)
+            pending_content = self._replace_references(pending_content, references_dict)
+            if len(pending_content) > _MAX_DASHSCOPE_RESPONSE_CHARS:
+                raise DashscopeAPIError('Dashscope response exceeds the runtime limit')
 
             yield provider_message.Message(
                 role='assistant',
@@ -240,18 +277,16 @@ class DashScopeAPIRunner(runner.RequestRunner):
         biz_params.update(query.variables)
 
         # 发送对话请求
-        response = dashscope.Application.call(
-            api_key=self.api_key,  # 智能体应用的API Key
-            app_id=self.app_id,  # 智能体应用的ID
-            prompt=plain_text,  # 用户输入的文本信息
-            stream=True,  # 流式输出
-            incremental_output=True,  # 增量输出，使用流式输出需要开启增量输出
-            session_id=query.session.using_conversation.uuid,  # 会话ID用于，多轮对话
-            biz_params=biz_params,  # 工作流应用的自定义输入参数传递
-            flow_stream_mode='message_format',  # 消息模式，输出/结束节点的流式结果
-            # rag_options={                                     # 主要用于文件交互，暂不支持
-            #     "session_file_ids": ["FILE_ID1"],             # FILE_ID1 替换为实际的临时文件ID,逗号隔开多个
-            # }
+        response = await asyncio.to_thread(
+            dashscope.Application.call,
+            api_key=self.api_key,
+            app_id=self.app_id,
+            prompt=plain_text,
+            stream=True,
+            incremental_output=True,
+            session_id=query.session.using_conversation.uuid,
+            biz_params=biz_params,
+            flow_stream_mode='message_format',
         )
 
         # 处理API返回的流式输出
@@ -262,7 +297,7 @@ class DashScopeAPIRunner(runner.RequestRunner):
             is_stream = False
         idx_chunk = 0
         if is_stream:
-            for chunk in response:
+            async for chunk in runner.iterate_sync(response):
                 if chunk.get('status_code') != 200:
                     raise DashscopeAPIError(
                         f'Dashscope API 请求失败: status_code={chunk.get("status_code")} message={chunk.get("message")} request_id={chunk.get("request_id")} '
@@ -273,7 +308,10 @@ class DashScopeAPIRunner(runner.RequestRunner):
                 # 获取流式传输的output
                 stream_output = chunk.get('output', {})
                 if stream_output.get('workflow_message') is not None:
-                    pending_content += stream_output.get('workflow_message').get('message').get('content')
+                    pending_content = _append_bounded(
+                        pending_content,
+                        stream_output.get('workflow_message').get('message').get('content'),
+                    )
                 # if stream_output.get('text') is not None:
                 #     pending_content += stream_output.get('text')
 
@@ -284,12 +322,14 @@ class DashScopeAPIRunner(runner.RequestRunner):
 
                 # 从模型传出的参考资料信息中提取用于替换的字典
                 if references_dict_list is not None:
-                    for doc in references_dict_list:
+                    for doc in references_dict_list[:_MAX_DASHSCOPE_REFERENCES]:
                         if doc.get('index_id') is not None:
                             references_dict[doc.get('index_id')] = doc.get('doc_name')
 
                     # 将参考资料替换到文本中
                     pending_content = self._replace_references(pending_content, references_dict)
+                    if len(pending_content) > _MAX_DASHSCOPE_RESPONSE_CHARS:
+                        raise DashscopeAPIError('Dashscope response exceeds the runtime limit')
                 if idx_chunk % 8 == 0 or is_final:
                     yield provider_message.MessageChunk(
                         role='assistant',
@@ -301,7 +341,7 @@ class DashScopeAPIRunner(runner.RequestRunner):
             query.session.using_conversation.uuid = stream_output.get('session_id')
 
         else:
-            for chunk in response:
+            async for chunk in runner.iterate_sync(response):
                 if chunk.get('status_code') != 200:
                     raise DashscopeAPIError(
                         f'Dashscope API 请求失败: status_code={chunk.get("status_code")} message={chunk.get("message")} request_id={chunk.get("request_id")} '
@@ -312,7 +352,10 @@ class DashScopeAPIRunner(runner.RequestRunner):
                 # 获取流式传输的output
                 stream_output = chunk.get('output', {})
                 if stream_output.get('text') is not None:
-                    pending_content += stream_output.get('text')
+                    pending_content = _append_bounded(
+                        pending_content,
+                        stream_output.get('text'),
+                    )
 
                 is_final = False if stream_output.get('finish_reason', False) == 'null' else True
 
@@ -324,12 +367,14 @@ class DashScopeAPIRunner(runner.RequestRunner):
 
             # 从模型传出的参考资料信息中提取用于替换的字典
             if references_dict_list is not None:
-                for doc in references_dict_list:
+                for doc in references_dict_list[:_MAX_DASHSCOPE_REFERENCES]:
                     if doc.get('index_id') is not None:
                         references_dict[doc.get('index_id')] = doc.get('doc_name')
 
                 # 将参考资料替换到文本中
-                pending_content = self._replace_references(pending_content, references_dict)
+            pending_content = self._replace_references(pending_content, references_dict)
+            if len(pending_content) > _MAX_DASHSCOPE_RESPONSE_CHARS:
+                raise DashscopeAPIError('Dashscope response exceeds the runtime limit')
 
             yield provider_message.Message(
                 role='assistant',

@@ -160,7 +160,7 @@ class TestHealthEndpoint:
 
         assert response.status_code == 200
         data = await response.get_json()
-        assert data == {'code': 0, 'msg': 'ok'}
+        assert data == {'code': 0, 'msg': 'ok', 'resources': {}}
 
     @pytest.mark.asyncio
     async def test_healthz_no_auth_required(self, quart_test_client):
@@ -327,9 +327,7 @@ class TestUserInitEndpoint:
         )
 
         assert response.status_code == 200
-        fake_api_app.user_service.reset_password.assert_awaited_once_with(
-            'member@example.com', 'new-member-password'
-        )
+        fake_api_app.user_service.reset_password.assert_awaited_once_with('member@example.com', 'new-member-password')
 
 
 @pytest.mark.usefixtures('mock_circular_import_chain')

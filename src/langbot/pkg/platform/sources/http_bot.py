@@ -54,6 +54,7 @@ _ERR = {
     'bad_signature': (401, 40101),
     'duplicate': (409, 40901),
     'too_large': (413, 41301),
+    'overloaded': (503, 50301),
     'internal': (500, 50001),
 }
 
@@ -63,16 +64,21 @@ _MAX_BODY = 1 * 1024 * 1024
 # Idempotency dedup window (seconds) and cap.
 _IDEMPOTENCY_TTL = 600
 _IDEMPOTENCY_MAX = 4096
+_OUTBOUND_QUEUE_MAX = 100
+_OUTBOUND_IDLE_SECONDS = 60
+_OUTBOUND_STATE_MAX = 4096
+_INBOUND_TASK_MAX = 100
 
 
 class _SessionOutbound:
     """Per-session outbound state: ordered delivery queue + sequence counter."""
 
     def __init__(self) -> None:
-        self.queue: asyncio.Queue = asyncio.Queue(maxsize=1000)
+        self.queue: asyncio.Queue = asyncio.Queue(maxsize=_OUTBOUND_QUEUE_MAX)
         self.worker: asyncio.Task | None = None
         self.sequence: int = 0
         self.last_was_final: bool = True  # so the first reply of a turn starts at seq 1
+        self.last_active: float = time.monotonic()
 
 
 class _SyncCollector:
@@ -99,6 +105,7 @@ class HttpBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     idempotency_cache: dict[str, float] = pydantic.Field(default_factory=dict, exclude=True)
     # session_id -> sync collector (set while a /sync request is awaiting a turn)
     sync_waiters: dict[str, '_SyncCollector'] = pydantic.Field(default_factory=dict, exclude=True)
+    inbound_tasks: set[asyncio.Task] = pydantic.Field(default_factory=set, exclude=True)
 
     model_config = pydantic.ConfigDict(arbitrary_types_allowed=True)
 
@@ -108,6 +115,7 @@ class HttpBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         self.outbound_states = {}
         self.idempotency_cache = {}
         self.sync_waiters = {}
+        self.inbound_tasks = set()
 
     # -- framework hooks ------------------------------------------------------
 
@@ -156,10 +164,19 @@ class HttpBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             await asyncio.sleep(3600)
 
     async def kill(self):
-        # Cancel any outbound workers.
+        tasks = list(self.inbound_tasks)
+        for task in tasks:
+            if not task.done():
+                task.cancel()
         for state in self.outbound_states.values():
             if state.worker and not state.worker.done():
                 state.worker.cancel()
+                tasks.append(state.worker)
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        self.outbound_states.clear()
+        self.sync_waiters.clear()
+        self.inbound_tasks.clear()
         return True
 
     # -- inbound --------------------------------------------------------------
@@ -176,6 +193,24 @@ class HttpBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         expired = [k for k, ts in self.idempotency_cache.items() if now - ts > _IDEMPOTENCY_TTL]
         for k in expired:
             self.idempotency_cache.pop(k, None)
+
+    def _start_inbound_task(self, coro: typing.Coroutine) -> asyncio.Task | None:
+        self.inbound_tasks = {task for task in self.inbound_tasks if not task.done()}
+        if len(self.inbound_tasks) >= _INBOUND_TASK_MAX:
+            coro.close()
+            return None
+        task = asyncio.create_task(coro)
+        self.inbound_tasks.add(task)
+
+        def task_done(done_task: asyncio.Task) -> None:
+            self.inbound_tasks.discard(done_task)
+            if not done_task.cancelled():
+                # Retrieve failures so fire-and-forget callbacks never emit
+                # "Task exception was never retrieved" or retain tracebacks.
+                done_task.exception()
+
+        task.add_done_callback(task_done)
+        return task
 
     async def handle_unified_webhook(self, bot_uuid: str, path: str, request):
         """Handle an inbound POST from the unified webhook dispatcher.
@@ -213,7 +248,7 @@ class HttpBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 return None, self._err('bad_signature', f'invalid signature: {reason}')
 
         try:
-            data = json.loads(body)
+            data = await asyncio.to_thread(json.loads, body)
         except (json.JSONDecodeError, ValueError):
             return None, self._err('bad_request', 'body is not valid JSON')
         if not isinstance(data, dict):
@@ -282,7 +317,8 @@ class HttpBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             return await self._run_sync(event, listener, session_id, message_id)
 
         # Fire-and-collect: kick the pipeline, return 202 immediately.
-        asyncio.create_task(listener(event, self))
+        if self._start_inbound_task(listener(event, self)) is None:
+            return self._err('overloaded', 'too many inbound messages are already being processed')
         return quart.jsonify(
             {
                 'code': 0,
@@ -361,7 +397,9 @@ class HttpBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         return ''
 
     def _next_sequence(self, session_id: str, is_final: bool) -> int:
+        self._prune_outbound_states()
         state = self.outbound_states.setdefault(session_id, _SessionOutbound())
+        state.last_active = time.monotonic()
         if state.last_was_final:
             state.sequence = 1
         else:
@@ -369,8 +407,37 @@ class HttpBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         state.last_was_final = is_final
         return state.sequence
 
+    def _prune_outbound_states(self) -> None:
+        now = time.monotonic()
+        removable = [
+            (session_id, state)
+            for session_id, state in self.outbound_states.items()
+            if (state.worker is None or state.worker.done())
+            and state.queue.empty()
+            and now - state.last_active >= _OUTBOUND_IDLE_SECONDS
+        ]
+        for session_id, state in removable:
+            if self.outbound_states.get(session_id) is state:
+                self.outbound_states.pop(session_id, None)
+
+        overflow = len(self.outbound_states) - _OUTBOUND_STATE_MAX
+        if overflow <= 0:
+            return
+        idle = sorted(
+            (
+                (session_id, state)
+                for session_id, state in self.outbound_states.items()
+                if (state.worker is None or state.worker.done()) and state.queue.empty()
+            ),
+            key=lambda item: item[1].last_active,
+        )
+        for session_id, state in idle[:overflow]:
+            if self.outbound_states.get(session_id) is state:
+                self.outbound_states.pop(session_id, None)
+
     async def _enqueue_callback(self, session_id: str, payload: dict) -> None:
         state = self.outbound_states.setdefault(session_id, _SessionOutbound())
+        state.last_active = time.monotonic()
         if state.worker is None or state.worker.done():
             state.worker = asyncio.create_task(self._outbound_worker(session_id, state))
         try:
@@ -386,13 +453,23 @@ class HttpBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
     async def _outbound_worker(self, session_id: str, state: _SessionOutbound) -> None:
         while True:
-            payload = await state.queue.get()
+            try:
+                payload = await asyncio.wait_for(
+                    state.queue.get(),
+                    timeout=_OUTBOUND_IDLE_SECONDS,
+                )
+            except asyncio.TimeoutError:
+                if self.outbound_states.get(session_id) is state and state.queue.empty():
+                    self.outbound_states.pop(session_id, None)
+                    return
+                continue
             try:
                 await self._deliver_callback(payload)
             except Exception as e:  # noqa: BLE001
                 await self.logger.error(f'http_bot callback delivery failed for {session_id}: {e}')
             finally:
                 state.queue.task_done()
+                state.last_active = time.monotonic()
 
     async def _deliver_callback(self, payload: dict) -> None:
         callback_url = self.config.get('callback_url', '')
@@ -508,8 +585,11 @@ class HttpBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
         collector = _SyncCollector()
         self.sync_waiters[session_id] = collector
+        listener_task = self._start_inbound_task(listener(event, self))
+        if listener_task is None:
+            self.sync_waiters.pop(session_id, None)
+            return self._err('overloaded', 'too many inbound messages are already being processed')
         try:
-            asyncio.create_task(listener(event, self))
             timeout = int(self.config.get('callback_timeout', 15)) * 4
             try:
                 await asyncio.wait_for(collector.done.wait(), timeout=timeout)
@@ -517,6 +597,9 @@ class HttpBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 await self.logger.warning(f'http_bot sync wait timed out for session {session_id}')
         finally:
             self.sync_waiters.pop(session_id, None)
+            state = self.outbound_states.get(session_id)
+            if state is not None and state.worker is None and state.queue.empty():
+                self.outbound_states.pop(session_id, None)
 
         return quart.jsonify(
             {

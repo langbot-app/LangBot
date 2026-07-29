@@ -4,6 +4,7 @@ import asyncio
 import base64
 import binascii
 import hashlib
+import heapq
 import json
 import os
 import time
@@ -22,6 +23,9 @@ CONTROL_PLANE_TYP = 'langbot-control-plane+jwt'
 LAUNCH_KIND = 'workspace.launch'
 EXPECTED_ISSUER = 'langbot-space'
 EXPECTED_AUDIENCE = 'langbot-cloud-runtime'
+_CONSUMED_JTI_MAX_ENTRIES = 4096
+_CONSUMED_JTI_HEAP_COMPACT_FLOOR = 64
+_CONSUMED_JTI_HEAP_MAX_MULTIPLIER = 4
 
 
 class SpaceLaunchError(ValueError):
@@ -107,6 +111,7 @@ class SpaceLaunchService:
         self._wall_time = wall_time
         self._replay_lock = asyncio.Lock()
         self._consumed_jtis: dict[str, int] = {}
+        self._consumed_jti_expiry_heap: list[tuple[int, str]] = []
 
     async def consume_assertion(
         self,
@@ -210,13 +215,38 @@ class SpaceLaunchService:
         digest = hashlib.sha256(jti.encode('utf-8')).hexdigest()
         now = int(self._wall_time())
         async with self._replay_lock:
-            self._consumed_jtis = {existing: expiry for existing, expiry in self._consumed_jtis.items() if expiry > now}
+            self._prune_consumed_jtis(now)
             if digest in self._consumed_jtis:
                 raise SpaceLaunchError('Launch assertion has already been consumed')
-            if len(self._consumed_jtis) >= 4096:
-                oldest = min(self._consumed_jtis, key=lambda key: self._consumed_jtis[key])
-                self._consumed_jtis.pop(oldest, None)
+            if len(self._consumed_jtis) >= _CONSUMED_JTI_MAX_ENTRIES:
+                # Evicting a still-valid digest would make a signed launch
+                # assertion replayable. Bound memory by failing closed instead.
+                raise SpaceLaunchError('Launch assertion replay cache capacity reached')
             self._consumed_jtis[digest] = expires_at
+            heapq.heappush(
+                self._consumed_jti_expiry_heap,
+                (expires_at, digest),
+            )
+
+    def _prune_consumed_jtis(self, now: int) -> None:
+        while self._consumed_jti_expiry_heap:
+            expires_at, digest = self._consumed_jti_expiry_heap[0]
+            current_expiry = self._consumed_jtis.get(digest)
+            if current_expiry != expires_at:
+                heapq.heappop(self._consumed_jti_expiry_heap)
+                continue
+            if expires_at > now:
+                break
+            heapq.heappop(self._consumed_jti_expiry_heap)
+            self._consumed_jtis.pop(digest, None)
+
+        max_heap_entries = max(
+            _CONSUMED_JTI_HEAP_COMPACT_FLOOR,
+            len(self._consumed_jtis) * _CONSUMED_JTI_HEAP_MAX_MULTIPLIER,
+        )
+        if len(self._consumed_jti_expiry_heap) > max_heap_entries:
+            self._consumed_jti_expiry_heap[:] = [(expiry, digest) for digest, expiry in self._consumed_jtis.items()]
+            heapq.heapify(self._consumed_jti_expiry_heap)
 
     @staticmethod
     def _bounded_float(

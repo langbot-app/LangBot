@@ -17,9 +17,16 @@ from langbot.pkg.api.http.service.tenant import TenantContext, require_workspace
 from langbot.pkg.core import app, taskmgr
 from langbot.pkg.core.task_boundary import run_in_workspace_uow
 from langbot.pkg.entity.persistence import rag as persistence_rag
-from langbot.pkg.workspace.errors import WorkspaceNotFoundError
+from langbot.pkg.workspace.errors import WorkspaceInvariantError, WorkspaceNotFoundError
 
 from .base import KnowledgeBaseInterface
+
+
+_MAX_ZIP_ARCHIVE_ENTRIES = 1024
+_MAX_ZIP_DOCUMENTS = 8
+_MAX_ZIP_FILE_BYTES = 10 * 1024 * 1024
+_MAX_ZIP_UNCOMPRESSED_BYTES = 40 * 1024 * 1024
+_MAX_ZIP_COMPRESSION_RATIO = 100
 
 
 class RuntimeKnowledgeBase(KnowledgeBaseInterface):
@@ -261,21 +268,29 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
 
         # run background task asynchronously
         ctx = taskmgr.TaskContext.new()
-        wrapper = self.ap.task_mgr.create_user_task(
-            self._store_file_task(
-                execution_context,
-                file_obj,
-                task_context=ctx,
-                parser_plugin_id=parser_plugin_id,
-            ),
-            kind='knowledge-operation',
-            name=f'knowledge-store-file-{file_id}',
-            label=f'Store file {file_id}',
-            context=ctx,
-            instance_uuid=execution_context.instance_uuid,
-            workspace_uuid=execution_context.workspace_uuid,
-            placement_generation=execution_context.placement_generation,
-        )
+        try:
+            wrapper = self.ap.task_mgr.create_user_task(
+                self._store_file_task(
+                    execution_context,
+                    file_obj,
+                    task_context=ctx,
+                    parser_plugin_id=parser_plugin_id,
+                ),
+                kind='knowledge-operation',
+                name=f'knowledge-store-file-{file_id}',
+                label=f'Store file {file_id}',
+                context=ctx,
+                instance_uuid=execution_context.instance_uuid,
+                workspace_uuid=execution_context.workspace_uuid,
+                placement_generation=execution_context.placement_generation,
+            )
+        except taskmgr.TaskCapacityError:
+            await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.delete(persistence_rag.File)
+                .where(persistence_rag.File.workspace_uuid == execution_context.workspace_uuid)
+                .where(persistence_rag.File.uuid == file_uuid)
+            )
+            raise
         return wrapper.id
 
     async def _store_zip_file(
@@ -301,9 +316,21 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
         try:
             # use utf-8 encoding
             with zipfile.ZipFile(io.BytesIO(zip_bytes), 'r', metadata_encoding='utf-8') as zip_ref:
+                if len(zip_ref.filelist) > _MAX_ZIP_ARCHIVE_ENTRIES:
+                    raise ValueError('ZIP archive contains too many entries')
+
+                supported_files: list[zipfile.ZipInfo] = []
+                total_uncompressed_bytes = 0
                 for file_info in zip_ref.filelist:
                     # skip directories and hidden files
-                    if file_info.is_dir() or file_info.filename.startswith('.'):
+                    normalized_name = file_info.filename.replace('\\', '/').strip('/')
+                    path_parts = normalized_name.split('/')
+                    if (
+                        file_info.is_dir()
+                        or not normalized_name
+                        or any(part.startswith('.') for part in path_parts)
+                        or '__MACOSX' in path_parts
+                    ):
                         continue
 
                     _, file_ext = os.path.splitext(file_info.filename)
@@ -311,16 +338,29 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
                     if file_extension not in supported_extensions:
                         self.ap.logger.debug(f'Skipping unsupported file in ZIP: {file_info.filename}')
                         continue
+                    if file_info.flag_bits & 0x1:
+                        raise ValueError('Encrypted ZIP entries are not supported')
+                    if file_info.file_size > _MAX_ZIP_FILE_BYTES:
+                        raise ValueError(f'ZIP document exceeds the file size limit: {file_info.filename}')
+                    if (
+                        file_info.file_size
+                        and file_info.file_size > max(file_info.compress_size, 1) * _MAX_ZIP_COMPRESSION_RATIO
+                    ):
+                        raise ValueError(f'ZIP document exceeds the compression-ratio limit: {file_info.filename}')
+                    total_uncompressed_bytes += file_info.file_size
+                    if total_uncompressed_bytes > _MAX_ZIP_UNCOMPRESSED_BYTES:
+                        raise ValueError('ZIP documents exceed the uncompressed size limit')
+                    supported_files.append(file_info)
+                    if len(supported_files) > _MAX_ZIP_DOCUMENTS:
+                        raise ValueError('ZIP archive contains too many supported documents')
 
+                for file_info in supported_files:
                     try:
-                        file_content = zip_ref.read(file_info.filename)
+                        file_content = await asyncio.to_thread(zip_ref.read, file_info)
 
                         base_name = file_info.filename.replace('/', '_').replace('\\', '_')
                         file_stem, file_ext = os.path.splitext(base_name)
                         extension = file_ext.lstrip('.')
-
-                        if file_stem.startswith('__MACOSX'):
-                            continue
 
                         extracted_file_id = file_stem + '_' + str(uuid.uuid4())[:8] + '.' + extension
                         extracted_object_key = await self.ap.storage_mgr.save_scoped(
@@ -350,6 +390,8 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
                             f'Extracted and stored file from ZIP: {file_info.filename} -> {extracted_object_key}'
                         )
 
+                    except taskmgr.TaskCapacityError:
+                        raise
                     except Exception as e:
                         self.ap.logger.warning(f'Failed to extract file {file_info.filename} from ZIP: {e}')
                         continue
@@ -580,6 +622,53 @@ class RAGManager:
     def __init__(self, ap: app.Application):
         self.ap = ap
         self.knowledge_bases = {}
+        self._scope_generations: dict[tuple[str, str], int] = {}
+        self._knowledge_keys_by_scope: dict[
+            tuple[str, str],
+            set[tuple[str, str]],
+        ] = {}
+
+    def _cache_runtime(
+        self,
+        runtime: RuntimeKnowledgeBase,
+    ) -> None:
+        context = runtime.execution_context
+        self._observe_execution_context(context)
+        key = (
+            context.workspace_uuid,
+            runtime.get_uuid(),
+        )
+        self.knowledge_bases[key] = runtime
+        scope = (context.instance_uuid, context.workspace_uuid)
+        self._knowledge_keys_by_scope.setdefault(scope, set()).add(key)
+
+    def _pop_runtime(
+        self,
+        context: ExecutionContext,
+        kb_uuid: str,
+    ) -> RuntimeKnowledgeBase | None:
+        key = (context.workspace_uuid, kb_uuid)
+        runtime = self.knowledge_bases.pop(key, None)
+        scope = (context.instance_uuid, context.workspace_uuid)
+        keys = self._knowledge_keys_by_scope.get(scope)
+        if keys is not None:
+            keys.discard(key)
+            if not keys:
+                self._knowledge_keys_by_scope.pop(scope, None)
+                self._scope_generations.pop(scope, None)
+        return runtime
+
+    def _observe_execution_context(self, context: ExecutionContext) -> None:
+        scope = (context.instance_uuid, context.workspace_uuid)
+        previous_generation = self._scope_generations.get(scope)
+        if previous_generation is not None and context.placement_generation < previous_generation:
+            raise WorkspaceInvariantError('RAG runtime placement generation rolled back')
+        if previous_generation == context.placement_generation:
+            return
+        if previous_generation is not None:
+            for key in self._knowledge_keys_by_scope.pop(scope, ()):
+                self.knowledge_bases.pop(key, None)
+        self._scope_generations[scope] = context.placement_generation
 
     async def initialize(self):
         await self.load_knowledge_bases_from_db()
@@ -587,6 +676,8 @@ class RAGManager:
     async def _to_execution_context(
         self,
         context: RequestContext | ExecutionContext,
+        *,
+        _binding_validated: bool = False,
     ) -> ExecutionContext:
         if isinstance(context, RequestContext):
             execution_context = ExecutionContext.from_request(context)
@@ -595,12 +686,19 @@ class RAGManager:
         else:
             raise WorkspaceRequiredError('RequestContext or ExecutionContext is required')
 
-        binding = await self.ap.workspace_service.get_execution_binding(
+        if not _binding_validated:
+            binding = await self.ap.workspace_service.get_execution_binding(
+                execution_context.workspace_uuid,
+                expected_generation=execution_context.placement_generation,
+            )
+            if binding.instance_uuid != execution_context.instance_uuid:
+                raise WorkspaceNotFoundError('Workspace not found')
+        scope = (
+            execution_context.instance_uuid,
             execution_context.workspace_uuid,
-            expected_generation=execution_context.placement_generation,
         )
-        if binding.instance_uuid != execution_context.instance_uuid:
-            raise WorkspaceNotFoundError('Workspace not found')
+        if scope in self._scope_generations:
+            self._observe_execution_context(execution_context)
         return execution_context
 
     async def _get_engine_map(self, context: TenantContext) -> dict[str, dict]:
@@ -748,7 +846,7 @@ class RAGManager:
         try:
             await runtime_kb._on_kb_create(execution_context)
         except Exception:
-            self.knowledge_bases.pop((execution_context.workspace_uuid, kb_uuid), None)
+            self._pop_runtime(execution_context, kb_uuid)
             await self.ap.persistence_mgr.execute_async(
                 sqlalchemy.delete(persistence_rag.KnowledgeBase)
                 .where(persistence_rag.KnowledgeBase.workspace_uuid == execution_context.workspace_uuid)
@@ -763,6 +861,8 @@ class RAGManager:
         self.ap.logger.info('Loading knowledge bases from db...')
 
         self.knowledge_bases = {}
+        self._scope_generations = {}
+        self._knowledge_keys_by_scope = {}
 
         list_bindings = getattr(self.ap.workspace_service, 'list_active_execution_bindings', None)
         tenant_uow = getattr(self.ap.persistence_mgr, 'tenant_uow', None)
@@ -786,6 +886,7 @@ class RAGManager:
                                     placement_generation=binding.placement_generation,
                                 ),
                                 knowledge_base,
+                                _binding_validated=True,
                             )
                         except Exception as e:
                             self.ap.logger.error(
@@ -815,6 +916,8 @@ class RAGManager:
         self,
         context: RequestContext | ExecutionContext,
         knowledge_base_entity: persistence_rag.KnowledgeBase | sqlalchemy.Row | dict,
+        *,
+        _binding_validated: bool = False,
     ) -> RuntimeKnowledgeBase:
         if isinstance(knowledge_base_entity, sqlalchemy.Row):
             # Safe access to _mapping for SQLAlchemy 1.4+
@@ -826,7 +929,10 @@ class RAGManager:
             }
             knowledge_base_entity = persistence_rag.KnowledgeBase(**filtered_dict)
 
-        execution_context = await self._to_execution_context(context)
+        execution_context = await self._to_execution_context(
+            context,
+            _binding_validated=_binding_validated,
+        )
         if knowledge_base_entity.workspace_uuid != execution_context.workspace_uuid:
             raise WorkspaceNotFoundError('Knowledge base not found')
         runtime_knowledge_base = RuntimeKnowledgeBase(
@@ -837,9 +943,7 @@ class RAGManager:
 
         await runtime_knowledge_base.initialize()
 
-        self.knowledge_bases[(execution_context.workspace_uuid, runtime_knowledge_base.get_uuid())] = (
-            runtime_knowledge_base
-        )
+        self._cache_runtime(runtime_knowledge_base)
 
         return runtime_knowledge_base
 
@@ -857,7 +961,7 @@ class RAGManager:
         kb_uuid: str,
     ) -> None:
         execution_context = await self._to_execution_context(context)
-        self.knowledge_bases.pop((execution_context.workspace_uuid, kb_uuid), None)
+        self._pop_runtime(execution_context, kb_uuid)
 
     async def delete_knowledge_base(
         self,
@@ -865,7 +969,7 @@ class RAGManager:
         kb_uuid: str,
     ) -> None:
         execution_context = await self._to_execution_context(context)
-        kb = self.knowledge_bases.pop((execution_context.workspace_uuid, kb_uuid), None)
+        kb = self._pop_runtime(execution_context, kb_uuid)
         if kb is not None:
             await kb.dispose(execution_context)
         else:

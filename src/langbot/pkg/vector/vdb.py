@@ -1,8 +1,36 @@
 from __future__ import annotations
 import abc
 import enum
-from typing import Any, Dict
+from typing import Any, Dict, MutableMapping, MutableSet, TypeVar
 import numpy as np
+
+_CacheValue = TypeVar('_CacheValue')
+
+
+def runtime_cache_limit(ap: Any, default: int = 1024) -> int:
+    try:
+        value = int(ap.instance_config.data.get('vdb', {}).get('runtime_cache_limit', default))
+    except (AttributeError, TypeError, ValueError):
+        value = default
+    return max(value, 1)
+
+
+def remember_bounded_mapping(
+    cache: MutableMapping[str, _CacheValue],
+    key: str,
+    value: _CacheValue,
+    limit: int,
+) -> None:
+    cache.pop(key, None)
+    cache[key] = value
+    while len(cache) > limit:
+        cache.pop(next(iter(cache)))
+
+
+def remember_bounded_set(cache: MutableSet[str], key: str, limit: int) -> None:
+    cache.add(key)
+    while len(cache) > limit:
+        cache.pop()
 
 
 class SearchType(str, enum.Enum):
@@ -14,6 +42,9 @@ class SearchType(str, enum.Enum):
 
 
 class VectorDatabase(abc.ABC):
+    async def close(self) -> None:
+        """Release backend clients and in-process caches."""
+
     @classmethod
     def supported_search_types(cls) -> list[SearchType]:
         """Return the search types supported by this VDB backend.

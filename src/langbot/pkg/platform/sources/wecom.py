@@ -319,6 +319,7 @@ class WecomAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         await keep_alive()
 
     async def kill(self) -> bool:
+        await self.bot.close()
         return False
 
     async def unregister_listener(

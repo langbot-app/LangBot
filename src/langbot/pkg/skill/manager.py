@@ -58,6 +58,9 @@ class SkillManager:
     async def reload_skills(self, context: TenantContext) -> None:
         execution_context = self._execution_context(context)
         key = self._scope_key(execution_context)
+        for existing_key in tuple(self._skills_by_scope):
+            if existing_key[:2] == key[:2] and existing_key != key:
+                self._skills_by_scope.pop(existing_key, None)
         self._skills_by_scope[key] = {}
 
         box_service = getattr(self.ap, 'box_service', None)

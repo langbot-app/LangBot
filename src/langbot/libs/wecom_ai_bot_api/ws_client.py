@@ -47,6 +47,17 @@ CMD_RESPOND_WELCOME = 'aibot_respond_welcome_msg'
 CMD_RESPOND_UPDATE = 'aibot_respond_update_msg'
 CMD_SEND_MSG = 'aibot_send_msg'
 
+_DEDUP_CACHE_MAX = 4096
+_STREAM_CACHE_MAX = 1024
+_FEEDBACK_CACHE_MAX = 4096
+_PENDING_FORM_MAX = 1024
+_PENDING_FORM_TTL_SECONDS = 1800
+_MAX_STREAM_CONTENT_CHARS = 200000
+_MAX_CALLBACK_TASKS = 100
+_MAX_REPLY_WORKERS = 100
+_MAX_REPLY_QUEUE_SIZE = 100
+_MAX_PENDING_ACKS = 256
+
 
 def _generate_req_id(prefix: str) -> str:
     """Generate a unique request ID in the format: {prefix}_{timestamp}_{random}."""
@@ -106,6 +117,7 @@ class WecomBotWsClient:
         # Per-req_id serial reply queues
         self._reply_queues: dict[str, asyncio.Queue] = {}
         self._reply_workers: dict[str, asyncio.Task] = {}
+        self._callback_tasks: set[asyncio.Task] = set()
         self._reply_ack_timeout = 5.0
 
         # Stream ID tracking for WebSocket mode
@@ -134,6 +146,31 @@ class WecomBotWsClient:
         # template_card the client builds via `push_form_pause`. Set via
         # `set_card_source` from the adapter after reading config.
         self.card_source: Optional[dict] = None
+
+    @staticmethod
+    def _cap_mapping(mapping: dict, max_entries: int) -> None:
+        while len(mapping) > max_entries:
+            mapping.pop(next(iter(mapping)), None)
+
+    def _prune_stream_state(self) -> None:
+        while len(self._stream_sessions) > _STREAM_CACHE_MAX:
+            msg_id = next(iter(self._stream_sessions))
+            self._stream_sessions.pop(msg_id, None)
+            self._stream_ids.pop(msg_id, None)
+            self._stream_last_content.pop(msg_id, None)
+            task_id = self._task_id_by_msg.pop(msg_id, None)
+            if task_id:
+                self._pending_forms_by_task.pop(task_id, None)
+
+    def _prune_pending_forms(self) -> None:
+        cutoff = time.monotonic() - _PENDING_FORM_TTL_SECONDS
+        for task_id, pending in tuple(self._pending_forms_by_task.items()):
+            if float(pending.get('created_at', 0.0)) <= cutoff:
+                self._drop_pending_form_task(task_id, pending)
+        while len(self._pending_forms_by_task) > _PENDING_FORM_MAX:
+            task_id = next(iter(self._pending_forms_by_task))
+            pending = self._pending_forms_by_task.get(task_id, {})
+            self._drop_pending_form_task(task_id, pending)
 
     # ── Public API ──────────────────────────────────────────────────
 
@@ -173,17 +210,40 @@ class WecomBotWsClient:
     async def disconnect(self):
         """Gracefully disconnect from the WebSocket server."""
         self._running = False
+        heartbeat_tasks = []
         if self._heartbeat_task and not self._heartbeat_task.done():
             self._heartbeat_task.cancel()
-        for task in self._reply_workers.values():
+            heartbeat_tasks.append(self._heartbeat_task)
+        reply_workers = list(self._reply_workers.values())
+        for task in reply_workers:
             if not task.done():
                 task.cancel()
+        callback_tasks = list(self._callback_tasks)
+        for task in callback_tasks:
+            if not task.done():
+                task.cancel()
+        shutdown_tasks = [*heartbeat_tasks, *reply_workers, *callback_tasks]
+        if shutdown_tasks:
+            await asyncio.gather(*shutdown_tasks, return_exceptions=True)
+        self._clear_pending_acks('Connection closed')
         if self._ws and not self._ws.closed:
             await self._ws.close()
         self._ws = None
         if self._session and not self._session.closed:
             await self._session.close()
         self._session = None
+        self._heartbeat_task = None
+        self._reply_queues.clear()
+        self._reply_workers.clear()
+        self._callback_tasks.clear()
+        self._stream_ids.clear()
+        self._stream_last_content.clear()
+        self._stream_sessions.clear()
+        self._feedback_sessions.clear()
+        self._msg_feedback_ids.clear()
+        self._pending_forms_by_task.clear()
+        self._task_id_by_msg.clear()
+        self._msg_id_map.clear()
 
     def on_message(self, msg_type: str) -> Callable:
         """Decorator to register a message handler.
@@ -366,8 +426,10 @@ class WecomBotWsClient:
             'chat_id': session_info.get('chat_id', ''),
             'stream_id': stream_id,
             'req_id': req_id,
+            'created_at': time.monotonic(),
         }
         self._task_id_by_msg[msg_id] = task_id
+        self._prune_pending_forms()
 
         card_payload = build_human_input_template_card_payload(
             form_data,
@@ -458,6 +520,8 @@ class WecomBotWsClient:
                 next_content = previous_content
             else:
                 next_content = previous_content + content if previous_content else content
+            if len(next_content) > _MAX_STREAM_CONTENT_CHARS:
+                next_content = next_content[-_MAX_STREAM_CONTENT_CHARS:]
 
             # Skip sending if content hasn't changed (e.g. during tool call argument streaming)
             if not is_final and next_content == previous_content:
@@ -485,6 +549,8 @@ class WecomBotWsClient:
                 session_info = self._stream_sessions.get(msg_id)
                 if session_info:
                     self._feedback_sessions[feedback_id] = session_info
+                    self._cap_mapping(self._feedback_sessions, _FEEDBACK_CACHE_MAX)
+                self._cap_mapping(self._msg_feedback_ids, _FEEDBACK_CACHE_MAX)
 
             # WeCom replaces the displayed stream content on each refresh, so
             # every frame must contain the complete snapshot, not only a delta.
@@ -516,7 +582,7 @@ class WecomBotWsClient:
 
         self._session = aiohttp.ClientSession()
         try:
-            self._ws = await self._session.ws_connect(self.ws_url)
+            self._ws = await self._session.ws_connect(self.ws_url, max_msg_size=1024 * 1024)
             self._missed_pong_count = 0
             self._reconnect_attempts = 0
             await self.logger.info('WebSocket connected, sending auth...')
@@ -539,6 +605,8 @@ class WecomBotWsClient:
             finally:
                 if self._heartbeat_task and not self._heartbeat_task.done():
                     self._heartbeat_task.cancel()
+                    await asyncio.gather(self._heartbeat_task, return_exceptions=True)
+                self._heartbeat_task = None
                 self._clear_pending_acks('Connection closed')
         finally:
             if self._ws and not self._ws.closed:
@@ -565,7 +633,7 @@ class WecomBotWsClient:
         try:
             msg = await asyncio.wait_for(self._ws.receive(), timeout=10.0)
             if msg.type in (aiohttp.WSMsgType.TEXT,):
-                frame = json.loads(msg.data)
+                frame = await asyncio.to_thread(json.loads, msg.data)
                 req_id = frame.get('headers', {}).get('req_id', '')
                 if req_id.startswith(CMD_SUBSCRIBE) and frame.get('errcode') == 0:
                     return True
@@ -614,7 +682,7 @@ class WecomBotWsClient:
                 break
             if msg.type == aiohttp.WSMsgType.TEXT:
                 try:
-                    frame = json.loads(msg.data)
+                    frame = await asyncio.to_thread(json.loads, msg.data)
                     await self._handle_frame(frame)
                 except json.JSONDecodeError:
                     await self.logger.error(f'Failed to parse WebSocket message: {str(msg.data)[:200]}')
@@ -622,7 +690,7 @@ class WecomBotWsClient:
                     await self.logger.error(f'Error handling frame: {traceback.format_exc()}')
             elif msg.type == aiohttp.WSMsgType.BINARY:
                 try:
-                    frame = json.loads(msg.data)
+                    frame = await asyncio.to_thread(json.loads, msg.data)
                     await self._handle_frame(frame)
                 except Exception:
                     await self.logger.error(f'Error handling binary frame: {traceback.format_exc()}')
@@ -638,12 +706,14 @@ class WecomBotWsClient:
 
         # Message push
         if cmd == CMD_MSG_CALLBACK:
-            asyncio.create_task(self._handle_message_callback(frame))
+            if not self._start_callback_task(self._handle_message_callback(frame)):
+                await self.logger.warning('WeCom WebSocket callback capacity reached; dropping message')
             return
 
         # Event push
         if cmd == CMD_EVENT_CALLBACK:
-            asyncio.create_task(self._handle_event_callback(frame))
+            if not self._start_callback_task(self._handle_event_callback(frame)):
+                await self.logger.warning('WeCom WebSocket callback capacity reached; dropping event')
             return
 
         # No cmd → response/ACK frame, dispatch by req_id prefix
@@ -664,6 +734,27 @@ class WecomBotWsClient:
 
         # Unknown frame
         await self.logger.warning(f'Unknown frame: {_frame_snippet(frame)}')
+
+    def _start_callback_task(self, coro) -> bool:
+        """Start one bounded inbound frame callback."""
+
+        for task in tuple(self._callback_tasks):
+            if task.done():
+                self._callback_tasks.discard(task)
+        if len(self._callback_tasks) >= _MAX_CALLBACK_TASKS:
+            coro.close()
+            return False
+
+        task = asyncio.create_task(coro)
+        self._callback_tasks.add(task)
+
+        def done(done_task: asyncio.Task) -> None:
+            self._callback_tasks.discard(done_task)
+            if not done_task.cancelled():
+                done_task.exception()
+
+        task.add_done_callback(done)
+        return True
 
     async def _handle_message_callback(self, frame: dict):
         """Handle an incoming message callback frame."""
@@ -697,6 +788,7 @@ class WecomBotWsClient:
                     'chat_id': message_data.get('chatid', ''),
                     'chat_type': message_data.get('type', 'single'),
                 }
+                self._prune_stream_state()
             message_data['stream_id'] = stream_id
             message_data['req_id'] = req_id
 
@@ -748,7 +840,7 @@ class WecomBotWsClient:
                 )
 
                 # Look up session by feedback_id
-                session_info = self._feedback_sessions.get(feedback_id)
+                session_info = self._feedback_sessions.pop(feedback_id, None)
                 session = None
                 if session_info:
                     session = StreamSession(
@@ -805,6 +897,10 @@ class WecomBotWsClient:
         pending = self._pending_forms_by_task.get(task_id)
         if pending is None:
             await self.logger.warning(f'No pending_form found for task_id={task_id} (ws); card event ignored')
+            return
+        if time.monotonic() - float(pending.get('created_at', 0.0)) > _PENDING_FORM_TTL_SECONDS:
+            self._drop_pending_form_task(task_id, pending)
+            await self.logger.warning(f'Pending form expired for task_id={task_id} (ws)')
             return
 
         req_id_for_update = frame.get('headers', {}).get('req_id', '')
@@ -868,6 +964,7 @@ class WecomBotWsClient:
                 self._msg_id_map[message_id] += 1
                 return
             self._msg_id_map[message_id] = 1
+            self._cap_mapping(self._msg_id_map, _DEDUP_CACHE_MAX)
 
             msg_type = event.type
             if msg_type in self._message_handlers:
@@ -899,40 +996,61 @@ class WecomBotWsClient:
 
         # Ensure serial delivery per req_id
         if req_id not in self._reply_queues:
-            self._reply_queues[req_id] = asyncio.Queue()
+            if len(self._reply_queues) >= _MAX_REPLY_WORKERS:
+                await self.logger.warning('WeCom WebSocket reply worker capacity reached; dropping reply')
+                return None
+            self._reply_queues[req_id] = asyncio.Queue(maxsize=_MAX_REPLY_QUEUE_SIZE)
             self._reply_workers[req_id] = asyncio.create_task(self._reply_queue_worker(req_id))
 
         future: asyncio.Future = asyncio.get_event_loop().create_future()
-        await self._reply_queues[req_id].put((frame, future))
+        try:
+            self._reply_queues[req_id].put_nowait((frame, future))
+        except asyncio.QueueFull:
+            await self.logger.warning(f'WeCom WebSocket reply queue full for req_id={req_id}; dropping reply')
+            return None
         return await future
 
     async def _reply_queue_worker(self, req_id: str):
         """Process reply queue items serially for a given req_id."""
         queue = self._reply_queues[req_id]
+        current_future: asyncio.Future | None = None
         try:
             while self._running:
                 try:
-                    frame, future = await asyncio.wait_for(queue.get(), timeout=60.0)
+                    frame, current_future = await asyncio.wait_for(queue.get(), timeout=60.0)
                 except asyncio.TimeoutError:
                     # Queue idle, clean up worker
                     break
 
                 try:
                     ack = await self._send_and_wait_ack(frame)
-                    if not future.done():
-                        future.set_result(ack)
+                    if not current_future.done():
+                        current_future.set_result(ack)
                 except Exception as e:
-                    if not future.done():
-                        future.set_exception(e)
+                    if not current_future.done():
+                        current_future.set_exception(e)
+                finally:
+                    current_future = None
         except asyncio.CancelledError:
-            pass
+            if current_future is not None and not current_future.done():
+                current_future.set_exception(ConnectionError('Connection closed'))
         finally:
+            while True:
+                try:
+                    _, future = queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    break
+                if not future.done():
+                    future.set_exception(ConnectionError('Reply worker stopped'))
             self._reply_queues.pop(req_id, None)
             self._reply_workers.pop(req_id, None)
 
     async def _send_and_wait_ack(self, frame: dict) -> Optional[dict]:
         """Send a frame and wait for the corresponding ACK."""
         req_id = frame['headers']['req_id']
+        if len(self._pending_acks) >= _MAX_PENDING_ACKS:
+            await self.logger.warning('WeCom WebSocket pending ACK capacity reached; dropping frame')
+            return None
         ack_future: asyncio.Future = asyncio.get_event_loop().create_future()
         self._pending_acks[req_id] = ack_future
 

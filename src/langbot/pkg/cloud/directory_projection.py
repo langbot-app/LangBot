@@ -34,6 +34,7 @@ from .directory import (
     DirectorySnapshot,
     DirectoryWorkspace,
 )
+from .entitlements import EntitlementResolver
 
 
 if TYPE_CHECKING:
@@ -257,6 +258,7 @@ class DirectoryProjectionService:
 
             await session.flush()
 
+        await self._reconcile_entitlement_snapshot_set(snapshot)
         self._record_success()
         self._consumer_cursor = snapshot.cursor
 
@@ -343,9 +345,44 @@ class DirectoryProjectionService:
             await session.flush()
             projection_caught_up = batch.cursor == batch.high_water_cursor and int(state.cursor) == batch.cursor
 
+        await self._update_entitlement_workspace_activity(
+            returned.values(),
+            requested_workspace_uuids=requested,
+        )
         if projection_caught_up:
             self._record_success()
         self._consumer_cursor = batch.cursor
+
+    async def _reconcile_entitlement_snapshot_set(
+        self,
+        snapshot: DirectorySnapshot,
+    ) -> None:
+        resolver = getattr(self.ap, 'entitlement_resolver', None)
+        if not isinstance(resolver, EntitlementResolver):
+            return
+        await resolver.reconcile_active_workspaces(
+            {workspace.uuid for workspace in snapshot.workspaces if workspace.status == WorkspaceStatus.ACTIVE.value}
+        )
+
+    async def _update_entitlement_workspace_activity(
+        self,
+        workspaces: Iterable[DirectoryWorkspace],
+        *,
+        requested_workspace_uuids: set[str],
+    ) -> None:
+        resolver = getattr(self.ap, 'entitlement_resolver', None)
+        if not isinstance(resolver, EntitlementResolver):
+            return
+        returned = {workspace.uuid: workspace for workspace in workspaces}
+        active = {
+            workspace_uuid
+            for workspace_uuid, workspace in returned.items()
+            if workspace.status == WorkspaceStatus.ACTIVE.value
+        }
+        await resolver.update_workspace_activity(
+            active_workspace_uuids=active,
+            inactive_workspace_uuids=requested_workspace_uuids - active,
+        )
 
     async def apply_event_batch(self, batch: DirectoryEventBatch) -> None:
         """Advance non-directory events after the adapter refreshes local caches."""

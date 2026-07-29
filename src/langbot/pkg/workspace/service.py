@@ -53,6 +53,13 @@ class WorkspaceService:
         self.ap = ap
         self.policy = policy or SingleWorkspacePolicy()
         self._instance_uuid = instance_uuid
+        self._startup_execution_bindings: (
+            tuple[
+                WorkspaceExecutionBinding,
+                ...,
+            ]
+            | None
+        ) = None
 
     @property
     def instance_uuid(self) -> str:
@@ -129,6 +136,38 @@ class WorkspaceService:
         of work.
         """
 
+        self._require_deployment_admission()
+        self._require_directory_projection()
+        if self._startup_execution_bindings is not None:
+            return list(self._startup_execution_bindings)
+        return await self._discover_active_execution_bindings()
+
+    async def prime_startup_execution_bindings(
+        self,
+    ) -> list[WorkspaceExecutionBinding]:
+        """Freeze one validated binding snapshot during the serial boot graph.
+
+        Directory synchronization starts only after ``BuildAppStage`` has
+        finished, so all runtime managers would otherwise rediscover and
+        revalidate the same active Workspace set independently. A boot-scoped
+        immutable snapshot removes those repeated tenant transactions without
+        weakening request-time generation checks.
+        """
+
+        self._require_deployment_admission()
+        self._require_directory_projection()
+        if self._startup_execution_bindings is None:
+            self._startup_execution_bindings = tuple(await self._discover_active_execution_bindings())
+        return list(self._startup_execution_bindings)
+
+    def release_startup_execution_bindings(self) -> None:
+        """Release the boot-only projection snapshot before background sync."""
+
+        self._startup_execution_bindings = None
+
+    async def _discover_active_execution_bindings(
+        self,
+    ) -> list[WorkspaceExecutionBinding]:
         instance_discovery_uow = getattr(self.ap.persistence_mgr, 'instance_discovery_uow', None)
         statement = (
             sqlalchemy.select(WorkspaceExecutionState.workspace_uuid)

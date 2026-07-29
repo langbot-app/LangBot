@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import os
 import base64
 import time
 import re
+import uuid
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -28,28 +30,34 @@ class Text2ImageStrategy(strategy_model.LongTextStrategy):
         )
 
     async def process(self, message: str, query: pipeline_query.Query) -> list[platform_message.MessageComponent]:
-        img_path = self.text_to_image(
-            text_str=message,
-            save_as='temp/{}.png'.format(int(time.time())),
-            query=query,
-        )
+        def render() -> str:
+            render_id = f'{int(time.time())}-{uuid.uuid4().hex}'
+            img_path = f'temp/{render_id}.png'
+            compressed_path = f'temp/{render_id}-compressed.png'
+            try:
+                self.text_to_image(
+                    text_str=message,
+                    save_as=img_path,
+                    query=query,
+                )
+                compressed_path, _ = self.compress_image(
+                    img_path,
+                    outfile=compressed_path,
+                )
+                with open(compressed_path, 'rb') as f:
+                    return base64.b64encode(f.read()).decode('utf-8')
+            finally:
+                for path in {img_path, compressed_path}:
+                    if os.path.exists(path):
+                        os.remove(path)
 
-        compressed_path, size = self.compress_image(img_path, outfile='temp/{}_compressed.png'.format(int(time.time())))
-
-        with open(compressed_path, 'rb') as f:
-            img = f.read()
-
-        b64 = base64.b64encode(img)
-
-        # 删除图片
-        os.remove(img_path)
-
-        if os.path.exists(compressed_path):
-            os.remove(compressed_path)
+        # Font measurement, image rendering and compression are CPU-bound PIL
+        # work and must not block the shared asyncio loop for every tenant.
+        image_base64 = await asyncio.to_thread(render)
 
         return [
             platform_message.Image(
-                base64=b64.decode('utf-8'),
+                base64=image_base64,
             )
         ]
 
@@ -126,6 +134,36 @@ class Text2ImageStrategy(strategy_model.LongTextStrategy):
             o_size = self.get_size(outfile)
         return outfile, self.get_size(outfile)
 
+    def _split_text_lines(self, text_str: str, text_width: int, font) -> list[str]:
+        """Split text while guaranteeing that every loop iteration advances."""
+
+        final_lines: list[str] = []
+        text_width = max(int(text_width), 1)
+        for line in text_str.replace('\t', '    ').split('\n'):
+            line_width = font.getlength(line)
+            if not line or line_width < text_width:
+                final_lines.append(line)
+                continue
+
+            rest_text = line
+            while rest_text:
+                line_width = max(font.getlength(rest_text), 1)
+                point = int(len(rest_text) * (text_width / line_width))
+                point = max(1, min(point, len(rest_text)))
+
+                for number, number_index in self.indexNumber(rest_text):
+                    if number_index < point < number_index + len(number) and number_index != 0:
+                        point = number_index
+                        break
+
+                point = max(1, min(point, len(rest_text)))
+                final_lines.append(rest_text[:point])
+                rest_text = rest_text[point:]
+                if rest_text and font.getlength(rest_text) < text_width:
+                    final_lines.append(rest_text)
+                    break
+        return final_lines
+
     def text_to_image(
         self,
         text_str: str,
@@ -133,50 +171,9 @@ class Text2ImageStrategy(strategy_model.LongTextStrategy):
         width=800,
         query: pipeline_query.Query = None,
     ):
-        text_str = text_str.replace('\t', '    ')
-
-        # 分行
-        lines = text_str.split('\n')
-
-        # 计算并分割
-        final_lines = []
-
-        text_width = width - 80
-
-        self.ap.logger.debug('lines: {}, text_width: {}'.format(lines, text_width))
-        for line in lines:
-            # 如果长了就分割
-            line_width = self.get_font(query.pipeline_config['output']['long-text-processing']['font-path']).getlength(
-                line
-            )
-            self.ap.logger.debug('line_width: {}'.format(line_width))
-            if line_width < text_width:
-                final_lines.append(line)
-                continue
-            else:
-                rest_text = line
-                while True:
-                    # 分割最前面的一行
-                    point = int(len(rest_text) * (text_width / line_width))
-
-                    # 检查断点是否在数字中间
-                    numbers = self.indexNumber(rest_text)
-
-                    for number in numbers:
-                        if number[1] < point < number[1] + len(number[0]) and number[1] != 0:
-                            point = number[1]
-                            break
-
-                    final_lines.append(rest_text[:point])
-                    rest_text = rest_text[point:]
-                    line_width = self.get_font(
-                        query.pipeline_config['output']['long-text-processing']['font-path']
-                    ).getlength(rest_text)
-                    if line_width < text_width:
-                        final_lines.append(rest_text)
-                        break
-                    else:
-                        continue
+        font = self.get_font(query.pipeline_config['output']['long-text-processing']['font-path'])
+        text_width = max(width - 80, 1)
+        final_lines = self._split_text_lines(text_str, text_width, font)
         # 准备画布
         img = Image.new('RGBA', (width, max(280, len(final_lines) * 35 + 65)), (255, 255, 255, 255))
         draw = ImageDraw.Draw(img, mode='RGBA')
@@ -191,7 +188,7 @@ class Text2ImageStrategy(strategy_model.LongTextStrategy):
                 (offset_x, offset_y + 35 * line_number),
                 final_line,
                 fill=(0, 0, 0),
-                font=self.get_font(query.pipeline_config['output']['long-text-processing']['font-path']),
+                font=font,
             )
             # 遍历此行,检查是否有emoji
             idx_in_line = 0

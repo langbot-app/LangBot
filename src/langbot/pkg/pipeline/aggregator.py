@@ -72,6 +72,12 @@ class MessageAggregator:
         self.ap = ap
         self.buffers = {}
         self.lock = asyncio.Lock()
+        concurrency = self.ap.instance_config.data.get('concurrency', {})
+        self.max_buffers = max(int(concurrency.get('pending_queries', 1000)), 1)
+        self.max_buffers_per_workspace = max(
+            int(concurrency.get('pending_queries_per_workspace', 100)),
+            1,
+        )
 
     def _get_aggregation_key(
         self,
@@ -184,15 +190,26 @@ class MessageAggregator:
         )
 
         force_flush = False
+        bypass_aggregation = False
         async with self.lock:
             buffer = self.buffers.get(aggregation_key)
             if buffer is None:
-                buffer = SessionBuffer(
-                    aggregation_key=aggregation_key,
-                    execution_context=execution_context,
-                    messages=[pending_msg],
+                workspace_buffer_count = sum(
+                    1
+                    for key in self.buffers
+                    if key[0] == execution_context.instance_uuid
+                    and key[1] == execution_context.workspace_uuid
+                    and key[2] == execution_context.placement_generation
                 )
-                self.buffers[aggregation_key] = buffer
+                if len(self.buffers) >= self.max_buffers or workspace_buffer_count >= self.max_buffers_per_workspace:
+                    bypass_aggregation = True
+                else:
+                    buffer = SessionBuffer(
+                        aggregation_key=aggregation_key,
+                        execution_context=execution_context,
+                        messages=[pending_msg],
+                    )
+                    self.buffers[aggregation_key] = buffer
             else:
                 if buffer.execution_context != execution_context:
                     raise ExecutionContextMismatchError('Aggregation buffer ExecutionContext changed for the same key')
@@ -200,14 +217,31 @@ class MessageAggregator:
                     buffer.timer_task.cancel()
                 buffer.messages.append(pending_msg)
 
-            buffer.last_message_time = time.time()
-            if len(buffer.messages) >= MAX_BUFFER_MESSAGES:
-                force_flush = True
-            else:
-                buffer.timer_task = create_detached_task(
-                    self._delayed_flush(aggregation_key, delay, execution_context),
-                    after_commit_manager=getattr(self.ap, 'persistence_mgr', None),
-                )
+            if not bypass_aggregation:
+                buffer.last_message_time = time.time()
+                if len(buffer.messages) >= MAX_BUFFER_MESSAGES:
+                    force_flush = True
+                else:
+                    buffer.timer_task = create_detached_task(
+                        self._delayed_flush(aggregation_key, delay, execution_context),
+                        after_commit_manager=getattr(self.ap, 'persistence_mgr', None),
+                        workspace_uuid=execution_context.workspace_uuid,
+                    )
+
+        if bypass_aggregation:
+            await self.ap.query_pool.add_query(
+                bot_uuid=bot_uuid,
+                launcher_type=launcher_type,
+                launcher_id=launcher_id,
+                sender_id=sender_id,
+                message_event=message_event,
+                message_chain=message_chain,
+                adapter=adapter,
+                pipeline_uuid=pipeline_uuid,
+                routed_by_rule=routed_by_rule,
+                execution_context=execution_context,
+            )
+            return
 
         if force_flush:
             await self._flush_buffer(aggregation_key, execution_context)

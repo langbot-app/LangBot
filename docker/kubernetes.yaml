@@ -91,6 +91,12 @@ metadata:
 data:
   TZ: "Asia/Shanghai"
   PLUGIN__RUNTIME_WS_URL: "ws://langbot-plugin-runtime:5400/control/ws"
+  SYSTEM__BLOCKING_EXECUTOR__MAX_WORKERS: "8"
+  SYSTEM__BLOCKING_EXECUTOR__MAX_PENDING: "128"
+  SYSTEM__BLOCKING_EXECUTOR__MAX_INFLIGHT_PER_SCOPE: "4"
+  LANGBOT_BLOCKING_EXECUTOR_MAX_WORKERS: "8"
+  LANGBOT_BLOCKING_EXECUTOR_MAX_PENDING: "128"
+  LANGBOT_BLOCKING_EXECUTOR_MAX_INFLIGHT_PER_SCOPE: "4"
   # Box sandbox runtime endpoint. LangBot connects to the Box runtime over
   # WebSocket. The hostname MUST match the langbot-box Service name. Note the
   # in-container default ("langbot_box") uses an underscore, which is an
@@ -136,6 +142,21 @@ spec:
             secretKeyRef:
               name: langbot-plugin-runtime-control
               key: token
+        - name: LANGBOT_BLOCKING_EXECUTOR_MAX_WORKERS
+          valueFrom:
+            configMapKeyRef:
+              name: langbot-config
+              key: LANGBOT_BLOCKING_EXECUTOR_MAX_WORKERS
+        - name: LANGBOT_BLOCKING_EXECUTOR_MAX_PENDING
+          valueFrom:
+            configMapKeyRef:
+              name: langbot-config
+              key: LANGBOT_BLOCKING_EXECUTOR_MAX_PENDING
+        - name: LANGBOT_BLOCKING_EXECUTOR_MAX_INFLIGHT_PER_SCOPE
+          valueFrom:
+            configMapKeyRef:
+              name: langbot-config
+              key: LANGBOT_BLOCKING_EXECUTOR_MAX_INFLIGHT_PER_SCOPE
         volumeMounts:
         - name: plugin-data
           mountPath: /app/data/plugins
@@ -262,9 +283,23 @@ spec:
             secretKeyRef:
               name: langbot-box-control
               key: token
+        - name: LANGBOT_BLOCKING_EXECUTOR_MAX_WORKERS
+          valueFrom:
+            configMapKeyRef:
+              name: langbot-config
+              key: LANGBOT_BLOCKING_EXECUTOR_MAX_WORKERS
+        - name: LANGBOT_BLOCKING_EXECUTOR_MAX_PENDING
+          valueFrom:
+            configMapKeyRef:
+              name: langbot-config
+              key: LANGBOT_BLOCKING_EXECUTOR_MAX_PENDING
+        - name: LANGBOT_BLOCKING_EXECUTOR_MAX_INFLIGHT_PER_SCOPE
+          valueFrom:
+            configMapKeyRef:
+              name: langbot-config
+              key: LANGBOT_BLOCKING_EXECUTOR_MAX_INFLIGHT_PER_SCOPE
         # The Box runtime does NOT read box.local.* / BOX__* from its own env;
         # it receives its functional configuration from LangBot via INIT.
-        # LANGBOT_BOX_CONTROL_TOKEN is the security-only exception.
         volumeMounts:
         # Box workspace root — identical path on node, box, and sandbox
         # containers (see the IMPORTANT note above).
@@ -290,7 +325,9 @@ spec:
           failureThreshold: 3
         readinessProbe:
           httpGet:
-            path: /healthz
+            # Unlike liveness, readiness validates the configured backend and
+            # all strict managed-mode isolation guarantees.
+            path: /readyz
             port: 5410
           initialDelaySeconds: 10
           periodSeconds: 5
@@ -379,6 +416,21 @@ spec:
             secretKeyRef:
               name: langbot-plugin-runtime-control
               key: token
+        - name: SYSTEM__BLOCKING_EXECUTOR__MAX_WORKERS
+          valueFrom:
+            configMapKeyRef:
+              name: langbot-config
+              key: SYSTEM__BLOCKING_EXECUTOR__MAX_WORKERS
+        - name: SYSTEM__BLOCKING_EXECUTOR__MAX_PENDING
+          valueFrom:
+            configMapKeyRef:
+              name: langbot-config
+              key: SYSTEM__BLOCKING_EXECUTOR__MAX_PENDING
+        - name: SYSTEM__BLOCKING_EXECUTOR__MAX_INFLIGHT_PER_SCOPE
+          valueFrom:
+            configMapKeyRef:
+              name: langbot-config
+              key: SYSTEM__BLOCKING_EXECUTOR__MAX_INFLIGHT_PER_SCOPE
         # Box (sandbox) runtime endpoint. Connects LangBot to the langbot-box
         # Service over WebSocket. Remove this (and the langbot-box Deployment)
         # and set BOX__ENABLED=false if you do not want the sandbox.
@@ -426,7 +478,7 @@ spec:
         # Liveness probe to restart container if it becomes unresponsive
         livenessProbe:
           httpGet:
-            path: /
+            path: /healthz
             port: 5300
           initialDelaySeconds: 60
           periodSeconds: 10
@@ -435,7 +487,7 @@ spec:
         # Readiness probe to know when container is ready to accept traffic
         readinessProbe:
           httpGet:
-            path: /
+            path: /healthz
             port: 5300
           initialDelaySeconds: 30
           periodSeconds: 5

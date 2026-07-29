@@ -367,6 +367,12 @@ async def test_release_entrypoint_holds_lock_migrates_validates_and_disposes(
         with pytest.raises(RuntimeError, match="table 'metadata' grants are incomplete"):
             await manager._validate_configured_runtime_postgres_role(require_grants=True)
     finally:
+        manager = getattr(ap, 'persistence_mgr', None)
+        if isinstance(manager, PersistenceManager):
+            # The one-shot entrypoint disposes its pool before returning. This
+            # test deliberately reuses the manager for catalog mutation checks,
+            # which can open a fresh pool and therefore owns a second shutdown.
+            await manager.shutdown()
         async with postgres_engine.connect() as conn:
             await conn.execute(text(f'DROP OWNED BY {quote(runtime_role)}'))
             await conn.execute(text(f'DROP ROLE IF EXISTS {quote(runtime_role)}'))
@@ -631,6 +637,11 @@ async def test_runtime_role_catalog_validator_rejects_delegation_and_escape_hatc
         async with postgres_engine.connect() as conn:
             await conn.execute(text(f'ALTER EXTENSION vector DROP FUNCTION public.{quote(security_definer)}()'))
     finally:
+        manager = getattr(ap, 'persistence_mgr', None)
+        if isinstance(manager, PersistenceManager):
+            # The entrypoint disposed the release pool before returning; all
+            # validator calls above happened afterward and can reopen it.
+            await manager.shutdown()
         async with postgres_engine.connect() as conn:
             await conn.execute(text(f'ALTER DATABASE {quote(database_name)} RESET search_path'))
             await conn.execute(text(f'ALTER ROLE {quote(runtime_role)} RESET search_path'))

@@ -10,6 +10,7 @@ import langbot_plugin.api.entities.builtin.platform.message as platform_message
 
 from langbot.libs.qq_official_api.api import (
     QQ_SELECT_ACTION_PREFIX,
+    QQOfficialClient,
     build_keyboard_from_select_field,
     get_select_field_options,
     resolve_select_button_action,
@@ -47,6 +48,28 @@ def test_qq_select_button_resolves_field_and_value():
     assert get_select_field_options(form_data) == ('choice', ['A', 'B', 'C'])
     assert resolve_select_button_action(form_data, f'{QQ_SELECT_ACTION_PREFIX}1') == ('choice', 'B')
     assert resolve_select_button_action(form_data, f'{QQ_SELECT_ACTION_PREFIX}99') is None
+
+
+@pytest.mark.asyncio
+async def test_qq_seed_rejects_empty_secret_without_spinning():
+    client = QQOfficialClient('', 'token', 'app-id', AsyncMock())
+
+    with pytest.raises(ValueError, match='must not be empty'):
+        await asyncio.wait_for(client.repeat_seed(''), timeout=0.1)
+
+
+def test_qq_auxiliary_tasks_are_bounded():
+    import langbot.pkg.core.app  # noqa: F401
+    from langbot.pkg.platform.sources.qqofficial import QQOfficialAdapter
+
+    adapter = QQOfficialAdapter.model_construct()
+    adapter._background_tasks = {MagicMock(done=MagicMock(return_value=False)) for _ in range(100)}
+
+    async def callback():
+        raise AssertionError('rejected callback must not run')
+
+    assert adapter._start_background_task(callback()) is False
+    assert len(adapter._background_tasks) == 100
 
 
 def test_qq_select_keyboard_fits_twenty_five_options():

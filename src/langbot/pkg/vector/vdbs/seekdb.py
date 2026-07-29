@@ -7,7 +7,13 @@ from typing import Any, Dict, List
 
 
 from langbot.pkg.core import app
-from langbot.pkg.vector.vdb import VectorDatabase, SearchType
+from langbot.pkg.utils import bounded_executor
+from langbot.pkg.vector.vdb import (
+    VectorDatabase,
+    SearchType,
+    remember_bounded_mapping,
+    runtime_cache_limit,
+)
 
 try:
     import pyseekdb
@@ -90,6 +96,7 @@ class SeekDBVectorDatabase(VectorDatabase):
 
         self._collections: Dict[str, Any] = {}
         self._collection_configs: Dict[str, HNSWConfiguration] = {}
+        self._runtime_cache_limit = runtime_cache_limit(ap)
 
         self._escape_table = str.maketrans(
             {
@@ -102,6 +109,13 @@ class SeekDBVectorDatabase(VectorDatabase):
                 '\t': '\\t',
             }
         )
+
+    async def close(self) -> None:
+        self._collections.clear()
+        self._collection_configs.clear()
+        close = getattr(self.client, 'close', None)
+        if callable(close):
+            await bounded_executor.run_blocking_cleanup(close)
 
     def _normalize_collection_name(self, collection: str) -> str:
         """SeekDB only accepts [a-zA-Z0-9_], while LangBot uses UUID-like KB IDs."""
@@ -132,7 +146,12 @@ class SeekDBVectorDatabase(VectorDatabase):
         if await asyncio.to_thread(self.client.has_collection, collection):
             # Collection exists, get it
             coll = await asyncio.to_thread(self.client.get_collection, collection, embedding_function=None)
-            self._collections[collection] = coll
+            remember_bounded_mapping(
+                self._collections,
+                collection,
+                coll,
+                self._runtime_cache_limit,
+            )
             self.ap.logger.info(f"SeekDB collection '{collection}' retrieved.")
             return coll
 
@@ -145,7 +164,12 @@ class SeekDBVectorDatabase(VectorDatabase):
 
         # Create HNSW configuration
         config = HNSWConfiguration(dimension=vector_size, distance='cosine')
-        self._collection_configs[collection] = config
+        remember_bounded_mapping(
+            self._collection_configs,
+            collection,
+            config,
+            self._runtime_cache_limit,
+        )
 
         # Create collection without embedding function (we manage embeddings externally)
         coll = await asyncio.to_thread(
@@ -155,7 +179,12 @@ class SeekDBVectorDatabase(VectorDatabase):
             embedding_function=None,  # Disable automatic embedding
         )
 
-        self._collections[collection] = coll
+        remember_bounded_mapping(
+            self._collections,
+            collection,
+            coll,
+            self._runtime_cache_limit,
+        )
         self.ap.logger.info(f"SeekDB collection '{collection}' created with dimension={vector_size}, distance='cosine'")
         return coll
 
@@ -243,7 +272,12 @@ class SeekDBVectorDatabase(VectorDatabase):
         # Get collection
         if collection not in self._collections:
             coll = await asyncio.to_thread(self.client.get_collection, collection, embedding_function=None)
-            self._collections[collection] = coll
+            remember_bounded_mapping(
+                self._collections,
+                collection,
+                coll,
+                self._runtime_cache_limit,
+            )
         else:
             coll = self._collections[collection]
 
@@ -349,7 +383,12 @@ class SeekDBVectorDatabase(VectorDatabase):
         # Get collection
         if collection not in self._collections:
             coll = await asyncio.to_thread(self.client.get_collection, collection, embedding_function=None)
-            self._collections[collection] = coll
+            remember_bounded_mapping(
+                self._collections,
+                collection,
+                coll,
+                self._runtime_cache_limit,
+            )
         else:
             coll = self._collections[collection]
 
@@ -374,7 +413,12 @@ class SeekDBVectorDatabase(VectorDatabase):
 
         if collection not in self._collections:
             coll = await asyncio.to_thread(self.client.get_collection, collection, embedding_function=None)
-            self._collections[collection] = coll
+            remember_bounded_mapping(
+                self._collections,
+                collection,
+                coll,
+                self._runtime_cache_limit,
+            )
         else:
             coll = self._collections[collection]
 
@@ -396,7 +440,12 @@ class SeekDBVectorDatabase(VectorDatabase):
 
         if collection not in self._collections:
             coll = await asyncio.to_thread(self.client.get_collection, collection, embedding_function=None)
-            self._collections[collection] = coll
+            remember_bounded_mapping(
+                self._collections,
+                collection,
+                coll,
+                self._runtime_cache_limit,
+            )
         else:
             coll = self._collections[collection]
 

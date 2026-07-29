@@ -6,7 +6,12 @@ import struct
 from typing import Any
 
 from langbot.pkg.core import app
-from langbot.pkg.vector.vdb import VectorDatabase, SearchType
+from langbot.pkg.vector.vdb import (
+    VectorDatabase,
+    SearchType,
+    remember_bounded_set,
+    runtime_cache_limit,
+)
 from langbot.pkg.vector.filter_utils import normalize_filter, strip_unsupported_fields
 
 try:
@@ -153,6 +158,7 @@ class ValkeySearchVectorDatabase(VectorDatabase):
         self._client_lock = asyncio.Lock()
         # Index names we have already ensured this process lifetime.
         self._ensured_indexes: set[str] = set()
+        self._runtime_cache_limit = runtime_cache_limit(ap)
         # Whether we have already warned about the non-honored vector_weight.
         self._vector_weight_warned = False
 
@@ -364,7 +370,7 @@ class ValkeySearchVectorDatabase(VectorDatabase):
         # check-then-create TOCTOU window.
         try:
             await ft.info(client, index)
-            self._ensured_indexes.add(index)
+            remember_bounded_set(self._ensured_indexes, index, self._runtime_cache_limit)
             return
         except RequestError:
             pass
@@ -389,7 +395,7 @@ class ValkeySearchVectorDatabase(VectorDatabase):
         ]
         options = FtCreateOptions(data_type=DataType.HASH, prefixes=[self._key_prefix(collection)])
         await ft.create(client, index, schema, options)
-        self._ensured_indexes.add(index)
+        remember_bounded_set(self._ensured_indexes, index, self._runtime_cache_limit)
         self.ap.logger.info(
             f"Valkey Search index '{index}' created (dim={dim}, algo={self._algorithm.value}, "
             f'metric={self._distance_metric.value})'
@@ -772,7 +778,7 @@ class ValkeySearchVectorDatabase(VectorDatabase):
         # was being paid on the first query to each collection.
         try:
             await ft.info(client, index)
-            self._ensured_indexes.add(index)
+            remember_bounded_set(self._ensured_indexes, index, self._runtime_cache_limit)
             return True
         except RequestError:
             return False

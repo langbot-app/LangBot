@@ -496,7 +496,50 @@ class PipelineManager:
 
     def __init__(self, ap: app.Application):
         self.ap = ap
-        self.pipelines = []
+        self._pipelines_by_key: dict[
+            tuple[str, str, str],
+            RuntimePipeline,
+        ] = {}
+        self._pipeline_keys_by_scope: dict[
+            tuple[str, str],
+            set[tuple[str, str, str]],
+        ] = {}
+        self._scope_generations: dict[tuple[str, str], int] = {}
+
+    @property
+    def pipelines(self) -> list[RuntimePipeline]:
+        """Compatibility view over the indexed runtime pipeline registry."""
+
+        return list(self._pipelines_by_key.values())
+
+    @pipelines.setter
+    def pipelines(self, pipelines: list[RuntimePipeline]) -> None:
+        self._pipelines_by_key = {}
+        self._pipeline_keys_by_scope = {}
+        for pipeline in pipelines:
+            context = pipeline.execution_context
+            pipeline_uuid = (
+                getattr(getattr(pipeline, 'pipeline_entity', None), 'uuid', None) or context.pipeline_uuid or ''
+            )
+            key = (
+                context.instance_uuid,
+                pipeline.workspace_uuid,
+                pipeline_uuid,
+            )
+            self._pipelines_by_key[key] = pipeline
+            self._pipeline_keys_by_scope.setdefault(key[:2], set()).add(key)
+
+    def _observe_execution_context(self, context: ExecutionContext) -> None:
+        scope = (context.instance_uuid, context.workspace_uuid)
+        previous_generation = self._scope_generations.get(scope)
+        if previous_generation is not None and context.placement_generation < previous_generation:
+            raise WorkspaceInvariantError('Pipeline runtime placement generation rolled back')
+        if previous_generation == context.placement_generation:
+            return
+        if previous_generation is not None:
+            for key in self._pipeline_keys_by_scope.pop(scope, ()):
+                self._pipelines_by_key.pop(key, None)
+        self._scope_generations[scope] = context.placement_generation
 
     async def initialize(self):
         self.stage_dict = {name: cls for name, cls in stage.preregistered_stages.items()}
@@ -506,7 +549,9 @@ class PipelineManager:
     async def load_pipelines_from_db(self):
         self.ap.logger.info('Loading pipelines from db...')
 
-        self.pipelines = []
+        self._pipelines_by_key = {}
+        self._pipeline_keys_by_scope = {}
+        self._scope_generations = {}
         list_bindings = getattr(self.ap.workspace_service, 'list_active_execution_bindings', None)
         tenant_uow = getattr(self.ap.persistence_mgr, 'tenant_uow', None)
         cloud_runtime = getattr(getattr(self.ap.persistence_mgr, 'mode', None), 'value', None) == 'cloud_runtime'
@@ -530,6 +575,7 @@ class PipelineManager:
                                 trigger_principal=PrincipalContext(PrincipalType.SYSTEM),
                             ),
                             pipeline,
+                            _binding_validated=True,
                         )
             return
 
@@ -575,6 +621,8 @@ class PipelineManager:
         pipeline_entity: persistence_pipeline.LegacyPipeline
         | sqlalchemy.Row[persistence_pipeline.LegacyPipeline]
         | dict,
+        *,
+        _binding_validated: bool = False,
     ):
         if isinstance(pipeline_entity, sqlalchemy.Row):
             pipeline_entity = persistence_pipeline.LegacyPipeline(**pipeline_entity._mapping)
@@ -584,10 +632,12 @@ class PipelineManager:
         execution_context = self._normalize_execution_context(context, pipeline_entity.uuid)
         if pipeline_entity.workspace_uuid != execution_context.workspace_uuid:
             raise WorkspaceRequiredError('Pipeline entity Workspace does not match its runtime context')
-        await self.ap.workspace_service.get_execution_binding(
-            execution_context.workspace_uuid,
-            expected_generation=execution_context.placement_generation,
-        )
+        if not _binding_validated:
+            await self.ap.workspace_service.get_execution_binding(
+                execution_context.workspace_uuid,
+                expected_generation=execution_context.placement_generation,
+            )
+        self._observe_execution_context(execution_context)
 
         coerce_pipeline_config(
             pipeline_entity.config,
@@ -605,13 +655,27 @@ class PipelineManager:
         for stage_container in stage_containers:
             await stage_container.inst.initialize(pipeline_entity.config)
 
+        # Stage initialization can yield while a Workspace is being moved.
+        # Revalidate before publishing the runtime assembled above.
+        if not _binding_validated:
+            await self.ap.workspace_service.get_execution_binding(
+                execution_context.workspace_uuid,
+                expected_generation=execution_context.placement_generation,
+            )
+        self._observe_execution_context(execution_context)
         runtime_pipeline = RuntimePipeline(
             self.ap,
             pipeline_entity,
             stage_containers,
             execution_context,
         )
-        self.pipelines.append(runtime_pipeline)
+        key = (
+            execution_context.instance_uuid,
+            execution_context.workspace_uuid,
+            pipeline_entity.uuid,
+        )
+        self._pipelines_by_key[key] = runtime_pipeline
+        self._pipeline_keys_by_scope.setdefault(key[:2], set()).add(key)
 
     async def get_pipeline_by_uuid(
         self,
@@ -619,13 +683,24 @@ class PipelineManager:
         uuid: str,
     ) -> RuntimePipeline | None:
         execution_context = self._normalize_execution_context(context, uuid)
-        for pipeline in self.pipelines:
-            if (
-                pipeline.workspace_uuid == execution_context.workspace_uuid
-                and pipeline.placement_generation == execution_context.placement_generation
-                and pipeline.pipeline_entity.uuid == uuid
-            ):
-                return pipeline
+        await self.ap.workspace_service.get_execution_binding(
+            execution_context.workspace_uuid,
+            expected_generation=execution_context.placement_generation,
+        )
+        self._observe_execution_context(execution_context)
+        key = (
+            execution_context.instance_uuid,
+            execution_context.workspace_uuid,
+            uuid,
+        )
+        pipeline = self._pipelines_by_key.get(key)
+        if pipeline is not None and pipeline.placement_generation == execution_context.placement_generation:
+            return pipeline
+        if not self._pipeline_keys_by_scope.get(key[:2]):
+            self._scope_generations.pop(
+                (execution_context.instance_uuid, execution_context.workspace_uuid),
+                None,
+            )
         return None
 
     async def remove_pipeline(
@@ -634,7 +709,21 @@ class PipelineManager:
         uuid: str,
     ) -> None:
         execution_context = self._normalize_execution_context(context, uuid)
-        for pipeline in self.pipelines:
-            if pipeline.workspace_uuid == execution_context.workspace_uuid and pipeline.pipeline_entity.uuid == uuid:
-                self.pipelines.remove(pipeline)
-                return
+        await self.ap.workspace_service.get_execution_binding(
+            execution_context.workspace_uuid,
+            expected_generation=execution_context.placement_generation,
+        )
+        self._observe_execution_context(execution_context)
+        key = (
+            execution_context.instance_uuid,
+            execution_context.workspace_uuid,
+            uuid,
+        )
+        if self._pipelines_by_key.pop(key, None) is not None:
+            scope_keys = self._pipeline_keys_by_scope.get(key[:2])
+            if scope_keys is not None:
+                scope_keys.discard(key)
+                if not scope_keys:
+                    self._pipeline_keys_by_scope.pop(key[:2], None)
+                    self._scope_generations.pop(key[:2], None)
+            return

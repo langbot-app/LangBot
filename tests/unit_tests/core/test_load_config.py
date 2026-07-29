@@ -333,11 +333,23 @@ class TestApplyEnvOverridesToConfig:
             {
                 'PLUGIN__WORKER__MAX_MEMORY_MB': '768',
                 'MCP__STDIO__ENABLED': 'false',
+                'SYSTEM__BLOCKING_EXECUTOR__MAX_WORKERS': '12',
+                'SYSTEM__BLOCKING_EXECUTOR__MAX_PENDING': '256',
+                'SYSTEM__BLOCKING_EXECUTOR__MAX_INFLIGHT_PER_SCOPE': '3',
             },
             clear=True,
         ):
             result = load_config._apply_env_overrides_to_config(completed)
 
+        assert result['system']['blocking_executor'] == {
+            'max_workers': 12,
+            'max_pending': 256,
+            'max_inflight_per_scope': 3,
+        }
+        assert isinstance(
+            result['system']['blocking_executor']['max_workers'],
+            int,
+        )
         assert result['plugin']['worker']['max_memory_mb'] == 768
         assert isinstance(result['plugin']['worker']['max_memory_mb'], int)
         assert result['mcp']['stdio']['enabled'] is False

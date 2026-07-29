@@ -5,6 +5,7 @@ import re
 import traceback
 import typing
 import uuid
+import time
 
 from langbot.libs.dingtalk_api.dingtalkevent import DingTalkEvent
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
@@ -544,10 +545,58 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             bot=bot,
             listeners={},
         )
+        self._background_tasks: set[asyncio.Task] = set()
         # Wire the card-action callback after super().__init__ so we can reference
         # self.* — the client's handler stores this as a soft reference and reads
         # it at fire time.
         self.bot.card_action_callback = self._on_card_action
+
+    def _start_background_task(self, coro) -> bool:
+        """Start one bounded adapter-side auxiliary task."""
+
+        background_tasks = getattr(self, '_background_tasks', None)
+        if background_tasks is None:
+            background_tasks = set()
+            object.__setattr__(self, '_background_tasks', background_tasks)
+        for task in tuple(background_tasks):
+            if task.done():
+                background_tasks.discard(task)
+        if len(background_tasks) >= 100:
+            coro.close()
+            return False
+        task = asyncio.create_task(coro)
+        background_tasks.add(task)
+
+        def done(done_task: asyncio.Task) -> None:
+            background_tasks.discard(done_task)
+            if not done_task.cancelled():
+                done_task.exception()
+
+        task.add_done_callback(done)
+        return True
+
+    def _prune_card_state(self) -> None:
+        now = time.monotonic()
+        ttl_seconds = 1800
+        for card_id, state in tuple(self.card_state.items()):
+            if now - float(state.get('created_at', now)) <= ttl_seconds:
+                continue
+            self.card_state.pop(card_id, None)
+            for session_key, active_card_id in tuple(self.active_turn_card.items()):
+                if active_card_id == card_id:
+                    self.active_turn_card.pop(session_key, None)
+                    self.active_turn_text.pop(session_key, None)
+        while len(self.card_state) > 1000:
+            card_id = next(iter(self.card_state))
+            self.card_state.pop(card_id, None)
+        while len(self.active_turn_card) > 1000:
+            session_key = next(iter(self.active_turn_card))
+            self.active_turn_card.pop(session_key, None)
+            self.active_turn_text.pop(session_key, None)
+        card_instances = getattr(self, 'card_instance_id_dict', None)
+        if isinstance(card_instances, dict):
+            while len(card_instances) > 1000:
+                card_instances.pop(next(iter(card_instances)), None)
 
     async def reply_message(
         self,
@@ -674,6 +723,7 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         return is_stream
 
     async def create_message_card(self, message_id, event):
+        self._prune_card_state()
         form_template_id = (self.config.get('human_input_card_template_id') or '').strip()
         legacy_template_id = self.config.get('card_template_id', '')
 
@@ -806,6 +856,20 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         return params
 
     async def kill(self) -> bool:
+        task_set = getattr(self, '_background_tasks', set())
+        background_tasks = list(task_set)
+        for task in background_tasks:
+            if not task.done():
+                task.cancel()
+        if background_tasks:
+            await asyncio.gather(*background_tasks, return_exceptions=True)
+        task_set.clear()
+        card_instances = getattr(self, 'card_instance_id_dict', None)
+        if isinstance(card_instances, dict):
+            card_instances.clear()
+        self.card_state.clear()
+        self.active_turn_card.clear()
+        self.active_turn_text.clear()
         await self.bot.stop()
         return True
 
@@ -931,6 +995,7 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             )
 
         # Record form state for the click-handler.
+        self._prune_card_state()
         launcher_type, launcher_id, sender_user_id = self._derive_session_descriptor(message_source)
         self.card_state[out_track_id] = {
             'session_key': session_key,
@@ -947,6 +1012,7 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             'current_input_field': str(form_data.get('_current_input_field') or ''),
             'input_defs': _dingtalk_form_input_defs(form_data),
             'inputs': form_data.get('inputs') or {},
+            'created_at': time.monotonic(),
         }
 
         btns = self._build_btns(actions if should_show_actions else [], out_track_id)
@@ -1040,6 +1106,7 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 f'options={len(component_params.get("select_options") or [])}'
             )
 
+        self._prune_card_state()
         self.card_state[out_track_id] = {
             'session_key': session_key,
             'launcher_type': launcher_type.value,
@@ -1057,6 +1124,7 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             'inputs': form_data.get('inputs') or {},
             'open_space_id': open_space_id,
             'is_group': is_group,
+            'created_at': time.monotonic(),
         }
 
         parts = []
@@ -1223,6 +1291,7 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 f'payload_action_id={payload.get("action_id")!r} params={payload.get("params")!r}'
             )
         out_track_id = payload.get('out_track_id') or ''
+        self._prune_card_state()
         params = payload.get('params') or {}
         # ButtonGroup `sendCardRequest` events surface the click id at the
         # callback top level as `actionId`; fall back to `params.action_id`
@@ -1359,7 +1428,7 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         # output lives on a separate new card (lazy-created in
         # reply_message_chunk on the synthetic event), so the form card
         # stays put as a record of the user's selection.
-        asyncio.create_task(
+        self._start_background_task(
             self._mark_card_resolved(
                 out_track_id,
                 action_title,

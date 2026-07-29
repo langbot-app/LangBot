@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import inspect
 import typing
 from typing import Any
@@ -42,6 +43,24 @@ from ..entity.persistence import model as persistence_model
 
 from ..core import app
 from ..utils import constants
+
+_DEFAULT_BINARY_STORAGE_VALUE_BYTES = 10 * 1024 * 1024
+_HARD_MAX_BINARY_STORAGE_VALUE_BYTES = 64 * 1024 * 1024
+
+
+def _binary_storage_value_limit(ap: Any) -> int:
+    configured = (
+        ap.instance_config.data.get('plugin', {})
+        .get('binary_storage', {})
+        .get('max_value_bytes', _DEFAULT_BINARY_STORAGE_VALUE_BYTES)
+    )
+    try:
+        configured = int(configured)
+    except (TypeError, ValueError):
+        configured = _DEFAULT_BINARY_STORAGE_VALUE_BYTES
+    if configured < 0:
+        configured = _DEFAULT_BINARY_STORAGE_VALUE_BYTES
+    return min(configured, _HARD_MAX_BINARY_STORAGE_VALUE_BYTES)
 
 
 class _RawAction:
@@ -859,20 +878,15 @@ class RuntimeConnectionHandler(handler.Handler):
                 return handler.ActionResponse.error(
                     message=str(e),
                 )
-            value = base64.b64decode(data['value_base64'])
-            max_value_bytes = (
-                self.ap.instance_config.data.get('plugin', {})
-                .get('binary_storage', {})
-                .get(
-                    'max_value_bytes',
-                    10 * 1024 * 1024,
+            max_value_bytes = _binary_storage_value_limit(self.ap)
+            encoded_value = data['value_base64']
+            max_encoded_chars = 4 * ((max_value_bytes + 2) // 3) + 4
+            if len(encoded_value) > max_encoded_chars:
+                return handler.ActionResponse.error(
+                    message=f'Binary storage value exceeds the {max_value_bytes}-byte limit',
                 )
-            )
-            try:
-                max_value_bytes = int(max_value_bytes)
-            except (TypeError, ValueError):
-                max_value_bytes = 10 * 1024 * 1024
-            if max_value_bytes >= 0 and len(value) > max_value_bytes:
+            value = await asyncio.to_thread(base64.b64decode, encoded_value)
+            if len(value) > max_value_bytes:
                 return handler.ActionResponse.error(
                     message=f'Binary storage value exceeds limit ({len(value)} > {max_value_bytes} bytes)',
                 )
@@ -936,10 +950,15 @@ class RuntimeConnectionHandler(handler.Handler):
                 return handler.ActionResponse.error(
                     message=f'Storage with key {key} not found',
                 )
+            max_value_bytes = _binary_storage_value_limit(self.ap)
+            if len(storage.value) > max_value_bytes:
+                return handler.ActionResponse.error(
+                    message=f'Binary storage value exceeds the {max_value_bytes}-byte limit',
+                )
 
             return handler.ActionResponse.success(
                 data={
-                    'value_base64': base64.b64encode(storage.value).decode('utf-8'),
+                    'value_base64': (await asyncio.to_thread(base64.b64encode, storage.value)).decode('utf-8'),
                 },
             )
 
@@ -1019,7 +1038,7 @@ class RuntimeConnectionHandler(handler.Handler):
 
                 return handler.ActionResponse.success(
                     data={
-                        'file_base64': base64.b64encode(file_bytes).decode('utf-8'),
+                        'file_base64': (await asyncio.to_thread(base64.b64encode, file_bytes)).decode('utf-8'),
                     },
                 )
             except Exception as e:
@@ -1744,7 +1763,7 @@ class RuntimeConnectionHandler(handler.Handler):
         await self.delete_local_file(plugin_icon_file_key)
 
         return {
-            'plugin_icon_base64': base64.b64encode(plugin_icon_bytes).decode('utf-8'),
+            'plugin_icon_base64': (await asyncio.to_thread(base64.b64encode, plugin_icon_bytes)).decode('utf-8'),
             'mime_type': mime_type,
         }
 
@@ -1819,7 +1838,7 @@ class RuntimeConnectionHandler(handler.Handler):
         asset_bytes = await self.read_local_file(asset_file_key)
         await self.delete_local_file(asset_file_key)
         return {
-            'asset_base64': base64.b64encode(asset_bytes).decode('utf-8'),
+            'asset_base64': (await asyncio.to_thread(base64.b64encode, asset_bytes)).decode('utf-8'),
             'mime_type': mime_type,
         }
 

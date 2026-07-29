@@ -47,6 +47,9 @@ command:
 concurrency:
     pipeline: 20
     session: 1
+    # Hard admission limits for queued + running pipeline queries.
+    pending_queries: 1000
+    pending_queries_per_workspace: 100
 proxy:
     http: ''
     https: ''
@@ -56,6 +59,15 @@ system:
     recovery_key: ''
     allow_modify_login_info: true
     disabled_adapters: []
+    blocking_executor:
+        # All asyncio.to_thread work shares this process-wide bounded pool.
+        # Both running threads and queued calls are capped to prevent tenant
+        # bursts from creating an unbounded queue of retained request objects.
+        max_workers: 8
+        max_pending: 128
+        # One trusted Workspace can occupy at most this many running + queued
+        # slots. This must not exceed half of max_workers.
+        max_inflight_per_scope: 4
     # Public outbound IP addresses of this LangBot deployment. Some platforms
     # (e.g. WeCom, WeChat Official Account, QQ Official API) require the
     # caller's IPs to be added to their trusted-IP / IP-whitelist settings.
@@ -76,6 +88,32 @@ system:
     task_retention:
         # Keep at most this many completed async task records in memory
         completed_limit: 200
+        # Bound progress output retained by one task, including running tasks.
+        max_log_chars: 200000
+        # Protect the shared process from user-triggered operation storms.
+        max_active_user_tasks: 256
+        max_active_user_tasks_per_workspace: 8
+    session_retention:
+        # Process-local conversation sessions are a cache, not durable history.
+        max_entries: 2000
+        max_entries_per_workspace: 200
+        idle_ttl_seconds: 86400
+        max_conversations_per_session: 20
+        max_messages_per_conversation: 100
+    websocket_retention:
+        # Bound live browser sockets and per-Workspace fan-out in the shared process.
+        max_connections: 1024
+        max_connections_per_workspace: 32
+        # Idle proxy runtimes are evicted when this process-local cache fills.
+        max_workspace_proxies: 1024
+        max_conversations_per_workspace: 200
+        max_messages_per_conversation: 100
+        conversation_idle_ttl_seconds: 86400
+        send_queue_size: 100
+    response_limits:
+        # Defense in depth for tenant-configured upstream providers.
+        max_generated_chars: 1048576
+        max_stream_chunks: 100000
     jwt:
         expire: 604800
         secret: ''
@@ -92,6 +130,11 @@ database:
         user: 'postgres'
         password: 'postgres'
         database: 'postgres'
+        # One bounded pool is shared by business data and Cloud pgvector.
+        pool_size: 10
+        max_overflow: 10
+        pool_timeout_seconds: 30
+        pool_recycle_seconds: 1800
     cloud_migration:
         # `langbot migrate --cloud` reads an operator-only PostgreSQL DSN from
         # this environment variable. The operator role must differ from the
@@ -99,6 +142,8 @@ database:
         operator_dsn_env: 'LANGBOT_CLOUD_MIGRATION_DSN'
 vdb:
     use: chroma
+    # Bound process-local collection/index handles across all Workspaces.
+    runtime_cache_limit: 1024
     qdrant:
         url: ''
         host: localhost
@@ -157,6 +202,9 @@ storage:
         secret_access_key: ''
         region: 'us-east-1'
         bucket: 'langbot-storage'
+        # boto3 is synchronous; bound the number of operations delegated to
+        # worker threads so an S3 slowdown cannot saturate the process.
+        max_concurrency: 16
 plugin:
     enable: true
     runtime_ws_url: 'ws://langbot_plugin_runtime:5400/control/ws'
@@ -170,6 +218,15 @@ plugin:
         max_pids: 128
         max_open_files: 256
         max_file_size_mb: 512
+        # Instance-wide admission budgets. The effective worker count is the
+        # lowest of max_workers, max_total_cpus/max_cpus and
+        # max_total_memory_mb/max_memory_mb.
+        max_workers: 16
+        max_total_cpus: 8.0
+        max_total_memory_mb: 8192
+        # Includes disabled and historical installation fences retained to
+        # reject stale desired-state replay.
+        max_installations: 10000
         # Cloud shared Runtime sets this to true and fails closed unless
         # delegated cgroup v2 controllers are available.
         require_hard_limits: false
@@ -177,6 +234,9 @@ plugin:
         # Max bytes for a single plugin binary storage value
         max_value_bytes: 10485760
 mcp:
+    # Bound instance-wide MCP startup and shutdown bursts. Supports
+    # MCP__LIFECYCLE_CONCURRENCY and is clamped to a maximum of 128.
+    lifecycle_concurrency: 16
     stdio:
         # Independent gate for local stdio MCP transports. Cloud v2 sets
         # MCP__STDIO__ENABLED=false even when Box Runtime is available.
@@ -204,6 +264,15 @@ box:
         # External WebSocket runtimes also require LANGBOT_BOX_CONTROL_TOKEN in
         # both LangBot and Box. Keep the shared secret out of this config file.
         endpoint: ''  # External Box Runtime base URL, e.g. 'ws://127.0.0.1:5410'. Leave empty for local auto-managed runtime.
+    limits:
+        max_sessions: 64
+        max_managed_processes: 64
+        max_completed_processes: 256
+        # Retained admission fences prevent replay after entitlement expiry or
+        # revocation. Fail closed before that monotonic state can grow without
+        # bound; Cloud may override this with BOX__LIMITS__MAX_ADMISSION_RECORDS.
+        max_admission_records: 100000
+        max_rpc_file_bytes: 20971520
     # Cloud v2 overrides these values through the instance config/environment.
     # OSS keeps admission disabled and preserves the existing multi-session
     # local behavior. These limits are Runtime-owned and cannot be relaxed by

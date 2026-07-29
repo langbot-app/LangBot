@@ -7,6 +7,7 @@ import time
 
 from . import app
 from . import entities as core_entities
+from .errors import TaskCapacityError
 from .task_boundary import create_detached_task
 
 
@@ -22,13 +23,18 @@ class TaskContext:
     metadata: dict
     """Structured metadata for progress reporting"""
 
-    def __init__(self):
+    def __init__(self, max_log_chars: int = 200000):
         self.current_action = 'default'
         self.log = ''
         self.metadata = {}
+        self.max_log_chars = max(int(max_log_chars), 1)
 
     def _log(self, msg: str):
         self.log += msg + '\n'
+        if len(self.log) > self.max_log_chars:
+            marker = '[older task output truncated]\n'
+            keep = max(self.max_log_chars - len(marker), 0)
+            self.log = marker + (self.log[-keep:] if keep else '')
 
     def set_current_action(self, action: str):
         self.current_action = action
@@ -131,6 +137,7 @@ class TaskWrapper:
             loop=self.ap.event_loop,
             name=name or None,
             after_commit_manager=getattr(self.ap, 'persistence_mgr', None),
+            workspace_uuid=workspace_uuid,
         )
         self.task_type = task_type
         self.kind = kind
@@ -207,6 +214,39 @@ class AsyncTaskManager:
         self.ap = ap
         self.tasks = []
 
+    def _task_log_limit(self) -> int:
+        value = self.ap.instance_config.data.get('system', {}).get('task_retention', {}).get('max_log_chars', 200000)
+        try:
+            value = int(value)
+        except (TypeError, ValueError):
+            value = 200000
+        return max(value, 1)
+
+    def _user_task_limit(self, name: str, default: int) -> int:
+        value = self.ap.instance_config.data.get('system', {}).get('task_retention', {}).get(name, default)
+        try:
+            value = int(value)
+        except (TypeError, ValueError):
+            value = default
+        return max(value, 1)
+
+    def _admit_user_task(self, coro: typing.Coroutine, workspace_uuid: str | None) -> None:
+        active_user_tasks = [
+            wrapper for wrapper in self.tasks if wrapper.task_type == 'user' and not wrapper.task.done()
+        ]
+        global_limit = self._user_task_limit('max_active_user_tasks', 256)
+        if len(active_user_tasks) >= global_limit:
+            coro.close()
+            raise TaskCapacityError('The instance has too many active user operations')
+
+        if workspace_uuid is None:
+            return
+        workspace_limit = self._user_task_limit('max_active_user_tasks_per_workspace', 8)
+        active_workspace_tasks = sum(1 for wrapper in active_user_tasks if wrapper.workspace_uuid == workspace_uuid)
+        if active_workspace_tasks >= workspace_limit:
+            coro.close()
+            raise TaskCapacityError('The Workspace has too many active user operations')
+
     def create_task(
         self,
         coro: typing.Coroutine,
@@ -220,6 +260,13 @@ class AsyncTaskManager:
         workspace_uuid: str | None = None,
         placement_generation: int | None = None,
     ) -> TaskWrapper:
+        if context is None:
+            context = TaskContext(max_log_chars=self._task_log_limit())
+        else:
+            context.max_log_chars = self._task_log_limit()
+            if len(context.log) > context.max_log_chars:
+                context.log = context.log[-context.max_log_chars :]
+
         wrapper = TaskWrapper(
             self.ap,
             coro,
@@ -250,6 +297,7 @@ class AsyncTaskManager:
         workspace_uuid: str | None = None,
         placement_generation: int | None = None,
     ) -> TaskWrapper:
+        self._admit_user_task(coro, workspace_uuid)
         return self.create_task(
             coro,
             'user',

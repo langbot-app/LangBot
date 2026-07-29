@@ -6,7 +6,9 @@ based on configuration, without actually creating real VDB instances.
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from tests.utils.import_isolation import isolated_sys_modules
 
@@ -383,3 +385,21 @@ class TestVectorDBManagerProxies:
 
             result = mgr.get_supported_search_types()
             assert result == ['vector', 'full_text']
+
+    @pytest.mark.asyncio
+    async def test_shutdown_closes_backend_and_releases_reference(self):
+        mock_app = MagicMock()
+        mocks = {'langbot.pkg.core.app': MagicMock()}
+
+        with isolated_sys_modules(mocks):
+            from langbot.pkg.vector.mgr import VectorDBManager
+
+            mgr = VectorDBManager(mock_app)
+            backend = MagicMock()
+            backend.close = AsyncMock()
+            mgr.vector_db = backend
+
+            await mgr.shutdown()
+
+            backend.close.assert_awaited_once_with()
+            assert mgr.vector_db is None

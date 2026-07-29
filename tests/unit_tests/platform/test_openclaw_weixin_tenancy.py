@@ -2,8 +2,10 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+import langbot_plugin.api.entities.builtin.platform.message as platform_message
 
 from langbot.pkg.api.http.context import ExecutionContext
+from langbot.pkg.platform.sources import openclaw_weixin
 from langbot.pkg.platform.sources.openclaw_weixin import OpenClawWeixinAdapter
 
 
@@ -82,3 +84,12 @@ async def test_persist_config_fails_closed_without_matching_execution_context(ex
 
     app.persistence_mgr.execute_async.assert_not_awaited()
     logger.warning.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_component_base64_decode_is_bounded(monkeypatch):
+    monkeypatch.setattr(openclaw_weixin, '_MAX_OPENCLAW_COMPONENT_BYTES', 4)
+    component = platform_message.File(base64='MTIzNDU=')
+
+    with pytest.raises(ValueError, match='exceeds'):
+        await OpenClawWeixinAdapter._get_component_bytes(component)

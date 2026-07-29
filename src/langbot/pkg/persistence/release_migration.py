@@ -177,10 +177,7 @@ async def run_cloud_release_migration(
         await manager.initialize()
         ap.logger.info('Cloud PostgreSQL release migration reached and validated the exact release head.')
     finally:
-        db = getattr(manager, 'db', None)
-        engine = getattr(db, 'engine', None)
-        if engine is not None:
-            await engine.dispose()
+        await manager.shutdown()
 
 
 async def run_cloud_release_migration_from_config(loop: asyncio.AbstractEventLoop) -> None:

@@ -1,24 +1,29 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import contextlib
 import errno
+import heapq
 import json
 import os
 import posixpath
 import stat
+import time
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 
 import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 from langbot_plugin.api.entities.events import pipeline_query
+import regex
 
 from .. import loader
 from ..errors import ToolNotFoundError
 from .availability import is_box_backend_available
 from . import skill as skill_loader
 from ....api.http.context import ExecutionContext
+from ....utils.bounded_executor import run_blocking_atomic
 
 EXEC_TOOL_NAME = 'exec'
 READ_TOOL_NAME = 'read'
@@ -36,10 +41,18 @@ _DEFAULT_READ_MAX_LINES = 2000
 _MAX_READ_MAX_LINES = 10000
 _DEFAULT_TOOL_RESULT_MAX_BYTES = 50 * 1024
 _BOX_FILE_SCRIPT_MAX_BYTES = 2048
+_MAX_HOST_EDIT_FILE_BYTES = 1024 * 1024
 _GLOB_MAX_MATCHES = 100
+_FILE_WALK_MAX_ENTRIES = 100_000
+_DIRECTORY_MAX_ENTRIES = 10_000
 _GREP_MAX_MATCHES = 200
 _GREP_MAX_FILES = 5000
 _GREP_MAX_LINE_CHARS = 500
+_GREP_MAX_SCAN_LINE_CHARS = 1024 * 1024
+_GREP_MAX_FILE_SCAN_CHARS = 10 * 1024 * 1024
+_GREP_MAX_TOTAL_SCAN_CHARS = 50 * 1024 * 1024
+_GREP_MAX_PATTERN_CHARS = 1024
+_GREP_REGEX_TIMEOUT_SECONDS = 0.25
 
 _DIRECTORY_OPEN_FLAGS = (
     os.O_RDONLY | getattr(os, 'O_DIRECTORY', 0) | getattr(os, 'O_NOFOLLOW', 0) | getattr(os, 'O_CLOEXEC', 0)
@@ -433,7 +446,19 @@ class NativeToolLoader(loader.ToolLoader):
             with _open_location_fd(root_fd, location.relative_parts, os.O_RDONLY) as target_fd:
                 metadata = os.fstat(target_fd)
                 if stat.S_ISDIR(metadata.st_mode):
-                    return self._build_directory_result(os.listdir(target_fd))
+                    entries: list[str] = []
+                    truncated = False
+                    with os.scandir(target_fd) as iterator:
+                        for entry in iterator:
+                            if len(entries) >= _DIRECTORY_MAX_ENTRIES:
+                                truncated = True
+                                break
+                            entries.append(entry.name)
+                    return self._build_directory_result(
+                        entries,
+                        total=len(entries) + int(truncated),
+                        force_truncated_by='entries' if truncated else None,
+                    )
                 if not stat.S_ISREG(metadata.st_mode):
                     raise ValueError('Path must reference a regular file or directory.')
                 return self._read_text_file_preview(target_fd, parameters, metadata=metadata)
@@ -479,10 +504,16 @@ class NativeToolLoader(loader.ToolLoader):
 
         with _open_host_root(location, create=False) as root_fd:
             with _open_location_fd(root_fd, location.relative_parts, os.O_RDWR) as target_fd:
-                if not stat.S_ISREG(os.fstat(target_fd).st_mode):
+                metadata = os.fstat(target_fd)
+                if not stat.S_ISREG(metadata.st_mode):
                     return False, 'File not found.'
-                with os.fdopen(os.dup(target_fd), 'r', encoding='utf-8', errors='replace') as file_obj:
-                    content = file_obj.read()
+                if metadata.st_size > _MAX_HOST_EDIT_FILE_BYTES:
+                    return False, f'File exceeds the {_MAX_HOST_EDIT_FILE_BYTES}-byte edit limit.'
+                with os.fdopen(os.dup(target_fd), 'rb') as file_obj:
+                    raw_content = file_obj.read(_MAX_HOST_EDIT_FILE_BYTES + 1)
+                if len(raw_content) > _MAX_HOST_EDIT_FILE_BYTES:
+                    return False, f'File exceeds the {_MAX_HOST_EDIT_FILE_BYTES}-byte edit limit.'
+                content = raw_content.decode('utf-8', errors='replace')
                 count = content.count(old_string)
                 if count == 0:
                     return False, 'old_string not found in file.'
@@ -490,6 +521,8 @@ class NativeToolLoader(loader.ToolLoader):
                     return False, f'old_string matches {count} locations; provide a more unique string.'
 
                 payload = content.replace(old_string, new_string, 1).encode('utf-8')
+                if len(payload) > _MAX_HOST_EDIT_FILE_BYTES:
+                    return False, f'Edited file exceeds the {_MAX_HOST_EDIT_FILE_BYTES}-byte limit.'
                 os.ftruncate(target_fd, 0)
                 os.lseek(target_fd, 0, os.SEEK_SET)
                 self._write_all(target_fd, payload)
@@ -520,11 +553,19 @@ class NativeToolLoader(loader.ToolLoader):
         return any(candidate and PurePosixPath(relative_path).match(candidate) for candidate in candidates)
 
     def _glob_host_location(self, location: _HostLocation, pattern: str, sandbox_base: str) -> dict:
-        hits: list[tuple[str, float]] = []
+        newest_hits: list[tuple[float, str]] = []
+        total = 0
+        entries_seen = 0
+        scan_truncated = False
 
-        def walk(directory_fd: int, prefix: str) -> None:
+        def walk(directory_fd: int, prefix: str) -> bool:
+            nonlocal entries_seen, scan_truncated, total
             with os.scandir(directory_fd) as entries:
                 for entry in entries:
+                    entries_seen += 1
+                    if entries_seen > _FILE_WALK_MAX_ENTRIES:
+                        scan_truncated = True
+                        return True
                     name = entry.name
                     if name in _SKIP_DIRS:
                         continue
@@ -536,11 +577,17 @@ class NativeToolLoader(loader.ToolLoader):
                         metadata = os.fstat(child_fd)
                         relative = f'{prefix}/{name}' if prefix else name
                         if self._rglob_matches(relative, pattern):
-                            hits.append((relative, metadata.st_mtime))
-                        if stat.S_ISDIR(metadata.st_mode):
-                            walk(child_fd, relative)
+                            total += 1
+                            candidate = (metadata.st_mtime, relative)
+                            if len(newest_hits) < _GLOB_MAX_MATCHES:
+                                heapq.heappush(newest_hits, candidate)
+                            elif candidate > newest_hits[0]:
+                                heapq.heapreplace(newest_hits, candidate)
+                        if stat.S_ISDIR(metadata.st_mode) and walk(child_fd, relative):
+                            return True
                     finally:
                         os.close(child_fd)
+            return False
 
         with _open_host_root(location, create=False) as root_fd:
             with _open_location_fd(root_fd, location.relative_parts, os.O_RDONLY) as target_fd:
@@ -548,12 +595,11 @@ class NativeToolLoader(loader.ToolLoader):
                     return {'ok': False, 'error': f'Path is not a directory: {sandbox_base}'}
                 walk(target_fd, '')
 
-        hits.sort(key=lambda item: item[1], reverse=True)
-        total = len(hits)
+        hits = sorted(newest_hits, reverse=True)
         sandbox_paths: list[str] = []
         output_bytes = 0
         truncated_by_bytes = False
-        for relative, _mtime in hits[:_GLOB_MAX_MATCHES]:
+        for _mtime, relative in hits:
             sandbox_path = self._sandbox_child_path(sandbox_base, relative)
             entry_bytes = len(sandbox_path.encode('utf-8')) + (1 if sandbox_paths else 0)
             if output_bytes + entry_bytes > _DEFAULT_TOOL_RESULT_MAX_BYTES:
@@ -567,27 +613,57 @@ class NativeToolLoader(loader.ToolLoader):
             'matches': sandbox_paths,
             'preview': '\n'.join(sandbox_paths),
             'total': total,
-            'truncated': total > len(sandbox_paths) or truncated_by_bytes,
-            'truncated_by': 'bytes' if truncated_by_bytes else ('matches' if total > len(sandbox_paths) else None),
+            'truncated': scan_truncated or total > len(sandbox_paths) or truncated_by_bytes,
+            'truncated_by': (
+                'scan'
+                if scan_truncated
+                else ('bytes' if truncated_by_bytes else ('matches' if total > len(sandbox_paths) else None))
+            ),
         }
 
     def _grep_host_location(
         self,
         location: _HostLocation,
-        regex,
+        pattern: str,
         include: str | None,
         sandbox_base: str,
     ) -> dict:
+        try:
+            compiled = regex.compile(pattern)
+        except regex.error as exc:
+            return {'ok': False, 'error': f'Invalid regex: {exc}'}
+
         matches: list[dict] = []
         output_bytes = 0
         truncated_by: str | None = None
         files_seen = 0
+        entries_seen = 0
+        total_chars_seen = 0
+        deadline = time.monotonic() + _GREP_REGEX_TIMEOUT_SECONDS
 
         def grep_file(file_fd: int, sandbox_path: str) -> bool:
-            nonlocal output_bytes, truncated_by
+            nonlocal output_bytes, total_chars_seen, truncated_by
+            file_chars_seen = 0
             with os.fdopen(os.dup(file_fd), 'r', encoding='utf-8', errors='ignore') as handle:
-                for lineno, line in enumerate(handle, 1):
-                    if not regex.search(line):
+                lineno = 0
+                while True:
+                    line = handle.readline(_GREP_MAX_SCAN_LINE_CHARS + 1)
+                    if not line:
+                        break
+                    lineno += 1
+                    line_chars = len(line)
+                    file_chars_seen += line_chars
+                    total_chars_seen += line_chars
+                    if file_chars_seen > _GREP_MAX_FILE_SCAN_CHARS or total_chars_seen > _GREP_MAX_TOTAL_SCAN_CHARS:
+                        truncated_by = 'scan'
+                        return True
+                    if line_chars > _GREP_MAX_SCAN_LINE_CHARS and not line.endswith('\n'):
+                        truncated_by = truncated_by or 'line'
+                        return False
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise TimeoutError
+                    if not compiled.search(line, timeout=remaining, concurrent=True):
                         continue
                     content, line_truncated = self._truncate_grep_line(line.rstrip())
                     entry = {'file': sandbox_path, 'line': lineno, 'content': content}
@@ -605,9 +681,13 @@ class NativeToolLoader(loader.ToolLoader):
             return False
 
         def walk(directory_fd: int, prefix: str) -> bool:
-            nonlocal files_seen
+            nonlocal entries_seen, files_seen, truncated_by
             with os.scandir(directory_fd) as entries:
                 for entry in entries:
+                    entries_seen += 1
+                    if entries_seen > _FILE_WALK_MAX_ENTRIES:
+                        truncated_by = 'scan'
+                        return True
                     name = entry.name
                     if name in _SKIP_DIRS:
                         continue
@@ -637,13 +717,16 @@ class NativeToolLoader(loader.ToolLoader):
 
         with _open_host_root(location, create=False) as root_fd:
             with _open_location_fd(root_fd, location.relative_parts, os.O_RDONLY) as target_fd:
-                metadata = os.fstat(target_fd)
-                if stat.S_ISREG(metadata.st_mode):
-                    grep_file(target_fd, sandbox_base)
-                elif stat.S_ISDIR(metadata.st_mode):
-                    walk(target_fd, '')
-                else:
-                    return {'ok': False, 'error': f'Path not found: {sandbox_base}'}
+                try:
+                    metadata = os.fstat(target_fd)
+                    if stat.S_ISREG(metadata.st_mode):
+                        grep_file(target_fd, sandbox_base)
+                    elif stat.S_ISDIR(metadata.st_mode):
+                        walk(target_fd, '')
+                    else:
+                        return {'ok': False, 'error': f'Path not found: {sandbox_base}'}
+                except TimeoutError:
+                    return {'ok': False, 'error': 'Regex search timed out'}
 
         return {
             'ok': True,
@@ -701,9 +784,24 @@ if not path.startswith('/workspace'):
 elif not os.path.exists(path):
     print(json.dumps({{'ok': False, 'error': f'File not found: {{path}}'}}))
 elif os.path.isdir(path):
-    entries = sorted(os.listdir(path))
+    entries = []
+    directory_truncated = False
+    with os.scandir(path) as iterator:
+        for entry in iterator:
+            if len(entries) >= {_DIRECTORY_MAX_ENTRIES}:
+                directory_truncated = True
+                break
+            entries.append(entry.name)
+    entries.sort()
     content = '\\n'.join(entries)
-    print(json.dumps({{'ok': True, 'content': content, 'is_directory': True, 'total': len(entries), 'truncated': False}}))
+    print(json.dumps({{
+        'ok': True,
+        'content': content,
+        'is_directory': True,
+        'total': len(entries) + int(directory_truncated),
+        'truncated': directory_truncated,
+        'truncated_by': 'entries' if directory_truncated else None,
+    }}))
 elif encoding == 'base64':
     size_bytes = os.path.getsize(path)
     with open(path, 'rb') as f:
@@ -824,7 +922,7 @@ else:
 
     async def _glob_workspace_via_box(self, path: str, pattern: str, query: pipeline_query.Query) -> dict:
         script = f"""
-import json, os
+import heapq, json, os
 from pathlib import Path
 path = {json.dumps(path)}
 pattern = {json.dumps(pattern)}
@@ -835,12 +933,28 @@ elif not os.path.isdir(path):
     print(json.dumps({{'ok': False, 'error': f'Path is not a directory: {{path}}'}}))
 else:
     base = Path(path)
-    hits = [
-        item for item in base.rglob(pattern)
-        if not any(part in skip_dirs for part in item.parts)
-    ]
-    hits.sort(key=lambda item: item.stat().st_mtime if item.exists() else 0, reverse=True)
-    shown = hits[:{_GLOB_MAX_MATCHES}]
+    newest_hits = []
+    total = 0
+    entries_seen = 0
+    scan_truncated = False
+    for item in base.rglob(pattern):
+        entries_seen += 1
+        if entries_seen > {_FILE_WALK_MAX_ENTRIES}:
+            scan_truncated = True
+            break
+        if any(part in skip_dirs for part in item.parts):
+            continue
+        total += 1
+        try:
+            mtime = item.stat().st_mtime
+        except OSError:
+            mtime = 0
+        candidate = (mtime, str(item))
+        if len(newest_hits) < {_GLOB_MAX_MATCHES}:
+            heapq.heappush(newest_hits, candidate)
+        elif candidate > newest_hits[0]:
+            heapq.heapreplace(newest_hits, candidate)
+    shown = [Path(item_path) for _mtime, item_path in sorted(newest_hits, reverse=True)]
     matches = []
     output_bytes = 0
     truncated_by_bytes = False
@@ -857,9 +971,12 @@ else:
         'ok': True,
         'matches': matches,
         'preview': '\\n'.join(matches),
-        'total': len(hits),
-        'truncated': len(hits) > len(matches) or truncated_by_bytes,
-        'truncated_by': 'bytes' if truncated_by_bytes else ('matches' if len(hits) > len(matches) else None),
+        'total': total,
+        'truncated': scan_truncated or total > len(matches) or truncated_by_bytes,
+        'truncated_by': (
+            'scan' if scan_truncated
+            else ('bytes' if truncated_by_bytes else ('matches' if total > len(matches) else None))
+        ),
     }}))
 """.strip()
         return await self._run_workspace_file_script(script, query)
@@ -872,12 +989,15 @@ else:
         query: pipeline_query.Query,
     ) -> dict:
         script = f"""
-import json, os, re
+import json, os, re, signal, time
 from pathlib import Path
 path = {json.dumps(path)}
 pattern = {json.dumps(pattern)}
 include = {json.dumps(include)}
 skip_dirs = {json.dumps(sorted(_SKIP_DIRS))}
+def regex_timeout(_signum, _frame):
+    raise TimeoutError
+signal.signal(signal.SIGALRM, regex_timeout)
 try:
     regex = re.compile(pattern)
 except re.error as exc:
@@ -888,6 +1008,17 @@ else:
     elif not os.path.exists(path):
         print(json.dumps({{'ok': False, 'error': f'Path not found: {{path}}'}}))
     else:
+        regex_deadline = time.monotonic() + {_GREP_REGEX_TIMEOUT_SECONDS}
+        def bounded_search(value):
+            remaining = regex_deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError
+            signal.setitimer(signal.ITIMER_REAL, remaining)
+            try:
+                return regex.search(value)
+            finally:
+                signal.setitimer(signal.ITIMER_REAL, 0)
+
         base = Path(path)
         if base.is_file():
             files = [base]
@@ -904,14 +1035,37 @@ else:
         matches = []
         output_bytes = 0
         truncated_by = None
+        total_chars_seen = 0
         for fp in files:
             try:
                 handle = fp.open('r', encoding='utf-8', errors='ignore')
             except OSError:
                 continue
+            file_chars_seen = 0
             with handle:
-                for lineno, line in enumerate(handle, 1):
-                    if regex.search(line):
+                lineno = 0
+                while True:
+                    line = handle.readline({_GREP_MAX_SCAN_LINE_CHARS + 1})
+                    if not line:
+                        break
+                    lineno += 1
+                    file_chars_seen += len(line)
+                    total_chars_seen += len(line)
+                    if (
+                        file_chars_seen > {_GREP_MAX_FILE_SCAN_CHARS}
+                        or total_chars_seen > {_GREP_MAX_TOTAL_SCAN_CHARS}
+                    ):
+                        truncated_by = 'scan'
+                        break
+                    if len(line) > {_GREP_MAX_SCAN_LINE_CHARS} and not line.endswith('\\n'):
+                        truncated_by = truncated_by or 'line'
+                        break
+                    try:
+                        matched = bounded_search(line)
+                    except TimeoutError:
+                        print(json.dumps({{'ok': False, 'error': 'Regex search timed out'}}))
+                        raise SystemExit(0)
+                    if matched:
                         if base.is_file():
                             file_path = path
                         else:
@@ -934,9 +1088,9 @@ else:
                         if len(matches) >= {_GREP_MAX_MATCHES}:
                             truncated_by = truncated_by or 'matches'
                             break
-                if truncated_by == 'bytes' or len(matches) >= {_GREP_MAX_MATCHES}:
+                if truncated_by in ('bytes', 'scan') or len(matches) >= {_GREP_MAX_MATCHES}:
                     break
-            if truncated_by == 'bytes' or len(matches) >= {_GREP_MAX_MATCHES}:
+            if truncated_by in ('bytes', 'scan') or len(matches) >= {_GREP_MAX_MATCHES}:
                 break
 
         print(json.dumps({{
@@ -966,7 +1120,7 @@ else:
                 host_location = None
             if host_location is not None:
                 try:
-                    return self._read_host_location(host_location, parameters)
+                    return await asyncio.to_thread(self._read_host_location, host_location, parameters)
                 except FileNotFoundError:
                     pass
 
@@ -998,7 +1152,7 @@ else:
         if self._should_use_box_workspace_files(host_location.selected_skill):
             return await self._read_workspace_via_box(path, parameters, query)
         try:
-            return self._read_host_location(host_location, parameters)
+            return await asyncio.to_thread(self._read_host_location, host_location, parameters)
         except (FileNotFoundError, NotADirectoryError):
             return {'ok': False, 'error': f'File not found: {path}'}
 
@@ -1031,7 +1185,7 @@ else:
         if self._should_use_box_workspace_files(host_location.selected_skill):
             return await self._write_workspace_via_box(path, content, parameters, query)
         try:
-            self._write_host_location(host_location, content, parameters)
+            await run_blocking_atomic(self._write_host_location, host_location, content, parameters)
         except ValueError as exc:
             return {'ok': False, 'error': str(exc)}
         self._refresh_skill_from_disk(query, host_location.selected_skill)
@@ -1091,7 +1245,12 @@ else:
         if self._should_use_box_workspace_files(host_location.selected_skill):
             return await self._edit_workspace_via_box(path, old_string, new_string, query)
         try:
-            changed, error = self._edit_host_location(host_location, old_string, new_string)
+            changed, error = await run_blocking_atomic(
+                self._edit_host_location,
+                host_location,
+                old_string,
+                new_string,
+            )
         except (FileNotFoundError, NotADirectoryError):
             return {'ok': False, 'error': f'File not found: {path}'}
         if not changed:
@@ -1364,7 +1523,7 @@ else:
         if self._should_use_box_workspace_files(host_location.selected_skill):
             return await self._glob_workspace_via_box(path, pattern, query)
         try:
-            return self._glob_host_location(host_location, pattern, path)
+            return await asyncio.to_thread(self._glob_host_location, host_location, pattern, path)
         except (FileNotFoundError, NotADirectoryError):
             return {'ok': False, 'error': f'Path is not a directory: {path}'}
 
@@ -1374,12 +1533,8 @@ else:
         include = parameters.get('include')
         self.ap.logger.info(f'grep tool invoked: query_id={query.query_id} pattern={pattern} path={path}')
 
-        import re
-
-        try:
-            regex = re.compile(pattern)
-        except re.error as e:
-            return {'ok': False, 'error': f'Invalid regex: {e}'}
+        if not isinstance(pattern, str) or len(pattern) > _GREP_MAX_PATTERN_CHARS:
+            return {'ok': False, 'error': f'Regex patterns may contain at most {_GREP_MAX_PATTERN_CHARS} characters'}
 
         host_location = self._resolve_host_location(
             query,
@@ -1390,7 +1545,13 @@ else:
         if self._should_use_box_workspace_files(host_location.selected_skill):
             return await self._grep_workspace_via_box(path, pattern, include, query)
         try:
-            return self._grep_host_location(host_location, regex, include, path)
+            return await asyncio.to_thread(
+                self._grep_host_location,
+                host_location,
+                pattern,
+                include,
+                path,
+            )
         except (FileNotFoundError, NotADirectoryError):
             return {'ok': False, 'error': f'Path not found: {path}'}
 
@@ -1430,18 +1591,24 @@ else:
             normalized['truncated_by'] = 'bytes'
         return normalized
 
-    def _build_directory_result(self, entries: list[str]) -> dict:
+    def _build_directory_result(
+        self,
+        entries: list[str],
+        *,
+        total: int | None = None,
+        force_truncated_by: str | None = None,
+    ) -> dict:
         sorted_entries = sorted(str(entry) for entry in entries)
         content = '\n'.join(sorted_entries)
         preview = self._truncate_text_to_bytes(content, _DEFAULT_TOOL_RESULT_MAX_BYTES)
-        truncated = preview != content
+        truncated_by = force_truncated_by or ('bytes' if preview != content else None)
         return {
             'ok': True,
             'content': preview,
             'is_directory': True,
-            'total': len(sorted_entries),
-            'truncated': truncated,
-            'truncated_by': 'bytes' if truncated else None,
+            'total': len(sorted_entries) if total is None else total,
+            'truncated': truncated_by is not None,
+            'truncated_by': truncated_by,
         }
 
     def _read_text_file_preview(self, file_fd: int, parameters: dict, *, metadata: os.stat_result) -> dict:

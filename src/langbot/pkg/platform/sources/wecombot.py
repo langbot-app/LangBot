@@ -516,6 +516,8 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             # do work. Lazy-create on first call.
             object.__setattr__(self, '_synthetic_buffers', {})
         buffers: dict[str, str] = self._synthetic_buffers
+        if buf_key not in buffers and len(buffers) >= 100:
+            buffers.pop(next(iter(buffers)), None)
         if content and not form_data:
             previous = buffers.get(buf_key, '')
             if previous and content.startswith(previous):
@@ -524,6 +526,8 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 buffers[buf_key] = previous
             else:
                 buffers[buf_key] = previous + content
+            if len(buffers[buf_key]) > 200000:
+                buffers[buf_key] = buffers[buf_key][-200000:]
 
         if not is_final:
             return {'stream': True, 'synthetic': True, 'buffered': True}
@@ -613,7 +617,11 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 'chat_id': chat_id,
                 'stream_id': '',
                 'req_id': '',
+                'created_at': time.monotonic(),
             }
+            prune = getattr(self.bot, '_prune_pending_forms', None)
+            if callable(prune):
+                prune()
         return payload
 
     async def send_message(self, target_type, target_id, message):
@@ -745,10 +753,13 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             await keep_alive()
 
     async def kill(self) -> bool:
+        if hasattr(self, '_synthetic_buffers'):
+            self._synthetic_buffers.clear()
         _ws_mode = not self.config.get('enable-webhook', False)
         if _ws_mode:
             await self.bot.disconnect()
             return True
+        await self.bot.close()
         return False
 
     async def unregister_listener(

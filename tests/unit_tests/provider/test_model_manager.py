@@ -7,6 +7,7 @@ and error handling without calling real LLM APIs.
 
 from __future__ import annotations
 
+import dataclasses
 import pytest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
@@ -18,7 +19,7 @@ from langbot.pkg.entity.errors import provider as provider_errors
 from langbot.pkg.provider.modelmgr import token
 from langbot.pkg.api.http.context import ExecutionContext
 from langbot.pkg.workspace.entities import WorkspaceExecutionBinding
-from langbot.pkg.workspace.errors import WorkspaceGenerationMismatchError
+from langbot.pkg.workspace.errors import WorkspaceGenerationMismatchError, WorkspaceInvariantError
 from tests.unit_tests.provider.conftest import (
     TEST_EXECUTION_CONTEXT,
     TEST_WORKSPACE_UUID,
@@ -123,6 +124,24 @@ async def test_model_manager_load_models_from_db(fake_requester_registry, fake_p
     assert len(model_mgr.llm_model_dict) == 2
     assert len(model_mgr.embedding_model_dict) == 1
     assert len(model_mgr.rerank_model_dict) == 1
+
+
+@pytest.mark.asyncio
+async def test_empty_cloud_workspace_does_not_retain_generation(
+    mock_app_for_modelmgr,
+):
+    model_mgr = ModelManager(mock_app_for_modelmgr)
+
+    await model_mgr._load_workspace_models(TEST_EXECUTION_CONTEXT)
+
+    assert model_mgr.provider_dict == {}
+    assert model_mgr.llm_model_dict == {}
+    assert model_mgr.embedding_model_dict == {}
+    assert model_mgr.rerank_model_dict == {}
+    assert model_mgr._scope_generations == {}
+
+    await model_mgr.resolve_execution_context(TEST_EXECUTION_CONTEXT)
+    assert model_mgr._scope_generations == {}
 
 
 @pytest.mark.asyncio
@@ -937,6 +956,110 @@ async def test_runtime_cache_rejects_stale_placement_generation(fake_requester_r
 
     with pytest.raises(WorkspaceGenerationMismatchError, match='stale generation'):
         await model_mgr.get_model_by_uuid(stale_context, 'any-model')
+
+
+def test_generation_advance_prunes_superseded_model_runtime_objects():
+    class NoGlobalIterationDict(dict):
+        def __iter__(self):
+            raise AssertionError('generation advance scanned every model runtime')
+
+        def items(self):
+            raise AssertionError('generation advance scanned every model runtime')
+
+        def keys(self):
+            raise AssertionError('generation advance scanned every model runtime')
+
+    model_mgr = ModelManager(Mock())
+    old_context = ExecutionContext(
+        instance_uuid='instance-a',
+        workspace_uuid='workspace-a',
+        placement_generation=1,
+    )
+    new_context = dataclasses.replace(old_context, placement_generation=2)
+    model_mgr._observe_execution_context(old_context)
+    for cache in (
+        model_mgr.provider_dict,
+        model_mgr.llm_model_dict,
+        model_mgr.embedding_model_dict,
+        model_mgr.rerank_model_dict,
+    ):
+        model_mgr._cache_set(
+            cache,
+            ('instance-a', 'workspace-a', 1, 'resource-a'),
+            object(),
+        )
+        model_mgr._cache_set(
+            cache,
+            ('instance-a', 'workspace-b', 1, 'resource-b'),
+            object(),
+        )
+
+    model_mgr.provider_dict = NoGlobalIterationDict(model_mgr.provider_dict)
+    model_mgr.llm_model_dict = NoGlobalIterationDict(model_mgr.llm_model_dict)
+    model_mgr.embedding_model_dict = NoGlobalIterationDict(model_mgr.embedding_model_dict)
+    model_mgr.rerank_model_dict = NoGlobalIterationDict(model_mgr.rerank_model_dict)
+
+    model_mgr._observe_execution_context(new_context)
+
+    for cache in (
+        model_mgr.provider_dict,
+        model_mgr.llm_model_dict,
+        model_mgr.embedding_model_dict,
+        model_mgr.rerank_model_dict,
+    ):
+        assert ('instance-a', 'workspace-a', 1, 'resource-a') not in cache
+        assert ('instance-a', 'workspace-b', 1, 'resource-b') in cache
+    with pytest.raises(WorkspaceInvariantError, match='rolled back'):
+        model_mgr._observe_execution_context(old_context)
+
+
+@pytest.mark.asyncio
+async def test_generation_advance_closes_retired_provider_requester(
+    fake_requester_registry,
+    runtime_provider,
+):
+    model_mgr = fake_requester_registry
+    runtime_provider.requester.aclose = AsyncMock()
+    await model_mgr.cache_provider(TEST_EXECUTION_CONTEXT, runtime_provider)
+
+    next_context = dataclasses.replace(
+        TEST_EXECUTION_CONTEXT,
+        placement_generation=2,
+    )
+    model_mgr.ap.workspace_service.get_execution_binding = AsyncMock(
+        return_value=WorkspaceExecutionBinding(
+            instance_uuid=next_context.instance_uuid,
+            workspace_uuid=next_context.workspace_uuid,
+            placement_generation=next_context.placement_generation,
+            write_fenced=False,
+            state='active',
+        )
+    )
+
+    await model_mgr.resolve_execution_context(next_context)
+
+    runtime_provider.requester.aclose.assert_awaited_once_with()
+    assert model_mgr.provider_dict == {}
+    assert model_mgr._scope_generations == {}
+
+
+@pytest.mark.asyncio
+async def test_model_manager_shutdown_closes_all_requesters_once(
+    fake_requester_registry,
+    runtime_provider,
+):
+    model_mgr = fake_requester_registry
+    runtime_provider.requester.aclose = AsyncMock()
+    await model_mgr.cache_provider(TEST_EXECUTION_CONTEXT, runtime_provider)
+
+    await model_mgr.shutdown()
+    await model_mgr.shutdown()
+
+    runtime_provider.requester.aclose.assert_awaited_once_with()
+    assert model_mgr.provider_dict == {}
+    assert model_mgr.llm_model_dict == {}
+    assert model_mgr.embedding_model_dict == {}
+    assert model_mgr.rerank_model_dict == {}
 
 
 def test_provider_not_found_error_str():

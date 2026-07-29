@@ -20,8 +20,9 @@ import httpx
 import quart
 
 from ... import group
-from ......utils import paths
+from ......utils import httpclient, paths
 from ......platform.sources.websocket_manager import WebSocketScope, is_valid_session_id, ws_connection_manager
+from .websocket_chat import create_scoped_duplex_tasks, wait_for_duplex_tasks
 
 logger = logging.getLogger(__name__)
 _AUTH_TIMEOUT_SECONDS = 10.0
@@ -103,7 +104,7 @@ class EmbedRouterGroup(group.RouterGroup):
         """Require the embed session token as the first WebSocket frame."""
 
         raw_message = await asyncio.wait_for(quart.websocket.receive(), timeout=_AUTH_TIMEOUT_SECONDS)
-        payload = json.loads(raw_message)
+        payload = await asyncio.to_thread(json.loads, raw_message)
         if not isinstance(payload, dict) or payload.get('type') != 'authenticate':
             raise ValueError('Authentication is required')
         token = str(payload.get('token') or '')
@@ -160,12 +161,12 @@ class EmbedRouterGroup(group.RouterGroup):
                     ts = time.time()
                     return self.success(data={'token': f'{ts}.dummy'})
 
-                async with httpx.AsyncClient() as client:
+                async with httpx.AsyncClient(event_hooks=httpclient.httpx_response_limit_hooks()) as client:
                     resp = await client.post(
                         'https://challenges.cloudflare.com/turnstile/v0/siteverify',
                         data={'secret': secret, 'response': token},
                     )
-                    result = resp.json()
+                    result = await httpclient.parse_json_response(resp)
 
                 if not result.get('success'):
                     return self.http_status(403, -1, 'Turnstile verification failed')
@@ -371,6 +372,21 @@ class EmbedRouterGroup(group.RouterGroup):
                     session_type=session_type,
                     session_id=session_id,
                     metadata={'user_agent': quart.websocket.headers.get('User-Agent', '')},
+                    send_queue_size=(
+                        self.ap.instance_config.data.get('system', {})
+                        .get('websocket_retention', {})
+                        .get('send_queue_size', 100)
+                    ),
+                    max_connections=(
+                        self.ap.instance_config.data.get('system', {})
+                        .get('websocket_retention', {})
+                        .get('max_connections', 1024)
+                    ),
+                    max_connections_per_workspace=(
+                        self.ap.instance_config.data.get('system', {})
+                        .get('websocket_retention', {})
+                        .get('max_connections_per_workspace', 32)
+                    ),
                 )
 
                 await quart.websocket.send(
@@ -390,13 +406,19 @@ class EmbedRouterGroup(group.RouterGroup):
                     f'(bot={bot_uuid}, pipeline={pipeline_uuid}, session_type={session_type})'
                 )
 
-                receive_task = asyncio.create_task(
-                    self._handle_receive(connection, websocket_adapter, runtime_bot, pipeline_uuid)
+                receive_task, send_task = create_scoped_duplex_tasks(
+                    self._handle_receive(
+                        connection,
+                        websocket_adapter,
+                        runtime_bot,
+                        pipeline_uuid,
+                    ),
+                    self._handle_send(connection),
+                    runtime_bot.execution_context.workspace_uuid,
                 )
-                send_task = asyncio.create_task(self._handle_send(connection))
 
                 try:
-                    await asyncio.gather(receive_task, send_task)
+                    await wait_for_duplex_tasks(receive_task, send_task)
                 except Exception as e:
                     logger.error(f'Embed WebSocket task error: {e}')
                 finally:
@@ -418,7 +440,7 @@ class EmbedRouterGroup(group.RouterGroup):
                 await ws_connection_manager.update_activity(connection.connection_id)
 
                 try:
-                    data = json.loads(message)
+                    data = await asyncio.to_thread(json.loads, message)
                     message_type = data.get('type', 'message')
 
                     if message_type == 'ping':
@@ -442,13 +464,20 @@ class EmbedRouterGroup(group.RouterGroup):
             logger.error(f'Embed receive error: {e}', exc_info=True)
         finally:
             connection.is_active = False
+            try:
+                connection.send_queue.put_nowait(None)
+            except asyncio.QueueFull:
+                pass
 
     async def _handle_send(self, connection):
         try:
             while connection.is_active or not connection.send_queue.empty():
                 try:
                     message = await asyncio.wait_for(connection.send_queue.get(), timeout=1.0)
-                    await quart.websocket.send(json.dumps(message))
+                    if message is None:
+                        break
+                    encoded = await asyncio.to_thread(json.dumps, message)
+                    await quart.websocket.send(encoded)
                 except asyncio.TimeoutError:
                     continue
         except Exception as e:

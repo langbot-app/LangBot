@@ -2,7 +2,12 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 from chromadb import PersistentClient
-from langbot.pkg.vector.vdb import VectorDatabase, SearchType
+from langbot.pkg.vector.vdb import (
+    VectorDatabase,
+    SearchType,
+    remember_bounded_mapping,
+    runtime_cache_limit,
+)
 from langbot.pkg.core import app
 import chromadb
 import chromadb.errors
@@ -16,6 +21,13 @@ class ChromaVectorDatabase(VectorDatabase):
         self.ap = ap
         self.client = PersistentClient(path=base_path)
         self._collections = {}
+        self._runtime_cache_limit = runtime_cache_limit(ap)
+
+    async def close(self) -> None:
+        # Chroma's PersistentClient has no public close API. Collection
+        # wrappers are safe to discard and otherwise retain every collection
+        # touched during the lifetime of this application object.
+        self._collections.clear()
 
     @classmethod
     def supported_search_types(cls) -> list[SearchType]:
@@ -23,8 +35,12 @@ class ChromaVectorDatabase(VectorDatabase):
 
     async def get_or_create_collection(self, collection: str) -> chromadb.Collection:
         if collection not in self._collections:
-            self._collections[collection] = await asyncio.to_thread(
-                self.client.get_or_create_collection, name=collection
+            runtime_collection = await asyncio.to_thread(self.client.get_or_create_collection, name=collection)
+            remember_bounded_mapping(
+                self._collections,
+                collection,
+                runtime_collection,
+                self._runtime_cache_limit,
             )
             self.ap.logger.info(f"Chroma collection '{collection}' accessed/created.")
         return self._collections[collection]

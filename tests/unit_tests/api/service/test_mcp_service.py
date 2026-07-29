@@ -29,6 +29,7 @@ from langbot.pkg.api.http.context import (
     WorkspaceContext,
 )
 from langbot.pkg.api.http.service.mcp import MCPService, redact_mcp_secrets, restore_mcp_secret_placeholders
+from langbot.pkg.core.taskmgr import TaskCapacityError
 from langbot.pkg.entity.persistence.mcp import MCPServer
 from langbot.pkg.provider.tools.loaders.mcp_policy import MCPStdioDisabledError
 from langbot.pkg.workspace.errors import WorkspaceNotFoundError
@@ -1050,3 +1051,23 @@ class TestMCPServiceTestMCPServer:
         # Verify - load_mcp_server called
         ap.tool_mgr.mcp_tool_loader.load_mcp_server.assert_called_once()
         assert task_id == 456
+
+    async def test_rejected_transient_test_session_is_shut_down(self):
+        ap = SimpleNamespace()
+        mock_session = MagicMock()
+        mock_session.shutdown = AsyncMock()
+        ap.tool_mgr = SimpleNamespace(
+            mcp_tool_loader=SimpleNamespace(load_mcp_server=AsyncMock(return_value=mock_session))
+        )
+
+        def reject(coroutine, **_kwargs):
+            coroutine.close()
+            raise TaskCapacityError('capacity')
+
+        ap.task_mgr = SimpleNamespace(create_user_task=Mock(side_effect=reject))
+        service = _service(ap)
+
+        with pytest.raises(TaskCapacityError, match='capacity'):
+            await service.test_mcp_server(_CONTEXT, '_', {'name': 'New Server'})
+
+        mock_session.shutdown.assert_awaited_once_with()

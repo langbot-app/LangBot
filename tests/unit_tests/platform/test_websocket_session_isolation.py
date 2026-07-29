@@ -109,6 +109,71 @@ async def test_pipeline_indexes_and_broadcasts_are_workspace_scoped():
 
 
 @pytest.mark.asyncio
+async def test_connection_admission_is_bounded_globally_and_per_workspace():
+    manager = WebSocketConnectionManager()
+    await manager.add_connection(
+        websocket=Mock(),
+        scope=SCOPE_A,
+        pipeline_uuid='pipeline-1',
+        session_type='person',
+        max_connections=2,
+        max_connections_per_workspace=1,
+    )
+
+    with pytest.raises(RuntimeError, match='Workspace WebSocket'):
+        await manager.add_connection(
+            websocket=Mock(),
+            scope=SCOPE_A,
+            pipeline_uuid='pipeline-2',
+            session_type='person',
+            max_connections=2,
+            max_connections_per_workspace=1,
+        )
+
+    await manager.add_connection(
+        websocket=Mock(),
+        scope=SCOPE_B,
+        pipeline_uuid='pipeline-1',
+        session_type='person',
+        max_connections=2,
+        max_connections_per_workspace=1,
+    )
+    with pytest.raises(RuntimeError, match='WebSocket connection capacity'):
+        await manager.add_connection(
+            websocket=Mock(),
+            scope=WebSocketScope('instance-a', 'workspace-c', 1),
+            pipeline_uuid='pipeline-1',
+            session_type='person',
+            max_connections=2,
+            max_connections_per_workspace=1,
+        )
+
+
+@pytest.mark.asyncio
+async def test_close_scope_closes_and_removes_only_matching_connections():
+    manager = WebSocketConnectionManager()
+    websocket_a = Mock(close=AsyncMock())
+    connection_a = await manager.add_connection(
+        websocket=websocket_a,
+        scope=SCOPE_A,
+        pipeline_uuid='pipeline-1',
+        session_type='person',
+    )
+    connection_b = await manager.add_connection(
+        websocket=Mock(close=AsyncMock()),
+        scope=SCOPE_B,
+        pipeline_uuid='pipeline-1',
+        session_type='person',
+    )
+
+    await manager.close_scope(SCOPE_A)
+
+    websocket_a.close.assert_awaited_once()
+    assert await manager.get_connection(connection_a.connection_id, scope=SCOPE_A) is None
+    assert await manager.get_connection(connection_b.connection_id, scope=SCOPE_B) is connection_b
+
+
+@pytest.mark.asyncio
 async def test_embed_event_uses_stable_session_launcher(monkeypatch):
     manager = WebSocketConnectionManager()
     session_id = '31c0f2e9-b115-4ee6-8f15-3e624d6456b1'

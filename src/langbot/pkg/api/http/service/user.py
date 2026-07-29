@@ -7,6 +7,7 @@ import datetime
 import typing
 import asyncio
 import dataclasses
+import heapq
 import hashlib
 import secrets
 import time
@@ -19,9 +20,15 @@ from ....entity.persistence.workspace import MembershipRole, MembershipStatus, W
 from ....utils import constants
 from ....entity.errors import account as account_errors
 from ....workspace.collaboration import normalize_email
+from ....utils import bounded_executor
 
 if typing.TYPE_CHECKING:
     from ....core.app import Application
+
+
+_SPACE_OAUTH_STATE_MAX_ENTRIES = 4096
+_SPACE_OAUTH_STATE_HEAP_COMPACT_FLOOR = 64
+_SPACE_OAUTH_STATE_HEAP_MAX_MULTIPLIER = 4
 
 
 class AccountExistsLoginRequiredError(ValueError):
@@ -54,13 +61,44 @@ class UserService:
     def __init__(self, ap: Application) -> None:
         self.ap = ap
         self._create_user_lock = asyncio.Lock()
-        self._password_hash_lock = asyncio.Semaphore(1)
+        self._password_hash_lock = asyncio.Lock()
         self._space_oauth_state_lock = asyncio.Lock()
         self._space_oauth_states: dict[str, tuple[str, str | None, float, str | None]] = {}
+        self._space_oauth_state_expiry_heap: list[tuple[float, str]] = []
 
     @staticmethod
     def _space_oauth_state_digest(state: str) -> str:
         return hashlib.sha256(state.encode('utf-8')).hexdigest()
+
+    def _prune_space_oauth_states(self, now: float) -> None:
+        while self._space_oauth_state_expiry_heap:
+            expires_at, digest = self._space_oauth_state_expiry_heap[0]
+            entry = self._space_oauth_states.get(digest)
+            if entry is None or entry[2] != expires_at:
+                heapq.heappop(self._space_oauth_state_expiry_heap)
+                continue
+            if expires_at > now:
+                break
+            heapq.heappop(self._space_oauth_state_expiry_heap)
+            self._space_oauth_states.pop(digest, None)
+
+        max_heap_entries = max(
+            _SPACE_OAUTH_STATE_HEAP_COMPACT_FLOOR,
+            len(self._space_oauth_states) * _SPACE_OAUTH_STATE_HEAP_MAX_MULTIPLIER,
+        )
+        if len(self._space_oauth_state_expiry_heap) > max_heap_entries:
+            self._space_oauth_state_expiry_heap[:] = [
+                (entry[2], digest) for digest, entry in self._space_oauth_states.items()
+            ]
+            heapq.heapify(self._space_oauth_state_expiry_heap)
+
+    def _evict_earliest_space_oauth_state(self) -> None:
+        while self._space_oauth_state_expiry_heap:
+            expires_at, digest = heapq.heappop(self._space_oauth_state_expiry_heap)
+            entry = self._space_oauth_states.get(digest)
+            if entry is not None and entry[2] == expires_at:
+                self._space_oauth_states.pop(digest, None)
+                return
 
     async def issue_space_oauth_state(
         self,
@@ -85,11 +123,14 @@ class UserService:
         expires_at = time.monotonic() + min(ttl_seconds, 600)
         async with self._space_oauth_state_lock:
             now = time.monotonic()
-            self._space_oauth_states = {key: value for key, value in self._space_oauth_states.items() if value[2] > now}
-            if len(self._space_oauth_states) >= 4096:
-                oldest = min(self._space_oauth_states, key=lambda key: self._space_oauth_states[key][2])
-                self._space_oauth_states.pop(oldest, None)
+            self._prune_space_oauth_states(now)
+            if len(self._space_oauth_states) >= _SPACE_OAUTH_STATE_MAX_ENTRIES:
+                self._evict_earliest_space_oauth_state()
             self._space_oauth_states[digest] = (purpose, account_uuid, expires_at, launch_workspace_uuid)
+            heapq.heappush(
+                self._space_oauth_state_expiry_heap,
+                (expires_at, digest),
+            )
         return raw_state
 
     async def consume_space_oauth_state_details(
@@ -129,8 +170,14 @@ class UserService:
         return consumed.account
 
     async def _hash_password(self, password: str) -> str:
+        if self._password_hash_lock.locked():
+            raise bounded_executor.BlockingWorkCapacityError(
+                'Password hashing capacity reached',
+                scope='system:authentication',
+            )
         async with self._password_hash_lock:
-            return await asyncio.to_thread(argon2.PasswordHasher().hash, password)
+            with bounded_executor.blocking_work_scope('system:authentication'):
+                return await asyncio.to_thread(argon2.PasswordHasher().hash, password)
 
     def _require_local_directory(self) -> None:
         if self._uses_control_plane_directory():
@@ -143,8 +190,14 @@ class UserService:
         return bool(workspace_service is not None and workspace_service.policy.multi_workspace_enabled)
 
     async def _verify_password(self, hashed_password: str, password: str) -> None:
+        if self._password_hash_lock.locked():
+            raise bounded_executor.BlockingWorkCapacityError(
+                'Password hashing capacity reached',
+                scope='system:authentication',
+            )
         async with self._password_hash_lock:
-            await asyncio.to_thread(argon2.PasswordHasher().verify, hashed_password, password)
+            with bounded_executor.blocking_work_scope('system:authentication'):
+                await asyncio.to_thread(argon2.PasswordHasher().verify, hashed_password, password)
 
     async def _update_space_provider_for_account(self, account: typing.Any, api_key: str) -> None:
         """Refresh the OSS Workspace Space provider without guessing a SaaS Workspace.

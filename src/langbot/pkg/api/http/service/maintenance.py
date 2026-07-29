@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import datetime
 import functools
 import os
@@ -69,7 +70,10 @@ class MaintenanceService:
 
         return {
             'uploaded_files': await self._cleanup_expired_uploaded_files(context, upload_retention_days),
-            'log_files': self._cleanup_expired_log_files(log_retention_days)
+            'log_files': await asyncio.to_thread(
+                self._cleanup_expired_log_files,
+                log_retention_days,
+            )
             if await self._is_oss_singleton(context)
             else 0,
         }
@@ -108,22 +112,19 @@ class MaintenanceService:
             scoped_storage_path = Path('data/storage') / self.ap.storage_mgr.scoped_prefix(context)
             roots = [('storage', scoped_storage_path)]
 
-        sections = []
-        for key, path in roots:
-            sections.append(
-                {
-                    'key': key,
-                    'path': str(path) if path else '',
-                    'exists': path.exists() if path else False,
-                    'size_bytes': self._path_size(path) if path else 0,
-                    'file_count': self._file_count(path) if path else 0,
-                }
-            )
+        sections = await asyncio.to_thread(self._collect_sections, roots)
 
         monitoring_counts = await self._monitoring_counts(context)
         binary_storage = await self._binary_storage_stats(context)
         upload_candidates = await self._expired_uploaded_candidates(context, upload_retention_days)
-        log_candidates = self._expired_log_candidates(log_retention_days) if is_oss_singleton else []
+        log_candidates = (
+            await asyncio.to_thread(
+                self._expired_log_candidates,
+                log_retention_days,
+            )
+            if is_oss_singleton
+            else []
+        )
 
         return {
             'generated_at': datetime.datetime.now(datetime.timezone.utc).isoformat(),
@@ -144,6 +145,23 @@ class MaintenanceService:
             'tasks': self.ap.task_mgr.get_stats() if is_oss_singleton and self.ap.task_mgr else {},
         }
 
+    def _collect_sections(
+        self,
+        roots: list[tuple[str, Path | None]],
+    ) -> list[dict[str, Any]]:
+        sections = []
+        for key, path in roots:
+            sections.append(
+                {
+                    'key': key,
+                    'path': str(path) if path else '',
+                    'exists': path.exists() if path else False,
+                    'size_bytes': self._path_size(path) if path else 0,
+                    'file_count': self._file_count(path) if path else 0,
+                }
+            )
+        return sections
+
     async def _is_oss_singleton(self, context: TenantContext) -> bool:
         try:
             await self.ap.workspace_service.get_local_execution_binding(
@@ -162,21 +180,16 @@ class MaintenanceService:
         provider = self.ap.storage_mgr.storage_provider
         provider_name = provider.__class__.__name__
         if provider_name == 'LocalStorageProvider':
-            candidates = self._expired_local_upload_candidates(
+            candidates = await asyncio.to_thread(
+                self._expired_local_upload_candidates,
                 context,
                 retention_days,
-                include_paths=True,
+                True,
             )
-            deleted = 0
-            for item in candidates:
-                try:
-                    os.remove(item['path'])
-                    deleted += 1
-                except FileNotFoundError:
-                    pass
-                except Exception as e:
-                    self.ap.logger.warning(f'Failed to delete expired uploaded file {item["key"]}: {e}')
-            return deleted
+            return await asyncio.to_thread(
+                self._delete_local_candidates,
+                candidates,
+            )
 
         if provider_name == 'S3StorageProvider':
             return await self._cleanup_expired_s3_uploaded_files(context, retention_days)
@@ -190,7 +203,11 @@ class MaintenanceService:
     ) -> list[dict[str, Any]]:
         provider_name = self.ap.storage_mgr.storage_provider.__class__.__name__
         if provider_name == 'LocalStorageProvider':
-            return self._expired_local_upload_candidates(context, retention_days)
+            return await asyncio.to_thread(
+                self._expired_local_upload_candidates,
+                context,
+                retention_days,
+            )
         if provider_name == 'S3StorageProvider':
             return await self._expired_s3_upload_candidates(context, retention_days)
         return []
@@ -209,6 +226,25 @@ class MaintenanceService:
         return deleted
 
     async def _expired_s3_upload_candidates(
+        self,
+        context: TenantContext,
+        retention_days: int,
+    ) -> list[dict[str, Any]]:
+        provider = self.ap.storage_mgr.storage_provider
+        run_io = getattr(provider, '_run_io', None)
+        if callable(run_io):
+            return await run_io(
+                self._expired_s3_upload_candidates_sync,
+                context,
+                retention_days,
+            )
+        return await asyncio.to_thread(
+            self._expired_s3_upload_candidates_sync,
+            context,
+            retention_days,
+        )
+
+    def _expired_s3_upload_candidates_sync(
         self,
         context: TenantContext,
         retention_days: int,
@@ -240,6 +276,18 @@ class MaintenanceService:
                         )
 
         return candidates
+
+    def _delete_local_candidates(self, candidates: list[dict[str, Any]]) -> int:
+        deleted = 0
+        for item in candidates:
+            try:
+                os.remove(item['path'])
+                deleted += 1
+            except FileNotFoundError:
+                pass
+            except Exception as e:
+                self.ap.logger.warning(f'Failed to delete expired uploaded file {item["key"]}: {e}')
+        return deleted
 
     def _cleanup_expired_log_files(self, retention_days: int) -> int:
         deleted = 0

@@ -14,6 +14,11 @@ class StorageProvider(abc.ABC):
     async def initialize(self):
         pass
 
+    async def shutdown(self) -> None:
+        """Release provider-owned clients or pools."""
+
+        return None
+
     @abc.abstractmethod
     async def save(
         self,

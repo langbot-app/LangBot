@@ -8,6 +8,7 @@ import pytest
 from langbot.pkg.api.http.authz import WorkspaceRequiredError
 from langbot.pkg.api.http.context import ExecutionContext
 from langbot.pkg.storage.mgr import StorageMgr
+from langbot.pkg.utils.bounded_executor import current_blocking_work_scope
 
 
 WORKSPACE_A = '00000000-0000-0000-0000-00000000000a'
@@ -33,14 +34,17 @@ def _context_for_instance(instance_uuid: str) -> ExecutionContext:
 class _Provider:
     def __init__(self):
         self.values: dict[str, bytes] = {}
+        self.observed_public_scopes: list[str | None] = []
 
     async def save(self, key: str, value: bytes):
         self.values[key] = value
 
     async def load(self, key: str) -> bytes:
+        self.observed_public_scopes.append(current_blocking_work_scope())
         return self.values[key]
 
     async def exists(self, key: str) -> bool:
+        self.observed_public_scopes.append(current_blocking_work_scope())
         return key in self.values
 
     async def size(self, key: str) -> int:
@@ -120,6 +124,10 @@ async def test_public_object_route_derives_trusted_workspace(manager):
         value=b'image-a',
     )
     assert await manager.resolve_public_object(object_key, expected_owner_type='upload') == b'image-a'
+    assert manager.storage_provider.observed_public_scopes[-2:] == [
+        WORKSPACE_A,
+        WORKSPACE_A,
+    ]
     assert await manager.resolve_public_object(object_key, expected_owner_type='plugin') is None
 
     guessed_workspace_key = object_key.replace(WORKSPACE_A, WORKSPACE_B)

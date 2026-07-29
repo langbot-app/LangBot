@@ -1,3 +1,4 @@
+import asyncio
 import json
 import traceback
 from quart import Quart, jsonify, request
@@ -6,6 +7,8 @@ from .slackevent import SlackEvent
 from typing import Callable
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
 
+_MAX_CALLBACK_BODY_BYTES = 1024 * 1024
+
 
 class SlackClient:
     def __init__(self, bot_token: str, signing_secret: str, logger: None, unified_mode: bool = False):
@@ -13,6 +16,7 @@ class SlackClient:
         self.signing_secret = signing_secret
         self.unified_mode = unified_mode
         self.app = Quart(__name__)
+        self.app.config['MAX_CONTENT_LENGTH'] = _MAX_CALLBACK_BODY_BYTES
         self.client = AsyncWebClient(self.bot_token)
 
         # 只有在非统一模式下才注册独立路由
@@ -50,7 +54,9 @@ class SlackClient:
         """
         try:
             body = await req.get_data()
-            data = json.loads(body)
+            if len(body) > _MAX_CALLBACK_BODY_BYTES:
+                raise ValueError('Slack callback body exceeds the size limit')
+            data = await asyncio.to_thread(json.loads, body)
             if 'type' in data:
                 if data['type'] == 'url_verification':
                     return data['challenge']

@@ -13,6 +13,7 @@ from ...api.http.context import ExecutionContext
 
 logger = logging.getLogger(__name__)
 _SESSION_FILTER_UNSET = object()
+_DEFAULT_SEND_QUEUE_SIZE = 100
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -82,7 +83,10 @@ class WebSocketConnection(pydantic.BaseModel):
     last_active: datetime = pydantic.Field(default_factory=datetime.now)
     """最后活跃时间"""
 
-    send_queue: asyncio.Queue = pydantic.Field(default_factory=asyncio.Queue, exclude=True)
+    send_queue: asyncio.Queue = pydantic.Field(
+        default_factory=lambda: asyncio.Queue(maxsize=_DEFAULT_SEND_QUEUE_SIZE),
+        exclude=True,
+    )
     """发送消息队列"""
 
     is_active: bool = True
@@ -135,9 +139,32 @@ class WebSocketConnectionManager:
         session_type: str,
         metadata: dict | None = None,
         session_id: str | None = None,
+        send_queue_size: int = _DEFAULT_SEND_QUEUE_SIZE,
+        max_connections: int = 1024,
+        max_connections_per_workspace: int = 32,
     ) -> WebSocketConnection:
         """Register a WebSocket connection and its optional embed session."""
+        try:
+            send_queue_size = max(int(send_queue_size), 1)
+        except (TypeError, ValueError):
+            send_queue_size = _DEFAULT_SEND_QUEUE_SIZE
+        max_connections = max(int(max_connections), 1)
+        max_connections_per_workspace = max(
+            min(int(max_connections_per_workspace), max_connections),
+            1,
+        )
         async with self._lock:
+            if len(self.connections) >= max_connections:
+                raise RuntimeError(f'WebSocket connection capacity reached ({max_connections})')
+            workspace_connection_count = sum(
+                1
+                for connection in self.connections.values()
+                if connection.instance_uuid == scope.instance_uuid
+                and connection.workspace_uuid == scope.workspace_uuid
+                and connection.placement_generation == scope.placement_generation
+            )
+            if workspace_connection_count >= max_connections_per_workspace:
+                raise RuntimeError(f'Workspace WebSocket connection capacity reached ({max_connections_per_workspace})')
             connection = WebSocketConnection(
                 instance_uuid=scope.instance_uuid,
                 workspace_uuid=scope.workspace_uuid,
@@ -147,6 +174,7 @@ class WebSocketConnectionManager:
                 session_id=session_id,
                 websocket=websocket,
                 metadata=metadata or {},
+                send_queue=asyncio.Queue(maxsize=send_queue_size),
             )
 
             self.connections[connection.connection_id] = connection
@@ -170,6 +198,31 @@ class WebSocketConnectionManager:
             )
 
             return connection
+
+    async def close_scope(self, scope: WebSocketScope) -> None:
+        """Close and forget every live connection for one runtime placement."""
+
+        async with self._lock:
+            connection_ids = [
+                connection_id for connection_id, connection in self.connections.items() if connection.scope == scope
+            ]
+        for connection_id in connection_ids:
+            connection = self.connections.get(connection_id)
+            if connection is None:
+                continue
+            close = getattr(connection.websocket, 'close', None)
+            if close is not None:
+                try:
+                    result = close()
+                    if asyncio.iscoroutine(result):
+                        await result
+                except Exception:
+                    logger.debug(
+                        'Failed to close WebSocket connection %s',
+                        connection_id,
+                        exc_info=True,
+                    )
+            await self.remove_connection(connection_id)
 
     async def remove_connection(self, connection_id: str):
         """移除WebSocket连接"""
@@ -237,7 +290,12 @@ class WebSocketConnectionManager:
         pipeline_uuid: str | None = None,
     ) -> WebSocketConnection | None:
         """Get an active embed connection by its stable browser session identifier."""
-        for connection in self.connections.values():
+        candidates: typing.Iterable[WebSocketConnection]
+        if pipeline_uuid is not None:
+            candidates = await self.get_connections_by_pipeline(pipeline_uuid, scope=scope)
+        else:
+            candidates = self.connections.values()
+        for connection in candidates:
             if (
                 connection.session_id == session_id
                 and connection.is_active
@@ -307,7 +365,20 @@ class WebSocketConnectionManager:
             return
 
         try:
-            await connection.send_queue.put(message)
+            try:
+                connection.send_queue.put_nowait(message)
+            except asyncio.QueueFull:
+                # A slow or disconnected browser must not backpressure every
+                # other connection or retain an unbounded response stream.
+                try:
+                    connection.send_queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    pass
+                connection.send_queue.put_nowait(message)
+                logger.warning(
+                    'WebSocket send queue full; dropped oldest message for connection %s',
+                    connection_id,
+                )
             connection.last_active = datetime.now()
         except Exception as e:
             logger.error(f'Failed to send message to connection {connection_id}: {e}')

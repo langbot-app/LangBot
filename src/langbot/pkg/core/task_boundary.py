@@ -4,6 +4,8 @@ import asyncio
 import contextvars
 import typing
 
+from ..utils import bounded_executor
+
 
 T = typing.TypeVar('T')
 
@@ -14,6 +16,7 @@ def create_detached_task(
     loop: asyncio.AbstractEventLoop | None = None,
     name: str | None = None,
     after_commit_manager: typing.Any | None = None,
+    workspace_uuid: str | None = None,
 ) -> asyncio.Task[T]:
     """Create a task that inherits no request-local ContextVars.
 
@@ -33,6 +36,11 @@ def create_detached_task(
     if callable(gate_factory):
         gate = gate_factory(after_commit_manager)
     task_coro = _wait_for_commit(coro, gate) if gate is not None else coro
+    if workspace_uuid is not None:
+        task_coro = bounded_executor.run_in_blocking_work_scope(
+            task_coro,
+            workspace_uuid,
+        )
     return task_loop.create_task(task_coro, name=name, context=contextvars.Context())
 
 

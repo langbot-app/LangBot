@@ -11,6 +11,8 @@ from urllib.parse import quote
 
 import httpx
 
+from ..utils import httpclient
+
 if typing.TYPE_CHECKING:
     from ..core.app import Application
 
@@ -99,7 +101,11 @@ class InvitationDeliveryService:
             'text': self._plain_text(workspace_name, invitation_link),
             'html': self._html(workspace_name, invitation_link),
         }
-        async with httpx.AsyncClient(timeout=httpx.Timeout(config.timeout), trust_env=True) as client:
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(config.timeout),
+            trust_env=True,
+            event_hooks=httpclient.httpx_response_limit_hooks(),
+        ) as client:
             response = await client.post(
                 config.resend_api_url,
                 headers={'Authorization': f'Bearer {config.resend_api_key}'},

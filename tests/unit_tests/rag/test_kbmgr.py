@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
@@ -10,7 +11,8 @@ import pytest
 from langbot.pkg.api.http.context import ExecutionContext
 from langbot.pkg.entity.persistence.rag import KnowledgeBase
 from langbot.pkg.rag.knowledge.kbmgr import RAGManager, RuntimeKnowledgeBase
-from langbot.pkg.workspace.errors import WorkspaceNotFoundError
+from langbot.pkg.workspace.entities import WorkspaceExecutionBinding
+from langbot.pkg.workspace.errors import WorkspaceInvariantError, WorkspaceNotFoundError
 
 
 CONTEXT_A = ExecutionContext(
@@ -512,6 +514,37 @@ class TestRAGManagerLoadKnowledgeBasesFromDB:
         }
 
     @pytest.mark.asyncio
+    async def test_cloud_startup_reuses_validated_binding(self):
+        class TenantUow:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_args):
+                return False
+
+        app = _app()
+        binding = WorkspaceExecutionBinding(
+            instance_uuid='instance-a',
+            workspace_uuid='workspace-a',
+            placement_generation=5,
+            write_fenced=False,
+            state='active',
+        )
+        app.persistence_mgr.mode = SimpleNamespace(value='cloud_runtime')
+        app.persistence_mgr.tenant_uow = lambda _workspace_uuid: TenantUow()
+        app.persistence_mgr.execute_async.return_value = _Result([_entity()])
+        app.workspace_service.list_active_execution_bindings = AsyncMock(return_value=[binding])
+        app.workspace_service.get_execution_binding = AsyncMock(
+            side_effect=AssertionError('startup RAG loader repeated a validated binding lookup')
+        )
+        manager = RAGManager(app)
+
+        await manager.load_knowledge_bases_from_db()
+
+        assert set(manager.knowledge_bases) == {('workspace-a', 'kb-a')}
+        app.workspace_service.get_execution_binding.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_handles_load_error_gracefully(self):
         app = _app()
         app.persistence_mgr.execute_async.return_value = _Result([_entity()])
@@ -642,6 +675,29 @@ class TestRAGManagerInit:
 
     def test_init_creates_empty_knowledge_bases_dict(self):
         assert RAGManager(_app()).knowledge_bases == {}
+
+    def test_generation_advance_prunes_superseded_runtime_knowledge_bases(self):
+        class NoGlobalItemsScan(dict):
+            def items(self):
+                raise AssertionError('generation advance scanned every knowledge runtime')
+
+        app = _app()
+        manager = RAGManager(app)
+        manager._cache_runtime(
+            RuntimeKnowledgeBase(
+                app,
+                _entity(),
+                CONTEXT_A,
+            )
+        )
+        manager.knowledge_bases = NoGlobalItemsScan(manager.knowledge_bases)
+
+        next_context = dataclasses.replace(CONTEXT_A, placement_generation=6)
+        manager._observe_execution_context(next_context)
+
+        assert manager.knowledge_bases == {}
+        with pytest.raises(WorkspaceInvariantError, match='rolled back'):
+            manager._observe_execution_context(CONTEXT_A)
 
 
 class TestRAGManagerGetKnowledgeBase:

@@ -38,57 +38,80 @@ class Controller:
             raise WorkspaceInvariantError('Queued query instance does not match the active Workspace binding')
         return execution_context
 
-    async def _process_query(self, selected_query: pipeline_query.Query) -> None:
+    async def _process_query(
+        self,
+        selected_query: pipeline_query.Query,
+        *,
+        selected_session=None,
+        global_slot_reserved: bool = False,
+    ) -> None:
         """Run one selected query and always release its scheduling slot."""
 
         try:
-            async with self.semaphore:
-                queued_context = get_query_execution_context(selected_query)
+            queued_context = get_query_execution_context(selected_query)
 
-                async def run_scoped_query() -> None:
-                    execution_context = await self._assert_query_execution_active(selected_query)
-                    pipeline_uuid = selected_query.pipeline_uuid
+            async def run_scoped_query() -> None:
+                execution_context = await self._assert_query_execution_active(selected_query)
+                pipeline_uuid = selected_query.pipeline_uuid
 
-                    if pipeline_uuid:
-                        pipeline = await self.ap.pipeline_mgr.get_pipeline_by_uuid(
-                            execution_context,
-                            pipeline_uuid,
-                        )
-                        if pipeline:
-                            await pipeline.run(selected_query)
-                        else:
-                            self.ap.logger.warning(
-                                f'Pipeline {pipeline_uuid} not found for query {selected_query.query_id}, query dropped'
-                            )
+                if pipeline_uuid:
+                    pipeline = await self.ap.pipeline_mgr.get_pipeline_by_uuid(
+                        execution_context,
+                        pipeline_uuid,
+                    )
+                    if pipeline:
+                        await pipeline.run(selected_query)
                     else:
-                        self.ap.logger.warning(f'No pipeline_uuid for query {selected_query.query_id}, query dropped')
-
-                tenant_scope = getattr(self.ap.persistence_mgr, 'tenant_scope', None)
-                cloud_runtime = (
-                    getattr(getattr(self.ap.persistence_mgr, 'mode', None), 'value', None) == 'cloud_runtime'
-                )
-                if cloud_runtime:
-                    if not callable(tenant_scope):
-                        raise RuntimeError('Cloud query processing requires an explicit tenant scope')
-                    async with tenant_scope(queued_context.workspace_uuid):
-                        await run_scoped_query()
+                        self.ap.logger.warning(
+                            f'Pipeline {pipeline_uuid} not found for query {selected_query.query_id}, query dropped'
+                        )
                 else:
+                    self.ap.logger.warning(f'No pipeline_uuid for query {selected_query.query_id}, query dropped')
+
+            tenant_scope = getattr(self.ap.persistence_mgr, 'tenant_scope', None)
+            cloud_runtime = getattr(getattr(self.ap.persistence_mgr, 'mode', None), 'value', None) == 'cloud_runtime'
+            if cloud_runtime:
+                if not callable(tenant_scope):
+                    raise RuntimeError('Cloud query processing requires an explicit tenant scope')
+                async with tenant_scope(queued_context.workspace_uuid):
                     await run_scoped_query()
+            else:
+                await run_scoped_query()
         except WorkspaceError as exc:
             self.ap.logger.info(
                 f'Dropped query {selected_query.query_id} because its Workspace execution binding is stale: {exc}'
             )
         finally:
+            try:
+                try:
+                    await self.ap.query_pool.remove_query(selected_query)
+                finally:
+                    async with self.ap.query_pool:
+                        session = selected_session or await self.ap.sess_mgr.get_session(selected_query)
+                        try:
+                            session._semaphore.release()
+                        finally:
+                            self.ap.query_pool.condition.notify_all()
+            finally:
+                if global_slot_reserved:
+                    self.semaphore.release()
+
+    async def _drop_selected_query(self, selected_query, selected_session) -> None:
+        """Undo scheduler ownership when work cannot be handed to a task."""
+
+        try:
             await self.ap.query_pool.remove_query(selected_query)
+        finally:
             async with self.ap.query_pool:
-                (await self.ap.sess_mgr.get_session(selected_query))._semaphore.release()
+                selected_session._semaphore.release()
                 self.ap.query_pool.condition.notify_all()
 
     async def consumer(self):
         """事件处理循环"""
-        try:
-            while True:
+        while True:
+            try:
                 selected_query: pipeline_query.Query = None
+                selected_session = None
 
                 # 取请求
                 async with self.ap.query_pool:
@@ -101,7 +124,9 @@ class Controller:
 
                         if not session._semaphore.locked():
                             selected_query = query
+                            selected_session = session
                             await session._semaphore.acquire()
+                            self.ap.query_pool.mark_query_running_locked(query)
                             # Only log when actually selecting a query
                             self.ap.logger.debug(f'Selected query {query.query_id} for processing')
 
@@ -114,24 +139,48 @@ class Controller:
                         continue
 
                 if selected_query:
-                    execution_context = get_query_execution_context(selected_query)
-                    self.ap.task_mgr.create_task(
-                        self._process_query(selected_query),
-                        kind='query',
-                        name=f'query-{selected_query.query_id}',
-                        scopes=[
-                            core_entities.LifecycleControlScope.APPLICATION,
-                            core_entities.LifecycleControlScope.PLATFORM,
-                        ],
-                        instance_uuid=execution_context.instance_uuid,
-                        workspace_uuid=execution_context.workspace_uuid,
-                        placement_generation=execution_context.placement_generation,
-                    )
+                    try:
+                        # Reserve global capacity before creating the task.
+                        # At most one selected query is held by this consumer
+                        # while all pipeline slots are busy.
+                        await self.semaphore.acquire()
+                    except asyncio.CancelledError:
+                        await self._drop_selected_query(selected_query, selected_session)
+                        raise
 
-        except Exception as e:
-            # traceback.print_exc()
-            self.ap.logger.error(f'控制器循环出错: {e}')
-            self.ap.logger.error(f'Traceback: {traceback.format_exc()}')
+                    execution_context = get_query_execution_context(selected_query)
+                    process_coro = self._process_query(
+                        selected_query,
+                        selected_session=selected_session,
+                        global_slot_reserved=True,
+                    )
+                    try:
+                        self.ap.task_mgr.create_task(
+                            process_coro,
+                            kind='query',
+                            name=f'query-{selected_query.query_id}',
+                            scopes=[
+                                core_entities.LifecycleControlScope.APPLICATION,
+                                core_entities.LifecycleControlScope.PLATFORM,
+                            ],
+                            instance_uuid=execution_context.instance_uuid,
+                            workspace_uuid=execution_context.workspace_uuid,
+                            placement_generation=execution_context.placement_generation,
+                        )
+                    except Exception:
+                        process_coro.close()
+                        self.semaphore.release()
+                        await self._drop_selected_query(selected_query, selected_session)
+                        raise
+
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                self.ap.logger.error(f'控制器循环出错: {e}')
+                self.ap.logger.error(f'Traceback: {traceback.format_exc()}')
+                # A persistent external failure must not turn this recovery
+                # loop into a CPU spin.
+                await asyncio.sleep(1)
 
     async def run(self):
         """运行控制器"""

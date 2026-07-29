@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import datetime as dt
 import os
+import pathlib
 import tempfile
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
@@ -2050,6 +2051,17 @@ class TestAttachmentHelpers:
         component = SimpleNamespace(base64=None, url=None, path=None)
         assert await BoxService._component_to_bytes(component) is None
 
+    @pytest.mark.asyncio
+    async def test_component_to_bytes_rejects_oversized_base64(self, monkeypatch):
+        monkeypatch.setattr(BoxService, '_ATTACHMENT_MAX_BYTES', 4)
+        component = SimpleNamespace(
+            base64='data:application/octet-stream;base64,' + ('A' * 12),
+            url=None,
+            path=None,
+        )
+
+        assert await BoxService._component_to_bytes(component) is None
+
 
 class TestInboundOutboundRoundTrip:
     def _service(self) -> BoxService:
@@ -2206,7 +2218,7 @@ class TestAttachmentHostPath:
         # File actually landed on the host workspace.
         host_file = os.path.join(ws, 'inbox', str(query.query_uuid), d['name'])
         assert os.path.isfile(host_file)
-        assert open(host_file, 'rb').read() == big
+        assert pathlib.Path(host_file).read_bytes() == big
 
     @pytest.mark.asyncio
     async def test_inbound_host_clears_stale_query_dir(self, tmp_path):
@@ -2218,7 +2230,7 @@ class TestAttachmentHostPath:
         # Seed a stale file under the same query_id (simulates webchat id reuse).
         stale_dir = os.path.join(ws, 'inbox', 'query-42')
         os.makedirs(stale_dir, exist_ok=True)
-        open(os.path.join(stale_dir, 'image_1.png'), 'wb').write(b'STALE-OLD-IMAGE')
+        pathlib.Path(stale_dir, 'image_1.png').write_bytes(b'STALE-OLD-IMAGE')
 
         new = b'\x89PNG\r\n\x1a\n NEW'
         b64 = 'data:image/png;base64,' + base64.b64encode(new).decode()
@@ -2228,9 +2240,10 @@ class TestAttachmentHostPath:
         descriptors = await service.materialize_inbound_attachments(query)
         # The new write recreated the dir; the stale file is gone, new bytes present.
         host_file = os.path.join(stale_dir, descriptors[0]['name'])
-        assert open(host_file, 'rb').read() == new
+        host_bytes = pathlib.Path(host_file).read_bytes()
+        assert host_bytes == new
         # No leftover content from the stale image.
-        assert b'STALE-OLD-IMAGE' not in open(host_file, 'rb').read()
+        assert b'STALE-OLD-IMAGE' not in host_bytes
 
     @pytest.mark.asyncio
     async def test_inbound_host_replaces_query_symlink_without_touching_other_workspace(self, tmp_path):
@@ -2259,7 +2272,7 @@ class TestAttachmentHostPath:
         assert descriptors[0]['path'] == '/workspace/inbox/query-42/input.bin'
         assert protected.read_bytes() == b'workspace-b-secret'
         assert not os.path.islink(os.path.join(inbox, 'query-42'))
-        assert open(os.path.join(inbox, 'query-42', 'input.bin'), 'rb').read() == payload
+        assert pathlib.Path(inbox, 'query-42', 'input.bin').read_bytes() == payload
 
     @pytest.mark.asyncio
     async def test_outbound_reads_host_and_clears(self, tmp_path):
@@ -2269,8 +2282,8 @@ class TestAttachmentHostPath:
         os.makedirs(outbox, exist_ok=True)
         # A large file that would be truncated on the exec/stdout path:
         big_png = b'\x89PNG\r\n\x1a\n' + b'y' * (400 * 1024)
-        open(os.path.join(outbox, 'result.png'), 'wb').write(big_png)
-        open(os.path.join(outbox, 'notes.txt'), 'wb').write(b'hello')
+        pathlib.Path(outbox, 'result.png').write_bytes(big_png)
+        pathlib.Path(outbox, 'notes.txt').write_bytes(b'hello')
 
         service.execute_tool = AsyncMock(side_effect=AssertionError('exec must not be used on host path'))
         attachments = await service.collect_outbound_attachments(query)
@@ -2354,7 +2367,7 @@ class TestAttachmentHostPath:
         # it and then wipe the dir. Simulate "nothing produced this turn" by
         # treating any present file as stale and asserting it is not re-sent
         # across a second, genuinely-empty collection.
-        open(os.path.join(outbox, 'stale.png'), 'wb').write(b'\x89PNG\r\n\x1a\n old')
+        pathlib.Path(outbox, 'stale.png').write_bytes(b'\x89PNG\r\n\x1a\n old')
         service.execute_tool = AsyncMock(side_effect=AssertionError('exec must not be used on host path'))
 
         # First collection drains + clears the dir.
@@ -2376,7 +2389,7 @@ class TestAttachmentHostPath:
         for sub in ('inbox', 'outbox'):
             d = os.path.join(ws, sub, '0')
             os.makedirs(d, exist_ok=True)
-            open(os.path.join(d, 'leftover.bin'), 'wb').write(b'from a previous process')
+            pathlib.Path(d, 'leftover.bin').write_bytes(b'from a previous process')
         service.execute_tool = AsyncMock(side_effect=AssertionError('exec must not be used for host-owned files'))
 
         await service._purge_attachment_dirs()

@@ -8,6 +8,7 @@ import litellm
 from litellm import acompletion, aembedding, arerank
 
 from .. import errors, requester
+from ....utils import httpclient
 import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
@@ -955,14 +956,17 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         rerank_url = f'{base_url}/rerank'
 
         try:
-            async with httpx.AsyncClient(timeout=timeout) as client:
+            async with httpx.AsyncClient(
+                timeout=timeout,
+                event_hooks=httpclient.httpx_response_limit_hooks(),
+            ) as client:
                 resp = await client.post(rerank_url, headers=headers, json=payload)
                 resp.raise_for_status()
-                data = resp.json()
+                data = await httpclient.parse_json_response(resp)
         except httpx.HTTPStatusError as e:
             body = ''
             try:
-                body = e.response.text
+                body = await httpclient.response_text(e.response)
             except Exception:
                 pass
             raise errors.RequesterError(f'rerank 请求失败 (HTTP {e.response.status_code}): {body or str(e)}')
@@ -998,10 +1002,14 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         models_url = f'{base_url}/models'
 
         try:
-            async with httpx.AsyncClient(trust_env=True, timeout=timeout) as client:
+            async with httpx.AsyncClient(
+                trust_env=True,
+                timeout=timeout,
+                event_hooks=httpclient.httpx_response_limit_hooks(),
+            ) as client:
                 response = await client.get(models_url, headers=headers)
                 response.raise_for_status()
-                payload = response.json()
+                payload = await httpclient.parse_json_response(response)
 
             models = []
             for item in payload.get('data', []):

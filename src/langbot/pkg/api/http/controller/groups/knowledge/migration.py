@@ -11,6 +11,7 @@ from ....context import ExecutionContext, RequestContext
 from ......core import taskmgr
 from ......entity.persistence import metadata as persistence_metadata
 from ......workspace.errors import WorkspaceError, WorkspaceNotFoundError
+from ......utils import httpclient
 from langbot_plugin.runtime.plugin.mgr import PluginInstallSource
 
 LANGRAG_PLUGIN_AUTHOR = 'langbot-team'
@@ -162,10 +163,15 @@ class KnowledgeMigrationRouterGroup(group.RouterGroup):
         self.ap.logger.info(f'RAG migration: installing plugin {plugin_id} from marketplace...')
         task_context.trace(f'Installing plugin {plugin_id} from marketplace...')
 
-        async with httpx.AsyncClient(trust_env=True, timeout=15) as client:
+        async with httpx.AsyncClient(
+            trust_env=True,
+            timeout=15,
+            event_hooks=httpclient.httpx_response_limit_hooks(),
+        ) as client:
             resp = await client.get(f'{space_url}/api/v1/marketplace/plugins/{p_author}/{p_name}')
             resp.raise_for_status()
-            p_data = resp.json().get('data', {}).get('plugin', {})
+            response_data = await httpclient.parse_json_response(resp)
+            p_data = response_data.get('data', {}).get('plugin', {})
             p_version = p_data.get('latest_version')
             if not p_version:
                 raise Exception(f'Could not determine latest version for {plugin_id}')

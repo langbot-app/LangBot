@@ -74,6 +74,19 @@ class TestS3StorageProviderInit:
         assert provider.s3_client is None
         assert provider.bucket_name is None
 
+    @pytest.mark.asyncio
+    async def test_shutdown_closes_client_once(self):
+        s3storage = get_s3storage_module()
+        provider = s3storage.S3StorageProvider(Mock())
+        client = Mock()
+        provider.s3_client = client
+
+        await provider.shutdown()
+        await provider.shutdown()
+
+        client.close.assert_called_once_with()
+        assert provider.s3_client is None
+
 
 class TestS3StorageProviderWithMoto:
     """Tests using moto to mock AWS S3."""

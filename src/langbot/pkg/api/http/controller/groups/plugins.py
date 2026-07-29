@@ -1,16 +1,15 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import collections.abc
 import copy
-import io
 import quart
 import re
 import httpx
 import uuid
 import os
 import zipfile
-import yaml
 from urllib.parse import urlparse
 import posixpath
 import sqlalchemy
@@ -23,6 +22,8 @@ from ...context import ExecutionContext, RequestContext
 from .. import group
 from .....workspace.errors import WorkspaceNotFoundError
 from .....plugin.github import validate_github_plugin_install_info
+from .....plugin.archive import inspect_plugin_archive_metadata
+from .....utils import httpclient
 from langbot_plugin.runtime.plugin.mgr import PluginInstallSource
 
 
@@ -548,7 +549,7 @@ class PluginsRouterGroup(group.RouterGroup):
             icon_base64 = icon_data['plugin_icon_base64']
             mime_type = icon_data['mime_type']
 
-            icon_data = base64.b64decode(icon_base64)
+            icon_data = await asyncio.to_thread(base64.b64decode, icon_base64)
 
             return quart.Response(icon_data, mimetype=mime_type)
 
@@ -566,7 +567,10 @@ class PluginsRouterGroup(group.RouterGroup):
             asset_data = await self.ap.plugin_connector.get_plugin_assets(author, plugin_name, asset_path)
             if not asset_data.get('asset_base64'):
                 return quart.Response('Asset not found', status=404)
-            asset_bytes = base64.b64decode(asset_data['asset_base64'])
+            asset_bytes = await asyncio.to_thread(
+                base64.b64decode,
+                asset_data['asset_base64'],
+            )
             mime_type = asset_data['mime_type']
             resp = quart.Response(asset_bytes, mimetype=mime_type)
             # CSP for HTML pages served to sandboxed iframes (opaque origin).
@@ -662,10 +666,11 @@ class PluginsRouterGroup(group.RouterGroup):
                     trust_env=True,
                     follow_redirects=True,
                     timeout=10,
+                    event_hooks=httpclient.httpx_response_limit_hooks(),
                 ) as client:
                     response = await client.get(url)
                     response.raise_for_status()
-                    releases = response.json()
+                    releases = await httpclient.parse_json_response(response)
 
                 # Format releases data for frontend
                 formatted_releases = []
@@ -716,12 +721,13 @@ class PluginsRouterGroup(group.RouterGroup):
                     trust_env=True,
                     follow_redirects=True,
                     timeout=10,
+                    event_hooks=httpclient.httpx_response_limit_hooks(),
                 ) as client:
                     response = await client.get(
                         url,
                     )
                     response.raise_for_status()
-                    release = response.json()
+                    release = await httpclient.parse_json_response(response)
 
                 # Format assets data for frontend
                 formatted_assets = []
@@ -902,51 +908,29 @@ class PluginsRouterGroup(group.RouterGroup):
 
             file_bytes = file.read()
             try:
-                with zipfile.ZipFile(io.BytesIO(file_bytes)) as zf:
-                    names = [name for name in zf.namelist() if not name.endswith('/')]
-                    manifest_name = next(
-                        (
-                            name
-                            for name in names
-                            if name.replace('\\', '/').strip('/').lower() in ('manifest.yaml', 'manifest.yml')
-                        ),
-                        None,
-                    )
-                    if manifest_name is None:
-                        return self.http_status(400, -1, 'manifest.yaml is required')
+                manifest, requirements, names = await asyncio.to_thread(
+                    inspect_plugin_archive_metadata,
+                    file_bytes,
+                )
+                spec = manifest.get('spec') or {}
+                components = spec.get('components') or {}
+                component_counts = self._count_plugin_components(components, names)
+                component_types = list(component_counts.keys())
 
-                    manifest = yaml.safe_load(zf.read(manifest_name).decode('utf-8')) or {}
-                    requirements: list[str] = []
-                    requirements_name = next(
-                        (name for name in names if name.replace('\\', '/').strip('/').lower() == 'requirements.txt'),
-                        None,
-                    )
-                    if requirements_name is not None:
-                        requirements = [
-                            line.strip()
-                            for line in zf.read(requirements_name).decode('utf-8', errors='ignore').splitlines()
-                            if line.strip() and not line.strip().startswith('#')
-                        ]
-
-                    spec = manifest.get('spec') or {}
-                    components = spec.get('components') or {}
-                    component_counts = self._count_plugin_components(components, names)
-                    component_types = list(component_counts.keys())
-
-                    return self.success(
-                        data={
-                            'filename': file.filename or 'local plugin',
-                            'size': len(file_bytes),
-                            'manifest': manifest,
-                            'metadata': manifest.get('metadata') or {},
-                            'component_types': component_types,
-                            'component_counts': component_counts,
-                            'requirements': requirements,
-                            'file_count': len(names),
-                        }
-                    )
-            except zipfile.BadZipFile:
-                return self.http_status(400, -1, 'invalid .lbpkg file')
+                return self.success(
+                    data={
+                        'filename': file.filename or 'local plugin',
+                        'size': len(file_bytes),
+                        'manifest': manifest,
+                        'metadata': manifest.get('metadata') or {},
+                        'component_types': component_types,
+                        'component_counts': component_counts,
+                        'requirements': requirements,
+                        'file_count': len(names),
+                    }
+                )
+            except (zipfile.BadZipFile, ValueError) as exc:
+                return self.http_status(400, -1, str(exc) or 'invalid .lbpkg file')
             except Exception:
                 raise
 

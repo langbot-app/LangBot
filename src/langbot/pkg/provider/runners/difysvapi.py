@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import asyncio
+import heapq
 import typing
 import json
 import time
 import uuid
-import base64
 import mimetypes
 import os
 import re
@@ -16,11 +17,9 @@ from langbot.pkg.provider import runner
 from langbot.pkg.core import app
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
-from langbot.pkg.utils import image
+from langbot.pkg.utils import httpclient, image
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 from langbot.libs.dify_service_api.v1 import client, errors
-import httpx
-
 
 # Module-level store for paused-workflow form state. The key includes the full
 # execution scope before the bot, pipeline, adapter, and launcher dimensions;
@@ -29,8 +28,29 @@ import httpx
 # placement generations.
 PendingFormKey = tuple[str, str, int, str, str, str, str, str]
 _PENDING_FORMS: dict[PendingFormKey, 'OrderedDict[str, dict[str, typing.Any]]'] = {}
+_PENDING_FORM_EXPIRY_HEAP: list[tuple[float, int, PendingFormKey, str]] = []
+_PENDING_FORM_ACTIVE_COUNT = 0
+_PENDING_FORM_REVISION = 0
 _PENDING_FORM_DEFAULT_TTL = 30 * 60  # 30 minutes safety cap
+_PENDING_FORM_MAX_SESSIONS = 4096
+_PENDING_FORM_MAX_PER_SESSION = 16
+_PENDING_FORM_HEAP_COMPACT_FLOOR = 64
+_PENDING_FORM_HEAP_MAX_MULTIPLIER = 4
+_PENDING_FORM_REVISION_KEY = '_langbot_cache_revision'
 _STREAM_FORM_PLACEHOLDER = '\u200b'
+_MAX_DIFY_UPLOAD_BYTES = 10 * 1024 * 1024
+
+
+def _read_local_file_limited(path: str) -> bytes:
+    """Read a local platform attachment without allowing an oversized allocation."""
+
+    if os.path.getsize(path) > _MAX_DIFY_UPLOAD_BYTES:
+        raise ValueError('Dify upload file exceeds the size limit')
+    with open(path, 'rb') as file:
+        content = file.read(_MAX_DIFY_UPLOAD_BYTES + 1)
+    if len(content) > _MAX_DIFY_UPLOAD_BYTES:
+        raise ValueError('Dify upload file exceeds the size limit')
+    return content
 
 
 def _merge_stream_text(accumulated: str, incoming: typing.Any) -> str:
@@ -65,19 +85,100 @@ def _session_key_from_query(query: pipeline_query.Query) -> PendingFormKey:
     )
 
 
+def _synchronize_pending_form_cache_if_externally_cleared() -> None:
+    """Keep test/debug direct cache clears from retaining stale heap entries."""
+
+    global _PENDING_FORM_ACTIVE_COUNT
+    if _PENDING_FORMS:
+        return
+    _PENDING_FORM_EXPIRY_HEAP.clear()
+    _PENDING_FORM_ACTIVE_COUNT = 0
+
+
+def _pending_form_entry_is_current(
+    expires_at: float,
+    revision: int,
+    session_key: PendingFormKey,
+    form_token: str,
+) -> bool:
+    forms = _PENDING_FORMS.get(session_key)
+    if forms is None:
+        return False
+    stored = forms.get(form_token)
+    if stored is None:
+        return False
+    return stored.get(_PENDING_FORM_REVISION_KEY) == revision and stored.get('_expires_at') == expires_at
+
+
+def _peek_valid_pending_form_expiry(
+    *,
+    pop: bool = False,
+) -> tuple[float, int, PendingFormKey, str] | None:
+    while _PENDING_FORM_EXPIRY_HEAP:
+        entry = _PENDING_FORM_EXPIRY_HEAP[0]
+        if _pending_form_entry_is_current(*entry):
+            if pop:
+                heapq.heappop(_PENDING_FORM_EXPIRY_HEAP)
+            return entry
+        heapq.heappop(_PENDING_FORM_EXPIRY_HEAP)
+    return None
+
+
+def _drop_pending_form(session_key: PendingFormKey, form_token: str) -> None:
+    global _PENDING_FORM_ACTIVE_COUNT
+    forms = _PENDING_FORMS.get(session_key)
+    if forms is None or forms.pop(form_token, None) is None:
+        return
+    _PENDING_FORM_ACTIVE_COUNT = max(_PENDING_FORM_ACTIVE_COUNT - 1, 0)
+    if not forms:
+        _PENDING_FORMS.pop(session_key, None)
+
+
+def _drop_pending_form_session(session_key: PendingFormKey) -> None:
+    global _PENDING_FORM_ACTIVE_COUNT
+    forms = _PENDING_FORMS.pop(session_key, None)
+    if forms is not None:
+        _PENDING_FORM_ACTIVE_COUNT = max(
+            _PENDING_FORM_ACTIVE_COUNT - len(forms),
+            0,
+        )
+
+
+def _compact_pending_form_expiry_heap_if_needed() -> None:
+    max_heap_entries = max(
+        _PENDING_FORM_HEAP_COMPACT_FLOOR,
+        _PENDING_FORM_ACTIVE_COUNT * _PENDING_FORM_HEAP_MAX_MULTIPLIER,
+    )
+    if len(_PENDING_FORM_EXPIRY_HEAP) <= max_heap_entries:
+        return
+    _PENDING_FORM_EXPIRY_HEAP[:] = [
+        (
+            float(stored['_expires_at']),
+            int(stored[_PENDING_FORM_REVISION_KEY]),
+            session_key,
+            form_token,
+        )
+        for session_key, forms in _PENDING_FORMS.items()
+        for form_token, stored in forms.items()
+    ]
+    heapq.heapify(_PENDING_FORM_EXPIRY_HEAP)
+
+
 def _prune_pending_forms(now: float | None = None) -> None:
+    _synchronize_pending_form_cache_if_externally_cleared()
     if now is None:
         now = time.time()
-    for session_key in list(_PENDING_FORMS.keys()):
-        forms = _PENDING_FORMS[session_key]
-        expired_tokens = [token for token, data in forms.items() if data.get('_expires_at', 0) <= now]
-        for token in expired_tokens:
-            forms.pop(token, None)
-        if not forms:
-            _PENDING_FORMS.pop(session_key, None)
+    while True:
+        entry = _peek_valid_pending_form_expiry()
+        if entry is None or entry[0] > now:
+            break
+        _, _, session_key, form_token = _peek_valid_pending_form_expiry(pop=True)
+        _drop_pending_form(session_key, form_token)
+    _compact_pending_form_expiry_heap_if_needed()
 
 
 def _set_pending_form(session_key: PendingFormKey, form_data: dict[str, typing.Any]) -> None:
+    global _PENDING_FORM_ACTIVE_COUNT, _PENDING_FORM_REVISION
     _prune_pending_forms()
     if isinstance(session_key, tuple) and len(session_key) == 8:
         form_data['pipeline_uuid'] = session_key[4]
@@ -88,11 +189,31 @@ def _set_pending_form(session_key: PendingFormKey, form_data: dict[str, typing.A
     except (TypeError, ValueError):
         expiration_ts = 0.0
     stored['_expires_at'] = expiration_ts or (time.time() + _PENDING_FORM_DEFAULT_TTL)
+    _PENDING_FORM_REVISION += 1
+    stored[_PENDING_FORM_REVISION_KEY] = _PENDING_FORM_REVISION
     form_token = str(stored.get('form_token') or '')
     forms = _PENDING_FORMS.setdefault(session_key, OrderedDict())
     # Re-insert at the end so this becomes the "latest" entry
-    forms.pop(form_token, None)
+    if forms.pop(form_token, None) is None:
+        _PENDING_FORM_ACTIVE_COUNT += 1
     forms[form_token] = stored
+    heapq.heappush(
+        _PENDING_FORM_EXPIRY_HEAP,
+        (
+            stored['_expires_at'],
+            _PENDING_FORM_REVISION,
+            session_key,
+            form_token,
+        ),
+    )
+    while len(forms) > _PENDING_FORM_MAX_PER_SESSION:
+        oldest_token = next(iter(forms))
+        _drop_pending_form(session_key, oldest_token)
+    if len(_PENDING_FORMS) > _PENDING_FORM_MAX_SESSIONS:
+        oldest_entry = _peek_valid_pending_form_expiry()
+        if oldest_entry is not None:
+            _drop_pending_form_session(oldest_entry[2])
+    _compact_pending_form_expiry_heap_if_needed()
 
 
 def _get_pending_form_by_token(session_key: PendingFormKey, form_token: str) -> dict[str, typing.Any] | None:
@@ -144,11 +265,11 @@ def _clear_pending_form(session_key: PendingFormKey, form_token: str | None = No
     if not forms:
         return
     if form_token is None:
-        _PENDING_FORMS.pop(session_key, None)
+        _drop_pending_form_session(session_key)
+        _compact_pending_form_expiry_heap_if_needed()
         return
-    forms.pop(form_token, None)
-    if not forms:
-        _PENDING_FORMS.pop(session_key, None)
+    _drop_pending_form(session_key, form_token)
+    _compact_pending_form_expiry_heap_if_needed()
 
 
 def _format_human_input_text(
@@ -721,6 +842,9 @@ class DifyServiceAPIRunner(runner.RequestRunner):
             base_url=self.pipeline_config['ai']['dify-service-api']['base-url'],
         )
 
+    async def aclose(self) -> None:
+        await self.dify_client.aclose()
+
     def _process_thinking_content(
         self,
         content: str,
@@ -796,13 +920,16 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         async def download_file(file_url: str) -> tuple[bytes, str]:
             """Download file from url (supports data url)."""
 
-            async with httpx.AsyncClient() as client_session:
-                resp = await client_session.get(file_url)
+            client_session = httpclient.get_session()
+            async with client_session.get(file_url, timeout=120) as resp:
                 resp.raise_for_status()
                 content_type = (
                     resp.headers.get('content-type') or mimetypes.guess_type(file_url)[0] or 'application/octet-stream'
                 )
-                return resp.content, content_type
+                return (
+                    await httpclient.read_limited(resp, max_bytes=_MAX_DIFY_UPLOAD_BYTES),
+                    content_type,
+                )
 
         def _detect_file_type(content_type: str) -> str:
             """Map MIME to dify file type."""
@@ -820,7 +947,10 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                     plain_text += ce.text
                 elif ce.type == 'image_base64':
                     image_b64, image_format = await image.extract_b64_and_format(ce.image_base64)
-                    file_bytes = base64.b64decode(image_b64)
+                    file_bytes = await image.decode_base64_limited(
+                        image_b64,
+                        max_bytes=_MAX_DIFY_UPLOAD_BYTES,
+                    )
                     image_id = await upload_file_bytes(f'img.{image_format}', file_bytes, f'image/{image_format}')
                     upload_files.append({'type': 'image', 'id': image_id})
                 elif ce.type == 'file_url':
@@ -840,7 +970,10 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                     content_type = 'application/octet-stream'
                     if ';' in header:
                         content_type = header.split(';')[0][5:] or content_type
-                    file_bytes = base64.b64decode(b64_data)
+                    file_bytes = await image.decode_base64_limited(
+                        b64_data,
+                        max_bytes=_MAX_DIFY_UPLOAD_BYTES,
+                    )
                     file_id = await upload_file_bytes(file_name, file_bytes, content_type)
                     file_type = _detect_file_type(content_type)
                     upload_files.append({'type': file_type, 'id': file_id})
@@ -865,15 +998,19 @@ class DifyServiceAPIRunner(runner.RequestRunner):
         }
 
     async def _download_file_for_form(self, file_url: str) -> tuple[bytes, str, str]:
-        async with httpx.AsyncClient() as client_session:
-            resp = await client_session.get(file_url)
+        client_session = httpclient.get_session()
+        async with client_session.get(file_url, timeout=120) as resp:
             resp.raise_for_status()
             content_type = (
                 resp.headers.get('content-type') or mimetypes.guess_type(file_url)[0] or 'application/octet-stream'
             )
             parsed = urlparse(file_url)
             file_name = os.path.basename(parsed.path) or 'file'
-            return resp.content, content_type, file_name
+            return (
+                await httpclient.read_limited(resp, max_bytes=_MAX_DIFY_UPLOAD_BYTES),
+                content_type,
+                file_name,
+            )
 
     async def _platform_file_to_dify(self, item: typing.Any, user: str) -> dict | None:
         try:
@@ -890,13 +1027,15 @@ class DifyServiceAPIRunner(runner.RequestRunner):
                         content_type = header.split(';', 1)[0][5:] or content_type
                     return await self._upload_file_bytes_for_user(
                         file_name,
-                        base64.b64decode(b64_data),
+                        await image.decode_base64_limited(
+                            b64_data,
+                            max_bytes=_MAX_DIFY_UPLOAD_BYTES,
+                        ),
                         content_type,
                         user,
                     )
                 if item.path:
-                    with open(item.path, 'rb') as f:
-                        file_bytes = f.read()
+                    file_bytes = await asyncio.to_thread(_read_local_file_limited, str(item.path))
                     content_type = mimetypes.guess_type(str(item.path))[0] or 'application/octet-stream'
                     file_name = item.name or os.path.basename(str(item.path)) or 'file'
                     return await self._upload_file_bytes_for_user(file_name, file_bytes, content_type, user)

@@ -9,10 +9,13 @@ import langbot_plugin.api.entities.builtin.platform.events as platform_events
 from .qqofficialevent import QQOfficialEvent
 import json
 import traceback
+from contextlib import asynccontextmanager
 from cryptography.hazmat.primitives.asymmetric import ed25519
+from langbot.pkg.utils import httpclient
 
 
 QQ_SELECT_ACTION_PREFIX = '__langbot_select__:'
+_MAX_CALLBACK_BODY_BYTES = 1024 * 1024
 
 
 def get_select_field_options(form_data: dict) -> tuple[str, list[str]]:
@@ -152,6 +155,7 @@ class QQOfficialClient:
     def __init__(self, secret: str, token: str, app_id: str, logger: None, unified_mode: bool = False):
         self.unified_mode = unified_mode
         self.app = Quart(__name__)
+        self.app.config['MAX_CONTENT_LENGTH'] = _MAX_CALLBACK_BODY_BYTES
 
         # 只有在非统一模式下才注册独立路由
         if not self.unified_mode:
@@ -176,6 +180,32 @@ class QQOfficialClient:
         self.logger = logger
         self._msg_seq_counter = 0
         self._token_refresh_task: Optional[asyncio.Task] = None
+        self._http_clients: dict[float | None, httpx.AsyncClient] = {}
+
+    @asynccontextmanager
+    async def _http_client_context(self, timeout: float | None = None):
+        client = self._http_clients.get(timeout)
+        if client is None or client.is_closed:
+            response_hooks = httpclient.httpx_response_limit_hooks()
+            client = (
+                httpx.AsyncClient(event_hooks=response_hooks)
+                if timeout is None
+                else httpx.AsyncClient(timeout=timeout, event_hooks=response_hooks)
+            )
+            self._http_clients[timeout] = client
+        yield client
+
+    async def close(self) -> None:
+        """Stop client-owned background work."""
+
+        if self._token_refresh_task and not self._token_refresh_task.done():
+            self._token_refresh_task.cancel()
+            await asyncio.gather(self._token_refresh_task, return_exceptions=True)
+        self._token_refresh_task = None
+        clients = list(self._http_clients.values())
+        self._http_clients.clear()
+        if clients:
+            await asyncio.gather(*(client.aclose() for client in clients), return_exceptions=True)
 
     async def check_access_token(self):
         """检查access_token是否存在"""
@@ -186,7 +216,7 @@ class QQOfficialClient:
     async def get_access_token(self):
         """获取access_token"""
         url = 'https://bots.qq.com/app/getAppAccessToken'
-        async with httpx.AsyncClient() as client:
+        async with self._http_client_context() as client:
             params = {
                 'appId': self.app_id,
                 'clientSecret': self.secret,
@@ -196,8 +226,9 @@ class QQOfficialClient:
             }
             response = await client.post(url, json=params, headers=headers)
             if response.status_code != 200:
-                raise Exception(f'Failed to get access_token: HTTP {response.status_code} {response.text}')
-            response_data = response.json()
+                body = await httpclient.response_text(response)
+                raise Exception(f'Failed to get access_token: HTTP {response.status_code} {body}')
+            response_data = await httpclient.parse_json_response(response)
             access_token = response_data.get('access_token')
             expires_in = int(response_data.get('expires_in', 7200))
             self.access_token_expiry_time = time.time() + expires_in - 60
@@ -236,8 +267,10 @@ class QQOfficialClient:
             if not body or len(body) == 0:
                 await self.logger.info('Received empty body, might be health check or GET request')
                 return {'code': 0, 'message': 'ok'}, 200
+            if len(body) > _MAX_CALLBACK_BODY_BYTES:
+                return {'error': 'callback body exceeds the size limit'}, 413
 
-            payload = json.loads(body)
+            payload = await asyncio.to_thread(json.loads, body)
 
             if payload.get('op') == 13:
                 validation_data = payload.get('d')
@@ -367,7 +400,7 @@ class QQOfficialClient:
             await self.get_access_token()
 
         url = self.base_url + '/v2/users/' + user_openid + '/messages'
-        async with httpx.AsyncClient() as client:
+        async with self._http_client_context() as client:
             headers = {
                 'Authorization': f'QQBot {self.access_token}',
                 'Content-Type': 'application/json',
@@ -382,7 +415,7 @@ class QQOfficialClient:
             if event_id:
                 data['event_id'] = event_id
             response = await client.post(url, headers=headers, json=data)
-            response_data = response.json()
+            response_data = await httpclient.parse_json_response(response)
             if response.status_code == 200:
                 return
             else:
@@ -406,7 +439,7 @@ class QQOfficialClient:
             await self.get_access_token()
 
         url = self.base_url + '/v2/groups/' + group_openid + '/messages'
-        async with httpx.AsyncClient() as client:
+        async with self._http_client_context() as client:
             headers = {
                 'Authorization': f'QQBot {self.access_token}',
                 'Content-Type': 'application/json',
@@ -424,8 +457,9 @@ class QQOfficialClient:
             if response.status_code == 200:
                 return
             else:
-                await self.logger.error(f'Failed to send group message: {response.json()}')
-                raise Exception(response.read().decode())
+                error_payload = await httpclient.parse_json_response(response)
+                await self.logger.error(f'Failed to send group message: {error_payload}')
+                raise Exception(str(error_payload))
 
     async def send_channle_group_text_msg(self, channel_id: str, content: str, msg_id: str):
         """发送频道群聊消息"""
@@ -433,7 +467,7 @@ class QQOfficialClient:
             await self.get_access_token()
 
         url = self.base_url + '/channels/' + channel_id + '/messages'
-        async with httpx.AsyncClient() as client:
+        async with self._http_client_context() as client:
             headers = {
                 'Authorization': f'QQBot {self.access_token}',
                 'Content-Type': 'application/json',
@@ -447,7 +481,8 @@ class QQOfficialClient:
             if response.status_code == 200:
                 return True
             else:
-                await self.logger.error(f'Failed to send channel group message: {response.json()}')
+                error_payload = await httpclient.parse_json_response(response)
+                await self.logger.error(f'Failed to send channel group message: {error_payload}')
                 raise Exception(response)
 
     async def send_channle_private_text_msg(self, guild_id: str, content: str, msg_id: str):
@@ -456,7 +491,7 @@ class QQOfficialClient:
             await self.get_access_token()
 
         url = self.base_url + '/dms/' + guild_id + '/messages'
-        async with httpx.AsyncClient() as client:
+        async with self._http_client_context() as client:
             headers = {
                 'Authorization': f'QQBot {self.access_token}',
                 'Content-Type': 'application/json',
@@ -470,7 +505,8 @@ class QQOfficialClient:
             if response.status_code == 200:
                 return True
             else:
-                await self.logger.error(f'Failed to send channel private message: {response.json()}')
+                error_payload = await httpclient.parse_json_response(response)
+                await self.logger.error(f'Failed to send channel private message: {error_payload}')
                 raise Exception(response)
 
     # ---- 富媒体消息 ----
@@ -532,20 +568,21 @@ class QQOfficialClient:
         if file_type == self.MEDIA_TYPE_FILE and file_name:
             body['file_name'] = file_name
 
-        async with httpx.AsyncClient(timeout=120) as client:
+        async with self._http_client_context(timeout=120) as client:
             headers = {
                 'Authorization': f'QQBot {self.access_token}',
                 'Content-Type': 'application/json',
             }
             response = await client.post(url, headers=headers, json=body)
             if response.status_code == 200:
-                data = response.json()
+                data = await httpclient.parse_json_response(response)
                 file_info = data.get('file_info', '')
                 preview = file_info[:80] + '...' if len(file_info) > 80 else file_info
                 await self.logger.info(f'Upload media success, file_info={preview}')
                 return file_info
             else:
-                raise Exception(f'Failed to upload media: HTTP {response.status_code} {response.text}')
+                body = await httpclient.response_text(response)
+                raise Exception(f'Failed to upload media: HTTP {response.status_code} {body}')
 
     async def _send_media_msg(
         self,
@@ -578,7 +615,7 @@ class QQOfficialClient:
         if msg_id:
             body['msg_id'] = msg_id
 
-        async with httpx.AsyncClient(timeout=120) as client:
+        async with self._http_client_context(timeout=120) as client:
             headers = {
                 'Authorization': f'QQBot {self.access_token}',
                 'Content-Type': 'application/json',
@@ -586,7 +623,8 @@ class QQOfficialClient:
             await self.logger.info(f'Sending rich media: {json.dumps(body, ensure_ascii=False)[:200]}')
             response = await client.post(url, headers=headers, json=body)
             if response.status_code != 200:
-                raise Exception(f'Failed to send rich media message: HTTP {response.status_code} {response.text}')
+                response_body = await httpclient.response_text(response)
+                raise Exception(f'Failed to send rich media message: HTTP {response.status_code} {response_body}')
 
     async def send_image_msg(
         self,
@@ -678,15 +716,16 @@ class QQOfficialClient:
         if stream_msg_id:
             body['stream_msg_id'] = stream_msg_id
 
-        async with httpx.AsyncClient(timeout=120) as client:
+        async with self._http_client_context(timeout=120) as client:
             headers = {
                 'Authorization': f'QQBot {self.access_token}',
                 'Content-Type': 'application/json',
             }
             response = await client.post(url, headers=headers, json=body)
             if response.status_code != 200:
-                raise Exception(f'Failed to send stream message: HTTP {response.status_code} {response.text}')
-            return response.json()
+                response_body = await httpclient.response_text(response)
+                raise Exception(f'Failed to send stream message: HTTP {response.status_code} {response_body}')
+            return await httpclient.parse_json_response(response)
 
     async def send_markdown_keyboard(
         self,
@@ -743,18 +782,19 @@ class QQOfficialClient:
         if event_id:
             body['event_id'] = event_id
 
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with self._http_client_context(timeout=30) as client:
             headers = {
                 'Authorization': f'QQBot {self.access_token}',
                 'Content-Type': 'application/json',
             }
             response = await client.post(url, headers=headers, json=body)
             if response.status_code != 200:
+                response_body = await httpclient.response_text(response)
                 await self.logger.error(
-                    f'Failed to send markdown+keyboard: HTTP {response.status_code} {response.text}'
+                    f'Failed to send markdown+keyboard: HTTP {response.status_code} {response_body}'
                 )
-                raise Exception(f'Failed to send markdown+keyboard: HTTP {response.status_code} {response.text}')
-            return response.json()
+                raise Exception(f'Failed to send markdown+keyboard: HTTP {response.status_code} {response_body}')
+            return await httpclient.parse_json_response(response)
 
     async def ack_interaction(self, interaction_id: str, code: int = 0) -> None:
         """Acknowledge a button-click INTERACTION_CREATE event.
@@ -775,7 +815,7 @@ class QQOfficialClient:
             await self.get_access_token()
 
         url = f'{self.base_url}/interactions/{interaction_id}'
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with self._http_client_context(timeout=10) as client:
             headers = {
                 'Authorization': f'QQBot {self.access_token}',
                 'Content-Type': 'application/json',
@@ -783,8 +823,9 @@ class QQOfficialClient:
             try:
                 response = await client.put(url, headers=headers, json={'code': code})
                 if response.status_code >= 400:
+                    response_body = await httpclient.response_text(response)
                     await self.logger.warning(
-                        f'ack_interaction non-success: HTTP {response.status_code} {response.text}'
+                        f'ack_interaction non-success: HTTP {response.status_code} {response_body}'
                     )
             except Exception as e:
                 await self.logger.warning(f'ack_interaction error (non-fatal): {e}')
@@ -796,10 +837,11 @@ class QQOfficialClient:
         return time.time() > self.access_token_expiry_time
 
     async def repeat_seed(self, bot_secret: str, target_size: int = 32) -> bytes:
-        seed = bot_secret
-        while len(seed) < target_size:
-            seed *= 2
-        return seed[:target_size].encode('utf-8')
+        if not bot_secret:
+            raise ValueError('QQ bot secret must not be empty')
+        target_size = max(int(target_size), 1)
+        repeats = (target_size + len(bot_secret) - 1) // len(bot_secret)
+        return (bot_secret * repeats)[:target_size].encode('utf-8')
 
     async def verify(self, validation_payload: dict):
         seed = await self.repeat_seed(self.secret)
@@ -843,19 +885,20 @@ class QQOfficialClient:
             await self.get_access_token()
 
         url = f'{self.base_url}/gateway'
-        async with httpx.AsyncClient() as client:
+        async with self._http_client_context() as client:
             headers = {
                 'Authorization': f'QQBot {self.access_token}',
             }
             response = await client.get(url, headers=headers)
             if response.status_code == 200:
-                data = response.json()
+                data = await httpclient.parse_json_response(response)
                 ws_url = data.get('url', '')
                 if not ws_url:
                     raise Exception('Gateway URL is empty')
                 return ws_url
             else:
-                raise Exception(f'Failed to get Gateway URL: HTTP {response.status_code} {response.text}')
+                body = await httpclient.response_text(response)
+                raise Exception(f'Failed to get Gateway URL: HTTP {response.status_code} {body}')
 
     async def _background_token_refresh(self):
         """在 token 到期前主动刷新"""
@@ -935,7 +978,7 @@ class QQOfficialClient:
 
             try:
                 await self.logger.info('Connecting to WebSocket gateway...')
-                ws = await websockets.connect(ws_url)
+                ws = await websockets.connect(ws_url, max_size=_MAX_CALLBACK_BODY_BYTES)
                 await self.logger.info('WebSocket connected')
             except Exception as e:
                 await self.logger.error(f'WebSocket connection failed: {e}')
@@ -948,7 +991,7 @@ class QQOfficialClient:
             try:
                 async for raw_msg in ws:
                     try:
-                        payload = json.loads(raw_msg)
+                        payload = await asyncio.to_thread(json.loads, raw_msg)
                     except json.JSONDecodeError:
                         await self.logger.error(f'Failed to parse message: {raw_msg}')
                         continue

@@ -6,10 +6,12 @@ import os
 import shutil
 import shlex
 import threading
+import weakref
 from contextlib import suppress, AsyncExitStack, asynccontextmanager
 from typing import TYPE_CHECKING, Any
 
 import pydantic
+from ....utils import bounded_executor
 from mcp import ClientSession
 from mcp.client.websocket import websocket_client
 from ....box.workspace import (
@@ -27,7 +29,7 @@ if TYPE_CHECKING:
     from .mcp import RuntimeMCPSession
 
 
-_WORKSPACE_COPY_LOCKS: dict[str, threading.Lock] = {}
+_WORKSPACE_COPY_LOCKS: weakref.WeakValueDictionary[str, threading.Lock] = weakref.WeakValueDictionary()
 _WORKSPACE_COPY_LOCKS_GUARD = threading.Lock()
 
 
@@ -536,7 +538,11 @@ class BoxStdioSessionRuntime:
             return
         try:
             process_host_root = os.path.join(self._shared_workspace_host_path(), '.mcp', self.process_id)
-            await asyncio.to_thread(shutil.rmtree, process_host_root, True)
+            await bounded_executor.run_blocking_cleanup(
+                shutil.rmtree,
+                process_host_root,
+                True,
+            )
         except Exception as exc:
             self.ap.logger.warning(
                 f'MCP server {self.server_name}: failed to clean staged workspace '

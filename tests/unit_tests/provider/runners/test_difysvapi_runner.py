@@ -6,6 +6,7 @@ Tests the helper methods that don't require real Dify API calls.
 from __future__ import annotations
 
 import pytest
+import time
 from unittest.mock import AsyncMock, MagicMock
 
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
@@ -18,13 +19,12 @@ class TestDifyWorkflowSubmitClient:
 
         class FakeResponse:
             status_code = 503
+            headers = {}
 
-            async def aread(self):
-                return b''
-
-            async def aiter_lines(self):
-                raise AssertionError('error responses must not enter the SSE loop')
-                yield
+            async def aiter_bytes(self, chunk_size=None):
+                del chunk_size
+                if False:
+                    yield b''
 
         class FakeStreamContext:
             async def __aenter__(self):
@@ -65,6 +65,33 @@ class TestDifyWorkflowSubmitClient:
                     user='person_user-1',
                 )
             )
+
+    @pytest.mark.asyncio
+    async def test_sse_parser_rejects_an_unbounded_line(self):
+        from langbot.libs.dify_service_api.v1 import client, errors
+
+        class FakeResponse:
+            async def aiter_bytes(self, chunk_size=None):
+                del chunk_size
+                for _ in range(129):
+                    yield b'x' * 8192
+
+        with pytest.raises(errors.DifyAPIError, match='SSE event exceeds'):
+            await anext(client._iter_sse_json(FakeResponse()))
+
+    @pytest.mark.asyncio
+    async def test_upload_rejects_oversized_local_file(self, tmp_path):
+        from langbot.libs.dify_service_api.v1 import client
+
+        file_path = tmp_path / 'large.bin'
+        file_path.write_bytes(b'x' * (client._MAX_DIFY_UPLOAD_BYTES + 1))
+        dify_client = client.AsyncDifyServiceClient(
+            'test-key',
+            'https://dify.example/v1',
+        )
+
+        with pytest.raises(ValueError, match='exceeds the size limit'):
+            await dify_client.upload_file(file_path, 'person_user-1')
 
 
 class TestDifyExtractTextOutput:
@@ -319,6 +346,130 @@ class TestDifyHumanInputForms:
         assert difysvapi._dify_user_from_query(query_a) == difysvapi._dify_user_from_query(query_b)
         assert difysvapi._dify_user_from_query(query_a) == difysvapi._dify_user_from_query(query_c)
         difysvapi._PENDING_FORMS.clear()
+
+    def test_pending_form_lookup_does_not_scan_unrelated_sessions(self, monkeypatch):
+        from langbot.pkg.provider.runners import difysvapi
+
+        def session_key(index: int):
+            return (
+                'instance',
+                f'workspace-{index}',
+                1,
+                'bot',
+                'pipeline',
+                'adapter',
+                'person',
+                f'user-{index}',
+            )
+
+        difysvapi._PENDING_FORMS.clear()
+        for index in range(512):
+            difysvapi._set_pending_form(
+                session_key(index),
+                {
+                    'form_token': f'token-{index}',
+                    'workflow_run_id': f'run-{index}',
+                },
+            )
+
+        class NoGlobalIterationDict(dict):
+            def __iter__(self):
+                raise AssertionError('pending form lookup scanned all sessions')
+
+            def keys(self):
+                raise AssertionError('pending form lookup scanned all sessions')
+
+            def items(self):
+                raise AssertionError('pending form lookup scanned all sessions')
+
+            def values(self):
+                raise AssertionError('pending form lookup scanned all sessions')
+
+        guarded_forms = NoGlobalIterationDict(difysvapi._PENDING_FORMS)
+        monkeypatch.setattr(difysvapi, '_PENDING_FORMS', guarded_forms)
+
+        assert difysvapi._get_pending_form_by_token(session_key(511), 'token-511')['workflow_run_id'] == 'run-511'
+        difysvapi._set_pending_form(
+            session_key(512),
+            {'form_token': 'token-512', 'workflow_run_id': 'run-512'},
+        )
+        assert len(guarded_forms) == 513
+
+    def test_pending_form_expiry_heap_ignores_stale_overwrite_and_stays_bounded(self):
+        from langbot.pkg.provider.runners import difysvapi
+
+        session_key = (
+            'instance',
+            'workspace',
+            1,
+            'bot',
+            'pipeline',
+            'adapter',
+            'person',
+            'user',
+        )
+        difysvapi._PENDING_FORMS.clear()
+        now = time.time()
+        difysvapi._set_pending_form(
+            session_key,
+            {
+                'form_token': 'token',
+                'workflow_run_id': 'stale',
+                'expiration_time': now + 1,
+            },
+        )
+        for revision in range(500):
+            difysvapi._set_pending_form(
+                session_key,
+                {
+                    'form_token': 'token',
+                    'workflow_run_id': f'current-{revision}',
+                    'expiration_time': now + 3600 + revision,
+                },
+            )
+
+        difysvapi._prune_pending_forms(now + 2)
+
+        assert difysvapi._get_pending_form_by_token(session_key, 'token')['workflow_run_id'] == 'current-499'
+        assert difysvapi._PENDING_FORM_ACTIVE_COUNT == 1
+        assert len(difysvapi._PENDING_FORM_EXPIRY_HEAP) <= max(
+            difysvapi._PENDING_FORM_HEAP_COMPACT_FLOOR,
+            difysvapi._PENDING_FORM_ACTIVE_COUNT * difysvapi._PENDING_FORM_HEAP_MAX_MULTIPLIER,
+        )
+
+    def test_pending_form_capacity_evicts_earliest_session_without_full_scan(
+        self,
+        monkeypatch,
+    ):
+        from langbot.pkg.provider.runners import difysvapi
+
+        def session_key(index: int):
+            return (
+                'instance',
+                f'workspace-{index}',
+                1,
+                'bot',
+                'pipeline',
+                'adapter',
+                'person',
+                f'user-{index}',
+            )
+
+        difysvapi._PENDING_FORMS.clear()
+        monkeypatch.setattr(difysvapi, '_PENDING_FORM_MAX_SESSIONS', 2)
+        now = time.time()
+        for index, expires_in in ((1, 300), (2, 100), (3, 200)):
+            difysvapi._set_pending_form(
+                session_key(index),
+                {
+                    'form_token': f'token-{index}',
+                    'expiration_time': now + expires_in,
+                },
+            )
+
+        assert session_key(1) in difysvapi._PENDING_FORMS
+        assert session_key(2) not in difysvapi._PENDING_FORMS
+        assert session_key(3) in difysvapi._PENDING_FORMS
 
     def test_interactive_form_data_preserves_pipeline_uuid(self):
         from langbot.pkg.provider.runners import difysvapi

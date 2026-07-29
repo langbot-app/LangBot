@@ -27,23 +27,25 @@ if typing.TYPE_CHECKING:
 HEARTBEAT_INTERVAL_SECONDS = 24 * 3600
 
 
-async def _count(ap: core_app.Application, table) -> int:
+async def _count(
+    ap: core_app.Application,
+    table,
+    *,
+    cloud_counter: typing.Callable[[], int] | None = None,
+) -> int:
     """Count rows in a persistence table; -1 when unavailable."""
     try:
         persistence_mgr = ap.persistence_mgr
         cloud_runtime = getattr(getattr(persistence_mgr, 'mode', None), 'value', None) == 'cloud_runtime'
         if cloud_runtime:
-            tenant_uow = getattr(persistence_mgr, 'tenant_uow', None)
-            if not callable(tenant_uow):
+            # The Cloud runtime role deliberately cannot bypass RLS. Counting
+            # every tenant by opening one UoW per Workspace turns a best-effort
+            # daily heartbeat into thousands of serial SQL statements. The
+            # already-loaded runtime registries are authoritative for this
+            # process and provide an O(1), connection-free operational count.
+            if cloud_counter is None:
                 return -1
-            total = 0
-            for binding in await ap.workspace_service.list_active_execution_bindings():
-                async with tenant_uow(binding.workspace_uuid):
-                    result = await persistence_mgr.execute_async(
-                        sqlalchemy.select(sqlalchemy.func.count()).select_from(table)
-                    )
-                    total += int(result.scalar() or 0)
-            return total
+            return max(int(cloud_counter()), 0)
         result = await ap.persistence_mgr.execute_async(sqlalchemy.select(sqlalchemy.func.count()).select_from(table))
         return int(result.scalar() or 0)
     except Exception:
@@ -95,11 +97,27 @@ async def build_heartbeat_payload(ap: core_app.Application) -> dict:
         pass
 
     # Resource counts
-    features['pipeline_count'] = await _count(ap, persistence_pipeline.LegacyPipeline)
-    features['mcp_server_count'] = await _count(ap, persistence_mcp.MCPServer)
-    features['knowledge_base_count'] = await _count(ap, persistence_rag.KnowledgeBase)
+    features['pipeline_count'] = await _count(
+        ap,
+        persistence_pipeline.LegacyPipeline,
+        cloud_counter=lambda: len(ap.pipeline_mgr._pipelines_by_key),
+    )
+    features['mcp_server_count'] = await _count(
+        ap,
+        persistence_mcp.MCPServer,
+        cloud_counter=lambda: len(ap.tool_mgr.mcp_tool_loader._sessions),
+    )
+    features['knowledge_base_count'] = await _count(
+        ap,
+        persistence_rag.KnowledgeBase,
+        cloud_counter=lambda: len(ap.rag_mgr.knowledge_bases),
+    )
     if 'bot_count' not in features:
-        features['bot_count'] = await _count(ap, persistence_bot.Bot)
+        features['bot_count'] = await _count(
+            ap,
+            persistence_bot.Bot,
+            cloud_counter=lambda: len(ap.platform_mgr._bots_by_key),
+        )
 
     # Plugin count (from plugin runtime)
     try:

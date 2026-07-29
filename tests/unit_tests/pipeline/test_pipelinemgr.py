@@ -3,11 +3,13 @@ PipelineManager unit tests
 """
 
 import pytest
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 from importlib import import_module
 
 from langbot.pkg.api.http.context import ExecutionContext
-from langbot.pkg.workspace.errors import WorkspaceGenerationMismatchError
+from langbot.pkg.workspace.entities import WorkspaceExecutionBinding
+from langbot.pkg.workspace.errors import WorkspaceGenerationMismatchError, WorkspaceInvariantError
 
 
 def _context(pipeline_uuid: str = 'test-uuid') -> ExecutionContext:
@@ -47,6 +49,95 @@ async def test_pipeline_manager_initialize(mock_app):
 
     assert manager.stage_dict is not None
     assert len(manager.pipelines) == 0
+
+
+@pytest.mark.asyncio
+async def test_cloud_startup_reuses_validated_pipeline_binding(mock_app):
+    class TenantUow:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return False
+
+    binding = WorkspaceExecutionBinding(
+        instance_uuid='test-instance',
+        workspace_uuid='test-workspace',
+        placement_generation=1,
+        write_fenced=False,
+        state='active',
+    )
+    pipeline_entity = Mock(
+        uuid='test-uuid',
+        workspace_uuid='test-workspace',
+        stages=[],
+        config={},
+        extensions_preferences={},
+    )
+    mock_app.persistence_mgr.mode = SimpleNamespace(value='cloud_runtime')
+    mock_app.persistence_mgr.tenant_uow = lambda _workspace_uuid: TenantUow()
+    mock_app.persistence_mgr.execute_async = AsyncMock(return_value=Mock(all=Mock(return_value=[pipeline_entity])))
+    mock_app.workspace_service.list_active_execution_bindings = AsyncMock(return_value=[binding])
+    mock_app.workspace_service.get_execution_binding = AsyncMock(
+        side_effect=AssertionError('startup pipeline loader repeated a validated binding lookup')
+    )
+    manager = get_pipelinemgr_module().PipelineManager(mock_app)
+    manager.stage_dict = {}
+
+    await manager.load_pipelines_from_db()
+
+    assert len(manager.pipelines) == 1
+    mock_app.workspace_service.get_execution_binding.assert_not_awaited()
+
+
+def test_generation_advance_prunes_superseded_workspace_pipelines(mock_app):
+    class NoGlobalIterationDict(dict):
+        def __iter__(self):
+            raise AssertionError('generation advance scanned every pipeline')
+
+        def items(self):
+            raise AssertionError('generation advance scanned every pipeline')
+
+        def values(self):
+            raise AssertionError('generation advance scanned every pipeline')
+
+    pipelinemgr = get_pipelinemgr_module()
+    manager = pipelinemgr.PipelineManager(mock_app)
+    old_context = _context()
+    next_context = ExecutionContext(
+        instance_uuid=old_context.instance_uuid,
+        workspace_uuid=old_context.workspace_uuid,
+        placement_generation=2,
+        pipeline_uuid=old_context.pipeline_uuid,
+    )
+    old_pipeline = SimpleNamespace(
+        execution_context=old_context,
+        workspace_uuid=old_context.workspace_uuid,
+        placement_generation=old_context.placement_generation,
+    )
+    other_pipelines = [
+        SimpleNamespace(
+            execution_context=ExecutionContext(
+                instance_uuid='test-instance',
+                workspace_uuid=f'workspace-{index}',
+                placement_generation=1,
+                pipeline_uuid=f'pipeline-{index}',
+            ),
+            workspace_uuid=f'workspace-{index}',
+            placement_generation=1,
+        )
+        for index in range(1_000)
+    ]
+    manager.pipelines = [old_pipeline, *other_pipelines]
+
+    manager._observe_execution_context(old_context)
+    manager._pipelines_by_key = NoGlobalIterationDict(manager._pipelines_by_key)
+    manager._observe_execution_context(next_context)
+    manager._pipelines_by_key = dict(manager._pipelines_by_key)
+
+    assert manager.pipelines == other_pipelines
+    with pytest.raises(WorkspaceInvariantError, match='rolled back'):
+        manager._observe_execution_context(old_context)
 
 
 @pytest.mark.asyncio

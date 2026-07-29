@@ -10,9 +10,11 @@ import uuid
 from quart.typing import RouteCallable
 
 from ....utils import constants
+from ....utils import bounded_executor
 from ....workspace.collaboration import MembershipPermissionError, WorkspaceCollaborationError
 from ....workspace.errors import WorkspaceNotFoundError
 from ....cloud.entitlements import EntitlementUnavailableError
+from ....core.errors import TaskCapacityError
 from ..authz import AuthorizationError, Permission, permissions_for_role, require_permission
 from ..context import PrincipalContext, PrincipalType, RequestContext, WorkspaceContext
 
@@ -185,16 +187,27 @@ class RouterGroup(abc.ABC):
 
                 try:
                     if request_context is not None:
-                        persistence_mgr = getattr(self.ap, 'persistence_mgr', None)
-                        tenant_scope_descriptor = getattr(type(persistence_mgr), 'tenant_scope', None)
-                        if callable(tenant_scope_descriptor):
-                            # Authorization discovery is complete. Carry the
-                            # trusted Workspace identity across the handler, but
-                            # do not reserve a database connection while it waits
-                            # on providers, runtimes, uploads, or streamed clients.
-                            # Services that need atomic writes open a short UoW.
-                            async with persistence_mgr.tenant_scope(request_context.workspace_uuid):
-                                return await f(*args, **kwargs)
+                        with bounded_executor.blocking_work_scope(request_context.workspace_uuid):
+                            persistence_mgr = getattr(
+                                self.ap,
+                                'persistence_mgr',
+                                None,
+                            )
+                            tenant_scope_descriptor = getattr(
+                                type(persistence_mgr),
+                                'tenant_scope',
+                                None,
+                            )
+                            if callable(tenant_scope_descriptor):
+                                # Authorization discovery is complete. Carry
+                                # the trusted Workspace identity across the
+                                # handler, but do not reserve a database
+                                # connection while it waits on providers,
+                                # runtimes, uploads, or streamed clients.
+                                # Services that need atomic writes open a UoW.
+                                async with persistence_mgr.tenant_scope(request_context.workspace_uuid):
+                                    return await f(*args, **kwargs)
+                            return await f(*args, **kwargs)
                     return await f(*args, **kwargs)
 
                 except Exception as e:  # 自动 500
@@ -206,6 +219,17 @@ class RouterGroup(abc.ABC):
                         return self.http_status(403, e.code, str(e))
                     if isinstance(e, WorkspaceCollaborationError):
                         return self.http_status(400, e.code, str(e))
+                    if isinstance(e, TaskCapacityError):
+                        return self.http_status(429, 'task_capacity_exceeded', str(e))
+                    if isinstance(
+                        e,
+                        bounded_executor.BlockingWorkCapacityError,
+                    ):
+                        return self.http_status(
+                            429,
+                            'blocking_work_capacity_exceeded',
+                            str(e),
+                        )
                     request_id = self.request_id()
                     logger = getattr(self.ap, 'logger', self.quart_app.logger)
                     logger.error(

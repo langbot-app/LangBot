@@ -13,6 +13,8 @@ Source: src/langbot/pkg/api/http/service/space.py
 
 from __future__ import annotations
 
+from collections import OrderedDict
+import json
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
@@ -26,6 +28,23 @@ from langbot.pkg.entity.persistence.user import User
 
 
 pytestmark = pytest.mark.asyncio
+
+
+def _set_response_body(response: MagicMock, body: dict | str) -> None:
+    """Configure an aiohttp-like streaming body on an HTTP response mock."""
+
+    raw_body = body.encode() if isinstance(body, str) else json.dumps(body).encode()
+
+    class Content:
+        async def iter_chunked(self, _chunk_size: int):
+            midpoint = max(len(raw_body) // 2, 1)
+            yield raw_body[:midpoint]
+            if midpoint < len(raw_body):
+                yield raw_body[midpoint:]
+
+    response.headers = {}
+    response.content = Content()
+    response.charset = 'utf-8'
 
 
 def _create_mock_user(
@@ -292,6 +311,40 @@ class TestSpaceServiceGetCredits:
         # Verify - returns cached value without API call
         assert result == 100
 
+    async def test_cached_credit_lookup_does_not_scan_all_users(self):
+        ap = SimpleNamespace()
+        ap.instance_config = SimpleNamespace(data={})
+        ap.persistence_mgr = SimpleNamespace()
+        service = SpaceService(ap)
+
+        class AtMostOneStepOrderedDict(OrderedDict):
+            def __iter__(self):
+                iterator = super().__iter__()
+                yielded = False
+
+                def next_entry():
+                    nonlocal yielded
+                    if yielded:
+                        raise AssertionError('credits cache scanned all users')
+                    yielded = True
+                    return next(iterator)
+
+                class AtMostOneStepIterator:
+                    def __iter__(self):
+                        return self
+
+                    def __next__(self):
+                        return next_entry()
+
+                return AtMostOneStepIterator()
+
+        now = time.time()
+        service._credits_cache = AtMostOneStepOrderedDict(
+            (f'user-{index}@example.com', (index, now)) for index in range(512)
+        )
+
+        assert await service.get_credits('user-511@example.com') == 511
+
     async def test_get_credits_cache_expired_refreshes(self):
         """Refreshes expired cache."""
         # Setup
@@ -406,6 +459,7 @@ class TestSpaceServiceRefreshToken:
                 },
             }
         )
+        _set_response_body(mock_response, mock_response.json.return_value)
 
         with patch('langbot.pkg.api.http.service.space.httpclient.get_session') as mock_session:
             mock_session_obj = MagicMock()
@@ -441,6 +495,7 @@ class TestSpaceServiceRefreshToken:
             }
         )
         mock_response.text = AsyncMock(return_value='{"code":1,"msg":"Invalid refresh token"}')
+        _set_response_body(mock_response, mock_response.json.return_value)
 
         with patch('langbot.pkg.api.http.service.space.httpclient.get_session') as mock_session:
             mock_session_obj = MagicMock()
@@ -467,6 +522,7 @@ class TestSpaceServiceRefreshToken:
         mock_response = MagicMock()
         mock_response.status = 500
         mock_response.text = AsyncMock(return_value='Internal Server Error')
+        _set_response_body(mock_response, mock_response.text.return_value)
 
         with patch('langbot.pkg.api.http.service.space.httpclient.get_session') as mock_session:
             mock_session_obj = MagicMock()
@@ -506,6 +562,7 @@ class TestSpaceServiceExchangeOAuthCode:
                 },
             }
         )
+        _set_response_body(mock_response, mock_response.json.return_value)
 
         with patch('langbot.pkg.api.http.service.space.httpclient.get_session') as mock_session:
             mock_session_obj = MagicMock()
@@ -535,6 +592,7 @@ class TestSpaceServiceExchangeOAuthCode:
         mock_response.status = 200
         mock_response.json = AsyncMock(return_value={'code': 1, 'msg': 'Invalid code'})
         mock_response.text = AsyncMock(return_value='{"code":1,"msg":"Invalid code"}')
+        _set_response_body(mock_response, mock_response.json.return_value)
 
         with patch('langbot.pkg.api.http.service.space.httpclient.get_session') as mock_session:
             mock_session_obj = MagicMock()
@@ -573,6 +631,7 @@ class TestSpaceServiceGetUserInfoRaw:
                 },
             }
         )
+        _set_response_body(mock_response, mock_response.json.return_value)
 
         with patch('langbot.pkg.api.http.service.space.httpclient.get_session') as mock_session:
             mock_session_obj = MagicMock()
@@ -603,6 +662,7 @@ class TestSpaceServiceGetUserInfoRaw:
         mock_response.status = 200
         mock_response.json = AsyncMock(return_value={'code': 1, 'msg': 'Unauthorized'})
         mock_response.text = AsyncMock(return_value='{"code":1,"msg":"Unauthorized"}')
+        _set_response_body(mock_response, mock_response.json.return_value)
 
         with patch('langbot.pkg.api.http.service.space.httpclient.get_session') as mock_session:
             mock_session_obj = MagicMock()
@@ -703,6 +763,7 @@ class TestSpaceServiceGetModels:
                 },
             }
         )
+        _set_response_body(mock_response, mock_response.json.return_value)
 
         with patch('langbot.pkg.api.http.service.space.httpclient.get_session') as mock_session:
             mock_session_obj = MagicMock()
@@ -732,6 +793,7 @@ class TestSpaceServiceGetModels:
         mock_response.status = 200
         mock_response.json = AsyncMock(return_value={'code': 1, 'msg': 'Unauthorized'})
         mock_response.text = AsyncMock(return_value='{"code":1,"msg":"Unauthorized"}')
+        _set_response_body(mock_response, mock_response.json.return_value)
 
         with patch('langbot.pkg.api.http.service.space.httpclient.get_session') as mock_session:
             mock_session_obj = MagicMock()

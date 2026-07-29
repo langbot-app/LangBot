@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-import base64
 import enum
 import json
 import math
 import re
 import time
 import typing
+import ipaddress
+from urllib.parse import urlparse
 from contextlib import AsyncExitStack, asynccontextmanager
 from datetime import timedelta
 import traceback
@@ -50,6 +51,7 @@ MCP_TOOL_READ_RESOURCE = 'langbot_mcp_read_resource'
 
 MCP_RESOURCE_DISCOVERY_MAX_PAGES = 20
 MCP_RESOURCE_CACHE_TTL_SECONDS = 30
+MCP_RESOURCE_CACHE_MAX_ENTRIES = 32
 MCP_RESOURCE_PREVIEW_MAX_BYTES = 64 * 1024
 MCP_RESOURCE_AGENT_READ_MAX_BYTES = 64 * 1024
 MCP_RESOURCE_AGENT_READ_MAX_TOKENS = 12000
@@ -134,10 +136,13 @@ def _truncate_text(text: str, max_bytes: int, max_tokens: int | None = None) -> 
 
 
 def _blob_size(blob: str) -> int:
-    try:
-        return len(base64.b64decode(blob, validate=False))
-    except Exception:
+    # MCP BlobResourceContents is schema-validated base64 without whitespace.
+    # Compute decoded size in O(1) without allocating a second binary copy.
+    encoded_chars = len(blob)
+    if encoded_chars % 4:
         return len(blob.encode('utf-8', errors='ignore'))
+    padding = 2 if blob.endswith('==') else 1 if blob.endswith('=') else 0
+    return max((encoded_chars // 4) * 3 - padding, 0)
 
 
 def _resource_to_dict(resource: mcp_types.Resource | mcp_types.ResourceLink) -> dict:
@@ -434,12 +439,24 @@ class RuntimeMCPSession:
         await self._box_stdio_runtime.initialize()
 
     async def _init_sse_server(self):
+        trust_env = self._remote_http_trust_env()
+
+        def httpx_client_factory(headers=None, timeout=None, auth=None):
+            return httpx.AsyncClient(
+                headers=headers,
+                timeout=timeout,
+                auth=auth,
+                follow_redirects=True,
+                trust_env=trust_env,
+            )
+
         sse_transport = await self.exit_stack.enter_async_context(
             sse_client(
                 self.server_config['url'],
                 headers=self.server_config.get('headers', {}),
                 timeout=self.server_config.get('timeout', 10),
                 sse_read_timeout=self.server_config.get('ssereadtimeout', 30),
+                httpx_client_factory=httpx_client_factory,
             )
         )
 
@@ -448,6 +465,18 @@ class RuntimeMCPSession:
         self.session = await self.exit_stack.enter_async_context(ClientSession(sseio, write))
 
         await self.session.initialize()
+
+    def _remote_http_trust_env(self) -> bool:
+        configured = self.server_config.get('trust_env')
+        if isinstance(configured, bool):
+            return configured
+        hostname = (urlparse(str(self.server_config.get('url', ''))).hostname or '').lower()
+        if hostname == 'localhost':
+            return False
+        try:
+            return not ipaddress.ip_address(hostname).is_loopback
+        except ValueError:
+            return True
 
     @asynccontextmanager
     async def _streamable_http_session(self) -> typing.AsyncIterator[ClientSession]:
@@ -465,6 +494,7 @@ class RuntimeMCPSession:
             headers=self.server_config.get('headers', {}),
             timeout=self.server_config.get('timeout', 10),
             follow_redirects=True,
+            trust_env=self._remote_http_trust_env(),
         ) as http_client:
             async with streamable_http_client(
                 self.server_config['url'],
@@ -1215,6 +1245,9 @@ class RuntimeMCPSession:
 
         cache_key = (uri, max_bytes, max_tokens, include_blob)
         now = time.time()
+        for expired_key, entry in tuple(self._resource_cache.items()):
+            if now - entry.get('cached_at', 0) > MCP_RESOURCE_CACHE_TTL_SECONDS:
+                self._resource_cache.pop(expired_key, None)
         cached = self._resource_cache.get(cache_key)
         if cached and now - cached.get('cached_at', 0) <= MCP_RESOURCE_CACHE_TTL_SECONDS:
             envelope = {
@@ -1314,6 +1347,12 @@ class RuntimeMCPSession:
             'warnings': warnings,
         }
         await self._assert_execution_active()
+        if cache_key not in self._resource_cache and len(self._resource_cache) >= MCP_RESOURCE_CACHE_MAX_ENTRIES:
+            oldest_key = min(
+                self._resource_cache,
+                key=lambda key: self._resource_cache[key].get('cached_at', 0),
+            )
+            self._resource_cache.pop(oldest_key, None)
         self._resource_cache[cache_key] = {'cached_at': now, 'envelope': envelope}
         self._record_resource_read_trace(query, envelope)
         return envelope
@@ -1498,17 +1537,249 @@ class MCPLoader(loader.ToolLoader):
     在此加载器中管理所有与 MCP Server 的连接。
     """
 
-    sessions: dict[tuple[str, str, int, str], RuntimeMCPSession]
-
-    _last_listed_functions: list[resource_tool.LLMTool]
+    _sessions: dict[tuple[str, str, int, str], RuntimeMCPSession]
 
     _hosted_mcp_tasks: list[asyncio.Task]
 
     def __init__(self, ap: app.Application):
         super().__init__(ap)
         self.sessions = {}
-        self._last_listed_functions = []
         self._hosted_mcp_tasks = []
+        self._hosted_mcp_tasks_by_scope: dict[
+            tuple[str, str, int],
+            set[asyncio.Task],
+        ] = {}
+        self._host_dispatch_tasks: set[asyncio.Task] = set()
+        config = getattr(getattr(ap, 'instance_config', None), 'data', {})
+        mcp_config = config.get('mcp', {}) if isinstance(config, dict) else {}
+        raw_lifecycle_concurrency = mcp_config.get('lifecycle_concurrency', 16) if isinstance(mcp_config, dict) else 16
+        if (
+            isinstance(raw_lifecycle_concurrency, bool)
+            or not isinstance(raw_lifecycle_concurrency, int)
+            or raw_lifecycle_concurrency < 1
+        ):
+            raw_lifecycle_concurrency = 16
+        self._lifecycle_concurrency = min(
+            raw_lifecycle_concurrency,
+            128,
+        )
+        self._lifecycle_semaphore = asyncio.Semaphore(self._lifecycle_concurrency)
+
+    @property
+    def sessions(
+        self,
+    ) -> dict[tuple[str, str, int, str], RuntimeMCPSession]:
+        return self._sessions
+
+    @sessions.setter
+    def sessions(self, sessions: dict) -> None:
+        """Compatibility setter that rebuilds the per-scope session index."""
+
+        self._sessions = sessions
+        self._session_keys_by_scope: dict[
+            tuple[str, str, int],
+            set[tuple[str, str, int, str]],
+        ] = {}
+        self._scope_generations: dict[tuple[str, str], int] = {}
+        for key in sessions:
+            if not isinstance(key, tuple) or len(key) != 4:
+                continue
+            scope_key = key[:3]
+            self._session_keys_by_scope.setdefault(scope_key, set()).add(key)
+            self._scope_generations[scope_key[:2]] = scope_key[2]
+
+    def _register_session(
+        self,
+        context: TenantContext,
+        server_name: str,
+        session: RuntimeMCPSession,
+    ) -> None:
+        scope_key = self._scope_key(context)
+        workspace_scope = scope_key[:2]
+        previous_generation = self._scope_generations.get(workspace_scope)
+        if previous_generation is not None and previous_generation != scope_key[2]:
+            raise WorkspaceInvariantError('MCP session registration crossed a Workspace generation')
+        key = (*scope_key, server_name)
+        self._sessions[key] = session
+        self._session_keys_by_scope.setdefault(scope_key, set()).add(key)
+        self._scope_generations[workspace_scope] = scope_key[2]
+
+    def _pop_session(
+        self,
+        context: TenantContext,
+        server_name: str,
+    ) -> RuntimeMCPSession | None:
+        scope_key = self._scope_key(context)
+        key = (*scope_key, server_name)
+        session = self._sessions.pop(key, None)
+        keys = self._session_keys_by_scope.get(scope_key)
+        if keys is not None:
+            keys.discard(key)
+            if not keys:
+                self._session_keys_by_scope.pop(scope_key, None)
+        self._drop_empty_scope(scope_key)
+        return session
+
+    def _drop_empty_scope(self, scope_key: tuple[str, str, int]) -> None:
+        if (
+            scope_key not in self._session_keys_by_scope
+            and scope_key not in self._hosted_mcp_tasks_by_scope
+            and self._scope_generations.get(scope_key[:2]) == scope_key[2]
+        ):
+            self._scope_generations.pop(scope_key[:2], None)
+
+    def track_hosted_task(
+        self,
+        task: asyncio.Task,
+        context: TenantContext,
+    ) -> asyncio.Task:
+        """Track a host task without retaining it after completion."""
+
+        scope_key = self._scope_key(context)
+        workspace_scope = scope_key[:2]
+        previous_generation = self._scope_generations.get(workspace_scope)
+        if previous_generation is not None and previous_generation != scope_key[2]:
+            task.cancel()
+            raise WorkspaceInvariantError('MCP host task crossed a Workspace generation')
+        self._scope_generations[workspace_scope] = scope_key[2]
+        self._hosted_mcp_tasks.append(task)
+        self._hosted_mcp_tasks_by_scope.setdefault(scope_key, set()).add(task)
+
+        def discard(completed: asyncio.Task) -> None:
+            try:
+                self._hosted_mcp_tasks.remove(completed)
+            except ValueError:
+                pass
+            tasks = self._hosted_mcp_tasks_by_scope.get(scope_key)
+            if tasks is not None:
+                tasks.discard(completed)
+                if not tasks:
+                    self._hosted_mcp_tasks_by_scope.pop(scope_key, None)
+            self._drop_empty_scope(scope_key)
+
+        task.add_done_callback(discard)
+        return task
+
+    def _track_host_dispatch_task(self, task: asyncio.Task) -> None:
+        """Track the bounded startup dispatcher without retaining it."""
+
+        self._host_dispatch_tasks.add(task)
+
+        def discard(completed: asyncio.Task) -> None:
+            self._host_dispatch_tasks.discard(completed)
+            if completed.cancelled():
+                return
+            exception = completed.exception()
+            if exception is not None:
+                self.ap.logger.error(
+                    f'MCP startup dispatcher failed: {exception}',
+                )
+
+        task.add_done_callback(discard)
+
+    async def _retire_runtime_scope(
+        self,
+        scope_key: tuple[str, str, int],
+    ) -> None:
+        tasks = tuple(self._hosted_mcp_tasks_by_scope.pop(scope_key, ()))
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+        keys = tuple(self._session_keys_by_scope.pop(scope_key, ()))
+        sessions = [session for key in keys if (session := self._sessions.pop(key, None)) is not None]
+        await self._shutdown_sessions(sessions)
+        self._scope_generations.pop(scope_key[:2], None)
+
+    async def _observe_execution_context(
+        self,
+        context: ExecutionContext,
+    ) -> None:
+        workspace_scope = (
+            context.instance_uuid,
+            context.workspace_uuid,
+        )
+        previous_generation = self._scope_generations.get(workspace_scope)
+        if previous_generation is None:
+            return
+        if context.placement_generation < previous_generation:
+            raise WorkspaceInvariantError('MCP runtime placement generation rolled back')
+        if context.placement_generation == previous_generation:
+            return
+        await self._retire_runtime_scope((*workspace_scope, previous_generation))
+
+    async def _reset_runtime_state(self) -> None:
+        """Cancel host tasks and close sessions before reload or shutdown."""
+
+        dispatch_tasks = tuple(self._host_dispatch_tasks)
+        self._host_dispatch_tasks.clear()
+        for task in dispatch_tasks:
+            if not task.done():
+                task.cancel()
+        if dispatch_tasks:
+            await asyncio.gather(*dispatch_tasks, return_exceptions=True)
+
+        tasks = tuple(self._hosted_mcp_tasks)
+        self._hosted_mcp_tasks.clear()
+        self._hosted_mcp_tasks_by_scope.clear()
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+        sessions = tuple(self._sessions.values())
+        self.sessions = {}
+        await self._shutdown_sessions(sessions)
+
+    async def _shutdown_sessions(
+        self,
+        sessions: typing.Iterable[RuntimeMCPSession],
+    ) -> None:
+        """Close MCP sessions in bounded batches to avoid shutdown storms."""
+
+        session_list = list(sessions)
+        for offset in range(0, len(session_list), self._lifecycle_concurrency):
+            batch = session_list[offset : offset + self._lifecycle_concurrency]
+            results = await asyncio.gather(
+                *(session.shutdown() for session in batch),
+                return_exceptions=True,
+            )
+            for session, result in zip(batch, results, strict=True):
+                if isinstance(result, BaseException):
+                    self.ap.logger.error(f'Error shutting down MCP session {session.server_name}: {result}')
+
+    async def _host_server_configs_bounded(
+        self,
+        server_configs: typing.Sequence[tuple[ExecutionContext, dict],],
+    ) -> None:
+        """Create at most one lifecycle batch of MCP host tasks at a time."""
+
+        for offset in range(0, len(server_configs), self._lifecycle_concurrency):
+            batch = server_configs[offset : offset + self._lifecycle_concurrency]
+            tasks: list[asyncio.Task] = []
+            for execution_context, config in batch:
+                task = create_detached_task(
+                    self.host_mcp_server(execution_context, config),
+                    after_commit_manager=getattr(
+                        self.ap,
+                        'persistence_mgr',
+                        None,
+                    ),
+                    workspace_uuid=execution_context.workspace_uuid,
+                )
+                tasks.append(task)
+                try:
+                    self.track_hosted_task(task, execution_context)
+                except WorkspaceInvariantError as exc:
+                    self.ap.logger.warning(
+                        f'Skipping stale MCP startup task for {execution_context.workspace_uuid}: {exc}'
+                    )
+                    continue
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
 
     async def _assert_execution_active(
         self,
@@ -1523,6 +1794,7 @@ class MCPLoader(loader.ToolLoader):
         )
         if binding.instance_uuid != execution_context.instance_uuid:
             raise WorkspaceInvariantError('MCP caller instance does not match the active Workspace binding')
+        await self._observe_execution_context(execution_context)
         return execution_context
 
     async def initialize(self):
@@ -1531,9 +1803,36 @@ class MCPLoader(loader.ToolLoader):
     async def load_mcp_servers_from_db(self):
         self.ap.logger.info('Loading MCP servers from db...')
 
-        self.sessions = {}
+        await self._reset_runtime_state()
 
-        server_configs: list[tuple[typing.Any, typing.Any, dict]] = []
+        pending_hosts: list[tuple[ExecutionContext, dict]] = []
+
+        async def queue_server(binding, server) -> None:
+            config = self.ap.persistence_mgr.serialize_model(
+                persistence_mcp.MCPServer,
+                server,
+            )
+            if config.get('mode') == 'stdio' and not stdio_mcp_enabled(self.ap):
+                self.ap.logger.info(
+                    f'Skipping disabled stdio MCP server {server.uuid}; '
+                    'the persisted configuration is retained but no process is launched'
+                )
+                return
+            try:
+                if binding is None:
+                    binding = await self.ap.workspace_service.get_execution_binding(server.workspace_uuid)
+                execution_context = ExecutionContext(
+                    instance_uuid=binding.instance_uuid,
+                    workspace_uuid=binding.workspace_uuid,
+                    placement_generation=binding.placement_generation,
+                )
+            except Exception as exc:
+                self.ap.logger.warning(
+                    f'Skipping MCP server {server.uuid}: Workspace execution binding is unavailable: {exc}'
+                )
+                return
+            pending_hosts.append((execution_context, config))
+
         list_bindings = getattr(self.ap.workspace_service, 'list_active_execution_bindings', None)
         tenant_uow = getattr(self.ap.persistence_mgr, 'tenant_uow', None)
         cloud_runtime = getattr(getattr(self.ap.persistence_mgr, 'mode', None), 'value', None) == 'cloud_runtime'
@@ -1548,51 +1847,19 @@ class MCPLoader(loader.ToolLoader):
                         .order_by(persistence_mcp.MCPServer.uuid)
                     )
                     for server in result.all():
-                        server_configs.append(
-                            (
-                                binding,
-                                server,
-                                self.ap.persistence_mgr.serialize_model(persistence_mcp.MCPServer, server),
-                            )
-                        )
+                        await queue_server(binding, server)
         else:
             # Compatibility path for isolated loader tests and older embedders.
             result = await self.ap.persistence_mgr.execute_async(sqlalchemy.select(persistence_mcp.MCPServer))
             for server in result.all():
-                server_configs.append(
-                    (
-                        None,
-                        server,
-                        self.ap.persistence_mgr.serialize_model(persistence_mcp.MCPServer, server),
-                    )
-                )
+                await queue_server(None, server)
 
-        for binding, server, config in server_configs:
-            if config.get('mode') == 'stdio' and not stdio_mcp_enabled(self.ap):
-                self.ap.logger.info(
-                    f'Skipping disabled stdio MCP server {server.uuid}; '
-                    'the persisted configuration is retained but no process is launched'
-                )
-                continue
-            try:
-                if binding is None:
-                    binding = await self.ap.workspace_service.get_execution_binding(server.workspace_uuid)
-                execution_context = ExecutionContext(
-                    instance_uuid=binding.instance_uuid,
-                    workspace_uuid=binding.workspace_uuid,
-                    placement_generation=binding.placement_generation,
-                )
-            except Exception as exc:
-                self.ap.logger.warning(
-                    f'Skipping MCP server {server.uuid}: Workspace execution binding is unavailable: {exc}'
-                )
-                continue
-
-            task = create_detached_task(
-                self.host_mcp_server(execution_context, config),
+        if pending_hosts:
+            dispatch_task = create_detached_task(
+                self._host_server_configs_bounded(pending_hosts),
                 after_commit_manager=getattr(self.ap, 'persistence_mgr', None),
             )
-            self._hosted_mcp_tasks.append(task)
+            self._track_host_dispatch_task(dispatch_task)
 
     @staticmethod
     def _scope_key(context: TenantContext) -> tuple[str, str, int]:
@@ -1609,9 +1876,25 @@ class MCPLoader(loader.ToolLoader):
 
     def _sessions_for_context(self, context: TenantContext) -> list[RuntimeMCPSession]:
         scope_key = self._scope_key(context)
-        return [session for key, session in self.sessions.items() if key[:3] == scope_key]
+        return [
+            session
+            for key in self._session_keys_by_scope.get(scope_key, ())
+            if (session := self._sessions.get(key)) is not None
+        ]
 
-    async def host_mcp_server(self, context: TenantContext, server_config: dict):
+    async def host_mcp_server(
+        self,
+        context: TenantContext,
+        server_config: dict,
+    ) -> None:
+        async with self._lifecycle_semaphore:
+            await self._host_mcp_server(context, server_config)
+
+    async def _host_mcp_server(
+        self,
+        context: TenantContext,
+        server_config: dict,
+    ) -> None:
         requested_context = _execution_context_from_tenant(context)
         execution_context = await run_in_workspace_uow(
             self.ap,
@@ -1627,7 +1910,17 @@ class MCPLoader(loader.ToolLoader):
         try:
             session = await self.load_mcp_server(execution_context, server_config)
             await self._assert_execution_active(execution_context)
-            self.sessions[self._session_key(execution_context, server_config['name'])] = session
+            old_session = self._pop_session(
+                execution_context,
+                server_config['name'],
+            )
+            if old_session is not None:
+                await old_session.shutdown()
+            self._register_session(
+                execution_context,
+                server_config['name'],
+                session,
+            )
         except Exception as e:
             self.ap.logger.error(
                 f'Failed to load MCP server from db: {server_config["name"]}({server_config["uuid"]}): {e}\n{traceback.format_exc()}'
@@ -1875,8 +2168,6 @@ class MCPLoader(loader.ToolLoader):
 
         if include_resource_tools and self._eligible_resource_sessions_for_bound(context, bound_mcp_servers):
             all_functions.extend(self._mcp_synthetic_resource_tools())
-
-        self._last_listed_functions = all_functions
 
         return all_functions
 
@@ -2140,7 +2431,9 @@ class MCPLoader(loader.ToolLoader):
             self.ap.logger.warning(f'MCP server {server_name} not found in sessions, skipping removal')
             return
 
-        session = self.sessions.pop(key)
+        session = self._pop_session(context, server_name)
+        if session is None:
+            return
         await session.shutdown()
         self.ap.logger.info(f'Removed MCP server: {server_name}')
 
@@ -2180,22 +2473,5 @@ class MCPLoader(loader.ToolLoader):
         """关闭所有工具"""
         self.ap.logger.info('Shutting down all MCP sessions...')
 
-        hosted_tasks = [task for task in self._hosted_mcp_tasks if not task.done()]
-        for task in hosted_tasks:
-            task.cancel()
-        if hosted_tasks:
-            await asyncio.gather(*hosted_tasks, return_exceptions=True)
-        self._hosted_mcp_tasks.clear()
-
-        async def shutdown_session(session: RuntimeMCPSession) -> None:
-            try:
-                await session.shutdown()
-                self.ap.logger.debug(f'Shutdown MCP session: {session.server_name}')
-            except Exception as e:
-                self.ap.logger.error(
-                    f'Error shutting down MCP session {session.server_name}: {e}\n{traceback.format_exc()}'
-                )
-
-        await asyncio.gather(*(shutdown_session(session) for session in list(self.sessions.values())))
-        self.sessions.clear()
+        await self._reset_runtime_state()
         self.ap.logger.info('All MCP sessions shutdown complete')

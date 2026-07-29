@@ -147,7 +147,8 @@ class WebhookPusher:
                 else:
                     self.logger.debug(f'Successfully pushed to webhook {url}')
                     try:
-                        return await response.json()
+                        result = await httpclient.read_json_limited(response)
+                        return result if isinstance(result, dict) else None
                     except Exception as json_error:
                         self.logger.debug(f'Failed to parse JSON response from webhook {url}: {json_error}')
                         return None

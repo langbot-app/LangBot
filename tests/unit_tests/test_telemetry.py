@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+import asyncio
 
 import pytest
 
@@ -20,7 +21,9 @@ async def test_send_tasks_are_scoped_to_manager_instance(monkeypatch):
     assert first.send_tasks is not second.send_tasks
 
     await first.start_send_task({'event': 'first'})
-    await first.send_tasks[0]
+    task = first.send_tasks[0]
+    await task
+    await asyncio.sleep(0)
 
-    assert len(first.send_tasks) == 1
+    assert first.send_tasks == []
     assert second.send_tasks == []

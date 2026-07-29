@@ -463,6 +463,17 @@ class ProviderAPIRequester(metaclass=abc.ABCMeta):
     async def initialize(self):
         pass
 
+    async def aclose(self) -> None:
+        """Release requester-owned clients when its runtime provider retires.
+
+        Most built-in requesters are currently stateless, but provider
+        extensions may own connection pools or background resources. Keeping
+        the lifecycle hook on the base class lets Workspace generation changes
+        and application shutdown retire them deterministically.
+        """
+
+        return None
+
     async def scan_models(self, api_key: str | None = None) -> dict[str, typing.Any] | list[dict[str, typing.Any]]:
         """Scan models supported by the provider.
 

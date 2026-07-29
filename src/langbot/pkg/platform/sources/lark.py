@@ -15,7 +15,7 @@ import hashlib
 from Crypto.Cipher import AES
 import tempfile
 import os
-import mimetypes
+import threading
 
 from langbot.pkg.utils import httpclient
 import lark_oapi.ws.exception
@@ -32,6 +32,53 @@ import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
 import langbot_plugin.api.definition.abstract.platform.event_logger as abstract_platform_logger
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
+
+
+_MAX_LARK_MEDIA_BYTES = 10 * 1024 * 1024
+
+
+def _decode_lark_base64_limited(value: str) -> bytes:
+    if ',' in value:
+        value = value.split(',', 1)[1]
+    max_encoded_bytes = 4 * ((_MAX_LARK_MEDIA_BYTES + 2) // 3)
+    if len(value) > max_encoded_bytes:
+        raise ValueError('Lark media exceeds the size limit')
+    decoded = base64.b64decode(value)
+    if len(decoded) > _MAX_LARK_MEDIA_BYTES:
+        raise ValueError('Lark media exceeds the size limit')
+    return decoded
+
+
+def _read_lark_path_limited(path: str) -> bytes:
+    if os.path.getsize(path) > _MAX_LARK_MEDIA_BYTES:
+        raise ValueError('Lark media exceeds the size limit')
+    with open(path, 'rb') as file:
+        body = file.read(_MAX_LARK_MEDIA_BYTES + 1)
+    if len(body) > _MAX_LARK_MEDIA_BYTES:
+        raise ValueError('Lark media exceeds the size limit')
+    return body
+
+
+def _write_lark_temp_file(data: bytes) -> str:
+    with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+        temp_file.write(data)
+        temp_file.flush()
+        return temp_file.name
+
+
+def _read_lark_response_file_limited(response) -> bytes:
+    content_length = response.raw.headers.get('content-length')
+    if content_length is not None:
+        try:
+            if int(content_length) > _MAX_LARK_MEDIA_BYTES:
+                raise ValueError('Lark media exceeds the size limit')
+        except (TypeError, ValueError) as exc:
+            if 'exceeds' in str(exc):
+                raise
+    body = response.file.read(_MAX_LARK_MEDIA_BYTES + 1)
+    if len(body) > _MAX_LARK_MEDIA_BYTES:
+        raise ValueError('Lark media exceeds the size limit')
+    return body
 
 
 def _lark_form_component_name(prefix: str, field_name: str, index: int) -> str:
@@ -299,68 +346,33 @@ class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
     @staticmethod
     async def upload_image_to_lark(msg: platform_message.Image, api_client: lark_oapi.Client) -> typing.Optional[str]:
         """Upload an image to Lark and return the image_key, or None if upload fails."""
-        image_bytes = None
-
-        if msg.base64:
-            try:
-                # Remove data URL prefix if present
-                base64_data = msg.base64
-                if base64_data.startswith('data:'):
-                    base64_data = base64_data.split(',', 1)[1]
-                image_bytes = base64.b64decode(base64_data)
-            except Exception as e:
-                print(f'Failed to decode base64 image: {e}')
-                traceback.print_exc()
-                return None
-        elif msg.url:
-            try:
-                session = httpclient.get_session()
-                async with session.get(msg.url) as response:
-                    if response.status == 200:
-                        image_bytes = await response.read()
-                    else:
-                        print(f'Failed to download image from {msg.url}: HTTP {response.status}')
-                        return None
-            except Exception as e:
-                print(f'Failed to download image from {msg.url}: {e}')
-                traceback.print_exc()
-                return None
-        elif msg.path:
-            try:
-                with open(msg.path, 'rb') as f:
-                    image_bytes = f.read()
-            except Exception as e:
-                print(f'Failed to read image from path {msg.path}: {e}')
-                traceback.print_exc()
-                return None
-
-        if image_bytes is None:
+        try:
+            image_bytes, _mime_type = await msg.get_bytes()
+        except Exception as exc:
+            print(f'Failed to load Lark image: {exc}')
+            traceback.print_exc()
+            return None
+        if not image_bytes:
             print(
                 f'No image data available for Image message (url={msg.url}, base64={bool(msg.base64)}, path={msg.path})'
             )
             return None
 
         try:
-            # Create a temporary file to store the image bytes
-            import tempfile
-            import os
-
-            with tempfile.NamedTemporaryFile(delete=False) as temp_file:
-                temp_file.write(image_bytes)
-                temp_file.flush()
-                temp_file_path = temp_file.name
+            temp_file_path = await asyncio.to_thread(
+                _write_lark_temp_file,
+                image_bytes,
+            )
 
             try:
-                # Create image request using the temporary file
-                request = (
-                    CreateImageRequest.builder()
-                    .request_body(
-                        CreateImageRequestBody.builder().image_type('message').image(open(temp_file_path, 'rb')).build()
+                with open(temp_file_path, 'rb') as upload_file:
+                    request = (
+                        CreateImageRequest.builder()
+                        .request_body(CreateImageRequestBody.builder().image_type('message').image(upload_file).build())
+                        .build()
                     )
-                    .build()
-                )
 
-                response = await api_client.im.v1.image.acreate(request)
+                    response = await api_client.im.v1.image.acreate(request)
 
                 if not response.success():
                     print(
@@ -395,23 +407,24 @@ class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
             duration: Duration in milliseconds (for audio files).
         """
         try:
-            with tempfile.NamedTemporaryFile(delete=False) as temp_file:
-                temp_file.write(file_bytes)
-                temp_file_path = temp_file.name
+            if len(file_bytes) > _MAX_LARK_MEDIA_BYTES:
+                raise ValueError('Lark media exceeds the size limit')
+            temp_file_path = await asyncio.to_thread(
+                _write_lark_temp_file,
+                file_bytes,
+            )
 
             try:
-                body_builder = (
-                    CreateFileRequestBody.builder()
-                    .file_type(file_type)
-                    .file_name(file_name)
-                    .file(open(temp_file_path, 'rb'))
-                )
-                if duration is not None:
-                    body_builder = body_builder.duration(duration)
+                with open(temp_file_path, 'rb') as upload_file:
+                    body_builder = (
+                        CreateFileRequestBody.builder().file_type(file_type).file_name(file_name).file(upload_file)
+                    )
+                    if duration is not None:
+                        body_builder = body_builder.duration(duration)
 
-                request = CreateFileRequest.builder().request_body(body_builder.build()).build()
+                    request = CreateFileRequest.builder().request_body(body_builder.build()).build()
 
-                response = await api_client.im.v1.file.acreate(request)
+                    response = await api_client.im.v1.file.acreate(request)
 
                 if not response.success():
                     print(
@@ -436,10 +449,10 @@ class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
 
         if msg.base64:
             try:
-                base64_str = msg.base64
-                if ',' in base64_str:
-                    base64_str = base64_str.split(',', 1)[1]
-                data = base64.b64decode(base64_str)
+                data = await asyncio.to_thread(
+                    _decode_lark_base64_limited,
+                    msg.base64,
+                )
             except Exception:
                 pass
         elif msg.url:
@@ -447,13 +460,18 @@ class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
                 session = httpclient.get_session()
                 async with session.get(msg.url) as resp:
                     if resp.status == 200:
-                        data = await resp.read()
+                        data = await httpclient.read_limited(
+                            resp,
+                            max_bytes=_MAX_LARK_MEDIA_BYTES,
+                        )
             except Exception:
                 pass
         elif msg.path:
             try:
-                with open(msg.path, 'rb') as f:
-                    data = f.read()
+                data = await asyncio.to_thread(
+                    _read_lark_path_limited,
+                    str(msg.path),
+                )
             except Exception:
                 pass
 
@@ -694,8 +712,11 @@ class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
                         f'client.im.v1.message_resource.get failed, code: {response.code}, msg: {response.msg}, log_id: {response.get_log_id()}, resp: \n{json.dumps(json.loads(response.raw.content), indent=4, ensure_ascii=False)}'
                     )
 
-                image_bytes = response.file.read()
-                image_base64 = base64.b64encode(image_bytes).decode()
+                image_bytes = await asyncio.to_thread(
+                    _read_lark_response_file_limited,
+                    response,
+                )
+                image_base64 = (await asyncio.to_thread(base64.b64encode, image_bytes)).decode()
 
                 image_format = response.raw.headers['content-type']
 
@@ -721,27 +742,18 @@ class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
                         lb_msg_list.append(platform_message.Plain(text='[Audio file download failed]'))
                         return platform_message.MessageChain(lb_msg_list)
 
-                    # Read audio bytes
-                    audio_bytes = response.file.read()
-                    audio_base64 = base64.b64encode(audio_bytes).decode()
+                    audio_bytes = await asyncio.to_thread(
+                        _read_lark_response_file_limited,
+                        response,
+                    )
+                    audio_base64 = (await asyncio.to_thread(base64.b64encode, audio_bytes)).decode()
 
                     # Get content type from response headers
                     content_type = response.raw.headers.get('content-type', 'audio/mpeg')
 
-                    mime_main = content_type.split(';')[0].strip()
-                    ext = mimetypes.guess_extension(mime_main) or '.bin'
-                    temp_dir = tempfile.gettempdir()
-                    temp_file_path = os.path.join(temp_dir, f'lark_audio_{file_key}{ext}')
-
-                    with open(temp_file_path, 'wb') as f:
-                        f.write(audio_bytes)
-
-                    # Create Voice message: prefer path/url + length, include base64 as optional data URI
                     lb_msg_list.append(
                         platform_message.Voice(
                             voice_id=file_key,
-                            url=f'file://{temp_file_path}',
-                            path=temp_file_path,
                             base64=f'data:{content_type};base64,{audio_base64}',
                             length=(duration // 1000) if duration else None,
                         )
@@ -770,40 +782,22 @@ class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
                         f'client.im.v1.message_resource.get failed, code: {response.code}, msg: {response.msg}, log_id: {response.get_log_id()}, resp: \n{json.dumps(json.loads(response.raw.content), indent=4, ensure_ascii=False)}'
                     )
 
-                file_bytes = response.file.read()
-                file_base64 = base64.b64encode(file_bytes).decode()
+                file_bytes = await asyncio.to_thread(
+                    _read_lark_response_file_limited,
+                    response,
+                )
+                file_base64 = (await asyncio.to_thread(base64.b64encode, file_bytes)).decode()
 
                 file_format = response.raw.headers['content-type']
 
                 file_size = len(file_bytes)
 
-                # Determine extension from content-type if possible
-                content_type = response.raw.headers.get('content-type', '')
-                mime_main = content_type.split(';')[0].strip() if content_type else ''
-                ext = mimetypes.guess_extension(mime_main) or ''
-
-                # Ensure a safe filename (avoid path components)
-                safe_name = os.path.basename(file_name).replace('/', '_').replace('\\', '_')
-                if ext and not safe_name.lower().endswith(ext.lower()):
-                    filename_with_ext = f'{safe_name}{ext}'
-                else:
-                    filename_with_ext = safe_name
-
-                temp_dir = tempfile.gettempdir()
-                temp_file_path = os.path.join(temp_dir, f'lark_{file_key}_{filename_with_ext}')
-
-                with open(temp_file_path, 'wb') as f:
-                    f.write(file_bytes)
-
-                # Create File message with local path and file:// URL
                 lb_msg_list.append(
                     platform_message.File(
                         id=file_key,
                         name=file_name,
                         size=file_size,
-                        url=f'file://{temp_file_path}',
-                        path=temp_file_path,
-                        base64=f'data:{file_format};base64,{file_base64}',  # not including base64 by default to save memory; can be added if needed
+                        base64=f'data:{file_format};base64,{file_base64}',
                     )
                 )
 
@@ -1042,16 +1036,26 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     # card_id → input_defs / inputs captured for the selected-action notice
     card_form_input_defs: dict[str, list[dict]]
     card_form_inputs: dict[str, dict]
+    card_last_accessed: dict[str, float]
+    card_cleanup_at: float
     # set of card_ids that have already transitioned from "buttons visible" to "resume layout"
     card_resume_transitioned: set[str]
+    inbound_event_tasks: set[asyncio.Task]
+    threadsafe_event_futures: set[typing.Any]
+    threadsafe_event_lock: typing.Any = pydantic.Field(exclude=True)
     _MONITORING_MAPPING_TTL = 600  # 10 minutes
+    _MAX_INBOUND_EVENTS = 100
+    _MAX_TENANT_ACCESS_TOKENS = 1024
 
     seq: int  # 用于在发送卡片消息中识别消息顺序，直接以seq作为标识
     bot_uuid: str = None  # 机器人UUID
     app_ticket: str = None  # 商店应用用到
     app_access_token: str = None  # 商店应用用到
     app_access_token_expire_at: int = None
-    tenant_access_tokens: dict[str, dict[str, str]] = {}  # 租户access_token映射
+    tenant_access_tokens: dict[str, dict[str, str]] = pydantic.Field(
+        default_factory=dict,
+        exclude=True,
+    )
 
     def __init__(self, config: dict, logger: abstract_platform_logger.AbstractEventLogger, **kwargs):
         quart_app = quart.Quart(__name__)
@@ -1062,11 +1066,11 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             await self.listeners[type(lb_event)](lb_event, self)
 
         def sync_on_message(event: lark_oapi.im.v1.P2ImMessageReceiveV1):
-            asyncio.create_task(on_message(event))
+            self._schedule_inbound_event(on_message(event))
 
         def schedule_on_app_loop(coro):
             """Run a coroutine on the application event loop from sync callbacks."""
-            return asyncio.run_coroutine_threadsafe(coro, self.ap.event_loop)
+            return self._schedule_threadsafe_event(coro)
 
         def sync_on_card_action(event):
             try:
@@ -1289,7 +1293,13 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             card_form_content={},
             card_form_input_defs={},
             card_form_inputs={},
+            card_last_accessed={},
+            card_cleanup_at=0.0,
             card_resume_transitioned=set(),
+            inbound_event_tasks=set(),
+            threadsafe_event_futures=set(),
+            threadsafe_event_lock=threading.Lock(),
+            tenant_access_tokens={},
             seq=1,
             listeners={},
             quart_app=quart_app,
@@ -1299,6 +1309,45 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             cipher=cipher,
             **kwargs,
         )
+
+    def _schedule_inbound_event(self, coro) -> None:
+        for task in tuple(self.inbound_event_tasks):
+            if task.done():
+                self.inbound_event_tasks.discard(task)
+        if len(self.inbound_event_tasks) >= self._MAX_INBOUND_EVENTS:
+            coro.close()
+            return
+        task = asyncio.create_task(coro)
+        self.inbound_event_tasks.add(task)
+
+        def done(done_task: asyncio.Task) -> None:
+            self.inbound_event_tasks.discard(done_task)
+            if not done_task.cancelled():
+                done_task.exception()
+
+        task.add_done_callback(done)
+
+    def _schedule_threadsafe_event(self, coro):
+        """Submit one bounded callback from the Lark SDK's sync boundary."""
+
+        with self.threadsafe_event_lock:
+            for future in tuple(self.threadsafe_event_futures):
+                if future.done():
+                    self.threadsafe_event_futures.discard(future)
+            if len(self.threadsafe_event_futures) >= self._MAX_INBOUND_EVENTS:
+                coro.close()
+                return None
+            future = asyncio.run_coroutine_threadsafe(coro, self.ap.event_loop)
+            self.threadsafe_event_futures.add(future)
+
+        def done(done_future) -> None:
+            with self.threadsafe_event_lock:
+                self.threadsafe_event_futures.discard(done_future)
+            if not done_future.cancelled():
+                done_future.exception()
+
+        future.add_done_callback(done)
+        return future
 
     def request_app_ticket(self, api_client, config):
         app_id = config['app_id']
@@ -1376,6 +1425,12 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 'token': tenant_access_token,
                 'expire_at': int(time.time()) + expire - 300,
             }
+            now = int(time.time())
+            for cached_key, cached_token in tuple(self.tenant_access_tokens.items()):
+                if int(cached_token.get('expire_at', 0)) <= now:
+                    self.tenant_access_tokens.pop(cached_key, None)
+            while len(self.tenant_access_tokens) > self._MAX_TENANT_ACCESS_TOKENS:
+                self.tenant_access_tokens.pop(next(iter(self.tenant_access_tokens)), None)
 
     def get_tenant_access_token(self, tenant_key: str):
         if tenant_key is None or 'isv' != self.config.get('app_type', 'self'):
@@ -1558,6 +1613,8 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             user_msg_id = query.message_event.message_chain.message_id
             if user_msg_id:
                 self.pending_monitoring_msg[user_msg_id] = monitoring_message_id
+                while len(self.pending_monitoring_msg) > CARD_ID_CACHE_SIZE:
+                    self.pending_monitoring_msg.pop(next(iter(self.pending_monitoring_msg)), None)
         except Exception as e:
             await self.logger.debug(f'Failed to map message to monitoring message: {e}')
 
@@ -1570,6 +1627,7 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
     def _next_card_sequence(self, card_id: str, suggested: int = 1) -> int:
         """Return the next strictly increasing sequence for a card update."""
+        self._touch_card(card_id)
         current = self.card_sequence_dict.get(card_id, 0)
         next_seq = max(current + 1, suggested)
         self.card_sequence_dict[card_id] = next_seq
@@ -1577,6 +1635,7 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
     def _register_card_for_source(self, card_id: str, *source_ids: str) -> None:
         """Register a card_id under one or more source message ids."""
+        self._touch_card(card_id)
         bucket = self.card_id_to_source_ids.setdefault(card_id, set())
         for sid in source_ids:
             if not sid:
@@ -1596,7 +1655,23 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         self.card_form_content.pop(card_id, None)
         self.card_form_input_defs.pop(card_id, None)
         self.card_form_inputs.pop(card_id, None)
+        self.card_last_accessed.pop(card_id, None)
         self.card_resume_transitioned.discard(card_id)
+
+    def _touch_card(self, card_id: str) -> None:
+        now = time.monotonic()
+        if now - self.card_cleanup_at >= 60 or len(self.card_last_accessed) >= CARD_ID_CACHE_SIZE:
+            self.card_cleanup_at = now
+            for stale_card_id, last_accessed in tuple(self.card_last_accessed.items()):
+                if now - last_accessed >= CARD_ID_CACHE_MAX_LIFETIME:
+                    self._drop_card_state(stale_card_id)
+            while len(self.card_last_accessed) >= CARD_ID_CACHE_SIZE:
+                oldest_card_id = min(
+                    self.card_last_accessed,
+                    key=self.card_last_accessed.__getitem__,
+                )
+                self._drop_card_state(oldest_card_id)
+        self.card_last_accessed[card_id] = now
 
     async def create_card_id(self, message_id):
         try:
@@ -1793,6 +1868,7 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             self.card_id_dict[message_id] = response.data.card_id
 
             card_id = response.data.card_id
+            self._touch_card(card_id)
             self.card_sequence_dict[card_id] = 0
             return card_id
 
@@ -1864,7 +1940,7 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 self.reply_to_monitoring_msg[reply_msg_id] = (monitoring_msg_id, time.time())
                 self._cleanup_monitoring_mapping()
         except Exception as e:
-            asyncio.create_task(self.logger.debug(f'Failed to transfer monitoring mapping in create_message_card: {e}'))
+            await self.logger.debug(f'Failed to transfer monitoring mapping in create_message_card: {e}')
 
         return True
 
@@ -2872,8 +2948,8 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             data = await request.json
 
             if 'encrypt' in data:
-                data = self.cipher.decrypt_string(data['encrypt'])
-                data = json.loads(data)
+                encrypted = data['encrypt']
+                data = await asyncio.to_thread(lambda: json.loads(self.cipher.decrypt_string(encrypted)))
             type = self.get_event_type(data)
             context = EventContext(data)
             if 'url_verification' == type:
@@ -3143,4 +3219,38 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         # 所以要设置_auto_reconnect=False,让其不重连。
         self.bot._auto_reconnect = False
         await self.bot._disconnect()
+        inbound_tasks = list(self.inbound_event_tasks)
+        for task in inbound_tasks:
+            if not task.done():
+                task.cancel()
+        if inbound_tasks:
+            await asyncio.gather(*inbound_tasks, return_exceptions=True)
+        self.inbound_event_tasks.clear()
+        with self.threadsafe_event_lock:
+            threadsafe_futures = list(self.threadsafe_event_futures)
+        for future in threadsafe_futures:
+            future.cancel()
+        if threadsafe_futures:
+            await asyncio.gather(
+                *(asyncio.wrap_future(future) for future in threadsafe_futures),
+                return_exceptions=True,
+            )
+        with self.threadsafe_event_lock:
+            self.threadsafe_event_futures.clear()
+        self.tenant_access_tokens.clear()
+        self.card_id_dict.clear()
+        self.pending_monitoring_msg.clear()
+        self.reply_to_monitoring_msg.clear()
+        for card_id in tuple(self.card_last_accessed):
+            self._drop_card_state(card_id)
+        self.card_last_accessed.clear()
+        self.reply_message_card_ids.clear()
+        self.card_sequence_dict.clear()
+        self.card_id_to_source_ids.clear()
+        self.card_streaming_text.clear()
+        self.card_pre_pause_text.clear()
+        self.card_form_content.clear()
+        self.card_form_input_defs.clear()
+        self.card_form_inputs.clear()
+        self.card_resume_transitioned.clear()
         return False

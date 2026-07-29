@@ -9,6 +9,10 @@ import quart
 
 from langbot.pkg.api.http.controller import group
 from langbot.pkg.api.http.controller.groups.webhooks import WebhookRouterGroup
+from langbot.pkg.utils.bounded_executor import (
+    BlockingWorkCapacityError,
+    current_blocking_work_scope,
+)
 
 
 pytestmark = pytest.mark.asyncio
@@ -32,6 +36,16 @@ class _AuthenticatedRouterGroup(group.RouterGroup):
         @self.route('', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
         async def _():
             return self.success()
+
+
+class _BlockingCapacityRouterGroup(group.RouterGroup):
+    name = 'blocking-capacity-test'
+    path = '/blocking-capacity-test'
+
+    async def initialize(self) -> None:
+        @self.route('', methods=['GET'], auth_type=group.AuthType.NONE)
+        async def _():
+            raise BlockingWorkCapacityError('Workspace blocking executor capacity reached')
 
 
 class _InvalidAccountRouterGroup(group.RouterGroup):
@@ -102,6 +116,20 @@ async def test_public_webhook_error_uses_same_generic_error_contract():
     assert 'do-not-return' not in (await response.get_data(as_text=True))
 
 
+async def test_blocking_work_capacity_maps_to_retryable_http_response():
+    application = SimpleNamespace(logger=Mock())
+    quart_app = quart.Quart(__name__)
+    await _BlockingCapacityRouterGroup(application, quart_app).initialize()
+
+    response = await quart_app.test_client().get('/blocking-capacity-test')
+
+    assert response.status_code == 429
+    assert await response.get_json() == {
+        'code': 'blocking_work_capacity_exceeded',
+        'msg': 'Workspace blocking executor capacity reached',
+    }
+
+
 async def test_public_webhook_carries_scope_without_holding_database_session():
     class ScopeOnlyPersistenceManager:
         mode = SimpleNamespace(value='cloud_runtime')
@@ -128,6 +156,7 @@ async def test_public_webhook_carries_scope_without_holding_database_session():
         async def handle_unified_webhook(self, **_kwargs):
             assert persistence_mgr.active_workspace == workspace_uuid
             assert persistence_mgr.current_session() is None
+            assert current_blocking_work_scope() == workspace_uuid
             return {'ok': True}
 
     async def get_execution_binding(resolved_workspace_uuid, expected_generation=None):
@@ -154,6 +183,41 @@ async def test_public_webhook_carries_scope_without_holding_database_session():
     assert response.status_code == 200
     assert await response.get_json() == {'ok': True}
     assert persistence_mgr.active_workspace is None
+
+
+async def test_public_webhook_blocking_capacity_is_retryable():
+    workspace_uuid = '00000000-0000-0000-0000-00000000000a'
+    bot_uuid = '11111111-1111-4111-8111-111111111111'
+
+    class Adapter:
+        async def handle_unified_webhook(self, **_kwargs):
+            raise BlockingWorkCapacityError(
+                'Workspace blocking executor capacity reached',
+                scope=workspace_uuid,
+            )
+
+    runtime_bot = SimpleNamespace(
+        workspace_uuid=workspace_uuid,
+        placement_generation=4,
+        enable=True,
+        adapter=Adapter(),
+    )
+    application = SimpleNamespace(
+        logger=Mock(),
+        persistence_mgr=SimpleNamespace(mode=SimpleNamespace(value='oss')),
+        platform_mgr=SimpleNamespace(resolve_public_bot=AsyncMock(return_value=runtime_bot)),
+        workspace_service=SimpleNamespace(get_execution_binding=AsyncMock(return_value=None)),
+    )
+    quart_app = quart.Quart(__name__)
+    await WebhookRouterGroup(application, quart_app).initialize()
+
+    response = await quart_app.test_client().post(f'/bots/{bot_uuid}')
+
+    assert response.status_code == 429
+    assert await response.get_json() == {
+        'code': 'blocking_work_capacity_exceeded',
+        'msg': 'Workspace blocking executor capacity reached',
+    }
 
 
 async def test_authentication_failure_does_not_return_internal_exception_text():

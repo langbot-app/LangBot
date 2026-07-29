@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import io
 import inspect
 import os
@@ -13,6 +14,7 @@ import httpx
 
 from ....core import app
 from ....skill.utils import parse_frontmatter
+from ....utils import httpclient
 from ..context import ExecutionContext
 from .tenant import TenantContext, require_workspace_uuid
 
@@ -328,7 +330,11 @@ class SkillService:
             await result
 
     async def _download_github_asset(self, asset_url: str) -> bytes:
-        async with httpx.AsyncClient(follow_redirects=True, timeout=120) as client:
+        async with httpx.AsyncClient(
+            follow_redirects=True,
+            timeout=120,
+            event_hooks=httpclient.httpx_response_limit_hooks(_MAX_GITHUB_ARCHIVE_BYTES),
+        ) as client:
             async with client.stream('GET', asset_url) as resp:
                 resp.raise_for_status()
                 content_length = resp.headers.get('content-length')
@@ -352,7 +358,14 @@ class SkillService:
         info = self._parse_github_skill_md_url(asset_url, owner=owner, repo=repo)
         archive_url = f'https://codeload.github.com/{owner}/{repo}/zip/{quote(info["ref"], safe="/")}'
         archive_bytes = await self._download_github_asset(archive_url)
+        return await asyncio.to_thread(self._build_github_skill_directory_zip, archive_bytes, info)
 
+    def _build_github_skill_directory_zip(
+        self,
+        archive_bytes: bytes,
+        info: dict[str, str],
+    ) -> tuple[bytes, str, str]:
+        """Validate and repack a GitHub skill archive outside the event loop."""
         try:
             source_archive = zipfile.ZipFile(io.BytesIO(archive_bytes), 'r')
         except zipfile.BadZipFile as exc:

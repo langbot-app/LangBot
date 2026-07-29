@@ -1,5 +1,6 @@
 import sys
 import types
+from unittest.mock import Mock
 
 import pytest
 
@@ -22,6 +23,25 @@ from langbot.libs.wecom_ai_bot_api.api import (  # noqa: E402
     parse_select_button_action,
 )
 from langbot.libs.wecom_ai_bot_api.ws_client import WecomBotWsClient  # noqa: E402
+
+
+def test_ws_callback_tasks_are_bounded():
+    client = WecomBotWsClient('bot-id', 'secret', object())
+    client._callback_tasks = {Mock(done=Mock(return_value=False)) for _ in range(100)}
+
+    async def callback():
+        raise AssertionError('rejected callback must not run')
+
+    assert client._start_callback_task(callback()) is False
+    assert len(client._callback_tasks) == 100
+
+
+def test_webhook_dispatch_tasks_are_bounded():
+    client = WecomBotClient('', '', '', object(), unified_mode=True)
+    client._dispatch_tasks = {Mock(done=Mock(return_value=False)) for _ in range(100)}
+
+    assert client._start_dispatch_task(Mock()) is False
+    assert len(client._dispatch_tasks) == 100
 
 
 def test_extract_template_card_action_supports_nested_button_key():
@@ -287,16 +307,9 @@ async def test_webhook_stream_queues_cumulative_snapshots_for_followups():
     assert await client.push_stream_chunk('msg-1', '你好', is_final=False)
     assert await client.push_stream_chunk('msg-1', '你好', is_final=True)
 
-    chunks = [
-        await client.stream_sessions.consume(session.stream_id),
-        await client.stream_sessions.consume(session.stream_id),
-        await client.stream_sessions.consume(session.stream_id),
-    ]
-    assert [(chunk.content, chunk.is_final) for chunk in chunks] == [
-        ('你', False),
-        ('你好', False),
-        ('你好', True),
-    ]
+    assert session.queue.qsize() == 1
+    chunk = await client.stream_sessions.consume(session.stream_id)
+    assert (chunk.content, chunk.is_final) == ('你好', True)
 
 
 def test_human_input_payload_keeps_action_select_stage_as_buttons():

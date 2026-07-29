@@ -55,6 +55,7 @@ class EventLog(pydantic.BaseModel):
 
 MAX_LOG_COUNT = 200
 DELETE_COUNT_PER_TIME = 50
+MAX_LOG_TEXT_CHARS = 20000
 
 
 class EventLogger(abstract_platform_event_logger.AbstractEventLogger):
@@ -129,7 +130,7 @@ class EventLogger(abstract_platform_event_logger.AbstractEventLogger):
     async def _truncate_logs(self):
         if len(self.logs) > MAX_LOG_COUNT:
             for i in range(DELETE_COUNT_PER_TIME):
-                for image_key in self.logs[i].images:  # type: ignore
+                for image_key in self.logs[i].images or []:
                     await self.ap.storage_mgr.delete_scoped_object_key(
                         self.execution_context,
                         image_key,
@@ -147,6 +148,10 @@ class EventLogger(abstract_platform_event_logger.AbstractEventLogger):
     ):
         try:
             image_keys = []
+            text = str(text)
+            if len(text) > MAX_LOG_TEXT_CHARS:
+                marker = '\n[log truncated]'
+                text = text[: MAX_LOG_TEXT_CHARS - len(marker)] + marker
 
             if images is None:
                 images = []

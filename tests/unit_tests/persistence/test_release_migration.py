@@ -104,6 +104,7 @@ async def test_release_migration_disposes_operator_engine_on_failure(monkeypatch
     manager = SimpleNamespace(
         db=SimpleNamespace(engine=engine),
         initialize=AsyncMock(side_effect=RuntimeError('migration failed')),
+        shutdown=AsyncMock(side_effect=engine.dispose),
     )
 
     def manager_factory(*args, **kwargs):
@@ -121,6 +122,7 @@ async def test_release_migration_disposes_operator_engine_on_failure(monkeypatch
         await release_migration.run_cloud_release_migration(ap, environ=_operator_environ())
 
     assert ap.persistence_mgr is manager
+    manager.shutdown.assert_awaited_once()
     engine.dispose.assert_awaited_once()
 
 

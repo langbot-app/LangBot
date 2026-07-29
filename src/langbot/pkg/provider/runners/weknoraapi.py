@@ -10,6 +10,15 @@ import langbot_plugin.api.entities.builtin.provider.message as provider_message
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 from langbot.libs.weknora_api import client, errors
 
+_MAX_WEKNORA_GENERATED_CHARS = 1024 * 1024
+
+
+def _append_bounded(current: str, addition: typing.Any) -> str:
+    addition = str(addition or '')
+    if len(current) + len(addition) > _MAX_WEKNORA_GENERATED_CHARS:
+        raise errors.WeKnoraAPIError('WeKnora response exceeds the runtime limit')
+    return current + addition
+
 
 @runner.runner_class('weknora-api')
 class WeKnoraAPIRunner(runner.RequestRunner):
@@ -94,7 +103,7 @@ class WeKnoraAPIRunner(runner.RequestRunner):
             web_search_enabled=web_search_enabled,
             timeout=timeout,
         ):
-            self.ap.logger.debug('weknora-agent-chunk: ' + str(chunk))
+            self.ap.logger.debug('weknora-agent-chunk: ' + str(chunk)[:1000])
 
             response_type = chunk.get('response_type', '')
             content = chunk.get('content', '')
@@ -120,7 +129,7 @@ class WeKnoraAPIRunner(runner.RequestRunner):
 
             elif response_type == 'answer':
                 if content:
-                    full_answer += content
+                    full_answer = _append_bounded(full_answer, content)
 
             elif response_type == 'error':
                 raise errors.WeKnoraAPIError(f'WeKnora 服务错误: {content}')
@@ -158,14 +167,14 @@ class WeKnoraAPIRunner(runner.RequestRunner):
             knowledge_base_ids=knowledge_base_ids,
             timeout=timeout,
         ):
-            self.ap.logger.debug('weknora-chat-chunk: ' + str(chunk))
+            self.ap.logger.debug('weknora-chat-chunk: ' + str(chunk)[:1000])
 
             response_type = chunk.get('response_type', '')
             content = chunk.get('content', '')
 
             if response_type == 'answer':
                 if content:
-                    full_answer += content
+                    full_answer = _append_bounded(full_answer, content)
 
             elif response_type == 'error':
                 raise errors.WeKnoraAPIError(f'WeKnora 服务错误: {content}')
@@ -207,7 +216,7 @@ class WeKnoraAPIRunner(runner.RequestRunner):
             web_search_enabled=web_search_enabled,
             timeout=timeout,
         ):
-            self.ap.logger.debug('weknora-agent-chunk: ' + str(chunk))
+            self.ap.logger.debug('weknora-agent-chunk: ' + str(chunk)[:1000])
 
             response_type = chunk.get('response_type', '')
             content = chunk.get('content', '')
@@ -235,7 +244,7 @@ class WeKnoraAPIRunner(runner.RequestRunner):
             elif response_type == 'answer':
                 message_idx += 1
                 if content:
-                    pending_answer += content
+                    pending_answer = _append_bounded(pending_answer, content)
 
                 if done:
                     is_final = True
@@ -288,7 +297,7 @@ class WeKnoraAPIRunner(runner.RequestRunner):
             knowledge_base_ids=knowledge_base_ids,
             timeout=timeout,
         ):
-            self.ap.logger.debug('weknora-chat-chunk: ' + str(chunk))
+            self.ap.logger.debug('weknora-chat-chunk: ' + str(chunk)[:1000])
 
             response_type = chunk.get('response_type', '')
             content = chunk.get('content', '')
@@ -297,7 +306,7 @@ class WeKnoraAPIRunner(runner.RequestRunner):
             if response_type == 'answer':
                 message_idx += 1
                 if content:
-                    pending_answer += content
+                    pending_answer = _append_bounded(pending_answer, content)
 
                 if done:
                     is_final = True

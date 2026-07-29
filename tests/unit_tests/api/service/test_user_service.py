@@ -29,9 +29,23 @@ from langbot.pkg.entity.errors.account import (
     SpaceAccountBindingRequiredError,
     SpaceAccountNotRegisteredError,
 )
+from langbot.pkg.utils.bounded_executor import BlockingWorkCapacityError
 
 
 pytestmark = pytest.mark.asyncio
+
+
+async def test_password_hashing_rejects_concurrent_waiters() -> None:
+    service = UserService(SimpleNamespace())
+    await service._password_hash_lock.acquire()
+    try:
+        with pytest.raises(
+            BlockingWorkCapacityError,
+            match='Password hashing capacity reached',
+        ):
+            await service._hash_password('secret')
+    finally:
+        service._password_hash_lock.release()
 
 
 class TestSpaceOAuthState:
@@ -90,6 +104,32 @@ class TestSpaceOAuthState:
         consumed = await service.consume_space_oauth_state_details(state, 'login')
         assert consumed.account is None
         assert consumed.launch_workspace_uuid == 'workspace-a'
+
+    async def test_issue_state_does_not_scan_all_live_states(self, monkeypatch):
+        service = UserService(SimpleNamespace())
+        for _ in range(512):
+            await service.issue_space_oauth_state('login')
+
+        class NoGlobalIterationDict(dict):
+            def __iter__(self):
+                raise AssertionError('OAuth state issuance scanned all live states')
+
+            def keys(self):
+                raise AssertionError('OAuth state issuance scanned all live states')
+
+            def items(self):
+                raise AssertionError('OAuth state issuance scanned all live states')
+
+            def values(self):
+                raise AssertionError('OAuth state issuance scanned all live states')
+
+        guarded_states = NoGlobalIterationDict(service._space_oauth_states)
+        monkeypatch.setattr(service, '_space_oauth_states', guarded_states)
+
+        state = await service.issue_space_oauth_state('login')
+
+        assert await service.consume_space_oauth_state(state, 'login') is None
+        assert len(guarded_states) == 512
 
 
 def _create_mock_user(

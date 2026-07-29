@@ -2,11 +2,35 @@ from __future__ import annotations
 
 import signal
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
 from langbot.pkg.core import boot
+
+
+@pytest.mark.asyncio
+async def test_make_app_shuts_down_partially_built_application(monkeypatch):
+    app_inst = SimpleNamespace(
+        event_loop=None,
+        shutdown=AsyncMock(),
+        initialize=AsyncMock(),
+    )
+
+    class FailingStage:
+        async def run(self, ap):
+            assert ap is app_inst
+            raise RuntimeError('startup failed')
+
+    monkeypatch.setattr(boot.app, 'Application', lambda: app_inst)
+    monkeypatch.setattr(boot, 'stage_order', ['FailingStage'])
+    monkeypatch.setitem(boot.stage.preregistered_stages, 'FailingStage', FailingStage)
+
+    with pytest.raises(RuntimeError, match='startup failed'):
+        await boot.make_app(SimpleNamespace())
+
+    app_inst.shutdown.assert_awaited_once()
+    app_inst.initialize.assert_not_awaited()
 
 
 @pytest.mark.asyncio

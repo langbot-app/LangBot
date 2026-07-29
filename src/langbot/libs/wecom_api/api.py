@@ -1,16 +1,82 @@
 from quart import request
 from .WXBizMsgCrypt3 import WXBizMsgCrypt
+import asyncio
 import base64
 import binascii
+import contextvars
+import functools
 import httpx
+import os
 import traceback
 from urllib.parse import quote
 from quart import Quart
 import xml.etree.ElementTree as ET
+from contextlib import asynccontextmanager
 from typing import Callable, Dict, Any
 from .wecomevent import WecomEvent
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import aiofiles
+from langbot.pkg.utils import httpclient
+
+_MAX_MEDIA_BYTES = 10 * 1024 * 1024
+_MAX_CALLBACK_BODY_BYTES = 1024 * 1024
+_EXTENDED_HTTP_TIMEOUT_SECONDS = 120
+
+
+async def _read_httpx_media_limited(response: httpx.Response) -> bytes:
+    content_length = response.headers.get('Content-Length')
+    if content_length is not None:
+        try:
+            if int(content_length) > _MAX_MEDIA_BYTES:
+                raise ValueError('WeCom media exceeds the size limit')
+        except (TypeError, ValueError) as exc:
+            if 'exceeds' in str(exc):
+                raise
+    content = bytearray()
+    async for chunk in response.aiter_bytes():
+        content.extend(chunk)
+        if len(content) > _MAX_MEDIA_BYTES:
+            raise ValueError('WeCom media exceeds the size limit')
+    return bytes(content)
+
+
+async def _read_local_media_limited(path: str) -> bytes:
+    if await asyncio.to_thread(os.path.getsize, path) > _MAX_MEDIA_BYTES:
+        raise ValueError('WeCom media exceeds the size limit')
+    async with aiofiles.open(path, 'rb') as file:
+        content = await file.read(_MAX_MEDIA_BYTES + 1)
+    if len(content) > _MAX_MEDIA_BYTES:
+        raise ValueError('WeCom media exceeds the size limit')
+    return content
+
+
+async def _decode_media_base64_limited(value: str) -> bytes:
+    max_encoded_chars = 4 * ((_MAX_MEDIA_BYTES + 2) // 3) + 4
+    if len(value) > max_encoded_chars:
+        raise ValueError('WeCom media exceeds the size limit')
+    content = await asyncio.to_thread(base64.b64decode, value)
+    if len(content) > _MAX_MEDIA_BYTES:
+        raise ValueError('WeCom media exceeds the size limit')
+    return content
+
+
+def _bounded_token_retry(method):
+    """Allow one token-refresh retry without unbounded async recursion."""
+
+    depth = contextvars.ContextVar(f'{method.__name__}_token_retry_depth', default=0)
+
+    @functools.wraps(method)
+    async def wrapped(*args, **kwargs):
+        current_depth = depth.get()
+        if current_depth >= 2:
+            raise RuntimeError(f'{method.__name__} exceeded the token refresh retry limit')
+        token = depth.set(current_depth + 1)
+        try:
+            return await method(*args, **kwargs)
+        finally:
+            depth.reset(token)
+
+    return wrapped
 
 
 class WecomClient:
@@ -36,6 +102,7 @@ class WecomClient:
         self.logger = logger
         self.unified_mode = unified_mode
         self.app = Quart(__name__)
+        self.app.config['MAX_CONTENT_LENGTH'] = _MAX_CALLBACK_BODY_BYTES
 
         # 只有在非统一模式下才注册独立路由
         if not self.unified_mode:
@@ -49,6 +116,29 @@ class WecomClient:
         self._message_handlers = {
             'example': [],
         }
+        self._http_clients: dict[bool, httpx.AsyncClient] = {}
+
+    @asynccontextmanager
+    async def _http_client_context(self, *, unbounded_timeout: bool = False):
+        client = self._http_clients.get(unbounded_timeout)
+        if client is None or client.is_closed:
+            response_hooks = httpclient.httpx_response_limit_hooks()
+            client = (
+                httpx.AsyncClient(
+                    timeout=_EXTENDED_HTTP_TIMEOUT_SECONDS,
+                    event_hooks=response_hooks,
+                )
+                if unbounded_timeout
+                else httpx.AsyncClient(event_hooks=response_hooks)
+            )
+            self._http_clients[unbounded_timeout] = client
+        yield client
+
+    async def close(self) -> None:
+        clients = list(self._http_clients.values())
+        self._http_clients.clear()
+        if clients:
+            await asyncio.gather(*(client.aclose() for client in clients), return_exceptions=True)
 
     # access——token操作
     async def check_access_token(self):
@@ -59,15 +149,16 @@ class WecomClient:
 
     async def get_access_token(self, secret):
         url = f'{self.base_url}/gettoken?corpid={self.corpid}&corpsecret={secret}'
-        async with httpx.AsyncClient() as client:
+        async with self._http_client_context() as client:
             response = await client.get(url)
-            data = response.json()
+            data = await httpclient.parse_json_response(response)
             if 'access_token' in data:
                 return data['access_token']
             else:
-                await self.logger.error(f'获取accesstoken失败:{response.json()}')
+                await self.logger.error(f'获取accesstoken失败:{data}')
                 raise Exception(f'未获取access token: {data}')
 
+    @_bounded_token_retry
     async def get_user_info(self, userid: str) -> dict:
         """
         Get user information by user ID using the application secret.
@@ -82,9 +173,9 @@ class WecomClient:
             self.access_token = await self.get_access_token(self.secret)
 
         url = self.base_url + '/user/get?access_token=' + self.access_token + '&userid=' + quote(userid)
-        async with httpx.AsyncClient() as client:
+        async with self._http_client_context() as client:
             response = await client.get(url)
-            data = response.json()
+            data = await httpclient.parse_json_response(response)
             if data.get('errcode') == 40014 or data.get('errcode') == 42001:
                 self.access_token = await self.get_access_token(self.secret)
                 return await self.get_user_info(userid)
@@ -98,13 +189,13 @@ class WecomClient:
             self.access_token_for_contacts = await self.get_access_token(self.secret_for_contacts)
 
         url = self.base_url + '/user/list_id?access_token=' + self.access_token_for_contacts
-        async with httpx.AsyncClient() as client:
+        async with self._http_client_context() as client:
             params = {
                 'cursor': '',
                 'limit': 10000,
             }
             response = await client.post(url, json=params)
-            data = response.json()
+            data = await httpclient.parse_json_response(response)
             if data['errcode'] == 0:
                 dept_users = data['dept_user']
                 userid = []
@@ -121,7 +212,7 @@ class WecomClient:
             url = self.base_url + '/message/send?access_token=' + self.access_token_for_contacts
             user_ids = await self.get_users()
             user_ids_string = '|'.join(user_ids)
-            async with httpx.AsyncClient() as client:
+            async with self._http_client_context() as client:
                 params = {
                     'touser': user_ids_string,
                     'msgtype': 'text',
@@ -135,16 +226,17 @@ class WecomClient:
                     'duplicate_check_interval': 1800,
                 }
                 response = await client.post(url, json=params)
-                data = response.json()
+                data = await httpclient.parse_json_response(response)
                 if data['errcode'] != 0:
                     raise Exception('Failed to send message: ' + str(data))
 
+    @_bounded_token_retry
     async def send_image(self, user_id: str, agent_id: int, media_id: str):
         if not await self.check_access_token():
             self.access_token = await self.get_access_token(self.secret)
 
         url = self.base_url + '/message/send?access_token=' + self.access_token
-        async with httpx.AsyncClient() as client:
+        async with self._http_client_context() as client:
             params = {
                 'touser': user_id,
                 'msgtype': 'image',
@@ -158,7 +250,7 @@ class WecomClient:
                 'duplicate_check_interval': 1800,
             }
             response = await client.post(url, json=params)
-            data = response.json()
+            data = await httpclient.parse_json_response(response)
             if data['errcode'] == 40014 or data['errcode'] == 42001:
                 self.access_token = await self.get_access_token(self.secret)
                 return await self.send_image(user_id, agent_id, media_id)
@@ -166,11 +258,12 @@ class WecomClient:
                 await self.logger.error(f'发送图片失败:{data}')
                 raise Exception('Failed to send image: ' + str(data))
 
+    @_bounded_token_retry
     async def send_voice(self, user_id: str, agent_id: int, media_id: str):
         if not await self.check_access_token():
             self.access_token = await self.get_access_token(self.secret)
         url = self.base_url + '/message/send?access_token=' + self.access_token
-        async with httpx.AsyncClient() as client:
+        async with self._http_client_context() as client:
             params = {
                 'touser': user_id,
                 'msgtype': 'voice',
@@ -184,7 +277,7 @@ class WecomClient:
                 'duplicate_check_interval': 1800,
             }
             response = await client.post(url, json=params)
-            data = response.json()
+            data = await httpclient.parse_json_response(response)
             if data['errcode'] == 40014 or data['errcode'] == 42001:
                 self.access_token = await self.get_access_token(self.secret)
                 return await self.send_voice(user_id, agent_id, media_id)
@@ -192,11 +285,12 @@ class WecomClient:
                 await self.logger.error(f'发送语音失败:{data}')
                 raise Exception('Failed to send voice: ' + str(data))
 
+    @_bounded_token_retry
     async def send_file(self, user_id: str, agent_id: int, media_id: str):
         if not await self.check_access_token():
             self.access_token = await self.get_access_token(self.secret)
         url = self.base_url + '/message/send?access_token=' + self.access_token
-        async with httpx.AsyncClient() as client:
+        async with self._http_client_context() as client:
             params = {
                 'touser': user_id,
                 'msgtype': 'file',
@@ -210,7 +304,7 @@ class WecomClient:
                 'duplicate_check_interval': 1800,
             }
             response = await client.post(url, json=params)
-            data = response.json()
+            data = await httpclient.parse_json_response(response)
             if data['errcode'] == 40014 or data['errcode'] == 42001:
                 self.access_token = await self.get_access_token(self.secret)
                 return await self.send_file(user_id, agent_id, media_id)
@@ -218,12 +312,13 @@ class WecomClient:
                 await self.logger.error(f'发送文件失败:{data}')
                 raise Exception('Failed to send file: ' + str(data))
 
+    @_bounded_token_retry
     async def send_private_msg(self, user_id: str, agent_id: int, content: str):
         if not await self.check_access_token():
             self.access_token = await self.get_access_token(self.secret)
 
         url = self.base_url + '/message/send?access_token=' + self.access_token
-        async with httpx.AsyncClient(timeout=None) as client:
+        async with self._http_client_context(unbounded_timeout=True) as client:
             params = {
                 'touser': user_id,
                 'msgtype': 'text',
@@ -237,7 +332,7 @@ class WecomClient:
                 'duplicate_check_interval': 1800,
             }
             response = await client.post(url, json=params)
-            data = response.json()
+            data = await httpclient.parse_json_response(response)
             if data['errcode'] == 40014 or data['errcode'] == 42001:
                 self.access_token = await self.get_access_token(self.secret)
                 return await self.send_private_msg(user_id, agent_id, content)
@@ -283,7 +378,15 @@ class WecomClient:
 
             elif req.method == 'POST':
                 encrypt_msg = await req.data
-                ret, xml_msg = wxcpt.DecryptMsg(encrypt_msg, msg_signature, timestamp, nonce)
+                if len(encrypt_msg) > _MAX_CALLBACK_BODY_BYTES:
+                    raise ValueError('WeCom callback body exceeds the size limit')
+                ret, xml_msg = await asyncio.to_thread(
+                    wxcpt.DecryptMsg,
+                    encrypt_msg,
+                    msg_signature,
+                    timestamp,
+                    nonce,
+                )
                 if ret != 0:
                     await self.logger.error('消息解密失败')
                     raise Exception(f'消息解密失败，错误码: {ret}')
@@ -332,7 +435,7 @@ class WecomClient:
         """
         解析微信返回的 XML 消息并转换为字典。
         """
-        root = ET.fromstring(xml_msg)
+        root = await asyncio.to_thread(ET.fromstring, xml_msg)
         message_data = {
             'ToUserName': root.find('ToUserName').text,
             'FromUserName': root.find('FromUserName').text,
@@ -366,6 +469,7 @@ class WecomClient:
                 return ext
         return 'jpg'  # 默认返回jpg
 
+    @_bounded_token_retry
     async def upload_image_to_work(self, image: platform_message.Image):
         """
         获取 media_id
@@ -379,9 +483,8 @@ class WecomClient:
 
         # 获取文件的二进制数据
         if image.path:
-            async with aiofiles.open(image.path, 'rb') as f:
-                file_bytes = await f.read()
-                file_name = image.path.split('/')[-1]
+            file_bytes = await _read_local_media_limited(image.path)
+            file_name = image.path.split('/')[-1]
         elif image.url:
             file_bytes = await self.download_media_to_bytes(image.url)
             file_name = image.url.split('/')[-1]
@@ -392,7 +495,7 @@ class WecomClient:
                     base64_data = base64_data.split(',', 1)[1]
                 padding = 4 - (len(base64_data) % 4) if len(base64_data) % 4 else 0
                 padded_base64 = base64_data + '=' * padding
-                file_bytes = base64.b64decode(padded_base64)
+                file_bytes = await _decode_media_base64_limited(padded_base64)
             except binascii.Error as e:
                 raise ValueError(f'Invalid base64 string: {str(e)}')
         else:
@@ -400,6 +503,8 @@ class WecomClient:
             raise ValueError('image对象出错')
 
         # 设置 multipart/form-data 格式的文件
+        if len(file_bytes) > _MAX_MEDIA_BYTES:
+            raise ValueError('WeCom media exceeds the size limit')
         boundary = '-------------------------acebdf13572468'
         headers = {'Content-Type': f'multipart/form-data; boundary={boundary}'}
         body = (
@@ -413,9 +518,9 @@ class WecomClient:
         )
 
         # 上传文件
-        async with httpx.AsyncClient() as client:
+        async with self._http_client_context() as client:
             response = await client.post(url, headers=headers, content=body)
-            data = response.json()
+            data = await httpclient.parse_json_response(response)
             if data['errcode'] == 40014 or data['errcode'] == 42001:
                 self.access_token = await self.get_access_token(self.secret)
                 media_id = await self.upload_image_to_work(image)
@@ -426,6 +531,7 @@ class WecomClient:
             media_id = data.get('media_id')
             return media_id
 
+    @_bounded_token_retry
     async def upload_voice_to_work(self, voice: platform_message.Voice):
         """
         上传语音文件到企业微信
@@ -437,9 +543,8 @@ class WecomClient:
         file_name = 'voice.mp3'
 
         if voice.path:
-            async with aiofiles.open(voice.path, 'rb') as f:
-                file_bytes = await f.read()
-                file_name = voice.path.split('/')[-1]
+            file_bytes = await _read_local_media_limited(voice.path)
+            file_name = voice.path.split('/')[-1]
         elif voice.url:
             file_bytes = await self.download_media_to_bytes(voice.url)
             file_name = voice.url.split('/')[-1]
@@ -450,13 +555,15 @@ class WecomClient:
                     base64_data = base64_data.split(',', 1)[1]
                 padding = 4 - (len(base64_data) % 4) if len(base64_data) % 4 else 0
                 padded_base64 = base64_data + '=' * padding
-                file_bytes = base64.b64decode(padded_base64)
+                file_bytes = await _decode_media_base64_limited(padded_base64)
             except binascii.Error as e:
                 raise ValueError(f'Invalid base64 string: {str(e)}')
         else:
             await self.logger.error('Voice对象出错')
             raise ValueError('voice对象出错')
 
+        if len(file_bytes) > _MAX_MEDIA_BYTES:
+            raise ValueError('WeCom media exceeds the size limit')
         boundary = '-------------------------acebdf13572468'
         headers = {'Content-Type': f'multipart/form-data; boundary={boundary}'}
         body = (
@@ -470,9 +577,9 @@ class WecomClient:
         )
 
         # print(body)
-        async with httpx.AsyncClient() as client:
+        async with self._http_client_context() as client:
             response = await client.post(url, headers=headers, content=body)
-            data = response.json()
+            data = await httpclient.parse_json_response(response)
             if data['errcode'] == 40014 or data['errcode'] == 42001:
                 self.access_token = await self.get_access_token(self.secret)
                 media_id = await self.upload_voice_to_work(voice)
@@ -482,6 +589,7 @@ class WecomClient:
             media_id = data.get('media_id')
             return media_id
 
+    @_bounded_token_retry
     async def upload_file_to_work(self, file: platform_message.File):
         """
         上传文件到企业微信
@@ -492,9 +600,8 @@ class WecomClient:
         file_bytes = None
         file_name = 'file.txt'
         if file.path:
-            async with aiofiles.open(file.path, 'rb') as f:
-                file_bytes = await f.read()
-                file_name = file.path.split('/')[-1]
+            file_bytes = await _read_local_media_limited(file.path)
+            file_name = file.path.split('/')[-1]
         elif file.url:
             file_bytes = await self.download_media_to_bytes(file.url)
             file_name = file.url.split('/')[-1]
@@ -505,12 +612,14 @@ class WecomClient:
                     base64_data = base64_data.split(',', 1)[1]
                 padding = 4 - (len(base64_data) % 4) if len(base64_data) % 4 else 0
                 padded_base64 = base64_data + '=' * padding
-                file_bytes = base64.b64decode(padded_base64)
+                file_bytes = await _decode_media_base64_limited(padded_base64)
             except binascii.Error as e:
                 raise ValueError(f'Invalid base64 string: {str(e)}')
         else:
             await self.logger.error('File对象出错')
             raise ValueError('file对象出错')
+        if len(file_bytes) > _MAX_MEDIA_BYTES:
+            raise ValueError('WeCom media exceeds the size limit')
         boundary = '-------------------------acebdf13572468'
         headers = {'Content-Type': f'multipart/form-data; boundary={boundary}'}
         body = (
@@ -522,9 +631,9 @@ class WecomClient:
             + file_bytes
             + f'\r\n--{boundary}--\r\n'.encode('utf-8')
         )
-        async with httpx.AsyncClient() as client:
+        async with self._http_client_context() as client:
             response = await client.post(url, headers=headers, content=body)
-            data = response.json()
+            data = await httpclient.parse_json_response(response)
             if data['errcode'] == 40014 or data['errcode'] == 42001:
                 self.access_token = await self.get_access_token(self.secret)
                 media_id = await self.upload_file_to_work(file)
@@ -535,10 +644,10 @@ class WecomClient:
             return media_id
 
     async def download_media_to_bytes(self, url: str) -> bytes:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(url)
-            response.raise_for_status()
-            return response.content
+        async with self._http_client_context() as client:
+            async with client.stream('GET', url) as response:
+                response.raise_for_status()
+                return await _read_httpx_media_limited(response)
 
     # 进行media_id的获取
     async def get_media_id(self, media: platform_message.Image | platform_message.Voice | platform_message.File):

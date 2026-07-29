@@ -97,7 +97,11 @@ def _query(variables: dict | None = None, context: ExecutionContext = TEST_EXECU
 
 
 def _register_session(loader: MCPLoader, session: RuntimeMCPSession) -> None:
-    loader.sessions[loader._session_key(session.execution_context, session.server_name)] = session
+    loader._register_session(
+        session.execution_context,
+        session.server_name,
+        session,
+    )
 
 
 def _http_status_error(status_code: int) -> httpx.HTTPStatusError:
@@ -615,3 +619,165 @@ async def test_mcp_loader_shutdown_cancels_startup_tasks_and_closes_sessions_con
     assert started == {'one', 'two'}
     assert loader._hosted_mcp_tasks == []
     assert loader.sessions == {}
+
+
+@pytest.mark.asyncio
+async def test_completed_mcp_host_tasks_do_not_accumulate():
+    loader = MCPLoader(_app())
+    task = asyncio.create_task(asyncio.sleep(0))
+
+    loader.track_hosted_task(task, TEST_EXECUTION_CONTEXT)
+    await task
+    await asyncio.sleep(0)
+
+    assert loader._hosted_mcp_tasks == []
+    assert loader._hosted_mcp_tasks_by_scope == {}
+    assert loader._scope_generations == {}
+
+
+@pytest.mark.asyncio
+async def test_generation_advance_cancels_host_tasks_and_closes_old_sessions():
+    loader = MCPLoader(_app())
+    old_session = SimpleNamespace(
+        server_name='old',
+        shutdown=AsyncMock(),
+    )
+    loader._register_session(
+        TEST_EXECUTION_CONTEXT,
+        old_session.server_name,
+        old_session,
+    )
+
+    async def pending_host():
+        await asyncio.Event().wait()
+
+    hosted_task = asyncio.create_task(pending_host())
+    loader.track_hosted_task(hosted_task, TEST_EXECUTION_CONTEXT)
+    await asyncio.sleep(0)
+    next_context = ExecutionContext(
+        instance_uuid=TEST_EXECUTION_CONTEXT.instance_uuid,
+        workspace_uuid=TEST_EXECUTION_CONTEXT.workspace_uuid,
+        placement_generation=2,
+    )
+    loader.ap.workspace_service.get_execution_binding = AsyncMock(
+        return_value=SimpleNamespace(
+            instance_uuid=next_context.instance_uuid,
+            workspace_uuid=next_context.workspace_uuid,
+            placement_generation=next_context.placement_generation,
+        )
+    )
+
+    await loader._assert_execution_active(next_context)
+
+    assert hosted_task.cancelled()
+    old_session.shutdown.assert_awaited_once_with()
+    assert loader.sessions == {}
+    assert loader._session_keys_by_scope == {}
+    assert loader._hosted_mcp_tasks_by_scope == {}
+    assert loader._scope_generations == {}
+
+
+def test_session_lookup_uses_scope_index_without_global_iteration():
+    class NoGlobalIterationDict(dict):
+        def __iter__(self):
+            raise AssertionError('MCP lookup scanned every tenant session')
+
+        def items(self):
+            raise AssertionError('MCP lookup scanned every tenant session')
+
+        def values(self):
+            raise AssertionError('MCP lookup scanned every tenant session')
+
+    loader = MCPLoader(_app())
+    target_context = None
+    target_session = None
+    for index in range(1_000):
+        context = ExecutionContext(
+            instance_uuid='instance-a',
+            workspace_uuid=f'workspace-{index}',
+            placement_generation=1,
+        )
+        session = SimpleNamespace(server_name=f'server-{index}')
+        loader._register_session(context, session.server_name, session)
+        if index == 777:
+            target_context = context
+            target_session = session
+    loader._sessions = NoGlobalIterationDict(loader._sessions)
+
+    assert loader._sessions_for_context(target_context) == [target_session]
+
+
+@pytest.mark.asyncio
+async def test_mcp_startup_concurrency_is_instance_bounded():
+    app = _app()
+    app.instance_config = SimpleNamespace(data={'mcp': {'lifecycle_concurrency': 2}})
+    loader = MCPLoader(app)
+    active = 0
+    maximum_active = 0
+    release = asyncio.Event()
+
+    async def fake_host(_context, _config):
+        nonlocal active, maximum_active
+        active += 1
+        maximum_active = max(maximum_active, active)
+        if maximum_active == 2:
+            release.set()
+        await release.wait()
+        await asyncio.sleep(0)
+        active -= 1
+
+    loader._host_mcp_server = fake_host
+
+    await asyncio.gather(
+        *(
+            loader.host_mcp_server(
+                TEST_EXECUTION_CONTEXT,
+                {'name': f'server-{index}'},
+            )
+            for index in range(20)
+        )
+    )
+
+    assert loader._lifecycle_concurrency == 2
+    assert maximum_active == 2
+
+
+@pytest.mark.asyncio
+async def test_mcp_startup_dispatcher_does_not_create_every_server_task_at_once():
+    app = _app()
+    app.instance_config = SimpleNamespace(data={'mcp': {'lifecycle_concurrency': 2}})
+    loader = MCPLoader(app)
+    started = 0
+    first_batch_started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def fake_host(_context, _config):
+        nonlocal started
+        started += 1
+        if started == 2:
+            first_batch_started.set()
+        await release.wait()
+
+    loader.host_mcp_server = fake_host
+    configs = [(TEST_EXECUTION_CONTEXT, {'name': f'server-{index}'}) for index in range(20)]
+
+    dispatch_task = asyncio.create_task(loader._host_server_configs_bounded(configs))
+    await asyncio.wait_for(first_batch_started.wait(), timeout=1)
+
+    assert started == 2
+    assert len(loader._hosted_mcp_tasks) == 2
+
+    release.set()
+    await dispatch_task
+    await asyncio.sleep(0)
+
+    assert started == 20
+    assert loader._hosted_mcp_tasks == []
+    assert loader._hosted_mcp_tasks_by_scope == {}
+
+
+def test_invalid_mcp_lifecycle_concurrency_uses_safe_default():
+    app = _app()
+    app.instance_config = SimpleNamespace(data={'mcp': {'lifecycle_concurrency': True}})
+
+    assert MCPLoader(app)._lifecycle_concurrency == 16

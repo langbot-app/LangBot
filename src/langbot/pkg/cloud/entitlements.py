@@ -122,6 +122,7 @@ class EntitlementResolver:
         self._deployment_admission = deployment_admission
         self._lock = asyncio.Lock()
         self._snapshots: dict[str, tuple[int, str, EntitlementSnapshot]] = {}
+        self._active_workspace_uuids: frozenset[str] | None = None
 
     @staticmethod
     def _fingerprint(snapshot: EntitlementSnapshot) -> str:
@@ -136,6 +137,8 @@ class EntitlementResolver:
     ) -> EntitlementSnapshot:
         if self._deployment_admission is not None:
             self._deployment_admission()
+        async with self._lock:
+            self._require_projected_workspace_locked(workspace_uuid)
         candidate = await self.provider.get_workspace_entitlement(workspace_uuid)
         if self._deployment_admission is not None:
             # A provider call may cross the Manifest expiry boundary.
@@ -154,6 +157,9 @@ class EntitlementResolver:
 
         fingerprint = self._fingerprint(candidate)
         async with self._lock:
+            # The directory may fence a Workspace while the provider call is
+            # in flight. Recheck before retaining or returning its snapshot.
+            self._require_projected_workspace_locked(workspace_uuid)
             previous = self._snapshots.get(workspace_uuid)
             if previous is not None:
                 previous_revision, previous_fingerprint, _ = previous
@@ -167,3 +173,60 @@ class EntitlementResolver:
                 candidate,
             )
         return candidate.model_copy(deep=True)
+
+    def _require_projected_workspace_locked(self, workspace_uuid: str) -> None:
+        active_workspace_uuids = self._active_workspace_uuids
+        if active_workspace_uuids is not None and workspace_uuid not in active_workspace_uuids:
+            raise EntitlementUnavailableError('Workspace is not active in the Cloud directory projection')
+
+    async def reconcile_active_workspaces(
+        self,
+        workspace_uuids: set[str] | frozenset[str],
+    ) -> None:
+        """Drop entitlement history for Workspaces fenced by the directory."""
+
+        active = frozenset(workspace_uuids)
+        async with self._lock:
+            self._active_workspace_uuids = active
+            self._snapshots = {
+                workspace_uuid: cached for workspace_uuid, cached in self._snapshots.items() if workspace_uuid in active
+            }
+
+    async def set_workspace_active(
+        self,
+        workspace_uuid: str,
+        *,
+        active: bool,
+    ) -> None:
+        """Apply one incremental directory activity change."""
+
+        await self.update_workspace_activity(
+            active_workspace_uuids={workspace_uuid} if active else set(),
+            inactive_workspace_uuids=set() if active else {workspace_uuid},
+        )
+
+    async def update_workspace_activity(
+        self,
+        *,
+        active_workspace_uuids: set[str] | frozenset[str],
+        inactive_workspace_uuids: set[str] | frozenset[str],
+    ) -> None:
+        """Apply one directory delta without copying the active set per item."""
+
+        active_updates = set(active_workspace_uuids)
+        inactive_updates = set(inactive_workspace_uuids)
+        if active_updates & inactive_updates:
+            raise ValueError('Workspace activity update contains conflicting entries')
+        async with self._lock:
+            current = set(self._active_workspace_uuids or ())
+            current.update(active_updates)
+            current.difference_update(inactive_updates)
+            for workspace_uuid in inactive_updates:
+                self._snapshots.pop(workspace_uuid, None)
+            self._active_workspace_uuids = frozenset(current)
+
+    def snapshot_counts(self) -> dict[str, int]:
+        return {
+            'active_workspaces': len(self._active_workspace_uuids or ()),
+            'cached_snapshots': len(self._snapshots),
+        }

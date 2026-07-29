@@ -28,6 +28,21 @@ import langbot_plugin.api.definition.abstract.platform.event_logger as abstract_
 from ..logger import EventLogger
 
 
+_MAX_DISCORD_MEDIA_BYTES = 10 * 1024 * 1024
+
+
+def _decode_discord_base64_limited(value: str) -> bytes:
+    if ',' in value:
+        value = value.split(',', 1)[1]
+    max_encoded_bytes = 4 * ((_MAX_DISCORD_MEDIA_BYTES + 2) // 3)
+    if len(value) > max_encoded_bytes:
+        raise ValueError('Discord media exceeds the size limit')
+    decoded = base64.b64decode(value)
+    if len(decoded) > _MAX_DISCORD_MEDIA_BYTES:
+        raise ValueError('Discord media exceeds the size limit')
+    return decoded
+
+
 # 语音功能相关异常定义
 class VoiceConnectionError(Exception):
     """语音连接基础异常"""
@@ -604,7 +619,6 @@ class DiscordMessageConverter(abstract_platform_adapter.AbstractMessageConverter
 
         for ele in message_chain:
             if isinstance(ele, platform_message.Image):
-                image_bytes = None
                 filename = f'{uuid.uuid4()}.png'  # 默认文件名
 
                 if ele.base64:
@@ -618,60 +632,17 @@ class DiscordMessageConverter(abstract_platform_adapter.AbstractMessageConverter
                             filename = f'{uuid.uuid4()}.gif'
                         elif 'webp' in data_header:
                             filename = f'{uuid.uuid4()}.webp'
-                        # 去掉data:image/xxx;base64,前缀
-                        base64_data = ele.base64.split(',')[1]
-                    else:
-                        base64_data = ele.base64
-                    image_bytes = base64.b64decode(base64_data)
-                elif ele.url:
-                    # 从URL下载图片
-                    session = httpclient.get_session()
-                    async with session.get(ele.url) as response:
-                        image_bytes = await response.read()
-                        # 从URL或Content-Type推断文件类型
-                        content_type = response.headers.get('Content-Type', '')
-                        if 'jpeg' in content_type or 'jpg' in content_type:
-                            filename = f'{uuid.uuid4()}.jpg'
-                        elif 'gif' in content_type:
-                            filename = f'{uuid.uuid4()}.gif'
-                        elif 'webp' in content_type:
-                            filename = f'{uuid.uuid4()}.webp'
-                        elif ele.url.lower().endswith(('.jpg', '.jpeg')):
-                            filename = f'{uuid.uuid4()}.jpg'
-                        elif ele.url.lower().endswith('.gif'):
-                            filename = f'{uuid.uuid4()}.gif'
-                        elif ele.url.lower().endswith('.webp'):
-                            filename = f'{uuid.uuid4()}.webp'
-                elif ele.path:
-                    # 从文件路径读取图片
-                    # 确保路径没有空字节
-                    clean_path = ele.path.replace('\x00', '')
-                    clean_path = os.path.abspath(clean_path)
-
-                    if not os.path.exists(clean_path):
-                        continue  # 跳过不存在的文件
-
-                    try:
-                        with open(clean_path, 'rb') as f:
-                            image_bytes = f.read()
-                        # 从文件路径获取文件名，保持原始扩展名
-                        original_filename = os.path.basename(clean_path)
-                        if original_filename and '.' in original_filename:
-                            # 保持原始文件名的扩展名
-                            ext = original_filename.split('.')[-1].lower()
-                            filename = f'{uuid.uuid4()}.{ext}'
-                        else:
-                            # 如果没有扩展名，尝试从文件内容检测
-                            if image_bytes.startswith(b'\xff\xd8\xff'):
-                                filename = f'{uuid.uuid4()}.jpg'
-                            elif image_bytes.startswith(b'GIF'):
-                                filename = f'{uuid.uuid4()}.gif'
-                            elif image_bytes.startswith(b'RIFF') and b'WEBP' in image_bytes[:20]:
-                                filename = f'{uuid.uuid4()}.webp'
-                            # 默认保持PNG
-                    except Exception as e:
-                        print(f'Error reading image file {clean_path}: {e}')
-                        continue  # 跳过读取失败的文件
+                try:
+                    image_bytes, mime_type = await ele.get_bytes()
+                except Exception as exc:
+                    print(f'Error reading Discord image: {exc}')
+                    continue
+                if 'jpeg' in mime_type or 'jpg' in mime_type:
+                    filename = f'{uuid.uuid4()}.jpg'
+                elif 'gif' in mime_type:
+                    filename = f'{uuid.uuid4()}.gif'
+                elif 'webp' in mime_type:
+                    filename = f'{uuid.uuid4()}.webp'
 
                 if image_bytes:
                     files.append(discord.File(fp=io.BytesIO(image_bytes), filename=filename))
@@ -702,27 +673,34 @@ class DiscordMessageConverter(abstract_platform_adapter.AbstractMessageConverter
                         elif 'webm' in data_header:
                             filename = f'{uuid.uuid4()}.webm'
 
-                    file_base64 = ele.base64.split(',')[-1]
-                    file_bytes = base64.b64decode(file_base64)
+                    file_bytes = await asyncio.to_thread(
+                        _decode_discord_base64_limited,
+                        ele.base64,
+                    )
                 elif ele.url:
                     session = httpclient.get_session()
                     async with session.get(ele.url) as response:
-                        file_bytes = await response.read()
+                        file_bytes = await httpclient.read_limited(
+                            response,
+                            max_bytes=_MAX_DISCORD_MEDIA_BYTES,
+                        )
                 if file_bytes:
                     files.append(discord.File(fp=io.BytesIO(file_bytes), filename=filename))
             elif isinstance(ele, platform_message.File):
                 file_bytes = None
                 filename = f'{uuid.uuid4()}.{ele.name.split(".")[-1]}'
                 if ele.base64:
-                    if ele.base64.startswith('data:'):
-                        file_base64 = ele.base64.split(',')[1]
-                        file_bytes = base64.b64decode(file_base64)
-                    else:
-                        file_bytes = base64.b64decode(ele.base64)
+                    file_bytes = await asyncio.to_thread(
+                        _decode_discord_base64_limited,
+                        ele.base64,
+                    )
                 elif ele.url:
                     session = httpclient.get_session()
                     async with session.get(ele.url) as response:
-                        file_bytes = await response.read()
+                        file_bytes = await httpclient.read_limited(
+                            response,
+                            max_bytes=_MAX_DISCORD_MEDIA_BYTES,
+                        )
                 if file_bytes:
                     files.append(discord.File(fp=io.BytesIO(file_bytes), filename=filename))
             elif isinstance(ele, platform_message.Forward):
@@ -780,8 +758,11 @@ class DiscordMessageConverter(abstract_platform_adapter.AbstractMessageConverter
         for attachment in message.attachments:
             session = httpclient.get_session(trust_env=True)
             async with session.get(attachment.url) as response:
-                image_data = await response.read()
-                image_base64 = base64.b64encode(image_data).decode('utf-8')
+                image_data = await httpclient.read_limited(
+                    response,
+                    max_bytes=_MAX_DISCORD_MEDIA_BYTES,
+                )
+                image_base64 = (await asyncio.to_thread(base64.b64encode, image_data)).decode('utf-8')
                 image_format = response.headers['Content-Type']
                 element_list.append(platform_message.Image(base64=f'data:{image_format};base64,{image_base64}'))
 
@@ -967,6 +948,20 @@ class DiscordAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         # clicks a button so we know which workflow_run / form_token to
         # resume.
         self._pending_forms: dict[str, dict] = {}
+
+    def _prune_transient_state(self) -> None:
+        now = time.time()
+        ttl_seconds = 1800
+        for message_id, state in tuple(self._stream_buffer.items()):
+            if now - float(state.get('updated_at', now)) > ttl_seconds:
+                self._stream_buffer.pop(message_id, None)
+        for session_key, state in tuple(self._pending_forms.items()):
+            if now - float(state.get('posted_at', now)) > ttl_seconds:
+                self._pending_forms.pop(session_key, None)
+        while len(self._stream_buffer) > 100:
+            self._stream_buffer.pop(next(iter(self._stream_buffer)), None)
+        while len(self._pending_forms) > 1000:
+            self._pending_forms.pop(next(iter(self._pending_forms)), None)
 
     # Voice functionality methods
     async def join_voice_channel(self, guild_id: int, channel_id: int, user_id: int = None) -> discord.VoiceClient:
@@ -1246,11 +1241,13 @@ class DiscordAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         source = event.source_platform_object
         if not isinstance(source, discord.Message):
             return False
+        self._prune_transient_state()
         self._stream_buffer[message_id] = {
             'channel': source.channel,
             'sent_message': None,  # discord.Message set on first send
             'last_content': '',
             'chunk_count': 0,
+            'updated_at': time.time(),
         }
         return True
 
@@ -1274,6 +1271,8 @@ class DiscordAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         form_data = getattr(bot_message, '_form_data', None) if not isinstance(bot_message, dict) else None
 
         ctx = self._stream_buffer.get(msg_id) if msg_id else None
+        if ctx is not None:
+            ctx['updated_at'] = time.time()
 
         # If the stream ctx was not set up (create_message_card wasn't
         # called, e.g. synthetic event), or the final chunk carries a
@@ -1342,6 +1341,7 @@ class DiscordAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         callback synthesizes a ``_dify_form_action`` query so the runner's
         ``_merge_pending_form_action`` resumes the workflow.
         """
+        self._prune_transient_state()
         source = message_source.source_platform_object
 
         actions = form_data.get('actions') or []
@@ -1444,6 +1444,8 @@ class DiscordAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         """Handle a click on a form button — ack, resume the workflow,
         and disable the View buttons so the choice is visually locked in."""
         import langbot_plugin.api.entities.builtin.provider.session as provider_session
+
+        self._prune_transient_state()
 
         # ACK first (3-second deadline before Discord shows "interaction failed").
         try:
@@ -1653,5 +1655,7 @@ class DiscordAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         if self.voice_manager:
             await self.voice_manager.disconnect_all()
 
+        self._stream_buffer.clear()
+        self._pending_forms.clear()
         await self.bot.close()
         return True

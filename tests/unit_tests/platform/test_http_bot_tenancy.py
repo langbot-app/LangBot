@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 from types import SimpleNamespace
 
 import pytest
 
 from langbot.pkg.api.http.context import ExecutionContext
 from langbot.pkg.platform.sources.http_bot import HttpBotAdapter
+from langbot.pkg.platform.sources import http_bot as http_bot_module
 
 
 def _session(key):
@@ -22,6 +24,7 @@ def _adapter(app, execution_context) -> HttpBotAdapter:
         outbound_states={},
         idempotency_cache={},
         sync_waiters={},
+        inbound_tasks=set(),
     )
     object.__setattr__(adapter, 'ap', app)
     return adapter
@@ -64,3 +67,28 @@ async def test_http_bot_reset_fails_closed_without_trusted_scope():
 
     with pytest.raises(RuntimeError, match='trusted execution scope'):
         await adapter._reset_session('person', 'shared-session')
+
+
+@pytest.mark.asyncio
+async def test_http_bot_bounds_inbound_listener_tasks(monkeypatch):
+    monkeypatch.setattr(http_bot_module, '_INBOUND_TASK_MAX', 1)
+    adapter = _adapter(SimpleNamespace(), None)
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def blocking_listener():
+        started.set()
+        await release.wait()
+
+    first = adapter._start_inbound_task(blocking_listener())
+    await started.wait()
+    rejected = adapter._start_inbound_task(blocking_listener())
+
+    assert first is not None
+    assert rejected is None
+    assert len(adapter.inbound_tasks) == 1
+
+    release.set()
+    await first
+    await asyncio.sleep(0)
+    assert adapter.inbound_tasks == set()

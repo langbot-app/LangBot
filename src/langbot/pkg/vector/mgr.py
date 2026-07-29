@@ -113,6 +113,14 @@ class VectorDBManager:
             self.vector_db = ChromaVectorDatabase(self.ap)
             self.ap.logger.warning('No vector database backend configured, defaulting to Chroma.')
 
+    async def shutdown(self) -> None:
+        """Release the active vector backend deterministically."""
+
+        vector_db = self.vector_db
+        self.vector_db = None
+        if vector_db is not None:
+            await vector_db.close()
+
     def get_supported_search_types(self) -> list[str]:
         """Return the search types supported by the current VDB backend."""
         if self.vector_db is None:

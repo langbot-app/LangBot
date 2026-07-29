@@ -68,6 +68,25 @@ async def test_connection_listener_only_suppresses_exact_duplicates():
     ]
 
 
+@pytest.mark.asyncio
+async def test_connection_event_cache_is_bounded():
+    adapter, _ = _make_adapter()
+
+    for index in range(150):
+        await adapter._on_websocket_connection(aiocqhttp.Event({'self_id': index, 'time': index}))
+
+    assert len(adapter.on_websocket_connection_event_cache) == 100
+
+
+def test_group_lookup_caches_are_bounded():
+    converter = AiocqhttpEventConverter()
+    converter._group_name_cache = {index: (str(index), 10_000.0) for index in range(5000)}
+
+    converter._prune_caches(1.0)
+
+    assert len(converter._group_name_cache) == 4096
+
+
 def test_unregister_listener_removes_registered_wrapper():
     adapter, _ = _make_adapter()
 

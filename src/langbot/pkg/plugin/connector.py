@@ -5,10 +5,9 @@ import asyncio
 import contextlib
 import contextvars
 import hashlib
-import io
+import json
 import time
 import uuid
-import zipfile
 from typing import Any
 import typing
 import os
@@ -16,17 +15,17 @@ import secrets
 import sys
 import httpx
 import sqlalchemy
-import yaml
 from urllib.parse import urljoin, urlparse
 from langbot_plugin.api.entities.builtin.pipeline.query import provider_session
 
 from ..core import app
 from . import handler
+from .archive import inspect_plugin_archive_metadata
 from .github import (
     validate_github_plugin_install_info,
     validate_github_release_asset_url,
 )
-from ..utils import constants, platform
+from ..utils import constants, httpclient, platform
 from ..utils.managed_runtime import ManagedRuntimeConnector
 from langbot_plugin.runtime.io.controllers.stdio import (
     client as stdio_client_controller,
@@ -64,6 +63,9 @@ _PLUGIN_ARTIFACT_OWNER_TYPE = 'plugin_artifact'
 _PLUGIN_ARTIFACT_KEY = 'package.lbpkg'
 _PLUGIN_ARTIFACT_STORAGE_MARKER = 'tenant_binary_storage_v1'
 _GITHUB_PLUGIN_DOWNLOAD_MAX_BYTES = 10 * 1024 * 1024
+_MARKETPLACE_METADATA_MAX_BYTES = 1024 * 1024
+_MARKETPLACE_PLUGIN_DOWNLOAD_MAX_BYTES = 64 * 1024 * 1024
+_MARKETPLACE_SKILL_DOWNLOAD_MAX_BYTES = 10 * 1024 * 1024
 _GITHUB_PLUGIN_DOWNLOAD_MAX_REDIRECTS = 5
 _GITHUB_ASSET_HOSTS = frozenset(
     {
@@ -78,6 +80,55 @@ _CONNECT_TIMEOUT_SEC = 30.0
 _HEARTBEAT_INTERVAL_SEC = 20.0
 _HEARTBEAT_FAILURE_THRESHOLD = 3
 _RECONNECT_MAX_DELAY_SEC = 60.0
+
+
+async def _read_httpx_response_limited(
+    response: httpx.Response,
+    *,
+    max_bytes: int,
+) -> bytes:
+    content_length = response.headers.get('content-length')
+    if content_length is not None:
+        try:
+            declared_size = int(content_length)
+        except ValueError:
+            declared_size = None
+        if declared_size is not None and declared_size > max_bytes:
+            raise ValueError(f'Remote response exceeds the {max_bytes}-byte limit')
+
+    body = bytearray()
+    async for chunk in response.aiter_bytes(chunk_size=64 * 1024):
+        body.extend(chunk)
+        if len(body) > max_bytes:
+            raise ValueError(f'Remote response exceeds the {max_bytes}-byte limit')
+    return bytes(body)
+
+
+async def _marketplace_get(
+    client: httpx.AsyncClient,
+    url: str,
+    *,
+    max_bytes: int,
+    allow_not_found: bool = False,
+) -> tuple[int, bytes]:
+    async with client.stream('GET', url) as response:
+        if allow_not_found and response.status_code == 404:
+            return response.status_code, b''
+        response.raise_for_status()
+        return response.status_code, await _read_httpx_response_limited(
+            response,
+            max_bytes=max_bytes,
+        )
+
+
+def _decode_json_object(body: bytes, *, subject: str) -> dict[str, Any]:
+    try:
+        payload = json.loads(body)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError(f'{subject} returned invalid JSON') from exc
+    if not isinstance(payload, dict):
+        raise ValueError(f'{subject} returned a non-object response')
+    return payload
 
 
 class PluginRuntimeNotConnectedError(RuntimeError):
@@ -175,16 +226,23 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         worker = self.ap.instance_config.data.get('plugin', {}).get('worker')
         if not isinstance(worker, dict):
             raise ValueError('plugin.worker must be configured')
-        return PluginWorkerPolicy.model_validate(
-            {
-                'max_cpus': worker.get('max_cpus'),
-                'max_memory_mb': worker.get('max_memory_mb'),
-                'max_pids': worker.get('max_pids'),
-                'max_open_files': worker.get('max_open_files'),
-                'max_file_size_mb': worker.get('max_file_size_mb'),
-                'require_hard_limits': worker.get('require_hard_limits', False),
-            }
-        )
+        policy_data = {
+            'max_cpus': worker.get('max_cpus'),
+            'max_memory_mb': worker.get('max_memory_mb'),
+            'max_pids': worker.get('max_pids'),
+            'max_open_files': worker.get('max_open_files'),
+            'max_file_size_mb': worker.get('max_file_size_mb'),
+            'require_hard_limits': worker.get('require_hard_limits', False),
+        }
+        for field_name in (
+            'max_workers',
+            'max_total_cpus',
+            'max_total_memory_mb',
+            'max_installations',
+        ):
+            if field_name in PluginWorkerPolicy.model_fields and field_name in worker:
+                policy_data[field_name] = worker.get(field_name)
+        return PluginWorkerPolicy.model_validate(policy_data)
 
     def _control_headers(self, *, allow_generate: bool) -> dict[str, str]:
         if not self._control_token and allow_generate:
@@ -643,9 +701,11 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             for context in contexts:
                 execution_context = await self._validate_execution_context(context)
                 states = await self._load_workspace_desired_states(execution_context)
-                workspace_installations[execution_context.workspace_uuid] = {
-                    state.binding.installation_uuid for state in states
-                }
+                installation_ids = {state.binding.installation_uuid for state in states}
+                if installation_ids:
+                    # A newly registered Cloud Workspace normally has no
+                    # plugins. Avoid retaining an empty set for every account.
+                    workspace_installations[execution_context.workspace_uuid] = installation_ids
                 for state in states:
                     if state.binding.installation_uuid in all_states:
                         raise ValueError('Duplicate plugin installation UUID across projected Workspaces')
@@ -706,7 +766,13 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                     # restoring the remaining desired state in this Workspace.
                     pass
                 self._known_desired_states[installation_uuid] = desired
-            self._workspace_installations[execution_context.workspace_uuid] = set(desired_by_uuid)
+            if desired_by_uuid:
+                self._workspace_installations[execution_context.workspace_uuid] = set(desired_by_uuid)
+            else:
+                self._workspace_installations.pop(
+                    execution_context.workspace_uuid,
+                    None,
+                )
 
     async def _current_execution_context(self) -> ExecutionContext:
         current = self._execution_context.get()
@@ -991,27 +1057,20 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         plugin_name = None
 
         try:
-            with zipfile.ZipFile(io.BytesIO(file_bytes)) as zf:
-                try:
-                    manifest = yaml.safe_load(zf.read('manifest.yaml').decode('utf-8', errors='ignore')) or {}
-                    metadata = manifest.get('metadata', {})
-                    plugin_author = metadata.get('author')
-                    plugin_name = metadata.get('name')
-                except Exception:
-                    pass
-
-                if task_context is not None:
-                    for name in zf.namelist():
-                        if name.endswith('requirements.txt'):
-                            content = zf.read(name).decode('utf-8', errors='ignore')
-                            deps = [
-                                line.strip()
-                                for line in content.splitlines()
-                                if line.strip() and not line.strip().startswith('#')
-                            ]
-                            task_context.metadata['deps_total'] = len(deps)
-                            task_context.metadata['deps_list'] = deps
-                            break
+            manifest, dependencies, archive_names = inspect_plugin_archive_metadata(
+                file_bytes,
+                require_manifest=False,
+            )
+            metadata = manifest.get('metadata', {})
+            if isinstance(metadata, dict):
+                plugin_author = metadata.get('author')
+                plugin_name = metadata.get('name')
+            has_requirements = any(
+                name.replace('\\', '/').lower().endswith('requirements.txt') for name in archive_names
+            )
+            if task_context is not None and has_requirements:
+                task_context.metadata['deps_total'] = len(dependencies)
+                task_context.metadata['deps_list'] = dependencies
         except Exception:
             pass
 
@@ -1329,6 +1388,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             trust_env=False,
             follow_redirects=False,
             timeout=httpx.Timeout(60, connect=10),
+            event_hooks=httpclient.httpx_response_limit_hooks(_GITHUB_PLUGIN_DOWNLOAD_MAX_BYTES),
         ) as client:
             asset_id: int | None = None
             if 'asset_id' in normalized:
@@ -1346,7 +1406,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                 if response.status_code in _HTTP_REDIRECT_STATUSES:
                     raise ValueError('GitHub release metadata unexpectedly redirected')
                 response.raise_for_status()
-                release = response.json()
+                release = await httpclient.parse_json_response(response)
                 if not isinstance(release, dict):
                     raise ValueError('GitHub release metadata is invalid')
                 if release.get('id') != release_id or str(release.get('tag_name') or '') != release_tag:
@@ -1500,50 +1560,79 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         """Return a plugin package, or install an MCP/skill and return none."""
 
         space_url = self.ap.instance_config.data.get('space', {}).get('url', 'https://space.langbot.app').rstrip('/')
-        async with httpx.AsyncClient(trust_env=True, timeout=15) as client:
-            mcp_resp = await client.get(f'{space_url}/api/v1/marketplace/mcps/{plugin_author}/{plugin_name}')
-            if mcp_resp.status_code == 200:
-                mcp_data = mcp_resp.json().get('data', {}).get('mcp', {})
+        async with httpx.AsyncClient(
+            trust_env=True,
+            timeout=15,
+            event_hooks=httpclient.httpx_response_limit_hooks(_MARKETPLACE_PLUGIN_DOWNLOAD_MAX_BYTES),
+        ) as client:
+            mcp_status, mcp_body = await _marketplace_get(
+                client,
+                f'{space_url}/api/v1/marketplace/mcps/{plugin_author}/{plugin_name}',
+                max_bytes=_MARKETPLACE_METADATA_MAX_BYTES,
+                allow_not_found=True,
+            )
+            if mcp_status == 200:
+                mcp_payload = _decode_json_object(mcp_body, subject='Marketplace MCP metadata')
+                mcp_data = mcp_payload.get('data', {}).get('mcp', {})
+                if not isinstance(mcp_data, dict):
+                    raise ValueError(f'MCP {plugin_author}/{plugin_name} metadata is invalid')
                 if not mcp_data.get('mode'):
                     raise ValueError(f'MCP {plugin_author}/{plugin_name} has no mode')
                 await self._install_mcp_from_marketplace(execution_context, mcp_data, task_context)
                 try:
-                    await client.post(f'{space_url}/api/v1/marketplace/mcps/{plugin_author}/{plugin_name}/install')
+                    async with client.stream(
+                        'POST',
+                        f'{space_url}/api/v1/marketplace/mcps/{plugin_author}/{plugin_name}/install',
+                    ):
+                        pass
                 except Exception as report_err:
                     self.ap.logger.debug(f'Failed to report MCP install: {report_err}')
                 return None, None
-            if mcp_resp.status_code != 404:
-                mcp_resp.raise_for_status()
 
-            skill_resp = await client.get(f'{space_url}/api/v1/marketplace/skills/{plugin_author}/{plugin_name}')
-            if skill_resp.status_code == 200:
-                download_resp = await client.get(
-                    f'{space_url}/api/v1/marketplace/skills/download/{plugin_author}/{plugin_name}'
+            skill_status, _skill_body = await _marketplace_get(
+                client,
+                f'{space_url}/api/v1/marketplace/skills/{plugin_author}/{plugin_name}',
+                max_bytes=_MARKETPLACE_METADATA_MAX_BYTES,
+                allow_not_found=True,
+            )
+            if skill_status == 200:
+                _download_status, skill_package = await _marketplace_get(
+                    client,
+                    f'{space_url}/api/v1/marketplace/skills/download/{plugin_author}/{plugin_name}',
+                    max_bytes=_MARKETPLACE_SKILL_DOWNLOAD_MAX_BYTES,
                 )
-                download_resp.raise_for_status()
                 await self._install_skill_from_zip(
                     execution_context,
-                    download_resp.content,
+                    skill_package,
                     f'{plugin_author}-{plugin_name}',
                     task_context,
                 )
                 return None, None
-            if skill_resp.status_code != 404:
-                skill_resp.raise_for_status()
 
-            versions_resp = await client.get(
-                f'{space_url}/api/v1/marketplace/plugins/{plugin_author}/{plugin_name}/versions'
+            _versions_status, versions_body = await _marketplace_get(
+                client,
+                f'{space_url}/api/v1/marketplace/plugins/{plugin_author}/{plugin_name}/versions',
+                max_bytes=_MARKETPLACE_METADATA_MAX_BYTES,
             )
-            versions_resp.raise_for_status()
-            versions = versions_resp.json().get('data', {}).get('versions', [])
-            if not versions or not versions[0].get('version'):
+            versions_payload = _decode_json_object(
+                versions_body,
+                subject='Marketplace plugin versions',
+            )
+            versions = versions_payload.get('data', {}).get('versions', [])
+            if (
+                not isinstance(versions, list)
+                or not versions
+                or not isinstance(versions[0], dict)
+                or not versions[0].get('version')
+            ):
                 raise ValueError(f'Plugin {plugin_author}/{plugin_name} has no versions')
             latest_version = str(versions[0]['version'])
-            download_resp = await client.get(
-                f'{space_url}/api/v1/marketplace/plugins/download/{plugin_author}/{plugin_name}/{latest_version}'
+            _download_status, plugin_package = await _marketplace_get(
+                client,
+                f'{space_url}/api/v1/marketplace/plugins/download/{plugin_author}/{plugin_name}/{latest_version}',
+                max_bytes=_MARKETPLACE_PLUGIN_DOWNLOAD_MAX_BYTES,
             )
-            download_resp.raise_for_status()
-            return download_resp.content, latest_version
+            return plugin_package, latest_version
 
     async def install_plugin(
         self,
@@ -1698,7 +1787,11 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             await delete(self.ap.persistence_mgr.execute_async)
 
         self._known_desired_states.pop(binding.installation_uuid, None)
-        self._workspace_installations.setdefault(binding.workspace_uuid, set()).discard(binding.installation_uuid)
+        workspace_installations = self._workspace_installations.get(binding.workspace_uuid)
+        if workspace_installations is not None:
+            workspace_installations.discard(binding.installation_uuid)
+            if not workspace_installations:
+                self._workspace_installations.pop(binding.workspace_uuid, None)
         if task_context is not None:
             task_context.set_current_action('plugin removed')
         return {}

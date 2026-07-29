@@ -31,6 +31,7 @@ def make_backend():
     # _ensure_client serializes creation through this lock; set it here since
     # __init__ (which normally creates it) is bypassed.
     backend._client_lock = asyncio.Lock()
+    backend._runtime_cache_limit = 1024
     return backend
 
 

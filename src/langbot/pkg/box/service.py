@@ -21,6 +21,7 @@ from .admission import SandboxAdmissionController, require_cloud_admission_polic
 from .connector import BoxRuntimeConnector, _get_box_config
 from . import secure_fs
 from ..telemetry import features as telemetry_features
+from ..utils import httpclient
 from ..api.http.context import ExecutionContext
 from ..api.http.service.tenant import TenantContext, require_workspace_uuid
 from langbot_plugin.box.errors import BoxAdmissionError, BoxError, BoxValidationError
@@ -37,6 +38,53 @@ _INT_ADAPTER = pydantic.TypeAdapter(int)
 _UTC = _dt.timezone.utc
 _MAX_RECENT_ERRORS = 50
 _MIB = 1024 * 1024
+
+
+def _create_shared_workspace_probe(root: str, marker_name: str, payload: bytes) -> None:
+    """Create and durably flush a no-follow probe without blocking the event loop."""
+
+    directory_flags = os.O_RDONLY | getattr(os, 'O_DIRECTORY', 0)
+    nofollow = getattr(os, 'O_NOFOLLOW', 0)
+    root_fd: int | None = None
+    marker_fd: int | None = None
+    marker_created = False
+    try:
+        root_fd = os.open(root, directory_flags | nofollow)
+        marker_fd = os.open(
+            marker_name,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | nofollow,
+            0o600,
+            dir_fd=root_fd,
+        )
+        marker_created = True
+        remaining = memoryview(payload)
+        while remaining:
+            written = os.write(marker_fd, remaining)
+            if written <= 0:
+                raise BoxValidationError('Failed to write Cloud Box shared-volume probe')
+            remaining = remaining[written:]
+        os.fsync(marker_fd)
+    except Exception:
+        if root_fd is not None and marker_created:
+            with contextlib.suppress(FileNotFoundError):
+                os.unlink(marker_name, dir_fd=root_fd)
+        raise
+    finally:
+        if marker_fd is not None:
+            os.close(marker_fd)
+        if root_fd is not None:
+            os.close(root_fd)
+
+
+def _remove_shared_workspace_probe(root: str, marker_name: str) -> None:
+    directory_flags = os.O_RDONLY | getattr(os, 'O_DIRECTORY', 0)
+    nofollow = getattr(os, 'O_NOFOLLOW', 0)
+    root_fd = os.open(root, directory_flags | nofollow)
+    try:
+        with contextlib.suppress(FileNotFoundError):
+            os.unlink(marker_name, dir_fd=root_fd)
+    finally:
+        os.close(root_fd)
 
 
 def _is_path_under(path: str, root: str) -> bool:
@@ -267,29 +315,15 @@ class BoxService:
         marker_name = f'{BOX_SHARED_WORKSPACE_PROBE_PREFIX}{secrets.token_hex(16)}'
         marker_payload = secrets.token_bytes(64)
         expected_digest = hashlib.sha256(marker_payload).hexdigest()
-        directory_flags = os.O_RDONLY | getattr(os, 'O_DIRECTORY', 0)
-        nofollow = getattr(os, 'O_NOFOLLOW', 0)
-        root_fd: int | None = None
-        marker_fd: int | None = None
-        marker_created = False
+        probe_created = False
         try:
-            root_fd = os.open(self.default_workspace, directory_flags | nofollow)
-            marker_fd = os.open(
+            await asyncio.to_thread(
+                _create_shared_workspace_probe,
+                self.default_workspace,
                 marker_name,
-                os.O_WRONLY | os.O_CREAT | os.O_EXCL | nofollow,
-                0o600,
-                dir_fd=root_fd,
+                marker_payload,
             )
-            marker_created = True
-            remaining = memoryview(marker_payload)
-            while remaining:
-                written = os.write(marker_fd, remaining)
-                if written <= 0:
-                    raise BoxValidationError('Failed to write Cloud Box shared-volume probe')
-                remaining = remaining[written:]
-            os.fsync(marker_fd)
-            os.close(marker_fd)
-            marker_fd = None
+            probe_created = True
 
             result = await self.client.verify_shared_workspace(marker_name)
             if (
@@ -306,15 +340,12 @@ class BoxService:
         except Exception as exc:
             raise BoxValidationError('Cloud Box shared durable Workspace volume verification failed') from exc
         finally:
-            if marker_fd is not None:
-                os.close(marker_fd)
-            if root_fd is not None:
-                if marker_created:
-                    try:
-                        os.unlink(marker_name, dir_fd=root_fd)
-                    except FileNotFoundError:
-                        pass
-                os.close(root_fd)
+            if probe_created:
+                await asyncio.to_thread(
+                    _remove_shared_workspace_probe,
+                    self.default_workspace,
+                    marker_name,
+                )
 
     @property
     def available(self) -> bool:
@@ -886,7 +917,13 @@ class BoxService:
                     mime = data[5:split_index]
                     data = data[split_index + 8 :]
             try:
-                return _b64.b64decode(data), mime
+                max_encoded_bytes = 4 * ((BoxService._ATTACHMENT_MAX_BYTES + 2) // 3)
+                if not isinstance(data, (str, bytes)) or len(data) > max_encoded_bytes:
+                    return None
+                decoded = _b64.b64decode(data)
+                if len(decoded) > BoxService._ATTACHMENT_MAX_BYTES:
+                    return None
+                return decoded, mime
             except Exception:
                 return None
 
@@ -895,10 +932,25 @@ class BoxService:
             try:
                 import httpx
 
-                async with httpx.AsyncClient(timeout=30) as client:
-                    resp = await client.get(url)
-                    resp.raise_for_status()
-                    return resp.content, resp.headers.get('Content-Type', 'application/octet-stream')
+                async with httpx.AsyncClient(
+                    timeout=30,
+                    event_hooks=httpclient.httpx_response_limit_hooks(BoxService._ATTACHMENT_MAX_BYTES),
+                ) as client:
+                    async with client.stream('GET', url) as resp:
+                        resp.raise_for_status()
+                        declared_size = resp.headers.get('content-length')
+                        if declared_size is not None:
+                            try:
+                                if int(declared_size) > BoxService._ATTACHMENT_MAX_BYTES:
+                                    return None
+                            except ValueError:
+                                pass
+                        body = bytearray()
+                        async for chunk in resp.aiter_bytes(chunk_size=64 * 1024):
+                            body.extend(chunk)
+                            if len(body) > BoxService._ATTACHMENT_MAX_BYTES:
+                                return None
+                        return bytes(body), resp.headers.get('Content-Type', 'application/octet-stream')
             except Exception:
                 return None
 
@@ -907,8 +959,13 @@ class BoxService:
             try:
                 import aiofiles
 
+                if await asyncio.to_thread(os.path.getsize, path) > BoxService._ATTACHMENT_MAX_BYTES:
+                    return None
                 async with aiofiles.open(path, 'rb') as f:
-                    return await f.read(), 'application/octet-stream'
+                    data = await f.read(BoxService._ATTACHMENT_MAX_BYTES + 1)
+                if len(data) > BoxService._ATTACHMENT_MAX_BYTES:
+                    return None
+                return data, 'application/octet-stream'
             except Exception:
                 return None
 
