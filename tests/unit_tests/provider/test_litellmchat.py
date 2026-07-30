@@ -1147,6 +1147,46 @@ class TestInvokeRerank:
         assert results[0]['relevance_score'] == 1.0
         assert results[1]['relevance_score'] == 0.0
 
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ('model_extra_args', 'expected_url'),
+        [
+            ({'rerank_path': 'reranks'}, 'https://gateway.example.com/v1/reranks'),
+            ({'rerank_url': 'https://rerank.example.com/api/rerank'}, 'https://rerank.example.com/api/rerank'),
+        ],
+    )
+    async def test_invoke_rerank_openai_compatible_endpoint_override(self, model_extra_args, expected_url):
+        """Endpoint configuration controls routing and is not sent in the Cohere body."""
+        requester = litellmchat.LiteLLMRequester(
+            ap=Mock(),
+            config={
+                'base_url': 'https://gateway.example.com/v1/',
+                'custom_llm_provider': 'openai',
+            },
+        )
+        model = MockRuntimeRerankModel('Qwen3-Reranker-8B', 'test-api-key')
+        model.model_entity.extra_args = model_extra_args
+
+        mock_resp = Mock()
+        mock_resp.raise_for_status = Mock()
+        mock_resp.json = Mock(return_value={'results': [{'index': 0, 'relevance_score': 0.8}]})
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(return_value=mock_resp)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch('httpx.AsyncClient', return_value=mock_client):
+            await requester.invoke_rerank(model=model, query='query', documents=['document'])
+
+        assert mock_client.post.call_args.args[0] == expected_url
+        payload = mock_client.post.call_args.kwargs['json']
+        assert payload == {
+            'model': 'Qwen3-Reranker-8B',
+            'query': 'query',
+            'documents': ['document'],
+            'top_n': 1,
+        }
+
 
 class TestConvertMessages:
     """Test _convert_messages method"""

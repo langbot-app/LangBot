@@ -331,8 +331,15 @@ class ModelProviderService:
         embedding_models = await self.ap.embedding_models_service.get_embedding_models_by_provider(
             context, provider_uuid
         )
+        rerank_service = getattr(self.ap, 'rerank_models_service', None)
+        rerank_models = (
+            await rerank_service.get_rerank_models_by_provider(context, provider_uuid)
+            if rerank_service is not None
+            else []
+        )
         existing_llm_names = {model['name'] for model in llm_models}
         existing_embedding_names = {model['name'] for model in embedding_models}
+        existing_rerank_names = {model['name'] for model in rerank_models}
 
         filtered_models = []
         for model in scanned_models:
@@ -359,6 +366,8 @@ class ModelProviderService:
                     'already_added': (
                         model_name in existing_embedding_names
                         if scanned_type == 'embedding'
+                        else model_name in existing_rerank_names
+                        if scanned_type == 'rerank'
                         else model_name in existing_llm_names
                     ),
                 }

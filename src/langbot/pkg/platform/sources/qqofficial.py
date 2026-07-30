@@ -102,7 +102,7 @@ class QQOfficialMessageConverter(abstract_platform_adapter.AbstractMessageConver
         yiri_msg_list.append(platform_message.Source(id=message_id, time=datetime.datetime.now()))
         if pic_url is not None:
             base64_url = await image.get_qq_official_image_base64(pic_url=pic_url, content_type=content_type)
-            yiri_msg_list.append(platform_message.Image(base64=base64_url))
+            yiri_msg_list.append(platform_message.Image(url=pic_url, base64=base64_url))
 
         yiri_msg_list.append(platform_message.Plain(text=message))
         chain = platform_message.MessageChain(yiri_msg_list)
