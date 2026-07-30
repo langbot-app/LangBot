@@ -229,9 +229,21 @@ class RuntimeBot:
 
                 message_text = str(event.message_chain)
                 element_types = [comp.type for comp in event.message_chain]
-                pipeline_uuid, routed_by_rule = self.resolve_pipeline_uuid(
-                    'person', launcher_id, message_text, element_types
-                )
+
+                # Adapters that bind a launcher to one pipeline at connect time
+                # (e.g. the WebSocket debug/embed adapter) resolve it from the
+                # event itself, so concurrent messages for different pipelines
+                # don't race on the shared use_pipeline_uuid field (#2286).
+                event_pipeline_uuid = None
+                if hasattr(adapter, 'get_event_pipeline_uuid'):
+                    event_pipeline_uuid = adapter.get_event_pipeline_uuid(event)
+
+                if event_pipeline_uuid:
+                    pipeline_uuid, routed_by_rule = event_pipeline_uuid, False
+                else:
+                    pipeline_uuid, routed_by_rule = self.resolve_pipeline_uuid(
+                        'person', launcher_id, message_text, element_types
+                    )
 
                 if pipeline_uuid == self.PIPELINE_DISCARD:
                     await self.logger.info('Person message discarded by routing rule')
@@ -290,9 +302,19 @@ class RuntimeBot:
 
                 message_text = str(event.message_chain)
                 element_types = [comp.type for comp in event.message_chain]
-                pipeline_uuid, routed_by_rule = self.resolve_pipeline_uuid(
-                    'group', launcher_id, message_text, element_types
-                )
+
+                # Same request-local pipeline resolution as person messages;
+                # see the comment in on_friend_message (#2286).
+                event_pipeline_uuid = None
+                if hasattr(adapter, 'get_event_pipeline_uuid'):
+                    event_pipeline_uuid = adapter.get_event_pipeline_uuid(event)
+
+                if event_pipeline_uuid:
+                    pipeline_uuid, routed_by_rule = event_pipeline_uuid, False
+                else:
+                    pipeline_uuid, routed_by_rule = self.resolve_pipeline_uuid(
+                        'group', launcher_id, message_text, element_types
+                    )
 
                 if pipeline_uuid == self.PIPELINE_DISCARD:
                     await self.logger.info('Group message discarded by routing rule')

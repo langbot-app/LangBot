@@ -17,6 +17,9 @@ from .websocket_manager import WebSocketConnection, is_valid_session_id, ws_conn
 
 logger = logging.getLogger(__name__)
 
+MAX_REMEMBERED_CONNECTION_ROUTES = 512
+"""Upper bound for the connection→pipeline route memory used by late replies."""
+
 
 class WebSocketMessage(pydantic.BaseModel):
     """WebSocket消息格式"""
@@ -77,6 +80,15 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
     stream_enabled: bool = pydantic.Field(default=True, exclude=True)
     """是否启用流式输出"""
 
+    _connection_pipeline_routes: dict = pydantic.PrivateAttr(default_factory=dict)
+    """最近的连接到流水线映射 {connection_id: pipeline_uuid}
+
+    Retained after a connection closes so that late replies (e.g. streamed
+    chunks that finish after the client disconnected) still route to the
+    pipeline that owned the request instead of falling back to the mutable
+    singleton ``use_pipeline_uuid`` field.
+    """
+
     def __init__(self, config: dict, logger: abstract_platform_logger.AbstractEventLogger, **kwargs):
         super().__init__(
             config=config,
@@ -97,16 +109,19 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
         return f'{pipeline_uuid}:{session_id}' if session_id else pipeline_uuid
 
     @staticmethod
-    def _parse_embed_target(target_id: str) -> tuple[str, str] | None:
-        """Extract pipeline and session identifiers from a stable embed launcher."""
+    def _strip_launcher_prefix(target_id: str) -> str | None:
+        """Strip the person/group launcher prefix, or None if not a WS launcher."""
         target_value = str(target_id)
         for prefix in ('websocket_', 'websocketgroup_'):
             if target_value.startswith(prefix):
-                target = target_value[len(prefix) :]
-                break
-        else:
-            return None
-        if ':' not in target:
+                return target_value[len(prefix) :]
+        return None
+
+    @classmethod
+    def _parse_embed_target(cls, target_id: str) -> tuple[str, str] | None:
+        """Extract pipeline and session identifiers from a stable embed launcher."""
+        target = cls._strip_launcher_prefix(target_id)
+        if target is None or ':' not in target:
             return None
         pipeline_uuid, session_id = target.rsplit(':', 1)
         if not pipeline_uuid or not is_valid_session_id(session_id):
@@ -116,12 +131,8 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
     @classmethod
     async def _get_connection_from_target(cls, target_id: str):
         """Resolve a person or group WebSocket launcher to its connection."""
-        target_value = str(target_id)
-        for prefix in ('websocket_', 'websocketgroup_'):
-            if target_value.startswith(prefix):
-                target = target_value[len(prefix) :]
-                break
-        else:
+        target = cls._strip_launcher_prefix(target_id)
+        if target is None:
             return None
         connection = await ws_connection_manager.get_connection(target)
         if connection is not None:
@@ -131,6 +142,42 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
             pipeline_uuid, session_id = embed_target
             return await ws_connection_manager.get_connection_by_session_id(session_id, pipeline_uuid)
         return await ws_connection_manager.get_connection_by_session_id(target)
+
+    def _remember_connection_route(self, connection: WebSocketConnection):
+        """Record which pipeline owns a connection, keeping the memory bounded."""
+        routes = self._connection_pipeline_routes
+        routes.pop(connection.connection_id, None)
+        routes[connection.connection_id] = connection.pipeline_uuid
+        while len(routes) > MAX_REMEMBERED_CONNECTION_ROUTES:
+            routes.pop(next(iter(routes)))
+
+    def _remembered_pipeline_for_target(self, target_id: str) -> str | None:
+        """Look up the retained route for a launcher whose connection is gone."""
+        target = self._strip_launcher_prefix(target_id)
+        if target is None:
+            return None
+        return self._connection_pipeline_routes.get(target)
+
+    def get_event_pipeline_uuid(self, event: platform_events.MessageEvent) -> str | None:
+        """Resolve the pipeline that owns an inbound WebSocket event.
+
+        Debug Chat and embed launcher ids are bound to exactly one pipeline
+        when the connection is established, so the pipeline can be derived
+        from the event itself. PlatformManager prefers this request-local
+        hint over the shared ``use_pipeline_uuid`` field, which concurrent
+        messages for different pipelines would otherwise race on.
+        """
+        sender_id = str(getattr(getattr(event, 'sender', None), 'id', '') or '')
+        target = self._strip_launcher_prefix(sender_id)
+        if target is None:
+            return None
+        connection = ws_connection_manager.connections.get(target)
+        if connection is not None:
+            return connection.pipeline_uuid
+        embed_target = self._parse_embed_target(sender_id)
+        if embed_target is not None:
+            return embed_target[0]
+        return self._connection_pipeline_routes.get(target)
 
     async def _get_message_context(self, message_source) -> tuple[str, str | None]:
         """Resolve the originating pipeline and browser session for a reply."""
@@ -142,6 +189,9 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
         embed_target = self._parse_embed_target(sender_id)
         if embed_target is not None:
             return embed_target
+        remembered = self._remembered_pipeline_for_target(str(sender_id))
+        if remembered is not None:
+            return remembered, None
         return typing.cast(str, self.ap.platform_mgr.websocket_proxy_bot.bot_entity.use_pipeline_uuid), None
 
     async def send_message(
@@ -165,7 +215,8 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
             if embed_target is not None:
                 pipeline_uuid, session_id = embed_target
             else:
-                pipeline_uuid = typing.cast(
+                remembered = self._remembered_pipeline_for_target(str(target_id))
+                pipeline_uuid = remembered or typing.cast(
                     str,
                     self.ap.platform_mgr.websocket_proxy_bot.bot_entity.use_pipeline_uuid,
                 )
@@ -445,6 +496,8 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
         session_type = connection.session_type
         conversation_key = self._conversation_key(pipeline_uuid, connection.session_id)
 
+        self._remember_connection_route(connection)
+
         self.stream_enabled = message_data.get('stream', True)
 
         use_session = self.websocket_group_session if session_type == 'group' else self.websocket_person_session
@@ -506,7 +559,9 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
                 sender=sender, message_chain=message_chain, time=datetime.now().timestamp()
             )
 
-        # 设置流水线UUID (proxy bot always needs it for reply_message routing)
+        # Legacy last-resort fallback only: per-request routing is resolved from
+        # the event via get_event_pipeline_uuid / the connection registry, since
+        # this shared field races under concurrent messages (#2286).
         self.ap.platform_mgr.websocket_proxy_bot.bot_entity.use_pipeline_uuid = pipeline_uuid
         if owner_bot is not None:
             owner_bot.bot_entity.use_pipeline_uuid = pipeline_uuid

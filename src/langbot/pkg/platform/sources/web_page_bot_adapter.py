@@ -36,6 +36,12 @@ class WebPageBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
         """Set the underlying WebSocket adapter used for actual message delivery."""
         object.__setattr__(self, '_ws_adapter', ws_adapter)
 
+    def get_event_pipeline_uuid(self, event: platform_events.MessageEvent) -> str | None:
+        """Delegate request-local pipeline resolution to the WebSocket adapter."""
+        if self._ws_adapter is not None:
+            return self._ws_adapter.get_event_pipeline_uuid(event)
+        return None
+
     async def send_message(
         self,
         target_type: str,
