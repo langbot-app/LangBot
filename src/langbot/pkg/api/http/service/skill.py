@@ -12,6 +12,7 @@ from urllib.parse import quote, unquote, urlparse
 
 import httpx
 
+from ....cloud.entitlements import EntitlementFeatureUnavailableError
 from ....core import app
 from ....skill.utils import parse_frontmatter
 from ....utils import httpclient
@@ -119,7 +120,13 @@ class SkillService:
         box_service = self._box_service()
         if box_service is None:
             return []
-        return [self._serialize_skill(skill) for skill in await box_service.list_skills(execution_context)]
+        try:
+            skills = await box_service.list_skills(execution_context)
+        except EntitlementFeatureUnavailableError as error:
+            if error.feature == 'managed_sandbox':
+                return []
+            raise
+        return [self._serialize_skill(skill) for skill in skills]
 
     async def get_skill(self, context: TenantContext, skill_name: str) -> Optional[dict]:
         execution_context = await self._execution_context(context)

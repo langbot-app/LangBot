@@ -8,6 +8,7 @@ import pytest
 
 from langbot.pkg.api.http.context import ExecutionContext
 from langbot.pkg.api.http.service.skill import SkillService
+from langbot.pkg.cloud.entitlements import EntitlementFeatureUnavailableError, EntitlementUnavailableError
 
 
 _CONTEXT = ExecutionContext(
@@ -112,6 +113,42 @@ class TestRequireBoxForWrite:
         skills page can show a banner instead of a broken state."""
         service = SkillService(self._ap_with_disabled_box())
         assert await service.list_skills(_CONTEXT) == []
+
+    @pytest.mark.asyncio
+    async def test_list_skills_returns_empty_when_managed_sandbox_is_not_granted(self):
+        box_service = SimpleNamespace(
+            available=True,
+            list_skills=AsyncMock(
+                side_effect=EntitlementFeatureUnavailableError(
+                    'Workspace entitlement does not grant managed_sandbox',
+                    feature='managed_sandbox',
+                )
+            ),
+        )
+        service = SkillService(
+            SimpleNamespace(
+                workspace_service=_workspace_service(),
+                box_service=box_service,
+            )
+        )
+
+        assert await service.list_skills(_CONTEXT) == []
+
+    @pytest.mark.asyncio
+    async def test_list_skills_preserves_other_entitlement_failures(self):
+        box_service = SimpleNamespace(
+            available=True,
+            list_skills=AsyncMock(side_effect=EntitlementUnavailableError('control plane unavailable')),
+        )
+        service = SkillService(
+            SimpleNamespace(
+                workspace_service=_workspace_service(),
+                box_service=box_service,
+            )
+        )
+
+        with pytest.raises(EntitlementUnavailableError, match='control plane unavailable'):
+            await service.list_skills(_CONTEXT)
 
     @pytest.mark.asyncio
     async def test_read_skill_file_refused_when_box_unavailable(self):

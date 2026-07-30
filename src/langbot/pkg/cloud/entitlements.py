@@ -17,6 +17,14 @@ class EntitlementUnavailableError(RuntimeError):
         self.entitlement_revision = entitlement_revision
 
 
+class EntitlementFeatureUnavailableError(EntitlementUnavailableError):
+    """Raised when an active entitlement explicitly omits a capability."""
+
+    def __init__(self, message: str, *, feature: str, entitlement_revision: int | None = None) -> None:
+        super().__init__(message, entitlement_revision=entitlement_revision)
+        self.feature = feature
+
+
 class EntitlementSnapshot(pydantic.BaseModel):
     """Capability projection consumed by open-source Core.
 
@@ -82,7 +90,11 @@ class EntitlementSnapshot(pydantic.BaseModel):
 
     def require_feature(self, feature: str) -> None:
         if self.features.get(feature) is not True:
-            raise EntitlementUnavailableError(f'Workspace entitlement does not grant {feature}')
+            raise EntitlementFeatureUnavailableError(
+                f'Workspace entitlement does not grant {feature}',
+                feature=feature,
+                entitlement_revision=self.entitlement_revision,
+            )
 
     def limit(self, name: str) -> int:
         value = self.limits.get(name)
