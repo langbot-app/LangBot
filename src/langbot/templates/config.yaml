@@ -105,6 +105,7 @@ system:
         max_bots: -1
         max_pipelines: -1
         max_extensions: -1
+        max_knowledge_bases: -1
         # When set to a non-empty string, every pipeline is forced to use this
         # Box sandbox-scope template regardless of its own configuration, and
         # the per-pipeline "Sandbox Scope" selector is locked in the web UI.

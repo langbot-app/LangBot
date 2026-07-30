@@ -495,8 +495,7 @@ class WorkspaceCollaborationService:
             return membership
 
         token_digest = hash_invitation_token(token)
-        lock_key = f"{workspace_uuid}:{token_digest}"
-        async with self._invitation_lock(lock_key):
+        async with self._invitation_lock(token_digest):
             return await self._run(operation, session=session)
 
     @asynccontextmanager

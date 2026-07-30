@@ -34,6 +34,7 @@ class _Rows:
 def _app():
     return SimpleNamespace(
         logger=Mock(),
+        instance_config=SimpleNamespace(data={}),
         rag_mgr=SimpleNamespace(
             get_all_knowledge_base_details=AsyncMock(return_value=[]),
             get_knowledge_base_details=AsyncMock(return_value=None),
@@ -117,6 +118,21 @@ async def test_create_validates_schema_and_binds_context():
         retrieval_settings={},
         description='desc',
     )
+
+
+@pytest.mark.asyncio
+async def test_create_enforces_workspace_knowledge_base_limit():
+    app = _app()
+    app.instance_config.data = {'system': {'limitation': {'max_knowledge_bases': 2}}}
+    app.rag_mgr.get_all_knowledge_base_details.return_value = [{'uuid': 'kb-a'}, {'uuid': 'kb-b'}]
+    service = KnowledgeService(app)
+
+    with pytest.raises(ValueError, match=r'Maximum number of knowledge bases \(2\) reached'):
+        await service.create_knowledge_base(
+            CONTEXT,
+            {'knowledge_engine_plugin_id': 'author/engine'},
+        )
+    app.rag_mgr.create_knowledge_base.assert_not_awaited()
 
 
 @pytest.mark.asyncio

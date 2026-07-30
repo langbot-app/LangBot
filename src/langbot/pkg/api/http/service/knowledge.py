@@ -56,6 +56,14 @@ class KnowledgeService:
         require_workspace_uuid(context)
         # In new architecture, we delegate entirely to RAGManager which uses plugins.
         # Legacy internal KB creation is removed.
+        limitation = (
+            getattr(getattr(self.ap, 'instance_config', None), 'data', {}).get('system', {}).get('limitation', {})
+        )
+        max_knowledge_bases = limitation.get('max_knowledge_bases', -1)
+        if max_knowledge_bases >= 0:
+            knowledge_bases = await self.ap.rag_mgr.get_all_knowledge_base_details(context)
+            if len(knowledge_bases) >= max_knowledge_bases:
+                raise ValueError(f'Maximum number of knowledge bases ({max_knowledge_bases}) reached')
 
         knowledge_engine_plugin_id = kb_data.get('knowledge_engine_plugin_id')
         if not knowledge_engine_plugin_id:
