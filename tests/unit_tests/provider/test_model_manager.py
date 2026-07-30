@@ -114,9 +114,10 @@ async def test_sync_new_models_from_space_creates_rerank_models(mock_app_for_mod
     app.rerank_models_service.get_rerank_models = AsyncMock(return_value=[])
 
     model_mgr = ModelManager(app)
-    await model_mgr.sync_new_models_from_space()
+    await model_mgr.sync_new_models_from_space(TEST_EXECUTION_CONTEXT)
 
     app.rerank_models_service.create_rerank_model.assert_awaited_once_with(
+        TEST_EXECUTION_CONTEXT,
         {
             'uuid': 'rerank-model-uuid',
             'name': 'Qwen3-Reranker-8B',

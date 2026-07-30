@@ -862,11 +862,11 @@ class TestModelProviderServiceScanProviderModels:
         ap.model_mgr.load_provider = AsyncMock(return_value=runtime_provider)
         ap.llm_model_service.get_llm_models_by_provider = AsyncMock(return_value=[])
         ap.embedding_models_service.get_embedding_models_by_provider = AsyncMock(return_value=[])
-        ap.rerank_models_service.get_rerank_models_by_provider = AsyncMock(
-            return_value=[{'name': 'Qwen3-Reranker-8B'}]
-        )
+        ap.rerank_models_service.get_rerank_models_by_provider = AsyncMock(return_value=[{'name': 'Qwen3-Reranker-8B'}])
 
-        result = await ModelProviderService(ap).scan_provider_models('rerank-scan-uuid', model_type='rerank')
+        result = await ModelProviderService(ap).scan_provider_models(
+            WORKSPACE_UUID, 'rerank-scan-uuid', model_type='rerank'
+        )
 
         assert result['models'][0]['type'] == 'rerank'
         assert result['models'][0]['already_added'] is True
