@@ -495,18 +495,19 @@ class WorkspaceCollaborationService:
             return membership
 
         token_digest = hash_invitation_token(token)
-        async with self._invitation_lock(token_digest):
+        lock_key = f"{workspace_uuid}:{token_digest}"
+        async with self._invitation_lock(lock_key):
             return await self._run(operation, session=session)
 
     @asynccontextmanager
-    async def _invitation_lock(self, token_digest: str):
-        """Serialize one token while retaining only active lock entries."""
+    async def _invitation_lock(self, lock_key: str):
+        """Serialize one token within workspace scope while retaining only active lock entries."""
 
         async with self._invitation_locks_guard:
-            entry = self._invitation_locks.get(token_digest)
+            entry = self._invitation_locks.get(lock_key)
             if entry is None:
                 entry = _InvitationLockEntry(lock=asyncio.Lock())
-                self._invitation_locks[token_digest] = entry
+                self._invitation_locks[lock_key] = entry
             entry.users += 1
 
         await entry.lock.acquire()
@@ -517,7 +518,7 @@ class WorkspaceCollaborationService:
             async with self._invitation_locks_guard:
                 entry.users -= 1
                 if entry.users == 0:
-                    self._invitation_locks.pop(token_digest, None)
+                    self._invitation_locks.pop(lock_key, None)
 
     async def revoke_invitation(
         self,

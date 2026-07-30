@@ -128,7 +128,7 @@ class WebSocketChatRouterGroup(group.RouterGroup):
         self,
         request_context: RequestContext,
         token: str,
-    ) -> None:
+    ) -> RequestContext:
         """Recheck revocable account, membership, permission, and placement state."""
 
         account, _ = await self._authenticate_account(token)
@@ -168,6 +168,7 @@ class WebSocketChatRouterGroup(group.RouterGroup):
             entitlement_revision=request_context.entitlement_revision,
         )
         require_permission(current_context, Permission.RUNTIME_OPERATE)
+        return current_context
 
     async def _get_scoped_adapter(self, request_context: RequestContext, pipeline_uuid: str):
         pipeline = await run_in_workspace_uow(
