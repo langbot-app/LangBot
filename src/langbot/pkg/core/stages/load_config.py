@@ -186,9 +186,14 @@ def _apply_env_overrides_to_config(cfg: dict) -> dict:
                 # At the final key
                 if key in current:
                     if isinstance(current[key], list):
-                        # Convert comma-separated string to list
-                        # e.g., SYSTEM__DISABLED_ADAPTERS="aiocqhttp,dingtalk"
-                        current[key] = [item.strip() for item in env_value.split(',') if item.strip()]
+                        # Convert comma-separated values while preserving the
+                        # element type declared by a non-empty config default.
+                        items = [item.strip() for item in env_value.split(',') if item.strip()]
+                        if current[key]:
+                            exemplar = current[key][0]
+                            current[key] = [convert_value(item, exemplar) for item in items]
+                        else:
+                            current[key] = items
                     elif isinstance(current[key], dict):
                         # Skip dict types
                         pass

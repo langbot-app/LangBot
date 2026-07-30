@@ -152,6 +152,19 @@ class TestApplyEnvOverridesToConfig:
 
         assert result['system']['disabled_adapters'] == ['aiocqhttp', 'dingtalk', 'telegram']
 
+    def test_override_integer_list_preserves_item_type(self):
+        """Comma-separated overrides inherit the existing list item type."""
+        load_config = get_load_config_module()
+
+        cfg = {'vdb': {'pgvector': {'allowed_dimensions': [384, 512]}}}
+        env = {'VDB__PGVECTOR__ALLOWED_DIMENSIONS': '384,512,768'}
+
+        with patch.dict(os.environ, env, clear=True):
+            result = load_config._apply_env_overrides_to_config(cfg)
+
+        assert result['vdb']['pgvector']['allowed_dimensions'] == [384, 512, 768]
+        assert all(isinstance(item, int) for item in result['vdb']['pgvector']['allowed_dimensions'])
+
     def test_override_list_value_empty_items(self):
         """Test that empty items in comma-separated list are filtered."""
         load_config = get_load_config_module()
