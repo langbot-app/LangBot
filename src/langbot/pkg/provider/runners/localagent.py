@@ -6,6 +6,7 @@ import typing
 from .. import runner
 from ...telemetry import features as telemetry_features
 from ..modelmgr import requester as modelmgr_requester
+from ..modelmgr import reasoning as modelmgr_reasoning
 from ..tools.loaders.native import EXEC_TOOL_NAME
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
@@ -60,6 +61,7 @@ class _StreamAccumulator:
         self.msg_idx = 0
         self.accumulated_content = initial_content or ''
         self.last_role = 'assistant'
+        self.provider_specific_fields: dict[str, typing.Any] = {}
         self.msg_sequence = msg_sequence
         self.remove_think = remove_think
         self._think_state = None
@@ -94,6 +96,14 @@ class _StreamAccumulator:
                 if tool_call.function and tool_call.function.arguments:
                     self.tool_calls_map[tool_call.id].function.arguments += tool_call.function.arguments
 
+        if msg.provider_specific_fields:
+            for key, value in msg.provider_specific_fields.items():
+                if key == 'reasoning_content' and isinstance(value, str):
+                    previous = self.provider_specific_fields.get(key, '')
+                    self.provider_specific_fields[key] = f'{previous}{value}'
+                else:
+                    self.provider_specific_fields[key] = value
+
         if msg.is_final:
             self._flush_think_state()
 
@@ -103,6 +113,7 @@ class _StreamAccumulator:
                 role=self.last_role,
                 content=self._maybe_strip_think(self.accumulated_content),
                 tool_calls=list(self.tool_calls_map.values()) if (self.tool_calls_map and msg.is_final) else None,
+                provider_specific_fields=(self.provider_specific_fields or None) if msg.is_final else None,
                 is_final=msg.is_final,
                 msg_sequence=self.msg_sequence,
             )
@@ -115,6 +126,7 @@ class _StreamAccumulator:
             role=self.last_role,
             content=self._maybe_strip_think(self.accumulated_content),
             tool_calls=list(self.tool_calls_map.values()) if self.tool_calls_map else None,
+            provider_specific_fields=self.provider_specific_fields or None,
             msg_sequence=self.msg_sequence,
         )
 
@@ -233,9 +245,10 @@ class LocalAgentRunner(runner.RequestRunner):
                     execution_context,
                     query.use_llm_model_uuid,
                 )
-                candidates.append(primary)
             except ValueError:
                 self.ap.logger.warning(f'Primary model {query.use_llm_model_uuid} not found')
+            else:
+                candidates.append(LocalAgentRunner._apply_pipeline_reasoning_config(query, primary))
 
         # Fallback models
         fallback_uuids = (query.variables or {}).get('_fallback_model_uuids', [])
@@ -245,11 +258,33 @@ class LocalAgentRunner(runner.RequestRunner):
                     execution_context,
                     fb_uuid,
                 )
-                candidates.append(fb_model)
             except ValueError:
                 self.ap.logger.warning(f'Fallback model {fb_uuid} not found, skipping')
+            else:
+                candidates.append(LocalAgentRunner._apply_pipeline_reasoning_config(query, fb_model))
 
         return candidates
+
+    @staticmethod
+    def _apply_pipeline_reasoning_config(
+        query: pipeline_query.Query,
+        model: modelmgr_requester.RuntimeLLMModel,
+    ) -> modelmgr_requester.RuntimeLLMModel:
+        local_agent_config = query.pipeline_config.get('ai', {}).get('local-agent', {})
+        model_config = local_agent_config.get('model', {})
+        reasoning_by_model = model_config.get('reasoning', {}) if isinstance(model_config, dict) else {}
+        level = (
+            reasoning_by_model.get(model.model_entity.uuid, 'provider_default')
+            if isinstance(reasoning_by_model, dict)
+            else 'provider_default'
+        )
+        reasoning_config = modelmgr_reasoning.normalize_reasoning_config({'level': level})
+        return modelmgr_requester.RuntimeLLMModel(
+            execution_context=model.execution_context,
+            model_entity=model.model_entity,
+            provider=model.provider,
+            reasoning_config_override=reasoning_config,
+        )
 
     async def _invoke_with_fallback(
         self,

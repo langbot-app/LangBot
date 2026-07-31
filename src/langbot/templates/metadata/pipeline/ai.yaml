@@ -92,6 +92,7 @@ stages:
         default:
           primary: ''
           fallbacks: []
+          reasoning: {}
       - name: max-round
         label:
           en_US: Max Round

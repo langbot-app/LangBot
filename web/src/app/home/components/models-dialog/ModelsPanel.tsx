@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Plus, Boxes } from 'lucide-react';
 import { httpClient, systemInfo } from '@/app/infra/http/HttpClient';
-import { ModelProvider } from '@/app/infra/entities/api';
+import { ModelProvider, ReasoningConfig } from '@/app/infra/entities/api';
 import {
   Dialog,
   DialogContent,
@@ -15,6 +15,7 @@ import ProviderForm from './component/provider-form/ProviderForm';
 import { ProviderCard } from './components';
 import {
   ExtraArg,
+  DEFAULT_REASONING_CONFIG,
   ModelType,
   ScanModelsResult,
   SelectedScannedModel,
@@ -285,6 +286,7 @@ export default function ModelsPanel({
     name: string,
     abilities: string[],
     extraArgs: ExtraArg[],
+    reasoningConfig: ReasoningConfig,
     contextLength?: number | null,
   ) {
     if (!name.trim()) {
@@ -300,6 +302,7 @@ export default function ModelsPanel({
           name,
           provider_uuid: providerUuid,
           abilities,
+          reasoning_config: reasoningConfig,
           context_length: parseContextLength(
             contextLength,
             t('models.contextLengthInvalid'),
@@ -361,6 +364,7 @@ export default function ModelsPanel({
             name: item.model.name,
             provider_uuid: providerUuid,
             abilities: item.abilities,
+            reasoning_config: DEFAULT_REASONING_CONFIG,
             context_length: item.model.context_length ?? null,
             extra_args: {},
           } as never);
@@ -398,6 +402,7 @@ export default function ModelsPanel({
     name: string,
     abilities: string[],
     extraArgs: ExtraArg[],
+    reasoningConfig: ReasoningConfig,
     contextLength?: number | null,
   ) {
     if (!name.trim()) {
@@ -413,6 +418,7 @@ export default function ModelsPanel({
           name,
           provider_uuid: providerUuid,
           abilities,
+          reasoning_config: reasoningConfig,
           context_length: parseContextLength(
             contextLength,
             t('models.contextLengthInvalid'),
@@ -469,6 +475,7 @@ export default function ModelsPanel({
     modelType: ModelType,
     abilities: string[],
     extraArgs: ExtraArg[],
+    reasoningConfig: ReasoningConfig,
   ) {
     setIsTesting(true);
     setTestResult(null);
@@ -491,6 +498,7 @@ export default function ModelsPanel({
           provider_uuid: '',
           provider: providerData,
           abilities,
+          reasoning_config: reasoningConfig,
           extra_args: extraArgsObj,
         } as never);
       } else if (modelType === 'embedding') {
@@ -554,13 +562,21 @@ export default function ModelsPanel({
         onSpaceLogin={handleSpaceLogin}
         onOpenAddModel={() => setAddModelPopoverOpen(provider.uuid)}
         onCloseAddModel={() => setAddModelPopoverOpen(null)}
-        onAddModel={(modelType, name, abilities, extraArgs, contextLength) =>
+        onAddModel={(
+          modelType,
+          name,
+          abilities,
+          extraArgs,
+          reasoningConfig,
+          contextLength,
+        ) =>
           handleAddModel(
             provider.uuid,
             modelType,
             name,
             abilities,
             extraArgs,
+            reasoningConfig,
             contextLength,
           )
         }
@@ -576,6 +592,7 @@ export default function ModelsPanel({
           name,
           abilities,
           extraArgs,
+          reasoningConfig,
           contextLength,
         ) =>
           handleUpdateModel(
@@ -585,6 +602,7 @@ export default function ModelsPanel({
             name,
             abilities,
             extraArgs,
+            reasoningConfig,
             contextLength,
           )
         }
@@ -593,8 +611,15 @@ export default function ModelsPanel({
         onDeleteModel={(modelId, modelType) =>
           handleDeleteModel(provider.uuid, modelId, modelType)
         }
-        onTestModel={(name, modelType, abilities, extraArgs) =>
-          handleTestModel(provider.uuid, name, modelType, abilities, extraArgs)
+        onTestModel={(name, modelType, abilities, extraArgs, reasoningConfig) =>
+          handleTestModel(
+            provider.uuid,
+            name,
+            modelType,
+            abilities,
+            extraArgs,
+            reasoningConfig,
+          )
         }
         isSubmitting={isSubmitting}
         isTesting={isTesting}

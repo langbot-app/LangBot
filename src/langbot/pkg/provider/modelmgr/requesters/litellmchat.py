@@ -7,7 +7,7 @@ import typing
 import litellm
 from litellm import acompletion, aembedding, arerank
 
-from .. import errors, requester
+from .. import errors, reasoning, requester
 from ....utils import httpclient
 import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
@@ -164,6 +164,19 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
 
     _EMBEDDING_MODEL_HINTS = ('embedding', 'embed', 'bge-', 'e5-', 'm3e', 'gte-', 'text-embedding')
     _RERANK_MODEL_HINTS = ('rerank', 're-rank', 're_rank')
+    _INFERRED_EFFORT_PROVIDERS = frozenset(
+        {
+            'anthropic',
+            'gemini',
+            'groq',
+            'mistral',
+            'openai',
+            'openrouter',
+            'together_ai',
+            'xai',
+        }
+    )
+    _INFERRED_TOGGLE_PROVIDERS = frozenset({'deepseek', 'ollama', 'volcengine'})
 
     default_config: dict[str, typing.Any] = {
         'base_url': '',
@@ -201,7 +214,10 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
             return False
 
         provider = self._get_custom_llm_provider()
-        candidates: list[tuple[str, str | None]] = [(model_name, provider)]
+        candidates: list[tuple[str, str | None]] = [
+            (candidate, None) for candidate in self._metadata_model_candidates(model_name)
+        ]
+        candidates.append((model_name, provider))
         litellm_model_name = self._build_litellm_model_name(model_name)
         if litellm_model_name != model_name:
             candidates.append((litellm_model_name, None))
@@ -268,6 +284,14 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                 deduped_candidates.append(candidate)
         return deduped_candidates
 
+    @staticmethod
+    def _metadata_model_candidates(model_name: str) -> list[str]:
+        """Return known equivalent model IDs used only for LiteLLM metadata lookup."""
+        normalized_model_name = (model_name or '').lower()
+        if normalized_model_name.startswith('mimo-v2.5'):
+            return [f'openrouter/xiaomi/{normalized_model_name}']
+        return []
+
     def _known_context_length_fallback(self, model_name: str) -> int | None:
         normalized_model_name = (model_name or '').lower()
         if normalized_model_name.startswith('deepseek-v4-'):
@@ -287,7 +311,8 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         if not callable(helper):
             return self._known_context_length_fallback(model_name)
 
-        candidates = [model_name]
+        candidates = self._metadata_model_candidates(model_name)
+        candidates.append(model_name)
         litellm_model_name = self._build_litellm_model_name(model_name)
         if litellm_model_name != model_name:
             candidates.append(litellm_model_name)
@@ -313,6 +338,142 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
 
     def _supports_vision(self, model_name: str) -> bool:
         return self._safe_litellm_bool_helper('supports_vision', model_name)
+
+    def _supports_reasoning(self, model_name: str) -> bool:
+        return self._safe_litellm_bool_helper('supports_reasoning', model_name)
+
+    def _reasoning_provider(self, model_name: str) -> str:
+        provider = (self._get_custom_llm_provider() or '').lower()
+        if provider:
+            return provider
+
+        normalized_name = (model_name or '').lower()
+        if '/' in normalized_name:
+            prefix = normalized_name.split('/', 1)[0]
+            if prefix in {
+                'anthropic',
+                'deepseek',
+                'gemini',
+                'groq',
+                'mistral',
+                'ollama',
+                'openai',
+                'openrouter',
+                'together_ai',
+                'volcengine',
+                'xai',
+            }:
+                return prefix
+
+        candidates = self._metadata_provider_candidates(model_name)
+        return candidates[0] if candidates else ''
+
+    def _safe_model_info(self, model_name: str) -> dict[str, typing.Any]:
+        helper = getattr(litellm, 'get_model_info', None)
+        if not callable(helper):
+            return {}
+
+        candidates = [
+            *self._metadata_model_candidates(model_name),
+            model_name,
+            self._build_litellm_model_name(model_name),
+        ]
+        for candidate in candidates:
+            try:
+                info = helper(candidate)
+            except Exception:
+                continue
+            if isinstance(info, dict):
+                return info
+            model_dump = getattr(info, 'model_dump', None)
+            if callable(model_dump):
+                try:
+                    dumped = model_dump()
+                    if isinstance(dumped, dict):
+                        return dumped
+                except Exception:
+                    continue
+        return {}
+
+    def get_reasoning_capabilities(self, model: requester.RuntimeLLMModel) -> dict[str, typing.Any]:
+        model_name = model.model_entity.name
+        abilities = model.model_entity.abilities or []
+        detected = self._supports_reasoning(model_name)
+        declared = 'reasoning' in abilities
+        provider = self._reasoning_provider(model_name)
+        inferred = provider in self._INFERRED_EFFORT_PROVIDERS | self._INFERRED_TOGGLE_PROVIDERS
+        supported = detected or declared or inferred
+        if not supported:
+            return reasoning.default_reasoning_capabilities()
+
+        normalized_name = model_name.lower()
+        levels = ['provider_default']
+
+        if provider == 'deepseek':
+            if 'reasoner' not in normalized_name and '-r1' not in normalized_name:
+                levels.append('disabled')
+            levels.append('enabled')
+        elif provider == 'volcengine':
+            levels.extend(['disabled', 'enabled'])
+        elif provider == 'ollama':
+            levels.append('disabled')
+            if normalized_name.startswith('gpt-oss') or '/gpt-oss' in normalized_name:
+                levels.extend(['low', 'medium', 'high'])
+            else:
+                levels.append('enabled')
+        elif not detected:
+            levels.extend(['low', 'medium', 'high'])
+        else:
+            model_info = self._safe_model_info(model_name)
+            supports_none = model_info.get('supports_none_reasoning_effort') is True
+            if provider == 'anthropic':
+                supports_none = True
+            if provider == 'gemini' and 'gemini-3' in normalized_name:
+                supports_none = False
+            if supports_none:
+                levels.append('disabled')
+
+            for level in ('minimal', 'low', 'medium', 'high'):
+                flag = model_info.get(f'supports_{level}_reasoning_effort')
+                if flag is not False:
+                    levels.append(level)
+            for level in ('xhigh', 'max'):
+                if model_info.get(f'supports_{level}_reasoning_effort') is True:
+                    levels.append(level)
+
+        return {
+            'supported': True,
+            'levels': list(dict.fromkeys(levels)),
+            'source': 'litellm' if detected else ('provider' if inferred else 'manual'),
+        }
+
+    def _build_reasoning_args(self, model: requester.RuntimeLLMModel) -> dict[str, typing.Any]:
+        raw_config = getattr(model, 'reasoning_config_override', None)
+        if raw_config is None:
+            raw_config = getattr(model.model_entity, 'reasoning_config', None)
+        if not isinstance(raw_config, dict):
+            raw_config = None
+        config = reasoning.normalize_reasoning_config(raw_config)
+        level = config['level']
+        if level == 'provider_default':
+            return {}
+
+        capabilities = self.get_reasoning_capabilities(model)
+        try:
+            reasoning.validate_reasoning_capabilities(config, capabilities, model.model_entity.name)
+        except ValueError as exc:
+            raise errors.RequesterError(str(exc)) from exc
+
+        provider = self._reasoning_provider(model.model_entity.name)
+        if level == 'disabled':
+            if provider == 'volcengine':
+                return {'thinking': {'type': 'disabled'}}
+            return {'reasoning_effort': 'none'}
+        if level == 'enabled':
+            if provider in {'deepseek', 'volcengine'}:
+                return {'thinking': {'type': 'enabled'}}
+            return {'reasoning_effort': 'low'}
+        return {'reasoning_effort': level}
 
     def _infer_model_type(self, model_id: str) -> str:
         normalized_id = (model_id or '').lower()
@@ -344,6 +505,11 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
             )
             if supports_provider_reported_vision or self._supports_vision(model_id):
                 abilities.append('vision')
+            supports_provider_reported_reasoning = bool(
+                model_payload and model_payload.get('supports_reasoning') is True
+            )
+            if supports_provider_reported_reasoning or self._supports_reasoning(model_id):
+                abilities.append('reasoning')
             scanned_model['abilities'] = abilities
 
             context_length = self._context_length_from_scan_payload(model_payload)
@@ -670,6 +836,21 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
             args.update(model.model_entity.extra_args)
         args.update(extra_args)
 
+        reasoning_args = self._build_reasoning_args(model)
+        if reasoning_args:
+            conflicts = reasoning.find_reasoning_arg_conflicts(model.model_entity.extra_args)
+            conflicts.extend(reasoning.find_reasoning_arg_conflicts(extra_args))
+            if conflicts:
+                raise errors.RequesterError(
+                    'reasoning_config conflicts with advanced parameters: ' + ', '.join(dict.fromkeys(conflicts))
+                )
+            args.update(reasoning_args)
+            if 'reasoning_effort' in reasoning_args and self._reasoning_provider(model.model_entity.name) == 'openai':
+                allowed_openai_params = args.get('allowed_openai_params') or []
+                if not isinstance(allowed_openai_params, (list, tuple, set)):
+                    raise errors.RequesterError('allowed_openai_params must be an array')
+                args['allowed_openai_params'] = list(dict.fromkeys([*allowed_openai_params, 'reasoning_effort']))
+
         if funcs:
             tools = await self.ap.tool_mgr.generate_tools_for_openai(funcs)
             if tools:
@@ -699,6 +880,10 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
 
             content = message_data.get('content', '')
             reasoning_content = message_data.get('reasoning_content', None)
+            if reasoning_content:
+                provider_fields = dict(message_data.get('provider_specific_fields') or {})
+                provider_fields['reasoning_content'] = reasoning_content
+                message_data['provider_specific_fields'] = provider_fields
             message_data['content'] = self._process_thinking_content(content, reasoning_content, remove_think)
 
             if 'reasoning_content' in message_data:
@@ -760,13 +945,13 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
 
                 delta_content = delta.get('content', '')
                 reasoning_content = delta.get('reasoning_content', '')
+                provider_fields = dict(delta.get('provider_specific_fields') or {})
 
                 # Handle reasoning_content based on remove_think flag
                 if reasoning_content:
+                    provider_fields['reasoning_content'] = reasoning_content
                     if remove_think:
-                        # Skip reasoning content when remove_think is True
-                        chunk_idx += 1
-                        continue
+                        delta_content = None
                     else:
                         # Use reasoning_content as the displayed content
                         delta_content = reasoning_content
@@ -779,7 +964,7 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
 
                 tool_calls = self._normalize_stream_tool_calls(delta.get('tool_calls'), tool_call_state)
 
-                if chunk_idx == 0 and not delta_content and not tool_calls:
+                if chunk_idx == 0 and not delta_content and not tool_calls and not provider_fields:
                     chunk_idx += 1
                     continue
 
@@ -791,8 +976,8 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                 }
 
                 # Preserve provider_specific_fields from delta (e.g., Gemini thought_signatures)
-                if delta.get('provider_specific_fields'):
-                    chunk_data['provider_specific_fields'] = delta['provider_specific_fields']
+                if provider_fields:
+                    chunk_data['provider_specific_fields'] = provider_fields
 
                 chunk_data = {k: v for k, v in chunk_data.items() if v is not None}
                 yield provider_message.MessageChunk(**chunk_data)

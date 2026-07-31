@@ -144,6 +144,7 @@ function getValueSchema(spec: DynamicFormValueSpec) {
       return z.object({
         primary: z.string(),
         fallbacks: z.array(z.string()),
+        reasoning: z.record(z.string()),
       });
     case DynamicFormItemType.PROMPT_EDITOR:
       return z.array(
@@ -488,12 +489,24 @@ export default function DynamicFormComponent({
                 (v): v is string => typeof v === 'string',
               )
             : [],
+          reasoning:
+            obj.reasoning != null &&
+            typeof obj.reasoning === 'object' &&
+            !Array.isArray(obj.reasoning)
+              ? Object.fromEntries(
+                  Object.entries(obj.reasoning).filter(
+                    (entry): entry is [string, string] =>
+                      typeof entry[1] === 'string',
+                  ),
+                )
+              : {},
         };
       }
       // Legacy string format or any other unexpected type
       return {
         primary: typeof value === 'string' ? value : '',
         fallbacks: [],
+        reasoning: {},
       };
     }
     if (item.type === 'prompt-editor') {

@@ -649,6 +649,7 @@ class ModelManager:
             provider_uuid=runtime_provider.provider_entity.uuid,
             abilities=model_info.get('abilities', []),
             context_length=model_info.get('context_length'),
+            reasoning_config=model_info.get('reasoning_config', {'level': 'provider_default'}),
             extra_args=model_info.get('extra_args', {}),
         )
         return self._build_llm_model(execution_context, model_entity, runtime_provider)

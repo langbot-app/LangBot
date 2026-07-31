@@ -9,8 +9,11 @@ Run: uv run pytest tests/integration/persistence/test_migrations.py -q
 
 from __future__ import annotations
 
+import json
+
 import pytest
 import sqlalchemy
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from langbot.pkg.entity.persistence.base import Base
@@ -189,6 +192,66 @@ class TestSQLiteMigrationUpgrade:
 
         await run_alembic_upgrade(sqlite_engine, 'head')
         assert await get_alembic_current(sqlite_engine) == _get_script_head()
+
+    @pytest.mark.asyncio
+    async def test_reasoning_config_migrates_existing_models(self, sqlite_engine):
+        """Upgrade from 0017 backfills reasoning config and keeps a database default."""
+        async with sqlite_engine.begin() as conn:
+            await conn.execute(
+                text(
+                    """
+                    CREATE TABLE llm_models (
+                        uuid VARCHAR(255) PRIMARY KEY,
+                        name VARCHAR(255) NOT NULL,
+                        provider_uuid VARCHAR(255) NOT NULL,
+                        abilities JSON NOT NULL,
+                        context_length INTEGER,
+                        extra_args JSON NOT NULL,
+                        prefered_ranking INTEGER NOT NULL DEFAULT 0
+                    )
+                    """
+                )
+            )
+            await conn.execute(
+                text(
+                    """
+                    INSERT INTO llm_models (
+                        uuid, name, provider_uuid, abilities, extra_args, prefered_ranking
+                    ) VALUES (
+                        'existing-model', 'Existing Model', 'provider', '[]', '{}', 0
+                    )
+                    """
+                )
+            )
+
+        await run_alembic_stamp(sqlite_engine, '0017_oss_workspace_identity')
+        await run_alembic_upgrade(sqlite_engine, 'head')
+
+        async with sqlite_engine.begin() as conn:
+            columns = await conn.run_sync(lambda sync_conn: sqlalchemy.inspect(sync_conn).get_columns('llm_models'))
+            reasoning_column = next(column for column in columns if column['name'] == 'reasoning_config')
+            assert reasoning_column['nullable'] is False
+
+            existing_value = (
+                await conn.execute(text("SELECT reasoning_config FROM llm_models WHERE uuid = 'existing-model'"))
+            ).scalar_one()
+            assert json.loads(existing_value) == {'level': 'provider_default'}
+
+            await conn.execute(
+                text(
+                    """
+                    INSERT INTO llm_models (
+                        uuid, name, provider_uuid, abilities, extra_args, prefered_ranking
+                    ) VALUES (
+                        'new-model', 'New Model', 'provider', '[]', '{}', 0
+                    )
+                    """
+                )
+            )
+            new_value = (
+                await conn.execute(text("SELECT reasoning_config FROM llm_models WHERE uuid = 'new-model'"))
+            ).scalar_one()
+            assert json.loads(new_value) == {'level': 'provider_default'}
 
 
 class TestSQLiteMigrationFreshDatabase:
