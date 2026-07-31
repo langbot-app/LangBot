@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
+from langbot.pkg.api.http.context import ExecutionContext
 from langbot.pkg.provider.tools.loaders.mcp import (
     MCP_TOOL_LIST_RESOURCES,
     MCP_TOOL_READ_RESOURCE,
@@ -13,6 +14,41 @@ from langbot.pkg.provider.tools.loaders.mcp import (
 )
 from langbot.pkg.provider.tools.loaders.plugin import PluginToolLoader
 from langbot_plugin.api.entities.builtin.resource.tool import LLMTool
+
+
+_CONTEXT = ExecutionContext(
+    instance_uuid='instance-a',
+    workspace_uuid='workspace-a',
+    placement_generation=1,
+    query_uuid='query-a',
+)
+
+
+def _mcp_app() -> SimpleNamespace:
+    return SimpleNamespace(
+        logger=Mock(),
+        workspace_service=SimpleNamespace(
+            get_execution_binding=AsyncMock(
+                return_value=SimpleNamespace(
+                    instance_uuid=_CONTEXT.instance_uuid,
+                    workspace_uuid=_CONTEXT.workspace_uuid,
+                    placement_generation=_CONTEXT.placement_generation,
+                )
+            )
+        ),
+    )
+
+
+def _query() -> SimpleNamespace:
+    return SimpleNamespace(
+        instance_uuid=_CONTEXT.instance_uuid,
+        workspace_uuid=_CONTEXT.workspace_uuid,
+        placement_generation=_CONTEXT.placement_generation,
+        query_uuid=_CONTEXT.query_uuid,
+        bot_uuid=None,
+        pipeline_uuid=None,
+        variables={},
+    )
 
 
 def make_tool(name: str) -> LLMTool:
@@ -38,9 +74,10 @@ async def test_two_mcp_servers_with_same_tool_route_to_authorized_server():
         get_tools=Mock(return_value=[tool]),
         invoke_mcp_tool=AsyncMock(return_value='from-b'),
     )
-    loader = MCPLoader(SimpleNamespace(logger=Mock()))
-    loader.sessions = {'first': first, 'second': second}
-    query = SimpleNamespace(variables={})
+    loader = MCPLoader(_mcp_app())
+    loader._register_session(_CONTEXT, 'first', first)
+    loader._register_session(_CONTEXT, 'second', second)
+    query = _query()
 
     result = await loader.invoke_tool(
         'shared_tool',
@@ -67,12 +104,12 @@ async def test_reserved_name_routes_to_real_mcp_tool_when_source_id_is_present(r
         get_tools=Mock(return_value=[real_tool]),
         invoke_mcp_tool=AsyncMock(return_value='real-result'),
     )
-    loader = MCPLoader(SimpleNamespace(logger=Mock()))
-    loader.sessions = {'real': session}
-    query = SimpleNamespace(variables={})
+    loader = MCPLoader(_mcp_app())
+    loader._register_session(_CONTEXT, 'real', session)
+    query = _query()
 
-    assert await loader.has_tool(reserved_name, source_id='srv-real') is True
-    assert await loader.get_tool(reserved_name, source_id='srv-real') is real_tool
+    assert await loader.has_tool(_CONTEXT, reserved_name, source_id='srv-real') is True
+    assert await loader.get_tool(_CONTEXT, reserved_name, source_id='srv-real') is real_tool
     result = await loader.invoke_tool(reserved_name, {}, query, source_id='srv-real')
 
     assert result == 'real-result'
@@ -102,14 +139,14 @@ async def test_reserved_name_uses_host_synthetic_tool_when_source_id_is_none(
         has_resource_support=Mock(return_value=True),
         invoke_mcp_tool=AsyncMock(return_value='real-result'),
     )
-    loader = MCPLoader(SimpleNamespace(logger=Mock()))
-    loader.sessions = {'real': session}
+    loader = MCPLoader(_mcp_app())
+    loader._register_session(_CONTEXT, 'real', session)
     synthetic_invoke = AsyncMock(return_value='synthetic-result')
     setattr(loader, invoke_method, synthetic_invoke)
-    query = SimpleNamespace(variables={})
+    query = _query()
 
-    assert await loader.has_tool(reserved_name, source_id=None) is True
-    tool = await loader.get_tool(reserved_name, source_id=None)
+    assert await loader.has_tool(_CONTEXT, reserved_name, source_id=None) is True
+    tool = await loader.get_tool(_CONTEXT, reserved_name, source_id=None)
     result = await loader.invoke_tool(reserved_name, {}, query, source_id=None)
 
     assert tool is not None
@@ -137,7 +174,7 @@ async def test_two_plugins_with_same_tool_forward_only_authorized_plugin():
         call_tool=AsyncMock(return_value='authorized-result'),
     )
     loader = PluginToolLoader(SimpleNamespace(plugin_connector=connector, logger=Mock()))
-    query = SimpleNamespace(session=SimpleNamespace(), query_id=7)
+    query = SimpleNamespace(session=SimpleNamespace(), query_id=7, query_uuid='query-a')
     query.session.model_dump = Mock(return_value={})
 
     result = await loader.invoke_tool(
@@ -154,4 +191,5 @@ async def test_two_plugins_with_same_tool_forward_only_authorized_plugin():
         session=query.session,
         query_id=7,
         bound_plugins=['authorized/plugin'],
+        query_uuid='query-a',
     )

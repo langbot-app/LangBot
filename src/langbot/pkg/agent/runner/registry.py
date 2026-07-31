@@ -10,6 +10,8 @@ from langbot_plugin.api.entities.builtin.agent_runner.manifest import (
 )
 
 from ...core import app
+from ...api.http.context import ExecutionContext
+from ...api.http.service.tenant import TenantContext
 from .descriptor import AgentRunnerDescriptor
 from .id import parse_runner_id, format_runner_id
 from .errors import RunnerNotFoundError, RunnerNotAuthorizedError
@@ -28,16 +30,27 @@ class AgentRunnerRegistry:
 
     ap: app.Application
 
-    _cache: dict[str, AgentRunnerDescriptor] | None
-    """Cached runner descriptors keyed by runner ID"""
+    _cache: dict[tuple[str, str, int], dict[str, AgentRunnerDescriptor]]
+    """Runner descriptors keyed by immutable Workspace execution scope."""
 
     _cache_lock: asyncio.Lock
     """Lock for cache refresh operations"""
 
     def __init__(self, ap: app.Application):
         self.ap = ap
-        self._cache = None
+        self._cache = {}
         self._cache_lock = asyncio.Lock()
+
+    @staticmethod
+    def _cache_key(context: ExecutionContext) -> tuple[str, str, int]:
+        return (
+            context.instance_uuid,
+            context.workspace_uuid,
+            context.placement_generation,
+        )
+
+    async def _resolve_context(self, context: TenantContext) -> ExecutionContext:
+        return await self.ap.plugin_connector.require_workspace_context(context)
 
     async def _discover_runners(self) -> dict[str, AgentRunnerDescriptor]:
         """Discover runners from plugin runtime.
@@ -123,17 +136,20 @@ class AgentRunnerRegistry:
             raw_manifest=manifest,
         )
 
-    async def refresh(self) -> None:
+    async def refresh(self, context: TenantContext) -> None:
         """Refresh runner cache.
 
         Always discovers ALL runners (no bound_plugins filter).
         The cache contains unfiltered discovery results.
         """
+        execution_context = await self._resolve_context(context)
+        runners = await self._discover_runners()
         async with self._cache_lock:
-            self._cache = await self._discover_runners()
+            self._cache[self._cache_key(execution_context)] = runners
 
     async def list_runners(
         self,
+        context: TenantContext,
         bound_plugins: list[str] | None = None,
         use_cache: bool = True,
     ) -> list[AgentRunnerDescriptor]:
@@ -146,18 +162,21 @@ class AgentRunnerRegistry:
         Returns:
             List of runner descriptors
         """
-        if use_cache and self._cache is not None and self._cache:
+        execution_context = await self._resolve_context(context)
+        cache_key = self._cache_key(execution_context)
+        cached = self._cache.get(cache_key)
+        if use_cache and cached:
             # Filter from cache. Do not treat an empty cache as final because the
             # plugin runtime may still be launching installed plugins when the
             # first metadata request arrives.
-            return self._filter_runners_by_bound_plugins(self._cache, bound_plugins)
+            return self._filter_runners_by_bound_plugins(cached, bound_plugins)
 
         # Discover fresh (always full list)
         runners = await self._discover_runners()
 
         # Update cache (full list, unfiltered)
         async with self._cache_lock:
-            self._cache = runners
+            self._cache[cache_key] = runners
 
         # Filter locally
         return self._filter_runners_by_bound_plugins(runners, bound_plugins)
@@ -191,6 +210,7 @@ class AgentRunnerRegistry:
 
     async def get(
         self,
+        context: TenantContext,
         runner_id: str,
         bound_plugins: list[str] | None = None,
     ) -> AgentRunnerDescriptor:
@@ -213,14 +233,8 @@ class AgentRunnerRegistry:
         except ValueError as e:
             raise RunnerNotFoundError(runner_id) from e
 
-        # Get from cache or discover (always full list)
-        if self._cache is None:
-            await self.refresh()
-
-        if self._cache is None:
-            raise RunnerNotFoundError(runner_id)
-
-        descriptor = self._cache.get(runner_id)
+        runners = await self.list_runners(context, bound_plugins=None)
+        descriptor = next((item for item in runners if item.id == runner_id), None)
         if descriptor is None:
             raise RunnerNotFoundError(runner_id)
 
@@ -232,13 +246,16 @@ class AgentRunnerRegistry:
 
         return descriptor
 
-    async def get_runner_metadata_for_pipeline(self) -> list[dict[str, typing.Any]]:
+    async def get_runner_metadata_for_pipeline(
+        self,
+        context: TenantContext,
+    ) -> tuple[list[dict[str, typing.Any]], list[dict[str, typing.Any]]]:
         """Get runner metadata for pipeline configuration UI.
 
         Returns runner options and their config schemas for the DynamicForm.
         """
         # Get all runners (no bound plugin filter for metadata listing)
-        runners = await self.list_runners(bound_plugins=None)
+        runners = await self.list_runners(context, bound_plugins=None)
 
         options = []
         stages = []

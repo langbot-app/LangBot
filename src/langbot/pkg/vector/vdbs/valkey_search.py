@@ -6,7 +6,12 @@ import struct
 from typing import Any
 
 from langbot.pkg.core import app
-from langbot.pkg.vector.vdb import VectorDatabase, SearchType
+from langbot.pkg.vector.vdb import (
+    VectorDatabase,
+    SearchType,
+    remember_bounded_set,
+    runtime_cache_limit,
+)
 from langbot.pkg.vector.filter_utils import normalize_filter, strip_unsupported_fields
 
 try:
@@ -77,6 +82,7 @@ _MATCH_ALL = '-@file_id:{__langbot_match_all_sentinel__}'
 # files/filters matching more than one page of chunks are fully removed
 # (no silent truncation / orphaned vectors).
 _DELETE_SCAN_BATCH = 10000
+_MAX_DELETE_SCAN_ROUNDS = 1000
 
 # Characters Valkey Search's TAG query parser cannot handle even when
 # backslash-escaped (the brace delimiters and the wildcard).  file_id TAG
@@ -153,6 +159,7 @@ class ValkeySearchVectorDatabase(VectorDatabase):
         self._client_lock = asyncio.Lock()
         # Index names we have already ensured this process lifetime.
         self._ensured_indexes: set[str] = set()
+        self._runtime_cache_limit = runtime_cache_limit(ap)
         # Whether we have already warned about the non-honored vector_weight.
         self._vector_weight_warned = False
 
@@ -364,7 +371,7 @@ class ValkeySearchVectorDatabase(VectorDatabase):
         # check-then-create TOCTOU window.
         try:
             await ft.info(client, index)
-            self._ensured_indexes.add(index)
+            remember_bounded_set(self._ensured_indexes, index, self._runtime_cache_limit)
             return
         except RequestError:
             pass
@@ -389,7 +396,7 @@ class ValkeySearchVectorDatabase(VectorDatabase):
         ]
         options = FtCreateOptions(data_type=DataType.HASH, prefixes=[self._key_prefix(collection)])
         await ft.create(client, index, schema, options)
-        self._ensured_indexes.add(index)
+        remember_bounded_set(self._ensured_indexes, index, self._runtime_cache_limit)
         self.ap.logger.info(
             f"Valkey Search index '{index}' created (dim={dim}, algo={self._algorithm.value}, "
             f'metric={self._distance_metric.value})'
@@ -646,11 +653,9 @@ class ValkeySearchVectorDatabase(VectorDatabase):
             return
 
         query = f'@{_FIELD_FILE_ID}:{{{self._encode_and_escape_tag(file_id)}}}'
-        keys = await self._search_keys(client, index, query)
-        if keys:
-            await client.delete(keys)
+        deleted = await self._delete_search_results(client, index, query)
         self.ap.logger.info(
-            f"Deleted {len(keys)} embeddings from Valkey Search collection '{collection}' with file_id: {file_id}"
+            f"Deleted {deleted} embeddings from Valkey Search collection '{collection}' with file_id: {file_id}"
         )
 
     async def delete_by_filter(self, collection: str, filter: dict[str, Any]) -> int:
@@ -670,11 +675,9 @@ class ValkeySearchVectorDatabase(VectorDatabase):
                 collection,
             )
             return 0
-        keys = await self._search_keys(client, index, query)
-        if keys:
-            await client.delete(keys)
-        self.ap.logger.info(f"Deleted {len(keys)} embeddings from Valkey Search collection '{collection}' by filter")
-        return len(keys)
+        deleted = await self._delete_search_results(client, index, query)
+        self.ap.logger.info(f"Deleted {deleted} embeddings from Valkey Search collection '{collection}' by filter")
+        return deleted
 
     async def list_by_filter(
         self,
@@ -772,43 +775,35 @@ class ValkeySearchVectorDatabase(VectorDatabase):
         # was being paid on the first query to each collection.
         try:
             await ft.info(client, index)
-            self._ensured_indexes.add(index)
+            remember_bounded_set(self._ensured_indexes, index, self._runtime_cache_limit)
             return True
         except RequestError:
             return False
 
-    async def _search_keys(self, client: GlideClient, index: str, query: str) -> list[str]:
-        """Return all matching document keys for a query (NOCONTENT).
+    async def _delete_search_results(self, client: GlideClient, index: str, query: str) -> int:
+        """Delete matching hashes in fixed batches without retaining every key.
 
-        Paginates through the full result set in pages of ``_DELETE_SCAN_BATCH``
-        so that queries matching more than one page of chunks are fully
-        enumerated (avoids silently truncating deletes and leaving orphaned
-        vectors).
+        Each deletion shrinks the result set, so every search starts at offset
+        zero. Advancing an offset after deleting the preceding page would skip
+        records as the remaining results shift left.
         """
-        keys: list[str] = []
-        offset = 0
-        while True:
+
+        deleted = 0
+        for _round in range(_MAX_DELETE_SCAN_ROUNDS):
             options = FtSearchOptions(
                 nocontent=True,
-                limit=FtSearchLimit(offset, _DELETE_SCAN_BATCH),
+                limit=FtSearchLimit(0, _DELETE_SCAN_BATCH),
                 dialect=2,
             )
             try:
                 reply = await ft.search(client, index, query, options)
             except Exception as exc:
                 if self._is_missing_index_error(exc):
-                    return keys
+                    return deleted
                 raise
 
             if not reply or len(reply) < 2:
-                break
-
-            # reply[0] is the total match count; reply[1] holds this page.
-            total = 0
-            try:
-                total = int(reply[0])
-            except (TypeError, ValueError):
-                total = 0
+                return deleted
 
             docs = reply[1]
             if isinstance(docs, dict):
@@ -819,11 +814,17 @@ class ValkeySearchVectorDatabase(VectorDatabase):
                 page = []
 
             if not page:
-                break
-            keys.extend(page)
+                return deleted
+            await client.delete(page)
+            deleted += len(page)
 
-            offset += len(page)
-            if offset >= total or len(page) < _DELETE_SCAN_BATCH:
-                break
+            try:
+                total = int(reply[0])
+            except (TypeError, ValueError):
+                total = len(page)
+            if total <= len(page) or len(page) < _DELETE_SCAN_BATCH:
+                return deleted
 
-        return keys
+        raise RuntimeError(
+            f'Valkey deletion exceeded {_MAX_DELETE_SCAN_ROUNDS} batches ({_DELETE_SCAN_BATCH} keys per batch)'
+        )

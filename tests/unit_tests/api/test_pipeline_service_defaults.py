@@ -19,7 +19,7 @@ class FakeRegistry:
     def __init__(self, runners):
         self.runners = runners
 
-    async def list_runners(self, bound_plugins=None):
+    async def list_runners(self, context, bound_plugins=None):
         return self.runners
 
 
@@ -54,7 +54,7 @@ async def test_default_pipeline_config_uses_first_installed_runner_schema():
         agent_runner_registry=FakeRegistry([custom_agent, local_agent]),
     )
 
-    config = await PipelineService(ap).get_default_pipeline_config()
+    config = await PipelineService(ap).get_default_pipeline_config('workspace-test')
 
     assert config['ai']['runner']['id'] == 'plugin:alice/custom-agent/default'
     assert config['ai']['runner_config'] == {
@@ -71,7 +71,7 @@ async def test_default_pipeline_config_stays_neutral_without_installed_runners()
         agent_runner_registry=FakeRegistry([]),
     )
 
-    config = await PipelineService(ap).get_default_pipeline_config()
+    config = await PipelineService(ap).get_default_pipeline_config('workspace-test')
 
     assert config['ai']['runner']['id'] == ''
     assert config['ai']['runner_config'] == {}

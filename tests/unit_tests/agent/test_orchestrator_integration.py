@@ -19,6 +19,7 @@ from langbot.pkg.agent.runner.session_registry import get_session_registry
 from langbot.pkg.agent.runner.run_ledger_store import RunLedgerStore
 from langbot.pkg.agent.runner.interaction_store import InteractionStore
 from langbot.pkg.agent.runner.persistent_state_store import reset_persistent_state_store
+from langbot.pkg.api.http.context import ExecutionContext
 from langbot_plugin.api.entities.builtin.platform import entities as platform_entities
 from langbot_plugin.api.entities.builtin.platform import events as platform_events
 from langbot_plugin.api.entities.builtin.platform import message as platform_message
@@ -28,6 +29,11 @@ from langbot_plugin.api.entities.builtin.resource import tool as resource_tool
 
 
 RUNNER_ID = 'plugin:langbot-team/LocalAgent/default'
+TEST_CONTEXT = ExecutionContext(
+    instance_uuid='instance-test',
+    workspace_uuid='workspace-test',
+    placement_generation=1,
+)
 
 
 class FakeLogger:
@@ -103,8 +109,15 @@ class FakeRegistry:
         self.descriptor = descriptor
         self.calls: list[dict] = []
 
-    async def get(self, runner_id, bound_plugins=None):
-        self.calls.append({'runner_id': runner_id, 'bound_plugins': bound_plugins})
+    async def get(self, context, runner_id, bound_plugins=None):
+        self.calls.append(
+            {
+                'context': context,
+                'runner_id': runner_id,
+                'bound_plugins': bound_plugins,
+            }
+        )
+        assert context.workspace_uuid == TEST_CONTEXT.workspace_uuid
         assert runner_id == self.descriptor.id
         return self.descriptor
 
@@ -129,7 +142,7 @@ class FakeApplication:
             get_knowledge_base_by_uuid=AsyncMock(return_value=FakeKnowledgeBase('kb_001'))
         )
         self.skill_mgr = types.SimpleNamespace(
-            skills={
+            get_skills=lambda context: {
                 'demo': {
                     'name': 'demo',
                     'display_name': 'Demo Skill',
@@ -201,7 +214,7 @@ def make_query():
         using_conversation=FakeConversation(),
     )
 
-    return types.SimpleNamespace(
+    query = types.SimpleNamespace(
         query_id=1001,
         launcher_type=provider_session.LauncherTypes.PERSON,
         launcher_id='user_001',
@@ -254,6 +267,8 @@ def make_query():
             )
         ],
     )
+    query._execution_context = TEST_CONTEXT
+    return query
 
 
 def test_context_builder_includes_consumable_base64_attachments():
@@ -903,6 +918,7 @@ class TestQueryEntrySessionQueryId:
 
             def __init__(self):
                 self.resolver = object.__new__(BoxService)
+                self.resolver._cloud_managed = False
                 self.materialize_session_id = None
 
             async def materialize_inbound_attachments(self, query):
@@ -1043,7 +1059,14 @@ class TestQueryEntrySessionQueryId:
             enabled=True,
         )
 
-        messages = [message async for message in orchestrator.run(event, binding)]
+        messages = [
+            message
+            async for message in orchestrator.run(
+                event,
+                binding,
+                adapter_context={'_execution_context': TEST_CONTEXT},
+            )
+        ]
 
         assert len(messages) == 1
         # Verify session during run has query_id=None

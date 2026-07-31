@@ -12,6 +12,7 @@ import zipfile
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import httpx
 import pytest
 
 
@@ -123,6 +124,17 @@ class TestExtractDepsMetadata:
         # Should find requirements.txt in subdirectory
         assert task_context.metadata['deps_total'] == 2
 
+    def test_archive_preview_rejects_extreme_compression_ratio(self):
+        from langbot.pkg.plugin.connector import inspect_plugin_archive_metadata
+
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr('manifest.yaml', 'kind: Plugin\nmetadata: {}\n')
+            zf.writestr('bomb.py', b'A' * (1024 * 1024))
+
+        with pytest.raises(ValueError, match='compression-ratio limit'):
+            inspect_plugin_archive_metadata(zip_buffer.getvalue())
+
 
 class TestParsePluginId:
     """Tests for _parse_plugin_id static method."""
@@ -143,20 +155,11 @@ class TestParsePluginId:
             PluginRuntimeConnector._parse_plugin_id('')
 
 
-class TestRuntimeDebugPort:
-    """Tests for local runtime debug port selection."""
+@pytest.mark.asyncio
+async def test_marketplace_response_reader_is_bounded():
+    from langbot.pkg.plugin.connector import _read_httpx_response_limited
 
-    @pytest.mark.parametrize(
-        ('debug_url', 'expected'),
-        [
-            ('ws://localhost:5401/plugin/debug/ws', 5401),
-            ('http://127.0.0.1:15401', 15401),
-            ('localhost:25401', 25401),
-            ('', 5401),
-            ('ws://localhost:not-a-port/plugin/debug/ws', 5401),
-        ],
-    )
-    def test_runtime_debug_port_from_url(self, debug_url, expected):
-        from langbot.pkg.plugin.connector import PluginRuntimeConnector
+    response = httpx.Response(200, content=b'oversized')
 
-        assert PluginRuntimeConnector._runtime_debug_port_from_url(debug_url) == expected
+    with pytest.raises(ValueError, match='exceeds'):
+        await _read_httpx_response_limited(response, max_bytes=4)

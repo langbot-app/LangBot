@@ -452,10 +452,16 @@ export interface ApiRespSystemInfo {
   debug: boolean;
   version: string;
   edition: string;
+  /** Independent instance-level gate for local stdio MCP transports. */
+  mcp_stdio_enabled: boolean;
   cloud_service_url: string;
   enable_marketplace: boolean;
   allow_modify_login_info: boolean;
   disable_models_service: boolean;
+  invitation_delivery?: {
+    enabled: boolean;
+    provider: 'resend' | 'smtp' | null;
+  };
   limitation: SystemLimitation;
   /** Public outbound IPs of the deployment (``system.outbound_ips`` in
    *  config.yaml). Shown on adapter config forms whose platform requires
@@ -625,18 +631,21 @@ export interface MCPServerExtraArgsSSE {
   headers: Record<string, string>;
   timeout: number;
   ssereadtimeout: number;
+  tool_call_timeout_sec?: number;
 }
 
 export interface MCPServerExtraArgsStdio {
   command: string;
   args: string[];
   env: Record<string, string>;
+  tool_call_timeout_sec?: number;
 }
 
 export interface MCPServerExtraArgsHttp {
   url: string;
   headers: Record<string, string>;
   timeout: number;
+  tool_call_timeout_sec?: number;
 }
 
 // "remote" mode: the user only supplies a URL; the backend auto-detects the
@@ -646,6 +655,7 @@ export interface MCPServerExtraArgsRemote {
   url: string;
   headers?: Record<string, string>;
   timeout?: number;
+  tool_call_timeout_sec?: number;
 }
 
 export enum MCPSessionStatus {

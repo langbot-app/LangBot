@@ -1,7 +1,13 @@
 """Tests for Lark adapter helper behavior."""
 
+import threading
+from unittest.mock import MagicMock
+
+import pytest
+
 from langbot.pkg.platform.sources.lark import (
     LarkAdapter,
+    _decode_lark_base64_limited,
     _lark_clean_form_content,
     _lark_completed_input_lines,
     _lark_current_input_defs,
@@ -9,6 +15,27 @@ from langbot.pkg.platform.sources.lark import (
     _lark_should_update_stream_element,
     _lark_visible_form_content,
 )
+
+
+def test_lark_base64_decode_is_bounded(monkeypatch):
+    import langbot.pkg.platform.sources.lark as lark_module
+
+    monkeypatch.setattr(lark_module, '_MAX_LARK_MEDIA_BYTES', 4)
+
+    with pytest.raises(ValueError, match='exceeds'):
+        _decode_lark_base64_limited('A' * 12)
+
+
+def test_lark_threadsafe_callbacks_are_bounded():
+    adapter = LarkAdapter.model_construct()
+    adapter.threadsafe_event_lock = threading.Lock()
+    adapter.threadsafe_event_futures = {MagicMock(done=MagicMock(return_value=False)) for _ in range(100)}
+
+    async def callback():
+        raise AssertionError('rejected callback must not run')
+
+    assert adapter._schedule_threadsafe_event(callback()) is None
+    assert len(adapter.threadsafe_event_futures) == 100
 
 
 def test_lark_current_input_defs_only_returns_active_stage():

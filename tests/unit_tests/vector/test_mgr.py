@@ -6,7 +6,9 @@ based on configuration, without actually creating real VDB instances.
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from tests.utils.import_isolation import isolated_sys_modules
 
@@ -38,7 +40,8 @@ class TestVectorDBManagerInitialization:
 
         return mocks
 
-    def test_initialize_no_config_defaults_to_chroma(self):
+    @pytest.mark.asyncio
+    async def test_initialize_no_config_defaults_to_chroma(self):
         """No vdb config defaults to Chroma."""
         mock_app = self._create_mock_app(None)
 
@@ -53,16 +56,14 @@ class TestVectorDBManagerInitialization:
 
             mgr = VectorDBManager(mock_app)
 
-            # Run initialize synchronously for test
-            import asyncio
-
-            asyncio.run(mgr.initialize())
+            await mgr.initialize()
 
             # Chroma should be instantiated
             mock_chroma_class.assert_called_once_with(mock_app)
             mock_app.logger.warning.assert_called()
 
-    def test_initialize_chroma_backend(self):
+    @pytest.mark.asyncio
+    async def test_initialize_chroma_backend(self):
         """Explicit chroma config uses Chroma backend."""
         vdb_config = {'use': 'chroma'}
         mock_app = self._create_mock_app(vdb_config)
@@ -76,14 +77,13 @@ class TestVectorDBManagerInitialization:
 
             mgr = VectorDBManager(mock_app)
 
-            import asyncio
-
-            asyncio.run(mgr.initialize())
+            await mgr.initialize()
 
             mock_chroma_class.assert_called_once_with(mock_app)
             mock_app.logger.info.assert_called()
 
-    def test_initialize_qdrant_backend(self):
+    @pytest.mark.asyncio
+    async def test_initialize_qdrant_backend(self):
         """Qdrant config uses Qdrant backend."""
         vdb_config = {'use': 'qdrant'}
         mock_app = self._create_mock_app(vdb_config)
@@ -97,13 +97,12 @@ class TestVectorDBManagerInitialization:
 
             mgr = VectorDBManager(mock_app)
 
-            import asyncio
-
-            asyncio.run(mgr.initialize())
+            await mgr.initialize()
 
             mock_qdrant_class.assert_called_once_with(mock_app)
 
-    def test_initialize_seekdb_backend(self):
+    @pytest.mark.asyncio
+    async def test_initialize_seekdb_backend(self):
         """SeekDB config uses SeekDB backend."""
         vdb_config = {'use': 'seekdb'}
         mock_app = self._create_mock_app(vdb_config)
@@ -117,13 +116,12 @@ class TestVectorDBManagerInitialization:
 
             mgr = VectorDBManager(mock_app)
 
-            import asyncio
-
-            asyncio.run(mgr.initialize())
+            await mgr.initialize()
 
             mock_seekdb_class.assert_called_once_with(mock_app)
 
-    def test_initialize_valkey_search_backend(self):
+    @pytest.mark.asyncio
+    async def test_initialize_valkey_search_backend(self):
         """Valkey Search config uses ValkeySearchVectorDatabase backend."""
         vdb_config = {'use': 'valkey_search'}
         mock_app = self._create_mock_app(vdb_config)
@@ -137,13 +135,12 @@ class TestVectorDBManagerInitialization:
 
             mgr = VectorDBManager(mock_app)
 
-            import asyncio
-
-            asyncio.run(mgr.initialize())
+            await mgr.initialize()
 
             mock_valkey_class.assert_called_once_with(mock_app)
 
-    def test_initialize_milvus_backend_with_uri(self):
+    @pytest.mark.asyncio
+    async def test_initialize_milvus_backend_with_uri(self):
         """Milvus config with custom URI."""
         vdb_config = {
             'use': 'milvus',
@@ -160,15 +157,14 @@ class TestVectorDBManagerInitialization:
 
             mgr = VectorDBManager(mock_app)
 
-            import asyncio
-
-            asyncio.run(mgr.initialize())
+            await mgr.initialize()
 
             mock_milvus_class.assert_called_once_with(
                 mock_app, uri='http://localhost:19530', token='root:Milvus', db_name='langbot_db'
             )
 
-    def test_initialize_milvus_backend_defaults(self):
+    @pytest.mark.asyncio
+    async def test_initialize_milvus_backend_defaults(self):
         """Milvus defaults when config not fully specified."""
         vdb_config = {'use': 'milvus'}
         mock_app = self._create_mock_app(vdb_config)
@@ -182,14 +178,13 @@ class TestVectorDBManagerInitialization:
 
             mgr = VectorDBManager(mock_app)
 
-            import asyncio
-
-            asyncio.run(mgr.initialize())
+            await mgr.initialize()
 
             # Should use default values
             mock_milvus_class.assert_called_once_with(mock_app, uri='./data/milvus.db', token=None, db_name='default')
 
-    def test_initialize_pgvector_with_connection_string(self):
+    @pytest.mark.asyncio
+    async def test_initialize_pgvector_with_connection_string(self):
         """pgvector with connection string."""
         vdb_config = {'use': 'pgvector', 'pgvector': {'connection_string': 'postgresql://user:pass@host:5432/langbot'}}
         mock_app = self._create_mock_app(vdb_config)
@@ -203,15 +198,17 @@ class TestVectorDBManagerInitialization:
 
             mgr = VectorDBManager(mock_app)
 
-            import asyncio
-
-            asyncio.run(mgr.initialize())
+            await mgr.initialize()
 
             mock_pgvector_class.assert_called_once_with(
-                mock_app, connection_string='postgresql://user:pass@host:5432/langbot'
+                mock_app,
+                connection_string='postgresql://user:pass@host:5432/langbot',
+                use_business_database=False,
+                allowed_dimensions=[384, 512, 768, 1024, 1536],
             )
 
-    def test_initialize_pgvector_with_individual_params(self):
+    @pytest.mark.asyncio
+    async def test_initialize_pgvector_with_individual_params(self):
         """pgvector with individual connection parameters."""
         vdb_config = {
             'use': 'pgvector',
@@ -234,15 +231,21 @@ class TestVectorDBManagerInitialization:
 
             mgr = VectorDBManager(mock_app)
 
-            import asyncio
-
-            asyncio.run(mgr.initialize())
+            await mgr.initialize()
 
             mock_pgvector_class.assert_called_once_with(
-                mock_app, host='db.example.com', port=5433, database='vectordb', user='admin', password='secret'
+                mock_app,
+                host='db.example.com',
+                port=5433,
+                database='vectordb',
+                user='admin',
+                password='secret',
+                use_business_database=False,
+                allowed_dimensions=[384, 512, 768, 1024, 1536],
             )
 
-    def test_initialize_pgvector_defaults(self):
+    @pytest.mark.asyncio
+    async def test_initialize_pgvector_defaults(self):
         """pgvector defaults when no config params."""
         vdb_config = {'use': 'pgvector'}
         mock_app = self._create_mock_app(vdb_config)
@@ -256,15 +259,48 @@ class TestVectorDBManagerInitialization:
 
             mgr = VectorDBManager(mock_app)
 
-            import asyncio
-
-            asyncio.run(mgr.initialize())
+            await mgr.initialize()
 
             mock_pgvector_class.assert_called_once_with(
-                mock_app, host='localhost', port=5432, database='langbot', user='postgres', password='postgres'
+                mock_app,
+                host='localhost',
+                port=5432,
+                database='langbot',
+                user='postgres',
+                password='postgres',
+                use_business_database=False,
+                allowed_dimensions=[384, 512, 768, 1024, 1536],
             )
 
-    def test_initialize_unknown_backend_defaults_to_chroma(self):
+    @pytest.mark.asyncio
+    async def test_initialize_pgvector_with_shared_business_database(self):
+        vdb_config = {
+            'use': 'pgvector',
+            'pgvector': {
+                'use_business_database': True,
+                'allowed_dimensions': [768, 1536],
+            },
+        }
+        mock_app = self._create_mock_app(vdb_config)
+        mocks = self._make_vector_import_mocks()
+        mock_pgvector_class = MagicMock()
+        mocks['langbot.pkg.vector.vdbs.pgvector_db'].PgVectorDatabase = mock_pgvector_class
+
+        with isolated_sys_modules(mocks):
+            from langbot.pkg.vector.mgr import VectorDBManager
+
+            mgr = VectorDBManager(mock_app)
+
+            await mgr.initialize()
+
+            mock_pgvector_class.assert_called_once_with(
+                mock_app,
+                use_business_database=True,
+                allowed_dimensions=[768, 1536],
+            )
+
+    @pytest.mark.asyncio
+    async def test_initialize_unknown_backend_defaults_to_chroma(self):
         """Unknown vdb type defaults to Chroma with warning."""
         vdb_config = {'use': 'unknown_backend'}
         mock_app = self._create_mock_app(vdb_config)
@@ -278,9 +314,7 @@ class TestVectorDBManagerInitialization:
 
             mgr = VectorDBManager(mock_app)
 
-            import asyncio
-
-            asyncio.run(mgr.initialize())
+            await mgr.initialize()
 
             mock_chroma_class.assert_called_once_with(mock_app)
             mock_app.logger.warning.assert_called()
@@ -338,3 +372,21 @@ class TestVectorDBManagerProxies:
 
             result = mgr.get_supported_search_types()
             assert result == ['vector', 'full_text']
+
+    @pytest.mark.asyncio
+    async def test_shutdown_closes_backend_and_releases_reference(self):
+        mock_app = MagicMock()
+        mocks = {'langbot.pkg.core.app': MagicMock()}
+
+        with isolated_sys_modules(mocks):
+            from langbot.pkg.vector.mgr import VectorDBManager
+
+            mgr = VectorDBManager(mock_app)
+            backend = MagicMock()
+            backend.close = AsyncMock()
+            mgr.vector_db = backend
+
+            await mgr.shutdown()
+
+            backend.close.assert_awaited_once_with()
+            assert mgr.vector_db is None

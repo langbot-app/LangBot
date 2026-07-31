@@ -128,6 +128,32 @@ export class CloudServiceClient extends BaseHttpClient {
       .catch(() => this.searchMarketplaceExtensionsLegacy(data));
   }
 
+  public getMarketplaceLikedExtensions(
+    fingerprint: string,
+  ): Promise<{ extensions: Array<{ type: string; extension_id: string }> }> {
+    return this.post('/api/v1/marketplace/extensions/likes/status', {
+      fingerprint,
+    });
+  }
+
+  public setMarketplaceExtensionLike(
+    type: string,
+    author: string,
+    name: string,
+    fingerprint: string,
+    liked: boolean,
+  ): Promise<{
+    type: string;
+    extension_id: string;
+    liked: boolean;
+    like_count: number;
+  }> {
+    return this.put(
+      `/api/v1/marketplace/extensions/${encodeURIComponent(type)}/${encodeURIComponent(author)}/${encodeURIComponent(name)}/like`,
+      { fingerprint, liked },
+    );
+  }
+
   private async searchMarketplaceExtensionsLegacy(data: {
     query?: string;
     page: number;
@@ -139,6 +165,8 @@ export class CloudServiceClient extends BaseHttpClient {
     tags_filter?: string[];
   }): Promise<ApiRespMarketplacePlugins> {
     const query = data.query || '';
+    const legacySortBy =
+      data.sort_by === 'hot_score' ? 'install_count' : data.sort_by;
 
     if (
       data.type_filter === 'plugin' ||
@@ -150,7 +178,7 @@ export class CloudServiceClient extends BaseHttpClient {
         query,
         data.page,
         data.page_size,
-        data.sort_by,
+        legacySortBy,
         data.sort_order,
         data.component_filter,
         data.tags_filter,
@@ -168,7 +196,7 @@ export class CloudServiceClient extends BaseHttpClient {
         query,
         data.page,
         data.page_size,
-        data.sort_by,
+        legacySortBy,
         data.sort_order,
         undefined,
         data.tags_filter,
@@ -178,7 +206,7 @@ export class CloudServiceClient extends BaseHttpClient {
         query,
         data.page,
         data.page_size,
-        data.sort_by,
+        legacySortBy,
         data.sort_order,
         undefined,
         data.tags_filter,
@@ -188,7 +216,7 @@ export class CloudServiceClient extends BaseHttpClient {
         query,
         data.page,
         data.page_size,
-        data.sort_by,
+        legacySortBy,
         data.sort_order,
         undefined,
         data.tags_filter,

@@ -35,6 +35,12 @@ def _index_names() -> set[str]:
     return {index['name'] for index in sa.inspect(op.get_bind()).get_indexes('monitoring_tool_calls')}
 
 
+def _column_names() -> set[str]:
+    if not _table_exists():
+        return set()
+    return {column['name'] for column in sa.inspect(op.get_bind()).get_columns('monitoring_tool_calls')}
+
+
 def upgrade() -> None:
     if not _table_exists():
         op.create_table(
@@ -57,8 +63,9 @@ def upgrade() -> None:
         )
 
     existing_indexes = _index_names()
+    existing_columns = _column_names()
     for index_name, columns in _INDEXES.items():
-        if index_name not in existing_indexes:
+        if index_name not in existing_indexes and set(columns) <= existing_columns:
             op.create_index(index_name, 'monitoring_tool_calls', columns, unique=False)
 
 

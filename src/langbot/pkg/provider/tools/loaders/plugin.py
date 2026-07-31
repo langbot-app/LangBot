@@ -79,6 +79,7 @@ class PluginToolLoader(loader.ToolLoader):
                 session=query.session,
                 query_id=query.query_id,
                 bound_plugins=[source_id] if source_id else None,
+                query_uuid=query.query_uuid,
             )
         except Exception as e:
             self.ap.logger.error(f'执行函数 {name} 时发生错误: {e}')

@@ -3,6 +3,9 @@ from __future__ import annotations
 import asyncio
 import quart
 
+from ...authz import Permission
+from ...context import RequestContext
+from ...service.secrets import redact_secrets
 from .. import group
 
 
@@ -11,12 +14,29 @@ class ExtensionsRouterGroup(group.RouterGroup):
     """Unified API for installed extensions (plugins, MCP servers, skills)."""
 
     async def initialize(self) -> None:
-        @self.route('', methods=['GET'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
-        async def _() -> quart.Response:
+        @self.route(
+            '',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_VIEW,
+        )
+        async def _(request_context: RequestContext) -> quart.Response:
+            if self.ap.plugin_connector.is_enable_plugin:
+                await self.ap.plugin_connector.require_workspace_context(request_context)
+
+            async def read_in_task_scope(operation):
+                tenant_scope = getattr(getattr(self.ap, 'persistence_mgr', None), 'tenant_scope', None)
+                if callable(tenant_scope):
+                    async with tenant_scope(request_context.workspace_uuid):
+                        return await operation()
+                return await operation()
+
             plugins, mcp_servers, skills = await asyncio.gather(
-                self.ap.plugin_connector.list_plugins(),
-                self.ap.mcp_service.get_mcp_servers(contain_runtime_info=True),
-                self.ap.skill_service.list_skills(),
+                read_in_task_scope(self.ap.plugin_connector.list_plugins),
+                read_in_task_scope(
+                    lambda: self.ap.mcp_service.get_mcp_servers(request_context, contain_runtime_info=True)
+                ),
+                read_in_task_scope(lambda: self.ap.skill_service.list_skills(request_context)),
                 return_exceptions=True,
             )
 
@@ -39,7 +59,7 @@ class ExtensionsRouterGroup(group.RouterGroup):
             extensions: list[dict] = []
             if isinstance(plugins, list):
                 for plugin in plugins:
-                    extensions.append({'type': 'plugin', 'plugin': plugin})
+                    extensions.append({'type': 'plugin', 'plugin': redact_secrets(plugin)})
             if isinstance(mcp_servers, list):
                 for server in mcp_servers:
                     extensions.append({'type': 'mcp', 'server': server})

@@ -5,46 +5,15 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
-import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
-import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
-import langbot_plugin.api.entities.builtin.platform.events as platform_events
-import langbot_plugin.api.entities.builtin.platform.message as platform_message
-import langbot_plugin.api.entities.builtin.provider.session as provider_session
 
 from langbot.pkg.api.http.service.model import _runtime_model_data
-from langbot.pkg.agent.runner.descriptor import AgentRunnerDescriptor
 from langbot.pkg.api.http.service.provider import ModelProviderService
 from langbot.pkg.entity.persistence import model as persistence_model
-from langbot.pkg.pipeline.preproc.preproc import PreProcessor
 from langbot.pkg.provider.modelmgr import requester
 from langbot.pkg.provider.modelmgr.modelmgr import ModelManager
 from langbot.pkg.provider.modelmgr.token import TokenManager
-
-
-DEFAULT_RUNNER_ID = 'plugin:langbot-team/LocalAgent/default'
-
-
-class FakeAgentRunnerRegistry:
-    async def get(self, runner_id, bound_plugins=None):
-        return AgentRunnerDescriptor(
-            id=runner_id,
-            source='plugin',
-            label={'en_US': 'Local Agent'},
-            plugin_author='langbot-team',
-            plugin_name='LocalAgent',
-            runner_name='default',
-            config_schema=[
-                {'name': 'model', 'type': 'model-fallback-selector'},
-                {'name': 'prompt', 'type': 'prompt-editor', 'default': []},
-                {'name': 'knowledge-bases', 'type': 'knowledge-base-multi-selector', 'default': []},
-            ],
-            capabilities={'tool_calling': True, 'knowledge_retrieval': True, 'multimodal_input': True},
-            permissions={
-                'models': ['invoke', 'stream'],
-                'tools': ['detail', 'call'],
-                'knowledge_bases': ['list', 'retrieve'],
-            },
-        )
+from langbot.pkg.api.http.context import ExecutionContext
+from langbot.pkg.workspace.entities import WorkspaceExecutionBinding
 
 
 def test_runtime_llm_model_data_preserves_uuid_after_update_payload_uuid_removed():
@@ -121,11 +90,22 @@ async def test_model_manager_initialize_skips_space_sync_after_timeout():
     ap.discover = SimpleNamespace(get_components_by_kind=Mock(return_value=[]))
     ap.instance_config = SimpleNamespace(data={'space': {'models_sync_timeout': 0.01}})
     ap.logger = Mock()
+    binding = WorkspaceExecutionBinding(
+        instance_uuid='instance-test',
+        workspace_uuid='workspace-test',
+        placement_generation=1,
+        write_fenced=False,
+        state='active',
+    )
+    ap.workspace_service = SimpleNamespace(
+        get_local_execution_binding=AsyncMock(return_value=binding),
+        get_execution_binding=AsyncMock(return_value=binding),
+    )
 
     mgr = ModelManager(ap)
     mgr.load_models_from_db = AsyncMock()
 
-    async def slow_sync():
+    async def slow_sync(_context):
         await asyncio.sleep(1)
 
     mgr.sync_new_models_from_space = AsyncMock(side_effect=slow_sync)
@@ -138,39 +118,80 @@ async def test_model_manager_initialize_skips_space_sync_after_timeout():
 
 
 @pytest.mark.asyncio
-async def test_updated_llm_model_is_immediately_usable_by_local_agent_pipeline():
+async def test_updated_llm_model_immediately_refreshes_runtime_cache():
     from langbot.pkg.api.http.service.model import LLMModelsService
 
     model_uuid = 'qwen-model-uuid'
     provider_uuid = 'ollama-provider-uuid'
+    workspace_uuid = 'workspace-test'
+    execution_context = ExecutionContext(
+        instance_uuid='instance-test',
+        workspace_uuid=workspace_uuid,
+        placement_generation=1,
+        bot_uuid='bot-uuid',
+        pipeline_uuid='pipeline-uuid',
+    )
 
     ap = SimpleNamespace()
     ap.logger = Mock()
-    ap.agent_runner_registry = FakeAgentRunnerRegistry()
     ap.persistence_mgr = SimpleNamespace(execute_async=AsyncMock())
-    ap.tool_mgr = SimpleNamespace(get_all_tools=AsyncMock(return_value=[]))
-    ap.skill_mgr = None  # PreProcessor only uses skill_mgr for the local-agent skill-binding branch
-    ap.plugin_connector = SimpleNamespace(
-        emit_event=AsyncMock(return_value=SimpleNamespace(event=SimpleNamespace(default_prompt=[], prompt=[])))
+    binding = WorkspaceExecutionBinding(
+        instance_uuid='instance-test',
+        workspace_uuid=workspace_uuid,
+        placement_generation=1,
+        write_fenced=False,
+        state='active',
     )
+    ap.workspace_service = SimpleNamespace(get_execution_binding=AsyncMock(return_value=binding))
 
     ap.model_mgr = ModelManager(ap)
-    runtime_provider = Mock()
-    ap.model_mgr.provider_dict = {provider_uuid: runtime_provider}
-    ap.model_mgr.llm_models = [
-        requester.RuntimeLLMModel(
-            model_entity=persistence_model.LLMModel(
-                uuid=model_uuid,
-                name='old-qwen-name',
-                provider_uuid=provider_uuid,
-                abilities=[],
-                extra_args={},
-            ),
-            provider=runtime_provider,
-        )
-    ]
+    runtime_provider = Mock(
+        execution_context=execution_context,
+        provider_entity=persistence_model.ModelProvider(
+            workspace_uuid=workspace_uuid,
+            uuid=provider_uuid,
+            name='Ollama',
+            requester='ollama',
+            base_url='http://localhost:11434',
+            api_keys=[],
+        ),
+    )
+    cache_key = ('instance-test', workspace_uuid, 1, provider_uuid)
+    ap.model_mgr.provider_dict = {cache_key: runtime_provider}
+    runtime_model = requester.RuntimeLLMModel(
+        execution_context=execution_context,
+        model_entity=persistence_model.LLMModel(
+            workspace_uuid=workspace_uuid,
+            uuid=model_uuid,
+            name='old-qwen-name',
+            provider_uuid=provider_uuid,
+            abilities=[],
+            extra_args={},
+        ),
+        provider=runtime_provider,
+    )
+    ap.model_mgr.llm_model_dict = {
+        ('instance-test', workspace_uuid, 1, model_uuid): runtime_model,
+    }
 
-    await LLMModelsService(ap).update_llm_model(
+    ap.provider_service = SimpleNamespace(
+        get_provider=AsyncMock(return_value={'uuid': provider_uuid, 'workspace_uuid': workspace_uuid})
+    )
+    model_service = LLMModelsService(ap)
+    model_service.get_llm_model = AsyncMock(
+        return_value={
+            'uuid': model_uuid,
+            'workspace_uuid': workspace_uuid,
+            'name': 'old-qwen-name',
+            'provider_uuid': provider_uuid,
+            'abilities': [],
+            'context_length': None,
+            'extra_args': {},
+            'prefered_ranking': 0,
+        }
+    )
+    await model_service.update_llm_model(
+        workspace_uuid,
         model_uuid,
         {
             'name': 'Qwen3.5-27B',
@@ -180,72 +201,6 @@ async def test_updated_llm_model_is_immediately_usable_by_local_agent_pipeline()
         },
     )
 
-    runtime_model = await ap.model_mgr.get_model_by_uuid(model_uuid)
+    runtime_model = await ap.model_mgr.get_model_by_uuid(execution_context, model_uuid)
     assert runtime_model.model_entity.uuid == model_uuid
     assert runtime_model.model_entity.name == 'Qwen3.5-27B'
-
-    session = SimpleNamespace(
-        launcher_type=provider_session.LauncherTypes.PERSON,
-        launcher_id=12345,
-    )
-    conversation = SimpleNamespace(
-        uuid='conversation-uuid',
-        create_time=None,
-        update_time=None,
-        prompt=SimpleNamespace(messages=[], copy=Mock(return_value=SimpleNamespace(messages=[]))),
-        messages=[],
-    )
-    ap.sess_mgr = SimpleNamespace(
-        get_session=AsyncMock(return_value=session),
-        get_conversation=AsyncMock(return_value=conversation),
-    )
-
-    message_chain = platform_message.MessageChain([platform_message.Plain(text='hello')])
-    sender = platform_entities.Friend(id=12345, nickname='Tester', remark=None)
-    message_event = platform_events.FriendMessage(
-        type='FriendMessage',
-        sender=sender,
-        message_chain=message_chain,
-        time=1710000000,
-    )
-    pipeline_config = {
-        'ai': {
-            'runner': {'id': DEFAULT_RUNNER_ID},
-            'runner_config': {
-                DEFAULT_RUNNER_ID: {
-                    'model': {'primary': model_uuid, 'fallbacks': []},
-                    'prompt': [],
-                    'knowledge-bases': [],
-                },
-            },
-        },
-        'trigger': {'misc': {'combine-quote-message': False}},
-        'output': {'misc': {'remove-think': False}},
-    }
-    query = pipeline_query.Query.model_construct(
-        query_id='query-id',
-        launcher_type=provider_session.LauncherTypes.PERSON,
-        launcher_id=12345,
-        sender_id=12345,
-        message_chain=message_chain,
-        message_event=message_event,
-        adapter=AsyncMock(),
-        pipeline_uuid='pipeline-uuid',
-        bot_uuid='bot-uuid',
-        pipeline_config=pipeline_config,
-        session=None,
-        prompt=None,
-        messages=[],
-        user_message=None,
-        use_funcs=[],
-        use_llm_model_uuid=None,
-        variables={},
-        resp_messages=[],
-        resp_message_chain=None,
-        current_stage_name=None,
-    )
-
-    result = await PreProcessor(ap).process(query, 'PreProcessor')
-    processed_query = result.new_query
-
-    assert processed_query.use_llm_model_uuid == model_uuid

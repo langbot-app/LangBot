@@ -35,6 +35,22 @@ class TestApplyEnvOverridesToConfig:
 
         assert result['system']['name'] == 'custom_name'
 
+    def test_override_log_never_prints_secret_value(self, capsys):
+        """Environment-backed credentials must not be copied into logs."""
+        load_config = get_load_config_module()
+
+        secret = 'database-password-that-must-not-leak'
+        cfg = {'database': {'postgresql': {'password': ''}}}
+        env = {'DATABASE__POSTGRESQL__PASSWORD': secret}
+
+        with patch.dict(os.environ, env, clear=True):
+            result = load_config._apply_env_overrides_to_config(cfg)
+
+        captured = capsys.readouterr().out
+        assert result['database']['postgresql']['password'] == secret
+        assert 'DATABASE__POSTGRESQL__PASSWORD' in captured
+        assert secret not in captured
+
     def test_override_int_value(self):
         """Test overriding an int value with proper conversion."""
         load_config = get_load_config_module()
@@ -47,6 +63,20 @@ class TestApplyEnvOverridesToConfig:
 
         assert result['concurrency']['pipeline'] == 10
         assert isinstance(result['concurrency']['pipeline'], int)
+
+    def test_cloud_directory_limit_override_keeps_integer_type_on_upgraded_config(self):
+        load_config = get_load_config_module()
+        cfg = load_config._complete_runtime_policy_defaults({})
+
+        with patch.dict(
+            os.environ,
+            {'CLOUD__DIRECTORY__MAX_ACTIVE_WORKSPACES': '250'},
+            clear=True,
+        ):
+            result = load_config._apply_env_overrides_to_config(cfg)
+
+        assert result['cloud']['directory']['max_active_workspaces'] == 250
+        assert isinstance(result['cloud']['directory']['max_active_workspaces'], int)
 
     def test_override_int_value_invalid_conversion(self):
         """Test that invalid int conversion keeps string value."""
@@ -122,6 +152,19 @@ class TestApplyEnvOverridesToConfig:
 
         assert result['system']['disabled_adapters'] == ['aiocqhttp', 'dingtalk', 'telegram']
 
+    def test_override_integer_list_preserves_item_type(self):
+        """Comma-separated overrides inherit the existing list item type."""
+        load_config = get_load_config_module()
+
+        cfg = {'vdb': {'pgvector': {'allowed_dimensions': [384, 512]}}}
+        env = {'VDB__PGVECTOR__ALLOWED_DIMENSIONS': '384,512,768'}
+
+        with patch.dict(os.environ, env, clear=True):
+            result = load_config._apply_env_overrides_to_config(cfg)
+
+        assert result['vdb']['pgvector']['allowed_dimensions'] == [384, 512, 768]
+        assert all(isinstance(item, int) for item in result['vdb']['pgvector']['allowed_dimensions'])
+
     def test_override_list_value_empty_items(self):
         """Test that empty items in comma-separated list are filtered."""
         load_config = get_load_config_module()
@@ -196,6 +239,19 @@ class TestApplyEnvOverridesToConfig:
 
         assert result['system']['name'] == 'default'
 
+    def test_skip_env_vars_with_empty_path_segments(self, capsys):
+        """Platform variables such as __CF_USER_TEXT_ENCODING are not config."""
+        load_config = get_load_config_module()
+
+        cfg = {'system': {'name': 'default'}}
+        env = {'__CF_USER_TEXT_ENCODING': '0x1F5:0x0:0x64'}
+
+        with patch.dict(os.environ, env, clear=True):
+            result = load_config._apply_env_overrides_to_config(cfg)
+
+        assert result == cfg
+        assert capsys.readouterr().out == ''
+
     def test_nested_config_path(self):
         """Test overriding deeply nested config."""
         load_config = get_load_config_module()
@@ -258,6 +314,84 @@ class TestApplyEnvOverridesToConfig:
         assert result['system']['name'] == 'custom'
         assert result['system']['enable'] is False
         assert result['concurrency']['pipeline'] == 10
+
+    def test_plugin_worker_and_stdio_policy_native_env_overrides(self):
+        load_config = get_load_config_module()
+        cfg = {
+            'plugin': {
+                'worker': {
+                    'max_cpus': 1.0,
+                    'max_memory_mb': 512,
+                    'max_pids': 128,
+                    'max_open_files': 256,
+                    'max_file_size_mb': 512,
+                    'max_concurrent_restarts': 1,
+                    'restart_failure_threshold': 8,
+                    'restart_failure_window_seconds': 30.0,
+                    'restart_circuit_open_seconds': 60.0,
+                }
+            },
+            'mcp': {'stdio': {'enabled': True}},
+        }
+        env = {
+            'PLUGIN__WORKER__MAX_CPUS': '2.5',
+            'PLUGIN__WORKER__MAX_MEMORY_MB': '1024',
+            'PLUGIN__WORKER__MAX_PIDS': '64',
+            'PLUGIN__WORKER__MAX_OPEN_FILES': '128',
+            'PLUGIN__WORKER__MAX_FILE_SIZE_MB': '256',
+            'PLUGIN__WORKER__MAX_CONCURRENT_RESTARTS': '2',
+            'PLUGIN__WORKER__RESTART_FAILURE_THRESHOLD': '12',
+            'PLUGIN__WORKER__RESTART_FAILURE_WINDOW_SECONDS': '45.5',
+            'PLUGIN__WORKER__RESTART_CIRCUIT_OPEN_SECONDS': '90.0',
+            'MCP__STDIO__ENABLED': 'false',
+        }
+
+        with patch.dict(os.environ, env, clear=True):
+            result = load_config._apply_env_overrides_to_config(cfg)
+
+        assert result['plugin']['worker'] == {
+            'max_cpus': 2.5,
+            'max_memory_mb': 1024,
+            'max_pids': 64,
+            'max_open_files': 128,
+            'max_file_size_mb': 256,
+            'max_concurrent_restarts': 2,
+            'restart_failure_threshold': 12,
+            'restart_failure_window_seconds': 45.5,
+            'restart_circuit_open_seconds': 90.0,
+        }
+        assert result['mcp']['stdio']['enabled'] is False
+
+    def test_runtime_policy_defaults_preserve_env_types_for_upgraded_config(self):
+        load_config = get_load_config_module()
+        cfg = {'plugin': {'enable': True}}
+
+        completed = load_config._complete_runtime_policy_defaults(cfg)
+        with patch.dict(
+            os.environ,
+            {
+                'PLUGIN__WORKER__MAX_MEMORY_MB': '768',
+                'MCP__STDIO__ENABLED': 'false',
+                'SYSTEM__BLOCKING_EXECUTOR__MAX_WORKERS': '12',
+                'SYSTEM__BLOCKING_EXECUTOR__MAX_PENDING': '256',
+                'SYSTEM__BLOCKING_EXECUTOR__MAX_INFLIGHT_PER_SCOPE': '3',
+            },
+            clear=True,
+        ):
+            result = load_config._apply_env_overrides_to_config(completed)
+
+        assert result['system']['blocking_executor'] == {
+            'max_workers': 12,
+            'max_pending': 256,
+            'max_inflight_per_scope': 3,
+        }
+        assert isinstance(
+            result['system']['blocking_executor']['max_workers'],
+            int,
+        )
+        assert result['plugin']['worker']['max_memory_mb'] == 768
+        assert isinstance(result['plugin']['worker']['max_memory_mb'], int)
+        assert result['mcp']['stdio']['enabled'] is False
 
     def test_webhook_prefix_override(self):
         """Test overriding webhook_prefix via environment variable."""

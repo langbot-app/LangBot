@@ -11,9 +11,19 @@ import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 from langbot.pkg.platform.sources.telegram import (
     TelegramAdapter,
+    _decode_telegram_base64_limited,
     _telegram_form_action_from_callback,
     _telegram_select_field_options,
 )
+
+
+def test_telegram_base64_decode_is_bounded(monkeypatch):
+    import langbot.pkg.platform.sources.telegram as telegram_module
+
+    monkeypatch.setattr(telegram_module, '_MAX_TELEGRAM_MEDIA_BYTES', 4)
+
+    with pytest.raises(ValueError, match='exceeds'):
+        _decode_telegram_base64_limited('A' * 12)
 
 
 def _select_form_data() -> dict:
@@ -86,6 +96,18 @@ def test_telegram_form_callback_cache_preserves_pipeline_uuid():
         'Approve',
         'pipeline-routed',
     )
+
+
+def test_telegram_form_callback_cache_is_bounded():
+    adapter = TelegramAdapter.model_construct()
+    adapter._form_action_titles = {}
+
+    adapter._cache_form_action_titles(
+        {f'callback-{index}': str(index) for index in range(5000)},
+        now=100.0,
+    )
+
+    assert len(adapter._form_action_titles) == adapter._MAX_FORM_ACTION_TITLES
 
 
 @pytest.mark.asyncio

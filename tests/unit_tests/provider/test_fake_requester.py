@@ -6,6 +6,7 @@ import pytest
 
 from langbot.pkg.entity.persistence import model as persistence_model
 from langbot.pkg.provider.modelmgr import requester
+from tests.unit_tests.provider.conftest import TEST_EXECUTION_CONTEXT
 from langbot_plugin.api.entities.builtin.provider import message as provider_message
 from langbot_plugin.api.entities.builtin.resource import tool as resource_tool
 
@@ -18,10 +19,12 @@ async def test_fake_requester_counts_messages_and_tools(runtime_provider):
             uuid='fake-count-model',
             name='fake-count-model',
             provider_uuid=runtime_provider.provider_entity.uuid,
+            workspace_uuid=TEST_EXECUTION_CONTEXT.workspace_uuid,
             abilities=['func_call'],
             extra_args={},
         ),
         provider=runtime_provider,
+        execution_context=TEST_EXECUTION_CONTEXT,
     )
 
     async def _placeholder_func(**kwargs):

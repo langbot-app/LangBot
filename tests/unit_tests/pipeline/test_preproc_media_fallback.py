@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from langbot_plugin.api.entities.builtin.platform import message as platform_message
+from langbot_plugin.api.entities.builtin.provider import session as provider_session
 
 
 RUNNER_ID = 'plugin:langbot-team/LocalAgent/default'
@@ -73,7 +74,12 @@ async def test_preprocessor_keeps_image_placeholder_for_text_only_local_agent(mo
     mock_app.model_mgr.get_model_by_uuid = AsyncMock(return_value=model)
     _attach_agent_runner_descriptor(mock_app)
     mock_app.sess_mgr.get_session = AsyncMock(
-        return_value=SimpleNamespace(launcher_type=sample_query.launcher_type, launcher_id=sample_query.launcher_id)
+        return_value=provider_session.Session(
+            launcher_type=sample_query.launcher_type,
+            launcher_id=sample_query.launcher_id,
+            sender_id=sample_query.sender_id,
+            bot_uuid=sample_query.bot_uuid,
+        )
     )
     mock_app.sess_mgr.get_conversation = AsyncMock(return_value=_conversation())
     mock_app.plugin_connector.emit_event = AsyncMock(return_value=_prompt_preprocessing_context())

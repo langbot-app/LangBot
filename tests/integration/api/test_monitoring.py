@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import pytest
 from unittest.mock import MagicMock, AsyncMock, Mock
+from types import SimpleNamespace
 
 from tests.factories import FakeApp
 
@@ -66,7 +67,26 @@ def fake_monitoring_app():
     app.user_service = Mock()
     app.user_service.is_initialized = AsyncMock(return_value=True)
     app.user_service.verify_jwt_token = AsyncMock(return_value='test@example.com')
-    app.user_service.get_user_by_email = AsyncMock(return_value=Mock(email='test@example.com'))
+    app.user_service.get_user_by_email = AsyncMock(
+        return_value=SimpleNamespace(
+            uuid='account-uuid',
+            user='test@example.com',
+            email='test@example.com',
+        )
+    )
+    app.workspace_collaboration_service = SimpleNamespace(
+        resolve_account_workspace=AsyncMock(
+            return_value=SimpleNamespace(
+                execution=SimpleNamespace(instance_uuid='instance', placement_generation=1),
+                workspace=SimpleNamespace(uuid='00000000-0000-0000-0000-00000000000a'),
+                membership=SimpleNamespace(
+                    uuid='membership-uuid',
+                    role='owner',
+                    projection_revision=1,
+                ),
+            )
+        )
+    )
 
     # Monitoring service
     app.monitoring_service = Mock()
@@ -134,6 +154,34 @@ class TestMonitoringOverviewEndpoint:
         assert response.status_code == 200
         data = await response.get_json()
         assert data['code'] == 0
+
+    @pytest.mark.asyncio
+    async def test_viewer_can_read_monitoring_but_cannot_export(
+        self,
+        quart_test_client,
+        fake_monitoring_app,
+    ):
+        """Ordinary monitoring is resource.view; export remains data.export."""
+        membership = (
+            fake_monitoring_app.workspace_collaboration_service.resolve_account_workspace.return_value.membership
+        )
+        original_role = membership.role
+        membership.role = 'viewer'
+        try:
+            response = await quart_test_client.get(
+                '/api/v1/monitoring/overview',
+                headers={'Authorization': 'Bearer test_token'},
+            )
+            assert response.status_code == 200
+
+            export_response = await quart_test_client.get(
+                '/api/v1/monitoring/export?type=messages',
+                headers={'Authorization': 'Bearer test_token'},
+            )
+            assert export_response.status_code == 403
+            assert (await export_response.get_json())['code'] == 'permission_denied'
+        finally:
+            membership.role = original_role
 
 
 @pytest.mark.usefixtures('mock_circular_import_chain')

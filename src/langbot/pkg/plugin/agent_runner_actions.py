@@ -8,6 +8,7 @@ import time
 
 from langbot_plugin.runtime.io import handler
 
+from ..api.http.context import ExecutionContext
 
 from ..agent.runner.run_ledger_store import TERMINAL_STATUSES
 
@@ -217,7 +218,14 @@ def register(h):
             return handler.ActionResponse.success(data={'items': []})
 
         try:
+            action_context = h._require_runtime_action_context()
+            execution_context = ExecutionContext(
+                instance_uuid=action_context.instance_uuid,
+                workspace_uuid=action_context.workspace_uuid,
+                placement_generation=action_context.placement_generation,
+            )
             runners = await registry.list_runners(
+                execution_context,
                 bound_plugins=[str(item) for item in include_plugins] if include_plugins else None,
                 use_cache=bool(data.get('use_cache', True)),
             )

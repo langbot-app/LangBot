@@ -10,6 +10,8 @@ import typing
 import traceback
 import json
 import base64
+import asyncio
+import os
 import time
 import uuid
 import pydantic
@@ -20,6 +22,31 @@ import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
 import langbot_plugin.api.definition.abstract.platform.event_logger as abstract_platform_logger
+
+
+_MAX_TELEGRAM_MEDIA_BYTES = 10 * 1024 * 1024
+
+
+def _decode_telegram_base64_limited(value: str) -> bytes:
+    if ';base64,' in value:
+        value = value.split(';base64,', 1)[1]
+    max_encoded_bytes = 4 * ((_MAX_TELEGRAM_MEDIA_BYTES + 2) // 3)
+    if len(value) > max_encoded_bytes:
+        raise ValueError('Telegram media exceeds the size limit')
+    decoded = base64.b64decode(value)
+    if len(decoded) > _MAX_TELEGRAM_MEDIA_BYTES:
+        raise ValueError('Telegram media exceeds the size limit')
+    return decoded
+
+
+def _read_telegram_file_limited(path: str) -> bytes:
+    if os.path.getsize(path) > _MAX_TELEGRAM_MEDIA_BYTES:
+        raise ValueError('Telegram media exceeds the size limit')
+    with open(path, 'rb') as file:
+        body = file.read(_MAX_TELEGRAM_MEDIA_BYTES + 1)
+    if len(body) > _MAX_TELEGRAM_MEDIA_BYTES:
+        raise ValueError('Telegram media exceeds the size limit')
+    return body
 
 
 def _telegram_select_field_options(form_data: dict) -> tuple[str, list[str]]:
@@ -86,35 +113,29 @@ class TelegramMessageConverter(abstract_platform_adapter.AbstractMessageConverte
             if isinstance(component, platform_message.Plain):
                 components.append({'type': 'text', 'text': component.text})
             elif isinstance(component, platform_message.Image):
-                photo_bytes = None
-
-                if component.base64:
-                    photo_bytes = base64.b64decode(component.base64)
-                elif component.url:
-                    session = httpclient.get_session()
-                    async with session.get(component.url) as response:
-                        photo_bytes = await response.read()
-                elif component.path:
-                    with open(component.path, 'rb') as f:
-                        photo_bytes = f.read()
+                photo_bytes, _mime_type = await component.get_bytes()
 
                 components.append({'type': 'photo', 'photo': photo_bytes})
             elif isinstance(component, platform_message.File):
                 file_bytes = None
 
                 if component.base64:
-                    # Strip data URI prefix if present (e.g. "data:application/pdf;base64,...")
-                    b64_data = component.base64
-                    if ';base64,' in b64_data:
-                        b64_data = b64_data.split(';base64,', 1)[1]
-                    file_bytes = base64.b64decode(b64_data)
+                    file_bytes = await asyncio.to_thread(
+                        _decode_telegram_base64_limited,
+                        component.base64,
+                    )
                 elif component.url:
                     session = httpclient.get_session()
                     async with session.get(component.url) as response:
-                        file_bytes = await response.read()
+                        file_bytes = await httpclient.read_limited(
+                            response,
+                            max_bytes=_MAX_TELEGRAM_MEDIA_BYTES,
+                        )
                 elif component.path:
-                    with open(component.path, 'rb') as f:
-                        file_bytes = f.read()
+                    file_bytes = await asyncio.to_thread(
+                        _read_telegram_file_limited,
+                        str(component.path),
+                    )
 
                 file_name = getattr(component, 'name', None) or 'file'
                 components.append({'type': 'document', 'document': file_bytes, 'filename': file_name})
@@ -152,12 +173,17 @@ class TelegramMessageConverter(abstract_platform_adapter.AbstractMessageConverte
             file_format = ''
 
             async with httpclient.get_session(trust_env=True).get(file.file_path) as response:
-                file_bytes = await response.read()
+                file_bytes = await httpclient.read_limited(
+                    response,
+                    max_bytes=_MAX_TELEGRAM_MEDIA_BYTES,
+                )
                 file_format = 'image/jpeg'
 
+            encoded = await asyncio.to_thread(base64.b64encode, file_bytes)
             message_components.append(
                 platform_message.Image(
-                    base64=f'data:{file_format};base64,{base64.b64encode(file_bytes).decode("utf-8")}'
+                    url=file.file_path,
+                    base64=f'data:{file_format};base64,{encoded.decode("utf-8")}',
                 )
             )
 
@@ -171,11 +197,15 @@ class TelegramMessageConverter(abstract_platform_adapter.AbstractMessageConverte
             file_format = message.voice.mime_type or 'audio/ogg'
 
             async with httpclient.get_session(trust_env=True).get(file.file_path) as response:
-                file_bytes = await response.read()
+                file_bytes = await httpclient.read_limited(
+                    response,
+                    max_bytes=_MAX_TELEGRAM_MEDIA_BYTES,
+                )
 
+            encoded = await asyncio.to_thread(base64.b64encode, file_bytes)
             message_components.append(
                 platform_message.Voice(
-                    base64=f'data:{file_format};base64,{base64.b64encode(file_bytes).decode("utf-8")}',
+                    base64=f'data:{file_format};base64,{encoded.decode("utf-8")}',
                     length=message.voice.duration,
                 )
             )
@@ -188,16 +218,22 @@ class TelegramMessageConverter(abstract_platform_adapter.AbstractMessageConverte
             file_name = message.document.file_name or 'document'
             file_size = message.document.file_size or 0
             file_format = message.document.mime_type or 'application/octet-stream'
+            if file_size > _MAX_TELEGRAM_MEDIA_BYTES:
+                raise ValueError('Telegram media exceeds the size limit')
 
             file_bytes = None
             async with httpclient.get_session(trust_env=True).get(file.file_path) as response:
-                file_bytes = await response.read()
+                file_bytes = await httpclient.read_limited(
+                    response,
+                    max_bytes=_MAX_TELEGRAM_MEDIA_BYTES,
+                )
 
+            encoded = await asyncio.to_thread(base64.b64encode, file_bytes)
             message_components.append(
                 platform_message.File(
                     name=file_name,
                     size=file_size,
-                    base64=f'data:{file_format};base64,{base64.b64encode(file_bytes).decode("utf-8")}',
+                    base64=f'data:{file_format};base64,{encoded.decode("utf-8")}',
                 )
             )
 
@@ -263,6 +299,8 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     ] = {}
 
     _FORM_ACTION_CACHE_TTL = 30 * 60
+    _MAX_FORM_ACTION_TITLES = 4096
+    _MAX_STREAM_STATES = 1000
     # callback_data -> (display title, pipeline UUID, expiration time, form group id)
     _form_action_titles: typing.Dict[str, tuple[str, str, float, str]] = {}
 
@@ -285,6 +323,8 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         self._form_action_titles.update(
             {callback_data: (title, pipeline_uuid, expires_at, group_id) for callback_data, title in mappings.items()}
         )
+        while len(self._form_action_titles) > self._MAX_FORM_ACTION_TITLES:
+            self._form_action_titles.pop(next(iter(self._form_action_titles)), None)
 
     def _take_form_action_context(self, callback_data: str, now: float | None = None) -> tuple[str, str] | None:
         """Consume a callback and invalidate every button from the same form."""
@@ -445,6 +485,11 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             bot_account_id='',
             listeners={},
         )
+        self._form_action_titles = {}
+
+    def _cap_stream_states(self) -> None:
+        while len(self.msg_stream_id) > self._MAX_STREAM_STATES:
+            self.msg_stream_id.pop(next(iter(self.msg_stream_id)), None)
 
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
         components = await TelegramMessageConverter.yiri2target(message, self.bot)
@@ -553,6 +598,7 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         args = self._build_message_args(chat_id, 'Thinking...', message_thread_id)
         send_msg = await self.bot.send_message(**args)
         self.msg_stream_id[message_id] = ('message', send_msg.message_id, False)
+        self._cap_stream_states()
 
         return True
 
@@ -844,4 +890,6 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             if self.application.updater:
                 await self.application.updater.stop()
             await self.logger.info('Telegram adapter stopped')
+        self.msg_stream_id.clear()
+        self._form_action_titles.clear()
         return True

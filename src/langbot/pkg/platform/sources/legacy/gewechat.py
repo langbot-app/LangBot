@@ -6,7 +6,6 @@ import traceback
 import time
 import re
 import copy
-import threading
 
 import quart
 from langbot.pkg.utils import httpclient
@@ -483,6 +482,7 @@ class GeWeChatAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
         self.message_converter = GewechatMessageConverter(config)
         self.event_converter = GewechatEventConverter(config)
+        self.listeners = {}
 
         @self.quart_app.route('/gewechat/callback', methods=['POST'])
         async def gewechat_callback():
@@ -518,9 +518,13 @@ class GeWeChatAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         at_targets = at_targets or []
         member_info = []
         if at_targets:
-            member_info = self.bot.get_chatroom_member_detail(self.config['app_id'], target_id, at_targets[::-1])[
-                'data'
-            ]
+            member_result = await asyncio.to_thread(
+                self.bot.get_chatroom_member_detail,
+                self.config['app_id'],
+                target_id,
+                at_targets[::-1],
+            )
+            member_info = member_result['data']
 
         # 处理消息组件
         for msg in content_list:
@@ -596,7 +600,7 @@ class GeWeChatAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             }
 
             if handler := handler_map.get(msg['type']):
-                handler(msg)
+                await asyncio.to_thread(handler, msg)
             else:
                 await self.logger.warning(f'未处理的消息类型: {msg["type"]}')
                 continue
@@ -645,8 +649,9 @@ class GeWeChatAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 json={'app_id': self.config['app_id']},
             ) as response:
                 if response.status != 200:
-                    raise Exception(f'获取gewechat token失败: {await response.text()}')
-                self.config['token'] = (await response.json())['data']
+                    error = await httpclient.read_text_limited(response)
+                    raise Exception(f'获取gewechat token失败: {error}')
+                self.config['token'] = (await httpclient.read_json_limited(response))['data']
 
         self.bot = gewechat_client.GewechatClient(f'{self.config["gewechat_url"]}/v2/api', self.config['token'])
 
@@ -672,7 +677,7 @@ class GeWeChatAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             except Exception as e:
                 raise Exception(f'设置 Gewechat 回调失败， token失效： {e}')
 
-        threading.Thread(target=gewechat_login_process).start()
+        await asyncio.to_thread(gewechat_login_process)
 
         async def shutdown_trigger_placeholder():
             while True:

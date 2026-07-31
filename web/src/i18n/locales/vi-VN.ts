@@ -81,7 +81,7 @@ const viVN = {
     loading: 'Đang tải...',
     fieldRequired: 'Trường này là bắt buộc',
     or: 'hoặc',
-    loginWithSpace: 'Đăng nhập với Space',
+    loginWithSpace: 'Đăng nhập bằng tài khoản LangBot',
     spaceLoginRecommended:
       'Khuyến nghị: Sử dụng API mô hình ổn định chính thức và dịch vụ đám mây',
     loginLocal: 'Đăng nhập với tài khoản cục bộ',
@@ -281,7 +281,7 @@ const viVN = {
     searchProviders: 'Tìm kiếm nhà cung cấp...',
     langbotModelsDescription: 'Mô hình đám mây được cung cấp bởi LangBot Space',
     credits: 'Tín dụng',
-    loginWithSpace: 'Đăng nhập với Space',
+    loginWithSpace: 'Đăng nhập bằng tài khoản LangBot',
     loginToUseModels: 'Đăng nhập với Space để sử dụng mô hình đám mây',
     noModels: 'Chưa cấu hình mô hình nào',
     langbotModels: 'Mô hình LangBot',
@@ -761,6 +761,7 @@ const viVN = {
     notFound: 'Không tìm thấy thông tin plugin',
     sortBy: 'Sắp xếp theo',
     sort: {
+      hottest: 'Phổ biến nhất',
       recentlyAdded: 'Mới thêm gần đây',
       recentlyUpdated: 'Mới cập nhật gần đây',
       mostDownloads: 'Tải nhiều nhất',
@@ -768,6 +769,9 @@ const viVN = {
     },
     downloads: 'lượt tải',
     download: 'Tải xuống',
+    like: 'Thích',
+    unlike: 'Bỏ thích',
+    likeFailed: 'Không thể cập nhật lượt thích. Vui lòng thử lại.',
     repository: 'Kho lưu trữ',
     downloadFailed: 'Tải xuống thất bại',
     noReadme: 'Plugin này không cung cấp tài liệu README',
@@ -858,6 +862,9 @@ const viVN = {
     url: 'URL',
     headers: 'Tiêu đề',
     timeout: 'Thời gian chờ',
+    toolCallTimeout: 'Thời gian chờ gọi công cụ (giây)',
+    toolCallTimeoutDescription:
+      'Thời gian chờ tối đa cho một lần gọi công cụ. Đặt 0 để không giới hạn. Mặc định là 300 giây.',
     addArgument: 'Thêm tham số',
     addEnvVar: 'Thêm biến môi trường',
     addHeader: 'Thêm tiêu đề',
@@ -880,6 +887,9 @@ const viVN = {
     boxStdioRefusedSuggestion:
       'Hãy bật Box (box.enabled = true) và đảm bảo runtime hoạt động, hoặc chuyển server này sang chế độ http/sse.',
     boxRequired: 'cần Box',
+    disabledByPolicy: 'bị tắt theo chính sách',
+    stdioDisabledByPolicy:
+      'Stdio MCP đã bị tắt trong bản triển khai này. Hãy dùng máy chủ MCP từ xa.',
     stdioBlockedByBoxToast:
       'Không thể lưu MCP ở chế độ stdio khi Sandbox Box bị tắt hoặc không khả dụng. Hãy bật Box hoặc chọn chế độ http/sse.',
     toolsFound: 'công cụ',

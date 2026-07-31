@@ -356,6 +356,7 @@
     isConnected: false,
     ws: null,
     connectionId: null,
+    sessionToken: null,
     sessionId: getOrCreateSessionId(),
     reconnectAttempts: 0,
     heartbeatTimer: null,
@@ -538,7 +539,12 @@
 
     state.ws.onopen = function () {
       state.reconnectAttempts = 0;
-      startHeartbeat();
+      state.ws.send(
+        JSON.stringify({
+          type: "authenticate",
+          token: state.sessionToken || "",
+        }),
+      );
     };
 
     state.ws.onmessage = function (event) {
@@ -576,6 +582,7 @@
         state.connectionId = data.connection_id;
         if (state.hasConnected) loadHistory(true);
         state.hasConnected = true;
+        startHeartbeat();
         updateStatusDot();
         updateSendBtn();
         break;

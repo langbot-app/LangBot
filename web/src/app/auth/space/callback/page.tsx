@@ -1,6 +1,11 @@
 import { useEffect, useState, useCallback, Suspense, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { httpClient } from '@/app/infra/http/HttpClient';
+import {
+  beginAuthenticatedSession,
+  bootstrapWorkspaceSession,
+  getPendingInvitationToken,
+} from '@/app/infra/http';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import {
@@ -23,6 +28,7 @@ import langbotIcon from '@/app/assets/langbot-logo.webp';
 type SpaceOAuthLoginResult = {
   token: string;
   user: string;
+  workspace_uuid?: string;
 };
 
 const pendingSpaceOAuthLogins = new Map<
@@ -32,19 +38,23 @@ const pendingSpaceOAuthLogins = new Map<
 
 function getOrCreateSpaceOAuthLoginPromise(
   authCode: string,
+  state: string,
+  workspaceUuid?: string,
+  launchAssertion?: string,
 ): Promise<SpaceOAuthLoginResult> {
-  const pendingRequest = pendingSpaceOAuthLogins.get(authCode);
+  const requestKey = `${authCode}:${state}:${workspaceUuid ?? ''}:${launchAssertion ?? ''}`;
+  const pendingRequest = pendingSpaceOAuthLogins.get(requestKey);
   if (pendingRequest) {
     return pendingRequest;
   }
 
   const requestPromise = httpClient
-    .exchangeSpaceOAuthCode(authCode)
+    .exchangeSpaceOAuthCode(authCode, state, workspaceUuid, launchAssertion)
     .finally(() => {
-      pendingSpaceOAuthLogins.delete(authCode);
+      pendingSpaceOAuthLogins.delete(requestKey);
     });
 
-  pendingSpaceOAuthLogins.set(authCode, requestPromise);
+  pendingSpaceOAuthLogins.set(requestKey, requestPromise);
   return requestPromise;
 }
 
@@ -58,29 +68,57 @@ function SpaceOAuthCallbackContent() {
     'loading' | 'confirm' | 'success' | 'error'
   >('loading');
   const [errorMessage, setErrorMessage] = useState<string>('');
+  const [terminalErrorCode, setTerminalErrorCode] = useState<
+    'space_account_not_registered' | 'space_account_binding_required' | null
+  >(null);
   const [isBindMode, setIsBindMode] = useState(false);
   const [code, setCode] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [localEmail, setLocalEmail] = useState<string>('');
 
   const handleOAuthCallback = useCallback(
-    async (authCode: string) => {
+    async (
+      authCode: string,
+      state: string,
+      workspaceUuid?: string,
+      launchAssertion?: string,
+    ) => {
       try {
-        const response = await getOrCreateSpaceOAuthLoginPromise(authCode);
+        const response = await getOrCreateSpaceOAuthLoginPromise(
+          authCode,
+          state,
+          workspaceUuid,
+          launchAssertion,
+        );
         if (!isMountedRef.current) {
           return;
         }
 
-        localStorage.setItem('token', response.token);
-        if (response.user) {
-          localStorage.setItem('userEmail', response.user);
+        beginAuthenticatedSession(response.token, response.user);
+        if (getPendingInvitationToken()) {
+          navigate('/invitations/accept', { replace: true });
+          return;
+        }
+        const workspaceResult = await bootstrapWorkspaceSession({
+          preferredWorkspaceUuid: response.workspace_uuid,
+        });
+        if (workspaceResult.status === 'unavailable') {
+          throw new Error('No Workspace is available for this Account');
+        }
+        if (response.workspace_uuid) {
+          navigate('/home', { replace: true });
+          return;
         }
         setStatus('success');
         toast.success(t('common.spaceLoginSuccess'));
 
         // If wizard state exists, redirect back to wizard instead of home
         const wizardState = localStorage.getItem('langbot_wizard_state');
-        const redirectTo = wizardState ? '/wizard' : '/home';
+        const destination = wizardState ? '/wizard' : '/home';
+        const redirectTo =
+          workspaceResult.status === 'selection-required'
+            ? `/workspaces/select?returnTo=${encodeURIComponent(destination)}`
+            : destination;
         setTimeout(() => {
           navigate(redirectTo);
         }, 1000);
@@ -90,7 +128,15 @@ function SpaceOAuthCallbackContent() {
         }
 
         setStatus('error');
-        const errorObj = err as { msg?: string };
+        const errorObj = err as { code?: string; msg?: string };
+        if (
+          errorObj.code === 'space_account_not_registered' ||
+          errorObj.code === 'space_account_binding_required'
+        ) {
+          setTerminalErrorCode(errorObj.code);
+          setErrorMessage(t(`account.${errorObj.code}`));
+          return;
+        }
         const errMsg = (errorObj?.msg || '').toLowerCase();
         if (errMsg.includes('account email mismatch')) {
           setErrorMessage(t('account.spaceEmailMismatch'));
@@ -113,14 +159,19 @@ function SpaceOAuthCallbackContent() {
           return;
         }
 
-        localStorage.setItem('token', response.token);
-        if (response.user) {
-          localStorage.setItem('userEmail', response.user);
+        beginAuthenticatedSession(response.token, response.user);
+        const workspaceResult = await bootstrapWorkspaceSession();
+        if (workspaceResult.status === 'unavailable') {
+          throw new Error('No Workspace is available for this Account');
         }
         setStatus('success');
         toast.success(t('account.bindSpaceSuccess'));
+        const redirectTo =
+          workspaceResult.status === 'selection-required'
+            ? '/workspaces/select?returnTo=%2Fhome'
+            : '/home';
         setTimeout(() => {
-          navigate('/home');
+          navigate(redirectTo);
         }, 1000);
       } catch (err) {
         if (!isMountedRef.current) {
@@ -128,7 +179,11 @@ function SpaceOAuthCallbackContent() {
         }
 
         setStatus('error');
-        const errorObj = err as { msg?: string };
+        const errorObj = err as { code?: string; msg?: string };
+        if (errorObj.code === 'space_account_email_mismatch') {
+          setErrorMessage(t('account.spaceEmailMismatch'));
+          return;
+        }
         const errMsg = (errorObj?.msg || '').toLowerCase();
         if (errMsg.includes('account email mismatch')) {
           setErrorMessage(t('account.spaceEmailMismatch'));
@@ -152,6 +207,8 @@ function SpaceOAuthCallbackContent() {
     const errorDescription = searchParams.get('error_description');
     const mode = searchParams.get('mode');
     const state = searchParams.get('state');
+    const workspaceUuid = searchParams.get('workspace_uuid');
+    const launchAssertion = searchParams.get('launch_assertion');
 
     if (error) {
       setStatus('error');
@@ -161,15 +218,13 @@ function SpaceOAuthCallbackContent() {
       return;
     }
 
-    if (!authCode) {
-      setStatus('error');
-      setErrorMessage(t('common.spaceLoginNoCode'));
-      return;
-    }
-
-    setCode(authCode);
-
     if (mode === 'bind') {
+      if (!authCode) {
+        setStatus('error');
+        setErrorMessage(t('common.spaceLoginNoCode'));
+        return;
+      }
+      setCode(authCode);
       // Bind mode - verify state (token) exists
       if (!state) {
         setStatus('error');
@@ -180,9 +235,31 @@ function SpaceOAuthCallbackContent() {
       setIsBindMode(true);
       setLocalEmail(localStorage.getItem('userEmail') || '');
       setStatus('confirm');
+    } else if (workspaceUuid || launchAssertion) {
+      if (!workspaceUuid || !launchAssertion) {
+        setStatus('error');
+        setErrorMessage(t('common.spaceLoginFailed'));
+        return;
+      }
+      handleOAuthCallback(
+        authCode ?? '',
+        state ?? '',
+        workspaceUuid,
+        launchAssertion,
+      );
     } else {
-      // Normal login/register mode
-      handleOAuthCallback(authCode);
+      if (!authCode) {
+        setStatus('error');
+        setErrorMessage(t('common.spaceLoginNoCode'));
+        return;
+      }
+      setCode(authCode);
+      if (!state) {
+        setStatus('error');
+        setErrorMessage(t('common.spaceLoginFailed'));
+        return;
+      }
+      handleOAuthCallback(authCode, state);
     }
     return () => {
       isMountedRef.current = false;
@@ -216,9 +293,11 @@ function SpaceOAuthCallbackContent() {
                 ? t('account.bindSpaceSuccess')
                 : t('common.spaceLoginSuccess'))}
             {status === 'error' &&
-              (isBindMode
-                ? t('account.bindSpaceFailed')
-                : t('common.spaceLoginError'))}
+              (terminalErrorCode
+                ? t(`account.${terminalErrorCode}Title`)
+                : isBindMode
+                  ? t('account.bindSpaceFailed')
+                  : t('common.spaceLoginError'))}
           </CardTitle>
           <CardDescription>
             {status === 'loading' &&

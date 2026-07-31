@@ -80,7 +80,7 @@ const thTH = {
     loading: 'กำลังโหลด...',
     fieldRequired: 'ช่องนี้จำเป็นต้องกรอก',
     or: 'หรือ',
-    loginWithSpace: 'เข้าสู่ระบบด้วย Space',
+    loginWithSpace: 'เข้าสู่ระบบด้วยบัญชี LangBot',
     spaceLoginRecommended:
       'แนะนำ: ใช้ API โมเดลที่เสถียรอย่างเป็นทางการและบริการคลาวด์',
     loginLocal: 'เข้าสู่ระบบด้วยบัญชีท้องถิ่น',
@@ -273,7 +273,7 @@ const thTH = {
     searchProviders: 'ค้นหาผู้ให้บริการ...',
     langbotModelsDescription: 'โมเดลคลาวด์ขับเคลื่อนโดย LangBot Space',
     credits: 'เครดิต',
-    loginWithSpace: 'เข้าสู่ระบบด้วย Space',
+    loginWithSpace: 'เข้าสู่ระบบด้วยบัญชี LangBot',
     loginToUseModels: 'เข้าสู่ระบบด้วย Space เพื่อใช้โมเดลคลาวด์',
     noModels: 'ยังไม่มีโมเดลที่กำหนดค่า',
     langbotModels: 'โมเดล LangBot',
@@ -746,6 +746,7 @@ const thTH = {
     notFound: 'ไม่พบข้อมูลปลั๊กอิน',
     sortBy: 'เรียงตาม',
     sort: {
+      hottest: 'ยอดนิยมที่สุด',
       recentlyAdded: 'เพิ่มล่าสุด',
       recentlyUpdated: 'อัปเดตล่าสุด',
       mostDownloads: 'ดาวน์โหลดมากที่สุด',
@@ -753,6 +754,9 @@ const thTH = {
     },
     downloads: 'ดาวน์โหลด',
     download: 'ดาวน์โหลด',
+    like: 'ถูกใจ',
+    unlike: 'เลิกถูกใจ',
+    likeFailed: 'อัปเดตการถูกใจไม่สำเร็จ โปรดลองอีกครั้ง',
     repository: 'Repository',
     downloadFailed: 'ดาวน์โหลดล้มเหลว',
     noReadme: 'ปลั๊กอินนี้ไม่มีเอกสาร README',
@@ -843,6 +847,9 @@ const thTH = {
     url: 'URL',
     headers: 'ส่วนหัว',
     timeout: 'หมดเวลา',
+    toolCallTimeout: 'หมดเวลาการเรียกเครื่องมือ (วินาที)',
+    toolCallTimeoutDescription:
+      'เวลารอสูงสุดต่อการเรียกเครื่องมือหนึ่งครั้ง ตั้งเป็น 0 เพื่อไม่จำกัด ค่าเริ่มต้นคือ 300 วินาที',
     addArgument: 'เพิ่มอาร์กิวเมนต์',
     addEnvVar: 'เพิ่มตัวแปรสภาพแวดล้อม',
     addHeader: 'เพิ่มส่วนหัว',
@@ -865,6 +872,9 @@ const thTH = {
     boxStdioRefusedSuggestion:
       'กรุณาเปิดใช้งาน Box (box.enabled = true) และตรวจสอบว่ารันไทม์ทำงานปกติ หรือเปลี่ยน MCP server เป็นโหมด http/sse',
     boxRequired: 'ต้องใช้ Box',
+    disabledByPolicy: 'ถูกปิดใช้งานโดยนโยบาย',
+    stdioDisabledByPolicy:
+      'การติดตั้งใช้งานนี้ปิด Stdio MCP อยู่ โปรดใช้เซิร์ฟเวอร์ MCP แบบระยะไกล',
     stdioBlockedByBoxToast:
       'ไม่สามารถบันทึก MCP โหมด stdio เนื่องจาก Sandbox Box ถูกปิดใช้งานหรือไม่พร้อมใช้งาน กรุณาเปิดใช้งาน Box หรือเลือกโหมด http/sse',
     toolsFound: 'เครื่องมือ',

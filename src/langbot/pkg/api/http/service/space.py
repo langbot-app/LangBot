@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections import OrderedDict
+
 from langbot.pkg.utils import httpclient
 import typing
 import datetime
@@ -11,6 +13,10 @@ from ....entity.persistence import user
 from ....entity.dto.space_model import SpaceModel
 
 
+_CREDITS_CACHE_TTL_SECONDS = 60
+_CREDITS_CACHE_MAX_ENTRIES = 4096
+
+
 class SpaceService:
     """Service for interacting with LangBot Space API"""
 
@@ -19,7 +25,24 @@ class SpaceService:
 
     def __init__(self, ap: app.Application) -> None:
         self.ap = ap
-        self._credits_cache = {}
+        self._credits_cache = OrderedDict()
+
+    def _ordered_credits_cache(
+        self,
+    ) -> OrderedDict[str, tuple[int, float]]:
+        if not isinstance(self._credits_cache, OrderedDict):
+            # Preserve compatibility with tests and callers that seed the cache.
+            self._credits_cache = OrderedDict(self._credits_cache)
+        return self._credits_cache
+
+    def _prune_credits_cache(self, now: float) -> None:
+        cache = self._ordered_credits_cache()
+        while cache:
+            email = next(iter(cache))
+            _, cached_at = cache[email]
+            if now - cached_at < _CREDITS_CACHE_TTL_SECONDS:
+                break
+            cache.pop(email, None)
 
     def _get_space_config(self) -> typing.Dict[str, str]:
         """Get Space configuration from config file"""
@@ -85,12 +108,14 @@ class SpaceService:
 
     def get_oauth_authorize_url(self, redirect_uri: str, state: str = '') -> str:
         """Get the Space OAuth authorization URL for redirect"""
+        from urllib.parse import urlencode
+
         space_config = self._get_space_config()
         authorize_url = space_config['oauth_authorize_url']
-        params = f'redirect_uri={redirect_uri}'
+        params = {'redirect_uri': redirect_uri}
         if state:
-            params += f'&state={state}'
-        return f'{authorize_url}?{params}'
+            params['state'] = state
+        return f'{authorize_url}?{urlencode(params)}'
 
     async def exchange_oauth_code(self, code: str) -> typing.Dict:
         """Exchange OAuth authorization code for tokens"""
@@ -105,8 +130,9 @@ class SpaceService:
             json={'code': code, 'instance_id': constants.instance_id},
         ) as response:
             if response.status != 200:
-                raise ValueError(f'Failed to exchange OAuth code: {await response.text()}')
-            data = await response.json()
+                error = await httpclient.read_text_limited(response)
+                raise ValueError(f'Failed to exchange OAuth code: {error}')
+            data = await httpclient.read_json_limited(response)
             if data.get('code') != 0:
                 raise ValueError(f'Failed to exchange OAuth code: {data.get("msg")}')
             return data.get('data', {})
@@ -121,8 +147,9 @@ class SpaceService:
             f'{space_url}/api/v1/accounts/token/refresh', json={'refresh_token': refresh_token}
         ) as response:
             if response.status != 200:
-                raise ValueError(f'Failed to refresh token: {await response.text()}')
-            data = await response.json()
+                error = await httpclient.read_text_limited(response)
+                raise ValueError(f'Failed to refresh token: {error}')
+            data = await httpclient.read_json_limited(response)
             if data.get('code') != 0:
                 raise ValueError(f'Failed to refresh token: {data.get("msg")}')
             return data.get('data', {})
@@ -137,8 +164,9 @@ class SpaceService:
             f'{space_url}/api/v1/accounts/me', headers={'Authorization': f'Bearer {access_token}'}
         ) as response:
             if response.status != 200:
-                raise ValueError(f'Failed to get user info: {await response.text()}')
-            data = await response.json()
+                error = await httpclient.read_text_limited(response)
+                raise ValueError(f'Failed to get user info: {error}')
+            data = await httpclient.read_json_limited(response)
             if data.get('code') != 0:
                 raise ValueError(f'Failed to get user info: {data.get("msg")}')
             return data.get('data', {})
@@ -154,11 +182,13 @@ class SpaceService:
 
     async def get_credits(self, user_email: str, force_refresh: bool = False) -> int | None:
         """Get Space credits for user with caching (60s TTL)"""
-        cache_ttl = 60
+        now = time.time()
+        cached_fallback = self._credits_cache.get(user_email)
+        self._prune_credits_cache(now)
 
         if not force_refresh and user_email in self._credits_cache:
             credits, ts = self._credits_cache[user_email]
-            if time.time() - ts < cache_ttl:
+            if now - ts < _CREDITS_CACHE_TTL_SECONDS:
                 return credits
 
         try:
@@ -167,10 +197,14 @@ class SpaceService:
                 return None
             credits = info.get('credits')
             if credits is not None:
-                self._credits_cache[user_email] = (credits, time.time())
+                cache = self._ordered_credits_cache()
+                cache.pop(user_email, None)
+                if len(cache) >= _CREDITS_CACHE_MAX_ENTRIES:
+                    cache.popitem(last=False)
+                cache[user_email] = (credits, time.time())
             return credits
         except Exception:
-            return self._credits_cache.get(user_email, (None, 0))[0]
+            return cached_fallback[0] if cached_fallback is not None else None
 
     async def get_models(self) -> typing.List[SpaceModel]:
         """Get models from Space"""
@@ -181,8 +215,9 @@ class SpaceService:
         session = httpclient.get_session()
         async with session.get(f'{space_url}/api/v1/models', params={'page_size': 100}) as response:
             if response.status != 200:
-                raise ValueError(f'Failed to get models: {await response.text()}')
-            data = await response.json()
+                error = await httpclient.read_text_limited(response)
+                raise ValueError(f'Failed to get models: {error}')
+            data = await httpclient.read_json_limited(response)
             if data.get('code') != 0:
                 raise ValueError(f'Failed to get models: {data.get("msg")}')
             models_data = data.get('data', {}).get('models', [])

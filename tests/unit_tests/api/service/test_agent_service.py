@@ -16,6 +16,7 @@ from langbot.pkg.api.http.service.agent import (
 
 
 pytestmark = pytest.mark.asyncio
+WORKSPACE_UUID = 'workspace-test'
 
 
 def _result(items: list | None = None, first_item=None):
@@ -33,6 +34,7 @@ def _agent_row(
     supported_event_patterns: list[str] | None = None,
 ):
     return SimpleNamespace(
+        workspace_uuid=WORKSPACE_UUID,
         uuid=agent_uuid,
         name=name,
         description='Agent description',
@@ -53,6 +55,7 @@ def _agent_row(
 
 def _serialize_agent(model_cls, entity, masked_columns=None):
     return {
+        'workspace_uuid': entity.workspace_uuid,
         'uuid': entity.uuid,
         'name': entity.name,
         'description': entity.description,
@@ -72,7 +75,11 @@ def _compiled_params(statement):
 
 
 def _compiled_update_values(statement):
-    return {key: value for key, value in statement.compile().params.items() if not key.startswith('uuid_')}
+    return {
+        key: value
+        for key, value in statement.compile().params.items()
+        if not key.startswith(('uuid_', 'workspace_uuid_'))
+    }
 
 
 def _make_app():
@@ -103,7 +110,10 @@ class TestAgentServiceMetadata:
             return_value=[{'name': 'trigger'}, ai_metadata, {'name': 'output'}]
         )
 
-        metadata = await AgentService(app).get_agent_metadata()
+        metadata = await AgentService(app).get_agent_metadata(WORKSPACE_UUID)
+        app.pipeline_service.get_pipeline_metadata.assert_awaited_once_with(
+            WORKSPACE_UUID
+        )
 
         assert metadata['runner_config'] == ai_metadata
         assert metadata['kinds'] == [
@@ -148,7 +158,11 @@ class TestAgentServiceListAndLookup:
             ]
         )
 
-        agents = await AgentService(app).get_agents(sort_by='updated_at', sort_order='DESC')
+        agents = await AgentService(app).get_agents(
+            WORKSPACE_UUID,
+            sort_by='updated_at',
+            sort_order='DESC',
+        )
 
         assert [agent['uuid'] for agent in agents] == ['pipeline-1', 'agent-1']
         assert agents[0]['kind'] == AGENT_KIND_PIPELINE
@@ -169,7 +183,7 @@ class TestAgentServiceListAndLookup:
         agent = _agent_row(agent_uuid='agent-1')
         app.persistence_mgr.execute_async = AsyncMock(return_value=_result(first_item=agent))
 
-        result = await AgentService(app).get_agent('agent-1')
+        result = await AgentService(app).get_agent(WORKSPACE_UUID, 'agent-1')
 
         assert result['uuid'] == 'agent-1'
         assert result['kind'] == AGENT_KIND_AGENT
@@ -191,7 +205,7 @@ class TestAgentServiceListAndLookup:
             }
         )
 
-        result = await AgentService(app).get_agent('pipeline-1')
+        result = await AgentService(app).get_agent(WORKSPACE_UUID, 'pipeline-1')
 
         assert result['kind'] == AGENT_KIND_PIPELINE
         assert result['enabled'] is True
@@ -217,6 +231,7 @@ class TestAgentServiceCreateUpdateDelete:
         app.persistence_mgr.execute_async = AsyncMock(return_value=Mock())
 
         result = await AgentService(app).create_agent(
+            WORKSPACE_UUID,
             {
                 'name': 'Support Agent',
                 'description': 'Handles support events',
@@ -259,7 +274,10 @@ class TestAgentServiceCreateUpdateDelete:
         app = _make_app()
 
         with pytest.raises(ValueError, match='Agent config|runner_config'):
-            await AgentService(app).create_agent({'name': 'Invalid Agent', 'config': config})
+            await AgentService(app).create_agent(
+                WORKSPACE_UUID,
+                {'name': 'Invalid Agent', 'config': config},
+            )
 
         app.persistence_mgr.execute_async.assert_not_awaited()
 
@@ -284,6 +302,7 @@ class TestAgentServiceCreateUpdateDelete:
 
         with pytest.raises(ValueError, match=f'{field_name}.*boolean'):
             await AgentService(app).create_agent(
+                WORKSPACE_UUID,
                 {
                     'name': 'Invalid Agent',
                     'config': {
@@ -302,6 +321,7 @@ class TestAgentServiceCreateUpdateDelete:
 
         with pytest.raises(ValueError, match=r'mcp-resources\[0\]\.enabled.*boolean'):
             await AgentService(app).create_agent(
+                WORKSPACE_UUID,
                 {
                     'name': 'Invalid Agent',
                     'config': {
@@ -324,6 +344,7 @@ class TestAgentServiceCreateUpdateDelete:
         app.persistence_mgr.execute_async = AsyncMock(return_value=Mock())
 
         await AgentService(app).create_agent(
+            WORKSPACE_UUID,
             {
                 'name': 'Unconfigured Agent',
                 'component_ref': 'plugin:caller/must-not-win/default',
@@ -343,6 +364,7 @@ class TestAgentServiceCreateUpdateDelete:
 
         with pytest.raises(ValueError, match='runner_config'):
             await AgentService(app).update_agent(
+                WORKSPACE_UUID,
                 'agent-1',
                 {
                     'config': {
@@ -368,6 +390,7 @@ class TestAgentServiceCreateUpdateDelete:
         }
 
         await AgentService(app).update_agent(
+            WORKSPACE_UUID,
             'agent-1',
             {
                 'uuid': 'caller-owned-uuid',
@@ -400,6 +423,7 @@ class TestAgentServiceCreateUpdateDelete:
         )
 
         await AgentService(app).update_agent(
+            WORKSPACE_UUID,
             'agent-1',
             {
                 'name': 'Updated Agent',
@@ -423,6 +447,7 @@ class TestAgentServiceCreateUpdateDelete:
         )
 
         await AgentService(app).update_agent(
+            WORKSPACE_UUID,
             'agent-1',
             {'component_ref': 'plugin:caller/must-not-win/default'},
         )
@@ -441,6 +466,7 @@ class TestAgentServiceCreateUpdateDelete:
         config = {'runner': {'id': ''}, 'runner_config': {}}
 
         await AgentService(app).update_agent(
+            WORKSPACE_UUID,
             'agent-1',
             {
                 'component_ref': 'plugin:caller/must-not-win/default',
@@ -459,6 +485,7 @@ class TestAgentServiceCreateUpdateDelete:
         service = AgentService(app)
 
         created = await service.create_agent(
+            WORKSPACE_UUID,
             {
                 'kind': AGENT_KIND_PIPELINE,
                 'name': 'Pipeline Agent',
@@ -466,11 +493,16 @@ class TestAgentServiceCreateUpdateDelete:
                 'emoji': 'P',
             }
         )
-        await service.update_agent('pipeline-1', {'name': 'Updated Pipeline'})
-        await service.delete_agent('pipeline-1')
+        await service.update_agent(
+            WORKSPACE_UUID,
+            'pipeline-1',
+            {'name': 'Updated Pipeline'},
+        )
+        await service.delete_agent(WORKSPACE_UUID, 'pipeline-1')
 
         assert created == {'uuid': 'pipeline-created', 'kind': AGENT_KIND_PIPELINE}
         app.pipeline_service.create_pipeline.assert_awaited_once_with(
+            WORKSPACE_UUID,
             {
                 'name': 'Pipeline Agent',
                 'description': 'Legacy pipeline',
@@ -479,7 +511,11 @@ class TestAgentServiceCreateUpdateDelete:
             }
         )
         app.pipeline_service.update_pipeline.assert_awaited_once_with(
+            WORKSPACE_UUID,
             'pipeline-1',
             {'name': 'Updated Pipeline'},
         )
-        app.pipeline_service.delete_pipeline.assert_awaited_once_with('pipeline-1')
+        app.pipeline_service.delete_pipeline.assert_awaited_once_with(
+            WORKSPACE_UUID,
+            'pipeline-1',
+        )

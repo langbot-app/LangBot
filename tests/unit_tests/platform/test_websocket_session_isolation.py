@@ -12,7 +12,25 @@ import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
 from langbot.pkg.platform.sources import websocket_adapter as websocket_adapter_module
 from langbot.pkg.platform.sources.websocket_adapter import WebSocketAdapter, WebSocketMessage, WebSocketSession
-from langbot.pkg.platform.sources.websocket_manager import WebSocketConnectionManager, is_valid_session_id
+from langbot.pkg.platform.sources.websocket_manager import (
+    WebSocketConnectionManager,
+    WebSocketScope,
+    is_valid_session_id,
+)
+
+
+SCOPE_A = WebSocketScope('instance-a', 'workspace-a', 1)
+SCOPE_B = WebSocketScope('instance-a', 'workspace-b', 1)
+
+
+def _adapter_logger(scope: WebSocketScope = SCOPE_A):
+    logger = AsyncMock()
+    logger.execution_context = Mock(
+        instance_uuid=scope.instance_uuid,
+        workspace_uuid=scope.workspace_uuid,
+        placement_generation=scope.placement_generation,
+    )
+    return logger
 
 
 @pytest.mark.asyncio
@@ -20,18 +38,21 @@ async def test_broadcast_only_reaches_connections_in_same_browser_session():
     manager = WebSocketConnectionManager()
     first = await manager.add_connection(
         websocket=Mock(),
+        scope=SCOPE_A,
         pipeline_uuid='pipeline-1',
         session_type='person',
         session_id='session-a',
     )
     second = await manager.add_connection(
         websocket=Mock(),
+        scope=SCOPE_A,
         pipeline_uuid='pipeline-1',
         session_type='person',
         session_id='session-b',
     )
     dashboard = await manager.add_connection(
         websocket=Mock(),
+        scope=SCOPE_A,
         pipeline_uuid='pipeline-1',
         session_type='person',
     )
@@ -39,6 +60,7 @@ async def test_broadcast_only_reaches_connections_in_same_browser_session():
     await manager.broadcast_to_pipeline(
         'pipeline-1',
         {'type': 'response'},
+        scope=SCOPE_A,
         session_type='person',
         session_id='session-a',
     )
@@ -50,6 +72,7 @@ async def test_broadcast_only_reaches_connections_in_same_browser_session():
     await manager.broadcast_to_pipeline(
         'pipeline-1',
         {'type': 'dashboard-response'},
+        scope=SCOPE_A,
         session_type='person',
         session_id=None,
     )
@@ -60,18 +83,113 @@ async def test_broadcast_only_reaches_connections_in_same_browser_session():
 
 
 @pytest.mark.asyncio
+async def test_pipeline_indexes_and_broadcasts_are_workspace_scoped():
+    manager = WebSocketConnectionManager()
+    workspace_a = await manager.add_connection(
+        websocket=Mock(),
+        scope=SCOPE_A,
+        pipeline_uuid='shared-pipeline',
+        session_type='person',
+    )
+    workspace_b = await manager.add_connection(
+        websocket=Mock(),
+        scope=SCOPE_B,
+        pipeline_uuid='shared-pipeline',
+        session_type='person',
+    )
+
+    await manager.broadcast_to_pipeline(
+        'shared-pipeline',
+        {'type': 'workspace-a'},
+        scope=SCOPE_A,
+    )
+
+    assert await workspace_a.send_queue.get() == {'type': 'workspace-a'}
+    assert workspace_b.send_queue.empty()
+    assert await manager.get_connection(workspace_b.connection_id, scope=SCOPE_A) is None
+    assert await manager.get_connection(workspace_b.connection_id, scope=SCOPE_B) is workspace_b
+    assert manager.get_stats(scope=SCOPE_A)['total_connections'] == 1
+
+
+@pytest.mark.asyncio
+async def test_connection_admission_is_bounded_globally_and_per_workspace():
+    manager = WebSocketConnectionManager()
+    await manager.add_connection(
+        websocket=Mock(),
+        scope=SCOPE_A,
+        pipeline_uuid='pipeline-1',
+        session_type='person',
+        max_connections=2,
+        max_connections_per_workspace=1,
+    )
+
+    with pytest.raises(RuntimeError, match='Workspace WebSocket'):
+        await manager.add_connection(
+            websocket=Mock(),
+            scope=SCOPE_A,
+            pipeline_uuid='pipeline-2',
+            session_type='person',
+            max_connections=2,
+            max_connections_per_workspace=1,
+        )
+
+    await manager.add_connection(
+        websocket=Mock(),
+        scope=SCOPE_B,
+        pipeline_uuid='pipeline-1',
+        session_type='person',
+        max_connections=2,
+        max_connections_per_workspace=1,
+    )
+    with pytest.raises(RuntimeError, match='WebSocket connection capacity'):
+        await manager.add_connection(
+            websocket=Mock(),
+            scope=WebSocketScope('instance-a', 'workspace-c', 1),
+            pipeline_uuid='pipeline-1',
+            session_type='person',
+            max_connections=2,
+            max_connections_per_workspace=1,
+        )
+
+
+@pytest.mark.asyncio
+async def test_close_scope_closes_and_removes_only_matching_connections():
+    manager = WebSocketConnectionManager()
+    websocket_a = Mock(close=AsyncMock())
+    connection_a = await manager.add_connection(
+        websocket=websocket_a,
+        scope=SCOPE_A,
+        pipeline_uuid='pipeline-1',
+        session_type='person',
+    )
+    connection_b = await manager.add_connection(
+        websocket=Mock(close=AsyncMock()),
+        scope=SCOPE_B,
+        pipeline_uuid='pipeline-1',
+        session_type='person',
+    )
+
+    await manager.close_scope(SCOPE_A)
+
+    websocket_a.close.assert_awaited_once()
+    assert await manager.get_connection(connection_a.connection_id, scope=SCOPE_A) is None
+    assert await manager.get_connection(connection_b.connection_id, scope=SCOPE_B) is connection_b
+
+
+@pytest.mark.asyncio
 async def test_embed_event_uses_stable_session_launcher(monkeypatch):
     manager = WebSocketConnectionManager()
     session_id = '31c0f2e9-b115-4ee6-8f15-3e624d6456b1'
     connection = await manager.add_connection(
         websocket=Mock(),
+        scope=SCOPE_A,
         pipeline_uuid='pipeline-1',
         session_type='person',
         session_id=session_id,
     )
     monkeypatch.setattr(websocket_adapter_module, 'ws_connection_manager', manager)
 
-    adapter = WebSocketAdapter.model_construct(ap=Mock(), logger=AsyncMock())
+    adapter = WebSocketAdapter.model_construct(ap=Mock(), logger=_adapter_logger())
     adapter.websocket_person_session = WebSocketSession(id='person')
     adapter.websocket_group_session = WebSocketSession(id='group')
     received = []
@@ -95,13 +213,14 @@ async def test_embed_group_event_uses_stable_session_launcher(monkeypatch):
     session_id = '31c0f2e9-b115-4ee6-8f15-3e624d6456b1'
     connection = await manager.add_connection(
         websocket=Mock(),
+        scope=SCOPE_A,
         pipeline_uuid='pipeline-1',
         session_type='group',
         session_id=session_id,
     )
     monkeypatch.setattr(websocket_adapter_module, 'ws_connection_manager', manager)
 
-    adapter = WebSocketAdapter.model_construct(ap=Mock(), logger=AsyncMock())
+    adapter = WebSocketAdapter.model_construct(ap=Mock(), logger=_adapter_logger())
     adapter.websocket_person_session = WebSocketSession(id='person')
     adapter.websocket_group_session = WebSocketSession(id='group')
     received = []
@@ -121,6 +240,7 @@ async def test_embed_group_event_uses_stable_session_launcher(monkeypatch):
 
     dashboard = await manager.add_connection(
         websocket=Mock(),
+        scope=SCOPE_A,
         pipeline_uuid='pipeline-1',
         session_type='group',
     )
@@ -141,30 +261,46 @@ async def test_stable_session_launcher_resolves_to_active_connection(monkeypatch
     session_id = '31c0f2e9-b115-4ee6-8f15-3e624d6456b1'
     await manager.add_connection(
         websocket=Mock(),
+        scope=SCOPE_A,
         pipeline_uuid='pipeline-2',
         session_type='person',
         session_id=session_id,
     )
     connection = await manager.add_connection(
         websocket=Mock(),
+        scope=SCOPE_A,
         pipeline_uuid='pipeline-1',
         session_type='person',
         session_id=session_id,
     )
     monkeypatch.setattr(websocket_adapter_module, 'ws_connection_manager', manager)
 
-    adapter = WebSocketAdapter.model_construct(ap=Mock(), logger=AsyncMock())
+    adapter = WebSocketAdapter.model_construct(ap=Mock(), logger=_adapter_logger())
     message_source = Mock()
     message_source.sender.id = f'websocket_pipeline-1:{session_id}'
 
     assert await adapter._get_message_context(message_source) == ('pipeline-1', session_id)
     assert await adapter._get_connection_from_target(f'websocketgroup_pipeline-1:{session_id}') is connection
-    assert await manager.get_connection_by_session_id(session_id, 'pipeline-1') is connection
+    assert (
+        await manager.get_connection_by_session_id(
+            session_id,
+            scope=SCOPE_A,
+            pipeline_uuid='pipeline-1',
+        )
+        is connection
+    )
 
     await manager.remove_connection(connection.connection_id)
 
     assert await adapter._get_message_context(message_source) == ('pipeline-1', session_id)
-    assert await manager.get_connection_by_session_id(session_id, 'pipeline-1') is None
+    assert (
+        await manager.get_connection_by_session_id(
+            session_id,
+            scope=SCOPE_A,
+            pipeline_uuid='pipeline-1',
+        )
+        is None
+    )
 
 
 @pytest.mark.asyncio
@@ -172,6 +308,7 @@ async def test_dashboard_reply_uses_event_pipeline_after_connection_closes(monke
     manager = WebSocketConnectionManager()
     connection = await manager.add_connection(
         websocket=Mock(),
+        scope=SCOPE_A,
         pipeline_uuid='pipeline-1',
         session_type='person',
     )
@@ -200,12 +337,13 @@ async def test_late_final_events_update_one_stream_message(monkeypatch):
     manager = WebSocketConnectionManager()
     connection = await manager.add_connection(
         websocket=Mock(),
+        scope=SCOPE_A,
         pipeline_uuid='pipeline-1',
         session_type='person',
     )
     monkeypatch.setattr(websocket_adapter_module, 'ws_connection_manager', manager)
 
-    adapter = WebSocketAdapter.model_construct(ap=Mock(), logger=AsyncMock())
+    adapter = WebSocketAdapter.model_construct(ap=Mock(), logger=_adapter_logger())
     adapter.websocket_person_session = WebSocketSession(id='person')
     adapter.websocket_group_session = WebSocketSession(id='group')
     message_source = platform_events.FriendMessage(
@@ -256,7 +394,7 @@ def test_session_ids_must_be_canonical_random_uuids():
 
 
 def test_history_read_does_not_allocate_unknown_session():
-    adapter = WebSocketAdapter.model_construct(ap=Mock(), logger=AsyncMock())
+    adapter = WebSocketAdapter.model_construct(ap=Mock(), logger=_adapter_logger())
     adapter.websocket_person_session = WebSocketSession(id='person')
     adapter.websocket_group_session = WebSocketSession(id='group')
 
@@ -264,16 +402,75 @@ def test_history_read_does_not_allocate_unknown_session():
     assert adapter.websocket_person_session.message_lists == {}
 
 
+@pytest.mark.asyncio
+async def test_attachment_key_must_belong_to_connection_upload_scope():
+    manager = WebSocketConnectionManager()
+    connection = await manager.add_connection(
+        websocket=Mock(),
+        scope=SCOPE_A,
+        pipeline_uuid='pipeline-1',
+        session_type='person',
+    )
+    storage_mgr = Mock()
+    storage_mgr.scoped_prefix.return_value = 'v1/current/upload_image/'
+    storage_mgr.is_scoped_object_key.return_value = True
+    storage_mgr.load_scoped_object_key = AsyncMock(return_value=b'image')
+    storage_mgr.delete_scoped_object_key = AsyncMock()
+    adapter = WebSocketAdapter.model_construct(
+        ap=Mock(storage_mgr=storage_mgr),
+        logger=_adapter_logger(),
+    )
+    message_chain = [{'type': 'Image', 'path': 'v1/current/upload_image/key.png'}]
+
+    await adapter._process_image_components(connection, message_chain)
+
+    assert message_chain[0]['base64'].startswith('data:image/png;base64,')
+    assert message_chain[0]['path'] == ''
+    storage_mgr.scoped_prefix.assert_called_once_with(
+        connection.execution_context,
+        owner_type='upload_image',
+    )
+    storage_mgr.is_scoped_object_key.assert_called_once_with(
+        'v1/current/upload_image/key.png',
+        expected_owner_type='upload_image',
+    )
+    storage_mgr.load_scoped_object_key.assert_awaited_once_with(
+        connection.execution_context,
+        'v1/current/upload_image/key.png',
+        expected_owner_type='upload_image',
+    )
+    storage_mgr.delete_scoped_object_key.assert_awaited_once_with(
+        connection.execution_context,
+        'v1/current/upload_image/key.png',
+        expected_owner_type='upload_image',
+    )
+
+    with pytest.raises(ValueError, match='does not belong'):
+        await adapter._process_image_components(
+            connection,
+            [{'type': 'File', 'path': 'v1/other/upload/key.txt'}],
+        )
+
+
 def test_history_and_reset_are_scoped_to_browser_session():
     matching_provider_session = Mock(
+        instance_uuid=SCOPE_A.instance_uuid,
+        workspace_uuid=SCOPE_A.workspace_uuid,
+        placement_generation=SCOPE_A.placement_generation,
         launcher_type=Mock(value='person'),
         launcher_id='websocket_pipeline-1:session-a',
     )
     matching_group_provider_session = Mock(
+        instance_uuid=SCOPE_A.instance_uuid,
+        workspace_uuid=SCOPE_A.workspace_uuid,
+        placement_generation=SCOPE_A.placement_generation,
         launcher_type=Mock(value='group'),
         launcher_id='websocketgroup_pipeline-1:session-a',
     )
     other_session = Mock(
+        instance_uuid=SCOPE_A.instance_uuid,
+        workspace_uuid=SCOPE_A.workspace_uuid,
+        placement_generation=SCOPE_A.placement_generation,
         launcher_type=Mock(value='person'),
         launcher_id='websocket_pipeline-1:session-b',
     )
@@ -285,7 +482,7 @@ def test_history_and_reset_are_scoped_to_browser_session():
     ]
     adapter = WebSocketAdapter.model_construct(
         ap=ap,
-        logger=AsyncMock(),
+        logger=_adapter_logger(),
     )
     adapter.websocket_person_session = Mock()
     adapter.websocket_group_session = Mock()

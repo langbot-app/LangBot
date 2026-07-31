@@ -12,9 +12,15 @@ from langbot.pkg.agent.runner.binding_resolver import AgentBindingResolver
 from langbot.pkg.agent.runner.query_entry_adapter import QueryEntryAdapter
 from langbot.pkg.agent.runner.resource_builder import AgentResourceBuilder
 from langbot.pkg.agent.runner.host_models import AgentBinding, BindingScope, ResourcePolicy
+from langbot.pkg.api.http.context import ExecutionContext
 
 
 RUNNER_ID = 'plugin:test/runner/default'
+TEST_CONTEXT = ExecutionContext(
+    instance_uuid='instance-test',
+    workspace_uuid='workspace-test',
+    placement_generation=1,
+)
 FULL_PERMISSIONS = {
     'models': ['count_tokens', 'invoke', 'stream', 'rerank'],
     'tools': ['detail', 'call'],
@@ -86,6 +92,7 @@ async def build_resources(app, query, descriptor):
     agent_config = QueryEntryAdapter.config_to_agent_config(query, descriptor.id)
     binding = AgentBindingResolver().resolve_one(event, [agent_config])
     return await AgentResourceBuilder(app).build_resources_from_binding(
+        execution_context=TEST_CONTEXT,
         event=event,
         binding=binding,
         descriptor=descriptor,
@@ -118,10 +125,12 @@ async def test_build_models_authorizes_config_declared_llm_and_rerank_models(app
         'rerank': make_model(model_type='rerank', provider='rerank-provider'),
     }
 
-    async def get_model_by_uuid(model_uuid):
+    async def get_model_by_uuid(context, model_uuid):
+        assert context == TEST_CONTEXT
         return llm_models.get(model_uuid)
 
-    async def get_rerank_model_by_uuid(model_uuid):
+    async def get_rerank_model_by_uuid(context, model_uuid):
+        assert context == TEST_CONTEXT
         return rerank_models.get(model_uuid)
 
     app.model_mgr.get_model_by_uuid = AsyncMock(side_effect=get_model_by_uuid)
@@ -228,7 +237,8 @@ async def test_build_resources_accepts_dynamic_form_type_aliases(app):
     """Frontend DynamicForm aliases should resolve to runtime resource grants."""
     app.model_mgr.get_model_by_uuid = AsyncMock(return_value=make_model())
 
-    async def get_kb(kb_uuid):
+    async def get_kb(context, kb_uuid):
+        assert context == TEST_CONTEXT
         return SimpleNamespace(
             uuid=kb_uuid,
             get_name=lambda: f'name-{kb_uuid}',
@@ -322,7 +332,7 @@ async def test_build_tools_authorizes_query_declared_tools(app):
     """Tools discovered by Pipeline preprocessing become run-scoped authorized
     resources, with full parameters schema prefilled by the host."""
     app.tool_mgr.get_tool_schema = AsyncMock(
-        side_effect=lambda name, source_ref=None: {
+        side_effect=lambda context, name, source_ref=None: {
             'qa_plugin_echo': (
                 'Echo test tool',
                 {'type': 'object', 'properties': {'text': {'type': 'string'}}},
@@ -411,6 +421,7 @@ async def test_build_tools_materializes_independent_agent_all_tools_policy(app):
     )
 
     resources = await AgentResourceBuilder(app).build_resources_from_binding(
+        execution_context=TEST_CONTEXT,
         event=QueryEntryAdapter.query_to_event(make_query({})),
         binding=binding,
         descriptor=descriptor,
@@ -418,6 +429,7 @@ async def test_build_tools_materializes_independent_agent_all_tools_policy(app):
 
     assert [tool['tool_name'] for tool in resources['tools']] == ['exec', 'plugin_tool']
     app.tool_mgr.get_resolved_tool_catalog.assert_awaited_once_with(
+        TEST_CONTEXT,
         include_skill_authoring=True,
         include_mcp_resource_tools=True,
     )
@@ -442,6 +454,7 @@ async def test_build_tools_denies_mcp_resource_tools_when_agent_reads_disabled(a
     )
 
     resources = await AgentResourceBuilder(app).build_resources_from_binding(
+        execution_context=TEST_CONTEXT,
         event=QueryEntryAdapter.query_to_event(make_query({})),
         binding=binding,
         descriptor=descriptor,
@@ -471,6 +484,7 @@ async def test_build_tools_keeps_plugin_using_synthetic_mcp_tool_name_when_reads
     )
 
     resources = await AgentResourceBuilder(app).build_resources_from_binding(
+        execution_context=TEST_CONTEXT,
         event=QueryEntryAdapter.query_to_event(make_query({})),
         binding=binding,
         descriptor=descriptor,
@@ -502,7 +516,8 @@ async def test_build_knowledge_bases_unions_config_and_policy_grants(app):
         variables={'_knowledge_base_uuids': ['kb_policy']},
     )
 
-    async def get_kb(kb_uuid):
+    async def get_kb(context, kb_uuid):
+        assert context == TEST_CONTEXT
         return SimpleNamespace(
             uuid=kb_uuid,
             get_name=lambda: f'name-{kb_uuid}',

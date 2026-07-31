@@ -17,7 +17,7 @@ from langbot_plugin.api.entities.builtin.agent_runner.page_results import (
 )
 from langbot_plugin.entities.io.actions.enums import PluginToRuntimeAction
 
-from .conftest import make_resources
+from .conftest import bind_runtime_action_context, make_resources
 
 
 class FakeConnection:
@@ -56,7 +56,10 @@ def _handler(db_engine, session_registry):
         return True
 
     fake_app = FakeApplication(db_engine)
-    return RuntimeConnectionHandler(FakeConnection(), fake_disconnect, fake_app)
+    return bind_runtime_action_context(
+        RuntimeConnectionHandler(FakeConnection(), fake_disconnect, fake_app),
+        fake_app,
+    )
 
 
 async def _register_session(

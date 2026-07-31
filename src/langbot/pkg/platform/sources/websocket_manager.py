@@ -1,6 +1,7 @@
 """WebSocket连接管理器 - 管理多个并发WebSocket连接"""
 
 import asyncio
+import dataclasses
 import logging
 import typing
 import uuid
@@ -8,8 +9,34 @@ from datetime import datetime
 
 import pydantic
 
+from ...api.http.context import ExecutionContext
+
 logger = logging.getLogger(__name__)
 _SESSION_FILTER_UNSET = object()
+_DEFAULT_SEND_QUEUE_SIZE = 100
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class WebSocketScope:
+    """Trusted runtime placement carried by every WebSocket connection."""
+
+    instance_uuid: str
+    workspace_uuid: str
+    placement_generation: int
+
+    def __post_init__(self) -> None:
+        if not self.instance_uuid.strip() or not self.workspace_uuid.strip():
+            raise ValueError('WebSocket scope requires an instance and Workspace')
+        if self.placement_generation <= 0:
+            raise ValueError('WebSocket scope requires a positive placement generation')
+
+    @classmethod
+    def from_context(cls, context: typing.Any) -> 'WebSocketScope':
+        return cls(
+            instance_uuid=str(getattr(context, 'instance_uuid', '')),
+            workspace_uuid=str(getattr(context, 'workspace_uuid', '')),
+            placement_generation=int(getattr(context, 'placement_generation', 0)),
+        )
 
 
 def is_valid_session_id(value: str) -> bool:
@@ -29,6 +56,15 @@ class WebSocketConnection(pydantic.BaseModel):
     connection_id: str = pydantic.Field(default_factory=lambda: str(uuid.uuid4()))
     """连接唯一ID"""
 
+    instance_uuid: str
+    """Owning LangBot instance."""
+
+    workspace_uuid: str
+    """Owning Workspace."""
+
+    placement_generation: int
+    """Workspace placement generation captured at connect time."""
+
     pipeline_uuid: str
     """关联的流水线UUID"""
 
@@ -47,7 +83,10 @@ class WebSocketConnection(pydantic.BaseModel):
     last_active: datetime = pydantic.Field(default_factory=datetime.now)
     """最后活跃时间"""
 
-    send_queue: asyncio.Queue = pydantic.Field(default_factory=asyncio.Queue, exclude=True)
+    send_queue: asyncio.Queue = pydantic.Field(
+        default_factory=lambda: asyncio.Queue(maxsize=_DEFAULT_SEND_QUEUE_SIZE),
+        exclude=True,
+    )
     """发送消息队列"""
 
     is_active: bool = True
@@ -55,6 +94,25 @@ class WebSocketConnection(pydantic.BaseModel):
 
     metadata: dict = pydantic.Field(default_factory=dict)
     """连接元数据（可存储额外信息）"""
+
+    @property
+    def scope(self) -> WebSocketScope:
+        return WebSocketScope(
+            instance_uuid=self.instance_uuid,
+            workspace_uuid=self.workspace_uuid,
+            placement_generation=self.placement_generation,
+        )
+
+    @property
+    def execution_context(self) -> ExecutionContext:
+        """Return the storage/runtime context captured for this connection."""
+
+        return ExecutionContext(
+            instance_uuid=self.instance_uuid,
+            workspace_uuid=self.workspace_uuid,
+            placement_generation=self.placement_generation,
+            pipeline_uuid=self.pipeline_uuid,
+        )
 
 
 class WebSocketConnectionManager:
@@ -64,11 +122,11 @@ class WebSocketConnectionManager:
         self.connections: dict[str, WebSocketConnection] = {}
         """所有活跃连接 {connection_id: connection}"""
 
-        self.pipeline_connections: dict[str, set[str]] = {}
-        """流水线到连接的映射 {pipeline_uuid: {connection_id, ...}}"""
+        self.pipeline_connections: dict[tuple[str, str, int, str], set[str]] = {}
+        """Scoped pipeline to connection mapping."""
 
-        self.session_connections: dict[str, set[str]] = {}
-        """会话类型到连接的映射 {session_type: {connection_id, ...}}"""
+        self.session_connections: dict[tuple[str, str, int, str], set[str]] = {}
+        """Scoped session-type to connection mapping."""
 
         self._lock = asyncio.Lock()
         """线程锁，保护并发访问"""
@@ -76,39 +134,95 @@ class WebSocketConnectionManager:
     async def add_connection(
         self,
         websocket: typing.Any,
+        scope: WebSocketScope,
         pipeline_uuid: str,
         session_type: str,
         metadata: dict | None = None,
         session_id: str | None = None,
+        send_queue_size: int = _DEFAULT_SEND_QUEUE_SIZE,
+        max_connections: int = 1024,
+        max_connections_per_workspace: int = 32,
     ) -> WebSocketConnection:
         """Register a WebSocket connection and its optional embed session."""
+        try:
+            send_queue_size = max(int(send_queue_size), 1)
+        except (TypeError, ValueError):
+            send_queue_size = _DEFAULT_SEND_QUEUE_SIZE
+        max_connections = max(int(max_connections), 1)
+        max_connections_per_workspace = max(
+            min(int(max_connections_per_workspace), max_connections),
+            1,
+        )
         async with self._lock:
+            if len(self.connections) >= max_connections:
+                raise RuntimeError(f'WebSocket connection capacity reached ({max_connections})')
+            workspace_connection_count = sum(
+                1
+                for connection in self.connections.values()
+                if connection.instance_uuid == scope.instance_uuid
+                and connection.workspace_uuid == scope.workspace_uuid
+                and connection.placement_generation == scope.placement_generation
+            )
+            if workspace_connection_count >= max_connections_per_workspace:
+                raise RuntimeError(f'Workspace WebSocket connection capacity reached ({max_connections_per_workspace})')
             connection = WebSocketConnection(
+                instance_uuid=scope.instance_uuid,
+                workspace_uuid=scope.workspace_uuid,
+                placement_generation=scope.placement_generation,
                 pipeline_uuid=pipeline_uuid,
                 session_type=session_type,
                 session_id=session_id,
                 websocket=websocket,
                 metadata=metadata or {},
+                send_queue=asyncio.Queue(maxsize=send_queue_size),
             )
 
             self.connections[connection.connection_id] = connection
 
             # 更新流水线映射
-            if pipeline_uuid not in self.pipeline_connections:
-                self.pipeline_connections[pipeline_uuid] = set()
-            self.pipeline_connections[pipeline_uuid].add(connection.connection_id)
+            pipeline_key = self._pipeline_key(scope, pipeline_uuid)
+            if pipeline_key not in self.pipeline_connections:
+                self.pipeline_connections[pipeline_key] = set()
+            self.pipeline_connections[pipeline_key].add(connection.connection_id)
 
             # 更新会话类型映射
-            if session_type not in self.session_connections:
-                self.session_connections[session_type] = set()
-            self.session_connections[session_type].add(connection.connection_id)
+            session_key = self._session_key(scope, session_type)
+            if session_key not in self.session_connections:
+                self.session_connections[session_key] = set()
+            self.session_connections[session_key].add(connection.connection_id)
 
             logger.debug(
                 f'WebSocket connection established: {connection.connection_id} '
-                f'(pipeline={pipeline_uuid}, session_type={session_type})'
+                f'(workspace={scope.workspace_uuid}, generation={scope.placement_generation}, '
+                f'pipeline={pipeline_uuid}, session_type={session_type})'
             )
 
             return connection
+
+    async def close_scope(self, scope: WebSocketScope) -> None:
+        """Close and forget every live connection for one runtime placement."""
+
+        async with self._lock:
+            connection_ids = [
+                connection_id for connection_id, connection in self.connections.items() if connection.scope == scope
+            ]
+        for connection_id in connection_ids:
+            connection = self.connections.get(connection_id)
+            if connection is None:
+                continue
+            close = getattr(connection.websocket, 'close', None)
+            if close is not None:
+                try:
+                    result = close()
+                    if asyncio.iscoroutine(result):
+                        await result
+                except Exception:
+                    logger.debug(
+                        'Failed to close WebSocket connection %s',
+                        connection_id,
+                        exc_info=True,
+                    )
+            await self.remove_connection(connection_id)
 
     async def remove_connection(self, connection_id: str):
         """移除WebSocket连接"""
@@ -120,54 +234,103 @@ class WebSocketConnectionManager:
             connection.is_active = False
 
             # 从流水线映射中移除
-            if connection.pipeline_uuid in self.pipeline_connections:
-                self.pipeline_connections[connection.pipeline_uuid].discard(connection_id)
-                if not self.pipeline_connections[connection.pipeline_uuid]:
-                    del self.pipeline_connections[connection.pipeline_uuid]
+            pipeline_key = self._pipeline_key(connection.scope, connection.pipeline_uuid)
+            if pipeline_key in self.pipeline_connections:
+                self.pipeline_connections[pipeline_key].discard(connection_id)
+                if not self.pipeline_connections[pipeline_key]:
+                    del self.pipeline_connections[pipeline_key]
 
             # 从会话类型映射中移除
-            if connection.session_type in self.session_connections:
-                self.session_connections[connection.session_type].discard(connection_id)
-                if not self.session_connections[connection.session_type]:
-                    del self.session_connections[connection.session_type]
+            session_key = self._session_key(connection.scope, connection.session_type)
+            if session_key in self.session_connections:
+                self.session_connections[session_key].discard(connection_id)
+                if not self.session_connections[session_key]:
+                    del self.session_connections[session_key]
 
             del self.connections[connection_id]
 
             logger.debug(f'WebSocket connection disconnected: {connection_id}')
 
-    async def get_connection(self, connection_id: str) -> WebSocketConnection | None:
-        """Get a connection by its transport identifier."""
-        return self.connections.get(connection_id)
+    @staticmethod
+    def _pipeline_key(scope: WebSocketScope, pipeline_uuid: str) -> tuple[str, str, int, str]:
+        return (
+            scope.instance_uuid,
+            scope.workspace_uuid,
+            scope.placement_generation,
+            pipeline_uuid,
+        )
+
+    @staticmethod
+    def _session_key(scope: WebSocketScope, session_type: str) -> tuple[str, str, int, str]:
+        return (
+            scope.instance_uuid,
+            scope.workspace_uuid,
+            scope.placement_generation,
+            session_type,
+        )
+
+    async def get_connection(
+        self,
+        connection_id: str,
+        *,
+        scope: WebSocketScope,
+    ) -> WebSocketConnection | None:
+        """Get a connection only when it belongs to the expected placement."""
+
+        connection = self.connections.get(connection_id)
+        if connection is None or connection.scope != scope:
+            return None
+        return connection
 
     async def get_connection_by_session_id(
         self,
         session_id: str,
+        *,
+        scope: WebSocketScope,
         pipeline_uuid: str | None = None,
     ) -> WebSocketConnection | None:
         """Get an active embed connection by its stable browser session identifier."""
-        for connection in self.connections.values():
+        candidates: typing.Iterable[WebSocketConnection]
+        if pipeline_uuid is not None:
+            candidates = await self.get_connections_by_pipeline(pipeline_uuid, scope=scope)
+        else:
+            candidates = self.connections.values()
+        for connection in candidates:
             if (
                 connection.session_id == session_id
                 and connection.is_active
+                and connection.scope == scope
                 and (pipeline_uuid is None or connection.pipeline_uuid == pipeline_uuid)
             ):
                 return connection
         return None
 
-    async def get_connections_by_pipeline(self, pipeline_uuid: str) -> list[WebSocketConnection]:
+    async def get_connections_by_pipeline(
+        self,
+        pipeline_uuid: str,
+        *,
+        scope: WebSocketScope,
+    ) -> list[WebSocketConnection]:
         """获取指定流水线的所有连接"""
-        connection_ids = self.pipeline_connections.get(pipeline_uuid, set())
+        connection_ids = self.pipeline_connections.get(self._pipeline_key(scope, pipeline_uuid), set())
         return [self.connections[cid] for cid in connection_ids if cid in self.connections]
 
-    async def get_connections_by_session_type(self, session_type: str) -> list[WebSocketConnection]:
+    async def get_connections_by_session_type(
+        self,
+        session_type: str,
+        *,
+        scope: WebSocketScope,
+    ) -> list[WebSocketConnection]:
         """获取指定会话类型的所有连接"""
-        connection_ids = self.session_connections.get(session_type, set())
+        connection_ids = self.session_connections.get(self._session_key(scope, session_type), set())
         return [self.connections[cid] for cid in connection_ids if cid in self.connections]
 
     async def broadcast_to_pipeline(
         self,
         pipeline_uuid: str,
         message: dict,
+        *,
+        scope: WebSocketScope,
         session_type: str | None = None,
         session_id: typing.Any = _SESSION_FILTER_UNSET,
     ):
@@ -180,7 +343,7 @@ class WebSocketConnectionManager:
             session_id: Embed conversation filter. Omit it to broadcast across
                 conversations; pass ``None`` to target non-embed connections.
         """
-        connections = await self.get_connections_by_pipeline(pipeline_uuid)
+        connections = await self.get_connections_by_pipeline(pipeline_uuid, scope=scope)
 
         if session_type is not None:
             connections = [conn for conn in connections if conn.session_type == session_type]
@@ -196,13 +359,26 @@ class WebSocketConnectionManager:
 
     async def send_to_connection(self, connection_id: str, message: dict):
         """向指定连接发送消息"""
-        connection = await self.get_connection(connection_id)
+        connection = self.connections.get(connection_id)
         if not connection or not connection.is_active:
             logger.warning(f'Attempt to send message to invalid connection: {connection_id}')
             return
 
         try:
-            await connection.send_queue.put(message)
+            try:
+                connection.send_queue.put_nowait(message)
+            except asyncio.QueueFull:
+                # A slow or disconnected browser must not backpressure every
+                # other connection or retain an unbounded response stream.
+                try:
+                    connection.send_queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    pass
+                connection.send_queue.put_nowait(message)
+                logger.warning(
+                    'WebSocket send queue full; dropped oldest message for connection %s',
+                    connection_id,
+                )
             connection.last_active = datetime.now()
         except Exception as e:
             logger.error(f'Failed to send message to connection {connection_id}: {e}')
@@ -210,17 +386,24 @@ class WebSocketConnectionManager:
 
     async def update_activity(self, connection_id: str):
         """更新连接活跃时间"""
-        connection = await self.get_connection(connection_id)
+        connection = self.connections.get(connection_id)
         if connection:
             connection.last_active = datetime.now()
 
-    def get_stats(self) -> dict:
-        """获取连接统计信息"""
+    def get_stats(self, *, scope: WebSocketScope) -> dict:
+        """Return connection statistics for one trusted placement."""
+
+        scoped_connections = [connection for connection in self.connections.values() if connection.scope == scope]
+        pipelines: dict[str, int] = {}
+        session_types: dict[str, int] = {}
+        for connection in scoped_connections:
+            pipelines[connection.pipeline_uuid] = pipelines.get(connection.pipeline_uuid, 0) + 1
+            session_types[connection.session_type] = session_types.get(connection.session_type, 0) + 1
         return {
-            'total_connections': len(self.connections),
-            'pipelines': len(self.pipeline_connections),
-            'connections_by_pipeline': {k: len(v) for k, v in self.pipeline_connections.items()},
-            'connections_by_session_type': {k: len(v) for k, v in self.session_connections.items()},
+            'total_connections': len(scoped_connections),
+            'pipelines': len(pipelines),
+            'connections_by_pipeline': pipelines,
+            'connections_by_session_type': session_types,
         }
 
 

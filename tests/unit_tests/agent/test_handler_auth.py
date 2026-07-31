@@ -19,6 +19,7 @@ from unittest.mock import AsyncMock, MagicMock
 from langbot.pkg.agent.runner.descriptor import AgentRunnerDescriptor
 from langbot.pkg.agent.runner.session_registry import AgentRunSessionRegistry
 from langbot.pkg.plugin.handler import _get_pipeline_knowledge_base_uuids
+from langbot.pkg.api.http.context import ExecutionContext
 
 # Import shared test fixtures from conftest.py
 from .conftest import make_resources, make_session
@@ -69,6 +70,16 @@ class MockQuery:
         self.session.launcher_id = 'group_123'
         self.sender_id = 'user_001'
         self.bot_uuid = 'bot_001'
+        self.pipeline_uuid = 'pipeline-001'
+        self.query_uuid = f'query-{query_id}'
+        self._execution_context = ExecutionContext(
+            instance_uuid='instance-test',
+            workspace_uuid='workspace-test',
+            placement_generation=1,
+            bot_uuid=self.bot_uuid,
+            pipeline_uuid=self.pipeline_uuid,
+            query_uuid=self.query_uuid,
+        )
         self.pipeline_config = {
             'ai': {
                 'runner': {
@@ -112,7 +123,7 @@ class MockApplication:
 
 
 class FakeAgentRunnerRegistry:
-    async def get(self, runner_id, bound_plugins=None):
+    async def get(self, context, runner_id, bound_plugins=None):
         return AgentRunnerDescriptor(
             id=runner_id,
             source='plugin',
@@ -306,19 +317,19 @@ async def test_tool_manager_get_tool_detail_returns_uniform_schema():
 
     mgr = ToolManager.__new__(ToolManager)
 
-    async def fake_get_tool_by_name(name):
+    async def fake_get_tool_by_name(context, name):
         return tool if name == 'search' else None
 
     mgr.get_tool_by_name = fake_get_tool_by_name
 
-    detail = await mgr.get_tool_detail('search')
+    detail = await mgr.get_tool_detail('workspace-test', 'search')
     assert detail == {
         'name': 'search',
         'description': 'Search test data',
         'human_desc': 'Search public data',
         'parameters': {'type': 'object', 'properties': {'q': {'type': 'string'}}},
     }
-    assert await mgr.get_tool_detail('missing') is None
+    assert await mgr.get_tool_detail('workspace-test', 'missing') is None
 
 
 class TestCallToolAuthorization:

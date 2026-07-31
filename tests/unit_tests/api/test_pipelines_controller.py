@@ -4,7 +4,7 @@ import sys
 import types
 from importlib import import_module
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 import quart
@@ -19,11 +19,37 @@ pytestmark = pytest.mark.asyncio
 
 async def _create_test_client(pipeline_service: SimpleNamespace, **extra_ap):
     app = quart.Quart(__name__)
+    account = SimpleNamespace(uuid='account-test', user='test@example.com')
     user_service = SimpleNamespace(
-        verify_jwt_token=AsyncMock(return_value='test@example.com'),
-        get_user_by_email=AsyncMock(return_value=SimpleNamespace(user='test@example.com')),
+        get_authenticated_account=AsyncMock(return_value=account),
     )
-    ap = SimpleNamespace(pipeline_service=pipeline_service, user_service=user_service, **extra_ap)
+    access = SimpleNamespace(
+        workspace=SimpleNamespace(uuid='workspace-test'),
+        membership=SimpleNamespace(
+            uuid='membership-test',
+            role='owner',
+            projection_revision=1,
+        ),
+        execution=SimpleNamespace(
+            instance_uuid='instance-test',
+            placement_generation=1,
+        ),
+    )
+    plugin_connector = extra_ap.get('plugin_connector')
+    if plugin_connector is not None and not hasattr(plugin_connector, 'is_enable_plugin'):
+        plugin_connector.is_enable_plugin = False
+    extra_ap.setdefault('logger', SimpleNamespace(warning=Mock()))
+    ap = SimpleNamespace(
+        pipeline_service=pipeline_service,
+        user_service=user_service,
+        apikey_service=SimpleNamespace(
+            authenticate_api_key=AsyncMock(return_value=None),
+        ),
+        workspace_collaboration_service=SimpleNamespace(
+            resolve_account_workspace=AsyncMock(return_value=access),
+        ),
+        **extra_ap,
+    )
     router_class = import_module('langbot.pkg.api.http.controller.groups.pipelines.pipelines').PipelinesRouterGroup
     group = router_class(ap, app)
     await group.initialize()

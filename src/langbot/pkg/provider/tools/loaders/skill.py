@@ -4,6 +4,7 @@ import re
 import typing
 
 from ....box import workspace as box_workspace
+from ....api.http.context import ExecutionContext
 
 if typing.TYPE_CHECKING:
     from ....core import app
@@ -37,7 +38,15 @@ def get_visible_skills(ap: app.Application, query: pipeline_query.Query) -> dict
     if skill_mgr is None:
         return {}
 
-    visible_skills = getattr(skill_mgr, 'skills', {})
+    execution_context = ExecutionContext(
+        instance_uuid=str(getattr(query, 'instance_uuid', '') or ''),
+        workspace_uuid=str(getattr(query, 'workspace_uuid', '') or ''),
+        placement_generation=getattr(query, 'placement_generation', 0) or 0,
+        bot_uuid=getattr(query, 'bot_uuid', None),
+        pipeline_uuid=getattr(query, 'pipeline_uuid', None),
+        query_uuid=getattr(query, 'query_uuid', None),
+    )
+    visible_skills = skill_mgr.get_skills(execution_context)
     bound_skills = get_bound_skill_names(query)
     if bound_skills is None:
         return visible_skills
@@ -103,6 +112,22 @@ def get_activated_skill_names(query: pipeline_query.Query) -> list[str]:
     return normalize_skill_names(list(get_activated_skills(query).keys()))
 
 
+def restore_activated_skills(
+    ap: app.Application,
+    query: pipeline_query.Query,
+    skill_names: typing.Any,
+) -> list[str]:
+    """Restore caller-provided names from the current visible skill set."""
+    restored: list[str] = []
+    for skill_name in normalize_skill_names(skill_names):
+        skill_data = get_visible_skill(ap, query, skill_name)
+        if skill_data is None:
+            continue
+        register_activated_skill(query, skill_data)
+        restored.append(skill_name)
+    return restored
+
+
 def restore_activated_skills_from_state(
     ap: app.Application,
     query: pipeline_query.Query,
@@ -116,14 +141,7 @@ def restore_activated_skills_from_state(
     """
     conversation_state = state.get('conversation', {}) if isinstance(state, dict) else {}
     skill_names = normalize_skill_names(conversation_state.get(ACTIVATED_SKILL_NAMES_STATE_KEY))
-    restored: list[str] = []
-    for skill_name in skill_names:
-        skill_data = get_visible_skill(ap, query, skill_name)
-        if skill_data is None:
-            continue
-        register_activated_skill(query, skill_data)
-        restored.append(skill_name)
-    return restored
+    return restore_activated_skills(ap, query, skill_names)
 
 
 async def persist_activated_skill(
@@ -260,5 +278,14 @@ def should_prepare_skill_python_env(package_root: str | None) -> bool:
     return box_workspace.should_prepare_python_env(package_root)
 
 
-def wrap_skill_command_with_python_env(command: str, *, mount_path: str = '/workspace') -> str:
-    return box_workspace.wrap_python_command_with_env(command, mount_path=mount_path).rstrip()
+def wrap_skill_command_with_python_env(
+    command: str,
+    *,
+    mount_path: str = '/workspace',
+    state_path: str | None = None,
+) -> str:
+    return box_workspace.wrap_python_command_with_env(
+        command,
+        mount_path=mount_path,
+        state_path=state_path,
+    ).rstrip()

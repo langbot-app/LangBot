@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from langbot.pkg.api.http.context import ExecutionContext
 from langbot.pkg.agent.runner.errors import RunnerNotFoundError
 from langbot.pkg.pipeline.controller import Controller
 
@@ -30,6 +31,21 @@ def make_pipeline():
     )
 
 
+def make_query(query_id: int, pipeline_uuid: str):
+    context = ExecutionContext(
+        instance_uuid='instance-test',
+        workspace_uuid='workspace-test',
+        placement_generation=1,
+        pipeline_uuid=pipeline_uuid,
+    )
+    return SimpleNamespace(
+        query_id=query_id,
+        pipeline_uuid=pipeline_uuid,
+        variables={},
+        _execution_context=context,
+    )
+
+
 @pytest.mark.asyncio
 async def test_try_claim_steering_returns_false_when_runner_lookup_fails():
     app = make_app()
@@ -38,7 +54,7 @@ async def test_try_claim_steering_returns_false_when_runner_lookup_fails():
         'plugin:missing/runner/default'
     )
     controller = Controller(app)
-    query = SimpleNamespace(query_id=1, pipeline_uuid='pipeline-001', variables={})
+    query = make_query(1, 'pipeline-001')
 
     claimed = await controller._try_claim_steering_before_session_slot(query)
 
@@ -53,7 +69,7 @@ async def test_try_claim_steering_sets_pipeline_context_before_claiming():
     app.pipeline_mgr.get_pipeline_by_uuid.return_value = pipeline
     app.agent_run_orchestrator.try_claim_steering_from_query.return_value = True
     controller = Controller(app)
-    query = SimpleNamespace(query_id=2, pipeline_uuid='pipeline-002', variables={})
+    query = make_query(2, 'pipeline-002')
 
     claimed = await controller._try_claim_steering_before_session_slot(query)
 

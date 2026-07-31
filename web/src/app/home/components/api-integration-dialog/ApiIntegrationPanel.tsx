@@ -40,11 +40,19 @@ import { PanelToolbar } from '../settings-dialog/panel-layout';
 
 interface ApiKey {
   id: number;
+  uuid: string;
   name: string;
-  key: string;
   description: string;
+  scopes: string[];
+  status: 'active' | 'revoked';
+  secret_available: false;
   created_at: string;
 }
+
+type CreatedApiKey = Omit<ApiKey, 'secret_available'> & {
+  key: string;
+  secret_available: true;
+};
 
 interface Webhook {
   id: number;
@@ -71,7 +79,7 @@ export default function ApiIntegrationPanel({
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [newKeyName, setNewKeyName] = useState('');
   const [newKeyDescription, setNewKeyDescription] = useState('');
-  const [createdKey, setCreatedKey] = useState<ApiKey | null>(null);
+  const [createdKey, setCreatedKey] = useState<CreatedApiKey | null>(null);
   const [deleteKeyId, setDeleteKeyId] = useState<number | null>(null);
 
   // Webhook state
@@ -135,7 +143,7 @@ export default function ApiIntegrationPanel({
       const response = (await backendClient.post('/api/v1/apikeys', {
         name: newKeyName,
         description: newKeyDescription,
-      })) as { key: ApiKey };
+      })) as { key: CreatedApiKey };
 
       setCreatedKey(response.key);
       toast.success(t('common.apiKeyCreated'));
@@ -182,11 +190,6 @@ export default function ApiIntegrationPanel({
     clearTimeout(copiedTimerRef.current);
     setCopiedKey(key);
     copiedTimerRef.current = setTimeout(() => setCopiedKey(null), 2000);
-  };
-
-  const maskApiKey = (key: string) => {
-    if (key.length <= 8) return key;
-    return `${key.substring(0, 8)}...${key.substring(key.length - 4)}`;
   };
 
   // Webhook methods
@@ -337,25 +340,12 @@ export default function ApiIntegrationPanel({
                         </div>
                       </TableCell>
                       <TableCell>
-                        <code className="text-sm bg-muted px-2 py-1 rounded">
-                          {maskApiKey(item.key)}
-                        </code>
+                        <span className="text-sm text-muted-foreground">
+                          {t('common.apiKeyStoredSecurely')}
+                        </span>
                       </TableCell>
                       <TableCell>
                         <div className="flex gap-2">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            type="button"
-                            onClick={() => handleCopyKey(item.key)}
-                            title={t('common.copyApiKey')}
-                          >
-                            {copiedKey === item.key ? (
-                              <Check className="h-4 w-4 text-green-600" />
-                            ) : (
-                              <Copy className="h-4 w-4" />
-                            )}
-                          </Button>
                           <Button
                             variant="ghost"
                             size="sm"

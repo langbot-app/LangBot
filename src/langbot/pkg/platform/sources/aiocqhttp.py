@@ -23,6 +23,7 @@ _GROUP_NAME_LOOKUP_TIMEOUT_SECONDS = 2
 _GROUP_MEMBER_INFO_CACHE_TTL_SECONDS = 86400
 _GROUP_MEMBER_INFO_NEGATIVE_CACHE_TTL_SECONDS = 600
 _GROUP_MEMBER_INFO_LOOKUP_TIMEOUT_SECONDS = 2
+_LOOKUP_CACHE_MAX = 4096
 
 
 def _normalize_base64_payload(value: str) -> str:
@@ -240,7 +241,11 @@ class AiocqhttpMessageConverter(abstract_platform_adapter.AbstractMessageConvert
         async def process_message_data(msg_data, reply_list):
             if msg_data['type'] == 'image':
                 image_base64, image_format = await image.qq_image_url_to_base64(msg_data['data']['url'])
-                reply_list.append(platform_message.Image(base64=f'data:image/{image_format};base64,{image_base64}'))
+                reply_list.append(
+                    platform_message.Image(
+                        url=msg_data['data']['url'], base64=f'data:image/{image_format};base64,{image_base64}'
+                    )
+                )
 
             elif msg_data['type'] == 'text':
                 reply_list.append(platform_message.Plain(text=msg_data['data']['text']))
@@ -285,7 +290,9 @@ class AiocqhttpMessageConverter(abstract_platform_adapter.AbstractMessageConvert
                     image_msg = platform_message.Face(face_id=face_id, face_name=face_name)
                 else:
                     image_base64, image_format = await image.qq_image_url_to_base64(msg.data['url'])
-                    image_msg = platform_message.Image(base64=f'data:image/{image_format};base64,{image_base64}')
+                    image_msg = platform_message.Image(
+                        url=msg.data['url'], base64=f'data:image/{image_format};base64,{image_base64}'
+                    )
                 yiri_msg_list.append(image_msg)
             elif msg.type == 'forward':
                 # 暂时不太合理
@@ -366,6 +373,31 @@ class AiocqhttpEventConverter(abstract_platform_adapter.AbstractEventConverter):
             tuple[typing.Union[int, str], typing.Union[int, str]], tuple[dict, float]
         ] = {}
         self._group_member_info_negative_cache: dict[tuple[typing.Union[int, str], typing.Union[int, str]], float] = {}
+        self._last_cache_cleanup = 0.0
+
+    def _prune_caches(self, now: float) -> None:
+        caches = (
+            self._group_name_cache,
+            self._group_name_negative_cache,
+            self._group_member_info_cache,
+            self._group_member_info_negative_cache,
+        )
+        if now - self._last_cache_cleanup < 60 and all(len(cache) <= _LOOKUP_CACHE_MAX for cache in caches):
+            return
+        self._last_cache_cleanup = now
+        for cache in caches:
+            for key, value in tuple(cache.items()):
+                expires_at = value[1] if isinstance(value, tuple) else value
+                if expires_at <= now:
+                    cache.pop(key, None)
+            while len(cache) > _LOOKUP_CACHE_MAX:
+                cache.pop(next(iter(cache)), None)
+
+    def clear(self) -> None:
+        self._group_name_cache.clear()
+        self._group_name_negative_cache.clear()
+        self._group_member_info_cache.clear()
+        self._group_member_info_negative_cache.clear()
 
     @staticmethod
     async def yiri2target(event: platform_events.MessageEvent, bot_account_id: int):
@@ -373,6 +405,7 @@ class AiocqhttpEventConverter(abstract_platform_adapter.AbstractEventConverter):
 
     async def _get_group_name(self, group_id: typing.Union[int, str], bot=None) -> str:
         now = time.monotonic()
+        self._prune_caches(now)
         if group_id in self._group_name_cache:
             group_name, expires_at = self._group_name_cache[group_id]
             if expires_at > now:
@@ -408,6 +441,7 @@ class AiocqhttpEventConverter(abstract_platform_adapter.AbstractEventConverter):
         bot=None,
     ) -> dict:
         now = time.monotonic()
+        self._prune_caches(now)
         cache_key = (group_id, user_id)
         if cache_key in self._group_member_info_cache:
             member_info, expires_at = self._group_member_info_cache[cache_key]
@@ -526,6 +560,8 @@ class AiocqhttpAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
                 return
 
         self.on_websocket_connection_event_cache.append(event)
+        if len(self.on_websocket_connection_event_cache) > 100:
+            self.on_websocket_connection_event_cache.pop(0)
         await self.logger.info(f'WebSocket connection established, bot id: {event.self_id}')
 
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
@@ -691,4 +727,6 @@ class AiocqhttpAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
     async def kill(self) -> bool:
         # Current issue: existing connection will not be closed
         # self.should_shutdown = True
+        self.on_websocket_connection_event_cache.clear()
+        self.event_converter.clear()
         return False

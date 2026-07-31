@@ -4,6 +4,7 @@ import quart
 import traceback
 
 from .. import group
+from .....utils import bounded_executor
 
 
 @group.group_class('webhooks', '/bots')
@@ -30,7 +31,10 @@ class WebhookRouterGroup(group.RouterGroup):
             适配器返回的响应
         """
         try:
-            runtime_bot = await self.ap.platform_mgr.get_bot_by_uuid(bot_uuid)
+            # Public ingress never accepts X-Workspace-Id.  The opaque bot UUID
+            # is resolved against the already-bound runtime resource, which
+            # carries the trusted Workspace and placement generation.
+            runtime_bot = await self.ap.platform_mgr.resolve_public_bot(bot_uuid)
 
             if not runtime_bot:
                 return quart.jsonify({'error': 'Bot not found'}), 404
@@ -41,14 +45,40 @@ class WebhookRouterGroup(group.RouterGroup):
             if not hasattr(runtime_bot.adapter, 'handle_unified_webhook'):
                 return quart.jsonify({'error': 'Adapter does not support unified webhook'}), 501
 
-            response = await runtime_bot.adapter.handle_unified_webhook(
-                bot_uuid=bot_uuid,
-                path=path,
-                request=quart.request,
-            )
+            async def dispatch():
+                await self.ap.workspace_service.get_execution_binding(
+                    runtime_bot.workspace_uuid,
+                    expected_generation=runtime_bot.placement_generation,
+                )
+                return await runtime_bot.adapter.handle_unified_webhook(
+                    bot_uuid=bot_uuid,
+                    path=path,
+                    request=quart.request,
+                )
+
+            with bounded_executor.blocking_work_scope(runtime_bot.workspace_uuid):
+                persistence_mgr = self.ap.persistence_mgr
+                cloud_runtime = getattr(getattr(persistence_mgr, 'mode', None), 'value', None) == 'cloud_runtime'
+                if cloud_runtime:
+                    tenant_scope = getattr(persistence_mgr, 'tenant_scope', None)
+                    if not callable(tenant_scope):
+                        raise RuntimeError('Cloud webhook dispatch requires an explicit tenant scope')
+                    async with tenant_scope(runtime_bot.workspace_uuid):
+                        response = await dispatch()
+                else:
+                    response = await dispatch()
 
             return response
 
-        except Exception as e:
-            self.ap.logger.error(f'Webhook dispatch error for bot {bot_uuid}: {traceback.format_exc()}')
-            return quart.jsonify({'error': str(e)}), 500
+        except bounded_executor.BlockingWorkCapacityError as exc:
+            return self.http_status(
+                429,
+                'blocking_work_capacity_exceeded',
+                str(exc),
+            )
+        except Exception:
+            request_id = self.request_id()
+            self.ap.logger.error(
+                f'Webhook dispatch error request_id={request_id} bot={bot_uuid}: {traceback.format_exc()}'
+            )
+            return self.internal_error_response(request_id)

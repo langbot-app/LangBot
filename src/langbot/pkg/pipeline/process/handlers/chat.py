@@ -19,6 +19,7 @@ from ....telemetry import features as telemetry_features
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
+from ...pool import get_query_execution_context
 
 
 DEFAULT_PROMPT_CONFIG = [
@@ -33,6 +34,25 @@ class ChatMessageHandler(handler.MessageHandler):
     which resolves runner ID, builds context, invokes plugin runtime,
     and normalizes results.
     """
+
+    def _response_limit(self, name: str, default: int) -> int:
+        instance_config = getattr(self.ap, 'instance_config', None)
+        data = getattr(instance_config, 'data', {})
+        if not isinstance(data, dict):
+            return default
+        value = data.get('system', {}).get('response_limits', {}).get(name, default)
+        try:
+            return max(int(value), 1)
+        except (TypeError, ValueError):
+            return default
+
+    def _check_response_size(
+        self,
+        result: provider_message.Message | provider_message.MessageChunk,
+    ) -> None:
+        content = result.content
+        if isinstance(content, str) and len(content) > self._response_limit('max_generated_chars', 1024 * 1024):
+            raise RuntimeError('Provider response exceeds the configured limit')
 
     async def handle(
         self,
@@ -92,6 +112,7 @@ class ChatMessageHandler(handler.MessageHandler):
                     query.user_message.content = [event_ctx.event.user_message_alter]
 
             text_length = 0
+            runner = None
             try:
                 # Mark start time for telemetry
                 start_ts = time.time()
@@ -119,6 +140,7 @@ class ChatMessageHandler(handler.MessageHandler):
                 # This replaces direct runner lookup and PluginAgentRunnerWrapper
                 async for result in self.ap.agent_run_orchestrator.run_from_query(query):
                     has_result = True
+                    self._check_response_size(result)
 
                     if is_stream and isinstance(result, provider_message.MessageChunk):
                         if result.all_content is not None:
@@ -150,6 +172,12 @@ class ChatMessageHandler(handler.MessageHandler):
 
                     if is_stream:
                         chunk_count += 1
+                        if chunk_count > self._response_limit(
+                            'max_stream_chunks', 100_000
+                        ):
+                            raise RuntimeError(
+                                'Provider stream exceeds the configured event limit'
+                            )
                         # Only log every 10th chunk to reduce excessive logging during streaming.
                         # First chunk uses INFO level to confirm connection establishment.
                         if chunk_count == 1:
@@ -247,7 +275,10 @@ class ChatMessageHandler(handler.MessageHandler):
                     model_name = None
                     try:
                         if getattr(query, 'use_llm_model_uuid', None):
-                            m = await self.ap.model_mgr.get_model_by_uuid(query.use_llm_model_uuid)
+                            m = await self.ap.model_mgr.get_model_by_uuid(
+                                get_query_execution_context(query),
+                                query.use_llm_model_uuid,
+                            )
                             if m and getattr(m, 'model_entity', None):
                                 model_name = getattr(m.model_entity, 'name', None)
                     except Exception:
@@ -338,11 +369,12 @@ class ChatMessageHandler(handler.MessageHandler):
             RunnerConfigResolver.resolve_runner_config(query.pipeline_config, runner_id) if runner_id else {}
         )
         bound_plugins = query.variables.get('_pipeline_bound_plugins', None)
-        descriptor = await self._get_runner_descriptor(runner_id, bound_plugins)
+        descriptor = await self._get_runner_descriptor(query, runner_id, bound_plugins)
         return config_schema.extract_prompt_config(descriptor, runner_config, DEFAULT_PROMPT_CONFIG)
 
     async def _get_runner_descriptor(
         self,
+        query: pipeline_query.Query,
         runner_id: str | None,
         bound_plugins: list[str] | None,
     ) -> typing.Any | None:
@@ -354,7 +386,11 @@ class ChatMessageHandler(handler.MessageHandler):
             return None
 
         try:
-            return await registry.get(runner_id, bound_plugins)
+            return await registry.get(
+                get_query_execution_context(query),
+                runner_id,
+                bound_plugins,
+            )
         except Exception as e:
             self.ap.logger.debug(f'Unable to load AgentRunner descriptor for {runner_id}: {e}')
             return None

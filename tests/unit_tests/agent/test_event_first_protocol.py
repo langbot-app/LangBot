@@ -350,6 +350,7 @@ def mock_query():
     """Create a mock query for testing."""
     query = Mock()
     query.query_id = 123
+    query.workspace_uuid = 'workspace-test'
     query.bot_uuid = 'bot-uuid-123'
     query.pipeline_uuid = 'pipeline-uuid-456'
     query.launcher_type = Mock(value='person')
@@ -398,6 +399,7 @@ def mock_query_no_session():
     """Create a mock Query without session."""
     query = Mock()
     query.query_id = 456
+    query.workspace_uuid = 'workspace-test'
     query.bot_uuid = 'bot-uuid-456'
     query.pipeline_uuid = 'pipeline-uuid-789'
     query.launcher_type = Mock(value='person')

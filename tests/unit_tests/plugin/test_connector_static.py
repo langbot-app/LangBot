@@ -53,3 +53,10 @@ class TestParsePluginId:
         author, name = connector.PluginRuntimeConnector._parse_plugin_id('lang-bot/my_rag_engine')
         assert author == 'lang-bot'
         assert name == 'my_rag_engine'
+
+
+def test_runtime_id_is_stable_across_core_restarts(monkeypatch):
+    connector = get_connector_module()
+    monkeypatch.setattr(connector.constants, 'instance_id', 'instance-a')
+
+    assert connector.PluginRuntimeConnector._build_runtime_id() == 'instance-a:plugin-runtime'

@@ -90,6 +90,16 @@ class AESCipher:
         return self._unpad(cipher.decrypt(encrypted_bytes[AES.block_size :])).decode('utf8')
 
 
+async def _cancel_ws_cache_task(client: typing.Any) -> None:
+    """Stop the Lark SDK cache cron, which has no public shutdown API."""
+    cache_task = getattr(getattr(client, '_cache', None), '_cron', None)
+    if not isinstance(cache_task, asyncio.Task):
+        return
+    cache_task.cancel()
+    if cache_task.get_loop() is asyncio.get_running_loop():
+        await asyncio.gather(cache_task, return_exceptions=True)
+
+
 class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapter):
     bot: lark_oapi.ws.Client = pydantic.Field(exclude=True)
     api_client: lark_oapi.Client = pydantic.Field(exclude=True)
@@ -638,6 +648,7 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
     async def kill(self) -> bool:
         self.bot._auto_reconnect = False
         await self.bot._disconnect()
+        await _cancel_ws_cache_task(self.bot)
         return True
 
     async def is_muted(self, group_id: int | None = None) -> bool:

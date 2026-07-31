@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 
 import pytest
 from unittest.mock import AsyncMock, Mock
@@ -49,6 +50,7 @@ def make_app():
     # skills
     ap.skill_mgr = Mock()
     ap.skill_mgr.skills = {'a': {}, 'b': {}, 'c': {}}
+    ap.skill_mgr.total_cached_skill_count.return_value = 3
 
     return ap
 
@@ -94,6 +96,35 @@ class TestBuildHeartbeatPayload:
         ap.persistence_mgr.execute_async = AsyncMock(side_effect=RuntimeError('db down'))
         payload = await heartbeat.build_heartbeat_payload(ap)
         assert payload['features']['pipeline_count'] == -1
+
+    @pytest.mark.asyncio
+    async def test_cloud_counts_loaded_registries_without_tenant_sql(self):
+        heartbeat = get_heartbeat_module()
+        ap = make_app()
+        ap.persistence_mgr.mode = SimpleNamespace(value='cloud_runtime')
+        ap.persistence_mgr.execute_async = AsyncMock(
+            side_effect=AssertionError('Cloud heartbeat must not issue per-tenant COUNTs')
+        )
+        ap.pipeline_mgr = SimpleNamespace(
+            _pipelines_by_key={'pipeline-a': object(), 'pipeline-b': object()},
+        )
+        ap.tool_mgr = SimpleNamespace(
+            mcp_tool_loader=SimpleNamespace(
+                _sessions={'mcp-a': object(), 'mcp-b': object(), 'mcp-c': object()},
+            ),
+        )
+        ap.rag_mgr = SimpleNamespace(
+            knowledge_bases={'kb-a': object()},
+        )
+
+        payload = await heartbeat.build_heartbeat_payload(ap)
+
+        features = payload['features']
+        assert features['pipeline_count'] == 2
+        assert features['mcp_server_count'] == 3
+        assert features['knowledge_base_count'] == 1
+        assert features['bot_count'] == 1
+        ap.persistence_mgr.execute_async.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_no_user_content_fields(self):

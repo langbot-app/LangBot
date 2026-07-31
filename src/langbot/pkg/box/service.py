@@ -2,20 +2,29 @@ from __future__ import annotations
 
 import asyncio
 import collections
+import contextlib
 import datetime as _dt
 import enum
 import hashlib
 import json
 import os
+import secrets
 from typing import TYPE_CHECKING
 
 import pydantic
 
 from langbot_plugin.box.client import BoxRuntimeClient
+from langbot_plugin.entities.io.context import ActionContext
+from langbot_plugin.box.tenancy import box_namespace
+from langbot_plugin.box.security import BOX_SHARED_WORKSPACE_PROBE_PREFIX
+from .admission import SandboxAdmissionController, require_cloud_admission_policy
 from .connector import BoxRuntimeConnector, _get_box_config
+from . import secure_fs
 from ..telemetry import features as telemetry_features
-from ..utils import constants
-from langbot_plugin.box.errors import BoxError, BoxValidationError
+from ..utils import httpclient
+from ..api.http.context import ExecutionContext
+from ..api.http.service.tenant import TenantContext, require_workspace_uuid
+from langbot_plugin.box.errors import BoxAdmissionError, BoxError, BoxValidationError
 from langbot_plugin.box.models import (
     BUILTIN_PROFILES,
     BoxExecutionResult,
@@ -31,6 +40,55 @@ _MAX_RECENT_ERRORS = 50
 _MIB = 1024 * 1024
 _HOST_BOX_SCOPE_VARIABLE = '_host_box_scope'
 _BOX_SESSION_ID_PREFIX = 'lb-box-'
+_DEFAULT_MAX_WORKSPACE_ENTRIES = 100_000
+_HARD_MAX_WORKSPACE_ENTRIES = 1_000_000
+
+
+def _create_shared_workspace_probe(root: str, marker_name: str, payload: bytes) -> None:
+    """Create and durably flush a no-follow probe without blocking the event loop."""
+
+    directory_flags = os.O_RDONLY | getattr(os, 'O_DIRECTORY', 0)
+    nofollow = getattr(os, 'O_NOFOLLOW', 0)
+    root_fd: int | None = None
+    marker_fd: int | None = None
+    marker_created = False
+    try:
+        root_fd = os.open(root, directory_flags | nofollow)
+        marker_fd = os.open(
+            marker_name,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | nofollow,
+            0o600,
+            dir_fd=root_fd,
+        )
+        marker_created = True
+        remaining = memoryview(payload)
+        while remaining:
+            written = os.write(marker_fd, remaining)
+            if written <= 0:
+                raise BoxValidationError('Failed to write Cloud Box shared-volume probe')
+            remaining = remaining[written:]
+        os.fsync(marker_fd)
+    except Exception:
+        if root_fd is not None and marker_created:
+            with contextlib.suppress(FileNotFoundError):
+                os.unlink(marker_name, dir_fd=root_fd)
+        raise
+    finally:
+        if marker_fd is not None:
+            os.close(marker_fd)
+        if root_fd is not None:
+            os.close(root_fd)
+
+
+def _remove_shared_workspace_probe(root: str, marker_name: str) -> None:
+    directory_flags = os.O_RDONLY | getattr(os, 'O_DIRECTORY', 0)
+    nofollow = getattr(os, 'O_NOFOLLOW', 0)
+    root_fd = os.open(root, directory_flags | nofollow)
+    try:
+        with contextlib.suppress(FileNotFoundError):
+            os.unlink(marker_name, dir_fd=root_fd)
+    finally:
+        os.close(root_fd)
 
 
 def _is_path_under(path: str, root: str) -> bool:
@@ -51,6 +109,7 @@ class BoxService:
         output_limit_chars: int = 4000,
     ):
         self.ap = ap
+        self._cloud_managed = bool(getattr(getattr(ap, 'deployment', None), 'multi_workspace_enabled', False))
         self._enabled = self._load_enabled()
         self._runtime_connector: BoxRuntimeConnector | None = None
         if client is None:
@@ -67,8 +126,22 @@ class BoxService:
         self.profile = self._load_profile()
         self.custom_image = self._load_custom_image()
         self.workspace_quota_mb = self._load_workspace_quota_mb()
+        self._admission_policy = (
+            require_cloud_admission_policy(_get_box_config(ap).get('admission')) if self._cloud_managed else None
+        )
+        self._admission = (
+            SandboxAdmissionController(
+                ap,
+                self.client,
+                policy=self._admission_policy,
+            )
+            if self._cloud_managed and self._admission_policy is not None
+            else None
+        )
         self._recent_errors: collections.deque[dict] = collections.deque(maxlen=_MAX_RECENT_ERRORS)
         self._shutdown_task = None
+        self._reconnect_task: asyncio.Task | None = None
+        self._closing = False
         self._available = False
         self._connector_error: str = ''
         self._reconnecting = False
@@ -84,6 +157,10 @@ class BoxService:
         Disabled and "enabled but unavailable" are reported as the same
         ``available = False`` to consumers, but distinguished in get_status."""
         return self._enabled
+
+    @property
+    def managed_admission_required(self) -> bool:
+        return self._cloud_managed
 
     async def initialize(self):
         if not self._enabled:
@@ -103,17 +180,54 @@ class BoxService:
             else:
                 await self.client.initialize()
             self._ensure_default_workspace()
+            await self._verify_cloud_runtime()
             self._available = True
             self._connector_error = ''
             self.ap.logger.info(
                 f'LangBot Box runtime initialized: profile={self.profile.name} '
                 f'default_workspace={self.default_workspace or "(none)"}'
             )
-            await self._purge_attachment_dirs()
+            # Cloud query directories use globally opaque query UUIDs. Never
+            # sweep all tenants when a future replica joins the same logical
+            # instance; that could delete another replica's in-flight files.
+            if not self._cloud_managed:
+                await self._purge_attachment_dirs()
         except Exception as exc:
             self.ap.logger.warning(f'LangBot Box runtime unavailable, sandbox features disabled: {exc}')
             self._available = False
             self._connector_error = str(exc)
+            if self._cloud_managed:
+                await self._abort_failed_cloud_initialization()
+                raise
+
+    async def _abort_failed_cloud_initialization(self) -> None:
+        """Close a connected Cloud transport before propagating readiness failure.
+
+        Connector initialization starts control and heartbeat tasks before Core
+        performs the stricter Cloud readiness challenge. If that challenge
+        fails, startup must remain fail-closed without leaving those tasks free
+        to schedule reconnect work while the application loop is unwinding.
+        """
+
+        self._closing = True
+        self._available = False
+        reconnect_task = self._reconnect_task
+        self._reconnect_task = None
+        self._reconnecting = False
+        if reconnect_task is not None and reconnect_task is not asyncio.current_task():
+            reconnect_task.cancel()
+            await asyncio.gather(reconnect_task, return_exceptions=True)
+
+        connector = self._runtime_connector
+        if connector is None:
+            return
+        connector.runtime_disconnect_callback = None
+        try:
+            await connector.aclose()
+        except Exception:
+            # Cleanup failure must not replace the readiness error which caused
+            # Cloud startup to fail closed.
+            self.ap.logger.exception('Failed to close Box runtime after Cloud readiness validation failed')
 
     async def _on_runtime_disconnect(self, connector: BoxRuntimeConnector) -> None:
         """Called by the connector when the Box runtime connection drops.
@@ -122,29 +236,51 @@ class BoxService:
         Skipped entirely when Box is disabled by config — that path should
         never have connected in the first place.
         """
-        if not self._enabled:
+        if not self._enabled or self._closing:
             return
-        if self._reconnecting:
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        if loop.is_closed():
+            return
+        if self._reconnect_task is not None and not self._reconnect_task.done():
             return  # Another reconnect loop is already running
         self._reconnecting = True
         self._available = False
         self._connector_error = 'Disconnected from Box runtime'
         self.ap.logger.warning('Box runtime disconnected, sandbox features temporarily disabled.')
-        asyncio.create_task(self._reconnect_loop(connector))
+        reconnect = self._reconnect_loop(connector)
+        try:
+            self._reconnect_task = loop.create_task(reconnect)
+        except RuntimeError:
+            # The loop may begin closing between get_running_loop() and task
+            # creation. Explicitly close the coroutine so shutdown emits no
+            # "coroutine was never awaited" warning.
+            reconnect.close()
+            self._reconnecting = False
+            self._reconnect_task = None
 
     async def _reconnect_loop(self, connector: BoxRuntimeConnector) -> None:
         """Retry reconnection with exponential backoff (3s → 60s max)."""
         delay = 3
         max_delay = 60
         try:
-            while True:
+            while not self._closing:
                 self.ap.logger.info(f'Attempting to reconnect to Box runtime in {delay}s...')
                 await asyncio.sleep(delay)
                 try:
-                    connector.dispose()
-                    await connector.initialize()
+                    await connector.reconnect()
+                    self._ensure_default_workspace()
+                    await self._verify_cloud_runtime()
+                    if not self._cloud_managed:
+                        await self._purge_attachment_dirs()
                     self._available = True
                     self._connector_error = ''
+                    skill_mgr = getattr(self.ap, 'skill_mgr', None)
+                    reload_skills = getattr(skill_mgr, 'reload_skills', None)
+                    if callable(reload_skills) and not self._cloud_managed:
+                        await reload_skills()
                     self.ap.logger.info('Box runtime reconnected, sandbox features restored.')
                     return
                 except Exception as exc:
@@ -153,6 +289,67 @@ class BoxService:
                     delay = min(delay * 2, max_delay)
         finally:
             self._reconnecting = False
+            self._reconnect_task = None
+
+    async def _verify_cloud_runtime(self) -> None:
+        if not self._cloud_managed:
+            return
+        self._ensure_cloud_shared_workspace()
+        await self._challenge_cloud_shared_workspace()
+        backend_info = await self.client.get_backend_info()
+        if (
+            not isinstance(backend_info, dict)
+            or backend_info.get('name') != 'nsjail'
+            or backend_info.get('available') is not True
+        ):
+            raise BoxValidationError('Cloud Box nsjail isolation readiness failed')
+
+    async def _challenge_cloud_shared_workspace(self) -> None:
+        """Prove Core and Box Runtime see the same durable filesystem.
+
+        Equal configured path strings are not evidence of a shared container
+        volume. Core creates one high-entropy, no-follow marker under its
+        canonical root and the authenticated Runtime host-control action reads
+        that basename only. Any mismatch fails Cloud startup/reconnect closed.
+        """
+
+        if self.default_workspace is None:
+            raise BoxValidationError('Cloud Box shared default_workspace is unavailable')
+
+        marker_name = f'{BOX_SHARED_WORKSPACE_PROBE_PREFIX}{secrets.token_hex(16)}'
+        marker_payload = secrets.token_bytes(64)
+        expected_digest = hashlib.sha256(marker_payload).hexdigest()
+        probe_created = False
+        try:
+            await asyncio.to_thread(
+                _create_shared_workspace_probe,
+                self.default_workspace,
+                marker_name,
+                marker_payload,
+            )
+            probe_created = True
+
+            result = await self.client.verify_shared_workspace(marker_name)
+            if (
+                not isinstance(result, dict)
+                or result.get('marker_name') != marker_name
+                or result.get('size') != len(marker_payload)
+                or not secrets.compare_digest(str(result.get('sha256') or ''), expected_digest)
+            ):
+                raise BoxValidationError(
+                    'Cloud Box Core and Runtime do not share the configured durable Workspace volume'
+                )
+        except BoxValidationError:
+            raise
+        except Exception as exc:
+            raise BoxValidationError('Cloud Box shared durable Workspace volume verification failed') from exc
+        finally:
+            if probe_created:
+                await asyncio.to_thread(
+                    _remove_shared_workspace_probe,
+                    self.default_workspace,
+                    marker_name,
+                )
 
     @property
     def available(self) -> bool:
@@ -184,6 +381,184 @@ class BoxService:
             return False
         return not self._runtime_connector.uses_websocket()
 
+    @staticmethod
+    def _execution_context(context: TenantContext) -> ExecutionContext:
+        workspace_uuid = require_workspace_uuid(context)
+        instance_uuid = str(getattr(context, 'instance_uuid', '') or '').strip()
+        generation = getattr(context, 'placement_generation', None)
+        if not instance_uuid:
+            raise BoxValidationError('Box operations require an explicit instance UUID')
+        if isinstance(generation, bool) or not isinstance(generation, int) or generation <= 0:
+            raise BoxValidationError('Box operations require a positive placement generation')
+        return ExecutionContext(
+            instance_uuid=instance_uuid,
+            workspace_uuid=workspace_uuid,
+            placement_generation=generation,
+            bot_uuid=getattr(context, 'bot_uuid', None),
+            pipeline_uuid=getattr(context, 'pipeline_uuid', None),
+            query_uuid=getattr(context, 'query_uuid', None),
+            entitlement_revision=getattr(context, 'entitlement_revision', 0),
+        )
+
+    @classmethod
+    def _query_execution_context(cls, query: pipeline_query.Query) -> ExecutionContext:
+        attached_context = getattr(query, '_execution_context', None)
+        if isinstance(attached_context, ExecutionContext):
+            return cls._execution_context(attached_context)
+        return cls._execution_context(
+            ExecutionContext(
+                instance_uuid=str(getattr(query, 'instance_uuid', '') or ''),
+                workspace_uuid=str(getattr(query, 'workspace_uuid', '') or ''),
+                placement_generation=getattr(query, 'placement_generation', 0) or 0,
+                bot_uuid=getattr(query, 'bot_uuid', None),
+                pipeline_uuid=getattr(query, 'pipeline_uuid', None),
+                query_uuid=getattr(query, 'query_uuid', None),
+                entitlement_revision=getattr(query, 'entitlement_revision', 0),
+            )
+        )
+
+    @classmethod
+    def _action_context(cls, context: TenantContext) -> ActionContext:
+        execution_context = cls._execution_context(context)
+        return ActionContext(
+            instance_uuid=execution_context.instance_uuid,
+            workspace_uuid=execution_context.workspace_uuid,
+            placement_generation=execution_context.placement_generation,
+        )
+
+    async def _validated_execution_context(self, context: TenantContext) -> ExecutionContext:
+        """Resolve and fence a tenant context before touching shared Box state."""
+
+        execution_context = self._execution_context(context)
+        binding = await self.ap.workspace_service.get_execution_binding(
+            execution_context.workspace_uuid,
+            expected_generation=execution_context.placement_generation,
+        )
+        if binding.instance_uuid != execution_context.instance_uuid:
+            raise BoxValidationError('Box execution context belongs to another LangBot instance')
+        if (
+            str(getattr(binding, 'workspace_uuid', '') or '') != execution_context.workspace_uuid
+            or getattr(binding, 'placement_generation', None) != execution_context.placement_generation
+        ):
+            raise BoxValidationError('Box execution context belongs to a stale Workspace placement')
+        return execution_context
+
+    async def require_workspace_sandbox(self, context: TenantContext) -> ExecutionContext:
+        """Fence a Workspace and install its short-lived Cloud admission grant.
+
+        OSS keeps the existing singleton behavior and does not require a
+        Control Plane entitlement. Cloud always resolves a fresh generic
+        entitlement before a sandbox-visible operation.
+        """
+
+        execution_context = await self._validated_execution_context(context)
+        await self._require_validated_workspace_sandbox(execution_context)
+        return execution_context
+
+    async def _require_validated_workspace_sandbox(self, execution_context: ExecutionContext) -> None:
+        if not self._available:
+            raise BoxError('Box runtime is not available. Install and start Docker to use sandbox features.')
+        if self._cloud_managed:
+            if self._admission is None:
+                raise BoxAdmissionError('Cloud Box sandbox admission is unavailable')
+            await self._admission.require(execution_context)
+
+    async def is_workspace_sandbox_available(self, context: TenantContext) -> bool:
+        """Return tenant-specific availability for UI and tool discovery.
+
+        This method deliberately catches entitlement failures so callers can
+        hide tools without leaking plan details. Direct execution APIs use
+        :meth:`require_workspace_sandbox` and retain an explicit failure.
+        """
+
+        if not self._available:
+            return False
+        try:
+            await self.require_workspace_sandbox(context)
+            return True
+        except Exception:
+            return False
+
+    def _managed_policy_payload(
+        self,
+        context: TenantContext,
+        spec_payload: dict,
+    ) -> dict:
+        """Reject tenant-owned policy fields and apply the Cloud hard policy."""
+
+        payload = dict(spec_payload)
+        if not self._cloud_managed:
+            return payload
+        policy = self._admission_policy
+        if policy is None:
+            raise BoxAdmissionError('Cloud Box sandbox admission policy is unavailable')
+
+        forged_fields = {
+            'plan',
+            'subscription',
+            'managed_sandbox',
+            'entitlement',
+            'entitlement_revision',
+            'max_sessions',
+            'max_managed_processes',
+            'backend',
+        }
+        submitted_forged_fields = sorted(forged_fields.intersection(payload))
+        if submitted_forged_fields:
+            raise BoxAdmissionError(
+                'Managed sandbox policy fields are host-controlled: ' + ', '.join(submitted_forged_fields)
+            )
+
+        submitted_session_id = str(payload.get('session_id', '') or '').strip()
+        if submitted_session_id and submitted_session_id != policy.logical_session_id:
+            raise BoxAdmissionError('Managed sandbox session_id is runtime-owned')
+        submitted_network = str(getattr(payload.get('network'), 'value', payload.get('network', 'off')) or 'off')
+        if submitted_network != 'off':
+            raise BoxAdmissionError('Managed sandbox network access is disabled')
+        if payload.get('extra_mounts'):
+            raise BoxAdmissionError('Managed sandbox additional host mounts are disabled')
+        submitted_mount_path = str(payload.get('mount_path', '/workspace') or '/workspace')
+        if submitted_mount_path != '/workspace':
+            raise BoxAdmissionError('Managed sandbox mount_path is runtime-owned')
+
+        canonical_host_path = self._tenant_workspace(context)
+        if canonical_host_path is None:
+            raise BoxAdmissionError('Managed sandbox Workspace path is unavailable')
+        submitted_host_path = str(payload.get('host_path', '') or '').strip()
+        if submitted_host_path and os.path.realpath(submitted_host_path) != os.path.realpath(canonical_host_path):
+            raise BoxAdmissionError('Managed sandbox host_path is runtime-owned')
+
+        timeout = payload.get('timeout_sec', policy.max_timeout_sec)
+        if isinstance(timeout, bool) or not isinstance(timeout, int):
+            raise BoxValidationError('timeout_sec must be an integer')
+        payload.update(
+            {
+                'session_id': policy.logical_session_id,
+                'network': 'off',
+                'host_path': canonical_host_path,
+                'mount_path': '/workspace',
+                'extra_mounts': [],
+                'persistent': True,
+                'timeout_sec': min(timeout, policy.max_timeout_sec),
+                'cpus': policy.cpus,
+                'memory_mb': policy.memory_mb,
+                'pids_limit': policy.pids_limit,
+                'read_only_rootfs': policy.read_only_rootfs,
+                'workspace_quota_mb': policy.workspace_quota_mb,
+            }
+        )
+        return payload
+
+    def _reject_cloud_managed_process(self) -> None:
+        if self._cloud_managed:
+            raise BoxAdmissionError('Managed processes are disabled for Cloud sandboxes')
+
+    def _tenant_workspace(self, context: TenantContext) -> str | None:
+        if self.default_workspace is None:
+            return None
+        namespace = box_namespace(self._action_context(context))
+        return os.path.join(self.default_workspace, 'tenants', namespace)
+
     async def execute_spec_payload(
         self,
         spec_payload: dict,
@@ -193,6 +568,15 @@ class BoxService:
     ) -> dict:
         if not self._available:
             raise BoxError('Box runtime is not available. Install and start Docker to use sandbox features.')
+        execution_context = await self._validated_execution_context(self._query_execution_context(query))
+        spec_payload = self._managed_policy_payload(execution_context, spec_payload)
+        await self._require_validated_workspace_sandbox(execution_context)
+        if spec_payload.get('host_path') in (None, ''):
+            tenant_workspace = self._tenant_workspace(execution_context)
+            if tenant_workspace is not None:
+                spec_payload['host_path'] = tenant_workspace
+                if self.shares_filesystem_with_box:
+                    os.makedirs(tenant_workspace, exist_ok=True)
         try:
             spec = self.build_spec(spec_payload, skip_host_mount_validation=skip_host_mount_validation)
         except BoxError as exc:
@@ -209,14 +593,22 @@ class BoxService:
             self._record_error(exc, query)
             raise
         try:
-            result = await self.client.execute(spec)
+            result = await self.client.execute(
+                spec,
+                action_context=self._action_context(execution_context),
+            )
+            # A placement may be cut over while a long-running sandbox call is
+            # in flight.  Never accept a result produced by the superseded
+            # generation.  Runtime-side generation fencing prevents new work;
+            # this second Core check closes the response race.
+            await self._validated_execution_context(execution_context)
         except BoxError as exc:
             self._record_error(exc, query)
             raise
         try:
             await self._enforce_workspace_quota(spec, phase='after execution')
         except BoxError as exc:
-            await self._cleanup_exceeded_session(spec)
+            await self._cleanup_exceeded_session(execution_context, spec)
             self._record_error(exc, query)
             raise
         self.ap.logger.info(
@@ -232,6 +624,9 @@ class BoxService:
         if query is None:
             raise BoxValidationError('Box execution requires a Host session context.')
 
+        if self._cloud_managed:
+            return 'global'
+
         variables = getattr(query, 'variables', None)
         if isinstance(variables, dict) and _HOST_BOX_SCOPE_VARIABLE in variables:
             private_scope = variables[_HOST_BOX_SCOPE_VARIABLE]
@@ -239,37 +634,30 @@ class BoxService:
                 raise BoxValidationError('Box execution requires a Host conversation scope.')
             return self._hash_box_session_scope(f'host:{private_scope}')
 
-        session = getattr(query, 'session', None)
+        forced_template = self._forced_box_session_id_template()
+        if forced_template:
+            template = forced_template
+        else:
+            template = (
+                (query.pipeline_config or {})
+                .get('ai', {})
+                .get('local-agent', {})
+                .get('box-session-id-template', '{launcher_type}_{launcher_id}')
+            )
+        variables = dict(query.variables or {})
         launcher_type = getattr(query, 'launcher_type', None)
         launcher_id = getattr(query, 'launcher_id', None)
-
-        if launcher_type is None:
-            launcher_type = getattr(session, 'launcher_type', None)
-        if launcher_id is None:
-            launcher_id = getattr(session, 'launcher_id', None)
         if hasattr(launcher_type, 'value'):
             launcher_type = launcher_type.value
 
-        if launcher_type is None or launcher_id is None or not str(launcher_id).strip():
-            raise BoxValidationError('Box execution requires a Host session context.')
-
-        adapter = getattr(query, 'adapter', None)
-        adapter_identity = adapter.__class__.__name__ if adapter is not None else None
-        scope = json.dumps(
-            {
-                'instance_id': str(constants.instance_id or '') or None,
-                'workspace_id': None,
-                'bot_id': getattr(query, 'bot_uuid', None),
-                'platform_adapter': adapter_identity,
-                'target_type': str(launcher_type),
-                'target_id': str(launcher_id),
-                'thread_id': None,
-            },
-            ensure_ascii=False,
-            sort_keys=True,
-            separators=(',', ':'),
-        )
-        return self._hash_box_session_scope(f'host:{scope}')
+        sender_id = getattr(query, 'sender_id', None)
+        query_id = getattr(query, 'query_id', None)
+        variables.setdefault('query_id', str(query_id or 'unknown'))
+        variables.setdefault('launcher_type', str(launcher_type or 'query'))
+        variables.setdefault('launcher_id', str(launcher_id or query_id or 'unknown'))
+        variables.setdefault('sender_id', str(sender_id or launcher_id or query_id or 'unknown'))
+        variables.setdefault('global', 'global')
+        return template.format_map(collections.defaultdict(lambda: 'unknown', variables))
 
     @staticmethod
     def _hash_box_session_scope(scope: str) -> str:
@@ -302,6 +690,8 @@ class BoxService:
         skills it discovered on its own filesystem, so the path is valid there
         by construction.
         """
+        if self._cloud_managed:
+            return []
         skill_mgr = getattr(self.ap, 'skill_mgr', None)
         if skill_mgr is None:
             return []
@@ -332,13 +722,21 @@ class BoxService:
             )
         return mounts
 
-    async def execute_tool(self, parameters: dict, query: pipeline_query.Query) -> dict:
+    async def execute_tool(
+        self,
+        parameters: dict,
+        query: pipeline_query.Query,
+        *,
+        skill_name: str | None = None,
+    ) -> dict:
         """Execute an agent-facing ``exec`` tool call.
 
         Translates the agent-facing ``command`` field to the internal
         ``BoxSpec.cmd`` field and injects the session id from the query.
         """
         spec_payload: dict = {'cmd': parameters['command']}
+        if skill_name is not None:
+            spec_payload['skill_name'] = skill_name
 
         # Pass through allowed agent-facing fields
         for key in ('workdir', 'timeout_sec', 'env'):
@@ -353,6 +751,29 @@ class BoxService:
             spec_payload['extra_mounts'] = self.build_skill_extra_mounts(query)
 
         return await self.execute_spec_payload(spec_payload, query)
+
+    async def execute_in_context(
+        self,
+        context: TenantContext,
+        spec_payload: dict,
+        *,
+        skip_host_mount_validation: bool = False,
+    ) -> BoxExecutionResult:
+        """Execute trusted internal Box work inside one Workspace namespace."""
+
+        execution_context = await self._validated_execution_context(context)
+        payload = self._managed_policy_payload(execution_context, spec_payload)
+        await self._require_validated_workspace_sandbox(execution_context)
+        if payload.get('host_path') in (None, ''):
+            tenant_workspace = self._tenant_workspace(execution_context)
+            if tenant_workspace is not None:
+                payload['host_path'] = tenant_workspace
+                if self.shares_filesystem_with_box:
+                    os.makedirs(tenant_workspace, exist_ok=True)
+        spec = self.build_spec(payload, skip_host_mount_validation=skip_host_mount_validation)
+        result = await self.client.execute(spec, action_context=self._action_context(execution_context))
+        await self._validated_execution_context(execution_context)
+        return result
 
     # ── Attachment passthrough (inbound / outbound) ──────────────────
     #
@@ -382,11 +803,23 @@ class BoxService:
     # Hard cap on a single attachment. The HTTP upload endpoints already cap
     # uploads at 10MiB; keep parity.
     _ATTACHMENT_MAX_BYTES = 10 * _MIB
+    _ATTACHMENT_MAX_FILES = 20
+    _ATTACHMENT_MAX_TOTAL_BYTES = 50 * _MIB
     # Conservative cap for the exec FALLBACK path only (ARG_MAX / stdout
     # truncation). The host-filesystem path has no such limit.
     _EXEC_FALLBACK_MAX_BYTES = 256 * 1024
 
-    def _host_query_dir(self, subdir: str, query_id) -> str | None:
+    def _attachment_query_key(self, query: pipeline_query.Query) -> str:
+        query_uuid = str(getattr(query, 'query_uuid', '') or '').strip()
+        if query_uuid:
+            if query_uuid in {'.', '..'} or '/' in query_uuid or '\\' in query_uuid or '\x00' in query_uuid:
+                raise BoxValidationError('Query attachment identity is invalid')
+            return query_uuid
+        if self._cloud_managed:
+            raise BoxValidationError('Cloud attachment transfer requires query_uuid')
+        return str(query.query_id)
+
+    def _host_query_dir(self, subdir: str, query: pipeline_query.Query) -> str | None:
         """Host path for ``/workspace/<subdir>/<query_id>`` when LangBot can
         access the bind-mounted workspace directly, else ``None``.
 
@@ -396,10 +829,10 @@ class BoxService:
         to the sandbox (and vice-versa). It is ``None`` / not a local dir for
         E2B and remote runtimes, where we must fall back to the exec channel.
         """
-        root = self.default_workspace
-        if not root or not os.path.isdir(root):
+        root = self._tenant_workspace(self._query_execution_context(query))
+        if not root or not os.path.isdir(root) or os.path.islink(root):
             return None
-        return os.path.join(root, subdir, str(query_id))
+        return os.path.join(root, subdir, self._attachment_query_key(query))
 
     async def _purge_attachment_dirs(self) -> None:
         """Remove leftover inbox/outbox directories on startup.
@@ -409,30 +842,42 @@ class BoxService:
         a previous process would otherwise be silently reused — leaking a prior
         run's inbound files and re-sending stale outbound files.
 
-        Outbox files are written by the sandbox **container**, which runs as
-        root over the bind-mount, so the LangBot host process (a non-root user)
-        cannot ``rmtree`` them. We therefore try a host-side delete first (fast,
-        works for host-owned inbox files) and, for anything that survives,
-        delete from *inside* the sandbox via exec where the container's root can
-        remove its own files. Best-effort: never block startup.
+        Tenant workspaces live below ``default_workspace/tenants``. Startup has
+        no authenticated Workspace context, so cleanup is deliberately limited
+        to direct host-filesystem deletion. It must never issue an unscoped Box
+        exec merely to remove root-owned container output.
         """
         root = self.default_workspace
         if not root or not os.path.isdir(root):
             return
 
-        import shutil
-
         host_survivors: list[str] = []
 
         def _host_purge() -> list[str]:
+            candidates: list[tuple[str, str]] = [
+                (root, self.INBOX_SUBDIR),
+                (root, self.OUTBOX_SUBDIR),
+            ]
+            tenants_root = os.path.join(root, 'tenants')
+            if os.path.isdir(tenants_root):
+                with os.scandir(tenants_root) as tenant_entries:
+                    for tenant_entry in tenant_entries:
+                        if not tenant_entry.is_dir(follow_symlinks=False):
+                            continue
+                        candidates.extend(
+                            [
+                                (tenant_entry.path, self.INBOX_SUBDIR),
+                                (tenant_entry.path, self.OUTBOX_SUBDIR),
+                            ]
+                        )
             survivors: list[str] = []
-            for subdir in (self.INBOX_SUBDIR, self.OUTBOX_SUBDIR):
-                path = os.path.join(root, subdir)
-                if not os.path.isdir(path):
-                    continue
-                shutil.rmtree(path, ignore_errors=True)
-                if os.path.exists(path):
-                    survivors.append(subdir)
+            for candidate_root, subdir in candidates:
+                path = os.path.join(candidate_root, subdir)
+                try:
+                    secure_fs.purge_subdirectory(candidate_root, subdir)
+                except OSError:
+                    if os.path.lexists(path):
+                        survivors.append(path)
             return survivors
 
         try:
@@ -445,18 +890,11 @@ class BoxService:
             self.ap.logger.info('Purged leftover sandbox attachment dirs from a previous process.')
             return
 
-        # Root-owned leftovers (container output): delete from inside the box.
-        targets = ' '.join(f'/workspace/{sub}' for sub in host_survivors)
-        try:
-            spec = self.build_spec({'cmd': f'rm -rf {targets}', 'session_id': '__startup_purge__', 'timeout_sec': 30})
-            await self.client.execute(spec)
-            self.ap.logger.info(
-                f'Purged root-owned leftover sandbox attachment dirs via sandbox exec: {host_survivors}'
-            )
-        except Exception as exc:
-            self.ap.logger.warning(
-                f'Failed to purge root-owned sandbox attachment dirs {host_survivors} via exec: {exc}'
-            )
+        self.ap.logger.warning(
+            'Could not purge root-owned sandbox attachment directories from the host; '
+            'skipping an unsafe unscoped Box exec because startup has no trusted '
+            f'Workspace context: {host_survivors}'
+        )
 
     @staticmethod
     def _sanitize_attachment_name(name: str, fallback: str) -> str:
@@ -491,7 +929,13 @@ class BoxService:
                     mime = data[5:split_index]
                     data = data[split_index + 8 :]
             try:
-                return _b64.b64decode(data), mime
+                max_encoded_bytes = 4 * ((BoxService._ATTACHMENT_MAX_BYTES + 2) // 3)
+                if not isinstance(data, (str, bytes)) or len(data) > max_encoded_bytes:
+                    return None
+                decoded = _b64.b64decode(data)
+                if len(decoded) > BoxService._ATTACHMENT_MAX_BYTES:
+                    return None
+                return decoded, mime
             except Exception:
                 return None
 
@@ -500,10 +944,25 @@ class BoxService:
             try:
                 import httpx
 
-                async with httpx.AsyncClient(timeout=30) as client:
-                    resp = await client.get(url)
-                    resp.raise_for_status()
-                    return resp.content, resp.headers.get('Content-Type', 'application/octet-stream')
+                async with httpx.AsyncClient(
+                    timeout=30,
+                    event_hooks=httpclient.httpx_response_limit_hooks(BoxService._ATTACHMENT_MAX_BYTES),
+                ) as client:
+                    async with client.stream('GET', url) as resp:
+                        resp.raise_for_status()
+                        declared_size = resp.headers.get('content-length')
+                        if declared_size is not None:
+                            try:
+                                if int(declared_size) > BoxService._ATTACHMENT_MAX_BYTES:
+                                    return None
+                            except ValueError:
+                                pass
+                        body = bytearray()
+                        async for chunk in resp.aiter_bytes(chunk_size=64 * 1024):
+                            body.extend(chunk)
+                            if len(body) > BoxService._ATTACHMENT_MAX_BYTES:
+                                return None
+                        return bytes(body), resp.headers.get('Content-Type', 'application/octet-stream')
             except Exception:
                 return None
 
@@ -512,8 +971,13 @@ class BoxService:
             try:
                 import aiofiles
 
+                if await asyncio.to_thread(os.path.getsize, path) > BoxService._ATTACHMENT_MAX_BYTES:
+                    return None
                 async with aiofiles.open(path, 'rb') as f:
-                    return await f.read(), 'application/octet-stream'
+                    data = await f.read(BoxService._ATTACHMENT_MAX_BYTES + 1)
+                if len(data) > BoxService._ATTACHMENT_MAX_BYTES:
+                    return None
+                return data, 'application/octet-stream'
             except Exception:
                 return None
 
@@ -536,7 +1000,7 @@ class BoxService:
         if not files:
             return []
 
-        host_dir = self._host_query_dir(subdir, query.query_id)
+        host_dir = self._host_query_dir(subdir, query)
         if host_dir is not None:
             return await asyncio.to_thread(self._write_files_host, host_dir, target_mount_dir, files)
 
@@ -554,14 +1018,15 @@ class BoxService:
         (the webchat session uses small sequential ids) never inherits stale
         files from an earlier turn.
         """
-        import shutil
-
-        shutil.rmtree(host_dir, ignore_errors=True)
-        os.makedirs(host_dir, exist_ok=True)
+        query_key = os.path.basename(host_dir)
+        subdir = os.path.basename(os.path.dirname(host_dir))
+        tenant_root = os.path.dirname(os.path.dirname(host_dir))
+        try:
+            secure_fs.write_files(tenant_root, subdir, query_key, files)
+        except secure_fs.UnsafeWorkspacePathError as exc:
+            raise BoxValidationError('Sandbox attachment path contains an unsafe symbolic link') from exc
         written: list[str] = []
-        for name, data in files:
-            with open(os.path.join(host_dir, name), 'wb') as fh:
-                fh.write(data)
+        for name, _data in files:
             written.append(f'{target_mount_dir}/{name}')
         return written
 
@@ -632,6 +1097,8 @@ class BoxService:
         """
         if not self._available:
             return []
+        if self._cloud_managed:
+            await self.require_workspace_sandbox(self._query_execution_context(query))
 
         import langbot_plugin.api.entities.builtin.platform.message as platform_message
 
@@ -680,7 +1147,8 @@ class BoxService:
         if not pending:
             return []
 
-        target_dir = f'{self.INBOX_MOUNT_DIR}/{query.query_id}'
+        query_key = self._attachment_query_key(query)
+        target_dir = f'{self.INBOX_MOUNT_DIR}/{query_key}'
         written = await self._write_files_into_sandbox(query, self.INBOX_SUBDIR, target_dir, pending)
         written_basenames = {os.path.basename(p) for p in written}
 
@@ -708,8 +1176,10 @@ class BoxService:
         """
         if not self._available:
             return []
+        if self._cloud_managed:
+            await self.require_workspace_sandbox(self._query_execution_context(query))
 
-        host_dir = self._host_query_dir(self.OUTBOX_SUBDIR, query.query_id)
+        host_dir = self._host_query_dir(self.OUTBOX_SUBDIR, query)
         if host_dir is not None:
             entries = await asyncio.to_thread(self._read_outbox_host, host_dir)
         else:
@@ -731,22 +1201,21 @@ class BoxService:
         """Read outbox files straight off the bind-mounted host directory."""
         import base64 as _b64
 
-        entries: list[dict] = []
-        if not os.path.isdir(host_dir):
-            return entries
-        for root, _dirs, names in os.walk(host_dir):
-            for name in sorted(names):
-                path = os.path.join(root, name)
-                try:
-                    if os.path.getsize(path) > self._ATTACHMENT_MAX_BYTES:
-                        continue
-                    with open(path, 'rb') as fh:
-                        data = fh.read()
-                except OSError:
-                    continue
-                rel = os.path.relpath(path, host_dir)
-                entries.append({'name': rel, 'b64': _b64.b64encode(data).decode('ascii')})
-        return entries
+        query_key = os.path.basename(host_dir)
+        subdir = os.path.basename(os.path.dirname(host_dir))
+        tenant_root = os.path.dirname(os.path.dirname(host_dir))
+        try:
+            files = secure_fs.read_regular_files(
+                tenant_root,
+                subdir,
+                query_key,
+                max_file_bytes=self._ATTACHMENT_MAX_BYTES,
+                max_files=self._ATTACHMENT_MAX_FILES,
+                max_total_bytes=self._ATTACHMENT_MAX_TOTAL_BYTES,
+            )
+        except secure_fs.UnsafeWorkspacePathError as exc:
+            raise BoxValidationError('Sandbox outbox contains an unsafe symbolic link') from exc
+        return [{'name': name, 'b64': _b64.b64encode(data).decode('ascii')} for name, data in files]
 
     async def _read_outbox_via_exec(self, query: pipeline_query.Query) -> list[dict]:
         """Fallback: read the outbox over the exec channel (E2B / remote).
@@ -756,26 +1225,54 @@ class BoxService:
         """
         import json as _json
 
-        target_dir = f'{self.OUTBOX_MOUNT_DIR}/{query.query_id}'
-        max_bytes = self._EXEC_FALLBACK_MAX_BYTES
+        target_dir = f'{self.OUTBOX_MOUNT_DIR}/{self._attachment_query_key(query)}'
+        max_file_bytes = self._EXEC_FALLBACK_MAX_BYTES
+        max_files = self._ATTACHMENT_MAX_FILES
+        max_total_bytes = max_file_bytes * max_files
+        max_scan_entries = 1000
         script = (
             'import base64, json, os\n'
             f'target = {target_dir!r}\n'
-            f'max_bytes = {max_bytes}\n'
+            f'max_file_bytes = {max_file_bytes}\n'
+            f'max_files = {max_files}\n'
+            f'max_total_bytes = {max_total_bytes}\n'
+            f'max_scan_entries = {max_scan_entries}\n'
             'out = []\n'
+            'total_bytes = 0\n'
+            'scanned_entries = 0\n'
+            'stack = [target]\n'
             'if os.path.isdir(target):\n'
-            '    for root, _dirs, names in os.walk(target):\n'
-            '        for n in sorted(names):\n'
-            '            p = os.path.join(root, n)\n'
+            '    while stack and len(out) < max_files and scanned_entries < max_scan_entries:\n'
+            '        current = stack.pop()\n'
+            '        try:\n'
+            '            with os.scandir(current) as iterator:\n'
+            '                entries = sorted(iterator, key=lambda item: item.name, reverse=True)\n'
+            '        except OSError:\n'
+            '            continue\n'
+            '        for entry in entries:\n'
+            '            scanned_entries += 1\n'
+            '            if scanned_entries > max_scan_entries:\n'
+            '                break\n'
             '            try:\n'
-            '                if os.path.getsize(p) > max_bytes:\n'
+            '                if entry.is_dir(follow_symlinks=False):\n'
+            '                    stack.append(entry.path)\n'
             '                    continue\n'
-            "                with open(p, 'rb') as f:\n"
-            '                    data = f.read()\n'
+            '                if not entry.is_file(follow_symlinks=False):\n'
+            '                    continue\n'
+            '                size = entry.stat(follow_symlinks=False).st_size\n'
+            '                if size > max_file_bytes or total_bytes + size > max_total_bytes:\n'
+            '                    continue\n'
+            "                with open(entry.path, 'rb') as f:\n"
+            '                    data = f.read(max_file_bytes + 1)\n'
+            '                if len(data) > max_file_bytes or total_bytes + len(data) > max_total_bytes:\n'
+            '                    continue\n'
             '            except OSError:\n'
             '                continue\n'
-            '            rel = os.path.relpath(p, target)\n'
+            '            rel = os.path.relpath(entry.path, target)\n'
             "            out.append({'name': rel, 'b64': base64.b64encode(data).decode('ascii')})\n"
+            '            total_bytes += len(data)\n'
+            '            if len(out) >= max_files:\n'
+            '                break\n'
             'print(json.dumps(out))\n'
         )
         result = await self.execute_tool(
@@ -801,16 +1298,19 @@ class BoxService:
         container's root can remove its own files. Best-effort: never raise
         into the pipeline.
         """
-        target_dir = f'{self.OUTBOX_MOUNT_DIR}/{query.query_id}'
+        target_dir = f'{self.OUTBOX_MOUNT_DIR}/{self._attachment_query_key(query)}'
 
         if host_dir is not None:
-            import shutil
 
             def _clear() -> bool:
-                shutil.rmtree(host_dir, ignore_errors=True)
-                survived = os.path.exists(host_dir) and bool(os.listdir(host_dir))
-                os.makedirs(host_dir, exist_ok=True)
-                return survived
+                query_key = os.path.basename(host_dir)
+                subdir = os.path.basename(os.path.dirname(host_dir))
+                tenant_root = os.path.dirname(os.path.dirname(host_dir))
+                try:
+                    secure_fs.reset_directory(tenant_root, subdir, query_key)
+                    return False
+                except OSError:
+                    return True
 
             survived = await asyncio.to_thread(_clear)
             if not survived:
@@ -856,20 +1356,35 @@ class BoxService:
         return attachments
 
     async def shutdown(self):
-        await self.client.shutdown()
+        if self._closing:
+            return
+        self._closing = True
+        self._available = False
+        reconnect_task = self._reconnect_task
+        self._reconnect_task = None
+        if reconnect_task is not None and reconnect_task is not asyncio.current_task():
+            reconnect_task.cancel()
+            await asyncio.gather(reconnect_task, return_exceptions=True)
+        # The runtime may already be offline. A failed best-effort SHUTDOWN RPC
+        # must not prevent us from cancelling transports and reaping children.
+        with contextlib.suppress(Exception):
+            await self.client.shutdown()
+        if self._runtime_connector is not None:
+            await self._runtime_connector.aclose()
 
     def dispose(self):
-        if self._runtime_connector is not None:
-            self._runtime_connector.dispose()
         loop = getattr(self.ap, 'event_loop', None)
         if loop is not None and not loop.is_closed() and (self._shutdown_task is None or self._shutdown_task.done()):
             self._shutdown_task = loop.create_task(self.shutdown())
+        elif self._runtime_connector is not None:
+            self._runtime_connector.dispose()
 
-    async def get_sessions(self) -> list[dict]:
+    async def get_sessions(self, context: TenantContext) -> list[dict]:
         if not self._available:
             return []
+        execution_context = await self.require_workspace_sandbox(context)
         try:
-            return await self.client.get_sessions()
+            return await self.client.get_sessions(action_context=self._action_context(execution_context))
         except Exception:
             return []
 
@@ -897,21 +1412,74 @@ class BoxService:
             self._validate_host_mount(spec)
         return spec
 
-    async def create_session(self, spec_payload: dict, *, skip_host_mount_validation: bool = False) -> dict:
+    async def create_session(
+        self,
+        context: TenantContext,
+        spec_payload: dict,
+        *,
+        skip_host_mount_validation: bool = False,
+    ) -> dict:
+        execution_context = await self._validated_execution_context(context)
+        spec_payload = self._managed_policy_payload(execution_context, spec_payload)
+        await self._require_validated_workspace_sandbox(execution_context)
+        if spec_payload.get('host_path') in (None, ''):
+            tenant_workspace = self._tenant_workspace(execution_context)
+            if tenant_workspace is not None:
+                spec_payload['host_path'] = tenant_workspace
+                if self.shares_filesystem_with_box:
+                    os.makedirs(tenant_workspace, exist_ok=True)
         spec = self.build_spec(spec_payload, skip_host_mount_validation=skip_host_mount_validation)
-        return await self.client.create_session(spec)
+        return await self.client.create_session(spec, action_context=self._action_context(execution_context))
 
-    async def start_managed_process(self, session_id: str, process_payload: dict) -> BoxManagedProcessInfo:
+    async def start_managed_process(
+        self,
+        context: TenantContext,
+        session_id: str,
+        process_payload: dict,
+    ) -> BoxManagedProcessInfo:
+        self._reject_cloud_managed_process()
+        execution_context = await self._validated_execution_context(context)
         process_spec = BoxManagedProcessSpec.model_validate(process_payload)
-        return await self.client.start_managed_process(session_id, process_spec)
+        return await self.client.start_managed_process(
+            session_id,
+            process_spec,
+            action_context=self._action_context(execution_context),
+        )
 
-    async def get_managed_process(self, session_id: str, process_id: str = 'default') -> BoxManagedProcessInfo:
-        return await self.client.get_managed_process(session_id, process_id)
+    async def get_managed_process(
+        self,
+        context: TenantContext,
+        session_id: str,
+        process_id: str = 'default',
+    ) -> BoxManagedProcessInfo:
+        self._reject_cloud_managed_process()
+        execution_context = await self._validated_execution_context(context)
+        return await self.client.get_managed_process(
+            session_id,
+            process_id,
+            action_context=self._action_context(execution_context),
+        )
 
-    async def stop_managed_process(self, session_id: str, process_id: str = 'default') -> None:
-        return await self.client.stop_managed_process(session_id, process_id)
+    async def stop_managed_process(
+        self,
+        context: TenantContext,
+        session_id: str,
+        process_id: str = 'default',
+    ) -> None:
+        self._reject_cloud_managed_process()
+        execution_context = await self._validated_execution_context(context)
+        return await self.client.stop_managed_process(
+            session_id,
+            process_id,
+            action_context=self._action_context(execution_context),
+        )
 
-    def get_managed_process_websocket_url(self, session_id: str, process_id: str = 'default') -> str:
+    def _get_managed_process_websocket_url(
+        self,
+        context: TenantContext,
+        session_id: str,
+        process_id: str = 'default',
+    ) -> str:
         getter = getattr(self.client, 'get_managed_process_websocket_url', None)
         if getter is None:
             raise BoxValidationError('box runtime client does not support managed process websocket attach')
@@ -920,52 +1488,144 @@ class BoxService:
             if self._runtime_connector is not None
             else 'http://127.0.0.1:5410'
         )
-        return getter(session_id, ws_relay_base_url, process_id)
+        return getter(
+            session_id,
+            ws_relay_base_url,
+            process_id,
+            action_context=self._action_context(context),
+        )
 
-    async def list_skills(self) -> list[dict]:
-        return await self.client.list_skills()
+    async def get_managed_process_websocket_connection(
+        self,
+        context: TenantContext,
+        session_id: str,
+        process_id: str = 'default',
+    ) -> tuple[str, dict[str, str]]:
+        """Resolve a relay URL and headers after fencing the placement.
 
-    async def get_skill(self, name: str) -> dict | None:
-        return await self.client.get_skill(name)
+        The shared Box control secret is transported only in headers.  The
+        Workspace and generation headers bind the relay to the same trusted
+        execution context used by the action RPC that created the process.
+        """
 
-    async def create_skill(self, skill: dict) -> dict:
-        return await self.client.create_skill(skill)
+        self._reject_cloud_managed_process()
+        execution_context = await self._validated_execution_context(context)
+        if self._runtime_connector is None:
+            raise BoxValidationError(
+                'box runtime connector does not support authenticated managed process websocket attach'
+            )
+        action_context = self._action_context(execution_context)
+        return (
+            self._get_managed_process_websocket_url(
+                execution_context,
+                session_id,
+                process_id,
+            ),
+            self._runtime_connector.get_relay_headers(action_context),
+        )
 
-    async def update_skill(self, name: str, skill: dict) -> dict:
-        return await self.client.update_skill(name, skill)
+    async def list_skills(self, context: TenantContext) -> list[dict]:
+        execution_context = await self._validated_skill_execution_context(context)
+        return await self.client.list_skills(action_context=self._action_context(execution_context))
 
-    async def delete_skill(self, name: str) -> None:
-        await self.client.delete_skill(name)
+    async def get_skill(self, context: TenantContext, name: str) -> dict | None:
+        execution_context = await self._validated_skill_execution_context(context)
+        return await self.client.get_skill(name, action_context=self._action_context(execution_context))
 
-    async def scan_skill_directory(self, path: str) -> dict:
-        return await self.client.scan_skill_directory(path)
+    async def create_skill(self, context: TenantContext, skill: dict) -> dict:
+        execution_context = await self._validated_skill_execution_context(context)
+        payload = dict(skill)
+        payload.pop('workspace_uuid', None)
+        if self._cloud_managed and str(payload.get('package_root', '') or '').strip():
+            raise BoxAdmissionError('Cloud skill package_root is runtime-owned')
+        if self._cloud_managed:
+            payload.pop('package_root', None)
+        return await self.client.create_skill(payload, action_context=self._action_context(execution_context))
+
+    async def update_skill(self, context: TenantContext, name: str, skill: dict) -> dict:
+        execution_context = await self._validated_skill_execution_context(context)
+        payload = dict(skill)
+        payload.pop('workspace_uuid', None)
+        if self._cloud_managed:
+            # The runtime already owns the package path for an existing skill.
+            # A serialized read response may contain it, but it is never an
+            # authority-bearing update field in shared Cloud mode.
+            payload.pop('package_root', None)
+        return await self.client.update_skill(
+            name,
+            payload,
+            action_context=self._action_context(execution_context),
+        )
+
+    async def delete_skill(self, context: TenantContext, name: str) -> None:
+        execution_context = await self._validated_skill_execution_context(context)
+        await self.client.delete_skill(name, action_context=self._action_context(execution_context))
+
+    async def scan_skill_directory(self, context: TenantContext, path: str) -> dict:
+        execution_context = await self._validated_skill_execution_context(context)
+        if self._cloud_managed:
+            raise BoxAdmissionError('Scanning arbitrary host skill directories is disabled in Cloud')
+        return await self.client.scan_skill_directory(path, action_context=self._action_context(execution_context))
+
+    async def _validated_skill_execution_context(self, context: TenantContext) -> ExecutionContext:
+        execution_context = await self._validated_execution_context(context)
+        await self._require_validated_workspace_sandbox(execution_context)
+        return execution_context
 
     async def list_skill_files(
         self,
+        context: TenantContext,
         name: str,
         path: str = '.',
         include_hidden: bool = False,
         max_entries: int = 200,
     ) -> dict:
-        return await self.client.list_skill_files(name, path, include_hidden, max_entries)
+        execution_context = await self._validated_skill_execution_context(context)
+        return await self.client.list_skill_files(
+            name,
+            path,
+            include_hidden,
+            max_entries,
+            action_context=self._action_context(execution_context),
+        )
 
-    async def read_skill_file(self, name: str, path: str) -> dict:
-        return await self.client.read_skill_file(name, path)
+    async def read_skill_file(self, context: TenantContext, name: str, path: str) -> dict:
+        execution_context = await self._validated_skill_execution_context(context)
+        return await self.client.read_skill_file(
+            name,
+            path,
+            action_context=self._action_context(execution_context),
+        )
 
-    async def write_skill_file(self, name: str, path: str, content: str) -> dict:
-        return await self.client.write_skill_file(name, path, content)
+    async def write_skill_file(self, context: TenantContext, name: str, path: str, content: str) -> dict:
+        execution_context = await self._validated_skill_execution_context(context)
+        return await self.client.write_skill_file(
+            name,
+            path,
+            content,
+            action_context=self._action_context(execution_context),
+        )
 
     async def preview_skill_zip(
         self,
+        context: TenantContext,
         file_bytes: bytes,
         filename: str,
         source_subdir: str = '',
         target_suffix: str = 'upload',
     ) -> list[dict]:
-        return await self.client.preview_skill_zip(file_bytes, filename, source_subdir, target_suffix)
+        execution_context = await self._validated_skill_execution_context(context)
+        return await self.client.preview_skill_zip(
+            file_bytes,
+            filename,
+            source_subdir,
+            target_suffix,
+            action_context=self._action_context(execution_context),
+        )
 
     async def install_skill_zip(
         self,
+        context: TenantContext,
         file_bytes: bytes,
         filename: str,
         source_paths: list[str] | None = None,
@@ -973,6 +1633,7 @@ class BoxService:
         source_subdir: str = '',
         target_suffix: str = 'upload',
     ) -> list[dict]:
+        execution_context = await self._validated_skill_execution_context(context)
         return await self.client.install_skill_zip(
             file_bytes,
             filename,
@@ -980,6 +1641,7 @@ class BoxService:
             source_path,
             source_subdir,
             target_suffix,
+            action_context=self._action_context(execution_context),
         )
 
     def _serialize_result(self, result: BoxExecutionResult) -> dict:
@@ -1140,6 +1802,16 @@ class BoxService:
         raw = str(self._local_config().get('image', '') or '').strip()
         return raw or None
 
+    def _forced_box_session_id_template(self) -> str:
+        """Return the operator-forced sandbox scope template, if configured."""
+
+        limitation = (
+            (self.ap.instance_config.data or {}).get('system', {}).get('limitation', {})
+            if getattr(self.ap, 'instance_config', None) is not None
+            else {}
+        )
+        return str(limitation.get('force_box_session_id_template', '') or '').strip()
+
     def _load_workspace_quota_mb(self) -> int | None:
         raw_value = self._local_config().get('workspace_quota_mb')
         if raw_value in (None, ''):
@@ -1177,6 +1849,20 @@ class BoxService:
 
         allowed_roots = ', '.join(self.allowed_mount_roots)
         raise BoxValidationError(f'box.local.default_workspace is outside allowed_mount_roots: {allowed_roots}')
+
+    def _ensure_cloud_shared_workspace(self) -> None:
+        """Require the Core-side view of the Cloud Box durable volume."""
+
+        if self.default_workspace is None:
+            raise BoxValidationError('Cloud Box requires box.local.default_workspace')
+        if not os.path.isabs(self.default_workspace) or not os.path.isdir(self.default_workspace):
+            raise BoxValidationError('Cloud Box shared default_workspace must be an existing absolute directory')
+        if not os.access(self.default_workspace, os.R_OK | os.W_OK | os.X_OK):
+            raise BoxValidationError('Cloud Box shared default_workspace must be writable by LangBot Core')
+        if not self.allowed_mount_roots or not any(
+            _is_path_under(self.default_workspace, allowed_root) for allowed_root in self.allowed_mount_roots
+        ):
+            raise BoxValidationError('Cloud Box shared default_workspace is outside allowed_mount_roots')
 
     def _validate_host_mount(self, spec: BoxSpec):
         if spec.host_path is None:
@@ -1238,29 +1924,50 @@ class BoxService:
         if normalized_timeout > profile.max_timeout_sec:
             params['timeout_sec'] = profile.max_timeout_sec
 
-    def _get_workspace_size_bytes(self, root: str) -> int:
-        total = 0
+    def _max_workspace_entries(self) -> int:
+        data = getattr(getattr(self.ap, 'instance_config', None), 'data', {})
+        try:
+            configured = int(
+                data.get('box', {}).get('limits', {}).get('max_workspace_entries', _DEFAULT_MAX_WORKSPACE_ENTRIES)
+            )
+        except (AttributeError, TypeError, ValueError):
+            configured = _DEFAULT_MAX_WORKSPACE_ENTRIES
+        return min(max(configured, 1), _HARD_MAX_WORKSPACE_ENTRIES)
 
-        def _walk(path: str):
-            nonlocal total
+    @staticmethod
+    def _get_workspace_usage(
+        root: str,
+        *,
+        stop_after_bytes: int,
+        max_entries: int,
+    ) -> tuple[int, int, bool]:
+        """Scan depth-first without recursion and stop at either hard bound."""
+
+        total = 0
+        entries_seen = 0
+        directories = [root]
+        while directories:
+            path = directories.pop()
             try:
                 with os.scandir(path) as entries:
                     for entry in entries:
+                        entries_seen += 1
+                        if entries_seen > max_entries:
+                            return total, entries_seen, True
                         try:
                             if entry.is_symlink():
                                 total += entry.stat(follow_symlinks=False).st_size
-                                continue
-                            if entry.is_dir(follow_symlinks=False):
-                                _walk(entry.path)
-                                continue
-                            total += entry.stat(follow_symlinks=False).st_size
+                            elif entry.is_dir(follow_symlinks=False):
+                                directories.append(entry.path)
+                            else:
+                                total += entry.stat(follow_symlinks=False).st_size
                         except FileNotFoundError:
                             continue
+                        if total > stop_after_bytes:
+                            return total, entries_seen, False
             except FileNotFoundError:
-                return
-
-        _walk(root)
-        return total
+                continue
+        return total, entries_seen, False
 
     async def _enforce_workspace_quota(self, spec: BoxSpec, *, phase: str) -> None:
         if spec.host_path is None or spec.workspace_quota_mb <= 0:
@@ -1273,20 +1980,34 @@ class BoxService:
         # Walk the workspace off the event loop — this runs on every
         # quota-enforced exec, and a large tree would otherwise block the whole
         # asyncio runtime (all bots/pipelines) for the duration of the scan.
-        used_bytes = await asyncio.to_thread(self._get_workspace_size_bytes, host_path)
         limit_bytes = spec.workspace_quota_mb * _MIB
+        max_entries = self._max_workspace_entries()
+        used_bytes, entries_seen, entry_limit_exceeded = await asyncio.to_thread(
+            self._get_workspace_usage,
+            host_path,
+            stop_after_bytes=limit_bytes,
+            max_entries=max_entries,
+        )
+        if entry_limit_exceeded:
+            raise BoxValidationError(
+                f'workspace entry limit exceeded {phase}: '
+                f'entries>{max_entries} host_path={host_path} session_id={spec.session_id}'
+            )
         if used_bytes <= limit_bytes:
             return
 
         raise BoxValidationError(
             f'workspace quota exceeded {phase}: '
             f'used={used_bytes} bytes limit={limit_bytes} bytes '
-            f'host_path={host_path} session_id={spec.session_id}'
+            f'entries={entries_seen} host_path={host_path} session_id={spec.session_id}'
         )
 
-    async def _cleanup_exceeded_session(self, spec: BoxSpec) -> None:
+    async def _cleanup_exceeded_session(self, context: TenantContext, spec: BoxSpec) -> None:
         try:
-            await self.client.delete_session(spec.session_id)
+            await self.client.delete_session(
+                spec.session_id,
+                action_context=self._action_context(context),
+            )
         except Exception as exc:
             self.ap.logger.warning(
                 'Failed to clean up Box session after workspace quota was exceeded: '
@@ -1303,23 +2024,89 @@ class BoxService:
                 'type': type(exc).__name__,
                 'message': str(exc),
                 'query_id': str(query.query_id),
+                'instance_uuid': str(getattr(query, 'instance_uuid', '') or ''),
+                'workspace_uuid': str(getattr(query, 'workspace_uuid', '') or ''),
             }
         )
 
-    def get_recent_errors(self) -> list[dict]:
-        return list(self._recent_errors)
+    def get_recent_errors(self, context: TenantContext) -> list[dict]:
+        execution_context = self._execution_context(context)
+        return [
+            error
+            for error in self._recent_errors
+            if error.get('instance_uuid') == execution_context.instance_uuid
+            and error.get('workspace_uuid') == execution_context.workspace_uuid
+        ]
 
-    async def get_status(self) -> dict:
+    def get_system_guidance(self, query: pipeline_query.Query | int | str | None = None) -> str:
+        """Return LLM system-prompt guidance for the exec tool.
+
+        All execution-specific prompt text is kept here so that callers
+        (e.g. LocalAgentRunner) stay free of box domain knowledge.
+
+        ``query`` is the current turn's pipeline query. When provided,
+        the guidance ALWAYS advertises the per-query outbox path so the agent
+        knows how to deliver generated files back to the user — even on turns
+        where the user sent no inbound attachment (e.g. "generate a QR code"),
+        which is exactly when the inbound-attachment note never fires. Outbound
+        collection in the wrapper runs on every turn regardless of inbound
+        files, so without this the file would be produced and silently dropped.
+        """
+        guidance = (
+            'When the exec tool is available, use it for exact calculations, statistics, structured data parsing, '
+            'and code execution instead of estimating mentally. If the user provides numbers, tables, CSV-like text, '
+            'JSON, or other data and asks for a computed answer, prefer running a short Python script via exec '
+            'and then answer from the tool result. Unless the user explicitly asks for the script, code, or implementation '
+            'details, do not include the generated script in the final answer; return the result and a brief explanation only.'
+        )
+        if self.default_workspace:
+            guidance += (
+                ' A default workspace is mounted at /workspace for file tasks. When the user asks to read, create, or '
+                'modify local files in the working directory, use exec with /workspace paths directly; do not ask the '
+                'user for directory parameters unless they explicitly need a different directory.'
+            )
+        if query is not None:
+            if not isinstance(query, (int, str)):
+                query_key = self._attachment_query_key(query)
+            else:
+                # Backwards compatibility for OSS callers/tests that passed
+                # the old process-local integer identity. Cloud callers must
+                # pass the full Query so an opaque UUID is always advertised.
+                if self._cloud_managed:
+                    raise BoxValidationError('Cloud outbox guidance requires a pipeline Query')
+                query_key = str(query)
+            outbox_dir = f'{self.OUTBOX_MOUNT_DIR}/{query_key}'
+            guidance += (
+                f' If you produce any file (image, audio, document, etc.) that should be sent back to the user, '
+                f'write it into {outbox_dir}/ (create the directory if needed). Every file placed there will be '
+                'delivered to the user automatically; do not paste file contents or base64 into your reply.'
+            )
+        return guidance
+
+    async def get_backend_status(self) -> dict:
+        """Return instance-level backend readiness without tenant resource data."""
+
+        if not self._available:
+            return {'available': False, 'enabled': self._enabled, 'connector_error': self._connector_error}
+        backend = await self.client.get_backend_info()
+        return {'available': bool(backend.get('available', False)), 'enabled': self._enabled, 'backend': backend}
+
+    async def get_status(self, context: TenantContext) -> dict:
+        execution_context = await self._validated_execution_context(context)
+        if self._cloud_managed and self._available:
+            await self._require_validated_workspace_sandbox(execution_context)
+        action_context = self._action_context(execution_context)
+        recent_error_count = len(self.get_recent_errors(execution_context))
         if not self._available:
             return {
                 'available': False,
                 'enabled': self._enabled,
                 'profile': self.profile.name,
-                'recent_error_count': len(self._recent_errors),
+                'recent_error_count': recent_error_count,
                 'connector_error': self._connector_error,
             }
         try:
-            runtime_status = await self.client.get_status()
+            runtime_status = await self.client.get_status(action_context=action_context)
         except Exception as exc:
             # RPC failed — the runtime likely just disconnected and the
             # heartbeat hasn't flipped _available yet.
@@ -1327,7 +2114,7 @@ class BoxService:
                 'available': False,
                 'enabled': self._enabled,
                 'profile': self.profile.name,
-                'recent_error_count': len(self._recent_errors),
+                'recent_error_count': recent_error_count,
                 'connector_error': str(exc),
             }
         # Backend state can be unavailable even when the connector is healthy
@@ -1345,7 +2132,7 @@ class BoxService:
             'available': backend_ok,
             'enabled': self._enabled,
             'profile': self.profile.name,
-            'recent_error_count': len(self._recent_errors),
+            'recent_error_count': recent_error_count,
         }
         if not backend_ok and 'connector_error' not in payload:
             backend_name = backend_info.get('name') if backend_info else None

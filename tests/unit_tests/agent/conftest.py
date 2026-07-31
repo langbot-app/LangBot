@@ -3,6 +3,47 @@
 from __future__ import annotations
 
 import typing
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+
+from langbot_plugin.entities.io.context import InstallationBinding
+
+
+TEST_RUNTIME_BINDING = InstallationBinding(
+    instance_uuid='instance-test',
+    workspace_uuid='workspace-test',
+    placement_generation=1,
+    installation_uuid='00000000-0000-4000-8000-000000000001',
+    runtime_revision=1,
+    artifact_digest='a' * 64,
+)
+
+
+def bind_runtime_action_context(
+    handler,
+    application,
+    *,
+    plugin_identity: str = 'test/runner',
+):
+    """Simulate the trusted Runtime envelope used around direct action calls."""
+
+    application.workspace_service = SimpleNamespace(
+        get_execution_binding=AsyncMock(
+            return_value=SimpleNamespace(
+                instance_uuid=TEST_RUNTIME_BINDING.instance_uuid,
+                workspace_uuid=TEST_RUNTIME_BINDING.workspace_uuid,
+                placement_generation=TEST_RUNTIME_BINDING.placement_generation,
+            )
+        )
+    )
+    plugin_author, plugin_name = plugin_identity.split('/', 1)
+    handler.register_installation_binding(
+        TEST_RUNTIME_BINDING,
+        plugin_author=plugin_author,
+        plugin_name=plugin_name,
+    )
+    handler._current_action_context.set(TEST_RUNTIME_BINDING)
+    return handler
 
 
 def make_resources(

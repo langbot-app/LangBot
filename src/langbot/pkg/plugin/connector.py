@@ -2,23 +2,30 @@
 from __future__ import annotations
 
 import asyncio
-import io
+import contextlib
+import contextvars
+import hashlib
+import json
 import time
-import zipfile
+import uuid
 from typing import Any
 import typing
 import os
+import secrets
 import sys
-from urllib.parse import urlparse
 import httpx
 import sqlalchemy
-import yaml
-from async_lru import alru_cache
+from urllib.parse import urljoin, urlparse
 from langbot_plugin.api.entities.builtin.pipeline.query import provider_session
 
 from ..core import app
 from . import handler
-from ..utils import platform
+from .archive import inspect_plugin_archive_metadata
+from .github import (
+    validate_github_plugin_install_info,
+    validate_github_release_asset_url,
+)
+from ..utils import constants, httpclient, platform
 from ..utils.managed_runtime import ManagedRuntimeConnector
 from langbot_plugin.runtime.io.controllers.stdio import (
     client as stdio_client_controller,
@@ -33,12 +40,114 @@ from langbot_plugin.api.entities.builtin.command import (
     errors as command_errors,
 )
 from langbot_plugin.runtime.plugin.mgr import PluginInstallSource
+from langbot_plugin.runtime.security import (
+    PLUGIN_RUNTIME_CONTROL_TOKEN_ENV,
+    PLUGIN_RUNTIME_CONTROL_TOKEN_HEADER,
+    validate_runtime_secret,
+)
+from langbot_plugin.entities.io.context import (
+    InstallationBinding,
+    PluginInstallationDesiredState,
+    PluginWorkerPolicy,
+    RuntimeIdentity,
+)
 from ..core import taskmgr
+from ..entity.persistence import bstorage as persistence_bstorage
 from ..entity.persistence import plugin as persistence_plugin
+from ..api.http.context import ExecutionContext
+from ..api.http.service.tenant import TenantContext, require_workspace_uuid
+from ..workspace.errors import WorkspaceNotFoundError
+
+
+_PLUGIN_ARTIFACT_OWNER_TYPE = 'plugin_artifact'
+_PLUGIN_ARTIFACT_KEY = 'package.lbpkg'
+_PLUGIN_ARTIFACT_STORAGE_MARKER = 'tenant_binary_storage_v1'
+_GITHUB_PLUGIN_DOWNLOAD_MAX_BYTES = 10 * 1024 * 1024
+_MARKETPLACE_METADATA_MAX_BYTES = 1024 * 1024
+_MARKETPLACE_PLUGIN_DOWNLOAD_MAX_BYTES = 64 * 1024 * 1024
+_MARKETPLACE_SKILL_DOWNLOAD_MAX_BYTES = 10 * 1024 * 1024
+_GITHUB_PLUGIN_DOWNLOAD_MAX_REDIRECTS = 5
+_GITHUB_ASSET_HOSTS = frozenset(
+    {
+        'api.github.com',
+        'github.com',
+        'objects.githubusercontent.com',
+        'release-assets.githubusercontent.com',
+    }
+)
+_HTTP_REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
+_CONNECT_TIMEOUT_SEC = 30.0
+_HEARTBEAT_INTERVAL_SEC = 20.0
+_HEARTBEAT_FAILURE_THRESHOLD = 3
+_RECONNECT_MAX_DELAY_SEC = 60.0
+
+
+async def _read_httpx_response_limited(
+    response: httpx.Response,
+    *,
+    max_bytes: int,
+) -> bytes:
+    content_length = response.headers.get('content-length')
+    if content_length is not None:
+        try:
+            declared_size = int(content_length)
+        except ValueError:
+            declared_size = None
+        if declared_size is not None and declared_size > max_bytes:
+            raise ValueError(f'Remote response exceeds the {max_bytes}-byte limit')
+
+    body = bytearray()
+    async for chunk in response.aiter_bytes(chunk_size=64 * 1024):
+        body.extend(chunk)
+        if len(body) > max_bytes:
+            raise ValueError(f'Remote response exceeds the {max_bytes}-byte limit')
+    return bytes(body)
+
+
+async def _marketplace_get(
+    client: httpx.AsyncClient,
+    url: str,
+    *,
+    max_bytes: int,
+    allow_not_found: bool = False,
+) -> tuple[int, bytes]:
+    async with client.stream('GET', url) as response:
+        if allow_not_found and response.status_code == 404:
+            return response.status_code, b''
+        response.raise_for_status()
+        return response.status_code, await _read_httpx_response_limited(
+            response,
+            max_bytes=max_bytes,
+        )
+
+
+def _decode_json_object(body: bytes, *, subject: str) -> dict[str, Any]:
+    try:
+        payload = json.loads(body)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError(f'{subject} returned invalid JSON') from exc
+    if not isinstance(payload, dict):
+        raise ValueError(f'{subject} returned a non-object response')
+    return payload
 
 
 class PluginRuntimeNotConnectedError(RuntimeError):
     """Raised when plugin runtime operations are requested before connection."""
+
+
+class PluginInstallationFailedError(RuntimeError):
+    """Stable Runtime desired-state failure for one plugin installation."""
+
+    def __init__(
+        self,
+        installation_uuid: str,
+        error_code: str,
+        message: str,
+    ) -> None:
+        self.installation_uuid = installation_uuid
+        self.error_code = error_code
+        self.runtime_message = message
+        super().__init__(f'Plugin installation {installation_uuid} failed [{error_code}]: {message}')
 
 
 class PluginRuntimeConnector(ManagedRuntimeConnector):
@@ -71,130 +180,858 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         super().__init__(ap)
         self.runtime_disconnect_callback = runtime_disconnect_callback
         self.is_enable_plugin = self.ap.instance_config.data.get('plugin', {}).get('enable', True)
+        self.runtime_profile: typing.Literal['oss_dev', 'shared'] = (
+            'shared' if getattr(getattr(ap, 'deployment', None), 'mode', 'oss') == 'cloud' else 'oss_dev'
+        )
+        self.runtime_identity: RuntimeIdentity | None = None
+        self._runtime_id = self._build_runtime_id()
+        self.worker_policy: PluginWorkerPolicy | None = None
+        self._execution_context: contextvars.ContextVar[ExecutionContext | None] = contextvars.ContextVar(
+            f'{self.__class__.__name__}_{id(self)}_execution_context',
+            default=None,
+        )
+        self._known_desired_states: dict[str, PluginInstallationDesiredState] = {}
+        self._workspace_installations: dict[str, set[str]] = {}
+        self._installation_failures: dict[str, dict[str, str]] = {}
+        self._state_lock = asyncio.Lock()
+        self._control_token = str(os.environ.get(PLUGIN_RUNTIME_CONTROL_TOKEN_ENV) or '').strip()
+        self._transport_task: asyncio.Task | None = None
+        self._reconnect_task: asyncio.Task | None = None
+        self._generation = 0
+        self._connected = asyncio.Event()
+
+    @staticmethod
+    def _build_runtime_id() -> str:
+        """Return the durable identity of this instance's shared Runtime."""
+
+        return f'{constants.instance_id}:plugin-runtime'
+
+    def _runtime_handler(self) -> handler.RuntimeConnectionHandler:
+        runtime_handler = getattr(self, 'handler', None)
+        if runtime_handler is None:
+            raise PluginRuntimeNotConnectedError('Plugin runtime is not connected')
+        return runtime_handler
+
+    def _runtime_available(self) -> bool:
+        runtime_handler = getattr(self, 'handler', None)
+        if runtime_handler is None:
+            return False
+        # Unit-level and explicitly injected handlers do not own a transport.
+        # A managed transport must also have completed its handshake.
+        return self._transport_task is None or self._connected.is_set()
+
+    def _load_worker_policy(self) -> PluginWorkerPolicy:
+        """Validate the instance policy without consulting plugin manifests."""
+
+        worker = self.ap.instance_config.data.get('plugin', {}).get('worker')
+        if not isinstance(worker, dict):
+            raise ValueError('plugin.worker must be configured')
+        policy_data = {
+            'max_cpus': worker.get('max_cpus'),
+            'max_memory_mb': worker.get('max_memory_mb'),
+            'max_pids': worker.get('max_pids'),
+            'max_open_files': worker.get('max_open_files'),
+            'max_file_size_mb': worker.get('max_file_size_mb'),
+            'require_hard_limits': worker.get('require_hard_limits', False),
+        }
+        for field_name in (
+            'max_workers',
+            'max_total_cpus',
+            'max_total_memory_mb',
+            'max_installations',
+            'max_concurrent_restarts',
+            'restart_failure_threshold',
+            'restart_failure_window_seconds',
+            'restart_circuit_open_seconds',
+        ):
+            if field_name in PluginWorkerPolicy.model_fields and field_name in worker:
+                policy_data[field_name] = worker.get(field_name)
+        return PluginWorkerPolicy.model_validate(policy_data)
+
+    def _control_headers(self, *, allow_generate: bool) -> dict[str, str]:
+        if not self._control_token and allow_generate:
+            self._control_token = secrets.token_urlsafe(48)
+        try:
+            self._control_token = validate_runtime_secret(
+                self._control_token,
+                name=PLUGIN_RUNTIME_CONTROL_TOKEN_ENV,
+            )
+        except ValueError as exc:
+            raise PluginRuntimeNotConnectedError(
+                f'{PLUGIN_RUNTIME_CONTROL_TOKEN_ENV} must be configured with a strong shared secret '
+                'for an external Plugin Runtime'
+            ) from exc
+        return {PLUGIN_RUNTIME_CONTROL_TOKEN_HEADER: self._control_token}
+
+    @staticmethod
+    def _execution_from_binding(binding: Any) -> ExecutionContext:
+        return ExecutionContext(
+            instance_uuid=str(binding.instance_uuid),
+            workspace_uuid=str(binding.workspace_uuid),
+            placement_generation=int(binding.placement_generation),
+        )
+
+    @staticmethod
+    def _binding_from_setting(
+        execution_context: ExecutionContext,
+        setting: persistence_plugin.PluginSetting,
+    ) -> InstallationBinding:
+        return InstallationBinding(
+            instance_uuid=execution_context.instance_uuid,
+            workspace_uuid=execution_context.workspace_uuid,
+            placement_generation=execution_context.placement_generation,
+            installation_uuid=setting.installation_uuid,
+            runtime_revision=setting.runtime_revision,
+            artifact_digest=setting.artifact_digest,
+        )
+
+    def _legacy_oss_bridge_binding(self, execution_context: ExecutionContext) -> InstallationBinding:
+        seed = f'langbot:oss-plugin-bridge:{execution_context.instance_uuid}:{execution_context.workspace_uuid}'
+        return InstallationBinding(
+            instance_uuid=execution_context.instance_uuid,
+            workspace_uuid=execution_context.workspace_uuid,
+            placement_generation=execution_context.placement_generation,
+            installation_uuid=str(uuid.uuid5(uuid.NAMESPACE_URL, seed)),
+            runtime_revision=1,
+            artifact_digest=hashlib.sha256(seed.encode()).hexdigest(),
+        )
+
+    @staticmethod
+    def _artifact_unique_key(execution_context: ExecutionContext, artifact_digest: str) -> str:
+        # StorageMgr imports the Application graph that wires this connector;
+        # keep the dependency lazy so either module remains independently
+        # importable by tools and focused tests.
+        from ..storage.mgr import StorageMgr
+
+        return StorageMgr.canonical_binary_storage_key(
+            execution_context,
+            owner_type=_PLUGIN_ARTIFACT_OWNER_TYPE,
+            owner=artifact_digest,
+            key=_PLUGIN_ARTIFACT_KEY,
+        )
+
+    async def _store_artifact_package(
+        self,
+        execution_context: ExecutionContext,
+        artifact_digest: str,
+        artifact_package: bytes,
+    ) -> None:
+        """Persist one verified lbpkg in the existing tenant-scoped blob table."""
+
+        if hashlib.sha256(artifact_package).hexdigest() != artifact_digest:
+            raise ValueError('Plugin package digest does not match its desired state')
+        unique_key = self._artifact_unique_key(execution_context, artifact_digest)
+
+        async def store(execute) -> None:
+            result = await execute(
+                sqlalchemy.select(persistence_bstorage.BinaryStorage.value)
+                .where(persistence_bstorage.BinaryStorage.workspace_uuid == execution_context.workspace_uuid)
+                .where(persistence_bstorage.BinaryStorage.unique_key == unique_key)
+            )
+            existing_value = result.scalar_one_or_none()
+            if existing_value is not None:
+                if hashlib.sha256(bytes(existing_value)).hexdigest() != artifact_digest:
+                    raise ValueError('Persisted plugin package failed digest verification')
+                return
+            await execute(
+                sqlalchemy.insert(persistence_bstorage.BinaryStorage).values(
+                    workspace_uuid=execution_context.workspace_uuid,
+                    unique_key=unique_key,
+                    key=_PLUGIN_ARTIFACT_KEY,
+                    owner_type=_PLUGIN_ARTIFACT_OWNER_TYPE,
+                    owner=artifact_digest,
+                    value=artifact_package,
+                )
+            )
+
+        tenant_uow = getattr(self.ap.persistence_mgr, 'tenant_uow', None)
+        if callable(tenant_uow):
+            async with tenant_uow(execution_context.workspace_uuid) as uow:
+                await store(uow.execute)
+        else:
+            await store(self.ap.persistence_mgr.execute_async)
+
+    async def _load_artifact_package(
+        self,
+        execution_context: ExecutionContext,
+        artifact_digest: str,
+    ) -> bytes | None:
+        unique_key = self._artifact_unique_key(execution_context, artifact_digest)
+        statement = (
+            sqlalchemy.select(persistence_bstorage.BinaryStorage.value)
+            .where(persistence_bstorage.BinaryStorage.workspace_uuid == execution_context.workspace_uuid)
+            .where(persistence_bstorage.BinaryStorage.unique_key == unique_key)
+        )
+
+        async def load(execute) -> bytes | None:
+            result = await execute(statement)
+            stored_value = result.scalar_one_or_none()
+            if stored_value is None:
+                return None
+            artifact_package = bytes(stored_value)
+            if hashlib.sha256(artifact_package).hexdigest() != artifact_digest:
+                raise ValueError('Persisted plugin package failed digest verification')
+            return artifact_package
+
+        tenant_uow = getattr(self.ap.persistence_mgr, 'tenant_uow', None)
+        if callable(tenant_uow):
+            async with tenant_uow(execution_context.workspace_uuid) as uow:
+                return await load(uow.execute)
+        return await load(self.ap.persistence_mgr.execute_async)
+
+    async def _delete_artifact_if_unreferenced(
+        self,
+        execution_context: ExecutionContext,
+        artifact_digest: str,
+        *,
+        execute=None,
+    ) -> None:
+        """Delete a tenant copy only after its last desired-state reference."""
+
+        async def cleanup(run) -> None:
+            result = await run(
+                sqlalchemy.select(sqlalchemy.func.count())
+                .select_from(persistence_plugin.PluginSetting)
+                .where(persistence_plugin.PluginSetting.workspace_uuid == execution_context.workspace_uuid)
+                .where(persistence_plugin.PluginSetting.artifact_digest == artifact_digest)
+            )
+            if int(result.scalar_one()) != 0:
+                return
+            await run(
+                sqlalchemy.delete(persistence_bstorage.BinaryStorage)
+                .where(persistence_bstorage.BinaryStorage.workspace_uuid == execution_context.workspace_uuid)
+                .where(persistence_bstorage.BinaryStorage.owner_type == _PLUGIN_ARTIFACT_OWNER_TYPE)
+                .where(persistence_bstorage.BinaryStorage.owner == artifact_digest)
+            )
+
+        if execute is not None:
+            await cleanup(execute)
+            return
+        tenant_uow = getattr(self.ap.persistence_mgr, 'tenant_uow', None)
+        if callable(tenant_uow):
+            async with tenant_uow(execution_context.workspace_uuid) as uow:
+                await cleanup(uow.execute)
+        else:
+            await cleanup(self.ap.persistence_mgr.execute_async)
+
+    async def _load_workspace_settings(
+        self,
+        execution_context: ExecutionContext,
+    ) -> list[persistence_plugin.PluginSetting]:
+        statement = (
+            sqlalchemy.select(*persistence_plugin.PluginSetting.__table__.c)
+            .where(persistence_plugin.PluginSetting.workspace_uuid == execution_context.workspace_uuid)
+            .order_by(
+                persistence_plugin.PluginSetting.priority.desc(),
+                persistence_plugin.PluginSetting.created_at.asc(),
+            )
+        )
+        tenant_uow = getattr(self.ap.persistence_mgr, 'tenant_uow', None)
+        if callable(tenant_uow):
+            async with tenant_uow(execution_context.workspace_uuid) as uow:
+                result = await uow.execute(statement)
+                return [persistence_plugin.PluginSetting(**dict(row)) for row in result.mappings().all()]
+        result = await self.ap.persistence_mgr.execute_async(statement)
+        return [persistence_plugin.PluginSetting(**dict(row)) for row in result.mappings().all()]
+
+    async def _load_workspace_desired_states(
+        self,
+        execution_context: ExecutionContext,
+    ) -> tuple[PluginInstallationDesiredState, ...]:
+        settings = await self._load_workspace_settings(execution_context)
+        desired_states: list[PluginInstallationDesiredState] = []
+        for setting in settings:
+            binding = self._binding_from_setting(execution_context, setting)
+            runtime_handler = getattr(self, 'handler', None)
+            if runtime_handler is not None:
+                runtime_handler.register_installation_binding(
+                    binding,
+                    plugin_author=setting.plugin_author,
+                    plugin_name=setting.plugin_name,
+                )
+            desired_states.append(
+                PluginInstallationDesiredState(
+                    binding=binding,
+                    enabled=setting.enabled,
+                )
+            )
+        return tuple(desired_states)
+
+    async def _apply_desired_state(
+        self,
+        desired: PluginInstallationDesiredState,
+        *,
+        artifact_package: bytes | None = None,
+    ) -> dict[str, Any]:
+        runtime_handler = self._runtime_handler()
+        result = await runtime_handler.apply_plugin_installation(
+            desired.binding,
+            artifact_package=artifact_package,
+            enabled=desired.enabled,
+        )
+        self._raise_apply_failure(desired, result)
+        if result.get('state') != 'artifact_missing':
+            self._installation_failures.pop(desired.binding.installation_uuid, None)
+            return result
+        execution_context = self._execution_from_binding(desired.binding)
+        persisted_package = await self._load_artifact_package(
+            execution_context,
+            desired.binding.artifact_digest,
+        )
+        if persisted_package is None:
+            if self.runtime_profile == 'oss_dev':
+                self.ap.logger.warning(
+                    'Keeping legacy OSS plugin installation %s on data/plugins; no durable lbpkg is available',
+                    desired.binding.installation_uuid,
+                )
+                return result
+            raise RuntimeError(
+                f'Durable plugin artifact {desired.binding.artifact_digest} is missing for '
+                f'installation {desired.binding.installation_uuid}'
+            )
+        repaired = await runtime_handler.apply_plugin_installation(
+            desired.binding,
+            artifact_package=persisted_package,
+            enabled=desired.enabled,
+        )
+        self._raise_apply_failure(desired, repaired)
+        if repaired.get('state') == 'artifact_missing':
+            raise RuntimeError(
+                f'Runtime rejected durable plugin artifact for installation {desired.binding.installation_uuid}'
+            )
+        self._installation_failures.pop(desired.binding.installation_uuid, None)
+        return repaired
+
+    @staticmethod
+    def _runtime_failure_fields(
+        installation_uuid: str,
+        value: Any,
+    ) -> tuple[str, str, str]:
+        if not isinstance(value, dict):
+            return (
+                installation_uuid,
+                'runtime_installation_failed',
+                ('Plugin Runtime returned a malformed installation failure'),
+            )
+        reported_uuid = str(value.get('installation_uuid') or installation_uuid).strip()
+        if reported_uuid != installation_uuid:
+            return (
+                installation_uuid,
+                'runtime_installation_failed',
+                ('Plugin Runtime returned a mismatched installation failure'),
+            )
+        error_code = str(value.get('error_code') or 'runtime_installation_failed').strip()
+        if (
+            not error_code
+            or len(error_code) > 64
+            or not error_code.isascii()
+            or any(not (character.isalnum() or character in {'_', '-'}) for character in error_code)
+        ):
+            error_code = 'runtime_installation_failed'
+        message = 'Plugin Runtime failed to apply the desired installation'
+        candidate = str(value.get('message') or '').replace('\r', ' ').replace('\n', ' ').strip()
+        if candidate:
+            message = candidate[:512]
+        return installation_uuid, error_code, message
+
+    def _raise_apply_failure(
+        self,
+        desired: PluginInstallationDesiredState,
+        result: dict[str, Any],
+    ) -> None:
+        if result.get('state') != 'failed':
+            return
+        installation_uuid, error_code, message = self._runtime_failure_fields(
+            desired.binding.installation_uuid,
+            result,
+        )
+        failure = {
+            'installation_uuid': installation_uuid,
+            'error_code': error_code,
+            'message': message,
+        }
+        self._installation_failures[installation_uuid] = failure
+        self.ap.logger.error(
+            'Plugin installation %s failed during apply [%s]: %s',
+            installation_uuid,
+            error_code,
+            message,
+        )
+        raise PluginInstallationFailedError(
+            installation_uuid,
+            error_code,
+            message,
+        )
+
+    def _record_reconcile_failures(
+        self,
+        desired_states: dict[str, PluginInstallationDesiredState],
+        result: dict[str, Any],
+    ) -> None:
+        reported = result.get('failed_installations', [])
+        if not isinstance(reported, list):
+            self.ap.logger.error('Plugin Runtime returned malformed failed_installations during reconcile')
+            reported = []
+
+        failures: dict[str, dict[str, str]] = {}
+        for value in reported:
+            requested_uuid = str(value.get('installation_uuid') or '').strip() if isinstance(value, dict) else ''
+            if requested_uuid not in desired_states:
+                self.ap.logger.error(
+                    'Plugin Runtime reported failure for unknown installation %s',
+                    requested_uuid or '<missing>',
+                )
+                continue
+            installation_uuid, error_code, message = self._runtime_failure_fields(
+                requested_uuid,
+                value,
+            )
+            failure = {
+                'installation_uuid': installation_uuid,
+                'error_code': error_code,
+                'message': message,
+            }
+            failures[installation_uuid] = failure
+            if self._installation_failures.get(installation_uuid) != failure:
+                self.ap.logger.error(
+                    'Plugin installation %s failed during reconcile [%s]: %s',
+                    installation_uuid,
+                    error_code,
+                    message,
+                )
+
+        for installation_uuid in tuple(self._installation_failures):
+            if installation_uuid not in failures:
+                self._installation_failures.pop(installation_uuid, None)
+        self._installation_failures.update(failures)
+
+    async def _repair_reconcile_missing_artifacts(
+        self,
+        desired_states: dict[str, PluginInstallationDesiredState],
+        result: dict[str, Any],
+    ) -> None:
+        for installation_uuid in result.get('missing_artifacts', []):
+            desired = desired_states.get(str(installation_uuid))
+            if desired is None:
+                raise RuntimeError(f'Runtime reported an unknown missing installation {installation_uuid}')
+            execution_context = self._execution_from_binding(desired.binding)
+            persisted_package = await self._load_artifact_package(
+                execution_context,
+                desired.binding.artifact_digest,
+            )
+            if persisted_package is None:
+                if self.runtime_profile == 'oss_dev':
+                    self.ap.logger.warning(
+                        'Keeping legacy OSS plugin installation %s on data/plugins; no durable lbpkg is available',
+                        desired.binding.installation_uuid,
+                    )
+                    continue
+                raise RuntimeError(
+                    f'Durable plugin artifact {desired.binding.artifact_digest} is missing for '
+                    f'installation {desired.binding.installation_uuid}'
+                )
+            try:
+                await self._apply_desired_state(
+                    desired,
+                    artifact_package=persisted_package,
+                )
+            except PluginInstallationFailedError as exc:
+                failures = result.setdefault('failed_installations', [])
+                if not any(
+                    isinstance(item, dict) and item.get('installation_uuid') == exc.installation_uuid
+                    for item in failures
+                ):
+                    failures.append(
+                        {
+                            'installation_uuid': exc.installation_uuid,
+                            'error_code': exc.error_code,
+                            'message': exc.runtime_message,
+                        }
+                    )
+
+    async def _prepare_connected_runtime(self) -> None:
+        """Handshake follow-up: pin OSS compatibility, then replay authority."""
+
+        runtime_handler = self._runtime_handler()
+        workspace_service = getattr(self.ap, 'workspace_service', None)
+        if workspace_service is None:
+            raise RuntimeError('Plugin Runtime requires the Workspace projection service')
+
+        if self.runtime_profile == 'shared':
+            list_bindings = getattr(workspace_service, 'list_active_execution_bindings', None)
+            if not callable(list_bindings):
+                raise RuntimeError('Shared plugin Runtime requires instance-scoped Workspace discovery')
+            projected_bindings = await list_bindings()
+            await self.reconcile_projected_workspaces(
+                self._execution_from_binding(binding) for binding in projected_bindings
+            )
+            return
+
+        if self.runtime_profile == 'oss_dev':
+            local_binding = await workspace_service.get_local_execution_binding()
+            execution_context = self._execution_from_binding(local_binding)
+            bridge = self._legacy_oss_bridge_binding(execution_context)
+            # One fully-bound action releases the SDK's deliberately retained
+            # pre-v4 data/plugins/debug compatibility path. Shared mode never
+            # creates this bridge.
+            with runtime_handler.installation_scope(bridge):
+                await runtime_handler.list_plugins()
+            desired_states = await self._load_workspace_desired_states(execution_context)
+            self._workspace_installations[execution_context.workspace_uuid] = {
+                state.binding.installation_uuid for state in desired_states
+            }
+            self._known_desired_states.update({state.binding.installation_uuid: state for state in desired_states})
+
+        result = await runtime_handler.reconcile_plugin_installations(tuple(self._known_desired_states.values()))
+        await self._repair_reconcile_missing_artifacts(self._known_desired_states, result)
+        self._record_reconcile_failures(self._known_desired_states, result)
+
+    async def reconcile_projected_workspaces(
+        self,
+        contexts: typing.Iterable[ExecutionContext],
+    ) -> dict[str, Any]:
+        """Replay a closed control plane's complete projected Workspace set.
+
+        PostgreSQL RLS intentionally prevents Core from globally scanning
+        Workspaces. The caller enumerates authoritative projections; Core then
+        reads each Workspace inside a tenant UoW and performs one instance-wide
+        Runtime reconcile.
+        """
+
+        runtime_handler = self._runtime_handler()
+        async with self._state_lock:
+            all_states: dict[str, PluginInstallationDesiredState] = {}
+            workspace_installations: dict[str, set[str]] = {}
+            for context in contexts:
+                execution_context = await self._validate_execution_context(context)
+                states = await self._load_workspace_desired_states(execution_context)
+                installation_ids = {state.binding.installation_uuid for state in states}
+                if installation_ids:
+                    # A newly registered Cloud Workspace normally has no
+                    # plugins. Avoid retaining an empty set for every account.
+                    workspace_installations[execution_context.workspace_uuid] = installation_ids
+                for state in states:
+                    if state.binding.installation_uuid in all_states:
+                        raise ValueError('Duplicate plugin installation UUID across projected Workspaces')
+                    all_states[state.binding.installation_uuid] = state
+            result = await runtime_handler.reconcile_plugin_installations(tuple(all_states.values()))
+            await self._repair_reconcile_missing_artifacts(all_states, result)
+            self._record_reconcile_failures(all_states, result)
+            for installation_uuid, previous in tuple(self._known_desired_states.items()):
+                if installation_uuid not in all_states:
+                    runtime_handler.unregister_installation_binding(previous.binding)
+            self._known_desired_states = all_states
+            self._workspace_installations = workspace_installations
+            return result
+
+    async def _validate_execution_context(self, context: TenantContext) -> ExecutionContext:
+        workspace_uuid = require_workspace_uuid(context)
+        instance_uuid = str(getattr(context, 'instance_uuid', '') or '').strip()
+        generation = getattr(context, 'placement_generation', None)
+        if not instance_uuid or isinstance(generation, bool) or not isinstance(generation, int) or generation <= 0:
+            raise WorkspaceNotFoundError('Plugin resource not found')
+        binding = await self.ap.workspace_service.get_execution_binding(
+            workspace_uuid,
+            expected_generation=generation,
+        )
+        if binding.instance_uuid != instance_uuid:
+            raise WorkspaceNotFoundError('Plugin resource not found')
+        return ExecutionContext(
+            instance_uuid=instance_uuid,
+            workspace_uuid=workspace_uuid,
+            placement_generation=generation,
+            trigger_principal=getattr(context, 'principal', None),
+            entitlement_revision=getattr(context, 'entitlement_revision', 0),
+        )
+
+    async def _synchronize_workspace(self, execution_context: ExecutionContext) -> None:
+        if not self.is_enable_plugin or not hasattr(self, 'handler'):
+            return
+        runtime_handler = self._runtime_handler()
+        desired_states = await self._load_workspace_desired_states(execution_context)
+        desired_by_uuid = {state.binding.installation_uuid: state for state in desired_states}
+        async with self._state_lock:
+            previous_ids = set(self._workspace_installations.get(execution_context.workspace_uuid, set()))
+            for installation_uuid in previous_ids - set(desired_by_uuid):
+                previous = self._known_desired_states.get(installation_uuid)
+                if previous is not None:
+                    await runtime_handler.remove_plugin_installation(previous.binding)
+                    runtime_handler.unregister_installation_binding(previous.binding)
+                    self._known_desired_states.pop(installation_uuid, None)
+                    self._installation_failures.pop(installation_uuid, None)
+
+            for installation_uuid, desired in desired_by_uuid.items():
+                if self._known_desired_states.get(installation_uuid) == desired:
+                    continue
+                try:
+                    await self._apply_desired_state(desired)
+                except PluginInstallationFailedError:
+                    # The failure is retained per installation. Continue
+                    # restoring the remaining desired state in this Workspace.
+                    pass
+                self._known_desired_states[installation_uuid] = desired
+            if desired_by_uuid:
+                self._workspace_installations[execution_context.workspace_uuid] = set(desired_by_uuid)
+            else:
+                self._workspace_installations.pop(
+                    execution_context.workspace_uuid,
+                    None,
+                )
+
+    async def _current_execution_context(self) -> ExecutionContext:
+        current = self._execution_context.get()
+        if current is not None:
+            return current
+        if self.runtime_profile != 'oss_dev':
+            raise WorkspaceNotFoundError('Plugin resource not found')
+        binding = await self.ap.workspace_service.get_local_execution_binding()
+        current = self._execution_from_binding(binding)
+        self._execution_context.set(current)
+        await self._synchronize_workspace(current)
+        return current
 
     async def heartbeat_loop(self):
-        while True:
-            await asyncio.sleep(20)
+        failures = 0
+        while not self._closing:
+            await asyncio.sleep(_HEARTBEAT_INTERVAL_SEC)
             try:
                 await self.ping_plugin_runtime()
+                failures = 0
                 self.ap.logger.debug('Heartbeat to plugin runtime success.')
             except Exception as e:
-                self.ap.logger.debug(f'Failed to heartbeat to plugin runtime: {e}')
+                failures += 1
+                self.ap.logger.warning(
+                    f'Plugin runtime heartbeat failed ({failures}/{_HEARTBEAT_FAILURE_THRESHOLD}): {e}'
+                )
+                if failures >= _HEARTBEAT_FAILURE_THRESHOLD:
+                    self._connected.clear()
+                    self.schedule_reconnect()
+                    failures = 0
 
     async def initialize(self):
         if not self.is_enable_plugin:
             self.ap.logger.info('Plugin system is disabled.')
             return
+        self.runtime_identity = RuntimeIdentity(
+            instance_uuid=constants.instance_id,
+            runtime_id=self._runtime_id,
+        )
+        self.worker_policy = self._load_worker_policy()
 
-        async def new_connection_callback(connection: base_connection.Connection):
-            async def disconnect_callback(
-                rchandler: handler.RuntimeConnectionHandler,
-            ) -> bool:
-                if platform.get_platform() == 'docker' or platform.use_websocket_to_connect_plugin_runtime():
-                    self.ap.logger.error('Disconnected from plugin runtime, trying to reconnect...')
-                    await self.runtime_disconnect_callback(self)
+        async with self._lifecycle_lock:
+            if self._closing:
+                raise PluginRuntimeNotConnectedError('Plugin runtime connector is shutting down')
+            if self._connected.is_set() and hasattr(self, 'handler'):
+                return
+
+            self._generation += 1
+            generation = self._generation
+            await self._stop_transport()
+            self._connected = asyncio.Event()
+            connect_errors: list[Exception] = []
+
+            async def new_connection_callback(
+                connection: base_connection.Connection,
+            ):
+                if generation != self._generation or self._closing:
+                    await connection.close()
+                    return
+                connection_ready = False
+                disconnect_notified = False
+
+                async def notify_disconnect() -> None:
+                    nonlocal disconnect_notified
+                    if (
+                        connection_ready
+                        and not disconnect_notified
+                        and generation == self._generation
+                        and not self._closing
+                    ):
+                        disconnect_notified = True
+                        self._connected.clear()
+                        await self.runtime_disconnect_callback(self)
+
+                async def disconnect_callback(
+                    rchandler: handler.RuntimeConnectionHandler,
+                ) -> bool:
+                    await notify_disconnect()
                     return False
-                else:
-                    self.ap.logger.error(
-                        'Disconnected from plugin runtime, cannot automatically reconnect while LangBot connects to plugin runtime via stdio, please restart LangBot.'
-                    )
-                    return False
 
-            self.handler = handler.RuntimeConnectionHandler(connection, disconnect_callback, self.ap)
-
-            self.handler_task = asyncio.create_task(self.handler.run())
-            _ = await self.handler.ping()
-            # Push the configured marketplace (Space) URL to the runtime so it
-            # downloads plugins from the same Space LangBot is bound to, rather
-            # than relying on the runtime's own env/default.
-            space_url = self.ap.instance_config.data.get('space', {}).get('url', '').rstrip('/')
-            if space_url:
+                runtime_handler = handler.RuntimeConnectionHandler(
+                    connection,
+                    disconnect_callback,
+                    self.ap,
+                )
+                self.handler = runtime_handler
+                self.handler_task = asyncio.create_task(runtime_handler.run())
                 try:
-                    await self.handler.set_runtime_config(cloud_service_url=space_url)
-                    self.ap.logger.info(f'Pushed marketplace URL to plugin runtime: {space_url}')
-                except Exception as e:
-                    self.ap.logger.warning(f'Failed to push runtime config: {e}')
-            self.ap.logger.info('Connected to plugin runtime.')
-            await self.handler_task
-
-        task: asyncio.Task | None = None
-
-        if platform.get_platform() == 'docker' or platform.use_websocket_to_connect_plugin_runtime():  # use websocket
-            self.ap.logger.info('use websocket to connect to plugin runtime')
-            ws_url = self.ap.instance_config.data.get('plugin', {}).get(
-                'runtime_ws_url', 'ws://langbot_plugin_runtime:5400/control/ws'
-            )
-
-            async def make_connection_failed_callback(
-                ctrl: ws_client_controller.WebSocketClientController,
-                exc: Exception = None,
-            ) -> None:
-                if exc is not None:
-                    self.ap.logger.error(f'Failed to connect to plugin runtime({ws_url}): {exc}')
-                else:
-                    self.ap.logger.error(f'Failed to connect to plugin runtime({ws_url}), trying to reconnect...')
-                await self.runtime_disconnect_callback(self)
-
-            self.ctrl = ws_client_controller.WebSocketClientController(
-                ws_url=ws_url,
-                make_connection_failed_callback=make_connection_failed_callback,
-            )
-            task = self.ctrl.run(new_connection_callback)
-        elif platform.get_platform() == 'win32':
-            # Due to Windows's lack of supports for both stdio and subprocess:
-            # See also: https://docs.python.org/zh-cn/3.13/library/asyncio-platforms.html
-            # We have to launch runtime via cmd but communicate via ws.
-            self.ap.logger.info('(windows) use cmd to launch plugin runtime and communicate via ws')
-
-            await self._start_runtime_subprocess('-m', 'langbot_plugin.cli.__init__', 'rt')
-
-            ws_url = 'ws://localhost:5400/control/ws'
-
-            async def make_connection_failed_callback(
-                ctrl: ws_client_controller.WebSocketClientController,
-                exc: Exception = None,
-            ) -> None:
-                if exc is not None:
-                    self.ap.logger.error(f'(windows) Failed to connect to plugin runtime({ws_url}): {exc}')
-                else:
-                    self.ap.logger.error(
-                        f'(windows) Failed to connect to plugin runtime({ws_url}), trying to reconnect...'
+                    await runtime_handler.ping()
+                    if self.runtime_identity is None or self.worker_policy is None:  # pragma: no cover
+                        raise RuntimeError('Plugin Runtime identity or worker policy was not loaded')
+                    space_url = self.ap.instance_config.data.get('space', {}).get('url', '').rstrip('/')
+                    await runtime_handler.set_runtime_config(
+                        runtime_identity=self.runtime_identity,
+                        worker_policy=self.worker_policy,
+                        runtime_profile=self.runtime_profile,
+                        cloud_service_url=space_url or None,
                     )
-                await self.runtime_disconnect_callback(self)
+                    if space_url:
+                        self.ap.logger.info(f'Pushed marketplace URL to plugin runtime: {space_url}')
+                    await self._prepare_connected_runtime()
+                    if generation == self._generation and not self._closing:
+                        connection_ready = True
+                        self._connected.set()
+                        self.ap.logger.info('Connected to instance-scoped plugin runtime.')
+                    await self.handler_task
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:
+                    if not self._connected.is_set():
+                        connect_errors.append(exc)
+                        self._connected.set()
+                finally:
+                    if generation == self._generation and not self._closing:
+                        self._connected.clear()
+                        if getattr(self, 'handler', None) is runtime_handler:
+                            del self.handler
+                        await notify_disconnect()
 
-            self.ctrl = ws_client_controller.WebSocketClientController(
-                ws_url=ws_url,
-                make_connection_failed_callback=make_connection_failed_callback,
-            )
-            task = self.ctrl.run(new_connection_callback)
+            task_coro: typing.Coroutine[Any, Any, Any]
+            if platform.get_platform() == 'docker' or platform.use_websocket_to_connect_plugin_runtime():
+                self.ap.logger.info('use websocket to connect to plugin runtime')
+                control_headers = self._control_headers(allow_generate=False)
+                ws_url = self.ap.instance_config.data.get('plugin', {}).get(
+                    'runtime_ws_url',
+                    'ws://langbot_plugin_runtime:5400/control/ws',
+                )
 
-        else:  # stdio
-            self.ap.logger.info('use stdio to connect to plugin runtime')
-            # cmd: lbp rt -s
-            python_path = sys.executable
-            env = os.environ.copy()
-            debug_url = self.ap.instance_config.data.get('plugin', {}).get(
-                'display_plugin_debug_url', 'ws://localhost:5401/plugin/debug/ws'
-            )
-            debug_port = self._runtime_debug_port_from_url(debug_url)
-            self.ctrl = stdio_client_controller.StdioClientController(
-                command=python_path,
-                args=[
+                async def connection_failed(
+                    ctrl: ws_client_controller.WebSocketClientController,
+                    exc: Exception | None = None,
+                ) -> None:
+                    del ctrl
+                    connect_errors.append(exc or RuntimeError('WebSocket connection failed'))
+                    self._connected.set()
+
+                self.ctrl = ws_client_controller.WebSocketClientController(
+                    ws_url=ws_url,
+                    make_connection_failed_callback=connection_failed,
+                    additional_headers=control_headers,
+                )
+                task_coro = self.ctrl.run(new_connection_callback)
+            elif platform.get_platform() == 'win32':
+                # Windows cannot use the stdio subprocess transport, so launch
+                # a managed runtime and authenticate its WebSocket controller.
+                self.ap.logger.info('(windows) use cmd to launch plugin runtime and communicate via ws')
+                control_headers = self._control_headers(allow_generate=True)
+                await self._start_runtime_subprocess(
                     '-m',
                     'langbot_plugin.cli.__init__',
                     'rt',
-                    '-s',
-                    '--ws-debug-port',
-                    str(debug_port),
-                ],
-                env=env,
+                    env_overrides={PLUGIN_RUNTIME_CONTROL_TOKEN_ENV: self._control_token},
+                )
+                ws_url = 'ws://localhost:5400/control/ws'
+
+                async def connection_failed(
+                    ctrl: ws_client_controller.WebSocketClientController,
+                    exc: Exception | None = None,
+                ) -> None:
+                    del ctrl
+                    connect_errors.append(exc or RuntimeError('WebSocket connection failed'))
+                    self._connected.set()
+
+                self.ctrl = ws_client_controller.WebSocketClientController(
+                    ws_url=ws_url,
+                    make_connection_failed_callback=connection_failed,
+                    additional_headers=control_headers,
+                )
+                task_coro = self.ctrl.run(new_connection_callback)
+            else:
+                self.ap.logger.info('use stdio to connect to plugin runtime')
+                self.ctrl = stdio_client_controller.StdioClientController(
+                    command=sys.executable,
+                    args=['-m', 'langbot_plugin.cli.__init__', 'rt', '-s'],
+                    env=os.environ.copy(),
+                    capture_stderr=False,
+                )
+                task_coro = self.ctrl.run(new_connection_callback)
+
+            self._transport_task = asyncio.create_task(task_coro)
+            try:
+                await asyncio.wait_for(self._connected.wait(), timeout=_CONNECT_TIMEOUT_SEC)
+            except asyncio.TimeoutError as exc:
+                await self._stop_transport()
+                raise PluginRuntimeNotConnectedError('Plugin runtime did not become ready within 30 seconds') from exc
+            if connect_errors:
+                await self._stop_transport()
+                raise PluginRuntimeNotConnectedError(f'Plugin runtime connection failed: {connect_errors[-1]}')
+
+            if self.heartbeat_task is None or self.heartbeat_task.done():
+                self.heartbeat_task = asyncio.create_task(self.heartbeat_loop())
+
+    def schedule_reconnect(self) -> None:
+        if self._closing or not self.is_enable_plugin:
+            return
+        if self._reconnect_task is not None and not self._reconnect_task.done():
+            return
+        self._reconnect_task = asyncio.create_task(self._reconnect_loop())
+
+    async def _reconnect_loop(self) -> None:
+        delay = 1.0
+        try:
+            while not self._closing:
+                try:
+                    await self.initialize()
+                    return
+                except Exception as exc:
+                    self.ap.logger.warning(f'Plugin runtime reconnection failed: {exc}; retrying in {delay:.0f}s')
+                    await asyncio.sleep(delay)
+                    delay = min(delay * 2, _RECONNECT_MAX_DELAY_SEC)
+        finally:
+            self._reconnect_task = None
+
+    async def _stop_transport(self) -> None:
+        self._connected.clear()
+        runtime_handler = getattr(self, 'handler', None)
+        if runtime_handler is not None:
+            with contextlib.suppress(Exception):
+                await runtime_handler.close()
+            if getattr(self, 'handler', None) is runtime_handler:
+                del self.handler
+        tasks = [
+            task
+            for task in (
+                getattr(self, 'handler_task', None),
+                self._transport_task,
             )
-            task = self.ctrl.run(new_connection_callback)
+            if task is not None and task is not asyncio.current_task()
+        ]
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        self._transport_task = None
+        if hasattr(self, 'handler_task'):
+            del self.handler_task
+        close_ctrl = getattr(getattr(self, 'ctrl', None), 'close', None)
+        if close_ctrl is not None:
+            with contextlib.suppress(Exception):
+                await close_ctrl()
 
-        if self.heartbeat_task is None:
-            self.heartbeat_task = asyncio.create_task(self.heartbeat_loop())
-
-        asyncio.create_task(task)
+    async def aclose(self) -> None:
+        self._closing = True
+        self._generation += 1
+        reconnect_task = self._reconnect_task
+        self._reconnect_task = None
+        if reconnect_task is not None and reconnect_task is not asyncio.current_task():
+            reconnect_task.cancel()
+            await asyncio.gather(reconnect_task, return_exceptions=True)
+        if self.heartbeat_task is not None:
+            self.heartbeat_task.cancel()
+            await asyncio.gather(self.heartbeat_task, return_exceptions=True)
+            self.heartbeat_task = None
+        await self._stop_transport()
+        await self._close_managed_subprocess()
 
     @staticmethod
     def _runtime_debug_port_from_url(debug_url: str) -> int:
@@ -213,15 +1050,24 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         if registry is None:
             return
         try:
-            await registry.refresh()
+            await registry.refresh(await self._current_execution_context())
         except Exception as e:
             self.ap.logger.warning(f'Failed to refresh agent runner registry: {e}')
 
     async def ping_plugin_runtime(self):
+        return await self._runtime_handler().ping()
+
+    async def require_workspace_context(self, context: TenantContext) -> ExecutionContext:
+        """Validate and select one Workspace for this asyncio request task."""
+
+        execution_context = await self._validate_execution_context(context)
+        self._execution_context.set(execution_context)
+        if not self.is_enable_plugin:
+            return execution_context
         if not hasattr(self, 'handler'):
             raise PluginRuntimeNotConnectedError('Plugin runtime is not connected')
-
-        return await self.handler.ping()
+        await self._synchronize_workspace(execution_context)
+        return execution_context
 
     def _inspect_plugin_package(
         self,
@@ -233,34 +1079,109 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         plugin_name = None
 
         try:
-            with zipfile.ZipFile(io.BytesIO(file_bytes)) as zf:
-                try:
-                    manifest = yaml.safe_load(zf.read('manifest.yaml').decode('utf-8', errors='ignore')) or {}
-                    metadata = manifest.get('metadata', {})
-                    plugin_author = metadata.get('author')
-                    plugin_name = metadata.get('name')
-                except Exception:
-                    pass
-
-                if task_context is not None:
-                    for name in zf.namelist():
-                        if name.endswith('requirements.txt'):
-                            content = zf.read(name).decode('utf-8', errors='ignore')
-                            deps = [
-                                line.strip()
-                                for line in content.splitlines()
-                                if line.strip() and not line.strip().startswith('#')
-                            ]
-                            task_context.metadata['deps_total'] = len(deps)
-                            task_context.metadata['deps_list'] = deps
-                            break
+            manifest, dependencies, archive_names = inspect_plugin_archive_metadata(
+                file_bytes,
+                require_manifest=False,
+            )
+            metadata = manifest.get('metadata', {})
+            if isinstance(metadata, dict):
+                plugin_author = metadata.get('author')
+                plugin_name = metadata.get('name')
+            has_requirements = any(
+                name.replace('\\', '/').lower().endswith('requirements.txt') for name in archive_names
+            )
+            if task_context is not None and has_requirements:
+                task_context.metadata['deps_total'] = len(dependencies)
+                task_context.metadata['deps_list'] = dependencies
         except Exception:
             pass
 
         return plugin_author, plugin_name
 
+    async def _operation_bindings(
+        self,
+        *,
+        include_plugins: list[str] | None = None,
+        include_disabled: bool = False,
+    ) -> list[InstallationBinding]:
+        execution_context = await self._current_execution_context()
+        settings = await self._load_workspace_settings(execution_context)
+        bindings: list[InstallationBinding] = (
+            [self._legacy_oss_bridge_binding(execution_context)] if self.runtime_profile == 'oss_dev' else []
+        )
+        for setting in settings:
+            plugin_id = f'{setting.plugin_author}/{setting.plugin_name}'
+            if not include_disabled and not setting.enabled:
+                continue
+            if include_plugins is not None and plugin_id not in include_plugins:
+                continue
+            if self.runtime_profile == 'oss_dev' and (
+                not isinstance(setting.install_info, dict)
+                or setting.install_info.get('_artifact_storage') != _PLUGIN_ARTIFACT_STORAGE_MARKER
+            ):
+                continue
+            bindings.append(self._binding_from_setting(execution_context, setting))
+        return bindings
+
+    async def _setting_for_plugin(
+        self,
+        plugin_author: str,
+        plugin_name: str,
+        *,
+        require_enabled: bool = False,
+    ) -> tuple[ExecutionContext, persistence_plugin.PluginSetting]:
+        execution_context = await self._current_execution_context()
+        settings = await self._load_workspace_settings(execution_context)
+        for setting in settings:
+            if setting.plugin_author == plugin_author and setting.plugin_name == plugin_name:
+                if require_enabled and not setting.enabled:
+                    raise ValueError(f'Plugin {plugin_author}/{plugin_name} is disabled')
+                return execution_context, setting
+        raise ValueError(f'Plugin {plugin_author}/{plugin_name} is not installed in this Workspace')
+
+    async def _target_binding(
+        self,
+        plugin_author: str,
+        plugin_name: str,
+        *,
+        require_enabled: bool = True,
+    ) -> InstallationBinding:
+        execution_context, setting = await self._setting_for_plugin(
+            plugin_author,
+            plugin_name,
+            require_enabled=require_enabled,
+        )
+        if self.runtime_profile == 'oss_dev' and (
+            not isinstance(setting.install_info, dict)
+            or setting.install_info.get('_artifact_storage') != _PLUGIN_ARTIFACT_STORAGE_MARKER
+        ):
+            return self._legacy_oss_bridge_binding(execution_context)
+        return self._binding_from_setting(execution_context, setting)
+
+    async def _target_binding_for_component(
+        self,
+        component_name: str,
+        *,
+        component_kind: typing.Literal['tool', 'command'],
+        include_plugins: list[str] | None,
+    ) -> InstallationBinding:
+        runtime_handler = self._runtime_handler()
+        for binding in await self._operation_bindings(include_plugins=include_plugins):
+            with runtime_handler.installation_scope(binding):
+                components = (
+                    await runtime_handler.list_tools(include_plugins=include_plugins)
+                    if component_kind == 'tool'
+                    else await runtime_handler.list_commands(include_plugins=include_plugins)
+                )
+            for component in components:
+                manifest = ComponentManifest.model_validate(component)
+                if manifest.metadata.name == component_name:
+                    return binding
+        raise ValueError(f'Plugin {component_kind} {component_name!r} was not found in this Workspace')
+
     async def _install_mcp_from_marketplace(
         self,
+        execution_context: ExecutionContext,
         mcp_data: dict[str, Any],
         task_context: taskmgr.TaskContext | None = None,
     ):
@@ -273,9 +1194,6 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         for ``http``/``sse`` it preserves ``url``/``headers``/``timeout``/
         ``ssereadtimeout``.
         """
-        from ..entity.persistence import mcp as persistence_mcp
-        import uuid
-
         mode = mcp_data.get('mode') or 'stdio'
         extra_args = mcp_data.get('extra_args') or {}
         # The MCP transport selection was simplified to two modes: 'stdio'
@@ -293,18 +1211,12 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         # Use __ instead of / to avoid URL routing issues with slashes
         name = f'{mcp_data.get("author", "")}__{mcp_data.get("name", "")}'
 
-        # Check if MCP server already exists
-        existing = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(persistence_mcp.MCPServer).where(persistence_mcp.MCPServer.name == name)
-        )
-        if existing.scalar_one_or_none():
+        existing = await self.ap.mcp_service.get_mcp_server_by_name(execution_context, name)
+        if existing is not None:
             self.ap.logger.info(f'MCP server {name} already exists, skipping installation')
             return
 
-        # Create MCP server record
-        server_uuid = str(uuid.uuid4())
         server_data = {
-            'uuid': server_uuid,
             'name': name,
             'enable': True,
             'mode': mode,
@@ -312,23 +1224,13 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             'readme': readme,
         }
 
-        await self.ap.persistence_mgr.execute_async(sqlalchemy.insert(persistence_mcp.MCPServer).values(server_data))
-
-        # Start the MCP server
-        result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(persistence_mcp.MCPServer).where(persistence_mcp.MCPServer.uuid == server_uuid)
-        )
-        server_entity = result.first()
-        if server_entity:
-            server_config = self.ap.persistence_mgr.serialize_model(persistence_mcp.MCPServer, server_entity)
-            if self.ap.tool_mgr.mcp_tool_loader:
-                mcp_task = asyncio.create_task(self.ap.tool_mgr.mcp_tool_loader.host_mcp_server(server_config))
-                self.ap.tool_mgr.mcp_tool_loader._hosted_mcp_tasks.append(mcp_task)
+        await self.ap.mcp_service.create_mcp_server(execution_context, server_data)
 
         self.ap.logger.info(f'Installed MCP server {name} from marketplace')
 
     async def _install_skill_from_zip(
         self,
+        execution_context: ExecutionContext,
         file_bytes: bytes,
         filename: str,
         task_context: taskmgr.TaskContext | None = None,
@@ -342,6 +1244,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
 
         # Install from ZIP using skill service
         result = await skill_service.install_from_zip_upload(
+            execution_context,
             file_bytes=file_bytes,
             filename=filename + '.zip',
         )
@@ -400,194 +1303,442 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             message = f'{message} Last runtime error: {last_error}'
         raise RuntimeError(message)
 
+    async def _persist_installation_package(
+        self,
+        execution_context: ExecutionContext,
+        *,
+        plugin_author: str,
+        plugin_name: str,
+        install_source: PluginInstallSource,
+        install_info: dict[str, Any],
+        artifact_digest: str,
+    ) -> tuple[InstallationBinding, str | None, bool]:
+        safe_install_info = {
+            key: value
+            for key, value in install_info.items()
+            if key not in {'plugin_file', 'plugin_file_key'}
+            and key != '_artifact_storage'
+            and isinstance(value, (str, int, float, bool, list, dict, type(None)))
+        }
+        safe_install_info['_artifact_storage'] = _PLUGIN_ARTIFACT_STORAGE_MARKER
+        statement = (
+            sqlalchemy.select(
+                persistence_plugin.PluginSetting.installation_uuid,
+                persistence_plugin.PluginSetting.runtime_revision,
+                persistence_plugin.PluginSetting.artifact_digest,
+                persistence_plugin.PluginSetting.install_info,
+            )
+            .where(persistence_plugin.PluginSetting.workspace_uuid == execution_context.workspace_uuid)
+            .where(persistence_plugin.PluginSetting.plugin_author == plugin_author)
+            .where(persistence_plugin.PluginSetting.plugin_name == plugin_name)
+        )
+
+        async def persist(execute):
+            result = await execute(statement)
+            setting = result.first()
+            if setting is None:
+                installation_uuid = str(uuid.uuid4())
+                runtime_revision = 1
+                previous_digest = None
+                previous_was_durable = False
+                await execute(
+                    sqlalchemy.insert(persistence_plugin.PluginSetting).values(
+                        workspace_uuid=execution_context.workspace_uuid,
+                        plugin_author=plugin_author,
+                        plugin_name=plugin_name,
+                        installation_uuid=installation_uuid,
+                        artifact_digest=artifact_digest,
+                        runtime_revision=runtime_revision,
+                        install_source=install_source.value,
+                        install_info=safe_install_info,
+                        enabled=True,
+                        priority=0,
+                        config={},
+                    )
+                )
+            else:
+                installation_uuid = setting.installation_uuid
+                runtime_revision = setting.runtime_revision + 1
+                previous_digest = setting.artifact_digest
+                previous_was_durable = (
+                    isinstance(setting.install_info, dict)
+                    and setting.install_info.get('_artifact_storage') == _PLUGIN_ARTIFACT_STORAGE_MARKER
+                )
+                await execute(
+                    sqlalchemy.update(persistence_plugin.PluginSetting)
+                    .where(persistence_plugin.PluginSetting.workspace_uuid == execution_context.workspace_uuid)
+                    .where(persistence_plugin.PluginSetting.plugin_author == plugin_author)
+                    .where(persistence_plugin.PluginSetting.plugin_name == plugin_name)
+                    .values(
+                        artifact_digest=artifact_digest,
+                        runtime_revision=runtime_revision,
+                        install_source=install_source.value,
+                        install_info=safe_install_info,
+                        enabled=True,
+                    )
+                )
+            return (
+                InstallationBinding(
+                    instance_uuid=execution_context.instance_uuid,
+                    workspace_uuid=execution_context.workspace_uuid,
+                    placement_generation=execution_context.placement_generation,
+                    installation_uuid=installation_uuid,
+                    runtime_revision=runtime_revision,
+                    artifact_digest=artifact_digest,
+                ),
+                previous_digest,
+                previous_was_durable,
+            )
+
+        tenant_uow = getattr(self.ap.persistence_mgr, 'tenant_uow', None)
+        if callable(tenant_uow):
+            async with tenant_uow(execution_context.workspace_uuid) as uow:
+                return await persist(uow.execute)
+        return await persist(self.ap.persistence_mgr.execute_async)
+
+    async def _download_github_package(
+        self,
+        install_info: dict[str, Any],
+        task_context: taskmgr.TaskContext | None,
+    ) -> bytes:
+        normalized = validate_github_plugin_install_info(install_info)
+        owner = normalized['owner']
+        repo = normalized['repo']
+        release_tag = normalized['release_tag']
+
+        async with httpx.AsyncClient(
+            trust_env=False,
+            follow_redirects=False,
+            timeout=httpx.Timeout(60, connect=10),
+            event_hooks=httpclient.httpx_response_limit_hooks(_GITHUB_PLUGIN_DOWNLOAD_MAX_BYTES),
+        ) as client:
+            asset_id: int | None = None
+            if 'asset_id' in normalized:
+                release_id = normalized['release_id']
+                asset_id = normalized['asset_id']
+                metadata_url = f'https://api.github.com/repos/{owner}/{repo}/releases/{release_id}'
+                response = await client.get(
+                    metadata_url,
+                    headers={
+                        'Accept': 'application/vnd.github+json',
+                        'X-GitHub-Api-Version': '2022-11-28',
+                        'User-Agent': 'LangBot-Plugin-Installer',
+                    },
+                )
+                if response.status_code in _HTTP_REDIRECT_STATUSES:
+                    raise ValueError('GitHub release metadata unexpectedly redirected')
+                response.raise_for_status()
+                release = await httpclient.parse_json_response(response)
+                if not isinstance(release, dict):
+                    raise ValueError('GitHub release metadata is invalid')
+                if release.get('id') != release_id or str(release.get('tag_name') or '') != release_tag:
+                    raise ValueError('GitHub release metadata does not match the requested release')
+                assets = release.get('assets')
+                if not isinstance(assets, list):
+                    raise ValueError('GitHub release has no asset metadata')
+                asset = next(
+                    (
+                        candidate
+                        for candidate in assets
+                        if isinstance(candidate, dict) and candidate.get('id') == asset_id
+                    ),
+                    None,
+                )
+                if asset is None:
+                    raise ValueError('GitHub release asset does not belong to the requested release')
+                declared_size = asset.get('size')
+                if isinstance(declared_size, int) and declared_size > _GITHUB_PLUGIN_DOWNLOAD_MAX_BYTES:
+                    raise ValueError('GitHub plugin package exceeds the 10 MiB download limit')
+                if asset.get('state') not in {None, 'uploaded'}:
+                    raise ValueError('GitHub release asset is not ready for download')
+                asset_url = f'https://api.github.com/repos/{owner}/{repo}/releases/assets/{asset_id}'
+            else:
+                asset_url = normalized['asset_url']
+
+            downloaded = 0
+            chunks: list[bytes] = []
+            start_time = time.time()
+            current_url = asset_url
+            if task_context is not None:
+                task_context.set_current_action('downloading plugin package')
+                task_context.metadata.update({'download_total': 0, 'download_current': 0, 'download_speed': 0})
+
+            for redirect_count in range(_GITHUB_PLUGIN_DOWNLOAD_MAX_REDIRECTS + 1):
+                self._validate_github_download_hop(
+                    current_url,
+                    owner=owner,
+                    repo=repo,
+                    release_tag=release_tag,
+                    asset_id=asset_id,
+                )
+                parsed = urlparse(current_url)
+                request_headers = {
+                    'Accept-Encoding': 'identity',
+                    'User-Agent': 'LangBot-Plugin-Installer',
+                }
+                if (parsed.hostname or '').lower() == 'api.github.com':
+                    request_headers.update(
+                        {
+                            'Accept': 'application/octet-stream',
+                            'X-GitHub-Api-Version': '2022-11-28',
+                        }
+                    )
+
+                async with client.stream('GET', current_url, headers=request_headers) as response:
+                    if response.status_code in _HTTP_REDIRECT_STATUSES:
+                        location = response.headers.get('location')
+                        if not location:
+                            raise ValueError('GitHub release asset redirect is missing a location')
+                        if redirect_count >= _GITHUB_PLUGIN_DOWNLOAD_MAX_REDIRECTS:
+                            raise ValueError('GitHub release asset exceeded the redirect limit')
+                        next_url = urljoin(current_url, location)
+                        self._validate_github_download_hop(
+                            next_url,
+                            owner=owner,
+                            repo=repo,
+                            release_tag=release_tag,
+                            asset_id=asset_id,
+                        )
+                        current_url = next_url
+                        continue
+
+                    response.raise_for_status()
+                    content_length_header = response.headers.get('content-length')
+                    try:
+                        content_length = int(content_length_header) if content_length_header is not None else 0
+                    except ValueError as exc:
+                        raise ValueError('GitHub release asset has an invalid content length') from exc
+                    if content_length < 0:
+                        raise ValueError('GitHub release asset has an invalid content length')
+                    if content_length > _GITHUB_PLUGIN_DOWNLOAD_MAX_BYTES:
+                        raise ValueError('GitHub plugin package exceeds the 10 MiB download limit')
+                    if task_context is not None:
+                        task_context.metadata['download_total'] = content_length
+
+                    async for chunk in response.aiter_bytes(chunk_size=8192):
+                        downloaded += len(chunk)
+                        if downloaded > _GITHUB_PLUGIN_DOWNLOAD_MAX_BYTES:
+                            raise ValueError('GitHub plugin package exceeds the 10 MiB download limit')
+                        chunks.append(chunk)
+                        if task_context is not None:
+                            elapsed = time.time() - start_time
+                            task_context.metadata.update(
+                                {
+                                    'download_current': downloaded,
+                                    'download_speed': downloaded / elapsed if elapsed > 0 else 0,
+                                }
+                            )
+                    return b''.join(chunks)
+
+            raise ValueError('GitHub release asset exceeded the redirect limit')
+
+    @staticmethod
+    def _validate_github_download_hop(
+        url: str,
+        *,
+        owner: str,
+        repo: str,
+        release_tag: str,
+        asset_id: int | None,
+    ) -> None:
+        """Reject redirects away from the small set of GitHub asset hosts."""
+
+        parsed = urlparse(str(url or '').strip())
+        try:
+            port = parsed.port
+        except ValueError as exc:
+            raise ValueError('GitHub release asset URL has an invalid port') from exc
+        hostname = (parsed.hostname or '').lower()
+        if (
+            parsed.scheme != 'https'
+            or hostname not in _GITHUB_ASSET_HOSTS
+            or parsed.username is not None
+            or parsed.password is not None
+            or port not in {None, 443}
+            or parsed.fragment
+        ):
+            raise ValueError('GitHub release asset redirected to an untrusted host')
+        if hostname == 'api.github.com':
+            expected_path = f'/repos/{owner}/{repo}/releases/assets/{asset_id}'
+            if asset_id is None or parsed.path != expected_path or parsed.query:
+                raise ValueError('GitHub release asset API URL is not trusted')
+        elif hostname == 'github.com':
+            validate_github_release_asset_url(
+                url,
+                owner=owner,
+                repo=repo,
+                release_tag=release_tag,
+            )
+        elif not parsed.path or parsed.path == '/':
+            raise ValueError('GitHub release asset redirect has no object path')
+
+    async def _download_marketplace_package(
+        self,
+        execution_context: ExecutionContext,
+        plugin_author: str,
+        plugin_name: str,
+        task_context: taskmgr.TaskContext | None,
+    ) -> tuple[bytes | None, str | None]:
+        """Return a plugin package, or install an MCP/skill and return none."""
+
+        space_url = self.ap.instance_config.data.get('space', {}).get('url', 'https://space.langbot.app').rstrip('/')
+        async with httpx.AsyncClient(
+            trust_env=True,
+            timeout=15,
+            event_hooks=httpclient.httpx_response_limit_hooks(_MARKETPLACE_PLUGIN_DOWNLOAD_MAX_BYTES),
+        ) as client:
+            mcp_status, mcp_body = await _marketplace_get(
+                client,
+                f'{space_url}/api/v1/marketplace/mcps/{plugin_author}/{plugin_name}',
+                max_bytes=_MARKETPLACE_METADATA_MAX_BYTES,
+                allow_not_found=True,
+            )
+            if mcp_status == 200:
+                mcp_payload = _decode_json_object(mcp_body, subject='Marketplace MCP metadata')
+                mcp_data = mcp_payload.get('data', {}).get('mcp', {})
+                if not isinstance(mcp_data, dict):
+                    raise ValueError(f'MCP {plugin_author}/{plugin_name} metadata is invalid')
+                if not mcp_data.get('mode'):
+                    raise ValueError(f'MCP {plugin_author}/{plugin_name} has no mode')
+                await self._install_mcp_from_marketplace(execution_context, mcp_data, task_context)
+                try:
+                    async with client.stream(
+                        'POST',
+                        f'{space_url}/api/v1/marketplace/mcps/{plugin_author}/{plugin_name}/install',
+                    ):
+                        pass
+                except Exception as report_err:
+                    self.ap.logger.debug(f'Failed to report MCP install: {report_err}')
+                return None, None
+
+            skill_status, _skill_body = await _marketplace_get(
+                client,
+                f'{space_url}/api/v1/marketplace/skills/{plugin_author}/{plugin_name}',
+                max_bytes=_MARKETPLACE_METADATA_MAX_BYTES,
+                allow_not_found=True,
+            )
+            if skill_status == 200:
+                _download_status, skill_package = await _marketplace_get(
+                    client,
+                    f'{space_url}/api/v1/marketplace/skills/download/{plugin_author}/{plugin_name}',
+                    max_bytes=_MARKETPLACE_SKILL_DOWNLOAD_MAX_BYTES,
+                )
+                await self._install_skill_from_zip(
+                    execution_context,
+                    skill_package,
+                    f'{plugin_author}-{plugin_name}',
+                    task_context,
+                )
+                return None, None
+
+            _versions_status, versions_body = await _marketplace_get(
+                client,
+                f'{space_url}/api/v1/marketplace/plugins/{plugin_author}/{plugin_name}/versions',
+                max_bytes=_MARKETPLACE_METADATA_MAX_BYTES,
+            )
+            versions_payload = _decode_json_object(
+                versions_body,
+                subject='Marketplace plugin versions',
+            )
+            versions = versions_payload.get('data', {}).get('versions', [])
+            if (
+                not isinstance(versions, list)
+                or not versions
+                or not isinstance(versions[0], dict)
+                or not versions[0].get('version')
+            ):
+                raise ValueError(f'Plugin {plugin_author}/{plugin_name} has no versions')
+            latest_version = str(versions[0]['version'])
+            _download_status, plugin_package = await _marketplace_get(
+                client,
+                f'{space_url}/api/v1/marketplace/plugins/download/{plugin_author}/{plugin_name}/{latest_version}',
+                max_bytes=_MARKETPLACE_PLUGIN_DOWNLOAD_MAX_BYTES,
+            )
+            return plugin_package, latest_version
+
     async def install_plugin(
         self,
         install_source: PluginInstallSource,
         install_info: dict[str, Any],
         task_context: taskmgr.TaskContext | None = None,
-    ):
-        plugin_author = install_info.get('plugin_author')
-        plugin_name = install_info.get('plugin_name')
+    ) -> None:
+        runtime_handler = self._runtime_handler()
+        execution_context = await self._current_execution_context()
+        plugin_author = str(install_info.get('plugin_author') or '')
+        plugin_name = str(install_info.get('plugin_name') or '')
+        file_bytes: bytes | None
 
         if install_source == PluginInstallSource.MARKETPLACE:
-            # Handle marketplace plugin/mcp/skill installation
-            plugin_author = install_info.get('plugin_author', '')
-            plugin_name = install_info.get('plugin_name', '')
-            space_url = (
-                self.ap.instance_config.data.get('space', {}).get('url', 'https://space.langbot.app').rstrip('/')
+            file_bytes, version = await self._download_marketplace_package(
+                execution_context,
+                plugin_author,
+                plugin_name,
+                task_context,
             )
-
-            # Try MCP endpoint first
-            async with httpx.AsyncClient(trust_env=True, timeout=15) as client:
-                mcp_resp = await client.get(f'{space_url}/api/v1/marketplace/mcps/{plugin_author}/{plugin_name}')
-                if mcp_resp.status_code == 200:
-                    mcp_data = mcp_resp.json().get('data', {}).get('mcp', {})
-                    if mcp_data.get('mode'):
-                        # It's an MCP - create server locally
-                        self.ap.logger.info(f'Installing MCP from marketplace: {plugin_author}/{plugin_name}')
-                        if task_context:
-                            task_context.set_current_action('installing mcp server')
-                        await self._install_mcp_from_marketplace(mcp_data, task_context)
-                        # Best-effort install report (bumps marketplace install_count).
-                        try:
-                            await client.post(
-                                f'{space_url}/api/v1/marketplace/mcps/{plugin_author}/{plugin_name}/install'
-                            )
-                        except Exception as report_err:
-                            self.ap.logger.debug(f'Failed to report MCP install: {report_err}')
-                        return
-                    else:
-                        raise Exception(f'MCP {plugin_author}/{plugin_name} has no mode')
-                elif mcp_resp.status_code == 404:
-                    # Try skill endpoint - download ZIP and install
-                    self.ap.logger.info(f'Trying skill endpoint for: {plugin_author}/{plugin_name}')
-                    if task_context:
-                        task_context.set_current_action('checking skill marketplace')
-
-                    # Get skill detail to find version
-                    skill_resp = await client.get(
-                        f'{space_url}/api/v1/marketplace/skills/{plugin_author}/{plugin_name}'
-                    )
-                    if skill_resp.status_code == 200:
-                        self.ap.logger.info(f'Installing skill from marketplace: {plugin_author}/{plugin_name}')
-                        if task_context:
-                            task_context.set_current_action('installing skill from marketplace')
-
-                        # Download the skill ZIP (no version needed - uses latest)
-                        if task_context:
-                            task_context.set_current_action('downloading skill package')
-
-                        download_resp = await client.get(
-                            f'{space_url}/api/v1/marketplace/skills/download/{plugin_author}/{plugin_name}'
-                        )
-                        if download_resp.status_code != 200:
-                            raise Exception(
-                                f'Failed to download skill {plugin_author}/{plugin_name}: {download_resp.status_code}'
-                            )
-
-                        file_bytes = download_resp.content
-                        file_size = len(file_bytes)
-                        self.ap.logger.info(f'Downloaded skill ZIP ({file_size} bytes)')
-
-                        # Install skill from ZIP using skill service
-                        await self._install_skill_from_zip(file_bytes, f'{plugin_author}-{plugin_name}', task_context)
-                        return
-                    elif skill_resp.status_code == 404:
-                        # Try plugin endpoint - get versions and download
-                        self.ap.logger.info(f'Trying plugin endpoint for: {plugin_author}/{plugin_name}')
-                        if task_context:
-                            task_context.set_current_action('checking plugin marketplace')
-
-                        # Get plugin versions to find latest
-                        versions_resp = await client.get(
-                            f'{space_url}/api/v1/marketplace/plugins/{plugin_author}/{plugin_name}/versions'
-                        )
-                        if versions_resp.status_code == 200:
-                            versions_data = versions_resp.json().get('data', {}).get('versions', [])
-                            if versions_data:
-                                latest_version = versions_data[0].get('version', '')
-                                if latest_version:
-                                    self.ap.logger.info(
-                                        f'Installing plugin from marketplace: {plugin_author}/{plugin_name} v{latest_version}'
-                                    )
-                                    if task_context:
-                                        task_context.set_current_action('downloading plugin package')
-
-                                    download_resp = await client.get(
-                                        f'{space_url}/api/v1/marketplace/plugins/download/{plugin_author}/{plugin_name}/{latest_version}'
-                                    )
-                                    if download_resp.status_code != 200:
-                                        raise Exception(
-                                            f'Failed to download plugin {plugin_author}/{plugin_name}: {download_resp.status_code}'
-                                        )
-
-                                    file_bytes = download_resp.content
-                                    self._inspect_plugin_package(file_bytes, task_context)
-                                    file_key = await self.handler.send_file(file_bytes, 'lbpkg')
-                                    install_info['plugin_file_key'] = file_key
-                                    self.ap.logger.info(f'Transfered file {file_key} to plugin runtime')
-                                    # Continue to install via runtime
-                                else:
-                                    raise Exception(f'No version found for plugin {plugin_author}/{plugin_name}')
-                            else:
-                                raise Exception(f'Plugin {plugin_author}/{plugin_name} has no versions')
-                        else:
-                            raise Exception(f'Plugin {plugin_author}/{plugin_name} not found in marketplace')
-                    else:
-                        skill_resp.raise_for_status()
-                        raise Exception(f'Failed to get skill {plugin_author}/{plugin_name}')
-                else:
-                    mcp_resp.raise_for_status()
-                    raise Exception(f'Failed to get MCP {plugin_author}/{plugin_name}')
-
-        if install_source == PluginInstallSource.LOCAL:
-            # transfer file before install
-            file_bytes = install_info['plugin_file']
-            plugin_author, plugin_name = self._inspect_plugin_package(file_bytes, task_context)
-            if task_context is not None and plugin_author and plugin_name:
-                task_context.metadata['plugin_name'] = f'{plugin_author}/{plugin_name}'
-            file_key = await self.handler.send_file(file_bytes, 'lbpkg')
-            install_info['plugin_file_key'] = file_key
-            del install_info['plugin_file']
-            self.ap.logger.info(f'Transfered file {file_key} to plugin runtime')
+            if file_bytes is None:
+                return
+            install_info = {**install_info, 'plugin_version': version}
+        elif install_source == PluginInstallSource.LOCAL:
+            candidate = install_info.get('plugin_file')
+            if not isinstance(candidate, bytes):
+                raise ValueError('Local plugin package is missing')
+            file_bytes = candidate
         elif install_source == PluginInstallSource.GITHUB:
-            # download and transfer file with streaming progress
+            file_bytes = await self._download_github_package(
+                install_info,
+                task_context,
+            )
+            install_info = validate_github_plugin_install_info(install_info)
+        else:
+            raise ValueError(f'Unsupported plugin install source: {install_source.value}')
+
+        manifest_author, manifest_name = self._inspect_plugin_package(file_bytes, task_context)
+        if not manifest_author or not manifest_name:
+            raise ValueError('Plugin package manifest identity is missing')
+        if plugin_author and plugin_author != manifest_author:
+            raise ValueError('Plugin package author does not match the requested plugin')
+        if plugin_name and plugin_name != manifest_name:
+            raise ValueError('Plugin package name does not match the requested plugin')
+        plugin_author, plugin_name = manifest_author, manifest_name
+        if task_context is not None:
+            task_context.metadata['plugin_name'] = f'{plugin_author}/{plugin_name}'
+
+        artifact_digest = hashlib.sha256(file_bytes).hexdigest()
+        await self._store_artifact_package(execution_context, artifact_digest, file_bytes)
+        try:
+            binding, previous_digest, previous_was_durable = await self._persist_installation_package(
+                execution_context,
+                plugin_author=plugin_author,
+                plugin_name=plugin_name,
+                install_source=install_source,
+                install_info=install_info,
+                artifact_digest=artifact_digest,
+            )
+        except Exception:
+            await self._delete_artifact_if_unreferenced(execution_context, artifact_digest)
+            raise
+        runtime_handler.register_installation_binding(
+            binding,
+            plugin_author=plugin_author,
+            plugin_name=plugin_name,
+        )
+        await self._apply_desired_state(
+            PluginInstallationDesiredState(binding=binding, enabled=True),
+            artifact_package=file_bytes,
+        )
+        desired = PluginInstallationDesiredState(binding=binding, enabled=True)
+        self._known_desired_states[binding.installation_uuid] = desired
+        self._workspace_installations.setdefault(binding.workspace_uuid, set()).add(binding.installation_uuid)
+        if previous_digest is not None and previous_digest != artifact_digest:
+            await self._delete_artifact_if_unreferenced(execution_context, previous_digest)
+        if previous_digest is not None and not previous_was_durable and self.runtime_profile == 'oss_dev':
+            bridge = self._legacy_oss_bridge_binding(execution_context)
             try:
-                async with httpx.AsyncClient(
-                    trust_env=True,
-                    follow_redirects=True,
-                    timeout=60,
-                ) as client:
-                    async with client.stream('GET', install_info['asset_url']) as response:
-                        response.raise_for_status()
-                        total = int(response.headers.get('content-length', 0))
-                        downloaded = 0
-                        chunks: list[bytes] = []
-                        start_time = time.time()
-
-                        if task_context is not None:
-                            task_context.set_current_action('downloading plugin package')
-                            task_context.metadata['download_total'] = total
-                            task_context.metadata['download_current'] = 0
-                            task_context.metadata['download_speed'] = 0
-
-                        async for chunk in response.aiter_bytes(chunk_size=8192):
-                            chunks.append(chunk)
-                            downloaded += len(chunk)
-
-                            if task_context is not None:
-                                elapsed = time.time() - start_time
-                                task_context.metadata['download_current'] = downloaded
-                                task_context.metadata['download_total'] = total
-                                task_context.metadata['download_speed'] = downloaded / elapsed if elapsed > 0 else 0
-
-                    file_bytes = b''.join(chunks)
-                    plugin_author, plugin_name = self._inspect_plugin_package(file_bytes, task_context)
-                    if task_context is not None and plugin_author and plugin_name:
-                        task_context.metadata['plugin_name'] = f'{plugin_author}/{plugin_name}'
-                    file_key = await self.handler.send_file(file_bytes, 'lbpkg')
-                    install_info['plugin_file_key'] = file_key
-                    self.ap.logger.info(f'Transfered file {file_key} to plugin runtime')
-            except Exception as e:
-                self.ap.logger.error(f'Failed to download file from GitHub: {e}')
-                raise Exception(f'Failed to download file from GitHub: {e}')
-
-        async for ret in self.handler.install_plugin(install_source.value, install_info):
-            current_action = ret.get('current_action', None)
-            if current_action is not None:
-                if task_context is not None:
-                    task_context.set_current_action(current_action)
-
-            trace = ret.get('trace', None)
-            if trace is not None:
-                if task_context is not None:
-                    task_context.trace(trace)
-
-            # Forward structured metadata from runtime
-            metadata = ret.get('metadata', None)
-            if metadata is not None and task_context is not None:
-                task_context.metadata.update(metadata)
-
+                with runtime_handler.installation_scope(bridge):
+                    async for _ in runtime_handler.delete_plugin(plugin_author, plugin_name):
+                        pass
+            except Exception as exc:
+                self.ap.logger.debug(f'Legacy OSS plugin cleanup skipped: {exc}')
         await self._wait_for_installed_plugin_ready(plugin_author, plugin_name, task_context)
         await self._refresh_agent_runner_registry()
 
@@ -597,18 +1748,18 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         plugin_name: str,
         task_context: taskmgr.TaskContext | None = None,
     ) -> dict[str, Any]:
-        async for ret in self.handler.upgrade_plugin(plugin_author, plugin_name):
-            current_action = ret.get('current_action', None)
-            if current_action is not None:
-                if task_context is not None:
-                    task_context.set_current_action(current_action)
-
-            trace = ret.get('trace', None)
-            if trace is not None:
-                if task_context is not None:
-                    task_context.trace(trace)
-
+        _execution_context, setting = await self._setting_for_plugin(plugin_author, plugin_name)
+        if setting.install_source != PluginInstallSource.MARKETPLACE.value:
+            raise ValueError(f'Plugin {plugin_author}/{plugin_name} is not installed from marketplace')
+        if task_context is not None:
+            task_context.set_current_action('checking for latest version')
+        await self.install_plugin(
+            PluginInstallSource.MARKETPLACE,
+            {'plugin_author': plugin_author, 'plugin_name': plugin_name},
+            task_context=task_context,
+        )
         await self._refresh_agent_runner_registry()
+        return {}
 
     async def delete_plugin(
         self,
@@ -617,24 +1768,58 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         delete_data: bool = False,
         task_context: taskmgr.TaskContext | None = None,
     ) -> dict[str, Any]:
-        async for ret in self.handler.delete_plugin(plugin_author, plugin_name):
-            current_action = ret.get('current_action', None)
-            if current_action is not None:
-                if task_context is not None:
-                    task_context.set_current_action(current_action)
+        runtime_handler = self._runtime_handler()
+        execution_context, setting = await self._setting_for_plugin(plugin_author, plugin_name)
+        binding = self._binding_from_setting(execution_context, setting)
+        is_legacy_oss = self.runtime_profile == 'oss_dev' and (
+            not isinstance(setting.install_info, dict)
+            or setting.install_info.get('_artifact_storage') != _PLUGIN_ARTIFACT_STORAGE_MARKER
+        )
+        if is_legacy_oss:
+            bridge = self._legacy_oss_bridge_binding(execution_context)
+            with runtime_handler.installation_scope(bridge):
+                async for _ in runtime_handler.delete_plugin(plugin_author, plugin_name):
+                    pass
+        await runtime_handler.remove_plugin_installation(binding)
+        runtime_handler.unregister_installation_binding(binding)
 
-            trace = ret.get('trace', None)
-            if trace is not None:
-                if task_context is not None:
-                    task_context.trace(trace)
+        async def delete(execute):
+            await execute(
+                sqlalchemy.delete(persistence_plugin.PluginSetting)
+                .where(persistence_plugin.PluginSetting.workspace_uuid == execution_context.workspace_uuid)
+                .where(persistence_plugin.PluginSetting.plugin_author == plugin_author)
+                .where(persistence_plugin.PluginSetting.plugin_name == plugin_name)
+            )
+            await self._delete_artifact_if_unreferenced(
+                execution_context,
+                setting.artifact_digest,
+                execute=execute,
+            )
+            if delete_data:
+                await execute(
+                    sqlalchemy.delete(persistence_bstorage.BinaryStorage)
+                    .where(persistence_bstorage.BinaryStorage.workspace_uuid == execution_context.workspace_uuid)
+                    .where(persistence_bstorage.BinaryStorage.owner_type == 'plugin')
+                    .where(persistence_bstorage.BinaryStorage.owner == f'{plugin_author}/{plugin_name}')
+                )
 
-        # Clean up plugin settings and binary storage if requested
-        if delete_data:
-            if task_context is not None:
-                task_context.trace('Cleaning up plugin configuration and storage...')
-            await self.handler.cleanup_plugin_data(plugin_author, plugin_name)
+        tenant_uow = getattr(self.ap.persistence_mgr, 'tenant_uow', None)
+        if callable(tenant_uow):
+            async with tenant_uow(execution_context.workspace_uuid) as uow:
+                await delete(uow.execute)
+        else:
+            await delete(self.ap.persistence_mgr.execute_async)
 
+        self._known_desired_states.pop(binding.installation_uuid, None)
+        workspace_installations = self._workspace_installations.get(binding.workspace_uuid)
+        if workspace_installations is not None:
+            workspace_installations.discard(binding.installation_uuid)
+            if not workspace_installations:
+                self._workspace_installations.pop(binding.workspace_uuid, None)
+        if task_context is not None:
+            task_context.set_current_action('plugin removed')
         await self._refresh_agent_runner_registry()
+        return {}
 
     async def list_plugins(self, component_kinds: list[str] | None = None) -> list[dict[str, Any]]:
         """List plugins, optionally filtered by component kinds.
@@ -645,10 +1830,21 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                            component of the specified kinds will be returned.
                            E.g., ['Command', 'EventListener', 'Tool'] for pipeline-related plugins.
         """
-        if not self.is_enable_plugin:
+        if not self.is_enable_plugin or not self._runtime_available():
             return []
 
-        plugins = await self.handler.list_plugins()
+        runtime_handler = self._runtime_handler()
+        plugins: list[dict[str, Any]] = []
+        seen_plugin_ids: set[str] = set()
+        for binding in await self._operation_bindings():
+            with runtime_handler.installation_scope(binding):
+                scoped_plugins = await runtime_handler.list_plugins()
+            for plugin in scoped_plugins:
+                metadata = plugin.get('manifest', {}).get('manifest', {}).get('metadata', {})
+                plugin_id = f'{metadata.get("author", "")}/{metadata.get("name", "")}'
+                if plugin_id not in seen_plugin_ids:
+                    seen_plugin_ids.add(plugin_id)
+                    plugins.append(plugin)
 
         # Filter plugins by component kinds if specified
         if component_kinds is not None:
@@ -670,35 +1866,9 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         plugin_timestamps = {}
 
         if plugins:
-            # Build list of (author, name) tuples for all plugins
-            plugin_ids = []
-            for plugin in plugins:
-                author = plugin.get('manifest', {}).get('manifest', {}).get('metadata', {}).get('author', '')
-                name = plugin.get('manifest', {}).get('manifest', {}).get('metadata', {}).get('name', '')
-                if author and name:
-                    plugin_ids.append((author, name))
-
-            # Fetch all timestamps in a single query using OR conditions
-            if plugin_ids:
-                conditions = [
-                    sqlalchemy.and_(
-                        persistence_plugin.PluginSetting.plugin_author == author,
-                        persistence_plugin.PluginSetting.plugin_name == name,
-                    )
-                    for author, name in plugin_ids
-                ]
-
-                result = await self.ap.persistence_mgr.execute_async(
-                    sqlalchemy.select(
-                        persistence_plugin.PluginSetting.plugin_author,
-                        persistence_plugin.PluginSetting.plugin_name,
-                        persistence_plugin.PluginSetting.created_at,
-                    ).where(sqlalchemy.or_(*conditions))
-                )
-
-                for row in result:
-                    plugin_id = f'{row.plugin_author}/{row.plugin_name}'
-                    plugin_timestamps[plugin_id] = row.created_at
+            execution_context = await self._current_execution_context()
+            for setting in await self._load_workspace_settings(execution_context):
+                plugin_timestamps[f'{setting.plugin_author}/{setting.plugin_name}'] = setting.created_at
 
         # Sort: debug plugins first (descending), then by created_at (descending)
         def sort_key(plugin):
@@ -720,18 +1890,72 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         return plugins
 
     async def get_plugin_info(self, author: str, plugin_name: str) -> dict[str, Any]:
-        return await self.handler.get_plugin_info(author, plugin_name)
+        runtime_handler = self._runtime_handler()
+        binding = await self._target_binding(author, plugin_name)
+        with runtime_handler.installation_scope(binding):
+            return await runtime_handler.get_plugin_info(author, plugin_name)
 
     async def set_plugin_config(self, plugin_author: str, plugin_name: str, config: dict[str, Any]) -> dict[str, Any]:
-        return await self.handler.set_plugin_config(plugin_author, plugin_name, config)
+        runtime_handler = self._runtime_handler()
+        execution_context, setting = await self._setting_for_plugin(plugin_author, plugin_name)
+        next_revision = setting.runtime_revision + 1
+        statement = (
+            sqlalchemy.update(persistence_plugin.PluginSetting)
+            .where(persistence_plugin.PluginSetting.workspace_uuid == execution_context.workspace_uuid)
+            .where(persistence_plugin.PluginSetting.plugin_author == plugin_author)
+            .where(persistence_plugin.PluginSetting.plugin_name == plugin_name)
+            .where(persistence_plugin.PluginSetting.runtime_revision == setting.runtime_revision)
+            .values(config=config, runtime_revision=next_revision)
+        )
+        tenant_uow = getattr(self.ap.persistence_mgr, 'tenant_uow', None)
+        if callable(tenant_uow):
+            async with tenant_uow(execution_context.workspace_uuid) as uow:
+                result = await uow.execute(statement)
+        else:
+            result = await self.ap.persistence_mgr.execute_async(statement)
+        if result.rowcount != 1:
+            raise RuntimeError('Plugin configuration changed concurrently')
+        binding = InstallationBinding(
+            instance_uuid=execution_context.instance_uuid,
+            workspace_uuid=execution_context.workspace_uuid,
+            placement_generation=execution_context.placement_generation,
+            installation_uuid=setting.installation_uuid,
+            runtime_revision=next_revision,
+            artifact_digest=setting.artifact_digest,
+        )
+        runtime_handler.register_installation_binding(
+            binding,
+            plugin_author=plugin_author,
+            plugin_name=plugin_name,
+        )
+        desired = PluginInstallationDesiredState(
+            binding=binding,
+            enabled=setting.enabled,
+        )
+        is_legacy_oss = self.runtime_profile == 'oss_dev' and (
+            not isinstance(setting.install_info, dict)
+            or setting.install_info.get('_artifact_storage') != _PLUGIN_ARTIFACT_STORAGE_MARKER
+        )
+        if is_legacy_oss:
+            bridge = self._legacy_oss_bridge_binding(execution_context)
+            with runtime_handler.installation_scope(bridge):
+                await runtime_handler.set_plugin_config(plugin_author, plugin_name, config)
+        else:
+            await self._apply_desired_state(desired)
+        self._known_desired_states[binding.installation_uuid] = desired
+        return {}
 
-    @alru_cache(ttl=5 * 60)  # 5 minutes
     async def get_plugin_icon(self, plugin_author: str, plugin_name: str) -> dict[str, Any]:
-        return await self.handler.get_plugin_icon(plugin_author, plugin_name)
+        runtime_handler = self._runtime_handler()
+        binding = await self._target_binding(plugin_author, plugin_name)
+        with runtime_handler.installation_scope(binding):
+            return await runtime_handler.get_plugin_icon(plugin_author, plugin_name)
 
-    @alru_cache(ttl=5 * 60)  # 5 minutes
     async def get_plugin_readme(self, plugin_author: str, plugin_name: str, language: str = 'en') -> str:
-        return await self.handler.get_plugin_readme(plugin_author, plugin_name, language)
+        runtime_handler = self._runtime_handler()
+        binding = await self._target_binding(plugin_author, plugin_name)
+        with runtime_handler.installation_scope(binding):
+            return await runtime_handler.get_plugin_readme(plugin_author, plugin_name, language)
 
     async def get_plugin_logs(
         self,
@@ -740,12 +1964,16 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         limit: int = 200,
         level: str | None = None,
     ) -> list[dict[str, Any]]:
-        # Not cached: logs are live and change constantly.
-        return await self.handler.get_plugin_logs(plugin_author, plugin_name, limit, level)
+        runtime_handler = self._runtime_handler()
+        binding = await self._target_binding(plugin_author, plugin_name)
+        with runtime_handler.installation_scope(binding):
+            return await runtime_handler.get_plugin_logs(plugin_author, plugin_name, limit, level)
 
-    @alru_cache(ttl=5 * 60)
     async def get_plugin_assets(self, plugin_author: str, plugin_name: str, filepath: str) -> dict[str, Any]:
-        return await self.handler.get_plugin_assets(plugin_author, plugin_name, filepath)
+        runtime_handler = self._runtime_handler()
+        binding = await self._target_binding(plugin_author, plugin_name)
+        with runtime_handler.installation_scope(binding):
+            return await runtime_handler.get_plugin_assets(plugin_author, plugin_name, filepath)
 
     async def handle_page_api(
         self,
@@ -756,56 +1984,88 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         method: str,
         body: Any = None,
     ) -> dict[str, Any]:
-        return await self.handler.handle_page_api(plugin_author, plugin_name, page_id, endpoint, method, body)
+        runtime_handler = self._runtime_handler()
+        binding = await self._target_binding(plugin_author, plugin_name)
+        with runtime_handler.installation_scope(binding):
+            return await runtime_handler.handle_page_api(plugin_author, plugin_name, page_id, endpoint, method, body)
 
     async def get_debug_info(self) -> dict[str, Any]:
         """Get debug information including debug key and WS URL"""
-        if not self.is_enable_plugin:
+        if not self.is_enable_plugin or not self._runtime_available():
             return {}
-        return await self.handler.get_debug_info()
+        return await self._runtime_handler().get_debug_info()
 
     async def emit_event(
         self,
         event: events.BaseEventModel,
         bound_plugins: list[str] | None = None,
     ) -> context.EventContext:
+        query = getattr(event, 'query', None)
+        if query is not None:
+            from ..pipeline.pool import get_query_execution_context
+
+            await self.require_workspace_context(get_query_execution_context(query))
         event_ctx = context.EventContext.from_event(event)
 
-        if not self.is_enable_plugin:
+        if not self.is_enable_plugin or not self._runtime_available():
             event_ctx._emitted_plugins = []
             event_ctx._response_sources = []
             return event_ctx
 
-        # Pass include_plugins to runtime for filtering
-        event_ctx_result = await self.handler.emit_event(
-            event_ctx.model_dump(serialize_as_any=False), include_plugins=bound_plugins
-        )
-
-        event_ctx = context.EventContext.model_validate(event_ctx_result['event_context'])
-        event_ctx._emitted_plugins = event_ctx_result.get('emitted_plugins', [])
-        if 'response_sources' in event_ctx_result:
-            event_ctx._response_sources = event_ctx_result['response_sources']
+        runtime_handler = self._runtime_handler()
+        emitted_plugins: list[Any] = []
+        response_sources: list[dict[str, Any]] = []
+        for binding in await self._operation_bindings(include_plugins=bound_plugins):
+            with runtime_handler.installation_scope(binding):
+                result = await runtime_handler.emit_event(
+                    event_ctx.model_dump(serialize_as_any=False),
+                    include_plugins=bound_plugins,
+                )
+            event_ctx = context.EventContext.model_validate(result['event_context'])
+            emitted_plugins.extend(result.get('emitted_plugins', []))
+            response_sources.extend(result.get('response_sources', []))
+        event_ctx._emitted_plugins = emitted_plugins
+        event_ctx._response_sources = response_sources
 
         return event_ctx
 
     async def notify_plugin_diagnostic(self, diagnostic: dict[str, Any]) -> None:
         """Best-effort diagnostic forwarding to the plugin runtime."""
-        if not self.is_enable_plugin:
+        if not self.is_enable_plugin or not self._runtime_available():
             return
         try:
-            await self.handler.notify_plugin_diagnostic(diagnostic)
+            runtime_handler = self._runtime_handler()
+            plugin_ref = diagnostic.get('plugin') if isinstance(diagnostic, dict) else None
+            if isinstance(plugin_ref, dict):
+                author = plugin_ref.get('author') or plugin_ref.get('plugin_author')
+                name = plugin_ref.get('name') or plugin_ref.get('plugin_name')
+                if author and name:
+                    binding = await self._target_binding(str(author), str(name))
+                    with runtime_handler.installation_scope(binding):
+                        await runtime_handler.notify_plugin_diagnostic(diagnostic)
+                    return
+            for binding in await self._operation_bindings():
+                with runtime_handler.installation_scope(binding):
+                    await runtime_handler.notify_plugin_diagnostic(diagnostic)
         except Exception as e:
             self.ap.logger.debug(f'Plugin diagnostic forwarding skipped: {e}')
 
     async def list_tools(self, bound_plugins: list[str] | None = None) -> list[ComponentManifest]:
-        if not self.is_enable_plugin:
+        if not self.is_enable_plugin or not self._runtime_available():
             return []
 
-        # Pass include_plugins to runtime for filtering
-        list_tools_data = await self.handler.list_tools(include_plugins=bound_plugins)
-
-        tools = [ComponentManifest.model_validate(tool) for tool in list_tools_data]
-
+        runtime_handler = self._runtime_handler()
+        tools: list[ComponentManifest] = []
+        seen: set[tuple[str, str]] = set()
+        for binding in await self._operation_bindings(include_plugins=bound_plugins):
+            with runtime_handler.installation_scope(binding):
+                scoped = await runtime_handler.list_tools(include_plugins=bound_plugins)
+            for raw_tool in scoped:
+                tool = ComponentManifest.model_validate(raw_tool)
+                key = (str(tool.owner), tool.metadata.name)
+                if key not in seen:
+                    seen.add(key)
+                    tools.append(tool)
         return tools
 
     async def call_tool(
@@ -815,40 +2075,81 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         session: provider_session.Session,
         query_id: int,
         bound_plugins: list[str] | None = None,
+        query_uuid: str | None = None,
     ) -> dict[str, Any]:
         if not self.is_enable_plugin:
             return {'error': 'Tool not found: plugin system is disabled'}
-
-        # Pass include_plugins to runtime for validation
-        return await self.handler.call_tool(
-            tool_name, parameters, session.model_dump(serialize_as_any=True), query_id, include_plugins=bound_plugins
+        await self.require_workspace_context(
+            ExecutionContext(
+                instance_uuid=session.instance_uuid,
+                workspace_uuid=session.workspace_uuid,
+                placement_generation=session.placement_generation,
+                query_uuid=query_uuid,
+                bot_uuid=session.bot_uuid,
+            )
         )
+        binding = await self._target_binding_for_component(
+            tool_name,
+            component_kind='tool',
+            include_plugins=bound_plugins,
+        )
+        runtime_handler = self._runtime_handler()
+        with runtime_handler.installation_scope(binding):
+            return await runtime_handler.call_tool(
+                tool_name,
+                parameters,
+                session.model_dump(serialize_as_any=True),
+                query_id,
+                query_uuid=query_uuid,
+                include_plugins=bound_plugins,
+            )
 
     async def list_commands(self, bound_plugins: list[str] | None = None) -> list[ComponentManifest]:
-        if not self.is_enable_plugin:
+        if not self.is_enable_plugin or not self._runtime_available():
             return []
 
-        # Pass include_plugins to runtime for filtering
-        list_commands_data = await self.handler.list_commands(include_plugins=bound_plugins)
-
-        commands = [ComponentManifest.model_validate(command) for command in list_commands_data]
-
+        runtime_handler = self._runtime_handler()
+        commands: list[ComponentManifest] = []
+        seen: set[tuple[str, str]] = set()
+        for binding in await self._operation_bindings(include_plugins=bound_plugins):
+            with runtime_handler.installation_scope(binding):
+                scoped = await runtime_handler.list_commands(include_plugins=bound_plugins)
+            for raw_command in scoped:
+                command = ComponentManifest.model_validate(raw_command)
+                key = (str(command.owner), command.metadata.name)
+                if key not in seen:
+                    seen.add(key)
+                    commands.append(command)
         return commands
 
     async def execute_command(
         self, command_ctx: command_context.ExecuteContext, bound_plugins: list[str] | None = None
     ) -> typing.AsyncGenerator[command_context.CommandReturn, None]:
-        if not self.is_enable_plugin:
+        if not self.is_enable_plugin or not self._runtime_available():
             yield command_context.CommandReturn(error=command_errors.CommandNotFoundError(command_ctx.command))
             return
 
-        # Pass include_plugins to runtime for validation
-        gen = self.handler.execute_command(command_ctx.model_dump(serialize_as_any=True), include_plugins=bound_plugins)
-
-        async for ret in gen:
-            cmd_ret = command_context.CommandReturn.model_validate(ret)
-
-            yield cmd_ret
+        await self.require_workspace_context(
+            ExecutionContext(
+                instance_uuid=command_ctx.instance_uuid,
+                workspace_uuid=command_ctx.workspace_uuid,
+                placement_generation=command_ctx.placement_generation,
+                query_uuid=command_ctx.query_uuid,
+            )
+        )
+        binding = await self._target_binding_for_component(
+            command_ctx.command,
+            component_kind='command',
+            include_plugins=bound_plugins,
+        )
+        runtime_handler = self._runtime_handler()
+        with runtime_handler.installation_scope(binding):
+            gen = runtime_handler.execute_command(
+                command_ctx.model_dump(serialize_as_any=True),
+                include_plugins=bound_plugins,
+            )
+            async for ret in gen:
+                yield command_context.CommandReturn.model_validate(ret)
 
     # AgentRunner methods
     async def list_agent_runners(self, bound_plugins: list[str] | None = None) -> list[dict[str, Any]]:
@@ -859,8 +2160,20 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         if not self.is_enable_plugin:
             return []
 
-        runners_data = await self.handler.list_agent_runners(include_plugins=bound_plugins)
-        return runners_data
+        if not self._runtime_available():
+            return []
+        runtime_handler = self._runtime_handler()
+        runners: list[dict[str, Any]] = []
+        for binding in await self._operation_bindings(
+            include_plugins=bound_plugins
+        ):
+            with runtime_handler.installation_scope(binding):
+                runners.extend(
+                    await runtime_handler.list_agent_runners(
+                        include_plugins=bound_plugins
+                    )
+                )
+        return runners
 
     async def run_agent(
         self,
@@ -892,10 +2205,29 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             }
             return
 
-        gen = self.handler.run_agent(plugin_author, plugin_name, runner_name, context)
-
-        async for ret in gen:
-            yield ret
+        workspace_id = (
+            (context.get('conversation') or {}).get('workspace_id')
+            or (context.get('runtime') or {}).get('metadata', {}).get(
+                'workspace_id'
+            )
+        )
+        if not isinstance(workspace_id, str) or not workspace_id.strip():
+            raise ValueError('AgentRunner execution requires a Workspace')
+        await self.require_workspace_context(workspace_id)
+        binding = await self._target_binding(
+            plugin_author,
+            plugin_name,
+            require_enabled=True,
+        )
+        runtime_handler = self._runtime_handler()
+        with runtime_handler.installation_scope(binding):
+            async for ret in runtime_handler.run_agent(
+                plugin_author,
+                plugin_name,
+                runner_name,
+                context,
+            ):
+                yield ret
 
     async def retrieve_knowledge(
         self,
@@ -905,27 +2237,39 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         retrieval_context: dict[str, Any],
     ) -> dict[str, Any]:
         """Retrieve knowledge using a KnowledgeEngine instance."""
-        if not self.is_enable_plugin:
+        if not self.is_enable_plugin or not self._runtime_available():
             return {'results': []}
 
-        return await self.handler.retrieve_knowledge(plugin_author, plugin_name, retriever_name, retrieval_context)
+        runtime_handler = self._runtime_handler()
+        binding = await self._target_binding(plugin_author, plugin_name)
+        with runtime_handler.installation_scope(binding):
+            return await runtime_handler.retrieve_knowledge(
+                plugin_author,
+                plugin_name,
+                retriever_name,
+                retrieval_context,
+            )
 
     def dispose(self):
-        # On non-Windows stdio mode, terminate via the controller's process handle.
-        # On Windows, the managed subprocess is cleaned up by the base class.
-        if (
-            self.is_enable_plugin
-            and hasattr(self, 'ctrl')
-            and isinstance(self.ctrl, stdio_client_controller.StdioClientController)
-        ):
-            self.ap.logger.info('Terminating plugin runtime process...')
-            self.ctrl.process.terminate()
-
-        self._dispose_subprocess()
-
+        """Best-effort synchronous compatibility wrapper; prefer ``aclose``."""
+        self._closing = True
         if self.heartbeat_task is not None:
             self.heartbeat_task.cancel()
             self.heartbeat_task = None
+        if self._reconnect_task is not None:
+            self._reconnect_task.cancel()
+            self._reconnect_task = None
+        for task in (
+            getattr(self, 'handler_task', None),
+            self._transport_task,
+        ):
+            if task is not None:
+                task.cancel()
+        ctrl = getattr(self, 'ctrl', None)
+        process = getattr(ctrl, 'process', None)
+        if process is not None and process.returncode is None:
+            process.terminate()
+        self._dispose_subprocess()
 
     @staticmethod
     def _parse_plugin_id(plugin_id: str) -> tuple[str, str]:
@@ -955,29 +2299,47 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             context_data: IngestionContext data.
         """
         plugin_author, plugin_name = self._parse_plugin_id(plugin_id)
-        return await self.handler.rag_ingest_document(plugin_author, plugin_name, context_data)
+        runtime_handler = self._runtime_handler()
+        binding = await self._target_binding(plugin_author, plugin_name)
+        with runtime_handler.installation_scope(binding):
+            return await runtime_handler.rag_ingest_document(plugin_author, plugin_name, context_data)
 
     async def call_rag_delete_document(self, plugin_id: str, document_id: str, kb_id: str) -> bool:
         plugin_author, plugin_name = self._parse_plugin_id(plugin_id)
-        return await self.handler.rag_delete_document(plugin_author, plugin_name, document_id, kb_id)
+        runtime_handler = self._runtime_handler()
+        binding = await self._target_binding(plugin_author, plugin_name)
+        with runtime_handler.installation_scope(binding):
+            return await runtime_handler.rag_delete_document(plugin_author, plugin_name, document_id, kb_id)
 
     async def get_rag_creation_schema(self, plugin_id: str) -> dict[str, Any]:
         plugin_author, plugin_name = self._parse_plugin_id(plugin_id)
-        return await self.handler.get_rag_creation_schema(plugin_author, plugin_name)
+        runtime_handler = self._runtime_handler()
+        binding = await self._target_binding(plugin_author, plugin_name)
+        with runtime_handler.installation_scope(binding):
+            return await runtime_handler.get_rag_creation_schema(plugin_author, plugin_name)
 
     async def get_rag_retrieval_schema(self, plugin_id: str) -> dict[str, Any]:
         plugin_author, plugin_name = self._parse_plugin_id(plugin_id)
-        return await self.handler.get_rag_retrieval_schema(plugin_author, plugin_name)
+        runtime_handler = self._runtime_handler()
+        binding = await self._target_binding(plugin_author, plugin_name)
+        with runtime_handler.installation_scope(binding):
+            return await runtime_handler.get_rag_retrieval_schema(plugin_author, plugin_name)
 
     async def rag_on_kb_create(self, plugin_id: str, kb_id: str, config: dict[str, Any]) -> dict[str, Any]:
         """Notify plugin about KB creation."""
         plugin_author, plugin_name = self._parse_plugin_id(plugin_id)
-        return await self.handler.rag_on_kb_create(plugin_author, plugin_name, kb_id, config)
+        runtime_handler = self._runtime_handler()
+        binding = await self._target_binding(plugin_author, plugin_name)
+        with runtime_handler.installation_scope(binding):
+            return await runtime_handler.rag_on_kb_create(plugin_author, plugin_name, kb_id, config)
 
     async def rag_on_kb_delete(self, plugin_id: str, kb_id: str) -> dict[str, Any]:
         """Notify plugin about KB deletion."""
         plugin_author, plugin_name = self._parse_plugin_id(plugin_id)
-        return await self.handler.rag_on_kb_delete(plugin_author, plugin_name, kb_id)
+        runtime_handler = self._runtime_handler()
+        binding = await self._target_binding(plugin_author, plugin_name)
+        with runtime_handler.installation_scope(binding):
+            return await runtime_handler.rag_on_kb_delete(plugin_author, plugin_name, kb_id)
 
     async def call_rag_retrieve(self, plugin_id: str, retrieval_context: dict[str, Any]) -> dict[str, Any]:
         """Call plugin to retrieve knowledge.
@@ -987,25 +2349,53 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             retrieval_context: RetrievalContext data.
         """
         plugin_author, plugin_name = self._parse_plugin_id(plugin_id)
-        return await self.handler.retrieve_knowledge(plugin_author, plugin_name, '', retrieval_context)
+        runtime_handler = self._runtime_handler()
+        binding = await self._target_binding(plugin_author, plugin_name)
+        with runtime_handler.installation_scope(binding):
+            return await runtime_handler.retrieve_knowledge(plugin_author, plugin_name, '', retrieval_context)
 
     async def list_knowledge_engines(self) -> list[dict[str, Any]]:
         """List all available Knowledge Engines from plugins.
 
         Returns a list of Knowledge Engines with their capabilities and configuration schemas.
         """
-        if not self.is_enable_plugin:
+        if not self.is_enable_plugin or not self._runtime_available():
             return []
 
-        return await self.handler.list_knowledge_engines()
+        runtime_handler = self._runtime_handler()
+        engines: list[dict[str, Any]] = []
+        seen: set[tuple[str, str]] = set()
+        for binding in await self._operation_bindings():
+            with runtime_handler.installation_scope(binding):
+                scoped = await runtime_handler.list_knowledge_engines()
+            for engine in scoped:
+                key = (str(engine.get('plugin_id', '')), str(engine.get('name', '')))
+                if key not in seen:
+                    seen.add(key)
+                    engines.append(engine)
+        return engines
 
     async def list_parsers(self) -> list[dict[str, Any]]:
         """List all available parsers from plugins."""
-        if not self.is_enable_plugin:
+        if not self.is_enable_plugin or not self._runtime_available():
             return []
-        return await self.handler.list_parsers()
+        runtime_handler = self._runtime_handler()
+        parsers: list[dict[str, Any]] = []
+        seen: set[tuple[str, str]] = set()
+        for binding in await self._operation_bindings():
+            with runtime_handler.installation_scope(binding):
+                scoped = await runtime_handler.list_parsers()
+            for parser in scoped:
+                key = (str(parser.get('plugin_id', '')), str(parser.get('name', '')))
+                if key not in seen:
+                    seen.add(key)
+                    parsers.append(parser)
+        return parsers
 
     async def call_parser(self, plugin_id: str, context_data: dict[str, Any], file_bytes: bytes) -> dict[str, Any]:
         """Call plugin to parse a document."""
         plugin_author, plugin_name = self._parse_plugin_id(plugin_id)
-        return await self.handler.parse_document(plugin_author, plugin_name, context_data, file_bytes)
+        runtime_handler = self._runtime_handler()
+        binding = await self._target_binding(plugin_author, plugin_name)
+        with runtime_handler.installation_scope(binding):
+            return await runtime_handler.parse_document(plugin_author, plugin_name, context_data, file_bytes)

@@ -254,6 +254,8 @@ class WecomCSAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         await keep_alive()
 
     async def kill(self) -> bool:
+        self.bot.clear()
+        await self.bot.close()
         return False
 
     async def is_muted(self, group_id: int) -> bool:

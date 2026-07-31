@@ -23,9 +23,13 @@ import { FeedbackStatsCards } from './components/FeedbackCard';
 import { FeedbackList } from './components/FeedbackList';
 import { buildConversationTurns } from './utils/conversationTurns';
 import { LoadingSpinner, LoadingPage } from '@/components/ui/loading-spinner';
+import { useCurrentWorkspace } from '@/app/infra/http';
 
 function MonitoringPageContent() {
   const { t } = useTranslation();
+  const currentWorkspace = useCurrentWorkspace();
+  const canExport =
+    currentWorkspace?.permissions.includes('data.export') ?? false;
   const { filterState, setSelectedBots, setSelectedPipelines, setTimeRange } =
     useMonitoringFilters();
   const { data, loading, refetch } = useMonitoringData(filterState);
@@ -154,7 +158,7 @@ function MonitoringPageContent() {
               onTimeRangeChange={setTimeRange}
             />
             <div className="flex items-center gap-2">
-              <ExportDropdown filterState={filterState} />
+              {canExport && <ExportDropdown filterState={filterState} />}
               <Button
                 variant="outline"
                 size="sm"

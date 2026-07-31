@@ -89,7 +89,7 @@ class QueryEntryAdapter:
             source='host_adapter',
             source_event_type=event.source_event_type,
             bot_id=query.bot_uuid,
-            workspace_id=None,  # Not available in Query
+            workspace_id=getattr(query, 'workspace_uuid', None),
             conversation_id=conversation.conversation_id,
             thread_id=conversation.thread_id,
             actor=actor,

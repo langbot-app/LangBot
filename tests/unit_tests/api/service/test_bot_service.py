@@ -19,6 +19,8 @@ from langbot.pkg.entity.persistence.bot import Bot
 
 pytestmark = pytest.mark.asyncio
 
+WORKSPACE_UUID = 'workspace-a'
+
 
 def _create_mock_bot(
     bot_uuid: str = None,
@@ -52,26 +54,17 @@ def _create_mock_result(items: list = None, first_item=None):
     return result
 
 
-def _compiled_update_values(statement):
-    """Return update values without SQLAlchemy WHERE bind params."""
-    return {key: value for key, value in statement.compile().params.items() if not key.startswith('uuid_')}
-
-
-def _create_mock_discover(adapter_webhook_flags: dict[str, bool] = None):
-    """Create mock ComponentDiscoveryEngine exposing MessagePlatformAdapter manifests.
-
-    adapter_webhook_flags maps adapter name -> whether its manifest declares a
-    webhook-url config item (mirrors _adapter_declares_webhook_url's lookup).
-    """
-    components = []
-    for name, has_webhook in (adapter_webhook_flags or {}).items():
-        component = SimpleNamespace()
-        component.metadata = SimpleNamespace(name=name)
-        component.spec = {'config': ([{'name': 'webhook_url', 'type': 'webhook-url'}] if has_webhook else [])}
-        components.append(component)
-    discover = SimpleNamespace()
-    discover.get_components_by_kind = Mock(return_value=components)
-    return discover
+def _set_discovered_adapters(ap, *webhook_adapters: str) -> None:
+    components = [
+        SimpleNamespace(
+            metadata=SimpleNamespace(name=adapter_name),
+            spec={'config': [{'name': 'webhook', 'type': 'webhook-url'}]},
+        )
+        for adapter_name in webhook_adapters
+    ]
+    ap.discover = SimpleNamespace(
+        get_components_by_kind=Mock(return_value=components)
+    )
 
 
 class TestBotServiceGetBots:
@@ -95,7 +88,9 @@ class TestBotServiceGetBots:
         service = BotService(ap)
 
         # Execute
-        result = await service.get_bots()
+        result = await service.get_bots(
+            WORKSPACE_UUID,
+        )
 
         # Verify
         assert result == []
@@ -123,7 +118,7 @@ class TestBotServiceGetBots:
         service = BotService(ap)
 
         # Execute
-        result = await service.get_bots(include_secret=True)
+        result = await service.get_bots(WORKSPACE_UUID, include_secret=True)
 
         # Verify
         assert len(result) == 2
@@ -152,7 +147,7 @@ class TestBotServiceGetBots:
         service = BotService(ap)
 
         # Execute
-        result = await service.get_bots(include_secret=False)
+        result = await service.get_bots(WORKSPACE_UUID, include_secret=False)
 
         # Verify - adapter_config should be masked
         assert result[0]['adapter_config'] is None
@@ -181,7 +176,7 @@ class TestBotServiceGetBot:
         service = BotService(ap)
 
         # Execute
-        result = await service.get_bot('test-uuid')
+        result = await service.get_bot(WORKSPACE_UUID, 'test-uuid')
 
         # Verify
         assert result is not None
@@ -200,7 +195,7 @@ class TestBotServiceGetBot:
         service = BotService(ap)
 
         # Execute
-        result = await service.get_bot('nonexistent-uuid')
+        result = await service.get_bot(WORKSPACE_UUID, 'nonexistent-uuid')
 
         # Verify
         assert result is None
@@ -225,7 +220,7 @@ class TestBotServiceGetRuntimeBotInfo:
 
         # Execute & Verify
         with pytest.raises(Exception, match='Bot not found'):
-            await service.get_runtime_bot_info('nonexistent-uuid')
+            await service.get_runtime_bot_info(WORKSPACE_UUID, 'nonexistent-uuid')
 
     async def test_get_runtime_bot_info_returns_webhook_for_wecom(self):
         """Returns webhook URL for wecom adapter."""
@@ -241,7 +236,7 @@ class TestBotServiceGetRuntimeBotInfo:
         }
         ap.platform_mgr = SimpleNamespace()
         ap.platform_mgr.get_bot_by_uuid = AsyncMock(return_value=None)
-        ap.discover = _create_mock_discover({'wecom': True})
+        _set_discovered_adapters(ap, 'wecom')
 
         bot_data = {
             'uuid': 'wecom-uuid',
@@ -254,7 +249,7 @@ class TestBotServiceGetRuntimeBotInfo:
         service.get_bot = AsyncMock(return_value=bot_data)
 
         # Execute
-        result = await service.get_runtime_bot_info('wecom-uuid')
+        result = await service.get_runtime_bot_info(WORKSPACE_UUID, 'wecom-uuid')
 
         # Verify
         assert result['adapter_runtime_values']['webhook_url'] == '/bots/wecom-uuid'
@@ -268,7 +263,7 @@ class TestBotServiceGetRuntimeBotInfo:
         ap.instance_config.data = {'api': {}}
         ap.platform_mgr = SimpleNamespace()
         ap.platform_mgr.get_bot_by_uuid = AsyncMock(return_value=None)
-        ap.discover = _create_mock_discover({'telegram': False})
+        _set_discovered_adapters(ap)
 
         bot_data = {
             'uuid': 'telegram-uuid',
@@ -281,7 +276,7 @@ class TestBotServiceGetRuntimeBotInfo:
         service.get_bot = AsyncMock(return_value=bot_data)
 
         # Execute
-        result = await service.get_runtime_bot_info('telegram-uuid')
+        result = await service.get_runtime_bot_info(WORKSPACE_UUID, 'telegram-uuid')
 
         # Verify - no webhook for telegram
         assert result['adapter_runtime_values']['webhook_url'] is None
@@ -294,13 +289,13 @@ class TestBotServiceGetRuntimeBotInfo:
         ap.instance_config = SimpleNamespace()
         ap.instance_config.data = {'api': {}}
         ap.platform_mgr = SimpleNamespace()
+        _set_discovered_adapters(ap)
 
         # Mock runtime bot with adapter
         runtime_bot = SimpleNamespace()
         runtime_bot.adapter = SimpleNamespace()
         runtime_bot.adapter.bot_account_id = 'runtime-account-123'
         ap.platform_mgr.get_bot_by_uuid = AsyncMock(return_value=runtime_bot)
-        ap.discover = _create_mock_discover({'telegram': False})
 
         bot_data = {
             'uuid': 'runtime-uuid',
@@ -313,7 +308,7 @@ class TestBotServiceGetRuntimeBotInfo:
         service.get_bot = AsyncMock(return_value=bot_data)
 
         # Execute
-        result = await service.get_runtime_bot_info('runtime-uuid')
+        result = await service.get_runtime_bot_info(WORKSPACE_UUID, 'runtime-uuid')
 
         # Verify
         assert result['adapter_runtime_values']['bot_account_id'] == 'runtime-account-123'
@@ -343,7 +338,7 @@ class TestBotServiceCreateBot:
 
         # Execute & Verify
         with pytest.raises(ValueError, match='Maximum number of bots'):
-            await service.create_bot({'name': 'New Bot'})
+            await service.create_bot(WORKSPACE_UUID, {'name': 'New Bot'})
 
     async def test_create_bot_no_limit(self):
         """Creates bot without limit check when max_bots=-1."""
@@ -359,8 +354,7 @@ class TestBotServiceCreateBot:
             }
         }
         ap.platform_mgr = SimpleNamespace()
-        runtime_bot = SimpleNamespace(enable=True, run=AsyncMock())
-        ap.platform_mgr.load_bot = AsyncMock(return_value=runtime_bot)
+        ap.platform_mgr.load_bot = AsyncMock()
 
         # Mock pipeline query
         pipeline_result = Mock()
@@ -386,12 +380,59 @@ class TestBotServiceCreateBot:
         service = BotService(ap)
 
         # Execute
-        bot_uuid = await service.create_bot({'name': 'New Bot', 'adapter': 'telegram', 'adapter_config': {}})
+        bot_uuid = await service.create_bot(
+            WORKSPACE_UUID, {'name': 'New Bot', 'adapter': 'telegram', 'adapter_config': {}}
+        )
 
         # Verify
         assert bot_uuid is not None
         assert len(bot_uuid) == 36  # UUID format
-        runtime_bot.run.assert_awaited_once()
+
+    async def test_create_bot_scopes_insert_without_legacy_pipeline_fields(self):
+        """Creates a Workspace-owned Bot without restoring removed pipeline columns."""
+        # Setup
+        ap = SimpleNamespace()
+        ap.persistence_mgr = SimpleNamespace()
+        ap.instance_config = SimpleNamespace()
+        ap.instance_config.data = {'system': {'limitation': {'max_bots': -1}}}
+        ap.platform_mgr = SimpleNamespace()
+        ap.platform_mgr.load_bot = AsyncMock()
+
+        # Mock bot after insert
+        bot_result = Mock()
+        bot_result.first = Mock(return_value=_create_mock_bot())
+
+        call_count = 0
+
+        async def mock_execute(query):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return Mock()  # Insert
+            return bot_result  # Get bot
+
+        ap.persistence_mgr.execute_async = AsyncMock(side_effect=mock_execute)
+        ap.persistence_mgr.serialize_model = Mock(
+            return_value={
+                'uuid': 'new-uuid',
+                'name': 'New Bot',
+            }
+        )
+
+        service = BotService(ap)
+
+        # Execute
+        bot_data = {'name': 'New Bot', 'adapter': 'telegram', 'adapter_config': {}}
+        bot_uuid = await service.create_bot(WORKSPACE_UUID, bot_data)
+
+        # The service owns a copy and cannot mutate caller input while adding tenant data.
+        assert bot_data == {'name': 'New Bot', 'adapter': 'telegram', 'adapter_config': {}}
+        insert_statement = ap.persistence_mgr.execute_async.await_args_list[0].args[0]
+        insert_values = insert_statement.compile().params
+        assert insert_values['workspace_uuid'] == WORKSPACE_UUID
+        assert 'use_pipeline_uuid' not in insert_values
+        assert 'use_pipeline_name' not in insert_values
+        assert bot_uuid is not None  # Verify UUID was returned
 
 
 class TestBotServiceUpdateBot:
@@ -420,499 +461,42 @@ class TestBotServiceUpdateBot:
 
         # Execute
         update_data = {'uuid': 'should-be-removed', 'name': 'Updated Name'}
-        await service.update_bot('test-uuid', update_data)
+        await service.update_bot(WORKSPACE_UUID, 'test-uuid', update_data)
 
         update_params = ap.persistence_mgr.execute_async.await_args_list[0].args[0].compile().params
         assert update_params['name'] == 'Updated Name'
         assert 'should-be-removed' not in update_params.values()
 
-
-class TestBotServiceEventBindings:
-    """Tests for EBA event binding validation and persistence."""
-
-    async def test_normalize_event_bindings_validates_targets_and_preserves_order(self):
-        """Valid bindings are normalized with stable order and target data."""
+    async def test_update_bot_ignores_removed_pipeline_fields(self):
+        """Legacy pipeline fields cannot be written through the current Bot API."""
+        # Setup
         ap = SimpleNamespace()
         ap.persistence_mgr = SimpleNamespace()
-        ap.persistence_mgr.execute_async = AsyncMock(
-            side_effect=[
-                _create_mock_result(first_item=SimpleNamespace(uuid='pipeline-1')),
-                _create_mock_result(
-                    first_item=SimpleNamespace(
-                        uuid='agent-1',
-                        supported_event_patterns=['platform.member.*'],
-                    )
-                ),
-            ]
-        )
-        service = BotService(ap)
 
-        normalized = await service._normalize_event_bindings(
-            [
-                {
-                    'event_pattern': ' message.received ',
-                    'target_type': 'pipeline',
-                    'target_uuid': ' pipeline-1 ',
-                    'filters': [{'field': 'sender.id', 'operator': 'eq', 'value': '1000'}],
-                    'priority': '5',
-                    'enabled': False,
-                    'description': 'Route message events',
-                },
-                {
-                    'id': 'agent-binding',
-                    'event_pattern': 'platform.member.joined',
-                    'target_type': 'agent',
-                    'target_uuid': 'agent-1',
-                    'priority': 7,
-                },
-                {
-                    'event_pattern': 'platform.member.left',
-                    'target_type': 'discard',
-                    'target_uuid': 'ignored-target',
-                },
-            ]
-        )
-
-        uuid.UUID(normalized[0]['id'])
-        assert normalized == [
-            {
-                'id': normalized[0]['id'],
-                'event_pattern': 'message.received',
-                'target_type': 'pipeline',
-                'target_uuid': 'pipeline-1',
-                'filters': [{'field': 'sender.id', 'operator': 'eq', 'value': '1000'}],
-                'priority': 5,
-                'enabled': False,
-                'description': 'Route message events',
-                'order': 0,
-            },
-            {
-                'id': 'agent-binding',
-                'event_pattern': 'platform.member.joined',
-                'target_type': 'agent',
-                'target_uuid': 'agent-1',
-                'filters': [],
-                'priority': 7,
-                'enabled': True,
-                'description': '',
-                'order': 1,
-            },
-            {
-                'id': normalized[2]['id'],
-                'event_pattern': 'platform.member.left',
-                'target_type': 'discard',
-                'target_uuid': '',
-                'filters': [],
-                'priority': 0,
-                'enabled': True,
-                'description': '',
-                'order': 2,
-            },
-        ]
-
-    async def test_normalize_event_bindings_rejects_pipeline_for_non_message_event(self):
-        """Pipeline targets are limited to message events."""
-        ap = SimpleNamespace()
-        ap.persistence_mgr = SimpleNamespace(execute_async=AsyncMock())
-        service = BotService(ap)
-
-        with pytest.raises(ValueError, match='Pipeline can only be bound to message events'):
-            await service._normalize_event_bindings(
-                [
-                    {
-                        'event_pattern': 'platform.member.joined',
-                        'target_type': 'pipeline',
-                        'target_uuid': 'pipeline-1',
-                    }
-                ]
-            )
-
-        ap.persistence_mgr.execute_async.assert_not_awaited()
-
-    @pytest.mark.parametrize(
-        ('agent', 'error'),
-        [
-            (None, 'Agent not found'),
-            (
-                SimpleNamespace(uuid='agent-1', supported_event_patterns=['message.*']),
-                'Agent does not support this event pattern',
-            ),
-        ],
-    )
-    async def test_normalize_event_bindings_rejects_invalid_agent_target(self, agent, error):
-        """Agent targets must exist and support the requested event pattern."""
-        ap = SimpleNamespace()
-        ap.persistence_mgr = SimpleNamespace(
-            execute_async=AsyncMock(return_value=_create_mock_result(first_item=agent))
-        )
-        service = BotService(ap)
-
-        with pytest.raises(ValueError, match=error):
-            await service._normalize_event_bindings(
-                [
-                    {
-                        'event_pattern': 'platform.member.joined',
-                        'target_type': 'agent',
-                        'target_uuid': 'agent-1',
-                    }
-                ]
-            )
-
-    async def test_update_bot_persists_normalized_event_bindings_and_reloads_runtime_bot(self):
-        """update_bot stores normalized bindings before reloading the runtime bot."""
-        ap = SimpleNamespace()
-        ap.persistence_mgr = SimpleNamespace()
-        ap.persistence_mgr.execute_async = AsyncMock(
-            side_effect=[
-                _create_mock_result(
-                    first_item=SimpleNamespace(
-                        uuid='agent-1',
-                        supported_event_patterns=['platform.member.*'],
-                    )
-                ),
-                Mock(),
-            ]
-        )
-        runtime_bot = SimpleNamespace(enable=True, run=AsyncMock())
-        loaded_bot = {'uuid': 'bot-1', 'name': 'Bot with bindings'}
+        ap.persistence_mgr.execute_async = AsyncMock(return_value=Mock())
         ap.platform_mgr = SimpleNamespace(
             remove_bot=AsyncMock(),
-            load_bot=AsyncMock(return_value=runtime_bot),
+            load_bot=AsyncMock(return_value=SimpleNamespace(enable=False)),
         )
-        bot_session = SimpleNamespace(using_conversation=SimpleNamespace(bot_uuid='bot-1'))
-        other_session = SimpleNamespace(using_conversation=SimpleNamespace(bot_uuid='other-bot'))
-        ap.sess_mgr = SimpleNamespace(session_list=[bot_session, other_session])
+        ap.sess_mgr = SimpleNamespace(session_list=[])
+
         service = BotService(ap)
-        service.get_bot = AsyncMock(return_value=loaded_bot)
+        service.get_bot = AsyncMock(return_value={'uuid': 'test-uuid'})
 
         await service.update_bot(
-            'bot-1',
+            WORKSPACE_UUID,
+            'test-uuid',
             {
-                'event_bindings': [
-                    {
-                        'id': 'binding-1',
-                        'event_pattern': 'platform.member.joined',
-                        'target_type': 'agent',
-                        'target_uuid': 'agent-1',
-                        'priority': '9',
-                    }
-                ]
+                'name': 'Updated',
+                'use_pipeline_uuid': 'nonexistent-pipeline',
+                'use_pipeline_name': 'forged-name',
             },
         )
 
-        update_values = _compiled_update_values(ap.persistence_mgr.execute_async.await_args_list[1].args[0])
-        assert update_values['event_bindings'] == [
-            {
-                'id': 'binding-1',
-                'event_pattern': 'platform.member.joined',
-                'target_type': 'agent',
-                'target_uuid': 'agent-1',
-                'filters': [],
-                'priority': 9,
-                'enabled': True,
-                'description': '',
-                'order': 0,
-            }
-        ]
-        ap.platform_mgr.remove_bot.assert_awaited_once_with('bot-1')
-        service.get_bot.assert_awaited_once_with('bot-1')
-        ap.platform_mgr.load_bot.assert_awaited_once_with(loaded_bot)
-        runtime_bot.run.assert_awaited_once()
-        assert bot_session.using_conversation is None
-        assert other_session.using_conversation.bot_uuid == 'other-bot'
-
-
-class TestBotServiceEventRouteDryRun:
-    """Tests for dry-run Bot event route diagnostics."""
-
-    @staticmethod
-    def _make_service(
-        event_bindings: list[dict],
-        *,
-        bot_uuid: str = 'bot-1',
-        persistence_results: list[Mock] | None = None,
-    ) -> BotService:
-        ap = SimpleNamespace()
-        ap.persistence_mgr = SimpleNamespace()
-        ap.persistence_mgr.execute_async = AsyncMock(side_effect=persistence_results or [])
-        service = BotService(ap)
-        service.get_bot = AsyncMock(
-            return_value={
-                'uuid': bot_uuid,
-                'name': 'Dry Run Bot',
-                'event_bindings': event_bindings,
-            }
-        )
-        return service
-
-    async def test_dry_run_event_route_matches_agent(self):
-        """Matching Agent routes return the selected binding without running the Agent."""
-        service = self._make_service(
-            [
-                {
-                    'id': 'agent-binding',
-                    'enabled': True,
-                    'event_pattern': 'platform.member.*',
-                    'target_type': 'agent',
-                    'target_uuid': 'agent-1',
-                    'filters': [{'field': 'room.id', 'operator': 'eq', 'value': 'room-1'}],
-                    'priority': 5,
-                    'order': 0,
-                }
-            ],
-            persistence_results=[
-                _create_mock_result(
-                    first_item=SimpleNamespace(
-                        uuid='agent-1',
-                        kind='agent',
-                        enabled=True,
-                        supported_event_patterns=['platform.member.*'],
-                    )
-                )
-            ],
-        )
-
-        result = await service.dry_run_event_route(
-            'bot-1',
-            'platform.member.joined',
-            event_data={'room': {'id': 'room-1'}},
-        )
-
-        assert result['matched'] is True
-        assert result['binding_id'] == 'agent-binding'
-        assert result['event_pattern'] == 'platform.member.*'
-        assert result['target_type'] == 'agent'
-        assert result['target_uuid'] == 'agent-1'
-        assert result['target']['target_uuid'] == 'agent-1'
-        assert result['target']['target_name'] is None
-        assert result['failure_code'] is None
-        assert result['matched_binding_id'] == 'agent-binding'
-        assert result['matched_binding_index'] == 0
-        assert result['diagnostic_details'][0]['selected'] is True
-        assert result['diagnostic_steps'][0].startswith('Route 1')
-
-    async def test_dry_run_event_route_matches_discard(self):
-        """Discard routes are terminal dry-run matches and do not query processors."""
-        service = self._make_service(
-            [
-                {
-                    'id': 'discard-binding',
-                    'enabled': True,
-                    'event_pattern': '*',
-                    'target_type': 'discard',
-                    'target_uuid': '',
-                    'priority': 0,
-                    'order': 0,
-                }
-            ]
-        )
-
-        result = await service.dry_run_event_route('bot-1', 'platform.member.left')
-
-        assert result['matched'] is True
-        assert result['binding_id'] == 'discard-binding'
-        assert result['target_type'] == 'discard'
-        assert result['target']['kind'] == 'discard'
-        assert result['failure_code'] is None
-        service.ap.persistence_mgr.execute_async.assert_not_awaited()
-
-    async def test_dry_run_event_route_returns_route_not_found_when_no_binding_matches(self):
-        """Pattern/filter misses return route_not_found."""
-        service = self._make_service(
-            [
-                {
-                    'id': 'wrong-event',
-                    'enabled': True,
-                    'event_pattern': 'message.received',
-                    'target_type': 'agent',
-                    'target_uuid': 'agent-1',
-                    'priority': 0,
-                    'order': 0,
-                }
-            ]
-        )
-
-        result = await service.dry_run_event_route('bot-1', 'platform.member.joined')
-
-        assert result['matched'] is False
-        assert result['binding_id'] is None
-        assert result['failure_code'] == 'route_not_found'
-        assert result['target'] is None
-        assert result['diagnostic_details'][0]['failure_code'] == 'event_pattern_mismatch'
-        assert 'skipped' in result['diagnostic_steps'][0]
-        service.ap.persistence_mgr.execute_async.assert_not_awaited()
-
-    async def test_dry_run_event_route_reports_disabled_binding_without_matching(self):
-        """Disabled bindings are diagnosed but never selected."""
-        service = self._make_service(
-            [
-                {
-                    'id': 'disabled-binding',
-                    'enabled': False,
-                    'event_pattern': 'platform.member.joined',
-                    'target_type': 'agent',
-                    'target_uuid': 'agent-1',
-                    'priority': 100,
-                    'order': 0,
-                }
-            ]
-        )
-
-        result = await service.dry_run_event_route('bot-1', 'platform.member.joined')
-
-        assert result['matched'] is False
-        assert result['failure_code'] == 'route_not_found'
-        assert result['diagnostic_details'][0]['binding_id'] == 'disabled-binding'
-        assert result['diagnostic_details'][0]['failure_code'] == 'binding_disabled'
-        service.ap.persistence_mgr.execute_async.assert_not_awaited()
-
-    async def test_dry_run_event_route_rejects_pipeline_for_non_message_event(self):
-        """Pipeline targets cannot dry-run match non-message events."""
-        service = self._make_service(
-            [
-                {
-                    'id': 'pipeline-binding',
-                    'enabled': True,
-                    'event_pattern': 'platform.member.joined',
-                    'target_type': 'pipeline',
-                    'target_uuid': 'pipeline-1',
-                    'priority': 0,
-                    'order': 0,
-                }
-            ]
-        )
-
-        result = await service.dry_run_event_route('bot-1', 'platform.member.joined')
-
-        assert result['matched'] is False
-        assert result['binding_id'] == 'pipeline-binding'
-        assert result['target_type'] == 'pipeline'
-        assert result['failure_code'] == 'processor_incompatible'
-        assert result['diagnostic_details'][-1]['step'] == 'validate_processor'
-        service.ap.persistence_mgr.execute_async.assert_not_awaited()
-
-    async def test_dry_run_event_route_rejects_incompatible_agent(self):
-        """Agent targets must support the incoming event type."""
-        service = self._make_service(
-            [
-                {
-                    'id': 'agent-binding',
-                    'enabled': True,
-                    'event_pattern': 'platform.member.joined',
-                    'target_type': 'agent',
-                    'target_uuid': 'agent-1',
-                    'priority': 0,
-                    'order': 0,
-                }
-            ],
-            persistence_results=[
-                _create_mock_result(
-                    first_item=SimpleNamespace(
-                        uuid='agent-1',
-                        kind='agent',
-                        enabled=True,
-                        supported_event_patterns=['message.*'],
-                    )
-                )
-            ],
-        )
-
-        result = await service.dry_run_event_route('bot-1', 'platform.member.joined')
-
-        assert result['matched'] is False
-        assert result['binding_id'] == 'agent-binding'
-        assert result['target_type'] == 'agent'
-        assert result['failure_code'] == 'processor_incompatible'
-        assert result['diagnostic_details'][-1]['failure_code'] == 'processor_incompatible'
-
-    async def test_dry_run_event_route_reports_disabled_agent(self):
-        """Disabled Agent targets return processor_disabled."""
-        service = self._make_service(
-            [
-                {
-                    'id': 'agent-binding',
-                    'enabled': True,
-                    'event_pattern': 'platform.member.joined',
-                    'target_type': 'agent',
-                    'target_uuid': 'agent-1',
-                    'priority': 0,
-                    'order': 0,
-                }
-            ],
-            persistence_results=[
-                _create_mock_result(
-                    first_item=SimpleNamespace(
-                        uuid='agent-1',
-                        kind='agent',
-                        enabled=False,
-                        supported_event_patterns=['*'],
-                    )
-                )
-            ],
-        )
-
-        result = await service.dry_run_event_route('bot-1', 'platform.member.joined')
-
-        assert result['matched'] is False
-        assert result['failure_code'] == 'processor_disabled'
-        assert result['diagnostic_details'][-1]['failure_code'] == 'processor_disabled'
-
-    async def test_dry_run_event_route_reports_missing_pipeline(self):
-        """Missing Pipeline targets return processor_not_found."""
-        service = self._make_service(
-            [
-                {
-                    'id': 'pipeline-binding',
-                    'enabled': True,
-                    'event_pattern': 'message.received',
-                    'target_type': 'pipeline',
-                    'target_uuid': 'pipeline-1',
-                    'priority': 0,
-                    'order': 0,
-                }
-            ],
-            persistence_results=[_create_mock_result(first_item=None)],
-        )
-
-        result = await service.dry_run_event_route('bot-1', 'message.received')
-
-        assert result['matched'] is False
-        assert result['failure_code'] == 'processor_not_found'
-        assert result['diagnostic_details'][-1]['failure_code'] == 'processor_not_found'
-
-    async def test_dry_run_event_route_uses_draft_event_bindings(self):
-        """Draft bindings from the UI can be tested before saving the bot."""
-        service = self._make_service(
-            [
-                {
-                    'id': 'saved-binding',
-                    'enabled': True,
-                    'event_pattern': 'message.received',
-                    'target_type': 'discard',
-                    'priority': 0,
-                    'order': 0,
-                }
-            ]
-        )
-
-        result = await service.dry_run_event_route(
-            'bot-1',
-            'platform.member.joined',
-            event_bindings=[
-                {
-                    'id': 'draft-binding',
-                    'event_pattern': 'platform.member.joined',
-                    'target_type': 'discard',
-                    'enabled': True,
-                    'priority': 0,
-                }
-            ],
-        )
-
-        assert result['matched'] is True
-        assert result['binding_id'] == 'draft-binding'
-        assert result['matched_binding_index'] == 0
-        assert result['target']['kind'] == 'discard'
+        update_params = ap.persistence_mgr.execute_async.await_args.args[0].compile().params
+        assert update_params['name'] == 'Updated'
+        assert 'use_pipeline_uuid' not in update_params
+        assert 'use_pipeline_name' not in update_params
 
 
 class TestBotServiceDeleteBot:
@@ -928,12 +512,13 @@ class TestBotServiceDeleteBot:
         ap.platform_mgr.remove_bot = AsyncMock()
 
         service = BotService(ap)
+        service.get_bot = AsyncMock(return_value={'uuid': 'bot-uuid'})
 
         # Execute
-        await service.delete_bot('test-uuid')
+        await service.delete_bot(WORKSPACE_UUID, 'test-uuid')
 
         # Verify
-        ap.platform_mgr.remove_bot.assert_called_once_with('test-uuid')
+        ap.platform_mgr.remove_bot.assert_called_once_with(WORKSPACE_UUID, 'test-uuid')
         ap.persistence_mgr.execute_async.assert_called_once()
 
     async def test_delete_bot_nonexistent_uuid(self):
@@ -946,9 +531,10 @@ class TestBotServiceDeleteBot:
         ap.platform_mgr.remove_bot = AsyncMock()
 
         service = BotService(ap)
+        service.get_bot = AsyncMock(return_value={'uuid': 'bot-uuid'})
 
         # Execute - should not raise
-        await service.delete_bot('nonexistent-uuid')
+        await service.delete_bot(WORKSPACE_UUID, 'nonexistent-uuid')
 
         # Verify - both called regardless
         ap.platform_mgr.remove_bot.assert_called_once()
@@ -965,10 +551,11 @@ class TestBotServiceListEventLogs:
         ap.platform_mgr.get_bot_by_uuid = AsyncMock(return_value=None)
 
         service = BotService(ap)
+        service.get_bot = AsyncMock(return_value={'uuid': 'nonexistent-uuid'})
 
         # Execute & Verify
         with pytest.raises(Exception, match='Bot not found'):
-            await service.list_event_logs('nonexistent-uuid', 0, 10)
+            await service.list_event_logs(WORKSPACE_UUID, 'nonexistent-uuid', 0, 10)
 
     async def test_list_event_logs_returns_logs(self):
         """Returns logs from runtime bot logger."""
@@ -985,200 +572,15 @@ class TestBotServiceListEventLogs:
         ap.platform_mgr.get_bot_by_uuid = AsyncMock(return_value=runtime_bot)
 
         service = BotService(ap)
+        service.get_bot = AsyncMock(return_value={'uuid': 'bot-uuid'})
 
         # Execute
-        logs, total = await service.list_event_logs('bot-uuid', 0, 10)
+        logs, total = await service.list_event_logs(WORKSPACE_UUID, 'bot-uuid', 0, 10)
 
         # Verify
         assert len(logs) == 1
         assert logs[0] == {'msg': 'log1'}
         assert total == 5
-
-
-class TestBotServiceEventRouteStatuses:
-    """Tests for event route runtime status aggregation."""
-
-    async def test_list_event_route_statuses_bot_not_found_raises(self):
-        """Raises Exception when runtime bot not found."""
-        ap = SimpleNamespace()
-        ap.platform_mgr = SimpleNamespace()
-        ap.platform_mgr.get_bot_by_uuid = AsyncMock(return_value=None)
-
-        service = BotService(ap)
-
-        with pytest.raises(Exception, match='Bot not found'):
-            await service.list_event_route_statuses('missing-bot')
-
-    async def test_list_event_route_statuses_merges_latest_trace_by_binding(self):
-        """Current route definitions are enriched with the latest trace log."""
-        ap = SimpleNamespace()
-        ap.platform_mgr = SimpleNamespace()
-
-        runtime_bot = SimpleNamespace()
-        runtime_bot.bot_entity = SimpleNamespace(
-            event_bindings=[
-                {
-                    'id': 'binding-1',
-                    'event_pattern': 'platform.member.joined',
-                    'target_type': 'agent',
-                    'target_uuid': 'agent-1',
-                    'enabled': True,
-                    'order': 0,
-                },
-                {
-                    'id': 'binding-2',
-                    'event_pattern': 'message.received',
-                    'target_type': 'pipeline',
-                    'target_uuid': 'pipeline-1',
-                    'enabled': False,
-                    'order': 1,
-                },
-            ]
-        )
-        runtime_bot.logger = SimpleNamespace(
-            logs=[
-                SimpleNamespace(
-                    to_json=Mock(
-                        return_value={
-                            'seq_id': 1,
-                            'timestamp': 100,
-                            'level': 'info',
-                            'text': 'old matched',
-                            'metadata': {
-                                'kind': 'event_route_trace',
-                                'binding_id': 'binding-1',
-                                'event_pattern': 'platform.member.joined',
-                                'event_type': 'platform.member.joined',
-                                'target_type': 'agent',
-                                'target_uuid': 'agent-1',
-                                'status': 'matched',
-                                'failure_code': None,
-                                'reason': 'matched',
-                                'run_id': None,
-                            },
-                        }
-                    )
-                ),
-                SimpleNamespace(
-                    to_json=Mock(
-                        return_value={
-                            'seq_id': 2,
-                            'timestamp': 120,
-                            'level': 'error',
-                            'text': 'runner failed',
-                            'metadata': {
-                                'kind': 'event_route_trace',
-                                'binding_id': 'binding-1',
-                                'event_pattern': 'platform.member.joined',
-                                'event_type': 'platform.member.joined',
-                                'target_type': 'agent',
-                                'target_uuid': 'agent-1',
-                                'status': 'failed',
-                                'failure_code': 'runner_failed',
-                                'reason': 'Agent runner failed',
-                                'run_id': None,
-                            },
-                        }
-                    )
-                ),
-                SimpleNamespace(
-                    to_json=Mock(
-                        return_value={
-                            'seq_id': 3,
-                            'timestamp': 130,
-                            'level': 'info',
-                            'text': 'no route',
-                            'metadata': {
-                                'kind': 'event_route_trace',
-                                'binding_id': None,
-                                'event_pattern': None,
-                                'event_type': 'platform.member.left',
-                                'target_type': None,
-                                'target_uuid': '',
-                                'status': 'not_matched',
-                                'failure_code': 'route_not_found',
-                                'reason': 'No event route matched',
-                                'run_id': None,
-                            },
-                        }
-                    )
-                ),
-            ]
-        )
-        ap.platform_mgr.get_bot_by_uuid = AsyncMock(return_value=runtime_bot)
-
-        service = BotService(ap)
-        result = await service.list_event_route_statuses('bot-1')
-
-        assert len(result['routes']) == 2
-        assert result['routes'][0]['binding_id'] == 'binding-1'
-        assert result['routes'][0]['last_status'] == 'failed'
-        assert result['routes'][0]['failure_code'] == 'runner_failed'
-        assert result['routes'][0]['timestamp'] == 120
-        assert result['routes'][0]['current'] is True
-        assert result['routes'][1]['binding_id'] == 'binding-2'
-        assert result['routes'][1]['last_status'] is None
-        assert result['routes'][1]['enabled'] is False
-        assert result['unmatched_events'][0]['event_type'] == 'platform.member.left'
-        assert result['unmatched_events'][0]['failure_code'] == 'route_not_found'
-
-
-class TestBotServiceDispatchTestEventRoute:
-    """Tests for synthetic Bot route test dispatch."""
-
-    async def test_dispatch_test_event_route_rejects_invalid_event_type(self):
-        """Missing event_type returns a non-dispatched test result."""
-        service = BotService(SimpleNamespace())
-
-        result = await service.dispatch_test_event_route('bot-1', '', {})
-
-        assert result['dispatched'] is False
-        assert result['failure_code'] == 'invalid_event'
-        assert result['reason'] == 'event_type is required'
-        assert result['route_status']['routes'] == []
-
-    async def test_dispatch_test_event_route_rejects_non_object_payload(self):
-        """Payload must be a JSON object."""
-        service = BotService(SimpleNamespace())
-
-        result = await service.dispatch_test_event_route('bot-1', 'message.received', [])  # type: ignore[arg-type]
-
-        assert result['dispatched'] is False
-        assert result['failure_code'] == 'invalid_event'
-        assert result['reason'] == 'payload must be an object'
-        assert result['route_status']['routes'] == []
-
-    async def test_dispatch_test_event_route_calls_runtime_and_returns_status(self):
-        """Synthetic route tests run against the runtime bot and return route status."""
-        ap = SimpleNamespace()
-        ap.platform_mgr = SimpleNamespace()
-        runtime_bot = SimpleNamespace()
-        runtime_bot.dispatch_test_event = AsyncMock(
-            return_value={
-                'event_type': 'message.received',
-                'dispatched': True,
-                'status': 'delivered',
-                'binding_id': 'binding-1',
-                'failure_code': None,
-                'reason': 'Delivered to processor',
-                'suppressed_outputs': [{'method': 'send_message'}],
-            }
-        )
-        runtime_bot.bot_entity = SimpleNamespace(event_bindings=[])
-        runtime_bot.logger = SimpleNamespace(logs=[])
-        ap.platform_mgr.get_bot_by_uuid = AsyncMock(return_value=runtime_bot)
-
-        service = BotService(ap)
-        result = await service.dispatch_test_event_route('bot-1', 'message.received', {'message_text': 'hello'})
-
-        runtime_bot.dispatch_test_event.assert_awaited_once_with('message.received', {'message_text': 'hello'})
-        assert result['dispatched'] is True
-        assert result['status'] == 'delivered'
-        assert result['binding_id'] == 'binding-1'
-        assert result['reason'] == 'Delivered to processor'
-        assert result['event_type'] == 'message.received'
-        assert result['suppressed_outputs'] == [{'method': 'send_message'}]
-        assert result['route_status']['routes'] == []
 
 
 class TestBotServiceSendMessage:
@@ -1192,10 +594,11 @@ class TestBotServiceSendMessage:
         ap.platform_mgr.get_bot_by_uuid = AsyncMock(return_value=None)
 
         service = BotService(ap)
+        service.get_bot = AsyncMock(return_value={'uuid': 'nonexistent-uuid'})
 
         # Execute & Verify
         with pytest.raises(Exception, match='Bot not found'):
-            await service.send_message('nonexistent-uuid', 'group', '123', {'test': 'data'})
+            await service.send_message(WORKSPACE_UUID, 'nonexistent-uuid', 'group', '123', {'test': 'data'})
 
     async def test_send_message_invalid_message_chain_raises(self):
         """Raises Exception when message_chain_data is invalid."""
@@ -1209,10 +612,11 @@ class TestBotServiceSendMessage:
         ap.platform_mgr.get_bot_by_uuid = AsyncMock(return_value=runtime_bot)
 
         service = BotService(ap)
+        service.get_bot = AsyncMock(return_value={'uuid': 'bot-uuid'})
 
         # Execute & Verify - invalid format should raise
         with pytest.raises(Exception, match='Invalid message_chain format'):
-            await service.send_message('bot-uuid', 'group', '123', {'invalid': 'format'})
+            await service.send_message(WORKSPACE_UUID, 'bot-uuid', 'group', '123', {'invalid': 'format'})
 
     async def test_send_message_valid_call(self):
         """Sends message through adapter when all valid."""
@@ -1226,6 +630,7 @@ class TestBotServiceSendMessage:
         ap.platform_mgr.get_bot_by_uuid = AsyncMock(return_value=runtime_bot)
 
         service = BotService(ap)
+        service.get_bot = AsyncMock(return_value={'uuid': 'bot-uuid'})
 
         # Execute with valid message chain format
         message_chain_data = {'messages': [{'type': 'text', 'data': {'text': 'Hello'}}]}
@@ -1234,7 +639,7 @@ class TestBotServiceSendMessage:
         with patch('langbot_plugin.api.entities.builtin.platform.message.MessageChain') as MockMessageChain:
             mock_chain = Mock()
             MockMessageChain.model_validate = Mock(return_value=mock_chain)
-            await service.send_message('bot-uuid', 'group', '123', message_chain_data)
+            await service.send_message(WORKSPACE_UUID, 'bot-uuid', 'group', '123', message_chain_data)
 
         # Verify adapter.send_message was called
         runtime_bot.adapter.send_message.assert_called_once_with('group', '123', mock_chain)

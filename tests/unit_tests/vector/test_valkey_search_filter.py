@@ -31,6 +31,7 @@ def make_backend():
     # _ensure_client serializes creation through this lock; set it here since
     # __init__ (which normally creates it) is bypassed.
     backend._client_lock = asyncio.Lock()
+    backend._runtime_cache_limit = 1024
     return backend
 
 
@@ -267,9 +268,9 @@ class TestDeleteByFilterGuard:
         backend.ap = type('Ap', (), {'logger': AsyncMock()})()
         backend._ensure_client = AsyncMock(return_value=backend._client)
         backend._index_exists = AsyncMock(return_value=True)
-        # _search_keys must never be reached for an unusable filter.
-        backend._search_keys = AsyncMock(
-            side_effect=AssertionError('_search_keys must not be called for an unusable filter')
+        # The deletion scan must never be reached for an unusable filter.
+        backend._delete_search_results = AsyncMock(
+            side_effect=AssertionError('_delete_search_results must not be called for an unusable filter')
         )
 
         # Filter references only a non-indexed field -> maps to no FT conditions.
@@ -284,12 +285,57 @@ class TestDeleteByFilterGuard:
         backend.ap = type('Ap', (), {'logger': AsyncMock()})()
         backend._ensure_client = AsyncMock(return_value=backend._client)
         backend._index_exists = AsyncMock(return_value=True)
-        backend._search_keys = AsyncMock(return_value=['kb:col1:id1', 'kb:col1:id2'])
+        backend._delete_search_results = AsyncMock(return_value=2)
 
         deleted = await backend.delete_by_filter('col1', {'file_id': 'f1'})
 
         assert deleted == 2
-        backend._client.delete.assert_awaited_once_with(['kb:col1:id1', 'kb:col1:id2'])
+        backend._delete_search_results.assert_awaited_once_with(
+            backend._client,
+            backend._index_name('col1'),
+            '@file_id:{f1}',
+        )
+
+
+class TestBatchedDelete:
+    async def test_matching_keys_are_deleted_in_fixed_pages(self, monkeypatch):
+        mod = get_valkey_module()
+        backend = make_backend()
+        client = AsyncMock()
+        search = AsyncMock(
+            side_effect=[
+                [3, {b'key-1': {}, b'key-2': {}}],
+                [1, {b'key-3': {}}],
+            ]
+        )
+        monkeypatch.setattr(mod, '_DELETE_SCAN_BATCH', 2)
+        monkeypatch.setattr(mod, 'FtSearchLimit', lambda offset, limit: (offset, limit), raising=False)
+        monkeypatch.setattr(mod, 'FtSearchOptions', lambda **kwargs: kwargs, raising=False)
+        monkeypatch.setattr(mod, 'ft', type('FT', (), {'search': search})(), raising=False)
+
+        deleted = await backend._delete_search_results(client, 'idx:col1', '@file_id:{f1}')
+
+        assert deleted == 3
+        assert search.await_count == 2
+        assert [call.args[3]['limit'] for call in search.await_args_list] == [(0, 2), (0, 2)]
+        assert client.delete.await_args_list[0].args == (['key-1', 'key-2'],)
+        assert client.delete.await_args_list[1].args == (['key-3'],)
+
+    async def test_delete_rounds_have_a_hard_stop(self, monkeypatch):
+        mod = get_valkey_module()
+        backend = make_backend()
+        client = AsyncMock()
+        search = AsyncMock(return_value=[2, {b'key': {}}])
+        monkeypatch.setattr(mod, '_DELETE_SCAN_BATCH', 1)
+        monkeypatch.setattr(mod, '_MAX_DELETE_SCAN_ROUNDS', 2)
+        monkeypatch.setattr(mod, 'FtSearchLimit', lambda offset, limit: (offset, limit), raising=False)
+        monkeypatch.setattr(mod, 'FtSearchOptions', lambda **kwargs: kwargs, raising=False)
+        monkeypatch.setattr(mod, 'ft', type('FT', (), {'search': search})(), raising=False)
+
+        with pytest.raises(RuntimeError, match='exceeded 2 batches'):
+            await backend._delete_search_results(client, 'idx:col1', '@file_id:{f1}')
+
+        assert client.delete.await_count == 2
 
 
 class TestClose:

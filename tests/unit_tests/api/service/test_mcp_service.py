@@ -13,16 +13,61 @@ Source: src/langbot/pkg/api/http/service/mcp.py
 
 from __future__ import annotations
 
+import asyncio
+import copy
 import pytest
 from unittest.mock import AsyncMock, Mock, MagicMock
 from types import SimpleNamespace
 import uuid
 
-from langbot.pkg.api.http.service.mcp import MCPService
+from langbot.pkg.api.http.authz import Permission
+from langbot.pkg.api.http.context import (
+    ExecutionContext,
+    PrincipalContext,
+    PrincipalType,
+    RequestContext,
+    WorkspaceContext,
+)
+from langbot.pkg.api.http.service.mcp import MCPService, redact_mcp_secrets, restore_mcp_secret_placeholders
+from langbot.pkg.core.taskmgr import TaskCapacityError
 from langbot.pkg.entity.persistence.mcp import MCPServer
+from langbot.pkg.provider.tools.loaders.mcp_policy import MCPStdioDisabledError
+from langbot.pkg.workspace.errors import WorkspaceNotFoundError
 
 
 pytestmark = pytest.mark.asyncio
+
+_CONTEXT = ExecutionContext(
+    instance_uuid='instance-a',
+    workspace_uuid='workspace-a',
+    placement_generation=1,
+)
+
+_VIEWER_CONTEXT = RequestContext(
+    instance_uuid='instance-a',
+    placement_generation=1,
+    request_id='request-a',
+    auth_type='user_token',
+    principal=PrincipalContext(
+        principal_type=PrincipalType.ACCOUNT,
+        account_uuid='account-a',
+    ),
+    workspace=WorkspaceContext(
+        workspace_uuid='workspace-a',
+        membership_uuid='membership-a',
+        role='viewer',
+        permissions=frozenset({Permission.RESOURCE_VIEW.value}),
+    ),
+)
+
+
+def _service(ap: SimpleNamespace) -> MCPService:
+    ap.workspace_service = SimpleNamespace(
+        get_execution_binding=AsyncMock(return_value=SimpleNamespace(instance_uuid=_CONTEXT.instance_uuid))
+    )
+    if not hasattr(ap, 'logger'):
+        ap.logger = Mock()
+    return MCPService(ap)
 
 
 def _create_mock_mcp_server(
@@ -42,11 +87,13 @@ def _create_mock_mcp_server(
     return server
 
 
-def _create_mock_result(items: list = None, first_item=None):
+def _create_mock_result(items: list = None, first_item=None, *, scalar_value=0, rowcount=1):
     """Create mock result object for persistence queries."""
     result = Mock()
     result.all = Mock(return_value=items or [])
     result.first = Mock(return_value=first_item)
+    result.scalar = Mock(return_value=scalar_value)
+    result.rowcount = rowcount
     return result
 
 
@@ -64,10 +111,10 @@ class TestMCPServiceGetRuntimeInfo:
         mock_session.get_runtime_info_dict = Mock(return_value={'status': 'running', 'tools': 5})
         ap.tool_mgr.mcp_tool_loader.get_session = Mock(return_value=mock_session)
 
-        service = MCPService(ap)
+        service = _service(ap)
 
         # Execute
-        result = await service.get_runtime_info('test-server')
+        result = await service.get_runtime_info(_CONTEXT, 'test-server')
 
         # Verify
         assert result is not None
@@ -81,10 +128,10 @@ class TestMCPServiceGetRuntimeInfo:
         ap.tool_mgr.mcp_tool_loader = SimpleNamespace()
         ap.tool_mgr.mcp_tool_loader.get_session = Mock(return_value=None)
 
-        service = MCPService(ap)
+        service = _service(ap)
 
         # Execute
-        result = await service.get_runtime_info('nonexistent-server')
+        result = await service.get_runtime_info(_CONTEXT, 'nonexistent-server')
 
         # Verify
         assert result is None
@@ -101,12 +148,13 @@ class TestMCPServiceResources:
             return_value=[{'uri_template': 'file:///{path}', 'name': 'files'}]
         )
 
-        service = MCPService(ap)
+        service = _service(ap)
+        service._require_server = AsyncMock(return_value=(_CONTEXT, {'name': 'docs'}))
 
-        result = await service.get_mcp_server_resource_templates('docs')
+        result = await service.get_mcp_server_resource_templates(_CONTEXT, 'docs')
 
         assert result == [{'uri_template': 'file:///{path}', 'name': 'files'}]
-        ap.tool_mgr.mcp_tool_loader.get_resource_templates.assert_awaited_once_with('docs')
+        ap.tool_mgr.mcp_tool_loader.get_resource_templates.assert_awaited_once_with(_CONTEXT, 'docs')
 
     async def test_read_resource_envelope_uses_ui_preview_source(self):
         ap = SimpleNamespace()
@@ -121,9 +169,11 @@ class TestMCPServiceResources:
             }
         )
 
-        service = MCPService(ap)
+        service = _service(ap)
+        service._require_server = AsyncMock(return_value=(_CONTEXT, {'name': 'docs'}))
 
         result = await service.read_mcp_server_resource_envelope(
+            _CONTEXT,
             'docs',
             'file:///README.md',
             max_bytes=4096,
@@ -132,6 +182,7 @@ class TestMCPServiceResources:
 
         assert result['source'] == 'ui_preview'
         ap.tool_mgr.mcp_tool_loader.read_resource_envelope.assert_awaited_once_with(
+            _CONTEXT,
             'docs',
             'file:///README.md',
             include_blob=True,
@@ -156,12 +207,12 @@ class TestMCPServiceGetMCPServers:
                 'name': entity.name,
             }
         )
-        ap.tool_mgr = None
+        ap.tool_mgr = SimpleNamespace(mcp_tool_loader=SimpleNamespace(get_session=Mock(return_value=None)))
 
-        service = MCPService(ap)
+        service = _service(ap)
 
         # Execute
-        result = await service.get_mcp_servers()
+        result = await service.get_mcp_servers(_CONTEXT)
 
         # Verify
         assert result == []
@@ -185,12 +236,12 @@ class TestMCPServiceGetMCPServers:
                 'mode': entity.mode,
             }
         )
-        ap.tool_mgr = None
+        ap.tool_mgr = SimpleNamespace(mcp_tool_loader=SimpleNamespace(get_session=Mock(return_value=None)))
 
-        service = MCPService(ap)
+        service = _service(ap)
 
         # Execute
-        result = await service.get_mcp_servers()
+        result = await service.get_mcp_servers(_CONTEXT)
 
         # Verify
         assert len(result) == 2
@@ -215,20 +266,114 @@ class TestMCPServiceGetMCPServers:
         )
         ap.tool_mgr = SimpleNamespace()
         ap.tool_mgr.mcp_tool_loader = SimpleNamespace()
-        ap.tool_mgr.mcp_tool_loader.get_session = Mock(return_value=None)
+        runtime_session = SimpleNamespace(get_runtime_info_dict=Mock(return_value={'status': 'connected'}))
+        ap.tool_mgr.mcp_tool_loader.get_session = Mock(return_value=runtime_session)
 
-        service = MCPService(ap)
-        service.get_runtime_info = AsyncMock(return_value={'status': 'connected'})
+        service = _service(ap)
 
         # Execute
-        result = await service.get_mcp_servers(contain_runtime_info=True)
+        result = await service.get_mcp_servers(_CONTEXT, contain_runtime_info=True)
 
         # Verify - runtime info included
         assert result[0]['runtime_info'] == {'status': 'connected'}
 
+    async def test_resource_view_list_and_detail_redact_secrets_without_mutating_raw_data(self):
+        ap = SimpleNamespace()
+        ap.persistence_mgr = SimpleNamespace()
+        server = _create_mock_mcp_server(name='Secret Server')
+        serialized = {
+            'uuid': 'secret-uuid',
+            'name': 'Secret Server',
+            'enable': True,
+            'extra_args': {
+                'url': (
+                    'https://mcp-user:mcp-password@mcp.invalid/connect'
+                    '?token=url-secret&transport=streamable&sig=signed-secret'
+                ),
+                'headers': {
+                    'Authorization': 'Bearer top-secret',
+                    'X-API-Key': 'api-secret',
+                    'Accept': 'application/json',
+                },
+                'env': {
+                    'ACCESS_TOKEN': 'access-secret',
+                    'TOKENIZER': 'public-model-name',
+                },
+                'credentials': {
+                    'username': 'service-user',
+                    'password': 'password-secret',
+                },
+                'public_key': 'public-value',
+            },
+        }
+        original = copy.deepcopy(serialized)
+        ap.persistence_mgr.execute_async = AsyncMock(
+            side_effect=[
+                _create_mock_result([server]),
+                _create_mock_result(first_item=server),
+            ]
+        )
+        ap.persistence_mgr.serialize_model = Mock(return_value=serialized)
+        ap.tool_mgr = SimpleNamespace(mcp_tool_loader=SimpleNamespace(get_session=Mock(return_value=None)))
+        service = _service(ap)
+
+        listed = await service.get_mcp_servers(_VIEWER_CONTEXT)
+        detail = await service.get_mcp_server_by_name(_VIEWER_CONTEXT, 'Secret Server')
+
+        for response in (listed[0], detail):
+            assert response['extra_args']['url'] == (
+                'https://***@mcp.invalid/connect?token=***&transport=streamable&sig=***'
+            )
+            assert response['extra_args']['headers'] == {
+                'Authorization': '***',
+                'X-API-Key': '***',
+                'Accept': 'application/json',
+            }
+            assert response['extra_args']['env'] == {
+                'ACCESS_TOKEN': '***',
+                'TOKENIZER': 'public-model-name',
+            }
+            assert response['extra_args']['credentials'] == {
+                'username': '***',
+                'password': '***',
+            }
+            assert response['extra_args']['public_key'] == 'public-value'
+        assert serialized == original
+
+    async def test_redacted_url_roundtrip_restores_persisted_credentials(self):
+        persisted = {
+            'extra_args': {'url': 'https://mcp-user:mcp-password@mcp.invalid/connect?token=url-secret&transport=http'}
+        }
+
+        submitted = redact_mcp_secrets(persisted)
+
+        assert submitted['extra_args']['url'] == 'https://***@mcp.invalid/connect?token=***&transport=http'
+        assert restore_mcp_secret_placeholders(submitted, persisted) == persisted
+
 
 class TestMCPServiceCreateMCPServer:
     """Tests for create_mcp_server method."""
+
+    async def test_create_stdio_rejected_by_independent_instance_gate(self):
+        ap = SimpleNamespace(
+            instance_config=SimpleNamespace(
+                data={
+                    'mcp': {'stdio': {'enabled': False}},
+                    'system': {'limitation': {'max_extensions': -1}},
+                }
+            ),
+            persistence_mgr=SimpleNamespace(execute_async=AsyncMock()),
+            tool_mgr=None,
+        )
+        service = _service(ap)
+
+        with pytest.raises(MCPStdioDisabledError, match='disabled by instance policy'):
+            await service.create_mcp_server(
+                _CONTEXT,
+                {'name': 'local', 'mode': 'stdio', 'enable': True, 'extra_args': {}},
+            )
+
+        ap.persistence_mgr.execute_async.assert_not_awaited()
 
     async def test_create_mcp_server_max_extensions_reached_raises(self):
         """Raises ValueError when max_extensions limit reached."""
@@ -241,16 +386,20 @@ class TestMCPServiceCreateMCPServer:
         ap.plugin_connector.list_plugins = AsyncMock(return_value=[Mock(), Mock()])  # 2 plugins
 
         # Mock get_mcp_servers to return 0 servers (2 plugins already)
-        mock_result = _create_mock_result([])
-        ap.persistence_mgr.execute_async = AsyncMock(return_value=mock_result)
+        ap.persistence_mgr.execute_async = AsyncMock(
+            side_effect=[
+                _create_mock_result(scalar_value=0),
+                _create_mock_result(scalar_value=2),
+            ]
+        )
         ap.persistence_mgr.serialize_model = Mock(return_value={})
-        ap.tool_mgr = None
+        ap.tool_mgr = SimpleNamespace(mcp_tool_loader=SimpleNamespace(get_session=Mock(return_value=None)))
 
-        service = MCPService(ap)
+        service = _service(ap)
 
         # Execute & Verify - 2 plugins + new server would exceed limit
         with pytest.raises(ValueError, match='Maximum number of extensions'):
-            await service.create_mcp_server({'name': 'New Server'})
+            await service.create_mcp_server(_CONTEXT, {'name': 'New Server'})
 
     async def test_create_mcp_server_no_limit(self):
         """Creates MCP server without limit when max_extensions=-1."""
@@ -271,10 +420,10 @@ class TestMCPServiceCreateMCPServer:
         ap.persistence_mgr.execute_async = AsyncMock(return_value=mock_result)
         ap.persistence_mgr.serialize_model = Mock(return_value={'uuid': 'new-uuid'})
 
-        service = MCPService(ap)
+        service = _service(ap)
 
         # Execute
-        server_uuid = await service.create_mcp_server({'name': 'New Server'})
+        server_uuid = await service.create_mcp_server(_CONTEXT, {'name': 'New Server'})
 
         # Verify
         assert server_uuid is not None
@@ -293,11 +442,11 @@ class TestMCPServiceCreateMCPServer:
         ap.persistence_mgr.execute_async = AsyncMock(return_value=_create_mock_result(first_item=existing_server))
         ap.persistence_mgr.serialize_model = Mock(return_value={})
 
-        service = MCPService(ap)
+        service = _service(ap)
 
         # Execute & Verify
         with pytest.raises(ValueError, match='MCP server already exists: Existing Server'):
-            await service.create_mcp_server({'name': 'Existing Server'})
+            await service.create_mcp_server(_CONTEXT, {'name': 'Existing Server'})
 
     async def test_create_mcp_server_loads_server(self):
         """Loads server into tool_mgr when enabled."""
@@ -330,13 +479,61 @@ class TestMCPServiceCreateMCPServer:
             return_value={'uuid': 'new-uuid', 'name': 'New Server', 'enable': True}
         )
 
-        service = MCPService(ap)
+        service = _service(ap)
 
         # Execute
-        await service.create_mcp_server({'name': 'New Server', 'enable': True})
+        await service.create_mcp_server(_CONTEXT, {'name': 'New Server', 'enable': True})
 
         # Verify - host_mcp_server was called
         ap.tool_mgr.mcp_tool_loader.host_mcp_server.assert_called_once()
+
+    async def test_create_mcp_server_does_not_start_host_until_transaction_commits(self):
+        """The Runtime must not observe a server row that can still roll back."""
+
+        gate = asyncio.get_running_loop().create_future()
+
+        class PersistenceManagerStub:
+            def create_after_commit_gate(self):
+                return gate
+
+        ap = SimpleNamespace()
+        ap.persistence_mgr = PersistenceManagerStub()
+        ap.instance_config = SimpleNamespace(data={'system': {'limitation': {'max_extensions': -1}}})
+        observed = []
+
+        async def host_mcp_server(context, config):
+            observed.append((context, config))
+
+        ap.tool_mgr = SimpleNamespace(
+            mcp_tool_loader=SimpleNamespace(
+                host_mcp_server=host_mcp_server,
+                _hosted_mcp_tasks=[],
+            )
+        )
+        server_entity = _create_mock_mcp_server(server_uuid='new-uuid', enable=True)
+        results = [
+            _create_mock_result([]),
+            Mock(),
+            _create_mock_result(first_item=server_entity),
+        ]
+        ap.persistence_mgr.execute_async = AsyncMock(side_effect=results)
+        ap.persistence_mgr.serialize_model = Mock(
+            return_value={'uuid': 'new-uuid', 'name': 'New Server', 'enable': True}
+        )
+        service = _service(ap)
+
+        await service.create_mcp_server(_CONTEXT, {'name': 'New Server', 'enable': True})
+        await asyncio.sleep(0)
+        assert observed == []
+
+        gate.set_result(None)
+        await ap.tool_mgr.mcp_tool_loader._hosted_mcp_tasks[0]
+        assert observed == [
+            (
+                _CONTEXT,
+                {'uuid': 'new-uuid', 'name': 'New Server', 'enable': True},
+            )
+        ]
 
     async def test_create_mcp_server_disabled_no_load(self):
         """Does not load server when disabled."""
@@ -351,10 +548,10 @@ class TestMCPServiceCreateMCPServer:
         ap.persistence_mgr.execute_async = AsyncMock(return_value=mock_result)
         ap.persistence_mgr.serialize_model = Mock(return_value={'uuid': 'new-uuid'})
 
-        service = MCPService(ap)
+        service = _service(ap)
 
         # Execute with enable=False
-        server_uuid = await service.create_mcp_server({'name': 'New Server', 'enable': False})
+        server_uuid = await service.create_mcp_server(_CONTEXT, {'name': 'New Server', 'enable': False})
 
         # Verify - no tool_mgr load attempt
         assert server_uuid is not None
@@ -379,13 +576,11 @@ class TestMCPServiceGetMCPServerByName:
                 'runtime_info': None,
             }
         )
-        ap.tool_mgr = None
+        ap.tool_mgr = SimpleNamespace(mcp_tool_loader=SimpleNamespace(get_session=Mock(return_value=None)))
 
-        service = MCPService(ap)
-        service.get_runtime_info = AsyncMock(return_value=None)
-
+        service = _service(ap)
         # Execute
-        result = await service.get_mcp_server_by_name('Found Server')
+        result = await service.get_mcp_server_by_name(_CONTEXT, 'Found Server')
 
         # Verify
         assert result is not None
@@ -400,10 +595,10 @@ class TestMCPServiceGetMCPServerByName:
         mock_result = _create_mock_result(first_item=None)
         ap.persistence_mgr.execute_async = AsyncMock(return_value=mock_result)
 
-        service = MCPService(ap)
+        service = _service(ap)
 
         # Execute
-        result = await service.get_mcp_server_by_name('Nonexistent Server')
+        result = await service.get_mcp_server_by_name(_CONTEXT, 'Nonexistent Server')
 
         # Verify
         assert result is None
@@ -421,8 +616,10 @@ class TestMCPServiceUpdateMCPServer:
         ap.tool_mgr.mcp_tool_loader = SimpleNamespace()
         ap.tool_mgr.mcp_tool_loader.sessions = {'Old Server': Mock()}
         ap.tool_mgr.mcp_tool_loader.remove_mcp_server = AsyncMock()
+        ap.tool_mgr.mcp_tool_loader.has_session = Mock(return_value=True)
 
         old_server = _create_mock_mcp_server(name='Old Server', enable=True)
+        updated_server = _create_mock_mcp_server(name='Old Server', enable=False)
 
         call_count = 0
 
@@ -431,14 +628,23 @@ class TestMCPServiceUpdateMCPServer:
             call_count += 1
             if call_count == 1:
                 return _create_mock_result(first_item=old_server)
-            return Mock()  # Update
+            if call_count == 2:
+                return _create_mock_result()
+            return _create_mock_result(first_item=updated_server)
 
         ap.persistence_mgr.execute_async = AsyncMock(side_effect=mock_execute)
+        ap.persistence_mgr.serialize_model = Mock(
+            side_effect=lambda _model, entity: {
+                'uuid': 'test-uuid',
+                'name': entity.name,
+                'enable': entity.enable,
+            }
+        )
 
-        service = MCPService(ap)
+        service = _service(ap)
 
         # Execute - disable server
-        await service.update_mcp_server('test-uuid', {'enable': False})
+        await service.update_mcp_server(_CONTEXT, 'test-uuid', {'enable': False})
 
         # Verify - server was removed
         ap.tool_mgr.mcp_tool_loader.remove_mcp_server.assert_called_once()
@@ -453,6 +659,7 @@ class TestMCPServiceUpdateMCPServer:
         ap.tool_mgr.mcp_tool_loader.sessions = {}
         ap.tool_mgr.mcp_tool_loader.host_mcp_server = AsyncMock()
         ap.tool_mgr.mcp_tool_loader._hosted_mcp_tasks = []
+        ap.tool_mgr.mcp_tool_loader.has_session = Mock(return_value=False)
 
         old_server = _create_mock_mcp_server(name='Old Server', enable=False)
 
@@ -474,10 +681,10 @@ class TestMCPServiceUpdateMCPServer:
             return_value={'uuid': 'test-uuid', 'name': 'Old Server', 'enable': True}
         )
 
-        service = MCPService(ap)
+        service = _service(ap)
 
         # Execute - enable server
-        await service.update_mcp_server('test-uuid', {'enable': True})
+        await service.update_mcp_server(_CONTEXT, 'test-uuid', {'enable': True})
 
         # Verify - server was loaded
         ap.tool_mgr.mcp_tool_loader.host_mcp_server.assert_called_once()
@@ -493,6 +700,7 @@ class TestMCPServiceUpdateMCPServer:
         ap.tool_mgr.mcp_tool_loader.remove_mcp_server = AsyncMock()
         ap.tool_mgr.mcp_tool_loader.host_mcp_server = AsyncMock()
         ap.tool_mgr.mcp_tool_loader._hosted_mcp_tasks = []
+        ap.tool_mgr.mcp_tool_loader.has_session = Mock(return_value=True)
 
         old_server = _create_mock_mcp_server(name='Old Server', enable=True)
 
@@ -510,13 +718,13 @@ class TestMCPServiceUpdateMCPServer:
             return_value={'uuid': 'test-uuid', 'name': 'Old Server', 'enable': True}
         )
 
-        service = MCPService(ap)
+        service = _service(ap)
 
         # Execute - update enabled server (keep enabled, update extra_args)
-        await service.update_mcp_server('test-uuid', {'enable': True, 'extra_args': {'new': 'args'}})
+        await service.update_mcp_server(_CONTEXT, 'test-uuid', {'enable': True, 'extra_args': {'new': 'args'}})
 
         # Verify - remove and reload
-        ap.tool_mgr.mcp_tool_loader.remove_mcp_server.assert_called_once_with('Old Server')
+        ap.tool_mgr.mcp_tool_loader.remove_mcp_server.assert_called_once_with(_CONTEXT, 'Old Server')
         ap.tool_mgr.mcp_tool_loader.host_mcp_server.assert_called_once()
 
     async def test_update_mcp_server_no_tool_mgr(self):
@@ -541,14 +749,98 @@ class TestMCPServiceUpdateMCPServer:
             return Mock()  # Update
 
         ap.persistence_mgr.execute_async = AsyncMock(side_effect=mock_execute)
+        ap.persistence_mgr.serialize_model = Mock(
+            return_value={
+                'uuid': 'test-uuid',
+                'name': 'Server',
+                'enable': True,
+            }
+        )
 
-        service = MCPService(ap)
+        service = _service(ap)
 
         # Execute - should not raise
-        await service.update_mcp_server('test-uuid', {'name': 'New Name'})
+        await service.update_mcp_server(_CONTEXT, 'test-uuid', {'enable': False})
 
         # Verify - persistence was called
         assert ap.persistence_mgr.execute_async.call_count >= 2
+
+    async def test_update_restores_existing_masked_secrets_and_preserves_explicit_changes(self):
+        ap = SimpleNamespace()
+        ap.persistence_mgr = SimpleNamespace()
+        ap.tool_mgr = SimpleNamespace(mcp_tool_loader=None)
+        old_server = _create_mock_mcp_server(name='Server', enable=True)
+        old_data = {
+            'uuid': 'test-uuid',
+            'name': 'Server',
+            'enable': True,
+            'mode': 'streamable_http',
+            'extra_args': {
+                'headers': {
+                    'Authorization': 'Bearer original-secret',
+                    'X-API-Key': 'original-api-key',
+                    'Cookie': 'original-cookie',
+                }
+            },
+        }
+        captured_updates = []
+
+        async def mock_execute(statement):
+            if not captured_updates:
+                captured_updates.append(None)
+                return _create_mock_result(first_item=old_server)
+            captured_updates[0] = statement
+            return _create_mock_result()
+
+        ap.persistence_mgr.execute_async = AsyncMock(side_effect=mock_execute)
+        ap.persistence_mgr.serialize_model = Mock(return_value=old_data)
+        service = _service(ap)
+
+        await service.update_mcp_server(
+            _CONTEXT,
+            'test-uuid',
+            {
+                'extra_args': {
+                    'headers': {
+                        'Authorization': '***',
+                        'X-API-Key': 'replacement-api-key',
+                        'Cookie': '',
+                    }
+                }
+            },
+        )
+
+        persisted = captured_updates[0].compile().params['extra_args']
+        assert persisted['headers'] == {
+            'Authorization': 'Bearer original-secret',
+            'X-API-Key': 'replacement-api-key',
+            'Cookie': '',
+        }
+
+    async def test_update_rejects_masked_secret_without_existing_value(self):
+        ap = SimpleNamespace()
+        ap.persistence_mgr = SimpleNamespace()
+        ap.tool_mgr = SimpleNamespace(mcp_tool_loader=None)
+        old_server = _create_mock_mcp_server(name='Server', enable=True)
+        ap.persistence_mgr.execute_async = AsyncMock(return_value=_create_mock_result(first_item=old_server))
+        ap.persistence_mgr.serialize_model = Mock(
+            return_value={
+                'uuid': 'test-uuid',
+                'name': 'Server',
+                'enable': True,
+                'extra_args': {'headers': {'Accept': 'application/json'}},
+            }
+        )
+        service = _service(ap)
+
+        with pytest.raises(ValueError, match='Masked MCP secret has no existing value'):
+            await service.update_mcp_server(
+                _CONTEXT,
+                'test-uuid',
+                {'extra_args': {'headers': {'Authorization': '***'}}},
+            )
+
+        assert ap.persistence_mgr.execute_async.await_count == 1
 
 
 class TestMCPServiceDeleteMCPServer:
@@ -563,6 +855,7 @@ class TestMCPServiceDeleteMCPServer:
         ap.tool_mgr.mcp_tool_loader = SimpleNamespace()
         ap.tool_mgr.mcp_tool_loader.sessions = {'Server to Delete': Mock()}
         ap.tool_mgr.mcp_tool_loader.remove_mcp_server = AsyncMock()
+        ap.tool_mgr.mcp_tool_loader.has_session = Mock(return_value=True)
 
         server = _create_mock_mcp_server(name='Server to Delete')
 
@@ -576,14 +869,21 @@ class TestMCPServiceDeleteMCPServer:
             return Mock()  # Delete
 
         ap.persistence_mgr.execute_async = AsyncMock(side_effect=mock_execute)
+        ap.persistence_mgr.serialize_model = Mock(
+            return_value={
+                'uuid': 'test-uuid',
+                'name': 'Server to Delete',
+                'enable': True,
+            }
+        )
 
-        service = MCPService(ap)
+        service = _service(ap)
 
         # Execute
-        await service.delete_mcp_server('test-uuid')
+        await service.delete_mcp_server(_CONTEXT, 'test-uuid')
 
         # Verify
-        ap.tool_mgr.mcp_tool_loader.remove_mcp_server.assert_called_once_with('Server to Delete')
+        ap.tool_mgr.mcp_tool_loader.remove_mcp_server.assert_called_once_with(_CONTEXT, 'Server to Delete')
         ap.persistence_mgr.execute_async.assert_called()
 
     async def test_delete_mcp_server_not_in_sessions(self):
@@ -595,6 +895,7 @@ class TestMCPServiceDeleteMCPServer:
         ap.tool_mgr.mcp_tool_loader = SimpleNamespace()
         ap.tool_mgr.mcp_tool_loader.sessions = {}  # Server not in sessions
         ap.tool_mgr.mcp_tool_loader.remove_mcp_server = AsyncMock()
+        ap.tool_mgr.mcp_tool_loader.has_session = Mock(return_value=False)
 
         server = _create_mock_mcp_server(name='Not in Sessions')
 
@@ -608,11 +909,18 @@ class TestMCPServiceDeleteMCPServer:
             return Mock()
 
         ap.persistence_mgr.execute_async = AsyncMock(side_effect=mock_execute)
+        ap.persistence_mgr.serialize_model = Mock(
+            return_value={
+                'uuid': 'test-uuid',
+                'name': 'Not in Sessions',
+                'enable': True,
+            }
+        )
 
-        service = MCPService(ap)
+        service = _service(ap)
 
         # Execute
-        await service.delete_mcp_server('test-uuid')
+        await service.delete_mcp_server(_CONTEXT, 'test-uuid')
 
         # Verify - remove not called (server not in sessions)
         ap.tool_mgr.mcp_tool_loader.remove_mcp_server.assert_not_called()
@@ -626,6 +934,7 @@ class TestMCPServiceDeleteMCPServer:
         ap.tool_mgr.mcp_tool_loader = SimpleNamespace()
         ap.tool_mgr.mcp_tool_loader.sessions = {}
         ap.tool_mgr.mcp_tool_loader.remove_mcp_server = AsyncMock()
+        ap.tool_mgr.mcp_tool_loader.has_session = Mock(return_value=False)
 
         # No server found
         call_count = 0
@@ -639,17 +948,34 @@ class TestMCPServiceDeleteMCPServer:
 
         ap.persistence_mgr.execute_async = AsyncMock(side_effect=mock_execute)
 
-        service = MCPService(ap)
+        service = _service(ap)
 
-        # Execute - should not raise
-        await service.delete_mcp_server('nonexistent-uuid')
+        with pytest.raises(WorkspaceNotFoundError, match='MCP server not found'):
+            await service.delete_mcp_server(_CONTEXT, 'nonexistent-uuid')
 
-        # Verify - delete was called regardless
-        ap.persistence_mgr.execute_async.assert_called()
+        assert ap.persistence_mgr.execute_async.await_count == 1
 
 
 class TestMCPServiceTestMCPServer:
     """Tests for test_mcp_server method."""
+
+    async def test_transient_stdio_test_rejected_by_instance_gate(self):
+        ap = SimpleNamespace(
+            instance_config=SimpleNamespace(data={'mcp': {'stdio': {'enabled': False}}}),
+            tool_mgr=SimpleNamespace(mcp_tool_loader=SimpleNamespace(load_mcp_server=AsyncMock())),
+            task_mgr=SimpleNamespace(create_user_task=Mock()),
+        )
+        service = _service(ap)
+
+        with pytest.raises(MCPStdioDisabledError, match='disabled by instance policy'):
+            await service.test_mcp_server(
+                _CONTEXT,
+                '_',
+                {'name': 'local', 'mode': 'stdio', 'enable': True, 'extra_args': {}},
+            )
+
+        ap.tool_mgr.mcp_tool_loader.load_mcp_server.assert_not_awaited()
+        ap.task_mgr.create_user_task.assert_not_called()
 
     async def test_test_mcp_server_existing_server(self):
         """Tests existing MCP server connection."""
@@ -667,12 +993,18 @@ class TestMCPServiceTestMCPServer:
         ap.tool_mgr.mcp_tool_loader.get_session = Mock(return_value=mock_session)
 
         ap.task_mgr = SimpleNamespace()
-        ap.task_mgr.create_user_task = Mock(return_value=SimpleNamespace(id=123))
 
-        service = MCPService(ap)
+        service = _service(ap)
+        service._require_server = AsyncMock(return_value=(_CONTEXT, {'name': 'existing-server'}))
+
+        def create_user_task(coroutine, **_kwargs):
+            coroutine.close()
+            return SimpleNamespace(id=123)
+
+        ap.task_mgr.create_user_task = Mock(side_effect=create_user_task)
 
         # Execute
-        task_id = await service.test_mcp_server('existing-server', {})
+        task_id = await service.test_mcp_server(_CONTEXT, 'existing-server', {})
 
         # Verify - returns task ID
         assert task_id == 123
@@ -685,11 +1017,12 @@ class TestMCPServiceTestMCPServer:
         ap.tool_mgr.mcp_tool_loader = SimpleNamespace()
         ap.tool_mgr.mcp_tool_loader.get_session = Mock(return_value=None)
 
-        service = MCPService(ap)
+        service = _service(ap)
+        service._require_server = AsyncMock(side_effect=WorkspaceNotFoundError('MCP server not found'))
 
         # Execute & Verify
-        with pytest.raises(ValueError, match='Server not found'):
-            await service.test_mcp_server('nonexistent-server', {})
+        with pytest.raises(WorkspaceNotFoundError, match='MCP server not found'):
+            await service.test_mcp_server(_CONTEXT, 'nonexistent-server', {})
 
     async def test_test_mcp_server_new_server(self):
         """Tests new MCP server with underscore name."""
@@ -703,13 +1036,38 @@ class TestMCPServiceTestMCPServer:
         ap.tool_mgr.mcp_tool_loader.load_mcp_server = AsyncMock(return_value=mock_session)
 
         ap.task_mgr = SimpleNamespace()
-        ap.task_mgr.create_user_task = Mock(return_value=SimpleNamespace(id=456))
 
-        service = MCPService(ap)
+        service = _service(ap)
+
+        def create_user_task(coroutine, **_kwargs):
+            coroutine.close()
+            return SimpleNamespace(id=456)
+
+        ap.task_mgr.create_user_task = Mock(side_effect=create_user_task)
 
         # Execute with '_' name (new server)
-        task_id = await service.test_mcp_server('_', {'name': 'New Server'})
+        task_id = await service.test_mcp_server(_CONTEXT, '_', {'name': 'New Server'})
 
         # Verify - load_mcp_server called
         ap.tool_mgr.mcp_tool_loader.load_mcp_server.assert_called_once()
         assert task_id == 456
+
+    async def test_rejected_transient_test_session_is_shut_down(self):
+        ap = SimpleNamespace()
+        mock_session = MagicMock()
+        mock_session.shutdown = AsyncMock()
+        ap.tool_mgr = SimpleNamespace(
+            mcp_tool_loader=SimpleNamespace(load_mcp_server=AsyncMock(return_value=mock_session))
+        )
+
+        def reject(coroutine, **_kwargs):
+            coroutine.close()
+            raise TaskCapacityError('capacity')
+
+        ap.task_mgr = SimpleNamespace(create_user_task=Mock(side_effect=reject))
+        service = _service(ap)
+
+        with pytest.raises(TaskCapacityError, match='capacity'):
+            await service.test_mcp_server(_CONTEXT, '_', {'name': 'New Server'})
+
+        mock_session.shutdown.assert_awaited_once_with()

@@ -6,6 +6,9 @@ from sqlalchemy.sql.dml import Update
 from langbot.pkg.api.http.service.bot import BotService
 
 
+WORKSPACE_UUID = 'workspace-a'
+
+
 class _FakeResult:
     def __init__(self, value):
         self.value = value
@@ -21,7 +24,9 @@ class _PersistenceManager:
     async def execute_async(self, statement):
         if isinstance(statement, Update):
             self.update_values = {
-                key: value for key, value in statement.compile().params.items() if not key.startswith('uuid_')
+                key: value
+                for key, value in statement.compile().params.items()
+                if not key.startswith(('uuid_', 'workspace_uuid_'))
             }
             return None
 
@@ -49,7 +54,7 @@ async def test_update_bot_copies_input_before_filtering_legacy_routing_fields():
         'pipeline_routing_rules': [{'type': 'launcher_type'}],
     }
 
-    await service.update_bot('bot-1', payload)
+    await service.update_bot(WORKSPACE_UUID, 'bot-1', payload)
 
     # caller's dict must not be mutated
     assert payload == {

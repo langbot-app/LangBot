@@ -1,8 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import httpx
 from ..core import app as core_app
+from ..utils import httpclient
+
+
+_MAX_INFLIGHT_TELEMETRY_TASKS = 8
 
 
 class TelemetryManager:
@@ -18,13 +23,45 @@ class TelemetryManager:
 
         self.telemetry_config = {}
         self.send_tasks: list[asyncio.Task] = []
+        self._client: httpx.AsyncClient | None = None
 
     async def initialize(self):
         self.telemetry_config = self.ap.instance_config.data.get('space', {})
 
     async def start_send_task(self, payload: dict):
+        self.send_tasks = [task for task in self.send_tasks if not task.done()]
+        if len(self.send_tasks) >= _MAX_INFLIGHT_TELEMETRY_TASKS:
+            self.ap.logger.debug('Telemetry queue is full; dropping best-effort event')
+            return
         task = asyncio.create_task(self.send(payload))
         self.send_tasks.append(task)
+        task.add_done_callback(self._send_task_done)
+
+    def _send_task_done(self, task: asyncio.Task) -> None:
+        try:
+            self.send_tasks.remove(task)
+        except ValueError:
+            pass
+
+    async def shutdown(self) -> None:
+        tasks = list(self.send_tasks)
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        self.send_tasks.clear()
+        if self._client is not None:
+            await self._client.aclose()
+            self._client = None
+
+    @contextlib.asynccontextmanager
+    async def _client_context(self):
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(
+                timeout=httpx.Timeout(10),
+                event_hooks=httpclient.httpx_response_limit_hooks(),
+            )
+        yield self._client
 
     async def send(self, payload: dict):
         """Send telemetry payload to configured telemetry server (non-blocking).
@@ -91,20 +128,21 @@ class TelemetryManager:
                     except Exception:
                         sanitized['duration_ms'] = 0
 
-                async with httpx.AsyncClient(timeout=httpx.Timeout(10)) as client:
+                async with self._client_context() as client:
                     try:
                         # Use asyncio.wait_for to ensure we always bound the total time
                         resp = await asyncio.wait_for(client.post(url, json=sanitized), timeout=10 + 1)
 
                         if resp.status_code >= 400:
+                            body = await httpclient.response_text(resp, max_chars=200)
                             self.ap.logger.warning(
-                                f'Telemetry post to {url} returned status {resp.status_code} - {resp.text}'
+                                f'Telemetry post to {url} returned status {resp.status_code} - {body}'
                             )
                         else:
                             # Detect application-level errors inside HTTP 200 responses
                             app_err = False
                             try:
-                                j = resp.json()
+                                j = await httpclient.parse_json_response(resp)
                                 if isinstance(j, dict) and j.get('code') is not None and int(j.get('code')) >= 400:
                                     app_err = True
                                     self.ap.logger.warning(
@@ -114,12 +152,14 @@ class TelemetryManager:
                                 pass
 
                             if app_err:
+                                body = await httpclient.response_text(resp, max_chars=200)
                                 self.ap.logger.warning(
-                                    f'Telemetry post to {url} returned app-level error - response: {resp.text[:200]}'
+                                    f'Telemetry post to {url} returned app-level error - response: {body}'
                                 )
                             else:
+                                body = await httpclient.response_text(resp, max_chars=200)
                                 self.ap.logger.debug(
-                                    f'Telemetry posted to {url}, status {resp.status_code} - response: {resp.text[:200]}'
+                                    f'Telemetry posted to {url}, status {resp.status_code} - response: {body}'
                                 )
                     except asyncio.TimeoutError:
                         self.ap.logger.warning(f'Telemetry post to {url} timed out')

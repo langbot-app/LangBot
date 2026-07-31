@@ -24,6 +24,9 @@ from typing import Generator
 from unittest.mock import MagicMock
 
 
+_MISSING = object()
+
+
 class MockLifecycleControlScope(enum.Enum):
     """Mock enum for breaking circular import in core.entities."""
 
@@ -74,19 +77,29 @@ def isolated_sys_modules(
         if name in sys.modules:
             saved[name] = sys.modules[name]
 
-    # Save original package attributes that will be updated
-    saved_attrs: dict[str, tuple[str, object]] = {}
-    for mock_name, (pkg_name, attr_name) in _PACKAGE_ATTRIBUTE_UPDATES.items():
-        if mock_name in mocks and pkg_name in sys.modules:
-            pkg = sys.modules[pkg_name]
-            if hasattr(pkg, attr_name):
-                saved_attrs[mock_name] = (pkg_name, getattr(pkg, attr_name))
+    # Importing a submodule also mutates its parent package attribute. Preserve
+    # that state for every mocked or cleared module, otherwise restoring only
+    # sys.modules leaves stale class/enum identities attached to the package.
+    saved_attrs: dict[str, tuple[str, str, object]] = {}
+    for name in touched:
+        pkg_name, separator, attr_name = name.rpartition('.')
+        if separator and pkg_name in sys.modules:
+            saved_attrs[name] = (
+                pkg_name,
+                attr_name,
+                getattr(sys.modules[pkg_name], attr_name, _MISSING),
+            )
 
     try:
         # Clear modules first (force re-import)
         for name in clear:
             if name not in mocks:  # Don't clear if we're mocking it
                 sys.modules.pop(name, None)
+                saved_attr = saved_attrs.get(name)
+                if saved_attr is not None:
+                    pkg_name, attr_name, _ = saved_attr
+                    if pkg_name in sys.modules and hasattr(sys.modules[pkg_name], attr_name):
+                        delattr(sys.modules[pkg_name], attr_name)
 
         # Apply mocks
         for name, module in mocks.items():
@@ -110,10 +123,16 @@ def isolated_sys_modules(
                 # Wasn't in sys.modules originally, remove it
                 sys.modules.pop(name, None)
 
-        # Restore package attributes
-        for mock_name, (pkg_name, original_value) in saved_attrs.items():
-            if pkg_name in sys.modules:
-                setattr(sys.modules[pkg_name], _PACKAGE_ATTRIBUTE_UPDATES[mock_name][1], original_value)
+        # Restore package attributes (or remove ones that did not previously
+        # exist), keeping package lookup consistent with restored sys.modules.
+        for pkg_name, attr_name, original_value in saved_attrs.values():
+            if pkg_name not in sys.modules:
+                continue
+            if original_value is _MISSING:
+                if hasattr(sys.modules[pkg_name], attr_name):
+                    delattr(sys.modules[pkg_name], attr_name)
+            else:
+                setattr(sys.modules[pkg_name], attr_name, original_value)
 
 
 def make_pipeline_handler_import_mocks() -> dict[str, MagicMock]:

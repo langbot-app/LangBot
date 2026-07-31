@@ -9,6 +9,8 @@ import sqlalchemy
 from ....core import app
 from ....agent.runner.config_resolver import RunnerConfigResolver
 from ....entity.persistence import agent as persistence_agent
+from ....workspace.errors import WorkspaceNotFoundError
+from .tenant import TenantContext, require_workspace_uuid, scope_statement
 
 
 AGENT_KIND_AGENT = 'agent'
@@ -25,9 +27,9 @@ class AgentService:
     def __init__(self, ap: app.Application) -> None:
         self.ap = ap
 
-    async def get_agent_metadata(self) -> dict[str, typing.Any]:
+    async def get_agent_metadata(self, context: TenantContext) -> dict[str, typing.Any]:
         """Return metadata needed by Agent forms."""
-        pipeline_metadata = await self.ap.pipeline_service.get_pipeline_metadata()
+        pipeline_metadata = await self.ap.pipeline_service.get_pipeline_metadata(context)
         ai_metadata = next((item for item in pipeline_metadata if item.get('name') == 'ai'), None)
         return {
             'runner_config': ai_metadata,
@@ -45,9 +47,18 @@ class AgentService:
             ],
         }
 
-    async def get_agents(self, sort_by: str = 'updated_at', sort_order: str = 'DESC') -> list[dict]:
-        agents = await self._get_agent_rows()
-        pipelines = await self.ap.pipeline_service.get_pipelines(sort_by='updated_at', sort_order='DESC')
+    async def get_agents(
+        self,
+        context: TenantContext,
+        sort_by: str = 'updated_at',
+        sort_order: str = 'DESC',
+    ) -> list[dict]:
+        agents = await self._get_agent_rows(context)
+        pipelines = await self.ap.pipeline_service.get_pipelines(
+            context,
+            sort_by='updated_at',
+            sort_order='DESC',
+        )
 
         items = [self._agent_to_product_item(agent) for agent in agents]
         items.extend(self._pipeline_to_product_item(pipeline) for pipeline in pipelines)
@@ -56,21 +67,23 @@ class AgentService:
         sort_key = sort_by if sort_by in {'created_at', 'updated_at'} else 'updated_at'
         return sorted(items, key=lambda item: self._parse_sort_time(item.get(sort_key)), reverse=reverse)
 
-    async def get_agent(self, agent_uuid: str) -> dict | None:
-        agent = await self._get_agent_row(agent_uuid)
+    async def get_agent(self, context: TenantContext, agent_uuid: str) -> dict | None:
+        agent = await self._get_agent_row(context, agent_uuid)
         if agent is not None:
             return self._agent_to_product_item(agent, include_config=True)
 
-        pipeline = await self.ap.pipeline_service.get_pipeline(agent_uuid)
+        pipeline = await self.ap.pipeline_service.get_pipeline(context, agent_uuid)
         if pipeline is not None:
             return self._pipeline_to_product_item(pipeline, include_config=True)
 
         return None
 
-    async def create_agent(self, agent_data: dict) -> dict[str, str]:
+    async def create_agent(self, context: TenantContext, agent_data: dict) -> dict[str, str]:
+        workspace_uuid = require_workspace_uuid(context)
         kind = agent_data.get('kind') or AGENT_KIND_AGENT
         if kind == AGENT_KIND_PIPELINE:
             pipeline_uuid = await self.ap.pipeline_service.create_pipeline(
+                context,
                 {
                     'name': agent_data.get('name') or 'New Pipeline',
                     'description': agent_data.get('description') or '',
@@ -83,10 +96,11 @@ class AgentService:
         if kind != AGENT_KIND_AGENT:
             raise ValueError(f'Unsupported agent kind: {kind}')
 
-        config = agent_data['config'] if 'config' in agent_data else await self._get_default_agent_config()
+        config = agent_data['config'] if 'config' in agent_data else await self._get_default_agent_config(context)
         config, runner_id, _ = RunnerConfigResolver.resolve_agent_runner_config(config)
         new_uuid = str(uuid.uuid4())
         values = {
+            'workspace_uuid': workspace_uuid,
             'uuid': new_uuid,
             'name': agent_data.get('name') or 'New Agent',
             'description': agent_data.get('description') or '',
@@ -100,17 +114,25 @@ class AgentService:
         await self.ap.persistence_mgr.execute_async(sqlalchemy.insert(persistence_agent.Agent).values(**values))
         return {'uuid': new_uuid, 'kind': AGENT_KIND_AGENT}
 
-    async def update_agent(self, agent_uuid: str, agent_data: dict) -> None:
-        existing_agent = await self._get_agent_row(agent_uuid)
+    async def update_agent(self, context: TenantContext, agent_uuid: str, agent_data: dict) -> None:
+        existing_agent = await self._get_agent_row(context, agent_uuid)
         if existing_agent is None:
-            pipeline = await self.ap.pipeline_service.get_pipeline(agent_uuid)
+            pipeline = await self.ap.pipeline_service.get_pipeline(context, agent_uuid)
             if pipeline is None:
                 raise ValueError(f'Agent {agent_uuid} not found')
-            await self.ap.pipeline_service.update_pipeline(agent_uuid, agent_data)
+            await self.ap.pipeline_service.update_pipeline(context, agent_uuid, agent_data)
             return
 
         update_data = agent_data.copy()
-        for protected_field in ('uuid', 'kind', 'component_ref', 'created_at', 'updated_at', 'capability'):
+        for protected_field in (
+            'uuid',
+            'workspace_uuid',
+            'kind',
+            'component_ref',
+            'created_at',
+            'updated_at',
+            'capability',
+        ):
             update_data.pop(protected_field, None)
         if 'config' in update_data:
             config, runner_id, _ = RunnerConfigResolver.resolve_agent_runner_config(update_data['config'])
@@ -121,40 +143,66 @@ class AgentService:
         if 'supported_event_patterns' in update_data and not update_data['supported_event_patterns']:
             update_data['supported_event_patterns'] = AGENT_DEFAULT_EVENT_PATTERNS
 
-        await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.update(persistence_agent.Agent)
-            .where(persistence_agent.Agent.uuid == agent_uuid)
-            .values(**update_data)
-        )
-
-    async def delete_agent(self, agent_uuid: str) -> None:
-        existing_agent = await self._get_agent_row(agent_uuid)
-        if existing_agent is not None:
-            await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.delete(persistence_agent.Agent).where(persistence_agent.Agent.uuid == agent_uuid)
+        result = await self.ap.persistence_mgr.execute_async(
+            scope_statement(
+                sqlalchemy.update(persistence_agent.Agent)
+                .where(persistence_agent.Agent.uuid == agent_uuid)
+                .values(**update_data),
+                persistence_agent.Agent,
+                context,
             )
+        )
+        if getattr(result, 'rowcount', None) == 0:
+            raise WorkspaceNotFoundError('Agent not found')
+
+    async def delete_agent(self, context: TenantContext, agent_uuid: str) -> None:
+        existing_agent = await self._get_agent_row(context, agent_uuid)
+        if existing_agent is not None:
+            result = await self.ap.persistence_mgr.execute_async(
+                scope_statement(
+                    sqlalchemy.delete(persistence_agent.Agent).where(persistence_agent.Agent.uuid == agent_uuid),
+                    persistence_agent.Agent,
+                    context,
+                )
+            )
+            if getattr(result, 'rowcount', None) == 0:
+                raise WorkspaceNotFoundError('Agent not found')
             return
 
-        pipeline = await self.ap.pipeline_service.get_pipeline(agent_uuid)
+        pipeline = await self.ap.pipeline_service.get_pipeline(context, agent_uuid)
         if pipeline is None:
             raise ValueError(f'Agent {agent_uuid} not found')
-        await self.ap.pipeline_service.delete_pipeline(agent_uuid)
+        await self.ap.pipeline_service.delete_pipeline(context, agent_uuid)
 
-    async def _get_agent_rows(self) -> list[persistence_agent.Agent]:
-        result = await self.ap.persistence_mgr.execute_async(sqlalchemy.select(persistence_agent.Agent))
+    async def _get_agent_rows(self, context: TenantContext) -> list[persistence_agent.Agent]:
+        result = await self.ap.persistence_mgr.execute_async(
+            scope_statement(
+                sqlalchemy.select(persistence_agent.Agent),
+                persistence_agent.Agent,
+                context,
+            )
+        )
         return list(result.all())
 
-    async def _get_agent_row(self, agent_uuid: str) -> persistence_agent.Agent | None:
+    async def _get_agent_row(
+        self,
+        context: TenantContext,
+        agent_uuid: str,
+    ) -> persistence_agent.Agent | None:
         result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(persistence_agent.Agent).where(persistence_agent.Agent.uuid == agent_uuid)
+            scope_statement(
+                sqlalchemy.select(persistence_agent.Agent).where(persistence_agent.Agent.uuid == agent_uuid),
+                persistence_agent.Agent,
+                context,
+            )
         )
         return result.first()
 
-    async def _get_default_agent_config(self) -> dict[str, typing.Any]:
+    async def _get_default_agent_config(self, context: TenantContext) -> dict[str, typing.Any]:
         runners = []
         if getattr(self.ap, 'agent_runner_registry', None) is not None:
             try:
-                runners = await self.ap.agent_runner_registry.list_runners(bound_plugins=None)
+                runners = await self.ap.agent_runner_registry.list_runners(context, bound_plugins=None)
             except Exception as e:
                 if getattr(self.ap, 'logger', None):
                     self.ap.logger.warning(f'Failed to load plugin agent runners for default agent config: {e}')

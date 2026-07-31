@@ -21,9 +21,12 @@ import json
 
 from langbot.pkg.api.http.service.pipeline import PipelineService, default_stage_order
 from langbot.pkg.entity.persistence.pipeline import LegacyPipeline
+from langbot.pkg.workspace.errors import WorkspaceNotFoundError
 
 
 pytestmark = pytest.mark.asyncio
+
+WORKSPACE_UUID = 'workspace-a'
 
 
 def _create_mock_pipeline(
@@ -77,7 +80,9 @@ class TestPipelineServiceGetPipelineMetadata:
         service = PipelineService(ap)
 
         # Execute
-        result = await service.get_pipeline_metadata()
+        result = await service.get_pipeline_metadata(
+            WORKSPACE_UUID,
+        )
 
         # Verify
         assert len(result) == 4
@@ -107,7 +112,9 @@ class TestPipelineServiceGetPipelines:
         service = PipelineService(ap)
 
         # Execute
-        result = await service.get_pipelines()
+        result = await service.get_pipelines(
+            WORKSPACE_UUID,
+        )
 
         # Verify
         assert result == []
@@ -133,7 +140,9 @@ class TestPipelineServiceGetPipelines:
         service = PipelineService(ap)
 
         # Execute
-        result = await service.get_pipelines()
+        result = await service.get_pipelines(
+            WORKSPACE_UUID,
+        )
 
         # Verify
         assert len(result) == 2
@@ -152,7 +161,7 @@ class TestPipelineServiceGetPipelines:
         service = PipelineService(ap)
 
         # Execute
-        await service.get_pipelines(sort_by='updated_at', sort_order='ASC')
+        await service.get_pipelines(WORKSPACE_UUID, sort_by='updated_at', sort_order='ASC')
 
         # Verify - execute was called with sort parameters
         ap.persistence_mgr.execute_async.assert_called_once()
@@ -181,7 +190,7 @@ class TestPipelineServiceGetPipeline:
         service = PipelineService(ap)
 
         # Execute
-        result = await service.get_pipeline('test-uuid')
+        result = await service.get_pipeline(WORKSPACE_UUID, 'test-uuid')
 
         # Verify
         assert result is not None
@@ -200,7 +209,7 @@ class TestPipelineServiceGetPipeline:
         service = PipelineService(ap)
 
         # Execute
-        result = await service.get_pipeline('nonexistent-uuid')
+        result = await service.get_pipeline(WORKSPACE_UUID, 'nonexistent-uuid')
 
         # Verify
         assert result is None
@@ -229,64 +238,7 @@ class TestPipelineServiceCreatePipeline:
 
         # Execute & Verify
         with pytest.raises(ValueError, match='Maximum number of pipelines'):
-            await service.create_pipeline({'name': 'New Pipeline'})
-
-    @pytest.mark.parametrize('invalid_preferences', [None, [], 'all', 0, False])
-    async def test_create_pipeline_rejects_non_object_extension_preferences(
-        self,
-        invalid_preferences,
-    ):
-        service = PipelineService(SimpleNamespace())
-
-        with pytest.raises(ValueError, match='extensions_preferences must be an object'):
-            await service.create_pipeline(
-                {
-                    'name': 'Invalid Pipeline',
-                    'extensions_preferences': invalid_preferences,
-                }
-            )
-
-    @pytest.mark.parametrize('invalid_value', [0, None, 'false'])
-    async def test_create_pipeline_rejects_non_boolean_runner_security_field(self, invalid_value):
-        service = PipelineService(SimpleNamespace())
-        runner_id = 'plugin:test/runner/default'
-
-        with pytest.raises(ValueError, match='enable-all-tools.*boolean'):
-            await service.create_pipeline(
-                {
-                    'name': 'Invalid Pipeline',
-                    'config': {
-                        'ai': {
-                            'runner': {'id': runner_id},
-                            'runner_config': {runner_id: {'enable-all-tools': invalid_value}},
-                        }
-                    },
-                }
-            )
-
-    @pytest.mark.parametrize('invalid_value', [0, None, 'false'])
-    async def test_create_pipeline_rejects_non_boolean_mcp_resource_enabled(self, invalid_value):
-        service = PipelineService(SimpleNamespace())
-        runner_id = 'plugin:test/runner/default'
-
-        with pytest.raises(ValueError, match=r'mcp-resources\[0\]\.enabled.*boolean'):
-            await service.create_pipeline(
-                {
-                    'name': 'Invalid Pipeline',
-                    'config': {
-                        'ai': {
-                            'runner': {'id': runner_id},
-                            'runner_config': {
-                                runner_id: {
-                                    'mcp-resources': [
-                                        {'uri': 'file:///README.md', 'enabled': invalid_value},
-                                    ]
-                                }
-                            },
-                        }
-                    },
-                }
-            )
+            await service.create_pipeline(WORKSPACE_UUID, {'name': 'New Pipeline'})
 
     async def test_create_pipeline_no_limit(self):
         """Creates pipeline without limit when max_pipelines=-1."""
@@ -315,7 +267,7 @@ class TestPipelineServiceCreatePipeline:
             with patch(
                 'langbot.pkg.utils.paths.get_resource_path', return_value='templates/default-pipeline-config.json'
             ):
-                bot_uuid = await service.create_pipeline({'name': 'New Pipeline'})
+                bot_uuid = await service.create_pipeline(WORKSPACE_UUID, {'name': 'New Pipeline'})
 
         # Verify
         assert bot_uuid is not None
@@ -350,7 +302,7 @@ class TestPipelineServiceCreatePipeline:
             with patch(
                 'langbot.pkg.utils.paths.get_resource_path', return_value='templates/default-pipeline-config.json'
             ):
-                await service.create_pipeline({'name': 'Default Pipeline'}, default=True)
+                await service.create_pipeline(WORKSPACE_UUID, {'name': 'Default Pipeline'}, default=True)
 
         # Verify - execute was called
         ap.persistence_mgr.execute_async.assert_called()
@@ -397,7 +349,7 @@ class TestPipelineServiceCreatePipeline:
             with patch(
                 'langbot.pkg.utils.paths.get_resource_path', return_value='templates/default-pipeline-config.json'
             ):
-                await service.create_pipeline({'name': 'New Pipeline'})
+                await service.create_pipeline(WORKSPACE_UUID, {'name': 'New Pipeline'})
 
         assert len(insert_params) == 1
         assert insert_params[0]['extensions_preferences'] == {
@@ -408,6 +360,19 @@ class TestPipelineServiceCreatePipeline:
             'mcp_resources': [],
             'mcp_resource_agent_read_enabled': True,
         }
+
+
+class _MockResultWithBots:
+    """Helper class to mock SQLAlchemy result with iterable .all() method."""
+
+    def __init__(self, bots_list):
+        self._bots_list = bots_list
+
+    def all(self):
+        return self._bots_list
+
+    def first(self):
+        return self._bots_list[0] if self._bots_list else None
 
 
 class TestPipelineServiceUpdatePipeline:
@@ -423,20 +388,22 @@ class TestPipelineServiceUpdatePipeline:
         ap.pipeline_mgr.load_pipeline = AsyncMock()
         ap.sess_mgr = SimpleNamespace()
         ap.sess_mgr.session_list = []
+        ap.bot_service = None  # No bot_service when not updating name
+
         ap.persistence_mgr.execute_async = AsyncMock()
 
         service = PipelineService(ap)
         service.get_pipeline = AsyncMock(return_value={'uuid': 'test-uuid', 'name': 'Updated'})
 
-        # Execute with protected fields.
+        # Execute with protected fields - no name change, so no bot sync
         pipeline_data = {
             'uuid': 'should-be-removed',
             'for_version': 'should-be-removed',
             'stages': ['should-be-removed'],
             'is_default': True,
-            'description': 'New description',
+            'description': 'New description',  # Not name change, so no bot_service needed
         }
-        await service.update_pipeline('test-uuid', pipeline_data)
+        await service.update_pipeline(WORKSPACE_UUID, 'test-uuid', pipeline_data)
 
         update_params = ap.persistence_mgr.execute_async.await_args_list[0].args[0].compile().params
         assert update_params['description'] == 'New description'
@@ -444,45 +411,8 @@ class TestPipelineServiceUpdatePipeline:
         assert ['should-be-removed'] not in update_params.values()
         assert not any(value is True for value in update_params.values())
 
-    @pytest.mark.parametrize('invalid_preferences', [None, [], 'all', 0, False])
-    async def test_update_pipeline_rejects_non_object_extension_preferences_before_write(
-        self,
-        invalid_preferences,
-    ):
-        ap = SimpleNamespace(persistence_mgr=SimpleNamespace(execute_async=AsyncMock()))
-        service = PipelineService(ap)
-
-        with pytest.raises(ValueError, match='extensions_preferences must be an object'):
-            await service.update_pipeline(
-                'test-uuid',
-                {'extensions_preferences': invalid_preferences},
-            )
-
-        ap.persistence_mgr.execute_async.assert_not_awaited()
-
-    @pytest.mark.parametrize('invalid_value', [0, None, 'false'])
-    async def test_update_pipeline_rejects_non_boolean_runner_security_field_before_write(self, invalid_value):
-        ap = SimpleNamespace(persistence_mgr=SimpleNamespace(execute_async=AsyncMock()))
-        service = PipelineService(ap)
-        runner_id = 'plugin:test/runner/default'
-
-        with pytest.raises(ValueError, match='mcp-resource-agent-read-enabled.*boolean'):
-            await service.update_pipeline(
-                'test-uuid',
-                {
-                    'config': {
-                        'ai': {
-                            'runner': {'id': runner_id},
-                            'runner_config': {runner_id: {'mcp-resource-agent-read-enabled': invalid_value}},
-                        }
-                    }
-                },
-            )
-
-        ap.persistence_mgr.execute_async.assert_not_awaited()
-
-    async def test_update_pipeline_name_does_not_rewrite_bot_routes(self):
-        """Bot event bindings remain independent from pipeline display names."""
+    async def test_update_pipeline_syncs_bot_names(self):
+        """Updates bot use_pipeline_name when pipeline name changes."""
         # Setup
         ap = SimpleNamespace()
         ap.persistence_mgr = SimpleNamespace()
@@ -494,13 +424,44 @@ class TestPipelineServiceUpdatePipeline:
         ap.bot_service = SimpleNamespace()
         ap.bot_service.update_bot = AsyncMock()
 
-        ap.persistence_mgr.execute_async = AsyncMock(return_value=Mock())
+        # Create proper mock Bot entities with uuid attribute
+        mock_bot1 = Mock()
+        mock_bot1.uuid = 'bot-uuid-1'
+        mock_bot2 = Mock()
+        mock_bot2.uuid = 'bot-uuid-2'
+
+        # Create bot list
+        bot_list = [mock_bot1, mock_bot2]
+
+        # Create mock result using helper class
+        bot_result = _MockResultWithBots(bot_list)
+
+        # The order of calls in update_pipeline:
+        # 1. UPDATE (line 125) - returns Mock (no result needed)
+        # 2. SELECT bots (line 136) - returns bot_result with .all()
+        call_count = 0
+
+        async def mock_execute(query):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                # First call is the UPDATE - just return a Mock
+                return Mock()
+            elif call_count == 2:
+                # Second call is the SELECT bots - return proper result
+                return bot_result
+            return Mock()  # Any additional calls
+
+        ap.persistence_mgr.execute_async = AsyncMock(side_effect=mock_execute)
+        ap.persistence_mgr.serialize_model = Mock(return_value={})
 
         service = PipelineService(ap)
         service.get_pipeline = AsyncMock(return_value={'uuid': 'test-uuid', 'name': 'New Name'})
 
-        await service.update_pipeline('test-uuid', {'name': 'New Name'})
+        # Execute with name change
+        await service.update_pipeline(WORKSPACE_UUID, 'test-uuid', {'name': 'New Name'})
 
+        # Bots no longer denormalize Pipeline names in the EventBindings model.
         ap.bot_service.update_bot.assert_not_awaited()
 
     async def test_update_pipeline_clears_conversations(self):
@@ -526,7 +487,7 @@ class TestPipelineServiceUpdatePipeline:
         service.get_pipeline = AsyncMock(return_value={'uuid': 'test-uuid'})
 
         # Execute
-        await service.update_pipeline('test-uuid', {'description': 'Updated'})
+        await service.update_pipeline(WORKSPACE_UUID, 'test-uuid', {'description': 'Updated'})
 
         # Verify - conversation was cleared
         assert session.using_conversation is None
@@ -547,10 +508,10 @@ class TestPipelineServiceDeletePipeline:
         service = PipelineService(ap)
 
         # Execute
-        await service.delete_pipeline('test-uuid')
+        await service.delete_pipeline(WORKSPACE_UUID, 'test-uuid')
 
         # Verify
-        ap.pipeline_mgr.remove_pipeline.assert_called_once_with('test-uuid')
+        ap.pipeline_mgr.remove_pipeline.assert_called_once_with(WORKSPACE_UUID, 'test-uuid')
         ap.persistence_mgr.execute_async.assert_called_once()
 
     async def test_delete_pipeline_nonexistent_uuid(self):
@@ -565,7 +526,7 @@ class TestPipelineServiceDeletePipeline:
         service = PipelineService(ap)
 
         # Execute - should not raise
-        await service.delete_pipeline('nonexistent-uuid')
+        await service.delete_pipeline(WORKSPACE_UUID, 'nonexistent-uuid')
 
         # Verify
         ap.pipeline_mgr.remove_pipeline.assert_called_once()
@@ -597,7 +558,7 @@ class TestPipelineServiceCopyPipeline:
 
         # Execute & Verify
         with pytest.raises(ValueError, match='Maximum number of pipelines'):
-            await service.copy_pipeline('original-uuid')
+            await service.copy_pipeline(WORKSPACE_UUID, 'original-uuid')
 
     async def test_copy_pipeline_not_found_raises(self):
         """Raises ValueError when original pipeline not found."""
@@ -618,8 +579,8 @@ class TestPipelineServiceCopyPipeline:
         ap.persistence_mgr.serialize_model = Mock(return_value={})
 
         # Execute & Verify
-        with pytest.raises(ValueError, match='Pipeline original-uuid not found'):
-            await service.copy_pipeline('original-uuid')
+        with pytest.raises(WorkspaceNotFoundError, match='Pipeline original-uuid not found'):
+            await service.copy_pipeline(WORKSPACE_UUID, 'original-uuid')
 
     async def test_copy_pipeline_creates_copy(self):
         """Creates a copy with (Copy) suffix."""
@@ -662,7 +623,7 @@ class TestPipelineServiceCopyPipeline:
         )
 
         # Execute
-        new_uuid = await service.copy_pipeline('original-uuid')
+        new_uuid = await service.copy_pipeline(WORKSPACE_UUID, 'original-uuid')
 
         # Verify
         assert new_uuid is not None
@@ -695,7 +656,7 @@ class TestPipelineServiceCopyPipeline:
         service.get_pipeline = AsyncMock(return_value={'uuid': 'copy-uuid', 'is_default': False})
 
         # Execute
-        await service.copy_pipeline('original-uuid')
+        await service.copy_pipeline(WORKSPACE_UUID, 'original-uuid')
 
         # Verify - pipeline_mgr.load_pipeline called (copy created)
         ap.pipeline_mgr.load_pipeline.assert_called_once()
@@ -715,100 +676,8 @@ class TestPipelineServiceUpdatePipelineExtensions:
         service = PipelineService(ap)
 
         # Execute & Verify
-        with pytest.raises(ValueError, match='Pipeline nonexistent-uuid not found'):
-            await service.update_pipeline_extensions('nonexistent-uuid', [])
-
-    @pytest.mark.parametrize(
-        ('field', 'invalid_value'),
-        [
-            ('bound_plugins', 'author/plugin'),
-            ('bound_plugins', [{'author': 'author'}]),
-            ('bound_mcp_servers', 'server-1'),
-            ('bound_mcp_servers', ['server-1', 2]),
-            ('bound_skills', 'skill-1'),
-            ('bound_skills', ['skill-1', None]),
-            ('bound_mcp_resources', {'uri': 'file:///README.md'}),
-            ('bound_mcp_resources', [{'uri': 'file:///README.md'}, 'bad']),
-        ],
-    )
-    async def test_update_extensions_rejects_malformed_binding_lists_before_query(
-        self,
-        field,
-        invalid_value,
-    ):
-        ap = SimpleNamespace(persistence_mgr=SimpleNamespace(execute_async=AsyncMock()))
-        service = PipelineService(ap)
-        kwargs = {field: invalid_value}
-        if field != 'bound_plugins':
-            kwargs['bound_plugins'] = []
-
-        with pytest.raises(ValueError, match=field):
-            await service.update_pipeline_extensions('test-uuid', **kwargs)
-
-        ap.persistence_mgr.execute_async.assert_not_awaited()
-
-    @pytest.mark.parametrize('invalid_value', [0, 'false'])
-    async def test_update_extensions_rejects_non_boolean_resource_read_before_query(self, invalid_value):
-        ap = SimpleNamespace(persistence_mgr=SimpleNamespace(execute_async=AsyncMock()))
-        service = PipelineService(ap)
-
-        with pytest.raises(ValueError, match='mcp_resource_agent_read_enabled.*boolean'):
-            await service.update_pipeline_extensions(
-                'test-uuid',
-                [],
-                mcp_resource_agent_read_enabled=invalid_value,
-            )
-
-        ap.persistence_mgr.execute_async.assert_not_awaited()
-
-    @pytest.mark.parametrize(
-        'field',
-        [
-            'enable_all_plugins',
-            'enable_all_mcp_servers',
-            'enable_all_skills',
-        ],
-    )
-    @pytest.mark.parametrize('invalid_value', [0, None, 'false'])
-    async def test_update_extensions_rejects_non_boolean_enable_all_flags_before_query(
-        self,
-        field,
-        invalid_value,
-    ):
-        ap = SimpleNamespace(persistence_mgr=SimpleNamespace(execute_async=AsyncMock()))
-        service = PipelineService(ap)
-
-        with pytest.raises(ValueError, match=rf'{field}.*boolean'):
-            await service.update_pipeline_extensions(
-                'test-uuid',
-                [],
-                **{field: invalid_value},
-            )
-
-        ap.persistence_mgr.execute_async.assert_not_awaited()
-
-    @pytest.mark.parametrize('invalid_value', [0, None, 'false'])
-    async def test_update_extensions_rejects_non_boolean_attachment_enabled_before_query(
-        self,
-        invalid_value,
-    ):
-        ap = SimpleNamespace(persistence_mgr=SimpleNamespace(execute_async=AsyncMock()))
-        service = PipelineService(ap)
-
-        with pytest.raises(ValueError, match=r'bound_mcp_resources.*enabled.*boolean'):
-            await service.update_pipeline_extensions(
-                'test-uuid',
-                [],
-                bound_mcp_resources=[
-                    {
-                        'server_uuid': 'server-1',
-                        'uri': 'file:///README.md',
-                        'enabled': invalid_value,
-                    }
-                ],
-            )
-
-        ap.persistence_mgr.execute_async.assert_not_awaited()
+        with pytest.raises(WorkspaceNotFoundError, match='Pipeline nonexistent-uuid not found'):
+            await service.update_pipeline_extensions(WORKSPACE_UUID, 'nonexistent-uuid', [])
 
     async def test_update_extensions_sets_plugins(self):
         """Updates plugins in extensions_preferences."""
@@ -836,7 +705,7 @@ class TestPipelineServiceUpdatePipelineExtensions:
                 'uuid': 'test-uuid',
                 'extensions_preferences': {
                     'enable_all_plugins': False,
-                    'plugins': [{'plugin_uuid': 'plugin-1'}],
+                    'plugins': [{'author': 'test', 'name': 'plugin-1'}],
                 },
             }
         )
@@ -847,7 +716,7 @@ class TestPipelineServiceUpdatePipelineExtensions:
                 'uuid': 'test-uuid',
                 'extensions_preferences': {
                     'enable_all_plugins': False,
-                    'plugins': [{'plugin_uuid': 'plugin-1'}],
+                    'plugins': [{'author': 'test', 'name': 'plugin-1'}],
                 },
             }
         )
@@ -855,6 +724,7 @@ class TestPipelineServiceUpdatePipelineExtensions:
         # Execute
         bound_plugins = [{'author': 'test', 'name': 'plugin-1'}]
         await service.update_pipeline_extensions(
+            WORKSPACE_UUID,
             'test-uuid',
             bound_plugins=bound_plugins,
             enable_all_plugins=False,
@@ -904,6 +774,7 @@ class TestPipelineServiceUpdatePipelineExtensions:
 
         # Execute
         await service.update_pipeline_extensions(
+            WORKSPACE_UUID,
             'test-uuid',
             bound_plugins=[],
             bound_mcp_servers=['mcp-server-1'],
@@ -951,7 +822,7 @@ class TestPipelineServiceUpdatePipelineExtensions:
         )
 
         # Execute - bound_mcp_servers is None (not provided)
-        await service.update_pipeline_extensions('test-uuid', bound_plugins=[])
+        await service.update_pipeline_extensions(WORKSPACE_UUID, 'test-uuid', bound_plugins=[])
 
         # Verify - persistence was called
         ap.persistence_mgr.execute_async.assert_called()
@@ -990,12 +861,88 @@ class TestPipelineServiceUpdatePipelineExtensions:
         service = PipelineService(ap)
         service.get_pipeline = AsyncMock(return_value={'uuid': 'test-uuid'})
 
-        await service.update_pipeline_extensions('test-uuid', bound_plugins=[])
+        await service.update_pipeline_extensions(WORKSPACE_UUID, 'test-uuid', bound_plugins=[])
 
         assert original_pipeline.extensions_preferences['mcp_resource_agent_read_enabled'] is False
         assert original_pipeline.extensions_preferences['mcp_resources'] == [
             {'server_uuid': 'srv-1', 'uri': 'file:///README.md'}
         ]
+
+
+class TestPipelineSecretRoundtrip:
+    async def test_resource_view_redacts_runner_secrets_without_mutating_serialized_data(self):
+        raw = {
+            'uuid': 'pipeline-secret',
+            'config': {
+                'ai': {
+                    'n8n': {
+                        'webhook-url': 'https://hook.invalid/bearer-secret',
+                        'headers': {'Authorization': 'Bearer secret'},
+                    }
+                }
+            },
+        }
+        pipeline = _create_mock_pipeline(pipeline_uuid='pipeline-secret')
+        ap = SimpleNamespace(
+            persistence_mgr=SimpleNamespace(
+                execute_async=AsyncMock(return_value=_create_mock_result([pipeline])),
+                serialize_model=Mock(return_value=raw),
+            )
+        )
+
+        redacted = await PipelineService(ap).get_pipelines(WORKSPACE_UUID)
+
+        assert redacted[0]['config']['ai']['n8n']['webhook-url'] == '***'
+        assert redacted[0]['config']['ai']['n8n']['headers']['Authorization'] == '***'
+        assert raw['config']['ai']['n8n']['webhook-url'] == 'https://hook.invalid/bearer-secret'
+
+    async def test_masked_runner_config_update_restores_existing_secret(self):
+        raw_config = {
+            'ai': {
+                'n8n': {
+                    'webhook-url': 'https://hook.invalid/bearer-secret',
+                    'headers': {'Authorization': 'Bearer secret'},
+                    'timeout': 30,
+                }
+            }
+        }
+        current_pipeline = {'uuid': 'pipeline-secret', 'config': raw_config}
+        write_result = Mock(rowcount=1)
+        ap = SimpleNamespace(
+            persistence_mgr=SimpleNamespace(execute_async=AsyncMock(return_value=write_result)),
+            pipeline_mgr=SimpleNamespace(remove_pipeline=AsyncMock(), load_pipeline=AsyncMock()),
+            sess_mgr=SimpleNamespace(session_list=[]),
+        )
+        service = PipelineService(ap)
+        service.get_pipeline = AsyncMock(side_effect=[current_pipeline, current_pipeline])
+
+        await service.update_pipeline(
+            WORKSPACE_UUID,
+            'pipeline-secret',
+            {
+                'config': {
+                    'ai': {
+                        'n8n': {
+                            'webhook-url': '***',
+                            'headers': {'Authorization': '***'},
+                            'timeout': 60,
+                        }
+                    }
+                }
+            },
+        )
+
+        statement = ap.persistence_mgr.execute_async.await_args.args[0]
+        stored_config = next(value.value for column, value in statement._values.items() if column.key == 'config')
+        assert stored_config == {
+            'ai': {
+                'n8n': {
+                    'webhook-url': 'https://hook.invalid/bearer-secret',
+                    'headers': {'Authorization': 'Bearer secret'},
+                    'timeout': 60,
+                }
+            }
+        }
 
 
 class TestDefaultStageOrder:

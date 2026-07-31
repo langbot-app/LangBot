@@ -115,6 +115,17 @@ class DummyWSClient:
         self._reconnect = AsyncMock()
 
 
+class DummyExpiringCache:
+    def __init__(self, clear_interval=60):
+        self.clear_interval = clear_interval
+
+    def get(self, key):
+        return None
+
+    def set(self, key, value, ttl):
+        return None
+
+
 def manifest() -> dict:
     path = (
         pathlib.Path(__file__).parents[3]
@@ -130,18 +141,19 @@ def manifest() -> dict:
 
 
 def make_adapter(config: dict | None = None) -> LarkAdapter:
-    adapter = LarkAdapter(
-        {
-            'app_id': 'cli_xxx',
-            'app_secret': 'secret',
-            'bot_name': 'LangBotDev',
-            'enable-webhook': False,
-            'enable-stream-reply': False,
-            'app_type': 'self',
-            **(config or {}),
-        },
-        DummyLogger(),
-    )
+    with patch('lark_oapi.ws.client.ExpiringCache', DummyExpiringCache):
+        adapter = LarkAdapter(
+            {
+                'app_id': 'cli_xxx',
+                'app_secret': 'secret',
+                'bot_name': 'LangBotDev',
+                'enable-webhook': False,
+                'enable-stream-reply': False,
+                'app_type': 'self',
+                **(config or {}),
+            },
+            DummyLogger(),
+        )
     adapter.api_client = DummyAPIClient()
     adapter.bot = DummyWSClient()
     return adapter
@@ -179,6 +191,17 @@ def test_lark_platform_api_map_matches_manifest():
     manifest_actions = {item['action'] for item in manifest()['spec']['platform_specific_apis']}
 
     assert set(PLATFORM_API_MAP) == manifest_actions
+
+
+@pytest.mark.asyncio
+async def test_lark_kill_cancels_sdk_cache_task():
+    adapter = make_adapter()
+    cache_task = asyncio.create_task(asyncio.sleep(60))
+    adapter.bot._cache = SimpleNamespace(_cron=cache_task)
+
+    assert await adapter.kill() is True
+    assert cache_task.cancelled()
+    adapter.bot._disconnect.assert_awaited_once_with()
 
 
 @pytest.mark.asyncio

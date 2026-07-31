@@ -8,6 +8,11 @@ class Agent(Base):
 
     __tablename__ = 'agents'
 
+    workspace_uuid = sqlalchemy.Column(
+        sqlalchemy.String(36),
+        sqlalchemy.ForeignKey('workspaces.uuid', ondelete='CASCADE'),
+        nullable=False,
+    )
     uuid = sqlalchemy.Column(sqlalchemy.String(255), primary_key=True, unique=True)
     name = sqlalchemy.Column(sqlalchemy.String(255), nullable=False)
     description = sqlalchemy.Column(sqlalchemy.String(255), nullable=False, default='')
@@ -23,4 +28,9 @@ class Agent(Base):
         nullable=False,
         server_default=sqlalchemy.func.now(),
         onupdate=sqlalchemy.func.now(),
+    )
+
+    __table_args__ = (
+        sqlalchemy.Index('ix_agents_workspace_name', 'workspace_uuid', 'name'),
+        sqlalchemy.Index('ix_agents_workspace_updated', 'workspace_uuid', 'updated_at'),
     )

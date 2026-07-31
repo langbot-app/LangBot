@@ -5,6 +5,28 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
+from langbot.pkg.api.http.context import ExecutionContext
+
+
+TEST_CONTEXT = ExecutionContext(
+    instance_uuid='instance-test',
+    workspace_uuid='workspace-test',
+    placement_generation=1,
+    bot_uuid='bot-1',
+)
+
+
+def active_workspace_service():
+    return SimpleNamespace(
+        get_execution_binding=AsyncMock(
+            return_value=SimpleNamespace(
+                instance_uuid=TEST_CONTEXT.instance_uuid,
+                workspace_uuid=TEST_CONTEXT.workspace_uuid,
+                placement_generation=TEST_CONTEXT.placement_generation,
+            )
+        )
+    )
+
 
 class TestEventRouteTrace:
     """Test structured event route trace logging."""
@@ -14,7 +36,14 @@ class TestEventRouteTrace:
         from langbot.pkg.platform.botmgr import RuntimeBot
 
         bot = object.__new__(RuntimeBot)
-        bot.bot_entity = SimpleNamespace(uuid='bot-1', event_bindings=event_bindings)
+        bot.bot_entity = SimpleNamespace(
+            uuid='bot-1',
+            workspace_uuid=TEST_CONTEXT.workspace_uuid,
+            event_bindings=event_bindings,
+        )
+        bot.execution_context = TEST_CONTEXT
+        bot.workspace_uuid = TEST_CONTEXT.workspace_uuid
+        bot.placement_generation = TEST_CONTEXT.placement_generation
         bot.logger = SimpleNamespace(
             info=AsyncMock(),
             warning=AsyncMock(),
@@ -91,6 +120,7 @@ class TestEventRouteTrace:
             ]
         )
         bot.ap = SimpleNamespace(
+            workspace_service=active_workspace_service(),
             agent_service=SimpleNamespace(
                 get_agent=AsyncMock(
                     return_value={
@@ -163,6 +193,7 @@ class TestEventRouteTrace:
                 yield None
 
         bot.ap = SimpleNamespace(
+            workspace_service=active_workspace_service(),
             agent_service=SimpleNamespace(get_agent=AsyncMock(side_effect=[malformed_agent, valid_agent])),
             agent_run_orchestrator=SimpleNamespace(run=fake_run),
         )
@@ -194,6 +225,7 @@ class TestEventRouteTrace:
             ]
         )
         bot.ap = SimpleNamespace(
+            workspace_service=active_workspace_service(),
             msg_aggregator=SimpleNamespace(add_message=AsyncMock()),
         )
         bot.adapter = SimpleNamespace(
@@ -342,7 +374,12 @@ class TestEventLoggerMetadata:
         """Metadata is optional and no_throw remains the fourth positional argument."""
         from langbot.pkg.platform.logger import EventLogger
 
-        logger = EventLogger(name='test', ap=SimpleNamespace())
+        logger = EventLogger(
+            name='test',
+            ap=SimpleNamespace(),
+            execution_context=TEST_CONTEXT,
+            owner='bot-1',
+        )
 
         await logger.info('plain log', None, None, False)
         await logger.info(
@@ -368,9 +405,14 @@ class TestRuntimeBotLifecycle:
         task_mgr = SimpleNamespace(cancel_task=Mock())
         bot = RuntimeBot(
             ap=SimpleNamespace(task_mgr=task_mgr),
-            bot_entity=SimpleNamespace(enable=True),
+            bot_entity=SimpleNamespace(
+                uuid='bot-1',
+                workspace_uuid=TEST_CONTEXT.workspace_uuid,
+                enable=True,
+            ),
             adapter=SimpleNamespace(kill=AsyncMock()),
             logger=Mock(),
+            execution_context=TEST_CONTEXT,
         )
 
         await bot.shutdown()
@@ -391,9 +433,14 @@ class TestRuntimeBotLifecycle:
         )
         bot = RuntimeBot(
             ap=SimpleNamespace(),
-            bot_entity=SimpleNamespace(enable=True),
+            bot_entity=SimpleNamespace(
+                uuid='bot-1',
+                workspace_uuid=TEST_CONTEXT.workspace_uuid,
+                enable=True,
+            ),
             adapter=adapter,
             logger=Mock(),
+            execution_context=TEST_CONTEXT,
         )
 
         await bot.initialize()
@@ -414,9 +461,14 @@ class TestRuntimeBotLifecycle:
         )
         bot = RuntimeBot(
             ap=SimpleNamespace(),
-            bot_entity=SimpleNamespace(enable=True),
+            bot_entity=SimpleNamespace(
+                uuid='bot-1',
+                workspace_uuid=TEST_CONTEXT.workspace_uuid,
+                enable=True,
+            ),
             adapter=adapter,
             logger=Mock(),
+            execution_context=TEST_CONTEXT,
         )
 
         await bot.initialize()
@@ -613,6 +665,9 @@ class TestInteractionResumeRouting:
 
         bot = object.__new__(RuntimeBot)
         bot.bot_entity = SimpleNamespace(uuid='bot-1', name='Test', event_bindings=[])
+        bot.execution_context = TEST_CONTEXT
+        bot.workspace_uuid = TEST_CONTEXT.workspace_uuid
+        bot.placement_generation = TEST_CONTEXT.placement_generation
         interaction_manager = SimpleNamespace(
             consume_callback=AsyncMock(return_value=record),
             acknowledge_submission=AsyncMock(),
@@ -750,3 +805,23 @@ class TestInteractionResumeRouting:
         )
 
         assert binding is None
+
+
+def test_websocket_task_override_does_not_mutate_bot_default():
+    from langbot.pkg.platform.botmgr import RuntimeBot
+
+    bot = object.__new__(RuntimeBot)
+    bot.bot_entity = Mock(use_pipeline_uuid='default-uuid')
+    adapter = Mock()
+    adapter.get_pipeline_uuid_override.return_value = 'connection-pipeline'
+
+    pipeline_uuid, routed = bot.resolve_event_pipeline_uuid(
+        adapter,
+        'person',
+        'launcher',
+        'hello',
+    )
+
+    assert pipeline_uuid == 'connection-pipeline'
+    assert routed is False
+    assert bot.bot_entity.use_pipeline_uuid == 'default-uuid'

@@ -9,6 +9,8 @@ from langbot_plugin.api.entities.builtin.provider import message as provider_mes
 from langbot_plugin.api.entities.builtin.pipeline import query as pipeline_query
 
 from ...core import app
+from ...api.http.context import ExecutionContext
+from ...pipeline.pool import get_query_execution_context
 from .binding_resolver import AgentBindingResolver
 from .context_builder import AgentRunContextBuilder, AgentRunContextPayload
 from .descriptor import AgentRunnerDescriptor
@@ -82,12 +84,22 @@ class AgentRunOrchestrator:
     ) -> typing.AsyncGenerator[provider_message.Message | provider_message.MessageChunk, None]:
         """Run an AgentRunner from an event-first envelope."""
         runner_id = binding.runner_id
-        descriptor = await self.registry.get(runner_id, bound_plugins)
-
         execution_query = adapter_context.get('_query') if adapter_context else None
+        execution_context = adapter_context.get('_execution_context') if adapter_context else None
+        if execution_context is None and execution_query is not None:
+            execution_context = get_query_execution_context(execution_query)
+        if not isinstance(execution_context, ExecutionContext):
+            raise ValueError('Agent run requires a trusted ExecutionContext')
+        descriptor = await self.registry.get(
+            execution_context,
+            runner_id,
+            bound_plugins,
+        )
+
         if execution_query is None:
             execution_query = build_execution_query(event, [])
             project_mcp_resource_config(execution_query, binding.runner_config)
+        object.__setattr__(execution_query, '_execution_context', execution_context)
 
         execution_event = event
         resource_addition = await build_mcp_resource_context_addition(self.ap, execution_query)
@@ -96,6 +108,7 @@ class AgentRunOrchestrator:
             append_mcp_resource_context_to_event(execution_event, resource_addition)
 
         resources = await self.resource_builder.build_resources_from_binding(
+            execution_context=execution_context,
             event=event,
             binding=binding,
             descriptor=descriptor,
@@ -348,6 +361,7 @@ class AgentRunOrchestrator:
         plan = self.query_bridge.build_plan(query)
         adapter_context = dict(plan.adapter_context)
         adapter_context['_query'] = query
+        adapter_context['_execution_context'] = get_query_execution_context(query)
 
         # Inbound files and subsequent runner tools must share one Host scope.
         prepare_box_scope(query, plan.event)
@@ -421,7 +435,11 @@ class AgentRunOrchestrator:
         if event.event_type != 'message.received' or not event.conversation_id:
             return False
 
-        descriptor = await self.registry.get(binding.runner_id, plan.bound_plugins)
+        descriptor = await self.registry.get(
+            get_query_execution_context(query),
+            binding.runner_id,
+            plan.bound_plugins,
+        )
         if not descriptor.supports_steering():
             return False
 

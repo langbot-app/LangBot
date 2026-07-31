@@ -4,20 +4,111 @@ from __future__ import annotations
 
 import base64
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import ANY, AsyncMock, Mock
 
 import pytest
 from langbot_plugin.api.entities.builtin.provider import message as provider_message
 from langbot_plugin.entities.io.actions.enums import PluginToRuntimeAction, RuntimeToLangBotAction
+from langbot_plugin.entities.io.context import ActionContext, InstallationBinding
+
+from langbot.pkg.api.http.context import ExecutionContext
+from langbot.pkg.storage.mgr import StorageMgr
 
 from langbot.pkg.provider.tools.errors import ToolExecutionDeniedError
 
 
-def make_handler(app):
+TEST_EXECUTION_CONTEXT = ExecutionContext(
+    instance_uuid='instance-a',
+    workspace_uuid='workspace-a',
+    placement_generation=1,
+)
+
+
+def canonical_binary_key(owner_type: str, owner: str, key: str) -> str:
+    return StorageMgr.canonical_binary_storage_key(
+        TEST_EXECUTION_CONTEXT,
+        owner_type=owner_type,
+        owner=owner,
+        key=key,
+    )
+
+
+def make_handler(app, workspace_context: ActionContext | None = None):
     """Create a RuntimeConnectionHandler with mocked external connection."""
     from langbot.pkg.plugin.handler import RuntimeConnectionHandler
 
-    return RuntimeConnectionHandler(Mock(), AsyncMock(return_value=True), app)
+    workspace_context = workspace_context or ActionContext(
+        instance_uuid='instance-a',
+        workspace_uuid='workspace-a',
+        placement_generation=1,
+    )
+    app.workspace_service = SimpleNamespace(
+        get_execution_binding=AsyncMock(
+            return_value=SimpleNamespace(
+                instance_uuid=workspace_context.instance_uuid,
+                workspace_uuid=workspace_context.workspace_uuid,
+                placement_generation=workspace_context.placement_generation,
+            )
+        )
+    )
+    runtime_handler = RuntimeConnectionHandler(
+        Mock(),
+        AsyncMock(return_value=True),
+        app,
+    )
+    plugin_identity = getattr(app, '__dict__', {}).get(
+        '_test_plugin_identity',
+        'test-author/test-plugin',
+    )
+    plugin_author, plugin_name = plugin_identity.split('/', 1)
+    installation_binding = InstallationBinding(
+        **workspace_context.model_dump(exclude_none=True),
+        installation_uuid='00000000-0000-4000-8000-000000000001',
+        runtime_revision=1,
+        artifact_digest='a' * 64,
+    )
+    runtime_handler.register_installation_binding(
+        installation_binding,
+        plugin_author=plugin_author,
+        plugin_name=plugin_name,
+    )
+    runtime_handler._current_action_context.set(installation_binding)
+    query_pool = getattr(app, 'query_pool', None)
+    if query_pool is not None and isinstance(
+        getattr(query_pool, 'cached_queries', None),
+        dict,
+    ):
+
+        def scoped_query(query):
+            if query is not None:
+                query.instance_uuid = workspace_context.instance_uuid
+                query.workspace_uuid = workspace_context.workspace_uuid
+                query.placement_generation = workspace_context.placement_generation
+            return query
+
+        normalized_queries = {}
+        legacy_query_index = {}
+        for cache_key, query in list(query_pool.cached_queries.items()):
+            if isinstance(cache_key, int):
+                query_uuid = f'test-query-{cache_key}'
+                setattr(query, 'query_uuid', query_uuid)
+                normalized_queries[(workspace_context.workspace_uuid, query_uuid)] = query
+                legacy_query_index[(workspace_context.workspace_uuid, cache_key)] = query_uuid
+            elif isinstance(cache_key, str):
+                setattr(query, 'query_uuid', cache_key)
+                normalized_queries[(workspace_context.workspace_uuid, cache_key)] = query
+            else:
+                normalized_queries[cache_key] = query
+        query_pool.cached_queries = normalized_queries
+        query_pool.legacy_query_index = legacy_query_index
+
+        query_pool.get_query = AsyncMock(
+            side_effect=lambda workspace_uuid, query_uuid: scoped_query(query_pool.cached_queries.get(query_uuid))
+        )
+        query_pool.get_query_by_legacy_id = AsyncMock(
+            side_effect=lambda workspace_uuid, query_id: scoped_query(query_pool.cached_queries.get(query_id))
+        )
+    return runtime_handler
 
 
 def make_result(first_item=None):
@@ -53,6 +144,8 @@ class TestRagRerankAction:
     def app(self):
         mock_app = Mock()
         mock_app.model_mgr = Mock()
+        mock_app.persistence_mgr = Mock()
+        mock_app.persistence_mgr.execute_async = AsyncMock(return_value=make_result(SimpleNamespace(uuid='rerank-1')))
         mock_app.logger = Mock()
         return mock_app
 
@@ -82,12 +175,16 @@ class TestRagRerankAction:
 
         assert response.code == 0
         assert response.data['results'] == [{'index': 1, 'relevance_score': 0.9}]
-        app.model_mgr.get_rerank_model_by_uuid.assert_awaited_once_with('rerank-1')
+        app.model_mgr.get_rerank_model_by_uuid.assert_awaited_once_with(
+            TEST_EXECUTION_CONTEXT,
+            'rerank-1',
+        )
         provider.invoke_rerank.assert_awaited_once_with(
             model=rerank_model,
             query='hello',
             documents=['a', 'b'],
             extra_args={'return_documents': False},
+            execution_context=TEST_EXECUTION_CONTEXT,
         )
 
     @pytest.mark.asyncio
@@ -120,13 +217,10 @@ class TestInitializePluginSettings:
         return mock_app
 
     @pytest.mark.asyncio
-    async def test_creates_new_setting_when_not_exists(self, app):
-        """New plugin settings use default enabled, priority and config values."""
+    async def test_rejects_desired_installation_when_setting_not_exists(self, app):
+        """A desired-state worker cannot create an unowned Core setting row."""
         runtime_handler = make_handler(app)
-        app.persistence_mgr.execute_async.side_effect = [
-            make_result(),
-            Mock(),
-        ]
+        app.persistence_mgr.execute_async.return_value = make_result()
 
         response = await runtime_handler.actions[RuntimeToLangBotAction.INITIALIZE_PLUGIN_SETTINGS.value](
             {
@@ -137,33 +231,23 @@ class TestInitializePluginSettings:
             }
         )
 
-        assert response.code == 0
-        assert app.persistence_mgr.execute_async.await_count == 2
-        insert_params = compiled_params(app.persistence_mgr.execute_async.await_args_list[1].args[0])
-        assert insert_params == {
-            'plugin_author': 'test-author',
-            'plugin_name': 'test-plugin',
-            'install_source': 'local',
-            'install_info': {'path': '/test'},
-            'enabled': True,
-            'priority': 0,
-            'config': {},
-        }
+        assert response.code != 0
+        assert 'Plugin installation setting was not found' in response.message
+        app.persistence_mgr.execute_async.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_inherits_values_from_existing_setting(self, app):
-        """Existing settings are replaced while preserving user-controlled values."""
+    async def test_existing_desired_setting_remains_core_owned(self, app):
+        """Runtime initialization validates identity without rewriting Core state."""
         runtime_handler = make_handler(app)
         existing_setting = SimpleNamespace(
             enabled=False,
             priority=5,
             config={'key': 'value'},
+            installation_uuid='00000000-0000-4000-8000-000000000001',
+            runtime_revision=1,
+            artifact_digest='a' * 64,
         )
-        app.persistence_mgr.execute_async.side_effect = [
-            make_result(existing_setting),
-            Mock(),
-            Mock(),
-        ]
+        app.persistence_mgr.execute_async.return_value = make_result(existing_setting)
 
         response = await runtime_handler.actions[RuntimeToLangBotAction.INITIALIZE_PLUGIN_SETTINGS.value](
             {
@@ -175,13 +259,7 @@ class TestInitializePluginSettings:
         )
 
         assert response.code == 0
-        assert app.persistence_mgr.execute_async.await_count == 3
-        insert_params = compiled_params(app.persistence_mgr.execute_async.await_args_list[2].args[0])
-        assert insert_params['enabled'] is False
-        assert insert_params['priority'] == 5
-        assert insert_params['config'] == {'key': 'value'}
-        assert insert_params['install_source'] == 'github'
-        assert insert_params['install_info'] == {'repo': 'author/name'}
+        app.persistence_mgr.execute_async.assert_awaited_once()
 
 
 class TestSetBinaryStorage:
@@ -222,7 +300,7 @@ class TestSetBinaryStorage:
         )
 
         assert response.code != 0
-        assert '2048 > 1024 bytes' in response.message
+        assert '1024-byte limit' in response.message
         app.persistence_mgr.execute_async.assert_not_awaited()
 
     @pytest.mark.asyncio
@@ -237,7 +315,12 @@ class TestSetBinaryStorage:
         assert response.code == 0
         assert app.persistence_mgr.execute_async.await_count == 2
         insert_params = compiled_params(app.persistence_mgr.execute_async.await_args_list[1].args[0])
-        assert insert_params['unique_key'] == 'plugin:test-owner:test-key'
+        assert insert_params['workspace_uuid'] == 'workspace-a'
+        assert insert_params['unique_key'] == canonical_binary_key(
+            'plugin',
+            'test-author/test-plugin',
+            'test-key',
+        )
         assert insert_params['value'] == b'x' * 512
 
     @pytest.mark.asyncio
@@ -250,7 +333,15 @@ class TestSetBinaryStorage:
 
         assert response.code == 0
         assert app.persistence_mgr.execute_async.await_count == 2
+        select_params = compiled_params(app.persistence_mgr.execute_async.await_args_list[0].args[0])
         update_params = compiled_params(app.persistence_mgr.execute_async.await_args_list[1].args[0])
+        expected_key = canonical_binary_key(
+            'plugin',
+            'test-author/test-plugin',
+            'test-key',
+        )
+        assert expected_key in select_params.values()
+        assert expected_key in update_params.values()
         assert update_params['value'] == b'new'
 
     @pytest.mark.asyncio
@@ -264,21 +355,25 @@ class TestSetBinaryStorage:
         )
 
         assert response.code != 0
-        assert '10485761 > 10485760 bytes' in response.message
+        assert '10485760' in response.message
         app.persistence_mgr.execute_async.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_negative_limit_disables_size_check(self, app):
-        """Negative max_value_bytes allows values larger than the normal default."""
+    async def test_negative_limit_falls_back_to_bounded_default(self, app, monkeypatch):
+        """Negative max_value_bytes cannot disable the process memory boundary."""
+        import langbot.pkg.plugin.handler as handler_module
+
         runtime_handler = make_handler(app)
         app.instance_config.data['plugin']['binary_storage']['max_value_bytes'] = -1
+        monkeypatch.setattr(handler_module, '_DEFAULT_BINARY_STORAGE_VALUE_BYTES', 1024)
 
         response = await runtime_handler.actions[RuntimeToLangBotAction.SET_BINARY_STORAGE.value](
             self.payload(b'x' * 2048)
         )
 
-        assert response.code == 0
-        assert app.persistence_mgr.execute_async.await_count == 2
+        assert response.code != 0
+        assert '1024-byte limit' in response.message
+        app.persistence_mgr.execute_async.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_zero_limit_rejects_non_empty_values(self, app):
@@ -304,26 +399,18 @@ class TestGetPluginSettings:
         return mock_app
 
     @pytest.mark.asyncio
-    async def test_returns_defaults_when_setting_not_found(self, app):
-        """Default plugin settings are returned when no persisted row exists."""
+    async def test_rejects_desired_installation_when_setting_not_found(self, app):
+        """A desired-state worker cannot synthesize settings for a missing row."""
         runtime_handler = make_handler(app)
         app.persistence_mgr.execute_async.return_value = make_result()
 
-        response = await runtime_handler.actions[RuntimeToLangBotAction.GET_PLUGIN_SETTINGS.value](
-            {
-                'plugin_author': 'test-author',
-                'plugin_name': 'test-plugin',
-            }
-        )
-
-        assert response.code == 0
-        assert response.data == {
-            'enabled': True,
-            'priority': 0,
-            'plugin_config': {},
-            'install_source': 'local',
-            'install_info': {},
-        }
+        with pytest.raises(ValueError, match='Plugin installation setting was not found'):
+            await runtime_handler.actions[RuntimeToLangBotAction.GET_PLUGIN_SETTINGS.value](
+                {
+                    'plugin_author': 'test-author',
+                    'plugin_name': 'test-plugin',
+                }
+            )
 
     @pytest.mark.asyncio
     async def test_returns_actual_values_when_setting_exists(self, app):
@@ -335,6 +422,9 @@ class TestGetPluginSettings:
             config={'custom': 'config'},
             install_source='github',
             install_info={'repo': 'test/repo'},
+            installation_uuid='00000000-0000-4000-8000-000000000001',
+            runtime_revision=1,
+            artifact_digest='a' * 64,
         )
         app.persistence_mgr.execute_async.return_value = make_result(setting)
 
@@ -352,7 +442,91 @@ class TestGetPluginSettings:
             'plugin_config': {'custom': 'config'},
             'install_source': 'github',
             'install_info': {'repo': 'test/repo'},
+            'installation_uuid': '00000000-0000-4000-8000-000000000001',
+            'runtime_revision': 1,
+            'artifact_digest': 'a' * 64,
         }
+
+
+class TestGetConfigFile:
+    """Plugin config files remain bound to the trusted runtime placement."""
+
+    WORKSPACE_A = '11111111-1111-4111-8111-111111111111'
+    WORKSPACE_B = '22222222-2222-4222-8222-222222222222'
+
+    @pytest.fixture
+    def app(self):
+        mock_app = Mock()
+        mock_app.persistence_mgr = Mock()
+        mock_app.persistence_mgr.execute_async = AsyncMock()
+        mock_app.storage_mgr = StorageMgr(mock_app)
+        mock_app.storage_mgr.storage_provider = SimpleNamespace(
+            load_bounded=AsyncMock(return_value=b'plugin config bytes')
+        )
+        mock_app.logger = Mock()
+        return mock_app
+
+    @staticmethod
+    def object_key(
+        *,
+        workspace_uuid: str = WORKSPACE_A,
+        placement_generation: int = 1,
+        owner_type: str = 'plugin_config',
+    ) -> str:
+        return StorageMgr.scoped_object_key(
+            ExecutionContext(
+                instance_uuid='instance-a',
+                workspace_uuid=workspace_uuid,
+                placement_generation=placement_generation,
+            ),
+            owner_type=owner_type,
+            owner=workspace_uuid,
+            key='config.json',
+        )
+
+    async def invoke(self, app, file_key: str):
+        runtime_handler = make_handler(
+            app,
+            ActionContext(
+                instance_uuid='instance-a',
+                workspace_uuid=self.WORKSPACE_A,
+                placement_generation=1,
+            ),
+        )
+        app.persistence_mgr.execute_async.return_value = make_result(
+            SimpleNamespace(config={'uploaded_file': file_key})
+        )
+        return await runtime_handler.actions[PluginToRuntimeAction.GET_CONFIG_FILE.value]({'file_key': file_key})
+
+    @pytest.mark.asyncio
+    async def test_loads_config_file_from_same_workspace_generation(self, app):
+        file_key = self.object_key()
+
+        response = await self.invoke(app, file_key)
+
+        assert response.code == 0
+        assert base64.b64decode(response.data['file_base64']) == b'plugin config bytes'
+        app.storage_mgr.storage_provider.load_bounded.assert_awaited_once_with(
+            file_key,
+            max_bytes=10 * 1024 * 1024,
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        'file_key',
+        [
+            object_key.__func__(workspace_uuid=WORKSPACE_B),
+            object_key.__func__(placement_generation=2),
+            object_key.__func__(owner_type='upload_document'),
+        ],
+        ids=['other-workspace', 'stale-generation', 'wrong-owner-type'],
+    )
+    async def test_rejects_config_file_outside_trusted_scope(self, app, file_key):
+        response = await self.invoke(app, file_key)
+
+        assert response.code != 0
+        assert 'Failed to load config file' in response.message
+        app.storage_mgr.storage_provider.load_bounded.assert_not_awaited()
 
 
 class TestGetBinaryStorage:
@@ -383,6 +557,16 @@ class TestGetBinaryStorage:
         assert response.data == {
             'value_base64': base64.b64encode(b'test binary content').decode('utf-8'),
         }
+        statement_params = compiled_params(app.persistence_mgr.execute_async.await_args.args[0])
+        assert 'workspace-a' in statement_params.values()
+        assert (
+            canonical_binary_key(
+                'plugin',
+                'test-author/test-plugin',
+                'test-key',
+            )
+            in statement_params.values()
+        )
 
     @pytest.mark.asyncio
     async def test_returns_error_when_not_found(self, app):
@@ -400,6 +584,63 @@ class TestGetBinaryStorage:
 
         assert response.code != 0
         assert 'Storage with key test-key not found' in response.message
+
+
+class TestDeleteAndListBinaryStorage:
+    """Delete/list remain fenced to the trusted canonical owner scope."""
+
+    @pytest.fixture
+    def app(self):
+        mock_app = Mock()
+        mock_app.persistence_mgr = Mock()
+        mock_app.persistence_mgr.execute_async = AsyncMock()
+        return mock_app
+
+    @pytest.mark.asyncio
+    async def test_delete_uses_workspace_and_canonical_unique_key(self, app):
+        runtime_handler = make_handler(app)
+
+        response = await runtime_handler.actions[RuntimeToLangBotAction.DELETE_BINARY_STORAGE.value](
+            {
+                'key': 'test-key',
+                'owner_type': 'plugin',
+                'owner': 'forged-owner',
+            }
+        )
+
+        assert response.code == 0
+        statement_params = compiled_params(app.persistence_mgr.execute_async.await_args.args[0])
+        assert 'workspace-a' in statement_params.values()
+        assert (
+            canonical_binary_key(
+                'plugin',
+                'test-author/test-plugin',
+                'test-key',
+            )
+            in statement_params.values()
+        )
+        assert 'forged-owner' not in statement_params.values()
+
+    @pytest.mark.asyncio
+    async def test_list_keys_uses_trusted_plugin_owner(self, app):
+        result = Mock()
+        result.scalars.return_value.all.return_value = ['first', 'second']
+        app.persistence_mgr.execute_async.return_value = result
+        runtime_handler = make_handler(app)
+
+        response = await runtime_handler.actions[RuntimeToLangBotAction.GET_BINARY_STORAGE_KEYS.value](
+            {
+                'owner_type': 'plugin',
+                'owner': 'forged-owner',
+            }
+        )
+
+        assert response.code == 0
+        assert response.data == {'keys': ['first', 'second']}
+        statement_params = compiled_params(app.persistence_mgr.execute_async.await_args.args[0])
+        assert 'workspace-a' in statement_params.values()
+        assert 'test-author/test-plugin' in statement_params.values()
+        assert 'forged-owner' not in statement_params.values()
 
 
 class TestHandlerQueryLookup:
@@ -466,6 +707,11 @@ class TestAgentRunProxyActions:
                 'parameters': {'type': 'object'},
             }
         )
+        mock_app.persistence_mgr = Mock()
+        mock_app.persistence_mgr.execute_async = AsyncMock(
+            return_value=make_result(SimpleNamespace(uuid='resource-test'))
+        )
+        mock_app._test_plugin_identity = 'test/runner'
         return mock_app
 
     @staticmethod
@@ -990,6 +1236,7 @@ class TestAgentRunProxyActions:
 
         assert response.code == 0
         app.tool_mgr.get_tool_detail.assert_awaited_once_with(
+            ANY,
             'test/search',
             source_ref={'source': 'mcp', 'source_id': 'bound-mcp'},
         )
@@ -1197,6 +1444,10 @@ class TestAgentRunProxyActions:
         )
         query = build_execution_query(event, [])
         app.box_service = SimpleNamespace(
+            available=True,
+            get_backend_status=AsyncMock(
+                return_value={'backend': {'available': True}}
+            ),
             execute_tool=AsyncMock(
                 return_value={
                     'ok': True,
@@ -1245,7 +1496,11 @@ class TestAgentRunProxyActions:
         assert response.code == 0
         assert response.data['result']['ok'] is True
         assert response.data['result']['stdout'] == '/workspace\n'
-        app.box_service.execute_tool.assert_awaited_once_with({'command': 'pwd'}, query)
+        app.box_service.execute_tool.assert_awaited_once_with(
+            {'command': 'pwd'},
+            query,
+            skill_name=None,
+        )
 
     @pytest.mark.asyncio
     async def test_invoke_rerank_uses_authorized_model_and_extra_args(self, app):

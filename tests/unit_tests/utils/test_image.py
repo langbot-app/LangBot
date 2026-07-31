@@ -10,9 +10,26 @@ import pytest
 import base64
 
 from langbot.pkg.utils.image import (
+    decode_base64_limited,
+    encode_base64,
     get_qq_image_downloadable_url,
     extract_b64_and_format,
 )
+
+
+@pytest.mark.asyncio
+async def test_base64_media_helpers_round_trip_within_limit():
+    encoded = await encode_base64(b'1234')
+
+    assert await decode_base64_limited(encoded, max_bytes=4) == b'1234'
+
+
+@pytest.mark.asyncio
+async def test_base64_media_decode_rejects_oversized_payload():
+    encoded = base64.b64encode(b'12345').decode()
+
+    with pytest.raises(ValueError, match='exceeds'):
+        await decode_base64_limited(encoded, max_bytes=4)
 
 
 class TestGetQQImageDownloadableUrl:

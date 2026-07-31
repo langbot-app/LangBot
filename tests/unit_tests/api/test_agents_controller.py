@@ -4,7 +4,7 @@ import sys
 import types
 from importlib import import_module
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import ANY, AsyncMock
 
 import pytest
 import quart
@@ -19,11 +19,35 @@ pytestmark = pytest.mark.asyncio
 
 async def _create_test_client(agent_service: SimpleNamespace):
     app = quart.Quart(__name__)
-    user_service = SimpleNamespace(
-        verify_jwt_token=AsyncMock(return_value='test@example.com'),
-        get_user_by_email=AsyncMock(return_value=SimpleNamespace(user='test@example.com')),
+    account = SimpleNamespace(
+        uuid='account-test',
+        user='test@example.com',
     )
-    ap = SimpleNamespace(agent_service=agent_service, user_service=user_service)
+    user_service = SimpleNamespace(
+        get_authenticated_account=AsyncMock(return_value=account),
+    )
+    access = SimpleNamespace(
+        workspace=SimpleNamespace(uuid='workspace-test'),
+        membership=SimpleNamespace(
+            uuid='membership-test',
+            role='developer',
+            projection_revision=1,
+        ),
+        execution=SimpleNamespace(
+            instance_uuid='instance-test',
+            placement_generation=1,
+        ),
+    )
+    ap = SimpleNamespace(
+        agent_service=agent_service,
+        user_service=user_service,
+        apikey_service=SimpleNamespace(
+            authenticate_api_key=AsyncMock(return_value=None)
+        ),
+        workspace_collaboration_service=SimpleNamespace(
+            resolve_account_workspace=AsyncMock(return_value=access)
+        ),
+    )
     AgentsRouterGroup = import_module('langbot.pkg.api.http.controller.groups.agents').AgentsRouterGroup
     group = AgentsRouterGroup(ap, app)
     await group.initialize()
@@ -44,6 +68,7 @@ async def test_create_agent_returns_bad_request_for_invalid_runner_config():
     assert response.status_code == 400
     assert await response.get_json() == {'code': -1, 'msg': message}
     agent_service.create_agent.assert_awaited_once_with(
+        ANY,
         {'name': 'Invalid Agent', 'config': {'runner_config': []}},
     )
 
@@ -62,6 +87,7 @@ async def test_update_agent_returns_bad_request_for_invalid_runner_config():
     assert response.status_code == 400
     assert await response.get_json() == {'code': -1, 'msg': message}
     agent_service.update_agent.assert_awaited_once_with(
+        ANY,
         'agent-1',
         {'config': {'runner': {'id': 7}}},
     )

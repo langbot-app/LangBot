@@ -5,6 +5,7 @@ from __future__ import annotations
 import typing
 
 from ...core import app
+from ...api.http.context import ExecutionContext
 from .descriptor import AgentRunnerDescriptor
 from .context_builder import (
     AgentResources,
@@ -49,6 +50,7 @@ class AgentResourceBuilder:
 
     async def build_resources_from_binding(
         self,
+        execution_context: ExecutionContext,
         event: AgentEventEnvelope,
         binding: AgentBinding,
         descriptor: AgentRunnerDescriptor,
@@ -70,12 +72,32 @@ class AgentResourceBuilder:
         manifest_perms = descriptor.permissions
 
         # Build each resource category
-        models = await self._build_models_from_binding(manifest_perms, resource_policy, descriptor, runner_config)
-        tools = await self._build_tools_from_binding(manifest_perms, resource_policy, descriptor, runner_config)
-        knowledge_bases = await self._build_knowledge_bases_from_binding(
-            manifest_perms, resource_policy, descriptor, runner_config
+        models = await self._build_models_from_binding(
+            execution_context,
+            manifest_perms,
+            resource_policy,
+            descriptor,
+            runner_config,
         )
-        skills = self._build_skills_from_binding(resource_policy, descriptor)
+        tools = await self._build_tools_from_binding(
+            execution_context,
+            manifest_perms,
+            resource_policy,
+            descriptor,
+            runner_config,
+        )
+        knowledge_bases = await self._build_knowledge_bases_from_binding(
+            execution_context,
+            manifest_perms,
+            resource_policy,
+            descriptor,
+            runner_config,
+        )
+        skills = self._build_skills_from_binding(
+            execution_context,
+            resource_policy,
+            descriptor,
+        )
         storage = self._build_storage_from_binding(manifest_perms, binding)
 
         return {
@@ -89,6 +111,7 @@ class AgentResourceBuilder:
 
     async def _build_models_from_binding(
         self,
+        execution_context: ExecutionContext,
         manifest_perms: typing.Any,
         resource_policy: typing.Any,
         descriptor: AgentRunnerDescriptor,
@@ -110,6 +133,7 @@ class AgentResourceBuilder:
 
         # Add model resources from Agent/runner config schema
         await self._append_config_declared_model_resources(
+            execution_context=execution_context,
             models=models,
             seen_model_ids=seen_model_ids,
             descriptor=descriptor,
@@ -122,12 +146,19 @@ class AgentResourceBuilder:
         # Add explicitly allowed models
         if allowed_uuids and include_llm:
             for model_uuid in allowed_uuids:
-                await self._append_llm_model_resource(models, seen_model_ids, model_uuid, llm_operations)
+                await self._append_llm_model_resource(
+                    execution_context,
+                    models,
+                    seen_model_ids,
+                    model_uuid,
+                    llm_operations,
+                )
 
         return models
 
     async def _build_tools_from_binding(
         self,
+        execution_context: ExecutionContext,
         manifest_perms: typing.Any,
         resource_policy: typing.Any,
         descriptor: AgentRunnerDescriptor,
@@ -150,6 +181,7 @@ class AgentResourceBuilder:
                 return tools
             try:
                 catalog = await get_catalog(
+                    execution_context,
                     include_skill_authoring=True,
                     include_mcp_resource_tools=True,
                 )
@@ -192,7 +224,11 @@ class AgentResourceBuilder:
                     self.ap.logger.warning(f'Tool {tool_name} is not authorized because its Host source is unresolved')
                     continue
                 if get_tool_schema is not None:
-                    description, parameters = await get_tool_schema(tool_name, source_ref=source_ref)
+                    description, parameters = await get_tool_schema(
+                        execution_context,
+                        tool_name,
+                        source_ref=source_ref,
+                    )
                 else:
                     description, parameters = None, None
                 tools.append(
@@ -222,6 +258,7 @@ class AgentResourceBuilder:
 
     async def _build_knowledge_bases_from_binding(
         self,
+        execution_context: ExecutionContext,
         manifest_perms: typing.Any,
         resource_policy: typing.Any,
         descriptor: AgentRunnerDescriptor,
@@ -247,7 +284,10 @@ class AgentResourceBuilder:
 
         for kb_uuid in kb_uuids:
             try:
-                kb = await self.ap.rag_mgr.get_knowledge_base_by_uuid(kb_uuid)
+                kb = await self.ap.rag_mgr.get_knowledge_base_by_uuid(
+                    execution_context,
+                    kb_uuid,
+                )
                 if kb:
                     kb_resources.append(
                         {
@@ -266,6 +306,7 @@ class AgentResourceBuilder:
 
     def _build_skills_from_binding(
         self,
+        execution_context: ExecutionContext,
         resource_policy: typing.Any,
         descriptor: AgentRunnerDescriptor,
     ) -> list[SkillResource]:
@@ -280,7 +321,7 @@ class AgentResourceBuilder:
         if skill_mgr is None:
             return []
 
-        loaded_skills = getattr(skill_mgr, 'skills', {}) or {}
+        loaded_skills = skill_mgr.get_skills(execution_context)
         allowed_names = resource_policy.allowed_skill_names
         if allowed_names is None:
             names = sorted(loaded_skills.keys())
@@ -315,6 +356,7 @@ class AgentResourceBuilder:
 
     async def _append_config_declared_model_resources(
         self,
+        execution_context: ExecutionContext,
         models: list[ModelResource],
         seen_model_ids: set[str],
         descriptor: AgentRunnerDescriptor,
@@ -326,12 +368,24 @@ class AgentResourceBuilder:
         """Authorize model-like values selected through DynamicForm fields."""
         for model_type, model_uuid in config_schema.iter_config_model_refs(descriptor, runner_config):
             if model_type == 'llm' and include_llm:
-                await self._append_llm_model_resource(models, seen_model_ids, model_uuid, llm_operations)
+                await self._append_llm_model_resource(
+                    execution_context,
+                    models,
+                    seen_model_ids,
+                    model_uuid,
+                    llm_operations,
+                )
             elif model_type == 'rerank' and include_rerank:
-                await self._append_rerank_model_resource(models, seen_model_ids, model_uuid)
+                await self._append_rerank_model_resource(
+                    execution_context,
+                    models,
+                    seen_model_ids,
+                    model_uuid,
+                )
 
     async def _append_llm_model_resource(
         self,
+        execution_context: ExecutionContext,
         models: list[ModelResource],
         seen_model_ids: set[str],
         model_uuid: str | None,
@@ -342,7 +396,10 @@ class AgentResourceBuilder:
             return
 
         try:
-            model = await self.ap.model_mgr.get_model_by_uuid(model_uuid)
+            model = await self.ap.model_mgr.get_model_by_uuid(
+                execution_context,
+                model_uuid,
+            )
             if model and model.model_entity:
                 models.append(
                     {
@@ -360,6 +417,7 @@ class AgentResourceBuilder:
 
     async def _append_rerank_model_resource(
         self,
+        execution_context: ExecutionContext,
         models: list[ModelResource],
         seen_model_ids: set[str],
         model_uuid: str | None,
@@ -369,7 +427,10 @@ class AgentResourceBuilder:
             return
 
         try:
-            model = await self.ap.model_mgr.get_rerank_model_by_uuid(model_uuid)
+            model = await self.ap.model_mgr.get_rerank_model_by_uuid(
+                execution_context,
+                model_uuid,
+            )
             if model and model.model_entity:
                 models.append(
                     {

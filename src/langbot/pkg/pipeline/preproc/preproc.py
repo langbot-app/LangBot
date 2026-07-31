@@ -9,6 +9,7 @@ import langbot_plugin.api.entities.events as events
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
+from ...pipeline.pool import get_query_execution_context
 
 from ...agent.runner.descriptor import AgentRunnerDescriptor
 from ...agent.runner.config_resolver import RunnerConfigResolver
@@ -40,6 +41,7 @@ class PreProcessor(stage.PipelineStage):
 
     async def _get_runner_descriptor(
         self,
+        query: pipeline_query.Query,
         runner_id: str | None,
         bound_plugins: list[str] | None,
     ) -> AgentRunnerDescriptor | None:
@@ -51,30 +53,41 @@ class PreProcessor(stage.PipelineStage):
             return None
 
         try:
-            return await registry.get(runner_id, bound_plugins)
+            return await registry.get(
+                get_query_execution_context(query),
+                runner_id,
+                bound_plugins,
+            )
         except Exception as e:
             self.ap.logger.debug(f'Unable to load AgentRunner descriptor for {runner_id}: {e}')
             return None
 
     async def _resolve_llm_model(
         self,
+        query: pipeline_query.Query,
         primary_uuid: str,
     ) -> typing.Any | None:
         if primary_uuid in config_schema.NONE_SENTINELS:
             return None
         try:
-            return await self.ap.model_mgr.get_model_by_uuid(primary_uuid)
+            return await self.ap.model_mgr.get_model_by_uuid(
+                get_query_execution_context(query), primary_uuid
+            )
         except ValueError:
             self.ap.logger.warning(f'LLM model {primary_uuid} not found or not configured')
             return None
 
-    async def _resolve_fallback_models(self, fallback_uuids: list[str]) -> list[str]:
+    async def _resolve_fallback_models(
+        self, query: pipeline_query.Query, fallback_uuids: list[str]
+    ) -> list[str]:
         valid_fallbacks = []
         for fallback_uuid in fallback_uuids:
             if fallback_uuid in config_schema.NONE_SENTINELS:
                 continue
             try:
-                await self.ap.model_mgr.get_model_by_uuid(fallback_uuid)
+                await self.ap.model_mgr.get_model_by_uuid(
+                    get_query_execution_context(query), fallback_uuid
+                )
                 valid_fallbacks.append(fallback_uuid)
             except ValueError:
                 self.ap.logger.warning(f'Fallback model {fallback_uuid} not found, skipping')
@@ -89,6 +102,7 @@ class PreProcessor(stage.PipelineStage):
         include_mcp_resource_tools: bool,
     ) -> list[typing.Any]:
         catalog = await self.ap.tool_mgr.get_resolved_tool_catalog(
+            get_query_execution_context(query),
             bound_plugins,
             bound_mcp_servers,
             include_skill_authoring=True,
@@ -201,7 +215,7 @@ class PreProcessor(stage.PipelineStage):
         bound_plugins = query.variables.get('_pipeline_bound_plugins', None)
         bound_mcp_servers = query.variables.get('_pipeline_bound_mcp_servers', None)
         include_mcp_resource_tools = query.variables.get('_pipeline_mcp_resource_agent_read_enabled', True) is True
-        descriptor = await self._get_runner_descriptor(runner_id, bound_plugins)
+        descriptor = await self._get_runner_descriptor(query, runner_id, bound_plugins)
 
         session = await self.ap.sess_mgr.get_session(query)
 
@@ -210,8 +224,10 @@ class PreProcessor(stage.PipelineStage):
         llm_model = None
         if uses_host_models:
             primary_uuid, fallback_uuids = config_schema.extract_model_selection(descriptor, runner_config)
-            llm_model = await self._resolve_llm_model(primary_uuid)
-            valid_fallbacks = await self._resolve_fallback_models(fallback_uuids)
+            llm_model = await self._resolve_llm_model(query, primary_uuid)
+            valid_fallbacks = await self._resolve_fallback_models(
+                query, fallback_uuids
+            )
             if valid_fallbacks:
                 query.variables['_fallback_model_uuids'] = valid_fallbacks
 
@@ -253,6 +269,7 @@ class PreProcessor(stage.PipelineStage):
             runner_id,
             conversation,
             bot_id=query.bot_uuid,
+            workspace_id=query.workspace_uuid,
         )
 
         if uses_host_models:
@@ -402,8 +419,16 @@ class PreProcessor(stage.PipelineStage):
         query.messages = event_ctx.event.prompt
 
         if getattr(self.ap, 'skill_mgr', None) is not None:
-            pipeline_data = await self.ap.pipeline_service.get_pipeline(query.pipeline_uuid)
-            extensions_prefs = normalize_extension_preferences((pipeline_data or {}).get('extensions_preferences'))
+            skill_execution_context = get_query_execution_context(query)
+            await self.ap.skill_mgr.ensure_loaded(skill_execution_context)
+            pipeline_data = await self.ap.pipeline_service.get_pipeline(
+                skill_execution_context,
+                query.pipeline_uuid,
+                include_secret=True,
+            )
+            extensions_prefs = normalize_extension_preferences(
+                (pipeline_data or {}).get('extensions_preferences')
+            )
             enable_all_skills = extensions_prefs['enable_all_skills']
 
             if enable_all_skills:
@@ -412,5 +437,4 @@ class PreProcessor(stage.PipelineStage):
                 bound_skills = extensions_prefs['skills']
 
             query.variables['_pipeline_bound_skills'] = bound_skills
-
         return entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)

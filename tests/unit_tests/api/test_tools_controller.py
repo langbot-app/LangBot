@@ -4,7 +4,7 @@ import sys
 import types
 from importlib import import_module
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import ANY, AsyncMock
 
 import pytest
 import quart
@@ -19,14 +19,32 @@ pytestmark = pytest.mark.asyncio
 
 async def _create_test_client(tool_mgr: SimpleNamespace, pipeline_service: SimpleNamespace):
     app = quart.Quart(__name__)
+    account = SimpleNamespace(uuid='account-test', user='test@example.com')
     user_service = SimpleNamespace(
-        verify_jwt_token=AsyncMock(return_value='test@example.com'),
-        get_user_by_email=AsyncMock(return_value=SimpleNamespace(user='test@example.com')),
+        get_authenticated_account=AsyncMock(return_value=account),
+    )
+    access = SimpleNamespace(
+        workspace=SimpleNamespace(uuid='workspace-test'),
+        membership=SimpleNamespace(
+            uuid='membership-test',
+            role='developer',
+            projection_revision=1,
+        ),
+        execution=SimpleNamespace(
+            instance_uuid='instance-test',
+            placement_generation=1,
+        ),
     )
     ap = SimpleNamespace(
         tool_mgr=tool_mgr,
         pipeline_service=pipeline_service,
         user_service=user_service,
+        apikey_service=SimpleNamespace(
+            authenticate_api_key=AsyncMock(return_value=None)
+        ),
+        workspace_collaboration_service=SimpleNamespace(
+            resolve_account_workspace=AsyncMock(return_value=access)
+        ),
     )
     router_class = import_module('langbot.pkg.api.http.controller.groups.resources.tools').ToolsRouterGroup
     group = router_class(ap, app)
@@ -50,6 +68,7 @@ async def test_global_tool_selector_uses_unambiguous_host_catalog():
     payload = await response.get_json()
     assert payload['data']['tools'] == [{'name': 'unique_tool', 'source': 'builtin'}]
     tool_mgr.get_resolved_tool_catalog.assert_awaited_once_with(
+        ANY,
         None,
         None,
         include_skill_authoring=True,
@@ -91,8 +110,9 @@ async def test_pipeline_tool_selector_resolves_only_bound_sources():
     assert response.status_code == 200
     payload = await response.get_json()
     assert payload['data']['tools'][0]['source_id'] == 'bound-mcp'
-    pipeline_service.get_pipeline.assert_awaited_once_with('pipeline-1')
+    pipeline_service.get_pipeline.assert_awaited_once_with(ANY, 'pipeline-1')
     tool_mgr.get_resolved_tool_catalog.assert_awaited_once_with(
+        ANY,
         ['allowed/plugin'],
         ['bound-mcp'],
         include_skill_authoring=True,
@@ -123,6 +143,7 @@ async def test_pipeline_tool_selector_malformed_enable_all_flags_fail_closed(inv
 
     assert response.status_code == 200
     tool_mgr.get_resolved_tool_catalog.assert_awaited_once_with(
+        ANY,
         ['allowed/plugin'],
         ['bound-mcp'],
         include_skill_authoring=True,
@@ -148,6 +169,7 @@ async def test_pipeline_tool_selector_malformed_extension_root_uses_empty_allowl
 
     assert response.status_code == 200
     tool_mgr.get_resolved_tool_catalog.assert_awaited_once_with(
+        ANY,
         [],
         [],
         include_skill_authoring=True,
@@ -177,6 +199,7 @@ async def test_pipeline_tool_selector_malformed_binding_lists_use_empty_allowlis
 
     assert response.status_code == 200
     tool_mgr.get_resolved_tool_catalog.assert_awaited_once_with(
+        ANY,
         [],
         [],
         include_skill_authoring=True,
@@ -230,8 +253,9 @@ async def test_tool_detail_uses_pipeline_scoped_catalog_and_path_tool_name(pipel
         'source_name': 'allowed/plugin',
         'source_id': 'allowed/plugin',
     }
-    pipeline_service.get_pipeline.assert_awaited_once_with('pipeline-1')
+    pipeline_service.get_pipeline.assert_awaited_once_with(ANY, 'pipeline-1')
     tool_mgr.get_resolved_tool_catalog.assert_awaited_once_with(
+        ANY,
         ['allowed/plugin'],
         ['bound-mcp'],
         include_skill_authoring=True,
@@ -279,6 +303,7 @@ async def test_tool_detail_hides_ambiguous_or_missing_name():
 
     assert response.status_code == 404
     tool_mgr.get_resolved_tool_catalog.assert_awaited_once_with(
+        ANY,
         None,
         None,
         include_skill_authoring=True,
@@ -297,5 +322,8 @@ async def test_tool_detail_returns_pipeline_not_found_before_catalog_lookup():
 
     assert response.status_code == 404
     assert await response.get_json() == {'code': -1, 'msg': 'pipeline not found'}
-    pipeline_service.get_pipeline.assert_awaited_once_with('missing-pipeline')
+    pipeline_service.get_pipeline.assert_awaited_once_with(
+        ANY,
+        'missing-pipeline',
+    )
     tool_mgr.get_resolved_tool_catalog.assert_not_awaited()

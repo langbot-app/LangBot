@@ -17,6 +17,15 @@ import pytest
 
 from langbot.pkg.provider.tools.errors import ToolExecutionDeniedError
 
+from langbot.pkg.api.http.context import ExecutionContext
+
+
+_CONTEXT = ExecutionContext(
+    instance_uuid='instance-a',
+    workspace_uuid='workspace-a',
+    placement_generation=1,
+)
+
 
 def get_toolmgr_module():
     """Lazy import to avoid circular import issues."""
@@ -191,6 +200,10 @@ class TestToolManagerExecuteFuncCall:
     def sample_query(self):
         """Create sample query for testing."""
         query = Mock(spec=pipeline_query.Query)
+        query.bot_uuid = None
+        query.pipeline_uuid = None
+        query.query_uuid = None
+        query._execution_context = _CONTEXT
         return query
 
     @pytest.mark.asyncio
@@ -271,6 +284,10 @@ class TestToolManagerExecuteFuncCall:
         manager = toolmgr.ToolManager(mock_app)
         self._wire_loaders(manager, mock_app, mock_plugin_loader, mock_mcp_loader)
         query = Mock(variables={})
+        query._execution_context = _CONTEXT
+        query.bot_uuid = None
+        query.pipeline_uuid = None
+        query.query_uuid = None
 
         result = await manager.execute_func_call(
             'shared_tool',
@@ -282,7 +299,11 @@ class TestToolManagerExecuteFuncCall:
         assert result == 'mcp_result'
         mock_plugin_loader.has_tool.assert_not_awaited()
         mock_plugin_loader.invoke_tool.assert_not_awaited()
-        mock_mcp_loader.has_tool.assert_awaited_once_with('shared_tool', source_id='bound-mcp')
+        mock_mcp_loader.has_tool.assert_awaited_once_with(
+            _CONTEXT,
+            'shared_tool',
+            source_id='bound-mcp',
+        )
         mock_mcp_loader.invoke_tool.assert_awaited_once_with(
             'shared_tool',
             {'value': 1},
@@ -299,6 +320,10 @@ class TestToolManagerExecuteFuncCall:
         manager = toolmgr.ToolManager(mock_app)
         self._wire_loaders(manager, mock_app, mock_plugin_loader, mock_mcp_loader)
         query = Mock(variables={})
+        query._execution_context = _CONTEXT
+        query.bot_uuid = None
+        query.pipeline_uuid = None
+        query.query_uuid = None
 
         result = await manager.execute_func_call(
             'shared_tool',
@@ -370,7 +395,7 @@ class TestToolManagerSourceResolution:
             ]
         )
 
-        catalog = await manager.get_resolved_tool_catalog()
+        catalog = await manager.get_resolved_tool_catalog(_CONTEXT)
 
         assert [item['name'] for item in catalog] == ['unique_tool']
         app.logger.warning.assert_called_once()

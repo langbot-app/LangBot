@@ -20,8 +20,7 @@ asciiart = r"""
 """
 
 
-async def main_entry(loop: asyncio.AbstractEventLoop):
-    """Main entry point for LangBot"""
+def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description='LangBot')
     parser.add_argument(
         '--standalone-runtime',
@@ -36,7 +35,20 @@ async def main_entry(loop: asyncio.AbstractEventLoop):
         default=False,
     )
     parser.add_argument('--debug', action='store_true', help='Debug mode / 调试模式', default=False)
-    args = parser.parse_args()
+    subparsers = parser.add_subparsers(dest='command')
+    migrate_parser = subparsers.add_parser('migrate', help='Run an operator-only database migration')
+    migrate_parser.add_argument(
+        '--cloud',
+        action='store_true',
+        required=True,
+        help='Migrate and validate the Cloud PostgreSQL business database',
+    )
+    return parser
+
+
+async def main_entry(loop: asyncio.AbstractEventLoop):
+    """Main entry point for LangBot"""
+    args = _build_parser().parse_args()
 
     if args.standalone_runtime:
         from langbot.pkg.utils import platform
@@ -55,22 +67,26 @@ async def main_entry(loop: asyncio.AbstractEventLoop):
 
     print(asciiart)
 
-    # Check dependencies
-    from langbot.pkg.core.bootutils import deps
+    # A release migration is a deterministic one-shot deployment Job. It must
+    # fail with the current image when a dependency is absent, never mutate its
+    # environment and ask an orchestrator to restart it.
+    if args.command != 'migrate':
+        from langbot.pkg.core.bootutils import deps
 
-    missing_deps = await deps.check_deps()
+        missing_deps = await deps.check_deps()
 
-    if missing_deps:
-        print('以下依赖包未安装，将自动安装，请完成后重启程序：')
-        print(
-            'These dependencies are missing, they will be installed automatically, please restart the program after completion:'
-        )
-        for dep in missing_deps:
-            print('-', dep)
-        await deps.install_deps(missing_deps)
-        print('已自动安装缺失的依赖包，请重启程序。')
-        print('The missing dependencies have been installed automatically, please restart the program.')
-        sys.exit(0)
+        if missing_deps:
+            print('以下依赖包未安装，将自动安装，请完成后重启程序：')
+            print(
+                'These dependencies are missing, they will be installed automatically, '
+                'please restart the program after completion:'
+            )
+            for dep in missing_deps:
+                print('-', dep)
+            await deps.install_deps(missing_deps)
+            print('已自动安装缺失的依赖包，请重启程序。')
+            print('The missing dependencies have been installed automatically, please restart the program.')
+            sys.exit(0)
 
     # Check configuration files
     from langbot.pkg.core.bootutils import files
@@ -82,6 +98,12 @@ async def main_entry(loop: asyncio.AbstractEventLoop):
         print('Following files do not exist and have been automatically generated:')
         for file in generated_files:
             print('-', file)
+
+    if args.command == 'migrate':
+        from langbot.pkg.persistence.release_migration import run_cloud_release_migration_from_config
+
+        await run_cloud_release_migration_from_config(loop)
+        return
 
     from langbot.pkg.core import boot
 

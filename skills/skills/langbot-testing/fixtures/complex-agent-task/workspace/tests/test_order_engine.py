@@ -1,5 +1,4 @@
 import unittest
-from decimal import Decimal
 
 from order_engine import Inventory, OrderLine, OrderProcessor, OrderRequest
 from order_engine.pricing import calculate_price

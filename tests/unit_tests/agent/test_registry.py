@@ -7,6 +7,14 @@ import pytest
 from langbot.pkg.agent.runner.registry import AgentRunnerRegistry
 from langbot.pkg.agent.runner.descriptor import AgentRunnerDescriptor
 from langbot.pkg.agent.runner.errors import RunnerNotFoundError, RunnerNotAuthorizedError
+from langbot.pkg.api.http.context import ExecutionContext
+
+
+TEST_CONTEXT = ExecutionContext(
+    instance_uuid='instance-test',
+    workspace_uuid='workspace-test',
+    placement_generation=1,
+)
 
 
 class FakeApplication:
@@ -30,6 +38,9 @@ class FakeApplication:
 
         class FakePluginConnector:
             is_enable_plugin = True
+
+            async def require_workspace_context(self, context):
+                return context
 
             async def list_agent_runners(self, bound_plugins=None):
                 # Return sample runner data
@@ -96,7 +107,7 @@ class TestRegistryDiscovery:
         ap = FakeApplication()
         registry = AgentRunnerRegistry(ap)
 
-        runners = await registry.list_runners(use_cache=False)
+        runners = await registry.list_runners(TEST_CONTEXT, use_cache=False)
 
         # Should find 2 valid runners (langbot-team/LocalAgent and alice/my-agent)
         assert len(runners) == 2
@@ -112,10 +123,10 @@ class TestRegistryDiscovery:
         registry = AgentRunnerRegistry(ap)
 
         # First discovery
-        runners1 = await registry.list_runners(use_cache=True)
+        runners1 = await registry.list_runners(TEST_CONTEXT, use_cache=True)
 
         # Second call should use cache
-        runners2 = await registry.list_runners(use_cache=True)
+        runners2 = await registry.list_runners(TEST_CONTEXT, use_cache=True)
 
         assert registry._cache is not None
         assert len(runners1) == len(runners2)
@@ -127,7 +138,7 @@ class TestRegistryDiscovery:
         ap.plugin_connector.is_enable_plugin = False
         registry = AgentRunnerRegistry(ap)
 
-        runners = await registry.list_runners(use_cache=False)
+        runners = await registry.list_runners(TEST_CONTEXT, use_cache=False)
 
         assert runners == []
 
@@ -143,23 +154,28 @@ class TestRegistryDiscovery:
 
         # First: get with bound_plugins filter (should not pollute cache)
         descriptor = await registry.get(
+            TEST_CONTEXT,
             'plugin:langbot-team/LocalAgent/default',
             bound_plugins=['langbot-team/LocalAgent'],
         )
         assert descriptor.id == 'plugin:langbot-team/LocalAgent/default'
 
         # Cache should contain ALL runners (both langbot and alice)
-        assert registry._cache is not None
-        assert len(registry._cache) == 2  # Both runners in cache
-        assert 'plugin:langbot-team/LocalAgent/default' in registry._cache
-        assert 'plugin:alice/my-agent/custom' in registry._cache
+        scoped_cache = registry._cache[('instance-test', 'workspace-test', 1)]
+        assert len(scoped_cache) == 2
+        assert 'plugin:langbot-team/LocalAgent/default' in scoped_cache
+        assert 'plugin:alice/my-agent/custom' in scoped_cache
 
         # Second: list_runners without filter should return ALL runners
-        all_runners = await registry.list_runners(bound_plugins=None, use_cache=True)
+        all_runners = await registry.list_runners(TEST_CONTEXT, bound_plugins=None, use_cache=True)
         assert len(all_runners) == 2  # Both runners returned
 
         # Third: list_runners with different filter should work correctly
-        alice_runners = await registry.list_runners(bound_plugins=['alice/my-agent'], use_cache=True)
+        alice_runners = await registry.list_runners(
+            TEST_CONTEXT,
+            bound_plugins=['alice/my-agent'],
+            use_cache=True,
+        )
         assert len(alice_runners) == 1
         assert alice_runners[0].id == 'plugin:alice/my-agent/custom'
 
@@ -173,7 +189,10 @@ class TestRegistryGet:
         ap = FakeApplication()
         registry = AgentRunnerRegistry(ap)
 
-        descriptor = await registry.get('plugin:langbot-team/LocalAgent/default')
+        descriptor = await registry.get(
+            TEST_CONTEXT,
+            'plugin:langbot-team/LocalAgent/default',
+        )
 
         assert descriptor.id == 'plugin:langbot-team/LocalAgent/default'
         assert descriptor.plugin_author == 'langbot-team'
@@ -187,7 +206,7 @@ class TestRegistryGet:
         registry = AgentRunnerRegistry(ap)
 
         with pytest.raises(RunnerNotFoundError) as exc_info:
-            await registry.get('plugin:notexist/unknown/default')
+            await registry.get(TEST_CONTEXT, 'plugin:notexist/unknown/default')
 
         assert exc_info.value.runner_id == 'plugin:notexist/unknown/default'
 
@@ -199,6 +218,7 @@ class TestRegistryGet:
 
         # Authorized - langbot plugin in bound list
         descriptor = await registry.get(
+            TEST_CONTEXT,
             'plugin:langbot-team/LocalAgent/default',
             bound_plugins=['langbot-team/LocalAgent'],
         )
@@ -207,6 +227,7 @@ class TestRegistryGet:
         # Not authorized - plugin not in bound list
         with pytest.raises(RunnerNotAuthorizedError):
             await registry.get(
+                TEST_CONTEXT,
                 'plugin:alice/my-agent/custom',
                 bound_plugins=['langbot-team/LocalAgent'],
             )
@@ -221,7 +242,7 @@ class TestRegistryMetadataForPipeline:
         ap = FakeApplication()
         registry = AgentRunnerRegistry(ap)
 
-        options, stages = await registry.get_runner_metadata_for_pipeline()
+        options, stages = await registry.get_runner_metadata_for_pipeline(TEST_CONTEXT)
 
         # Should have options for each runner
         assert len(options) == 2

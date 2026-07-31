@@ -27,6 +27,8 @@ import ErrorPage from '@/components/ErrorPage';
 import BackendUnavailablePage from '@/components/BackendUnavailablePage';
 import PluginPagesPage from '@/app/home/plugin-pages/page';
 import RootLayout from '@/app/RootLayout';
+import AcceptInvitationPage from '@/app/invitations/accept/page';
+import WorkspaceSelectPage from '@/app/workspaces/select/page';
 
 const Loading = () => <div>Loading...</div>;
 
@@ -62,6 +64,14 @@ export const router = createBrowserRouter([
             <ResetPasswordPage />
           </ResetPasswordLayout>
         ),
+      },
+      {
+        path: '/invitations/accept',
+        element: <AcceptInvitationPage />,
+      },
+      {
+        path: '/workspaces/select',
+        element: <WorkspaceSelectPage />,
       },
       {
         path: '/wizard',

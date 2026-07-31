@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 import uuid
-import sqlalchemy
 import typing
+import sqlalchemy
 
 from ....core import app
 from ....discover import engine
 from ....entity.persistence import agent as persistence_agent
 from ....entity.persistence import bot as persistence_bot
 from ....entity.persistence import pipeline as persistence_pipeline
+from ....workspace.errors import WorkspaceNotFoundError
+from .tenant import TenantContext, require_workspace_uuid, scope_statement
 
 
 class BotService:
@@ -260,22 +262,37 @@ class BotService:
             indexed.append(copied)
         return indexed
 
-    async def _get_pipeline_entity(self, pipeline_uuid: str) -> persistence_pipeline.LegacyPipeline | None:
+    async def _get_pipeline_entity(
+        self, context: TenantContext, pipeline_uuid: str
+    ) -> persistence_pipeline.LegacyPipeline | None:
         result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(persistence_pipeline.LegacyPipeline).where(
-                persistence_pipeline.LegacyPipeline.uuid == pipeline_uuid
+            scope_statement(
+                sqlalchemy.select(persistence_pipeline.LegacyPipeline).where(
+                    persistence_pipeline.LegacyPipeline.uuid == pipeline_uuid
+                ),
+                persistence_pipeline.LegacyPipeline,
+                context,
             )
         )
         return result.first()
 
-    async def _get_agent_entity(self, agent_uuid: str) -> persistence_agent.Agent | None:
+    async def _get_agent_entity(
+        self, context: TenantContext, agent_uuid: str
+    ) -> persistence_agent.Agent | None:
         result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(persistence_agent.Agent).where(persistence_agent.Agent.uuid == agent_uuid)
+            scope_statement(
+                sqlalchemy.select(persistence_agent.Agent).where(
+                    persistence_agent.Agent.uuid == agent_uuid
+                ),
+                persistence_agent.Agent,
+                context,
+            )
         )
         return result.first()
 
     async def dry_run_event_route(
         self,
+        tenant_context: TenantContext,
         bot_uuid: str,
         event_type: str,
         event_data: dict[str, typing.Any] | None = None,
@@ -301,7 +318,7 @@ class BotService:
                 ],
             )
 
-        bot = await self.get_bot(bot_uuid, include_secret=False)
+        bot = await self.get_bot(tenant_context, bot_uuid, include_secret=False)
         if bot is None:
             raise Exception('Bot not found')
 
@@ -373,7 +390,11 @@ class BotService:
                         }
                     ],
                 )
-            pipeline = await self._get_pipeline_entity(target_uuid) if target_uuid else None
+            pipeline = (
+                await self._get_pipeline_entity(tenant_context, target_uuid)
+                if target_uuid
+                else None
+            )
             if pipeline is None:
                 return self._diagnostic_result(
                     matched=False,
@@ -402,7 +423,7 @@ class BotService:
             )
 
         if target_type == 'agent':
-            agent = await self._get_agent_entity(target_uuid)
+            agent = await self._get_agent_entity(tenant_context, target_uuid)
             if agent is None or getattr(agent, 'kind', 'agent') != 'agent':
                 return self._diagnostic_result(
                     matched=False,
@@ -488,7 +509,9 @@ class BotService:
             ],
         )
 
-    async def _normalize_event_bindings(self, bindings: list[dict] | None) -> list[dict]:
+    async def _normalize_event_bindings(
+        self, context: TenantContext, bindings: list[dict] | None
+    ) -> list[dict]:
         """Validate and normalize Bot event bindings."""
         if not bindings:
             return []
@@ -508,15 +531,25 @@ class BotService:
                 if not self._is_message_event_pattern(event_pattern):
                     raise ValueError('Pipeline can only be bound to message events')
                 result = await self.ap.persistence_mgr.execute_async(
-                    sqlalchemy.select(persistence_pipeline.LegacyPipeline.uuid).where(
-                        persistence_pipeline.LegacyPipeline.uuid == target_uuid
+                    scope_statement(
+                        sqlalchemy.select(persistence_pipeline.LegacyPipeline.uuid).where(
+                            persistence_pipeline.LegacyPipeline.uuid == target_uuid
+                        ),
+                        persistence_pipeline.LegacyPipeline,
+                        context,
                     )
                 )
                 if result.first() is None:
                     raise ValueError('Pipeline not found')
             elif target_type == 'agent':
                 result = await self.ap.persistence_mgr.execute_async(
-                    sqlalchemy.select(persistence_agent.Agent).where(persistence_agent.Agent.uuid == target_uuid)
+                    scope_statement(
+                        sqlalchemy.select(persistence_agent.Agent).where(
+                            persistence_agent.Agent.uuid == target_uuid
+                        ),
+                        persistence_agent.Agent,
+                        context,
+                    )
                 )
                 agent = result.first()
                 if agent is None:
@@ -544,7 +577,9 @@ class BotService:
 
         return normalized
 
-    async def _prepare_bot_data(self, bot_data: dict, *, include_uuid: bool) -> dict:
+    async def _prepare_bot_data(
+        self, context: TenantContext, bot_data: dict, *, include_uuid: bool
+    ) -> dict:
         """Normalize Bot write payloads to the current event-routing model."""
         update_data = bot_data.copy()
         if not include_uuid:
@@ -552,12 +587,16 @@ class BotService:
 
         update_data = {key: value for key, value in update_data.items() if key in self.BOT_FIELDS}
         if 'event_bindings' in update_data:
-            update_data['event_bindings'] = await self._normalize_event_bindings(update_data.get('event_bindings'))
+            update_data['event_bindings'] = await self._normalize_event_bindings(
+                context, update_data.get('event_bindings')
+            )
         return update_data
 
-    async def get_bots(self, include_secret: bool = True) -> list[dict]:
+    async def get_bots(self, context: TenantContext, include_secret: bool = False) -> list[dict]:
         """获取所有机器人"""
-        result = await self.ap.persistence_mgr.execute_async(sqlalchemy.select(persistence_bot.Bot))
+        result = await self.ap.persistence_mgr.execute_async(
+            scope_statement(sqlalchemy.select(persistence_bot.Bot), persistence_bot.Bot, context)
+        )
 
         bots = result.all()
 
@@ -567,10 +606,14 @@ class BotService:
 
         return [self.ap.persistence_mgr.serialize_model(persistence_bot.Bot, bot, masked_columns) for bot in bots]
 
-    async def get_bot(self, bot_uuid: str, include_secret: bool = True) -> dict | None:
+    async def get_bot(self, context: TenantContext, bot_uuid: str, include_secret: bool = False) -> dict | None:
         """获取机器人"""
         result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(persistence_bot.Bot).where(persistence_bot.Bot.uuid == bot_uuid)
+            scope_statement(
+                sqlalchemy.select(persistence_bot.Bot).where(persistence_bot.Bot.uuid == bot_uuid),
+                persistence_bot.Bot,
+                context,
+            )
         )
 
         bot = result.first()
@@ -584,15 +627,20 @@ class BotService:
 
         return self.ap.persistence_mgr.serialize_model(persistence_bot.Bot, bot, masked_columns)
 
-    async def get_runtime_bot_info(self, bot_uuid: str, include_secret: bool = True) -> dict:
+    async def get_runtime_bot_info(
+        self,
+        context: TenantContext,
+        bot_uuid: str,
+        include_secret: bool = False,
+    ) -> dict:
         """获取机器人运行时信息"""
-        persistence_bot = await self.get_bot(bot_uuid, include_secret)
+        persistence_bot = await self.get_bot(context, bot_uuid, include_secret)
         if persistence_bot is None:
-            raise Exception('Bot not found')
+            raise WorkspaceNotFoundError('Bot not found')
 
         adapter_runtime_values = {}
 
-        runtime_bot = await self.ap.platform_mgr.get_bot_by_uuid(bot_uuid)
+        runtime_bot = await self.ap.platform_mgr.get_bot_by_uuid(context, bot_uuid)
         if runtime_bot is not None:
             adapter_runtime_values['bot_account_id'] = runtime_bot.adapter.bot_account_id
 
@@ -617,64 +665,84 @@ class BotService:
 
         return persistence_bot
 
-    async def create_bot(self, bot_data: dict) -> str:
+    async def create_bot(self, context: TenantContext, bot_data: dict) -> str:
         """Create bot"""
+        workspace_uuid = require_workspace_uuid(context)
         # Check limitation
         limitation = self.ap.instance_config.data.get('system', {}).get('limitation', {})
         max_bots = limitation.get('max_bots', -1)
         if max_bots >= 0:
-            existing_bots = await self.get_bots()
+            existing_bots = await self.get_bots(context)
             if len(existing_bots) >= max_bots:
                 raise ValueError(f'Maximum number of bots ({max_bots}) reached')
 
         # TODO: 检查配置信息格式
-        bot_data = await self._prepare_bot_data(bot_data, include_uuid=True)
+        bot_data = await self._prepare_bot_data(context, bot_data, include_uuid=True)
         bot_data['uuid'] = str(uuid.uuid4())
+        bot_data['workspace_uuid'] = workspace_uuid
         bot_data.setdefault('event_bindings', [])
 
         await self.ap.persistence_mgr.execute_async(sqlalchemy.insert(persistence_bot.Bot).values(bot_data))
 
-        bot = await self.get_bot(bot_data['uuid'])
+        bot = await self.get_bot(context, bot_data['uuid'], include_secret=True)
 
-        runtime_bot = await self.ap.platform_mgr.load_bot(bot)
-        if runtime_bot.enable:
-            await runtime_bot.run()
+        await self.ap.platform_mgr.load_bot(context, bot)
 
         return bot_data['uuid']
 
-    async def update_bot(self, bot_uuid: str, bot_data: dict) -> None:
+    async def update_bot(self, context: TenantContext, bot_uuid: str, bot_data: dict) -> None:
         """Update bot"""
-        update_data = await self._prepare_bot_data(bot_data, include_uuid=False)
+        workspace_uuid = require_workspace_uuid(context)
+        update_data = await self._prepare_bot_data(context, bot_data, include_uuid=False)
+        update_data.pop('workspace_uuid', None)
 
-        await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.update(persistence_bot.Bot).values(update_data).where(persistence_bot.Bot.uuid == bot_uuid)
+        result = await self.ap.persistence_mgr.execute_async(
+            scope_statement(
+                sqlalchemy.update(persistence_bot.Bot).values(update_data).where(persistence_bot.Bot.uuid == bot_uuid),
+                persistence_bot.Bot,
+                workspace_uuid,
+            )
         )
-        await self.ap.platform_mgr.remove_bot(bot_uuid)
+        if getattr(result, 'rowcount', None) == 0:
+            raise WorkspaceNotFoundError('Bot not found')
+        await self.ap.platform_mgr.remove_bot(context, bot_uuid)
 
         # select from db
-        bot = await self.get_bot(bot_uuid)
+        bot = await self.get_bot(context, bot_uuid, include_secret=True)
 
-        runtime_bot = await self.ap.platform_mgr.load_bot(bot)
+        runtime_bot = await self.ap.platform_mgr.load_bot(context, bot)
 
         if runtime_bot.enable:
             await runtime_bot.run()
 
         # update all conversation that use this bot
         for session in self.ap.sess_mgr.session_list:
-            if session.using_conversation is not None and session.using_conversation.bot_uuid == bot_uuid:
+            if (
+                session.using_conversation is not None
+                and session.using_conversation.bot_uuid == bot_uuid
+                and getattr(session, 'workspace_uuid', workspace_uuid) == workspace_uuid
+            ):
                 session.using_conversation = None
 
-    async def delete_bot(self, bot_uuid: str) -> None:
+    async def delete_bot(self, context: TenantContext, bot_uuid: str) -> None:
         """Delete bot"""
-        await self.ap.platform_mgr.remove_bot(bot_uuid)
-        await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.delete(persistence_bot.Bot).where(persistence_bot.Bot.uuid == bot_uuid)
+        result = await self.ap.persistence_mgr.execute_async(
+            scope_statement(
+                sqlalchemy.delete(persistence_bot.Bot).where(persistence_bot.Bot.uuid == bot_uuid),
+                persistence_bot.Bot,
+                context,
+            )
         )
+        if getattr(result, 'rowcount', None) == 0:
+            raise WorkspaceNotFoundError('Bot not found')
+        await self.ap.platform_mgr.remove_bot(context, bot_uuid)
 
     async def list_event_logs(
-        self, bot_uuid: str, from_index: int, max_count: int
-    ) -> typing.Tuple[list[dict], int, int, int]:
-        runtime_bot = await self.ap.platform_mgr.get_bot_by_uuid(bot_uuid)
+        self, context: TenantContext, bot_uuid: str, from_index: int, max_count: int
+    ) -> tuple[list[dict], int]:
+        if await self.get_bot(context, bot_uuid, include_secret=False) is None:
+            raise WorkspaceNotFoundError('Bot not found')
+        runtime_bot = await self.ap.platform_mgr.get_bot_by_uuid(context, bot_uuid)
         if runtime_bot is None:
             raise Exception('Bot not found')
 
@@ -682,11 +750,15 @@ class BotService:
 
         return [log.to_json() for log in logs], total_count
 
-    async def list_event_route_statuses(self, bot_uuid: str) -> dict[str, typing.Any]:
+    async def list_event_route_statuses(
+        self, context: TenantContext, bot_uuid: str
+    ) -> dict[str, typing.Any]:
         """Return recent runtime status for Bot event routes from in-memory Bot logs."""
         from ....platform.botmgr import RuntimeBot
 
-        runtime_bot = await self.ap.platform_mgr.get_bot_by_uuid(bot_uuid)
+        if await self.get_bot(context, bot_uuid, include_secret=False) is None:
+            raise WorkspaceNotFoundError('Bot not found')
+        runtime_bot = await self.ap.platform_mgr.get_bot_by_uuid(context, bot_uuid)
         if runtime_bot is None:
             raise Exception('Bot not found')
 
@@ -749,6 +821,7 @@ class BotService:
 
     async def dispatch_test_event_route(
         self,
+        context: TenantContext,
         bot_uuid: str,
         event_type: str,
         payload: dict[str, typing.Any] | None = None,
@@ -782,12 +855,14 @@ class BotService:
                 },
             }
 
-        runtime_bot = await self.ap.platform_mgr.get_bot_by_uuid(bot_uuid)
+        if await self.get_bot(context, bot_uuid, include_secret=False) is None:
+            raise WorkspaceNotFoundError('Bot not found')
+        runtime_bot = await self.ap.platform_mgr.get_bot_by_uuid(context, bot_uuid)
         if runtime_bot is None:
             raise Exception('Bot not found')
 
         dispatch_result = await runtime_bot.dispatch_test_event(event_type, payload or {})
-        route_status = await self.list_event_route_statuses(bot_uuid)
+        route_status = await self.list_event_route_statuses(context, bot_uuid)
         return {
             'dispatched': bool(dispatch_result.get('dispatched')),
             'event_type': event_type,
@@ -799,7 +874,14 @@ class BotService:
             'route_status': route_status,
         }
 
-    async def send_message(self, bot_uuid: str, target_type: str, target_id: str, message_chain_data: dict) -> None:
+    async def send_message(
+        self,
+        context: TenantContext,
+        bot_uuid: str,
+        target_type: str,
+        target_id: str,
+        message_chain_data: dict,
+    ) -> None:
         """Send message to a specific target via bot
 
         Args:
@@ -808,11 +890,14 @@ class BotService:
             target_id: The ID of the target
             message_chain_data: The message chain data in dict format
         """
+        if await self.get_bot(context, bot_uuid, include_secret=False) is None:
+            raise WorkspaceNotFoundError('Bot not found')
+
         # Import here to avoid circular imports
         import langbot_plugin.api.entities.builtin.platform.message as platform_message
 
         # Get runtime bot
-        runtime_bot = await self.ap.platform_mgr.get_bot_by_uuid(bot_uuid)
+        runtime_bot = await self.ap.platform_mgr.get_bot_by_uuid(context, bot_uuid)
         if runtime_bot is None:
             raise Exception(f'Bot not found: {bot_uuid}')
 
@@ -827,19 +912,29 @@ class BotService:
 
     # ============ Bot Admins ============
 
-    async def get_bot_admins(self, bot_uuid: str) -> list[dict]:
+    async def get_bot_admins(self, context: TenantContext, bot_uuid: str) -> list[dict]:
         from ....entity.persistence import bot as persistence_bot
 
+        if await self.get_bot(context, bot_uuid, include_secret=False) is None:
+            raise WorkspaceNotFoundError('Bot not found')
         result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(persistence_bot.BotAdmin).where(persistence_bot.BotAdmin.bot_uuid == bot_uuid)
+            scope_statement(
+                sqlalchemy.select(persistence_bot.BotAdmin).where(persistence_bot.BotAdmin.bot_uuid == bot_uuid),
+                persistence_bot.BotAdmin,
+                context,
+            )
         )
         return [{'id': r.id, 'launcher_type': r.launcher_type, 'launcher_id': r.launcher_id} for r in result.all()]
 
-    async def add_bot_admin(self, bot_uuid: str, launcher_type: str, launcher_id: str) -> int:
+    async def add_bot_admin(self, context: TenantContext, bot_uuid: str, launcher_type: str, launcher_id: str) -> int:
         from ....entity.persistence import bot as persistence_bot
 
+        workspace_uuid = require_workspace_uuid(context)
+        if await self.get_bot(context, bot_uuid, include_secret=False) is None:
+            raise WorkspaceNotFoundError('Bot not found')
         result = await self.ap.persistence_mgr.execute_async(
             sqlalchemy.insert(persistence_bot.BotAdmin).values(
+                workspace_uuid=workspace_uuid,
                 bot_uuid=bot_uuid,
                 launcher_type=launcher_type,
                 launcher_id=launcher_id,
@@ -847,12 +942,18 @@ class BotService:
         )
         return result.inserted_primary_key[0]
 
-    async def delete_bot_admin(self, bot_uuid: str, admin_id: int) -> None:
+    async def delete_bot_admin(self, context: TenantContext, bot_uuid: str, admin_id: int) -> None:
         from ....entity.persistence import bot as persistence_bot
 
+        if await self.get_bot(context, bot_uuid, include_secret=False) is None:
+            raise WorkspaceNotFoundError('Bot not found')
         await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.delete(persistence_bot.BotAdmin).where(
-                persistence_bot.BotAdmin.bot_uuid == bot_uuid,
-                persistence_bot.BotAdmin.id == admin_id,
+            scope_statement(
+                sqlalchemy.delete(persistence_bot.BotAdmin).where(
+                    persistence_bot.BotAdmin.bot_uuid == bot_uuid,
+                    persistence_bot.BotAdmin.id == admin_id,
+                ),
+                persistence_bot.BotAdmin,
+                context,
             )
         )

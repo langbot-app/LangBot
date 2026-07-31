@@ -6,6 +6,56 @@ import json
 
 from .errors import WeKnoraAPIError
 
+_MAX_WENKORA_RESPONSE_BYTES = 1024 * 1024
+_MAX_WENKORA_STREAM_BYTES = 16 * 1024 * 1024
+_MAX_WENKORA_SSE_LINE_BYTES = 1024 * 1024
+
+
+async def _read_limited_response(response: httpx.Response) -> bytes:
+    body = bytearray()
+    async for chunk in response.aiter_bytes(chunk_size=8192):
+        body.extend(chunk)
+        if len(body) > _MAX_WENKORA_RESPONSE_BYTES:
+            raise WeKnoraAPIError('WeKnora response exceeds the runtime limit')
+    return bytes(body)
+
+
+async def _iter_sse_json(
+    response: httpx.Response,
+) -> typing.AsyncGenerator[dict[str, typing.Any], None]:
+    buffer = bytearray()
+    total = 0
+    async for chunk in response.aiter_bytes(chunk_size=8192):
+        total += len(chunk)
+        if total > _MAX_WENKORA_STREAM_BYTES:
+            raise WeKnoraAPIError('WeKnora stream exceeds the runtime limit')
+        buffer.extend(chunk)
+        while b'\n' in buffer:
+            raw_line, _, remainder = buffer.partition(b'\n')
+            buffer = bytearray(remainder)
+            if len(raw_line) > _MAX_WENKORA_SSE_LINE_BYTES:
+                raise WeKnoraAPIError('WeKnora SSE event exceeds the runtime limit')
+            line = raw_line.rstrip(b'\r').strip()
+            if not line.startswith(b'data:'):
+                continue
+            try:
+                data = json.loads(line[5:].strip())
+            except json.JSONDecodeError:
+                continue
+            if isinstance(data, dict):
+                yield data
+        if len(buffer) > _MAX_WENKORA_SSE_LINE_BYTES:
+            raise WeKnoraAPIError('WeKnora SSE event exceeds the runtime limit')
+
+    line = bytes(buffer).rstrip(b'\r').strip()
+    if line.startswith(b'data:'):
+        try:
+            data = json.loads(line[5:].strip())
+        except json.JSONDecodeError:
+            return
+        if isinstance(data, dict):
+            yield data
+
 
 class AsyncWeKnoraClient:
     """WeKnora API 客户端"""
@@ -39,19 +89,19 @@ class AsyncWeKnoraClient:
             if description:
                 payload['description'] = description
 
-            response = await client.post(
+            async with client.stream(
+                'POST',
                 '/sessions',
                 headers={
                     'X-API-Key': self.api_key,
                     'Content-Type': 'application/json',
                 },
                 json=payload,
-            )
-
-            if response.status_code not in (200, 201):
-                raise WeKnoraAPIError(f'{response.status_code} {response.text}')
-
-            data = response.json()
+            ) as response:
+                body = await _read_limited_response(response)
+                if response.status_code not in (200, 201):
+                    raise WeKnoraAPIError(f'{response.status_code} {body.decode("utf-8", errors="replace")}')
+            data = json.loads(body)
             return data['data']['id']
 
     async def agent_chat(
@@ -107,20 +157,13 @@ class AsyncWeKnoraClient:
                 },
                 json=payload,
             ) as r:
-                async for chunk in r.aiter_lines():
-                    if r.status_code != 200:
-                        raise WeKnoraAPIError(f'{r.status_code} {chunk}')
-                    if chunk.strip() == '':
-                        continue
-                    if chunk.startswith('data:'):
-                        try:
-                            data = json.loads(chunk[5:].strip())
-                        except json.JSONDecodeError:
-                            continue
-                        yield data
-                        # 收到 error 事件后主动结束流，避免上层未 raise 时持续等待
-                        if data.get('response_type') == 'error':
-                            return
+                if r.status_code != 200:
+                    body = await _read_limited_response(r)
+                    raise WeKnoraAPIError(f'{r.status_code} {body.decode("utf-8", errors="replace")}')
+                async for data in _iter_sse_json(r):
+                    yield data
+                    if data.get('response_type') == 'error':
+                        return
 
     async def knowledge_chat(
         self,
@@ -164,17 +207,10 @@ class AsyncWeKnoraClient:
                 },
                 json=payload,
             ) as r:
-                async for chunk in r.aiter_lines():
-                    if r.status_code != 200:
-                        raise WeKnoraAPIError(f'{r.status_code} {chunk}')
-                    if chunk.strip() == '':
-                        continue
-                    if chunk.startswith('data:'):
-                        try:
-                            data = json.loads(chunk[5:].strip())
-                        except json.JSONDecodeError:
-                            continue
-                        yield data
-                        # 收到 error 事件后主动结束流，避免上层未 raise 时持续等待
-                        if data.get('response_type') == 'error':
-                            return
+                if r.status_code != 200:
+                    body = await _read_limited_response(r)
+                    raise WeKnoraAPIError(f'{r.status_code} {body.decode("utf-8", errors="replace")}')
+                async for data in _iter_sse_json(r):
+                    yield data
+                    if data.get('response_type') == 'error':
+                        return

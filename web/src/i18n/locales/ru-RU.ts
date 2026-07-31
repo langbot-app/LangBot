@@ -80,7 +80,7 @@ const ruRU = {
     loading: 'Загрузка...',
     fieldRequired: 'Это поле обязательно для заполнения',
     or: 'или',
-    loginWithSpace: 'Войти через Space',
+    loginWithSpace: 'Войти с аккаунтом LangBot',
     spaceLoginRecommended:
       'Рекомендуется: Используйте официальные стабильные API моделей и облачные сервисы',
     loginLocal: 'Войти с локальной учётной записью',
@@ -284,7 +284,7 @@ const ruRU = {
     searchProviders: 'Поиск провайдеров...',
     langbotModelsDescription: 'Облачные модели на базе LangBot Space',
     credits: 'Кредиты',
-    loginWithSpace: 'Войти через Space',
+    loginWithSpace: 'Войти с аккаунтом LangBot',
     loginToUseModels: 'Войдите через Space, чтобы использовать облачные модели',
     noModels: 'Модели не настроены',
     langbotModels: 'Модели LangBot',
@@ -767,6 +767,7 @@ const ruRU = {
     notFound: 'Информация о плагине не найдена',
     sortBy: 'Сортировать по',
     sort: {
+      hottest: 'По популярности',
       recentlyAdded: 'Недавно добавленные',
       recentlyUpdated: 'Недавно обновлённые',
       mostDownloads: 'Больше всего загрузок',
@@ -774,6 +775,9 @@ const ruRU = {
     },
     downloads: 'загрузок',
     download: 'Скачать',
+    like: 'Нравится',
+    unlike: 'Убрать отметку',
+    likeFailed: 'Не удалось обновить отметку. Повторите попытку.',
     repository: 'Репозиторий',
     downloadFailed: 'Ошибка загрузки',
     noReadme: 'Этот плагин не предоставляет документацию README',
@@ -865,6 +869,9 @@ const ruRU = {
     url: 'URL',
     headers: 'Заголовки',
     timeout: 'Таймаут',
+    toolCallTimeout: 'Таймаут вызова инструмента (секунды)',
+    toolCallTimeoutDescription:
+      'Максимальное ожидание одного вызова. 0 отключает ограничение. По умолчанию 300 секунд.',
     addArgument: 'Добавить аргумент',
     addEnvVar: 'Добавить переменную окружения',
     addHeader: 'Добавить заголовок',
@@ -887,6 +894,9 @@ const ruRU = {
     boxStdioRefusedSuggestion:
       'Включите Box (box.enabled = true) и убедитесь, что среда работает, либо переключите этот сервер в режим http/sse.',
     boxRequired: 'требуется Box',
+    disabledByPolicy: 'отключено политикой',
+    stdioDisabledByPolicy:
+      'Stdio MCP отключён в этом развёртывании. Используйте удалённый MCP-сервер.',
     stdioBlockedByBoxToast:
       'Сохранить MCP в режиме stdio нельзя: песочница Box отключена или недоступна. Включите Box либо выберите режим http/sse.',
     toolsFound: 'инструментов',

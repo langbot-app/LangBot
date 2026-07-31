@@ -1,8 +1,34 @@
 """Test plugin list sorting functionality."""
 
+from contextlib import nullcontext
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
+
 import pytest
+from langbot_plugin.entities.io.context import InstallationBinding
+
+from langbot.pkg.api.http.context import ExecutionContext
+
+
+TEST_EXECUTION_CONTEXT = ExecutionContext(
+    instance_uuid='instance-a',
+    workspace_uuid='workspace-a',
+    placement_generation=1,
+)
+TEST_INSTALLATION_BINDING = InstallationBinding(
+    instance_uuid=TEST_EXECUTION_CONTEXT.instance_uuid,
+    workspace_uuid=TEST_EXECUTION_CONTEXT.workspace_uuid,
+    placement_generation=TEST_EXECUTION_CONTEXT.placement_generation,
+    installation_uuid='00000000-0000-4000-8000-000000000001',
+    runtime_revision=1,
+    artifact_digest='a' * 64,
+)
+
+
+def configure_connector(connector) -> None:
+    connector._execution_context.set(TEST_EXECUTION_CONTEXT)
+    connector._operation_bindings = AsyncMock(return_value=[TEST_INSTALLATION_BINDING])
+    connector.handler.installation_scope = MagicMock(side_effect=lambda _binding: nullcontext())
 
 
 @pytest.mark.asyncio
@@ -18,6 +44,7 @@ async def test_plugin_list_sorting_debug_first():
     # Create connector
     connector = PluginRuntimeConnector(mock_app, AsyncMock())
     connector.handler = MagicMock()
+    configure_connector(connector)
 
     # Mock plugin data with different debug states and timestamps
     now = datetime.now()
@@ -60,9 +87,7 @@ async def test_plugin_list_sorting_debug_first():
     connector.handler.list_plugins = AsyncMock(return_value=mock_plugins)
 
     # Mock database query to return all timestamps in a single batch
-    async def mock_execute_async(query):
-        mock_result = MagicMock()
-
+    async def mock_load_workspace_settings(_execution_context):
         # Create mock rows for all plugins with timestamps
         mock_rows = []
 
@@ -85,12 +110,9 @@ async def test_plugin_list_sorting_debug_first():
         mock_row3.created_at = now
         mock_rows.append(mock_row3)
 
-        # Make the result iterable
-        mock_result.__iter__ = lambda self: iter(mock_rows)
+        return mock_rows
 
-        return mock_result
-
-    mock_app.persistence_mgr.execute_async = mock_execute_async
+    connector._load_workspace_settings = AsyncMock(side_effect=mock_load_workspace_settings)
 
     # Call list_plugins
     result = await connector.list_plugins()
@@ -120,6 +142,7 @@ async def test_plugin_list_sorting_by_installation_time():
     # Create connector
     connector = PluginRuntimeConnector(mock_app, AsyncMock())
     connector.handler = MagicMock()
+    configure_connector(connector)
 
     # Mock plugin data - all non-debug with different installation times
     now = datetime.now()
@@ -162,9 +185,7 @@ async def test_plugin_list_sorting_by_installation_time():
     connector.handler.list_plugins = AsyncMock(return_value=mock_plugins)
 
     # Mock database query to return all timestamps in a single batch
-    async def mock_execute_async(query):
-        mock_result = MagicMock()
-
+    async def mock_load_workspace_settings(_execution_context):
         # Create mock rows for all plugins with timestamps
         mock_rows = []
 
@@ -187,12 +208,9 @@ async def test_plugin_list_sorting_by_installation_time():
         mock_row3.created_at = now
         mock_rows.append(mock_row3)
 
-        # Make the result iterable
-        mock_result.__iter__ = lambda self: iter(mock_rows)
+        return mock_rows
 
-        return mock_result
-
-    mock_app.persistence_mgr.execute_async = mock_execute_async
+    connector._load_workspace_settings = AsyncMock(side_effect=mock_load_workspace_settings)
 
     # Call list_plugins
     result = await connector.list_plugins()
@@ -217,6 +235,7 @@ async def test_plugin_list_empty():
     # Create connector
     connector = PluginRuntimeConnector(mock_app, AsyncMock())
     connector.handler = MagicMock()
+    configure_connector(connector)
 
     # Mock empty plugin list
     connector.handler.list_plugins = AsyncMock(return_value=[])

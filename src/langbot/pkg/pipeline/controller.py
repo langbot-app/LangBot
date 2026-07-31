@@ -5,8 +5,10 @@ import traceback
 
 from ..core import app
 from ..core import entities as core_entities
+from ..workspace.errors import WorkspaceError, WorkspaceInvariantError
 
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
+from .pool import get_query_execution_context
 
 
 class Controller:
@@ -21,32 +23,47 @@ class Controller:
         self.ap = ap
         self.semaphore = asyncio.Semaphore(self.ap.instance_config.data['concurrency']['pipeline'])
 
+    async def _assert_query_execution_active(
+        self,
+        query: pipeline_query.Query,
+    ):
+        """Revalidate a queued query immediately before runtime work starts."""
+
+        execution_context = get_query_execution_context(query)
+        binding = await self.ap.workspace_service.get_execution_binding(
+            execution_context.workspace_uuid,
+            expected_generation=execution_context.placement_generation,
+        )
+        if binding.instance_uuid != execution_context.instance_uuid:
+            raise WorkspaceInvariantError('Queued query instance does not match the active Workspace binding')
+        return execution_context
+
     async def _try_claim_steering_before_session_slot(
         self,
         query: pipeline_query.Query,
     ) -> bool:
-        """Claim steering while the normal per-session slot is still busy.
+        """Offer follow-up input to an active AgentRunner before it queues."""
 
-        Follow-up input must be claimed before it waits behind the session
-        semaphore; otherwise the active run can finish before the query reaches
-        ChatMessageHandler.try_claim_steering_from_query.
-        """
         try:
             pipeline_uuid = query.pipeline_uuid
             if not pipeline_uuid:
                 return False
-
-            pipeline = await self.ap.pipeline_mgr.get_pipeline_by_uuid(pipeline_uuid)
-            if not pipeline:
+            execution_context = get_query_execution_context(query)
+            pipeline = await self.ap.pipeline_mgr.get_pipeline_by_uuid(
+                execution_context,
+                pipeline_uuid,
+            )
+            if pipeline is None:
                 return False
-
-            session = await self.ap.sess_mgr.get_session(query)
-            query.session = session
+            query.session = await self.ap.sess_mgr.get_session(query)
             query.pipeline_config = pipeline.pipeline_entity.config
             query.variables['_pipeline_bound_plugins'] = pipeline.bound_plugins
-            query.variables['_pipeline_bound_mcp_servers'] = pipeline.bound_mcp_servers
-
-            return await self.ap.agent_run_orchestrator.try_claim_steering_from_query(query)
+            query.variables['_pipeline_bound_mcp_servers'] = (
+                pipeline.bound_mcp_servers
+            )
+            return await self.ap.agent_run_orchestrator.try_claim_steering_from_query(
+                query
+            )
         except Exception as exc:
             self.ap.logger.warning(
                 f'Failed to claim query {query.query_id} as steering input: {exc}',
@@ -54,11 +71,80 @@ class Controller:
             )
             return False
 
+    async def _process_query(
+        self,
+        selected_query: pipeline_query.Query,
+        *,
+        selected_session=None,
+        global_slot_reserved: bool = False,
+    ) -> None:
+        """Run one selected query and always release its scheduling slot."""
+
+        try:
+            queued_context = get_query_execution_context(selected_query)
+
+            async def run_scoped_query() -> None:
+                execution_context = await self._assert_query_execution_active(selected_query)
+                pipeline_uuid = selected_query.pipeline_uuid
+
+                if pipeline_uuid:
+                    pipeline = await self.ap.pipeline_mgr.get_pipeline_by_uuid(
+                        execution_context,
+                        pipeline_uuid,
+                    )
+                    if pipeline:
+                        await pipeline.run(selected_query)
+                    else:
+                        self.ap.logger.warning(
+                            f'Pipeline {pipeline_uuid} not found for query {selected_query.query_id}, query dropped'
+                        )
+                else:
+                    self.ap.logger.warning(f'No pipeline_uuid for query {selected_query.query_id}, query dropped')
+
+            tenant_scope = getattr(self.ap.persistence_mgr, 'tenant_scope', None)
+            cloud_runtime = getattr(getattr(self.ap.persistence_mgr, 'mode', None), 'value', None) == 'cloud_runtime'
+            if cloud_runtime:
+                if not callable(tenant_scope):
+                    raise RuntimeError('Cloud query processing requires an explicit tenant scope')
+                async with tenant_scope(queued_context.workspace_uuid):
+                    await run_scoped_query()
+            else:
+                await run_scoped_query()
+        except WorkspaceError as exc:
+            self.ap.logger.info(
+                f'Dropped query {selected_query.query_id} because its Workspace execution binding is stale: {exc}'
+            )
+        finally:
+            try:
+                try:
+                    await self.ap.query_pool.remove_query(selected_query)
+                finally:
+                    async with self.ap.query_pool:
+                        session = selected_session or await self.ap.sess_mgr.get_session(selected_query)
+                        try:
+                            session._semaphore.release()
+                        finally:
+                            self.ap.query_pool.condition.notify_all()
+            finally:
+                if global_slot_reserved:
+                    self.semaphore.release()
+
+    async def _drop_selected_query(self, selected_query, selected_session) -> None:
+        """Undo scheduler ownership when work cannot be handed to a task."""
+
+        try:
+            await self.ap.query_pool.remove_query(selected_query)
+        finally:
+            async with self.ap.query_pool:
+                selected_session._semaphore.release()
+                self.ap.query_pool.condition.notify_all()
+
     async def consumer(self):
         """事件处理循环"""
-        try:
-            while True:
+        while True:
+            try:
                 selected_query: pipeline_query.Query = None
+                selected_session = None
                 claimed_steering_query: pipeline_query.Query = None
 
                 # 取请求
@@ -71,72 +157,78 @@ class Controller:
                         # that can cause memory overflow in high-traffic scenarios
 
                         if session._semaphore.locked():
-                            if await self._try_claim_steering_before_session_slot(query):
+                            if await self._try_claim_steering_before_session_slot(
+                                query
+                            ):
                                 claimed_steering_query = query
-                                self.ap.logger.debug(f'Claimed query {query.query_id} as steering before session slot')
                                 break
                             continue
 
                         if not session._semaphore.locked():
                             selected_query = query
+                            selected_session = session
                             await session._semaphore.acquire()
+                            self.ap.query_pool.mark_query_running_locked(query)
                             # Only log when actually selecting a query
                             self.ap.logger.debug(f'Selected query {query.query_id} for processing')
 
                             break
 
-                    if claimed_steering_query:
-                        queries.remove(claimed_steering_query)
-                        self.ap.query_pool.cached_queries.pop(claimed_steering_query.query_id, None)
+                    if claimed_steering_query is not None:
+                        self.ap.query_pool.remove_query_locked(
+                            claimed_steering_query
+                        )
                         self.ap.query_pool.condition.notify_all()
                         continue
-                    elif selected_query:  # 找到了
+                    if selected_query:  # 找到了
                         queries.remove(selected_query)
                     else:  # 没找到 说明：没有请求 或者 所有query对应的session都已达到并发上限
                         await self.ap.query_pool.condition.wait()
                         continue
 
                 if selected_query:
+                    try:
+                        # Reserve global capacity before creating the task.
+                        # At most one selected query is held by this consumer
+                        # while all pipeline slots are busy.
+                        await self.semaphore.acquire()
+                    except asyncio.CancelledError:
+                        await self._drop_selected_query(selected_query, selected_session)
+                        raise
 
-                    async def _process_query(selected_query: pipeline_query.Query):
-                        async with self.semaphore:  # 总并发上限
-                            # find pipeline
-                            # Here firstly find the bot, then find the pipeline, in case the bot adapter's config is not the latest one.
-                            # Like aiocqhttp, once a client is connected, even the adapter was updated and restarted, the existing client connection will not be affected.
-                            pipeline_uuid = selected_query.pipeline_uuid
-
-                            if pipeline_uuid:
-                                pipeline = await self.ap.pipeline_mgr.get_pipeline_by_uuid(pipeline_uuid)
-                                if pipeline:
-                                    await pipeline.run(selected_query)
-                                else:
-                                    self.ap.logger.warning(
-                                        f'Pipeline {pipeline_uuid} not found for query {selected_query.query_id}, query dropped'
-                                    )
-                            else:
-                                self.ap.logger.warning(
-                                    f'No pipeline_uuid for query {selected_query.query_id}, query dropped'
-                                )
-
-                        async with self.ap.query_pool:
-                            (await self.ap.sess_mgr.get_session(selected_query))._semaphore.release()
-                            # 通知其他协程，有新的请求可以处理了
-                            self.ap.query_pool.condition.notify_all()
-
-                    self.ap.task_mgr.create_task(
-                        _process_query(selected_query),
-                        kind='query',
-                        name=f'query-{selected_query.query_id}',
-                        scopes=[
-                            core_entities.LifecycleControlScope.APPLICATION,
-                            core_entities.LifecycleControlScope.PLATFORM,
-                        ],
+                    execution_context = get_query_execution_context(selected_query)
+                    process_coro = self._process_query(
+                        selected_query,
+                        selected_session=selected_session,
+                        global_slot_reserved=True,
                     )
+                    try:
+                        self.ap.task_mgr.create_task(
+                            process_coro,
+                            kind='query',
+                            name=f'query-{selected_query.query_id}',
+                            scopes=[
+                                core_entities.LifecycleControlScope.APPLICATION,
+                                core_entities.LifecycleControlScope.PLATFORM,
+                            ],
+                            instance_uuid=execution_context.instance_uuid,
+                            workspace_uuid=execution_context.workspace_uuid,
+                            placement_generation=execution_context.placement_generation,
+                        )
+                    except Exception:
+                        process_coro.close()
+                        self.semaphore.release()
+                        await self._drop_selected_query(selected_query, selected_session)
+                        raise
 
-        except Exception as e:
-            # traceback.print_exc()
-            self.ap.logger.error(f'控制器循环出错: {e}')
-            self.ap.logger.error(f'Traceback: {traceback.format_exc()}')
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                self.ap.logger.error(f'控制器循环出错: {e}')
+                self.ap.logger.error(f'Traceback: {traceback.format_exc()}')
+                # A persistent external failure must not turn this recovery
+                # loop into a CPU spin.
+                await asyncio.sleep(1)
 
     async def run(self):
         """运行控制器"""

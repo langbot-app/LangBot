@@ -27,11 +27,15 @@ import { KnowledgeBase } from '@/app/infra/entities/api';
 import { CustomApiError } from '@/app/infra/entities/common';
 import { toast } from 'sonner';
 import { FileText, FolderOpen, Search, Trash2 } from 'lucide-react';
+import { useCurrentWorkspace } from '@/app/infra/http';
 
 export default function KBDetailContent({ id }: { id: string }) {
   const isCreateMode = id === 'new';
   const navigate = useNavigate();
   const { t } = useTranslation();
+  const currentWorkspace = useCurrentWorkspace();
+  const canManage =
+    currentWorkspace?.permissions.includes('resource.manage') ?? false;
   const { refreshKnowledgeBases, knowledgeBases, setDetailEntityName } =
     useSidebarData();
 
@@ -119,18 +123,22 @@ export default function KBDetailContent({ id }: { id: string }) {
           <h1 className="text-xl font-semibold">
             {t('knowledge.createKnowledgeBase')}
           </h1>
-          <Button type="submit" form="kb-form">
-            {t('common.submit')}
-          </Button>
+          {canManage && (
+            <Button type="submit" form="kb-form">
+              {t('common.submit')}
+            </Button>
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto min-h-0">
           <div className="mx-auto max-w-3xl pb-8">
-            <KBForm
-              initKbId={undefined}
-              onNewKbCreated={handleNewKbCreated}
-              onKbUpdated={handleKbUpdated}
-            />
+            <fieldset className="contents" disabled={!canManage}>
+              <KBForm
+                initKbId={undefined}
+                onNewKbCreated={handleNewKbCreated}
+                onKbUpdated={handleKbUpdated}
+              />
+            </fieldset>
           </div>
         </div>
       </div>
@@ -146,14 +154,16 @@ export default function KBDetailContent({ id }: { id: string }) {
           <h1 className="text-xl font-semibold">
             {t('knowledge.editKnowledgeBase')}
           </h1>
-          <Button
-            type="submit"
-            form="kb-form"
-            disabled={!formDirty}
-            className={activeTab !== 'metadata' ? 'invisible' : ''}
-          >
-            {t('common.save')}
-          </Button>
+          {canManage && (
+            <Button
+              type="submit"
+              form="kb-form"
+              disabled={!formDirty}
+              className={activeTab !== 'metadata' ? 'invisible' : ''}
+            >
+              {t('common.save')}
+            </Button>
+          )}
         </div>
 
         {/* Horizontal Tabs */}
@@ -186,45 +196,49 @@ export default function KBDetailContent({ id }: { id: string }) {
             className="flex-1 min-h-0 overflow-y-auto mt-4"
           >
             <div className="mx-auto max-w-3xl space-y-6 pb-8">
-              <KBForm
-                initKbId={id}
-                onNewKbCreated={handleNewKbCreated}
-                onKbUpdated={handleKbUpdated}
-                onDirtyChange={setFormDirty}
-              />
+              <fieldset className="contents" disabled={!canManage}>
+                <KBForm
+                  initKbId={id}
+                  onNewKbCreated={handleNewKbCreated}
+                  onKbUpdated={handleKbUpdated}
+                  onDirtyChange={setFormDirty}
+                />
+              </fieldset>
 
               {/* Danger Zone Card */}
-              <Card className="border-destructive/50">
-                <CardHeader>
-                  <CardTitle className="text-destructive">
-                    {t('knowledge.dangerZone')}
-                  </CardTitle>
-                  <CardDescription>
-                    {t('knowledge.dangerZoneDescription')}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-1">
-                      <p className="text-sm font-medium">
-                        {t('knowledge.deleteKbAction')}
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        {t('knowledge.deleteKbHint')}
-                      </p>
+              {canManage && (
+                <Card className="border-destructive/50">
+                  <CardHeader>
+                    <CardTitle className="text-destructive">
+                      {t('knowledge.dangerZone')}
+                    </CardTitle>
+                    <CardDescription>
+                      {t('knowledge.dangerZoneDescription')}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-1">
+                        <p className="text-sm font-medium">
+                          {t('knowledge.deleteKbAction')}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          {t('knowledge.deleteKbHint')}
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => setShowDeleteConfirm(true)}
+                      >
+                        <Trash2 className="size-4 mr-1.5" />
+                        {t('common.delete')}
+                      </Button>
                     </div>
-                    <Button
-                      type="button"
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => setShowDeleteConfirm(true)}
-                    >
-                      <Trash2 className="size-4 mr-1.5" />
-                      {t('common.delete')}
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
+              )}
             </div>
           </TabsContent>
 
@@ -234,11 +248,13 @@ export default function KBDetailContent({ id }: { id: string }) {
               value="documents"
               className="flex-1 min-h-0 overflow-y-auto mt-4"
             >
-              <KBDoc
-                kbId={id}
-                ragEngineName={kbInfo?.knowledge_engine?.name}
-                ragEngineCapabilities={kbInfo?.knowledge_engine?.capabilities}
-              />
+              <fieldset className="contents" disabled={!canManage}>
+                <KBDoc
+                  kbId={id}
+                  ragEngineName={kbInfo?.knowledge_engine?.name}
+                  ragEngineCapabilities={kbInfo?.knowledge_engine?.capabilities}
+                />
+              </fieldset>
             </TabsContent>
           )}
 

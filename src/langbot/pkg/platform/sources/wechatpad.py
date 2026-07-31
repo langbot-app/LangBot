@@ -1,8 +1,6 @@
 import requests
 import websocket
 import json
-import time
-import httpx
 
 from langbot.libs.wechatpad_api.client import WeChatPadClient
 
@@ -17,6 +15,7 @@ import threading
 import quart
 
 from langbot.pkg.platform.logger import EventLogger
+from langbot.pkg.utils import bounded_executor, httpclient
 import xml.etree.ElementTree as ET
 from typing import Optional, Tuple
 from functools import partial
@@ -26,6 +25,8 @@ import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
 import langbot_plugin.api.definition.abstract.platform.event_logger as abstract_platform_logger
+
+_MAX_GATEWAY_MESSAGE_CHARS = 1024 * 1024
 
 
 class WeChatPadMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
@@ -53,12 +54,11 @@ class WeChatPadMessageConverter(abstract_platform_adapter.AbstractMessageConvert
                 content_list.append({'type': 'text', 'content': component.text})
             elif isinstance(component, platform_message.Image):
                 if component.url:
-                    async with httpx.AsyncClient() as client:
-                        response = await client.get(component.url)
-
-                        if response.status_code == 200:
-                            file_bytes = response.content
-                            base64_str = base64.b64encode(file_bytes).decode('utf-8')  # 返回字符串格式
+                    session = httpclient.get_session()
+                    async with session.get(component.url) as response:
+                        if response.status == 200:
+                            file_bytes = await httpclient.read_limited(response)
+                            base64_str = (await asyncio.to_thread(base64.b64encode, file_bytes)).decode('utf-8')
                         else:
                             raise Exception('获取文件失败')
                     # pass
@@ -156,9 +156,19 @@ class WeChatPadMessageConverter(abstract_platform_adapter.AbstractMessageConvert
                 cdnthumburl = img_tag.get('cdnthumburl')
                 # cdnmidimgurl = img_tag.get('cdnmidimgurl')
 
-            image_data = self.bot.cdn_download(aeskey=aeskey, file_type=1, file_url=cdnthumburl)
+            image_data = await asyncio.to_thread(
+                self.bot.cdn_download,
+                aeskey=aeskey,
+                file_type=1,
+                file_url=cdnthumburl,
+            )
             if image_data['Data']['FileData'] == '':
-                image_data = self.bot.cdn_download(aeskey=aeskey, file_type=2, file_url=cdnthumburl)
+                image_data = await asyncio.to_thread(
+                    self.bot.cdn_download,
+                    aeskey=aeskey,
+                    file_type=2,
+                    file_url=cdnthumburl,
+                )
             base64_str = image_data['Data']['FileData']
             # self.logger.info(f"data:image/png;base64,{base64_str}")
 
@@ -186,7 +196,12 @@ class WeChatPadMessageConverter(abstract_platform_adapter.AbstractMessageConvert
             if voicemsg is not None:
                 bufid = voicemsg.get('bufid')
                 length = voicemsg.get('voicelength')
-            voice_data = self.bot.get_msg_voice(buf_id=str(bufid), length=int(length), msgid=str(new_msg_id))
+            voice_data = await asyncio.to_thread(
+                self.bot.get_msg_voice,
+                buf_id=str(bufid),
+                length=int(length),
+                msgid=str(new_msg_id),
+            )
             audio_base64 = voice_data['Data']['Base64']
 
             # 验证语音数据有效性
@@ -319,7 +334,12 @@ class WeChatPadMessageConverter(abstract_platform_adapter.AbstractMessageConvert
 
             # print(aeskey,cdnthumburl)
 
-            file_data = self.bot.cdn_download(aeskey=aeskey, file_type=5, file_url=cdnthumburl)
+            file_data = await asyncio.to_thread(
+                self.bot.cdn_download,
+                aeskey=aeskey,
+                file_type=5,
+                file_url=cdnthumburl,
+            )
 
             file_base64 = file_data['Data']['FileData']
             # print(file_data)
@@ -538,6 +558,7 @@ class WeChatPadAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
         typing.Type[platform_events.Event],
         typing.Callable[[platform_events.Event, abstract_platform_adapter.AbstractMessagePlatformAdapter], None],
     ] = {}
+    _MAX_CALLBACK_FUTURES = 100
 
     def __init__(self, config: dict, logger: EventLogger):
         quart_app = quart.Quart(__name__)
@@ -556,6 +577,12 @@ class WeChatPadAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
             name='WeChatPad',
             bot=bot,
         )
+        self._event_loop: asyncio.AbstractEventLoop | None = None
+        self._ws_app: websocket.WebSocketApp | None = None
+        self._ws_thread: threading.Thread | None = None
+        self._stop_event = threading.Event()
+        self._callback_futures: set = set()
+        self._callback_futures_lock = threading.Lock()
 
     async def ws_message(self, data):
         """处理接收到的消息"""
@@ -565,7 +592,7 @@ class WeChatPadAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
         except Exception:
             await self.logger.error(f'Error in wechatpad callback: {traceback.format_exc()}')
 
-        if event.__class__ in self.listeners:
+        if event is not None and event.__class__ in self.listeners:
             await self.listeners[event.__class__](event, self)
 
         return 'ok'
@@ -580,9 +607,8 @@ class WeChatPadAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
         at_targets = at_targets or []
         member_info = []
         if at_targets:
-            member_info = self.bot.get_chatroom_member_detail(
-                target_id,
-            )['Data']['member_data']['chatroom_member_list']
+            member_result = await asyncio.to_thread(self.bot.get_chatroom_member_detail, target_id)
+            member_info = member_result['Data']['member_data']['chatroom_member_list']
 
         # 处理消息组件
         for msg in content_list:
@@ -623,10 +649,34 @@ class WeChatPadAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
             }
 
             if handler := handler_map.get(msg['type']):
-                handler(msg)
+                await asyncio.to_thread(handler, msg)
             else:
-                self.logger.warning(f'未处理的消息类型: {msg["type"]}')
+                await self.logger.warning(f'未处理的消息类型: {msg["type"]}')
                 continue
+
+    def _schedule_ws_message(self, data: dict) -> None:
+        loop = self._event_loop
+        if loop is None or loop.is_closed() or self._stop_event.is_set():
+            return
+        with self._callback_futures_lock:
+            if len(self._callback_futures) >= self._MAX_CALLBACK_FUTURES:
+                return
+            future = asyncio.run_coroutine_threadsafe(self.ws_message(data), loop)
+            self._callback_futures.add(future)
+
+        def done(completed) -> None:
+            with self._callback_futures_lock:
+                self._callback_futures.discard(completed)
+            if completed.cancelled():
+                return
+            try:
+                completed.result()
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                logging.getLogger(__name__).exception('WeChatPad callback failed')
+
+        future.add_done_callback(done)
 
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
         """主动发送消息"""
@@ -665,86 +715,113 @@ class WeChatPadAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
         pass
 
     async def run_async(self):
+        self._event_loop = asyncio.get_running_loop()
+        self._stop_event.clear()
         if not self.config['admin_key'] and not self.config['token']:
             raise RuntimeError('无wechatpad管理密匙，请填入配置文件后重启')
         else:
             if self.config['token']:
                 self.bot = WeChatPadClient(self.config['wechatpad_url'], self.config['token'])
-                data = self.bot.get_login_status()
+                data = await asyncio.to_thread(self.bot.get_login_status)
                 if data['Code'] == 300 and data['Text'] == '你已退出微信':
-                    response = requests.post(
+                    response = await asyncio.to_thread(
+                        requests.post,
                         f'{self.config["wechatpad_url"]}/admin/GenAuthKey1?key={self.config["admin_key"]}',
                         json={'Count': 1, 'Days': 365},
+                        timeout=10,
                     )
                     if response.status_code != 200:
-                        raise Exception(f'获取token失败: {response.text}')
-                    self.config['token'] = response.json()['Data'][0]
+                        body = await httpclient.response_text(response)
+                        raise Exception(f'获取token失败: {body}')
+                    response_data = await httpclient.parse_json_response(response)
+                    self.config['token'] = response_data['Data'][0]
 
             elif not self.config['token']:
-                response = requests.post(
+                response = await asyncio.to_thread(
+                    requests.post,
                     f'{self.config["wechatpad_url"]}/admin/GenAuthKey1?key={self.config["admin_key"]}',
                     json={'Count': 1, 'Days': 365},
+                    timeout=10,
                 )
                 if response.status_code != 200:
-                    raise Exception(f'获取token失败: {response.text}')
-                self.config['token'] = response.json()['Data'][0]
+                    body = await httpclient.response_text(response)
+                    raise Exception(f'获取token失败: {body}')
+                response_data = await httpclient.parse_json_response(response)
+                self.config['token'] = response_data['Data'][0]
 
         self.bot = WeChatPadClient(self.config['wechatpad_url'], self.config['token'], logger=self.logger)
-        await self.logger.info(self.config['token'])
-        thread_1 = threading.Event()
-
-        def wechat_login_process():
-            # 不登录，这些先注释掉，避免登陆态尝试拉qrcode。
-            # login_data =self.bot.get_login_qr()
-
-            # url = login_data['Data']["QrCodeUrl"]
-
-            profile = self.bot.get_profile()
-            # self.logger.info(profile)
-
-            self.bot_account_id = profile['Data']['userInfo']['nickName']['str']
-            self.config['wxid'] = profile['Data']['userInfo']['userName']['str']
-            thread_1.set()
-
-        # asyncio.create_task(wechat_login_process)
-        threading.Thread(target=wechat_login_process).start()
+        profile = await asyncio.to_thread(self.bot.get_profile)
+        self.bot_account_id = profile['Data']['userInfo']['nickName']['str']
+        self.config['wxid'] = profile['Data']['userInfo']['userName']['str']
 
         def connect_websocket_sync() -> None:
-            thread_1.wait()
             uri = f'{self.config["wechatpad_ws"]}/GetSyncMsg?key={self.config["token"]}'
-            print(f'Connecting to WebSocket: {uri}')
 
             def on_message(ws, message):
                 try:
+                    if len(message) > _MAX_GATEWAY_MESSAGE_CHARS:
+                        logging.getLogger(__name__).warning('WeChatPad WebSocket message exceeds the size limit')
+                        return
                     data = json.loads(message)
-                    # 这里需要确保ws_message是同步的，或者使用asyncio.run调用异步方法
-                    asyncio.run(self.ws_message(data))
+                    self._schedule_ws_message(data)
                 except json.JSONDecodeError:
-                    self.logger.error(f'Non-JSON message: {message[:100]}...')
+                    logging.getLogger(__name__).warning('WeChatPad received a non-JSON message')
 
             def on_error(ws, error):
-                self.logger.error(f'WebSocket error: {str(error)[:200]}')
+                logging.getLogger(__name__).warning('WeChatPad WebSocket error: %s', str(error)[:200])
 
             def on_close(ws, close_status_code, close_msg):
-                self.logger.info('WebSocket closed, reconnecting...')
-                time.sleep(5)
-                connect_websocket_sync()  # 自动重连
+                logging.getLogger(__name__).info('WeChatPad WebSocket closed')
 
             def on_open(ws):
-                self.logger.info('WebSocket connected successfully!')
+                logging.getLogger(__name__).info('WeChatPad WebSocket connected')
 
-            ws = websocket.WebSocketApp(
-                uri, on_message=on_message, on_error=on_error, on_close=on_close, on_open=on_open
-            )
-            ws.run_forever(ping_interval=60, ping_timeout=20)
+            while not self._stop_event.is_set():
+                ws = websocket.WebSocketApp(
+                    uri,
+                    on_message=on_message,
+                    on_error=on_error,
+                    on_close=on_close,
+                    on_open=on_open,
+                )
+                self._ws_app = ws
+                ws.run_forever(ping_interval=60, ping_timeout=20)
+                self._ws_app = None
+                if not self._stop_event.wait(5):
+                    logging.getLogger(__name__).info('Reconnecting WeChatPad WebSocket')
 
-        # 直接调用同步版本（会阻塞）
-        # connect_websocket_sync()
-
-        # 这行代码会在WebSocket连接断开后才会执行
-        thread = threading.Thread(target=connect_websocket_sync, name='WebSocketClientThread', daemon=True)
-        thread.start()
-        self.logger.info('WebSocket client thread started')
+        self._ws_thread = threading.Thread(
+            target=connect_websocket_sync,
+            name='WebSocketClientThread',
+            daemon=True,
+        )
+        self._ws_thread.start()
+        await self.logger.info('WebSocket client thread started')
+        while not self._stop_event.is_set() and self._ws_thread.is_alive():
+            await asyncio.sleep(1)
+        if not self._stop_event.is_set():
+            raise RuntimeError('WeChatPad WebSocket client thread exited unexpectedly')
 
     async def kill(self) -> bool:
-        pass
+        self._stop_event.set()
+        ws = self._ws_app
+        if ws is not None:
+            await bounded_executor.run_blocking_cleanup(ws.close)
+
+        with self._callback_futures_lock:
+            futures = list(self._callback_futures)
+        for future in futures:
+            future.cancel()
+        if futures:
+            await asyncio.gather(
+                *(asyncio.wrap_future(future) for future in futures),
+                return_exceptions=True,
+            )
+
+        thread = self._ws_thread
+        if thread is not None and thread.is_alive():
+            await bounded_executor.run_blocking_cleanup(thread.join, 5)
+        self._ws_thread = None
+        self._ws_app = None
+        self._event_loop = None
+        return True

@@ -38,12 +38,14 @@ import AddModelPopover from './AddModelPopover';
 
 interface ProviderCardProps {
   provider: ModelProvider;
+  canManage: boolean;
   isLangBotModels?: boolean;
   supportTypes?: string[];
   isExpanded: boolean;
   isLoading: boolean;
   models?: ProviderModels;
-  accountType: 'local' | 'space';
+  isWorkspaceOwner: boolean;
+  ownerSpaceBound: boolean;
   spaceCredits: number | null;
   // Popover states
   addModelPopoverOpen: string | null;
@@ -101,12 +103,14 @@ function maskApiKey(key: string): string {
 
 export default function ProviderCard({
   provider,
+  canManage,
   isLangBotModels = false,
   supportTypes,
   isExpanded,
   isLoading,
   models,
-  accountType,
+  isWorkspaceOwner,
+  ownerSpaceBound,
   spaceCredits,
   addModelPopoverOpen,
   editModelPopoverOpen,
@@ -196,7 +200,7 @@ export default function ProviderCard({
               </div>
             </div>
             <div className="flex items-center gap-1 ml-2 shrink-0">
-              {isLangBotModels && accountType !== 'space' && (
+              {isLangBotModels && isWorkspaceOwner && !ownerSpaceBound && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -206,33 +210,41 @@ export default function ProviderCard({
                   }}
                 >
                   <LogIn className="h-4 w-4 mr-1" />
-                  {t('models.loginWithSpace')}
+                  {t('models.ownerMustBindSpace')}
                 </Button>
               )}
-              {isLangBotModels &&
-                accountType === 'space' &&
-                spaceCredits !== null && (
-                  <div className="flex items-center gap-1 border rounded-md px-2 h-8 text-sm mr-2">
-                    <span>
-                      {(spaceCredits / 5000).toFixed(2)} {t('models.credits')}
-                    </span>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-5 w-5"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        window.open(
-                          `${systemInfo.cloud_service_url}/profile?tab=billing`,
-                          '_blank',
-                        );
-                      }}
-                    >
-                      <Plus className="h-3 w-3" />
-                    </Button>
-                  </div>
-                )}
-              {!isLangBotModels && (
+              {isLangBotModels && ownerSpaceBound && spaceCredits !== null && (
+                <div className="flex items-center gap-1 border rounded-md px-2 h-8 text-sm mr-2">
+                  <span>
+                    {(spaceCredits / 5000).toFixed(2)} {t('models.credits')}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-5 w-5"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      window.open(
+                        `${systemInfo.cloud_service_url}/profile?tab=billing`,
+                        '_blank',
+                      );
+                    }}
+                  >
+                    <Plus className="h-3 w-3" />
+                  </Button>
+                </div>
+              )}
+              {isLangBotModels && !isWorkspaceOwner && ownerSpaceBound && (
+                <span className="text-xs text-muted-foreground">
+                  {t('models.usesOwnerSpaceBilling')}
+                </span>
+              )}
+              {isLangBotModels && !isWorkspaceOwner && !ownerSpaceBound && (
+                <span className="text-xs text-muted-foreground">
+                  {t('models.ownerMustBindSpace')}
+                </span>
+              )}
+              {canManage && !isLangBotModels && (
                 <>
                   <Button
                     variant="ghost"
@@ -317,7 +329,7 @@ export default function ProviderCard({
             ) : (
               <div />
             )}
-            {!isLangBotModels && (
+            {canManage && !isLangBotModels && (
               <div className="flex items-center gap-1">
                 <AddModelPopover
                   isOpen={
@@ -404,6 +416,7 @@ export default function ProviderCard({
                   <ModelItem
                     key={model.uuid}
                     model={model}
+                    canManage={canManage}
                     modelType="llm"
                     isLangBotModels={isLangBotModels}
                     editModelPopoverOpen={editModelPopoverOpen}
@@ -441,6 +454,7 @@ export default function ProviderCard({
                   <ModelItem
                     key={model.uuid}
                     model={model}
+                    canManage={canManage}
                     modelType="embedding"
                     isLangBotModels={isLangBotModels}
                     editModelPopoverOpen={editModelPopoverOpen}
@@ -472,6 +486,7 @@ export default function ProviderCard({
                   <ModelItem
                     key={model.uuid}
                     model={model}
+                    canManage={canManage}
                     modelType="rerank"
                     isLangBotModels={isLangBotModels}
                     editModelPopoverOpen={editModelPopoverOpen}

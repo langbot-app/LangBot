@@ -25,11 +25,11 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from langbot.pkg.agent.runner.session_registry import AgentRunSessionRegistry
 from langbot.pkg.agent.runner.persistent_state_store import PersistentStateStore, reset_persistent_state_store
-from langbot.pkg.plugin.handler import RuntimeConnectionHandler
+from langbot.pkg.plugin.handler import RuntimeConnectionHandler as HostRuntimeConnectionHandler
 from langbot_plugin.entities.io.actions.enums import PluginToRuntimeAction
 
 # Import shared test fixtures
-from .conftest import make_resources
+from .conftest import bind_runtime_action_context, make_resources
 
 
 class FakeConnection:
@@ -46,6 +46,14 @@ class FakeApplication:
         self.logger.error = MagicMock()
         self.persistence_mgr = MagicMock()
         self.persistence_mgr.get_db_engine = MagicMock(return_value=db_engine)
+
+
+class RuntimeConnectionHandler(HostRuntimeConnectionHandler):
+    """Host handler with the trusted Runtime envelope installed for direct calls."""
+
+    def __init__(self, connection, disconnect, application):
+        super().__init__(connection, disconnect, application)
+        bind_runtime_action_context(self, application)
 
 
 @pytest.fixture
@@ -126,8 +134,13 @@ class TestStateAPIHandlerAuthorization:
             assert 'not found' in result.message.lower()
 
     @pytest.mark.asyncio
-    async def test_state_get_missing_caller_plugin_identity_returns_error(self, session_registry, db_engine, persistent_store):
-        """STATE_GET: missing caller_plugin_identity when session has plugin_identity returns error."""
+    async def test_state_get_uses_installation_identity_when_payload_omits_caller(
+        self,
+        session_registry,
+        db_engine,
+        persistent_store,
+    ):
+        """STATE_GET derives caller identity from the trusted installation binding."""
         fake_app = FakeApplication(db_engine)
         fake_app.persistence_mgr.get_db_engine = MagicMock(return_value=db_engine)
 
@@ -157,8 +170,8 @@ class TestStateAPIHandlerAuthorization:
                 'key': 'test_key',
             })
 
-            assert result.code != 0
-            assert 'caller_plugin_identity is required' in result.message
+            assert result.code == 0
+            assert result.data == {'value': None}
 
         await session_registry.unregister('run_test_missing_identity')
 
@@ -195,7 +208,7 @@ class TestStateAPIHandlerAuthorization:
             })
 
             assert result.code != 0
-            assert 'mismatch' in result.message.lower()
+            assert 'does not match' in result.message.lower()
 
         await session_registry.unregister('run_test_mismatch')
 

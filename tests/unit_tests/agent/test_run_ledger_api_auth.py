@@ -25,7 +25,7 @@ from langbot_plugin.api.entities.builtin.agent_runner.run_ledger import (
 )
 from langbot_plugin.entities.io.actions.enums import PluginToRuntimeAction
 
-from .conftest import make_resources
+from .conftest import bind_runtime_action_context, make_resources
 
 
 class FakeConnection:
@@ -72,17 +72,32 @@ class FakeRunnerRegistry:
         self.runners = runners
         self.calls = []
 
-    async def list_runners(self, *, bound_plugins=None, use_cache=True):
-        self.calls.append({'bound_plugins': bound_plugins, 'use_cache': use_cache})
+    async def list_runners(self, context, *, bound_plugins=None, use_cache=True):
+        self.calls.append(
+            {
+                'workspace_uuid': context.workspace_uuid,
+                'bound_plugins': bound_plugins,
+                'use_cache': use_cache,
+            }
+        )
         return self.runners
 
 
-def _handler(db_engine, admin_plugins=None, runner_registry=None):
+def _handler(
+    db_engine,
+    admin_plugins=None,
+    runner_registry=None,
+    plugin_identity='test/runner',
+):
     async def fake_disconnect():
         return True
 
     fake_app = FakeApplication(db_engine, admin_plugins=admin_plugins, runner_registry=runner_registry)
-    return RuntimeConnectionHandler(FakeConnection(), fake_disconnect, fake_app)
+    return bind_runtime_action_context(
+        RuntimeConnectionHandler(FakeConnection(), fake_disconnect, fake_app),
+        fake_app,
+        plugin_identity=plugin_identity,
+    )
 
 
 async def _register_session(
@@ -505,6 +520,7 @@ async def test_agent_run_admin_can_list_runner_registry_without_run_id(db_engine
             }
         ],
         runner_registry=runner_registry,
+        plugin_identity='langbot/control',
     )
     runner_list = handler.actions['runner_list']
 
@@ -519,6 +535,7 @@ async def test_agent_run_admin_can_list_runner_registry_without_run_id(db_engine
     assert result.data['items'][0]['id'] == 'plugin:test/runner/default'
     assert runner_registry.calls == [
         {
+            'workspace_uuid': 'workspace-test',
             'bound_plugins': ['test/runner'],
             'use_cache': True,
         }
@@ -602,6 +619,7 @@ async def test_agent_run_admin_can_get_and_page_cross_scope_without_run_id(db_en
                 'permissions': ['agent_run:admin'],
             }
         ],
+        plugin_identity='langbot/control',
     )
     run_get = handler.actions[PluginToRuntimeAction.RUN_GET.value]
     run_events_page = handler.actions[PluginToRuntimeAction.RUN_EVENTS_PAGE.value]
@@ -720,7 +738,7 @@ async def test_configured_admin_identity_cannot_be_spoofed_with_other_run_sessio
     )
 
     assert result.code != 0
-    assert 'mismatch' in result.message.lower()
+    assert 'does not match' in result.message.lower()
 
 
 @pytest.mark.asyncio
@@ -834,6 +852,7 @@ async def test_runtime_admin_can_register_list_and_claim_without_run_id(db_engin
                 'permissions': ['runtime:admin'],
             }
         ],
+        plugin_identity='langbot/control',
     )
     runtime_register = handler.actions[PluginToRuntimeAction.RUNTIME_REGISTER.value]
     runtime_list = handler.actions[PluginToRuntimeAction.RUNTIME_LIST.value]
@@ -917,6 +936,7 @@ async def test_runtime_admin_can_reconcile_without_run_id(db_engine):
                 'permissions': ['runtime:admin'],
             }
         ],
+        plugin_identity='langbot/control',
     )
     runtime_reconcile = handler.actions['runtime_reconcile']
 
