@@ -471,8 +471,11 @@ class MCPService:
             async def _run_and_cleanup() -> None:
                 try:
                     await test_session.start()
-                    ctx.metadata['runtime_info'] = test_session.get_runtime_info_dict()
                 finally:
+                    # start() raises for a failed connection. Preserve the
+                    # terminal runtime state so the UI can render actionable
+                    # failure phases such as OAuth-required.
+                    ctx.metadata['runtime_info'] = test_session.get_runtime_info_dict()
                     try:
                         await test_session.shutdown()
                     except Exception as exc:

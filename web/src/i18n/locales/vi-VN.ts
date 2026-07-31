@@ -830,6 +830,9 @@ const viVN = {
     connectionSuccess: 'Kết nối thành công',
     connectionFailed: 'Kết nối thất bại, vui lòng kiểm tra URL',
     connectionFailedStatus: 'Kết nối thất bại',
+    oauthAuthorizationRequired: 'Yêu cầu ủy quyền OAuth',
+    oauthAuthorizationRequiredSuggestion:
+      'MCP server này yêu cầu đăng nhập OAuth. Hiện chưa hỗ trợ đăng nhập OAuth; hãy thêm thủ công tiêu đề Authorization nếu server cho phép.',
     boxDisabledStdioRefused:
       'MCP server ở chế độ stdio cần Sandbox Box, hiện đã bị tắt trong cấu hình (box.enabled = false).',
     boxUnavailableStdioRefused:
