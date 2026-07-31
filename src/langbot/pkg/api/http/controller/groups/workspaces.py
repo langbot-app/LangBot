@@ -5,7 +5,7 @@ import typing
 import quart
 
 from ...authz import Permission, permissions_for_role
-from ...context import RequestContext
+from ...context import PrincipalType, RequestContext
 from ...service.user import AccountExistsLoginRequiredError, ControlPlaneDirectoryRequiredError
 from .....entity.persistence.workspace import Workspace, WorkspaceInvitation, WorkspaceMembership
 from .....entity.persistence.workspace import WorkspaceSource
@@ -120,9 +120,6 @@ class WorkspacesRouterGroup(group.RouterGroup):
         @self.route('/current', methods=['GET'], permission=Permission.WORKSPACE_VIEW)
         async def _(request_context: RequestContext) -> typing.Any:
             membership = quart.g.workspace_membership
-            account = await self.ap.user_service.get_user_by_uuid(request_context.account_uuid)
-            if account is None:
-                return self.http_status(401, 'invalid_authentication', 'Account not found')
             workspace = await self.ap.workspace_service.get_workspace(request_context.workspace_uuid)
             plan_name: str | None = None
             resolver = getattr(self.ap, 'entitlement_resolver', None)
@@ -132,6 +129,28 @@ class WorkspacesRouterGroup(group.RouterGroup):
                     minimum_revision=request_context.entitlement_revision,
                 )
                 plan_name = entitlement.plan_name
+            if request_context.principal.principal_type == PrincipalType.SUPPORT_ADMIN:
+                return self.success(
+                    data={
+                        'workspace': _workspace_payload(workspace),
+                        'membership': {
+                            'uuid': None,
+                            'workspace_uuid': request_context.workspace_uuid,
+                            'account_uuid': None,
+                            'email': None,
+                            'role': 'owner',
+                            'status': 'active',
+                            'joined_at': None,
+                            'created_at': None,
+                        },
+                        'permissions': sorted(request_context.workspace.permissions),
+                        'placement_generation': request_context.placement_generation,
+                        'plan_name': plan_name,
+                    }
+                )
+            account = await self.ap.user_service.get_user_by_uuid(request_context.account_uuid)
+            if account is None:
+                return self.http_status(401, 'invalid_authentication', 'Account not found')
             return self.success(
                 data={
                     'workspace': _workspace_payload(workspace),

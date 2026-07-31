@@ -15,12 +15,15 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
+from .support_admin import SupportAdminReplayError, SupportAdminSessionError, hash_grant_jti
+
 if typing.TYPE_CHECKING:
     from ..core.app import Application
 
 
 CONTROL_PLANE_TYP = 'langbot-control-plane+jwt'
 LAUNCH_KIND = 'workspace.launch'
+SUPPORT_ADMIN_LAUNCH_KIND = 'workspace.support_admin_launch'
 EXPECTED_ISSUER = 'langbot-space'
 EXPECTED_AUDIENCE = 'langbot-cloud-runtime'
 _CONSUMED_JTI_MAX_ENTRIES = 4096
@@ -123,15 +126,60 @@ class SpaceLaunchService:
         payload = claims.get('payload')
         if not isinstance(payload, dict):
             raise SpaceLaunchError('Launch assertion payload must be a JSON object')
-        account_uuid = _required_string(payload, 'account_uuid')
+        kind = _required_string(claims, 'kind')
         workspace_uuid = _required_string(payload, 'workspace_uuid')
         if expected_workspace_uuid is not None and workspace_uuid != expected_workspace_uuid:
             raise SpaceLaunchError('Launch assertion targets another Workspace')
-        await self._consume_jti(_required_string(claims, 'jti'), _required_int(claims, 'exp', minimum=1))
-        return {
+        if kind == SUPPORT_ADMIN_LAUNCH_KIND:
+            if 'account_uuid' in payload:
+                raise SpaceLaunchError('Admin launch assertion must not identify a customer Account')
+            if payload.get('launch_mode') != 'support_admin' or payload.get('principal_type') != 'support_admin':
+                raise SpaceLaunchError('Admin launch principal must be support_admin')
+            actor_account_uuid = _required_string(payload, 'actor_account_uuid')
+            if _required_string(payload, 'effective_role') != 'owner':
+                raise SpaceLaunchError('Admin launch effective role must be owner')
+            issued_at = _required_int(claims, 'iat')
+            expires_at = _required_int(claims, 'exp', minimum=1)
+            if expires_at - issued_at > 90:
+                raise SpaceLaunchError('Admin launch assertion lifetime exceeds 90 seconds')
+            grant_jti_hash = hash_grant_jti(_required_string(claims, 'jti'))
+            result = {
+                'workspace_uuid': workspace_uuid,
+                'launch_mode': 'support_admin',
+                'actor_account_uuid': actor_account_uuid,
+                'effective_role': 'owner',
+                'grant_jti_hash': grant_jti_hash,
+            }
+            support_service = getattr(self.ap, 'support_admin_session_service', None)
+            if support_service is None or not callable(getattr(support_service, 'consume_launch_grant', None)):
+                raise SpaceLaunchError('Durable support admin session service is unavailable')
+            try:
+                support_session = await support_service.consume_launch_grant(
+                    grant_jti_hash=grant_jti_hash,
+                    workspace_uuid=workspace_uuid,
+                    actor_account_uuid=actor_account_uuid,
+                )
+            except SupportAdminReplayError as exc:
+                raise SpaceLaunchError('Launch assertion has already been consumed') from exc
+            except SupportAdminSessionError as exc:
+                raise SpaceLaunchError(str(exc)) from exc
+            result['support_admin_token'] = support_session.token
+            self.ap.logger.info(
+                'cloud_support_admin_launch_consumed actor_account_uuid=%s workspace_uuid=%s',
+                result['actor_account_uuid'],
+                workspace_uuid,
+            )
+            return result
+
+        if payload.get('launch_mode') is not None:
+            raise SpaceLaunchError('Launch assertion mode is unsupported')
+        account_uuid = _required_string(payload, 'account_uuid')
+        result = {
             'account_uuid': account_uuid,
             'workspace_uuid': workspace_uuid,
         }
+        await self._consume_jti(_required_string(claims, 'jti'), _required_int(claims, 'exp', minimum=1))
+        return result
 
     def _verify_assertion(self, token: str) -> dict[str, typing.Any]:
         if not getattr(getattr(self.ap, 'deployment', None), 'multi_workspace_enabled', False):
@@ -169,8 +217,9 @@ class SpaceLaunchService:
             raise SpaceLaunchError('Launch assertion subject targets another instance')
         if _required_string(claims, 'instance_uuid') != instance_uuid:
             raise SpaceLaunchError('Launch assertion instance UUID does not match this Core')
-        if _required_string(claims, 'kind') != LAUNCH_KIND:
-            raise SpaceLaunchError('Launch assertion kind is not workspace.launch')
+        kind = _required_string(claims, 'kind')
+        if kind not in {LAUNCH_KIND, SUPPORT_ADMIN_LAUNCH_KIND}:
+            raise SpaceLaunchError('Launch assertion kind is not supported')
 
         issued_at = _required_int(claims, 'iat')
         not_before = _required_int(claims, 'nbf')

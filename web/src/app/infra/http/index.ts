@@ -217,8 +217,32 @@ export function beginAuthenticatedSession(
   if (typeof window === 'undefined') return;
   localStorage.removeItem('token');
   localStorage.removeItem('userEmail');
+  localStorage.removeItem('authPrincipalType');
   localStorage.setItem('token', token);
   if (userEmail) localStorage.setItem('userEmail', userEmail);
+}
+
+export function beginSupportAdminSession(
+  token: string,
+  workspaceUuid: string,
+): void {
+  userInfo = null;
+  clearWorkspaceSelection();
+  clearWorkspaceBootstrapSnapshot();
+
+  if (typeof window === 'undefined') return;
+  localStorage.removeItem('token');
+  localStorage.removeItem('userEmail');
+  localStorage.setItem('token', token);
+  localStorage.setItem('authPrincipalType', 'support_admin');
+  setActiveWorkspaceUuid(workspaceUuid);
+}
+
+export function isSupportAdminSession(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    localStorage.getItem('authPrincipalType') === 'support_admin'
+  );
 }
 
 async function initializeSelectedWorkspace(
@@ -252,6 +276,27 @@ async function initializeSelectedWorkspace(
 export async function bootstrapWorkspaceSession(
   options: WorkspaceBootstrapOptions = {},
 ): Promise<WorkspaceBootstrapResult> {
+  if (isSupportAdminSession()) {
+    const selectedWorkspaceUuid = getActiveWorkspaceUuid();
+    if (!selectedWorkspaceUuid) {
+      throw new Error('Support admin session is missing its Workspace scope');
+    }
+    if (
+      options.preferredWorkspaceUuid &&
+      options.preferredWorkspaceUuid !== selectedWorkspaceUuid
+    ) {
+      throw new Error('Support admin session cannot change Workspace scope');
+    }
+    await initializeWorkspaceInfo();
+    const workspace = getCurrentWorkspaceSnapshot();
+    if (!workspace || workspace.workspace.uuid !== selectedWorkspaceUuid) {
+      clearWorkspaceSelection();
+      throw new Error('Support admin Workspace scope could not be initialized');
+    }
+    clearWorkspaceBootstrapSnapshot();
+    return { status: 'ready', workspace, workspaces: [] };
+  }
+
   if (options.resetSelection) {
     clearWorkspaceSelection();
     clearWorkspaceBootstrapSnapshot();
@@ -339,6 +384,9 @@ export const clearUserInfo = (): void => {
   userInfo = null;
   clearWorkspaceSelection();
   clearWorkspaceBootstrapSnapshot();
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem('authPrincipalType');
+  }
 };
 
 export {

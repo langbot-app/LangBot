@@ -9,7 +9,7 @@ from datetime import datetime
 
 import pydantic
 
-from ...api.http.context import ExecutionContext
+from ...api.http.context import ExecutionContext, PrincipalContext
 
 logger = logging.getLogger(__name__)
 _SESSION_FILTER_UNSET = object()
@@ -95,6 +95,9 @@ class WebSocketConnection(pydantic.BaseModel):
     metadata: dict = pydantic.Field(default_factory=dict)
     """连接元数据（可存储额外信息）"""
 
+    trigger_principal: PrincipalContext | None = None
+    """Authenticated principal that opened this dashboard connection."""
+
     @property
     def scope(self) -> WebSocketScope:
         return WebSocketScope(
@@ -112,6 +115,7 @@ class WebSocketConnection(pydantic.BaseModel):
             workspace_uuid=self.workspace_uuid,
             placement_generation=self.placement_generation,
             pipeline_uuid=self.pipeline_uuid,
+            trigger_principal=self.trigger_principal,
         )
 
 
@@ -138,6 +142,7 @@ class WebSocketConnectionManager:
         pipeline_uuid: str,
         session_type: str,
         metadata: dict | None = None,
+        trigger_principal: PrincipalContext | None = None,
         session_id: str | None = None,
         send_queue_size: int = _DEFAULT_SEND_QUEUE_SIZE,
         max_connections: int = 1024,
@@ -174,6 +179,7 @@ class WebSocketConnectionManager:
                 session_id=session_id,
                 websocket=websocket,
                 metadata=metadata or {},
+                trigger_principal=trigger_principal,
                 send_queue=asyncio.Queue(maxsize=send_queue_size),
             )
 

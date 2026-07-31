@@ -400,7 +400,10 @@ class UserService:
 
         return await self.generate_jwt_token(user_obj)
 
-    async def generate_jwt_token(self, account: user.User | str) -> str:
+    async def generate_jwt_token(
+        self,
+        account: user.User | str,
+    ) -> str:
         jwt_secret = self.ap.instance_config.data['system']['jwt']['secret']
         jwt_expire = self.ap.instance_config.data['system']['jwt']['expire']
 
@@ -413,7 +416,7 @@ class UserService:
                 # Lightweight unit-test and bootstrap callers may not have persistence wired.
                 account_obj = None
 
-        payload = {
+        payload: dict[str, typing.Any] = {
             'user': user_email,
             'iss': self._jwt_identity()[0],
             'aud': self._jwt_identity()[1],

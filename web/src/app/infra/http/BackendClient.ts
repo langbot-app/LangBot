@@ -1327,8 +1327,10 @@ export class BackendClient extends BaseHttpClient {
     launchAssertion?: string,
   ): Promise<{
     token: string;
-    user: string;
+    user?: string;
     workspace_uuid?: string;
+    principal_type?: 'account' | 'support_admin';
+    actor_account_uuid?: string;
   }> {
     const response = await this.instance.post(
       '/api/v1/user/space/callback',

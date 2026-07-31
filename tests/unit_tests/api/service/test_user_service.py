@@ -418,6 +418,7 @@ class TestUserServiceGenerateJwtToken:
         assert token is not None
 
 
+
 class TestUserServiceVerifyJwtToken:
     """Tests for verify_jwt_token method."""
 

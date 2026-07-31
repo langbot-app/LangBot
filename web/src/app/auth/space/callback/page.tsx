@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import {
   beginAuthenticatedSession,
+  beginSupportAdminSession,
   bootstrapWorkspaceSession,
   getPendingInvitationToken,
 } from '@/app/infra/http';
@@ -27,8 +28,10 @@ import langbotIcon from '@/app/assets/langbot-logo.webp';
 
 type SpaceOAuthLoginResult = {
   token: string;
-  user: string;
+  user?: string;
   workspace_uuid?: string;
+  principal_type?: 'account' | 'support_admin';
+  actor_account_uuid?: string;
 };
 
 const pendingSpaceOAuthLogins = new Map<
@@ -91,6 +94,16 @@ function SpaceOAuthCallbackContent() {
           launchAssertion,
         );
         if (!isMountedRef.current) {
+          return;
+        }
+
+        if (response.principal_type === 'support_admin') {
+          if (!response.workspace_uuid) {
+            throw new Error('Support admin launch did not include a Workspace');
+          }
+          beginSupportAdminSession(response.token, response.workspace_uuid);
+          await bootstrapWorkspaceSession();
+          navigate('/home', { replace: true });
           return;
         }
 

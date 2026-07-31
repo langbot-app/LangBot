@@ -74,6 +74,11 @@ class AuthorizationError(Exception):
     error_code = 'forbidden'
 
 
+class AuthenticationDeniedError(AuthorizationError):
+    status_code = 401
+    error_code = 'invalid_authentication'
+
+
 class WorkspaceRequiredError(AuthorizationError):
     status_code = 400
     error_code = 'workspace_required'
