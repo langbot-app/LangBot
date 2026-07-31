@@ -418,6 +418,53 @@ class TestUserServiceGenerateJwtToken:
         assert token is not None
 
 
+
+    async def test_admin_owner_token_is_scoped_and_capped_at_five_minutes(self):
+        ap = SimpleNamespace()
+        ap.instance_config = SimpleNamespace()
+        ap.instance_config.data = {'system': {'jwt': {'secret': 'test_secret', 'expire': 7200}}}
+        service = UserService(ap)
+        before = datetime.datetime.now(datetime.timezone.utc).timestamp()
+
+        token = await service.generate_jwt_token(
+            'owner@example.com',
+            admin_owner_scope={
+                'actor_account_uuid': 'admin-uuid',
+                'workspace_uuid': 'workspace-uuid',
+                'effective_role': 'owner',
+            },
+        )
+        payload = jwt.decode(
+            token,
+            'test_secret',
+            algorithms=['HS256'],
+            options={'verify_aud': False},
+        )
+
+        assert payload['exp'] <= before + 301
+        assert service.get_admin_owner_scope(token) == {
+            'actor_account_uuid': 'admin-uuid',
+            'workspace_uuid': 'workspace-uuid',
+            'effective_role': 'owner',
+        }
+
+    async def test_admin_owner_token_rejects_invalid_scope(self):
+        ap = SimpleNamespace()
+        ap.instance_config = SimpleNamespace()
+        ap.instance_config.data = {'system': {'jwt': {'secret': 'test_secret', 'expire': 7200}}}
+        service = UserService(ap)
+
+        with pytest.raises(ValueError, match='Invalid admin owner token scope'):
+            await service.generate_jwt_token(
+                'owner@example.com',
+                admin_owner_scope={
+                    'actor_account_uuid': 'admin-uuid',
+                    'workspace_uuid': 'workspace-uuid',
+                    'effective_role': 'member',
+                },
+            )
+
+
 class TestUserServiceVerifyJwtToken:
     """Tests for verify_jwt_token method."""
 

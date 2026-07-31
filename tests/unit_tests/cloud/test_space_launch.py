@@ -60,6 +60,7 @@ def _service(private_key: Ed25519PrivateKey, *, now: int) -> SpaceLaunchService:
     app = SimpleNamespace(
         deployment=SimpleNamespace(multi_workspace_enabled=True, verification_key_id=KEY_ID),
         workspace_service=SimpleNamespace(instance_uuid=INSTANCE_UUID),
+        logger=SimpleNamespace(info=lambda *args, **kwargs: None),
         instance_config=SimpleNamespace(
             data={
                 'space': {
@@ -84,6 +85,58 @@ async def test_consumes_valid_workspace_launch_assertion_once():
     assert launch == {'account_uuid': ACCOUNT_UUID, 'workspace_uuid': WORKSPACE_UUID}
     with pytest.raises(SpaceLaunchError, match='already been consumed'):
         await service.consume_assertion(token, expected_workspace_uuid=WORKSPACE_UUID)
+
+
+
+
+async def test_consumes_admin_owner_launch_once_and_validates_claims():
+    private_key = Ed25519PrivateKey.generate()
+    now = int(time.time())
+    service = _service(private_key, now=now)
+    claims = _claims(now=now)
+    claims['payload'].update(
+        {
+            'launch_mode': 'admin_owner',
+            'actor_account_uuid': '33333333-3333-4333-8333-333333333333',
+            'effective_role': 'owner',
+        }
+    )
+    token = _sign(private_key, claims)
+
+    launch = await service.consume_assertion(token, expected_workspace_uuid=WORKSPACE_UUID)
+
+    assert launch == {
+        'account_uuid': ACCOUNT_UUID,
+        'workspace_uuid': WORKSPACE_UUID,
+        'launch_mode': 'admin_owner',
+        'actor_account_uuid': '33333333-3333-4333-8333-333333333333',
+        'effective_role': 'owner',
+    }
+    with pytest.raises(SpaceLaunchError, match='already been consumed'):
+        await service.consume_assertion(token, expected_workspace_uuid=WORKSPACE_UUID)
+
+    invalid = _claims(now=now)
+    invalid['payload'].update(
+        {
+            'launch_mode': 'admin_owner',
+            'actor_account_uuid': '33333333-3333-4333-8333-333333333333',
+            'effective_role': 'member',
+        }
+    )
+    with pytest.raises(SpaceLaunchError, match='effective role'):
+        await service.consume_assertion(_sign(private_key, invalid), expected_workspace_uuid=WORKSPACE_UUID)
+
+    too_long = _claims(now=now)
+    too_long['exp'] = now + 91
+    too_long['payload'].update(
+        {
+            'launch_mode': 'admin_owner',
+            'actor_account_uuid': '33333333-3333-4333-8333-333333333333',
+            'effective_role': 'owner',
+        }
+    )
+    with pytest.raises(SpaceLaunchError, match='lifetime exceeds 90 seconds'):
+        await service.consume_assertion(_sign(private_key, too_long), expected_workspace_uuid=WORKSPACE_UUID)
 
 
 async def test_replay_cache_does_not_scan_all_live_assertions(monkeypatch):

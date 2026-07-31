@@ -400,9 +400,21 @@ class UserService:
 
         return await self.generate_jwt_token(user_obj)
 
-    async def generate_jwt_token(self, account: user.User | str) -> str:
+    async def generate_jwt_token(
+        self,
+        account: user.User | str,
+        *,
+        admin_owner_scope: dict[str, str] | None = None,
+    ) -> str:
         jwt_secret = self.ap.instance_config.data['system']['jwt']['secret']
         jwt_expire = self.ap.instance_config.data['system']['jwt']['expire']
+        if admin_owner_scope is not None:
+            expected = {'actor_account_uuid', 'workspace_uuid', 'effective_role'}
+            if set(admin_owner_scope) != expected or admin_owner_scope.get('effective_role') != 'owner':
+                raise ValueError('Invalid admin owner token scope')
+            if not admin_owner_scope.get('actor_account_uuid') or not admin_owner_scope.get('workspace_uuid'):
+                raise ValueError('Invalid admin owner token scope')
+            jwt_expire = min(int(jwt_expire), 300)
 
         account_obj: user.User | None = account if not isinstance(account, str) and hasattr(account, 'user') else None
         user_email = account_obj.user if account_obj is not None else account
@@ -413,7 +425,7 @@ class UserService:
                 # Lightweight unit-test and bootstrap callers may not have persistence wired.
                 account_obj = None
 
-        payload = {
+        payload: dict[str, typing.Any] = {
             'user': user_email,
             'iss': self._jwt_identity()[0],
             'aud': self._jwt_identity()[1],
@@ -427,8 +439,34 @@ class UserService:
                     'account_revision': account_obj.projection_revision,
                 }
             )
+        if admin_owner_scope is not None:
+            payload['admin_owner_scope'] = dict(admin_owner_scope)
 
         return jwt.encode(payload, jwt_secret, algorithm='HS256')
+
+    def get_admin_owner_scope(self, token: str) -> dict[str, str] | None:
+        jwt_secret = self.ap.instance_config.data['system']['jwt']['secret']
+        issuer, audience = self._jwt_identity()
+        payload = jwt.decode(
+            token,
+            jwt_secret,
+            algorithms=['HS256'],
+            issuer=issuer,
+            audience=audience,
+            options={'require': ['exp', 'iss', 'aud']},
+        )
+        scope = payload.get('admin_owner_scope')
+        if scope is None:
+            return None
+        if not isinstance(scope, dict) or set(scope) != {'actor_account_uuid', 'workspace_uuid', 'effective_role'}:
+            raise ValueError('Invalid admin owner token scope')
+        if scope.get('effective_role') != 'owner':
+            raise ValueError('Invalid admin owner token scope')
+        actor = scope.get('actor_account_uuid')
+        workspace = scope.get('workspace_uuid')
+        if not isinstance(actor, str) or not actor or not isinstance(workspace, str) or not workspace:
+            raise ValueError('Invalid admin owner token scope')
+        return {'actor_account_uuid': actor, 'workspace_uuid': workspace, 'effective_role': 'owner'}
 
     async def verify_jwt_token(self, token: str) -> str:
         account = await self.get_authenticated_account(token, allow_unresolved_legacy=True)

@@ -404,7 +404,19 @@ class UserRouterGroup(group.RouterGroup):
                 account.uuid,
                 launch['workspace_uuid'],
             )
-            token = await self.ap.user_service.generate_jwt_token(account)
+            admin_owner_scope = None
+            if launch.get('launch_mode') == 'admin_owner':
+                if access.membership.role != 'owner':
+                    raise SpaceLaunchError('Admin launch principal is not an active Workspace owner')
+                admin_owner_scope = {
+                    'actor_account_uuid': launch['actor_account_uuid'],
+                    'workspace_uuid': launch['workspace_uuid'],
+                    'effective_role': 'owner',
+                }
+            token = await self.ap.user_service.generate_jwt_token(
+                account,
+                admin_owner_scope=admin_owner_scope,
+            )
             return self.success(
                 data={
                     'token': token,

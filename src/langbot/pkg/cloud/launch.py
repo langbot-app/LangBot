@@ -127,11 +127,33 @@ class SpaceLaunchService:
         workspace_uuid = _required_string(payload, 'workspace_uuid')
         if expected_workspace_uuid is not None and workspace_uuid != expected_workspace_uuid:
             raise SpaceLaunchError('Launch assertion targets another Workspace')
-        await self._consume_jti(_required_string(claims, 'jti'), _required_int(claims, 'exp', minimum=1))
-        return {
+        launch_mode = payload.get('launch_mode')
+        result = {
             'account_uuid': account_uuid,
             'workspace_uuid': workspace_uuid,
         }
+        if launch_mode is not None:
+            if launch_mode != 'admin_owner':
+                raise SpaceLaunchError('Launch assertion mode is unsupported')
+            actor_account_uuid = _required_string(payload, 'actor_account_uuid')
+            if _required_string(payload, 'effective_role') != 'owner':
+                raise SpaceLaunchError('Admin launch effective role must be owner')
+            issued_at = _required_int(claims, 'iat')
+            expires_at = _required_int(claims, 'exp', minimum=1)
+            if expires_at - issued_at > 90:
+                raise SpaceLaunchError('Admin launch assertion lifetime exceeds 90 seconds')
+            result.update({
+                'launch_mode': 'admin_owner',
+                'actor_account_uuid': actor_account_uuid,
+                'effective_role': 'owner',
+            })
+        await self._consume_jti(_required_string(claims, 'jti'), _required_int(claims, 'exp', minimum=1))
+        if launch_mode == 'admin_owner':
+            self.ap.logger.info(
+                'cloud_admin_owner_launch_consumed actor_account_uuid=%s workspace_uuid=%s owner_account_uuid=%s',
+                result['actor_account_uuid'], workspace_uuid, account_uuid,
+            )
+        return result
 
     def _verify_assertion(self, token: str) -> dict[str, typing.Any]:
         if not getattr(getattr(self.ap, 'deployment', None), 'multi_workspace_enabled', False):

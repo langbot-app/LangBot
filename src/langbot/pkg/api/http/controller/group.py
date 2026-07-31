@@ -164,7 +164,7 @@ class RouterGroup(abc.ABC):
 
                         try:
                             account, user_email = await self._authenticate_account(token)
-                            request_context = await self._resolve_account_context(account, auth_type)
+                            request_context = await self._resolve_account_context(account, auth_type, token=token)
                             if permission is not None:
                                 if request_context is None:
                                     raise AuthorizationError('Workspace authorization is unavailable')
@@ -272,6 +272,8 @@ class RouterGroup(abc.ABC):
         self,
         account: typing.Any,
         auth_type: AuthType,
+        *,
+        token: str | None = None,
     ) -> RequestContext | None:
         collaboration_service = getattr(self.ap, 'workspace_collaboration_service', None)
         account_uuid = getattr(account, 'uuid', None)
@@ -280,6 +282,20 @@ class RouterGroup(abc.ABC):
             return None
 
         requested_workspace_uuid = quart.request.headers.get('X-Workspace-Id')
+        scope_resolver = getattr(self.ap.user_service, 'get_admin_owner_scope', None)
+        admin_owner_scope = typing.cast(
+            dict[str, str] | None,
+            scope_resolver(token) if token and callable(scope_resolver) else None,
+        )
+        if admin_owner_scope is not None:
+            scoped_workspace_uuid = admin_owner_scope['workspace_uuid']
+            if requested_workspace_uuid and requested_workspace_uuid != scoped_workspace_uuid:
+                self.ap.logger.warning(
+                    'cloud_admin_owner_scope_rejected actor_account_uuid=%s target_workspace_uuid=%s requested_workspace_uuid=%s',
+                    admin_owner_scope['actor_account_uuid'], scoped_workspace_uuid, requested_workspace_uuid,
+                )
+                raise MembershipPermissionError('Admin owner session is scoped to another Workspace')
+            requested_workspace_uuid = scoped_workspace_uuid
         access = await collaboration_service.resolve_account_workspace(account_uuid, requested_workspace_uuid)
         entitlement_revision = await self._resolve_entitlement_revision(
             access.execution.instance_uuid,

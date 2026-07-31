@@ -98,6 +98,17 @@ class WebSocketChatRouterGroup(group.RouterGroup):
             raise ValueError('Authentication is required')
 
         account, _ = await self._authenticate_account(token)
+        scope_resolver = getattr(self.ap.user_service, 'get_admin_owner_scope', None)
+        admin_owner_scope = typing.cast(
+            dict[str, str] | None,
+            scope_resolver(token) if callable(scope_resolver) else None,
+        )
+        if admin_owner_scope is not None and workspace_uuid != admin_owner_scope['workspace_uuid']:
+            self.ap.logger.warning(
+                'cloud_admin_owner_scope_rejected actor_account_uuid=%s target_workspace_uuid=%s requested_workspace_uuid=%s',
+                admin_owner_scope['actor_account_uuid'], admin_owner_scope['workspace_uuid'], workspace_uuid,
+            )
+            raise ValueError('Admin owner session is scoped to another Workspace')
         account_uuid = getattr(account, 'uuid', None)
         collaboration_service = getattr(self.ap, 'workspace_collaboration_service', None)
         if not isinstance(account_uuid, str) or collaboration_service is None:
