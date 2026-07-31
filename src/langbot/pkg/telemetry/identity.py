@@ -12,5 +12,5 @@ def workspace_identity(execution_context: WorkspaceExecutionContext) -> dict[str
     """Build the canonical telemetry identity for one Workspace execution."""
     workspace_uuid = execution_context.workspace_uuid.strip()
     if not workspace_uuid:
-        raise ValueError("Telemetry execution Workspace UUID is empty")
-    return {"workspace_uuid": workspace_uuid}
+        raise ValueError('Telemetry execution Workspace UUID is empty')
+    return {'workspace_uuid': workspace_uuid}

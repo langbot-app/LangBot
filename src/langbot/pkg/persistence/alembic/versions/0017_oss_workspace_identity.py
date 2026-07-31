@@ -67,10 +67,7 @@ def _suspend_postgres_rls(
     states: dict[str, tuple[bool, bool]] = {}
     for table_name in table_names:
         row = conn.execute(
-            sa.text(
-                'SELECT relrowsecurity, relforcerowsecurity '
-                'FROM pg_class WHERE oid = to_regclass(:table_name)'
-            ),
+            sa.text('SELECT relrowsecurity, relforcerowsecurity FROM pg_class WHERE oid = to_regclass(:table_name)'),
             {'table_name': table_name},
         ).one()
         enabled, forced = bool(row.relrowsecurity), bool(row.relforcerowsecurity)
@@ -141,18 +138,11 @@ def upgrade() -> None:
             if table_name == 'workspaces':
                 continue
             table = sa.Table(table_name, metadata, autoload_with=conn, extend_existing=True)
-            conn.execute(
-                table.update()
-                .where(table.c.workspace_uuid == old_uuid)
-                .values(workspace_uuid=canonical_uuid)
-            )
+            conn.execute(table.update().where(table.c.workspace_uuid == old_uuid).values(workspace_uuid=canonical_uuid))
 
         if 'metadata' in table_names:
             conn.execute(
-                sa.text(
-                    'UPDATE metadata SET value = :canonical_uuid '
-                    'WHERE key = :key AND value = :old_uuid'
-                ),
+                sa.text('UPDATE metadata SET value = :canonical_uuid WHERE key = :key AND value = :old_uuid'),
                 {
                     'canonical_uuid': canonical_uuid,
                     'key': _OSS_WORKSPACE_METADATA_KEY,
