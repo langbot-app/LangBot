@@ -4,22 +4,25 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const root = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../..',
+);
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 
 test('support-admin launch stores a scoped principal instead of starting an Account session', () => {
   const callback = read('src/app/auth/space/callback/page.tsx');
   assert.match(callback, /response\.principal_type === 'support_admin'/);
-  assert.match(callback, /beginSupportAdminSession\(response\.token, response\.workspace_uuid\)/);
+  assert.match(
+    callback,
+    /beginSupportAdminSession\(response\.token, response\.workspace_uuid\)/,
+  );
 });
 
 test('support-admin workspace bootstrap never calls Account bootstrap', () => {
   const source = read('src/app/infra/http/index.ts');
   assert.match(source, /export function beginSupportAdminSession/);
-  assert.match(
-    source,
-    /export function isSupportAdminSession\(\): boolean/,
-  );
+  assert.match(source, /export function isSupportAdminSession\(\): boolean/);
   const supportBranch = source.indexOf('if (isSupportAdminSession())');
   const accountBootstrap = source.indexOf(
     'backendClient.getWorkspaceBootstrap()',
