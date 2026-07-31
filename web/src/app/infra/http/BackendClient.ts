@@ -710,6 +710,32 @@ export class BackendClient extends BaseHttpClient {
     );
   }
 
+  private async getAuthenticatedObjectURL(path: string): Promise<string> {
+    const response = await this.instance.get<Blob>(path, {
+      responseType: 'blob',
+    });
+    return URL.createObjectURL(response.data);
+  }
+
+  public getAuthenticatedPluginAssetURL(
+    author: string,
+    name: string,
+    filepath: string,
+  ): Promise<string> {
+    return this.getAuthenticatedObjectURL(
+      `/api/v1/plugins/${author}/${name}/authenticated-assets/${filepath}`,
+    );
+  }
+
+  public getAuthenticatedPluginIconURL(
+    author: string,
+    name: string,
+  ): Promise<string> {
+    return this.getAuthenticatedObjectURL(
+      `/api/v1/plugins/${author}/${name}/authenticated-icon`,
+    );
+  }
+
   public async pluginPageApi(
     author: string,
     name: string,

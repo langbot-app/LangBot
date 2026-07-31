@@ -47,6 +47,20 @@ def plugin_router_cls():
 
 
 @pytest.mark.asyncio
+async def test_authenticated_plugin_resource_fences_injected_workspace_context(plugin_router_cls):
+    connector = SimpleNamespace(
+        require_workspace_context=AsyncMock(return_value=CONTEXT),
+    )
+    router = object.__new__(plugin_router_cls)
+    router.ap = SimpleNamespace(plugin_connector=connector)
+
+    result = await router._require_authenticated_plugin_runtime_context(CONTEXT)
+
+    assert result == CONTEXT
+    connector.require_workspace_context.assert_awaited_once_with(CONTEXT)
+
+
+@pytest.mark.asyncio
 async def test_public_plugin_asset_route_is_disabled_for_multi_workspace_policy(plugin_router_cls):
     connector = SimpleNamespace(
         get_plugin_icon=AsyncMock(),

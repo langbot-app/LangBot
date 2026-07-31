@@ -106,15 +106,31 @@ class TestBuildHeartbeatPayload:
             side_effect=AssertionError('Cloud heartbeat must not issue per-tenant COUNTs')
         )
         ap.pipeline_mgr = SimpleNamespace(
-            _pipelines_by_key={'pipeline-a': object(), 'pipeline-b': object()},
+            _pipelines_by_key={
+                ('instance-a', 'workspace-a', 'pipeline-a'): object(),
+                ('instance-a', 'workspace-a', 'pipeline-b'): object(),
+            },
         )
+        ap.platform_mgr._bots_by_key = {
+            ('instance-a', 'workspace-a', 'bot-a'): object(),
+        }
         ap.tool_mgr = SimpleNamespace(
             mcp_tool_loader=SimpleNamespace(
-                _sessions={'mcp-a': object(), 'mcp-b': object(), 'mcp-c': object()},
+                _sessions={
+                    ('instance-a', 'workspace-a', 1, 'mcp-a'): object(),
+                    ('instance-a', 'workspace-a', 1, 'mcp-b'): object(),
+                    ('instance-a', 'workspace-a', 1, 'mcp-c'): object(),
+                },
             ),
         )
         ap.rag_mgr = SimpleNamespace(
-            knowledge_bases={'kb-a': object()},
+            knowledge_bases={('workspace-a', 'kb-a'): object()},
+        )
+        ap.plugin_connector._workspace_installations = {
+            'workspace-a': {'plugin-a', 'plugin-b'},
+        }
+        ap.workspace_service.list_active_execution_bindings = AsyncMock(
+            return_value=[SimpleNamespace(workspace_uuid='workspace-a')],
         )
 
         payload = await heartbeat.build_heartbeat_payload(ap)
@@ -124,6 +140,17 @@ class TestBuildHeartbeatPayload:
         assert features['mcp_server_count'] == 3
         assert features['knowledge_base_count'] == 1
         assert features['bot_count'] == 1
+        assert features['workspace_resources'] == [
+            {
+                'workspace_uuid': 'workspace-a',
+                'bot_count': 1,
+                'pipeline_count': 2,
+                'knowledge_base_count': 1,
+                'plugin_count': 2,
+                'mcp_server_count': 3,
+                'extension_count': 5,
+            }
+        ]
         ap.persistence_mgr.execute_async.assert_not_awaited()
 
     @pytest.mark.asyncio
