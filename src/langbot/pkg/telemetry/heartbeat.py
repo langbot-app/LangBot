@@ -27,6 +27,18 @@ if typing.TYPE_CHECKING:
 HEARTBEAT_INTERVAL_SECONDS = 24 * 3600
 
 
+class WorkspaceResourceSnapshot(typing.TypedDict):
+    workspace_uuid: str
+    bot_count: int
+    pipeline_count: int
+    knowledge_base_count: int
+    plugin_count: int
+    mcp_server_count: int
+    extension_count: int
+    skill_count: int
+    adapters: list[str]
+
+
 async def _count(
     ap: core_app.Application,
     table,
@@ -52,14 +64,13 @@ async def _count(
         return -1
 
 
-async def _cloud_workspace_resource_counts(ap: core_app.Application) -> list[dict]:
+async def _cloud_workspace_resource_counts(ap: core_app.Application, bindings) -> list[WorkspaceResourceSnapshot]:
     """Summarize already-loaded Cloud registries without per-tenant SQL."""
     persistence_mgr = ap.persistence_mgr
     if getattr(getattr(persistence_mgr, 'mode', None), 'value', None) != 'cloud_runtime':
         return []
 
-    bindings = await ap.workspace_service.list_active_execution_bindings()
-    counts = {
+    counts: dict[str, WorkspaceResourceSnapshot] = {
         binding.workspace_uuid: {
             'workspace_uuid': binding.workspace_uuid,
             'bot_count': 0,
@@ -68,13 +79,19 @@ async def _cloud_workspace_resource_counts(ap: core_app.Application) -> list[dic
             'plugin_count': 0,
             'mcp_server_count': 0,
             'extension_count': 0,
+            'skill_count': 0,
+            'adapters': [],
         }
         for binding in bindings
     }
 
-    for key in getattr(ap.platform_mgr, '_bots_by_key', {}):
+    adapter_sets: dict[str, set[str]] = {workspace_uuid: set() for workspace_uuid in counts}
+    for key, bot in getattr(ap.platform_mgr, '_bots_by_key', {}).items():
         if len(key) >= 2 and key[1] in counts:
             counts[key[1]]['bot_count'] += 1
+            adapter = getattr(bot, 'adapter', None)
+            if adapter is not None and getattr(bot, 'enable', False):
+                adapter_sets[key[1]].add(adapter.__class__.__name__)
     for key in getattr(ap.pipeline_mgr, '_pipelines_by_key', {}):
         if len(key) >= 2 and key[1] in counts:
             counts[key[1]]['pipeline_count'] += 1
@@ -87,14 +104,23 @@ async def _cloud_workspace_resource_counts(ap: core_app.Application) -> list[dic
     for workspace_uuid, installations in getattr(ap.plugin_connector, '_workspace_installations', {}).items():
         if workspace_uuid in counts:
             counts[workspace_uuid]['plugin_count'] = len(installations)
+    for key, skills in getattr(ap.skill_mgr, '_skills_by_scope', {}).items():
+        if len(key) >= 2 and key[1] in counts:
+            counts[key[1]]['skill_count'] += len(skills)
 
-    for resource in counts.values():
+    for workspace_uuid, resource in counts.items():
         resource['extension_count'] = resource['plugin_count'] + resource['mcp_server_count']
+        resource['adapters'] = sorted(adapter_sets[workspace_uuid])
     return list(counts.values())
 
 
-async def build_heartbeat_payload(ap: core_app.Application) -> dict:
-    """Collect the anonymous instance profile snapshot."""
+async def build_heartbeat_payload(
+    ap: core_app.Application,
+    *,
+    workspace_uuid: str,
+    workspace_resource: WorkspaceResourceSnapshot | None = None,
+) -> dict:
+    """Collect one anonymous Workspace profile snapshot."""
     from ..entity.persistence import bot as persistence_bot
     from ..entity.persistence import mcp as persistence_mcp
     from ..entity.persistence import pipeline as persistence_pipeline
@@ -177,20 +203,36 @@ async def build_heartbeat_payload(ap: core_app.Application) -> dict:
     except Exception:
         pass
 
-    workspace_resources = await _cloud_workspace_resource_counts(ap)
-    if workspace_resources:
-        features['workspace_resources'] = workspace_resources
+    if workspace_resource is not None:
+        features.update({key: value for key, value in workspace_resource.items() if key != 'workspace_uuid'})
 
     return {
         'event_type': 'instance_heartbeat',
         'query_id': '',
         'version': constants.semantic_version,
-        'instance_id': constants.instance_id,
+        'workspace_uuid': workspace_uuid,
         'instance_create_ts': constants.instance_create_ts,
         'edition': constants.edition,
         'features': features,
         'timestamp': datetime.now(timezone.utc).isoformat(),
     }
+
+
+async def build_heartbeat_payloads(ap: core_app.Application) -> list[dict]:
+    """Build one heartbeat per active Workspace."""
+    bindings = await ap.workspace_service.list_active_execution_bindings()
+    workspace_uuids = sorted({binding.workspace_uuid for binding in bindings})
+    resources = {
+        resource['workspace_uuid']: resource for resource in await _cloud_workspace_resource_counts(ap, bindings)
+    }
+    return [
+        await build_heartbeat_payload(
+            ap,
+            workspace_uuid=workspace_uuid,
+            workspace_resource=resources.get(workspace_uuid),
+        )
+        for workspace_uuid in workspace_uuids
+    ]
 
 
 async def heartbeat_loop(ap: core_app.Application) -> None:
@@ -199,8 +241,11 @@ async def heartbeat_loop(ap: core_app.Application) -> None:
     await asyncio.sleep(30)
     while True:
         try:
-            payload = await build_heartbeat_payload(ap)
-            await ap.telemetry.start_send_task(payload)
+            for payload in await build_heartbeat_payloads(ap):
+                # Heartbeats are a daily bounded batch, not best-effort query events.
+                # Await each send so the TelemetryManager's 8-task queue cannot drop
+                # Workspaces after the first batch.
+                await ap.telemetry.send(payload)
         except Exception as e:
             try:
                 ap.logger.debug(f'Telemetry heartbeat failed: {e}')

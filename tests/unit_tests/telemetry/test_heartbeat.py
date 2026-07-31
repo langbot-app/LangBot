@@ -60,10 +60,12 @@ class TestBuildHeartbeatPayload:
     async def test_payload_shape(self):
         heartbeat = get_heartbeat_module()
         ap = make_app()
-        payload = await heartbeat.build_heartbeat_payload(ap)
+        payload = await heartbeat.build_heartbeat_payload(ap, workspace_uuid='workspace-a')
 
         assert payload['event_type'] == 'instance_heartbeat'
         assert payload['query_id'] == ''
+        assert payload['workspace_uuid'] == 'workspace-a'
+        assert 'instance_id' not in payload
         assert 'instance_create_ts' in payload
         assert 'timestamp' in payload
         f = payload['features']
@@ -86,7 +88,7 @@ class TestBuildHeartbeatPayload:
     @pytest.mark.asyncio
     async def test_payload_is_json_serializable(self):
         heartbeat = get_heartbeat_module()
-        payload = await heartbeat.build_heartbeat_payload(make_app())
+        payload = await heartbeat.build_heartbeat_payload(make_app(), workspace_uuid='workspace-a')
         json.dumps(payload)
 
     @pytest.mark.asyncio
@@ -94,7 +96,7 @@ class TestBuildHeartbeatPayload:
         heartbeat = get_heartbeat_module()
         ap = make_app()
         ap.persistence_mgr.execute_async = AsyncMock(side_effect=RuntimeError('db down'))
-        payload = await heartbeat.build_heartbeat_payload(ap)
+        payload = await heartbeat.build_heartbeat_payload(ap, workspace_uuid='workspace-a')
         assert payload['features']['pipeline_count'] == -1
 
     @pytest.mark.asyncio
@@ -111,8 +113,10 @@ class TestBuildHeartbeatPayload:
                 ('instance-a', 'workspace-a', 'pipeline-b'): object(),
             },
         )
+        adapter_a = type('WorkspaceAAdapter', (), {})()
+        adapter_b = type('WorkspaceBAdapter', (), {})()
         ap.platform_mgr._bots_by_key = {
-            ('instance-a', 'workspace-a', 'bot-a'): object(),
+            ('instance-a', 'workspace-a', 'bot-a'): SimpleNamespace(enable=True, adapter=adapter_a),
         }
         ap.tool_mgr = SimpleNamespace(
             mcp_tool_loader=SimpleNamespace(
@@ -129,35 +133,46 @@ class TestBuildHeartbeatPayload:
         ap.plugin_connector._workspace_installations = {
             'workspace-a': {'plugin-a', 'plugin-b'},
         }
+        ap.skill_mgr._skills_by_scope = {
+            ('instance-a', 'workspace-a', 1): {'skill-a': {}, 'skill-b': {}},
+            ('instance-a', 'workspace-b', 1): {'skill-c': {}},
+        }
         ap.workspace_service.list_active_execution_bindings = AsyncMock(
-            return_value=[SimpleNamespace(workspace_uuid='workspace-a')],
+            return_value=[
+                SimpleNamespace(workspace_uuid='workspace-a'),
+                SimpleNamespace(workspace_uuid='workspace-b'),
+            ],
+        )
+        ap.platform_mgr._bots_by_key[('instance-a', 'workspace-b', 'bot-b')] = SimpleNamespace(
+            enable=True, adapter=adapter_b
         )
 
-        payload = await heartbeat.build_heartbeat_payload(ap)
+        payloads = await heartbeat.build_heartbeat_payloads(ap)
 
-        features = payload['features']
-        assert features['pipeline_count'] == 2
-        assert features['mcp_server_count'] == 3
-        assert features['knowledge_base_count'] == 1
-        assert features['bot_count'] == 1
-        assert features['workspace_resources'] == [
-            {
-                'workspace_uuid': 'workspace-a',
-                'bot_count': 1,
-                'pipeline_count': 2,
-                'knowledge_base_count': 1,
-                'plugin_count': 2,
-                'mcp_server_count': 3,
-                'extension_count': 5,
-            }
-        ]
+        assert [payload['workspace_uuid'] for payload in payloads] == ['workspace-a', 'workspace-b']
+        assert all('instance_id' not in payload for payload in payloads)
+        by_workspace = {payload['workspace_uuid']: payload['features'] for payload in payloads}
+        assert by_workspace['workspace-a']['pipeline_count'] == 2
+        assert by_workspace['workspace-a']['mcp_server_count'] == 3
+        assert by_workspace['workspace-a']['knowledge_base_count'] == 1
+        assert by_workspace['workspace-a']['bot_count'] == 1
+        assert by_workspace['workspace-a']['plugin_count'] == 2
+        assert by_workspace['workspace-a']['extension_count'] == 5
+        assert by_workspace['workspace-a']['skill_count'] == 2
+        assert by_workspace['workspace-a']['adapters'] == ['WorkspaceAAdapter']
+        assert by_workspace['workspace-b']['bot_count'] == 1
+        assert by_workspace['workspace-b']['pipeline_count'] == 0
+        assert by_workspace['workspace-b']['skill_count'] == 1
+        assert by_workspace['workspace-b']['adapters'] == ['WorkspaceBAdapter']
+        assert 'workspace_resources' not in by_workspace['workspace-a']
         ap.persistence_mgr.execute_async.assert_not_awaited()
+        ap.workspace_service.list_active_execution_bindings.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_no_user_content_fields(self):
         """The heartbeat must never carry message content / credentials keys."""
         heartbeat = get_heartbeat_module()
-        payload = await heartbeat.build_heartbeat_payload(make_app())
+        payload = await heartbeat.build_heartbeat_payload(make_app(), workspace_uuid='workspace-a')
         flat = json.dumps(payload).lower()
         for forbidden in ('api_key', 'password', 'token', 'message_content'):
             assert forbidden not in flat

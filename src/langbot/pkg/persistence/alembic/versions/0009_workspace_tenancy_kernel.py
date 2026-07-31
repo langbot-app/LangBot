@@ -18,6 +18,17 @@ down_revision = '0008_mcp_resource_prefs'
 branch_labels = None
 depends_on = None
 
+_WORKSPACE_IDENTITY_NAMESPACE = uuid.UUID('8ea04f29-8528-4cc3-bb28-30a838c89d76')
+
+
+def _workspace_uuid_from_instance_id(instance_id: str) -> str:
+    value = instance_id.strip()
+    candidate = value[len('instance_') :] if value.startswith('instance_') else value
+    try:
+        return str(uuid.UUID(candidate))
+    except ValueError:
+        return str(uuid.uuid5(_WORKSPACE_IDENTITY_NAMESPACE, value))
+
 
 def _table_names(conn: sa.Connection) -> set[str]:
     return set(sa.inspect(conn).get_table_names())
@@ -403,7 +414,7 @@ def _bootstrap_default_workspace(conn: sa.Connection) -> None:
                 .values(created_by_account_uuid=owner_account_uuid)
             )
     else:
-        workspace_uuid = str(uuid.uuid4())
+        workspace_uuid = _workspace_uuid_from_instance_id(instance_uuid)
         conn.execute(
             workspaces.insert().values(
                 uuid=workspace_uuid,

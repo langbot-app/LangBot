@@ -26,6 +26,7 @@ from langbot.pkg.workspace import (
     WorkspaceOwnerAlreadyExistsError,
     WorkspaceService,
 )
+from langbot.pkg.workspace.identity import workspace_uuid_from_instance_id
 from langbot.pkg.workspace.policy import CloudWorkspacePolicy
 
 
@@ -113,6 +114,7 @@ async def test_ensure_singleton_workspace_is_idempotent(workspace_test_context):
     first = await service.ensure_singleton_workspace()
     second = await service.ensure_singleton_workspace()
 
+    assert first.uuid == workspace_uuid_from_instance_id('instance_service_test')
     assert second.uuid == first.uuid
     async with session_factory() as session:
         assert await session.scalar(sqlalchemy.select(sqlalchemy.func.count()).select_from(Workspace)) == 1

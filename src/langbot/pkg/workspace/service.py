@@ -30,6 +30,7 @@ from .errors import (
     WorkspaceOwnerAlreadyExistsError,
 )
 from .entities import WorkspaceExecutionBinding
+from .identity import workspace_uuid_from_instance_id
 from .policy import CloudWorkspacePolicy, SingleWorkspacePolicy
 from .repository import WorkspaceRepository
 
@@ -497,7 +498,7 @@ class WorkspaceService:
         created_by_account_uuid: str | None = None,
     ) -> Workspace:
         return Workspace(
-            uuid=str(uuid.uuid4()),
+            uuid=workspace_uuid_from_instance_id(self.instance_uuid),
             instance_uuid=self.instance_uuid,
             name=name,
             slug=slug,

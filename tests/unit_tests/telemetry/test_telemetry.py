@@ -569,6 +569,33 @@ class TestHTTPScenarios:
             await manager.send({'query_id': 'test'})
 
 
+class TestTelemetryManagedRuntimeAuthentication:
+    @pytest.mark.asyncio
+    async def test_send_includes_managed_runtime_token_header(self):
+        telemetry = get_telemetry_module()
+        mock_app = Mock()
+        mock_app.logger = Mock()
+        manager = telemetry.TelemetryManager(mock_app)
+        manager.telemetry_config = {'url': 'https://example.com'}
+        captured = {}
+
+        async def mock_post(url, json, headers):
+            captured['headers'] = headers
+            return Mock(status_code=200, text='', json=Mock(return_value={'code': 0}))
+
+        mock_client = Mock()
+        mock_client.post = mock_post
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        with (
+            patch.dict('os.environ', {'LANGBOT_TELEMETRY_INGEST_TOKEN': 'managed-runtime-secret'}),
+            patch.object(httpx, 'AsyncClient', return_value=mock_client),
+        ):
+            await manager.send({'event_type': 'instance_heartbeat'})
+
+        assert captured['headers'] == {'X-LangBot-Telemetry-Token': 'managed-runtime-secret'}
+
+
 class TestStartSendTask:
     """Tests for start_send_task() method."""
 
