@@ -172,6 +172,8 @@ const viVN = {
     more: 'Thêm ({{count}})',
     less: 'Thu gọn',
     noItems: 'Không có mục nào',
+
+    apiKeyStoredSecurely: 'Secret shown only when created',
   },
   notFound: {
     title: 'Không tìm thấy trang',
@@ -319,6 +321,11 @@ const viVN = {
       fallbackList: 'Mô hình dự phòng',
       addFallback: 'Thêm mô hình dự phòng',
     },
+
+    ownerMustBindSpace:
+      'The Workspace owner must connect Space for LangBot Models.',
+    usesOwnerSpaceBilling:
+      "Uses the Workspace owner's Space billing and credits.",
   },
   bots: {
     title: 'Bot',
@@ -1286,6 +1293,13 @@ const viVN = {
     setPasswordHint: 'Đặt mật khẩu để đăng nhập bằng email và mật khẩu',
     spaceEmailMismatch:
       'Email đăng nhập Space không khớp với email tài khoản cục bộ',
+
+    space_account_not_registeredTitle: 'Account not registered',
+    space_account_not_registered:
+      'No local account is registered for this Space email. Ask the Workspace owner for an invitation.',
+    space_account_binding_requiredTitle: 'Space connection required',
+    space_account_binding_required:
+      'This local account must connect Space from Account settings before using Space login.',
   },
   monitoring: {
     title: 'Bảng điều khiển',
@@ -1542,6 +1556,8 @@ const viVN = {
       api: 'API',
       storage: 'Lưu trữ',
       account: 'Tài khoản',
+
+      workspace: 'Workspace',
     },
   },
   storageAnalysis: {
@@ -1852,6 +1868,90 @@ const viVN = {
     createSkillHint: 'Nhập từ thư mục cục bộ hoặc tạo thủ công',
     unsupportedFileType:
       'Loại tệp không được hỗ trợ. Chỉ hỗ trợ tệp .zip và .lbpkg',
+  },
+
+  workspace: {
+    title: 'Workspace',
+    description: 'Manage members, roles, and invitation links',
+    selectTitle: 'Choose a Workspace',
+    selectDescription: 'Select where you want to continue in LangBot.',
+    selectionLoadFailed:
+      'Your Workspaces could not be loaded. Please try again.',
+    switchWorkspace: 'Switch Workspace',
+    settings: 'Workspace Settings',
+    currentPlan: 'Current plan',
+    planUnavailable: 'Unavailable',
+    upgradePlan: 'Change or upgrade plan',
+    ossSingletonDescription:
+      'This self-hosted instance has one Workspace and can include multiple users.',
+    cloudManagedDescription:
+      'This Workspace is hosted by LangBot Cloud. Manage members here; billing opens in Cloud.',
+    loadFailed: 'Failed to load Workspace information',
+    members: 'Members',
+    you: 'You',
+    inviteMember: 'Invite a member',
+    inviteDescription:
+      'Create a one-time link to add another user to this Workspace.',
+    emailPlaceholder: 'member@example.com',
+    createInvitation: 'Create invitation',
+    invitationCreated: 'Invitation created',
+    delivery: {
+      sent: 'Invitation sent',
+      link_only: 'Invitation link created',
+      failed: 'Invitation link created, but email could not be sent',
+    },
+    invitationCreateFailed: 'Failed to create invitation',
+    oneTimeLinkWarning: 'Copy this link now. It is shown only once.',
+    copyInvitation: 'Copy invitation link',
+    invitationCopied: 'Invitation link copied',
+    pendingInvitations: 'Pending invitations',
+    expiresAt: 'Expires {{date}}',
+    revokeInvitation: 'Revoke invitation',
+    invitationRevoked: 'Invitation revoked',
+    invitationRevokeFailed: 'Failed to revoke invitation',
+    acceptInvitation: 'Accept invitation',
+    invitedToWorkspace: 'You were invited to {{workspace}}',
+    checkingInvitation: 'Checking this invitation...',
+    invitationMissing: 'This invitation link is missing required information.',
+    invitationExpired: 'This invitation has expired.',
+    invitationAlreadyRevoked: 'This invitation was revoked.',
+    invitationAlreadyUsed: 'This invitation was already used.',
+    invitationInvalid: 'This invitation is invalid or no longer available.',
+    invitationAccepted: 'Invitation accepted',
+    invitationAcceptFailed: 'Failed to accept invitation',
+    invitationEmailMismatch:
+      'This invitation belongs to a different email address.',
+    existingAccountLoginRequired:
+      'An account already exists for this email. Sign in to continue.',
+    acceptAsCurrentAccount: 'Accept with current account',
+    authenticatedInvitationNotice:
+      'Sign out first, then sign in with the invited account. Your invitation will be preserved.',
+    logoutAndReturn: 'Sign out and return to this invitation',
+    switchAccount: 'Switch account',
+    registerAndAccept: 'Create account and accept',
+    alreadyHaveAccount: 'I already have an account',
+    confirmPassword: 'Confirm password',
+    passwordMinimum: 'Password must contain at least 8 characters.',
+    passwordMismatch: 'The passwords do not match.',
+    backToLogin: 'Back to sign in',
+    memberUpdated: 'Member role updated',
+    memberUpdateFailed: 'Failed to update member role',
+    removeMember: 'Remove member',
+    removeMemberConfirm: 'Remove this member from the Workspace?',
+    memberRemoved: 'Member removed',
+    memberRemoveFailed: 'Failed to remove member',
+    transferOwnership: 'Transfer ownership',
+    types: {
+      personal: 'Personal',
+      team: 'Team',
+    },
+    roles: {
+      owner: 'Owner',
+      admin: 'Admin',
+      developer: 'Developer',
+      operator: 'Operator',
+      viewer: 'Viewer',
+    },
   },
 };
 
