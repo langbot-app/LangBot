@@ -166,6 +166,19 @@ export function SidebarDataProvider({
 
       // Deduplicate plugins by composite key (prefer debug over installed)
       const pluginMap = new Map<string, SidebarEntityItem>();
+      const pluginIconURLs = new Map<string, string>(
+        await Promise.all(
+          pluginsResp.plugins.map(async (plugin) => {
+            const meta = plugin.manifest.manifest.metadata;
+            const author = meta.author ?? '';
+            const name = meta.name;
+            const url = await httpClient
+              .getAuthenticatedPluginIconURL(author, name)
+              .catch(() => '');
+            return [`${author}/${name}`, url] as const;
+          }),
+        ),
+      );
       for (const plugin of pluginsResp.plugins) {
         const meta = plugin.manifest.manifest.metadata;
         const author = meta.author ?? '';
@@ -184,7 +197,7 @@ export function SidebarDataProvider({
         const item: SidebarEntityItem = {
           id: compositeKey,
           name: extractI18nObject(meta.label),
-          iconURL: httpClient.getPluginIconURL(author, name),
+          iconURL: pluginIconURLs.get(compositeKey) || '',
           installSource: plugin.install_source,
           installInfo: plugin.install_info,
           hasUpdate,
@@ -218,7 +231,7 @@ export function SidebarDataProvider({
                 pluginAuthor: author,
                 pluginName: name,
                 pluginLabel: label,
-                pluginIconURL: httpClient.getPluginIconURL(author, name),
+                pluginIconURL: pluginIconURLs.get(`${author}/${name}`) || '',
                 pageId: page.id,
                 path: page.path,
               });

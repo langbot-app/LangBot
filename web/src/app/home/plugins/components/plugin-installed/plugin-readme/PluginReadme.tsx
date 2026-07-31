@@ -10,6 +10,74 @@ import rehypeSlug from 'rehype-slug';
 import rehypeAutolinkHeadings from 'rehype-autolink-headings';
 import { getAPILanguageCode } from '@/i18n/I18nProvider';
 import '@/styles/github-markdown.css';
+import { useAuthenticatedPluginAsset } from '@/hooks/useAuthenticatedPluginResource';
+
+function AuthenticatedReadmeImage({
+  author,
+  name,
+  filepath,
+  alt,
+  ...props
+}: {
+  author: string;
+  name: string;
+  filepath: string;
+  alt?: string;
+} & React.ImgHTMLAttributes<HTMLImageElement>) {
+  const { url, error } = useAuthenticatedPluginAsset(author, name, filepath);
+  if (error)
+    return (
+      <span className="text-sm text-muted-foreground">{alt || filepath}</span>
+    );
+  if (!url)
+    return (
+      <span className="inline-block h-6 w-24 animate-pulse rounded bg-muted" />
+    );
+  return (
+    <img
+      src={url}
+      alt={alt || ''}
+      className="max-w-lg h-auto my-4"
+      {...props}
+    />
+  );
+}
+
+function PluginReadmeImage({
+  author,
+  name,
+  src,
+  alt,
+  ...props
+}: {
+  author: string;
+  name: string;
+  src?: string;
+  alt?: string;
+} & React.ImgHTMLAttributes<HTMLImageElement>) {
+  const imageSrc = typeof src === 'string' ? src : '';
+  if (!imageSrc || /^(https?:\/\/|data:)/i.test(imageSrc)) {
+    return (
+      <img
+        src={imageSrc}
+        alt={alt || ''}
+        className="max-w-lg h-auto my-4"
+        {...props}
+      />
+    );
+  }
+  let filepath = imageSrc.replace(/^(\.\/|\/)+/, '');
+  filepath = filepath.replace(/^assets\//, '');
+  return (
+    <AuthenticatedReadmeImage
+      author={author}
+      name={name}
+      filepath={filepath}
+      alt={alt}
+      {...props}
+    />
+  );
+}
 
 export default function PluginReadme({
   pluginAuthor,
@@ -71,49 +139,15 @@ export default function PluginReadme({
                 <ol className="list-decimal">{children}</ol>
               ),
               li: ({ children }) => <li className="ml-4">{children}</li>,
-              img: ({ src, alt, ...props }) => {
-                let imageSrc = src || '';
-
-                if (typeof imageSrc !== 'string') {
-                  return (
-                    <img
-                      src={src}
-                      alt={alt || ''}
-                      className="max-w-full h-auto rounded-lg my-4"
-                      {...props}
-                    />
-                  );
-                }
-
-                if (
-                  imageSrc &&
-                  !imageSrc.startsWith('http://') &&
-                  !imageSrc.startsWith('https://') &&
-                  !imageSrc.startsWith('data:')
-                ) {
-                  imageSrc = imageSrc.replace(/^(\.\/|\/)+/, '');
-
-                  if (!imageSrc.startsWith('assets/')) {
-                    imageSrc = `assets/${imageSrc}`;
-                  }
-
-                  const assetPath = imageSrc.replace(/^assets\//, '');
-                  imageSrc = httpClient.getPluginAssetURL(
-                    pluginAuthor,
-                    pluginName,
-                    assetPath,
-                  );
-                }
-
-                return (
-                  <img
-                    src={imageSrc}
-                    alt={alt || ''}
-                    className="max-w-lg h-auto my-4"
-                    {...props}
-                  />
-                );
-              },
+              img: ({ src, alt, ...props }) => (
+                <PluginReadmeImage
+                  author={pluginAuthor}
+                  name={pluginName}
+                  src={typeof src === 'string' ? src : undefined}
+                  alt={alt}
+                  {...props}
+                />
+              ),
             }}
           >
             {readme}

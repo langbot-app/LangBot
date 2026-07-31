@@ -52,6 +52,47 @@ async def _count(
         return -1
 
 
+async def _cloud_workspace_resource_counts(ap: core_app.Application) -> list[dict]:
+    """Summarize already-loaded Cloud registries without per-tenant SQL."""
+    persistence_mgr = ap.persistence_mgr
+    if getattr(getattr(persistence_mgr, 'mode', None), 'value', None) != 'cloud_runtime':
+        return []
+
+    bindings = await ap.workspace_service.list_active_execution_bindings()
+    counts = {
+        binding.workspace_uuid: {
+            'workspace_uuid': binding.workspace_uuid,
+            'bot_count': 0,
+            'pipeline_count': 0,
+            'knowledge_base_count': 0,
+            'plugin_count': 0,
+            'mcp_server_count': 0,
+            'extension_count': 0,
+        }
+        for binding in bindings
+    }
+
+    for key in getattr(ap.platform_mgr, '_bots_by_key', {}):
+        if len(key) >= 2 and key[1] in counts:
+            counts[key[1]]['bot_count'] += 1
+    for key in getattr(ap.pipeline_mgr, '_pipelines_by_key', {}):
+        if len(key) >= 2 and key[1] in counts:
+            counts[key[1]]['pipeline_count'] += 1
+    for key in getattr(ap.rag_mgr, 'knowledge_bases', {}):
+        if len(key) >= 1 and key[0] in counts:
+            counts[key[0]]['knowledge_base_count'] += 1
+    for key in getattr(ap.tool_mgr.mcp_tool_loader, '_sessions', {}):
+        if len(key) >= 2 and key[1] in counts:
+            counts[key[1]]['mcp_server_count'] += 1
+    for workspace_uuid, installations in getattr(ap.plugin_connector, '_workspace_installations', {}).items():
+        if workspace_uuid in counts:
+            counts[workspace_uuid]['plugin_count'] = len(installations)
+
+    for resource in counts.values():
+        resource['extension_count'] = resource['plugin_count'] + resource['mcp_server_count']
+    return list(counts.values())
+
+
 async def build_heartbeat_payload(ap: core_app.Application) -> dict:
     """Collect the anonymous instance profile snapshot."""
     from ..entity.persistence import bot as persistence_bot
@@ -135,6 +176,10 @@ async def build_heartbeat_payload(ap: core_app.Application) -> dict:
             features['skill_count'] = skill_mgr.total_cached_skill_count()
     except Exception:
         pass
+
+    workspace_resources = await _cloud_workspace_resource_counts(ap)
+    if workspace_resources:
+        features['workspace_resources'] = workspace_resources
 
     return {
         'event_type': 'instance_heartbeat',
