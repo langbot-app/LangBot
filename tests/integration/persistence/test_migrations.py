@@ -96,6 +96,18 @@ class TestSQLiteMigrationUpgrade:
     """Tests for upgrade to head workflow."""
 
     @pytest.mark.asyncio
+    async def test_upgrade_from_published_space_launch_head_to_merged_head(self, sqlite_engine):
+        """A database released at the production-only 0016 head must remain upgradable."""
+        async with sqlite_engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+
+        await run_alembic_stamp(sqlite_engine, '0016_space_launch_replay')
+        await run_alembic_upgrade(sqlite_engine, 'head')
+
+        assert await get_alembic_current(sqlite_engine) == _get_script_head()
+        assert _get_script_head() == '0018_merge_launch_replay'
+
+    @pytest.mark.asyncio
     async def test_upgrade_from_baseline_to_head(self, sqlite_engine):
         """
         Upgrade from baseline to head applies all migrations.
