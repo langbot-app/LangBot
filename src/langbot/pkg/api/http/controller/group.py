@@ -348,6 +348,7 @@ class RouterGroup(abc.ABC):
             principal=PrincipalContext(
                 principal_type=PrincipalType.SUPPORT_ADMIN,
                 actor_account_uuid=identity.actor_account_uuid,
+                support_session_id=identity.grant_jti_hash,
             ),
             workspace=WorkspaceContext(
                 workspace_uuid=identity.workspace_uuid,

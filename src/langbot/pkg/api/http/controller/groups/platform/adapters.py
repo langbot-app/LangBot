@@ -22,6 +22,7 @@ class _AdapterSessionScope:
     principal_type: str
     account_uuid: str | None
     api_key_uuid: str | None
+    support_session_id: str | None
 
     @classmethod
     def from_request_context(cls, request_context: RequestContext) -> '_AdapterSessionScope':
@@ -33,6 +34,7 @@ class _AdapterSessionScope:
             principal_type=principal.principal_type.value,
             account_uuid=principal.account_uuid,
             api_key_uuid=principal.api_key_uuid,
+            support_session_id=principal.support_session_id,
         )
 
     def matches(self, request_context: RequestContext) -> bool:

@@ -22,6 +22,7 @@ class PrincipalContext:
     account_uuid: str | None = None
     actor_account_uuid: str | None = None
     api_key_uuid: str | None = None
+    support_session_id: str | None = None
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
