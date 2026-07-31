@@ -445,6 +445,12 @@ class UserService:
         return jwt.encode(payload, jwt_secret, algorithm='HS256')
 
     def get_admin_owner_scope(self, token: str) -> dict[str, str] | None:
+        # Authentication already ran. Decode only to detect whether this optional
+        # claim exists, preserving bounded legacy tokens that omit iss/aud.
+        unverified = jwt.decode(token, options={'verify_signature': False})
+        if unverified.get('admin_owner_scope') is None:
+            return None
+
         jwt_secret = self.ap.instance_config.data['system']['jwt']['secret']
         issuer, audience = self._jwt_identity()
         payload = jwt.decode(
@@ -456,8 +462,6 @@ class UserService:
             options={'require': ['exp', 'iss', 'aud']},
         )
         scope = payload.get('admin_owner_scope')
-        if scope is None:
-            return None
         if not isinstance(scope, dict) or set(scope) != {'actor_account_uuid', 'workspace_uuid', 'effective_role'}:
             raise ValueError('Invalid admin owner token scope')
         if scope.get('effective_role') != 'owner':

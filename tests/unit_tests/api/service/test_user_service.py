@@ -448,6 +448,16 @@ class TestUserServiceGenerateJwtToken:
             'effective_role': 'owner',
         }
 
+        legacy_token = jwt.encode(
+            {
+                'user': 'legacy@example.com',
+                'exp': datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=5),
+            },
+            'test_secret',
+            algorithm='HS256',
+        )
+        assert service.get_admin_owner_scope(legacy_token) is None
+
     async def test_admin_owner_token_rejects_invalid_scope(self):
         ap = SimpleNamespace()
         ap.instance_config = SimpleNamespace()
