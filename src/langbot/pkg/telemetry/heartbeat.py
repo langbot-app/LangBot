@@ -37,6 +37,7 @@ class WorkspaceResourceSnapshot(typing.TypedDict):
     extension_count: int
     skill_count: int
     adapters: list[str]
+    execution_generation: int
 
 
 async def _count(
@@ -81,6 +82,7 @@ async def _cloud_workspace_resource_counts(ap: core_app.Application, bindings) -
             'extension_count': 0,
             'skill_count': 0,
             'adapters': [],
+            'execution_generation': binding.placement_generation,
         }
         for binding in bindings
     }

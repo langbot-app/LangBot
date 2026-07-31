@@ -139,8 +139,8 @@ class TestBuildHeartbeatPayload:
         }
         ap.workspace_service.list_active_execution_bindings = AsyncMock(
             return_value=[
-                SimpleNamespace(workspace_uuid='workspace-a'),
-                SimpleNamespace(workspace_uuid='workspace-b'),
+                SimpleNamespace(workspace_uuid='workspace-a', placement_generation=7),
+                SimpleNamespace(workspace_uuid='workspace-b', placement_generation=9),
             ],
         )
         ap.platform_mgr._bots_by_key[('instance-a', 'workspace-b', 'bot-b')] = SimpleNamespace(
@@ -159,10 +159,12 @@ class TestBuildHeartbeatPayload:
         assert by_workspace['workspace-a']['plugin_count'] == 2
         assert by_workspace['workspace-a']['extension_count'] == 5
         assert by_workspace['workspace-a']['skill_count'] == 2
+        assert by_workspace['workspace-a']['execution_generation'] == 7
         assert by_workspace['workspace-a']['adapters'] == ['WorkspaceAAdapter']
         assert by_workspace['workspace-b']['bot_count'] == 1
         assert by_workspace['workspace-b']['pipeline_count'] == 0
         assert by_workspace['workspace-b']['skill_count'] == 1
+        assert by_workspace['workspace-b']['execution_generation'] == 9
         assert by_workspace['workspace-b']['adapters'] == ['WorkspaceBAdapter']
         assert 'workspace_resources' not in by_workspace['workspace-a']
         ap.persistence_mgr.execute_async.assert_not_awaited()
