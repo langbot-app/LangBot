@@ -15,7 +15,7 @@ concurrency:
 env:
   CORE_IMAGE: ${{ secrets.DOCKER_USERNAME }}/langbot
   CLOUD_IMAGE: ${{ secrets.DOCKER_USERNAME }}/langbot-cloud-core
-  SPACE_REF: b0cf8a0a8679efafc1f2c7c62b7f2ff635dd560e
+  SPACE_REF: 178b1634c104e635c706e1fb4ca37cb3de073cf9
 
 jobs:
   build-and-deploy:
