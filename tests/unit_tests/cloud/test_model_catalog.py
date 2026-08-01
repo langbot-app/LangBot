@@ -84,6 +84,15 @@ def _snapshot(
     )
 
 
+async def test_catalog_snapshot_treats_null_model_abilities_as_empty() -> None:
+    payload = _snapshot().model_dump(mode='json')
+    payload['models'][0]['llm_abilities'] = None
+
+    snapshot = CloudModelCatalogSnapshot.model_validate(payload)
+
+    assert snapshot.models[0].llm_abilities == ()
+
+
 async def test_catalog_reconciles_every_workspace_idempotently_and_tracks_owner_and_downlisting(tmp_path) -> None:
     engine = create_async_engine(f'sqlite+aiosqlite:///{tmp_path / "model-catalog.db"}')
     manager = PersistenceManager(object(), mode=PersistenceMode.CLOUD_RUNTIME)

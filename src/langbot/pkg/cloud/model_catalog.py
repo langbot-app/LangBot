@@ -32,6 +32,11 @@ class CloudModelCatalogItem(BaseModel):
     is_featured: bool = False
     featured_order: int = 0
 
+    @field_validator('llm_abilities', mode='before')
+    @classmethod
+    def normalize_missing_abilities(cls, value: Any) -> Any:
+        return () if value is None else value
+
     @field_validator('llm_abilities')
     @classmethod
     def validate_abilities(cls, value: tuple[str, ...]) -> tuple[str, ...]:
