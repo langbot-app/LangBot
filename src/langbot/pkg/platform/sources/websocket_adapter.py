@@ -707,28 +707,37 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
             if len(listener_tasks) >= 100:
                 await self.logger.warning('WebSocket inbound listener capacity reached; dropping message')
                 return
-            token = _current_pipeline_uuid.set(pipeline_uuid)
-            try:
-                task_manager = getattr(self.ap, 'task_mgr', None)
-                if task_manager is None or not isinstance(getattr(task_manager, 'tasks', None), list):
-                    listener_task = asyncio.create_task(listeners[event.__class__](event, callback_adapter))
-                else:
-                    listener_task = task_manager.create_task(
-                        listeners[event.__class__](event, callback_adapter),
-                        kind='websocket-message',
-                        name=f'websocket-message-{connection.connection_id}',
-                        scopes=[
-                            core_entities.LifecycleControlScope.APPLICATION,
-                            core_entities.LifecycleControlScope.PLATFORM,
-                        ],
-                        instance_uuid=connection.instance_uuid,
-                        workspace_uuid=connection.workspace_uuid,
-                        placement_generation=connection.placement_generation,
-                    ).task
-                listener_tasks.add(listener_task)
-                listener_task.add_done_callback(self._listener_task_done)
-            finally:
-                _current_pipeline_uuid.reset(token)
+            listener = typing.cast(
+                typing.Callable[[typing.Any, typing.Any], typing.Awaitable[None]],
+                listeners[event.__class__],
+            )
+
+            async def run_listener():
+                token = _current_pipeline_uuid.set(pipeline_uuid)
+                try:
+                    await listener(event, callback_adapter)
+                finally:
+                    _current_pipeline_uuid.reset(token)
+
+            listener_coro = run_listener()
+            task_manager = getattr(self.ap, 'task_mgr', None)
+            if task_manager is None or not isinstance(getattr(task_manager, 'tasks', None), list):
+                listener_task = asyncio.create_task(listener_coro)
+            else:
+                listener_task = task_manager.create_task(
+                    listener_coro,
+                    kind='websocket-message',
+                    name=f'websocket-message-{connection.connection_id}',
+                    scopes=[
+                        core_entities.LifecycleControlScope.APPLICATION,
+                        core_entities.LifecycleControlScope.PLATFORM,
+                    ],
+                    instance_uuid=connection.instance_uuid,
+                    workspace_uuid=connection.workspace_uuid,
+                    placement_generation=connection.placement_generation,
+                ).task
+            listener_tasks.add(listener_task)
+            listener_task.add_done_callback(self._listener_task_done)
 
     def get_websocket_messages(
         self,

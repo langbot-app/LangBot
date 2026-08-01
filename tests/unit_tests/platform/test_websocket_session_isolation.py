@@ -1,6 +1,7 @@
 """Regression tests for isolated embed-widget conversations."""
 
 import asyncio
+import contextvars
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock
 
@@ -202,6 +203,48 @@ async def test_embed_event_uses_stable_session_launcher(monkeypatch):
     await asyncio.sleep(0)
 
     assert received[0].sender.id == f'websocket_pipeline-1:{session_id}'
+
+
+@pytest.mark.asyncio
+async def test_pipeline_override_survives_detached_listener_task(monkeypatch):
+    manager = WebSocketConnectionManager()
+    connection = await manager.add_connection(
+        websocket=Mock(),
+        scope=SCOPE_A,
+        pipeline_uuid='pipeline-1',
+        session_type='person',
+    )
+    monkeypatch.setattr(websocket_adapter_module, 'ws_connection_manager', manager)
+
+    class DetachedTaskManager:
+        def __init__(self):
+            self.tasks = []
+
+        def create_task(self, coro, **_kwargs):
+            task = asyncio.create_task(coro, context=contextvars.Context())
+            self.tasks.append(task)
+            return Mock(task=task)
+
+    task_manager = DetachedTaskManager()
+    adapter = WebSocketAdapter.model_construct(
+        ap=Mock(task_mgr=task_manager),
+        logger=_adapter_logger(),
+    )
+    adapter.websocket_person_session = WebSocketSession(id='person')
+    adapter.websocket_group_session = WebSocketSession(id='group')
+    pipeline_overrides = []
+
+    async def listener(_event, callback_adapter):
+        pipeline_overrides.append(callback_adapter.get_pipeline_uuid_override())
+
+    adapter.listeners = {platform_events.FriendMessage: listener}
+    await adapter.handle_websocket_message(
+        connection,
+        {'message': [{'type': 'Plain', 'text': 'hello'}], 'stream': False},
+    )
+    await asyncio.gather(*task_manager.tasks)
+
+    assert pipeline_overrides == ['pipeline-1']
 
 
 @pytest.mark.asyncio
