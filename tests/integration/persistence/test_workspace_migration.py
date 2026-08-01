@@ -180,6 +180,18 @@ async def test_workspace_upgrade_repairs_ownerless_existing_local_workspace(lega
     assert membership['status'] == 'active'
 
 
+async def test_published_owner_repair_revision_upgrades_to_merged_head(legacy_engine):
+    await run_alembic_upgrade(legacy_engine, '0017_local_owner_repair')
+    assert await get_alembic_current(legacy_engine) == '0017_local_owner_repair'
+
+    await run_alembic_upgrade(legacy_engine, 'head')
+
+    assert await get_alembic_current(legacy_engine) == get_alembic_head()
+    async with legacy_engine.connect() as conn:
+        workspace_uuid = await conn.scalar(sa.text("SELECT uuid FROM workspaces WHERE source = 'local'"))
+    assert workspace_uuid == workspace_uuid_from_instance_id('instance_migration_test')
+
+
 async def test_existing_oss_workspace_is_rekeyed_to_instance_identity(tmp_path):
     engine = create_async_engine(f'sqlite+aiosqlite:///{tmp_path / "workspace-rekey.db"}')
     instance_id = 'instance_a711d9e4-0953-443f-a0e9-7dd50193a79f'
