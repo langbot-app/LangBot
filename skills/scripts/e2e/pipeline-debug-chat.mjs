@@ -401,6 +401,7 @@ async function inspectAndPatchPipelineConfig(page, {
     const headers = {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
+      "X-Workspace-Id": localStorage.getItem("langbot_active_workspace_uuid") || "",
     };
     const getJson = async (path) => {
       const response = await fetch(`${backendUrl}${path}`, { headers });
@@ -607,6 +608,7 @@ async function restorePipelineConfig(page, { backendUrl, pipelineId, config }) {
       headers: {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
+        "X-Workspace-Id": localStorage.getItem("langbot_active_workspace_uuid") || "",
       },
       body: JSON.stringify({ config }),
     });
@@ -645,6 +647,7 @@ async function inspectAndPatchPipelineExtensions(page, {
     const headers = {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
+      "X-Workspace-Id": localStorage.getItem("langbot_active_workspace_uuid") || "",
     };
     const getJson = async (path) => {
       const response = await fetch(`${backendUrl}${path}`, { headers });
@@ -800,6 +803,7 @@ async function restorePipelineExtensions(page, { backendUrl, pipelineId, extensi
       headers: {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
+        "X-Workspace-Id": localStorage.getItem("langbot_active_workspace_uuid") || "",
       },
       body: JSON.stringify(extensions),
     });
@@ -836,6 +840,7 @@ async function resetPipelineDebugChat(page, { backendUrl, pipelineId, sessionTyp
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
+          "X-Workspace-Id": localStorage.getItem("langbot_active_workspace_uuid") || "",
         },
       },
     );
@@ -965,7 +970,8 @@ try {
             result.status = resetDiagnostic.status;
             result.reason = resetDiagnostic.reason || "Debug Chat reset failed.";
           } else {
-            await page.waitForTimeout(1000);
+            await page.reload({ waitUntil: "commit" });
+            await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => {});
             const reopenResult = await openPipelineDebugChat(page, {
               pipelineUrl,
               pipelineName,

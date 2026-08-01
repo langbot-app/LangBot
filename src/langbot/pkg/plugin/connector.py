@@ -994,7 +994,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         self._connected.clear()
         runtime_handler = getattr(self, 'handler', None)
         if runtime_handler is not None:
-            with contextlib.suppress(Exception):
+            with contextlib.suppress(Exception, asyncio.CancelledError):
                 await runtime_handler.close()
             if getattr(self, 'handler', None) is runtime_handler:
                 del self.handler
@@ -1015,7 +1015,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             del self.handler_task
         close_ctrl = getattr(getattr(self, 'ctrl', None), 'close', None)
         if close_ctrl is not None:
-            with contextlib.suppress(Exception):
+            with contextlib.suppress(Exception, asyncio.CancelledError):
                 await close_ctrl()
 
     async def aclose(self) -> None:
@@ -1717,6 +1717,14 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         except Exception:
             await self._delete_artifact_if_unreferenced(execution_context, artifact_digest)
             raise
+        if not previous_was_durable and self.runtime_profile == 'oss_dev':
+            bridge = self._legacy_oss_bridge_binding(execution_context)
+            try:
+                with runtime_handler.installation_scope(bridge):
+                    async for _ in runtime_handler.delete_plugin(plugin_author, plugin_name):
+                        pass
+            except Exception as exc:
+                self.ap.logger.debug(f'Legacy OSS plugin cleanup skipped: {exc}')
         runtime_handler.register_installation_binding(
             binding,
             plugin_author=plugin_author,
@@ -1731,14 +1739,6 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         self._workspace_installations.setdefault(binding.workspace_uuid, set()).add(binding.installation_uuid)
         if previous_digest is not None and previous_digest != artifact_digest:
             await self._delete_artifact_if_unreferenced(execution_context, previous_digest)
-        if previous_digest is not None and not previous_was_durable and self.runtime_profile == 'oss_dev':
-            bridge = self._legacy_oss_bridge_binding(execution_context)
-            try:
-                with runtime_handler.installation_scope(bridge):
-                    async for _ in runtime_handler.delete_plugin(plugin_author, plugin_name):
-                        pass
-            except Exception as exc:
-                self.ap.logger.debug(f'Legacy OSS plugin cleanup skipped: {exc}')
         await self._wait_for_installed_plugin_ready(plugin_author, plugin_name, task_context)
         await self._refresh_agent_runner_registry()
 
@@ -2213,7 +2213,10 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         )
         if not isinstance(workspace_id, str) or not workspace_id.strip():
             raise ValueError('AgentRunner execution requires a Workspace')
-        await self.require_workspace_context(workspace_id)
+        execution_context = await self._current_execution_context()
+        if workspace_id.strip() != execution_context.workspace_uuid:
+            raise WorkspaceNotFoundError('Plugin resource not found')
+        await self.require_workspace_context(execution_context)
         binding = await self._target_binding(
             plugin_author,
             plugin_name,

@@ -1,8 +1,11 @@
 import { appendFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { basename, join, resolve } from "node:path";
 import { env } from "node:process";
 
 const secretRe = /(?:authorization|bearer|token|secret|password|api[_-]?key|jwt|oauth)\s*[:=]\s*["']?[^"',\s]+/gi;
+const ACTIVE_WORKSPACE_STORAGE_KEY = "langbot_active_workspace_uuid";
+const workspaceUuidCache = new Map();
 
 export function redact(text) {
   return String(text ?? "")
@@ -28,6 +31,19 @@ export function localIsoWithOffset(date = new Date()) {
   const ss = pad(date.getSeconds());
   const ms = String(date.getMilliseconds()).padStart(3, "0");
   return `${yyyy}-${mm}-${dd}T${hh}:${mi}:${ss}.${ms}${sign}${pad(Math.floor(absolute / 60))}:${pad(absolute % 60)}`;
+}
+
+export function boxWorkspaceNamespace(instanceUuid, workspaceUuid) {
+  const instance = String(instanceUuid || "").trim();
+  const workspace = String(workspaceUuid || "").trim();
+  if (!instance || !workspace) {
+    throw new Error("Box Workspace namespace requires instance and Workspace UUIDs.");
+  }
+  const digest = createHash("sha256")
+    .update(`${instance}\0${workspace}`, "utf8")
+    .digest("hex")
+    .slice(0, 24);
+  return `ws-${digest}`;
 }
 
 export function evidencePaths(caseId) {
@@ -101,6 +117,27 @@ export async function writeResult(paths, result) {
   if (paths.resultJson && paths.resultJson !== paths.automationResultJson) {
     await writeFile(paths.resultJson, text, "utf8");
   }
+}
+
+export function isTaskFailed(task) {
+  const status = String(task?.status || task?.state || "").toLowerCase();
+  const runtimeStatus = String(task?.runtime?.status || task?.runtime?.state || "").toLowerCase();
+  return ["failed", "error", "cancelled", "canceled"].includes(status)
+    || ["failed", "error", "cancelled", "canceled"].includes(runtimeStatus)
+    || task?.failed === true
+    || Boolean(task?.error)
+    || Boolean(task?.runtime?.exception);
+}
+
+export function isTaskComplete(task) {
+  if (isTaskFailed(task)) return false;
+  const status = String(task?.status || task?.state || "").toLowerCase();
+  const runtimeStatus = String(task?.runtime?.status || task?.runtime?.state || "").toLowerCase();
+  return ["done", "completed", "success", "succeeded", "finished"].includes(status)
+    || ["done", "completed", "success", "succeeded", "finished"].includes(runtimeStatus)
+    || task?.done === true
+    || task?.completed === true
+    || task?.runtime?.done === true;
 }
 
 function browserDiagnosticFindings(source, text) {
@@ -231,11 +268,98 @@ export async function readRecoveryKey(repo = env.LANGBOT_REPO || "") {
   return match?.[1] || "";
 }
 
-export async function apiJson(backendUrl, path, { method = "GET", token = "", body } = {}) {
+function workspaceCacheKey(backendUrl, token) {
+  return `${backendUrl.replace(/\/$/, "")}\0${token}`;
+}
+
+function isAccountScopedApi(path, method) {
+  const pathname = path.split("?", 1)[0];
+  if (pathname === "/api/v1/workspaces/bootstrap") return true;
+  if (pathname === "/api/v1/workspaces" && method === "GET") return true;
+  return [
+    "/api/v1/user/check-token",
+    "/api/v1/user/info",
+    "/api/v1/user/account-info",
+    "/api/v1/user/change-password",
+  ].includes(pathname);
+}
+
+export async function resolveWorkspaceUuid(
+  backendUrl,
+  token,
+  preferredWorkspaceUuid = env.LANGBOT_WORKSPACE_UUID || "",
+) {
+  if (!token) throw new Error("A user token is required to resolve the active Workspace.");
+
+  const normalizedBackendUrl = backendUrl.replace(/\/$/, "");
+  const normalizedPreferred = preferredWorkspaceUuid.trim();
+  const cacheKey = workspaceCacheKey(normalizedBackendUrl, token);
+  const cached = workspaceUuidCache.get(cacheKey);
+  if (cached && (!normalizedPreferred || cached === normalizedPreferred)) return cached;
+
+  const response = await fetch(`${normalizedBackendUrl}/api/v1/workspaces/bootstrap`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+  });
+  const json = await response.json().catch(() => ({}));
+  if (response.status >= 400 || json.code !== 0) {
+    throw new Error(json.msg || `Workspace bootstrap failed with HTTP ${response.status}.`);
+  }
+
+  const workspaces = json.data?.workspaces || [];
+  const workspaceUuids = workspaces
+    .map((entry) => entry.workspace?.uuid || entry.uuid || "")
+    .filter(Boolean);
+  let workspaceUuid = normalizedPreferred;
+  if (workspaceUuid && !workspaceUuids.includes(workspaceUuid)) {
+    throw new Error(`Configured Workspace ${workspaceUuid} is not available to the authenticated Account.`);
+  }
+  if (!workspaceUuid && workspaceUuids.length === 1) {
+    [workspaceUuid] = workspaceUuids;
+  }
+  if (!workspaceUuid && workspaceUuids.length === 0) {
+    throw new Error("The authenticated Account has no available Workspace.");
+  }
+  if (!workspaceUuid) {
+    throw new Error(
+      "The authenticated Account has multiple Workspaces; set LANGBOT_WORKSPACE_UUID for this QA run.",
+    );
+  }
+
+  workspaceUuidCache.set(cacheKey, workspaceUuid);
+  return workspaceUuid;
+}
+
+export async function authenticatedApiHeaders(
+  backendUrl,
+  token,
+  { contentType = "application/json", workspaceUuid = "" } = {},
+) {
+  const resolvedWorkspaceUuid = await resolveWorkspaceUuid(backendUrl, token, workspaceUuid);
+  return {
+    Authorization: `Bearer ${token}`,
+    ...(contentType ? { "Content-Type": contentType } : {}),
+    "X-Workspace-Id": resolvedWorkspaceUuid,
+  };
+}
+
+export async function apiJson(
+  backendUrl,
+  path,
+  { method = "GET", token = "", body, skipWorkspace = false, workspaceUuid = "" } = {},
+) {
+  const normalizedMethod = method.toUpperCase();
   const headers = { "Content-Type": "application/json" };
-  if (token) headers.Authorization = `Bearer ${token}`;
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+    if (!skipWorkspace && !isAccountScopedApi(path, normalizedMethod)) {
+      headers["X-Workspace-Id"] = await resolveWorkspaceUuid(backendUrl, token, workspaceUuid);
+    }
+  }
   const response = await fetch(`${backendUrl.replace(/\/$/, "")}${path}`, {
-    method,
+    method: normalizedMethod,
     headers,
     body: body === undefined ? undefined : JSON.stringify(body),
   });
@@ -301,6 +425,38 @@ export async function setBrowserToken(page, frontendUrl, token) {
   await page.evaluate((value) => localStorage.setItem("token", value), token);
 }
 
+export async function ensureBrowserWorkspace(
+  page,
+  backendUrl,
+  preferredWorkspaceUuid = env.LANGBOT_WORKSPACE_UUID || "",
+) {
+  const browserContext = await page.evaluate((storageKey) => ({
+    token: localStorage.getItem("token") || "",
+    workspaceUuid: localStorage.getItem(storageKey) || "",
+  }), ACTIVE_WORKSPACE_STORAGE_KEY);
+  if (!browserContext.token) {
+    return { status: "blocked", reason: "Browser profile has no localStorage token.", workspace_uuid: "" };
+  }
+
+  try {
+    const workspaceUuid = await resolveWorkspaceUuid(
+      backendUrl,
+      browserContext.token,
+      preferredWorkspaceUuid || browserContext.workspaceUuid,
+    );
+    await page.evaluate(({ storageKey, workspaceUuid: value }) => {
+      localStorage.setItem(storageKey, value);
+    }, { storageKey: ACTIVE_WORKSPACE_STORAGE_KEY, workspaceUuid });
+    return {
+      status: "pass",
+      reason: "Browser Workspace selection is initialized.",
+      workspace_uuid: workspaceUuid,
+    };
+  } catch (error) {
+    return { status: "blocked", reason: error.message, workspace_uuid: "" };
+  }
+}
+
 export async function verifyBrowserToken(page, backendUrl) {
   return await page.evaluate(async (baseUrl) => {
     const token = localStorage.getItem("token");
@@ -349,11 +505,23 @@ export async function ensureAuthenticatedBrowser(page, {
     reason: error.message,
   }));
   if (current.authenticated) {
+    const workspace = await ensureBrowserWorkspace(page, backendUrl);
+    if (workspace.status !== "pass") {
+      return {
+        status: workspace.status,
+        reason: workspace.reason,
+        backend_token_check: null,
+        browser_token_check: current,
+        workspace,
+        injected: false,
+      };
+    }
     return {
       status: "pass",
       reason: "Existing browser token is valid.",
       backend_token_check: null,
       browser_token_check: current,
+      workspace,
       injected: false,
     };
   }
@@ -381,11 +549,24 @@ export async function ensureAuthenticatedBrowser(page, {
     };
   }
 
+  const workspace = await ensureBrowserWorkspace(page, backendUrl);
+  if (workspace.status !== "pass") {
+    return {
+      status: workspace.status,
+      reason: workspace.reason,
+      backend_token_check: auth.check,
+      browser_token_check: browserCheck,
+      workspace,
+      injected: true,
+    };
+  }
+
   return {
     status: "pass",
     reason: "Browser token injected from local recovery login.",
     backend_token_check: auth.check,
     browser_token_check: browserCheck,
+    workspace,
     injected: true,
   };
 }

@@ -44,15 +44,16 @@ automation_prompt: "Work autonomously on the project at /workspace/order-orchest
 automation_expected_text: "COMPLEX_AGENT_TASK_OK tests=12 acceptance=PASS"
 automation_response_timeout_ms: "900000"
 automation_stream_output: "1"
-automation_filesystem_checks_json: '[{"argv":["python3","skills/skills/langbot-testing/fixtures/complex-agent-task/verify.py","--workspace","${LANGBOT_REPO}/data/box/default/order-orchestrator"],"cwd":"${LANGBOT_REPO}","stdout_contains":"HOST_VERIFY_PASS tests=12 acceptance=PASS protected=PASS","exit_code":0,"timeout_ms":120000}]'
+automation_filesystem_checks_json: '[{"argv":["python3","skills/skills/langbot-testing/fixtures/complex-agent-task/verify.py","--workspace","${LANGBOT_COMPLEX_AGENT_WORKSPACE}"],"cwd":"${LANGBOT_REPO}","stdout_contains":"HOST_VERIFY_PASS tests=12 acceptance=PASS protected=PASS","exit_code":0,"timeout_ms":120000}]'
 setup_automation:
   - "node:scripts/e2e/ensure-local-agent-pipeline.mjs --write-env"
   - "node:scripts/e2e/reset-complex-agent-task.mjs"
 setup_provides_env:
   - LANGBOT_LOCAL_AGENT_PIPELINE_URL
   - LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+  - LANGBOT_COMPLEX_AGENT_WORKSPACE
 preconditions:
-  - "The local Box workspace is mounted at LANGBOT_REPO/data/box/default and exposed to native tools as /workspace."
+  - "The active tenant Box workspace is available on the host and exposed to native tools as /workspace."
   - "The selected real model supports sustained function calling across file inspection, edits, and test reruns."
 steps:
   - "Reset the isolated order-orchestrator workspace and confirm its baseline test suite fails."

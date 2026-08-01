@@ -313,6 +313,21 @@ def test_runtime_connection_is_instance_scoped_and_unbound():
     assert runtime_handler.bound_action_context is None
 
 
+def test_explicit_installation_scope_overrides_nested_inbound_context():
+    runtime_handler, _app, target_binding = make_handler()
+    caller_context = workspace_context().for_installation('legacy-caller')
+    token = runtime_handler._current_action_context.set(caller_context)
+    try:
+        assert runtime_handler.resolve_outbound_action_context(None) == caller_context
+        with runtime_handler.installation_scope(target_binding):
+            assert runtime_handler.resolve_outbound_action_context(None) == target_binding
+        with runtime_handler.installation_scope(None):
+            assert runtime_handler.resolve_outbound_action_context(None) is None
+        assert runtime_handler.resolve_outbound_action_context(None) == caller_context
+    finally:
+        runtime_handler._current_action_context.reset(token)
+
+
 def test_inbound_tenant_action_requires_complete_installation_envelope():
     runtime_handler, _app, installation_context = make_handler()
 
@@ -361,6 +376,44 @@ async def test_legacy_oss_worker_capability_remains_usable_after_identity_migrat
     )
 
     assert response.code == 0
+
+
+@pytest.mark.asyncio
+async def test_legacy_oss_knowledge_file_reply_uses_complete_installation_binding():
+    runtime_handler, app, installation_context = make_handler()
+    app.deployment = SimpleNamespace(mode='oss')
+    setting = SimpleNamespace(
+        plugin_author='author-a',
+        plugin_name='plugin-a',
+        installation_uuid=installation_context.installation_uuid,
+        runtime_revision=installation_context.runtime_revision,
+        artifact_digest=installation_context.artifact_digest,
+    )
+    result = Mock()
+    result.first.return_value = setting
+    app.persistence_mgr.execute_async.return_value = result
+    app.rag_runtime_service = SimpleNamespace(
+        get_file_stream=AsyncMock(return_value=b'knowledge-file'),
+    )
+    runtime_handler.send_file = AsyncMock(return_value='knowledge-file-key')
+    legacy_context = workspace_context().for_installation(
+        installation_context.installation_uuid
+    )
+
+    response = await invoke_with_context(
+        runtime_handler,
+        legacy_context,
+        PluginToRuntimeAction.GET_KNOWLEDEGE_FILE_STREAM,
+        {'storage_path': 'knowledge/file.txt'},
+    )
+
+    assert response.code == 0
+    assert response.data == {'file_key': 'knowledge-file-key'}
+    runtime_handler.send_file.assert_awaited_once_with(
+        b'knowledge-file',
+        '',
+        action_context=installation_context,
+    )
 
 
 def test_installation_uuid_cannot_move_between_workspaces():

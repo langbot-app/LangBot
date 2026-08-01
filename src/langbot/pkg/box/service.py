@@ -559,6 +559,11 @@ class BoxService:
         namespace = box_namespace(self._action_context(context))
         return os.path.join(self.default_workspace, 'tenants', namespace)
 
+    def workspace_host_path(self, context: TenantContext) -> str | None:
+        """Return the host path mounted as /workspace for one execution context."""
+
+        return self._tenant_workspace(context)
+
     async def execute_spec_payload(
         self,
         spec_payload: dict,

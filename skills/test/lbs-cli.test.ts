@@ -59,15 +59,55 @@ import {
   waitForDebugChatReady,
 } from "../scripts/e2e/lib/debug-chat.mjs";
 import {
+  apiJson,
   beginBackendLogCapture,
+  boxWorkspaceNamespace,
   clickFirstVisible,
   ensureAuthenticatedBrowser,
   finishBackendLogCapture,
+  isTaskComplete,
+  isTaskFailed,
   resolveLangBotRepo,
   scanBrowserDiagnostics,
 } from "../scripts/e2e/lib/langbot-e2e.mjs";
 
 const root = process.cwd();
+
+test("Box workspace namespace matches the SDK tenancy contract", () => {
+  assert.equal(
+    boxWorkspaceNamespace(
+      "instance_8e83c14e-db31-4746-97f4-2dc165136a18",
+      "29907f84-54a8-4da9-903f-04d84ff8793a",
+    ),
+    "ws-8410680088facf21327b7542",
+  );
+});
+
+test("e2e task helpers reject finished tasks with runtime exceptions", () => {
+  const task = {
+    runtime: {
+      done: true,
+      state: "FINISHED",
+      exception: "ValueError: plugin not found",
+    },
+  };
+
+  assert.equal(isTaskFailed(task), true);
+  assert.equal(isTaskComplete(task), false);
+});
+
+test("e2e task helpers accept successful finished tasks", () => {
+  const task = {
+    runtime: {
+      done: true,
+      state: "FINISHED",
+      exception: null,
+    },
+  };
+
+  assert.equal(isTaskFailed(task), false);
+  assert.equal(isTaskComplete(task), true);
+});
 
 test("clickFirstVisible waits for a later visible DOM match", async () => {
   let pollCount = 0;
@@ -218,19 +258,36 @@ test("e2e helper can inject a local login token into a fresh browser context", a
           { status: auth === "Bearer fresh-token" ? 200 : 401 },
         );
       }
+      if (url.endsWith("/api/v1/workspaces/bootstrap")) {
+        return new Response(
+          JSON.stringify({
+            code: 0,
+            data: { workspaces: [{ workspace: { uuid: "workspace-test" } }] },
+          }),
+          { status: 200 },
+        );
+      }
       return new Response(JSON.stringify({ code: -1, msg: "unexpected" }), {
         status: 404,
       });
     }) as typeof fetch;
 
     let token = "";
+    let workspaceUuid = "";
     const page = {
       addInitScript: async () => {},
       goto: async () => {},
-      evaluate: async (fn: unknown, arg: string) => {
+      evaluate: async (fn: unknown, arg: unknown) => {
         const text = String(fn);
+        if (text.includes("workspaceUuid: localStorage.getItem")) {
+          return { token, workspaceUuid };
+        }
+        if (text.includes("workspaceUuid: value")) {
+          workspaceUuid = (arg as { workspaceUuid: string }).workspaceUuid;
+          return undefined;
+        }
         if (text.includes("localStorage.setItem")) {
-          token = arg;
+          token = String(arg);
           return undefined;
         }
         if (text.includes("localStorage.getItem")) {
@@ -263,11 +320,49 @@ test("e2e helper can inject a local login token into a fresh browser context", a
     assert.equal(result.status, "pass");
     assert.equal(result.injected, true);
     assert.equal(token, "fresh-token");
+    assert.equal(workspaceUuid, "workspace-test");
   } finally {
     globalThis.fetch = previousFetch;
     if (previousRepo === undefined) delete process.env.LANGBOT_REPO;
     else process.env.LANGBOT_REPO = previousRepo;
     rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("apiJson bootstraps and sends the selected Workspace for scoped APIs", async () => {
+  const previousFetch = globalThis.fetch;
+  const requests: Array<{ url: string; headers: Record<string, string> }> = [];
+  try {
+    globalThis.fetch = (async (url: string, init?: RequestInit) => {
+      const headers = (init?.headers || {}) as Record<string, string>;
+      requests.push({ url, headers });
+      if (url.endsWith("/api/v1/workspaces/bootstrap")) {
+        return new Response(
+          JSON.stringify({
+            code: 0,
+            data: { workspaces: [{ workspace: { uuid: "workspace-api-test" } }] },
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({ code: 0, data: { tools: [] } }), {
+        status: 200,
+      });
+    }) as typeof fetch;
+
+    const response = await apiJson(
+      "http://127.0.0.1:5300",
+      "/api/v1/tools",
+      { token: "workspace-api-token" },
+    );
+
+    assert.equal(response.status, 200);
+    assert.equal(requests.length, 2);
+    assert.equal(requests[0].url, "http://127.0.0.1:5300/api/v1/workspaces/bootstrap");
+    assert.equal(requests[0].headers["X-Workspace-Id"], undefined);
+    assert.equal(requests[1].headers["X-Workspace-Id"], "workspace-api-test");
+  } finally {
+    globalThis.fetch = previousFetch;
   }
 });
 

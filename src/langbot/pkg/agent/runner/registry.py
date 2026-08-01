@@ -236,6 +236,15 @@ class AgentRunnerRegistry:
         runners = await self.list_runners(context, bound_plugins=None)
         descriptor = next((item for item in runners if item.id == runner_id), None)
         if descriptor is None:
+            # The runtime launches installed plugins asynchronously, so an
+            # early non-empty discovery can still be only a partial snapshot.
+            runners = await self.list_runners(
+                context,
+                bound_plugins=None,
+                use_cache=False,
+            )
+            descriptor = next((item for item in runners if item.id == runner_id), None)
+        if descriptor is None:
             raise RunnerNotFoundError(runner_id)
 
         # Check authorization
@@ -255,7 +264,11 @@ class AgentRunnerRegistry:
         Returns runner options and their config schemas for the DynamicForm.
         """
         # Get all runners (no bound plugin filter for metadata listing)
-        runners = await self.list_runners(context, bound_plugins=None)
+        runners = await self.list_runners(
+            context,
+            bound_plugins=None,
+            use_cache=False,
+        )
 
         options = []
         stages = []

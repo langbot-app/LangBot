@@ -161,7 +161,8 @@ try {
         result.status = resetDiagnostic.status;
         result.reason = resetDiagnostic.reason || "Debug Chat reset failed.";
       } else {
-        await page.waitForTimeout(1000);
+        await page.reload({ waitUntil: "commit" });
+        await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => {});
         const reopenResult = await openPipelineDebugChat(page, {
           pipelineUrl,
           pipelineName,
@@ -406,6 +407,7 @@ async function inspectPipeline(page, { backendUrl, pipelineUrl, pipelineName, ex
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
+          "X-Workspace-Id": localStorage.getItem("langbot_active_workspace_uuid") || "",
         },
       });
       return {
@@ -508,6 +510,7 @@ async function inspectToolNames(page, { backendUrl }) {
       headers: {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
+        "X-Workspace-Id": localStorage.getItem("langbot_active_workspace_uuid") || "",
       },
     });
     const json = await response.json().catch(() => ({}));
@@ -545,6 +548,7 @@ async function resetPipelineDebugChat(page, { backendUrl, pipelineId, sessionTyp
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
+          "X-Workspace-Id": localStorage.getItem("langbot_active_workspace_uuid") || "",
         },
       },
     );

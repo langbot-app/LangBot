@@ -474,6 +474,7 @@ _RUNTIME_SCOPED_ACTIONS = frozenset(
         RuntimeToLangBotAction.GET_PLUGIN_SETTINGS.value,
     }
 )
+_OUTBOUND_INSTALLATION_CONTEXT_UNSET = object()
 
 
 class RuntimeConnectionHandler(handler.Handler):
@@ -873,10 +874,12 @@ class RuntimeConnectionHandler(handler.Handler):
     ):
         super().__init__(connection, disconnect_callback)
         self.ap = ap
-        self._outbound_installation_context: contextvars.ContextVar[InstallationBinding | None] = (
+        self._outbound_installation_context: contextvars.ContextVar[
+            InstallationBinding | None | object
+        ] = (
             contextvars.ContextVar(
                 f'{self.__class__.__name__}_{id(self)}_outbound_installation',
-                default=None,
+                default=_OUTBOUND_INSTALLATION_CONTEXT_UNSET,
             )
         )
         self._installation_bindings: dict[
@@ -2075,15 +2078,27 @@ class RuntimeConnectionHandler(handler.Handler):
 
         @self.action(PluginToRuntimeAction.GET_KNOWLEDEGE_FILE_STREAM)
         async def get_knowledge_file_stream(data: dict[str, Any]) -> handler.ActionResponse:
-            action_context, _ = await self._require_plugin_action_context()
+            action_context, identity = await self._require_plugin_action_context()
             execution_context = self._execution_context(action_context)
+            installation_binding = InstallationBinding(
+                instance_uuid=action_context.instance_uuid,
+                workspace_uuid=action_context.workspace_uuid,
+                placement_generation=action_context.placement_generation,
+                installation_uuid=identity.installation_uuid,
+                runtime_revision=identity.runtime_revision,
+                artifact_digest=identity.artifact_digest,
+            )
             storage_path = data['storage_path']
             try:
                 content_bytes = await self.ap.rag_runtime_service.get_file_stream(
                     execution_context,
                     storage_path,
                 )
-                file_key = await self.send_file(content_bytes, '')
+                file_key = await self.send_file(
+                    content_bytes,
+                    '',
+                    action_context=installation_binding,
+                )
                 return handler.ActionResponse.success(data={'file_key': file_key})
             except Exception as e:
                 return _make_rag_error_response(e, 'FileServiceError', storage_path=storage_path)
@@ -2427,10 +2442,13 @@ class RuntimeConnectionHandler(handler.Handler):
     ) -> InstallationBinding | ActionContext | None:
         if action_context is not None:
             return super().resolve_outbound_action_context(action_context)
+        scoped_context = self._outbound_installation_context.get()
+        if scoped_context is not _OUTBOUND_INSTALLATION_CONTEXT_UNSET:
+            return typing.cast(InstallationBinding | None, scoped_context)
         inbound_context = self.current_action_context
         if inbound_context is not None:
             return inbound_context
-        return self._outbound_installation_context.get()
+        return None
 
     def require_outbound_installation_context(self) -> InstallationBinding:
         binding = self._outbound_installation_context.get()

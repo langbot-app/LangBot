@@ -6,6 +6,7 @@ import { resolve } from "node:path";
 import { env } from "node:process";
 import {
   createBrowser,
+  ensureBrowserWorkspace,
   ensureEvidence,
   evidencePaths,
   exitCode,
@@ -91,6 +92,12 @@ async function run() {
   const { page } = browser;
   await page.goto(env.LANGBOT_FRONTEND_URL, { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => {});
+  const workspace = await ensureBrowserWorkspace(page, backendUrl);
+  if (workspace.status !== "pass") {
+    result.status = workspace.status;
+    result.reason = workspace.reason;
+    return;
+  }
 
   const diagnostic = await page.evaluate(async ({
     backendUrl,
@@ -101,6 +108,7 @@ async function run() {
     fixtureArgs,
     startupTimeoutSec,
     readyTimeoutMs,
+    workspaceUuid,
   }) => {
     const token = localStorage.getItem("token");
     if (!token) {
@@ -120,6 +128,7 @@ async function run() {
     const headers = {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
+      "X-Workspace-Id": workspaceUuid,
     };
     const serverConfig = {
       name: serverName,
@@ -193,7 +202,17 @@ async function run() {
       runtime_tool_count: lastRuntime?.tool_count ?? null,
       runtime_error: lastRuntime?.error_message || "",
     };
-  }, { backendUrl, serverName, expectedTool, fixturePath, fixtureCommand, fixtureArgs, startupTimeoutSec, readyTimeoutMs });
+  }, {
+    backendUrl,
+    serverName,
+    expectedTool,
+    fixturePath,
+    fixtureCommand,
+    fixtureArgs,
+    startupTimeoutSec,
+    readyTimeoutMs,
+    workspaceUuid: workspace.workspace_uuid,
+  });
 
   await writeFile(apiDiagnosticPath, `${JSON.stringify(diagnostic, null, 2)}\n`, "utf8");
   await safeScreenshot(page, paths.screenshot);

@@ -156,6 +156,8 @@
         "agent-runner-runtime-chaos",
         "bot-event-routing-product-flow",
         "box-mcp-heartbeat-recovery",
+        "claude-code-agent-debug-chat",
+        "codex-agent-debug-chat",
         "dify-agent-debug-chat",
         "langbot-fake-provider-debug-chat-cross-pipeline-isolation",
         "langbot-fake-provider-debug-chat-fault-recovery",
@@ -599,6 +601,58 @@
             "api_diagnostic",
             "resource_log",
             "filesystem"
+          ]
+        },
+        {
+          "id": "claude-code-agent-debug-chat",
+          "title": "Claude Code Agent can retrieve LangBot history through MCP",
+          "mode": "agent-browser",
+          "area": "pipeline",
+          "type": "regression",
+          "priority": "p2",
+          "risk": "high",
+          "ci_eligible": false,
+          "tags": [
+            "agent-runner",
+            "claude-code",
+            "external-runner",
+            "mcp",
+            "pipeline"
+          ],
+          "automation": "scripts/e2e/pipeline-debug-chat.mjs",
+          "setup_automation": [],
+          "setup_provides_env": [],
+          "evidence_required": [
+            "ui",
+            "screenshot",
+            "console",
+            "backend_log"
+          ]
+        },
+        {
+          "id": "codex-agent-debug-chat",
+          "title": "Codex Agent can retrieve LangBot history through MCP",
+          "mode": "agent-browser",
+          "area": "pipeline",
+          "type": "regression",
+          "priority": "p2",
+          "risk": "high",
+          "ci_eligible": false,
+          "tags": [
+            "agent-runner",
+            "codex",
+            "external-runner",
+            "mcp",
+            "pipeline"
+          ],
+          "automation": "scripts/e2e/pipeline-debug-chat.mjs",
+          "setup_automation": [],
+          "setup_provides_env": [],
+          "evidence_required": [
+            "ui",
+            "screenshot",
+            "console",
+            "backend_log"
           ]
         },
         {
@@ -1097,7 +1151,8 @@
           ],
           "setup_provides_env": [
             "LANGBOT_LOCAL_AGENT_PIPELINE_URL",
-            "LANGBOT_LOCAL_AGENT_PIPELINE_NAME"
+            "LANGBOT_LOCAL_AGENT_PIPELINE_NAME",
+            "LANGBOT_COMPLEX_AGENT_WORKSPACE"
           ],
           "evidence_required": [
             "ui",

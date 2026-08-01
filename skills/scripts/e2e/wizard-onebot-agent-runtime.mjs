@@ -81,6 +81,7 @@ async function api(page, path, options = {}) {
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
+          "X-Workspace-Id": localStorage.getItem("langbot_active_workspace_uuid") || "",
         },
         body:
           options.body === undefined ? undefined : JSON.stringify(options.body),

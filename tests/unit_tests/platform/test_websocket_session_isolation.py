@@ -425,7 +425,7 @@ async def test_attachment_key_must_belong_to_connection_upload_scope():
     await adapter._process_image_components(connection, message_chain)
 
     assert message_chain[0]['base64'].startswith('data:image/png;base64,')
-    assert message_chain[0]['path'] == ''
+    assert message_chain[0]['path'] == 'v1/current/upload_image/key.png'
     storage_mgr.scoped_prefix.assert_called_once_with(
         connection.execution_context,
         owner_type='upload_image',
@@ -439,11 +439,7 @@ async def test_attachment_key_must_belong_to_connection_upload_scope():
         'v1/current/upload_image/key.png',
         expected_owner_type='upload_image',
     )
-    storage_mgr.delete_scoped_object_key.assert_awaited_once_with(
-        connection.execution_context,
-        'v1/current/upload_image/key.png',
-        expected_owner_type='upload_image',
-    )
+    storage_mgr.delete_scoped_object_key.assert_not_awaited()
 
     with pytest.raises(ValueError, match='does not belong'):
         await adapter._process_image_components(

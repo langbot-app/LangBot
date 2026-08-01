@@ -1004,7 +1004,9 @@ async def test_init_box_stdio_server_stages_host_path_in_shared_workspace(mcp_mo
 
     ap = _make_ap()
     ap.box_service.available = True
+    shared_workspace = tmp_path / 'shared-box-workspace' / 'tenants' / 'workspace-a'
     ap.box_service.default_workspace = str(tmp_path / 'shared-box-workspace')
+    ap.box_service.workspace_host_path = Mock(return_value=str(shared_workspace))
     ap.box_service.create_session = AsyncMock(return_value={})
     ap.box_service.build_spec = Mock(return_value='validated-spec')
     ap.box_service.client = SimpleNamespace(
@@ -1053,8 +1055,9 @@ async def test_init_box_stdio_server_stages_host_path_in_shared_workspace(mcp_mo
     assert ap.box_service.build_spec.call_args.kwargs.get('skip_host_mount_validation', False) is False
     assert ap.box_service.build_spec.call_args.args[0]['host_path'] == str(host_path)
 
-    staged_file = tmp_path / 'shared-box-workspace' / '.mcp' / 'u1' / 'workspace' / 'server.py'
+    staged_file = shared_workspace / '.mcp' / 'u1' / 'workspace' / 'server.py'
     assert staged_file.read_text(encoding='utf-8') == 'print("hello")\n'
+    ap.box_service.workspace_host_path.assert_called_with(session.execution_context)
 
     assert ap.box_service.start_managed_process.await_args.args[0] == session.execution_context
     process_payload = ap.box_service.start_managed_process.await_args.args[2]

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock
+
 import pytest
 
 from langbot.pkg.agent.runner.registry import AgentRunnerRegistry
@@ -211,6 +213,27 @@ class TestRegistryGet:
         assert exc_info.value.runner_id == 'plugin:notexist/unknown/default'
 
     @pytest.mark.asyncio
+    async def test_get_refreshes_partial_startup_cache_on_miss(self):
+        """A runner initialized after early discovery should become available."""
+        ap = FakeApplication()
+        ap.plugin_connector.list_agent_runners = AsyncMock(
+            side_effect=ap.plugin_connector.list_agent_runners,
+        )
+        registry = AgentRunnerRegistry(ap)
+
+        await registry.list_runners(TEST_CONTEXT)
+        cache = registry._cache[('instance-test', 'workspace-test', 1)]
+        cache.pop('plugin:alice/my-agent/custom')
+
+        descriptor = await registry.get(
+            TEST_CONTEXT,
+            'plugin:alice/my-agent/custom',
+        )
+
+        assert descriptor.id == 'plugin:alice/my-agent/custom'
+        assert ap.plugin_connector.list_agent_runners.await_count == 2
+
+    @pytest.mark.asyncio
     async def test_get_runner_with_bound_plugins_filter(self):
         """Get runner with bound plugins authorization."""
         ap = FakeApplication()
@@ -256,6 +279,27 @@ class TestRegistryMetadataForPipeline:
         assert stages[0]['config'][0]['name'] == 'param1'
         assert stages[0]['config'][0]['type'] == 'string'
         assert stages[0]['config'][0]['id'] == 'plugin:alice/my-agent/custom.param1'
+
+    @pytest.mark.asyncio
+    async def test_metadata_refreshes_partial_startup_cache(self):
+        """Pipeline metadata should not preserve an early partial discovery."""
+        ap = FakeApplication()
+        ap.plugin_connector.list_agent_runners = AsyncMock(
+            side_effect=ap.plugin_connector.list_agent_runners,
+        )
+        registry = AgentRunnerRegistry(ap)
+
+        await registry.list_runners(TEST_CONTEXT)
+        cache = registry._cache[('instance-test', 'workspace-test', 1)]
+        cache.pop('plugin:alice/my-agent/custom')
+
+        options, _ = await registry.get_runner_metadata_for_pipeline(TEST_CONTEXT)
+
+        assert {item['name'] for item in options} == {
+            'plugin:langbot-team/LocalAgent/default',
+            'plugin:alice/my-agent/custom',
+        }
+        assert ap.plugin_connector.list_agent_runners.await_count == 2
 
 
 class TestDescriptorValidation:

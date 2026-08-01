@@ -4,9 +4,12 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { env } from "node:process";
 import {
+  authenticatedApiHeaders,
   apiJson,
   ensureEvidence,
   evidencePaths,
+  isTaskComplete,
+  isTaskFailed,
   loadEnvFiles,
   resetAndAuthLocalUser,
   writeResult,
@@ -138,7 +141,7 @@ async function installPlugin(backendUrl, token, bytes, packagePath) {
   form.set("file", new Blob([bytes]), packagePath.split("/").pop());
   const response = await fetch(`${backendUrl.replace(/\/$/, "")}/api/v1/plugins/install/local`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
+    headers: await authenticatedApiHeaders(backendUrl, token, { contentType: "" }),
     body: form,
   });
   const json = await response.json().catch(() => ({}));
@@ -173,7 +176,7 @@ async function previewPackage(backendUrl, token, bytes, packagePath) {
   form.set("file", new Blob([bytes]), packagePath.split("/").pop());
   const response = await fetch(`${backendUrl.replace(/\/$/, "")}/api/v1/plugins/install/local/preview`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
+    headers: await authenticatedApiHeaders(backendUrl, token, { contentType: "" }),
     body: form,
   });
   const json = await response.json().catch(() => ({}));
@@ -214,30 +217,10 @@ async function waitForTask(backendUrl, token, taskId) {
   while (Date.now() < deadline) {
     const response = await apiJson(backendUrl, `/api/v1/system/tasks/${encodeURIComponent(taskId)}`, { token });
     last = response.json.data || response.json;
-    if (isTaskComplete(last) || isTaskFailed(last)) return last;
+    if (isTaskFailed(last) || isTaskComplete(last)) return last;
     await sleep(1000);
   }
   return last;
-}
-
-function isTaskComplete(task) {
-  const status = String(task?.status || task?.state || "").toLowerCase();
-  const runtimeStatus = String(task?.runtime?.status || task?.runtime?.state || "").toLowerCase();
-  return ["done", "completed", "success", "succeeded", "finished"].includes(status)
-    || ["done", "completed", "success", "succeeded", "finished"].includes(runtimeStatus)
-    || task?.done === true
-    || task?.completed === true
-    || (task?.runtime?.done === true && !task?.runtime?.exception);
-}
-
-function isTaskFailed(task) {
-  const status = String(task?.status || task?.state || "").toLowerCase();
-  const runtimeStatus = String(task?.runtime?.status || task?.runtime?.state || "").toLowerCase();
-  return ["failed", "error", "cancelled", "canceled"].includes(status)
-    || ["failed", "error", "cancelled", "canceled"].includes(runtimeStatus)
-    || task?.failed === true
-    || Boolean(task?.error)
-    || Boolean(task?.runtime?.exception);
 }
 
 function sleep(ms) {

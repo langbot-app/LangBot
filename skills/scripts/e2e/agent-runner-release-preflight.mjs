@@ -6,6 +6,7 @@ import { resolve } from "node:path";
 import { env } from "node:process";
 import {
   createBrowser,
+  ensureBrowserWorkspace,
   ensureEvidence,
   evidencePaths,
   exitCode,
@@ -124,6 +125,12 @@ async function run() {
   const { page } = browser;
   await page.goto(frontendUrl, { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => {});
+  const workspace = await ensureBrowserWorkspace(page, backendUrl);
+  if (workspace.status !== "pass") {
+    result.status = workspace.status;
+    result.reason = workspace.reason;
+    return;
+  }
 
   const diagnostic = await page.evaluate(async ({ backendUrl, targets, testModels }) => {
     const blockers = [];
@@ -150,6 +157,7 @@ async function run() {
     const headers = {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
+      "X-Workspace-Id": localStorage.getItem("langbot_active_workspace_uuid") || "",
     };
     const getJson = async (path) => {
       const response = await fetch(`${backendUrl}${path}`, { headers });

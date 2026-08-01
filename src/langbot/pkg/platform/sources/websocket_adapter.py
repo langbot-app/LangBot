@@ -537,7 +537,8 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
         Image / Voice / File components uploaded from the web client carry a
         storage key in ``path``. Resolve it to a base64 data URI so downstream
         stages (multimodal LLM input and the Box sandbox inbox) have a usable
-        payload, then drop the now-consumed storage object.
+        payload. Keep the storage key for browser history; the configured
+        storage-retention cleanup removes expired uploads.
 
         Args:
             message_chain_obj: 消息链对象列表
@@ -592,12 +593,6 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
                     mime_type = mimetypes.guess_type(comp_path)[0] or 'application/octet-stream'
 
                 component['base64'] = f'data:{mime_type};base64,{base64_str}'
-                await storage_mgr.delete_scoped_object_key(
-                    execution_context,
-                    comp_path,
-                    expected_owner_type='upload_image',
-                )
-                component['path'] = ''
             except Exception as e:
                 await self.logger.error(f'Failed to load {comp_type} file {comp_path}: {e}')
                 raise

@@ -4,6 +4,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { env } from "node:process";
 import {
+  authenticatedApiHeaders,
   apiJson,
   ensureEvidence,
   evidencePaths,
@@ -99,7 +100,15 @@ try {
     }
     result.store_task_id = store.json.data?.task_id || "";
 
-    const ready = await waitForSentinel(backendUrl, auth.token, result.kb_uuid, query, expectedText, waitMs);
+    const ready = await waitForSentinel(
+      backendUrl,
+      auth.token,
+      result.kb_uuid,
+      query,
+      expectedText,
+      waitMs,
+      upload.fileId,
+    );
     result.file_statuses = ready.fileStatuses;
     if (ready.matched) {
       result.checked_bases.push(ready.checked);
@@ -209,9 +218,7 @@ async function uploadDocument(backendUrl, token, path) {
   form.append("file", new Blob([bytes], { type: "text/plain" }), "sentinel-doc.txt");
   const response = await fetch(`${backendUrl.replace(/\/$/, "")}/api/v1/files/documents`, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
+    headers: await authenticatedApiHeaders(backendUrl, token, { contentType: "" }),
     body: form,
   });
   const json = await response.json().catch(() => ({}));
@@ -222,13 +229,14 @@ async function uploadDocument(backendUrl, token, path) {
   return { fileId };
 }
 
-async function waitForSentinel(backendUrl, token, kbUuid, query, expectedText, timeoutMs) {
+async function waitForSentinel(backendUrl, token, kbUuid, query, expectedText, timeoutMs, uploadedFileId) {
   const started = Date.now();
   let fileStatuses = [];
   let lastChecked = null;
   while (Date.now() - started < timeoutMs) {
     const files = await apiJson(backendUrl, `/api/v1/knowledge/bases/${encodeURIComponent(kbUuid)}/files`, { token });
-    fileStatuses = files.json.data?.files || fileStatuses;
+    const listedFiles = files.json.data?.files || [];
+    fileStatuses = listedFiles.filter((item) => item.file_name === uploadedFileId);
     lastChecked = await retrieveSentinel(backendUrl, token, kbUuid, kbName, query, expectedText);
     if (lastChecked.matched) {
       return { matched: true, fileStatuses, checked: lastChecked };

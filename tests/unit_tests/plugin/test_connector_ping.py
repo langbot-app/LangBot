@@ -73,6 +73,16 @@ async def test_stop_transport_tolerates_handler_callback_removing_attribute():
 
 
 @pytest.mark.asyncio
+async def test_stop_transport_tolerates_cancelled_controller_close():
+    connector = make_connector()
+    connector.ctrl = SimpleNamespace(close=AsyncMock(side_effect=asyncio.CancelledError))
+
+    await connector._stop_transport()
+
+    connector.ctrl.close.assert_awaited_once_with()
+
+
+@pytest.mark.asyncio
 async def test_stdio_runtime_connection_does_not_capture_unconsumed_stderr(
     monkeypatch: pytest.MonkeyPatch,
 ):

@@ -424,18 +424,33 @@ async function fetchDebugChatHistory(page, { backendUrl, pipelineId, sessionType
   }
   return await page.evaluate(async ({ backendUrl, pipelineId, sessionType }) => {
     const token = localStorage.getItem("token") || "";
-    const response = await fetch(
-      `${backendUrl.replace(/\/$/, "")}/api/v1/pipelines/${encodeURIComponent(pipelineId)}/ws/messages/${encodeURIComponent(sessionType)}`,
-      { headers: token ? { Authorization: `Bearer ${token}` } : {} },
-    );
-    const json = await response.json().catch(() => ({}));
-    return {
-      status: response.ok && json.code === 0 ? "ready" : "fail",
-      http_status: response.status,
-      code: json.code ?? null,
-      messages: json.data?.messages || [],
-      reason: response.ok && json.code === 0 ? "" : json.msg || `Debug Chat history returned HTTP ${response.status}.`,
-    };
+    try {
+      const response = await fetch(
+        `${backendUrl.replace(/\/$/, "")}/api/v1/pipelines/${encodeURIComponent(pipelineId)}/ws/messages/${encodeURIComponent(sessionType)}`,
+        {
+          headers: token
+            ? {
+                Authorization: `Bearer ${token}`,
+                "X-Workspace-Id": localStorage.getItem("langbot_active_workspace_uuid") || "",
+              }
+            : {},
+        },
+      );
+      const json = await response.json().catch(() => ({}));
+      return {
+        status: response.ok && json.code === 0 ? "ready" : "fail",
+        http_status: response.status,
+        code: json.code ?? null,
+        messages: json.data?.messages || [],
+        reason: response.ok && json.code === 0 ? "" : json.msg || `Debug Chat history returned HTTP ${response.status}.`,
+      };
+    } catch (error) {
+      return {
+        status: "retryable",
+        messages: [],
+        reason: `Debug Chat history request failed: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
   }, { backendUrl, pipelineId, sessionType });
 }
 
@@ -454,6 +469,10 @@ async function waitForFinalDebugChatAssistant(page, {
   while (Date.now() < deadline) {
     lastHistory = await fetchDebugChatHistory(page, { backendUrl, pipelineId, sessionType });
     if (lastHistory.status === "fail") return lastHistory;
+    if (lastHistory.status === "retryable") {
+      await page.waitForTimeout(Math.min(250, Math.max(1, deadline - Date.now())));
+      continue;
+    }
     const assistants = lastHistory.messages.filter((message) => message.role === "assistant");
     const latest = assistants.at(-1);
     if (assistants.length > beforeAssistantCount && latest?.is_final === true) {
@@ -480,12 +499,23 @@ export async function attachDebugChatImage(page, imagePath) {
   if (!await input.count()) {
     return { status: "fail", reason: "Could not find a Debug Chat image upload input." };
   }
+  const previews = page.locator('[data-debug-chat-attachment-preview="true"]');
+  const beforePreviewCount = await previews.count();
   await input.setInputFiles(imagePath);
-  await page.locator("img").last().waitFor({ state: "visible", timeout: 10_000 }).catch(() => {});
+  const previewVisible = await previews
+    .nth(beforePreviewCount)
+    .waitFor({ state: "visible", timeout: 10_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (!previewVisible) {
+    return { status: "fail", reason: "Debug Chat did not show the selected image preview." };
+  }
   return { status: "ready", reason: `Attached image fixture: ${imagePath}` };
 }
 
 export async function sendDebugChatPrompt(page, prompt, imagePath = "") {
+  const sentImages = page.locator('[data-debug-chat-message-image="true"]');
+  const beforeSentImageCount = imagePath ? await sentImages.count() : 0;
   const imageResult = await attachDebugChatImage(page, imagePath);
   if (imageResult.status === "fail") return imageResult;
 
@@ -500,6 +530,16 @@ export async function sendDebugChatPrompt(page, prompt, imagePath = "") {
   const clickedSend = await clickFirstVisible(page, ["Send", "发送", "提交"], 1_500);
   if (!clickedSend) await page.keyboard.press("Enter");
   await page.getByText(prompt, { exact: false }).last().waitFor({ state: "visible", timeout: 10_000 }).catch(() => {});
+  if (imagePath) {
+    const sentImageVisible = await sentImages
+      .nth(beforeSentImageCount)
+      .waitFor({ state: "visible", timeout: 15_000 })
+      .then(() => true)
+      .catch(() => false);
+    if (!sentImageVisible) {
+      return { status: "fail", reason: "The sent Debug Chat message did not render its image attachment." };
+    }
+  }
   return true;
 }
 
@@ -535,7 +575,7 @@ export async function runDebugChatPrompt(page, {
   }
 
   const responseStartedAt = Date.now();
-  await waitForExpectedDebugChatText(page, {
+  const expectedTextPromise = waitForExpectedDebugChatText(page, {
     expectedText,
     expectedTexts: requiredExpectedTexts,
     minExpectedCount,
@@ -545,13 +585,19 @@ export async function runDebugChatPrompt(page, {
     beforeText,
     failureSignals,
   });
-  const finalAssistant = await waitForFinalDebugChatAssistant(page, {
+  const finalAssistantPromise = waitForFinalDebugChatAssistant(page, {
     backendUrl,
     pipelineId,
     sessionType,
     beforeAssistantCount: beforeHistoryAssistantCount,
     timeoutMs: Math.max(1, responseTimeoutMs - (Date.now() - responseStartedAt)),
   });
+  if (backendUrl && pipelineId && sessionType) {
+    await Promise.race([expectedTextPromise, finalAssistantPromise]);
+  } else {
+    await expectedTextPromise;
+  }
+  const finalAssistant = await finalAssistantPromise;
   await waitForDebugChatTextStable(page);
 
   const afterText = await bodyText(page);

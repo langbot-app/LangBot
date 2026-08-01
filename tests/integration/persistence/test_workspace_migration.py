@@ -149,6 +149,35 @@ async def test_workspace_upgrade_is_idempotent_and_preserves_identifiers(legacy_
     assert workspace_uuid_after == workspace_uuid_before
 
 
+async def test_workspace_upgrade_repairs_ownerless_existing_local_workspace(legacy_engine):
+    await run_alembic_upgrade(legacy_engine, '0016_agent_workspace')
+    async with legacy_engine.begin() as conn:
+        owner_account_uuid = await conn.scalar(sa.text('SELECT uuid FROM users ORDER BY id LIMIT 1'))
+        workspace_uuid = await conn.scalar(sa.text("SELECT uuid FROM workspaces WHERE source = 'local'"))
+        await conn.execute(sa.text('DELETE FROM workspace_memberships'))
+        await conn.execute(
+            sa.text('UPDATE workspaces SET created_by_account_uuid = NULL WHERE uuid = :workspace_uuid'),
+            {'workspace_uuid': workspace_uuid},
+        )
+
+    await run_alembic_upgrade(legacy_engine, 'head')
+
+    async with legacy_engine.connect() as conn:
+        workspace = (
+            await conn.execute(
+                sa.text('SELECT created_by_account_uuid FROM workspaces WHERE uuid = :workspace_uuid'),
+                {'workspace_uuid': workspace_uuid},
+            )
+        ).mappings().one()
+        membership = (await conn.execute(sa.text('SELECT * FROM workspace_memberships'))).mappings().one()
+
+    assert workspace['created_by_account_uuid'] == owner_account_uuid
+    assert membership['workspace_uuid'] == workspace_uuid
+    assert membership['account_uuid'] == owner_account_uuid
+    assert membership['role'] == 'owner'
+    assert membership['status'] == 'active'
+
+
 async def test_workspace_kernel_upgrade_downgrade_upgrade_round_trip(tmp_path):
     engine = create_async_engine(f'sqlite+aiosqlite:///{tmp_path / "workspace-round-trip.db"}')
     try:
