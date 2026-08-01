@@ -66,6 +66,10 @@ class _Provider:
     def __init__(self):
         self.manifest_provider = _Manifest()
 
+    async def fetch_model_catalog(self, instance_uuid: str):
+        del instance_uuid
+        raise AssertionError('not used by bootstrap contract tests')
+
     def bootstrap(self, *, instance_uuid: str, instance_config: dict):
         del instance_config
         return VerifiedCloudDeployment(
@@ -79,6 +83,7 @@ class _Provider:
             entitlement_provider=_Entitlements(),
             directory_provider=_Directory(),
             manifest_provider=self.manifest_provider,
+            model_catalog_provider=self,
             verification_key_id='root-2026',
         )
 

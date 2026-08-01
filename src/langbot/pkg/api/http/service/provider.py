@@ -5,6 +5,7 @@ import traceback
 
 import sqlalchemy
 
+from ....cloud.model_catalog import LANGBOT_MODELS_PROVIDER_REQUESTER
 from ....core import app
 from ....entity.persistence import model as persistence_model
 from ....workspace.errors import WorkspaceNotFoundError
@@ -19,6 +20,20 @@ class ModelProviderService:
 
     def __init__(self, ap: app.Application) -> None:
         self.ap = ap
+
+    def _is_cloud_runtime(self) -> bool:
+        mode = getattr(self.ap.persistence_mgr, 'mode', None)
+        return getattr(mode, 'value', None) == 'cloud_runtime'
+
+    def _system_requester_is_reserved(self, requester: object) -> bool:
+        return self._is_cloud_runtime() and requester == LANGBOT_MODELS_PROVIDER_REQUESTER
+
+    async def _assert_provider_mutable(self, context: TenantContext, provider_uuid: str) -> None:
+        if not self._is_cloud_runtime():
+            return
+        provider = await self.get_provider(context, provider_uuid)
+        if provider is not None and self._system_requester_is_reserved(provider.get('requester')):
+            raise ValueError('LangBot Models is managed by Cloud and cannot be modified')
 
     @staticmethod
     def _normalize_api_keys(api_keys: str | list[str] | tuple[str, ...] | None) -> list[str]:
@@ -99,6 +114,8 @@ class ModelProviderService:
     async def create_provider(self, context: TenantContext, provider_data: dict) -> str:
         """Create a new provider"""
         provider_data = provider_data.copy()
+        if self._system_requester_is_reserved(provider_data.get('requester')):
+            raise ValueError('space-chat-completions is reserved for the Cloud-managed LangBot Models provider')
         provider_data['uuid'] = str(uuid.uuid4())
         provider_data['workspace_uuid'] = require_workspace_uuid(context)
         provider_data['api_keys'] = self._normalize_api_keys(
@@ -115,7 +132,10 @@ class ModelProviderService:
 
     async def update_provider(self, context: TenantContext, provider_uuid: str, provider_data: dict) -> None:
         """Update an existing provider"""
+        await self._assert_provider_mutable(context, provider_uuid)
         provider_data = provider_data.copy()
+        if self._system_requester_is_reserved(provider_data.get('requester')):
+            raise ValueError('space-chat-completions is reserved for the Cloud-managed LangBot Models provider')
         provider_data.pop('uuid', None)
         provider_data.pop('workspace_uuid', None)
         if 'api_keys' in provider_data:
@@ -145,6 +165,7 @@ class ModelProviderService:
 
     async def delete_provider(self, context: TenantContext, provider_uuid: str) -> None:
         """Delete a provider (only if no models reference it)"""
+        await self._assert_provider_mutable(context, provider_uuid)
         workspace_uuid = require_workspace_uuid(context)
         # Check if any models use this provider
         llm_result = await self.ap.persistence_mgr.execute_async(
@@ -245,6 +266,8 @@ class ModelProviderService:
         api_keys: list,
     ) -> str:
         """Find existing provider or create new one"""
+        if self._system_requester_is_reserved(requester):
+            raise ValueError('space-chat-completions is reserved for the Cloud-managed LangBot Models provider')
         workspace_uuid = require_workspace_uuid(context)
         api_keys = self._normalize_api_keys(restore_secret_placeholders(api_keys, sensitive=True))
 

@@ -25,6 +25,7 @@ from langbot.pkg.workspace.errors import WorkspaceNotFoundError
 pytestmark = pytest.mark.asyncio
 
 WORKSPACE_UUID = 'workspace-a'
+SYSTEM_REQUESTER = 'space-chat-completions'
 
 
 def _create_mock_provider(
@@ -1005,3 +1006,56 @@ class TestProviderSecretRoundtrip:
             )
 
         ap.persistence_mgr.execute_async.assert_not_awaited()
+
+
+class TestCloudManagedProviderProtection:
+    @staticmethod
+    def _service() -> ModelProviderService:
+        ap = SimpleNamespace(
+            persistence_mgr=SimpleNamespace(
+                mode=SimpleNamespace(value='cloud_runtime'),
+                execute_async=AsyncMock(),
+            ),
+            model_mgr=SimpleNamespace(),
+        )
+        return ModelProviderService(ap)
+
+    async def test_cloud_rejects_user_created_system_requester(self):
+        service = self._service()
+
+        with pytest.raises(ValueError, match='reserved'):
+            await service.create_provider(
+                WORKSPACE_UUID,
+                {
+                    'name': 'Fake LangBot Models',
+                    'requester': SYSTEM_REQUESTER,
+                    'base_url': 'https://example.invalid/v1',
+                    'api_keys': ['fake'],
+                },
+            )
+
+        with pytest.raises(ValueError, match='reserved'):
+            await service.find_or_create_provider(
+                WORKSPACE_UUID,
+                SYSTEM_REQUESTER,
+                'https://api.langbot.cloud/v1',
+                ['fake'],
+            )
+        service.ap.persistence_mgr.execute_async.assert_not_awaited()
+
+    async def test_cloud_rejects_update_and_delete_of_managed_provider(self):
+        service = self._service()
+        service.get_provider = AsyncMock(
+            return_value={'uuid': 'system-provider', 'requester': SYSTEM_REQUESTER}
+        )
+
+        with pytest.raises(ValueError, match='managed by Cloud'):
+            await service.update_provider(WORKSPACE_UUID, 'system-provider', {'name': 'Renamed'})
+        with pytest.raises(ValueError, match='managed by Cloud'):
+            await service.delete_provider(WORKSPACE_UUID, 'system-provider')
+        service.ap.persistence_mgr.execute_async.assert_not_awaited()
+
+    async def test_oss_does_not_reserve_space_requester(self):
+        ap = SimpleNamespace(persistence_mgr=SimpleNamespace(mode=SimpleNamespace(value='oss_compat')))
+        service = ModelProviderService(ap)
+        assert service._system_requester_is_reserved(SYSTEM_REQUESTER) is False

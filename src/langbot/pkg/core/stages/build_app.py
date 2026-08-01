@@ -46,6 +46,7 @@ from ...cloud import support_admin as cloud_support_admin_module
 from ...cloud.directory import directory_projection_limits_from_config
 from ...cloud.directory_projection import DirectoryProjectionService
 from ...cloud.entitlements import EntitlementResolver
+from ...cloud.model_catalog import CloudModelCatalogSyncService
 from ...api.http.context import ExecutionContext, PrincipalContext, PrincipalType
 from ...api.http.authz import WorkspaceRequiredError
 
@@ -175,6 +176,16 @@ class BuildAppStage(stage.BootingStage):
             # across model/platform/pipeline/RAG/plugin initialization instead
             # of repeating tenant validation for every manager.
             await workspace_service_inst.prime_startup_execution_bindings()
+
+            if not isinstance(deployment, cloud_bootstrap.VerifiedCloudDeployment):
+                raise RuntimeError('Multi-Workspace runtime requires a verified Cloud deployment')
+            cloud_model_catalog_service = CloudModelCatalogSyncService(
+                ap,
+                deployment.model_catalog_provider,
+                constants.instance_id,
+            )
+            await cloud_model_catalog_service.initialize()
+            ap.cloud_model_catalog_service = cloud_model_catalog_service
 
         ap.workspace_collaboration_service = workspace_collaboration_module.WorkspaceCollaborationService(
             ap,
