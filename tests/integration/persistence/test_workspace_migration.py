@@ -22,6 +22,7 @@ from langbot.pkg.persistence.alembic_runner import (
 from langbot.pkg.utils import constants
 from langbot.pkg.utils import importutil
 from langbot.pkg.workspace.collaboration import normalize_email
+from langbot.pkg.workspace.identity import workspace_uuid_from_instance_id
 
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
@@ -109,6 +110,7 @@ async def test_legacy_instance_gets_stable_accounts_and_default_workspace(legacy
             .mappings()
             .one()
         )
+        assert workspace['uuid'] == workspace_uuid_from_instance_id('instance_migration_test')
         assert workspace['instance_uuid'] == 'instance_migration_test'
         assert workspace['slug'] == 'default'
         assert workspace['status'] == 'active'
@@ -153,11 +155,11 @@ async def test_workspace_upgrade_repairs_ownerless_existing_local_workspace(lega
     await run_alembic_upgrade(legacy_engine, '0016_agent_workspace')
     async with legacy_engine.begin() as conn:
         owner_account_uuid = await conn.scalar(sa.text('SELECT uuid FROM users ORDER BY id LIMIT 1'))
-        workspace_uuid = await conn.scalar(sa.text("SELECT uuid FROM workspaces WHERE source = 'local'"))
+        old_workspace_uuid = await conn.scalar(sa.text("SELECT uuid FROM workspaces WHERE source = 'local'"))
         await conn.execute(sa.text('DELETE FROM workspace_memberships'))
         await conn.execute(
             sa.text('UPDATE workspaces SET created_by_account_uuid = NULL WHERE uuid = :workspace_uuid'),
-            {'workspace_uuid': workspace_uuid},
+            {'workspace_uuid': old_workspace_uuid},
         )
 
     await run_alembic_upgrade(legacy_engine, 'head')
@@ -165,17 +167,64 @@ async def test_workspace_upgrade_repairs_ownerless_existing_local_workspace(lega
     async with legacy_engine.connect() as conn:
         workspace = (
             await conn.execute(
-                sa.text('SELECT created_by_account_uuid FROM workspaces WHERE uuid = :workspace_uuid'),
-                {'workspace_uuid': workspace_uuid},
+                sa.text("SELECT uuid, created_by_account_uuid FROM workspaces WHERE source = 'local'"),
             )
         ).mappings().one()
         membership = (await conn.execute(sa.text('SELECT * FROM workspace_memberships'))).mappings().one()
 
+    assert workspace['uuid'] == workspace_uuid_from_instance_id('instance_migration_test')
     assert workspace['created_by_account_uuid'] == owner_account_uuid
-    assert membership['workspace_uuid'] == workspace_uuid
+    assert membership['workspace_uuid'] == workspace['uuid']
     assert membership['account_uuid'] == owner_account_uuid
     assert membership['role'] == 'owner'
     assert membership['status'] == 'active'
+
+
+async def test_existing_oss_workspace_is_rekeyed_to_instance_identity(tmp_path):
+    engine = create_async_engine(f'sqlite+aiosqlite:///{tmp_path / "workspace-rekey.db"}')
+    instance_id = 'instance_a711d9e4-0953-443f-a0e9-7dd50193a79f'
+    old_workspace_uuid = '11111111-1111-4111-8111-111111111111'
+    canonical_uuid = workspace_uuid_from_instance_id(instance_id)
+    schema = sa.MetaData()
+    sa.Table(
+        'metadata',
+        schema,
+        sa.Column('key', sa.String(255), primary_key=True),
+        sa.Column('value', sa.String(255)),
+    )
+    sa.Table(
+        'workspaces',
+        schema,
+        sa.Column('uuid', sa.String(36), primary_key=True),
+        sa.Column('instance_uuid', sa.String(255), nullable=False),
+        sa.Column('slug', sa.String(255), nullable=False),
+        sa.Column('source', sa.String(32), nullable=False),
+    )
+    sa.Table(
+        'tenant_rows',
+        schema,
+        sa.Column('id', sa.Integer, primary_key=True),
+        sa.Column('workspace_uuid', sa.String(36), sa.ForeignKey('workspaces.uuid'), nullable=False),
+    )
+    async with engine.begin() as conn:
+        await conn.run_sync(schema.create_all)
+        await conn.execute(sa.text("INSERT INTO metadata (key, value) VALUES ('instance_uuid', :value)"), {'value': instance_id})
+        await conn.execute(
+            sa.text("INSERT INTO workspaces (uuid, instance_uuid, slug, source) VALUES (:uuid, :instance, 'default', 'local')"),
+            {'uuid': old_workspace_uuid, 'instance': instance_id},
+        )
+        await conn.execute(
+            sa.text("INSERT INTO tenant_rows (id, workspace_uuid) VALUES (1, :uuid)"),
+            {'uuid': old_workspace_uuid},
+        )
+    await run_alembic_stamp(engine, '0016_support_admin_sessions')
+
+    await run_alembic_upgrade(engine, 'head')
+
+    async with engine.connect() as conn:
+        assert (await conn.execute(sa.text("SELECT uuid FROM workspaces"))).scalar_one() == canonical_uuid
+        assert (await conn.execute(sa.text("SELECT workspace_uuid FROM tenant_rows"))).scalar_one() == canonical_uuid
+    await engine.dispose()
 
 
 async def test_workspace_kernel_upgrade_downgrade_upgrade_round_trip(tmp_path):
@@ -387,6 +436,47 @@ async def test_persistence_startup_defers_workspace_tables_until_account_upgrade
                 (await conn.execute(sa.text("SELECT * FROM workspaces WHERE source = 'local'"))).mappings().one()
             )
         assert workspace['instance_uuid'] == 'instance_migration_test'
+    finally:
+        await engine.dispose()
+
+
+async def test_oss_workspace_identity_rekeys_fk_graph_and_metadata(tmp_path):
+    engine = create_async_engine(f'sqlite+aiosqlite:///{tmp_path / "workspace-rekey.db"}')
+    try:
+        await _create_legacy_schema(engine)
+        await run_alembic_stamp(engine, '0008_mcp_resource_prefs')
+        await run_alembic_upgrade(engine, '0016_support_admin_sessions')
+
+        async with engine.begin() as conn:
+            old_uuid = await conn.scalar(sa.text("SELECT uuid FROM workspaces WHERE source = 'local'"))
+            instance_uuid = await conn.scalar(sa.text("SELECT instance_uuid FROM workspaces WHERE source = 'local'"))
+            assert old_uuid
+            assert instance_uuid
+            await conn.execute(
+                sa.text(
+                    "INSERT INTO workspace_metadata (workspace_uuid, key, value) "
+                    "VALUES (:workspace_uuid, 'migration_probe', 'present')"
+                ),
+                {'workspace_uuid': old_uuid},
+            )
+            await conn.execute(
+                sa.text(
+                    "INSERT INTO metadata (key, value) VALUES ('oss_workspace_uuid', :workspace_uuid) "
+                    "ON CONFLICT(key) DO UPDATE SET value = excluded.value"
+                ),
+                {'workspace_uuid': old_uuid},
+            )
+
+        await run_alembic_upgrade(engine, 'head')
+        expected_uuid = workspace_uuid_from_instance_id(instance_uuid)
+        async with engine.connect() as conn:
+            assert await conn.scalar(sa.text("SELECT uuid FROM workspaces WHERE source = 'local'")) == expected_uuid
+            assert await conn.scalar(
+                sa.text("SELECT workspace_uuid FROM workspace_metadata WHERE key = 'migration_probe'")
+            ) == expected_uuid
+            assert await conn.scalar(
+                sa.text("SELECT value FROM metadata WHERE key = 'oss_workspace_uuid'")
+            ) == expected_uuid
     finally:
         await engine.dispose()
 

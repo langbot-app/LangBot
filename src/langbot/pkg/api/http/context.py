@@ -9,6 +9,7 @@ class PrincipalType(enum.StrEnum):
 
     ACCOUNT = 'account'
     API_KEY = 'api_key'
+    SUPPORT_ADMIN = 'support_admin'
     SYSTEM = 'system'
     PUBLIC_BOT = 'public_bot'
 
@@ -19,7 +20,9 @@ class PrincipalContext:
 
     principal_type: PrincipalType
     account_uuid: str | None = None
+    actor_account_uuid: str | None = None
     api_key_uuid: str | None = None
+    support_session_id: str | None = None
 
 
 @dataclasses.dataclass(frozen=True, slots=True)

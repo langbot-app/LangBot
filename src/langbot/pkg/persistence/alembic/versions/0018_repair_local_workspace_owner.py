@@ -1,7 +1,7 @@
 """repair an ownerless local Workspace after tenancy migration
 
-Revision ID: 0017_local_owner_repair
-Revises: 0016_agent_workspace
+Revision ID: 0018_local_owner_repair
+Revises: 0016_agent_workspace, 0017_oss_workspace_identity
 Create Date: 2026-07-31
 """
 
@@ -14,8 +14,8 @@ import sqlalchemy as sa
 from alembic import op
 
 
-revision = '0017_local_owner_repair'
-down_revision = '0016_agent_workspace'
+revision = '0018_local_owner_repair'
+down_revision = ('0016_agent_workspace', '0017_oss_workspace_identity')
 branch_labels = None
 depends_on = None
 

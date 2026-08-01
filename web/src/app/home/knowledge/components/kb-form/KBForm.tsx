@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useTranslation } from 'react-i18next';
+import { AuthenticatedPluginIcon } from '@/components/AuthenticatedPluginIcon';
 import { Input } from '@/components/ui/input';
 import EmojiPicker from '@/components/ui/emoji-picker';
 import {
@@ -428,12 +429,9 @@ export default function KBForm({
                             );
                             return (
                               <div className="flex items-center gap-2">
-                                <img
-                                  src={httpClient.getPluginIconURL(
-                                    author,
-                                    name,
-                                  )}
-                                  alt=""
+                                <AuthenticatedPluginIcon
+                                  author={author}
+                                  name={name}
                                   className="h-5 w-5 rounded"
                                 />
                                 <span>
@@ -459,12 +457,9 @@ export default function KBForm({
                               value={engine.plugin_id}
                             >
                               <div className="flex items-center gap-2">
-                                <img
-                                  src={httpClient.getPluginIconURL(
-                                    author,
-                                    name,
-                                  )}
-                                  alt=""
+                                <AuthenticatedPluginIcon
+                                  author={author}
+                                  name={name}
                                   className="h-5 w-5 rounded"
                                 />
                                 <span>{extractI18nObject(engine.name)}</span>

@@ -396,6 +396,19 @@ class UserRouterGroup(group.RouterGroup):
                 launch_assertion,
                 expected_workspace_uuid=workspace_uuid,
             )
+            if launch.get('launch_mode') == 'support_admin':
+                token = launch.get('support_admin_token')
+                if not token:
+                    raise SpaceLaunchError('Support admin launch session was not issued')
+                return self.success(
+                    data={
+                        'token': token,
+                        'workspace_uuid': launch['workspace_uuid'],
+                        'principal_type': 'support_admin',
+                        'actor_account_uuid': launch['actor_account_uuid'],
+                    }
+                )
+
             account = await self.ap.user_service.get_user_by_uuid(launch['account_uuid'])
             if account is None:
                 raise SpaceLaunchError('Launch Account is not projected into Core')

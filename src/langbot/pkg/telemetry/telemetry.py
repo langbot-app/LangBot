@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import os
+import typing
+
 import httpx
+
 from ..core import app as core_app
 from ..utils import httpclient
 
@@ -21,7 +25,7 @@ class TelemetryManager:
     def __init__(self, ap: core_app.Application):
         self.ap = ap
 
-        self.telemetry_config = {}
+        self.telemetry_config: dict[str, typing.Any] = {}
         self.send_tasks: list[asyncio.Task] = []
         self._client: httpx.AsyncClient | None = None
 
@@ -131,7 +135,16 @@ class TelemetryManager:
                 async with self._client_context() as client:
                     try:
                         # Use asyncio.wait_for to ensure we always bound the total time
-                        resp = await asyncio.wait_for(client.post(url, json=sanitized), timeout=10 + 1)
+                        telemetry_token = os.getenv('LANGBOT_TELEMETRY_INGEST_TOKEN', '').strip()
+                        if telemetry_token:
+                            request = client.post(
+                                url,
+                                json=sanitized,
+                                headers={'X-LangBot-Telemetry-Token': telemetry_token},
+                            )
+                        else:
+                            request = client.post(url, json=sanitized)
+                        resp = await asyncio.wait_for(request, timeout=10 + 1)
 
                         if resp.status_code >= 400:
                             body = await httpclient.response_text(resp, max_chars=200)
@@ -143,7 +156,8 @@ class TelemetryManager:
                             app_err = False
                             try:
                                 j = await httpclient.parse_json_response(resp)
-                                if isinstance(j, dict) and j.get('code') is not None and int(j.get('code')) >= 400:
+                                app_code = j.get('code') if isinstance(j, dict) else None
+                                if app_code is not None and int(app_code) >= 400:
                                     app_err = True
                                     self.ap.logger.warning(
                                         f'Telemetry post to {url} returned application error code {j.get("code")} - {j.get("msg")}'

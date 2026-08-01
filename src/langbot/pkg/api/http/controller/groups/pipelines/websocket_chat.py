@@ -97,6 +97,16 @@ class WebSocketChatRouterGroup(group.RouterGroup):
         if not token or not workspace_uuid:
             raise ValueError('Authentication is required')
 
+        support_context = await self._authenticate_support_admin(
+            token,
+            group.AuthType.USER_TOKEN,
+            workspace_uuid=workspace_uuid,
+            request_id=quart.websocket.headers.get('X-Request-Id') or str(uuid.uuid4()),
+        )
+        if support_context is not None:
+            require_permission(support_context, Permission.RUNTIME_OPERATE)
+            return support_context, token
+
         account, _ = await self._authenticate_account(token)
         account_uuid = getattr(account, 'uuid', None)
         collaboration_service = getattr(self.ap, 'workspace_collaboration_service', None)
@@ -130,6 +140,23 @@ class WebSocketChatRouterGroup(group.RouterGroup):
         token: str,
     ) -> RequestContext:
         """Recheck revocable account, membership, permission, and placement state."""
+
+        if request_context.principal.principal_type == PrincipalType.SUPPORT_ADMIN:
+            current_context = await self._authenticate_support_admin(
+                token,
+                group.AuthType.USER_TOKEN,
+                workspace_uuid=request_context.workspace_uuid,
+                request_id=request_context.request_id,
+            )
+            if current_context is None or current_context.principal != request_context.principal:
+                raise ValueError('WebSocket support admin session changed')
+            if (
+                current_context.instance_uuid != request_context.instance_uuid
+                or current_context.placement_generation != request_context.placement_generation
+            ):
+                raise ValueError('WebSocket authorization changed')
+            require_permission(current_context, Permission.RUNTIME_OPERATE)
+            return current_context
 
         account, _ = await self._authenticate_account(token)
         account_uuid = getattr(account, 'uuid', None)
@@ -211,6 +238,7 @@ class WebSocketChatRouterGroup(group.RouterGroup):
                     scope=WebSocketScope.from_context(request_context),
                     pipeline_uuid=pipeline_uuid,
                     session_type=session_type,
+                    trigger_principal=request_context.principal,
                     metadata={'user_agent': quart.websocket.headers.get('User-Agent', '')},
                     send_queue_size=(
                         self.ap.instance_config.data.get('system', {})
@@ -391,7 +419,7 @@ class WebSocketChatRouterGroup(group.RouterGroup):
                         )
                     elif message_type == 'message':
                         try:
-                            await self._revalidate_websocket_authorization(request_context, token)
+                            request_context = await self._revalidate_websocket_authorization(request_context, token)
                         except Exception:
                             await connection.send_queue.put({'type': 'error', 'message': 'Unauthorized'})
                             break

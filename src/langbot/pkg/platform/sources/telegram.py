@@ -179,10 +179,13 @@ class TelegramMessageConverter(abstract_platform_adapter.AbstractMessageConverte
                 )
                 file_format = 'image/jpeg'
 
+            # NOTE: Telegram's file.file_path is a full URL of the form
+            # https://api.telegram.org/file/bot<TOKEN>/<path> which embeds the
+            # bot token. Unlike the public CDN URLs used by other adapters, it
+            # cannot be exposed safely, so only base64 is stored here.
             encoded = await asyncio.to_thread(base64.b64encode, file_bytes)
             message_components.append(
                 platform_message.Image(
-                    url=file.file_path,
                     base64=f'data:{file_format};base64,{encoded.decode("utf-8")}',
                 )
             )

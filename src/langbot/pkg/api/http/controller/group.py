@@ -15,8 +15,17 @@ from ....workspace.collaboration import MembershipPermissionError, WorkspaceColl
 from ....workspace.errors import WorkspaceNotFoundError
 from ....cloud.entitlements import EntitlementUnavailableError
 from ....core.errors import TaskCapacityError
-from ..authz import AuthorizationError, Permission, permissions_for_role, require_permission
+from ..authz import (
+    AuthenticationDeniedError,
+    AuthorizationError,
+    Permission,
+    PermissionDeniedError,
+    WorkspaceRequiredError,
+    permissions_for_role,
+    require_permission,
+)
 from ..context import PrincipalContext, PrincipalType, RequestContext, WorkspaceContext
+from ....cloud.support_admin import SupportAdminSessionError
 
 if typing.TYPE_CHECKING:
     from ....core.app import Application
@@ -49,6 +58,17 @@ class AuthType(enum.Enum):
     USER_TOKEN = 'user-token'
     API_KEY = 'api-key'
     USER_TOKEN_OR_API_KEY = 'user-token-or-api-key'
+
+
+_SUPPORT_ADMIN_DENIED_PERMISSIONS = frozenset(
+    {
+        Permission.OWNER_TRANSFER.value,
+        Permission.MEMBER_VIEW.value,
+        Permission.MEMBER_INVITE.value,
+        Permission.MEMBER_UPDATE_ROLE.value,
+        Permission.MEMBER_REMOVE.value,
+    }
+)
 
 
 class RouterGroup(abc.ABC):
@@ -95,6 +115,10 @@ class RouterGroup(abc.ABC):
                         return self.http_status(401, -1, 'No valid user token provided')
 
                     try:
+                        if self._is_support_admin_token(token):
+                            raise AuthenticationDeniedError(
+                                'Support admin tokens cannot be refreshed or used on account endpoints'
+                            )
                         account, user_email = await self._authenticate_account(token)
                         # Account-token routes deliberately stop before Workspace
                         # selection. They may bootstrap a selector, but cannot
@@ -111,8 +135,13 @@ class RouterGroup(abc.ABC):
                         return self.http_status(401, -1, 'No valid user token provided')
 
                     try:
-                        account, user_email = await self._authenticate_account(token)
-                        request_context = await self._resolve_account_context(account, auth_type)
+                        request_context = await self._authenticate_support_admin(token, auth_type)
+                        if request_context is not None:
+                            self._require_support_admin_route_allowed(rule, f, permission)
+                            user_email = None
+                        else:
+                            account, user_email = await self._authenticate_account(token)
+                            request_context = await self._resolve_account_context(account, auth_type)
                         if permission is not None:
                             if request_context is None:
                                 raise AuthorizationError('Workspace authorization is unavailable')
@@ -141,10 +170,20 @@ class RouterGroup(abc.ABC):
                         return self._auth_error_response(e)
 
                 elif auth_type == AuthType.USER_TOKEN_OR_API_KEY:
+                    token = quart.request.headers.get('Authorization', '').replace('Bearer ', '')
+                    if token and self._is_support_admin_token(token):
+                        try:
+                            request_context = await self._authenticate_support_admin(token, auth_type)
+                            if request_context is None:
+                                raise AuthenticationDeniedError('Invalid support admin token')
+                            self._require_support_admin_route_allowed(rule, f, permission)
+                            if permission is not None:
+                                require_permission(request_context, permission)
+                            self._inject_handler_context(f, kwargs, None, request_context)
+                        except Exception as e:
+                            return self._auth_error_response(e)
                     # Try API key first (check X-API-Key header)
-                    api_key = quart.request.headers.get('X-API-Key', '')
-
-                    if api_key:
+                    elif api_key := quart.request.headers.get('X-API-Key', ''):
                         # API key authentication
                         try:
                             request_context = await self._authenticate_api_key(api_key, auth_type)
@@ -155,8 +194,6 @@ class RouterGroup(abc.ABC):
                             return self._auth_error_response(e)
                     else:
                         # Try user token authentication (Authorization header)
-                        token = quart.request.headers.get('Authorization', '').replace('Bearer ', '')
-
                         if not token:
                             return self.http_status(
                                 401, -1, 'No valid authentication provided (user token or API key required)'
@@ -268,10 +305,83 @@ class RouterGroup(abc.ABC):
             raise ValueError('User not found')
         return account, account.user
 
+    def _is_support_admin_token(self, token: str) -> bool:
+        service = getattr(self.ap, 'support_admin_session_service', None)
+        detector = getattr(service, 'is_support_admin_token', None)
+        return callable(detector) and detector(token) is True
+
+    async def _authenticate_support_admin(
+        self,
+        token: str,
+        auth_type: AuthType,
+        *,
+        workspace_uuid: str | None = None,
+        request_id: str | None = None,
+    ) -> RequestContext | None:
+        service = getattr(self.ap, 'support_admin_session_service', None)
+        detector = getattr(service, 'is_support_admin_token', None)
+        if service is None or not callable(detector) or detector(token) is not True:
+            return None
+
+        requested_workspace_uuid = (
+            workspace_uuid if workspace_uuid is not None else quart.request.headers.get('X-Workspace-Id')
+        )
+        if not requested_workspace_uuid:
+            raise WorkspaceRequiredError('Support admin token requires an explicit Workspace selector')
+        try:
+            identity = await service.authenticate_token(
+                token,
+                requested_workspace_uuid=requested_workspace_uuid,
+            )
+        except SupportAdminSessionError as exc:
+            raise AuthenticationDeniedError(str(exc)) from exc
+
+        entitlement_revision = await self._resolve_entitlement_revision(
+            identity.instance_uuid,
+            identity.workspace_uuid,
+        )
+        request_context = RequestContext(
+            instance_uuid=identity.instance_uuid,
+            placement_generation=identity.placement_generation,
+            request_id=request_id or self.request_id(),
+            auth_type=auth_type.value,
+            principal=PrincipalContext(
+                principal_type=PrincipalType.SUPPORT_ADMIN,
+                actor_account_uuid=identity.actor_account_uuid,
+                support_session_id=identity.grant_jti_hash,
+            ),
+            workspace=WorkspaceContext(
+                workspace_uuid=identity.workspace_uuid,
+                membership_uuid=None,
+                role='owner',
+                permissions=permissions_for_role('owner') - _SUPPORT_ADMIN_DENIED_PERMISSIONS,
+                membership_revision=0,
+            ),
+            entitlement_revision=entitlement_revision,
+        )
+        quart.g.request_context = request_context
+        quart.g.workspace_membership = None
+        return request_context
+
+    @staticmethod
+    def _require_support_admin_route_allowed(
+        rule: str,
+        handler: RouteCallable,
+        permission: Permission | str | None,
+    ) -> None:
+        parameters = inspect.signature(handler).parameters
+        if rule.startswith('/api/v1/user/') or 'account' in parameters or 'user_email' in parameters:
+            raise AuthenticationDeniedError('Support admin tokens are not permitted on account endpoints')
+        permission_value = permission.value if isinstance(permission, Permission) else permission
+        if permission_value in _SUPPORT_ADMIN_DENIED_PERMISSIONS:
+            raise PermissionDeniedError(permission_value)
+
     async def _resolve_account_context(
         self,
         account: typing.Any,
         auth_type: AuthType,
+        *,
+        token: str | None = None,
     ) -> RequestContext | None:
         collaboration_service = getattr(self.ap, 'workspace_collaboration_service', None)
         account_uuid = getattr(account, 'uuid', None)

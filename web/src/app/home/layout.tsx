@@ -17,6 +17,7 @@ import {
   bootstrapWorkspaceSession,
   systemInfo,
   initializeSystemInfo,
+  isSupportAdminSession,
   useCurrentWorkspace,
 } from '@/app/infra/http';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -157,7 +158,7 @@ export default function HomeLayout({
   // selected Workspace's wizard state.
   useEffect(() => {
     if (!identityReady) return;
-    if (systemInfo.wizard_status === 'none') {
+    if (systemInfo?.wizard_status === 'none' && !isSupportAdminSession()) {
       navigate('/wizard', { replace: true });
     }
   }, [identityReady, navigate]);

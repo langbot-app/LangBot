@@ -270,7 +270,7 @@ async def test_space_credits_are_resolved_from_workspace_owner(space_oauth_api):
 
     response = await client.get(
         '/api/v1/user/space-credits',
-        headers={'Authorization': 'Bearer account-token', 'X-Workspace-UUID': WORKSPACE_UUID},
+        headers={'Authorization': 'Bearer account-token', 'X-Workspace-Id': WORKSPACE_UUID},
     )
 
     assert response.status_code == 200

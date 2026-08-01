@@ -1,7 +1,8 @@
 """Tests for Telegram Dify form callback helpers."""
 
 import json
-from unittest.mock import AsyncMock, MagicMock
+from contextlib import asynccontextmanager
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from telegram import ForceReply
@@ -9,8 +10,10 @@ from telegram import ForceReply
 import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
+
 from langbot.pkg.platform.sources.telegram import (
     TelegramAdapter,
+    TelegramMessageConverter,
     _decode_telegram_base64_limited,
     _telegram_form_action_from_callback,
     _telegram_select_field_options,
@@ -24,6 +27,70 @@ def test_telegram_base64_decode_is_bounded(monkeypatch):
 
     with pytest.raises(ValueError, match='exceeds'):
         _decode_telegram_base64_limited('A' * 12)
+
+
+TELEGRAM_BOT_TOKEN = '123456789:AAExampleBotTokenThatMustNotLeak'
+TELEGRAM_FILE_URL = f'https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/photos/file_0.jpg'
+
+
+@pytest.mark.asyncio
+async def test_telegram_photo_does_not_expose_bot_token_in_image_url():
+    """Regression test for the Telegram bot-token leak.
+
+    telegram.Bot builds file.file_path as
+    https://api.telegram.org/file/bot<TOKEN>/<path>, embedding the bot token.
+    The converter must not copy that URL into Image.url, or the token leaks to
+    the monitoring DB, dashboard and every installed plugin via the message
+    chain. Only base64 (which carries no token) may be stored.
+    """
+    tg_file = MagicMock()
+    tg_file.file_path = TELEGRAM_FILE_URL
+
+    photo_size = MagicMock()
+    photo_size.get_file = AsyncMock(return_value=tg_file)
+
+    message = MagicMock()
+    message.text = None
+    message.caption = None
+    message.photo = [photo_size]
+    message.voice = None
+    message.document = None
+
+    response = MagicMock()
+    response.headers = {}
+
+    async def iter_chunked(_chunk_size):
+        yield b'\xff\xd8\xff\xe0jpeg-bytes'
+
+    response.content.iter_chunked = iter_chunked
+
+    @asynccontextmanager
+    async def fake_get(url):
+        yield response
+
+    fake_session = MagicMock()
+    fake_session.get = fake_get
+
+    with patch(
+        'langbot.pkg.platform.sources.telegram.httpclient.get_session',
+        return_value=fake_session,
+    ):
+        chain = await TelegramMessageConverter.target2yiri(message, MagicMock(), 'bot-account')
+
+    images = [c for c in chain if isinstance(c, platform_message.Image)]
+    assert len(images) == 1
+    image = images[0]
+
+    # The token-bearing URL must not be retained anywhere on the component.
+    assert not image.url
+    assert image.base64 is not None
+    assert image.base64.startswith('data:image/jpeg;base64,')
+
+    # Belt-and-suspenders: the token must not appear in the serialized chain
+    # (this is what gets persisted to the monitoring DB and sent to plugins).
+    serialized = json.dumps(chain.model_dump(), ensure_ascii=False)
+    assert TELEGRAM_BOT_TOKEN not in serialized
+    assert 'api.telegram.org/file/bot' not in serialized
 
 
 def _select_form_data() -> dict:

@@ -16,6 +16,7 @@ from ....agent.runner.config_resolver import RunnerConfigResolver
 from ....agent.runner import config_schema
 from ....utils import constants, runner as runner_utils
 from ....telemetry import features as telemetry_features
+from ....telemetry.identity import workspace_identity
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
@@ -303,7 +304,8 @@ class ChatMessageHandler(handler.MessageHandler):
                         'duration_ms': duration_ms,
                         'model_name': model_name,
                         'version': constants.semantic_version,
-                        'instance_id': constants.instance_id,
+                        **workspace_identity(get_query_execution_context(query)),
+                        'runtime_instance_id': constants.instance_id,
                         'edition': constants.edition,
                         'pipeline_plugins': pipeline_plugins,
                         'features': features,

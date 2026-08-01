@@ -149,6 +149,36 @@ async def test_session_scope_matches_exact_tenant_placement_and_principal():
     assert sessions == {}
 
 
+async def test_support_admin_sessions_are_scoped_to_the_persisted_grant():
+    def support_context(grant_jti_hash: str) -> RequestContext:
+        return RequestContext(
+            instance_uuid='instance-test',
+            placement_generation=1,
+            request_id='request-test',
+            auth_type='support-admin',
+            principal=PrincipalContext(
+                principal_type=PrincipalType.SUPPORT_ADMIN,
+                actor_account_uuid='support-actor',
+                support_session_id=grant_jti_hash,
+            ),
+            workspace=WorkspaceContext(
+                workspace_uuid='workspace-a',
+                membership_uuid=None,
+                role='owner',
+                permissions=frozenset({'resource.manage'}),
+            ),
+        )
+
+    first_context = support_context('a' * 64)
+    second_context = support_context('b' * 64)
+    sessions: dict[str, dict] = {'session-test': {'status': 'waiting'}}
+    _bind_session_scope(sessions['session-test'], first_context)
+
+    assert _get_owned_session(sessions, 'session-test', second_context) is None
+    assert _pop_owned_session(sessions, 'session-test', second_context) is None
+    assert _get_owned_session(sessions, 'session-test', first_context) is sessions['session-test']
+
+
 async def test_session_capacity_evicts_oldest_session_in_same_workspace():
     owner_context = _request_context()
     sessions: dict[str, dict] = {}

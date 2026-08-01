@@ -11,6 +11,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from langbot.pkg.cloud.launch import SpaceLaunchError, SpaceLaunchService
+from langbot.pkg.cloud.support_admin import SupportAdminReplayError
 
 
 pytestmark = pytest.mark.asyncio
@@ -57,9 +58,21 @@ def _service(private_key: Ed25519PrivateKey, *, now: int) -> SpaceLaunchService:
         encoding=serialization.Encoding.Raw,
         format=serialization.PublicFormat.Raw,
     )
+    consumed: set[str] = set()
+
+    class DurableSupportAdminService:
+        async def consume_launch_grant(self, **kwargs):
+            grant_hash = kwargs['grant_jti_hash']
+            if grant_hash in consumed:
+                raise SupportAdminReplayError('already consumed')
+            consumed.add(grant_hash)
+            return SimpleNamespace(token='support-admin-token')
+
     app = SimpleNamespace(
         deployment=SimpleNamespace(multi_workspace_enabled=True, verification_key_id=KEY_ID),
         workspace_service=SimpleNamespace(instance_uuid=INSTANCE_UUID),
+        logger=SimpleNamespace(info=lambda *args, **kwargs: None),
+        support_admin_session_service=DurableSupportAdminService(),
         instance_config=SimpleNamespace(
             data={
                 'space': {
@@ -84,6 +97,81 @@ async def test_consumes_valid_workspace_launch_assertion_once():
     assert launch == {'account_uuid': ACCOUNT_UUID, 'workspace_uuid': WORKSPACE_UUID}
     with pytest.raises(SpaceLaunchError, match='already been consumed'):
         await service.consume_assertion(token, expected_workspace_uuid=WORKSPACE_UUID)
+
+
+
+
+async def test_consumes_admin_owner_launch_once_and_validates_claims():
+    private_key = Ed25519PrivateKey.generate()
+    now = int(time.time())
+    service = _service(private_key, now=now)
+    claims = _claims(now=now)
+    claims['kind'] = 'workspace.support_admin_launch'
+    claims['payload'].update(
+        {
+            'launch_mode': 'support_admin',
+            'principal_type': 'support_admin',
+            'actor_account_uuid': '33333333-3333-4333-8333-333333333333',
+            'effective_role': 'owner',
+        }
+    )
+    claims['payload'].pop('account_uuid')
+    token = _sign(private_key, claims)
+
+    launch = await service.consume_assertion(token, expected_workspace_uuid=WORKSPACE_UUID)
+
+    assert launch == {
+        'workspace_uuid': WORKSPACE_UUID,
+        'launch_mode': 'support_admin',
+        'actor_account_uuid': '33333333-3333-4333-8333-333333333333',
+        'effective_role': 'owner',
+        'grant_jti_hash': launch['grant_jti_hash'],
+        'support_admin_token': 'support-admin-token',
+    }
+    with pytest.raises(SpaceLaunchError, match='already been consumed'):
+        await service.consume_assertion(token, expected_workspace_uuid=WORKSPACE_UUID)
+
+    invalid = _claims(now=now)
+    invalid['kind'] = 'workspace.support_admin_launch'
+    invalid['payload'].update(
+        {
+            'launch_mode': 'support_admin',
+            'principal_type': 'support_admin',
+            'actor_account_uuid': '33333333-3333-4333-8333-333333333333',
+            'effective_role': 'member',
+        }
+    )
+    invalid['payload'].pop('account_uuid')
+    with pytest.raises(SpaceLaunchError, match='effective role'):
+        await service.consume_assertion(_sign(private_key, invalid), expected_workspace_uuid=WORKSPACE_UUID)
+
+    too_long = _claims(now=now)
+    too_long['kind'] = 'workspace.support_admin_launch'
+    too_long['exp'] = now + 91
+    too_long['payload'].update(
+        {
+            'launch_mode': 'support_admin',
+            'principal_type': 'support_admin',
+            'actor_account_uuid': '33333333-3333-4333-8333-333333333333',
+            'effective_role': 'owner',
+        }
+    )
+    too_long['payload'].pop('account_uuid')
+    with pytest.raises(SpaceLaunchError, match='lifetime exceeds 90 seconds'):
+        await service.consume_assertion(_sign(private_key, too_long), expected_workspace_uuid=WORKSPACE_UUID)
+
+    impersonating = _claims(now=now)
+    impersonating['kind'] = 'workspace.support_admin_launch'
+    impersonating['payload'].update(
+        {
+            'launch_mode': 'support_admin',
+            'principal_type': 'support_admin',
+            'actor_account_uuid': '33333333-3333-4333-8333-333333333333',
+            'effective_role': 'owner',
+        }
+    )
+    with pytest.raises(SpaceLaunchError, match='customer Account'):
+        await service.consume_assertion(_sign(private_key, impersonating), expected_workspace_uuid=WORKSPACE_UUID)
 
 
 async def test_replay_cache_does_not_scan_all_live_assertions(monkeypatch):

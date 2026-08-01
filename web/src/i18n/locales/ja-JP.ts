@@ -1636,6 +1636,11 @@ const jaJP = {
       operator: 'オペレーター',
       viewer: '閲覧者',
     },
+
+    settings: 'Workspace Settings',
+    currentPlan: 'Current plan',
+    planUnavailable: 'Unavailable',
+    upgradePlan: 'Change or upgrade plan',
   },
   monitoring: {
     title: 'ダッシュボード',
