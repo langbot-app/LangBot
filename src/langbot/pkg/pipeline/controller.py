@@ -132,9 +132,7 @@ class Controller:
 
                             break
 
-                    if selected_query:  # 找到了
-                        queries.remove(selected_query)
-                    else:  # 没找到 说明：没有请求 或者 所有query对应的session都已达到并发上限
+                    if not selected_query:  # 没找到 说明：没有请求 或者 所有query对应的session都已达到并发上限
                         await self.ap.query_pool.condition.wait()
                         continue
 
