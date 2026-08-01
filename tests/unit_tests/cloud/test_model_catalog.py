@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import UTC, datetime
 from types import SimpleNamespace
@@ -269,3 +270,94 @@ class _AsyncCounter:
 
     async def __call__(self) -> None:
         self.calls += 1
+
+
+async def test_partial_workspace_failure_reloads_already_committed_changes() -> None:
+    bindings = [
+        SimpleNamespace(workspace_uuid=WORKSPACE_A),
+        SimpleNamespace(workspace_uuid=WORKSPACE_B),
+    ]
+    reload_counter = _AsyncCounter()
+    app = SimpleNamespace(
+        workspace_service=SimpleNamespace(list_active_execution_bindings=lambda: _async_value(bindings)),
+        model_mgr=SimpleNamespace(load_models_from_db=reload_counter),
+        logger=logging.getLogger(__name__),
+    )
+    service = CloudModelCatalogSyncService(app, _CatalogProvider(_snapshot()), INSTANCE_UUID)
+    calls = 0
+
+    async def sync_workspace(*_args):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return {'created': 1, 'updated': 0, 'deleted': 0}
+        raise RuntimeError('second Workspace failed')
+
+    service._sync_workspace = sync_workspace  # type: ignore[method-assign]
+
+    with pytest.raises(RuntimeError, match='second Workspace failed'):
+        await service.sync_once()
+    assert reload_counter.calls == 1
+
+
+async def test_failed_runtime_reload_is_retried_after_noop_sync() -> None:
+    bindings = [SimpleNamespace(workspace_uuid=WORKSPACE_A)]
+
+    class _FlakyReload:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def __call__(self) -> None:
+            self.calls += 1
+            if self.calls == 1:
+                raise RuntimeError('reload failed')
+
+    runtime_reload = _FlakyReload()
+    app = SimpleNamespace(
+        workspace_service=SimpleNamespace(list_active_execution_bindings=lambda: _async_value(bindings)),
+        model_mgr=SimpleNamespace(load_models_from_db=runtime_reload),
+        logger=logging.getLogger(__name__),
+    )
+    service = CloudModelCatalogSyncService(app, _CatalogProvider(_snapshot()), INSTANCE_UUID)
+    calls = 0
+
+    async def sync_workspace(*_args):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return {'created': 1, 'updated': 0, 'deleted': 0}
+        return {'created': 0, 'updated': 0, 'deleted': 0}
+
+    service._sync_workspace = sync_workspace  # type: ignore[method-assign]
+
+    with pytest.raises(RuntimeError, match='reload failed'):
+        await service.sync_once()
+    summary = await service.sync_once()
+    assert summary == {'workspaces': 1, 'created': 0, 'updated': 0, 'deleted': 0}
+    assert runtime_reload.calls == 2
+
+
+async def test_background_sync_log_redacts_exception_message(caplog) -> None:
+    secret = 'owner-secret-api-key'
+    attempted = asyncio.Event()
+
+    class _FailingProvider:
+        async def fetch_model_catalog(self, instance_uuid: str) -> CloudModelCatalogSnapshot:
+            del instance_uuid
+            attempted.set()
+            raise RuntimeError(f'database parameters include {secret}')
+
+    app = SimpleNamespace(logger=logging.getLogger(__name__))
+    service = CloudModelCatalogSyncService(app, _FailingProvider(), INSTANCE_UUID)
+    service.sync_interval_seconds = 0.001
+    task = asyncio.create_task(service.run())
+    try:
+        await asyncio.wait_for(attempted.wait(), timeout=1)
+        await asyncio.sleep(0.01)
+    finally:
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    assert secret not in caplog.text
+    assert 'Cloud model catalog synchronization failed (RuntimeError)' in caplog.text

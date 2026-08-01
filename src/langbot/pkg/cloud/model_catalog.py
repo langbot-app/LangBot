@@ -140,6 +140,10 @@ class CloudModelCatalogSyncService:
         self.provider = provider
         self.instance_uuid = instance_uuid
         self.sync_interval_seconds = float(sync_interval_seconds)
+        # A tenant UoW commits one Workspace at a time. Keep a durable in-memory
+        # convergence marker so a failed runtime reload is retried even when the
+        # following database reconciliation is a no-op.
+        self._runtime_reload_pending = False
 
     async def initialize(self) -> None:
         await self.sync_once(reload_runtime=False)
@@ -152,37 +156,64 @@ class CloudModelCatalogSyncService:
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
-                self.ap.logger.warning(f'Cloud model catalog synchronization failed: {exc}')
+                # Exception messages can contain rendered SQL bound values,
+                # including provider API keys. Log only the exception class.
+                self.ap.logger.warning(f'Cloud model catalog synchronization failed ({type(exc).__name__})')
 
     async def sync_once(self, *, reload_runtime: bool = True) -> dict[str, int]:
-        snapshot = await self.provider.fetch_model_catalog(self.instance_uuid)
-        if snapshot.instance_uuid != self.instance_uuid:
-            raise ValueError('Cloud model catalog targets another LangBot instance')
-
-        bindings = await self.ap.workspace_service.list_active_execution_bindings()
-        billing_by_workspace = {item.workspace_uuid: item for item in snapshot.workspaces}
-        missing = sorted(
-            binding.workspace_uuid for binding in bindings if binding.workspace_uuid not in billing_by_workspace
-        )
-        if missing:
-            raise ValueError(f'Cloud model catalog is missing billing projections for {len(missing)} active Workspaces')
-
         summary = {'workspaces': 0, 'created': 0, 'updated': 0, 'deleted': 0}
-        changed = False
-        for binding in bindings:
-            counts = await self._sync_workspace(
-                binding.workspace_uuid,
-                snapshot,
-                billing_by_workspace[binding.workspace_uuid],
-            )
-            summary['workspaces'] += 1
-            for key in ('created', 'updated', 'deleted'):
-                summary[key] += counts[key]
-                changed = changed or counts[key] > 0
+        snapshot: CloudModelCatalogSnapshot | None = None
+        sync_error: Exception | None = None
+        reload_error: Exception | None = None
+        try:
+            snapshot = await self.provider.fetch_model_catalog(self.instance_uuid)
+            if snapshot.instance_uuid != self.instance_uuid:
+                raise ValueError('Cloud model catalog targets another LangBot instance')
 
-        if changed and reload_runtime and getattr(self.ap, 'model_mgr', None) is not None:
-            await self.ap.model_mgr.load_models_from_db()
-        if changed:
+            bindings = await self.ap.workspace_service.list_active_execution_bindings()
+            billing_by_workspace = {item.workspace_uuid: item for item in snapshot.workspaces}
+            missing = sorted(
+                binding.workspace_uuid for binding in bindings if binding.workspace_uuid not in billing_by_workspace
+            )
+            if missing:
+                raise ValueError(
+                    f'Cloud model catalog is missing billing projections for {len(missing)} active Workspaces'
+                )
+
+            for binding in bindings:
+                counts = await self._sync_workspace(
+                    binding.workspace_uuid,
+                    snapshot,
+                    billing_by_workspace[binding.workspace_uuid],
+                )
+                summary['workspaces'] += 1
+                workspace_changed = any(counts[key] > 0 for key in ('created', 'updated', 'deleted'))
+                if workspace_changed:
+                    # _sync_workspace returns only after its tenant UoW commits.
+                    self._runtime_reload_pending = True
+                for key in ('created', 'updated', 'deleted'):
+                    summary[key] += counts[key]
+        except Exception as exc:
+            sync_error = exc
+        finally:
+            model_mgr = getattr(self.ap, 'model_mgr', None)
+            if reload_runtime and self._runtime_reload_pending and model_mgr is not None:
+                try:
+                    await model_mgr.load_models_from_db()
+                except Exception as exc:
+                    reload_error = exc
+                else:
+                    self._runtime_reload_pending = False
+
+        if sync_error is not None:
+            if reload_error is not None:
+                raise sync_error from reload_error
+            raise sync_error
+        if reload_error is not None:
+            raise reload_error
+
+        changed = any(summary[key] > 0 for key in ('created', 'updated', 'deleted'))
+        if changed and snapshot is not None:
             self.ap.logger.info(
                 'Cloud model catalog synchronized '
                 f'({summary["workspaces"]} Workspaces, {len(snapshot.models)} models, '

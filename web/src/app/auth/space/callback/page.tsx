@@ -245,8 +245,7 @@ function SpaceOAuthCallbackContent() {
     const workspaceUuid =
       directLaunchFragmentRef.current.workspaceUuid ??
       searchParams.get('workspace_uuid');
-    const launchAssertion =
-      directLaunchFragmentRef.current.launchAssertion;
+    const launchAssertion = directLaunchFragmentRef.current.launchAssertion;
 
     if (error) {
       setStatus('error');
