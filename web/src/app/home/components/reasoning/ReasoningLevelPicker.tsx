@@ -7,7 +7,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import styles from './ReasoningLevelPicker.module.css';
+import { Slider } from '@/components/ui/slider';
 
 export const REASONING_LEVELS: ReasoningLevel[] = [
   'provider_default',
@@ -55,8 +55,6 @@ export default function ReasoningLevelPicker({
   const currentLabel = t(REASONING_LEVEL_LABEL_KEYS[safeValue]);
   const isExplicit = safeValue !== 'provider_default';
   const currentIndex = Math.max(0, safeLevels.indexOf(safeValue));
-  const denominator = Math.max(1, safeLevels.length - 1);
-  const progress = currentIndex / denominator;
 
   return (
     <Popover>
@@ -83,40 +81,16 @@ export default function ReasoningLevelPicker({
           <span>{currentLabel}</span>
           <ChevronRight className="size-3.5" />
         </div>
-        <div className={styles.control}>
-          <div className={styles.track} />
-          <div
-            className={styles.fill}
-            style={{
-              width: `calc(17px + (100% - 34px) * ${progress})`,
-            }}
-          />
-          {safeLevels.map((level, index) => {
-            const tickProgress = index / denominator;
-            return (
-              <span
-                key={level}
-                className={`${styles.tick} ${index <= currentIndex ? styles.tickActive : ''}`}
-                style={{
-                  left: `calc(17px + (100% - 34px) * ${tickProgress})`,
-                }}
-              />
-            );
-          })}
-          <input
-            className={styles.input}
-            type="range"
-            min={0}
-            max={Math.max(0, safeLevels.length - 1)}
-            step={1}
-            value={currentIndex}
-            aria-label={t('models.reasoningLevel')}
-            aria-valuetext={currentLabel}
-            onChange={(event) =>
-              onChange(safeLevels[Number(event.target.value)])
-            }
-          />
-        </div>
+        <Slider
+          className="mt-5"
+          min={0}
+          max={Math.max(0, safeLevels.length - 1)}
+          step={1}
+          value={[currentIndex]}
+          aria-label={t('models.reasoningLevel')}
+          aria-valuetext={currentLabel}
+          onValueChange={([index]) => onChange(safeLevels[index])}
+        />
       </PopoverContent>
     </Popover>
   );
