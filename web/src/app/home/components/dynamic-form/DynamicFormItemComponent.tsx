@@ -915,9 +915,7 @@ export default function DynamicFormItemComponent({
                       ).filter(
                         (entry): entry is [string, ReasoningLevel] =>
                           typeof entry[1] === 'string' &&
-                          REASONING_LEVELS.includes(
-                            entry[1] as ReasoningLevel,
-                          ),
+                          REASONING_LEVELS.includes(entry[1] as ReasoningLevel),
                       ),
                     ) as Record<string, ReasoningLevel>)
                   : {},
@@ -1108,15 +1106,16 @@ export default function DynamicFormItemComponent({
 
       const renderReasoningPicker = (modelUuid: string) => {
         if (!modelUuid) return null;
-        const model = llmModels.find((candidate) => candidate.uuid === modelUuid);
+        const model = llmModels.find(
+          (candidate) => candidate.uuid === modelUuid,
+        );
         const currentLevel =
           modelValue.reasoning[modelUuid] || 'provider_default';
         const availableLevels = model?.reasoning_capabilities?.levels || [
           'provider_default',
         ];
         const levels = REASONING_LEVELS.filter(
-          (level) =>
-            availableLevels.includes(level) || level === currentLevel,
+          (level) => availableLevels.includes(level) || level === currentLevel,
         );
 
         return (

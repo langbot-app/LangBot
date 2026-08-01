@@ -279,12 +279,9 @@ class LocalAgentRunner(runner.RequestRunner):
             else 'provider_default'
         )
         reasoning_config = modelmgr_reasoning.normalize_reasoning_config({'level': level})
-        return modelmgr_requester.RuntimeLLMModel(
-            execution_context=model.execution_context,
-            model_entity=model.model_entity,
-            provider=model.provider,
-            reasoning_config_override=reasoning_config,
-        )
+        configured_model = copy.copy(model)
+        configured_model.reasoning_config_override = reasoning_config
+        return configured_model
 
     async def _invoke_with_fallback(
         self,

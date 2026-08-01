@@ -377,6 +377,10 @@ async def test_local_agent_applies_reasoning_per_fallback_model():
         {'level': 'low'},
         {'level': 'high'},
     ]
+    assert candidates[0] is not primary
+    assert candidates[1] is not fallback
+    assert primary.reasoning_config_override is None
+    assert fallback.reasoning_config_override is None
 
 
 def test_local_agent_rejects_invalid_pipeline_reasoning_level():
