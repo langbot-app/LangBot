@@ -285,8 +285,17 @@ class UserRouterGroup(group.RouterGroup):
                 request_context.workspace_uuid,
             )
             owner = await self.ap.user_service.get_workspace_owner(access.workspace.uuid)
-            owner_space_bound = bool(owner and owner.space_account_uuid)
-            credits = await self.ap.space_service.get_credits(owner.user) if owner_space_bound else None
+            cloud_mode = getattr(getattr(self.ap, 'deployment', None), 'mode', 'oss') == 'cloud'
+            owner_has_local_space_credentials = bool(owner and owner.space_account_uuid)
+            # Cloud Accounts authenticate through LangBot Account, so every projected
+            # Workspace owner is already bound even when this Core has no local OAuth
+            # token row (model billing uses the owner's control-plane API key).
+            owner_space_bound = cloud_mode or owner_has_local_space_credentials
+            credits = (
+                await self.ap.space_service.get_credits(owner.user)
+                if owner is not None and owner.space_account_uuid
+                else None
+            )
             return self.success(
                 data={
                     'credits': credits,

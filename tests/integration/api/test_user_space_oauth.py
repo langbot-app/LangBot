@@ -272,14 +272,37 @@ async def test_space_credits_are_resolved_from_workspace_owner(space_oauth_api):
         '/api/v1/user/space-credits',
         headers={'Authorization': 'Bearer account-token', 'X-Workspace-Id': WORKSPACE_UUID},
     )
+    payload = await response.get_json()
 
     assert response.status_code == 200
-    assert (await response.get_json())['data'] == {
+    assert payload['data'] == {
         'credits': 25000,
         'owner_space_bound': True,
         'is_workspace_owner': True,
     }
     application.space_service.get_credits.assert_awaited_once_with('owner@example.com')
+
+
+@pytest.mark.asyncio
+async def test_cloud_workspace_owner_is_always_space_bound_after_login(space_oauth_api):
+    application, client = space_oauth_api
+    application.deployment.mode = 'cloud'
+    application.user_service.get_workspace_owner = AsyncMock(return_value=None)
+    application.space_service.get_credits = AsyncMock()
+
+    response = await client.get(
+        '/api/v1/user/space-credits',
+        headers={'Authorization': 'Bearer account-token', 'X-Workspace-Id': WORKSPACE_UUID},
+    )
+    payload = await response.get_json()
+
+    assert response.status_code == 200
+    assert payload['data'] == {
+        'credits': None,
+        'owner_space_bound': True,
+        'is_workspace_owner': True,
+    }
+    application.space_service.get_credits.assert_not_awaited()
 
 
 @pytest.mark.asyncio
