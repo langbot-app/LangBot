@@ -5,6 +5,7 @@ import {
   beginAuthenticatedSession,
   beginSupportAdminSession,
   bootstrapWorkspaceSession,
+  clearPendingInvitationToken,
   getPendingInvitationToken,
 } from '@/app/infra/http';
 import { toast } from 'sonner';
@@ -112,8 +113,31 @@ function SpaceOAuthCallbackContent() {
         }
 
         beginAuthenticatedSession(response.token, response.user);
-        if (getPendingInvitationToken()) {
-          navigate('/invitations/accept', { replace: true });
+        const invitationToken = getPendingInvitationToken();
+        if (invitationToken) {
+          let invitation;
+          try {
+            invitation =
+              await httpClient.acceptWorkspaceInvitation(invitationToken);
+          } catch (error) {
+            const code = (error as { code?: string }).code;
+            const path = code
+              ? `/invitations/accept?error=${encodeURIComponent(code)}`
+              : '/invitations/accept';
+            navigate(path, { replace: true });
+            return;
+          }
+
+          beginAuthenticatedSession(invitation.token, response.user);
+          clearPendingInvitationToken();
+          const workspaceResult = await bootstrapWorkspaceSession({
+            preferredWorkspaceUuid: invitation.workspace_uuid,
+          });
+          if (workspaceResult.status === 'unavailable') {
+            navigate('/workspace-unavailable', { replace: true });
+            return;
+          }
+          navigate('/home', { replace: true });
           return;
         }
         const workspaceResult = await bootstrapWorkspaceSession({

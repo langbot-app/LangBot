@@ -165,3 +165,87 @@ test('an authenticated OSS invitation requires logout before registration', asyn
     invitation: 'logout-invitation',
   });
 });
+
+test('Space OAuth accepts a pending invitation with the freshly authenticated account', async ({
+  page,
+}) => {
+  await installLangBotApiMocks(page, {
+    authenticated: false,
+    storage: {
+      token: 'stale-other-account-token',
+      userEmail: 'other@example.com',
+    },
+  });
+  await page.addInitScript(() => {
+    sessionStorage.setItem(
+      'langbot_pending_invitation_token',
+      'matching-invitation',
+    );
+  });
+
+  await page.route('**/api/v1/user/space/callback', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 0,
+        data: {
+          token: 'fresh-invited-account-token',
+          user: 'invited@example.com',
+        },
+        msg: 'ok',
+      }),
+    });
+  });
+  await page.route('**/api/v1/user/info', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 0,
+        data: {
+          account_uuid: 'invited-account',
+          user: 'invited@example.com',
+          account_type: 'space',
+          has_password: false,
+        },
+        msg: 'ok',
+      }),
+    });
+  });
+
+  let acceptanceAuthorization = '';
+  await page.route('**/api/v1/invitations/accept', async (route) => {
+    acceptanceAuthorization = route.request().headers().authorization ?? '';
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 0,
+        data: {
+          token: 'accepted-invited-account-token',
+          workspace_uuid: 'workspace-playwright',
+        },
+        msg: 'ok',
+      }),
+    });
+  });
+
+  await page.goto('/auth/space/callback?code=oauth-code&state=oauth-state');
+
+  await expect(page).toHaveURL(/\/home(?:\/monitoring)?$/, {
+    timeout: 5_000,
+  });
+  expect(acceptanceAuthorization).toBe('Bearer fresh-invited-account-token');
+  expect(
+    await page.evaluate(() => ({
+      token: localStorage.getItem('token'),
+      userEmail: localStorage.getItem('userEmail'),
+      invitation: sessionStorage.getItem('langbot_pending_invitation_token'),
+    })),
+  ).toEqual({
+    token: 'accepted-invited-account-token',
+    userEmail: 'invited@example.com',
+    invitation: null,
+  });
+});
