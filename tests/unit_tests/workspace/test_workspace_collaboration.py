@@ -203,20 +203,21 @@ async def test_last_owner_cannot_be_demoted(collaboration_context):
             second_membership,
         )
 
-    promoted = await service.update_member_role(
-        workspace.uuid,
-        second.uuid,
-        'owner',
-        owner_membership,
-    )
-    assert promoted.role == 'owner'
-    demoted = await service.update_member_role(
-        workspace.uuid,
-        owner_membership.account_uuid,
-        'admin',
-        owner_membership,
-    )
-    assert demoted.role == 'admin'
+    with pytest.raises(MembershipPermissionError, match='cannot be transferred'):
+        await service.update_member_role(
+            workspace.uuid,
+            second.uuid,
+            'owner',
+            owner_membership,
+        )
+
+    with pytest.raises(LastOwnerError):
+        await service.update_member_role(
+            workspace.uuid,
+            owner_membership.account_uuid,
+            'admin',
+            owner_membership,
+        )
 
 
 async def test_workspace_selector_requires_membership(collaboration_context):

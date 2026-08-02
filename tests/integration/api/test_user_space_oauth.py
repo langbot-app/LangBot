@@ -289,6 +289,9 @@ async def test_cloud_workspace_owner_is_always_space_bound_after_login(space_oau
     application.deployment.mode = 'cloud'
     application.user_service.get_workspace_owner = AsyncMock(return_value=None)
     application.space_service.get_credits = AsyncMock()
+    application.cloud_model_catalog_service = SimpleNamespace(
+        get_workspace_credits=lambda workspace_uuid: 25000 if workspace_uuid == WORKSPACE_UUID else None
+    )
 
     response = await client.get(
         '/api/v1/user/space-credits',
@@ -298,7 +301,7 @@ async def test_cloud_workspace_owner_is_always_space_bound_after_login(space_oau
 
     assert response.status_code == 200
     assert payload['data'] == {
-        'credits': None,
+        'credits': 25000,
         'owner_space_bound': True,
         'is_workspace_owner': True,
     }

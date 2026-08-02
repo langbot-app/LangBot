@@ -169,7 +169,6 @@ export function makeWorkspaceEntry(
       'member.remove',
       'member.update_role',
       'member.view',
-      'owner.transfer',
       'provider_secret.manage',
       'resource.manage',
       'resource.view',

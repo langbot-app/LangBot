@@ -73,11 +73,13 @@ def _snapshot(
                     'workspace_uuid': WORKSPACE_A,
                     'owner_account_uuid': OWNER_A,
                     'api_key': key_a,
+                    'credits': 25000,
                 },
                 {
                     'workspace_uuid': WORKSPACE_B,
                     'owner_account_uuid': OWNER_B,
                     'api_key': 'owner-b-key',
+                    'credits': 5000,
                 },
             ],
         }
@@ -160,6 +162,8 @@ async def test_catalog_reconciles_every_workspace_idempotently_and_tracks_owner_
         first = await service.sync_once()
         assert first == {'workspaces': 2, 'created': 6, 'updated': 0, 'deleted': 0}
         assert reload_counter.calls == 1
+        assert service.get_workspace_credits(WORKSPACE_A) == 25000
+        assert service.get_workspace_credits(WORKSPACE_B) == 5000
 
         async with engine.connect() as connection:
             providers = (
@@ -306,6 +310,8 @@ async def test_partial_workspace_failure_reloads_already_committed_changes() -> 
 
     with pytest.raises(RuntimeError, match='second Workspace failed'):
         await service.sync_once()
+    assert service.get_workspace_credits(WORKSPACE_A) == 25000
+    assert service.get_workspace_credits(WORKSPACE_B) is None
     assert reload_counter.calls == 1
 
 

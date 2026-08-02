@@ -53,6 +53,7 @@ class CloudWorkspaceModelBilling(BaseModel):
     workspace_uuid: str = Field(min_length=36, max_length=36)
     owner_account_uuid: str | None = Field(default=None, min_length=36, max_length=36)
     api_key: SecretStr | None = None
+    credits: int | None = None
 
     @field_validator('workspace_uuid')
     @classmethod
@@ -149,6 +150,11 @@ class CloudModelCatalogSyncService:
         # convergence marker so a failed runtime reload is retried even when the
         # following database reconciliation is a no-op.
         self._runtime_reload_pending = False
+        self._workspace_credits: dict[str, int | None] = {}
+
+    def get_workspace_credits(self, workspace_uuid: str) -> int | None:
+        """Return the latest signed owner-credit projection for a Workspace."""
+        return self._workspace_credits.get(str(uuid.UUID(workspace_uuid)))
 
     async def initialize(self) -> None:
         await self.sync_once(reload_runtime=False)
@@ -198,6 +204,7 @@ class CloudModelCatalogSyncService:
                     self._runtime_reload_pending = True
                 for key in ('created', 'updated', 'deleted'):
                     summary[key] += counts[key]
+                self._workspace_credits[binding.workspace_uuid] = billing_by_workspace[binding.workspace_uuid].credits
         except Exception as exc:
             sync_error = exc
         finally:

@@ -188,6 +188,7 @@ async def test_owner_invites_second_account_and_secret_is_not_persisted(workspac
     workspace_uuid = current['workspace']['uuid']
     assert current['membership']['role'] == 'owner'
     assert 'member.invite' in current['permissions']
+    assert 'owner.transfer' not in current['permissions']
 
     invite_response = await client.post(
         f'/api/v1/workspaces/{workspace_uuid}/invitations',
@@ -262,6 +263,14 @@ async def test_owner_invites_second_account_and_secret_is_not_persisted(workspac
     member_current = (await member_current_response.get_json())['data']
     assert member_current['membership']['role'] == 'viewer'
     assert 'member.invite' not in member_current['permissions']
+
+    transfer_response = await client.patch(
+        f'/api/v1/workspaces/{workspace_uuid}/members/{member_current["membership"]["account_uuid"]}',
+        headers=_auth(owner_token, workspace_uuid),
+        json={'role': 'owner'},
+    )
+    assert transfer_response.status_code == 403
+    assert (await transfer_response.get_json())['code'] == 'permission_denied'
 
     forbidden_invite = await client.post(
         f'/api/v1/workspaces/{workspace_uuid}/invitations',
