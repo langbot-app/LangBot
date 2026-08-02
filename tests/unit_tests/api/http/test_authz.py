@@ -27,10 +27,9 @@ def test_owner_has_every_fixed_permission():
     assert ctx.workspace.permissions == frozenset(permission.value for permission in authz.Permission)
 
 
-def test_admin_cannot_transfer_owner_delete_workspace_or_link_billing():
+def test_admin_cannot_delete_workspace_or_link_billing():
     ctx = _context(authz.WorkspaceRole.ADMIN)
 
-    assert not authz.has_permission(ctx, authz.Permission.OWNER_TRANSFER)
     assert not authz.has_permission(ctx, authz.Permission.WORKSPACE_DELETE)
     assert not authz.has_permission(ctx, authz.Permission.BILLING_LINK_MANAGE)
     assert authz.has_permission(ctx, authz.Permission.MEMBER_INVITE)

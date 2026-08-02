@@ -62,7 +62,6 @@ class AuthType(enum.Enum):
 
 _SUPPORT_ADMIN_DENIED_PERMISSIONS = frozenset(
     {
-        Permission.OWNER_TRANSFER.value,
         Permission.MEMBER_VIEW.value,
         Permission.MEMBER_INVITE.value,
         Permission.MEMBER_UPDATE_ROLE.value,

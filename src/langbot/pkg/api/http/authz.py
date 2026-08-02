@@ -19,7 +19,6 @@ class Permission(enum.StrEnum):
     WORKSPACE_VIEW = 'workspace.view'
     WORKSPACE_UPDATE = 'workspace.update'
     WORKSPACE_DELETE = 'workspace.delete'
-    OWNER_TRANSFER = 'owner.transfer'
     MEMBER_VIEW = 'member.view'
     MEMBER_INVITE = 'member.invite'
     MEMBER_UPDATE_ROLE = 'member.update_role'
@@ -49,7 +48,6 @@ _ROLE_PERMISSIONS: typing.Final = types.MappingProxyType(
             if permission
             not in {
                 Permission.WORKSPACE_DELETE,
-                Permission.OWNER_TRANSFER,
                 Permission.BILLING_LINK_MANAGE,
             }
         ),

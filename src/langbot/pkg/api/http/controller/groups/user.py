@@ -291,11 +291,19 @@ class UserRouterGroup(group.RouterGroup):
             # Workspace owner is already bound even when this Core has no local OAuth
             # token row (model billing uses the owner's control-plane API key).
             owner_space_bound = cloud_mode or owner_has_local_space_credentials
-            credits = (
-                await self.ap.space_service.get_credits(owner.user)
-                if owner is not None and owner.space_account_uuid
-                else None
-            )
+            if cloud_mode:
+                catalog_service = getattr(self.ap, 'cloud_model_catalog_service', None)
+                credits = (
+                    catalog_service.get_workspace_credits(access.workspace.uuid)
+                    if catalog_service is not None
+                    else None
+                )
+            else:
+                credits = (
+                    await self.ap.space_service.get_credits(owner.user)
+                    if owner is not None and owner.space_account_uuid
+                    else None
+                )
             return self.success(
                 data={
                     'credits': credits,
