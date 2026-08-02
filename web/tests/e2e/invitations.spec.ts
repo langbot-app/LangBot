@@ -166,6 +166,83 @@ test('an authenticated OSS invitation requires logout before registration', asyn
   });
 });
 
+test('an authenticated Cloud Account can accept its invitation directly', async ({
+  page,
+}) => {
+  await installLangBotApiMocks(page, {
+    authenticated: true,
+    storage: {
+      token: 'invited-account-token',
+      userEmail: 'invited@example.com',
+    },
+  });
+  await page.route('**/api/v1/user/account-info', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 0,
+        data: {
+          initialized: true,
+          authenticated_invitation_acceptance_enabled: true,
+          password_login_enabled: false,
+          space_login_enabled: true,
+        },
+        msg: 'ok',
+      }),
+    });
+  });
+  await page.route('**/api/v1/invitations/inspect', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 0,
+        data: {
+          invitation: {
+            uuid: 'cloud-invitation',
+            workspace_uuid: 'workspace-playwright',
+            normalized_email: 'invited@example.com',
+            role: 'viewer',
+            status: 'pending',
+          },
+          workspace: {
+            uuid: 'workspace-playwright',
+            name: 'Playwright Workspace',
+          },
+        },
+        msg: 'ok',
+      }),
+    });
+  });
+
+  let acceptanceAuthorization = '';
+  await page.route('**/api/v1/invitations/accept', async (route) => {
+    acceptanceAuthorization = route.request().headers().authorization ?? '';
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 0,
+        data: {
+          token: 'accepted-cloud-account-token',
+          workspace_uuid: 'workspace-playwright',
+        },
+        msg: 'ok',
+      }),
+    });
+  });
+
+  await page.goto('/invitations/accept#token=cloud-invitation');
+
+  await expect(
+    page.getByRole('button', { name: 'Accept Invitation' }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Accept Invitation' }).click();
+  await expect(page).toHaveURL(/\/home(?:\/monitoring)?$/);
+  expect(acceptanceAuthorization).toBe('Bearer invited-account-token');
+});
+
 test('Space OAuth accepts a pending invitation with the freshly authenticated account', async ({
   page,
 }) => {

@@ -9,6 +9,8 @@ Run: uv run pytest tests/integration/api/test_smoke.py -q
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 from unittest.mock import MagicMock, AsyncMock, Mock
 
@@ -304,11 +306,33 @@ class TestUserInitEndpoint:
         data = await response.get_json()
         assert data['data'] == {
             'initialized': True,
+            'authenticated_invitation_acceptance_enabled': False,
             'password_login_enabled': True,
             'space_login_enabled': False,
         }
         fake_api_app.user_service.get_login_capabilities.assert_awaited_once_with()
         fake_api_app.user_service.get_first_user.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_account_info_enables_authenticated_invitation_acceptance_in_cloud(
+        self, quart_test_client, fake_api_app
+    ):
+        fake_api_app.deployment = SimpleNamespace(mode='cloud')
+        fake_api_app.user_service.is_initialized.return_value = True
+        fake_api_app.user_service.get_login_capabilities = AsyncMock(
+            return_value={'password_login_enabled': True, 'space_login_enabled': True}
+        )
+
+        response = await quart_test_client.get('/api/v1/user/account-info')
+
+        assert response.status_code == 200
+        data = await response.get_json()
+        assert data['data'] == {
+            'initialized': True,
+            'authenticated_invitation_acceptance_enabled': True,
+            'password_login_enabled': False,
+            'space_login_enabled': True,
+        }
 
     @pytest.mark.asyncio
     async def test_recovery_key_resets_any_existing_account(self, quart_test_client, fake_api_app, monkeypatch):

@@ -311,8 +311,10 @@ class UserRouterGroup(group.RouterGroup):
                 return self.success(data={'initialized': False})
 
             capabilities = await self.ap.user_service.get_login_capabilities()
-            if getattr(getattr(self.ap, 'deployment', None), 'mode', 'oss') == 'cloud':
+            cloud_mode = getattr(getattr(self.ap, 'deployment', None), 'mode', 'oss') == 'cloud'
+            if cloud_mode:
                 capabilities['password_login_enabled'] = False
+            capabilities['authenticated_invitation_acceptance_enabled'] = cloud_mode
             return self.success(data={'initialized': True, **capabilities})
 
         @self.route('/set-password', methods=['POST'], auth_type=group.AuthType.USER_TOKEN)
