@@ -58,13 +58,15 @@ def upgrade() -> None:
             """
         )
     )
-    op.create_index(
-        _INDEX_NAME,
-        'workspace_memberships',
-        ['workspace_uuid'],
-        unique=True,
-        sqlite_where=sa.text("role = 'owner' AND status = 'active'"),
-        postgresql_where=sa.text("role = 'owner' AND status = 'active'"),
+    # Fresh installations may already have this index because SQLAlchemy
+    # metadata is created before Alembic advances the revision marker.
+    op.execute(
+        sa.text(
+            'CREATE UNIQUE INDEX IF NOT EXISTS '
+            'uq_workspace_memberships_one_active_owner '
+            'ON workspace_memberships (workspace_uuid) '
+            "WHERE role = 'owner' AND status = 'active'"
+        )
     )
 
 

@@ -105,7 +105,7 @@ class TestSQLiteMigrationUpgrade:
         await run_alembic_upgrade(sqlite_engine, 'head')
 
         assert await get_alembic_current(sqlite_engine) == _get_script_head()
-        assert _get_script_head() == '0018_merge_launch_replay'
+        assert _get_script_head() == '0019_single_workspace_owner'
 
     @pytest.mark.asyncio
     async def test_upgrade_from_baseline_to_head(self, sqlite_engine):
