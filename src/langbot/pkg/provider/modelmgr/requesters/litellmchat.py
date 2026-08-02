@@ -466,6 +466,8 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
 
         provider = self._reasoning_provider(model.model_entity.name)
         if level == 'disabled':
+            if provider == 'deepseek':
+                return {'extra_body': {'thinking': {'type': 'disabled'}}}
             if provider == 'volcengine':
                 return {'thinking': {'type': 'disabled'}}
             return {'reasoning_effort': 'none'}
@@ -844,7 +846,15 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                 raise errors.RequesterError(
                     'reasoning_config conflicts with advanced parameters: ' + ', '.join(dict.fromkeys(conflicts))
                 )
-            args.update(reasoning_args)
+            reasoning_extra_body = reasoning_args.get('extra_body')
+            if isinstance(reasoning_extra_body, dict):
+                existing_extra_body = args.get('extra_body') or {}
+                if not isinstance(existing_extra_body, dict):
+                    raise errors.RequesterError('extra_body must be an object')
+                args.update({key: value for key, value in reasoning_args.items() if key != 'extra_body'})
+                args['extra_body'] = {**existing_extra_body, **reasoning_extra_body}
+            else:
+                args.update(reasoning_args)
             if 'reasoning_effort' in reasoning_args and self._reasoning_provider(model.model_entity.name) == 'openai':
                 allowed_openai_params = args.get('allowed_openai_params') or []
                 if not isinstance(allowed_openai_params, (list, tuple, set)):

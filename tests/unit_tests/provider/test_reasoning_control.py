@@ -193,6 +193,9 @@ def test_reasoning_argument_translation(monkeypatch):
     assert deepseek_request._build_reasoning_args(
         _runtime_model(deepseek_request, 'enabled', name='deepseek-chat')
     ) == {'thinking': {'type': 'enabled'}}
+    assert deepseek_request._build_reasoning_args(
+        _runtime_model(deepseek_request, 'disabled', name='deepseek-chat')
+    ) == {'extra_body': {'thinking': {'type': 'disabled'}}}
 
 
 def test_pipeline_reasoning_override_takes_precedence(monkeypatch):
@@ -330,6 +333,22 @@ async def test_provider_default_does_not_allow_or_send_reasoning_effort():
 
     assert 'reasoning_effort' not in args
     assert 'allowed_openai_params' not in args
+
+
+@pytest.mark.asyncio
+async def test_deepseek_disabled_thinking_is_merged_into_extra_body(monkeypatch):
+    request = _requester('deepseek')
+    monkeypatch.setattr(request, '_supports_reasoning', lambda _: False)
+    model = _runtime_model(request, 'disabled', name='deepseek-chat')
+    model.model_entity.extra_args = {'extra_body': {'custom_extension': True}}
+    model.provider.token_mgr.get_token = lambda: 'test-token'
+
+    args = await request._build_completion_args(model, [])
+
+    assert args['extra_body'] == {
+        'custom_extension': True,
+        'thinking': {'type': 'disabled'},
+    }
 
 
 class _Dumpable:

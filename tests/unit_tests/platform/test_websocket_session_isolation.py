@@ -1,12 +1,15 @@
 """Regression tests for isolated embed-widget conversations."""
 
 import asyncio
+import contextvars
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
 
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
+import langbot_plugin.api.entities.builtin.platform.message as platform_message
 from langbot.pkg.platform.sources import websocket_adapter as websocket_adapter_module
 from langbot.pkg.platform.sources.websocket_adapter import WebSocketAdapter, WebSocketMessage, WebSocketSession
 from langbot.pkg.platform.sources.websocket_manager import (
@@ -205,6 +208,48 @@ async def test_embed_event_uses_stable_session_launcher(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_pipeline_override_is_set_inside_detached_listener_task(monkeypatch):
+    manager = WebSocketConnectionManager()
+    connection = await manager.add_connection(
+        websocket=Mock(),
+        scope=SCOPE_A,
+        pipeline_uuid='pipeline-1',
+        session_type='person',
+    )
+    monkeypatch.setattr(websocket_adapter_module, 'ws_connection_manager', manager)
+
+    class DetachedTaskManager:
+        def __init__(self):
+            self.tasks = []
+
+        def create_task(self, coro, **_kwargs):
+            task = asyncio.get_running_loop().create_task(coro, context=contextvars.Context())
+            self.tasks.append(task)
+            return SimpleNamespace(task=task)
+
+    task_manager = DetachedTaskManager()
+    adapter = WebSocketAdapter.model_construct(
+        ap=SimpleNamespace(task_mgr=task_manager),
+        logger=_adapter_logger(),
+    )
+    adapter.websocket_person_session = WebSocketSession(id='person')
+    adapter.websocket_group_session = WebSocketSession(id='group')
+    received_pipeline_uuids = []
+
+    async def listener(_event, callback_adapter):
+        received_pipeline_uuids.append(callback_adapter.get_pipeline_uuid_override())
+
+    adapter.listeners = {platform_events.FriendMessage: listener}
+    await adapter.handle_websocket_message(
+        connection,
+        {'message': [{'type': 'Plain', 'text': 'hello'}], 'stream': False},
+    )
+    await asyncio.gather(*task_manager.tasks)
+
+    assert received_pipeline_uuids == ['pipeline-1']
+
+
+@pytest.mark.asyncio
 async def test_embed_group_event_uses_stable_session_launcher(monkeypatch):
     manager = WebSocketConnectionManager()
     session_id = '31c0f2e9-b115-4ee6-8f15-3e624d6456b1'
@@ -298,6 +343,49 @@ async def test_stable_session_launcher_resolves_to_active_connection(monkeypatch
         )
         is None
     )
+
+
+@pytest.mark.asyncio
+async def test_dashboard_reply_survives_connection_replacement(monkeypatch):
+    manager = WebSocketConnectionManager()
+    original = await manager.add_connection(
+        websocket=Mock(),
+        scope=SCOPE_A,
+        pipeline_uuid='pipeline-1',
+        session_type='person',
+    )
+    monkeypatch.setattr(websocket_adapter_module, 'ws_connection_manager', manager)
+
+    adapter = WebSocketAdapter.model_construct(ap=Mock(), logger=_adapter_logger())
+    adapter.websocket_person_session = WebSocketSession(id='person')
+    adapter.websocket_group_session = WebSocketSession(id='group')
+    received = []
+
+    async def listener(event, _callback_adapter):
+        received.append(event)
+
+    adapter.listeners = {platform_events.FriendMessage: listener}
+    await adapter.handle_websocket_message(
+        original,
+        {'message': [{'type': 'Plain', 'text': 'hello'}], 'stream': False},
+    )
+    await asyncio.sleep(0)
+    await manager.remove_connection(original.connection_id)
+    replacement = await manager.add_connection(
+        websocket=Mock(),
+        scope=SCOPE_A,
+        pipeline_uuid='pipeline-1',
+        session_type='person',
+    )
+
+    await adapter.reply_message(
+        received[0],
+        platform_message.MessageChain([platform_message.Plain(text='done')]),
+    )
+
+    response = await replacement.send_queue.get()
+    assert response['type'] == 'response'
+    assert response['data']['content'] == 'done'
 
 
 def test_session_ids_must_be_canonical_random_uuids():

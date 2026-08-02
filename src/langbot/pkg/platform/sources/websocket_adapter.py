@@ -5,6 +5,7 @@ import contextvars
 import logging
 import time
 import typing
+from dataclasses import dataclass
 from datetime import datetime
 
 import pydantic
@@ -23,6 +24,15 @@ _current_pipeline_uuid: contextvars.ContextVar[str | None] = contextvars.Context
     'websocket_pipeline_uuid',
     default=None,
 )
+
+
+@dataclass(frozen=True)
+class WebSocketReplyContext:
+    """Trusted routing context retained when the originating socket reconnects."""
+
+    scope: WebSocketScope
+    pipeline_uuid: str
+    session_id: str | None
 
 
 class WebSocketMessage(pydantic.BaseModel):
@@ -265,6 +275,11 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
         embed_target = self._parse_embed_target(sender_id)
         if embed_target is not None:
             return embed_target
+        reply_context = getattr(message_source, '_websocket_reply_context', None)
+        if isinstance(reply_context, WebSocketReplyContext):
+            if reply_context.scope != self._scope():
+                raise ValueError('WebSocket reply context does not match this adapter scope')
+            return reply_context.pipeline_uuid, reply_context.session_id
         raise ValueError('WebSocket reply target is not bound to this adapter scope')
 
     async def send_message(
@@ -685,6 +700,16 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
 
         # 异步触发事件处理
         # Use owner_bot's listeners if available, otherwise fall back to proxy bot
+        object.__setattr__(
+            event,
+            '_websocket_reply_context',
+            WebSocketReplyContext(
+                scope=connection.scope,
+                pipeline_uuid=pipeline_uuid,
+                session_id=connection.session_id,
+            ),
+        )
+
         listeners = (
             owner_bot.adapter.listeners
             if (owner_bot and hasattr(owner_bot.adapter, 'listeners') and owner_bot.adapter.listeners)
@@ -707,28 +732,31 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
             if len(listener_tasks) >= 100:
                 await self.logger.warning('WebSocket inbound listener capacity reached; dropping message')
                 return
-            token = _current_pipeline_uuid.set(pipeline_uuid)
-            try:
-                task_manager = getattr(self.ap, 'task_mgr', None)
-                if task_manager is None or not isinstance(getattr(task_manager, 'tasks', None), list):
-                    listener_task = asyncio.create_task(listeners[event.__class__](event, callback_adapter))
-                else:
-                    listener_task = task_manager.create_task(
-                        listeners[event.__class__](event, callback_adapter),
-                        kind='websocket-message',
-                        name=f'websocket-message-{connection.connection_id}',
-                        scopes=[
-                            core_entities.LifecycleControlScope.APPLICATION,
-                            core_entities.LifecycleControlScope.PLATFORM,
-                        ],
-                        instance_uuid=connection.instance_uuid,
-                        workspace_uuid=connection.workspace_uuid,
-                        placement_generation=connection.placement_generation,
-                    ).task
-                listener_tasks.add(listener_task)
-                listener_task.add_done_callback(self._listener_task_done)
-            finally:
-                _current_pipeline_uuid.reset(token)
+            async def run_listener() -> None:
+                token = _current_pipeline_uuid.set(pipeline_uuid)
+                try:
+                    await listeners[event.__class__](event, callback_adapter)
+                finally:
+                    _current_pipeline_uuid.reset(token)
+
+            task_manager = getattr(self.ap, 'task_mgr', None)
+            if task_manager is None or not isinstance(getattr(task_manager, 'tasks', None), list):
+                listener_task = asyncio.create_task(run_listener())
+            else:
+                listener_task = task_manager.create_task(
+                    run_listener(),
+                    kind='websocket-message',
+                    name=f'websocket-message-{connection.connection_id}',
+                    scopes=[
+                        core_entities.LifecycleControlScope.APPLICATION,
+                        core_entities.LifecycleControlScope.PLATFORM,
+                    ],
+                    instance_uuid=connection.instance_uuid,
+                    workspace_uuid=connection.workspace_uuid,
+                    placement_generation=connection.placement_generation,
+                ).task
+            listener_tasks.add(listener_task)
+            listener_task.add_done_callback(self._listener_task_done)
 
     def get_websocket_messages(
         self,
