@@ -128,6 +128,9 @@ _Note: Public demo environment. Do not enter sensitive information._
 | Provider                                                                                                          | Type         | Status |
 | ----------------------------------------------------------------------------------------------------------------- | ------------ | ------ |
 | [OpenAI](https://platform.openai.com/)                                                                            | LLM          | ✅     |
+
+> **Tip:** LangBot also works with OpenAI-compatible multi-model gateways via a custom provider `base_url` (requester `new-api-chat-completions`) — for example [DaoXE](https://daoxe.com) at `https://api.daoxe.com/v1`.
+
 | [Anthropic](https://www.anthropic.com/)                                                                           | LLM          | ✅     |
 | [DeepSeek](https://www.deepseek.com/)                                                                             | LLM          | ✅     |
 | [Google Gemini](https://aistudio.google.com/prompts/new_chat)                                                     | LLM          | ✅     |
