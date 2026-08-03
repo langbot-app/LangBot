@@ -506,7 +506,8 @@ function AddExtensionContent() {
         return false;
       }
     } catch {
-      // If we can't check, let backend handle it
+      toast.error(t('limitation.quotaCheckFailed'));
+      return false;
     }
     return true;
   }
@@ -646,9 +647,11 @@ function AddExtensionContent() {
 
   async function handleGithubConfirm() {
     if (!selectedAsset || !selectedRelease) return;
-    if (!(await checkExtensionsLimit())) return;
-
     setGithubInstallStatus(GithubInstallStatus.INSTALLING);
+    if (!(await checkExtensionsLimit())) {
+      setGithubInstallStatus(GithubInstallStatus.ASK_CONFIRM);
+      return;
+    }
     const pluginDisplayName = `${githubOwner}/${githubRepo}`;
     httpClient
       .installPluginFromGithub(
@@ -680,9 +683,11 @@ function AddExtensionContent() {
 
   async function handleGithubSkillConfirm() {
     if (!githubSkillInfo) return;
-    if (!(await checkExtensionsLimit())) return;
-
     setGithubInstallStatus(GithubInstallStatus.SKILL_INSTALLING);
+    if (!(await checkExtensionsLimit())) {
+      setGithubInstallStatus(GithubInstallStatus.SKILL_PREVIEW);
+      return;
+    }
     try {
       await httpClient.installSkillFromGithub(
         githubURL.trim(),

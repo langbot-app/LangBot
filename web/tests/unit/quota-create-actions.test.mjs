@@ -25,6 +25,10 @@ const marketCardPath = path.join(
   root,
   'src/app/home/plugins/components/plugin-market/plugin-market-card/PluginMarketCardComponent.tsx',
 );
+const recommendationPath = path.join(
+  root,
+  'src/app/home/plugins/components/plugin-market/RecommendationLists.tsx',
+);
 const zhPath = path.join(root, 'src/i18n/locales/zh-Hans.ts');
 
 test('workspace quota hook exposes reached states for every creatable resource', () => {
@@ -66,6 +70,7 @@ test('add-extension page disables all install entry points at the quota', () => 
   const page = fs.readFileSync(addExtensionPath, 'utf8');
   const market = fs.readFileSync(marketPath, 'utf8');
   const card = fs.readFileSync(marketCardPath, 'utf8');
+  const recommendations = fs.readFileSync(recommendationPath, 'utf8');
 
   assert.match(page, /extensionsReached/);
   assert.match(page, /installDisabled=\{extensionsReached\}/);
@@ -75,7 +80,27 @@ test('add-extension page disables all install entry points at the quota', () => 
   assert.match(card, /installDisabled/);
   assert.match(card, /disabled=\{installDisabled\}/);
   assert.match(card, /TooltipContent/);
+  assert.match(recommendations, /installDisabled=\{installDisabled\}/);
+  assert.match(
+    recommendations,
+    /installDisabledTooltip=\{installDisabledTooltip\}/,
+  );
   assert.match(page, /quota=\{extensionQuota\}/);
+});
+
+test('extension confirmation checks fail closed and enter an in-flight state first', () => {
+  const page = fs.readFileSync(addExtensionPath, 'utf8');
+
+  assert.match(page, /limitation\.quotaCheckFailed/);
+  assert.doesNotMatch(page, /If we can't check, let backend handle it/);
+  assert.match(
+    page,
+    /setGithubInstallStatus\(GithubInstallStatus\.INSTALLING\);\s+if \(!\(await checkExtensionsLimit\(\)\)\)/,
+  );
+  assert.match(
+    page,
+    /setGithubInstallStatus\(GithubInstallStatus\.SKILL_INSTALLING\);\s+if \(!\(await checkExtensionsLimit\(\)\)\)/,
+  );
 });
 
 test('quota tooltip copy is localized in Simplified Chinese', () => {

@@ -851,6 +851,8 @@ function MarketPageContent({
               lists={recommendationLists}
               tagNames={tagNames}
               onInstall={handleInstallPlugin}
+              installDisabled={installDisabled}
+              installDisabledTooltip={installDisabledTooltip}
             />
           )}
 

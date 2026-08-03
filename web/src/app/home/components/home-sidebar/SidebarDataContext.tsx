@@ -93,7 +93,23 @@ export function SidebarDataProvider({
     mcpServers: 0,
     skills: 0,
   });
-  const quotaLoadFailed = useRef(false);
+  const quotaResourceLoaded = useRef({
+    bots: false,
+    pipelines: false,
+    knowledgeBases: false,
+    plugins: false,
+    mcpServers: false,
+    skills: false,
+  });
+  const setQuotaResourceLoaded = useCallback(
+    (resource: keyof typeof quotaResourceLoaded.current, loaded: boolean) => {
+      quotaResourceLoaded.current[resource] = loaded;
+      setQuotaDataLoaded(
+        Object.values(quotaResourceLoaded.current).every(Boolean),
+      );
+    },
+    [],
+  );
   const [detailEntityName, setDetailEntityName] = useState<string | null>(null);
   const [extensionsGroupByType, setExtensionsGroupByTypeState] =
     useState<boolean>(() => {
@@ -114,6 +130,7 @@ export function SidebarDataProvider({
     try {
       const resp = await httpClient.getBots();
       if (requestId !== refreshRequestIds.current.bots) return;
+      setQuotaResourceLoaded('bots', true);
       setBots(
         resp.bots.map((bot) => ({
           id: bot.uuid || '',
@@ -125,17 +142,18 @@ export function SidebarDataProvider({
         })),
       );
     } catch (error) {
-      quotaLoadFailed.current = true;
-      setQuotaDataLoaded(false);
+      if (requestId !== refreshRequestIds.current.bots) return;
+      setQuotaResourceLoaded('bots', false);
       console.error('Failed to fetch bots for sidebar:', error);
     }
-  }, []);
+  }, [setQuotaResourceLoaded]);
 
   const refreshPipelines = useCallback(async () => {
     const requestId = ++refreshRequestIds.current.pipelines;
     try {
       const resp = await httpClient.getPipelines();
       if (requestId !== refreshRequestIds.current.pipelines) return;
+      setQuotaResourceLoaded('pipelines', true);
       setPipelines(
         resp.pipelines.map((p) => ({
           id: p.uuid || '',
@@ -146,17 +164,18 @@ export function SidebarDataProvider({
         })),
       );
     } catch (error) {
-      quotaLoadFailed.current = true;
-      setQuotaDataLoaded(false);
+      if (requestId !== refreshRequestIds.current.pipelines) return;
+      setQuotaResourceLoaded('pipelines', false);
       console.error('Failed to fetch pipelines for sidebar:', error);
     }
-  }, []);
+  }, [setQuotaResourceLoaded]);
 
   const refreshKnowledgeBases = useCallback(async () => {
     const requestId = ++refreshRequestIds.current.knowledgeBases;
     try {
       const resp = await httpClient.getKnowledgeBases();
       if (requestId !== refreshRequestIds.current.knowledgeBases) return;
+      setQuotaResourceLoaded('knowledgeBases', true);
       setKnowledgeBases(
         resp.bases.map((kb) => ({
           id: kb.uuid || '',
@@ -167,11 +186,11 @@ export function SidebarDataProvider({
         })),
       );
     } catch (error) {
-      quotaLoadFailed.current = true;
-      setQuotaDataLoaded(false);
+      if (requestId !== refreshRequestIds.current.knowledgeBases) return;
+      setQuotaResourceLoaded('knowledgeBases', false);
       console.error('Failed to fetch knowledge bases for sidebar:', error);
     }
-  }, []);
+  }, [setQuotaResourceLoaded]);
 
   const refreshPlugins = useCallback(async () => {
     const requestId = ++refreshRequestIds.current.plugins;
@@ -183,6 +202,7 @@ export function SidebarDataProvider({
           .catch(() => ({ plugins: [] })),
       ]);
       if (requestId !== refreshRequestIds.current.plugins) return;
+      setQuotaResourceLoaded('plugins', true);
       setPluginCount(pluginsResp.plugins?.length ?? 0);
 
       // Build marketplace version lookup: "author/name" -> latest_version
@@ -270,17 +290,18 @@ export function SidebarDataProvider({
       }
       setPluginPages(pages);
     } catch (error) {
-      quotaLoadFailed.current = true;
-      setQuotaDataLoaded(false);
+      if (requestId !== refreshRequestIds.current.plugins) return;
+      setQuotaResourceLoaded('plugins', false);
       console.error('Failed to fetch plugins for sidebar:', error);
     }
-  }, []);
+  }, [setQuotaResourceLoaded]);
 
   const refreshMCPServers = useCallback(async () => {
     const requestId = ++refreshRequestIds.current.mcpServers;
     try {
       const resp = await httpClient.getMCPServers();
       if (requestId !== refreshRequestIds.current.mcpServers) return;
+      setQuotaResourceLoaded('mcpServers', true);
       setMCPServers(
         resp.servers.map((server) => ({
           id: server.name, // Keep __ for API calls
@@ -290,17 +311,18 @@ export function SidebarDataProvider({
         })),
       );
     } catch (error) {
-      quotaLoadFailed.current = true;
-      setQuotaDataLoaded(false);
+      if (requestId !== refreshRequestIds.current.mcpServers) return;
+      setQuotaResourceLoaded('mcpServers', false);
       console.error('Failed to fetch MCP servers for sidebar:', error);
     }
-  }, []);
+  }, [setQuotaResourceLoaded]);
 
   const refreshSkills = useCallback(async () => {
     const requestId = ++refreshRequestIds.current.skills;
     try {
       const resp = await httpClient.getSkills();
       if (requestId !== refreshRequestIds.current.skills) return;
+      setQuotaResourceLoaded('skills', true);
       setSkills(
         resp.skills.map((skill) => ({
           id: skill.name,
@@ -310,14 +332,21 @@ export function SidebarDataProvider({
         })),
       );
     } catch (error) {
-      quotaLoadFailed.current = true;
-      setQuotaDataLoaded(false);
+      if (requestId !== refreshRequestIds.current.skills) return;
+      setQuotaResourceLoaded('skills', false);
       console.error('Failed to fetch skills for sidebar:', error);
     }
-  }, []);
+  }, [setQuotaResourceLoaded]);
 
   const refreshAll = useCallback(async () => {
-    quotaLoadFailed.current = false;
+    quotaResourceLoaded.current = {
+      bots: false,
+      pipelines: false,
+      knowledgeBases: false,
+      plugins: false,
+      mcpServers: false,
+      skills: false,
+    };
     setQuotaDataLoaded(false);
     await Promise.all([
       refreshBots(),
@@ -327,7 +356,6 @@ export function SidebarDataProvider({
       refreshMCPServers(),
       refreshSkills(),
     ]);
-    setQuotaDataLoaded(!quotaLoadFailed.current);
   }, [
     refreshBots,
     refreshPipelines,
