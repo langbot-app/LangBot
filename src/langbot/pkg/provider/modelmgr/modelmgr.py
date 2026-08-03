@@ -718,7 +718,10 @@ class ModelManager:
         provider_entity = self._coerce_provider(provider_info, context)
         requester_manifest = self.get_available_requester_manifest_by_name(provider_entity.requester)
         litellm_provider = self._get_litellm_provider_from_manifest(requester_manifest)
-        config = {'base_url': provider_entity.base_url}
+        config = {
+            'base_url': provider_entity.base_url,
+            'requester_name': provider_entity.requester,
+        }
 
         if litellm_provider:
             from .requesters import litellmchat

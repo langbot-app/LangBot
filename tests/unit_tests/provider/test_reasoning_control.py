@@ -19,6 +19,7 @@ def _runtime_model(
     level: str = 'provider_default',
     name: str = 'reasoning-model',
     abilities: list[str] | None = None,
+    requester_name: str | None = None,
 ) -> requester.RuntimeLLMModel:
     execution_context = ExecutionContext(
         instance_uuid='instance-test',
@@ -40,7 +41,7 @@ def _runtime_model(
             workspace_uuid='workspace-test',
             uuid='provider-test',
             name='provider',
-            requester='openai',
+            requester=requester_name or request.requester_cfg.get('requester_name') or 'custom-requester',
             base_url='https://example.com',
             api_keys=[],
         ),
@@ -50,8 +51,14 @@ def _runtime_model(
     return requester.RuntimeLLMModel(execution_context, entity, provider)
 
 
-def _requester(provider: str = '') -> LiteLLMRequester:
-    return LiteLLMRequester(SimpleNamespace(), {'custom_llm_provider': provider})
+def _requester(provider: str = '', requester_name: str = '') -> LiteLLMRequester:
+    return LiteLLMRequester(
+        SimpleNamespace(),
+        {
+            'custom_llm_provider': provider,
+            'requester_name': requester_name,
+        },
+    )
 
 
 def test_reasoning_config_normalization_and_conflicts():
@@ -73,44 +80,33 @@ def test_reasoning_config_normalization_and_conflicts():
             ['reasoning'],
             {'extra_body': {'thinking_budget': 1024}},
         )
+    assert reasoning.find_reasoning_arg_conflicts(
+        {
+            'enable_thinking': True,
+            'extra_body': {'reasoning_effort': 'high'},
+        }
+    ) == ['enable_thinking', 'extra_body.reasoning_effort']
 
 
-def test_manual_reasoning_model_exposes_conservative_effort_levels(monkeypatch):
+def test_manual_reasoning_model_without_known_protocol_stays_conservative(monkeypatch):
     request = _requester()
     monkeypatch.setattr(request, '_supports_reasoning', lambda _: False)
-    monkeypatch.setattr(request, '_safe_model_info', lambda _: {})
 
     capabilities = request.get_reasoning_capabilities(_runtime_model(request))
 
     assert capabilities == {
         'supported': True,
-        'levels': ['provider_default', 'low', 'medium', 'high'],
+        'levels': ['provider_default'],
         'source': 'manual',
     }
 
 
-def test_provider_protocol_exposes_reasoning_for_unknown_model(monkeypatch):
-    request = _requester('openai')
+def test_openai_protocol_does_not_mark_unknown_models_as_reasoning(monkeypatch):
+    request = _requester('openai', 'openai-chat-completions')
     monkeypatch.setattr(request, '_supports_reasoning', lambda _: False)
-    monkeypatch.setattr(request, '_safe_model_info', lambda _: pytest.fail('metadata should not be queried'))
 
     capabilities = request.get_reasoning_capabilities(
         _runtime_model(request, name='future-reasoning-model', abilities=[])
-    )
-
-    assert capabilities == {
-        'supported': True,
-        'levels': ['provider_default', 'low', 'medium', 'high'],
-        'source': 'provider',
-    }
-
-
-def test_unknown_unmarked_model_without_provider_stays_safe(monkeypatch):
-    request = _requester()
-    monkeypatch.setattr(request, '_supports_reasoning', lambda _: False)
-
-    capabilities = request.get_reasoning_capabilities(
-        _runtime_model(request, name='unknown-model', abilities=[])
     )
 
     assert capabilities == {
@@ -120,33 +116,34 @@ def test_unknown_unmarked_model_without_provider_stays_safe(monkeypatch):
     }
 
 
-def test_mimo_native_model_uses_known_equivalent_litellm_metadata(monkeypatch):
-    request = _requester('openai')
+def test_unknown_unmarked_model_without_provider_stays_safe(monkeypatch):
+    request = _requester()
+    monkeypatch.setattr(request, '_supports_reasoning', lambda _: False)
 
-    def supports_reasoning(model: str, custom_llm_provider: str | None = None) -> bool:
-        return model == 'openrouter/xiaomi/mimo-v2.5'
+    capabilities = request.get_reasoning_capabilities(_runtime_model(request, name='unknown-model', abilities=[]))
 
-    def get_model_info(model: str) -> dict:
-        if model == 'openrouter/xiaomi/mimo-v2.5':
-            return {'supports_reasoning': True}
-        raise ValueError('unknown model')
+    assert capabilities == {
+        'supported': False,
+        'levels': ['provider_default'],
+        'source': 'unknown',
+    }
 
-    monkeypatch.setattr(litellmchat.litellm, 'supports_reasoning', supports_reasoning)
-    monkeypatch.setattr(litellmchat.litellm, 'get_model_info', get_model_info)
 
-    capabilities = request.get_reasoning_capabilities(
-        _runtime_model(request, name='mimo-v2.5', abilities=[])
-    )
+def test_mimo_exposes_off_on_without_fake_effort_levels(monkeypatch):
+    request = _requester('openai', 'mimo-chat-completions')
+    monkeypatch.setattr(request, '_supports_reasoning', lambda _: False)
+
+    capabilities = request.get_reasoning_capabilities(_runtime_model(request, name='mimo-v2.5', abilities=[]))
 
     assert capabilities == {
         'supported': True,
-        'levels': ['provider_default', 'minimal', 'low', 'medium', 'high'],
-        'source': 'litellm',
+        'levels': ['provider_default', 'disabled', 'enabled'],
+        'source': 'provider',
     }
 
 
 def test_openai_reasoning_levels_follow_litellm_metadata(monkeypatch):
-    request = _requester('openai')
+    request = _requester('openai', 'openai-chat-completions')
     monkeypatch.setattr(request, '_supports_reasoning', lambda _: True)
     monkeypatch.setattr(
         request,
@@ -172,34 +169,199 @@ def test_openai_reasoning_levels_follow_litellm_metadata(monkeypatch):
     ]
 
 
-def test_reasoning_argument_translation(monkeypatch):
-    openai_request = _requester('openai')
-    monkeypatch.setattr(openai_request, '_supports_reasoning', lambda _: True)
-    monkeypatch.setattr(
-        openai_request,
-        '_safe_model_info',
-        lambda _: {'supports_none_reasoning_effort': True},
+def test_anthropic_adaptive_and_always_on_profiles(monkeypatch):
+    request = _requester('anthropic', 'anthropic-messages')
+    monkeypatch.setattr(request, '_supports_reasoning', lambda _: False)
+
+    adaptive = request.get_reasoning_capabilities(_runtime_model(request, name='claude-sonnet-4-6', abilities=[]))
+    assert adaptive['levels'] == [
+        'provider_default',
+        'disabled',
+        'low',
+        'medium',
+        'high',
+        'xhigh',
+        'max',
+    ]
+
+    always_on = request.get_reasoning_capabilities(_runtime_model(request, name='claude-fable-5', abilities=[]))
+    assert 'disabled' not in always_on['levels']
+
+    legacy = request.get_reasoning_capabilities(_runtime_model(request, name='claude-3-5-sonnet', abilities=[]))
+    assert legacy['levels'] == ['provider_default', 'low', 'medium', 'high']
+
+
+def test_deepseek_profiles_match_model_generation(monkeypatch):
+    request = _requester('deepseek', 'deepseek-chat-completions')
+    monkeypatch.setattr(request, '_supports_reasoning', lambda _: False)
+
+    assert request.get_reasoning_capabilities(_runtime_model(request, name='deepseek-v4-flash', abilities=[]))[
+        'levels'
+    ] == ['provider_default', 'disabled', 'low', 'high', 'xhigh', 'max']
+    assert request.get_reasoning_capabilities(_runtime_model(request, name='deepseek-chat', abilities=[]))[
+        'levels'
+    ] == ['provider_default', 'disabled', 'enabled']
+    assert request.get_reasoning_capabilities(_runtime_model(request, name='deepseek-r1', abilities=[]))['levels'] == [
+        'provider_default'
+    ]
+
+
+@pytest.mark.parametrize(
+    ('model_name', 'expected_levels'),
+    [
+        ('kimi-k3', ['provider_default', 'low', 'high', 'max']),
+        ('kimi-k2.7-code', ['provider_default']),
+        ('kimi-k2.6', ['provider_default', 'disabled', 'enabled']),
+        ('kimi-k2.5', ['provider_default', 'disabled', 'enabled']),
+    ],
+)
+def test_kimi_profiles(model_name, expected_levels, monkeypatch):
+    request = _requester('openai', 'moonshot-chat-completions')
+    monkeypatch.setattr(request, '_supports_reasoning', lambda _: False)
+
+    capabilities = request.get_reasoning_capabilities(_runtime_model(request, name=model_name, abilities=[]))
+
+    assert capabilities['levels'] == expected_levels
+
+
+def test_qwen_mixed_and_dedicated_thinking_profiles(monkeypatch):
+    request = _requester('openai', 'bailian-chat-completions')
+    monkeypatch.setattr(request, '_supports_reasoning', lambda _: False)
+
+    mixed = request.get_reasoning_capabilities(_runtime_model(request, name='qwen-plus', abilities=[]))
+    dedicated = request.get_reasoning_capabilities(
+        _runtime_model(request, name='qwen3-235b-a22b-thinking-2507', abilities=[])
     )
 
-    assert openai_request._build_reasoning_args(_runtime_model(openai_request, 'provider_default')) == {}
-    assert openai_request._build_reasoning_args(_runtime_model(openai_request, 'disabled')) == {
+    assert mixed['levels'] == ['provider_default', 'disabled', 'enabled']
+    assert dedicated['levels'] == ['provider_default']
+
+
+def test_doubao_exposes_documented_effort_range(monkeypatch):
+    request = _requester('openai', 'doubao-chat-completions')
+    monkeypatch.setattr(request, '_supports_reasoning', lambda _: False)
+
+    capabilities = request.get_reasoning_capabilities(
+        _runtime_model(request, name='doubao-seed-2-1-pro-260628', abilities=[])
+    )
+
+    assert capabilities['levels'] == ['provider_default', 'disabled', 'low', 'medium', 'high']
+
+
+@pytest.mark.parametrize(
+    ('model_name', 'expected_levels'),
+    [
+        ('gpt-5', ['provider_default', 'low', 'medium', 'high']),
+        (
+            'claude-sonnet-4-6',
+            ['provider_default', 'disabled', 'low', 'medium', 'high', 'xhigh', 'max'],
+        ),
+        ('deepseek-v4-flash', ['provider_default', 'disabled', 'low', 'high', 'xhigh', 'max']),
+        ('kimi-k2.6', ['provider_default', 'disabled', 'enabled']),
+        ('qwen-plus', ['provider_default', 'disabled', 'enabled']),
+        ('doubao-seed-2-1-pro-260628', ['provider_default', 'disabled', 'low', 'medium', 'high']),
+        ('mimo-v2.5', ['provider_default', 'disabled', 'enabled']),
+    ],
+)
+def test_new_api_infers_upstream_protocol_from_model_name(model_name, expected_levels, monkeypatch):
+    request = _requester('openai', 'new-api-chat-completions')
+    monkeypatch.setattr(request, '_supports_reasoning', lambda _: False)
+    monkeypatch.setattr(request, '_safe_model_info', lambda _: {})
+
+    capabilities = request.get_reasoning_capabilities(_runtime_model(request, name=model_name, abilities=[]))
+
+    assert capabilities['levels'] == expected_levels
+
+
+@pytest.mark.parametrize(
+    ('provider', 'requester_name', 'model_name'),
+    [
+        ('openai', 'openai-chat-completions', 'gpt-5'),
+        ('anthropic', 'anthropic-messages', 'claude-sonnet-4-6'),
+        ('deepseek', 'deepseek-chat-completions', 'deepseek-v4-flash'),
+        ('openai', 'mimo-chat-completions', 'mimo-v2.5'),
+        ('openai', 'moonshot-chat-completions', 'kimi-k2.6'),
+        ('openai', 'bailian-chat-completions', 'qwen-plus'),
+        ('openai', 'doubao-chat-completions', 'doubao-seed-2-1-pro-260628'),
+        ('openai', 'new-api-chat-completions', 'deepseek-v4-flash'),
+    ],
+)
+def test_scanned_known_models_gain_reasoning_ability(provider, requester_name, model_name, monkeypatch):
+    request = _requester(provider, requester_name)
+    monkeypatch.setattr(request, '_supports_reasoning', lambda _: False)
+    monkeypatch.setattr(request, '_supports_function_calling', lambda _: False)
+    monkeypatch.setattr(request, '_supports_vision', lambda _: False)
+    monkeypatch.setattr(request, '_safe_context_length', lambda _: None)
+
+    scanned = request._enrich_scanned_model(model_name)
+
+    assert scanned['abilities'] == ['reasoning']
+
+
+def test_new_api_unknown_alias_stays_conservative(monkeypatch):
+    request = _requester('openai', 'new-api-chat-completions')
+    monkeypatch.setattr(request, '_supports_reasoning', lambda _: False)
+
+    capabilities = request.get_reasoning_capabilities(
+        _runtime_model(request, name='company-internal-alias', abilities=[])
+    )
+
+    assert capabilities == {
+        'supported': False,
+        'levels': ['provider_default'],
+        'source': 'unknown',
+    }
+
+
+def test_reasoning_argument_translation(monkeypatch):
+    openai_request = _requester('openai', 'openai-chat-completions')
+    monkeypatch.setattr(openai_request, '_supports_reasoning', lambda _: True)
+    monkeypatch.setattr(openai_request, '_safe_model_info', lambda _: {'supports_none_reasoning_effort': True})
+    assert openai_request._build_reasoning_args(_runtime_model(openai_request, 'disabled', name='gpt-5')) == {
         'reasoning_effort': 'none'
     }
-    assert openai_request._build_reasoning_args(_runtime_model(openai_request, 'high')) == {'reasoning_effort': 'high'}
 
-    deepseek_request = _requester('deepseek')
-    monkeypatch.setattr(deepseek_request, '_supports_reasoning', lambda _: False)
-    monkeypatch.setattr(deepseek_request, '_safe_model_info', lambda _: {})
+    anthropic_request = _requester('anthropic', 'anthropic-messages')
+    assert anthropic_request._build_reasoning_args(
+        _runtime_model(anthropic_request, 'disabled', name='claude-sonnet-4-6')
+    ) == {'thinking': {'type': 'disabled'}}
+
+    deepseek_request = _requester('deepseek', 'deepseek-chat-completions')
     assert deepseek_request._build_reasoning_args(
-        _runtime_model(deepseek_request, 'enabled', name='deepseek-chat')
-    ) == {'thinking': {'type': 'enabled'}}
-    assert deepseek_request._build_reasoning_args(
-        _runtime_model(deepseek_request, 'disabled', name='deepseek-chat')
-    ) == {'extra_body': {'thinking': {'type': 'disabled'}}}
+        _runtime_model(deepseek_request, 'high', name='deepseek-v4-flash')
+    ) == {
+        'extra_body': {
+            'thinking': {'type': 'enabled'},
+            'reasoning_effort': 'high',
+        }
+    }
+
+    kimi_request = _requester('openai', 'moonshot-chat-completions')
+    assert kimi_request._build_reasoning_args(_runtime_model(kimi_request, 'enabled', name='kimi-k2.6')) == {
+        'extra_body': {'thinking': {'type': 'enabled'}}
+    }
+    assert kimi_request._build_reasoning_args(_runtime_model(kimi_request, 'high', name='kimi-k3')) == {
+        'reasoning_effort': 'high'
+    }
+
+    qwen_request = _requester('openai', 'bailian-chat-completions')
+    assert qwen_request._build_reasoning_args(_runtime_model(qwen_request, 'disabled', name='qwen-plus')) == {
+        'extra_body': {'enable_thinking': False}
+    }
+
+    doubao_request = _requester('openai', 'doubao-chat-completions')
+    assert doubao_request._build_reasoning_args(
+        _runtime_model(doubao_request, 'high', name='doubao-seed-2-1-pro-260628')
+    ) == {'reasoning_effort': 'high'}
+
+    mimo_request = _requester('openai', 'mimo-chat-completions')
+    assert mimo_request._build_reasoning_args(_runtime_model(mimo_request, 'disabled', name='mimo-v2.5')) == {
+        'extra_body': {'thinking': {'type': 'disabled'}}
+    }
 
 
 def test_pipeline_reasoning_override_takes_precedence(monkeypatch):
-    request = _requester('openai')
+    request = _requester('openai', 'openai-chat-completions')
     monkeypatch.setattr(request, '_supports_reasoning', lambda _: True)
     monkeypatch.setattr(request, '_safe_model_info', lambda _: {})
     model = _runtime_model(request, 'high', name='gpt-5')
@@ -211,24 +373,14 @@ def test_pipeline_reasoning_override_takes_precedence(monkeypatch):
     assert request._build_reasoning_args(model) == {'reasoning_effort': 'low'}
 
 
-def test_deepseek_provider_is_inferred_from_model_name(monkeypatch):
-    request = _requester()
-    monkeypatch.setattr(request, '_supports_reasoning', lambda _: True)
-    monkeypatch.setattr(request, '_safe_model_info', lambda _: {})
-
-    capabilities = request.get_reasoning_capabilities(_runtime_model(request, name='deepseek-chat'))
-
-    assert capabilities['levels'] == ['provider_default', 'disabled', 'enabled']
-
-
 def test_always_on_reasoning_models_do_not_offer_disabled(monkeypatch):
-    deepseek_request = _requester('deepseek')
+    deepseek_request = _requester('deepseek', 'deepseek-chat-completions')
     monkeypatch.setattr(deepseek_request, '_supports_reasoning', lambda _: True)
     monkeypatch.setattr(deepseek_request, '_safe_model_info', lambda _: {})
     deepseek_capabilities = deepseek_request.get_reasoning_capabilities(
         _runtime_model(deepseek_request, name='deepseek-r1')
     )
-    assert deepseek_capabilities['levels'] == ['provider_default', 'enabled']
+    assert deepseek_capabilities['levels'] == ['provider_default']
 
     gemini_request = _requester('gemini')
     monkeypatch.setattr(gemini_request, '_supports_reasoning', lambda _: True)
@@ -243,8 +395,8 @@ def test_always_on_reasoning_models_do_not_offer_disabled(monkeypatch):
         gemini_request._build_reasoning_args(_runtime_model(gemini_request, 'disabled', name='gemini-3-pro'))
 
 
-def test_toggle_and_effort_provider_capabilities(monkeypatch):
-    ollama_request = _requester('ollama')
+def test_non_target_provider_capabilities_remain_supported(monkeypatch):
+    ollama_request = _requester('ollama', 'ollama')
     monkeypatch.setattr(ollama_request, '_supports_reasoning', lambda _: False)
     monkeypatch.setattr(ollama_request, '_safe_model_info', lambda _: {})
 
@@ -270,12 +422,12 @@ def test_toggle_and_effort_provider_capabilities(monkeypatch):
         'reasoning_effort': 'high'
     }
 
-    volcengine_request = _requester('volcengine')
+    volcengine_request = _requester('volcengine', 'volcark-chat-completions')
     monkeypatch.setattr(volcengine_request, '_supports_reasoning', lambda _: False)
     monkeypatch.setattr(volcengine_request, '_safe_model_info', lambda _: {})
     assert volcengine_request._build_reasoning_args(
         _runtime_model(volcengine_request, 'disabled', name='doubao-seed')
-    ) == {'thinking': {'type': 'disabled'}}
+    ) == {'extra_body': {'thinking': {'type': 'disabled'}}}
 
 
 def test_explicit_unsupported_level_raises(monkeypatch):
@@ -288,19 +440,20 @@ def test_explicit_unsupported_level_raises(monkeypatch):
 
 
 def test_provider_inference_rejects_levels_outside_conservative_profile(monkeypatch):
-    request = _requester('openai')
+    request = _requester('openai', 'openai-chat-completions')
     monkeypatch.setattr(request, '_supports_reasoning', lambda _: False)
+    monkeypatch.setattr(request, '_safe_model_info', lambda _: {})
 
     with pytest.raises(errors.RequesterError, match='Available levels: provider_default, low, medium, high'):
-        request._build_reasoning_args(_runtime_model(request, 'xhigh', abilities=[]))
+        request._build_reasoning_args(_runtime_model(request, 'xhigh', name='gpt-5', abilities=[]))
 
 
 @pytest.mark.asyncio
 async def test_completion_args_reject_reasoning_extra_arg_conflicts(monkeypatch):
-    request = _requester('openai')
+    request = _requester('openai', 'openai-chat-completions')
     monkeypatch.setattr(request, '_supports_reasoning', lambda _: True)
     monkeypatch.setattr(request, '_safe_model_info', lambda _: {})
-    model = _runtime_model(request, 'high')
+    model = _runtime_model(request, 'high', name='gpt-5')
     model.model_entity.extra_args = {'reasoning_effort': 'low'}
     model.provider.token_mgr.get_token = lambda: 'test-token'
 
@@ -310,10 +463,8 @@ async def test_completion_args_reject_reasoning_extra_arg_conflicts(monkeypatch)
 
 @pytest.mark.asyncio
 async def test_openai_compatible_reasoning_effort_is_explicitly_allowed(monkeypatch):
-    request = _requester('openai')
-    monkeypatch.setattr(request, '_supports_reasoning', lambda _: True)
-    monkeypatch.setattr(request, '_safe_model_info', lambda _: {})
-    model = _runtime_model(request, 'high', name='deepseek-v4-flash')
+    request = _requester('openai', 'moonshot-chat-completions')
+    model = _runtime_model(request, 'high', name='kimi-k3')
     model.model_entity.extra_args = {'allowed_openai_params': ['custom_extension']}
     model.provider.token_mgr.get_token = lambda: 'test-token'
 
@@ -325,7 +476,7 @@ async def test_openai_compatible_reasoning_effort_is_explicitly_allowed(monkeypa
 
 @pytest.mark.asyncio
 async def test_provider_default_does_not_allow_or_send_reasoning_effort():
-    request = _requester('openai')
+    request = _requester('openai', 'new-api-chat-completions')
     model = _runtime_model(request, 'provider_default', name='deepseek-v4-flash')
     model.provider.token_mgr.get_token = lambda: 'test-token'
 
@@ -337,7 +488,7 @@ async def test_provider_default_does_not_allow_or_send_reasoning_effort():
 
 @pytest.mark.asyncio
 async def test_deepseek_disabled_thinking_is_merged_into_extra_body(monkeypatch):
-    request = _requester('deepseek')
+    request = _requester('deepseek', 'deepseek-chat-completions')
     monkeypatch.setattr(request, '_supports_reasoning', lambda _: False)
     model = _runtime_model(request, 'disabled', name='deepseek-chat')
     model.model_entity.extra_args = {'extra_body': {'custom_extension': True}}
@@ -349,6 +500,68 @@ async def test_deepseek_disabled_thinking_is_merged_into_extra_body(monkeypatch)
         'custom_extension': True,
         'thinking': {'type': 'disabled'},
     }
+
+
+@pytest.mark.asyncio
+async def test_openai_compatible_reasoning_history_is_promoted_for_tool_continuity():
+    request = _requester('openai', 'mimo-chat-completions')
+    model = _runtime_model(request, 'enabled', name='mimo-v2.5')
+    model.provider.token_mgr.get_token = lambda: 'test-token'
+    history = [
+        provider_message.Message(
+            role='assistant',
+            content='',
+            provider_specific_fields={'reasoning_content': 'prior reasoning'},
+        )
+    ]
+
+    args = await request._build_completion_args(model, history)
+
+    assert args['messages'][0]['reasoning_content'] == 'prior reasoning'
+    assert 'provider_specific_fields' not in args['messages'][0]
+
+
+@pytest.mark.asyncio
+async def test_disabling_reasoning_removes_previous_reasoning_context():
+    request = _requester('openai', 'mimo-chat-completions')
+    model = _runtime_model(request, 'disabled', name='mimo-v2.5')
+    model.provider.token_mgr.get_token = lambda: 'test-token'
+    history = [
+        provider_message.Message(
+            role='assistant',
+            content='answer',
+            provider_specific_fields={'reasoning_content': 'prior reasoning'},
+        )
+    ]
+
+    args = await request._build_completion_args(model, history)
+
+    assert 'reasoning_content' not in args['messages'][0]
+    assert 'provider_specific_fields' not in args['messages'][0]
+
+
+@pytest.mark.asyncio
+async def test_anthropic_history_promotes_thinking_blocks_instead_of_reasoning_content():
+    request = _requester('anthropic', 'anthropic-messages')
+    model = _runtime_model(request, 'high', name='claude-sonnet-4-6')
+    model.provider.token_mgr.get_token = lambda: 'test-token'
+    thinking_blocks = [{'type': 'thinking', 'thinking': 'prior reasoning', 'signature': 'sig'}]
+    history = [
+        provider_message.Message(
+            role='assistant',
+            content='',
+            provider_specific_fields={
+                'reasoning_content': 'prior reasoning',
+                'thinking_blocks': thinking_blocks,
+            },
+        )
+    ]
+
+    args = await request._build_completion_args(model, history)
+
+    assert args['messages'][0]['thinking_blocks'] == thinking_blocks
+    assert 'reasoning_content' not in args['messages'][0]
+    assert 'provider_specific_fields' not in args['messages'][0]
 
 
 class _Dumpable:

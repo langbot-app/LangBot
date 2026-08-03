@@ -28,8 +28,20 @@ REASONING_LEVELS: tuple[str, ...] = (
 )
 DEFAULT_REASONING_CONFIG: dict[str, str] = {'level': 'provider_default'}
 
-_CONFLICTING_TOP_LEVEL_ARGS = {'reasoning_effort', 'thinking', 'reasoning'}
-_CONFLICTING_EXTRA_BODY_ARGS = {'thinking', 'enable_thinking', 'thinking_budget', 'reasoning'}
+_CONFLICTING_TOP_LEVEL_ARGS = {
+    'reasoning_effort',
+    'thinking',
+    'enable_thinking',
+    'thinking_budget',
+    'reasoning',
+}
+_CONFLICTING_EXTRA_BODY_ARGS = {
+    'reasoning_effort',
+    'thinking',
+    'enable_thinking',
+    'thinking_budget',
+    'reasoning',
+}
 
 
 def normalize_reasoning_config(value: typing.Any) -> dict[str, str]:

@@ -176,7 +176,16 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
             'xai',
         }
     )
-    _INFERRED_TOGGLE_PROVIDERS = frozenset({'deepseek', 'ollama', 'volcengine'})
+    _REQUESTER_REASONING_FAMILIES = {
+        'openai-chat-completions': 'openai',
+        'anthropic-messages': 'anthropic',
+        'deepseek-chat-completions': 'deepseek',
+        'moonshot-chat-completions': 'kimi',
+        'moonshot-cn-chat-completions': 'kimi',
+        'bailian-chat-completions': 'qwen',
+        'doubao-chat-completions': 'doubao',
+        'mimo-chat-completions': 'mimo',
+    }
 
     default_config: dict[str, typing.Any] = {
         'base_url': '',
@@ -185,6 +194,7 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         'drop_params': False,
         'num_retries': 0,
         'api_version': '',
+        'requester_name': '',
     }
 
     async def initialize(self):
@@ -342,31 +352,144 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
     def _supports_reasoning(self, model_name: str) -> bool:
         return self._safe_litellm_bool_helper('supports_reasoning', model_name)
 
-    def _reasoning_provider(self, model_name: str) -> str:
+    def _requester_name(self, model: requester.RuntimeLLMModel | None = None) -> str:
+        if model is not None:
+            provider_entity = getattr(getattr(model, 'provider', None), 'provider_entity', None)
+            name = getattr(provider_entity, 'requester', None)
+            if isinstance(name, str) and name:
+                return name.lower()
+        return str(self.requester_cfg.get('requester_name') or '').lower()
+
+    @staticmethod
+    def _infer_reasoning_family_from_model_name(model_name: str) -> str:
+        normalized_name = (model_name or '').lower()
+        basename = normalized_name.rsplit('/', 1)[-1]
+        if basename.startswith(('gpt-', 'chatgpt-', 'o1', 'o3', 'o4')):
+            return 'openai'
+        if basename.startswith('claude-'):
+            return 'anthropic'
+        if basename.startswith('deepseek-'):
+            return 'deepseek'
+        if basename.startswith(('kimi-', 'moonshot-')):
+            return 'kimi'
+        if basename.startswith(('qwen-', 'qwen3', 'qwq')):
+            return 'qwen'
+        if basename.startswith(('doubao-', 'seed-')):
+            return 'doubao'
+        if basename.startswith('mimo-'):
+            return 'mimo'
+        return ''
+
+    def _reasoning_family(
+        self,
+        model_name: str,
+        model: requester.RuntimeLLMModel | None = None,
+    ) -> str:
+        requester_name = self._requester_name(model)
+        if requester_name in {'new-api-chat-completions', 'volcark-chat-completions'}:
+            inferred_family = self._infer_reasoning_family_from_model_name(model_name)
+            if inferred_family:
+                return inferred_family
+            return 'volcengine' if requester_name == 'volcark-chat-completions' else ''
+
+        requester_family = self._REQUESTER_REASONING_FAMILIES.get(requester_name)
+        if requester_family:
+            return requester_family
+
+        inferred_family = self._infer_reasoning_family_from_model_name(model_name)
         provider = (self._get_custom_llm_provider() or '').lower()
+        if provider == 'openai':
+            return inferred_family or ('openai' if requester_name in {'', 'openai'} else '')
         if provider:
             return provider
+        return inferred_family
 
-        normalized_name = (model_name or '').lower()
-        if '/' in normalized_name:
-            prefix = normalized_name.split('/', 1)[0]
-            if prefix in {
-                'anthropic',
-                'deepseek',
-                'gemini',
-                'groq',
-                'mistral',
-                'ollama',
-                'openai',
-                'openrouter',
-                'together_ai',
-                'volcengine',
-                'xai',
-            }:
-                return prefix
+    @staticmethod
+    def _is_anthropic_adaptive_model(model_name: str) -> bool:
+        basename = model_name.lower().rsplit('/', 1)[-1]
+        if 'mythos-preview' in basename:
+            return True
 
-        candidates = self._metadata_provider_candidates(model_name)
-        return candidates[0] if candidates else ''
+        parts = basename.split('-')
+        if len(parts) < 3 or parts[0] != 'claude':
+            return False
+        model_families = {'opus', 'sonnet', 'fable', 'mythos'}
+        if parts[1] in model_families:
+            if parts[2] == '5':
+                return True
+            return len(parts) >= 4 and parts[2] == '4' and parts[3] in {'6', '7', '8'}
+        return parts[1] == '5' and parts[2] in model_families
+
+    @staticmethod
+    def _is_anthropic_always_thinking_model(model_name: str) -> bool:
+        normalized_name = model_name.lower()
+        return any(marker in normalized_name for marker in ('fable-5', 'mythos-5', 'mythos-preview'))
+
+    @staticmethod
+    def _is_dedicated_qwen_thinking_model(model_name: str) -> bool:
+        normalized_name = model_name.lower().rsplit('/', 1)[-1]
+        return normalized_name.startswith('qwq') or '-thinking' in normalized_name
+
+    def _known_reasoning_levels(self, model_name: str, family: str) -> list[str] | None:
+        normalized_name = model_name.lower().rsplit('/', 1)[-1]
+
+        if family == 'deepseek' and normalized_name.startswith('deepseek-'):
+            if normalized_name.startswith('deepseek-v4-'):
+                return ['provider_default', 'disabled', 'low', 'high', 'xhigh', 'max']
+            if 'reasoner' in normalized_name or '-r1' in normalized_name:
+                return ['provider_default']
+            return ['provider_default', 'disabled', 'enabled']
+
+        if family == 'kimi':
+            if normalized_name.startswith('kimi-k3'):
+                return ['provider_default', 'low', 'high', 'max']
+            if normalized_name.startswith('kimi-k2.7-code'):
+                return ['provider_default']
+            if normalized_name.startswith(('kimi-k2.5', 'kimi-k2.6')):
+                return ['provider_default', 'disabled', 'enabled']
+            if 'thinking' in normalized_name:
+                return ['provider_default']
+
+        if family == 'qwen' and normalized_name.startswith(('qwen-', 'qwen3', 'qwq')):
+            if self._is_dedicated_qwen_thinking_model(normalized_name):
+                return ['provider_default']
+            return ['provider_default', 'disabled', 'enabled']
+
+        if family == 'doubao' and normalized_name.startswith(('doubao-', 'seed-')):
+            return ['provider_default', 'disabled', 'low', 'medium', 'high']
+
+        if family == 'mimo' and normalized_name.startswith(('mimo-v2.5',)):
+            return ['provider_default', 'disabled', 'enabled']
+
+        if family == 'anthropic' and normalized_name.startswith('claude-'):
+            levels = ['provider_default']
+            adaptive = self._is_anthropic_adaptive_model(normalized_name)
+            if adaptive and not self._is_anthropic_always_thinking_model(normalized_name):
+                levels.append('disabled')
+            levels.extend(['low', 'medium', 'high'])
+            if adaptive:
+                levels.extend(['xhigh', 'max'])
+            return levels
+
+        if family == 'openai' and normalized_name.startswith(('gpt-5', 'o1', 'o3', 'o4')):
+            return ['provider_default', 'low', 'medium', 'high']
+
+        return None
+
+    def _openai_reasoning_levels(self, model_name: str) -> list[str]:
+        model_info = self._safe_model_info(model_name)
+        levels = ['provider_default']
+        if model_info.get('supports_none_reasoning_effort') is True:
+            levels.append('disabled')
+        if model_info.get('supports_minimal_reasoning_effort') is True:
+            levels.append('minimal')
+        for level in ('low', 'medium', 'high'):
+            if model_info.get(f'supports_{level}_reasoning_effort') is not False:
+                levels.append(level)
+        for level in ('xhigh', 'max'):
+            if model_info.get(f'supports_{level}_reasoning_effort') is True:
+                levels.append(level)
+        return levels
 
     def _safe_model_info(self, model_name: str) -> dict[str, typing.Any]:
         helper = getattr(litellm, 'get_model_info', None)
@@ -400,82 +523,90 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         abilities = model.model_entity.abilities or []
         detected = self._supports_reasoning(model_name)
         declared = 'reasoning' in abilities
-        provider = self._reasoning_provider(model_name)
-        inferred = provider in self._INFERRED_EFFORT_PROVIDERS | self._INFERRED_TOGGLE_PROVIDERS
-        supported = detected or declared or inferred
+        family = self._reasoning_family(model_name, model)
+        known_levels = self._known_reasoning_levels(model_name, family)
+        supported = detected or declared or known_levels is not None
         if not supported:
             return reasoning.default_reasoning_capabilities()
 
         normalized_name = model_name.lower()
-        levels = ['provider_default']
-
-        if provider == 'deepseek':
-            if 'reasoner' not in normalized_name and '-r1' not in normalized_name:
-                levels.append('disabled')
-            levels.append('enabled')
-        elif provider == 'volcengine':
-            levels.extend(['disabled', 'enabled'])
-        elif provider == 'ollama':
+        if family == 'openai':
+            levels = self._openai_reasoning_levels(model_name)
+        elif known_levels is not None:
+            levels = known_levels
+        elif family == 'anthropic':
+            levels = ['provider_default', 'low', 'medium', 'high']
+        elif family in {'deepseek', 'qwen', 'mimo', 'volcengine'}:
+            levels = ['provider_default', 'disabled', 'enabled']
+        elif family == 'doubao':
+            levels = ['provider_default', 'disabled', 'low', 'medium', 'high']
+        elif family == 'ollama':
+            levels = ['provider_default']
             levels.append('disabled')
             if normalized_name.startswith('gpt-oss') or '/gpt-oss' in normalized_name:
                 levels.extend(['low', 'medium', 'high'])
             else:
                 levels.append('enabled')
-        elif not detected:
-            levels.extend(['low', 'medium', 'high'])
+        elif family in self._INFERRED_EFFORT_PROVIDERS:
+            levels = ['provider_default', 'low', 'medium', 'high']
         else:
-            model_info = self._safe_model_info(model_name)
-            supports_none = model_info.get('supports_none_reasoning_effort') is True
-            if provider == 'anthropic':
-                supports_none = True
-            if provider == 'gemini' and 'gemini-3' in normalized_name:
-                supports_none = False
-            if supports_none:
-                levels.append('disabled')
-
-            for level in ('minimal', 'low', 'medium', 'high'):
-                flag = model_info.get(f'supports_{level}_reasoning_effort')
-                if flag is not False:
-                    levels.append(level)
-            for level in ('xhigh', 'max'):
-                if model_info.get(f'supports_{level}_reasoning_effort') is True:
-                    levels.append(level)
+            levels = ['provider_default']
 
         return {
             'supported': True,
             'levels': list(dict.fromkeys(levels)),
-            'source': 'litellm' if detected else ('provider' if inferred else 'manual'),
+            'source': 'litellm' if detected else ('provider' if known_levels is not None else 'manual'),
         }
 
     def _build_reasoning_args(self, model: requester.RuntimeLLMModel) -> dict[str, typing.Any]:
-        raw_config = getattr(model, 'reasoning_config_override', None)
-        if raw_config is None:
-            raw_config = getattr(model.model_entity, 'reasoning_config', None)
-        if not isinstance(raw_config, dict):
-            raw_config = None
-        config = reasoning.normalize_reasoning_config(raw_config)
-        level = config['level']
+        level = self._reasoning_level(model)
         if level == 'provider_default':
             return {}
 
+        config = {'level': level}
         capabilities = self.get_reasoning_capabilities(model)
         try:
             reasoning.validate_reasoning_capabilities(config, capabilities, model.model_entity.name)
         except ValueError as exc:
             raise errors.RequesterError(str(exc)) from exc
 
-        provider = self._reasoning_provider(model.model_entity.name)
+        family = self._reasoning_family(model.model_entity.name, model)
         if level == 'disabled':
-            if provider == 'deepseek':
+            if family in {'deepseek', 'kimi', 'mimo', 'doubao'}:
                 return {'extra_body': {'thinking': {'type': 'disabled'}}}
-            if provider == 'volcengine':
+            if family == 'qwen':
+                return {'extra_body': {'enable_thinking': False}}
+            if family == 'volcengine':
+                return {'extra_body': {'thinking': {'type': 'disabled'}}}
+            if family == 'anthropic':
                 return {'thinking': {'type': 'disabled'}}
             return {'reasoning_effort': 'none'}
         if level == 'enabled':
-            if provider in {'deepseek', 'volcengine'}:
-                return {'thinking': {'type': 'enabled'}}
+            if family in {'deepseek', 'kimi', 'mimo', 'volcengine'}:
+                return {'extra_body': {'thinking': {'type': 'enabled'}}}
+            if family == 'qwen':
+                return {'extra_body': {'enable_thinking': True}}
             return {'reasoning_effort': 'low'}
+        if family == 'deepseek':
+            return {
+                'extra_body': {
+                    'thinking': {'type': 'enabled'},
+                    'reasoning_effort': level,
+                }
+            }
         return {'reasoning_effort': level}
+
+    @staticmethod
+    def _reasoning_config_value(model: requester.RuntimeLLMModel) -> typing.Any:
+        raw_config = getattr(model, 'reasoning_config_override', None)
+        if raw_config is None:
+            raw_config = getattr(model.model_entity, 'reasoning_config', None)
+        if not isinstance(raw_config, dict):
+            return None
+        return raw_config
+
+    def _reasoning_level(self, model: requester.RuntimeLLMModel) -> str:
+        return reasoning.normalize_reasoning_config(self._reasoning_config_value(model))['level']
 
     def _infer_model_type(self, model_id: str) -> str:
         normalized_id = (model_id or '').lower()
@@ -510,7 +641,9 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
             supports_provider_reported_reasoning = bool(
                 model_payload and model_payload.get('supports_reasoning') is True
             )
-            if supports_provider_reported_reasoning or self._supports_reasoning(model_id):
+            family = self._reasoning_family(model_id)
+            supports_known_reasoning = self._known_reasoning_levels(model_id, family) is not None
+            if supports_provider_reported_reasoning or supports_known_reasoning or self._supports_reasoning(model_id):
                 abilities.append('reasoning')
             scanned_model['abilities'] = abilities
 
@@ -522,12 +655,42 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
 
         return scanned_model
 
-    def _convert_messages(self, messages: typing.List[provider_message.Message]) -> list[dict]:
+    def _convert_messages(
+        self,
+        messages: typing.List[provider_message.Message],
+        reasoning_family: str = '',
+        include_reasoning_context: bool = True,
+    ) -> list[dict]:
         """Convert LangBot messages to LiteLLM/OpenAI format."""
         req_messages = []
         for m in messages:
             msg_dict = m.dict(exclude_none=True)
             content = msg_dict.get('content')
+
+            if msg_dict.get('role') == 'assistant' and reasoning_family:
+                provider_fields = msg_dict.get('provider_specific_fields')
+                if isinstance(provider_fields, dict):
+                    cleaned_provider_fields = dict(provider_fields)
+                    reasoning_content = cleaned_provider_fields.pop('reasoning_content', None)
+                    thinking_blocks = cleaned_provider_fields.pop('thinking_blocks', None)
+
+                    if include_reasoning_context:
+                        if reasoning_family == 'anthropic' and thinking_blocks:
+                            msg_dict['thinking_blocks'] = thinking_blocks
+                        elif reasoning_family in {
+                            'deepseek',
+                            'kimi',
+                            'qwen',
+                            'doubao',
+                            'mimo',
+                            'volcengine',
+                        } and isinstance(reasoning_content, str):
+                            msg_dict['reasoning_content'] = reasoning_content
+
+                    if cleaned_provider_fields:
+                        msg_dict['provider_specific_fields'] = cleaned_provider_fields
+                    else:
+                        msg_dict.pop('provider_specific_fields', None)
 
             if isinstance(content, list):
                 converted_parts = []
@@ -819,7 +982,13 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         stream: bool = False,
     ) -> dict:
         """Build common completion arguments for invoke_llm and invoke_llm_stream."""
-        req_messages = self._convert_messages(messages)
+        reasoning_family = self._reasoning_family(model.model_entity.name, model)
+        reasoning_level = self._reasoning_level(model)
+        req_messages = self._convert_messages(
+            messages,
+            reasoning_family=reasoning_family,
+            include_reasoning_context=reasoning_level != 'disabled',
+        )
         model_name = self._build_litellm_model_name(model.model_entity.name)
         api_key = model.provider.token_mgr.get_token()
 
@@ -855,7 +1024,7 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                 args['extra_body'] = {**existing_extra_body, **reasoning_extra_body}
             else:
                 args.update(reasoning_args)
-            if 'reasoning_effort' in reasoning_args and self._reasoning_provider(model.model_entity.name) == 'openai':
+            if 'reasoning_effort' in reasoning_args and self._get_custom_llm_provider() == 'openai':
                 allowed_openai_params = args.get('allowed_openai_params') or []
                 if not isinstance(allowed_openai_params, (list, tuple, set)):
                     raise errors.RequesterError('allowed_openai_params must be an array')
