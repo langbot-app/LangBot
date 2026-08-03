@@ -119,7 +119,7 @@ test('quota-reached create actions are disabled and explain the current limit', 
   await expect(botCreate).toBeDisabled();
   await expect(pipelineCreate).toBeDisabled();
   await expect(knowledgeCreate).toBeDisabled();
-  await expect(addExtension).toBeDisabled();
+  await expect(addExtension).toBeEnabled();
 
   const botQuotaTrigger = botCreate.locator('..');
   await botQuotaTrigger.hover();
@@ -136,7 +136,8 @@ test('quota-reached create actions are disabled and explain the current limit', 
     ),
   ).toBeVisible();
 
-  await page.goto('/home/add-extension');
+  await addExtension.click();
+  await expect(page).toHaveURL(/\/home\/add-extension$/);
   const manualAdd = page.getByRole('button', { name: 'Manual Add' });
   await expect(manualAdd).toBeDisabled();
   await manualAdd.locator('..').hover();

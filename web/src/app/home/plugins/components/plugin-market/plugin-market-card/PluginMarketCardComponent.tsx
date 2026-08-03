@@ -399,7 +399,7 @@ export default function PluginMarketCardComponent({
     <TooltipProvider delayDuration={200}>
       <Tooltip>
         <TooltipTrigger asChild>{cardContent}</TooltipTrigger>
-        <TooltipContent side="top" className="max-w-72 text-center">
+        <TooltipContent side="top" className="max-w-72 text-left">
           {installDisabledTooltip}
         </TooltipContent>
       </Tooltip>

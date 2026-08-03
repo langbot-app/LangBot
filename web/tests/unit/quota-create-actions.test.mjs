@@ -63,7 +63,13 @@ test('sidebar quota-disables create controls and renders a tooltip', () => {
   assert.match(tooltip, /limitation\.createDisabledTooltip/);
   assert.match(tooltip, /limitation\.quotaLoadingTooltip/);
   assert.match(tooltip, /tabIndex=\{0\}/);
+  assert.match(tooltip, /max-w-72 text-left/);
+  assert.doesNotMatch(tooltip, /text-center/);
   assert.match(source, /config\.id === 'add-extension'/);
+  assert.doesNotMatch(
+    source,
+    /config\.id === 'add-extension'\s*\?\s*quotaStatus\.extensions/,
+  );
 });
 
 test('add-extension page disables all install entry points at the quota', () => {
@@ -80,6 +86,8 @@ test('add-extension page disables all install entry points at the quota', () => 
   assert.match(card, /installDisabled/);
   assert.match(card, /disabled=\{installDisabled\}/);
   assert.match(card, /TooltipContent/);
+  assert.match(card, /max-w-72 text-left/);
+  assert.doesNotMatch(card, /max-w-72 text-center/);
   assert.match(recommendations, /installDisabled=\{installDisabled\}/);
   assert.match(
     recommendations,

@@ -543,33 +543,19 @@ function NavItems({
           if (config.id === 'add-extension' && !canManageResources) {
             return null;
           }
-          const quota =
-            config.id === 'add-extension'
-              ? quotaStatus.extensions
-              : UNLIMITED_QUOTA;
           // Non-entity entries (e.g. monitoring and the extension market) render as plain links.
           return (
             <SidebarMenuItem key={config.id}>
-              <WorkspaceQuotaTooltip
-                quota={quota}
-                resource={config.name}
-                side="right"
+              <SidebarMenuButton
+                isActive={selectedChild?.id === config.id}
+                onClick={() => onChildClick(config)}
+                tooltip={config.name}
               >
-                <SidebarMenuButton
-                  isActive={selectedChild?.id === config.id}
-                  onClick={() => {
-                    if (!quota.disabled) onChildClick(config);
-                  }}
-                  disabled={quota.disabled}
-                  aria-disabled={quota.disabled}
-                  tooltip={quota.disabled ? undefined : config.name}
-                >
-                  {config.icon}
-                  <span className="cursor-pointer select-none">
-                    {config.name}
-                  </span>
-                </SidebarMenuButton>
-              </WorkspaceQuotaTooltip>
+                {config.icon}
+                <span className="cursor-pointer select-none">
+                  {config.name}
+                </span>
+              </SidebarMenuButton>
             </SidebarMenuItem>
           );
         }

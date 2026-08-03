@@ -39,7 +39,7 @@ export function WorkspaceQuotaTooltip({
           {children}
         </span>
       </TooltipTrigger>
-      <TooltipContent side={side} className="max-w-72 text-center">
+      <TooltipContent side={side} className="max-w-72 text-left">
         {message}
       </TooltipContent>
     </Tooltip>
