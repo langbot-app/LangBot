@@ -80,9 +80,13 @@ function loadMarketFilters(): MarketFilters {
 function MarketPageContent({
   installPlugin,
   headerActions,
+  installDisabled,
+  installDisabledTooltip,
 }: {
   installPlugin: (plugin: PluginV4) => void;
   headerActions?: React.ReactNode;
+  installDisabled?: boolean;
+  installDisabledTooltip?: string;
 }) {
   const { t } = useTranslation();
   const [searchParams] = useSearchParams();
@@ -876,6 +880,8 @@ function MarketPageContent({
                   cardVO={plugin}
                   onInstall={handleInstallPlugin}
                   tagNames={tagNames}
+                  installDisabled={installDisabled}
+                  installDisabledTooltip={installDisabledTooltip}
                 />
               ))}
             </div>
@@ -915,9 +921,13 @@ function MarketPageContent({
 export default function MarketPage({
   installPlugin,
   headerActions,
+  installDisabled,
+  installDisabledTooltip,
 }: {
   installPlugin: (plugin: PluginV4) => void;
   headerActions?: React.ReactNode;
+  installDisabled?: boolean;
+  installDisabledTooltip?: string;
 }) {
   return (
     <Suspense
@@ -932,6 +942,8 @@ export default function MarketPage({
       <MarketPageContent
         installPlugin={installPlugin}
         headerActions={headerActions}
+        installDisabled={installDisabled}
+        installDisabledTooltip={installDisabledTooltip}
       />
     </Suspense>
   );

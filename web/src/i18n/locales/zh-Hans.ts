@@ -1606,6 +1606,8 @@ const zhHans = {
       '已达到流水线数量上限（{{max}}个）。请先删除已有流水线后再创建新的。',
     maxExtensionsReached:
       '已达到扩展数量上限（{{max}}个）。请先删除已有扩展后再添加新的。',
+    createDisabledTooltip:
+      '当前工作区的{{resource}}数量已达到上限（{{max}}个）。请先删除一个已有{{resource}}后再创建。',
   },
   skills: {
     title: '技能',

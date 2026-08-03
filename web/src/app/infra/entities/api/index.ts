@@ -328,6 +328,7 @@ export interface SystemLimitation {
   max_bots: number;
   max_pipelines: number;
   max_extensions: number;
+  max_knowledge_bases?: number;
   /** When non-empty, every pipeline is forced to this Box sandbox-scope
    *  template (e.g. ``{global}``) and the per-pipeline "Sandbox Scope"
    *  selector is locked. Used by SaaS deployments. Empty = no restriction. */

@@ -1602,6 +1602,8 @@ const viVN = {
       'Đã đạt số lượng Pipeline tối đa ({{max}}). Vui lòng xóa một Pipeline hiện có trước khi tạo mới.',
     maxExtensionsReached:
       'Đã đạt số lượng tiện ích mở rộng tối đa ({{max}}). Vui lòng xóa một máy chủ MCP hoặc plugin hiện có trước khi thêm mới.',
+    createDisabledTooltip:
+      'Đã đạt giới hạn {{resource}} ({{max}}) của workspace này. Hãy xóa một mục hiện có trước khi tạo mới.',
   },
   wizard: {
     sidebarDescription: 'Tạo Bot với các bước hướng dẫn',

@@ -109,6 +109,11 @@ import {
 import { cn } from '@/lib/utils';
 import { useSidebarData, SidebarEntityItem } from './SidebarDataContext';
 import { FeedbackPopoverContent } from './FeedbackPopover';
+import {
+  type WorkspaceQuotaItem,
+  useWorkspaceQuotaStatus,
+} from '@/app/home/components/workspace-quota/useWorkspaceQuotaStatus';
+import { WorkspaceQuotaTooltip } from '@/app/home/components/workspace-quota/WorkspaceQuotaTooltip';
 
 // Compare two version strings, returns true if v1 > v2
 function compareVersions(v1: string, v2: string): boolean {
@@ -279,6 +284,14 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+const UNLIMITED_QUOTA: WorkspaceQuotaItem = {
+  count: 0,
+  max: -1,
+  reached: false,
+  loading: false,
+  disabled: false,
+};
+
 async function waitForMCPRefreshTask(taskId: number) {
   const deadline = Date.now() + MCP_REFRESH_TIMEOUT_MS;
 
@@ -386,6 +399,7 @@ function NavItems({
   const pathname = location.pathname;
   const [searchParams] = useSearchParams();
   const sidebarData = useSidebarData();
+  const quotaStatus = useWorkspaceQuotaStatus();
   const { state: sidebarState, isMobile } = useSidebar();
   const { t } = useTranslation();
   const currentWorkspace = useCurrentWorkspace();
@@ -529,19 +543,33 @@ function NavItems({
           if (config.id === 'add-extension' && !canManageResources) {
             return null;
           }
-          // Non-entity entries (e.g. monitoring, market, mcp) render as plain links
+          const quota =
+            config.id === 'add-extension'
+              ? quotaStatus.extensions
+              : UNLIMITED_QUOTA;
+          // Non-entity entries (e.g. monitoring and the extension market) render as plain links.
           return (
             <SidebarMenuItem key={config.id}>
-              <SidebarMenuButton
-                isActive={selectedChild?.id === config.id}
-                onClick={() => onChildClick(config)}
-                tooltip={config.name}
+              <WorkspaceQuotaTooltip
+                quota={quota}
+                resource={config.name}
+                side="right"
               >
-                {config.icon}
-                <span className="cursor-pointer select-none">
-                  {config.name}
-                </span>
-              </SidebarMenuButton>
+                <SidebarMenuButton
+                  isActive={selectedChild?.id === config.id}
+                  onClick={() => {
+                    if (!quota.disabled) onChildClick(config);
+                  }}
+                  disabled={quota.disabled}
+                  aria-disabled={quota.disabled}
+                  tooltip={quota.disabled ? undefined : config.name}
+                >
+                  {config.icon}
+                  <span className="cursor-pointer select-none">
+                    {config.name}
+                  </span>
+                </SidebarMenuButton>
+              </WorkspaceQuotaTooltip>
             </SidebarMenuItem>
           );
         }
@@ -575,6 +603,18 @@ function NavItems({
         const isSkill = categoryId === 'skills';
         const isBot = categoryId === 'bots';
         const isMCP = categoryId === 'mcp';
+        const quota =
+          categoryId === 'bots'
+            ? quotaStatus.bots
+            : categoryId === 'pipelines'
+              ? quotaStatus.pipelines
+              : categoryId === 'knowledge'
+                ? quotaStatus.knowledgeBases
+                : categoryId === 'plugins' ||
+                    categoryId === 'mcp' ||
+                    categoryId === 'skills'
+                  ? quotaStatus.extensions
+                  : UNLIMITED_QUOTA;
 
         const resolveItemRoute = (item: SidebarEntityItem): string => {
           if (item.extensionType === 'mcp') {
@@ -907,128 +947,144 @@ function NavItems({
                 >
                   <div className="flex items-center justify-between mb-1 px-2">
                     <span className="text-sm font-medium">{config.name}</span>
-                    {canCreate &&
-                      (isPlugin ? (
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <button
-                              type="button"
-                              className="p-1 rounded-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
-                            >
-                              <Plus className="size-3.5" />
-                            </button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            {systemInfo.enable_marketplace && (
+                    {canCreate && (
+                      <WorkspaceQuotaTooltip
+                        quota={quota}
+                        resource={config.name}
+                        side="right"
+                      >
+                        {isPlugin ? (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <button
+                                type="button"
+                                disabled={quota.disabled}
+                                aria-disabled={quota.disabled}
+                                aria-label={`${t('common.create')} ${config.name}`}
+                                className="p-1 rounded-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors disabled:pointer-events-none disabled:opacity-40"
+                              >
+                                <Plus className="size-3.5" />
+                              </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              {systemInfo.enable_marketplace && (
+                                <DropdownMenuItem
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    navigate('/home/add-extension');
+                                    setPopoverOpen((prev) => ({
+                                      ...prev,
+                                      [config.id]: false,
+                                    }));
+                                  }}
+                                >
+                                  <Store className="size-4" />
+                                  {t('plugins.goToMarketplace')}
+                                </DropdownMenuItem>
+                              )}
                               <DropdownMenuItem
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  navigate('/home/add-extension');
+                                  navigate('/home/add-extension?manual=1');
                                   setPopoverOpen((prev) => ({
                                     ...prev,
                                     [config.id]: false,
                                   }));
                                 }}
                               >
-                                <Store className="size-4" />
-                                {t('plugins.goToMarketplace')}
+                                <Upload className="size-4" />
+                                {t('plugins.uploadLocal')}
                               </DropdownMenuItem>
-                            )}
-                            <DropdownMenuItem
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                navigate('/home/add-extension?manual=1');
-                                setPopoverOpen((prev) => ({
-                                  ...prev,
-                                  [config.id]: false,
-                                }));
-                              }}
-                            >
-                              <Upload className="size-4" />
-                              {t('plugins.uploadLocal')}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                navigate('/home/add-extension?manual=1');
-                                setPopoverOpen((prev) => ({
-                                  ...prev,
-                                  [config.id]: false,
-                                }));
-                              }}
-                            >
-                              <Github className="size-4" />
-                              {t('plugins.installFromGithub')}
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      ) : isSkill ? (
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <button
-                              type="button"
-                              className="p-1 rounded-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
-                            >
-                              <Plus className="size-3.5" />
-                            </button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                navigate('/home/skills?action=create');
-                                setPopoverOpen((prev) => ({
-                                  ...prev,
-                                  [config.id]: false,
-                                }));
-                              }}
-                            >
-                              <FilePlus2 className="size-4" />
-                              {t('skills.createManually')}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                navigate('/home/add-extension?manual=1');
-                                setPopoverOpen((prev) => ({
-                                  ...prev,
-                                  [config.id]: false,
-                                }));
-                              }}
-                            >
-                              <Upload className="size-4" />
-                              {t('skills.uploadZip')}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                navigate('/home/add-extension?manual=1');
-                                setPopoverOpen((prev) => ({
-                                  ...prev,
-                                  [config.id]: false,
-                                }));
-                              }}
-                            >
-                              <Github className="size-4" />
-                              {t('skills.importFromGithub')}
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      ) : (
-                        <button
-                          type="button"
-                          className="p-1 rounded-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
-                          onClick={() => {
-                            navigate(`${routePrefix}?id=new`);
-                            setPopoverOpen((prev) => ({
-                              ...prev,
-                              [config.id]: false,
-                            }));
-                          }}
-                        >
-                          <Plus className="size-3.5" />
-                        </button>
-                      ))}
+                              <DropdownMenuItem
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigate('/home/add-extension?manual=1');
+                                  setPopoverOpen((prev) => ({
+                                    ...prev,
+                                    [config.id]: false,
+                                  }));
+                                }}
+                              >
+                                <Github className="size-4" />
+                                {t('plugins.installFromGithub')}
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        ) : isSkill ? (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <button
+                                type="button"
+                                disabled={quota.disabled}
+                                aria-disabled={quota.disabled}
+                                aria-label={`${t('common.create')} ${config.name}`}
+                                className="p-1 rounded-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors disabled:pointer-events-none disabled:opacity-40"
+                              >
+                                <Plus className="size-3.5" />
+                              </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigate('/home/skills?action=create');
+                                  setPopoverOpen((prev) => ({
+                                    ...prev,
+                                    [config.id]: false,
+                                  }));
+                                }}
+                              >
+                                <FilePlus2 className="size-4" />
+                                {t('skills.createManually')}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigate('/home/add-extension?manual=1');
+                                  setPopoverOpen((prev) => ({
+                                    ...prev,
+                                    [config.id]: false,
+                                  }));
+                                }}
+                              >
+                                <Upload className="size-4" />
+                                {t('skills.uploadZip')}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigate('/home/add-extension?manual=1');
+                                  setPopoverOpen((prev) => ({
+                                    ...prev,
+                                    [config.id]: false,
+                                  }));
+                                }}
+                              >
+                                <Github className="size-4" />
+                                {t('skills.importFromGithub')}
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={quota.disabled}
+                            aria-disabled={quota.disabled}
+                            aria-label={`${t('common.create')} ${config.name}`}
+                            className="p-1 rounded-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors disabled:pointer-events-none disabled:opacity-40"
+                            onClick={() => {
+                              navigate(`${routePrefix}?id=new`);
+                              setPopoverOpen((prev) => ({
+                                ...prev,
+                                [config.id]: false,
+                              }));
+                            }}
+                          >
+                            <Plus className="size-3.5" />
+                          </button>
+                        )}
+                      </WorkspaceQuotaTooltip>
+                    )}
                   </div>
                   <div className="flex flex-col gap-0.5 max-h-80 overflow-y-auto">
                     {renderEntityList(true)}
@@ -1096,103 +1152,119 @@ function NavItems({
                         />
                       </button>
                     )}
-                    {canCreate &&
-                      (isPlugin ? (
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <button
-                              type="button"
-                              className="p-1 rounded-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground [@media(hover:hover)]:opacity-0 group-hover/category-header:opacity-100 transition-all"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <Plus className="size-3.5" />
-                            </button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            {systemInfo.enable_marketplace && (
+                    {canCreate && (
+                      <WorkspaceQuotaTooltip
+                        quota={quota}
+                        resource={config.name}
+                        side="right"
+                      >
+                        {isPlugin ? (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <button
+                                type="button"
+                                disabled={quota.disabled}
+                                aria-disabled={quota.disabled}
+                                aria-label={`${t('common.create')} ${config.name}`}
+                                className="p-1 rounded-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground [@media(hover:hover)]:opacity-0 group-hover/category-header:opacity-100 transition-all disabled:pointer-events-none disabled:opacity-40"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <Plus className="size-3.5" />
+                              </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              {systemInfo.enable_marketplace && (
+                                <DropdownMenuItem
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    navigate('/home/add-extension');
+                                  }}
+                                >
+                                  <Store className="size-4" />
+                                  {t('plugins.goToMarketplace')}
+                                </DropdownMenuItem>
+                              )}
                               <DropdownMenuItem
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  navigate('/home/add-extension');
+                                  navigate('/home/add-extension?manual=1');
                                 }}
                               >
-                                <Store className="size-4" />
-                                {t('plugins.goToMarketplace')}
+                                <Upload className="size-4" />
+                                {t('plugins.uploadLocal')}
                               </DropdownMenuItem>
-                            )}
-                            <DropdownMenuItem
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                navigate('/home/add-extension?manual=1');
-                              }}
-                            >
-                              <Upload className="size-4" />
-                              {t('plugins.uploadLocal')}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                navigate('/home/add-extension?manual=1');
-                              }}
-                            >
-                              <Github className="size-4" />
-                              {t('plugins.installFromGithub')}
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      ) : isSkill ? (
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <button
-                              type="button"
-                              className="p-1 rounded-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground [@media(hover:hover)]:opacity-0 group-hover/category-header:opacity-100 transition-all"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <Plus className="size-3.5" />
-                            </button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                navigate('/home/skills?action=create');
-                              }}
-                            >
-                              <FilePlus2 className="size-4" />
-                              {t('skills.createManually')}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                navigate('/home/add-extension?manual=1');
-                              }}
-                            >
-                              <Upload className="size-4" />
-                              {t('skills.uploadZip')}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                navigate('/home/add-extension?manual=1');
-                              }}
-                            >
-                              <Github className="size-4" />
-                              {t('skills.importFromGithub')}
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      ) : (
-                        <button
-                          type="button"
-                          className="p-1 rounded-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground [@media(hover:hover)]:opacity-0 group-hover/category-header:opacity-100 transition-all"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            navigate(`${routePrefix}?id=new`);
-                          }}
-                        >
-                          <Plus className="size-3.5" />
-                        </button>
-                      ))}
+                              <DropdownMenuItem
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigate('/home/add-extension?manual=1');
+                                }}
+                              >
+                                <Github className="size-4" />
+                                {t('plugins.installFromGithub')}
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        ) : isSkill ? (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <button
+                                type="button"
+                                disabled={quota.disabled}
+                                aria-disabled={quota.disabled}
+                                aria-label={`${t('common.create')} ${config.name}`}
+                                className="p-1 rounded-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground [@media(hover:hover)]:opacity-0 group-hover/category-header:opacity-100 transition-all disabled:pointer-events-none disabled:opacity-40"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <Plus className="size-3.5" />
+                              </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigate('/home/skills?action=create');
+                                }}
+                              >
+                                <FilePlus2 className="size-4" />
+                                {t('skills.createManually')}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigate('/home/add-extension?manual=1');
+                                }}
+                              >
+                                <Upload className="size-4" />
+                                {t('skills.uploadZip')}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigate('/home/add-extension?manual=1');
+                                }}
+                              >
+                                <Github className="size-4" />
+                                {t('skills.importFromGithub')}
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={quota.disabled}
+                            aria-disabled={quota.disabled}
+                            aria-label={`${t('common.create')} ${config.name}`}
+                            className="p-1 rounded-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground [@media(hover:hover)]:opacity-0 group-hover/category-header:opacity-100 transition-all disabled:pointer-events-none disabled:opacity-40"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate(`${routePrefix}?id=new`);
+                            }}
+                          >
+                            <Plus className="size-3.5" />
+                          </button>
+                        )}
+                      </WorkspaceQuotaTooltip>
+                    )}
                     <CollapsibleTrigger asChild>
                       <button
                         type="button"

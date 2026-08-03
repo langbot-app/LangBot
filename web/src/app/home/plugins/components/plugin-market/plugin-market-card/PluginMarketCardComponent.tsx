@@ -23,10 +23,14 @@ export default function PluginMarketCardComponent({
   cardVO,
   onInstall,
   tagNames = {},
+  installDisabled = false,
+  installDisabledTooltip,
 }: {
   cardVO: PluginMarketCardVO;
   onInstall?: (cardVO: PluginMarketCardVO) => void;
   tagNames?: Record<string, string>;
+  installDisabled?: boolean;
+  installDisabledTooltip?: string;
 }) {
   const { t } = useTranslation();
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -127,6 +131,7 @@ export default function PluginMarketCardComponent({
 
   const remainingTags = cardVO.tags ? cardVO.tags.length - visibleTags : 0;
   const handleInstallClick = () => {
+    if (installDisabled) return;
     onInstall?.(cardVO);
   };
 
@@ -153,12 +158,17 @@ export default function PluginMarketCardComponent({
     }
   };
 
-  return (
+  const cardContent = (
     <div
-      role="button"
+      role={installDisabled ? 'group' : 'button'}
       tabIndex={0}
+      aria-disabled={installDisabled}
       aria-label={t('market.installCard', { name: cardVO.label })}
-      className="w-[100%] h-[10rem] cursor-pointer bg-white rounded-[10px] border border-border shadow-[0px_1px_2px_0_rgba(0,0,0,0.06)] p-3 sm:p-[1rem] hover:shadow-[0px_2px_5px_0_rgba(0,0,0,0.08)] transition-shadow duration-200 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:bg-[#1f1f22] dark:shadow-[0px_1px_2px_0_rgba(255,255,255,0.04)] dark:hover:shadow-[0px_2px_5px_0_rgba(255,255,255,0.07)] relative"
+      className={`w-[100%] h-[10rem] bg-white rounded-[10px] border border-border shadow-[0px_1px_2px_0_rgba(0,0,0,0.06)] p-3 sm:p-[1rem] transition-shadow duration-200 outline-none dark:bg-[#1f1f22] dark:shadow-[0px_1px_2px_0_rgba(255,255,255,0.04)] relative ${
+        installDisabled
+          ? 'cursor-not-allowed opacity-60'
+          : 'cursor-pointer hover:shadow-[0px_2px_5px_0_rgba(0,0,0,0.08)] focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:hover:shadow-[0px_2px_5px_0_rgba(255,255,255,0.07)]'
+      }`}
       onClick={handleInstallClick}
       onKeyDown={(event) => {
         if (
@@ -381,5 +391,18 @@ export default function PluginMarketCardComponent({
         </div>
       </div>
     </div>
+  );
+
+  if (!installDisabled || !installDisabledTooltip) return cardContent;
+
+  return (
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger asChild>{cardContent}</TooltipTrigger>
+        <TooltipContent side="top" className="max-w-72 text-center">
+          {installDisabledTooltip}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }

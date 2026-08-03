@@ -1678,6 +1678,8 @@ const enUS = {
       'Maximum number of pipelines ({{max}}) reached. Please remove an existing pipeline before creating a new one.',
     maxExtensionsReached:
       'Maximum number of extensions ({{max}}) reached. Please remove an existing extension before adding a new one.',
+    createDisabledTooltip:
+      'The {{resource}} limit ({{max}}) for this workspace has been reached. Delete one existing item before creating another.',
   },
   skills: {
     title: 'Skills',

@@ -1685,6 +1685,8 @@ const jaJP = {
       'パイプライン数が上限（{{max}}個）に達しました。新しいパイプラインを作成するには、既存のパイプラインを削除してください。',
     maxExtensionsReached:
       '拡張機能数が上限（{{max}}個）に達しました。新しい MCP サーバーやプラグインを追加するには、既存のものを削除してください。',
+    createDisabledTooltip:
+      'このワークスペースの{{resource}}数が上限（{{max}}個）に達しました。新しく作成する前に既存の{{resource}}を削除してください。',
   },
   wizard: {
     sidebarDescription: 'ガイド付きステップでボットを作成',

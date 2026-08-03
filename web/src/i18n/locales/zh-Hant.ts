@@ -1531,6 +1531,8 @@ const zhHant = {
       '已達到流水線數量上限（{{max}}個）。請先刪除已有流水線後再建立新的。',
     maxExtensionsReached:
       '已達到擴充功能數量上限（{{max}}個）。請先刪除已有擴充功能後再新增。',
+    createDisabledTooltip:
+      '目前工作區的{{resource}}數量已達上限（{{max}}個）。請先刪除一個現有{{resource}}後再建立。',
   },
   wizard: {
     sidebarDescription: '透過引導步驟建立機器人',

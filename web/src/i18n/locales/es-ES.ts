@@ -1634,6 +1634,8 @@ const esES = {
       'Se ha alcanzado el número máximo de Pipelines ({{max}}). Por favor, elimina un Pipeline existente antes de crear uno nuevo.',
     maxExtensionsReached:
       'Se ha alcanzado el número máximo de extensiones ({{max}}). Por favor, elimina un servidor MCP o plugin existente antes de añadir uno nuevo.',
+    createDisabledTooltip:
+      'Se alcanzó el límite de {{resource}} ({{max}}) de este espacio de trabajo. Elimina uno existente antes de crear otro.',
   },
   wizard: {
     sidebarDescription: 'Crea un Bot con pasos guiados',
