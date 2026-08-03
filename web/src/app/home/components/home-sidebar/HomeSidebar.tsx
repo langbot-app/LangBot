@@ -8,6 +8,7 @@ import {
   clearUserInfo,
   getCloudServiceClientSync,
   useCurrentWorkspace,
+  useWorkspaceBootstrap,
 } from '@/app/infra/http';
 import { useTranslation } from 'react-i18next';
 import {
@@ -32,7 +33,6 @@ import {
   Zap,
   FilePlus2,
   Sparkles,
-  HardDrive,
   Server,
   Puzzle,
   RefreshCcw,
@@ -1637,6 +1637,13 @@ export default function HomeSidebar({
   const { theme, setTheme } = useTheme();
   const { t } = useTranslation();
   const currentWorkspace = useCurrentWorkspace();
+  const workspaces = useWorkspaceBootstrap();
+  const showWorkspaceSwitcher =
+    workspaces.length > 1 ||
+    currentWorkspace?.workspace.source === 'cloud_projection';
+  const canViewStorageAnalysis =
+    currentWorkspace?.workspace.source !== 'cloud_projection' &&
+    currentWorkspace?.permissions.includes('audit.view');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsSection, setSettingsSection] =
     useState<SettingsSection>('models');
@@ -1915,9 +1922,11 @@ export default function HomeSidebar({
           </SidebarMenu>
         </SidebarHeader>
 
-        <div className="px-2 group-data-[collapsible=icon]:px-0">
-          <WorkspaceSwitcher className="w-full group-data-[collapsible=icon]:min-w-0 group-data-[collapsible=icon]:px-2" />
-        </div>
+        {showWorkspaceSwitcher && (
+          <div className="px-2 group-data-[collapsible=icon]:px-0">
+            <WorkspaceSwitcher className="w-full group-data-[collapsible=icon]:min-w-0 group-data-[collapsible=icon]:px-2" />
+          </div>
+        )}
 
         {/* Navigation items grouped by section */}
         <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -2098,15 +2107,16 @@ export default function HomeSidebar({
                       <UsersRound />
                       {t('workspace.settings')}
                     </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => {
-                        setUserMenuOpen(false);
-                        openSettings('storageAnalysis');
-                      }}
-                    >
-                      <HardDrive />
-                      {t('storageAnalysis.title')}
-                    </DropdownMenuItem>
+                    {canViewStorageAnalysis && (
+                      <DropdownMenuItem
+                        onClick={() => {
+                          setUserMenuOpen(false);
+                          openSettings('storageAnalysis');
+                        }}
+                      >
+                        {t('storageAnalysis.title')}
+                      </DropdownMenuItem>
+                    )}
                     <DropdownMenuItem
                       onClick={() => {
                         setUserMenuOpen(false);
