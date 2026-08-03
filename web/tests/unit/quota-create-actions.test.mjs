@@ -16,6 +16,7 @@ const tooltipPath = path.join(
   root,
   'src/app/home/components/workspace-quota/WorkspaceQuotaTooltip.tsx',
 );
+const baseTooltipPath = path.join(root, 'src/components/ui/tooltip.tsx');
 const addExtensionPath = path.join(root, 'src/app/home/add-extension/page.tsx');
 const marketPath = path.join(
   root,
@@ -55,6 +56,7 @@ test('workspace quota hook exposes reached states for every creatable resource',
 test('sidebar quota-disables create controls and renders a tooltip', () => {
   const source = fs.readFileSync(sidebarPath, 'utf8');
   const tooltip = fs.readFileSync(tooltipPath, 'utf8');
+  const baseTooltip = fs.readFileSync(baseTooltipPath, 'utf8');
   assert.match(source, /useWorkspaceQuotaStatus/);
   assert.match(source, /quota\.disabled/);
   assert.match(source, /disabled=\{quota\.disabled\}/);
@@ -65,6 +67,7 @@ test('sidebar quota-disables create controls and renders a tooltip', () => {
   assert.match(tooltip, /tabIndex=\{0\}/);
   assert.match(tooltip, /max-w-72 text-left/);
   assert.doesNotMatch(tooltip, /text-center/);
+  assert.doesNotMatch(baseTooltip, /text-balance/);
   assert.match(source, /config\.id === 'add-extension'/);
   assert.doesNotMatch(
     source,
