@@ -58,6 +58,9 @@ async def space_oauth_api():
         return_value={'account_uuid': 'account-a', 'workspace_uuid': WORKSPACE_UUID}
     )
     application.workspace_collaboration_service.resolve_account_workspace = AsyncMock(return_value=access)
+    application.workspace_service.get_execution_binding = AsyncMock(
+        return_value=SimpleNamespace(workspace_uuid=WORKSPACE_UUID)
+    )
     application.space_service.get_oauth_authorize_url = Mock(
         side_effect=lambda redirect_uri, state: f'https://space.example/authorize?state={state}'
     )
@@ -234,7 +237,7 @@ async def test_login_callback_requires_and_consumes_server_state(space_oauth_api
     assert response.status_code == 200
     assert (await response.get_json())['data']['token'] == 'space-login-token'
     application.user_service.consume_space_oauth_state_details.assert_awaited_once_with('opaque-login-state', 'login')
-    application.space_service.exchange_oauth_code.assert_awaited_once_with('oauth-code')
+    application.space_service.exchange_oauth_code.assert_awaited_once_with('oauth-code', [WORKSPACE_UUID])
 
 
 @pytest.mark.asyncio
