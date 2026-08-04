@@ -606,6 +606,8 @@ class WorkspaceCollaborationService:
     ) -> WorkspaceMembership:
         if role not in {item.value for item in MembershipRole}:
             raise MembershipPermissionError('Unknown Workspace role')
+        if role == MembershipRole.OWNER.value:
+            raise MembershipPermissionError('Workspace ownership cannot be transferred')
 
         async def operation(active_session: AsyncSession) -> WorkspaceMembership:
             await self._require_active_workspace(active_session, workspace_uuid)
@@ -617,8 +619,8 @@ class WorkspaceCollaborationService:
                 target_account_uuid,
             )
             self._require_can_manage_target(persisted_actor, target, new_role=role)
-            if target.role == MembershipRole.OWNER.value and role != MembershipRole.OWNER.value:
-                await self._require_another_owner(active_session, workspace_uuid, target.account_uuid)
+            if target.role == MembershipRole.OWNER.value:
+                raise LastOwnerError('The Workspace owner cannot be removed or demoted')
             target.role = role
             await active_session.flush()
             return target
@@ -644,7 +646,7 @@ class WorkspaceCollaborationService:
             )
             self._require_can_manage_target(persisted_actor, target)
             if target.role == MembershipRole.OWNER.value:
-                await self._require_another_owner(active_session, workspace_uuid, target.account_uuid)
+                raise LastOwnerError('The Workspace owner cannot be removed or demoted')
             target.status = MembershipStatus.REMOVED.value
             await active_session.flush()
             return target
@@ -750,26 +752,6 @@ class WorkspaceCollaborationService:
         if persisted_actor is None:
             raise WorkspaceNotFoundError('Workspace not found')
         return persisted_actor
-
-    async def _require_another_owner(
-        self,
-        session: AsyncSession,
-        workspace_uuid: str,
-        excluded_account_uuid: str,
-    ) -> None:
-        owners = (
-            await session.scalars(
-                sqlalchemy.select(WorkspaceMembership)
-                .where(
-                    WorkspaceMembership.workspace_uuid == workspace_uuid,
-                    WorkspaceMembership.status == MembershipStatus.ACTIVE.value,
-                    WorkspaceMembership.role == MembershipRole.OWNER.value,
-                )
-                .with_for_update()
-            )
-        ).all()
-        if not any(owner.account_uuid != excluded_account_uuid for owner in owners):
-            raise LastOwnerError('The last Workspace owner cannot be removed or demoted')
 
     def _require_actor_workspace(self, actor: WorkspaceMembership, workspace_uuid: str) -> None:
         if actor.workspace_uuid != workspace_uuid or actor.status != MembershipStatus.ACTIVE.value:

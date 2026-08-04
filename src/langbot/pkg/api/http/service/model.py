@@ -5,6 +5,7 @@ import uuid
 import sqlalchemy
 from langbot_plugin.api.entities.builtin.provider import message as provider_message
 
+from ....cloud.model_catalog import LANGBOT_MODELS_PROVIDER_REQUESTER
 from ....core import app
 from ....entity.persistence import model as persistence_model
 from ....entity.persistence import pipeline as persistence_pipeline
@@ -113,6 +114,23 @@ async def _require_workspace_provider(
     return provider
 
 
+def _is_cloud_runtime(ap: app.Application) -> bool:
+    mode = getattr(ap.persistence_mgr, 'mode', None)
+    return getattr(mode, 'value', None) == 'cloud_runtime'
+
+
+async def _assert_cloud_managed_provider_mutable(
+    ap: app.Application,
+    context: TenantContext,
+    provider_uuid: str,
+) -> None:
+    if not _is_cloud_runtime(ap):
+        return
+    provider = await _require_workspace_provider(ap, context, provider_uuid)
+    if provider.get('requester') == LANGBOT_MODELS_PROVIDER_REQUESTER:
+        raise ValueError('LangBot Models is managed by Cloud and cannot be modified')
+
+
 async def _require_runtime_provider(
     ap: app.Application,
     context: TenantContext,
@@ -213,6 +231,7 @@ class LLMModelsService:
                 model_data['provider_uuid'] = provider_uuid
 
         await _require_workspace_provider(self.ap, context, model_data['provider_uuid'])
+        await _assert_cloud_managed_provider_mutable(self.ap, context, model_data['provider_uuid'])
         await _validate_provider_supports(self.ap, context, model_data['provider_uuid'], 'llm')
 
         await self.ap.persistence_mgr.execute_async(sqlalchemy.insert(persistence_model.LLMModel).values(**model_data))
@@ -291,11 +310,17 @@ class LLMModelsService:
 
         return model_dict
 
-    async def update_llm_model(self, context: TenantContext, model_uuid: str, model_data: dict) -> None:
+    async def update_llm_model(
+        self,
+        context: TenantContext,
+        model_uuid: str,
+        model_data: dict,
+    ) -> None:
         """Update an existing LLM model"""
         existing_model = await self.get_llm_model(context, model_uuid, include_secret=True)
         if existing_model is None:
             raise WorkspaceNotFoundError('Model not found')
+        await _assert_cloud_managed_provider_mutable(self.ap, context, existing_model['provider_uuid'])
         model_data = model_data.copy()
         model_data.pop('uuid', None)
         model_data.pop('workspace_uuid', None)
@@ -321,6 +346,7 @@ class LLMModelsService:
 
         provider_uuid = model_data.get('provider_uuid', existing_model['provider_uuid'])
         await _require_workspace_provider(self.ap, context, provider_uuid)
+        await _assert_cloud_managed_provider_mutable(self.ap, context, provider_uuid)
         await _validate_provider_supports(self.ap, context, provider_uuid, 'llm')
 
         result = await self.ap.persistence_mgr.execute_async(
@@ -355,6 +381,11 @@ class LLMModelsService:
 
     async def delete_llm_model(self, context: TenantContext, model_uuid: str) -> None:
         """Delete an LLM model"""
+        if _is_cloud_runtime(self.ap):
+            existing_model = await self.get_llm_model(context, model_uuid, include_secret=True)
+            if existing_model is None:
+                raise WorkspaceNotFoundError('Model not found')
+            await _assert_cloud_managed_provider_mutable(self.ap, context, existing_model['provider_uuid'])
         result = await self.ap.persistence_mgr.execute_async(
             scope_statement(
                 sqlalchemy.delete(persistence_model.LLMModel).where(persistence_model.LLMModel.uuid == model_uuid),
@@ -448,7 +479,10 @@ class EmbeddingModelsService:
         return serialized if include_secret else [_redact_model_secrets(model) for model in serialized]
 
     async def create_embedding_model(
-        self, context: TenantContext, model_data: dict, preserve_uuid: bool = False
+        self,
+        context: TenantContext,
+        model_data: dict,
+        preserve_uuid: bool = False,
     ) -> str:
         """Create a new embedding model"""
         model_data = model_data.copy()
@@ -472,6 +506,7 @@ class EmbeddingModelsService:
                 model_data['provider_uuid'] = provider_uuid
 
         await _require_workspace_provider(self.ap, context, model_data['provider_uuid'])
+        await _assert_cloud_managed_provider_mutable(self.ap, context, model_data['provider_uuid'])
         await _validate_provider_supports(self.ap, context, model_data['provider_uuid'], 'text-embedding')
 
         await self.ap.persistence_mgr.execute_async(
@@ -530,11 +565,17 @@ class EmbeddingModelsService:
 
         return model_dict
 
-    async def update_embedding_model(self, context: TenantContext, model_uuid: str, model_data: dict) -> None:
+    async def update_embedding_model(
+        self,
+        context: TenantContext,
+        model_uuid: str,
+        model_data: dict,
+    ) -> None:
         """Update an existing embedding model"""
         existing_model = await self.get_embedding_model(context, model_uuid, include_secret=True)
         if existing_model is None:
             raise WorkspaceNotFoundError('Model not found')
+        await _assert_cloud_managed_provider_mutable(self.ap, context, existing_model['provider_uuid'])
         model_data = model_data.copy()
         model_data.pop('uuid', None)
         model_data.pop('workspace_uuid', None)
@@ -559,6 +600,7 @@ class EmbeddingModelsService:
 
         provider_uuid = model_data.get('provider_uuid', existing_model['provider_uuid'])
         await _require_workspace_provider(self.ap, context, provider_uuid)
+        await _assert_cloud_managed_provider_mutable(self.ap, context, provider_uuid)
         await _validate_provider_supports(self.ap, context, provider_uuid, 'text-embedding')
 
         result = await self.ap.persistence_mgr.execute_async(
@@ -593,6 +635,11 @@ class EmbeddingModelsService:
 
     async def delete_embedding_model(self, context: TenantContext, model_uuid: str) -> None:
         """Delete an embedding model"""
+        if _is_cloud_runtime(self.ap):
+            existing_model = await self.get_embedding_model(context, model_uuid, include_secret=True)
+            if existing_model is None:
+                raise WorkspaceNotFoundError('Model not found')
+            await _assert_cloud_managed_provider_mutable(self.ap, context, existing_model['provider_uuid'])
         result = await self.ap.persistence_mgr.execute_async(
             scope_statement(
                 sqlalchemy.delete(persistence_model.EmbeddingModel).where(
@@ -685,7 +732,12 @@ class RerankModelsService:
         serialized = [self.ap.persistence_mgr.serialize_model(persistence_model.RerankModel, m) for m in models]
         return serialized if include_secret else [_redact_model_secrets(model) for model in serialized]
 
-    async def create_rerank_model(self, context: TenantContext, model_data: dict, preserve_uuid: bool = False) -> str:
+    async def create_rerank_model(
+        self,
+        context: TenantContext,
+        model_data: dict,
+        preserve_uuid: bool = False,
+    ) -> str:
         """Create a new rerank model"""
         model_data = model_data.copy()
         if not preserve_uuid:
@@ -708,6 +760,7 @@ class RerankModelsService:
                 model_data['provider_uuid'] = provider_uuid
 
         await _require_workspace_provider(self.ap, context, model_data['provider_uuid'])
+        await _assert_cloud_managed_provider_mutable(self.ap, context, model_data['provider_uuid'])
         await _validate_provider_supports(self.ap, context, model_data['provider_uuid'], 'rerank')
 
         await self.ap.persistence_mgr.execute_async(
@@ -766,11 +819,17 @@ class RerankModelsService:
 
         return model_dict
 
-    async def update_rerank_model(self, context: TenantContext, model_uuid: str, model_data: dict) -> None:
+    async def update_rerank_model(
+        self,
+        context: TenantContext,
+        model_uuid: str,
+        model_data: dict,
+    ) -> None:
         """Update an existing rerank model"""
         existing_model = await self.get_rerank_model(context, model_uuid, include_secret=True)
         if existing_model is None:
             raise WorkspaceNotFoundError('Model not found')
+        await _assert_cloud_managed_provider_mutable(self.ap, context, existing_model['provider_uuid'])
         model_data = model_data.copy()
         model_data.pop('uuid', None)
         model_data.pop('workspace_uuid', None)
@@ -795,6 +854,7 @@ class RerankModelsService:
 
         provider_uuid = model_data.get('provider_uuid', existing_model['provider_uuid'])
         await _require_workspace_provider(self.ap, context, provider_uuid)
+        await _assert_cloud_managed_provider_mutable(self.ap, context, provider_uuid)
         await _validate_provider_supports(self.ap, context, provider_uuid, 'rerank')
 
         result = await self.ap.persistence_mgr.execute_async(
@@ -829,6 +889,11 @@ class RerankModelsService:
 
     async def delete_rerank_model(self, context: TenantContext, model_uuid: str) -> None:
         """Delete a rerank model"""
+        if _is_cloud_runtime(self.ap):
+            existing_model = await self.get_rerank_model(context, model_uuid, include_secret=True)
+            if existing_model is None:
+                raise WorkspaceNotFoundError('Model not found')
+            await _assert_cloud_managed_provider_mutable(self.ap, context, existing_model['provider_uuid'])
         result = await self.ap.persistence_mgr.execute_async(
             scope_statement(
                 sqlalchemy.delete(persistence_model.RerankModel).where(

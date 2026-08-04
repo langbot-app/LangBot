@@ -133,12 +133,14 @@ export default function SettingsDialog({
   const permissions = currentWorkspace?.permissions ?? [];
   const canManageApiKeys = permissions.includes('api_key.manage');
   const canViewAudit = permissions.includes('audit.view');
+  const canViewStorageAnalysis =
+    currentWorkspace?.workspace.source !== 'cloud_projection' && canViewAudit;
   const navItems = allNavItems.filter((item) => {
     if (item.id === 'apiIntegration') {
       return canManageApiKeys;
     }
     if (item.id === 'storageAnalysis') {
-      return canViewAudit;
+      return canViewStorageAnalysis;
     }
     return true;
   });
@@ -146,11 +148,17 @@ export default function SettingsDialog({
   useEffect(() => {
     const forbiddenSection =
       (section === 'apiIntegration' && !canManageApiKeys) ||
-      (section === 'storageAnalysis' && !canViewAudit);
+      (section === 'storageAnalysis' && !canViewStorageAnalysis);
     if (open && forbiddenSection) {
       onSectionChange('workspace');
     }
-  }, [canManageApiKeys, canViewAudit, open, section, onSectionChange]);
+  }, [
+    canManageApiKeys,
+    canViewStorageAnalysis,
+    open,
+    section,
+    onSectionChange,
+  ]);
 
   const activeItem = navItems.find((item) => item.id === section);
   const activeLabel = activeItem?.title ?? t('settingsDialog.title');
@@ -256,7 +264,7 @@ export default function SettingsDialog({
                   active={open && section === 'apiIntegration'}
                 />
               )}
-              {section === 'storageAnalysis' && (
+              {section === 'storageAnalysis' && canViewStorageAnalysis && (
                 <StorageAnalysisPanel
                   active={open && section === 'storageAnalysis'}
                 />

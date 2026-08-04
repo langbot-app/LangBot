@@ -13,6 +13,7 @@ from typing import Any, Protocol, runtime_checkable
 from ..workspace.policy import CloudWorkspacePolicy, SingleWorkspacePolicy
 from .directory import DirectoryProjectionProvider, directory_projection_limits_from_config
 from .entitlements import EntitlementProvider, OpenSourceEntitlementProvider
+from .model_catalog import CloudModelCatalogProvider
 
 
 CLOUD_BOOTSTRAP_ENTRY_POINT = 'langbot.cloud_bootstrap'
@@ -50,6 +51,7 @@ class OpenSourceDeployment:
     )
     directory_provider: None = None
     manifest_provider: None = None
+    model_catalog_provider: None = None
     persistence_mode: str = 'oss_compat'
     required_vector_backend: str | None = None
 
@@ -80,6 +82,7 @@ class VerifiedCloudDeployment:
     entitlement_provider: EntitlementProvider
     directory_provider: DirectoryProjectionProvider
     manifest_provider: CloudManifestProvider
+    model_catalog_provider: CloudModelCatalogProvider
     verification_key_id: str
     mode: str = dataclasses.field(default='cloud', init=False)
     workspace_policy: CloudWorkspacePolicy = dataclasses.field(default_factory=CloudWorkspacePolicy, init=False)
@@ -110,6 +113,8 @@ class VerifiedCloudDeployment:
             raise CloudBootstrapError('Verified Cloud bootstrap did not provide a directory adapter')
         if not isinstance(self.manifest_provider, CloudManifestProvider):
             raise CloudBootstrapError('Verified Cloud bootstrap did not provide a Manifest renewal adapter')
+        if not isinstance(self.model_catalog_provider, CloudModelCatalogProvider):
+            raise CloudBootstrapError('Verified Cloud bootstrap did not provide a model catalog adapter')
 
     def validate_instance_config(self, config: dict[str, Any]) -> None:
         try:
@@ -138,8 +143,14 @@ class VerifiedCloudDeployment:
         if plugin_worker.get('require_hard_limits') is not True:
             raise CloudBootstrapError('Cloud Runtime requires plugin.worker.require_hard_limits=true')
         box_config = config.get('box', {})
-        if box_config.get('enabled') is not True:
-            raise CloudBootstrapError('Cloud runtime requires box.enabled=true')
+        box_enabled = box_config.get('enabled')
+        if box_enabled is False:
+            # Explicitly disabling Box removes the sandbox surface entirely and
+            # therefore does not weaken tenant isolation. Validate the strict
+            # runtime/admission contract only when the surface is enabled.
+            return
+        if box_enabled is not True:
+            raise CloudBootstrapError('Cloud runtime requires box.enabled to be an explicit boolean')
         if box_config.get('backend') != 'nsjail':
             raise CloudBootstrapError('Cloud runtime requires box.backend=nsjail')
         runtime_endpoint = str(box_config.get('runtime', {}).get('endpoint', '') or '').strip()

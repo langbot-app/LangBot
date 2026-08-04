@@ -180,7 +180,7 @@ async def test_workspace_upgrade_repairs_ownerless_existing_local_workspace(lega
     assert membership['status'] == 'active'
 
 
-async def test_published_owner_repair_revision_upgrades_to_merged_head(legacy_engine):
+async def test_development_owner_repair_revision_upgrades_to_merged_head(legacy_engine):
     await run_alembic_upgrade(legacy_engine, '0017_local_owner_repair')
     assert await get_alembic_current(legacy_engine) == '0017_local_owner_repair'
 

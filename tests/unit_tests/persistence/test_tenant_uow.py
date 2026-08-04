@@ -961,6 +961,7 @@ async def test_scoped_session_rejects_raw_or_unapproved_sql(
         sa.select(sa.func.coalesce(sa.func.sum(sa.literal(1)), sa.literal(0))),
         sa.select(
             sa.func.now(),
+            sa.func.date_trunc('hour', sa.column('timestamp')),
             sa.func.length(sa.literal('value')),
             sa.func.nullif(sa.literal('value'), sa.literal('')),
         ),

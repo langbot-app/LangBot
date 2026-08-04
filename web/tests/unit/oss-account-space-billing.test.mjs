@@ -46,4 +46,14 @@ test('provider card represents owner and member owner-bound states explicitly', 
   assert.match(source, /ownerSpaceBound/);
   assert.match(source, /models\.ownerMustBindSpace/);
   assert.match(source, /models\.usesOwnerSpaceBilling/);
+  assert.match(source, /isWorkspaceOwner && \(\s*<Button/);
+});
+
+test('workspace member controls never offer ownership transfer', () => {
+  const source = read(
+    'src/app/home/components/workspace-settings/WorkspaceSettingsPanel.tsx',
+  );
+  assert.doesNotMatch(source, /canTransferOwner/);
+  assert.doesNotMatch(source, /workspace\.transferOwnership/);
+  assert.doesNotMatch(source, /<SelectItem value="owner">/);
 });

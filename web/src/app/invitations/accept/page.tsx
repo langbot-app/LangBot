@@ -93,6 +93,10 @@ export default function AcceptInvitationPage() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordRegistrationEnabled, setPasswordRegistrationEnabled] =
     useState(false);
+  const [
+    authenticatedInvitationAcceptanceEnabled,
+    setAuthenticatedInvitationAcceptanceEnabled,
+  ] = useState(false);
 
   useEffect(() => {
     const handleHashChange = () => setInvitationHash(window.location.hash);
@@ -113,6 +117,9 @@ export default function AcceptInvitationPage() {
       .getAccountInfo()
       .then((info) => {
         setPasswordRegistrationEnabled(info.password_login_enabled !== false);
+        setAuthenticatedInvitationAcceptanceEnabled(
+          info.authenticated_invitation_acceptance_enabled === true,
+        );
       })
       .catch(() => setPasswordRegistrationEnabled(false));
     if (!invitationToken) {
@@ -304,7 +311,18 @@ export default function AcceptInvitationPage() {
                 </div>
               )}
 
-              {hasLoginToken ? (
+              {hasLoginToken && authenticatedInvitationAcceptanceEnabled ? (
+                <Button
+                  className="w-full"
+                  disabled={status === 'submitting'}
+                  onClick={() => void finishAcceptance()}
+                >
+                  {status === 'submitting' ? (
+                    <Loader2 className="mr-2 size-4 animate-spin" />
+                  ) : null}
+                  {t('workspace.acceptInvitation')}
+                </Button>
+              ) : hasLoginToken ? (
                 <div className="space-y-3">
                   <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
                     {t('workspace.authenticatedInvitationNotice')}

@@ -163,6 +163,13 @@ class WorkspaceMembership(Base):
     __table_args__ = (
         sqlalchemy.UniqueConstraint('workspace_uuid', 'account_uuid', name='uq_workspace_membership_account'),
         sqlalchemy.Index('ix_workspace_memberships_account_status', 'account_uuid', 'status'),
+        sqlalchemy.Index(
+            'uq_workspace_memberships_one_active_owner',
+            'workspace_uuid',
+            unique=True,
+            sqlite_where=sqlalchemy.text("role = 'owner' AND status = 'active'"),
+            postgresql_where=sqlalchemy.text("role = 'owner' AND status = 'active'"),
+        ),
         sqlalchemy.CheckConstraint(
             "role IN ('owner', 'admin', 'developer', 'operator', 'viewer')",
             name='ck_workspace_memberships_role',

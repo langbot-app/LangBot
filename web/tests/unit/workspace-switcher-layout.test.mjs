@@ -50,15 +50,22 @@ test('places WorkspaceSwitcher between the sidebar header and Home navigation', 
   );
 });
 
-test('shows WorkspaceSwitcher for a current Cloud or OSS workspace even when it is the only workspace', () => {
+test('hides WorkspaceSwitcher for the singleton local OSS workspace and keeps it for Cloud or multiple workspaces', () => {
   assert.match(
     workspaceSwitcherSource,
     /if \(!currentWorkspace\) return null;/,
   );
-  assert.doesNotMatch(workspaceSwitcherSource, /workspaces\.length\s*<=\s*1/);
-  assert.doesNotMatch(
+  assert.match(
     homeSidebarSource,
-    /currentWorkspace\?\.workspace\.source\s*===\s*'cloud_projection'[\s\S]{0,200}<WorkspaceSwitcher/,
+    /const workspaces = useWorkspaceBootstrap\(\);/,
+  );
+  assert.match(
+    homeSidebarSource,
+    /const showWorkspaceSwitcher\s*=\s*workspaces\.length\s*>\s*1\s*\|\|\s*currentWorkspace\?\.workspace\.source\s*===\s*'cloud_projection'/,
+  );
+  assert.match(
+    homeSidebarSource,
+    /\{showWorkspaceSwitcher\s*&&\s*\(\s*<div className="px-2[^>]*>[\s\S]*?<WorkspaceSwitcher/,
   );
 });
 

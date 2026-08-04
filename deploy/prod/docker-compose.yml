@@ -1,0 +1,162 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: langbot-cloud-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: langbot
+      POSTGRES_USER: langbot_operator
+      POSTGRES_PASSWORD: ${POSTGRES_OPERATOR_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U langbot_operator -d langbot"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    networks: [internal]
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: langbot-cloud-redis
+    restart: unless-stopped
+    command: [redis-server, --appendonly, "yes", --requirepass, "${REDIS_PASSWORD}"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: [CMD-SHELL, "redis-cli -a \"$${REDIS_PASSWORD}\" ping | grep PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    networks: [internal]
+
+  migrate:
+    image: rockchin/langbot-cloud-core:${LANGBOT_IMAGE_TAG}
+    profiles: [tools]
+    command: [uv, run, langbot, migrate, --cloud]
+    environment: &core-env
+      TZ: Asia/Shanghai
+      SYSTEM__INSTANCE_ID: ${CLOUD_V2_INSTANCE_UUID}
+      SYSTEM__EDITION: cloud
+      SYSTEM__RECOVERY_KEY: ${SYSTEM_RECOVERY_KEY}
+      SYSTEM__JWT__SECRET: ${JWT_SECRET}
+      SYSTEM__LIMITATION__MAX_BOTS: "2"
+      SYSTEM__LIMITATION__MAX_PIPELINES: "3"
+      SYSTEM__LIMITATION__MAX_EXTENSIONS: "3"
+      SYSTEM__LIMITATION__MAX_KNOWLEDGE_BASES: "2"
+      API__WEBHOOK_PREFIX: https://cloud.langbot.app
+      API__WEBUI_URL: https://cloud.langbot.app
+      WORKSPACE__INVITATIONS__PUBLIC_WEB_URL: https://cloud.langbot.app
+      DATABASE__USE: postgresql
+      DATABASE__POSTGRESQL__URL: postgresql+asyncpg://langbot_runtime:${POSTGRES_RUNTIME_PASSWORD}@postgres:5432/langbot
+      DATABASE__CLOUD_MIGRATION__OPERATOR_DSN_ENV: LANGBOT_CLOUD_MIGRATION_DSN
+      LANGBOT_CLOUD_MIGRATION_DSN: postgresql://langbot_operator:${POSTGRES_OPERATOR_PASSWORD}@postgres:5432/langbot
+      VDB__USE: pgvector
+      VDB__PGVECTOR__USE_BUSINESS_DATABASE: "true"
+      VDB__PGVECTOR__ALLOWED_DIMENSIONS: "384,512,768,1024,1536"
+      PLUGIN__ENABLE: "true"
+      PLUGIN__RUNTIME_WS_URL: ws://plugin-runtime:5400/control/ws
+      PLUGIN__DISPLAY_PLUGIN_DEBUG_URL: wss://cloud.langbot.app/plugin/debug/ws
+      PLUGIN__WORKER__MAX_CPUS: "0.25"
+      PLUGIN__WORKER__MAX_MEMORY_MB: "256"
+      PLUGIN__WORKER__MAX_PIDS: "128"
+      PLUGIN__WORKER__MAX_WORKERS: "16"
+      PLUGIN__WORKER__MAX_TOTAL_CPUS: "4.0"
+      PLUGIN__WORKER__MAX_TOTAL_MEMORY_MB: "4096"
+      PLUGIN__WORKER__REQUIRE_HARD_LIMITS: "true"
+      LANGBOT_PLUGIN_RUNTIME_CONTROL_TOKEN: ${PLUGIN_RUNTIME_CONTROL_TOKEN}
+      # Cloud v2 currently grants no managed Box capability. Keep the shared
+      # runtime deployed but disable Core integration until a hard-quota-capable
+      # backend can satisfy the fail-closed Cloud readiness contract.
+      BOX__ENABLED: "false"
+      BOX__BACKEND: nsjail
+      BOX__RUNTIME__ENDPOINT: ws://box:5410
+      BOX__ADMISSION__REQUIRED: "true"
+      BOX__ADMISSION__LOGICAL_SESSION_ID: global
+      BOX__ADMISSION__REQUIRED_BACKEND: nsjail
+      BOX__ADMISSION__MAX_SESSIONS: "1"
+      BOX__ADMISSION__MAX_MANAGED_PROCESSES: "0"
+      BOX__ADMISSION__CPUS: "0.25"
+      BOX__ADMISSION__MEMORY_MB: "256"
+      BOX__ADMISSION__WORKSPACE_QUOTA_MB: "256"
+      BOX__LOCAL__HOST_ROOT: /app/data/box
+      BOX__LOCAL__DEFAULT_WORKSPACE: /app/data/box
+      BOX__LOCAL__ALLOWED_MOUNT_ROOTS: /app/data/box
+      LANGBOT_BOX_CONTROL_TOKEN: ${BOX_CONTROL_TOKEN}
+      MCP__STDIO__ENABLED: "false"
+      LANGBOT_SPACE_CONTROL_PLANE_URL: https://space.langbot.app
+      LANGBOT_SPACE_CONTROL_PLANE_TOKEN: ${CLOUD_V2_CONTROL_PLANE_TOKEN}
+      LANGBOT_TELEMETRY_INGEST_TOKEN: ${CLOUD_V2_CONTROL_PLANE_TOKEN}
+      LANGBOT_SPACE_CONTROL_PLANE_PUBLIC_KEY: ${CLOUD_V2_MANIFEST_PUBLIC_KEY}
+      LANGBOT_SPACE_CONTROL_PLANE_KEY_ID: ${CLOUD_V2_MANIFEST_KEY_ID}
+      SPACE__URL: https://space.langbot.app
+    depends_on:
+      postgres: {condition: service_healthy}
+    networks: [internal]
+
+  plugin-runtime:
+    image: rockchin/langbot:${LANGBOT_IMAGE_TAG}
+    container_name: langbot-cloud-plugin-runtime
+    restart: unless-stopped
+    command: [uv, run, python, -m, langbot_plugin.cli.__init__, rt]
+    environment:
+      LANGBOT_PLUGIN_RUNTIME_CONTROL_TOKEN: ${PLUGIN_RUNTIME_CONTROL_TOKEN}
+    volumes:
+      - plugin-data:/app/data
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    cgroup: host
+    privileged: true
+    expose: ["5400"]
+    networks: [internal]
+
+  box:
+    image: rockchin/langbot:${LANGBOT_IMAGE_TAG}
+    container_name: langbot-cloud-box
+    restart: unless-stopped
+    command: [uv, run, lbp, box, --host, 0.0.0.0, --ws-control-port, "5410"]
+    environment:
+      LANGBOT_BOX_CONTROL_TOKEN: ${BOX_CONTROL_TOKEN}
+      LANGBOT_BOX_ROOT: /app/data/box
+    volumes:
+      - box-data:/app/data/box
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    cgroup: host
+    privileged: true
+    expose: ["5410"]
+    networks: [internal]
+
+  core:
+    image: rockchin/langbot-cloud-core:${LANGBOT_IMAGE_TAG}
+    container_name: langbot-cloud-core
+    restart: unless-stopped
+    environment: *core-env
+    volumes:
+      - core-data:/app/data
+      - box-data:/app/data/box
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      plugin-runtime: {condition: service_started}
+      box: {condition: service_started}
+    expose: ["5300"]
+    healthcheck:
+      test: [CMD-SHELL, "python -c 'import urllib.request; urllib.request.urlopen(\"http://127.0.0.1:5300/healthz\", timeout=3)'" ]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    networks: [internal, shared-network]
+
+networks:
+  internal:
+  shared-network:
+    external: true
+
+volumes:
+  postgres-data:
+  redis-data:
+  plugin-data:
+  box-data:
+  core-data:

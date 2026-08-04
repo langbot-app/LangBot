@@ -7,6 +7,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import type { Skill } from '@/app/infra/entities/api';
 import { cn } from '@/lib/utils';
+import { WorkspaceQuotaTooltip } from '@/app/home/components/workspace-quota/WorkspaceQuotaTooltip';
+import type { WorkspaceQuotaItem } from '@/app/home/components/workspace-quota/useWorkspaceQuotaStatus';
 
 interface PreviewSkill extends Skill {
   source_path?: string;
@@ -16,6 +18,8 @@ interface SkillZipPreviewPanelProps {
   file: File;
   onImported: (skillNames: string[]) => void;
   onCancel?: () => void;
+  quota?: WorkspaceQuotaItem;
+  quotaResource?: string;
 }
 
 function formatFileSize(bytes: number): string {
@@ -45,6 +49,8 @@ export default function SkillZipPreviewPanel({
   file,
   onImported,
   onCancel,
+  quota,
+  quotaResource = '',
 }: SkillZipPreviewPanelProps) {
   const { t } = useTranslation();
   const [previewSkills, setPreviewSkills] = useState<PreviewSkill[]>([]);
@@ -117,6 +123,7 @@ export default function SkillZipPreviewPanel({
   }
 
   async function handleInstall() {
+    if (quota?.disabled) return;
     if (selectedPaths.length === 0) return;
 
     setInstalling(true);
@@ -249,28 +256,56 @@ export default function SkillZipPreviewPanel({
             {t('common.cancel')}
           </Button>
         )}
-        <Button
-          type="button"
-          onClick={handleInstall}
-          disabled={
-            previewing ||
-            installing ||
-            previewSkills.length === 0 ||
-            selectedPaths.length === 0
-          }
-        >
-          {installing ? (
-            <>
-              <Loader2 className="size-4 animate-spin" />
-              {t('skills.installing')}
-            </>
-          ) : (
-            <>
-              <PackageOpen className="size-4" />
-              {t('skills.confirmInstall')}
-            </>
-          )}
-        </Button>
+        {quota ? (
+          <WorkspaceQuotaTooltip quota={quota} resource={quotaResource}>
+            <Button
+              type="button"
+              onClick={handleInstall}
+              disabled={
+                quota.disabled ||
+                previewing ||
+                installing ||
+                previewSkills.length === 0 ||
+                selectedPaths.length === 0
+              }
+            >
+              {installing ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  {t('skills.installing')}
+                </>
+              ) : (
+                <>
+                  <PackageOpen className="size-4" />
+                  {t('skills.confirmInstall')}
+                </>
+              )}
+            </Button>
+          </WorkspaceQuotaTooltip>
+        ) : (
+          <Button
+            type="button"
+            onClick={handleInstall}
+            disabled={
+              previewing ||
+              installing ||
+              previewSkills.length === 0 ||
+              selectedPaths.length === 0
+            }
+          >
+            {installing ? (
+              <>
+                <Loader2 className="size-4 animate-spin" />
+                {t('skills.installing')}
+              </>
+            ) : (
+              <>
+                <PackageOpen className="size-4" />
+                {t('skills.confirmInstall')}
+              </>
+            )}
+          </Button>
+        )}
       </div>
     </div>
   );

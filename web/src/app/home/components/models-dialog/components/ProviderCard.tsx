@@ -218,20 +218,22 @@ export default function ProviderCard({
                   <span>
                     {(spaceCredits / 5000).toFixed(2)} {t('models.credits')}
                   </span>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-5 w-5"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      window.open(
-                        `${systemInfo.cloud_service_url}/profile?tab=billing`,
-                        '_blank',
-                      );
-                    }}
-                  >
-                    <Plus className="h-3 w-3" />
-                  </Button>
+                  {isWorkspaceOwner && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-5 w-5"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        window.open(
+                          `${systemInfo.cloud_service_url}/profile?tab=billing`,
+                          '_blank',
+                        );
+                      }}
+                    >
+                      <Plus className="h-3 w-3" />
+                    </Button>
+                  )}
                 </div>
               )}
               {isLangBotModels && !isWorkspaceOwner && ownerSpaceBound && (

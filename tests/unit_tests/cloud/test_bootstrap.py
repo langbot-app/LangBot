@@ -66,6 +66,10 @@ class _Provider:
     def __init__(self):
         self.manifest_provider = _Manifest()
 
+    async def fetch_model_catalog(self, instance_uuid: str):
+        del instance_uuid
+        raise AssertionError('not used by bootstrap contract tests')
+
     def bootstrap(self, *, instance_uuid: str, instance_config: dict):
         del instance_config
         return VerifiedCloudDeployment(
@@ -79,6 +83,7 @@ class _Provider:
             entitlement_provider=_Entitlements(),
             directory_provider=_Directory(),
             manifest_provider=self.manifest_provider,
+            model_catalog_provider=self,
             verification_key_id='root-2026',
         )
 
@@ -228,10 +233,23 @@ async def test_cloud_pgvector_contract_is_fail_closed(pgvector_config, message):
         )
 
 
+async def test_cloud_runtime_allows_explicitly_disabled_box():
+    config = _cloud_config()
+    config['box']['enabled'] = False
+
+    deployment = await resolve_deployment(
+        instance_uuid='instance-a',
+        instance_config=config,
+        entry_points=lambda: _EntryPoints([_EntryPoint(_Provider())]),
+        now=1_000,
+    )
+
+    assert isinstance(deployment, VerifiedCloudDeployment)
+
+
 @pytest.mark.parametrize(
     ('mutate', 'message'),
     [
-        (lambda config: config['box'].update(enabled=False), 'box.enabled=true'),
         (lambda config: config['box'].update(backend='docker'), 'box.backend=nsjail'),
         (lambda config: config['box']['runtime'].update(endpoint=''), 'box.runtime.endpoint'),
         (

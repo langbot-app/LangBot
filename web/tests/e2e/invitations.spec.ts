@@ -165,3 +165,164 @@ test('an authenticated OSS invitation requires logout before registration', asyn
     invitation: 'logout-invitation',
   });
 });
+
+test('an authenticated Cloud Account can accept its invitation directly', async ({
+  page,
+}) => {
+  await installLangBotApiMocks(page, {
+    authenticated: true,
+    storage: {
+      token: 'invited-account-token',
+      userEmail: 'invited@example.com',
+    },
+  });
+  await page.route('**/api/v1/user/account-info', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 0,
+        data: {
+          initialized: true,
+          authenticated_invitation_acceptance_enabled: true,
+          password_login_enabled: false,
+          space_login_enabled: true,
+        },
+        msg: 'ok',
+      }),
+    });
+  });
+  await page.route('**/api/v1/invitations/inspect', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 0,
+        data: {
+          invitation: {
+            uuid: 'cloud-invitation',
+            workspace_uuid: 'workspace-playwright',
+            normalized_email: 'invited@example.com',
+            role: 'viewer',
+            status: 'pending',
+          },
+          workspace: {
+            uuid: 'workspace-playwright',
+            name: 'Playwright Workspace',
+          },
+        },
+        msg: 'ok',
+      }),
+    });
+  });
+
+  let acceptanceAuthorization = '';
+  await page.route('**/api/v1/invitations/accept', async (route) => {
+    acceptanceAuthorization = route.request().headers().authorization ?? '';
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 0,
+        data: {
+          token: 'accepted-cloud-account-token',
+          workspace_uuid: 'workspace-playwright',
+        },
+        msg: 'ok',
+      }),
+    });
+  });
+
+  await page.goto('/invitations/accept#token=cloud-invitation');
+
+  await expect(
+    page.getByRole('button', { name: 'Accept Invitation' }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Accept Invitation' }).click();
+  await expect(page).toHaveURL(/\/home(?:\/monitoring)?$/);
+  expect(acceptanceAuthorization).toBe('Bearer invited-account-token');
+});
+
+test('Space OAuth accepts a pending invitation with the freshly authenticated account', async ({
+  page,
+}) => {
+  await installLangBotApiMocks(page, {
+    authenticated: false,
+    storage: {
+      token: 'stale-other-account-token',
+      userEmail: 'other@example.com',
+    },
+  });
+  await page.addInitScript(() => {
+    sessionStorage.setItem(
+      'langbot_pending_invitation_token',
+      'matching-invitation',
+    );
+  });
+
+  await page.route('**/api/v1/user/space/callback', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 0,
+        data: {
+          token: 'fresh-invited-account-token',
+          user: 'invited@example.com',
+        },
+        msg: 'ok',
+      }),
+    });
+  });
+  await page.route('**/api/v1/user/info', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 0,
+        data: {
+          account_uuid: 'invited-account',
+          user: 'invited@example.com',
+          account_type: 'space',
+          has_password: false,
+        },
+        msg: 'ok',
+      }),
+    });
+  });
+
+  let acceptanceAuthorization = '';
+  await page.route('**/api/v1/invitations/accept', async (route) => {
+    acceptanceAuthorization = route.request().headers().authorization ?? '';
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 0,
+        data: {
+          token: 'accepted-invited-account-token',
+          workspace_uuid: 'workspace-playwright',
+        },
+        msg: 'ok',
+      }),
+    });
+  });
+
+  await page.goto('/auth/space/callback?code=oauth-code&state=oauth-state');
+
+  await expect(page).toHaveURL(/\/home(?:\/monitoring)?$/, {
+    timeout: 5_000,
+  });
+  expect(acceptanceAuthorization).toBe('Bearer fresh-invited-account-token');
+  expect(
+    await page.evaluate(() => ({
+      token: localStorage.getItem('token'),
+      userEmail: localStorage.getItem('userEmail'),
+      invitation: sessionStorage.getItem('langbot_pending_invitation_token'),
+    })),
+  ).toEqual({
+    token: 'accepted-invited-account-token',
+    userEmail: 'invited@example.com',
+    invitation: null,
+  });
+});

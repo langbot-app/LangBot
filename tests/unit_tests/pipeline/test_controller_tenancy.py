@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from langbot.pkg.persistence.mgr import PersistenceManager, PersistenceMode
 from langbot.pkg.persistence.tenant_uow import PersistenceScopeKind
 from langbot.pkg.pipeline.controller import Controller
+from langbot.pkg.pipeline.pool import QueryPool
 from langbot.pkg.workspace.errors import WorkspaceGenerationMismatchError
 
 
@@ -143,3 +144,31 @@ async def test_controller_revalidates_generation_before_running_pipeline(
     runtime_pipeline.run.assert_awaited_once_with(sample_query)
     query_pool.remove_query.assert_awaited_once_with(sample_query)
     session._semaphore.release.assert_called_once_with()
+
+
+@pytest.mark.asyncio
+async def test_controller_schedules_query_without_removing_it_twice(mock_app, sample_query):
+    query_pool = QueryPool()
+    query_pool.queries.append(sample_query)
+    mock_app.query_pool = query_pool
+    mock_app.sess_mgr.get_session = AsyncMock(return_value=SimpleNamespace(_semaphore=asyncio.Semaphore(1)))
+
+    scheduler_errors: list[str] = []
+
+    def stop_on_scheduler_error(message):
+        scheduler_errors.append(str(message))
+        raise asyncio.CancelledError
+
+    def stop_after_scheduling(process_coro, **_kwargs):
+        process_coro.close()
+        raise asyncio.CancelledError
+
+    mock_app.logger.error.side_effect = stop_on_scheduler_error
+    mock_app.task_mgr.create_task.side_effect = stop_after_scheduling
+    controller = Controller(mock_app)
+
+    with pytest.raises(asyncio.CancelledError):
+        await controller.consumer()
+
+    assert scheduler_errors == []
+    assert query_pool.queries == []
