@@ -8,13 +8,20 @@ from pathlib import Path
 
 def has_initial_failure_section(report: str) -> bool:
     folded = report.casefold()
-    return any(
+    if any(
         marker in folded
         for marker in (
             "initial fail",
             "initially fail",
             "baseline fail",
         )
+    ):
+        return True
+
+    baseline_markers = ("baseline test", "before any edit", "before editing")
+    failure_markers = ("failing test", "failed test", "failures=", "errors=")
+    return any(marker in folded for marker in baseline_markers) and any(
+        marker in folded for marker in failure_markers
     )
 
 

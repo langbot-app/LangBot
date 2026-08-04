@@ -90,6 +90,13 @@ class AgentRunOrchestrator:
             execution_context = get_query_execution_context(execution_query)
         if not isinstance(execution_context, ExecutionContext):
             raise ValueError('Agent run requires a trusted ExecutionContext')
+        event_workspace_id = str(event.workspace_id or '').strip()
+        if event_workspace_id and event_workspace_id != execution_context.workspace_uuid:
+            raise ValueError('Agent event Workspace does not match its trusted ExecutionContext')
+        if not event_workspace_id:
+            event = event.model_copy(
+                update={'workspace_id': execution_context.workspace_uuid}
+            )
         descriptor = await self.registry.get(
             execution_context,
             runner_id,

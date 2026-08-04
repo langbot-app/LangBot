@@ -30,6 +30,7 @@ from langbot.pkg.agent.runner.binding_resolver import (
     AgentBindingResolver,
     AgentBindingResolutionError,
 )
+from langbot.pkg.api.http.context import ExecutionContext
 
 
 class TestQueryToEventEnvelope:
@@ -350,9 +351,17 @@ def mock_query():
     """Create a mock query for testing."""
     query = Mock()
     query.query_id = 123
+    query.query_uuid = None
     query.workspace_uuid = 'workspace-test'
     query.bot_uuid = 'bot-uuid-123'
     query.pipeline_uuid = 'pipeline-uuid-456'
+    query._execution_context = ExecutionContext(
+        instance_uuid='instance-test',
+        workspace_uuid=query.workspace_uuid,
+        placement_generation=1,
+        bot_uuid=query.bot_uuid,
+        pipeline_uuid=query.pipeline_uuid,
+    )
     query.launcher_type = Mock(value='person')
     query.launcher_id = 'launcher-123'
     query.sender_id = 'sender-123'
@@ -399,9 +408,17 @@ def mock_query_no_session():
     """Create a mock Query without session."""
     query = Mock()
     query.query_id = 456
+    query.query_uuid = None
     query.workspace_uuid = 'workspace-test'
     query.bot_uuid = 'bot-uuid-456'
     query.pipeline_uuid = 'pipeline-uuid-789'
+    query._execution_context = ExecutionContext(
+        instance_uuid='instance-test',
+        workspace_uuid=query.workspace_uuid,
+        placement_generation=1,
+        bot_uuid=query.bot_uuid,
+        pipeline_uuid=query.pipeline_uuid,
+    )
     query.launcher_type = Mock(value='person')
     query.launcher_id = 'launcher-456'
     query.sender_id = 'sender-456'

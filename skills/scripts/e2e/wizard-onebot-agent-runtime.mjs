@@ -81,7 +81,8 @@ async function api(page, path, options = {}) {
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
-          "X-Workspace-Id": localStorage.getItem("langbot_active_workspace_uuid") || "",
+          "X-Workspace-Id":
+            localStorage.getItem("langbot_active_workspace_uuid") || "",
         },
         body:
           options.body === undefined ? undefined : JSON.stringify(options.body),
@@ -205,9 +206,7 @@ try {
   result.visible_signals.push("bot-created", "adapter-enabled");
 
   await page.getByRole("button", { name: /Next|下一步|次へ/ }).click();
-  const localAgentTitle = page
-    .getByText(/^(Local Agent|本地 Agent)$/)
-    .first();
+  const localAgentTitle = page.getByText(/^(Local Agent|本地 Agent)$/).first();
   const localAgentCard = localAgentTitle.locator(
     'xpath=ancestor::*[@data-slot="card"][1]',
   );
@@ -316,6 +315,24 @@ try {
 } catch (error) {
   if (!["blocked", "env_issue"].includes(result.status)) result.status = "fail";
   result.reason = result.reason || error.message;
+  if (browser?.page && token && botId) {
+    const [routeStatus, botLogs] = await Promise.all([
+      api(
+        browser.page,
+        `/api/v1/platform/bots/${encodeURIComponent(botId)}/event-routes/status`,
+      ).catch(() => ({ status: 0, json: {} })),
+      api(
+        browser.page,
+        `/api/v1/platform/bots/${encodeURIComponent(botId)}/logs`,
+        {
+          method: "POST",
+          body: { from_index: -1, max_count: 50 },
+        },
+      ).catch(() => ({ status: 0, json: {} })),
+    ]);
+    result.runtime.failure_route_status = routeStatus.json.data || null;
+    result.runtime.failure_bot_logs = botLogs.json.data || null;
+  }
   if (browser?.page) await safeScreenshot(browser.page, paths.screenshot);
 } finally {
   if (browser?.page && token) {

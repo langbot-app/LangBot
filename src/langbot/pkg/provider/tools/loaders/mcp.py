@@ -1566,6 +1566,11 @@ def _execution_context_from_tenant(context: TenantContext) -> ExecutionContext:
 
 
 def _execution_context_from_query(query: pipeline_query.Query) -> ExecutionContext:
+    if isinstance(getattr(query, '_execution_context', None), ExecutionContext):
+        # Import lazily to keep the loader module independent during app boot.
+        from ....pipeline.pool import get_query_execution_context
+
+        return get_query_execution_context(query)
     return _execution_context_from_tenant(
         ExecutionContext(
             instance_uuid=str(getattr(query, 'instance_uuid', '') or ''),

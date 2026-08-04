@@ -1012,8 +1012,22 @@ class TestQueryEntrySessionQueryId:
             ]
         )
         ap = FakeApplication(plugin_connector, db_engine)
+        async def build_resource_context(execution_query):
+            from langbot.pkg.provider.tools.loaders.mcp import (
+                _execution_context_from_query,
+            )
+
+            context = _execution_context_from_query(execution_query)
+            assert context.instance_uuid == TEST_CONTEXT.instance_uuid
+            assert context.workspace_uuid == TEST_CONTEXT.workspace_uuid
+            assert context.placement_generation == TEST_CONTEXT.placement_generation
+            assert context.bot_uuid == 'bot_001'
+            return 'Pinned documentation'
+
         mcp_loader = types.SimpleNamespace(
-            build_resource_context_for_query=AsyncMock(return_value='Pinned documentation')
+            build_resource_context_for_query=AsyncMock(
+                side_effect=build_resource_context
+            )
         )
         ap.tool_mgr = types.SimpleNamespace(mcp_tool_loader=mcp_loader)
         orchestrator = AgentRunOrchestrator(ap, FakeRegistry(descriptor))
@@ -1091,6 +1105,14 @@ class TestQueryEntrySessionQueryId:
         assert 'Pinned documentation' in plugin_connector.contexts[0]['input']['contents'][0]['text']
         assert event.input.text == 'hello'
         assert event.input.contents[0].text == 'hello'
+        assert (
+            plugin_connector.contexts[0]['conversation']['workspace_id']
+            == TEST_CONTEXT.workspace_uuid
+        )
+        assert (
+            plugin_connector.contexts[0]['runtime']['metadata']['workspace_id']
+            == TEST_CONTEXT.workspace_uuid
+        )
         assert 'Pinned documentation' not in str(execution_query.user_message.content)
         mcp_loader.build_resource_context_for_query.assert_awaited_once_with(execution_query)
 

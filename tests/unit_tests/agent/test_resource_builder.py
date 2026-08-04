@@ -64,7 +64,7 @@ def make_query(
     use_llm_model_uuid=None,
     use_funcs: list | None = None,
 ):
-    return SimpleNamespace(
+    query = SimpleNamespace(
         query_id=1,
         bot_uuid='bot_001',
         launcher_type='person',
@@ -85,6 +85,8 @@ def make_query(
         use_funcs=use_funcs or [],
         pipeline_uuid='pipeline_001',
     )
+    query._execution_context = TEST_CONTEXT
+    return query
 
 
 async def build_resources(app, query, descriptor):

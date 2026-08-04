@@ -15,6 +15,11 @@ async function submit(page: Page) {
   await page.getByRole('button', { name: /^Submit$/ }).click();
 }
 
+async function selectPlaywrightAdapter(page: Page) {
+  await page.getByRole('combobox').click();
+  await page.getByRole('option', { name: 'Playwright Adapter' }).click();
+}
+
 async function confirmDelete(page: Page) {
   await page
     .getByRole('dialog')
@@ -83,22 +88,22 @@ test.describe('frontend CRUD smoke flows', () => {
     });
 
     await page.goto('/home/bots?id=new');
+    await selectPlaywrightAdapter(page);
     await page.locator('input[name="name"]').fill('Viewer Test Bot');
     await page
       .locator('input[name="description"]')
       .fill('Proves monitoring is ordinary resource visibility.');
-    await page.getByRole('combobox').click();
-    await page.getByRole('option', { name: 'Playwright Adapter' }).click();
     await submit(page);
     await expect(page).toHaveURL(/\/home\/bots\?id=bot-1$/);
 
-    await page.goto('/home/pipelines?id=new');
-    await page.locator('input[name="basic.name"]').fill('Viewer Pipeline');
+    await page.goto('/home/agents?id=new');
+    await page.getByRole('button', { name: /^Pipeline/ }).click();
+    await page.locator('input[name="name"]').fill('Viewer Pipeline');
     await page
-      .locator('input[name="basic.description"]')
+      .locator('input[name="description"]')
       .fill('Viewer monitoring permission regression.');
     await submit(page);
-    await expect(page).toHaveURL(/\/home\/pipelines\?id=pipeline-1$/);
+    await expect(page).toHaveURL(/\/home\/agents\?id=pipeline-1$/);
 
     workspace.membership.role = 'viewer';
     workspace.permissions = ['member.view', 'resource.view', 'workspace.view'];
@@ -110,7 +115,7 @@ test.describe('frontend CRUD smoke flows', () => {
     await page.getByRole('tab', { name: 'Logs' }).click();
     await expect(page.getByText('No logs yet')).toBeVisible();
 
-    await page.goto('/home/pipelines?id=pipeline-1');
+    await page.goto('/home/agents?id=pipeline-1');
     await expect(page.getByRole('tab', { name: 'Dashboard' })).toBeVisible();
     await expect(page.getByRole('tab', { name: 'Debug Chat' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: /^Save$/ })).toHaveCount(0);
@@ -128,14 +133,13 @@ test.describe('frontend CRUD smoke flows', () => {
     await installLangBotApiMocks(page, { authenticated: true });
 
     await page.goto('/home/bots?id=new');
+    await selectPlaywrightAdapter(page);
 
     await expect(page.locator('input[name="name"]')).toBeVisible();
     await page.locator('input[name="name"]').fill('Support Bot');
     await page
       .locator('input[name="description"]')
       .fill('Answers customer support questions.');
-    await page.getByRole('combobox').click();
-    await page.getByRole('option', { name: 'Playwright Adapter' }).click();
     await submit(page);
 
     await expect(page).toHaveURL(/\/home\/bots\?id=bot-1$/);
@@ -336,9 +340,8 @@ test.describe('bot advanced flows', () => {
 
     // Create a bot first
     await page.goto('/home/bots?id=new');
+    await selectPlaywrightAdapter(page);
     await page.locator('input[name="name"]').fill('Toggle Test Bot');
-    await page.getByRole('combobox').click();
-    await page.getByRole('option', { name: 'Playwright Adapter' }).click();
     await submit(page);
 
     await expect(page).toHaveURL(/\/home\/bots\?id=bot-1$/);
@@ -365,9 +368,8 @@ test.describe('bot advanced flows', () => {
 
     // Create a bot
     await page.goto('/home/bots?id=new');
+    await selectPlaywrightAdapter(page);
     await page.locator('input[name="name"]').fill('Tab Test Bot');
-    await page.getByRole('combobox').click();
-    await page.getByRole('option', { name: 'Playwright Adapter' }).click();
     await submit(page);
 
     // Verify we're on the Configuration tab
@@ -400,12 +402,17 @@ test.describe('bot advanced flows', () => {
 
     // Create a bot
     await page.goto('/home/bots?id=new');
+    await selectPlaywrightAdapter(page);
     await page.locator('input[name="name"]').fill('Clean Form Bot');
-    await page.getByRole('combobox').click();
-    await page.getByRole('option', { name: 'Playwright Adapter' }).click();
     await submit(page);
 
-    // After creation, save button should be disabled (form is clean)
+    // Reload the persisted record so post-create initialization has completed.
+    await page.reload();
+    await expect(page.locator('input[name="name"]')).toHaveValue(
+      'Clean Form Bot',
+    );
+
+    // After loading, save button should be disabled (form is clean)
     const saveButton = page.getByRole('button', { name: /^Save$/ });
     await expect(saveButton).toBeDisabled();
 
@@ -424,8 +431,7 @@ test.describe('bot advanced flows', () => {
     await page.goto('/home/bots?id=new');
 
     // Select adapter but leave name empty
-    await page.getByRole('combobox').click();
-    await page.getByRole('option', { name: 'Playwright Adapter' }).click();
+    await selectPlaywrightAdapter(page);
     await submit(page);
 
     // Should show validation error for name (zod validation)
@@ -690,9 +696,8 @@ test.describe('cross-resource flows', () => {
 
     // Create a bot
     await page.goto('/home/bots?id=new');
+    await selectPlaywrightAdapter(page);
     await page.locator('input[name="name"]').fill('Bound Bot');
-    await page.getByRole('combobox').click();
-    await page.getByRole('option', { name: 'Playwright Adapter' }).click();
     await submit(page);
     await expect(page).toHaveURL(/\/home\/bots\?id=bot-1$/);
 

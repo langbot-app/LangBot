@@ -26,8 +26,22 @@ class ComplexAgentTaskVerifyTests(unittest.TestCase):
     def test_accepts_baseline_failure_heading(self) -> None:
         self.assertTrue(MODULE.has_initial_failure_section("## Baseline failing tests\n- test_price"))
 
+    def test_accepts_baseline_run_heading_with_failures_in_body(self) -> None:
+        report = """\
+## Baseline test run (before any edits)
+
+The suite reported FAILED (failures=2). Failing tests:
+
+- test_price
+- test_inventory
+"""
+        self.assertTrue(MODULE.has_initial_failure_section(report))
+
     def test_rejects_report_without_failure_section(self) -> None:
         self.assertFalse(MODULE.has_initial_failure_section("## Verification\nAll tests pass."))
+
+    def test_rejects_passing_baseline_without_failure_evidence(self) -> None:
+        self.assertFalse(MODULE.has_initial_failure_section("## Baseline test run\nAll tests pass."))
 
 
 if __name__ == "__main__":

@@ -1003,8 +1003,12 @@
             "rag"
           ],
           "automation": "scripts/e2e/langrag-kb-retrieve.mjs",
-          "setup_automation": [],
-          "setup_provides_env": [],
+          "setup_automation": [
+            "node:scripts/e2e/ensure-langrag-sentinel-kb.mjs --write-env"
+          ],
+          "setup_provides_env": [
+            "LANGBOT_LOCAL_AGENT_RAG_KB_UUID"
+          ],
           "evidence_required": [
             "ui",
             "screenshot",

@@ -31,6 +31,7 @@ from .host_models import (
 from .config_resolver import RunnerConfigResolver
 from .resource_policy import ResourcePolicyProjector
 from . import events as runner_events
+from ...pipeline.pool import get_query_execution_context
 from ...provider.tools.toolmgr import TOOL_SOURCE_REFS_QUERY_KEY
 
 
@@ -81,6 +82,7 @@ class QueryEntryAdapter:
 
         # Build raw ref
         raw_ref = cls._build_raw_ref(query)
+        execution_context = get_query_execution_context(query)
 
         return AgentEventEnvelope(
             event_id=event.event_id or str(query.query_id),
@@ -89,7 +91,7 @@ class QueryEntryAdapter:
             source='host_adapter',
             source_event_type=event.source_event_type,
             bot_id=query.bot_uuid,
-            workspace_id=getattr(query, 'workspace_uuid', None),
+            workspace_id=execution_context.workspace_uuid,
             conversation_id=conversation.conversation_id,
             thread_id=conversation.thread_id,
             actor=actor,

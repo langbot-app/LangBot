@@ -788,8 +788,37 @@ export class BackendClient extends BaseHttpClient {
     name: string,
     filepath: string,
   ): Promise<string> {
-    return this.getAuthenticatedObjectURL(
+    return this.getAuthenticatedPluginPageURL(
       `/api/v1/plugins/${author}/${name}/authenticated-assets/${filepath}`,
+    );
+  }
+
+  private async getAuthenticatedPluginPageURL(path: string): Promise<string> {
+    const response = await this.instance.get<Blob>(path, {
+      responseType: 'blob',
+    });
+    if (!response.data.type.startsWith('text/html')) {
+      return URL.createObjectURL(response.data);
+    }
+
+    const html = await response.data.text();
+    const pageSdkPattern =
+      /<script\b[^>]*\bsrc=(['"])\/api\/v1\/plugins\/_sdk\/page-sdk\.js\1[^>]*>\s*<\/script>/i;
+    if (!pageSdkPattern.test(html)) {
+      return URL.createObjectURL(response.data);
+    }
+
+    const sdkResponse = await this.instance.get<string>(
+      '/api/v1/plugins/_sdk/page-sdk.js',
+      { responseType: 'text' },
+    );
+    const inlineSdk = sdkResponse.data.replace(/<\/script/gi, '<\\/script');
+    const hydratedHtml = html.replace(
+      pageSdkPattern,
+      `<script>${inlineSdk}</script>`,
+    );
+    return URL.createObjectURL(
+      new Blob([hydratedHtml], { type: response.data.type }),
     );
   }
 
