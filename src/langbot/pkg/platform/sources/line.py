@@ -101,7 +101,7 @@ class LINEEventConverter(abstract_platform_adapter.AbstractEventConverter):
         if event.source.type == 'user':
             return platform_events.FriendMessage(
                 sender=platform_entities.Friend(
-                    id=event.message.id,
+                    id=event.source.user_id,
                     nickname=event.source.user_id,
                     remark='',
                 ),
@@ -110,13 +110,19 @@ class LINEEventConverter(abstract_platform_adapter.AbstractEventConverter):
                 source_platform_object=event,
             )
         else:
+            # 'group' and 'room' sources carry the stable chat id under different
+            # field names; user_id may be absent for some members, so fall back
+            # to the group/room id rather than the per-message id.
+            group_id = event.source.group_id if event.source.type == 'group' else event.source.room_id
+            member_id = event.source.user_id or group_id
+
             return platform_events.GroupMessage(
                 sender=platform_entities.GroupMember(
-                    id=event.event.sender.sender_id.open_id,
-                    member_name=event.event.sender.sender_id.union_id,
+                    id=member_id,
+                    member_name=member_id,
                     permission=platform_entities.Permission.Member,
                     group=platform_entities.Group(
-                        id=event.message.id,
+                        id=group_id,
                         name='',
                         permission=platform_entities.Permission.Member,
                     ),
