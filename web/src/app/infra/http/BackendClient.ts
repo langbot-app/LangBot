@@ -1091,6 +1091,7 @@ export class BackendClient extends BaseHttpClient {
   public getPluginDebugInfo(): Promise<{
     debug_url: string;
     plugin_debug_key: string;
+    expires_at: string;
   }> {
     return this.get('/api/v1/plugins/debug-info');
   }

@@ -282,12 +282,11 @@ def test_closed_deployment_selects_instance_scoped_shared_profile():
     assert connector.runtime_profile == 'shared'
 
 
-def test_external_runtime_control_headers_require_strong_secret(monkeypatch):
+def test_external_runtime_control_headers_are_empty_when_secret_is_unset(monkeypatch):
     monkeypatch.delenv(PLUGIN_RUNTIME_CONTROL_TOKEN_ENV, raising=False)
     connector = make_connector()
 
-    with pytest.raises(PluginRuntimeNotConnectedError, match=PLUGIN_RUNTIME_CONTROL_TOKEN_ENV):
-        connector._control_headers(allow_generate=False)
+    assert connector._control_headers(allow_generate=False) == {}
 
 
 def test_local_runtime_control_headers_generate_ephemeral_secret(monkeypatch):

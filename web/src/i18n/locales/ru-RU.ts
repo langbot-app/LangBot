@@ -534,9 +534,9 @@ const ruRU = {
     debugInfoTitle: 'Отладочная информация плагина',
     debugUrl: 'URL для отладки',
     debugKey: 'Ключ отладки',
+    debugKeyExpires: 'Смена в {{time}}; у каждого Workspace свой ключ',
     noDebugKey: '(Не задан)',
-    debugKeyDisabled:
-      'Ключ отладки не задан, аутентификация при отладке плагина не требуется',
+    debugKeyDisabled: 'Учетные данные отладки временно недоступны',
     boxStatusTitle: 'Box Runtime',
     boxStatus: 'Статус',
     boxConnected: 'Подключено',

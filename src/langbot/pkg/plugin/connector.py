@@ -251,6 +251,8 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
     def _control_headers(self, *, allow_generate: bool) -> dict[str, str]:
         if not self._control_token and allow_generate:
             self._control_token = secrets.token_urlsafe(48)
+        if not self._control_token:
+            return {}
         try:
             self._control_token = validate_runtime_secret(
                 self._control_token,
@@ -1968,11 +1970,11 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         with runtime_handler.installation_scope(binding):
             return await runtime_handler.handle_page_api(plugin_author, plugin_name, page_id, endpoint, method, body)
 
-    async def get_debug_info(self) -> dict[str, Any]:
+    async def get_debug_info(self, execution_context: ExecutionContext) -> dict[str, Any]:
         """Get debug information including debug key and WS URL"""
         if not self.is_enable_plugin or not self._runtime_available():
             return {}
-        return await self._runtime_handler().get_debug_info()
+        return await self._runtime_handler().get_debug_info(execution_context)
 
     async def emit_event(
         self,

@@ -1960,14 +1960,14 @@ class RuntimeConnectionHandler(handler.Handler):
         )
         return result
 
-    async def get_debug_info(self) -> dict[str, Any]:
+    async def get_debug_info(self, execution_context: ExecutionContext) -> dict[str, Any]:
         """Get debug information including debug key and WS URL"""
-        with self.installation_scope(None):
-            result = await self.call_action(
-                LangBotToRuntimeAction.GET_DEBUG_INFO,
-                {},
-                timeout=10,
-            )
+        result = await self.call_action(
+            LangBotToRuntimeAction.GET_DEBUG_INFO,
+            {},
+            timeout=10,
+            action_context=execution_context,
+        )
         return result
 
     # ================= RAG Capability Callers (LangBot -> Runtime) =================

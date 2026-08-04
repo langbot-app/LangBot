@@ -521,9 +521,9 @@ const enUS = {
     debugInfoTitle: 'Plugin Debug Information',
     debugUrl: 'Debug URL',
     debugKey: 'Debug Key',
+    debugKeyExpires: 'Rotates at {{time}}; each Workspace has a different key',
     noDebugKey: '(Not Set)',
-    debugKeyDisabled:
-      'Debug key is not set, plugin debugging does not require authentication',
+    debugKeyDisabled: 'Debug credential is temporarily unavailable',
     boxStatusTitle: 'Box Runtime',
     boxStatus: 'Status',
     boxConnected: 'Connected',

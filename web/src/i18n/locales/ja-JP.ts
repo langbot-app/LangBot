@@ -527,9 +527,10 @@ const jaJP = {
     debugInfoTitle: 'プラグインデバッグ情報',
     debugUrl: 'デバッグURL',
     debugKey: 'デバッグキー',
+    debugKeyExpires:
+      '{{time}} にローテーションします。Workspace ごとにキーが異なります',
     noDebugKey: '(未設定)',
-    debugKeyDisabled:
-      'デバッグキーが設定されていません。プラグインデバッグには認証が不要です',
+    debugKeyDisabled: 'デバッグ認証情報を一時的に利用できません',
     boxStatusTitle: 'Box ランタイム',
     boxStatus: 'ステータス',
     boxConnected: '接続済み',

@@ -612,8 +612,13 @@ class TestDisabledPluginEarlyReturns:
         mock_app.instance_config.data = {'plugin': {'enable': False}}
 
         connector = connector_module.PluginRuntimeConnector(mock_app, mock_disconnect)
+        execution_context = connector_module.ExecutionContext(
+            instance_uuid='instance-a',
+            workspace_uuid='workspace-a',
+            placement_generation=1,
+        )
 
-        result = await connector.get_debug_info()
+        result = await connector.get_debug_info(execution_context)
 
         assert result == {}
 

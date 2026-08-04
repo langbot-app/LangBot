@@ -529,9 +529,9 @@ const viVN = {
     debugInfoTitle: 'Thông tin gỡ lỗi Plugin',
     debugUrl: 'URL gỡ lỗi',
     debugKey: 'Khóa gỡ lỗi',
+    debugKeyExpires: 'Xoay vòng lúc {{time}}; mỗi Workspace có khóa riêng',
     noDebugKey: '(Chưa đặt)',
-    debugKeyDisabled:
-      'Khóa gỡ lỗi chưa được đặt, gỡ lỗi plugin không yêu cầu xác thực',
+    debugKeyDisabled: 'Thông tin xác thực gỡ lỗi tạm thời không khả dụng',
     boxStatusTitle: 'Box Runtime',
     boxStatus: 'Trạng thái',
     boxConnected: 'Đã kết nối',

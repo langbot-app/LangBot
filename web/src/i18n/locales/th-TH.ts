@@ -518,9 +518,9 @@ const thTH = {
     debugInfoTitle: 'ข้อมูลดีบักปลั๊กอิน',
     debugUrl: 'URL ดีบัก',
     debugKey: 'คีย์ดีบัก',
+    debugKeyExpires: 'หมุนเวียนเวลา {{time}}; แต่ละ Workspace ใช้คีย์ต่างกัน',
     noDebugKey: '(ไม่ได้ตั้งค่า)',
-    debugKeyDisabled:
-      'ไม่ได้ตั้งค่าคีย์ดีบัก การดีบักปลั๊กอินไม่ต้องยืนยันตัวตน',
+    debugKeyDisabled: 'ข้อมูลรับรองการดีบักไม่พร้อมใช้งานชั่วคราว',
     boxStatusTitle: 'Box Runtime',
     boxStatus: 'สถานะ',
     boxConnected: 'เชื่อมต่อแล้ว',

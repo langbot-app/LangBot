@@ -392,8 +392,8 @@ class PluginsRouterGroup(group.RouterGroup):
         )
         async def _(request_context: RequestContext) -> str:
             """Get plugin debug information including debug URL and key"""
-            await self._require_authenticated_plugin_runtime_context(request_context)
-            debug_info = await self.ap.plugin_connector.get_debug_info()
+            execution_context = await self._require_authenticated_plugin_runtime_context(request_context)
+            debug_info = await self.ap.plugin_connector.get_debug_info(execution_context)
 
             # Get debug URL from config
             plugin_config = self.ap.instance_config.data.get('plugin', {})
@@ -403,6 +403,7 @@ class PluginsRouterGroup(group.RouterGroup):
                 data={
                     'debug_url': debug_url,
                     'plugin_debug_key': debug_info.get('plugin_debug_key', ''),
+                    'expires_at': debug_info.get('expires_at', ''),
                 }
             )
 

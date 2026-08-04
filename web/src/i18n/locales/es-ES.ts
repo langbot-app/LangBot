@@ -535,9 +535,11 @@ const esES = {
     debugInfoTitle: 'Información de depuración del plugin',
     debugUrl: 'URL de depuración',
     debugKey: 'Clave de depuración',
+    debugKeyExpires:
+      'Rota a las {{time}}; cada Workspace tiene una clave distinta',
     noDebugKey: '(No establecida)',
     debugKeyDisabled:
-      'La clave de depuración no está configurada, la depuración del plugin no requiere autenticación',
+      'La credencial de depuración no está disponible temporalmente',
     boxStatusTitle: 'Box Runtime',
     boxStatus: 'Estado',
     boxConnected: 'Conectado',
