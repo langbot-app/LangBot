@@ -283,6 +283,7 @@ class WorkspaceService:
                 placement_generation=execution_state.active_generation,
                 write_fenced=execution_state.write_fenced,
                 state=execution_state.state,
+                workspace_created_at=workspace.created_at,
             )
 
         binding = await self._run(operation, session=session)

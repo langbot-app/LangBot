@@ -25,6 +25,7 @@ import time
 
 from langbot.pkg.api.http.service.space import SpaceService
 from langbot.pkg.entity.persistence.user import User
+from langbot.pkg.utils import constants
 
 
 pytestmark = pytest.mark.asyncio
@@ -573,10 +574,20 @@ class TestSpaceServiceExchangeOAuthCode:
             mock_session_obj.post.return_value.__aexit__ = AsyncMock(return_value=None)
 
             # Execute
-            result = await service.exchange_oauth_code('auth_code')
+            result = await service.exchange_oauth_code(
+                'auth_code',
+                ['workspace-1'],
+                {'workspace-1': 1_700_000_000},
+            )
 
         # Verify
         assert result['access_token'] == 'new_access_token'
+        assert mock_session_obj.post.call_args.kwargs['json'] == {
+            'code': 'auth_code',
+            'instance_id': constants.instance_id,
+            'workspace_uuids': ['workspace-1'],
+            'workspace_created_ats': {'workspace-1': 1_700_000_000},
+        }
 
     async def test_exchange_oauth_code_api_error(self):
         """Raises ValueError on API error."""

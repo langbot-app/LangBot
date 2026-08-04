@@ -120,6 +120,7 @@ async def build_heartbeat_payload(
     ap: core_app.Application,
     *,
     workspace_uuid: str,
+    workspace_create_ts: int = 0,
     workspace_resource: WorkspaceResourceSnapshot | None = None,
 ) -> dict:
     """Collect one anonymous Workspace profile snapshot."""
@@ -212,7 +213,9 @@ async def build_heartbeat_payload(
         'event_type': 'instance_heartbeat',
         'query_id': '',
         'version': constants.semantic_version,
+        'instance_id': constants.instance_id,
         'workspace_uuid': workspace_uuid,
+        'workspace_create_ts': workspace_create_ts,
         'instance_create_ts': constants.instance_create_ts,
         'edition': constants.edition,
         'features': features,
@@ -220,10 +223,24 @@ async def build_heartbeat_payload(
     }
 
 
+def _workspace_created_timestamp(created_at: datetime | None) -> int:
+    if created_at is None:
+        return 0
+    if created_at.tzinfo is None:
+        # SQLAlchemy may return persisted UTC values without tzinfo. Never
+        # reinterpret them in the host's local timezone.
+        created_at = created_at.replace(tzinfo=timezone.utc)
+    return int(created_at.timestamp())
+
+
 async def build_heartbeat_payloads(ap: core_app.Application) -> list[dict]:
     """Build one heartbeat per active Workspace."""
     bindings = await ap.workspace_service.list_active_execution_bindings()
     workspace_uuids = sorted({binding.workspace_uuid for binding in bindings})
+    workspace_create_ts = {
+        binding.workspace_uuid: _workspace_created_timestamp(getattr(binding, 'workspace_created_at', None))
+        for binding in bindings
+    }
     resources = {
         resource['workspace_uuid']: resource for resource in await _cloud_workspace_resource_counts(ap, bindings)
     }
@@ -231,6 +248,7 @@ async def build_heartbeat_payloads(ap: core_app.Application) -> list[dict]:
         await build_heartbeat_payload(
             ap,
             workspace_uuid=workspace_uuid,
+            workspace_create_ts=workspace_create_ts.get(workspace_uuid, 0),
             workspace_resource=resources.get(workspace_uuid),
         )
         for workspace_uuid in workspace_uuids

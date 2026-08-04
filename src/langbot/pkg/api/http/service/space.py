@@ -117,7 +117,12 @@ class SpaceService:
             params['state'] = state
         return f'{authorize_url}?{urlencode(params)}'
 
-    async def exchange_oauth_code(self, code: str) -> typing.Dict:
+    async def exchange_oauth_code(
+        self,
+        code: str,
+        workspace_uuids: list[str] | None = None,
+        workspace_created_ats: dict[str, int] | None = None,
+    ) -> typing.Dict:
         """Exchange OAuth authorization code for tokens"""
         from langbot.pkg.utils import constants
 
@@ -127,7 +132,14 @@ class SpaceService:
         session = httpclient.get_session()
         async with session.post(
             f'{space_url}/api/v1/accounts/oauth/token',
-            json={'code': code, 'instance_id': constants.instance_id},
+            json={
+                'code': code,
+                'instance_id': constants.instance_id,
+                # Sending an explicit empty list tells new Space servers not to
+                # synthesize a legacy instance-derived Workspace binding.
+                'workspace_uuids': workspace_uuids if workspace_uuids is not None else [],
+                'workspace_created_ats': workspace_created_ats or {},
+            },
         ) as response:
             if response.status != 200:
                 error = await httpclient.read_text_limited(response)
