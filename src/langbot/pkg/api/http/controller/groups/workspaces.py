@@ -30,12 +30,14 @@ def _workspace_payload(workspace: Workspace) -> dict[str, typing.Any]:
 def _membership_payload(
     membership: WorkspaceMembership,
     *,
+    display_name: str,
     email: str,
 ) -> dict[str, typing.Any]:
     return {
         'uuid': membership.uuid,
         'workspace_uuid': membership.workspace_uuid,
         'account_uuid': membership.account_uuid,
+        'display_name': display_name,
         'email': email,
         'role': membership.role,
         'status': membership.status,
@@ -94,7 +96,11 @@ class WorkspacesRouterGroup(group.RouterGroup):
                 workspaces.append(
                     {
                         'workspace': _workspace_payload(access.workspace),
-                        'membership': _membership_payload(access.membership, email=account.user),
+                        'membership': _membership_payload(
+                            access.membership,
+                            display_name=account.user,
+                            email=account.normalized_email,
+                        ),
                         'permissions': sorted(permissions_for_role(access.membership.role)),
                         'placement_generation': access.execution.placement_generation,
                         'plan_name': plan_name,
@@ -137,6 +143,7 @@ class WorkspacesRouterGroup(group.RouterGroup):
                             'uuid': None,
                             'workspace_uuid': request_context.workspace_uuid,
                             'account_uuid': None,
+                            'display_name': None,
                             'email': None,
                             'role': 'owner',
                             'status': 'active',
@@ -154,7 +161,11 @@ class WorkspacesRouterGroup(group.RouterGroup):
             return self.success(
                 data={
                     'workspace': _workspace_payload(workspace),
-                    'membership': _membership_payload(membership, email=account.user),
+                    'membership': _membership_payload(
+                        membership,
+                        display_name=account.user,
+                        email=account.normalized_email,
+                    ),
                     'permissions': sorted(request_context.workspace.permissions),
                     'placement_generation': request_context.placement_generation,
                     'plan_name': plan_name,
@@ -283,7 +294,8 @@ class WorkspacesRouterGroup(group.RouterGroup):
                 data={
                     'member': _membership_payload(
                         member,
-                        email=account.user if account is not None else '',
+                        display_name=account.user if account is not None else '',
+                        email=account.normalized_email if account is not None else '',
                     )
                 }
             )
@@ -302,7 +314,11 @@ class WorkspacesRouterGroup(group.RouterGroup):
 
     @staticmethod
     def _member_view_payload(view: WorkspaceMemberView) -> dict[str, typing.Any]:
-        return _membership_payload(view.membership, email=view.email)
+        return _membership_payload(
+            view.membership,
+            display_name=view.display_name,
+            email=view.email,
+        )
 
 
 @group.group_class('invitations', '/api/v1/invitations')

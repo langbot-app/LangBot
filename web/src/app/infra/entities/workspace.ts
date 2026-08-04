@@ -19,6 +19,7 @@ export interface WorkspaceMembership {
   uuid: string;
   workspace_uuid: string;
   account_uuid: string;
+  display_name: string;
   email: string;
   role: WorkspaceRole;
   status: 'active' | 'disabled' | 'removed';

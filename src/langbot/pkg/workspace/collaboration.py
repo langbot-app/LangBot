@@ -88,6 +88,7 @@ class ResolvedWorkspaceAccess:
 @dataclasses.dataclass(frozen=True, slots=True)
 class WorkspaceMemberView:
     membership: WorkspaceMembership
+    display_name: str
     email: str
 
 
@@ -294,7 +295,7 @@ class WorkspaceCollaborationService:
         async def operation(active_session: AsyncSession) -> list[WorkspaceMemberView]:
             await self._load_actor(active_session, workspace_uuid, actor)
             statement = (
-                sqlalchemy.select(WorkspaceMembership, User.user)
+                sqlalchemy.select(WorkspaceMembership, User.user, User.normalized_email)
                 .join(User, User.uuid == WorkspaceMembership.account_uuid)
                 .where(
                     WorkspaceMembership.workspace_uuid == workspace_uuid,
@@ -304,8 +305,12 @@ class WorkspaceCollaborationService:
                 .order_by(WorkspaceMembership.created_at, WorkspaceMembership.uuid)
             )
             return [
-                WorkspaceMemberView(membership=membership, email=email)
-                for membership, email in (await active_session.execute(statement)).all()
+                WorkspaceMemberView(
+                    membership=membership,
+                    display_name=display_name,
+                    email=email,
+                )
+                for membership, display_name, email in (await active_session.execute(statement)).all()
             ]
 
         return await self._run(operation, session=session, read_only=True)
