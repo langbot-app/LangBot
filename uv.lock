@@ -2125,7 +2125,7 @@ requires-dist = [
     { name = "ebooklib", specifier = ">=0.18" },
     { name = "gewechat-client", specifier = ">=0.1.5" },
     { name = "html2text", specifier = ">=2024.2.26" },
-    { name = "langbot-plugin", git = "https://github.com/langbot-app/langbot-plugin-sdk.git?rev=22e470d853e00116ad4fa63d3171f88646b06153" },
+    { name = "langbot-plugin", git = "https://github.com/langbot-app/langbot-plugin-sdk.git?rev=5279f3ebd8ca8ddfca27558d56c5900f2e245361" },
     { name = "langchain", specifier = ">=1.3.9" },
     { name = "langchain-core", specifier = ">=1.3.3" },
     { name = "langchain-text-splitters", specifier = ">=1.1.2" },
@@ -2192,7 +2192,7 @@ dev = [
 [[package]]
 name = "langbot-plugin"
 version = "0.5.0"
-source = { git = "https://github.com/langbot-app/langbot-plugin-sdk.git?rev=22e470d853e00116ad4fa63d3171f88646b06153#22e470d853e00116ad4fa63d3171f88646b06153" }
+source = { git = "https://github.com/langbot-app/langbot-plugin-sdk.git?rev=5279f3ebd8ca8ddfca27558d56c5900f2e245361#5279f3ebd8ca8ddfca27558d56c5900f2e245361" }
 dependencies = [
     { name = "aiofiles" },
     { name = "aiohttp" },
