@@ -1,6 +1,7 @@
 import quart
 import argon2
 import asyncio
+import datetime
 import uuid
 from urllib.parse import parse_qs, urlsplit
 
@@ -220,10 +221,20 @@ class UserRouterGroup(group.RouterGroup):
                 # Exchange code for tokens
                 launch_workspace_uuid = consumed_state.launch_workspace_uuid
                 workspace_uuids = [launch_workspace_uuid] if launch_workspace_uuid else []
+                workspace_created_ats: dict[str, int] = {}
                 if not workspace_uuids and getattr(getattr(self.ap, 'deployment', None), 'mode', 'oss') != 'cloud':
                     binding = await self.ap.workspace_service.get_execution_binding()
                     workspace_uuids = [binding.workspace_uuid]
-                token_data = await self.ap.space_service.exchange_oauth_code(code, workspace_uuids)
+                    workspace_created_at = binding.workspace_created_at
+                    if workspace_created_at is not None:
+                        if workspace_created_at.tzinfo is None:
+                            workspace_created_at = workspace_created_at.replace(tzinfo=datetime.UTC)
+                        workspace_created_ats[binding.workspace_uuid] = int(workspace_created_at.timestamp())
+                token_data = await self.ap.space_service.exchange_oauth_code(
+                    code,
+                    workspace_uuids,
+                    workspace_created_ats,
+                )
                 access_token = token_data.get('access_token')
                 refresh_token = token_data.get('refresh_token')
                 expires_in = token_data.get('expires_in', 0)

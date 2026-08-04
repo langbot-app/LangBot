@@ -604,8 +604,10 @@ class TestAuthenticatedWorkspaceReporter:
         mock_app.logger = Mock()
         mock_app.user_service = Mock()
         mock_app.user_service.get_workspace_owner = AsyncMock(
-            return_value=Mock(space_access_token='workspace-owner-token')
+            return_value=Mock(user='owner@example.com', space_access_token='expired-token')
         )
+        mock_app.space_service = Mock()
+        mock_app.space_service.get_valid_access_token = AsyncMock(return_value='refreshed-workspace-owner-token')
         manager = telemetry.TelemetryManager(mock_app)
         manager.telemetry_config = {'url': 'https://example.com'}
 
@@ -618,7 +620,10 @@ class TestAuthenticatedWorkspaceReporter:
             await manager.send({'query_id': 'q-1', 'workspace_uuid': 'workspace-1'})
 
         mock_app.user_service.get_workspace_owner.assert_awaited_once_with('workspace-1')
-        assert mock_client.post.call_args.kwargs['headers'] == {'Authorization': 'Bearer workspace-owner-token'}
+        mock_app.space_service.get_valid_access_token.assert_awaited_once_with('owner@example.com')
+        assert mock_client.post.call_args.kwargs['headers'] == {
+            'Authorization': 'Bearer refreshed-workspace-owner-token'
+        }
 
 
 class TestStartSendTask:

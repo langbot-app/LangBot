@@ -59,6 +59,10 @@ class SpaceService:
         result_list = result.all()
         return result_list[0] if result_list else None
 
+    async def get_valid_access_token(self, user_email: str) -> str | None:
+        """Return a current Space bearer, refreshing and persisting it when needed."""
+        return await self._ensure_valid_token(user_email)
+
     async def _ensure_valid_token(self, user_email: str) -> str | None:
         """Ensure access token is valid, refresh if expired. Returns valid access_token or None."""
         user_obj = await self._get_user_by_email(user_email)

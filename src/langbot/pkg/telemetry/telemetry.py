@@ -145,7 +145,14 @@ class TelemetryManager:
                             if workspace_uuid and user_service is not None:
                                 try:
                                     owner = await user_service.get_workspace_owner(workspace_uuid)
-                                    access_token = str(getattr(owner, 'space_access_token', '') or '').strip()
+                                    owner_email = str(getattr(owner, 'user', '') or '').strip()
+                                    space_service = getattr(self.ap, 'space_service', None)
+                                    access_token = (
+                                        await space_service.get_valid_access_token(owner_email)
+                                        if owner_email and space_service is not None
+                                        else None
+                                    )
+                                    access_token = str(access_token or '').strip()
                                     if access_token:
                                         headers['Authorization'] = f'Bearer {access_token}'
                                 except Exception:
