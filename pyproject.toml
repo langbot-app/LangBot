@@ -71,7 +71,7 @@ dependencies = [
     "chromadb>=1.0.0,<2.0.0",
     "qdrant-client (>=1.15.1,<2.0.0)",
     "pyseekdb==1.1.0.post3",
-    "langbot-plugin @ git+https://github.com/langbot-app/langbot-plugin-sdk.git@e4df196c701b0325bdaab0452cb7fd974e1dc849",
+    "langbot-plugin @ git+https://github.com/langbot-app/langbot-plugin-sdk.git@75d13d756e77045b42be86f3541095866ea2b5ce",
     "asyncpg>=0.30.0",
     "line-bot-sdk>=3.19.0",
     "matrix-nio>=0.25.2",
