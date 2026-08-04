@@ -2367,7 +2367,7 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                     sequence=final_seq,
                     form_data=None,
                     notice_text=selected_notice if resume_from else '',
-                    resume_placeholder_text=resume_cached,
+                    resume_placeholder_text=resume_cached if resume_from else '',
                 )
                 self._drop_card_state(card_id)
             self.card_id_dict.pop(message_id, None)
