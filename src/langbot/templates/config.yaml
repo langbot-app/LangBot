@@ -201,7 +201,7 @@ vdb:
         # keep this false when deliberately using an external pgvector DB.
         use_business_database: false
         # Release migrations create one partial ANN index per enabled value.
-        allowed_dimensions: [384, 512, 768, 1024, 1536]
+        allowed_dimensions: [384, 512, 768, 1024, 1536, 3072]
         host: '127.0.0.1'
         port: 5433
         database: 'langbot'
