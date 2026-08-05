@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 import sqlalchemy as sa
-from pgvector.sqlalchemy import Vector
+from pgvector.sqlalchemy import HALFVEC, Vector
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import create_async_engine
@@ -967,6 +967,7 @@ async def test_scoped_session_rejects_raw_or_unapproved_sql(
         ),
         sa.select(sa.column('embedding').op('<=>')(sa.literal([0.1]))),
         sa.select(sa.cast(sa.column('embedding'), Vector(384))),
+        sa.select(sa.cast(sa.column('embedding'), HALFVEC(3072))),
         sa.insert(sa.table('rows', sa.column('id'))).values(id=1),
         _multi_value_statement(value=1),
         _on_conflict_statement(update_value=sa.func.coalesce(sa.literal(1), sa.literal(0))),
