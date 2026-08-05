@@ -164,6 +164,12 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
 
     _EMBEDDING_MODEL_HINTS = ('embedding', 'embed', 'bge-', 'e5-', 'm3e', 'gte-', 'text-embedding')
     _RERANK_MODEL_HINTS = ('rerank', 're-rank', 're_rank')
+    _QWEN_DEDICATED_THINKING_MODELS = frozenset(
+        {
+            'qwen3.7-max-preview',
+            'qwen3.7-max-2026-05-17',
+        }
+    )
     _INFERRED_EFFORT_PROVIDERS = frozenset(
         {
             'anthropic',
@@ -392,6 +398,14 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                 return inferred_family
             return 'volcengine' if requester_name == 'volcark-chat-completions' else ''
 
+        # Bailian's compatible endpoint also hosts Kimi models. Keep those
+        # models on Kimi's ``thinking`` protocol instead of Qwen's
+        # ``enable_thinking`` protocol.
+        if requester_name == 'bailian-chat-completions':
+            inferred_family = self._infer_reasoning_family_from_model_name(model_name)
+            if inferred_family == 'kimi':
+                return inferred_family
+
         requester_family = self._REQUESTER_REASONING_FAMILIES.get(requester_name)
         if requester_family:
             return requester_family
@@ -428,7 +442,11 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
     @staticmethod
     def _is_dedicated_qwen_thinking_model(model_name: str) -> bool:
         normalized_name = model_name.lower().rsplit('/', 1)[-1]
-        return normalized_name.startswith('qwq') or '-thinking' in normalized_name
+        return (
+            normalized_name in LiteLLMRequester._QWEN_DEDICATED_THINKING_MODELS
+            or normalized_name.startswith('qwq')
+            or '-thinking' in normalized_name
+        )
 
     def _known_reasoning_levels(self, model_name: str, family: str) -> list[str] | None:
         normalized_name = model_name.lower().rsplit('/', 1)[-1]

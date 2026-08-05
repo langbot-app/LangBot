@@ -237,6 +237,43 @@ def test_qwen_mixed_and_dedicated_thinking_profiles(monkeypatch):
     assert dedicated['levels'] == ['provider_default']
 
 
+@pytest.mark.parametrize('model_name', ['qwen3.7-max-preview', 'qwen3.7-max-2026-05-17'])
+def test_qwen_dedicated_thinking_release_models_are_not_toggleable(model_name, monkeypatch):
+    request = _requester('openai', 'bailian-chat-completions')
+    monkeypatch.setattr(request, '_supports_reasoning', lambda _: False)
+
+    capabilities = request.get_reasoning_capabilities(_runtime_model(request, name=model_name, abilities=[]))
+
+    assert capabilities['levels'] == ['provider_default']
+
+
+@pytest.mark.parametrize(
+    ('model_name', 'expected_levels'),
+    [
+        ('kimi-k2.6', ['provider_default', 'disabled', 'enabled']),
+        ('kimi-k2.5', ['provider_default', 'disabled', 'enabled']),
+        ('kimi-k2.7-code', ['provider_default']),
+        ('kimi-k2-thinking', ['provider_default']),
+    ],
+)
+def test_bailian_kimi_profiles_use_kimi_model_rules(model_name, expected_levels, monkeypatch):
+    request = _requester('openai', 'bailian-chat-completions')
+    monkeypatch.setattr(request, '_supports_reasoning', lambda _: False)
+
+    capabilities = request.get_reasoning_capabilities(_runtime_model(request, name=model_name, abilities=[]))
+
+    assert capabilities['levels'] == expected_levels
+
+
+def test_bailian_kimi_uses_thinking_protocol_instead_of_qwen_protocol(monkeypatch):
+    request = _requester('openai', 'bailian-chat-completions')
+    monkeypatch.setattr(request, '_supports_reasoning', lambda _: False)
+
+    assert request._build_reasoning_args(_runtime_model(request, 'disabled', name='kimi-k2.6')) == {
+        'extra_body': {'thinking': {'type': 'disabled'}}
+    }
+
+
 def test_doubao_exposes_documented_effort_range(monkeypatch):
     request = _requester('openai', 'doubao-chat-completions')
     monkeypatch.setattr(request, '_supports_reasoning', lambda _: False)
