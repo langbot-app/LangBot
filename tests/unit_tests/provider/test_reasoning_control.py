@@ -714,3 +714,45 @@ async def test_stream_reasoning_round_trip_with_hidden_display(monkeypatch):
     assert emitted is not None
     assert emitted.content == 'answer'
     assert emitted.provider_specific_fields == {'reasoning_content': 'private '}
+
+
+@pytest.mark.asyncio
+async def test_stream_reasoning_content_is_wrapped_for_display(monkeypatch):
+    request = _requester('deepseek')
+    request._build_completion_args = AsyncMock(return_value={})
+
+    async def chunks():
+        yield SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    delta=_Dumpable({'role': 'assistant', 'reasoning_content': 'private '}),
+                    finish_reason=None,
+                )
+            ],
+            usage=None,
+        )
+        yield SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    delta=_Dumpable({'content': 'answer'}),
+                    finish_reason='stop',
+                )
+            ],
+            usage=None,
+        )
+
+    monkeypatch.setattr(litellmchat, 'acompletion', AsyncMock(return_value=chunks()))
+    accumulator = _StreamAccumulator(remove_think=False)
+    emitted: provider_message.MessageChunk | None = None
+
+    async for chunk in request.invoke_llm_stream(
+        None,
+        _runtime_model(request),
+        [],
+        remove_think=False,
+    ):
+        emitted = accumulator.add(chunk) or emitted
+
+    assert emitted is not None
+    assert emitted.content == '<think>\nprivate \n</think>\nanswer'
+    assert emitted.provider_specific_fields == {'reasoning_content': 'private '}

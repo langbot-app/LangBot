@@ -1135,6 +1135,8 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         role = 'assistant'
         tool_call_state: dict[int, dict[str, typing.Any]] = {}
         think_state = _ThinkStripState() if remove_think else None
+        reasoning_started = False
+        reasoning_closed = False
 
         try:
             response = await acompletion(**args)
@@ -1165,18 +1167,36 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                 if 'role' in delta and delta['role']:
                     role = delta['role']
 
-                delta_content = delta.get('content', '')
-                reasoning_content = delta.get('reasoning_content', '')
+                delta_content = delta.get('content') or ''
+                reasoning_content = delta.get('reasoning_content') or ''
                 provider_fields = dict(delta.get('provider_specific_fields') or {})
 
                 # Handle reasoning_content based on remove_think flag
                 if reasoning_content:
                     provider_fields['reasoning_content'] = reasoning_content
                     if remove_think:
-                        delta_content = None
+                        delta_content = delta_content or None
                     else:
-                        # Use reasoning_content as the displayed content
-                        delta_content = reasoning_content
+                        # Stream explicit markers so downstream adapters and
+                        # the debug page see the same format as non-streaming
+                        # responses.
+                        if not reasoning_started:
+                            delta_content = '<think>\n'
+                            reasoning_started = True
+                        else:
+                            delta_content = ''
+                        delta_content += reasoning_content
+                        if delta.get('content'):
+                            delta_content += f'\n</think>\n{delta.get("content")}'
+                            reasoning_closed = True
+
+                elif delta_content and not remove_think and reasoning_started and not reasoning_closed:
+                    delta_content = f'\n</think>\n{delta_content}'
+                    reasoning_closed = True
+
+                if finish_reason and not remove_think and reasoning_started and not reasoning_closed:
+                    delta_content = f'{delta_content}\n</think>\n'
+                    reasoning_closed = True
 
                 if think_state is not None and delta_content:
                     delta_content = think_state.feed(delta_content)
@@ -1204,6 +1224,13 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                 chunk_data = {k: v for k, v in chunk_data.items() if v is not None}
                 yield provider_message.MessageChunk(**chunk_data)
                 chunk_idx += 1
+
+            if reasoning_started and not reasoning_closed:
+                yield provider_message.MessageChunk(
+                    role=role,
+                    content='\n</think>\n',
+                    is_final=True,
+                )
 
             if think_state is not None:
                 pending_content = think_state.flush()
