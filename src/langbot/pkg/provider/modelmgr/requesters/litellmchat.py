@@ -170,6 +170,11 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
             'qwen3.7-max-2026-05-17',
         }
     )
+    _QWEN_REASONING_BUDGETS = {
+        'low': 1024,
+        'medium': 4096,
+        'high': 8192,
+    }
     _INFERRED_EFFORT_PROVIDERS = frozenset(
         {
             'anthropic',
@@ -448,6 +453,12 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
             or '-thinking' in normalized_name
         )
 
+    @staticmethod
+    def _supports_qwen_thinking_budget(model_name: str) -> bool:
+        """Return whether the documented Qwen3 family supports thinking_budget."""
+        normalized_name = model_name.lower().rsplit('/', 1)[-1]
+        return normalized_name.startswith('qwen3')
+
     def _known_reasoning_levels(self, model_name: str, family: str) -> list[str] | None:
         normalized_name = model_name.lower().rsplit('/', 1)[-1]
 
@@ -470,7 +481,11 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
 
         if family == 'qwen' and normalized_name.startswith(('qwen-', 'qwen3', 'qwq')):
             if self._is_dedicated_qwen_thinking_model(normalized_name):
+                if self._supports_qwen_thinking_budget(normalized_name):
+                    return ['provider_default', 'low', 'medium', 'high']
                 return ['provider_default']
+            if self._supports_qwen_thinking_budget(normalized_name):
+                return ['provider_default', 'disabled', 'low', 'medium', 'high']
             return ['provider_default', 'disabled', 'enabled']
 
         if family == 'doubao' and normalized_name.startswith(('doubao-', 'seed-')):
@@ -570,11 +585,14 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         else:
             levels = ['provider_default']
 
-        return {
+        capabilities = {
             'supported': True,
             'levels': list(dict.fromkeys(levels)),
             'source': 'litellm' if detected else ('provider' if known_levels is not None else 'manual'),
         }
+        if family == 'qwen' and 'disabled' in capabilities['levels'] and 'enabled' not in capabilities['levels']:
+            capabilities['legacy_levels'] = ['enabled']
+        return capabilities
 
     def _build_reasoning_args(self, model: requester.RuntimeLLMModel) -> dict[str, typing.Any]:
         level = self._reasoning_level(model)
@@ -605,6 +623,13 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
             if family == 'qwen':
                 return {'extra_body': {'enable_thinking': True}}
             return {'reasoning_effort': 'low'}
+        if family == 'qwen' and level in self._QWEN_REASONING_BUDGETS:
+            return {
+                'extra_body': {
+                    'enable_thinking': True,
+                    'thinking_budget': self._QWEN_REASONING_BUDGETS[level],
+                }
+            }
         if family == 'deepseek':
             return {
                 'extra_body': {

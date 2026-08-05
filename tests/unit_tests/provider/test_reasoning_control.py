@@ -234,7 +234,46 @@ def test_qwen_mixed_and_dedicated_thinking_profiles(monkeypatch):
     )
 
     assert mixed['levels'] == ['provider_default', 'disabled', 'enabled']
-    assert dedicated['levels'] == ['provider_default']
+    assert dedicated['levels'] == ['provider_default', 'low', 'medium', 'high']
+
+
+def test_qwen3_exposes_budget_based_reasoning_levels(monkeypatch):
+    request = _requester('openai', 'bailian-chat-completions')
+    monkeypatch.setattr(request, '_supports_reasoning', lambda _: False)
+
+    mixed = request.get_reasoning_capabilities(_runtime_model(request, name='qwen3.8-max', abilities=[]))
+    dedicated = request.get_reasoning_capabilities(
+        _runtime_model(request, name='qwen3.7-max-preview', abilities=[])
+    )
+
+    assert mixed['levels'] == ['provider_default', 'disabled', 'low', 'medium', 'high']
+    assert mixed['legacy_levels'] == ['enabled']
+    assert dedicated['levels'] == ['provider_default', 'low', 'medium', 'high']
+
+
+def test_qwen3_legacy_enabled_config_remains_supported(monkeypatch):
+    request = _requester('openai', 'bailian-chat-completions')
+    monkeypatch.setattr(request, '_supports_reasoning', lambda _: False)
+
+    assert request._build_reasoning_args(_runtime_model(request, 'enabled', name='qwen3.8-max')) == {
+        'extra_body': {'enable_thinking': True}
+    }
+
+
+@pytest.mark.parametrize(
+    ('level', 'budget'),
+    [('low', 1024), ('medium', 4096), ('high', 8192)],
+)
+def test_qwen3_reasoning_levels_translate_to_thinking_budget(level, budget, monkeypatch):
+    request = _requester('openai', 'bailian-chat-completions')
+    monkeypatch.setattr(request, '_supports_reasoning', lambda _: False)
+
+    assert request._build_reasoning_args(_runtime_model(request, level, name='qwen3.8-max')) == {
+        'extra_body': {
+            'enable_thinking': True,
+            'thinking_budget': budget,
+        }
+    }
 
 
 @pytest.mark.parametrize('model_name', ['qwen3.7-max-preview', 'qwen3.7-max-2026-05-17'])
@@ -244,7 +283,7 @@ def test_qwen_dedicated_thinking_release_models_are_not_toggleable(model_name, m
 
     capabilities = request.get_reasoning_capabilities(_runtime_model(request, name=model_name, abilities=[]))
 
-    assert capabilities['levels'] == ['provider_default']
+    assert capabilities['levels'] == ['provider_default', 'low', 'medium', 'high']
 
 
 @pytest.mark.parametrize(

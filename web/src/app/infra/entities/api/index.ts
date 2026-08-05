@@ -122,6 +122,7 @@ export interface ReasoningConfig {
 export interface ReasoningCapabilities {
   supported: boolean;
   levels: ReasoningLevel[];
+  legacy_levels?: ReasoningLevel[];
   source: 'litellm' | 'provider' | 'manual' | 'unknown';
 }
 
