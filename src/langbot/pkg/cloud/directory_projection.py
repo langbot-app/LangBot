@@ -358,6 +358,7 @@ class DirectoryProjectionService:
 
         await self._reconcile_entitlement_snapshot_set(snapshot)
         self._publish_runtime_execution_projection(snapshot.workspaces)
+        self._request_model_catalog_sync()
         self._record_batch_cardinality(
             active_workspaces=active_workspace_count,
             workspaces=workspace_count,
@@ -466,6 +467,7 @@ class DirectoryProjectionService:
             returned.values(),
             affected_workspace_uuids=requested,
         )
+        self._request_model_catalog_sync()
         self._record_batch_cardinality(
             active_workspaces=active_workspace_count,
             workspaces=workspace_count,
@@ -474,6 +476,14 @@ class DirectoryProjectionService:
         if projection_caught_up:
             self._record_success()
         self._consumer_cursor = batch.cursor
+
+    def _request_model_catalog_sync(self) -> None:
+        """Wake model provisioning after a committed directory change."""
+
+        service = getattr(self.ap, 'cloud_model_catalog_service', None)
+        request_sync = getattr(service, 'request_sync', None)
+        if callable(request_sync):
+            request_sync()
 
     def _publish_runtime_execution_projection(
         self,

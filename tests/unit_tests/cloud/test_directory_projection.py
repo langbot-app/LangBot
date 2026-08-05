@@ -181,6 +181,39 @@ def _delta(
     )
 
 
+async def test_directory_delta_requests_model_catalog_sync_after_commit(projection_context):
+    application, _session_factory = projection_context
+    request_sync = Mock()
+    application.cloud_model_catalog_service = SimpleNamespace(request_sync=request_sync)
+    event = DirectoryEvent(
+        cursor=2,
+        uuid='20000000-0000-4000-8000-000000000002',
+        aggregate_uuid=WORKSPACE_UUID,
+        event_type='directory.changed',
+        revision=2,
+        payload={'workspace_uuid': WORKSPACE_UUID, 'directory_revision': 2},
+        created_at=datetime.datetime(2026, 7, 24, 12, 30, tzinfo=datetime.UTC),
+    )
+    batch = DirectoryEventBatch(
+        instance_uuid=INSTANCE_UUID,
+        after_cursor=1,
+        cursor=2,
+        high_water_cursor=2,
+        events=[event],
+    )
+    service = DirectoryProjectionService(
+        application,
+        _Provider([_snapshot(1)], [batch], [_delta(workspaces=[_workspace(revision=2)])]),
+        INSTANCE_UUID,
+    )
+    await service.initialize()
+    request_sync.reset_mock()
+
+    await service.sync_once()
+
+    request_sync.assert_called_once_with()
+
+
 async def test_initial_snapshot_projects_core_owned_rows(projection_context):
     application, session_factory = projection_context
     reconcile_execution_projection = Mock()

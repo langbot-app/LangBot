@@ -273,6 +273,94 @@ async def test_snapshot_must_cover_every_active_workspace() -> None:
         await service.sync_once()
 
 
+async def test_periodic_sync_discovers_workspace_created_after_startup_cache_release(tmp_path) -> None:
+    engine = create_async_engine(f'sqlite+aiosqlite:///{tmp_path / "model-catalog-new-workspace.db"}')
+    manager = PersistenceManager(object(), mode=PersistenceMode.CLOUD_RUNTIME)
+    manager.db = SimpleNamespace(get_engine=lambda: engine)
+    startup_bindings = [
+        SimpleNamespace(instance_uuid=INSTANCE_UUID, workspace_uuid=WORKSPACE_A, placement_generation=1)
+    ]
+    live_bindings = [
+        *startup_bindings,
+        SimpleNamespace(instance_uuid=INSTANCE_UUID, workspace_uuid=WORKSPACE_B, placement_generation=1),
+    ]
+
+    class _WorkspaceService:
+        startup_released = False
+
+        async def list_active_execution_bindings(self):
+            return list(live_bindings if self.startup_released else startup_bindings)
+
+        def release_startup_execution_bindings(self):
+            self.startup_released = True
+
+    workspace_service = _WorkspaceService()
+    app = SimpleNamespace(
+        persistence_mgr=manager,
+        workspace_service=workspace_service,
+        model_mgr=SimpleNamespace(load_models_from_db=_AsyncCounter()),
+        logger=logging.getLogger(__name__),
+    )
+    service = CloudModelCatalogSyncService(app, _CatalogProvider(_snapshot()), INSTANCE_UUID)
+
+    try:
+        async with engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+            await connection.execute(
+                sqlalchemy.insert(Workspace),
+                [
+                    {
+                        'uuid': WORKSPACE_A,
+                        'instance_uuid': INSTANCE_UUID,
+                        'name': 'A',
+                        'slug': 'a',
+                        'source': 'cloud_projection',
+                    },
+                    {
+                        'uuid': WORKSPACE_B,
+                        'instance_uuid': INSTANCE_UUID,
+                        'name': 'B',
+                        'slug': 'b',
+                        'source': 'cloud_projection',
+                    },
+                ],
+            )
+
+        await service.initialize()
+        workspace_service.release_startup_execution_bindings()
+        await service.sync_once()
+
+        async with engine.connect() as connection:
+            provider_b = await connection.scalar(
+                sqlalchemy.select(ModelProvider).where(ModelProvider.uuid == system_provider_uuid(WORKSPACE_B))
+            )
+        assert provider_b is not None
+    finally:
+        await engine.dispose()
+
+
+async def test_catalog_run_wakes_immediately_when_directory_changes() -> None:
+    sync_started = asyncio.Event()
+
+    class _WakeService(CloudModelCatalogSyncService):
+        async def sync_once(self, *, reload_runtime: bool = True):
+            del reload_runtime
+            sync_started.set()
+            return {'workspaces': 0, 'created': 0, 'updated': 0, 'deleted': 0}
+
+    app = SimpleNamespace(logger=logging.getLogger(__name__))
+    service = _WakeService(app, _CatalogProvider(_snapshot()), INSTANCE_UUID, sync_interval_seconds=3600)
+    task = asyncio.create_task(service.run())
+    try:
+        await asyncio.sleep(0)
+        service.request_sync()
+        await asyncio.wait_for(sync_started.wait(), timeout=0.2)
+    finally:
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+
 async def _async_value(value):
     return value
 
