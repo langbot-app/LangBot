@@ -15,7 +15,6 @@ import posixpath
 import sqlalchemy
 
 from .....core import taskmgr
-from .....core.task_boundary import run_in_workspace_uow
 from .....entity.persistence import plugin as persistence_plugin
 from ...authz import Permission
 from ...context import ExecutionContext, RequestContext
@@ -311,11 +310,13 @@ class PluginsRouterGroup(group.RouterGroup):
     ):
         """Revalidate a captured task context immediately before Runtime I/O."""
 
-        await run_in_workspace_uow(
-            self.ap,
-            execution_context.workspace_uuid,
-            lambda: self.ap.plugin_connector.require_workspace_context(execution_context),
-        )
+        persistence_mgr = getattr(self.ap, 'persistence_mgr', None)
+        tenant_scope = getattr(persistence_mgr, 'tenant_scope', None)
+        if callable(tenant_scope):
+            async with tenant_scope(execution_context.workspace_uuid):
+                await self.ap.plugin_connector.require_workspace_context(execution_context)
+                return await operation()
+        await self.ap.plugin_connector.require_workspace_context(execution_context)
         return await operation()
 
     async def _require_authenticated_plugin_runtime_context(
