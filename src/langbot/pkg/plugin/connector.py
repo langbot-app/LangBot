@@ -841,6 +841,8 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             runtime_id=self._runtime_id,
         )
         self.worker_policy = self._load_worker_policy()
+        plugin_config = self.ap.instance_config.data.get('plugin', {})
+        connect_timeout_seconds = self._runtime_connect_timeout(plugin_config)
 
         async with self._lifecycle_lock:
             if self._closing:
@@ -981,7 +983,6 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                 task_coro = self.ctrl.run(new_connection_callback)
 
             self._transport_task = asyncio.create_task(task_coro)
-            connect_timeout_seconds = self._runtime_connect_timeout(self.ap.instance_config.data.get('plugin', {}))
             try:
                 await asyncio.wait_for(self._connected.wait(), timeout=connect_timeout_seconds)
             except asyncio.TimeoutError as exc:
