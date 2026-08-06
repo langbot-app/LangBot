@@ -245,6 +245,8 @@ storage:
         max_concurrency: 16
 plugin:
     enable: true
+    # Maximum time for the Runtime transport, handshake, and desired-state replay.
+    connect_timeout_seconds: 180.0
     runtime_ws_url: 'ws://langbot_plugin_runtime:5400/control/ws'
     enable_marketplace: true
     display_plugin_debug_url: 'ws://localhost:5401/plugin/debug/ws'

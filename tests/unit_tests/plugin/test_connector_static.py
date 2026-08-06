@@ -6,8 +6,9 @@ Tests cover:
 
 from __future__ import annotations
 
-import pytest
 from importlib import import_module
+
+import pytest
 
 
 def get_connector_module():
@@ -60,3 +61,28 @@ def test_runtime_id_is_stable_across_core_restarts(monkeypatch):
     monkeypatch.setattr(connector.constants, 'instance_id', 'instance-a')
 
     assert connector.PluginRuntimeConnector._build_runtime_id() == 'instance-a:plugin-runtime'
+
+
+def test_runtime_connect_timeout_defaults_to_three_minutes():
+    connector = get_connector_module()
+    assert connector.PluginRuntimeConnector._runtime_connect_timeout({}) == 180.0
+
+
+def test_runtime_connect_timeout_reads_typed_plugin_config():
+    connector = get_connector_module()
+    assert connector.PluginRuntimeConnector._runtime_connect_timeout({'connect_timeout_seconds': 45.5}) == 45.5
+
+
+@pytest.mark.parametrize('value', [True, False, None, 0, -1, float('nan'), float('inf'), '180', object()])
+def test_runtime_connect_timeout_rejects_invalid_values(value):
+    connector = get_connector_module()
+    with pytest.raises(ValueError, match='plugin.connect_timeout_seconds'):
+        connector.PluginRuntimeConnector._runtime_connect_timeout({'connect_timeout_seconds': value})
+
+
+def test_runtime_connect_timeout_error_displays_actual_seconds():
+    connector = get_connector_module()
+
+    assert connector.PluginRuntimeConnector._runtime_connect_timeout_error(45.5) == (
+        'Plugin runtime did not become ready within 45.5 seconds'
+    )
