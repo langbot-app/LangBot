@@ -17,6 +17,7 @@ from ..entity.persistence.user import AccountStatus, User
 from ..entity.persistence.workspace import (
     InvitationStatus,
     MembershipRole,
+    MembershipSource,
     MembershipStatus,
     Workspace,
     WorkspaceInvitation,
@@ -483,6 +484,7 @@ class WorkspaceCollaborationService:
                     account_uuid=account_uuid,
                     role=invitation.role,
                     status=MembershipStatus.ACTIVE.value,
+                    source=MembershipSource.LOCAL.value,
                     invited_by_account_uuid=invitation.created_by_account_uuid,
                     joined_at=now,
                     projection_revision=0,
@@ -491,6 +493,7 @@ class WorkspaceCollaborationService:
             elif membership.status != MembershipStatus.ACTIVE.value:
                 membership.role = invitation.role
                 membership.status = MembershipStatus.ACTIVE.value
+                membership.source = MembershipSource.LOCAL.value
                 membership.invited_by_account_uuid = invitation.created_by_account_uuid
                 membership.joined_at = now
 

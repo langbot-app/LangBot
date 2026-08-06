@@ -15,6 +15,7 @@ from ..entity.persistence.cloud_directory import DirectoryProjectionInbox, Direc
 from ..entity.persistence.user import AccountSource, AccountStatus, User
 from ..entity.persistence.workspace import (
     MembershipRole,
+    MembershipSource,
     MembershipStatus,
     Workspace,
     WorkspaceExecutionSource,
@@ -865,12 +866,6 @@ class DirectoryProjectionService:
                 )
             ).all()
         }
-        existing_account_sources: dict[str, str] = {}
-        if existing:
-            existing_account_sources = {
-                account.uuid: account.source
-                for account in (await session.scalars(sqlalchemy.select(User).where(User.uuid.in_(existing)))).all()
-            }
         included_accounts: set[str] = set()
         for member in candidate.members:
             included_accounts.add(member.account_uuid)
@@ -892,18 +887,15 @@ class DirectoryProjectionService:
                         account_uuid=member.account_uuid,
                         role=role,
                         status=status,
+                        source=MembershipSource.CLOUD_PROJECTION.value,
                         joined_at=joined_at,
                         projection_revision=member.projection_revision,
                     )
                 )
                 continue
-            if (
-                membership.projection_revision == 0
-                and existing_account_sources.get(member.account_uuid) != AccountSource.CLOUD_PROJECTION.value
-            ):
-                # Keep genuinely local collaboration state. Historical Cloud
-                # memberships also used revision zero; once Space includes the
-                # account in its authoritative directory, adopt that row.
+            if membership.source != MembershipSource.CLOUD_PROJECTION.value:
+                # Core-owned collaboration state is never adopted based on
+                # account provenance, revision, or matching account identity.
                 continue
             if membership.uuid != member.membership_uuid:
                 raise DirectoryProjectionUnavailableError('Directory membership UUID changed for one account')
@@ -915,12 +907,12 @@ class DirectoryProjectionService:
                 raise DirectoryProjectionUnavailableError('Directory membership revision has conflicting contents')
             membership.role = role
             membership.status = status
+            membership.source = MembershipSource.CLOUD_PROJECTION.value
             membership.joined_at = joined_at
             membership.projection_revision = member.projection_revision
 
         for account_uuid, membership in existing.items():
-            space_owned = existing_account_sources.get(account_uuid) == AccountSource.CLOUD_PROJECTION.value
-            if account_uuid not in included_accounts and (membership.projection_revision != 0 or space_owned):
+            if account_uuid not in included_accounts and membership.source == MembershipSource.CLOUD_PROJECTION.value:
                 membership.status = MembershipStatus.REMOVED.value
                 membership.projection_revision = max(
                     int(membership.projection_revision),

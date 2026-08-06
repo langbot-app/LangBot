@@ -1056,7 +1056,7 @@ async def test_snapshot_for_another_instance_is_rejected(projection_context):
         await service.initialize()
 
 
-async def test_revision_zero_membership_in_authoritative_directory_is_adopted(projection_context):
+async def test_directory_revision_zero_membership_is_adopted(projection_context):
     application, session_factory = projection_context
     service = DirectoryProjectionService(application, _Provider([_snapshot(1)]), INSTANCE_UUID)
     await service.initialize()
@@ -1074,12 +1074,13 @@ async def test_revision_zero_membership_in_authoritative_directory_is_adopted(pr
 
     async with session_factory() as session:
         membership = await session.scalar(sqlalchemy.select(WorkspaceMembership))
+    assert membership.source == 'cloud_projection'
     assert membership.role == 'owner'
     assert membership.status == 'removed'
     assert membership.projection_revision == 2
 
 
-async def test_revision_zero_membership_absent_from_authoritative_directory_is_removed(projection_context):
+async def test_directory_revision_zero_membership_omitted_from_snapshot_is_removed(projection_context):
     application, session_factory = projection_context
     service = DirectoryProjectionService(application, _Provider([_snapshot(1)]), INSTANCE_UUID)
     await service.initialize()
@@ -1108,6 +1109,7 @@ async def test_revision_zero_membership_absent_from_authoritative_directory_is_r
                     account_uuid=historical_account_uuid,
                     role='viewer',
                     status='active',
+                    source='cloud_projection',
                     joined_at=membership.joined_at,
                     projection_revision=0,
                 )
@@ -1121,35 +1123,37 @@ async def test_revision_zero_membership_absent_from_authoritative_directory_is_r
     assert historical.projection_revision == 2
 
 
-async def test_revision_zero_local_collaboration_survives_directory_omission(projection_context):
+async def test_cloud_account_core_invitation_membership_survives_directory_omission(projection_context):
     application, session_factory = projection_context
     service = DirectoryProjectionService(application, _Provider([_snapshot(1)]), INSTANCE_UUID)
     await service.initialize()
 
-    local_account_uuid = '20000000-0000-0000-0000-000000000098'
+    invited_account_uuid = '20000000-0000-0000-0000-000000000098'
     async with session_factory() as session:
         async with session.begin():
-            membership = await session.scalar(sqlalchemy.select(WorkspaceMembership))
+            projected_membership = await session.scalar(sqlalchemy.select(WorkspaceMembership))
             session.add(
                 User(
-                    uuid=local_account_uuid,
-                    user='Local Collaborator',
-                    normalized_email='local@example.com',
+                    uuid=invited_account_uuid,
+                    user='Invited Cloud Account',
+                    normalized_email='invited-cloud@example.com',
                     password='',
                     status='active',
-                    source='local',
-                    projection_revision=0,
-                    account_type='local',
+                    source='cloud_projection',
+                    projection_revision=1,
+                    account_type='space',
+                    space_account_uuid=invited_account_uuid,
                 )
             )
             session.add(
                 WorkspaceMembership(
                     uuid=SECOND_MEMBERSHIP_UUID,
                     workspace_uuid=WORKSPACE_UUID,
-                    account_uuid=local_account_uuid,
+                    account_uuid=invited_account_uuid,
                     role='viewer',
                     status='active',
-                    joined_at=membership.joined_at,
+                    source='local',
+                    joined_at=projected_membership.joined_at,
                     projection_revision=0,
                 )
             )
@@ -1157,6 +1161,31 @@ async def test_revision_zero_local_collaboration_survives_directory_omission(pro
     await service.apply_snapshot(_snapshot(2))
 
     async with session_factory() as session:
-        local = await session.get(WorkspaceMembership, SECOND_MEMBERSHIP_UUID)
-    assert local.status == 'active'
-    assert local.projection_revision == 0
+        membership = await session.get(WorkspaceMembership, SECOND_MEMBERSHIP_UUID)
+    assert membership.source == 'local'
+    assert membership.status == 'active'
+    assert membership.projection_revision == 0
+
+
+async def test_directory_does_not_adopt_local_membership_with_different_uuid_for_same_cloud_account(projection_context):
+    application, session_factory = projection_context
+    service = DirectoryProjectionService(application, _Provider([_snapshot(1)]), INSTANCE_UUID)
+    await service.initialize()
+
+    async with session_factory() as session:
+        async with session.begin():
+            membership = await session.scalar(sqlalchemy.select(WorkspaceMembership))
+            membership.uuid = SECOND_MEMBERSHIP_UUID
+            membership.source = 'local'
+            membership.projection_revision = 0
+
+    projected_member = _member(revision=2).model_copy(update={'role': 'owner', 'membership_status': 'removed'})
+    projected_workspace = _workspace(revision=2).model_copy(update={'members': (projected_member,)})
+    await service.apply_snapshot(_snapshot(2, workspaces=[projected_workspace]))
+
+    async with session_factory() as session:
+        membership = await session.get(WorkspaceMembership, SECOND_MEMBERSHIP_UUID)
+    assert membership.source == 'local'
+    assert membership.role == 'developer'
+    assert membership.status == 'active'
+    assert membership.projection_revision == 0

@@ -153,6 +153,33 @@ async def test_initial_owner_cannot_be_claimed_by_another_account(workspace_test
         ).all()
         assert len(owners) == 1
         assert owners[0].account_uuid == first_account_uuid
+        assert owners[0].source == 'local'
+
+
+async def test_claim_initial_owner_reclassifies_existing_membership_as_local(workspace_test_context):
+    service, session_factory = workspace_test_context
+
+    async with session_factory() as session:
+        async with session.begin():
+            account_uuid = await _insert_account(session, 'reclaimed@example.com')
+            workspace = await service.ensure_singleton_workspace(session=session)
+            session.add(
+                WorkspaceMembership(
+                    uuid='44444444-4444-4444-8444-444444444444',
+                    workspace_uuid=workspace.uuid,
+                    account_uuid=account_uuid,
+                    role='viewer',
+                    status='removed',
+                    source='cloud_projection',
+                    projection_revision=4,
+                )
+            )
+
+    membership = await service.claim_initial_owner(account_uuid)
+
+    assert membership.role == 'owner'
+    assert membership.status == 'active'
+    assert membership.source == 'local'
 
 
 async def test_execution_binding_returns_persisted_generation(workspace_test_context):

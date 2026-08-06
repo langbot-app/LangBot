@@ -99,6 +99,7 @@ async def test_invitation_secret_is_hashed_and_acceptance_is_one_time(collaborat
     membership = await service.accept_invitation(created.token, account.uuid)
     assert membership.workspace_uuid == workspace.uuid
     assert membership.role == 'developer'
+    assert membership.source == 'local'
 
     with pytest.raises(InvitationUsedError):
         await service.accept_invitation(created.token, account.uuid)
