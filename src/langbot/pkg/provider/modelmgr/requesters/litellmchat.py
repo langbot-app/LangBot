@@ -717,6 +717,14 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                     reasoning_content = cleaned_provider_fields.pop('reasoning_content', None)
                     thinking_blocks = cleaned_provider_fields.pop('thinking_blocks', None)
 
+                    # ``content`` is also used for the user-facing rendering.
+                    # Do not replay that rendered <think> wrapper alongside the
+                    # structured provider reasoning on the next request.
+                    if reasoning_content or thinking_blocks:
+                        content = msg_dict.get('content')
+                        if isinstance(content, str):
+                            msg_dict['content'] = self._strip_think(content)
+
                     if include_reasoning_context:
                         if reasoning_family == 'anthropic' and thinking_blocks:
                             msg_dict['thinking_blocks'] = thinking_blocks
@@ -794,6 +802,52 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
             content = f'<think>\n{reasoning_content}\n</think>\n{content or ""}'.strip()
 
         return content or ''
+
+    @staticmethod
+    def _thinking_blocks_text(thinking_blocks: typing.Any) -> str:
+        if not isinstance(thinking_blocks, list):
+            return ''
+        parts = []
+        for block in thinking_blocks:
+            if isinstance(block, dict):
+                text = block.get('thinking')
+            else:
+                text = getattr(block, 'thinking', None)
+            if isinstance(text, str) and text:
+                parts.append(text)
+        return ''.join(parts)
+
+    @classmethod
+    def _merge_thinking_blocks(
+        cls,
+        current: list[dict[str, typing.Any]],
+        incoming: typing.Any,
+    ) -> list[dict[str, typing.Any]]:
+        """Merge Anthropic thinking block fragments emitted by a stream."""
+        if not isinstance(incoming, list):
+            return current
+        merged = [dict(block) for block in current]
+        for raw_block in incoming:
+            block = cls._as_dict(raw_block)
+            if not block:
+                continue
+            block_type = block.get('type')
+            if block_type == 'redacted_thinking':
+                merged.append(block)
+                continue
+
+            text = block.get('thinking') if isinstance(block.get('thinking'), str) else ''
+            signature = block.get('signature')
+            if merged and merged[-1].get('type') == 'thinking' and not merged[-1].get('signature'):
+                merged[-1]['thinking'] = f"{merged[-1].get('thinking', '')}{text}"
+                if signature:
+                    merged[-1]['signature'] = signature
+            elif merged and signature and merged[-1].get('signature') == signature:
+                if text and text != merged[-1].get('thinking', ''):
+                    merged[-1]['thinking'] = f"{merged[-1].get('thinking', '')}{text}"
+            else:
+                merged.append(block)
+        return merged
 
     @staticmethod
     def _normalize_usage(usage: typing.Any) -> dict:
@@ -1102,14 +1156,21 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
 
             content = message_data.get('content', '')
             reasoning_content = message_data.get('reasoning_content', None)
-            if reasoning_content:
+            thinking_blocks = message_data.get('thinking_blocks')
+            if reasoning_content or thinking_blocks:
                 provider_fields = dict(message_data.get('provider_specific_fields') or {})
-                provider_fields['reasoning_content'] = reasoning_content
+                if reasoning_content:
+                    provider_fields['reasoning_content'] = reasoning_content
+                if thinking_blocks:
+                    provider_fields['thinking_blocks'] = thinking_blocks
                 message_data['provider_specific_fields'] = provider_fields
-            message_data['content'] = self._process_thinking_content(content, reasoning_content, remove_think)
+            display_reasoning = reasoning_content or self._thinking_blocks_text(thinking_blocks) or None
+            message_data['content'] = self._process_thinking_content(content, display_reasoning, remove_think)
 
             if 'reasoning_content' in message_data:
                 del message_data['reasoning_content']
+            if 'thinking_blocks' in message_data:
+                del message_data['thinking_blocks']
 
             message = provider_message.Message(**message_data)
             usage_info = self._extract_usage(response)
@@ -1137,6 +1198,7 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         think_state = _ThinkStripState() if remove_think else None
         reasoning_started = False
         reasoning_closed = False
+        thinking_blocks_state: list[dict[str, typing.Any]] = []
 
         try:
             response = await acompletion(**args)
@@ -1170,6 +1232,12 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                 delta_content = delta.get('content') or ''
                 reasoning_content = delta.get('reasoning_content') or ''
                 provider_fields = dict(delta.get('provider_specific_fields') or {})
+                raw_thinking_blocks = delta.get('thinking_blocks')
+                if raw_thinking_blocks:
+                    thinking_blocks_state = self._merge_thinking_blocks(thinking_blocks_state, raw_thinking_blocks)
+                    provider_fields['thinking_blocks'] = thinking_blocks_state
+                thinking_blocks_text = self._thinking_blocks_text(raw_thinking_blocks)
+                display_reasoning_content = reasoning_content or thinking_blocks_text
 
                 # Handle reasoning_content based on remove_think flag
                 if reasoning_content:
@@ -1185,7 +1253,21 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                             reasoning_started = True
                         else:
                             delta_content = ''
-                        delta_content += reasoning_content
+                        delta_content += display_reasoning_content
+                        if delta.get('content'):
+                            delta_content += f'\n</think>\n{delta.get("content")}'
+                            reasoning_closed = True
+
+                elif display_reasoning_content:
+                    if remove_think:
+                        delta_content = delta_content or None
+                    else:
+                        if not reasoning_started:
+                            delta_content = '<think>\n'
+                            reasoning_started = True
+                        else:
+                            delta_content = ''
+                        delta_content += display_reasoning_content
                         if delta.get('content'):
                             delta_content += f'\n</think>\n{delta.get("content")}'
                             reasoning_closed = True
@@ -1200,13 +1282,10 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
 
                 if think_state is not None and delta_content:
                     delta_content = think_state.feed(delta_content)
-                    if not delta_content:
-                        chunk_idx += 1
-                        continue
 
                 tool_calls = self._normalize_stream_tool_calls(delta.get('tool_calls'), tool_call_state)
 
-                if chunk_idx == 0 and not delta_content and not tool_calls and not provider_fields:
+                if not delta_content and not tool_calls and not provider_fields and not finish_reason:
                     chunk_idx += 1
                     continue
 

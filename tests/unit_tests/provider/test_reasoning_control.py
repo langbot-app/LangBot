@@ -586,7 +586,7 @@ async def test_openai_compatible_reasoning_history_is_promoted_for_tool_continui
     history = [
         provider_message.Message(
             role='assistant',
-            content='',
+            content='<think>\nprior reasoning\n</think>\nanswer',
             provider_specific_fields={'reasoning_content': 'prior reasoning'},
         )
     ]
@@ -594,6 +594,7 @@ async def test_openai_compatible_reasoning_history_is_promoted_for_tool_continui
     args = await request._build_completion_args(model, history)
 
     assert args['messages'][0]['reasoning_content'] == 'prior reasoning'
+    assert args['messages'][0]['content'] == 'answer'
     assert 'provider_specific_fields' not in args['messages'][0]
 
 
@@ -638,6 +639,33 @@ async def test_anthropic_history_promotes_thinking_blocks_instead_of_reasoning_c
     assert args['messages'][0]['thinking_blocks'] == thinking_blocks
     assert 'reasoning_content' not in args['messages'][0]
     assert 'provider_specific_fields' not in args['messages'][0]
+
+
+@pytest.mark.asyncio
+async def test_non_stream_anthropic_thinking_blocks_are_preserved(monkeypatch):
+    request = _requester('anthropic', 'anthropic-messages')
+    request._build_completion_args = AsyncMock(return_value={})
+    thinking_blocks = [{'type': 'thinking', 'thinking': 'private reasoning', 'signature': 'sig'}]
+    response = SimpleNamespace(
+        choices=[
+            SimpleNamespace(
+                message=_Dumpable(
+                    {
+                        'role': 'assistant',
+                        'content': 'answer',
+                        'thinking_blocks': thinking_blocks,
+                    }
+                )
+            )
+        ],
+        usage=None,
+    )
+    monkeypatch.setattr(litellmchat, 'acompletion', AsyncMock(return_value=response))
+
+    message, _ = await request.invoke_llm(None, _runtime_model(request, 'high', name='claude-sonnet-4-6'), [])
+
+    assert message.content == '<think>\nprivate reasoning\n</think>\nanswer'
+    assert message.provider_specific_fields == {'thinking_blocks': thinking_blocks}
 
 
 class _Dumpable:
@@ -756,3 +784,89 @@ async def test_stream_reasoning_content_is_wrapped_for_display(monkeypatch):
     assert emitted is not None
     assert emitted.content == '<think>\nprivate \n</think>\nanswer'
     assert emitted.provider_specific_fields == {'reasoning_content': 'private '}
+
+
+@pytest.mark.asyncio
+async def test_stream_anthropic_thinking_blocks_are_preserved(monkeypatch):
+    request = _requester('anthropic', 'anthropic-messages')
+    request._build_completion_args = AsyncMock(return_value={})
+    thinking_blocks = [{'type': 'thinking', 'thinking': 'private ', 'signature': 'sig'}]
+
+    async def chunks():
+        yield SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    delta=_Dumpable({'role': 'assistant', 'thinking_blocks': thinking_blocks}),
+                    finish_reason=None,
+                )
+            ],
+            usage=None,
+        )
+        yield SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    delta=_Dumpable({'content': 'answer'}),
+                    finish_reason='stop',
+                )
+            ],
+            usage=None,
+        )
+
+    monkeypatch.setattr(litellmchat, 'acompletion', AsyncMock(return_value=chunks()))
+    accumulator = _StreamAccumulator(remove_think=False)
+    emitted: provider_message.MessageChunk | None = None
+
+    async for chunk in request.invoke_llm_stream(
+        None,
+        _runtime_model(request, 'high', name='claude-sonnet-4-6'),
+        [],
+        remove_think=False,
+    ):
+        emitted = accumulator.add(chunk) or emitted
+
+    assert emitted is not None
+    assert emitted.content == '<think>\nprivate \n</think>\nanswer'
+    assert emitted.provider_specific_fields == {'thinking_blocks': thinking_blocks}
+
+
+@pytest.mark.asyncio
+async def test_hidden_thinking_does_not_drop_same_delta_tool_call(monkeypatch):
+    request = _requester('openai', 'openai-chat-completions')
+    request._build_completion_args = AsyncMock(return_value={})
+
+    async def chunks():
+        yield SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    delta=_Dumpable(
+                        {
+                            'content': '<think>hidden</think>',
+                            'tool_calls': [
+                                {
+                                    'index': 0,
+                                    'id': 'call_1',
+                                    'type': 'function',
+                                    'function': {'name': 'lookup', 'arguments': '{}'},
+                                }
+                            ],
+                        }
+                    ),
+                    finish_reason='tool_calls',
+                )
+            ],
+            usage=None,
+        )
+
+    monkeypatch.setattr(litellmchat, 'acompletion', AsyncMock(return_value=chunks()))
+    collected = [
+        chunk
+        async for chunk in request.invoke_llm_stream(
+            None,
+            _runtime_model(request, 'provider_default'),
+            [],
+            remove_think=True,
+        )
+    ]
+
+    assert len(collected) == 1
+    assert collected[0].tool_calls[0].id == 'call_1'

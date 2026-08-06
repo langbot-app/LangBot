@@ -92,7 +92,18 @@ class _StreamAccumulator:
                             name=tool_call.function.name if tool_call.function else '',
                             arguments='',
                         ),
+                        provider_specific_fields=(
+                            dict(tool_call.provider_specific_fields)
+                            if tool_call.provider_specific_fields
+                            else None
+                        ),
                     )
+                elif tool_call.provider_specific_fields:
+                    existing_fields = self.tool_calls_map[tool_call.id].provider_specific_fields or {}
+                    self.tool_calls_map[tool_call.id].provider_specific_fields = {
+                        **existing_fields,
+                        **tool_call.provider_specific_fields,
+                    }
                 if tool_call.function and tool_call.function.arguments:
                     self.tool_calls_map[tool_call.id].function.arguments += tool_call.function.arguments
 
