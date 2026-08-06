@@ -1056,7 +1056,7 @@ async def test_snapshot_for_another_instance_is_rejected(projection_context):
         await service.initialize()
 
 
-async def test_core_owned_membership_survives_directory_updates_and_omission(projection_context):
+async def test_revision_zero_membership_in_authoritative_directory_is_adopted(projection_context):
     application, session_factory = projection_context
     service = DirectoryProjectionService(application, _Provider([_snapshot(1)]), INSTANCE_UUID)
     await service.initialize()
@@ -1067,11 +1067,45 @@ async def test_core_owned_membership_survives_directory_updates_and_omission(pro
             membership.role = 'viewer'
             membership.status = 'active'
             membership.projection_revision = 0
+
+    projected_member = _member(revision=2).model_copy(update={'role': 'owner', 'membership_status': 'removed'})
+    projected_workspace = _workspace(revision=2).model_copy(update={'members': (projected_member,)})
+    await service.apply_snapshot(_snapshot(2, workspaces=[projected_workspace]))
+
+    async with session_factory() as session:
+        membership = await session.scalar(sqlalchemy.select(WorkspaceMembership))
+    assert membership.role == 'owner'
+    assert membership.status == 'removed'
+    assert membership.projection_revision == 2
+
+
+async def test_revision_zero_membership_absent_from_authoritative_directory_is_removed(projection_context):
+    application, session_factory = projection_context
+    service = DirectoryProjectionService(application, _Provider([_snapshot(1)]), INSTANCE_UUID)
+    await service.initialize()
+
+    historical_account_uuid = '20000000-0000-0000-0000-000000000099'
+    async with session_factory() as session:
+        async with session.begin():
+            membership = await session.scalar(sqlalchemy.select(WorkspaceMembership))
+            session.add(
+                User(
+                    uuid=historical_account_uuid,
+                    user='Historical Space Member',
+                    normalized_email='historical@example.com',
+                    password='',
+                    status='active',
+                    source='cloud_projection',
+                    projection_revision=1,
+                    account_type='space',
+                    space_account_uuid=historical_account_uuid,
+                )
+            )
             session.add(
                 WorkspaceMembership(
                     uuid=SECOND_MEMBERSHIP_UUID,
                     workspace_uuid=WORKSPACE_UUID,
-                    account_uuid='20000000-0000-0000-0000-000000000099',
+                    account_uuid=historical_account_uuid,
                     role='viewer',
                     status='active',
                     joined_at=membership.joined_at,
@@ -1079,17 +1113,50 @@ async def test_core_owned_membership_survives_directory_updates_and_omission(pro
                 )
             )
 
-    projected_member = _member(revision=2).model_copy(update={'role': 'owner', 'membership_status': 'removed'})
-    projected_workspace = _workspace(revision=2).model_copy(update={'members': (projected_member,)})
-    await service.apply_snapshot(_snapshot(2, workspaces=[projected_workspace]))
+    await service.apply_snapshot(_snapshot(2))
 
     async with session_factory() as session:
-        memberships = {
-            membership.uuid: membership
-            for membership in (await session.scalars(sqlalchemy.select(WorkspaceMembership))).all()
-        }
-    assert memberships[MEMBERSHIP_UUID].role == 'viewer'
-    assert memberships[MEMBERSHIP_UUID].status == 'active'
-    assert memberships[MEMBERSHIP_UUID].projection_revision == 0
-    assert memberships[SECOND_MEMBERSHIP_UUID].status == 'active'
-    assert memberships[SECOND_MEMBERSHIP_UUID].projection_revision == 0
+        historical = await session.get(WorkspaceMembership, SECOND_MEMBERSHIP_UUID)
+    assert historical.status == 'removed'
+    assert historical.projection_revision == 2
+
+
+async def test_revision_zero_local_collaboration_survives_directory_omission(projection_context):
+    application, session_factory = projection_context
+    service = DirectoryProjectionService(application, _Provider([_snapshot(1)]), INSTANCE_UUID)
+    await service.initialize()
+
+    local_account_uuid = '20000000-0000-0000-0000-000000000098'
+    async with session_factory() as session:
+        async with session.begin():
+            membership = await session.scalar(sqlalchemy.select(WorkspaceMembership))
+            session.add(
+                User(
+                    uuid=local_account_uuid,
+                    user='Local Collaborator',
+                    normalized_email='local@example.com',
+                    password='',
+                    status='active',
+                    source='local',
+                    projection_revision=0,
+                    account_type='local',
+                )
+            )
+            session.add(
+                WorkspaceMembership(
+                    uuid=SECOND_MEMBERSHIP_UUID,
+                    workspace_uuid=WORKSPACE_UUID,
+                    account_uuid=local_account_uuid,
+                    role='viewer',
+                    status='active',
+                    joined_at=membership.joined_at,
+                    projection_revision=0,
+                )
+            )
+
+    await service.apply_snapshot(_snapshot(2))
+
+    async with session_factory() as session:
+        local = await session.get(WorkspaceMembership, SECOND_MEMBERSHIP_UUID)
+    assert local.status == 'active'
+    assert local.projection_revision == 0

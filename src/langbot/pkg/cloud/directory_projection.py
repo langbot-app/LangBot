@@ -865,6 +865,12 @@ class DirectoryProjectionService:
                 )
             ).all()
         }
+        existing_account_sources: dict[str, str] = {}
+        if existing:
+            existing_account_sources = {
+                account.uuid: account.source
+                for account in (await session.scalars(sqlalchemy.select(User).where(User.uuid.in_(existing)))).all()
+            }
         included_accounts: set[str] = set()
         for member in candidate.members:
             included_accounts.add(member.account_uuid)
@@ -891,10 +897,13 @@ class DirectoryProjectionService:
                     )
                 )
                 continue
-            if membership.projection_revision == 0:
-                # Revision zero is Core-owned collaboration state. Directory
-                # projection seeds memberships, but must not overwrite later
-                # invitation, role, or removal decisions made by Core.
+            if (
+                membership.projection_revision == 0
+                and existing_account_sources.get(member.account_uuid) != AccountSource.CLOUD_PROJECTION.value
+            ):
+                # Keep genuinely local collaboration state. Historical Cloud
+                # memberships also used revision zero; once Space includes the
+                # account in its authoritative directory, adopt that row.
                 continue
             if membership.uuid != member.membership_uuid:
                 raise DirectoryProjectionUnavailableError('Directory membership UUID changed for one account')
@@ -910,7 +919,8 @@ class DirectoryProjectionService:
             membership.projection_revision = member.projection_revision
 
         for account_uuid, membership in existing.items():
-            if account_uuid not in included_accounts and membership.projection_revision != 0:
+            space_owned = existing_account_sources.get(account_uuid) == AccountSource.CLOUD_PROJECTION.value
+            if account_uuid not in included_accounts and (membership.projection_revision != 0 or space_owned):
                 membership.status = MembershipStatus.REMOVED.value
                 membership.projection_revision = max(
                     int(membership.projection_revision),
