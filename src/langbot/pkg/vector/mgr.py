@@ -67,7 +67,7 @@ class VectorDBManager:
                 use_business_database = pgvector_config.get('use_business_database', False)
                 allowed_dimensions = pgvector_config.get(
                     'allowed_dimensions',
-                    [384, 512, 768, 1024, 1536],
+                    [384, 512, 768, 1024, 1536, 3072],
                 )
                 common_options = {
                     'use_business_database': use_business_database,

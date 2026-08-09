@@ -136,12 +136,31 @@ class TelemetryManager:
                     try:
                         # Use asyncio.wait_for to ensure we always bound the total time
                         telemetry_token = os.getenv('LANGBOT_TELEMETRY_INGEST_TOKEN', '').strip()
+                        headers: dict[str, str] = {}
                         if telemetry_token:
-                            request = client.post(
-                                url,
-                                json=sanitized,
-                                headers={'X-LangBot-Telemetry-Token': telemetry_token},
-                            )
+                            headers['X-LangBot-Telemetry-Token'] = telemetry_token
+                        else:
+                            workspace_uuid = str(sanitized.get('workspace_uuid', '')).strip()
+                            user_service = getattr(self.ap, 'user_service', None)
+                            if workspace_uuid and user_service is not None:
+                                try:
+                                    owner = await user_service.get_workspace_owner(workspace_uuid)
+                                    owner_email = str(getattr(owner, 'user', '') or '').strip()
+                                    space_service = getattr(self.ap, 'space_service', None)
+                                    access_token = (
+                                        await space_service.get_valid_access_token(owner_email)
+                                        if owner_email and space_service is not None
+                                        else None
+                                    )
+                                    access_token = str(access_token or '').strip()
+                                    if access_token:
+                                        headers['Authorization'] = f'Bearer {access_token}'
+                                except Exception:
+                                    self.ap.logger.debug(
+                                        'Could not resolve authenticated telemetry reporter', exc_info=True
+                                    )
+                        if headers:
+                            request = client.post(url, json=sanitized, headers=headers)
                         else:
                             request = client.post(url, json=sanitized)
                         resp = await asyncio.wait_for(request, timeout=10 + 1)

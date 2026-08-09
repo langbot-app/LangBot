@@ -15,7 +15,6 @@ import posixpath
 import sqlalchemy
 
 from .....core import taskmgr
-from .....core.task_boundary import run_in_workspace_uow
 from .....entity.persistence import plugin as persistence_plugin
 from ...authz import Permission
 from ...context import ExecutionContext, RequestContext
@@ -311,11 +310,13 @@ class PluginsRouterGroup(group.RouterGroup):
     ):
         """Revalidate a captured task context immediately before Runtime I/O."""
 
-        await run_in_workspace_uow(
-            self.ap,
-            execution_context.workspace_uuid,
-            lambda: self.ap.plugin_connector.require_workspace_context(execution_context),
-        )
+        persistence_mgr = getattr(self.ap, 'persistence_mgr', None)
+        tenant_scope = getattr(persistence_mgr, 'tenant_scope', None)
+        if callable(tenant_scope):
+            async with tenant_scope(execution_context.workspace_uuid):
+                await self.ap.plugin_connector.require_workspace_context(execution_context)
+                return await operation()
+        await self.ap.plugin_connector.require_workspace_context(execution_context)
         return await operation()
 
     async def _require_authenticated_plugin_runtime_context(
@@ -392,8 +393,8 @@ class PluginsRouterGroup(group.RouterGroup):
         )
         async def _(request_context: RequestContext) -> str:
             """Get plugin debug information including debug URL and key"""
-            await self._require_authenticated_plugin_runtime_context(request_context)
-            debug_info = await self.ap.plugin_connector.get_debug_info()
+            execution_context = await self._require_authenticated_plugin_runtime_context(request_context)
+            debug_info = await self.ap.plugin_connector.get_debug_info(execution_context)
 
             # Get debug URL from config
             plugin_config = self.ap.instance_config.data.get('plugin', {})
@@ -403,6 +404,7 @@ class PluginsRouterGroup(group.RouterGroup):
                 data={
                     'debug_url': debug_url,
                     'plugin_debug_key': debug_info.get('plugin_debug_key', ''),
+                    'expires_at': debug_info.get('expires_at', ''),
                 }
             )
 

@@ -188,6 +188,7 @@ async def test_owner_invites_second_account_and_secret_is_not_persisted(workspac
     workspace_uuid = current['workspace']['uuid']
     assert current['membership']['role'] == 'owner'
     assert 'member.invite' in current['permissions']
+    assert 'owner.transfer' not in current['permissions']
 
     invite_response = await client.post(
         f'/api/v1/workspaces/{workspace_uuid}/invitations',
@@ -263,6 +264,14 @@ async def test_owner_invites_second_account_and_secret_is_not_persisted(workspac
     assert member_current['membership']['role'] == 'viewer'
     assert 'member.invite' not in member_current['permissions']
 
+    transfer_response = await client.patch(
+        f'/api/v1/workspaces/{workspace_uuid}/members/{member_current["membership"]["account_uuid"]}',
+        headers=_auth(owner_token, workspace_uuid),
+        json={'role': 'owner'},
+    )
+    assert transfer_response.status_code == 403
+    assert (await transfer_response.get_json())['code'] == 'permission_denied'
+
     forbidden_invite = await client.post(
         f'/api/v1/workspaces/{workspace_uuid}/invitations',
         headers=_auth(member_token, workspace_uuid),
@@ -270,6 +279,31 @@ async def test_owner_invites_second_account_and_secret_is_not_persisted(workspac
     )
     assert forbidden_invite.status_code == 403
     assert (await forbidden_invite.get_json())['code'] == 'permission_denied'
+
+
+async def test_workspace_member_list_returns_display_name_and_email(workspace_api):
+    _, client, engine, owner_token = workspace_api
+
+    current_response = await client.get('/api/v1/workspaces/current', headers=_auth(owner_token))
+    current = (await current_response.get_json())['data']
+    workspace_uuid = current['workspace']['uuid']
+    owner_uuid = current['membership']['account_uuid']
+
+    async with engine.begin() as connection:
+        await connection.execute(
+            sqlalchemy.update(User).where(User.uuid == owner_uuid).values(user='Owner Display Name')
+        )
+
+    response = await client.get(
+        f'/api/v1/workspaces/{workspace_uuid}/members',
+        headers=_auth(owner_token, workspace_uuid),
+    )
+
+    assert response.status_code == 200
+    members = (await response.get_json())['data']['members']
+    assert len(members) == 1
+    assert members[0]['display_name'] == 'Owner Display Name'
+    assert members[0]['email'] == 'owner@example.com'
 
 
 async def test_oss_invitation_accept_requires_logout_before_registration(workspace_api):

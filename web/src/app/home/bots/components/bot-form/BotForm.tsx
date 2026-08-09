@@ -396,10 +396,9 @@ export default function BotForm({
       <form
         id="bot-form"
         onSubmit={form.handleSubmit(onDynamicFormSubmit)}
-        className="space-y-6"
         aria-busy={isLoading}
       >
-        <fieldset className="contents" disabled={isLoading}>
+        <fieldset className="space-y-6" disabled={isLoading}>
           {/* Card 1: Basic Information */}
           <Card>
             <CardHeader>

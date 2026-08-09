@@ -534,9 +534,9 @@ const enUS = {
     debugInfoTitle: 'Plugin Debug Information',
     debugUrl: 'Debug URL',
     debugKey: 'Debug Key',
+    debugKeyExpires: 'Rotates at {{time}}; each Workspace has a different key',
     noDebugKey: '(Not Set)',
-    debugKeyDisabled:
-      'Debug key is not set, plugin debugging does not require authentication',
+    debugKeyDisabled: 'Debug credential is temporarily unavailable',
     boxStatusTitle: 'Box Runtime',
     boxStatus: 'Status',
     boxConnected: 'Connected',
@@ -1691,6 +1691,12 @@ const enUS = {
       'Maximum number of pipelines ({{max}}) reached. Please remove an existing pipeline before creating a new one.',
     maxExtensionsReached:
       'Maximum number of extensions ({{max}}) reached. Please remove an existing extension before adding a new one.',
+    quotaLoadingTooltip:
+      'Workspace usage is still loading. Please wait before creating a resource.',
+    quotaCheckFailed:
+      'Unable to verify the current workspace quota. Please try again.',
+    createDisabledTooltip:
+      'The {{resource}} limit ({{max}}) for this workspace has been reached. Delete one existing item before creating another.',
   },
   skills: {
     title: 'Skills',

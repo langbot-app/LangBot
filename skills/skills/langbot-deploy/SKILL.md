@@ -32,12 +32,13 @@ The `all` / `box` profile starts three services:
   the LangBot and Box containers. Generate it once with `openssl rand -hex 32`;
   never put it in `box.runtime.endpoint` or commit it to config.
 
-Every Compose deployment also needs one
-`LANGBOT_PLUGIN_RUNTIME_CONTROL_TOKEN` shared by `langbot` and
-`langbot_plugin_runtime`. Generate it with `openssl rand -hex 32` and export it
-before `docker compose up`; the external Plugin Runtime fails closed when the
-token is empty or weak. Kubernetes uses the `langbot-plugin-runtime-control`
-Secret shown in `docker/kubernetes.yaml`.
+A Compose deployment may optionally set
+`LANGBOT_PLUGIN_RUNTIME_CONTROL_TOKEN` on both `langbot` and
+`langbot_plugin_runtime` when port 5400 needs shared-secret protection. OSS
+defaults to leaving it unset on both sides. If enabled, generate one value with
+`openssl rand -hex 32`; configuring only one side causes the control connection
+to fail. Kubernetes may use the `langbot-plugin-runtime-control` Secret shown in
+`docker/kubernetes.yaml`.
 
 With Box off, the dashboard/skills list stays visible (read-only) but sandbox
 tools, skill add/edit, and stdio MCP are disabled. Set `box.enabled: false`

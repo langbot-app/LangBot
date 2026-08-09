@@ -98,7 +98,7 @@ _WORKSPACE_ALEMBIC_REVISION = '0009_workspace_tenancy'
 _RESOURCE_SCOPE_ALEMBIC_REVISION = '0010_scope_resources'
 _OSS_WORKSPACE_METADATA_KEY = 'oss_workspace_uuid'
 _RELEASE_MIGRATION_ADVISORY_LOCK_ID = 0x4C414E47424F5432
-_PGVECTOR_ALLOWED_DIMENSIONS = (384, 512, 768, 1024, 1536)
+_PGVECTOR_ALLOWED_DIMENSIONS = (384, 512, 768, 1024, 1536, 3072)
 _RUNTIME_SCHEMA = 'public'
 _ALEMBIC_RUNTIME_TABLE = 'alembic_version'
 _RUNTIME_TABLE_PRIVILEGES = frozenset({'SELECT', 'INSERT', 'UPDATE', 'DELETE'})
@@ -1356,14 +1356,16 @@ class PersistenceManager:
             index = by_index.get(index_name)
             index_definition = normalized(None if index is None else index['definition'])
             predicate = normalized(None if index is None else index['predicate'])
+            vector_type = 'halfvec' if dimension > 2000 else 'vector'
+            operator_class = f'{vector_type}_cosine_ops'
             if (
                 index is None
                 or index['access_method'] != 'hnsw'
                 or index['is_valid'] is not True
                 or index['is_ready'] is not True
-                or f'vector({dimension})' not in index_definition
-                or f'(embedding)::vector({dimension})' not in index_definition
-                or 'vector_cosine_ops' not in index_definition
+                or f'{vector_type}({dimension})' not in index_definition
+                or f'(embedding)::{vector_type}({dimension})' not in index_definition
+                or operator_class not in index_definition
                 or predicate.strip('() ') != f'embedding_dimension = {dimension}'
             ):
                 raise RuntimeError(f'PostgreSQL pgvector ANN index {index_name!r} is invalid')

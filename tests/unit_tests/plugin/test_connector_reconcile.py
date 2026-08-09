@@ -154,6 +154,31 @@ async def test_empty_projected_workspaces_do_not_retain_installation_sets():
 
 
 @pytest.mark.asyncio
+async def test_shared_reconcile_logs_workspace_installation_counts_and_elapsed_time():
+    binding_a = execution_binding('workspace-a')
+    binding_b = execution_binding('workspace-b')
+    setting_a = plugin_setting('01', 'a' * 64)
+    setting_b = plugin_setting('02', 'b' * 64)
+    connector = shared_connector(
+        [[binding_a, binding_b]],
+        {'workspace-a': [setting_a], 'workspace-b': [setting_b]},
+    )
+    connector.handler = runtime_handler()
+    await connector._prepare_connected_runtime()
+
+    matching_calls = [
+        call
+        for call in connector.ap.logger.info.call_args_list
+        if call.args
+        and call.args[0]
+        == 'Shared plugin runtime reconcile completed: workspaces=%d desired_installations=%d elapsed_seconds=%.3f'
+    ]
+    assert len(matching_calls) == 1
+    assert matching_calls[0].args[1:3] == (2, 2)
+    assert matching_calls[0].args[3] >= 0
+
+
+@pytest.mark.asyncio
 async def test_fresh_shared_runtime_cache_replays_persisted_local_package():
     package = b'local-lbpkg-bytes'
     digest = hashlib.sha256(package).hexdigest()

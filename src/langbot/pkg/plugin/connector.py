@@ -6,6 +6,7 @@ import contextlib
 import contextvars
 import hashlib
 import json
+import math
 import time
 import uuid
 from typing import Any
@@ -76,7 +77,7 @@ _GITHUB_ASSET_HOSTS = frozenset(
     }
 )
 _HTTP_REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
-_CONNECT_TIMEOUT_SEC = 30.0
+_DEFAULT_CONNECT_TIMEOUT_SECONDS = 180.0
 _HEARTBEAT_INTERVAL_SEC = 20.0
 _HEARTBEAT_FAILURE_THRESHOLD = 3
 _RECONNECT_MAX_DELAY_SEC = 60.0
@@ -206,6 +207,17 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
 
         return f'{constants.instance_id}:plugin-runtime'
 
+    @staticmethod
+    def _runtime_connect_timeout(plugin_config: dict[str, Any]) -> float:
+        value = plugin_config.get('connect_timeout_seconds', _DEFAULT_CONNECT_TIMEOUT_SECONDS)
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
+            raise ValueError('plugin.connect_timeout_seconds must be a positive number')
+        return float(value)
+
+    @staticmethod
+    def _runtime_connect_timeout_error(timeout_seconds: float) -> str:
+        return f'Plugin runtime did not become ready within {timeout_seconds:g} seconds'
+
     def _runtime_handler(self) -> handler.RuntimeConnectionHandler:
         runtime_handler = getattr(self, 'handler', None)
         if runtime_handler is None:
@@ -251,6 +263,8 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
     def _control_headers(self, *, allow_generate: bool) -> dict[str, str]:
         if not self._control_token and allow_generate:
             self._control_token = secrets.token_urlsafe(48)
+        if not self._control_token:
+            return {}
         try:
             self._control_token = validate_runtime_secret(
                 self._control_token,
@@ -699,10 +713,13 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         """
 
         runtime_handler = self._runtime_handler()
+        started_at = time.monotonic()
         async with self._state_lock:
             all_states: dict[str, PluginInstallationDesiredState] = {}
             workspace_installations: dict[str, set[str]] = {}
+            workspace_count = 0
             for context in contexts:
+                workspace_count += 1
                 execution_context = await self._validate_execution_context(context)
                 states = await self._load_workspace_desired_states(execution_context)
                 installation_ids = {state.binding.installation_uuid for state in states}
@@ -722,6 +739,13 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                     runtime_handler.unregister_installation_binding(previous.binding)
             self._known_desired_states = all_states
             self._workspace_installations = workspace_installations
+            self.ap.logger.info(
+                'Shared plugin runtime reconcile completed: workspaces=%d desired_installations=%d '
+                'elapsed_seconds=%.3f',
+                workspace_count,
+                len(all_states),
+                time.monotonic() - started_at,
+            )
             return result
 
     async def _validate_execution_context(self, context: TenantContext) -> ExecutionContext:
@@ -817,6 +841,8 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             runtime_id=self._runtime_id,
         )
         self.worker_policy = self._load_worker_policy()
+        plugin_config = self.ap.instance_config.data.get('plugin', {})
+        connect_timeout_seconds = self._runtime_connect_timeout(plugin_config)
 
         async with self._lifecycle_lock:
             if self._closing:
@@ -958,10 +984,12 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
 
             self._transport_task = asyncio.create_task(task_coro)
             try:
-                await asyncio.wait_for(self._connected.wait(), timeout=_CONNECT_TIMEOUT_SEC)
+                await asyncio.wait_for(self._connected.wait(), timeout=connect_timeout_seconds)
             except asyncio.TimeoutError as exc:
                 await self._stop_transport()
-                raise PluginRuntimeNotConnectedError('Plugin runtime did not become ready within 30 seconds') from exc
+                raise PluginRuntimeNotConnectedError(
+                    self._runtime_connect_timeout_error(connect_timeout_seconds)
+                ) from exc
             if connect_errors:
                 await self._stop_transport()
                 raise PluginRuntimeNotConnectedError(f'Plugin runtime connection failed: {connect_errors[-1]}')
@@ -1968,11 +1996,11 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         with runtime_handler.installation_scope(binding):
             return await runtime_handler.handle_page_api(plugin_author, plugin_name, page_id, endpoint, method, body)
 
-    async def get_debug_info(self) -> dict[str, Any]:
+    async def get_debug_info(self, execution_context: ExecutionContext) -> dict[str, Any]:
         """Get debug information including debug key and WS URL"""
         if not self.is_enable_plugin or not self._runtime_available():
             return {}
-        return await self._runtime_handler().get_debug_info()
+        return await self._runtime_handler().get_debug_info(execution_context)
 
     async def emit_event(
         self,

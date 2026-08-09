@@ -14,8 +14,8 @@ services:
     restart: on-failure
     environment:
       - TZ=Asia/Shanghai
-      # Shared with the langbot service and sent only as a WebSocket handshake
-      # header. Generate with: openssl rand -hex 32
+      # Optional. Leave unset on both OSS services, or set the same value on
+      # both to protect the control WebSocket. Generate with: openssl rand -hex 32
       - LANGBOT_PLUGIN_RUNTIME_CONTROL_TOKEN=${LANGBOT_PLUGIN_RUNTIME_CONTROL_TOKEN:-}
       # Process-wide admission for every asyncio.to_thread() call.
       - LANGBOT_BLOCKING_EXECUTOR_MAX_WORKERS=${LANGBOT_BLOCKING_EXECUTOR_MAX_WORKERS:-8}
@@ -77,8 +77,7 @@ services:
     restart: on-failure
     environment:
       - TZ=Asia/Shanghai
-      # Must match langbot_plugin_runtime. Empty/missing values make the
-      # external control channel fail closed.
+      # Optional. Leave unset on both OSS services, or match plugin Runtime.
       - LANGBOT_PLUGIN_RUNTIME_CONTROL_TOKEN=${LANGBOT_PLUGIN_RUNTIME_CONTROL_TOKEN:-}
       # Must match the value supplied to langbot_box. The token is sent only
       # in WebSocket handshake headers, never in URLs or action payloads.

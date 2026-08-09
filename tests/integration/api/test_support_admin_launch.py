@@ -333,7 +333,6 @@ async def test_support_admin_request_context_has_actor_owner_and_no_membership(s
     assert Permission.RESOURCE_MANAGE.value in permissions
     assert not permissions.intersection(
         {
-            Permission.OWNER_TRANSFER.value,
             Permission.MEMBER_VIEW.value,
             Permission.MEMBER_INVITE.value,
             Permission.MEMBER_UPDATE_ROLE.value,

@@ -1,7 +1,7 @@
 """add llm reasoning config
 
-Revision ID: 0018_llm_reasoning_config
-Revises: 0017_oss_workspace_identity
+Revision ID: 0021_llm_reasoning_config
+Revises: 0020_membership_source
 Create Date: 2026-07-27
 """
 
@@ -10,8 +10,8 @@ from __future__ import annotations
 import sqlalchemy as sa
 from alembic import op
 
-revision = '0018_llm_reasoning_config'
-down_revision = '0017_oss_workspace_identity'
+revision = '0021_llm_reasoning_config'
+down_revision = '0020_membership_source'
 branch_labels = None
 depends_on = None
 

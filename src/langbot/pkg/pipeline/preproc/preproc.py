@@ -41,6 +41,29 @@ class PreProcessor(stage.PipelineStage):
         selected_tool_names = {tool for tool in selected_tools if isinstance(tool, str)}
         return [tool for tool in tools if tool.name in selected_tool_names]
 
+    @staticmethod
+    def _append_to_system_prompt(
+        messages: list[provider_message.Message],
+        addition: str,
+    ) -> None:
+        """Append text to the first system message, creating one if none exists.
+
+        Handles both plain-string and content-element (list) message bodies.
+        """
+        if messages and messages[0].role == 'system':
+            head = messages[0]
+            if isinstance(head.content, str):
+                head.content = head.content + addition
+            elif isinstance(head.content, list):
+                for ce in head.content:
+                    if getattr(ce, 'type', None) == 'text':
+                        ce.text = (ce.text or '') + addition
+                        break
+                else:
+                    head.content.append(provider_message.ContentElement(type='text', text=addition))
+        else:
+            messages.insert(0, provider_message.Message(role='system', content=addition.strip()))
+
     async def process(
         self,
         query: pipeline_query.Query,
@@ -275,6 +298,23 @@ class PreProcessor(stage.PipelineStage):
         query.prompt.messages = event_ctx.event.default_prompt
         query.messages = event_ctx.event.prompt
 
+        # =========== Current date grounding for the local-agent runner ===========
+        # local-agent system prompts are static strings with no template-variable
+        # support, so without an explicit anchor the LLM resolves relative time
+        # references (e.g. "this quarter", "latest", "currently") against whichever
+        # period is best represented in its training data instead of the real date,
+        # and won't reliably know to double check time-sensitive facts with a tool.
+        if selected_runner == 'local-agent':
+            date_addition = (
+                f'\n\nCurrent date: {datetime.datetime.now().strftime("%Y-%m-%d (%A)")}. '
+                'Resolve relative time references (e.g. "today", "this quarter", "latest", '
+                '"currently") based on this date, not your training cutoff. For anything '
+                'time-sensitive that may have changed since training — stock prices, '
+                'financial results, news, current events, exchange rates, or similar — '
+                'verify with a search tool if one is available rather than answering from memory.'
+            )
+            self._append_to_system_prompt(query.prompt.messages, date_addition)
+
         # =========== Skill awareness for the local-agent runner ===========
         # The actual activation goes through the ``activate`` Tool Call so the
         # LLM doesn't see full SKILL.md instructions until it commits to a
@@ -310,27 +350,7 @@ class PreProcessor(stage.PipelineStage):
                 bound_skills=bound_skills,
             )
             if skill_addition:
-                # Append to the first system message; create one if the
-                # prompt has none. Handles both plain-string and
-                # content-element (list) message bodies.
-                if query.prompt.messages and query.prompt.messages[0].role == 'system':
-                    head = query.prompt.messages[0]
-                    if isinstance(head.content, str):
-                        head.content = head.content + skill_addition
-                    elif isinstance(head.content, list):
-                        appended = False
-                        for ce in head.content:
-                            if getattr(ce, 'type', None) == 'text':
-                                ce.text = (ce.text or '') + skill_addition
-                                appended = True
-                                break
-                        if not appended:
-                            head.content.append(provider_message.ContentElement(type='text', text=skill_addition))
-                else:
-                    query.prompt.messages.insert(
-                        0,
-                        provider_message.Message(role='system', content=skill_addition.strip()),
-                    )
+                self._append_to_system_prompt(query.prompt.messages, skill_addition)
                 self.ap.logger.debug(
                     f'Skill index injected into system prompt: '
                     f'pipeline={query.pipeline_uuid} '

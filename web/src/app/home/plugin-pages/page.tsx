@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '@/components/providers/theme-provider';
+import { useAuthenticatedPluginAsset } from '@/hooks/useAuthenticatedPluginResource';
 
 /**
  * Plugin page that renders a plugin-provided HTML page in an iframe.
@@ -80,11 +81,15 @@ function PluginPageIframe({
   pageId: string;
 }) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const [loading, setLoading] = useState(true);
+  const [loadedAssetUrl, setLoadedAssetUrl] = useState('');
   const { resolvedTheme } = useTheme();
-  const { i18n } = useTranslation();
-
-  const assetUrl = httpClient.getPluginAssetURL(author, pluginName, pagePath);
+  const { t, i18n } = useTranslation();
+  const { url: assetUrl, error: assetError } = useAuthenticatedPluginAsset(
+    author,
+    pluginName,
+    pagePath,
+  );
+  const loading = !assetUrl || loadedAssetUrl !== assetUrl;
 
   // Send context (theme + language) to iframe
   // Use '*' as targetOrigin because sandboxed iframe has opaque (null) origin
@@ -170,23 +175,29 @@ function PluginPageIframe({
 
   return (
     <div className="flex flex-col h-full w-full">
-      {loading && (
+      {assetError ? (
+        <div className="flex items-center justify-center h-full text-muted-foreground">
+          {t('plugins.loadFailed')}
+        </div>
+      ) : loading || !assetUrl ? (
         <div className="flex items-center justify-center h-full text-muted-foreground">
           Loading...
         </div>
+      ) : null}
+      {!assetError && assetUrl && (
+        <iframe
+          ref={iframeRef}
+          src={assetUrl}
+          className="flex-1 w-full border-0 rounded-md"
+          style={{ display: loading ? 'none' : 'block' }}
+          onLoad={() => {
+            setLoadedAssetUrl(assetUrl);
+            sendContext();
+          }}
+          sandbox="allow-scripts allow-forms"
+          title={`${author}/${pluginName} - ${pagePath}`}
+        />
       )}
-      <iframe
-        ref={iframeRef}
-        src={assetUrl}
-        className="flex-1 w-full border-0 rounded-md"
-        style={{ display: loading ? 'none' : 'block' }}
-        onLoad={() => {
-          setLoading(false);
-          sendContext();
-        }}
-        sandbox="allow-scripts allow-forms"
-        title={`${author}/${pluginName} - ${pagePath}`}
-      />
     </div>
   );
 }

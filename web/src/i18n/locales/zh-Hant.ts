@@ -501,8 +501,9 @@ const zhHant = {
     debugInfoTitle: '外掛偵錯資訊',
     debugUrl: '偵錯位址',
     debugKey: '偵錯金鑰',
+    debugKeyExpires: '將於 {{time}} 輪換；每個工作區的密鑰不同',
     noDebugKey: '(未設定)',
-    debugKeyDisabled: '未設定偵錯金鑰，外掛偵錯無需認證',
+    debugKeyDisabled: '偵錯憑據暫時無法使用',
     boxStatusTitle: 'Box 執行時',
     boxStatus: '狀態',
     boxConnected: '已連線',
@@ -1531,6 +1532,10 @@ const zhHant = {
       '已達到流水線數量上限（{{max}}個）。請先刪除已有流水線後再建立新的。',
     maxExtensionsReached:
       '已達到擴充功能數量上限（{{max}}個）。請先刪除已有擴充功能後再新增。',
+    quotaLoadingTooltip: '正在載入工作空間用量，請稍後再建立資源。',
+    quotaCheckFailed: '無法確認目前工作空間額度，請重試。',
+    createDisabledTooltip:
+      '目前工作區的{{resource}}數量已達上限（{{max}}個）。請先刪除一個現有{{resource}}後再建立。',
   },
   wizard: {
     sidebarDescription: '透過引導步驟建立機器人',

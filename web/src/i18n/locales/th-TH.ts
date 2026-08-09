@@ -518,9 +518,9 @@ const thTH = {
     debugInfoTitle: 'ข้อมูลดีบักปลั๊กอิน',
     debugUrl: 'URL ดีบัก',
     debugKey: 'คีย์ดีบัก',
+    debugKeyExpires: 'หมุนเวียนเวลา {{time}}; แต่ละ Workspace ใช้คีย์ต่างกัน',
     noDebugKey: '(ไม่ได้ตั้งค่า)',
-    debugKeyDisabled:
-      'ไม่ได้ตั้งค่าคีย์ดีบัก การดีบักปลั๊กอินไม่ต้องยืนยันตัวตน',
+    debugKeyDisabled: 'ข้อมูลรับรองการดีบักไม่พร้อมใช้งานชั่วคราว',
     boxStatusTitle: 'Box Runtime',
     boxStatus: 'สถานะ',
     boxConnected: 'เชื่อมต่อแล้ว',
@@ -1576,6 +1576,12 @@ const thTH = {
       'จำนวน Pipeline สูงสุด ({{max}}) ถึงขีดจำกัดแล้ว กรุณาลบ Pipeline ที่มีอยู่ก่อนสร้างใหม่',
     maxExtensionsReached:
       'จำนวนส่วนขยายสูงสุด ({{max}}) ถึงขีดจำกัดแล้ว กรุณาลบเซิร์ฟเวอร์ MCP หรือปลั๊กอินที่มีอยู่ก่อนเพิ่มใหม่',
+    quotaLoadingTooltip:
+      'กำลังโหลดการใช้งานพื้นที่ทำงาน โปรดรอก่อนสร้างทรัพยากร',
+    quotaCheckFailed:
+      'ไม่สามารถตรวจสอบโควตาปัจจุบันของพื้นที่ทำงานได้ โปรดลองอีกครั้ง',
+    createDisabledTooltip:
+      'ถึงขีดจำกัด {{resource}} ({{max}}) ของเวิร์กสเปซนี้แล้ว โปรดลบรายการเดิมก่อนสร้างรายการใหม่',
   },
   wizard: {
     sidebarDescription: 'สร้าง Bot ด้วยขั้นตอนที่แนะนำ',

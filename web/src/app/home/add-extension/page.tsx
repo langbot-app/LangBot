@@ -49,6 +49,8 @@ import type {
 } from '@/app/home/mcp/components/mcp-form/MCPForm';
 import SkillZipPreviewPanel from '@/app/home/skills/components/SkillZipPreviewPanel';
 import PluginLocalPreviewPanel from '@/app/home/plugins/components/PluginLocalPreviewPanel';
+import { useWorkspaceQuotaStatus } from '@/app/home/components/workspace-quota/useWorkspaceQuotaStatus';
+import { WorkspaceQuotaTooltip } from '@/app/home/components/workspace-quota/WorkspaceQuotaTooltip';
 
 type PopoverView = 'menu' | 'mcp' | 'github';
 
@@ -154,6 +156,12 @@ function AddExtensionContent() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { refreshPlugins, refreshMCPServers, refreshSkills } = useSidebarData();
+  const { extensions: extensionQuota, extensionsReached } =
+    useWorkspaceQuotaStatus();
+  const extensionQuotaTooltip = t('limitation.createDisabledTooltip', {
+    resource: t('sidebar.extensions'),
+    max: extensionQuota.max,
+  });
 
   // Localized label for an extension type, used in the install dialog.
   const extensionTypeLabel = (type: string) =>
@@ -344,23 +352,28 @@ function AddExtensionContent() {
     t,
   ]);
 
-  const handleInstallPlugin = useCallback(async (plugin: PluginV4) => {
-    setInstallInfo({
-      plugin_author: plugin.author,
-      plugin_name: plugin.name,
-      plugin_version: plugin.latest_version,
-      plugin_label: extractI18nObject(plugin.label) || plugin.name,
-      plugin_description: extractI18nObject(plugin.description) || '',
-      plugin_icon: plugin.icon || '',
-    });
-    setInstallExtensionType(plugin.type || 'plugin');
-    setPluginInstallStatus(PluginInstallStatus.ASK_CONFIRM);
-    setInstallError(null);
-    setInstallIconFailed(false);
-    setModalOpen(true);
-  }, []);
+  const handleInstallPlugin = useCallback(
+    async (plugin: PluginV4) => {
+      if (extensionsReached) return;
+      setInstallInfo({
+        plugin_author: plugin.author,
+        plugin_name: plugin.name,
+        plugin_version: plugin.latest_version,
+        plugin_label: extractI18nObject(plugin.label) || plugin.name,
+        plugin_description: extractI18nObject(plugin.description) || '',
+        plugin_icon: plugin.icon || '',
+      });
+      setInstallExtensionType(plugin.type || 'plugin');
+      setPluginInstallStatus(PluginInstallStatus.ASK_CONFIRM);
+      setInstallError(null);
+      setInstallIconFailed(false);
+      setModalOpen(true);
+    },
+    [extensionsReached],
+  );
 
   function handleModalConfirm() {
+    if (extensionsReached) return;
     setPluginInstallStatus(PluginInstallStatus.INSTALLING);
     const pluginDisplayName = `${installInfo.plugin_author}/${installInfo.plugin_name}`;
     httpClient
@@ -402,6 +415,7 @@ function AddExtensionContent() {
 
   const uploadFile = useCallback(
     async (file: File) => {
+      if (extensionsReached) return;
       if (!validateFileType(file)) {
         toast.error(t('addExtension.unsupportedFileType'));
         return;
@@ -421,14 +435,15 @@ function AddExtensionContent() {
         setSkillUploadPreviewOpen(true);
       }
     },
-    [t, setSelectedTaskId],
+    [extensionsReached, t, setSelectedTaskId],
   );
 
   const handleFileSelect = useCallback(() => {
+    if (extensionsReached) return;
     if (fileInputRef.current) {
       fileInputRef.current.click();
     }
-  }, []);
+  }, [extensionsReached]);
 
   const handleFileChange = useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -455,12 +470,13 @@ function AddExtensionContent() {
     (event: React.DragEvent) => {
       event.preventDefault();
       setIsDragOver(false);
+      if (extensionsReached) return;
       const files = Array.from(event.dataTransfer.files);
       if (files.length > 0) {
         uploadFile(files[0]);
       }
     },
-    [uploadFile],
+    [extensionsReached, uploadFile],
   );
 
   function handleMCPCreated(_serverName: string) {
@@ -490,7 +506,8 @@ function AddExtensionContent() {
         return false;
       }
     } catch {
-      // If we can't check, let backend handle it
+      toast.error(t('limitation.quotaCheckFailed'));
+      return false;
     }
     return true;
   }
@@ -630,9 +647,11 @@ function AddExtensionContent() {
 
   async function handleGithubConfirm() {
     if (!selectedAsset || !selectedRelease) return;
-    if (!(await checkExtensionsLimit())) return;
-
     setGithubInstallStatus(GithubInstallStatus.INSTALLING);
+    if (!(await checkExtensionsLimit())) {
+      setGithubInstallStatus(GithubInstallStatus.ASK_CONFIRM);
+      return;
+    }
     const pluginDisplayName = `${githubOwner}/${githubRepo}`;
     httpClient
       .installPluginFromGithub(
@@ -664,9 +683,11 @@ function AddExtensionContent() {
 
   async function handleGithubSkillConfirm() {
     if (!githubSkillInfo) return;
-    if (!(await checkExtensionsLimit())) return;
-
     setGithubInstallStatus(GithubInstallStatus.SKILL_INSTALLING);
+    if (!(await checkExtensionsLimit())) {
+      setGithubInstallStatus(GithubInstallStatus.SKILL_PREVIEW);
+      return;
+    }
     try {
       await httpClient.installSkillFromGithub(
         githubURL.trim(),
@@ -726,17 +747,24 @@ function AddExtensionContent() {
           setPopoverOpen(open);
         }}
       >
-        <PopoverTrigger asChild>
-          <Button
-            variant="default"
-            className="px-3 sm:px-4 py-2 cursor-pointer flex-shrink-0"
-          >
-            <PlusIcon className="w-4 h-4" />
-            <span className="whitespace-nowrap">
-              {t('addExtension.manualAdd')}
-            </span>
-          </Button>
-        </PopoverTrigger>
+        <WorkspaceQuotaTooltip
+          quota={extensionQuota}
+          resource={t('sidebar.extensions')}
+        >
+          <PopoverTrigger asChild>
+            <Button
+              variant="default"
+              disabled={extensionsReached}
+              aria-disabled={extensionsReached}
+              className="px-3 sm:px-4 py-2 cursor-pointer flex-shrink-0 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100"
+            >
+              <PlusIcon className="w-4 h-4" />
+              <span className="whitespace-nowrap">
+                {t('addExtension.manualAdd')}
+              </span>
+            </Button>
+          </PopoverTrigger>
+        </WorkspaceQuotaTooltip>
         <PopoverContent
           forceMount
           className={`${getPopoverWidth()} max-h-[min(720px,80vh)] overflow-hidden p-0`}
@@ -745,9 +773,19 @@ function AddExtensionContent() {
           {/* ===== Menu View ===== */}
           {popoverView === 'menu' && (
             <div className="space-y-4 p-4">
+              {extensionsReached && (
+                <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
+                  {extensionQuotaTooltip}
+                </div>
+              )}
               {/* File upload area */}
               <div
-                className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${
+                aria-disabled={extensionsReached}
+                className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
+                  extensionsReached
+                    ? 'cursor-not-allowed opacity-50'
+                    : 'cursor-pointer'
+                } ${
                   isDragOver
                     ? 'border-primary bg-primary/5'
                     : 'border-muted-foreground/25 hover:border-primary/50'
@@ -777,7 +815,8 @@ function AddExtensionContent() {
               <div className="space-y-2">
                 <button
                   type="button"
-                  className="group flex w-full items-center gap-3 rounded-md bg-muted/30 p-3 text-left transition-colors outline-none hover:bg-accent hover:text-accent-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                  disabled={extensionsReached}
+                  className="group flex w-full items-center gap-3 rounded-md bg-muted/30 p-3 text-left transition-colors outline-none hover:bg-accent hover:text-accent-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
                   onClick={() => setPopoverView('mcp')}
                 >
                   <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-background text-muted-foreground transition-colors group-hover:text-foreground">
@@ -796,7 +835,8 @@ function AddExtensionContent() {
 
                 <button
                   type="button"
-                  className="group flex w-full items-center gap-3 rounded-md bg-muted/30 p-3 text-left transition-colors outline-none hover:bg-accent hover:text-accent-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                  disabled={extensionsReached}
+                  className="group flex w-full items-center gap-3 rounded-md bg-muted/30 p-3 text-left transition-colors outline-none hover:bg-accent hover:text-accent-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
                   onClick={() => setPopoverView('github')}
                 >
                   <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-background text-muted-foreground transition-colors group-hover:text-foreground">
@@ -815,7 +855,8 @@ function AddExtensionContent() {
 
                 <button
                   type="button"
-                  className="group flex w-full items-center gap-3 rounded-md bg-muted/30 p-3 text-left transition-colors outline-none hover:bg-accent hover:text-accent-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                  disabled={extensionsReached}
+                  className="group flex w-full items-center gap-3 rounded-md bg-muted/30 p-3 text-left transition-colors outline-none hover:bg-accent hover:text-accent-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
                   onClick={async () => {
                     if (!(await checkExtensionsLimit())) return;
                     setPopoverOpen(false);
@@ -882,6 +923,7 @@ function AddExtensionContent() {
                   type="submit"
                   form="mcp-form"
                   size="sm"
+                  disabled={extensionsReached}
                   onClick={async (e) => {
                     if (!(await checkExtensionsLimit())) {
                       e.preventDefault();
@@ -946,6 +988,7 @@ function AddExtensionContent() {
                       className="w-full"
                       onClick={handleGithubAddressSubmit}
                       disabled={
+                        extensionsReached ||
                         !githubURL.trim() ||
                         fetchingReleases ||
                         fetchingSkillPreview
@@ -1102,7 +1145,11 @@ function AddExtensionContent() {
                         </div>
                       </div>
                     )}
-                    <Button className="w-full" onClick={handleGithubConfirm}>
+                    <Button
+                      className="w-full"
+                      onClick={handleGithubConfirm}
+                      disabled={extensionsReached}
+                    >
                       {t('common.confirm')}
                     </Button>
                   </div>
@@ -1184,6 +1231,7 @@ function AddExtensionContent() {
                     <Button
                       className="w-full"
                       onClick={handleGithubSkillConfirm}
+                      disabled={extensionsReached}
                     >
                       {t('common.confirm')}
                     </Button>
@@ -1240,6 +1288,8 @@ function AddExtensionContent() {
           <MarketPage
             installPlugin={handleInstallPlugin}
             headerActions={extensionActions}
+            installDisabled={extensionsReached}
+            installDisabledTooltip={extensionQuotaTooltip}
           />
         </div>
       </div>
@@ -1325,9 +1375,17 @@ function AddExtensionContent() {
                 <Button variant="outline" onClick={() => setModalOpen(false)}>
                   {t('common.cancel')}
                 </Button>
-                <Button onClick={handleModalConfirm}>
-                  {t('common.confirm')}
-                </Button>
+                <WorkspaceQuotaTooltip
+                  quota={extensionQuota}
+                  resource={t('sidebar.extensions')}
+                >
+                  <Button
+                    onClick={handleModalConfirm}
+                    disabled={extensionsReached}
+                  >
+                    {t('common.confirm')}
+                  </Button>
+                </WorkspaceQuotaTooltip>
               </>
             )}
             {pluginInstallStatus === PluginInstallStatus.ERROR && (
@@ -1359,6 +1417,8 @@ function AddExtensionContent() {
           {pluginUploadPreviewFile && (
             <PluginLocalPreviewPanel
               file={pluginUploadPreviewFile}
+              quota={extensionQuota}
+              quotaResource={t('sidebar.extensions')}
               onCancel={() => {
                 setPluginUploadPreviewOpen(false);
                 setPluginUploadPreviewFile(null);
@@ -1392,6 +1452,8 @@ function AddExtensionContent() {
           {skillUploadPreviewFile && (
             <SkillZipPreviewPanel
               file={skillUploadPreviewFile}
+              quota={extensionQuota}
+              quotaResource={t('sidebar.extensions')}
               onCancel={() => {
                 setSkillUploadPreviewOpen(false);
                 setSkillUploadPreviewFile(null);

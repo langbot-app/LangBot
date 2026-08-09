@@ -133,6 +133,49 @@ async def test_stdio_runtime_connection_does_not_capture_unconsumed_stderr(
 
 
 @pytest.mark.asyncio
+async def test_invalid_connect_timeout_is_rejected_before_transport_startup(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    connector = make_connector()
+    connector.ap.instance_config.data['plugin']['connect_timeout_seconds'] = 0
+    stdio_controller = Mock()
+    websocket_controller = Mock()
+    create_task = Mock()
+    get_platform = Mock(return_value='linux')
+    use_websocket = Mock(return_value=False)
+    connector._start_runtime_subprocess = AsyncMock()
+    monkeypatch.setattr(connector_module.constants, 'instance_id', 'instance-a')
+    monkeypatch.setattr(connector_module.asyncio, 'create_task', create_task)
+    monkeypatch.setattr(connector_module.platform, 'get_platform', get_platform)
+    monkeypatch.setattr(
+        connector_module.platform,
+        'use_websocket_to_connect_plugin_runtime',
+        use_websocket,
+    )
+    monkeypatch.setattr(
+        connector_module.stdio_client_controller,
+        'StdioClientController',
+        stdio_controller,
+    )
+    monkeypatch.setattr(
+        connector_module.ws_client_controller,
+        'WebSocketClientController',
+        websocket_controller,
+    )
+
+    with pytest.raises(ValueError, match='plugin.connect_timeout_seconds'):
+        await connector.initialize()
+
+    get_platform.assert_not_called()
+    use_websocket.assert_not_called()
+    stdio_controller.assert_not_called()
+    websocket_controller.assert_not_called()
+    connector._start_runtime_subprocess.assert_not_awaited()
+    create_task.assert_not_called()
+    assert connector._transport_task is None
+
+
+@pytest.mark.asyncio
 async def test_runtime_disconnect_notifies_once_and_clears_handler(
     monkeypatch: pytest.MonkeyPatch,
 ):
@@ -282,12 +325,11 @@ def test_closed_deployment_selects_instance_scoped_shared_profile():
     assert connector.runtime_profile == 'shared'
 
 
-def test_external_runtime_control_headers_require_strong_secret(monkeypatch):
+def test_external_runtime_control_headers_are_empty_when_secret_is_unset(monkeypatch):
     monkeypatch.delenv(PLUGIN_RUNTIME_CONTROL_TOKEN_ENV, raising=False)
     connector = make_connector()
 
-    with pytest.raises(PluginRuntimeNotConnectedError, match=PLUGIN_RUNTIME_CONTROL_TOKEN_ENV):
-        connector._control_headers(allow_generate=False)
+    assert connector._control_headers(allow_generate=False) == {}
 
 
 def test_local_runtime_control_headers_generate_ephemeral_secret(monkeypatch):

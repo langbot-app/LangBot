@@ -540,9 +540,10 @@ const jaJP = {
     debugInfoTitle: 'プラグインデバッグ情報',
     debugUrl: 'デバッグURL',
     debugKey: 'デバッグキー',
+    debugKeyExpires:
+      '{{time}} にローテーションします。Workspace ごとにキーが異なります',
     noDebugKey: '(未設定)',
-    debugKeyDisabled:
-      'デバッグキーが設定されていません。プラグインデバッグには認証が不要です',
+    debugKeyDisabled: 'デバッグ認証情報を一時的に利用できません',
     boxStatusTitle: 'Box ランタイム',
     boxStatus: 'ステータス',
     boxConnected: '接続済み',
@@ -1698,6 +1699,12 @@ const jaJP = {
       'パイプライン数が上限（{{max}}個）に達しました。新しいパイプラインを作成するには、既存のパイプラインを削除してください。',
     maxExtensionsReached:
       '拡張機能数が上限（{{max}}個）に達しました。新しい MCP サーバーやプラグインを追加するには、既存のものを削除してください。',
+    quotaLoadingTooltip:
+      'ワークスペースの使用状況を読み込んでいます。リソースを作成する前にお待ちください。',
+    quotaCheckFailed:
+      '現在のワークスペース上限を確認できません。もう一度お試しください。',
+    createDisabledTooltip:
+      'このワークスペースの{{resource}}数が上限（{{max}}個）に達しました。新しく作成する前に既存の{{resource}}を削除してください。',
   },
   wizard: {
     sidebarDescription: 'ガイド付きステップでボットを作成',

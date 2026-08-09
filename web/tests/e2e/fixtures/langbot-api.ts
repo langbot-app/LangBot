@@ -81,6 +81,7 @@ export interface WorkspaceEntryMock {
     uuid: string;
     workspace_uuid: string;
     account_uuid: string;
+    display_name: string;
     email: string;
     role: 'owner' | 'admin' | 'developer' | 'operator' | 'viewer';
     status: 'active';
@@ -155,6 +156,7 @@ export function makeWorkspaceEntry(
       uuid: `membership-${uuid}`,
       workspace_uuid: uuid,
       account_uuid: 'account-playwright',
+      display_name: 'Playwright Admin',
       email: 'admin@example.com',
       role: 'owner',
       status: 'active',
@@ -169,7 +171,6 @@ export function makeWorkspaceEntry(
       'member.remove',
       'member.update_role',
       'member.view',
-      'owner.transfer',
       'provider_secret.manage',
       'resource.manage',
       'resource.view',

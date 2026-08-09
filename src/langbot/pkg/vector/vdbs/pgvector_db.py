@@ -6,7 +6,7 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 import sqlalchemy
-from pgvector.sqlalchemy import Vector
+from pgvector.sqlalchemy import HALFVEC, Vector
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import declarative_base
@@ -18,7 +18,7 @@ from langbot.pkg.vector.vdb import VectorDatabase
 
 Base = declarative_base()
 
-DEFAULT_ALLOWED_DIMENSIONS = (384, 512, 768, 1024, 1536)
+DEFAULT_ALLOWED_DIMENSIONS = (384, 512, 768, 1024, 1536, 3072)
 
 # pgvector schema only stores these metadata fields.
 _PG_SUPPORTED_FIELDS = {'text', 'file_id', 'chunk_uuid'}
@@ -321,7 +321,12 @@ class PgVectorDatabase(VectorDatabase):
         if len(query_embedding) != scope.embedding_dimension:
             raise ValueError(f'Query embedding must have the selected dimension {scope.embedding_dimension}')
 
-        typed_embedding = sqlalchemy.cast(PgVectorEntry.embedding, Vector(scope.embedding_dimension))
+        typed_embedding = sqlalchemy.cast(
+            PgVectorEntry.embedding,
+            HALFVEC(scope.embedding_dimension)
+            if scope.embedding_dimension > 2000
+            else Vector(scope.embedding_dimension),
+        )
         distance = typed_embedding.cosine_distance(query_embedding)
         statement = (
             sqlalchemy.select(

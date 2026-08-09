@@ -535,9 +535,11 @@ const esES = {
     debugInfoTitle: 'Información de depuración del plugin',
     debugUrl: 'URL de depuración',
     debugKey: 'Clave de depuración',
+    debugKeyExpires:
+      'Rota a las {{time}}; cada Workspace tiene una clave distinta',
     noDebugKey: '(No establecida)',
     debugKeyDisabled:
-      'La clave de depuración no está configurada, la depuración del plugin no requiere autenticación',
+      'La credencial de depuración no está disponible temporalmente',
     boxStatusTitle: 'Box Runtime',
     boxStatus: 'Estado',
     boxConnected: 'Conectado',
@@ -1634,6 +1636,12 @@ const esES = {
       'Se ha alcanzado el número máximo de Pipelines ({{max}}). Por favor, elimina un Pipeline existente antes de crear uno nuevo.',
     maxExtensionsReached:
       'Se ha alcanzado el número máximo de extensiones ({{max}}). Por favor, elimina un servidor MCP o plugin existente antes de añadir uno nuevo.',
+    quotaLoadingTooltip:
+      'El uso del espacio de trabajo aún se está cargando. Espera antes de crear un recurso.',
+    quotaCheckFailed:
+      'No se pudo verificar la cuota actual del espacio de trabajo. Inténtalo de nuevo.',
+    createDisabledTooltip:
+      'Se alcanzó el límite de {{resource}} ({{max}}) de este espacio de trabajo. Elimina uno existente antes de crear otro.',
   },
   wizard: {
     sidebarDescription: 'Crea un Bot con pasos guiados',

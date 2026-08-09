@@ -106,7 +106,12 @@ async def plugin_security_api(plugin_module):
     application.plugin_connector.require_workspace_context = AsyncMock()
     application.plugin_connector.list_plugins = AsyncMock(return_value=[raw_plugin])
     application.plugin_connector.get_plugin_info = AsyncMock(return_value=raw_plugin)
-    application.plugin_connector.get_debug_info = AsyncMock(return_value={'plugin_debug_key': 'runtime-debug-secret'})
+    application.plugin_connector.get_debug_info = AsyncMock(
+        return_value={
+            'plugin_debug_key': 'runtime-debug-secret',
+            'expires_at': '2026-08-04T12:00:00Z',
+        }
+    )
     application.plugin_connector.get_plugin_logs = AsyncMock(return_value=['private runtime line'])
     application.plugin_connector.set_plugin_config = AsyncMock()
 
@@ -232,8 +237,9 @@ async def test_debug_key_requires_resource_manage_permission(plugin_security_api
     assert (await allowed.get_json())['data'] == {
         'debug_url': 'http://localhost:5401',
         'plugin_debug_key': 'runtime-debug-secret',
+        'expires_at': '2026-08-04T12:00:00Z',
     }
-    application.plugin_connector.get_debug_info.assert_awaited_once_with()
+    application.plugin_connector.get_debug_info.assert_awaited_once()
 
 
 @pytest.mark.asyncio

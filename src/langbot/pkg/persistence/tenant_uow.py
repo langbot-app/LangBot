@@ -13,7 +13,7 @@ import typing
 import sqlalchemy
 import sqlalchemy.ext.asyncio as sqlalchemy_asyncio
 import sqlalchemy.orm as sqlalchemy_orm
-from pgvector.sqlalchemy import Vector
+from pgvector.sqlalchemy import HALFVEC, Vector
 from sqlalchemy.dialects.postgresql.dml import OnConflictDoNothing as PostgreSQLOnConflictDoNothing
 from sqlalchemy.dialects.postgresql.dml import OnConflictDoUpdate as PostgreSQLOnConflictDoUpdate
 from sqlalchemy.dialects.sqlite.dml import OnConflictDoNothing as SQLiteOnConflictDoNothing
@@ -209,7 +209,7 @@ _ALLOWED_SCOPED_BUILTIN_FUNCTION_TYPES = {
     'now': sqlalchemy.sql.functions.now,
     'sum': sqlalchemy.sql.functions.sum,
 }
-_ALLOWED_SCOPED_GENERIC_FUNCTIONS = frozenset({'length', 'nullif'})
+_ALLOWED_SCOPED_GENERIC_FUNCTIONS = frozenset({'date_trunc', 'length', 'nullif'})
 _ALLOWED_SCOPED_CUSTOM_OPERATORS = frozenset({'<=>'})
 _ALLOWED_SCOPED_STATEMENT_TYPES = (
     sqlalchemy.sql.dml.UpdateBase,
@@ -281,7 +281,7 @@ def _validate_scoped_sql_type(
         return
     seen.add(identity)
 
-    if type(sql_type) is Vector:
+    if type(sql_type) in {Vector, HALFVEC}:
         return
     if not type(sql_type).__module__.startswith('sqlalchemy.'):
         raise ScopedSessionTransactionError('TenantUnitOfWork does not allow custom SQL types in public statements')
@@ -462,7 +462,7 @@ def _validate_scoped_statement_call(args: tuple[typing.Any, ...], kwargs: dict[s
         if isinstance(element, sqlalchemy.sql.elements.BindParameter) and element.literal_execute:
             raise ScopedSessionTransactionError('TenantUnitOfWork does not allow literal-execute SQL parameters')
 
-        if isinstance(element, sqlalchemy.sql.elements.Cast) and type(element.type) is not Vector:
+        if isinstance(element, sqlalchemy.sql.elements.Cast) and type(element.type) not in {Vector, HALFVEC}:
             raise ScopedSessionTransactionError(
                 'TenantUnitOfWork only allows the trusted pgvector cast used by tenant vector search'
             )

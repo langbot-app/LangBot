@@ -732,19 +732,25 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
             if len(listener_tasks) >= 100:
                 await self.logger.warning('WebSocket inbound listener capacity reached; dropping message')
                 return
-            async def run_listener() -> None:
+            listener = typing.cast(
+                typing.Callable[[typing.Any, typing.Any], typing.Awaitable[None]],
+                listeners[event.__class__],
+            )
+
+            async def run_listener():
                 token = _current_pipeline_uuid.set(pipeline_uuid)
                 try:
-                    await listeners[event.__class__](event, callback_adapter)
+                    await listener(event, callback_adapter)
                 finally:
                     _current_pipeline_uuid.reset(token)
 
+            listener_coro = run_listener()
             task_manager = getattr(self.ap, 'task_mgr', None)
             if task_manager is None or not isinstance(getattr(task_manager, 'tasks', None), list):
-                listener_task = asyncio.create_task(run_listener())
+                listener_task = asyncio.create_task(listener_coro)
             else:
                 listener_task = task_manager.create_task(
-                    run_listener(),
+                    listener_coro,
                     kind='websocket-message',
                     name=f'websocket-message-{connection.connection_id}',
                     scopes=[

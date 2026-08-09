@@ -596,6 +596,36 @@ class TestTelemetryManagedRuntimeAuthentication:
         assert captured['headers'] == {'X-LangBot-Telemetry-Token': 'managed-runtime-secret'}
 
 
+class TestAuthenticatedWorkspaceReporter:
+    @pytest.mark.asyncio
+    async def test_workspace_owner_access_token_is_sent_as_bearer(self):
+        telemetry = get_telemetry_module()
+        mock_app = Mock()
+        mock_app.logger = Mock()
+        mock_app.user_service = Mock()
+        mock_app.user_service.get_workspace_owner = AsyncMock(
+            return_value=Mock(user='owner@example.com', space_access_token='expired-token')
+        )
+        mock_app.space_service = Mock()
+        mock_app.space_service.get_valid_access_token = AsyncMock(return_value='refreshed-workspace-owner-token')
+        manager = telemetry.TelemetryManager(mock_app)
+        manager.telemetry_config = {'url': 'https://example.com'}
+
+        response = Mock(status_code=200, text='')
+        response.json = Mock(return_value={'code': 0})
+        mock_client = Mock()
+        mock_client.post = Mock(return_value=response)
+
+        with patch.object(httpx, 'AsyncClient', return_value=mock_client):
+            await manager.send({'query_id': 'q-1', 'workspace_uuid': 'workspace-1'})
+
+        mock_app.user_service.get_workspace_owner.assert_awaited_once_with('workspace-1')
+        mock_app.space_service.get_valid_access_token.assert_awaited_once_with('owner@example.com')
+        assert mock_client.post.call_args.kwargs['headers'] == {
+            'Authorization': 'Bearer refreshed-workspace-owner-token'
+        }
+
+
 class TestStartSendTask:
     """Tests for start_send_task() method."""
 

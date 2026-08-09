@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 from urllib.parse import parse_qs, urlsplit
@@ -14,6 +15,7 @@ from langbot.pkg.api.http.controller.groups.user import UserRouterGroup
 
 pytestmark = pytest.mark.integration
 WORKSPACE_UUID = '11111111-1111-4111-8111-111111111111'
+WORKSPACE_CREATED_AT = datetime.datetime(2026, 1, 2, 3, 4, 5, tzinfo=datetime.UTC)
 
 
 @pytest.fixture
@@ -58,6 +60,12 @@ async def space_oauth_api():
         return_value={'account_uuid': 'account-a', 'workspace_uuid': WORKSPACE_UUID}
     )
     application.workspace_collaboration_service.resolve_account_workspace = AsyncMock(return_value=access)
+    application.workspace_service.get_execution_binding = AsyncMock(
+        return_value=SimpleNamespace(
+            workspace_uuid=WORKSPACE_UUID,
+            workspace_created_at=WORKSPACE_CREATED_AT,
+        )
+    )
     application.space_service.get_oauth_authorize_url = Mock(
         side_effect=lambda redirect_uri, state: f'https://space.example/authorize?state={state}'
     )
@@ -234,7 +242,11 @@ async def test_login_callback_requires_and_consumes_server_state(space_oauth_api
     assert response.status_code == 200
     assert (await response.get_json())['data']['token'] == 'space-login-token'
     application.user_service.consume_space_oauth_state_details.assert_awaited_once_with('opaque-login-state', 'login')
-    application.space_service.exchange_oauth_code.assert_awaited_once_with('oauth-code')
+    application.space_service.exchange_oauth_code.assert_awaited_once_with(
+        'oauth-code',
+        [WORKSPACE_UUID],
+        {WORKSPACE_UUID: int(WORKSPACE_CREATED_AT.timestamp())},
+    )
 
 
 @pytest.mark.asyncio
@@ -272,14 +284,40 @@ async def test_space_credits_are_resolved_from_workspace_owner(space_oauth_api):
         '/api/v1/user/space-credits',
         headers={'Authorization': 'Bearer account-token', 'X-Workspace-Id': WORKSPACE_UUID},
     )
+    payload = await response.get_json()
 
     assert response.status_code == 200
-    assert (await response.get_json())['data'] == {
+    assert payload['data'] == {
         'credits': 25000,
         'owner_space_bound': True,
         'is_workspace_owner': True,
     }
     application.space_service.get_credits.assert_awaited_once_with('owner@example.com')
+
+
+@pytest.mark.asyncio
+async def test_cloud_workspace_owner_is_always_space_bound_after_login(space_oauth_api):
+    application, client = space_oauth_api
+    application.deployment.mode = 'cloud'
+    application.user_service.get_workspace_owner = AsyncMock(return_value=None)
+    application.space_service.get_credits = AsyncMock()
+    application.cloud_model_catalog_service = SimpleNamespace(
+        get_workspace_credits=lambda workspace_uuid: 25000 if workspace_uuid == WORKSPACE_UUID else None
+    )
+
+    response = await client.get(
+        '/api/v1/user/space-credits',
+        headers={'Authorization': 'Bearer account-token', 'X-Workspace-Id': WORKSPACE_UUID},
+    )
+    payload = await response.get_json()
+
+    assert response.status_code == 200
+    assert payload['data'] == {
+        'credits': 25000,
+        'owner_space_bound': True,
+        'is_workspace_owner': True,
+    }
+    application.space_service.get_credits.assert_not_awaited()
 
 
 @pytest.mark.asyncio

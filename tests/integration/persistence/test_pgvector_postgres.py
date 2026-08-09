@@ -85,6 +85,32 @@ async def clean_database(postgres_engine: AsyncEngine):
     await clean()
 
 
+async def test_upgrade_adds_3072_dimension_index_and_constraint(
+    postgres_engine: AsyncEngine,
+    clean_database,
+) -> None:
+    async with postgres_engine.begin() as conn:
+        await conn.execute(text('CREATE EXTENSION IF NOT EXISTS vector'))
+        await conn.run_sync(Base.metadata.create_all)
+    await run_alembic_stamp(postgres_engine, '0010_scope_resources')
+    await run_alembic_upgrade(postgres_engine, 'head')
+
+    async with postgres_engine.connect() as conn:
+        constraint = await conn.scalar(
+            text(
+                'SELECT pg_get_constraintdef(oid) FROM pg_constraint '
+                "WHERE conrelid = 'langbot_vectors'::regclass "
+                "AND conname = 'ck_langbot_vectors_embedding_dimension_enabled'"
+            )
+        )
+        assert '3072' in constraint
+        index_definition = await conn.scalar(
+            text("SELECT indexdef FROM pg_indexes WHERE indexname = 'ix_langbot_vectors_hnsw_cosine_3072'")
+        )
+        assert 'halfvec(3072)' in index_definition
+        assert 'halfvec_cosine_ops' in index_definition
+
+
 async def test_legacy_upgrade_temporarily_suspends_and_restores_source_rls_for_unprivileged_owner(
     postgres_url: str,
     postgres_engine: AsyncEngine,

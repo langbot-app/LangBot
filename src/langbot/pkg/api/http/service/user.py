@@ -779,8 +779,27 @@ class UserService:
         local_account = await self.get_user_by_email(user_email)
         if local_account is None:
             raise ValueError('User not found')
-        # Exchange code for tokens
-        token_data = await self.ap.space_service.exchange_oauth_code(code)
+        # Exchange code for tokens and bind both installation and the active
+        # OSS Workspace as independent identities.
+        workspace_service = getattr(self.ap, 'workspace_service', None)
+        if workspace_service is not None:
+            binding = await workspace_service.get_execution_binding()
+            created_at = binding.workspace_created_at
+            created_ts = (
+                int(created_at.replace(tzinfo=datetime.timezone.utc).timestamp())
+                if created_at.tzinfo is None
+                else int(created_at.timestamp())
+            )
+            token_data = await self.ap.space_service.exchange_oauth_code(
+                code,
+                [binding.workspace_uuid],
+                {binding.workspace_uuid: created_ts},
+            )
+        else:
+            # Compatibility for early/bootstrap call sites that have not wired
+            # WorkspaceService yet; old Space servers still derive the legacy
+            # Workspace identity from instance_id when the field is omitted.
+            token_data = await self.ap.space_service.exchange_oauth_code(code)
         access_token = token_data.get('access_token')
         refresh_token = token_data.get('refresh_token')
         expires_in = token_data.get('expires_in', 0)

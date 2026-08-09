@@ -213,7 +213,7 @@ class TestVectorDBManagerInitialization:
                 mock_app,
                 connection_string='postgresql://user:pass@host:5432/langbot',
                 use_business_database=False,
-                allowed_dimensions=[384, 512, 768, 1024, 1536],
+                allowed_dimensions=[384, 512, 768, 1024, 1536, 3072],
             )
 
     def test_initialize_pgvector_with_individual_params(self):
@@ -251,7 +251,7 @@ class TestVectorDBManagerInitialization:
                 user='admin',
                 password='secret',
                 use_business_database=False,
-                allowed_dimensions=[384, 512, 768, 1024, 1536],
+                allowed_dimensions=[384, 512, 768, 1024, 1536, 3072],
             )
 
     def test_initialize_pgvector_defaults(self):
@@ -280,7 +280,7 @@ class TestVectorDBManagerInitialization:
                 user='postgres',
                 password='postgres',
                 use_business_database=False,
-                allowed_dimensions=[384, 512, 768, 1024, 1536],
+                allowed_dimensions=[384, 512, 768, 1024, 1536, 3072],
             )
 
     def test_initialize_pgvector_with_shared_business_database(self):

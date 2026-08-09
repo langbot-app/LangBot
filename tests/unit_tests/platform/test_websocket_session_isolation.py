@@ -208,7 +208,7 @@ async def test_embed_event_uses_stable_session_launcher(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_pipeline_override_is_set_inside_detached_listener_task(monkeypatch):
+async def test_pipeline_override_survives_detached_listener_task(monkeypatch):
     manager = WebSocketConnectionManager()
     connection = await manager.add_connection(
         websocket=Mock(),
@@ -223,21 +223,21 @@ async def test_pipeline_override_is_set_inside_detached_listener_task(monkeypatc
             self.tasks = []
 
         def create_task(self, coro, **_kwargs):
-            task = asyncio.get_running_loop().create_task(coro, context=contextvars.Context())
+            task = asyncio.create_task(coro, context=contextvars.Context())
             self.tasks.append(task)
-            return SimpleNamespace(task=task)
+            return Mock(task=task)
 
     task_manager = DetachedTaskManager()
     adapter = WebSocketAdapter.model_construct(
-        ap=SimpleNamespace(task_mgr=task_manager),
+        ap=Mock(task_mgr=task_manager),
         logger=_adapter_logger(),
     )
     adapter.websocket_person_session = WebSocketSession(id='person')
     adapter.websocket_group_session = WebSocketSession(id='group')
-    received_pipeline_uuids = []
+    pipeline_overrides = []
 
     async def listener(_event, callback_adapter):
-        received_pipeline_uuids.append(callback_adapter.get_pipeline_uuid_override())
+        pipeline_overrides.append(callback_adapter.get_pipeline_uuid_override())
 
     adapter.listeners = {platform_events.FriendMessage: listener}
     await adapter.handle_websocket_message(
@@ -246,7 +246,7 @@ async def test_pipeline_override_is_set_inside_detached_listener_task(monkeypatc
     )
     await asyncio.gather(*task_manager.tasks)
 
-    assert received_pipeline_uuids == ['pipeline-1']
+    assert pipeline_overrides == ['pipeline-1']
 
 
 @pytest.mark.asyncio

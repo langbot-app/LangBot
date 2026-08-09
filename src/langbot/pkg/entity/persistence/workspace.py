@@ -40,6 +40,11 @@ class MembershipStatus(enum.StrEnum):
     REMOVED = 'removed'
 
 
+class MembershipSource(enum.StrEnum):
+    LOCAL = 'local'
+    CLOUD_PROJECTION = 'cloud_projection'
+
+
 class InvitationStatus(enum.StrEnum):
     PENDING = 'pending'
     ACCEPTED = 'accepted'
@@ -151,6 +156,11 @@ class WorkspaceMembership(Base):
         nullable=True,
     )
     joined_at = sqlalchemy.Column(sqlalchemy.DateTime, nullable=True)
+    source = sqlalchemy.Column(
+        sqlalchemy.String(32),
+        nullable=False,
+        server_default=MembershipSource.LOCAL.value,
+    )
     projection_revision = sqlalchemy.Column(sqlalchemy.BigInteger, nullable=False, server_default='0')
     created_at = sqlalchemy.Column(sqlalchemy.DateTime, nullable=False, server_default=sqlalchemy.func.now())
     updated_at = sqlalchemy.Column(
@@ -163,6 +173,13 @@ class WorkspaceMembership(Base):
     __table_args__ = (
         sqlalchemy.UniqueConstraint('workspace_uuid', 'account_uuid', name='uq_workspace_membership_account'),
         sqlalchemy.Index('ix_workspace_memberships_account_status', 'account_uuid', 'status'),
+        sqlalchemy.Index(
+            'uq_workspace_memberships_one_active_owner',
+            'workspace_uuid',
+            unique=True,
+            sqlite_where=sqlalchemy.text("role = 'owner' AND status = 'active'"),
+            postgresql_where=sqlalchemy.text("role = 'owner' AND status = 'active'"),
+        ),
         sqlalchemy.CheckConstraint(
             "role IN ('owner', 'admin', 'developer', 'operator', 'viewer')",
             name='ck_workspace_memberships_role',
@@ -170,6 +187,10 @@ class WorkspaceMembership(Base):
         sqlalchemy.CheckConstraint(
             "status IN ('active', 'disabled', 'removed')",
             name='ck_workspace_memberships_status',
+        ),
+        sqlalchemy.CheckConstraint(
+            "source IN ('local', 'cloud_projection')",
+            name='ck_workspace_memberships_source',
         ),
     )
 

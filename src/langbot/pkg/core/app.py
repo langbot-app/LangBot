@@ -54,6 +54,7 @@ from ..cloud import launch as cloud_launch_module
 from ..cloud import support_admin as cloud_support_admin_module
 from ..cloud import directory_projection as cloud_directory_projection_module
 from ..cloud import entitlements as cloud_entitlements_module
+from ..cloud import model_catalog as cloud_model_catalog_module
 from ..api.http.context import ExecutionContext, PrincipalContext, PrincipalType
 
 
@@ -142,12 +143,11 @@ class Application:
     deployment: cloud_bootstrap_module.OpenSourceDeployment | cloud_bootstrap_module.VerifiedCloudDeployment = None
 
     deployment_admission: cloud_bootstrap_module.DeploymentAdmissionGuard = None
-
+    directory_projection_service: cloud_directory_projection_module.DirectoryProjectionService | None = None
+    cloud_model_catalog_service: cloud_model_catalog_module.CloudModelCatalogSyncService | None = None
     manifest_refresh_service: cloud_bootstrap_module.CloudManifestRefreshService | None = None
 
     entitlement_resolver: cloud_entitlements_module.EntitlementResolver | None = None
-
-    directory_projection_service: cloud_directory_projection_module.DirectoryProjectionService | None = None
 
     vector_db_mgr: vectordb_mgr.VectorDBManager = None
 
@@ -304,6 +304,12 @@ class Application:
                 self.task_mgr.create_task(
                     self.directory_projection_service.run(),
                     name='cloud-directory-projection',
+                    scopes=[core_entities.LifecycleControlScope.APPLICATION],
+                )
+            if self.cloud_model_catalog_service is not None:
+                self.task_mgr.create_task(
+                    self.cloud_model_catalog_service.run(),
+                    name='cloud-model-catalog-sync',
                     scopes=[core_entities.LifecycleControlScope.APPLICATION],
                 )
             if self.manifest_refresh_service is not None:

@@ -79,7 +79,6 @@ export default function WorkspaceSettingsPanel({
   const canInvite = permissions.has('member.invite');
   const canUpdateMembers = permissions.has('member.update_role');
   const canRemoveMembers = permissions.has('member.remove');
-  const canTransferOwner = permissions.has('owner.transfer');
   const cloudPortalURL = workspaceInfo
     ? `${systemInfo.cloud_service_url.replace(/\/$/, '')}/cloud?workspace=${encodeURIComponent(workspaceInfo.workspace.uuid)}&step=plan`
     : '';
@@ -314,18 +313,20 @@ export default function WorkspaceSettingsPanel({
                     <ItemMedia variant="icon">
                       <Users className="size-4" />
                     </ItemMedia>
-                    <ItemContent>
+                    <ItemContent className="min-w-0">
                       <ItemTitle>
-                        {member.email}
+                        {member.display_name}
                         {isSelf && (
                           <Badge variant="outline">{t('workspace.you')}</Badge>
                         )}
                       </ItemTitle>
-                      <ItemDescription>
-                        {t(`workspace.roles.${member.role}`)}
+                      <ItemDescription className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                        <span className="break-all">{member.email}</span>
+                        <span aria-hidden="true">·</span>
+                        <span>{t(`workspace.roles.${member.role}`)}</span>
                       </ItemDescription>
                     </ItemContent>
-                    <ItemActions>
+                    <ItemActions className="max-sm:basis-full max-sm:justify-end max-sm:pl-10">
                       {canUpdateMembers && member.role !== 'owner' && (
                         <Select
                           value={member.role}
@@ -342,11 +343,6 @@ export default function WorkspaceSettingsPanel({
                                 {t(`workspace.roles.${role}`)}
                               </SelectItem>
                             ))}
-                            {canTransferOwner && (
-                              <SelectItem value="owner">
-                                {t('workspace.transferOwnership')}
-                              </SelectItem>
-                            )}
                           </SelectContent>
                         </Select>
                       )}

@@ -54,11 +54,15 @@ function RecommendationListRow({
   list,
   tagNames,
   onInstall,
+  installDisabled,
+  installDisabledTooltip,
   isLast,
 }: {
   list: RecommendationList;
   tagNames: Record<string, string>;
   onInstall: (cardVO: PluginMarketCardVO) => void;
+  installDisabled?: boolean;
+  installDisabledTooltip?: string;
   isLast: boolean;
 }) {
   const { t } = useTranslation();
@@ -263,6 +267,8 @@ function RecommendationListRow({
             cardVO={pluginToVO(plugin, t)}
             tagNames={tagNames}
             onInstall={onInstall}
+            installDisabled={installDisabled}
+            installDisabledTooltip={installDisabledTooltip}
           />
         ))}
       </div>
@@ -277,10 +283,14 @@ export function RecommendationLists({
   lists,
   tagNames,
   onInstall,
+  installDisabled,
+  installDisabledTooltip,
 }: {
   lists: RecommendationList[];
   tagNames: Record<string, string>;
   onInstall: (cardVO: PluginMarketCardVO) => void;
+  installDisabled?: boolean;
+  installDisabledTooltip?: string;
 }) {
   if (!lists || lists.length === 0) return null;
 
@@ -292,6 +302,8 @@ export function RecommendationLists({
           list={list}
           tagNames={tagNames}
           onInstall={onInstall}
+          installDisabled={installDisabled}
+          installDisabledTooltip={installDisabledTooltip}
           isLast={index === lists.length - 1}
         />
       ))}

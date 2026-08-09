@@ -1,6 +1,7 @@
 import quart
 import argon2
 import asyncio
+import datetime
 import uuid
 from urllib.parse import parse_qs, urlsplit
 
@@ -218,7 +219,22 @@ class UserRouterGroup(group.RouterGroup):
             try:
                 consumed_state = await self.ap.user_service.consume_space_oauth_state_details(state, 'login')
                 # Exchange code for tokens
-                token_data = await self.ap.space_service.exchange_oauth_code(code)
+                launch_workspace_uuid = consumed_state.launch_workspace_uuid
+                workspace_uuids = [launch_workspace_uuid] if launch_workspace_uuid else []
+                workspace_created_ats: dict[str, int] = {}
+                if not workspace_uuids and getattr(getattr(self.ap, 'deployment', None), 'mode', 'oss') != 'cloud':
+                    binding = await self.ap.workspace_service.get_execution_binding()
+                    workspace_uuids = [binding.workspace_uuid]
+                    workspace_created_at = binding.workspace_created_at
+                    if workspace_created_at is not None:
+                        if workspace_created_at.tzinfo is None:
+                            workspace_created_at = workspace_created_at.replace(tzinfo=datetime.UTC)
+                        workspace_created_ats[binding.workspace_uuid] = int(workspace_created_at.timestamp())
+                token_data = await self.ap.space_service.exchange_oauth_code(
+                    code,
+                    workspace_uuids,
+                    workspace_created_ats,
+                )
                 access_token = token_data.get('access_token')
                 refresh_token = token_data.get('refresh_token')
                 expires_in = token_data.get('expires_in', 0)
@@ -231,7 +247,6 @@ class UserRouterGroup(group.RouterGroup):
                     access_token, refresh_token, expires_in
                 )
 
-                launch_workspace_uuid = consumed_state.launch_workspace_uuid
                 if launch_workspace_uuid:
                     try:
                         access = await self.ap.workspace_collaboration_service.resolve_account_workspace(
@@ -285,8 +300,25 @@ class UserRouterGroup(group.RouterGroup):
                 request_context.workspace_uuid,
             )
             owner = await self.ap.user_service.get_workspace_owner(access.workspace.uuid)
-            owner_space_bound = bool(owner and owner.space_account_uuid)
-            credits = await self.ap.space_service.get_credits(owner.user) if owner_space_bound else None
+            cloud_mode = getattr(getattr(self.ap, 'deployment', None), 'mode', 'oss') == 'cloud'
+            owner_has_local_space_credentials = bool(owner and owner.space_account_uuid)
+            # Cloud Accounts authenticate through LangBot Account, so every projected
+            # Workspace owner is already bound even when this Core has no local OAuth
+            # token row (model billing uses the owner's control-plane API key).
+            owner_space_bound = cloud_mode or owner_has_local_space_credentials
+            if cloud_mode:
+                catalog_service = getattr(self.ap, 'cloud_model_catalog_service', None)
+                credits = (
+                    catalog_service.get_workspace_credits(access.workspace.uuid)
+                    if catalog_service is not None
+                    else None
+                )
+            else:
+                credits = (
+                    await self.ap.space_service.get_credits(owner.user)
+                    if owner is not None and owner.space_account_uuid
+                    else None
+                )
             return self.success(
                 data={
                     'credits': credits,
@@ -302,8 +334,10 @@ class UserRouterGroup(group.RouterGroup):
                 return self.success(data={'initialized': False})
 
             capabilities = await self.ap.user_service.get_login_capabilities()
-            if getattr(getattr(self.ap, 'deployment', None), 'mode', 'oss') == 'cloud':
+            cloud_mode = getattr(getattr(self.ap, 'deployment', None), 'mode', 'oss') == 'cloud'
+            if cloud_mode:
                 capabilities['password_login_enabled'] = False
+            capabilities['authenticated_invitation_acceptance_enabled'] = cloud_mode
             return self.success(data={'initialized': True, **capabilities})
 
         @self.route('/set-password', methods=['POST'], auth_type=group.AuthType.USER_TOKEN)
