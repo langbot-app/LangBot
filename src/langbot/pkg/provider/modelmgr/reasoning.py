@@ -107,9 +107,7 @@ def validate_reasoning_capabilities(
     legacy_levels = capabilities.get('legacy_levels')
     if not isinstance(legacy_levels, list):
         legacy_levels = []
-    if capabilities.get('supported') is not True or (
-        level not in available_levels and level not in legacy_levels
-    ):
+    if capabilities.get('supported') is not True or (level not in available_levels and level not in legacy_levels):
         available_text = ', '.join(str(item) for item in available_levels) or 'provider_default'
         raise ValueError(
             f'Reasoning level "{level}" is not supported by model {model_name}. Available levels: {available_text}'

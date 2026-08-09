@@ -3,7 +3,6 @@
 import asyncio
 import contextvars
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest

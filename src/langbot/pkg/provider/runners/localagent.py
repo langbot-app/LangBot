@@ -93,9 +93,7 @@ class _StreamAccumulator:
                             arguments='',
                         ),
                         provider_specific_fields=(
-                            dict(tool_call.provider_specific_fields)
-                            if tool_call.provider_specific_fields
-                            else None
+                            dict(tool_call.provider_specific_fields) if tool_call.provider_specific_fields else None
                         ),
                     )
                 elif tool_call.provider_specific_fields:

@@ -839,12 +839,12 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
             text = block.get('thinking') if isinstance(block.get('thinking'), str) else ''
             signature = block.get('signature')
             if merged and merged[-1].get('type') == 'thinking' and not merged[-1].get('signature'):
-                merged[-1]['thinking'] = f"{merged[-1].get('thinking', '')}{text}"
+                merged[-1]['thinking'] = f'{merged[-1].get("thinking", "")}{text}'
                 if signature:
                     merged[-1]['signature'] = signature
             elif merged and signature and merged[-1].get('signature') == signature:
                 if text and text != merged[-1].get('thinking', ''):
-                    merged[-1]['thinking'] = f"{merged[-1].get('thinking', '')}{text}"
+                    merged[-1]['thinking'] = f'{merged[-1].get("thinking", "")}{text}'
             else:
                 merged.append(block)
         return merged
