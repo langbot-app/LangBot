@@ -785,6 +785,13 @@ export default function WizardPage() {
             onSavedProviderFormChange={setSavedProviderForm}
             savedSelectedModels={savedSelectedModels}
             onSavedSelectedModelsChange={setSavedSelectedModels}
+            onGoToNextLayer={() => {
+              if (modelsAdded) {
+                goToStep2Layer(4);
+              } else {
+                goToStep2Layer(3);
+              }
+            }}
             runnerConfigItems={selectedRunnerConfigItems}
             runnerConfigValues={runnerConfig}
             onRunnerConfigChange={setRunnerConfig}
@@ -1309,6 +1316,7 @@ function StepAIEngine({
   onSavedProviderFormChange,
   savedSelectedModels,
   onSavedSelectedModelsChange,
+  onGoToNextLayer,
   runnerConfigItems,
   runnerConfigValues,
   onRunnerConfigChange,
@@ -1333,6 +1341,7 @@ function StepAIEngine({
   onSavedProviderFormChange: (v: { name?: string; requester?: string; base_url?: string; api_key?: string }) => void;
   savedSelectedModels: Set<string>;
   onSavedSelectedModelsChange: (v: Set<string>) => void;
+  onGoToNextLayer: () => void;
   runnerConfigItems: IDynamicFormItemSchema[];
   runnerConfigValues: Record<string, unknown>;
   onRunnerConfigChange: (v: Record<string, unknown>) => void;
@@ -1531,7 +1540,7 @@ function StepAIEngine({
             {t('wizard.provider.description')}
           </p>
         </div>
-        <div className="border rounded-lg p-6 bg-card">
+        <div className="border rounded-lg p-6 bg-card space-y-4">
           <ProviderForm
             initialValues={savedProviderForm}
             onValuesChange={onSavedProviderFormChange}
@@ -1540,6 +1549,14 @@ function StepAIEngine({
             }}
             onFormCancel={onResetModelSource}
           />
+          {providerCreated && (
+            <div className="flex justify-end pt-2 border-t">
+              <Button onClick={onGoToNextLayer}>
+                {t('wizard.next')}
+                <ArrowRight className="w-4 h-4 ml-1.5" />
+              </Button>
+            </div>
+          )}
         </div>
       </div>
     );
