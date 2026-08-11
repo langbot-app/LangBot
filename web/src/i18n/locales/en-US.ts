@@ -1835,11 +1835,46 @@ const enUS = {
       title: 'Select an AI Engine',
       description:
         "Choose the AI engine that will power your bot's intelligence.",
+      orchestrated: {
+        title: 'Use Orchestrated Agent Apps',
+        description:
+          'Use pre-built Agent apps from Dify, n8n, Coze, and more.',
+        action: 'Select Agent App',
+        selectTitle: 'Select Agent App',
+        selectDescription: 'Choose the Agent app platform you want to use.',
+      },
+      llm: {
+        title: 'Use LLM Directly',
+        description:
+          'Configure a model provider and use LLM to drive your bot directly.',
+        action: 'Configure LLM',
+      },
     },
     spaceBanner: {
       message:
         'Connect to LangBot Space for free trial model credits and zero-config instant setup!',
       action: 'Authorize with Space',
+    },
+    provider: {
+      title: 'Add Model Provider',
+      description:
+        'Add your own model provider. Configure the API key to get started.',
+    },
+    modelSource: {
+      title: 'Choose Model Source',
+      description: 'Select how to provide model capabilities for your AI engine.',
+      space: {
+        title: 'LangBot Service',
+        description:
+          'Zero-config ready with free trial model credits. No API key needed — just plug and play.',
+        action: 'Use LangBot Service',
+      },
+      custom: {
+        title: 'Custom Model',
+        description:
+          'Bring your own model API key. Supports OpenAI, Claude, Gemini, and more.',
+        action: 'Add My Own Model',
+      },
     },
     config: {
       botInfo: 'Bot Information',

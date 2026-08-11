@@ -1755,10 +1755,42 @@ const zhHans = {
     aiEngine: {
       title: '选择 AI 引擎',
       description: '选择驱动机器人智能的 AI 引擎。',
+      orchestrated: {
+        title: '使用编排好的 Agent 应用',
+        description: '使用 Dify、n8n、Coze 等平台编排好的 Agent 应用。',
+        action: '选择 Agent 应用',
+        selectTitle: '选择 Agent 应用',
+        selectDescription: '选择你要使用的 Agent 应用平台。',
+      },
+      llm: {
+        title: '直接使用大模型',
+        description: '配置大模型供应商，直接使用大模型驱动机器人。',
+        action: '配置大模型',
+      },
     },
     spaceBanner: {
       message: '接入 LangBot Space，获取免费试用模型额度，零配置极速开箱！',
       action: '前往授权登录',
+    },
+    provider: {
+      title: '添加模型供应商',
+      description: '添加你自己的模型供应商，配置 API Key 后即可使用。',
+    },
+    modelSource: {
+      title: '选择模型来源',
+      description: '选择如何为你的 AI 引擎提供模型能力。',
+      space: {
+        title: 'LangBot 服务',
+        description:
+          '零配置即可使用，提供免费试用模型额度，开箱即用，无需自备 API Key。',
+        action: '使用 LangBot 服务',
+      },
+      custom: {
+        title: '自定义模型',
+        description:
+          '使用你自己的模型 API Key，支持 OpenAI、Claude、Gemini 等主流模型。',
+        action: '添加我自己的模型',
+      },
     },
     config: {
       botInfo: '机器人信息',

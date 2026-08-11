@@ -1691,11 +1691,48 @@ const esES = {
       title: 'Selecciona un motor de IA',
       description:
         'Elige el motor de IA que impulsará la inteligencia de tu Bot.',
+      orchestrated: {
+        title: 'Usar aplicaciones Agent orquestadas',
+        description:
+          'Usar aplicaciones Agent predefinidas de Dify, n8n, Coze y más.',
+        action: 'Seleccionar aplicación Agent',
+        selectTitle: 'Seleccionar aplicación Agent',
+        selectDescription:
+          'Elige la plataforma de aplicación Agent que deseas usar.',
+      },
+      llm: {
+        title: 'Usar modelo directamente',
+        description:
+          'Configurar un proveedor de modelos y usar el modelo para impulsar tu Bot.',
+        action: 'Configurar modelo',
+      },
     },
     spaceBanner: {
       message:
         '¡Conéctate a LangBot Space para obtener créditos de prueba gratuitos y configuración instantánea sin esfuerzo!',
       action: 'Autorizar con Space',
+    },
+    provider: {
+      title: 'Agregar proveedor de modelos',
+      description:
+        'Agrega tu propio proveedor de modelos. Configura la API key para comenzar.',
+    },
+    modelSource: {
+      title: 'Elegir fuente del modelo',
+      description:
+        'Selecciona cómo proporcionar capacidades de modelo para tu motor de IA.',
+      space: {
+        title: 'Servicio LangBot',
+        description:
+          'Listo para usar sin configuración, con créditos de prueba gratuitos. No se necesita API key.',
+        action: 'Usar servicio LangBot',
+      },
+      custom: {
+        title: 'Modelo personalizado',
+        description:
+          'Usa tu propia API key. Compatible con OpenAI, Claude, Gemini y más.',
+        action: 'Agregar mi propio modelo',
+      },
     },
     config: {
       botInfo: 'Información del Bot',

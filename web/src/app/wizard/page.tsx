@@ -12,6 +12,8 @@ import {
   Loader2,
   X,
   ExternalLink,
+  Rocket,
+  Wrench,
 } from 'lucide-react';
 
 import { httpClient } from '@/app/infra/http/HttpClient';
@@ -38,6 +40,7 @@ import {
   parseDynamicFormItemType,
 } from '@/app/home/components/dynamic-form/DynamicFormItemConfig';
 import DynamicFormComponent from '@/app/home/components/dynamic-form/DynamicFormComponent';
+import ProviderForm from '@/app/home/components/models-dialog/component/provider-form/ProviderForm';
 import { BotLogListComponent } from '@/app/home/bots/components/bot-log/view/BotLogListComponent';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import {
@@ -67,6 +70,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -92,6 +96,13 @@ export default function WizardPage() {
     {},
   );
   const [runnerConfig, setRunnerConfig] = useState<Record<string, unknown>>({});
+  const [aiEngineMode, setAiEngineMode] = useState<
+    'orchestrated' | 'llm' | null
+  >(null);
+  const [modelSource, setModelSource] = useState<'space' | 'custom' | null>(
+    null,
+  );
+  const [providerCreated, setProviderCreated] = useState(false);
   const [createdBotUuid, setCreatedBotUuid] = useState<string | null>(null);
   const [webhookUrl, setWebhookUrl] = useState<string>('');
   const [extraWebhookUrl, setExtraWebhookUrl] = useState<string>('');
@@ -278,6 +289,16 @@ export default function WizardPage() {
     [saveProgress],
   );
 
+  const handleAiEngineModeSelect = useCallback(
+    (mode: 'orchestrated' | 'llm') => {
+      setAiEngineMode(mode);
+      setSelectedRunner(null);
+      setModelSource(null);
+      setProviderCreated(false);
+    },
+    [],
+  );
+
   // ---- Navigation helpers ----
 
   const canProceed = useCallback((): boolean => {
@@ -287,11 +308,29 @@ export default function WizardPage() {
       case 1:
         return createdBotUuid !== null && botSaved;
       case 2:
-        return selectedRunner !== null;
+        if (aiEngineMode === 'orchestrated') {
+          return selectedRunner !== null;
+        }
+        if (aiEngineMode === 'llm') {
+          return (
+            modelSource === 'space' ||
+            (modelSource === 'custom' && providerCreated)
+          );
+        }
+        return false;
       default:
         return false;
     }
-  }, [currentStep, selectedAdapter, createdBotUuid, botSaved, selectedRunner]);
+  }, [
+    currentStep,
+    selectedAdapter,
+    createdBotUuid,
+    botSaved,
+    aiEngineMode,
+    selectedRunner,
+    modelSource,
+    providerCreated,
+  ]);
 
   const goNext = useCallback(() => {
     if (currentStep < TOTAL_STEPS - 1 && canProceed()) {
@@ -302,12 +341,35 @@ export default function WizardPage() {
   }, [currentStep, canProceed, saveProgress]);
 
   const goPrev = useCallback(() => {
+    if (currentStep === 2) {
+      // Intra-step back navigation for AI Engine step
+      if (selectedRunner && aiEngineMode === 'orchestrated') {
+        setSelectedRunner(null);
+        return;
+      }
+      if (
+        aiEngineMode === 'llm' &&
+        modelSource === 'custom' &&
+        !providerCreated
+      ) {
+        setModelSource(null);
+        return;
+      }
+      if (modelSource) {
+        setModelSource(null);
+        return;
+      }
+      if (aiEngineMode) {
+        setAiEngineMode(null);
+        return;
+      }
+    }
     if (currentStep > 0) {
       const prevStep = currentStep - 1;
       setCurrentStep(prevStep);
       saveProgress({ step: prevStep });
     }
-  }, [currentStep, saveProgress]);
+  }, [currentStep, saveProgress, aiEngineMode, selectedRunner, modelSource, providerCreated]);
 
   // ---- Create Bot (Step 0) ----
   // Creates a disabled bot using the adapter label as name.
@@ -503,6 +565,16 @@ export default function WizardPage() {
     }
   }, [t]);
 
+  const handleModelSourceSelect = useCallback(
+    (source: 'space' | 'custom') => {
+      setModelSource(source);
+      if (source === 'space') {
+        handleSpaceAuth();
+      }
+    },
+    [handleSpaceAuth],
+  );
+
   // ---- Check if local account ----
   // Re-evaluated after remote data fetch (when userInfo is populated)
   const isLocalAccount =
@@ -660,10 +732,17 @@ export default function WizardPage() {
         {currentStep === 2 && (
           <StepAIEngine
             runnerOptions={runnerOptions}
-            selected={selectedRunner}
-            onSelect={handleSelectRunner}
+            aiEngineMode={aiEngineMode}
+            onAiEngineModeSelect={handleAiEngineModeSelect}
+            selectedRunner={selectedRunner}
+            onSelectRunner={handleSelectRunner}
             isLocalAccount={isLocalAccount}
             onSpaceAuth={handleSpaceAuth}
+            modelSource={modelSource}
+            onModelSourceSelect={handleModelSourceSelect}
+            providerCreated={providerCreated}
+            onProviderCreated={() => setProviderCreated(true)}
+            onResetModelSource={() => setModelSource(null)}
             runnerConfigItems={selectedRunnerConfigItems}
             runnerConfigValues={runnerConfig}
             onRunnerConfigChange={setRunnerConfig}
@@ -1004,19 +1083,33 @@ function StepBotConfig({
 
 function StepAIEngine({
   runnerOptions,
-  selected,
-  onSelect,
+  aiEngineMode,
+  onAiEngineModeSelect,
+  selectedRunner,
+  onSelectRunner,
   isLocalAccount,
   onSpaceAuth,
+  modelSource,
+  onModelSourceSelect,
+  providerCreated,
+  onProviderCreated,
+  onResetModelSource,
   runnerConfigItems,
   runnerConfigValues,
   onRunnerConfigChange,
 }: {
   runnerOptions: { name: string; label: { en_US: string; zh_Hans: string } }[];
-  selected: string | null;
-  onSelect: (name: string) => void;
+  aiEngineMode: 'orchestrated' | 'llm' | null;
+  onAiEngineModeSelect: (mode: 'orchestrated' | 'llm') => void;
+  selectedRunner: string | null;
+  onSelectRunner: (name: string) => void;
   isLocalAccount: boolean;
   onSpaceAuth: () => void;
+  modelSource: 'space' | 'custom' | null;
+  onModelSourceSelect: (source: 'space' | 'custom') => void;
+  providerCreated: boolean;
+  onProviderCreated: () => void;
+  onResetModelSource: () => void;
   runnerConfigItems: IDynamicFormItemSchema[];
   runnerConfigValues: Record<string, unknown>;
   onRunnerConfigChange: (v: Record<string, unknown>) => void;
@@ -1032,14 +1125,19 @@ function StepAIEngine({
   );
 
   const runnerLabel = useMemo(() => {
-    const r = runnerOptions.find((o) => o.name === selected);
-    return r ? extractI18nObject(r.label) : (selected ?? '');
-  }, [runnerOptions, selected]);
+    const r = runnerOptions.find((o) => o.name === selectedRunner);
+    return r ? extractI18nObject(r.label) : (selectedRunner ?? '');
+  }, [runnerOptions, selectedRunner]);
 
-  // Before any runner is selected: centered grid layout
-  if (!selected) {
+  // Orchestrated runners: everything except local-agent
+  const orchestratedRunners = runnerOptions.filter(
+    (o) => o.name !== 'local-agent',
+  );
+
+  // ---- Layer 0: Main choice ----
+  if (!aiEngineMode) {
     return (
-      <div className="space-y-6 max-w-4xl mx-auto">
+      <div className="space-y-6 max-w-3xl mx-auto">
         <div className="text-center">
           <h2 className="text-xl font-semibold">
             {t('wizard.aiEngine.title')}
@@ -1048,12 +1146,75 @@ function StepAIEngine({
             {t('wizard.aiEngine.description')}
           </p>
         </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+          {/* Orchestrated Agent Apps */}
+          <div
+            className="relative rounded-xl border-2 border-border cursor-pointer transition-all hover:shadow-lg hover:border-primary/50 hover:scale-[1.02]"
+            onClick={() => onAiEngineModeSelect('orchestrated')}
+          >
+            <div className="p-6 flex flex-col items-center gap-4 text-center h-full">
+              <div className="w-14 h-14 rounded-full bg-muted flex items-center justify-center">
+                <Wrench className="w-7 h-7 text-muted-foreground" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold">
+                  {t('wizard.aiEngine.orchestrated.title')}
+                </h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {t('wizard.aiEngine.orchestrated.description')}
+                </p>
+              </div>
+              <Button variant="outline" size="lg" className="w-full">
+                {t('wizard.aiEngine.orchestrated.action')}
+              </Button>
+            </div>
+          </div>
+
+          {/* Direct LLM */}
+          <div
+            className="relative rounded-xl border-2 border-border cursor-pointer transition-all hover:shadow-lg hover:border-primary/50 hover:scale-[1.02]"
+            onClick={() => onAiEngineModeSelect('llm')}
+          >
+            <div className="p-6 flex flex-col items-center gap-4 text-center h-full">
+              <div className="w-14 h-14 rounded-full bg-muted flex items-center justify-center">
+                <Rocket className="w-7 h-7 text-muted-foreground" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold">
+                  {t('wizard.aiEngine.llm.title')}
+                </h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {t('wizard.aiEngine.llm.description')}
+                </p>
+              </div>
+              <Button variant="outline" size="lg" className="w-full">
+                {t('wizard.aiEngine.llm.action')}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ---- Layer 1a: Orchestrated runners ----
+  if (aiEngineMode === 'orchestrated' && !selectedRunner) {
+    return (
+      <div className="space-y-6 max-w-4xl mx-auto">
+        <div className="text-center">
+          <h2 className="text-xl font-semibold">
+            {t('wizard.aiEngine.orchestrated.selectTitle')}
+          </h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            {t('wizard.aiEngine.orchestrated.selectDescription')}
+          </p>
+        </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {runnerOptions.map((opt) => (
+          {orchestratedRunners.map((opt) => (
             <Card
               key={opt.name}
               className="cursor-pointer transition-all hover:shadow-md hover:border-primary/50"
-              onClick={() => onSelect(opt.name)}
+              onClick={() => onSelectRunner(opt.name)}
             >
               <CardHeader className="flex flex-row items-center gap-3">
                 <div className="min-w-0 flex-1">
@@ -1072,9 +1233,96 @@ function StepAIEngine({
     );
   }
 
-  // After a runner is selected: left-right split layout
-  // On mobile (< lg): single column, normal scroll from parent
-  // On desktop (>= lg): side-by-side with independent scroll per column
+  // ---- Layer 1b: LLM model source selection ----
+  if (aiEngineMode === 'llm' && !modelSource) {
+    return (
+      <div className="space-y-6 max-w-3xl mx-auto">
+        <div className="text-center">
+          <h2 className="text-xl font-semibold">
+            {t('wizard.modelSource.title')}
+          </h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            {t('wizard.modelSource.description')}
+          </p>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+          {/* LangBot Service */}
+          <div
+            className="relative rounded-xl border-2 border-border cursor-pointer transition-all hover:shadow-lg hover:border-primary/50 hover:scale-[1.02]"
+            onClick={() => onModelSourceSelect('space')}
+          >
+            <div className="p-6 flex flex-col items-center gap-4 text-center h-full">
+              <div className="w-14 h-14 rounded-full bg-muted flex items-center justify-center">
+                <Rocket className="w-7 h-7 text-muted-foreground" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold">
+                  {t('wizard.modelSource.space.title')}
+                </h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {t('wizard.modelSource.space.description')}
+                </p>
+              </div>
+              <Button variant="outline" size="lg" className="w-full">
+                {t('wizard.modelSource.space.action')}
+              </Button>
+            </div>
+          </div>
+
+          {/* Custom provider */}
+          <div
+            className="relative rounded-xl border-2 border-border cursor-pointer transition-all hover:shadow-lg hover:border-primary/50 hover:scale-[1.02]"
+            onClick={() => onModelSourceSelect('custom')}
+          >
+            <div className="p-6 flex flex-col items-center gap-4 text-center h-full">
+              <div className="w-14 h-14 rounded-full bg-muted flex items-center justify-center">
+                <Wrench className="w-7 h-7 text-muted-foreground" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold">
+                  {t('wizard.modelSource.custom.title')}
+                </h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {t('wizard.modelSource.custom.description')}
+                </p>
+              </div>
+              <Button variant="outline" size="lg" className="w-full">
+                {t('wizard.modelSource.custom.action')}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ---- Layer 2: Custom provider creation form ----
+  if (
+    aiEngineMode === 'llm' &&
+    modelSource === 'custom' &&
+    !providerCreated
+  ) {
+    return (
+      <div className="max-w-2xl mx-auto w-full animate-in fade-in slide-in-from-bottom-2 duration-300">
+        <div className="text-center mb-6">
+          <h2 className="text-xl font-semibold">
+            {t('wizard.provider.title')}
+          </h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            {t('wizard.provider.description')}
+          </p>
+        </div>
+        <div className="border rounded-lg p-6 bg-card">
+          <ProviderForm
+            onFormSubmit={onProviderCreated}
+            onFormCancel={onResetModelSource}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  // ---- Layer 3: Runner configuration form ----
   return (
     <div className="flex flex-col lg:flex-1 lg:min-h-0 max-w-6xl mx-auto w-full">
       <div className="text-center shrink-0 mb-4">
@@ -1085,75 +1333,61 @@ function StepAIEngine({
       </div>
 
       <div className="flex flex-col lg:flex-row lg:justify-center gap-6 lg:flex-1 lg:min-h-0 animate-in fade-in slide-in-from-bottom-2 duration-300">
-        {/* Left: runner list */}
-        <div className="w-full lg:w-[280px] shrink-0 lg:overflow-y-auto lg:pr-3">
-          {/* p-1 provides space for ring-2 (4px) to render without clipping */}
-          <div className="space-y-3 p-1">
-            {runnerOptions.map((opt) => {
-              const isSelected = selected === opt.name;
-              return (
-                <Card
-                  key={opt.name}
-                  className={cn(
-                    'cursor-pointer transition-all',
-                    isSelected
-                      ? 'ring-2 ring-primary shadow-md'
-                      : 'opacity-50 hover:opacity-80 hover:border-primary/50',
-                  )}
-                  onClick={() => onSelect(opt.name)}
-                >
-                  <CardHeader className="flex flex-row items-center gap-3 py-3 px-4">
-                    <div className="min-w-0 flex-1">
-                      <CardTitle
-                        className={cn(
-                          'text-sm',
-                          !isSelected && 'text-muted-foreground',
-                        )}
-                      >
-                        {extractI18nObject(opt.label)}
-                      </CardTitle>
-                      <CardDescription className="text-xs font-mono text-muted-foreground">
-                        {opt.name}
-                      </CardDescription>
-                    </div>
-                    {isSelected && (
-                      <div className="shrink-0">
-                        <div className="w-5 h-5 rounded-full bg-primary flex items-center justify-center">
-                          <Check className="w-3 h-3 text-primary-foreground" />
-                        </div>
-                      </div>
+        {/* Left: runner list (only for orchestrated mode) */}
+        {aiEngineMode === 'orchestrated' && (
+          <div className="w-full lg:w-[280px] shrink-0 lg:overflow-y-auto lg:pr-3">
+            <div className="space-y-3 p-1">
+              {orchestratedRunners.map((opt) => {
+                const isSelected = selectedRunner === opt.name;
+                return (
+                  <Card
+                    key={opt.name}
+                    className={cn(
+                      'cursor-pointer transition-all',
+                      isSelected
+                        ? 'ring-2 ring-primary shadow-md'
+                        : 'opacity-50 hover:opacity-80 hover:border-primary/50',
                     )}
-                  </CardHeader>
-                </Card>
-              );
-            })}
-
-            {/* Space promotion banner */}
-            {selected === 'local-agent' && isLocalAccount && (
-              <div className="animate-in fade-in slide-in-from-left-2 duration-300">
-                <div className="relative rounded-lg p-[2px] bg-gradient-to-r from-purple-500 via-pink-500 to-orange-500">
-                  <div className="rounded-[calc(0.5rem-2px)] bg-background p-3 flex flex-col items-center gap-2 text-center">
-                    <Sparkles className="w-6 h-6 text-purple-500 shrink-0" />
-                    <p className="text-xs font-medium">
-                      {t('wizard.spaceBanner.message')}
-                    </p>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={onSpaceAuth}
-                      className="w-full"
-                    >
-                      {t('wizard.spaceBanner.action')}
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            )}
+                    onClick={() => onSelectRunner(opt.name)}
+                  >
+                    <CardHeader className="flex flex-row items-center gap-3 py-3 px-4">
+                      <div className="min-w-0 flex-1">
+                        <CardTitle
+                          className={cn(
+                            'text-sm',
+                            !isSelected && 'text-muted-foreground',
+                          )}
+                        >
+                          {extractI18nObject(opt.label)}
+                        </CardTitle>
+                        <CardDescription className="text-xs font-mono text-muted-foreground">
+                          {opt.name}
+                        </CardDescription>
+                      </div>
+                      {isSelected && (
+                        <div className="shrink-0">
+                          <div className="w-5 h-5 rounded-full bg-primary flex items-center justify-center">
+                            <Check className="w-3 h-3 text-primary-foreground" />
+                          </div>
+                        </div>
+                      )}
+                    </CardHeader>
+                  </Card>
+                );
+              })}
+            </div>
           </div>
-        </div>
+        )}
 
-        {/* Right: runner configuration — fixed width on desktop */}
-        <div className="w-full lg:w-[560px] shrink-0 lg:overflow-y-auto lg:pr-3 animate-in fade-in slide-in-from-right-2 duration-300">
+        {/* Right: runner configuration */}
+        <div
+          className={cn(
+            'shrink-0 lg:overflow-y-auto lg:pr-3 animate-in fade-in slide-in-from-right-2 duration-300',
+            aiEngineMode === 'orchestrated'
+              ? 'w-full lg:w-[560px]'
+              : 'w-full max-w-2xl mx-auto',
+          )}
+        >
           <div className="p-1">
             {runnerConfigItems.length > 0 && (
               <Card>
@@ -1164,7 +1398,7 @@ function StepAIEngine({
                 </CardHeader>
                 <CardContent>
                   <DynamicFormComponent
-                    key={selected}
+                    key={selectedRunner ?? 'llm'}
                     itemConfigList={runnerConfigItems}
                     initialValues={runnerConfigValues as Record<string, object>}
                     onSubmit={stableRunnerConfigCb}

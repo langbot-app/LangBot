@@ -1752,11 +1752,47 @@ const jaJP = {
       title: 'AIエンジンを選択',
       description:
         'ボットのインテリジェンスを駆動するAIエンジンを選択してください。',
+      orchestrated: {
+        title: 'オーケストレーション済みAgentアプリを使用',
+        description:
+          'Dify、n8n、Cozeなどのプラットフォームで構築済みのAgentアプリを使用。',
+        action: 'Agentアプリを選択',
+        selectTitle: 'Agentアプリを選択',
+        selectDescription:
+          '使用するAgentアプリプラットフォームを選択してください。',
+      },
+      llm: {
+        title: '大規模モデルを直接使用',
+        description:
+          'モデルプロバイダーを設定し、大規模モデルでボットを直接駆動。',
+        action: '大規模モデルを設定',
+      },
     },
     spaceBanner: {
       message:
         'LangBot Spaceに接続して、無料トライアルモデルクレジットとゼロ設定の即時セットアップを入手！',
       action: 'Spaceで認証',
+    },
+    provider: {
+      title: 'モデルプロバイダーを追加',
+      description:
+        '独自のモデルプロバイダーを追加します。APIキーを設定すると使用可能になります。',
+    },
+    modelSource: {
+      title: 'モデルソースを選択',
+      description: 'AIエンジンにモデル機能を提供する方法を選択してください。',
+      space: {
+        title: 'LangBot サービス',
+        description:
+          '設定不要で利用可能。無料トライアルモデルクレジット付き。APIキー不要ですぐに使えます。',
+        action: 'LangBot サービスを使用',
+      },
+      custom: {
+        title: 'カスタムモデル',
+        description:
+          'お手持ちのモデルAPIキーを使用。OpenAI、Claude、Geminiなど主要モデルに対応。',
+        action: '独自のモデルを追加',
+      },
     },
     config: {
       botInfo: 'ボット情報',

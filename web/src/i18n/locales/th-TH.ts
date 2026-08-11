@@ -1626,11 +1626,46 @@ const thTH = {
     aiEngine: {
       title: 'เลือกเครื่องมือ AI',
       description: 'เลือกเครื่องมือ AI ที่จะขับเคลื่อนความฉลาดของ Bot',
+      orchestrated: {
+        title: 'ใช้แอป Agent ที่จัดเตรียมไว้',
+        description:
+          'ใช้แอป Agent ที่สร้างไว้จาก Dify, n8n, Coze และอื่นๆ',
+        action: 'เลือกแอป Agent',
+        selectTitle: 'เลือกแอป Agent',
+        selectDescription: 'เลือกแพลตฟอร์มแอป Agent ที่ต้องการใช้',
+      },
+      llm: {
+        title: 'ใช้โมเดลโดยตรง',
+        description:
+          'กำหนดค่าผู้ให้บริการโมเดลและใช้โมเดลขับเคลื่อน Bot โดยตรง',
+        action: 'กำหนดค่าโมเดล',
+      },
     },
     spaceBanner: {
       message:
         'เชื่อมต่อกับ LangBot Space เพื่อรับเครดิตทดลองใช้โมเดลฟรีและตั้งค่าทันทีโดยไม่ต้องกำหนดค่า!',
       action: 'ยืนยันสิทธิ์กับ Space',
+    },
+    provider: {
+      title: 'เพิ่มผู้ให้บริการโมเดล',
+      description:
+        'เพิ่มผู้ให้บริการโมเดลของคุณเอง กำหนดค่า API key เพื่อเริ่มต้น',
+    },
+    modelSource: {
+      title: 'เลือกแหล่งโมเดล',
+      description: 'เลือกวิธีการให้ความสามารถของโมเดลสำหรับ AI engine ของคุณ',
+      space: {
+        title: 'บริการ LangBot',
+        description:
+          'พร้อมใช้งานทันทีไม่ต้องตั้งค่า พร้อมเครดิตทดลองใช้โมเดลฟรี ไม่ต้องใช้ API key',
+        action: 'ใช้บริการ LangBot',
+      },
+      custom: {
+        title: 'โมเดลกำหนดเอง',
+        description:
+          'ใช้ API key โมเดลของคุณเอง รองรับ OpenAI, Claude, Gemini และอื่นๆ',
+        action: 'เพิ่มโมเดลของฉัน',
+      },
     },
     config: {
       botInfo: 'ข้อมูล Bot',

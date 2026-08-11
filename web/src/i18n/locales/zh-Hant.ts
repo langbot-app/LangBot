@@ -1578,10 +1578,42 @@ const zhHant = {
     aiEngine: {
       title: '選擇 AI 引擎',
       description: '選擇驅動機器人智慧的 AI 引擎。',
+      orchestrated: {
+        title: '使用編排好的 Agent 應用',
+        description: '使用 Dify、n8n、Coze 等平台編排好的 Agent 應用。',
+        action: '選擇 Agent 應用',
+        selectTitle: '選擇 Agent 應用',
+        selectDescription: '選擇你要使用的 Agent 應用平台。',
+      },
+      llm: {
+        title: '直接使用大模型',
+        description: '配置大模型供應商，直接使用大模型驅動機器人。',
+        action: '配置大模型',
+      },
     },
     spaceBanner: {
       message: '接入 LangBot Space，取得免費試用模型額度，零配置極速開箱！',
       action: '前往授權登入',
+    },
+    provider: {
+      title: '新增模型供應商',
+      description: '新增你自己的模型供應商，配置 API Key 後即可使用。',
+    },
+    modelSource: {
+      title: '選擇模型來源',
+      description: '選擇如何為你的 AI 引擎提供模型能力。',
+      space: {
+        title: 'LangBot 服務',
+        description:
+          '零配置即可使用，提供免費試用模型額度，開箱即用，無需自備 API Key。',
+        action: '使用 LangBot 服務',
+      },
+      custom: {
+        title: '自訂模型',
+        description:
+          '使用你自己的模型 API Key，支援 OpenAI、Claude、Gemini 等主流模型。',
+        action: '新增我自己的模型',
+      },
     },
     config: {
       botInfo: '機器人資訊',

@@ -1652,11 +1652,46 @@ const viVN = {
     aiEngine: {
       title: 'Chọn công cụ AI',
       description: 'Chọn công cụ AI sẽ cung cấp trí tuệ cho Bot của bạn.',
+      orchestrated: {
+        title: 'Sử dụng ứng dụng Agent đã được phối hợp',
+        description:
+          'Sử dụng các ứng dụng Agent đã được xây dựng từ Dify, n8n, Coze.',
+        action: 'Chọn ứng dụng Agent',
+        selectTitle: 'Chọn ứng dụng Agent',
+        selectDescription: 'Chọn nền tảng ứng dụng Agent bạn muốn sử dụng.',
+      },
+      llm: {
+        title: 'Sử dụng mô hình trực tiếp',
+        description:
+          'Cấu hình nhà cung cấp mô hình và sử dụng mô hình lớn để điều khiển Bot.',
+        action: 'Cấu hình mô hình',
+      },
     },
     spaceBanner: {
       message:
         'Kết nối với LangBot Space để nhận tín dụng dùng thử mô hình miễn phí và thiết lập tức thì không cần cấu hình!',
       action: 'Ủy quyền với Space',
+    },
+    provider: {
+      title: 'Thêm nhà cung cấp mô hình',
+      description:
+        'Thêm nhà cung cấp mô hình của bạn. Cấu hình API key để bắt đầu.',
+    },
+    modelSource: {
+      title: 'Chọn nguồn mô hình',
+      description: 'Chọn cách cung cấp khả năng mô hình cho AI engine của bạn.',
+      space: {
+        title: 'Dịch vụ LangBot',
+        description:
+          'Sẵn sàng sử dụng không cần cấu hình, tặng tín dụng mô hình thử nghiệm miễn phí. Không cần API key.',
+        action: 'Sử dụng dịch vụ LangBot',
+      },
+      custom: {
+        title: 'Mô hình tùy chỉnh',
+        description:
+          'Sử dụng API key mô hình của riêng bạn. Hỗ trợ OpenAI, Claude, Gemini và nhiều hơn nữa.',
+        action: 'Thêm mô hình của tôi',
+      },
     },
     config: {
       botInfo: 'Thông tin Bot',
