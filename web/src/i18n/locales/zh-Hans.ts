@@ -1834,6 +1834,9 @@ const zhHans = {
     scanQRCode: '请使用微信扫描以下二维码，授权后将自动登录并填写令牌',
     loginSuccess: '登录成功！令牌已自动填入',
     loginFailed: '登录失败',
+    connecting: '正在连接微信服务...',
+    waitingForScan: '等待扫码中',
+    retry: '重试',
   },
   dingtalk: {
     createApp: '一键创建钉钉应用',

@@ -1708,6 +1708,9 @@ const viVN = {
       'Quét mã QR bên dưới bằng WeChat để ủy quyền và tự động điền token',
     loginSuccess: 'Đăng nhập thành công! Token đã được điền tự động',
     loginFailed: 'Đăng nhập thất bại',
+    connecting: 'Đang kết nối tới dịch vụ WeChat...',
+    waitingForScan: 'Đang chờ quét mã',
+    retry: 'Thử lại',
   },
   dingtalk: {
     createApp: 'Tạo ứng dụng DingTalk chỉ với một lần nhấp',

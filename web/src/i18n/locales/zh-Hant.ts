@@ -1657,6 +1657,9 @@ const zhHant = {
     scanQRCode: '請使用微信掃描以下 QR Code，授權後將自動登入並填寫令牌',
     loginSuccess: '登入成功！令牌已自動填入',
     loginFailed: '登入失敗',
+    connecting: '正在連接微信服務...',
+    waitingForScan: '等待掃碼中',
+    retry: '重試',
   },
   dingtalk: {
     createApp: '一鍵建立釘釘應用',

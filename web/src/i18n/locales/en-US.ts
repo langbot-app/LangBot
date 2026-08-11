@@ -1921,6 +1921,9 @@ const enUS = {
       'Scan the QR code below with WeChat to authorize and automatically fill in the token',
     loginSuccess: 'Login successful! Token has been filled in',
     loginFailed: 'Login failed',
+    connecting: 'Connecting to WeChat service...',
+    waitingForScan: 'Waiting for scan',
+    retry: 'Retry',
   },
   dingtalk: {
     createApp: 'One-Click Create DingTalk App',

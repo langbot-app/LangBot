@@ -1747,6 +1747,9 @@ const esES = {
     loginSuccess:
       '¡Inicio de sesión correcto! El token se ha rellenado automáticamente',
     loginFailed: 'Error al iniciar sesión',
+    connecting: 'Conectando con el servicio de WeChat...',
+    waitingForScan: 'Esperando escaneo',
+    retry: 'Reintentar',
   },
   dingtalk: {
     createApp: 'Crear aplicación de DingTalk con un clic',
