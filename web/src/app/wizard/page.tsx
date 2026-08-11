@@ -109,6 +109,16 @@ export default function WizardPage() {
   const [modelsAdded, setModelsAdded] = useState(false);
   // Sub-layer within Step 2: 0=main, 1=sub-choice, 2=provider, 3=scan, 4=config
   const [step2Layer, setStep2Layer] = useState(0);
+  const [maxReachedLayer, setMaxReachedLayer] = useState(0);
+
+  const goToStep2Layer = useCallback(
+    (layer: number) => {
+      setStep2Layer(layer);
+      setMaxReachedLayer((prev) => Math.max(prev, layer));
+    },
+    [],
+  );
+
   // Saved provider form data for back navigation
   const [savedProviderForm, setSavedProviderForm] = useState<{
     name?: string;
@@ -301,7 +311,7 @@ export default function WizardPage() {
   const handleSelectRunner = useCallback(
     (runner: string) => {
       setSelectedRunner(runner);
-      setStep2Layer(4);
+      goToStep2Layer(4);
       saveProgress({ step: 2, selected_runner: runner });
     },
     [saveProgress],
@@ -310,9 +320,17 @@ export default function WizardPage() {
   const handleAiEngineModeSelect = useCallback(
     (mode: 'orchestrated' | 'llm') => {
       setAiEngineMode(mode);
-      setStep2Layer(1);
+      setSelectedRunner(null);
+      setModelSource(null);
+      setProviderCreated(false);
+      setCreatedProviderUuid(null);
+      setModelsAdded(false);
+      setSavedProviderForm({});
+      setSavedSelectedModels(new Set());
+      setMaxReachedLayer(0);
+      goToStep2Layer(1);
     },
-    [],
+    [goToStep2Layer],
   );
 
   // ---- Navigation helpers ----
@@ -349,12 +367,16 @@ export default function WizardPage() {
   ]);
 
   const goNext = useCallback(() => {
+    if (currentStep === 2 && step2Layer < maxReachedLayer) {
+      setStep2Layer(maxReachedLayer);
+      return;
+    }
     if (currentStep < TOTAL_STEPS - 1 && canProceed()) {
       const nextStep = currentStep + 1;
       setCurrentStep(nextStep);
       saveProgress({ step: nextStep });
     }
-  }, [currentStep, canProceed, saveProgress]);
+  }, [currentStep, step2Layer, maxReachedLayer, canProceed, saveProgress]);
 
   const goPrev = useCallback(() => {
     if (currentStep === 2 && step2Layer > 0) {
@@ -568,11 +590,11 @@ export default function WizardPage() {
       if (source === 'space') {
         handleSpaceAuth();
       } else if (providerCreated && modelsAdded) {
-        setStep2Layer(4);
+        goToStep2Layer(4);
       } else if (providerCreated) {
-        setStep2Layer(3);
+        goToStep2Layer(3);
       } else {
-        setStep2Layer(2);
+        goToStep2Layer(2);
       }
     },
     [handleSpaceAuth, providerCreated, modelsAdded],
@@ -750,12 +772,12 @@ export default function WizardPage() {
             onProviderCreated={(uuid) => {
               setProviderCreated(true);
               setCreatedProviderUuid(uuid ?? null);
-              setStep2Layer(3);
+              goToStep2Layer(3);
             }}
             onModelsAdded={() => {
               setModelsAdded(true);
               setSelectedRunner('local-agent');
-              setStep2Layer(4);
+              goToStep2Layer(4);
               saveProgress({ step: 2, selected_runner: 'local-agent' });
             }}
             onResetModelSource={() => setModelSource(null)}
