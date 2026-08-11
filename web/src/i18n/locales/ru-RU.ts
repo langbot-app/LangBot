@@ -1701,6 +1701,7 @@ const ruRU = {
       manualModelPlaceholder: 'Введите имя модели для ручного добавления',
       addManual: 'Добавить',
       saveAndNext: 'Сохранить и далее',
+      alreadyAdded: 'Добавлено',
     },
     modelSource: {
       title: 'Выберите источник модели',

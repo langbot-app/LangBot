@@ -1612,6 +1612,7 @@ const zhHant = {
       manualModelPlaceholder: '輸入模型名稱手動新增',
       addManual: '新增',
       saveAndNext: '儲存並下一步',
+      alreadyAdded: '已新增',
     },
     modelSource: {
       title: '選擇模型來源',

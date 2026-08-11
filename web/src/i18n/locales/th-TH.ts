@@ -1665,6 +1665,7 @@ const thTH = {
       manualModelPlaceholder: 'กรอกชื่อโมเดลเพื่อเพิ่มด้วยตนเอง',
       addManual: 'เพิ่ม',
       saveAndNext: 'บันทึกและถัดไป',
+      alreadyAdded: 'เพิ่มแล้ว',
     },
     modelSource: {
       title: 'เลือกแหล่งโมเดล',

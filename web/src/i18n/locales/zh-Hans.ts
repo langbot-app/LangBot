@@ -1789,6 +1789,7 @@ const zhHans = {
       manualModelPlaceholder: '输入模型名称手动添加',
       addManual: '添加',
       saveAndNext: '保存并下一步',
+      alreadyAdded: '已添加',
     },
     modelSource: {
       title: '选择模型来源',

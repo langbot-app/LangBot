@@ -1873,6 +1873,7 @@ const enUS = {
       manualModelPlaceholder: 'Enter model name to add manually',
       addManual: 'Add',
       saveAndNext: 'Save & Next',
+      alreadyAdded: 'Added',
     },
     modelSource: {
       title: 'Choose Model Source',

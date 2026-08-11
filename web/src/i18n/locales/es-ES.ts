@@ -1731,6 +1731,7 @@ const esES = {
       manualModelPlaceholder: 'Ingresa el nombre del modelo para agregar manualmente',
       addManual: 'Agregar',
       saveAndNext: 'Guardar y siguiente',
+      alreadyAdded: 'Agregado',
     },
     modelSource: {
       title: 'Elegir fuente del modelo',

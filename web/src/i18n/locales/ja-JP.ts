@@ -1792,6 +1792,7 @@ const jaJP = {
       manualModelPlaceholder: 'モデル名を入力して手動追加',
       addManual: '追加',
       saveAndNext: '保存して次へ',
+      alreadyAdded: '追加済み',
     },
     modelSource: {
       title: 'モデルソースを選択',

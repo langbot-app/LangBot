@@ -1155,6 +1155,9 @@ function WizardModelScan({
   const [searchQuery, setSearchQuery] = useState('');
   const [manualModelName, setManualModelName] = useState('');
   const [manualAdding, setManualAdding] = useState(false);
+  const [addedModelNames, setAddedModelNames] = useState<Set<string>>(
+    new Set(initialSelectedModels),
+  );
 
   // Auto-scan on mount
   useEffect(() => {
@@ -1216,7 +1219,13 @@ function WizardModelScan({
       toast.success(
         t('wizard.provider.modelsAdded', { count: selectedModels.size }),
       );
-      onModelsAdded();
+      setAddedModelNames((prev) => {
+        const next = new Set(prev);
+        for (const name of selectedModels) next.add(name);
+        return next;
+      });
+      setSelectedModels(new Set());
+      onSelectedModelsChange(new Set());
     } catch {
       toast.error(t('wizard.provider.modelsAddError'));
     } finally {
@@ -1238,8 +1247,8 @@ function WizardModelScan({
         extra_args: {},
       } as never);
       toast.success(t('wizard.provider.modelsAdded', { count: 1 }));
+      setAddedModelNames((prev) => new Set(prev).add(name));
       setManualModelName('');
-      onModelsAdded();
     } catch {
       toast.error(t('wizard.provider.modelsAddError'));
     } finally {
@@ -1282,29 +1291,43 @@ function WizardModelScan({
             {scannedModels.length > 0 ? (
               <>
                 <div className="max-h-48 overflow-y-auto space-y-2">
-                  {filteredModels.map((model) => (
-                    <label
-                      key={model.name}
-                      className="flex items-center gap-3 p-3 rounded-lg border cursor-pointer hover:bg-accent transition-colors"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedModels.has(model.name)}
-                        onChange={() => toggleModel(model.name)}
-                        className="w-4 h-4 rounded"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <span className="text-sm font-medium truncate block">
-                          {model.name}
-                        </span>
-                        {model.context_length && (
-                          <span className="text-xs text-muted-foreground">
-                            ctx: {model.context_length.toLocaleString()}
+                  {filteredModels.map((model) => {
+                    const isAdded = addedModelNames.has(model.name);
+                    return (
+                      <label
+                        key={model.name}
+                        className={cn(
+                          'flex items-center gap-3 p-3 rounded-lg border transition-colors',
+                          isAdded
+                            ? 'opacity-50 cursor-not-allowed bg-muted/50'
+                            : 'cursor-pointer hover:bg-accent',
+                        )}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedModels.has(model.name) || isAdded}
+                          disabled={isAdded}
+                          onChange={() => toggleModel(model.name)}
+                          className="w-4 h-4 rounded"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <span className="text-sm font-medium truncate block">
+                            {model.name}
+                          </span>
+                          {model.context_length && (
+                            <span className="text-xs text-muted-foreground">
+                              ctx: {model.context_length.toLocaleString()}
+                            </span>
+                          )}
+                        </div>
+                        {isAdded && (
+                          <span className="text-xs text-green-600 font-medium shrink-0">
+                            {t('wizard.provider.alreadyAdded')}
                           </span>
                         )}
-                      </div>
-                    </label>
-                  ))}
+                      </label>
+                    );
+                  })}
                   {filteredModels.length === 0 && (
                     <p className="text-sm text-muted-foreground text-center py-4">
                       {t('wizard.provider.noMatch')}
@@ -1364,6 +1387,16 @@ function WizardModelScan({
               </Button>
             </div>
           </>
+        )}
+
+        {/* Next button when models have been added */}
+        {addedModelNames.size > 0 && (
+          <div className="flex justify-end pt-2 border-t">
+            <Button onClick={onModelsAdded}>
+              {t('wizard.next')}
+              <ArrowRight className="w-4 h-4 ml-1.5" />
+            </Button>
+          </div>
         )}
       </div>
     </div>

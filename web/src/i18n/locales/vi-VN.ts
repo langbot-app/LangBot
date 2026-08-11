@@ -1691,6 +1691,7 @@ const viVN = {
       manualModelPlaceholder: 'Nhập tên mô hình để thêm thủ công',
       addManual: 'Thêm',
       saveAndNext: 'Lưu & Tiếp theo',
+      alreadyAdded: 'Đã thêm',
     },
     modelSource: {
       title: 'Chọn nguồn mô hình',
