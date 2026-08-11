@@ -1174,8 +1174,8 @@ function WizardModelScan({
         await httpClient.createProviderLLMModel({
           name,
           provider_uuid: providerUuid,
-          abilities: ['llm'],
-          reasoning_config: { enabled: false } as never,
+          abilities: (model as { abilities?: string[] })?.abilities || ['llm'],
+          reasoning_config: { level: 'provider_default' },
           context_length: model?.context_length ?? null,
           extra_args: {},
         } as never);
