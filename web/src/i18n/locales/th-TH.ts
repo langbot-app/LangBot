@@ -1659,6 +1659,12 @@ const thTH = {
       modelsAdded: 'เพิ่ม {{count}} โมเดลแล้ว',
       modelsAddError: 'เพิ่มโมเดลไม่สำเร็จ',
       skipModelAdd: 'ข้าม เพิ่มทีหลัง',
+      searchModels: 'ค้นหาโมเดล...',
+      noMatch: 'ไม่พบโมเดลที่ตรงกัน',
+      orDivider: 'หรือ',
+      manualModelPlaceholder: 'กรอกชื่อโมเดลเพื่อเพิ่มด้วยตนเอง',
+      addManual: 'เพิ่ม',
+      saveAndNext: 'บันทึกและถัดไป',
     },
     modelSource: {
       title: 'เลือกแหล่งโมเดล',

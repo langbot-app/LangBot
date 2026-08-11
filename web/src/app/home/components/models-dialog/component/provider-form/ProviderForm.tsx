@@ -42,6 +42,7 @@ interface ProviderFormProps {
   providerId?: string;
   initialValues?: ProviderFormInitialValues;
   onValuesChange?: (values: ProviderFormInitialValues) => void;
+  submitButtonText?: string;
   onFormSubmit: (providerUuid?: string) => void;
   onFormCancel: () => void;
 }
@@ -50,6 +51,7 @@ export default function ProviderForm({
   providerId,
   initialValues,
   onValuesChange,
+  submitButtonText,
   onFormSubmit,
   onFormCancel,
 }: ProviderFormProps) {
@@ -399,7 +401,7 @@ export default function ProviderForm({
         />
 
         <DialogFooter>
-          <Button type="submit">{t('common.save')}</Button>
+          <Button type="submit">{submitButtonText || t('common.save')}</Button>
           <Button type="button" variant="outline" onClick={onFormCancel}>
             {t('common.cancel')}
           </Button>

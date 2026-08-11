@@ -1783,6 +1783,12 @@ const zhHans = {
       modelsAdded: '已添加 {{count}} 个模型',
       modelsAddError: '添加模型失败',
       skipModelAdd: '跳过，稍后添加',
+      searchModels: '搜索模型...',
+      noMatch: '没有匹配的模型',
+      orDivider: '或',
+      manualModelPlaceholder: '输入模型名称手动添加',
+      addManual: '添加',
+      saveAndNext: '保存并下一步',
     },
     modelSource: {
       title: '选择模型来源',

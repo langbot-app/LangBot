@@ -1606,6 +1606,12 @@ const zhHant = {
       modelsAdded: '已新增 {{count}} 個模型',
       modelsAddError: '新增模型失敗',
       skipModelAdd: '跳過，稍後新增',
+      searchModels: '搜尋模型...',
+      noMatch: '沒有符合的模型',
+      orDivider: '或',
+      manualModelPlaceholder: '輸入模型名稱手動新增',
+      addManual: '新增',
+      saveAndNext: '儲存並下一步',
     },
     modelSource: {
       title: '選擇模型來源',

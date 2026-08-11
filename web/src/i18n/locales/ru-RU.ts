@@ -1695,6 +1695,12 @@ const ruRU = {
       modelsAdded: 'Добавлено {{count}} модель(ей)',
       modelsAddError: 'Ошибка добавления моделей',
       skipModelAdd: 'Пропустить, добавить позже',
+      searchModels: 'Поиск моделей...',
+      noMatch: 'Нет подходящих моделей',
+      orDivider: 'или',
+      manualModelPlaceholder: 'Введите имя модели для ручного добавления',
+      addManual: 'Добавить',
+      saveAndNext: 'Сохранить и далее',
     },
     modelSource: {
       title: 'Выберите источник модели',

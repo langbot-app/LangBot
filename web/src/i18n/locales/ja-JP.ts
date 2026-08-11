@@ -1786,6 +1786,12 @@ const jaJP = {
       modelsAdded: '{{count}}個のモデルを追加しました',
       modelsAddError: 'モデルの追加に失敗しました',
       skipModelAdd: 'スキップ（後で追加）',
+      searchModels: 'モデルを検索...',
+      noMatch: '一致するモデルがありません',
+      orDivider: 'または',
+      manualModelPlaceholder: 'モデル名を入力して手動追加',
+      addManual: '追加',
+      saveAndNext: '保存して次へ',
     },
     modelSource: {
       title: 'モデルソースを選択',

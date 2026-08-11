@@ -1685,6 +1685,12 @@ const viVN = {
       modelsAdded: 'Đã thêm {{count}} mô hình',
       modelsAddError: 'Thêm mô hình thất bại',
       skipModelAdd: 'Bỏ qua, thêm sau',
+      searchModels: 'Tìm kiếm mô hình...',
+      noMatch: 'Không tìm thấy mô hình phù hợp',
+      orDivider: 'hoặc',
+      manualModelPlaceholder: 'Nhập tên mô hình để thêm thủ công',
+      addManual: 'Thêm',
+      saveAndNext: 'Lưu & Tiếp theo',
     },
     modelSource: {
       title: 'Chọn nguồn mô hình',

@@ -1867,6 +1867,12 @@ const enUS = {
       modelsAdded: 'Added {{count}} model(s)',
       modelsAddError: 'Failed to add models',
       skipModelAdd: 'Skip, add later',
+      searchModels: 'Search models...',
+      noMatch: 'No matching models',
+      orDivider: 'or',
+      manualModelPlaceholder: 'Enter model name to add manually',
+      addManual: 'Add',
+      saveAndNext: 'Save & Next',
     },
     modelSource: {
       title: 'Choose Model Source',

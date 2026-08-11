@@ -51,6 +51,7 @@ import { getAdapterDocUrl } from '@/app/infra/entities/adapter-docs';
 import i18n from 'i18next';
 
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   Card,
   CardContent,
@@ -1151,6 +1152,9 @@ function WizardModelScan({
   );
   const [adding, setAdding] = useState(false);
   const [scanDone, setScanDone] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [manualModelName, setManualModelName] = useState('');
+  const [manualAdding, setManualAdding] = useState(false);
 
   // Auto-scan on mount
   useEffect(() => {
@@ -1177,6 +1181,12 @@ function WizardModelScan({
       cancelled = true;
     };
   }, [providerUuid]);
+
+  const filteredModels = searchQuery
+    ? scannedModels.filter((m) =>
+        m.name.toLowerCase().includes(searchQuery.toLowerCase()),
+      )
+    : scannedModels;
 
   const toggleModel = (name: string) => {
     setSelectedModels((prev) => {
@@ -1214,6 +1224,29 @@ function WizardModelScan({
     }
   };
 
+  const handleManualAdd = async () => {
+    const name = manualModelName.trim();
+    if (!providerUuid || !name) return;
+    setManualAdding(true);
+    try {
+      await httpClient.createProviderLLMModel({
+        name,
+        provider_uuid: providerUuid,
+        abilities: ['llm'],
+        reasoning_config: { level: 'provider_default' },
+        context_length: null,
+        extra_args: {},
+      } as never);
+      toast.success(t('wizard.provider.modelsAdded', { count: 1 }));
+      setManualModelName('');
+      onModelsAdded();
+    } catch {
+      toast.error(t('wizard.provider.modelsAddError'));
+    } finally {
+      setManualAdding(false);
+    }
+  };
+
   return (
     <div className="max-w-2xl mx-auto w-full animate-in fade-in slide-in-from-bottom-2 duration-300">
       <div className="text-center mb-6">
@@ -1233,55 +1266,101 @@ function WizardModelScan({
           </div>
         )}
 
-        {!scanning && scanDone && scannedModels.length === 0 && (
-          <div className="text-center py-8 text-muted-foreground">
-            <p>{t('wizard.provider.noModelsFound')}</p>
-          </div>
-        )}
-
-        {!scanning && scannedModels.length > 0 && (
+        {!scanning && scanDone && (
           <>
-            <div className="max-h-60 overflow-y-auto space-y-2">
-              {scannedModels.map((model) => (
-                <label
-                  key={model.name}
-                  className="flex items-center gap-3 p-3 rounded-lg border cursor-pointer hover:bg-accent transition-colors"
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedModels.has(model.name)}
-                    onChange={() => toggleModel(model.name)}
-                    className="w-4 h-4 rounded"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <span className="text-sm font-medium truncate block">
-                      {model.name}
-                    </span>
-                    {model.context_length && (
-                      <span className="text-xs text-muted-foreground">
-                        ctx: {model.context_length.toLocaleString()}
-                      </span>
+            {/* Search input for scanned models */}
+            {scannedModels.length > 0 && (
+              <Input
+                placeholder={t('wizard.provider.searchModels')}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="mb-2"
+              />
+            )}
+
+            {/* Scanned models list */}
+            {scannedModels.length > 0 ? (
+              <>
+                <div className="max-h-48 overflow-y-auto space-y-2">
+                  {filteredModels.map((model) => (
+                    <label
+                      key={model.name}
+                      className="flex items-center gap-3 p-3 rounded-lg border cursor-pointer hover:bg-accent transition-colors"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedModels.has(model.name)}
+                        onChange={() => toggleModel(model.name)}
+                        className="w-4 h-4 rounded"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <span className="text-sm font-medium truncate block">
+                          {model.name}
+                        </span>
+                        {model.context_length && (
+                          <span className="text-xs text-muted-foreground">
+                            ctx: {model.context_length.toLocaleString()}
+                          </span>
+                        )}
+                      </div>
+                    </label>
+                  ))}
+                  {filteredModels.length === 0 && (
+                    <p className="text-sm text-muted-foreground text-center py-4">
+                      {t('wizard.provider.noMatch')}
+                    </p>
+                  )}
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <Button
+                    onClick={handleAddSelected}
+                    disabled={selectedModels.size === 0 || adding}
+                    className="flex-1"
+                  >
+                    {adding && (
+                      <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
                     )}
-                  </div>
-                </label>
-              ))}
+                    {t('wizard.provider.addSelected', {
+                      count: selectedModels.size,
+                    })}
+                  </Button>
+                  <Button variant="outline" onClick={onModelsAdded}>
+                    {t('wizard.provider.skipModelAdd')}
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <div className="text-center py-4 text-muted-foreground">
+                <p>{t('wizard.provider.noModelsFound')}</p>
+              </div>
+            )}
+
+            {/* Divider */}
+            <div className="flex items-center gap-3 py-2">
+              <div className="flex-1 h-px bg-border" />
+              <span className="text-xs text-muted-foreground">
+                {t('wizard.provider.orDivider')}
+              </span>
+              <div className="flex-1 h-px bg-border" />
             </div>
 
-            <div className="flex gap-3 pt-2">
+            {/* Manual add */}
+            <div className="flex gap-2">
+              <Input
+                placeholder={t('wizard.provider.manualModelPlaceholder')}
+                value={manualModelName}
+                onChange={(e) => setManualModelName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleManualAdd()}
+              />
               <Button
-                onClick={handleAddSelected}
-                disabled={selectedModels.size === 0 || adding}
-                className="flex-1"
+                onClick={handleManualAdd}
+                disabled={!manualModelName.trim() || manualAdding}
               >
-                {adding && (
+                {manualAdding && (
                   <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
                 )}
-                {t('wizard.provider.addSelected', {
-                  count: selectedModels.size,
-                })}
-              </Button>
-              <Button variant="outline" onClick={onModelsAdded}>
-                {t('wizard.provider.skipModelAdd')}
+                {t('wizard.provider.addManual')}
               </Button>
             </div>
           </>
@@ -1540,23 +1619,16 @@ function StepAIEngine({
             {t('wizard.provider.description')}
           </p>
         </div>
-        <div className="border rounded-lg p-6 bg-card space-y-4">
+        <div className="border rounded-lg p-6 bg-card">
           <ProviderForm
             initialValues={savedProviderForm}
             onValuesChange={onSavedProviderFormChange}
+            submitButtonText={t('wizard.provider.saveAndNext')}
             onFormSubmit={(uuid) => {
               onProviderCreated(uuid);
             }}
             onFormCancel={onResetModelSource}
           />
-          {providerCreated && (
-            <div className="flex justify-end pt-2 border-t">
-              <Button onClick={onGoToNextLayer}>
-                {t('wizard.next')}
-                <ArrowRight className="w-4 h-4 ml-1.5" />
-              </Button>
-            </div>
-          )}
         </div>
       </div>
     );

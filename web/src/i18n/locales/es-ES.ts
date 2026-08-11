@@ -1725,6 +1725,12 @@ const esES = {
       modelsAdded: '{{count}} modelo(s) agregado(s)',
       modelsAddError: 'Error al agregar modelos',
       skipModelAdd: 'Omitir, agregar después',
+      searchModels: 'Buscar modelos...',
+      noMatch: 'No hay modelos coincidentes',
+      orDivider: 'o',
+      manualModelPlaceholder: 'Ingresa el nombre del modelo para agregar manualmente',
+      addManual: 'Agregar',
+      saveAndNext: 'Guardar y siguiente',
     },
     modelSource: {
       title: 'Elegir fuente del modelo',
