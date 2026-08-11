@@ -1201,11 +1201,24 @@ function WizardModelScan({
     });
   };
 
+  const getExistingModelNames = async (): Promise<Set<string>> => {
+    if (!providerUuid) return new Set();
+    try {
+      const resp = await httpClient.getProviderLLMModels(providerUuid);
+      return new Set((resp.models ?? []).map((m: { name: string }) => m.name));
+    } catch {
+      return new Set();
+    }
+  };
+
   const handleAddSelected = async () => {
     if (!providerUuid || selectedModels.size === 0) return;
     setAdding(true);
     try {
+      const existing = await getExistingModelNames();
+      let added = 0;
       for (const name of selectedModels) {
+        if (existing.has(name)) continue;
         const model = scannedModels.find((m) => m.name === name);
         await httpClient.createProviderLLMModel({
           name,
@@ -1215,10 +1228,12 @@ function WizardModelScan({
           context_length: model?.context_length ?? null,
           extra_args: {},
         } as never);
+        existing.add(name);
+        added++;
       }
-      toast.success(
-        t('wizard.provider.modelsAdded', { count: selectedModels.size }),
-      );
+      if (added > 0) {
+        toast.success(t('wizard.provider.modelsAdded', { count: added }));
+      }
       setAddedModelNames((prev) => {
         const next = new Set(prev);
         for (const name of selectedModels) next.add(name);
@@ -1238,6 +1253,12 @@ function WizardModelScan({
     if (!providerUuid || !name) return;
     setManualAdding(true);
     try {
+      const existing = await getExistingModelNames();
+      if (existing.has(name)) {
+        toast.error(t('wizard.provider.modelAlreadyExists', { name }));
+        setManualAdding(false);
+        return;
+      }
       await httpClient.createProviderLLMModel({
         name,
         provider_uuid: providerUuid,

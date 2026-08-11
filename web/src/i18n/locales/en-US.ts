@@ -1874,6 +1874,7 @@ const enUS = {
       addManual: 'Add',
       saveAndNext: 'Save & Next',
       alreadyAdded: 'Added',
+      modelAlreadyExists: 'Model "{{name}}" already exists',
     },
     modelSource: {
       title: 'Choose Model Source',

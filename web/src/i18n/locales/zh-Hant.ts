@@ -1613,6 +1613,7 @@ const zhHant = {
       addManual: '新增',
       saveAndNext: '儲存並下一步',
       alreadyAdded: '已新增',
+      modelAlreadyExists: '模型「{{name}}」已存在',
     },
     modelSource: {
       title: '選擇模型來源',

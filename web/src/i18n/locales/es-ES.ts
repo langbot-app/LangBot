@@ -1732,6 +1732,7 @@ const esES = {
       addManual: 'Agregar',
       saveAndNext: 'Guardar y siguiente',
       alreadyAdded: 'Agregado',
+      modelAlreadyExists: 'El modelo "{{name}}" ya existe',
     },
     modelSource: {
       title: 'Elegir fuente del modelo',

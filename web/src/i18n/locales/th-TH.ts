@@ -1666,6 +1666,7 @@ const thTH = {
       addManual: 'เพิ่ม',
       saveAndNext: 'บันทึกและถัดไป',
       alreadyAdded: 'เพิ่มแล้ว',
+      modelAlreadyExists: 'โมเดล "{{name}}" มีอยู่แล้ว',
     },
     modelSource: {
       title: 'เลือกแหล่งโมเดล',

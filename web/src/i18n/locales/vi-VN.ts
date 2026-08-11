@@ -1692,6 +1692,7 @@ const viVN = {
       addManual: 'Thêm',
       saveAndNext: 'Lưu & Tiếp theo',
       alreadyAdded: 'Đã thêm',
+      modelAlreadyExists: 'Mô hình "{{name}}" đã tồn tại',
     },
     modelSource: {
       title: 'Chọn nguồn mô hình',

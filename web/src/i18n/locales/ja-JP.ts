@@ -1793,6 +1793,7 @@ const jaJP = {
       addManual: '追加',
       saveAndNext: '保存して次へ',
       alreadyAdded: '追加済み',
+      modelAlreadyExists: 'モデル「{{name}}」は既に存在します',
     },
     modelSource: {
       title: 'モデルソースを選択',

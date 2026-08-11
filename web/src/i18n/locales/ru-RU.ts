@@ -1702,6 +1702,7 @@ const ruRU = {
       addManual: 'Добавить',
       saveAndNext: 'Сохранить и далее',
       alreadyAdded: 'Добавлено',
+      modelAlreadyExists: 'Модель "{{name}}" уже существует',
     },
     modelSource: {
       title: 'Выберите источник модели',

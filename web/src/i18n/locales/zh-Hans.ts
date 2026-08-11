@@ -1790,6 +1790,7 @@ const zhHans = {
       addManual: '添加',
       saveAndNext: '保存并下一步',
       alreadyAdded: '已添加',
+      modelAlreadyExists: '模型 "{{name}}" 已存在',
     },
     modelSource: {
       title: '选择模型来源',
