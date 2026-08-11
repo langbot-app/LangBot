@@ -109,6 +109,17 @@ export default function WizardPage() {
   const [modelsAdded, setModelsAdded] = useState(false);
   // Sub-layer within Step 2: 0=main, 1=sub-choice, 2=provider, 3=scan, 4=config
   const [step2Layer, setStep2Layer] = useState(0);
+  // Saved provider form data for back navigation
+  const [savedProviderForm, setSavedProviderForm] = useState<{
+    name?: string;
+    requester?: string;
+    base_url?: string;
+    api_key?: string;
+  }>({});
+  // Saved selected scanned models for back navigation
+  const [savedSelectedModels, setSavedSelectedModels] = useState<Set<string>>(
+    new Set(),
+  );
   const [createdBotUuid, setCreatedBotUuid] = useState<string | null>(null);
   const [webhookUrl, setWebhookUrl] = useState<string>('');
   const [extraWebhookUrl, setExtraWebhookUrl] = useState<string>('');
@@ -334,7 +345,7 @@ export default function WizardPage() {
     aiEngineMode,
     selectedRunner,
     modelSource,
-    providerCreated,
+    modelsAdded,
   ]);
 
   const goNext = useCallback(() => {
@@ -748,6 +759,10 @@ export default function WizardPage() {
               saveProgress({ step: 2, selected_runner: 'local-agent' });
             }}
             onResetModelSource={() => setModelSource(null)}
+            savedProviderForm={savedProviderForm}
+            onSavedProviderFormChange={setSavedProviderForm}
+            savedSelectedModels={savedSelectedModels}
+            onSavedSelectedModelsChange={setSavedSelectedModels}
             runnerConfigItems={selectedRunnerConfigItems}
             runnerConfigValues={runnerConfig}
             onRunnerConfigChange={setRunnerConfig}
@@ -1088,9 +1103,13 @@ function StepBotConfig({
 
 function WizardModelScan({
   providerUuid,
+  initialSelectedModels,
+  onSelectedModelsChange,
   onModelsAdded,
 }: {
   providerUuid: string | null;
+  initialSelectedModels: Set<string>;
+  onSelectedModelsChange: (v: Set<string>) => void;
   onModelsAdded: () => void;
 }) {
   const { t } = useTranslation();
@@ -1098,7 +1117,9 @@ function WizardModelScan({
   const [scannedModels, setScannedModels] = useState<
     { name: string; context_length?: number | null }[]
   >([]);
-  const [selectedModels, setSelectedModels] = useState<Set<string>>(new Set());
+  const [selectedModels, setSelectedModels] = useState<Set<string>>(
+    initialSelectedModels,
+  );
   const [adding, setAdding] = useState(false);
   const [scanDone, setScanDone] = useState(false);
 
@@ -1133,6 +1154,7 @@ function WizardModelScan({
       const next = new Set(prev);
       if (next.has(name)) next.delete(name);
       else next.add(name);
+      onSelectedModelsChange(next);
       return next;
     });
   };
@@ -1261,6 +1283,10 @@ function StepAIEngine({
   onProviderCreated,
   onModelsAdded,
   onResetModelSource,
+  savedProviderForm,
+  onSavedProviderFormChange,
+  savedSelectedModels,
+  onSavedSelectedModelsChange,
   runnerConfigItems,
   runnerConfigValues,
   onRunnerConfigChange,
@@ -1281,6 +1307,10 @@ function StepAIEngine({
   onProviderCreated: (uuid?: string) => void;
   onModelsAdded: () => void;
   onResetModelSource: () => void;
+  savedProviderForm: { name?: string; requester?: string; base_url?: string; api_key?: string };
+  onSavedProviderFormChange: (v: { name?: string; requester?: string; base_url?: string; api_key?: string }) => void;
+  savedSelectedModels: Set<string>;
+  onSavedSelectedModelsChange: (v: Set<string>) => void;
   runnerConfigItems: IDynamicFormItemSchema[];
   runnerConfigValues: Record<string, unknown>;
   onRunnerConfigChange: (v: Record<string, unknown>) => void;
@@ -1481,7 +1511,11 @@ function StepAIEngine({
         </div>
         <div className="border rounded-lg p-6 bg-card">
           <ProviderForm
-            onFormSubmit={onProviderCreated}
+            initialValues={savedProviderForm}
+            onValuesChange={onSavedProviderFormChange}
+            onFormSubmit={(uuid) => {
+              onProviderCreated(uuid);
+            }}
             onFormCancel={onResetModelSource}
           />
         </div>
@@ -1494,6 +1528,8 @@ function StepAIEngine({
     return (
       <WizardModelScan
         providerUuid={createdProviderUuid}
+        initialSelectedModels={savedSelectedModels}
+        onSelectedModelsChange={onSavedSelectedModelsChange}
         onModelsAdded={onModelsAdded}
       />
     );

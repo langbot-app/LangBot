@@ -31,14 +31,25 @@ const getFormSchema = (t: (key: string) => string) =>
     api_key: z.string().optional(),
   });
 
+export interface ProviderFormInitialValues {
+  name?: string;
+  requester?: string;
+  base_url?: string;
+  api_key?: string;
+}
+
 interface ProviderFormProps {
   providerId?: string;
+  initialValues?: ProviderFormInitialValues;
+  onValuesChange?: (values: ProviderFormInitialValues) => void;
   onFormSubmit: (providerUuid?: string) => void;
   onFormCancel: () => void;
 }
 
 export default function ProviderForm({
   providerId,
+  initialValues,
+  onValuesChange,
   onFormSubmit,
   onFormCancel,
 }: ProviderFormProps) {
@@ -48,13 +59,22 @@ export default function ProviderForm({
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      name: '',
-      requester: '',
-      base_url: '',
-      api_key: '',
+      name: initialValues?.name ?? '',
+      requester: initialValues?.requester ?? '',
+      base_url: initialValues?.base_url ?? '',
+      api_key: initialValues?.api_key ?? '',
     },
   });
-  const { setValue } = form;
+  const { setValue, watch } = form;
+
+  // Report form values changes to parent
+  useEffect(() => {
+    if (!onValuesChange) return;
+    const subscription = watch((values) => {
+      onValuesChange(values as ProviderFormInitialValues);
+    });
+    return () => subscription.unsubscribe();
+  }, [watch, onValuesChange]);
 
   const [requesterList, setRequesterList] = useState<
     {
