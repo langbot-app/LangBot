@@ -314,7 +314,7 @@ export default function WizardPage() {
         if (aiEngineMode === 'llm') {
           return (
             modelSource === 'space' ||
-            (modelSource === 'custom' && providerCreated)
+            (modelSource === 'custom' && providerCreated && selectedRunner !== null)
           );
         }
         return false;
@@ -741,7 +741,10 @@ export default function WizardPage() {
             modelSource={modelSource}
             onModelSourceSelect={handleModelSourceSelect}
             providerCreated={providerCreated}
-            onProviderCreated={() => setProviderCreated(true)}
+            onProviderCreated={() => {
+              setProviderCreated(true);
+              handleSelectRunner('local-agent');
+            }}
             onResetModelSource={() => setModelSource(null)}
             runnerConfigItems={selectedRunnerConfigItems}
             runnerConfigValues={runnerConfig}
