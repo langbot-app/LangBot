@@ -1777,6 +1777,15 @@ const jaJP = {
       title: 'モデルプロバイダーを追加',
       description:
         '独自のモデルプロバイダーを追加します。APIキーを設定すると使用可能になります。',
+      scanTitle: '利用可能なモデルをスキャン',
+      scanDescription: 'プロバイダーから利用可能なLLMモデルをスキャン中です。',
+      scanning: 'モデルをスキャン中...',
+      noModelsFound:
+        'モデルが見つかりません。プロバイダー設定を確認してください。',
+      addSelected: '選択した{{count}}個のモデルを追加',
+      modelsAdded: '{{count}}個のモデルを追加しました',
+      modelsAddError: 'モデルの追加に失敗しました',
+      skipModelAdd: 'スキップ（後で追加）',
     },
     modelSource: {
       title: 'モデルソースを選択',

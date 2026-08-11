@@ -1598,6 +1598,14 @@ const zhHant = {
     provider: {
       title: '新增模型供應商',
       description: '新增你自己的模型供應商，配置 API Key 後即可使用。',
+      scanTitle: '掃描可用模型',
+      scanDescription: '正在從你的供應商中掃描可用的 LLM 模型。',
+      scanning: '正在掃描模型...',
+      noModelsFound: '未發現可用模型，請檢查供應商配置。',
+      addSelected: '新增選取的 {{count}} 個模型',
+      modelsAdded: '已新增 {{count}} 個模型',
+      modelsAddError: '新增模型失敗',
+      skipModelAdd: '跳過，稍後新增',
     },
     modelSource: {
       title: '選擇模型來源',

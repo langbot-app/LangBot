@@ -1859,6 +1859,14 @@ const enUS = {
       title: 'Add Model Provider',
       description:
         'Add your own model provider. Configure the API key to get started.',
+      scanTitle: 'Scan Available Models',
+      scanDescription: 'Scanning your provider for available LLM models.',
+      scanning: 'Scanning models...',
+      noModelsFound: 'No models found. Please check your provider config.',
+      addSelected: 'Add {{count}} selected model(s)',
+      modelsAdded: 'Added {{count}} model(s)',
+      modelsAddError: 'Failed to add models',
+      skipModelAdd: 'Skip, add later',
     },
     modelSource: {
       title: 'Choose Model Source',

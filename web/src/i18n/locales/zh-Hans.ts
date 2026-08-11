@@ -1775,6 +1775,14 @@ const zhHans = {
     provider: {
       title: '添加模型供应商',
       description: '添加你自己的模型供应商，配置 API Key 后即可使用。',
+      scanTitle: '扫描可用模型',
+      scanDescription: '正在从你的供应商中扫描可用的 LLM 模型。',
+      scanning: '正在扫描模型...',
+      noModelsFound: '未发现可用模型，请检查供应商配置。',
+      addSelected: '添加选中的 {{count}} 个模型',
+      modelsAdded: '已添加 {{count}} 个模型',
+      modelsAddError: '添加模型失败',
+      skipModelAdd: '跳过，稍后添加',
     },
     modelSource: {
       title: '选择模型来源',

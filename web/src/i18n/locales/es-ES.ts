@@ -1716,6 +1716,15 @@ const esES = {
       title: 'Agregar proveedor de modelos',
       description:
         'Agrega tu propio proveedor de modelos. Configura la API key para comenzar.',
+      scanTitle: 'Escanear modelos disponibles',
+      scanDescription: 'Escaneando modelos LLM de tu proveedor.',
+      scanning: 'Escaneando modelos...',
+      noModelsFound:
+        'No se encontraron modelos. Verifica la configuración del proveedor.',
+      addSelected: 'Agregar {{count}} modelo(s) seleccionado(s)',
+      modelsAdded: '{{count}} modelo(s) agregado(s)',
+      modelsAddError: 'Error al agregar modelos',
+      skipModelAdd: 'Omitir, agregar después',
     },
     modelSource: {
       title: 'Elegir fuente del modelo',

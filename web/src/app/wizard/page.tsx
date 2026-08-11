@@ -103,6 +103,10 @@ export default function WizardPage() {
     null,
   );
   const [providerCreated, setProviderCreated] = useState(false);
+  const [createdProviderUuid, setCreatedProviderUuid] = useState<string | null>(
+    null,
+  );
+  const [modelsAdded, setModelsAdded] = useState(false);
   const [createdBotUuid, setCreatedBotUuid] = useState<string | null>(null);
   const [webhookUrl, setWebhookUrl] = useState<string>('');
   const [extraWebhookUrl, setExtraWebhookUrl] = useState<string>('');
@@ -314,7 +318,7 @@ export default function WizardPage() {
         if (aiEngineMode === 'llm') {
           return (
             modelSource === 'space' ||
-            (modelSource === 'custom' && providerCreated && selectedRunner !== null)
+            (modelSource === 'custom' && modelsAdded)
           );
         }
         return false;
@@ -343,10 +347,28 @@ export default function WizardPage() {
   const goPrev = useCallback(() => {
     if (currentStep === 2) {
       // Intra-step back navigation for AI Engine step
-      if (selectedRunner && aiEngineMode === 'orchestrated') {
+      if (aiEngineMode === 'orchestrated' && selectedRunner) {
         setSelectedRunner(null);
         return;
       }
+      // LLM + custom: config form → model scan
+      if (aiEngineMode === 'llm' && modelSource === 'custom' && modelsAdded) {
+        setModelsAdded(false);
+        setSelectedRunner(null);
+        return;
+      }
+      // LLM + custom: model scan → provider form
+      if (
+        aiEngineMode === 'llm' &&
+        modelSource === 'custom' &&
+        providerCreated &&
+        !modelsAdded
+      ) {
+        setProviderCreated(false);
+        setCreatedProviderUuid(null);
+        return;
+      }
+      // LLM + custom: provider form → model source
       if (
         aiEngineMode === 'llm' &&
         modelSource === 'custom' &&
@@ -355,10 +377,12 @@ export default function WizardPage() {
         setModelSource(null);
         return;
       }
+      // LLM: model source → main choice
       if (modelSource) {
         setModelSource(null);
         return;
       }
+      // Main choice → previous step
       if (aiEngineMode) {
         setAiEngineMode(null);
         return;
@@ -369,7 +393,7 @@ export default function WizardPage() {
       setCurrentStep(prevStep);
       saveProgress({ step: prevStep });
     }
-  }, [currentStep, saveProgress, aiEngineMode, selectedRunner, modelSource, providerCreated]);
+  }, [currentStep, saveProgress, aiEngineMode, selectedRunner, modelSource, providerCreated, modelsAdded]);
 
   // ---- Create Bot (Step 0) ----
   // Creates a disabled bot using the adapter label as name.
@@ -741,8 +765,14 @@ export default function WizardPage() {
             modelSource={modelSource}
             onModelSourceSelect={handleModelSourceSelect}
             providerCreated={providerCreated}
-            onProviderCreated={() => {
+            createdProviderUuid={createdProviderUuid}
+            modelsAdded={modelsAdded}
+            onProviderCreated={(uuid) => {
               setProviderCreated(true);
+              setCreatedProviderUuid(uuid ?? null);
+            }}
+            onModelsAdded={() => {
+              setModelsAdded(true);
               handleSelectRunner('local-agent');
             }}
             onResetModelSource={() => setModelSource(null)}
@@ -1081,6 +1111,164 @@ function StepBotConfig({
 }
 
 // ---------------------------------------------------------------------------
+// Model scan sub-component (used within Step 2)
+// ---------------------------------------------------------------------------
+
+function WizardModelScan({
+  providerUuid,
+  onModelsAdded,
+}: {
+  providerUuid: string | null;
+  onModelsAdded: () => void;
+}) {
+  const { t } = useTranslation();
+  const [scanning, setScanning] = useState(false);
+  const [scannedModels, setScannedModels] = useState<
+    { name: string; context_length?: number | null }[]
+  >([]);
+  const [selectedModels, setSelectedModels] = useState<Set<string>>(new Set());
+  const [adding, setAdding] = useState(false);
+  const [scanDone, setScanDone] = useState(false);
+
+  // Auto-scan on mount
+  useEffect(() => {
+    if (!providerUuid) return;
+    let cancelled = false;
+    (async () => {
+      setScanning(true);
+      try {
+        const resp = await httpClient.scanProviderModels(
+          providerUuid,
+          'llm',
+        );
+        if (!cancelled) {
+          setScannedModels(resp.models ?? []);
+          setScanDone(true);
+        }
+      } catch {
+        if (!cancelled) setScanDone(true);
+      } finally {
+        if (!cancelled) setScanning(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [providerUuid]);
+
+  const toggleModel = (name: string) => {
+    setSelectedModels((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  };
+
+  const handleAddSelected = async () => {
+    if (!providerUuid || selectedModels.size === 0) return;
+    setAdding(true);
+    try {
+      for (const name of selectedModels) {
+        const model = scannedModels.find((m) => m.name === name);
+        await httpClient.createProviderLLMModel({
+          name,
+          provider_uuid: providerUuid,
+          abilities: ['llm'],
+          reasoning_config: { enabled: false } as never,
+          context_length: model?.context_length ?? null,
+          extra_args: {},
+        } as never);
+      }
+      toast.success(
+        t('wizard.provider.modelsAdded', { count: selectedModels.size }),
+      );
+      onModelsAdded();
+    } catch {
+      toast.error(t('wizard.provider.modelsAddError'));
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto w-full animate-in fade-in slide-in-from-bottom-2 duration-300">
+      <div className="text-center mb-6">
+        <h2 className="text-xl font-semibold">
+          {t('wizard.provider.scanTitle')}
+        </h2>
+        <p className="text-sm text-muted-foreground mt-1">
+          {t('wizard.provider.scanDescription')}
+        </p>
+      </div>
+
+      <div className="border rounded-lg p-6 bg-card space-y-4">
+        {scanning && (
+          <div className="flex items-center justify-center gap-2 py-8 text-muted-foreground">
+            <Loader2 className="w-5 h-5 animate-spin" />
+            <span>{t('wizard.provider.scanning')}</span>
+          </div>
+        )}
+
+        {!scanning && scanDone && scannedModels.length === 0 && (
+          <div className="text-center py-8 text-muted-foreground">
+            <p>{t('wizard.provider.noModelsFound')}</p>
+          </div>
+        )}
+
+        {!scanning && scannedModels.length > 0 && (
+          <>
+            <div className="max-h-60 overflow-y-auto space-y-2">
+              {scannedModels.map((model) => (
+                <label
+                  key={model.name}
+                  className="flex items-center gap-3 p-3 rounded-lg border cursor-pointer hover:bg-accent transition-colors"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedModels.has(model.name)}
+                    onChange={() => toggleModel(model.name)}
+                    className="w-4 h-4 rounded"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <span className="text-sm font-medium truncate block">
+                      {model.name}
+                    </span>
+                    {model.context_length && (
+                      <span className="text-xs text-muted-foreground">
+                        ctx: {model.context_length.toLocaleString()}
+                      </span>
+                    )}
+                  </div>
+                </label>
+              ))}
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <Button
+                onClick={handleAddSelected}
+                disabled={selectedModels.size === 0 || adding}
+                className="flex-1"
+              >
+                {adding && (
+                  <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+                )}
+                {t('wizard.provider.addSelected', {
+                  count: selectedModels.size,
+                })}
+              </Button>
+              <Button variant="outline" onClick={onModelsAdded}>
+                {t('wizard.provider.skipModelAdd')}
+              </Button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Step 2: Select & Configure AI Engine
 // ---------------------------------------------------------------------------
 
@@ -1095,7 +1283,10 @@ function StepAIEngine({
   modelSource,
   onModelSourceSelect,
   providerCreated,
+  createdProviderUuid,
+  modelsAdded,
   onProviderCreated,
+  onModelsAdded,
   onResetModelSource,
   runnerConfigItems,
   runnerConfigValues,
@@ -1111,7 +1302,10 @@ function StepAIEngine({
   modelSource: 'space' | 'custom' | null;
   onModelSourceSelect: (source: 'space' | 'custom') => void;
   providerCreated: boolean;
-  onProviderCreated: () => void;
+  createdProviderUuid: string | null;
+  modelsAdded: boolean;
+  onProviderCreated: (uuid?: string) => void;
+  onModelsAdded: () => void;
   onResetModelSource: () => void;
   runnerConfigItems: IDynamicFormItemSchema[];
   runnerConfigValues: Record<string, unknown>;
@@ -1322,6 +1516,21 @@ function StepAIEngine({
           />
         </div>
       </div>
+    );
+  }
+
+  // ---- Layer 2.5: Model scan & add after provider creation ----
+  if (
+    aiEngineMode === 'llm' &&
+    modelSource === 'custom' &&
+    providerCreated &&
+    !modelsAdded
+  ) {
+    return (
+      <WizardModelScan
+        providerUuid={createdProviderUuid}
+        onModelsAdded={onModelsAdded}
+      />
     );
   }
 

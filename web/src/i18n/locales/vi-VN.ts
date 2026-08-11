@@ -1676,6 +1676,15 @@ const viVN = {
       title: 'Thêm nhà cung cấp mô hình',
       description:
         'Thêm nhà cung cấp mô hình của bạn. Cấu hình API key để bắt đầu.',
+      scanTitle: 'Quét mô hình khả dụng',
+      scanDescription: 'Đang quét mô hình LLM từ nhà cung cấp của bạn.',
+      scanning: 'Đang quét mô hình...',
+      noModelsFound:
+        'Không tìm thấy mô hình. Vui lòng kiểm tra cấu hình nhà cung cấp.',
+      addSelected: 'Thêm {{count}} mô hình đã chọn',
+      modelsAdded: 'Đã thêm {{count}} mô hình',
+      modelsAddError: 'Thêm mô hình thất bại',
+      skipModelAdd: 'Bỏ qua, thêm sau',
     },
     modelSource: {
       title: 'Chọn nguồn mô hình',

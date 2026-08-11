@@ -33,7 +33,7 @@ const getFormSchema = (t: (key: string) => string) =>
 
 interface ProviderFormProps {
   providerId?: string;
-  onFormSubmit: () => void;
+  onFormSubmit: (providerUuid?: string) => void;
   onFormCancel: () => void;
 }
 
@@ -174,11 +174,12 @@ export default function ProviderForm({
       if (providerId) {
         await httpClient.updateModelProvider(providerId, data);
         toast.success(t('models.providerSaved'));
+        onFormSubmit();
       } else {
-        await httpClient.createModelProvider(data);
+        const resp = await httpClient.createModelProvider(data);
         toast.success(t('models.providerCreated'));
+        onFormSubmit(resp.uuid);
       }
-      onFormSubmit();
     } catch (err) {
       toast.error(t('models.providerSaveError') + (err as CustomApiError).msg);
     }

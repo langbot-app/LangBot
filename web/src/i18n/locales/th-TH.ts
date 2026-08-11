@@ -1650,6 +1650,15 @@ const thTH = {
       title: 'เพิ่มผู้ให้บริการโมเดล',
       description:
         'เพิ่มผู้ให้บริการโมเดลของคุณเอง กำหนดค่า API key เพื่อเริ่มต้น',
+      scanTitle: 'สแกนโมเดลที่ใช้ได้',
+      scanDescription: 'กำลังสแกนโมเดล LLM จากผู้ให้บริการของคุณ',
+      scanning: 'กำลังสแกนโมเดล...',
+      noModelsFound:
+        'ไม่พบโมเดล กรุณาตรวจสอบการตั้งค่าผู้ให้บริการ',
+      addSelected: 'เพิ่ม {{count}} โมเดลที่เลือก',
+      modelsAdded: 'เพิ่ม {{count}} โมเดลแล้ว',
+      modelsAddError: 'เพิ่มโมเดลไม่สำเร็จ',
+      skipModelAdd: 'ข้าม เพิ่มทีหลัง',
     },
     modelSource: {
       title: 'เลือกแหล่งโมเดล',
