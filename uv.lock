@@ -2136,7 +2136,7 @@ requires-dist = [
     { name = "mako", specifier = ">=1.3.12" },
     { name = "markdown", specifier = ">=3.6" },
     { name = "matrix-nio", specifier = ">=0.25.2" },
-    { name = "mcp", specifier = ">=1.25.0" },
+    { name = "mcp", specifier = ">=1.25.0,<2.0.0" },
     { name = "mypy", specifier = ">=1.16.0" },
     { name = "nakuru-project-idk", specifier = ">=0.0.2.1" },
     { name = "ollama", specifier = ">=0.4.8" },
