@@ -107,6 +107,8 @@ export default function WizardPage() {
     null,
   );
   const [modelsAdded, setModelsAdded] = useState(false);
+  // Sub-layer within Step 2: 0=main, 1=sub-choice, 2=provider, 3=scan, 4=config
+  const [step2Layer, setStep2Layer] = useState(0);
   const [createdBotUuid, setCreatedBotUuid] = useState<string | null>(null);
   const [webhookUrl, setWebhookUrl] = useState<string>('');
   const [extraWebhookUrl, setExtraWebhookUrl] = useState<string>('');
@@ -288,6 +290,7 @@ export default function WizardPage() {
   const handleSelectRunner = useCallback(
     (runner: string) => {
       setSelectedRunner(runner);
+      setStep2Layer(4);
       saveProgress({ step: 2, selected_runner: runner });
     },
     [saveProgress],
@@ -296,9 +299,7 @@ export default function WizardPage() {
   const handleAiEngineModeSelect = useCallback(
     (mode: 'orchestrated' | 'llm') => {
       setAiEngineMode(mode);
-      setSelectedRunner(null);
-      setModelSource(null);
-      setProviderCreated(false);
+      setStep2Layer(1);
     },
     [],
   );
@@ -345,55 +346,16 @@ export default function WizardPage() {
   }, [currentStep, canProceed, saveProgress]);
 
   const goPrev = useCallback(() => {
-    if (currentStep === 2) {
-      // Intra-step back navigation for AI Engine step
-      if (aiEngineMode === 'orchestrated' && selectedRunner) {
-        setSelectedRunner(null);
-        return;
-      }
-      // LLM + custom: config form → model scan
-      if (aiEngineMode === 'llm' && modelSource === 'custom' && modelsAdded) {
-        setModelsAdded(false);
-        setSelectedRunner(null);
-        return;
-      }
-      // LLM + custom: model scan → provider form
-      if (
-        aiEngineMode === 'llm' &&
-        modelSource === 'custom' &&
-        providerCreated &&
-        !modelsAdded
-      ) {
-        setProviderCreated(false);
-        setCreatedProviderUuid(null);
-        return;
-      }
-      // LLM + custom: provider form → model source
-      if (
-        aiEngineMode === 'llm' &&
-        modelSource === 'custom' &&
-        !providerCreated
-      ) {
-        setModelSource(null);
-        return;
-      }
-      // LLM: model source → main choice
-      if (modelSource) {
-        setModelSource(null);
-        return;
-      }
-      // Main choice → previous step
-      if (aiEngineMode) {
-        setAiEngineMode(null);
-        return;
-      }
+    if (currentStep === 2 && step2Layer > 0) {
+      setStep2Layer(step2Layer - 1);
+      return;
     }
     if (currentStep > 0) {
       const prevStep = currentStep - 1;
       setCurrentStep(prevStep);
       saveProgress({ step: prevStep });
     }
-  }, [currentStep, saveProgress, aiEngineMode, selectedRunner, modelSource, providerCreated, modelsAdded]);
+  }, [currentStep, step2Layer, saveProgress]);
 
   // ---- Create Bot (Step 0) ----
   // Creates a disabled bot using the adapter label as name.
@@ -594,9 +556,15 @@ export default function WizardPage() {
       setModelSource(source);
       if (source === 'space') {
         handleSpaceAuth();
+      } else if (providerCreated && modelsAdded) {
+        setStep2Layer(4);
+      } else if (providerCreated) {
+        setStep2Layer(3);
+      } else {
+        setStep2Layer(2);
       }
     },
-    [handleSpaceAuth],
+    [handleSpaceAuth, providerCreated, modelsAdded],
   );
 
   // ---- Check if local account ----
@@ -756,6 +724,7 @@ export default function WizardPage() {
         {currentStep === 2 && (
           <StepAIEngine
             runnerOptions={runnerOptions}
+            step2Layer={step2Layer}
             aiEngineMode={aiEngineMode}
             onAiEngineModeSelect={handleAiEngineModeSelect}
             selectedRunner={selectedRunner}
@@ -770,10 +739,13 @@ export default function WizardPage() {
             onProviderCreated={(uuid) => {
               setProviderCreated(true);
               setCreatedProviderUuid(uuid ?? null);
+              setStep2Layer(3);
             }}
             onModelsAdded={() => {
               setModelsAdded(true);
-              handleSelectRunner('local-agent');
+              setSelectedRunner('local-agent');
+              setStep2Layer(4);
+              saveProgress({ step: 2, selected_runner: 'local-agent' });
             }}
             onResetModelSource={() => setModelSource(null)}
             runnerConfigItems={selectedRunnerConfigItems}
@@ -1274,6 +1246,7 @@ function WizardModelScan({
 
 function StepAIEngine({
   runnerOptions,
+  step2Layer,
   aiEngineMode,
   onAiEngineModeSelect,
   selectedRunner,
@@ -1293,6 +1266,7 @@ function StepAIEngine({
   onRunnerConfigChange,
 }: {
   runnerOptions: { name: string; label: { en_US: string; zh_Hans: string } }[];
+  step2Layer: number;
   aiEngineMode: 'orchestrated' | 'llm' | null;
   onAiEngineModeSelect: (mode: 'orchestrated' | 'llm') => void;
   selectedRunner: string | null;
@@ -1332,7 +1306,7 @@ function StepAIEngine({
   );
 
   // ---- Layer 0: Main choice ----
-  if (!aiEngineMode) {
+  if (step2Layer === 0) {
     return (
       <div className="space-y-6 max-w-3xl mx-auto">
         <div className="text-center">
@@ -1395,7 +1369,7 @@ function StepAIEngine({
   }
 
   // ---- Layer 1a: Orchestrated runners ----
-  if (aiEngineMode === 'orchestrated' && !selectedRunner) {
+  if (step2Layer === 1 && aiEngineMode === 'orchestrated') {
     return (
       <div className="space-y-6 max-w-4xl mx-auto">
         <div className="text-center">
@@ -1431,7 +1405,7 @@ function StepAIEngine({
   }
 
   // ---- Layer 1b: LLM model source selection ----
-  if (aiEngineMode === 'llm' && !modelSource) {
+  if (step2Layer === 1 && aiEngineMode === 'llm') {
     return (
       <div className="space-y-6 max-w-3xl mx-auto">
         <div className="text-center">
@@ -1494,11 +1468,7 @@ function StepAIEngine({
   }
 
   // ---- Layer 2: Custom provider creation form ----
-  if (
-    aiEngineMode === 'llm' &&
-    modelSource === 'custom' &&
-    !providerCreated
-  ) {
+  if (step2Layer === 2) {
     return (
       <div className="max-w-2xl mx-auto w-full animate-in fade-in slide-in-from-bottom-2 duration-300">
         <div className="text-center mb-6">
@@ -1520,12 +1490,7 @@ function StepAIEngine({
   }
 
   // ---- Layer 2.5: Model scan & add after provider creation ----
-  if (
-    aiEngineMode === 'llm' &&
-    modelSource === 'custom' &&
-    providerCreated &&
-    !modelsAdded
-  ) {
+  if (step2Layer === 3) {
     return (
       <WizardModelScan
         providerUuid={createdProviderUuid}
