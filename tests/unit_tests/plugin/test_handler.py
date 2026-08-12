@@ -9,8 +9,8 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, Mock
 import pytest
 
-from langbot_plugin.entities.io.actions.enums import PluginToRuntimeAction
-from langbot_plugin.entities.io.context import ActionContext, InstallationBinding
+from langbot_plugin.entities.io.actions.enums import LangBotToRuntimeAction, PluginToRuntimeAction
+from langbot_plugin.entities.io.context import ActionContext, InstallationBinding, PluginInstallationDesiredState
 
 
 def make_handler(app):
@@ -65,6 +65,20 @@ def make_handler(app):
             side_effect=lambda workspace_uuid, query_id: scoped_query(query_pool.cached_queries.get(query_id))
         )
     return runtime_handler
+
+
+@pytest.mark.asyncio
+async def test_reconcile_plugin_installations_allows_cloud_cold_start_to_finish():
+    app = SimpleNamespace()
+    runtime_handler = make_handler(app)
+    runtime_handler.call_action = AsyncMock(return_value={})
+    binding = next(iter(runtime_handler._installation_bindings.values()))[0]
+    desired = PluginInstallationDesiredState(binding=binding, enabled=True)
+
+    await runtime_handler.reconcile_plugin_installations((desired,))
+
+    assert runtime_handler.call_action.await_args.args[0] == LangBotToRuntimeAction.RECONCILE_PLUGIN_INSTALLATIONS
+    assert runtime_handler.call_action.await_args.kwargs['timeout'] == 300
 
 
 class TestHandlerQueryVariables:

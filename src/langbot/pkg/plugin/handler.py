@@ -1579,7 +1579,7 @@ class RuntimeConnectionHandler(handler.Handler):
             return await self.call_action(
                 LangBotToRuntimeAction.RECONCILE_PLUGIN_INSTALLATIONS,
                 request.model_dump(),
-                timeout=120,
+                timeout=300,
             )
 
     async def apply_plugin_installation(
