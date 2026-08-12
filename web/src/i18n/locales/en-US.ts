@@ -1807,7 +1807,6 @@ const enUS = {
     botCreateSuccess: 'Bot created successfully!',
     botSaveSuccess: 'Bot configuration saved and enabled!',
     createError: 'Failed to create resources',
-    spaceAuthError: 'Failed to initiate Space authorization',
     skipSaveError: 'Failed to save skip status. Please try again.',
     completeSaveError: 'Failed to save completion status. Please try again.',
     step: {
@@ -1835,11 +1834,6 @@ const enUS = {
       title: 'Select an AI Engine',
       description:
         "Choose the AI engine that will power your bot's intelligence.",
-    },
-    spaceBanner: {
-      message:
-        'Connect to LangBot Space for free trial model credits and zero-config instant setup!',
-      action: 'Authorize with Space',
     },
     config: {
       botInfo: 'Bot Information',

@@ -1638,7 +1638,6 @@ const viVN = {
     botCreateSuccess: 'Tạo Bot thành công!',
     botSaveSuccess: 'Cấu hình Bot đã lưu và bật!',
     createError: 'Tạo tài nguyên thất bại',
-    spaceAuthError: 'Khởi tạo ủy quyền Space thất bại',
     skipSaveError: 'Lưu trạng thái bỏ qua thất bại. Vui lòng thử lại.',
     completeSaveError: 'Lưu trạng thái hoàn tất thất bại. Vui lòng thử lại.',
     step: {
@@ -1665,11 +1664,6 @@ const viVN = {
     aiEngine: {
       title: 'Chọn công cụ AI',
       description: 'Chọn công cụ AI sẽ cung cấp trí tuệ cho Bot của bạn.',
-    },
-    spaceBanner: {
-      message:
-        'Kết nối với LangBot Space để nhận tín dụng dùng thử mô hình miễn phí và thiết lập tức thì không cần cấu hình!',
-      action: 'Ủy quyền với Space',
     },
     config: {
       botInfo: 'Thông tin Bot',

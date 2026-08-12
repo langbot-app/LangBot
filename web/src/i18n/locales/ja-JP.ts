@@ -1722,7 +1722,6 @@ const jaJP = {
     botCreateSuccess: 'ボットが正常に作成されました！',
     botSaveSuccess: 'ボット設定が保存され、有効になりました！',
     createError: 'リソースの作成に失敗しました',
-    spaceAuthError: 'Space 認証の開始に失敗しました',
     skipSaveError: 'スキップ状態の保存に失敗しました。もう一度お試しください。',
     completeSaveError: '完了状態の保存に失敗しました。もう一度お試しください。',
     step: {
@@ -1752,11 +1751,6 @@ const jaJP = {
       title: 'AIエンジンを選択',
       description:
         'ボットのインテリジェンスを駆動するAIエンジンを選択してください。',
-    },
-    spaceBanner: {
-      message:
-        'LangBot Spaceに接続して、無料トライアルモデルクレジットとゼロ設定の即時セットアップを入手！',
-      action: 'Spaceで認証',
     },
     config: {
       botInfo: 'ボット情報',

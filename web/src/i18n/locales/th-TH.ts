@@ -1612,7 +1612,6 @@ const thTH = {
     botCreateSuccess: 'สร้าง Bot สำเร็จ!',
     botSaveSuccess: 'บันทึกและเปิดใช้งาน Bot สำเร็จ!',
     createError: 'ไม่สามารถสร้างทรัพยากรได้',
-    spaceAuthError: 'ไม่สามารถเริ่มต้นการยืนยันสิทธิ์ Space ได้',
     skipSaveError: 'ไม่สามารถบันทึกสถานะการข้ามได้ กรุณาลองใหม่',
     completeSaveError: 'ไม่สามารถบันทึกสถานะการเสร็จสิ้นได้ กรุณาลองใหม่',
     step: {
@@ -1639,11 +1638,6 @@ const thTH = {
     aiEngine: {
       title: 'เลือกเครื่องมือ AI',
       description: 'เลือกเครื่องมือ AI ที่จะขับเคลื่อนความฉลาดของ Bot',
-    },
-    spaceBanner: {
-      message:
-        'เชื่อมต่อกับ LangBot Space เพื่อรับเครดิตทดลองใช้โมเดลฟรีและตั้งค่าทันทีโดยไม่ต้องกำหนดค่า!',
-      action: 'ยืนยันสิทธิ์กับ Space',
     },
     config: {
       botInfo: 'ข้อมูล Bot',

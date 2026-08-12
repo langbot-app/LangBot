@@ -1730,7 +1730,6 @@ const zhHans = {
     botCreateSuccess: '机器人创建成功！',
     botSaveSuccess: '机器人配置已保存并启用！',
     createError: '创建资源失败',
-    spaceAuthError: '无法发起 Space 授权',
     skipSaveError: '保存跳过状态失败，请重试。',
     completeSaveError: '保存完成状态失败，请重试。',
     step: {
@@ -1755,10 +1754,6 @@ const zhHans = {
     aiEngine: {
       title: '选择 AI 引擎',
       description: '选择驱动机器人智能的 AI 引擎。',
-    },
-    spaceBanner: {
-      message: '接入 LangBot Space，获取免费试用模型额度，零配置极速开箱！',
-      action: '前往授权登录',
     },
     config: {
       botInfo: '机器人信息',

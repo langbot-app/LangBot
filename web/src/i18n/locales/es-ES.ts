@@ -1672,7 +1672,6 @@ const esES = {
     botCreateSuccess: '¡Bot creado correctamente!',
     botSaveSuccess: '¡Configuración del Bot guardada y activada!',
     createError: 'Error al crear los recursos',
-    spaceAuthError: 'Error al iniciar la autorización de Space',
     skipSaveError:
       'Error al guardar el estado de omisión. Por favor, inténtalo de nuevo.',
     completeSaveError:
@@ -1704,11 +1703,6 @@ const esES = {
       title: 'Selecciona un motor de IA',
       description:
         'Elige el motor de IA que impulsará la inteligencia de tu Bot.',
-    },
-    spaceBanner: {
-      message:
-        '¡Conéctate a LangBot Space para obtener créditos de prueba gratuitos y configuración instantánea sin esfuerzo!',
-      action: 'Autorizar con Space',
     },
     config: {
       botInfo: 'Información del Bot',
