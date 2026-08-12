@@ -264,6 +264,11 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         if not self._control_token and allow_generate:
             self._control_token = secrets.token_urlsafe(48)
         if not self._control_token:
+            if self.runtime_profile == 'shared':
+                raise PluginRuntimeNotConnectedError(
+                    f'{PLUGIN_RUNTIME_CONTROL_TOKEN_ENV} must be configured with a strong shared secret '
+                    'for a Cloud Plugin Runtime'
+                )
             return {}
         try:
             self._control_token = validate_runtime_secret(

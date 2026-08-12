@@ -368,6 +368,10 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
         if not self._control_token and allow_generate:
             self._control_token = secrets.token_urlsafe(48)
         if not self._control_token:
+            if getattr(getattr(self.ap, 'deployment', None), 'mode', 'oss') == 'cloud':
+                raise BoxRuntimeUnavailableError(
+                    f'{BOX_CONTROL_TOKEN_ENV} must be configured with a strong shared secret for a Cloud Box runtime'
+                )
             return ''
         try:
             self._control_token = validate_control_token(self._control_token)

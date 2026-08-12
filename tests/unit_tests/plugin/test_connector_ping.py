@@ -15,7 +15,7 @@ from langbot_plugin.runtime.security import (
 )
 
 
-def make_connector() -> PluginRuntimeConnector:
+def make_connector(*, cloud: bool = False) -> PluginRuntimeConnector:
     app = SimpleNamespace(
         logger=Mock(),
         instance_config=SimpleNamespace(
@@ -34,6 +34,7 @@ def make_connector() -> PluginRuntimeConnector:
                 'space': {'url': ''},
             }
         ),
+        deployment=SimpleNamespace(mode='cloud' if cloud else 'oss'),
     )
     return PluginRuntimeConnector(app, AsyncMock())
 
@@ -330,6 +331,14 @@ def test_external_runtime_control_headers_are_empty_when_secret_is_unset(monkeyp
     connector = make_connector()
 
     assert connector._control_headers(allow_generate=False) == {}
+
+
+def test_cloud_runtime_rejects_missing_control_secret(monkeypatch):
+    monkeypatch.delenv(PLUGIN_RUNTIME_CONTROL_TOKEN_ENV, raising=False)
+    connector = make_connector(cloud=True)
+
+    with pytest.raises(PluginRuntimeNotConnectedError, match=PLUGIN_RUNTIME_CONTROL_TOKEN_ENV):
+        connector._control_headers(allow_generate=False)
 
 
 def test_local_runtime_control_headers_generate_ephemeral_secret(monkeypatch):
