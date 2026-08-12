@@ -249,6 +249,10 @@ class Application:
                     {},
                 )
             ),
+            'plugin_runtime_connected': bool(
+                self.plugin_connector is not None
+                and getattr(self.plugin_connector, '_runtime_available', lambda: False)()
+            ),
         }
         mcp_loader = getattr(self.tool_mgr, 'mcp_tool_loader', None)
         runtime_stats.update(
