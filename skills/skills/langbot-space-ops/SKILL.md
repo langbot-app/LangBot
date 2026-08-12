@@ -6,7 +6,8 @@ description: Browse and search the LangBot Space marketplaces (plugins, MCP serv
 # LangBot Space MCP Operations
 
 LangBot Space (space.langbot.app) exposes an **MCP server** so user-facing AI
-agents can browse and search the marketplaces (plugins, MCP servers, skills).
+agents can browse and search the marketplaces (plugins, MCP servers, skills) and
+rank live models for automated setup.
 
 ## Endpoint
 
@@ -46,10 +47,12 @@ Authorization: Bearer lbpat_...uests without a valid PAT get `401 Unauthorized`.
 | `list_plugins` / `search_plugins` / `get_plugin` | Plugin marketplace |
 | `list_mcp_servers` / `search_mcp_servers` / `get_mcp_server` | MCP-server marketplace |
 | `list_skills` / `search_skills` / `get_skill` | Skill marketplace |
+| `select_models` | Live best-first model list for setup wizards; optional `category` filter |
 
 `list_*` and `search_*` are paged (`page`, `page_size`). `get_*` takes
 `author` + `name`. The tool surface mirrors the REST endpoints under
-`/api/v1/marketplace/*` and is read/browse only.
+`/api/v1/marketplace/*`; `select_models` mirrors `/api/v1/models/selection`.
+All tools are read-only.
 
 ## How to use
 
@@ -58,12 +61,16 @@ Authorization: Bearer lbpat_...uests without a valid PAT get `401 Unauthorized`.
 3. Use `search_plugins` / `search_mcp_servers` / `search_skills` to find items,
    then `get_*` for details (e.g. to obtain author/name for installation in
    LangBot itself).
+4. For automatic local-agent setup, call `select_models` (optionally with
+   `category`) and choose the first compatible item. Ordering is latest probe
+   state (available, unprobed, unavailable), then Space recommendation. Each
+   item includes `availability.up`, `last_probed_at`, latency, and HTTP status.
 
 ## Implementation & maintenance (for Space developers)
 
 - Server: `internal/controller/mcp/server.go` (official Go MCP SDK
   `github.com/modelcontextprotocol/go-sdk`). Tools call the service layer
-  (`PluginService`, `MCPService`, `SkillService`) directly.
+  (`PluginService`, `MCPService`, `SkillService`, `ModelStatusService`) directly.
 - Mount: `internal/controller/api.go` at `/mcp` and `/mcp/*any`.
 - Auth: PAT via `AccountService.ValidatePersonalAccessToken`.
 - Docs: `docs/MCP_SERVER.md`.
