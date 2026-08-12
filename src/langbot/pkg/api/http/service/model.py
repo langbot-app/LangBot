@@ -5,10 +5,15 @@ import uuid
 import sqlalchemy
 from langbot_plugin.api.entities.builtin.provider import message as provider_message
 
+from ....cloud.model_catalog import LANGBOT_MODELS_PROVIDER_REQUESTER
 from ....core import app
 from ....entity.persistence import model as persistence_model
 from ....entity.persistence import pipeline as persistence_pipeline
 from ....provider.modelmgr import requester as model_requester
+from ....provider.modelmgr import reasoning as model_reasoning
+from ....workspace.errors import WorkspaceNotFoundError
+from .secrets import mask_secret_value, redact_secrets, restore_secret_placeholders
+from .tenant import TenantContext, require_workspace_uuid, scope_statement
 
 
 def _parse_provider_api_keys(provider_dict: dict) -> dict:
@@ -34,7 +39,76 @@ def _runtime_model_data(model_uuid: str, model_data: dict) -> dict:
     return {**model_data, 'uuid': model_uuid}
 
 
-async def _validate_provider_supports(ap: app.Application, provider_uuid: str, model_type: str) -> None:
+def _redact_model_secrets(model_data: dict) -> dict:
+    """Return a copy with model args and embedded provider credentials masked."""
+
+    redacted = model_data.copy()
+    if 'extra_args' in redacted:
+        redacted['extra_args'] = redact_secrets(redacted['extra_args'])
+    if isinstance(redacted.get('provider'), dict):
+        provider = redacted['provider'].copy()
+        # ModelProvider never contains another provider. Dropping this key also
+        # makes the serializer robust to a reused/self-referential test double.
+        provider.pop('provider', None)
+        if 'api_keys' in provider:
+            provider['api_keys'] = mask_secret_value(provider['api_keys'])
+        redacted['provider'] = provider
+    return redacted
+
+
+def _normalize_llm_reasoning(model_data: dict) -> None:
+    model_data['reasoning_config'] = model_reasoning.validate_reasoning_config(
+        model_data.get('reasoning_config'),
+        model_data.get('abilities'),
+        model_data.get('extra_args'),
+    )
+
+
+def _validate_llm_reasoning_capability(
+    model_entity: persistence_model.LLMModel,
+    runtime_provider: model_requester.RuntimeProvider,
+) -> None:
+    config = model_reasoning.normalize_reasoning_config(model_entity.reasoning_config)
+    if config['level'] == 'provider_default':
+        return
+
+    runtime_model = model_requester.RuntimeLLMModel(
+        execution_context=runtime_provider.execution_context,
+        model_entity=model_entity,
+        provider=runtime_provider,
+    )
+    capabilities = runtime_provider.requester.get_reasoning_capabilities(runtime_model)
+    model_reasoning.validate_reasoning_capabilities(config, capabilities, model_entity.name)
+
+
+def _reasoning_capabilities(ap: app.Application, model: persistence_model.LLMModel) -> dict:
+    model_mgr = getattr(ap, 'model_mgr', None)
+    runtime_models = getattr(model_mgr, 'llm_model_dict', {}) if model_mgr is not None else {}
+    for runtime_model in runtime_models.values():
+        if (
+            runtime_model.model_entity.uuid == model.uuid
+            and runtime_model.model_entity.workspace_uuid == model.workspace_uuid
+        ):
+            return runtime_model.provider.requester.get_reasoning_capabilities(runtime_model)
+    return model_reasoning.default_reasoning_capabilities(
+        supported='reasoning' in (model.abilities or []),
+        source='manual' if 'reasoning' in (model.abilities or []) else 'unknown',
+    )
+
+
+def _serialize_llm_model(ap: app.Application, model: persistence_model.LLMModel) -> dict:
+    model_dict = ap.persistence_mgr.serialize_model(persistence_model.LLMModel, model)
+    model_dict['reasoning_config'] = model_reasoning.normalize_reasoning_config(model_dict.get('reasoning_config'))
+    model_dict['reasoning_capabilities'] = _reasoning_capabilities(ap, model)
+    return model_dict
+
+
+async def _validate_provider_supports(
+    ap: app.Application,
+    context: TenantContext,
+    provider_uuid: str,
+    model_type: str,
+) -> None:
     """Validate that the provider's requester declares support for ``model_type``.
 
     ``model_type`` is one of the manifest ``support_type`` values:
@@ -47,11 +121,12 @@ async def _validate_provider_supports(ap: app.Application, provider_uuid: str, m
     if model_mgr is None:
         return
 
-    provider_dict = getattr(model_mgr, 'provider_dict', None)
-    if not provider_dict:
+    get_provider = getattr(model_mgr, 'get_provider_by_uuid', None)
+    if not callable(get_provider):
         return
-    runtime_provider = provider_dict.get(provider_uuid)
-    if runtime_provider is None:
+    try:
+        runtime_provider = await get_provider(context, provider_uuid)
+    except ValueError:
         return
 
     requester_name = getattr(getattr(runtime_provider, 'provider_entity', None), 'requester', None)
@@ -74,53 +149,119 @@ async def _validate_provider_supports(ap: app.Application, provider_uuid: str, m
         raise ValueError(f'Provider requester "{requester_name}" does not support {model_type} models')
 
 
+async def _require_workspace_provider(
+    ap: app.Application,
+    context: TenantContext,
+    provider_uuid: str,
+) -> dict:
+    """Require the referenced provider to belong to the active Workspace."""
+
+    provider = await ap.provider_service.get_provider(context, provider_uuid)
+    if provider is None:
+        raise WorkspaceNotFoundError('Provider not found')
+    return provider
+
+
+def _is_cloud_runtime(ap: app.Application) -> bool:
+    mode = getattr(ap.persistence_mgr, 'mode', None)
+    return getattr(mode, 'value', None) == 'cloud_runtime'
+
+
+async def _assert_cloud_managed_provider_mutable(
+    ap: app.Application,
+    context: TenantContext,
+    provider_uuid: str,
+) -> None:
+    if not _is_cloud_runtime(ap):
+        return
+    provider = await _require_workspace_provider(ap, context, provider_uuid)
+    if provider.get('requester') == LANGBOT_MODELS_PROVIDER_REQUESTER:
+        raise ValueError('LangBot Models is managed by Cloud and cannot be modified')
+
+
+async def _require_runtime_provider(
+    ap: app.Application,
+    context: TenantContext,
+    provider_uuid: str,
+) -> model_requester.RuntimeProvider:
+    try:
+        return await ap.model_mgr.get_provider_by_uuid(context, provider_uuid)
+    except ValueError as exc:
+        raise Exception('provider not found') from exc
+
+
 class LLMModelsService:
     ap: app.Application
 
     def __init__(self, ap: app.Application) -> None:
         self.ap = ap
 
-    async def get_llm_models(self, include_secret: bool = True) -> list[dict]:
+    async def get_llm_models(self, context: TenantContext, include_secret: bool = False) -> list[dict]:
         """Get all LLM models with provider info"""
-        result = await self.ap.persistence_mgr.execute_async(sqlalchemy.select(persistence_model.LLMModel))
+        result = await self.ap.persistence_mgr.execute_async(
+            scope_statement(sqlalchemy.select(persistence_model.LLMModel), persistence_model.LLMModel, context)
+        )
         models = result.all()
 
         # Get all providers for lookup
         providers_result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(persistence_model.ModelProvider)
+            scope_statement(
+                sqlalchemy.select(persistence_model.ModelProvider), persistence_model.ModelProvider, context
+            )
         )
         providers = {p.uuid: p for p in providers_result.all()}
 
         models_list = []
         for model in models:
-            model_dict = self.ap.persistence_mgr.serialize_model(persistence_model.LLMModel, model)
+            model_dict = _serialize_llm_model(self.ap, model)
             provider = providers.get(model.provider_uuid)
             if provider:
                 provider_dict = self.ap.persistence_mgr.serialize_model(persistence_model.ModelProvider, provider)
                 provider_dict = _parse_provider_api_keys(provider_dict)
-                if not include_secret:
-                    provider_dict['api_keys'] = ['***'] * len(provider_dict.get('api_keys', []))
                 model_dict['provider'] = provider_dict
+            if not include_secret:
+                model_dict = _redact_model_secrets(model_dict)
             models_list.append(model_dict)
 
         return models_list
 
-    async def get_llm_models_by_provider(self, provider_uuid: str) -> list[dict]:
+    async def get_llm_models_by_provider(
+        self,
+        context: TenantContext,
+        provider_uuid: str,
+        *,
+        include_secret: bool = False,
+    ) -> list[dict]:
         """Get LLM models by provider UUID"""
+        await _require_workspace_provider(self.ap, context, provider_uuid)
         result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(persistence_model.LLMModel).where(
-                persistence_model.LLMModel.provider_uuid == provider_uuid
+            scope_statement(
+                sqlalchemy.select(persistence_model.LLMModel).where(
+                    persistence_model.LLMModel.provider_uuid == provider_uuid
+                ),
+                persistence_model.LLMModel,
+                context,
             )
         )
         models = result.all()
-        return [self.ap.persistence_mgr.serialize_model(persistence_model.LLMModel, m) for m in models]
+        serialized = [_serialize_llm_model(self.ap, model) for model in models]
+        return serialized if include_secret else [_redact_model_secrets(model) for model in serialized]
 
     async def create_llm_model(
-        self, model_data: dict, preserve_uuid: bool = False, auto_set_to_default_pipeline: bool = True
+        self,
+        context: TenantContext,
+        model_data: dict,
+        preserve_uuid: bool = False,
+        auto_set_to_default_pipeline: bool = True,
     ) -> str:
         """Create a new LLM model"""
+        workspace_uuid = require_workspace_uuid(context)
+        model_data = model_data.copy()
         if not preserve_uuid:
             model_data['uuid'] = str(uuid.uuid4())
+        model_data['workspace_uuid'] = workspace_uuid
+        if 'extra_args' in model_data:
+            model_data['extra_args'] = restore_secret_placeholders(model_data['extra_args'])
 
         # Handle provider creation if needed
         if 'provider' in model_data:
@@ -130,31 +271,40 @@ class LLMModelsService:
             else:
                 # Create new provider
                 provider_uuid = await self.ap.provider_service.find_or_create_provider(
+                    context,
                     requester=provider_data.get('requester', ''),
                     base_url=provider_data.get('base_url', ''),
                     api_keys=provider_data.get('api_keys', []),
                 )
                 model_data['provider_uuid'] = provider_uuid
 
-        await _validate_provider_supports(self.ap, model_data['provider_uuid'], 'llm')
+        await _require_workspace_provider(self.ap, context, model_data['provider_uuid'])
+        await _assert_cloud_managed_provider_mutable(self.ap, context, model_data['provider_uuid'])
+        await _validate_provider_supports(self.ap, context, model_data['provider_uuid'], 'llm')
+        _normalize_llm_reasoning(model_data)
+
+        runtime_provider = await _require_runtime_provider(self.ap, context, model_data['provider_uuid'])
+        model_entity = persistence_model.LLMModel(**model_data)
+        _validate_llm_reasoning_capability(model_entity, runtime_provider)
 
         await self.ap.persistence_mgr.execute_async(sqlalchemy.insert(persistence_model.LLMModel).values(**model_data))
 
-        runtime_provider = self.ap.model_mgr.provider_dict.get(model_data['provider_uuid'])
-        if runtime_provider is None:
-            raise Exception('provider not found')
-
         runtime_llm_model = await self.ap.model_mgr.load_llm_model_with_provider(
-            persistence_model.LLMModel(**model_data),
+            context,
+            model_entity,
             runtime_provider,
         )
-        self.ap.model_mgr.llm_models.append(runtime_llm_model)
+        await self.ap.model_mgr.cache_llm_model(context, runtime_llm_model)
 
         if auto_set_to_default_pipeline:
             # set the default pipeline model to this model
             result = await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.select(persistence_pipeline.LegacyPipeline).where(
-                    persistence_pipeline.LegacyPipeline.is_default == True
+                scope_statement(
+                    sqlalchemy.select(persistence_pipeline.LegacyPipeline).where(
+                        persistence_pipeline.LegacyPipeline.is_default == True
+                    ),
+                    persistence_pipeline.LegacyPipeline,
+                    workspace_uuid,
                 )
             )
             pipeline = result.first()
@@ -167,38 +317,70 @@ class LLMModelsService:
                         'fallbacks': [],
                     }
                     pipeline_data = {'config': pipeline_config}
-                    await self.ap.pipeline_service.update_pipeline(pipeline.uuid, pipeline_data)
+                    await self.ap.pipeline_service.update_pipeline(context, pipeline.uuid, pipeline_data)
 
         return model_data['uuid']
 
-    async def get_llm_model(self, model_uuid: str) -> dict | None:
+    async def get_llm_model(
+        self,
+        context: TenantContext,
+        model_uuid: str,
+        include_secret: bool = False,
+    ) -> dict | None:
         """Get a single LLM model with provider info"""
         result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(persistence_model.LLMModel).where(persistence_model.LLMModel.uuid == model_uuid)
+            scope_statement(
+                sqlalchemy.select(persistence_model.LLMModel).where(persistence_model.LLMModel.uuid == model_uuid),
+                persistence_model.LLMModel,
+                context,
+            )
         )
         model = result.first()
         if model is None:
             return None
 
-        model_dict = self.ap.persistence_mgr.serialize_model(persistence_model.LLMModel, model)
+        model_dict = _serialize_llm_model(self.ap, model)
 
         # Get provider
         provider_result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(persistence_model.ModelProvider).where(
-                persistence_model.ModelProvider.uuid == model.provider_uuid
+            scope_statement(
+                sqlalchemy.select(persistence_model.ModelProvider).where(
+                    persistence_model.ModelProvider.uuid == model.provider_uuid
+                ),
+                persistence_model.ModelProvider,
+                context,
             )
         )
         provider = provider_result.first()
         if provider:
             provider_dict = self.ap.persistence_mgr.serialize_model(persistence_model.ModelProvider, provider)
-            model_dict['provider'] = _parse_provider_api_keys(provider_dict)
+            provider_dict = _parse_provider_api_keys(provider_dict)
+            model_dict['provider'] = provider_dict
+
+        if not include_secret:
+            model_dict = _redact_model_secrets(model_dict)
 
         return model_dict
 
-    async def update_llm_model(self, model_uuid: str, model_data: dict) -> None:
+    async def update_llm_model(
+        self,
+        context: TenantContext,
+        model_uuid: str,
+        model_data: dict,
+    ) -> None:
         """Update an existing LLM model"""
-        if 'uuid' in model_data:
-            del model_data['uuid']
+        existing_model = await self.get_llm_model(context, model_uuid, include_secret=True)
+        if existing_model is None:
+            raise WorkspaceNotFoundError('Model not found')
+        await _assert_cloud_managed_provider_mutable(self.ap, context, existing_model['provider_uuid'])
+        model_data = model_data.copy()
+        model_data.pop('uuid', None)
+        model_data.pop('workspace_uuid', None)
+        if 'extra_args' in model_data:
+            model_data['extra_args'] = restore_secret_placeholders(
+                model_data['extra_args'],
+                existing_model.get('extra_args', {}),
+            )
 
         # Handle provider update if needed
         if 'provider' in model_data:
@@ -207,50 +389,80 @@ class LLMModelsService:
                 model_data['provider_uuid'] = provider_data['uuid']
             else:
                 provider_uuid = await self.ap.provider_service.find_or_create_provider(
+                    context,
                     requester=provider_data.get('requester', ''),
                     base_url=provider_data.get('base_url', ''),
                     api_keys=provider_data.get('api_keys', []),
                 )
                 model_data['provider_uuid'] = provider_uuid
 
-        await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.update(persistence_model.LLMModel)
-            .where(persistence_model.LLMModel.uuid == model_uuid)
-            .values(**model_data)
+        provider_uuid = model_data.get('provider_uuid', existing_model['provider_uuid'])
+        await _require_workspace_provider(self.ap, context, provider_uuid)
+        await _assert_cloud_managed_provider_mutable(self.ap, context, provider_uuid)
+        await _validate_provider_supports(self.ap, context, provider_uuid, 'llm')
+
+        merged_model_data = {
+            key: value
+            for key, value in {**existing_model, **model_data, 'provider_uuid': provider_uuid}.items()
+            if key not in {'provider', 'created_at', 'updated_at', 'reasoning_capabilities'}
+        }
+        _normalize_llm_reasoning(merged_model_data)
+        model_data['reasoning_config'] = merged_model_data['reasoning_config']
+
+        runtime_provider = await _require_runtime_provider(self.ap, context, provider_uuid)
+        model_entity = persistence_model.LLMModel(**_runtime_model_data(model_uuid, merged_model_data))
+        _validate_llm_reasoning_capability(model_entity, runtime_provider)
+
+        result = await self.ap.persistence_mgr.execute_async(
+            scope_statement(
+                sqlalchemy.update(persistence_model.LLMModel)
+                .where(persistence_model.LLMModel.uuid == model_uuid)
+                .values(**model_data),
+                persistence_model.LLMModel,
+                context,
+            )
         )
+        if getattr(result, 'rowcount', None) == 0:
+            raise WorkspaceNotFoundError('Model not found')
 
-        await self.ap.model_mgr.remove_llm_model(model_uuid)
-
-        runtime_provider = self.ap.model_mgr.provider_dict.get(model_data['provider_uuid'])
-        if runtime_provider is None:
-            raise Exception('provider not found')
-
+        await self.ap.model_mgr.remove_llm_model(context, model_uuid)
         runtime_llm_model = await self.ap.model_mgr.load_llm_model_with_provider(
-            persistence_model.LLMModel(**_runtime_model_data(model_uuid, model_data)),
+            context,
+            model_entity,
             runtime_provider,
         )
-        self.ap.model_mgr.llm_models.append(runtime_llm_model)
+        await self.ap.model_mgr.cache_llm_model(context, runtime_llm_model)
 
-    async def delete_llm_model(self, model_uuid: str) -> None:
+    async def delete_llm_model(self, context: TenantContext, model_uuid: str) -> None:
         """Delete an LLM model"""
-        await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.delete(persistence_model.LLMModel).where(persistence_model.LLMModel.uuid == model_uuid)
+        if _is_cloud_runtime(self.ap):
+            existing_model = await self.get_llm_model(context, model_uuid, include_secret=True)
+            if existing_model is None:
+                raise WorkspaceNotFoundError('Model not found')
+            await _assert_cloud_managed_provider_mutable(self.ap, context, existing_model['provider_uuid'])
+        result = await self.ap.persistence_mgr.execute_async(
+            scope_statement(
+                sqlalchemy.delete(persistence_model.LLMModel).where(persistence_model.LLMModel.uuid == model_uuid),
+                persistence_model.LLMModel,
+                context,
+            )
         )
-        await self.ap.model_mgr.remove_llm_model(model_uuid)
+        if getattr(result, 'rowcount', None) == 0:
+            raise WorkspaceNotFoundError('Model not found')
+        await self.ap.model_mgr.remove_llm_model(context, model_uuid)
 
-    async def test_llm_model(self, model_uuid: str, model_data: dict) -> None:
+    async def test_llm_model(self, context: TenantContext, model_uuid: str, model_data: dict) -> None:
         """Test an LLM model"""
+        require_workspace_uuid(context)
         runtime_llm_model: model_requester.RuntimeLLMModel | None = None
 
         if model_uuid != '_':
-            for model in self.ap.model_mgr.llm_models:
-                if model.model_entity.uuid == model_uuid:
-                    runtime_llm_model = model
-                    break
-            if runtime_llm_model is None:
-                raise Exception('model not found')
+            if await self.get_llm_model(context, model_uuid) is None:
+                raise WorkspaceNotFoundError('Model not found')
+            runtime_llm_model = await self.ap.model_mgr.get_model_by_uuid(context, model_uuid)
         else:
-            runtime_llm_model = await self.ap.model_mgr.init_temporary_runtime_llm_model(model_data)
+            _normalize_llm_reasoning(model_data)
+            runtime_llm_model = await self.ap.model_mgr.init_temporary_runtime_llm_model(context, model_data)
 
         extra_args = model_data.get('extra_args', {})
         await runtime_llm_model.provider.invoke_llm(
@@ -259,6 +471,7 @@ class LLMModelsService:
             messages=[provider_message.Message(role='user', content='Hello, world! Please just reply a "Hello".')],
             funcs=[],
             extra_args=extra_args,
+            execution_context=runtime_llm_model.execution_context,
         )
 
 
@@ -268,13 +481,19 @@ class EmbeddingModelsService:
     def __init__(self, ap: app.Application) -> None:
         self.ap = ap
 
-    async def get_embedding_models(self) -> list[dict]:
+    async def get_embedding_models(self, context: TenantContext, include_secret: bool = False) -> list[dict]:
         """Get all embedding models with provider info"""
-        result = await self.ap.persistence_mgr.execute_async(sqlalchemy.select(persistence_model.EmbeddingModel))
+        result = await self.ap.persistence_mgr.execute_async(
+            scope_statement(
+                sqlalchemy.select(persistence_model.EmbeddingModel), persistence_model.EmbeddingModel, context
+            )
+        )
         models = result.all()
 
         providers_result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(persistence_model.ModelProvider)
+            scope_statement(
+                sqlalchemy.select(persistence_model.ModelProvider), persistence_model.ModelProvider, context
+            )
         )
         providers = {p.uuid: p for p in providers_result.all()}
 
@@ -284,25 +503,49 @@ class EmbeddingModelsService:
             provider = providers.get(model.provider_uuid)
             if provider:
                 provider_dict = self.ap.persistence_mgr.serialize_model(persistence_model.ModelProvider, provider)
-                model_dict['provider'] = _parse_provider_api_keys(provider_dict)
+                provider_dict = _parse_provider_api_keys(provider_dict)
+                model_dict['provider'] = provider_dict
+            if not include_secret:
+                model_dict = _redact_model_secrets(model_dict)
             models_list.append(model_dict)
 
         return models_list
 
-    async def get_embedding_models_by_provider(self, provider_uuid: str) -> list[dict]:
+    async def get_embedding_models_by_provider(
+        self,
+        context: TenantContext,
+        provider_uuid: str,
+        *,
+        include_secret: bool = False,
+    ) -> list[dict]:
         """Get embedding models by provider UUID"""
+        await _require_workspace_provider(self.ap, context, provider_uuid)
         result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(persistence_model.EmbeddingModel).where(
-                persistence_model.EmbeddingModel.provider_uuid == provider_uuid
+            scope_statement(
+                sqlalchemy.select(persistence_model.EmbeddingModel).where(
+                    persistence_model.EmbeddingModel.provider_uuid == provider_uuid
+                ),
+                persistence_model.EmbeddingModel,
+                context,
             )
         )
         models = result.all()
-        return [self.ap.persistence_mgr.serialize_model(persistence_model.EmbeddingModel, m) for m in models]
+        serialized = [self.ap.persistence_mgr.serialize_model(persistence_model.EmbeddingModel, m) for m in models]
+        return serialized if include_secret else [_redact_model_secrets(model) for model in serialized]
 
-    async def create_embedding_model(self, model_data: dict, preserve_uuid: bool = False) -> str:
+    async def create_embedding_model(
+        self,
+        context: TenantContext,
+        model_data: dict,
+        preserve_uuid: bool = False,
+    ) -> str:
         """Create a new embedding model"""
+        model_data = model_data.copy()
         if not preserve_uuid:
             model_data['uuid'] = str(uuid.uuid4())
+        model_data['workspace_uuid'] = require_workspace_uuid(context)
+        if 'extra_args' in model_data:
+            model_data['extra_args'] = restore_secret_placeholders(model_data['extra_args'])
 
         if 'provider' in model_data:
             provider_data = model_data.pop('provider')
@@ -310,35 +553,45 @@ class EmbeddingModelsService:
                 model_data['provider_uuid'] = provider_data['uuid']
             else:
                 provider_uuid = await self.ap.provider_service.find_or_create_provider(
+                    context,
                     requester=provider_data.get('requester', ''),
                     base_url=provider_data.get('base_url', ''),
                     api_keys=provider_data.get('api_keys', []),
                 )
                 model_data['provider_uuid'] = provider_uuid
 
-        await _validate_provider_supports(self.ap, model_data['provider_uuid'], 'text-embedding')
+        await _require_workspace_provider(self.ap, context, model_data['provider_uuid'])
+        await _assert_cloud_managed_provider_mutable(self.ap, context, model_data['provider_uuid'])
+        await _validate_provider_supports(self.ap, context, model_data['provider_uuid'], 'text-embedding')
 
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.insert(persistence_model.EmbeddingModel).values(**model_data)
         )
 
-        runtime_provider = self.ap.model_mgr.provider_dict.get(model_data['provider_uuid'])
-        if runtime_provider is None:
-            raise Exception('provider not found')
-
+        runtime_provider = await _require_runtime_provider(self.ap, context, model_data['provider_uuid'])
         runtime_embedding_model = await self.ap.model_mgr.load_embedding_model_with_provider(
+            context,
             persistence_model.EmbeddingModel(**model_data),
             runtime_provider,
         )
-        self.ap.model_mgr.embedding_models.append(runtime_embedding_model)
+        await self.ap.model_mgr.cache_embedding_model(context, runtime_embedding_model)
 
         return model_data['uuid']
 
-    async def get_embedding_model(self, model_uuid: str) -> dict | None:
+    async def get_embedding_model(
+        self,
+        context: TenantContext,
+        model_uuid: str,
+        include_secret: bool = False,
+    ) -> dict | None:
         """Get a single embedding model with provider info"""
         result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(persistence_model.EmbeddingModel).where(
-                persistence_model.EmbeddingModel.uuid == model_uuid
+            scope_statement(
+                sqlalchemy.select(persistence_model.EmbeddingModel).where(
+                    persistence_model.EmbeddingModel.uuid == model_uuid
+                ),
+                persistence_model.EmbeddingModel,
+                context,
             )
         )
         model = result.first()
@@ -348,21 +601,44 @@ class EmbeddingModelsService:
         model_dict = self.ap.persistence_mgr.serialize_model(persistence_model.EmbeddingModel, model)
 
         provider_result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(persistence_model.ModelProvider).where(
-                persistence_model.ModelProvider.uuid == model.provider_uuid
+            scope_statement(
+                sqlalchemy.select(persistence_model.ModelProvider).where(
+                    persistence_model.ModelProvider.uuid == model.provider_uuid
+                ),
+                persistence_model.ModelProvider,
+                context,
             )
         )
         provider = provider_result.first()
         if provider:
             provider_dict = self.ap.persistence_mgr.serialize_model(persistence_model.ModelProvider, provider)
-            model_dict['provider'] = _parse_provider_api_keys(provider_dict)
+            provider_dict = _parse_provider_api_keys(provider_dict)
+            model_dict['provider'] = provider_dict
+
+        if not include_secret:
+            model_dict = _redact_model_secrets(model_dict)
 
         return model_dict
 
-    async def update_embedding_model(self, model_uuid: str, model_data: dict) -> None:
+    async def update_embedding_model(
+        self,
+        context: TenantContext,
+        model_uuid: str,
+        model_data: dict,
+    ) -> None:
         """Update an existing embedding model"""
-        if 'uuid' in model_data:
-            del model_data['uuid']
+        existing_model = await self.get_embedding_model(context, model_uuid, include_secret=True)
+        if existing_model is None:
+            raise WorkspaceNotFoundError('Model not found')
+        await _assert_cloud_managed_provider_mutable(self.ap, context, existing_model['provider_uuid'])
+        model_data = model_data.copy()
+        model_data.pop('uuid', None)
+        model_data.pop('workspace_uuid', None)
+        if 'extra_args' in model_data:
+            model_data['extra_args'] = restore_secret_placeholders(
+                model_data['extra_args'],
+                existing_model.get('extra_args', {}),
+            )
 
         if 'provider' in model_data:
             provider_data = model_data.pop('provider')
@@ -370,57 +646,88 @@ class EmbeddingModelsService:
                 model_data['provider_uuid'] = provider_data['uuid']
             else:
                 provider_uuid = await self.ap.provider_service.find_or_create_provider(
+                    context,
                     requester=provider_data.get('requester', ''),
                     base_url=provider_data.get('base_url', ''),
                     api_keys=provider_data.get('api_keys', []),
                 )
                 model_data['provider_uuid'] = provider_uuid
 
-        await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.update(persistence_model.EmbeddingModel)
-            .where(persistence_model.EmbeddingModel.uuid == model_uuid)
-            .values(**model_data)
-        )
+        provider_uuid = model_data.get('provider_uuid', existing_model['provider_uuid'])
+        await _require_workspace_provider(self.ap, context, provider_uuid)
+        await _assert_cloud_managed_provider_mutable(self.ap, context, provider_uuid)
+        await _validate_provider_supports(self.ap, context, provider_uuid, 'text-embedding')
 
-        await self.ap.model_mgr.remove_embedding_model(model_uuid)
-
-        runtime_provider = self.ap.model_mgr.provider_dict.get(model_data['provider_uuid'])
-        if runtime_provider is None:
-            raise Exception('provider not found')
-
-        runtime_embedding_model = await self.ap.model_mgr.load_embedding_model_with_provider(
-            persistence_model.EmbeddingModel(**_runtime_model_data(model_uuid, model_data)),
-            runtime_provider,
-        )
-        self.ap.model_mgr.embedding_models.append(runtime_embedding_model)
-
-    async def delete_embedding_model(self, model_uuid: str) -> None:
-        """Delete an embedding model"""
-        await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.delete(persistence_model.EmbeddingModel).where(
-                persistence_model.EmbeddingModel.uuid == model_uuid
+        result = await self.ap.persistence_mgr.execute_async(
+            scope_statement(
+                sqlalchemy.update(persistence_model.EmbeddingModel)
+                .where(persistence_model.EmbeddingModel.uuid == model_uuid)
+                .values(**model_data),
+                persistence_model.EmbeddingModel,
+                context,
             )
         )
-        await self.ap.model_mgr.remove_embedding_model(model_uuid)
+        if getattr(result, 'rowcount', None) == 0:
+            raise WorkspaceNotFoundError('Model not found')
 
-    async def test_embedding_model(self, model_uuid: str, model_data: dict) -> None:
+        await self.ap.model_mgr.remove_embedding_model(context, model_uuid)
+        runtime_provider = await _require_runtime_provider(self.ap, context, provider_uuid)
+        runtime_embedding_model = await self.ap.model_mgr.load_embedding_model_with_provider(
+            context,
+            persistence_model.EmbeddingModel(
+                **_runtime_model_data(
+                    model_uuid,
+                    {
+                        key: value
+                        for key, value in {**existing_model, **model_data, 'provider_uuid': provider_uuid}.items()
+                        if key not in {'provider', 'created_at', 'updated_at'}
+                    },
+                )
+            ),
+            runtime_provider,
+        )
+        await self.ap.model_mgr.cache_embedding_model(context, runtime_embedding_model)
+
+    async def delete_embedding_model(self, context: TenantContext, model_uuid: str) -> None:
+        """Delete an embedding model"""
+        if _is_cloud_runtime(self.ap):
+            existing_model = await self.get_embedding_model(context, model_uuid, include_secret=True)
+            if existing_model is None:
+                raise WorkspaceNotFoundError('Model not found')
+            await _assert_cloud_managed_provider_mutable(self.ap, context, existing_model['provider_uuid'])
+        result = await self.ap.persistence_mgr.execute_async(
+            scope_statement(
+                sqlalchemy.delete(persistence_model.EmbeddingModel).where(
+                    persistence_model.EmbeddingModel.uuid == model_uuid
+                ),
+                persistence_model.EmbeddingModel,
+                context,
+            )
+        )
+        if getattr(result, 'rowcount', None) == 0:
+            raise WorkspaceNotFoundError('Model not found')
+        await self.ap.model_mgr.remove_embedding_model(context, model_uuid)
+
+    async def test_embedding_model(self, context: TenantContext, model_uuid: str, model_data: dict) -> None:
         """Test an embedding model"""
+        require_workspace_uuid(context)
         runtime_embedding_model: model_requester.RuntimeEmbeddingModel | None = None
 
         if model_uuid != '_':
-            for model in self.ap.model_mgr.embedding_models:
-                if model.model_entity.uuid == model_uuid:
-                    runtime_embedding_model = model
-                    break
-            if runtime_embedding_model is None:
-                raise Exception('model not found')
+            if await self.get_embedding_model(context, model_uuid) is None:
+                raise WorkspaceNotFoundError('Model not found')
+            runtime_embedding_model = await self.ap.model_mgr.get_embedding_model_by_uuid(context, model_uuid)
         else:
-            runtime_embedding_model = await self.ap.model_mgr.init_temporary_runtime_embedding_model(model_data)
+            runtime_embedding_model = await self.ap.model_mgr.init_temporary_runtime_embedding_model(
+                context,
+                model_data,
+            )
 
         await runtime_embedding_model.provider.invoke_embedding(
             model=runtime_embedding_model,
             input_text=['Hello, world!'],
             extra_args={},
+            execution_context=runtime_embedding_model.execution_context,
         )
 
 
@@ -430,13 +737,17 @@ class RerankModelsService:
     def __init__(self, ap: app.Application) -> None:
         self.ap = ap
 
-    async def get_rerank_models(self) -> list[dict]:
+    async def get_rerank_models(self, context: TenantContext, include_secret: bool = False) -> list[dict]:
         """Get all rerank models with provider info"""
-        result = await self.ap.persistence_mgr.execute_async(sqlalchemy.select(persistence_model.RerankModel))
+        result = await self.ap.persistence_mgr.execute_async(
+            scope_statement(sqlalchemy.select(persistence_model.RerankModel), persistence_model.RerankModel, context)
+        )
         models = result.all()
 
         providers_result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(persistence_model.ModelProvider)
+            scope_statement(
+                sqlalchemy.select(persistence_model.ModelProvider), persistence_model.ModelProvider, context
+            )
         )
         providers = {p.uuid: p for p in providers_result.all()}
 
@@ -446,25 +757,49 @@ class RerankModelsService:
             provider = providers.get(model.provider_uuid)
             if provider:
                 provider_dict = self.ap.persistence_mgr.serialize_model(persistence_model.ModelProvider, provider)
-                model_dict['provider'] = _parse_provider_api_keys(provider_dict)
+                provider_dict = _parse_provider_api_keys(provider_dict)
+                model_dict['provider'] = provider_dict
+            if not include_secret:
+                model_dict = _redact_model_secrets(model_dict)
             models_list.append(model_dict)
 
         return models_list
 
-    async def get_rerank_models_by_provider(self, provider_uuid: str) -> list[dict]:
+    async def get_rerank_models_by_provider(
+        self,
+        context: TenantContext,
+        provider_uuid: str,
+        *,
+        include_secret: bool = False,
+    ) -> list[dict]:
         """Get rerank models by provider UUID"""
+        await _require_workspace_provider(self.ap, context, provider_uuid)
         result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(persistence_model.RerankModel).where(
-                persistence_model.RerankModel.provider_uuid == provider_uuid
+            scope_statement(
+                sqlalchemy.select(persistence_model.RerankModel).where(
+                    persistence_model.RerankModel.provider_uuid == provider_uuid
+                ),
+                persistence_model.RerankModel,
+                context,
             )
         )
         models = result.all()
-        return [self.ap.persistence_mgr.serialize_model(persistence_model.RerankModel, m) for m in models]
+        serialized = [self.ap.persistence_mgr.serialize_model(persistence_model.RerankModel, m) for m in models]
+        return serialized if include_secret else [_redact_model_secrets(model) for model in serialized]
 
-    async def create_rerank_model(self, model_data: dict, preserve_uuid: bool = False) -> str:
+    async def create_rerank_model(
+        self,
+        context: TenantContext,
+        model_data: dict,
+        preserve_uuid: bool = False,
+    ) -> str:
         """Create a new rerank model"""
+        model_data = model_data.copy()
         if not preserve_uuid:
             model_data['uuid'] = str(uuid.uuid4())
+        model_data['workspace_uuid'] = require_workspace_uuid(context)
+        if 'extra_args' in model_data:
+            model_data['extra_args'] = restore_secret_placeholders(model_data['extra_args'])
 
         if 'provider' in model_data:
             provider_data = model_data.pop('provider')
@@ -472,34 +807,46 @@ class RerankModelsService:
                 model_data['provider_uuid'] = provider_data['uuid']
             else:
                 provider_uuid = await self.ap.provider_service.find_or_create_provider(
+                    context,
                     requester=provider_data.get('requester', ''),
                     base_url=provider_data.get('base_url', ''),
                     api_keys=provider_data.get('api_keys', []),
                 )
                 model_data['provider_uuid'] = provider_uuid
 
-        await _validate_provider_supports(self.ap, model_data['provider_uuid'], 'rerank')
+        await _require_workspace_provider(self.ap, context, model_data['provider_uuid'])
+        await _assert_cloud_managed_provider_mutable(self.ap, context, model_data['provider_uuid'])
+        await _validate_provider_supports(self.ap, context, model_data['provider_uuid'], 'rerank')
 
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.insert(persistence_model.RerankModel).values(**model_data)
         )
 
-        runtime_provider = self.ap.model_mgr.provider_dict.get(model_data['provider_uuid'])
-        if runtime_provider is None:
-            raise Exception('provider not found')
-
+        runtime_provider = await _require_runtime_provider(self.ap, context, model_data['provider_uuid'])
         runtime_rerank_model = await self.ap.model_mgr.load_rerank_model_with_provider(
+            context,
             persistence_model.RerankModel(**model_data),
             runtime_provider,
         )
-        self.ap.model_mgr.rerank_models.append(runtime_rerank_model)
+        await self.ap.model_mgr.cache_rerank_model(context, runtime_rerank_model)
 
         return model_data['uuid']
 
-    async def get_rerank_model(self, model_uuid: str) -> dict | None:
+    async def get_rerank_model(
+        self,
+        context: TenantContext,
+        model_uuid: str,
+        include_secret: bool = False,
+    ) -> dict | None:
         """Get a single rerank model with provider info"""
         result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(persistence_model.RerankModel).where(persistence_model.RerankModel.uuid == model_uuid)
+            scope_statement(
+                sqlalchemy.select(persistence_model.RerankModel).where(
+                    persistence_model.RerankModel.uuid == model_uuid
+                ),
+                persistence_model.RerankModel,
+                context,
+            )
         )
         model = result.first()
         if model is None:
@@ -508,21 +855,44 @@ class RerankModelsService:
         model_dict = self.ap.persistence_mgr.serialize_model(persistence_model.RerankModel, model)
 
         provider_result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(persistence_model.ModelProvider).where(
-                persistence_model.ModelProvider.uuid == model.provider_uuid
+            scope_statement(
+                sqlalchemy.select(persistence_model.ModelProvider).where(
+                    persistence_model.ModelProvider.uuid == model.provider_uuid
+                ),
+                persistence_model.ModelProvider,
+                context,
             )
         )
         provider = provider_result.first()
         if provider:
             provider_dict = self.ap.persistence_mgr.serialize_model(persistence_model.ModelProvider, provider)
-            model_dict['provider'] = _parse_provider_api_keys(provider_dict)
+            provider_dict = _parse_provider_api_keys(provider_dict)
+            model_dict['provider'] = provider_dict
+
+        if not include_secret:
+            model_dict = _redact_model_secrets(model_dict)
 
         return model_dict
 
-    async def update_rerank_model(self, model_uuid: str, model_data: dict) -> None:
+    async def update_rerank_model(
+        self,
+        context: TenantContext,
+        model_uuid: str,
+        model_data: dict,
+    ) -> None:
         """Update an existing rerank model"""
-        if 'uuid' in model_data:
-            del model_data['uuid']
+        existing_model = await self.get_rerank_model(context, model_uuid, include_secret=True)
+        if existing_model is None:
+            raise WorkspaceNotFoundError('Model not found')
+        await _assert_cloud_managed_provider_mutable(self.ap, context, existing_model['provider_uuid'])
+        model_data = model_data.copy()
+        model_data.pop('uuid', None)
+        model_data.pop('workspace_uuid', None)
+        if 'extra_args' in model_data:
+            model_data['extra_args'] = restore_secret_placeholders(
+                model_data['extra_args'],
+                existing_model.get('extra_args', {}),
+            )
 
         if 'provider' in model_data:
             provider_data = model_data.pop('provider')
@@ -530,50 +900,82 @@ class RerankModelsService:
                 model_data['provider_uuid'] = provider_data['uuid']
             else:
                 provider_uuid = await self.ap.provider_service.find_or_create_provider(
+                    context,
                     requester=provider_data.get('requester', ''),
                     base_url=provider_data.get('base_url', ''),
                     api_keys=provider_data.get('api_keys', []),
                 )
                 model_data['provider_uuid'] = provider_uuid
 
-        await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.update(persistence_model.RerankModel)
-            .where(persistence_model.RerankModel.uuid == model_uuid)
-            .values(**model_data)
+        provider_uuid = model_data.get('provider_uuid', existing_model['provider_uuid'])
+        await _require_workspace_provider(self.ap, context, provider_uuid)
+        await _assert_cloud_managed_provider_mutable(self.ap, context, provider_uuid)
+        await _validate_provider_supports(self.ap, context, provider_uuid, 'rerank')
+
+        result = await self.ap.persistence_mgr.execute_async(
+            scope_statement(
+                sqlalchemy.update(persistence_model.RerankModel)
+                .where(persistence_model.RerankModel.uuid == model_uuid)
+                .values(**model_data),
+                persistence_model.RerankModel,
+                context,
+            )
         )
+        if getattr(result, 'rowcount', None) == 0:
+            raise WorkspaceNotFoundError('Model not found')
 
-        await self.ap.model_mgr.remove_rerank_model(model_uuid)
-
-        runtime_provider = self.ap.model_mgr.provider_dict.get(model_data['provider_uuid'])
-        if runtime_provider is None:
-            raise Exception('provider not found')
-
+        await self.ap.model_mgr.remove_rerank_model(context, model_uuid)
+        runtime_provider = await _require_runtime_provider(self.ap, context, provider_uuid)
         runtime_rerank_model = await self.ap.model_mgr.load_rerank_model_with_provider(
-            persistence_model.RerankModel(**_runtime_model_data(model_uuid, model_data)),
+            context,
+            persistence_model.RerankModel(
+                **_runtime_model_data(
+                    model_uuid,
+                    {
+                        key: value
+                        for key, value in {**existing_model, **model_data, 'provider_uuid': provider_uuid}.items()
+                        if key not in {'provider', 'created_at', 'updated_at'}
+                    },
+                )
+            ),
             runtime_provider,
         )
-        self.ap.model_mgr.rerank_models.append(runtime_rerank_model)
+        await self.ap.model_mgr.cache_rerank_model(context, runtime_rerank_model)
 
-    async def delete_rerank_model(self, model_uuid: str) -> None:
+    async def delete_rerank_model(self, context: TenantContext, model_uuid: str) -> None:
         """Delete a rerank model"""
-        await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.delete(persistence_model.RerankModel).where(persistence_model.RerankModel.uuid == model_uuid)
+        if _is_cloud_runtime(self.ap):
+            existing_model = await self.get_rerank_model(context, model_uuid, include_secret=True)
+            if existing_model is None:
+                raise WorkspaceNotFoundError('Model not found')
+            await _assert_cloud_managed_provider_mutable(self.ap, context, existing_model['provider_uuid'])
+        result = await self.ap.persistence_mgr.execute_async(
+            scope_statement(
+                sqlalchemy.delete(persistence_model.RerankModel).where(
+                    persistence_model.RerankModel.uuid == model_uuid
+                ),
+                persistence_model.RerankModel,
+                context,
+            )
         )
-        await self.ap.model_mgr.remove_rerank_model(model_uuid)
+        if getattr(result, 'rowcount', None) == 0:
+            raise WorkspaceNotFoundError('Model not found')
+        await self.ap.model_mgr.remove_rerank_model(context, model_uuid)
 
-    async def test_rerank_model(self, model_uuid: str, model_data: dict) -> None:
+    async def test_rerank_model(self, context: TenantContext, model_uuid: str, model_data: dict) -> None:
         """Test a rerank model"""
+        require_workspace_uuid(context)
         runtime_rerank_model: model_requester.RuntimeRerankModel | None = None
 
         if model_uuid != '_':
-            for model in self.ap.model_mgr.rerank_models:
-                if model.model_entity.uuid == model_uuid:
-                    runtime_rerank_model = model
-                    break
-            if runtime_rerank_model is None:
-                raise Exception('model not found')
+            if await self.get_rerank_model(context, model_uuid) is None:
+                raise WorkspaceNotFoundError('Model not found')
+            runtime_rerank_model = await self.ap.model_mgr.get_rerank_model_by_uuid(context, model_uuid)
         else:
-            runtime_rerank_model = await self.ap.model_mgr.init_temporary_runtime_rerank_model(model_data)
+            runtime_rerank_model = await self.ap.model_mgr.init_temporary_runtime_rerank_model(
+                context,
+                model_data,
+            )
 
         await runtime_rerank_model.provider.invoke_rerank(
             model=runtime_rerank_model,
@@ -582,4 +984,5 @@ class RerankModelsService:
                 'Artificial intelligence is a branch of computer science.',
                 'The weather is nice today.',
             ],
+            execution_context=runtime_rerank_model.execution_context,
         )

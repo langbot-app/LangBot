@@ -51,7 +51,7 @@ LangBot 是一个**开源的生产级平台**，用于构建 AI 驱动的即时�
 
 [→ 了解更多功能特性](https://link.langbot.app/zh/docs/features)
 
-📍 实践指南：[5 分钟部署多平台 AI 机器人](https://blog.langbot.app/zh/blog/deploy-ai-bot-in-5-minutes/)、[将 DeepSeek 接入微信、企业微信与 Discord](https://blog.langbot.app/zh/blog/connect-deepseek-to-wechat/)、[让 Dify Agent 跑在 Discord、Telegram 和 Slack 上](https://blog.langbot.app/zh/blog/dify-agent-discord-telegram-slack/)，以及[用 n8n 构建多平台 AI 聊天机器人](https://blog.langbot.app/zh/blog/n8n-multi-platform-ai-chatbot/)。
+📍 实践指南：[5 分钟部署多平台 AI 机器人](https://langbot.app/zh/blog/deploy-ai-bot-in-5-minutes/)、[将 DeepSeek 接入微信、企业微信与 Discord](https://langbot.app/zh/blog/connect-deepseek-to-wechat/)、[让 Dify Agent 跑在 Discord、Telegram 和 Slack 上](https://langbot.app/zh/blog/dify-agent-discord-telegram-slack/)，以及[用 n8n 构建多平台 AI 聊天机器人](https://langbot.app/zh/blog/n8n-multi-platform-ai-chatbot/)。
 
 ---
 
@@ -89,6 +89,16 @@ docker compose --profile all up -d
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.app/template/yRrAyL?referralCode=vogKPF)
 
 **更多方式：** [Docker](https://link.langbot.app/zh/docs/docker) · [手动部署](https://link.langbot.app/zh/docs/manual-deploy) · [宝塔面板](https://link.langbot.app/zh/docs/bt-panel) · [Kubernetes](https://docs.langbot.app/zh/deploy/langbot/kubernetes)
+
+---
+
+## 在线演示
+
+**立即体验：** https://demo.langbot.dev/
+- 邮箱：`demo@langbot.app`
+- 密码：`langbot123456`
+
+*注意：公开演示环境，请不要在其中填入任何敏感信息。*
 
 ---
 
@@ -170,16 +180,6 @@ docker compose --profile all up -d
 
 ---
 
-## 在线演示
-
-**立即体验：** https://demo.langbot.dev/
-- 邮箱：`demo@langbot.app`
-- 密码：`langbot123456`
-
-*注意：公开演示环境，请不要在其中填入任何敏感信息。*
-
----
-
 ## 为 AI Agent 而生 🤖
 
 LangBot **从设计上就对 Agent 友好** —— 你的编码 Agent（Claude Code、Codex、Copilot、Cursor 等）可以一等公民般地操作、扩展和部署 LangBot：
@@ -200,12 +200,6 @@ LangBot **从设计上就对 Agent 友好** —— 你的编码 Agent（Claude C
 
 - [Discord 社区](https://discord.gg/wdNEHETs87)
 - [QQ 社区群](https://qm.qq.com/q/DxZZcNxM1W)
-
----
-
-## Star 趋势
-
-[![Star History Chart](https://api.star-history.com/svg?repos=langbot-app/LangBot&type=Date)](https://star-history.com/#langbot-app/LangBot&Date)
 
 ---
 

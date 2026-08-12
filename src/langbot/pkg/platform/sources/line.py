@@ -13,6 +13,7 @@ import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
 from ..logger import EventLogger
+from ...utils import bounded_executor
 
 
 from linebot.v3 import WebhookHandler
@@ -29,6 +30,14 @@ from linebot.v3.webhooks import (
 # from linebot import WebhookParser
 from linebot.v3.webhook import WebhookParser
 from linebot.v3.messaging import MessagingApiBlob
+
+MAX_LINE_MEDIA_BYTES = 10 * 1024 * 1024
+
+
+def _validate_line_media_content(content: bytes) -> bytes:
+    if len(content) > MAX_LINE_MEDIA_BYTES:
+        raise ValueError(f'LINE media exceeds the {MAX_LINE_MEDIA_BYTES}-byte limit')
+    return content
 
 
 class LINEMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
@@ -63,9 +72,13 @@ class LINEMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
         elif isinstance(message.message, VideoMessageContent):
             pass
         elif isinstance(message.message, ImageMessageContent):
-            message_content = MessagingApiBlob(bot_client).get_message_content(message.message.id)
+            message_content = await asyncio.to_thread(
+                MessagingApiBlob(bot_client).get_message_content,
+                message.message.id,
+            )
+            _validate_line_media_content(message_content)
 
-            base64_string = base64.b64encode(message_content).decode('utf-8')
+            base64_string = await asyncio.to_thread(lambda: base64.b64encode(message_content).decode('utf-8'))
 
             # 如果需要Data URI格式（用于直接嵌入HTML等）
             # 首先需要知道图片类型，LINE图片通常是JPEG
@@ -173,20 +186,22 @@ class LINEAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
         for content in content_list:
             if content['type'] == 'text':
-                self.bot.reply_message_with_http_info(
+                await asyncio.to_thread(
+                    self.bot.reply_message_with_http_info,
                     ReplyMessageRequest(
                         reply_token=message_source.source_platform_object.reply_token,
                         messages=[TextMessage(text=content['content'])],
-                    )
+                    ),
                 )
             elif content['type'] == 'image':
                 # LINE ImageMessage requires original_content_url and preview_image_url
                 image_url = content['image']
-                self.bot.reply_message_with_http_info(
+                await asyncio.to_thread(
+                    self.bot.reply_message_with_http_info,
                     ReplyMessageRequest(
                         reply_token=message_source.source_platform_object.reply_token,
                         messages=[ImageMessage(original_content_url=image_url, preview_image_url=image_url)],
-                    )
+                    ),
                 )
 
     async def is_muted(self, group_id: int) -> bool:
@@ -266,4 +281,5 @@ class LINEAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         await keep_alive()
 
     async def kill(self) -> bool:
-        pass
+        await bounded_executor.run_blocking_cleanup(self.api_client.close)
+        return True

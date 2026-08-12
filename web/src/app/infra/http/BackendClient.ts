@@ -1,4 +1,4 @@
-import { BaseHttpClient } from './BaseHttpClient';
+import { BaseHttpClient, type RequestConfig } from './BaseHttpClient';
 import {
   ApiRespProviderRequesters,
   ApiRespProviderRequester,
@@ -61,6 +61,16 @@ import type { PluginLogEntry } from '@/app/infra/entities/plugin';
 import type { I18nObject } from '@/app/infra/entities/common';
 import { GetBotLogsRequest } from '@/app/infra/http/requestParam/bots/GetBotLogsRequest';
 import { GetBotLogsResponse } from '@/app/infra/http/requestParam/bots/GetBotLogsResponse';
+import type {
+  CurrentWorkspace,
+  Workspace,
+  WorkspaceInvitation,
+  WorkspaceInvitationDelivery,
+  WorkspaceMembership,
+  WorkspaceBootstrapResponse,
+  WorkspaceRole,
+  WorkspaceSpaceBilling,
+} from '@/app/infra/entities/workspace';
 
 /**
  * 后端服务客户端
@@ -671,6 +681,21 @@ export class BackendClient extends BaseHttpClient {
     );
   }
 
+  public getMcpServerLogs(
+    serverName: string,
+    limit: number = 200,
+    level?: string,
+  ): Promise<{ logs: PluginLogEntry[] }> {
+    const params = new URLSearchParams();
+    params.set('limit', String(limit));
+    if (level) {
+      params.set('level', level);
+    }
+    return this.get(
+      `/api/v1/mcp/servers/${encodeURIComponent(serverName)}/logs?${params.toString()}`,
+    );
+  }
+
   public getPluginAssetURL(
     author: string,
     name: string,
@@ -682,6 +707,32 @@ export class BackendClient extends BaseHttpClient {
     return (
       this.instance.defaults.baseURL +
       `/api/v1/plugins/${author}/${name}/assets/${filepath}`
+    );
+  }
+
+  private async getAuthenticatedObjectURL(path: string): Promise<string> {
+    const response = await this.instance.get<Blob>(path, {
+      responseType: 'blob',
+    });
+    return URL.createObjectURL(response.data);
+  }
+
+  public getAuthenticatedPluginAssetURL(
+    author: string,
+    name: string,
+    filepath: string,
+  ): Promise<string> {
+    return this.getAuthenticatedObjectURL(
+      `/api/v1/plugins/${author}/${name}/authenticated-assets/${filepath}`,
+    );
+  }
+
+  public getAuthenticatedPluginIconURL(
+    author: string,
+    name: string,
+  ): Promise<string> {
+    return this.getAuthenticatedObjectURL(
+      `/api/v1/plugins/${author}/${name}/authenticated-icon`,
     );
   }
 
@@ -718,13 +769,15 @@ export class BackendClient extends BaseHttpClient {
   }
 
   public installPluginFromGithub(
-    assetUrl: string,
+    assetId: number,
+    releaseId: number,
     owner: string,
     repo: string,
     releaseTag: string,
   ): Promise<AsyncTaskCreatedResp> {
     return this.post('/api/v1/plugins/install/github', {
-      asset_url: assetUrl,
+      asset_id: assetId,
+      release_id: releaseId,
       owner,
       repo,
       release_tag: releaseTag,
@@ -1038,8 +1091,13 @@ export class BackendClient extends BaseHttpClient {
   public getPluginDebugInfo(): Promise<{
     debug_url: string;
     plugin_debug_key: string;
+    expires_at: string;
   }> {
     return this.get('/api/v1/plugins/debug-info');
+  }
+
+  public getBoxRuntimeStatus(): Promise<ApiRespBoxStatus> {
+    return this.get('/api/v1/box/runtime-status');
   }
 
   public getBoxStatus(): Promise<ApiRespBoxStatus> {
@@ -1052,19 +1110,29 @@ export class BackendClient extends BaseHttpClient {
 
   // ============ User API ============
   public checkIfInited(): Promise<{ initialized: boolean }> {
-    return this.get('/api/v1/user/init');
+    return this.get('/api/v1/user/init', undefined, { skipWorkspace: true });
   }
 
   public initUser(user: string, password: string): Promise<object> {
-    return this.post('/api/v1/user/init', { user, password });
+    return this.post(
+      '/api/v1/user/init',
+      { user, password },
+      { skipWorkspace: true },
+    );
   }
 
   public authUser(user: string, password: string): Promise<ApiRespUserToken> {
-    return this.post('/api/v1/user/auth', { user, password });
+    return this.post(
+      '/api/v1/user/auth',
+      { user, password },
+      { skipWorkspace: true },
+    );
   }
 
   public checkUserToken(): Promise<ApiRespUserToken> {
-    return this.get('/api/v1/user/check-token');
+    return this.get('/api/v1/user/check-token', undefined, {
+      skipWorkspace: true,
+    });
   }
 
   public resetPassword(
@@ -1072,51 +1140,169 @@ export class BackendClient extends BaseHttpClient {
     recoveryKey: string,
     newPassword: string,
   ): Promise<{ user: string }> {
-    return this.post('/api/v1/user/reset-password', {
-      user,
-      recovery_key: recoveryKey,
-      new_password: newPassword,
-    });
+    return this.post(
+      '/api/v1/user/reset-password',
+      {
+        user,
+        recovery_key: recoveryKey,
+        new_password: newPassword,
+      },
+      { skipWorkspace: true },
+    );
   }
 
   public changePassword(
     currentPassword: string,
     newPassword: string,
   ): Promise<{ user: string }> {
-    return this.post('/api/v1/user/change-password', {
-      current_password: currentPassword,
-      new_password: newPassword,
-    });
+    return this.post(
+      '/api/v1/user/change-password',
+      {
+        current_password: currentPassword,
+        new_password: newPassword,
+      },
+      { skipWorkspace: true },
+    );
   }
 
   public getUserInfo(): Promise<{
+    account_uuid: string;
     user: string;
     account_type: 'local' | 'space';
     has_password: boolean;
   }> {
-    return this.get('/api/v1/user/info');
+    return this.get('/api/v1/user/info', undefined, { skipWorkspace: true });
   }
 
-  public getSpaceCredits(): Promise<{ credits: number | null }> {
+  public getWorkspaceSpaceBilling(): Promise<WorkspaceSpaceBilling> {
     return this.get('/api/v1/user/space-credits');
   }
 
   public getAccountInfo(): Promise<{
     initialized: boolean;
-    account_type?: 'local' | 'space';
-    has_password?: boolean;
+    authenticated_invitation_acceptance_enabled?: boolean;
+    password_login_enabled?: boolean;
+    space_login_enabled?: boolean;
   }> {
-    return this.get('/api/v1/user/account-info');
+    return this.get('/api/v1/user/account-info', undefined, {
+      skipWorkspace: true,
+    });
+  }
+
+  // ============ Workspace API ============
+  public getWorkspaceBootstrap(): Promise<WorkspaceBootstrapResponse> {
+    return this.get('/api/v1/workspaces/bootstrap', undefined, {
+      skipWorkspace: true,
+    });
+  }
+
+  public getWorkspaces(): Promise<{ workspaces: Workspace[] }> {
+    return this.get('/api/v1/workspaces', undefined, { skipWorkspace: true });
+  }
+
+  public getCurrentWorkspace(): Promise<CurrentWorkspace> {
+    return this.get('/api/v1/workspaces/current');
+  }
+
+  public getWorkspace(
+    workspaceUuid: string,
+  ): Promise<{ workspace: Workspace }> {
+    return this.get(`/api/v1/workspaces/${workspaceUuid}`);
+  }
+
+  public getWorkspaceMembers(
+    workspaceUuid: string,
+  ): Promise<{ members: WorkspaceMembership[] }> {
+    return this.get(`/api/v1/workspaces/${workspaceUuid}/members`);
+  }
+
+  public createWorkspaceInvitation(
+    workspaceUuid: string,
+    email: string,
+    role: Exclude<WorkspaceRole, 'owner'>,
+  ): Promise<{
+    invitation: WorkspaceInvitation;
+    token: string;
+    link: string;
+    delivery: WorkspaceInvitationDelivery;
+  }> {
+    return this.post(`/api/v1/workspaces/${workspaceUuid}/invitations`, {
+      email,
+      role,
+    });
+  }
+
+  public getWorkspaceInvitations(
+    workspaceUuid: string,
+  ): Promise<{ invitations: WorkspaceInvitation[] }> {
+    return this.get(`/api/v1/workspaces/${workspaceUuid}/invitations`);
+  }
+
+  public revokeWorkspaceInvitation(
+    workspaceUuid: string,
+    invitationUuid: string,
+  ): Promise<object> {
+    return this.delete(
+      `/api/v1/workspaces/${workspaceUuid}/invitations/${invitationUuid}`,
+    );
+  }
+
+  public inspectWorkspaceInvitation(
+    token: string,
+  ): Promise<{ invitation: WorkspaceInvitation; workspace: Workspace }> {
+    return this.post(
+      '/api/v1/invitations/inspect',
+      { token },
+      { skipWorkspace: true },
+    );
+  }
+
+  public acceptWorkspaceInvitation(
+    token: string,
+    registration?: { email: string; password: string },
+  ): Promise<{ token: string; workspace_uuid: string }> {
+    return this.post(
+      '/api/v1/invitations/accept',
+      {
+        token,
+        registration,
+      },
+      { skipWorkspace: true },
+    );
+  }
+
+  public updateWorkspaceMemberRole(
+    workspaceUuid: string,
+    accountUuid: string,
+    role: WorkspaceRole,
+  ): Promise<{ member: WorkspaceMembership }> {
+    return this.patch(
+      `/api/v1/workspaces/${workspaceUuid}/members/${accountUuid}`,
+      { role },
+    );
+  }
+
+  public removeWorkspaceMember(
+    workspaceUuid: string,
+    accountUuid: string,
+  ): Promise<object> {
+    return this.delete(
+      `/api/v1/workspaces/${workspaceUuid}/members/${accountUuid}`,
+    );
   }
 
   public setPassword(
     newPassword: string,
     currentPassword?: string,
   ): Promise<{ user: string }> {
-    return this.post('/api/v1/user/set-password', {
-      new_password: newPassword,
-      current_password: currentPassword,
-    });
+    return this.post(
+      '/api/v1/user/set-password',
+      {
+        new_password: newPassword,
+        current_password: currentPassword,
+      },
+      { skipWorkspace: true },
+    );
   }
 
   public async bindSpaceAccount(
@@ -1127,10 +1313,11 @@ export class BackendClient extends BaseHttpClient {
     user: string;
     account_type: 'local' | 'space';
   }> {
-    const response = await this.instance.post('/api/v1/user/bind-space', {
-      code,
-      state,
-    });
+    const response = await this.instance.post(
+      '/api/v1/user/bind-space',
+      { code, state },
+      { skipWorkspace: true } as RequestConfig,
+    );
     if (response.data.code !== 0) {
       throw {
         code: response.data.code,
@@ -1141,26 +1328,48 @@ export class BackendClient extends BaseHttpClient {
   }
 
   // ============ Space OAuth API (Redirect Flow) ============
-  public getSpaceAuthorizeUrl(
-    redirectUri: string,
-    state?: string,
-  ): Promise<{
+  public getSpaceAuthorizeUrl(redirectUri: string): Promise<{
     authorize_url: string;
   }> {
-    const params: Record<string, string> = { redirect_uri: redirectUri };
-    if (state) {
-      params.state = state;
-    }
-    return this.get('/api/v1/user/space/authorize-url', params);
+    return this.get(
+      '/api/v1/user/space/authorize-url',
+      { redirect_uri: redirectUri },
+      { skipWorkspace: true },
+    );
   }
 
-  public async exchangeSpaceOAuthCode(code: string): Promise<{
-    token: string;
-    user: string;
+  public getSpaceBindAuthorizeUrl(redirectUri: string): Promise<{
+    authorize_url: string;
   }> {
-    const response = await this.instance.post('/api/v1/user/space/callback', {
-      code,
-    });
+    return this.get(
+      '/api/v1/user/space/bind-authorize-url',
+      { redirect_uri: redirectUri },
+      { skipWorkspace: true },
+    );
+  }
+
+  public async exchangeSpaceOAuthCode(
+    code: string,
+    state: string,
+    workspaceUuid?: string,
+    launchAssertion?: string,
+  ): Promise<{
+    token: string;
+    user?: string;
+    workspace_uuid?: string;
+    principal_type?: 'account' | 'support_admin';
+    actor_account_uuid?: string;
+  }> {
+    const response = await this.instance.post(
+      '/api/v1/user/space/callback',
+      {
+        code,
+        state,
+        workspace_uuid: workspaceUuid,
+        launch_assertion: launchAssertion,
+      },
+      { skipWorkspace: true } as RequestConfig,
+    );
     if (response.data.code !== 0) {
       throw {
         code: response.data.code,
@@ -1199,8 +1408,10 @@ export class BackendClient extends BaseHttpClient {
       level: string;
       platform?: string;
       user_id?: string;
+      user_name?: string;
       runner_name?: string;
       variables?: string;
+      role?: string;
     }>;
     llmCalls: Array<{
       id: string;
@@ -1216,8 +1427,26 @@ export class BackendClient extends BaseHttpClient {
       bot_name: string;
       pipeline_id: string;
       pipeline_name: string;
+      session_id?: string;
       error_message?: string;
       message_id?: string;
+    }>;
+    toolCalls: Array<{
+      id: string;
+      timestamp: string;
+      tool_name: string;
+      tool_source: string;
+      duration: number;
+      status: string;
+      bot_id: string;
+      bot_name: string;
+      pipeline_id: string;
+      pipeline_name: string;
+      session_id?: string;
+      message_id?: string;
+      arguments?: string;
+      result?: string;
+      error_message?: string;
     }>;
     embeddingCalls: Array<{
       id: string;
@@ -1263,6 +1492,7 @@ export class BackendClient extends BaseHttpClient {
     totalCount: {
       messages: number;
       llmCalls: number;
+      toolCalls?: number;
       embeddingCalls: number;
       sessions: number;
       errors: number;

@@ -1,16 +1,20 @@
 from __future__ import annotations
 
-import base64
 import enum
 import json
+import math
 import re
 import time
 import typing
-from contextlib import AsyncExitStack
+import ipaddress
+from urllib.parse import urlparse
+from contextlib import AsyncExitStack, asynccontextmanager
+from datetime import timedelta
 import traceback
 from langbot_plugin.api.entities.events import pipeline_query
 import sqlalchemy
 import asyncio
+import hashlib
 import httpx
 
 import uuid as uuid_module
@@ -18,14 +22,26 @@ from mcp import ClientSession, StdioServerParameters, types as mcp_types
 from mcp.client.stdio import stdio_client
 from mcp.client.sse import sse_client
 from mcp.client.streamable_http import streamable_http_client
+from mcp.shared.exceptions import McpError
 from pydantic import AnyUrl
 
 from .. import loader
 from ....core import app
+from ....core.task_boundary import create_detached_task, run_in_workspace_uow
+from ....api.http.context import ExecutionContext
+from ....api.http.service.tenant import TenantContext, require_workspace_uuid
+from ....workspace.errors import WorkspaceError, WorkspaceInvariantError
 import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
 from ....entity.persistence import mcp as persistence_mcp
-from .mcp_stdio import BoxStdioSessionRuntime, MCPServerBoxConfig, MCPSessionErrorPhase  # noqa: F401
+from .mcp_stdio import (
+    BoxStdioSessionRuntime,
+    MCPServerBoxConfig as MCPServerBoxConfig,  # noqa: F401 - public re-export
+    MCPSessionErrorPhase,
+    _ColdStartRetry,
+    _get_default_memory_mb,
+)
+from .mcp_policy import require_stdio_mcp_enabled, stdio_mcp_enabled
 
 # Synthesized LLM tools for MCP resources (not from server tools/list).
 # Dispatched in MCPLoader.invoke_tool; placeholder func on LLMTool is never used.
@@ -35,6 +51,7 @@ MCP_TOOL_READ_RESOURCE = 'langbot_mcp_read_resource'
 
 MCP_RESOURCE_DISCOVERY_MAX_PAGES = 20
 MCP_RESOURCE_CACHE_TTL_SECONDS = 30
+MCP_RESOURCE_CACHE_MAX_ENTRIES = 32
 MCP_RESOURCE_PREVIEW_MAX_BYTES = 64 * 1024
 MCP_RESOURCE_AGENT_READ_MAX_BYTES = 64 * 1024
 MCP_RESOURCE_AGENT_READ_MAX_TOKENS = 12000
@@ -43,6 +60,7 @@ MCP_RESOURCE_CONTEXT_MAX_BYTES = 96 * 1024
 MCP_RESOURCE_TRACE_QUERY_KEY = '_mcp_resource_reads'
 MCP_RESOURCE_LINKS_QUERY_KEY = '_mcp_resource_links'
 MCP_RESOURCE_CONTEXT_QUERY_KEY = '_mcp_resource_context'
+MCP_TOOL_CALL_TIMEOUT_DEFAULT_SECONDS = 300.0
 
 TEXT_LIKE_MIME_TYPES = {
     'application/json',
@@ -118,10 +136,13 @@ def _truncate_text(text: str, max_bytes: int, max_tokens: int | None = None) -> 
 
 
 def _blob_size(blob: str) -> int:
-    try:
-        return len(base64.b64decode(blob, validate=False))
-    except Exception:
+    # MCP BlobResourceContents is schema-validated base64 without whitespace.
+    # Compute decoded size in O(1) without allocating a second binary copy.
+    encoded_chars = len(blob)
+    if encoded_chars % 4:
         return len(blob.encode('utf-8', errors='ignore'))
+    padding = 2 if blob.endswith('==') else 1 if blob.endswith('=') else 0
+    return max((encoded_chars // 4) * 3 - padding, 0)
 
 
 def _resource_to_dict(resource: mcp_types.Resource | mcp_types.ResourceLink) -> dict:
@@ -185,6 +206,30 @@ class MCPSessionStatus(enum.Enum):
     ERROR = 'error'
 
 
+class _TransportReconnect(Exception):
+    """Internal signal: the Box stdio WS transport dropped but the managed
+    process is still alive. Triggers a lightweight transport reconnect that
+    reuses the live process, instead of a full process rebuild.
+
+    Reconnect attempts are NOT counted toward the fatal retry budget, so a
+    long-lived session can survive arbitrarily many transient drops.
+    """
+
+
+class _CallerReconnect(Exception):
+    """Internal signal: a tool/resource call hit a server-expired session
+    (e.g. a UDP/HTTP MCP server's own session timeout) and asked the owning
+    lifecycle loop to rebuild the connection.
+
+    Like _TransportReconnect, this does NOT consume the fatal retry budget —
+    the server-side timeout is expected, recurring behavior, not a failure.
+    """
+
+
+class MCPToolCallTimeoutError(TimeoutError):
+    """An MCP tool call exceeded its configured per-server deadline."""
+
+
 class RuntimeMCPSession:
     """运行时 MCP 会话"""
 
@@ -227,13 +272,24 @@ class RuntimeMCPSession:
 
     _box_stdio_runtime: BoxStdioSessionRuntime
 
-    def __init__(self, server_name: str, server_config: dict, enable: bool, ap: app.Application):
+    def __init__(
+        self,
+        server_name: str,
+        server_config: dict,
+        enable: bool,
+        ap: app.Application,
+        execution_context: ExecutionContext,
+    ):
         self.server_name = server_name
         self.server_uuid = server_config.get('uuid', '')
         self.server_config = server_config
         self.ap = ap
+        self.execution_context = execution_context
         self.enable = enable
         self.session = None
+        self.tool_call_timeout_sec = self._parse_tool_call_timeout(
+            server_config.get('tool_call_timeout_sec', MCP_TOOL_CALL_TIMEOUT_DEFAULT_SECONDS)
+        )
 
         # Transient test sessions (created from the config page "test" button,
         # which carry no persisted server UUID) must NOT share the live
@@ -254,25 +310,97 @@ class RuntimeMCPSession:
         self._lifecycle_task = None
         self._shutdown_event = asyncio.Event()
         self._ready_event = asyncio.Event()
+        # Signaled by callers (invoke_mcp_tool / read_resource_envelope) when
+        # they see a server-expired session; the lifecycle loop reconnects and
+        # sets _reconnected_event so all callers waiting on this cycle resume
+        # together, instead of each racing to rebuild the session itself.
+        self._reconnect_event = asyncio.Event()
+        self._reconnected_event: asyncio.Event | None = None
+        # Set transiently when a WS transport drop should NOT stop the managed
+        # process (it will be re-attached on the next initialize()).
+        self._preserve_managed_process = False
+
+        # Log buffer for capturing stderr from Box managed process (maxlen=500 keeps
+        # recent lines without unbounded memory growth)
+        import collections as _collections
+
+        self._log_buffer: _collections.deque = _collections.deque(maxlen=500)
+        self._last_stderr_text: str = ''
 
         self._box_stdio_runtime = BoxStdioSessionRuntime(self)
         self.box_config = self._box_stdio_runtime.config
 
+    def _parse_tool_call_timeout(self, value: typing.Any) -> float:
+        """Return a safe tool-call timeout; zero explicitly disables it."""
+
+        try:
+            timeout = -1 if isinstance(value, bool) else float(value)
+            if timeout > 0:
+                # Validate the exact conversion used for each call here, so a
+                # finite-but-enormous manual config cannot fail at invocation.
+                timedelta(seconds=timeout)
+        except (TypeError, ValueError, OverflowError):
+            timeout = -1
+
+        if not math.isfinite(timeout) or timeout < 0:
+            self.ap.logger.warning(
+                f'Invalid MCP tool call timeout {value!r} for {self.server_name}; '
+                f'using {MCP_TOOL_CALL_TIMEOUT_DEFAULT_SECONDS:g} seconds'
+            )
+            return MCP_TOOL_CALL_TIMEOUT_DEFAULT_SECONDS
+        return timeout
+
+    async def _assert_execution_active(self) -> None:
+        """Fail closed when this long-lived session belongs to a stale placement."""
+
+        binding = await self.ap.workspace_service.get_execution_binding(
+            self.execution_context.workspace_uuid,
+            expected_generation=self.execution_context.placement_generation,
+        )
+        if binding.instance_uuid != self.execution_context.instance_uuid:
+            raise WorkspaceInvariantError('MCP session instance does not match the active Workspace binding')
+
+    async def _sleep_with_execution_fence(self, delay: float) -> None:
+        """Back off without reconnecting after the captured placement expires."""
+
+        await self._assert_execution_active()
+        try:
+            await asyncio.wait_for(self._shutdown_event.wait(), timeout=delay)
+        except asyncio.TimeoutError:
+            pass
+        if not self._shutdown_event.is_set():
+            await self._assert_execution_active()
+
+    def _stop_for_stale_execution(self, error: WorkspaceError) -> None:
+        """Mark the session terminal without retrying a fenced placement."""
+
+        self.status = MCPSessionStatus.ERROR
+        self.error_message = 'Workspace execution binding is stale'
+        self._shutdown_event.set()
+        self._ready_event.set()
+        self.ap.logger.info(
+            f'MCP session {self.server_name} stopped because its Workspace execution binding is stale: {error}'
+        )
+
     async def _init_stdio_python_server(self):
+        # Final transport gate: this must run before both the Box branch and
+        # the backwards-compatible host-stdio branch.  Service/UI checks are
+        # usability guards; this is the execution security boundary.
+        require_stdio_mcp_enabled(self.ap, self.server_config)
+
         if self._uses_box_stdio():
             await self._box_stdio_runtime.initialize()
             return
 
-        # Box is configured (ap.box_service exists) but currently unavailable
-        # (disabled by config or connection failed). Refuse stdio MCP rather
-        # than silently falling through to host-stdio — the operator asked
-        # for the sandbox and the failure mode should be visible.
+        # Box is configured but explicitly disabled. Refuse stdio MCP rather
+        # than silently falling through to host-stdio — the operator asked for
+        # the sandbox and the failure mode should be visible. An enabled Box
+        # that is reconnecting is handled above and waits for availability.
         #
         # Set ``error_phase = BOX_UNAVAILABLE`` BEFORE raising so the retry
-        # wrapper can short-circuit (retrying is pointless when Box is
-        # deliberately off) and the frontend can render a localized,
-        # actionable message instead of this raw RuntimeError. Keep the
-        # message itself short — the frontend ignores it for this phase.
+        # wrapper can distinguish a deliberately disabled Box from an enabled
+        # runtime that is still reconnecting. Keep the message itself short —
+        # the frontend ignores it for this phase.
         box_service = getattr(self.ap, 'box_service', None)
         if box_service is not None and not getattr(box_service, 'available', False):
             self.error_phase = MCPSessionErrorPhase.BOX_UNAVAILABLE
@@ -300,12 +428,24 @@ class RuntimeMCPSession:
         await self._box_stdio_runtime.initialize()
 
     async def _init_sse_server(self):
+        trust_env = self._remote_http_trust_env()
+
+        def httpx_client_factory(headers=None, timeout=None, auth=None):
+            return httpx.AsyncClient(
+                headers=headers,
+                timeout=timeout,
+                auth=auth,
+                follow_redirects=True,
+                trust_env=trust_env,
+            )
+
         sse_transport = await self.exit_stack.enter_async_context(
             sse_client(
                 self.server_config['url'],
                 headers=self.server_config.get('headers', {}),
                 timeout=self.server_config.get('timeout', 10),
                 sse_read_timeout=self.server_config.get('ssereadtimeout', 30),
+                httpx_client_factory=httpx_client_factory,
             )
         )
 
@@ -315,23 +455,47 @@ class RuntimeMCPSession:
 
         await self.session.initialize()
 
-    async def _init_streamable_http_server(self):
-        transport = await self.exit_stack.enter_async_context(
-            streamable_http_client(
+    def _remote_http_trust_env(self) -> bool:
+        configured = self.server_config.get('trust_env')
+        if isinstance(configured, bool):
+            return configured
+        hostname = (urlparse(str(self.server_config.get('url', ''))).hostname or '').lower()
+        if hostname == 'localhost':
+            return False
+        try:
+            return not ipaddress.ip_address(hostname).is_loopback
+        except ValueError:
+            return True
+
+    @asynccontextmanager
+    async def _streamable_http_session(self) -> typing.AsyncIterator[ClientSession]:
+        """Enter a fully initialized Streamable HTTP session as one context.
+
+        Initialization must happen inside the same context manager that owns the
+        MCP transport. The SDK reports request failures by cancelling the host
+        task and raises the real HTTP error from its TaskGroup during context
+        exit. Keeping these nested contexts together guarantees a failed
+        ``__aenter__`` unwinds immediately, so callers see the HTTPStatusError
+        instead of a detached CancelledError. It also owns the injected HTTPX
+        client, which the MCP SDK deliberately does not close for callers.
+        """
+        async with httpx.AsyncClient(
+            headers=self.server_config.get('headers', {}),
+            timeout=self.server_config.get('timeout', 10),
+            follow_redirects=True,
+            trust_env=self._remote_http_trust_env(),
+        ) as http_client:
+            async with streamable_http_client(
                 self.server_config['url'],
-                http_client=httpx.AsyncClient(
-                    headers=self.server_config.get('headers', {}),
-                    timeout=self.server_config.get('timeout', 10),
-                    follow_redirects=True,
-                ),
-            )
-        )
+                http_client=http_client,
+            ) as transport:
+                read, write, _ = transport
+                async with ClientSession(read, write) as session:
+                    await session.initialize()
+                    yield session
 
-        read, write, _ = transport
-
-        self.session = await self.exit_stack.enter_async_context(ClientSession(read, write))
-
-        await self.session.initialize()
+    async def _init_streamable_http_server(self):
+        self.session = await self.exit_stack.enter_async_context(self._streamable_http_session())
 
     async def _init_remote_server(self):
         """Connect to a remote MCP server, auto-detecting the transport.
@@ -346,9 +510,15 @@ class RuntimeMCPSession:
             await self._init_streamable_http_server()
             return
         except Exception as e:
+            if not self._should_fallback_to_sse(e):
+                self.ap.logger.info(
+                    f'MCP server {self.server_name}: Streamable HTTP transport failed '
+                    f'({self._describe_exception(e)}); not falling back to SSE'
+                )
+                raise
             self.ap.logger.info(
-                f'MCP server {self.server_name}: Streamable HTTP transport failed '
-                f'({self._describe_exception(e)}), falling back to SSE'
+                f'MCP server {self.server_name}: Streamable HTTP initialize failed with a compatible HTTP status '
+                f'({self._describe_exception(e)}), falling back to legacy SSE'
             )
 
         # The Streamable HTTP attempt may have partially entered the transport /
@@ -369,6 +539,7 @@ class RuntimeMCPSession:
     async def _lifecycle_loop(self):
         """Manage the full MCP session lifecycle in a background task."""
         try:
+            await self._assert_execution_active()
             if self.server_config['mode'] == 'stdio':
                 await self._init_stdio_python_server()
             elif self.server_config['mode'] == 'remote':
@@ -378,9 +549,11 @@ class RuntimeMCPSession:
             elif self.server_config['mode'] == 'http':
                 await self._init_streamable_http_server()
             else:
-                raise ValueError(f'Unknown MCP server mode: {self.server_name}: {self.server_config}')
+                raise ValueError(f'Unknown MCP server mode for {self.server_name}')
 
+            await self._assert_execution_active()
             await self.refresh()
+            await self._assert_execution_active()
 
             self.status = MCPSessionStatus.CONNECTED
 
@@ -391,19 +564,69 @@ class RuntimeMCPSession:
             if self._uses_box_stdio():
                 monitor_task = asyncio.create_task(self._box_stdio_runtime.monitor_process_health())
                 shutdown_task = asyncio.create_task(self._shutdown_event.wait())
+                reconnect_task = asyncio.create_task(self._reconnect_event.wait())
                 done, pending = await asyncio.wait(
-                    [shutdown_task, monitor_task],
+                    [shutdown_task, monitor_task, reconnect_task],
                     return_when=asyncio.FIRST_COMPLETED,
                 )
                 for task in pending:
                     task.cancel()
+                await asyncio.gather(*pending, return_exceptions=True)
+                if reconnect_task in done and not self._shutdown_event.is_set():
+                    self._reconnect_event.clear()
+                    self.ap.logger.info(
+                        f'MCP session {self.server_name}: caller requested reconnect (server session expired)'
+                    )
+                    raise _CallerReconnect('Caller requested reconnect after session expiry')
                 for task in done:
                     if task is monitor_task and not self._shutdown_event.is_set():
+                        # The monitor completed. This is EITHER the managed
+                        # process actually exiting OR just the WS transport
+                        # dropping while the process stays alive in the Box
+                        # runtime. Re-check the real process state so a
+                        # transient transport drop reconnects (reusing the live
+                        # process) instead of tearing the process down and
+                        # running a full rebuild+backoff cycle.
+                        process_still_running = False
+                        try:
+                            process_still_running = await self._box_stdio_runtime._managed_process_is_running()
+                        except Exception:
+                            process_still_running = False
+                        if process_still_running:
+                            self.ap.logger.info(
+                                f'MCP server {self.server_name}: transport dropped but '
+                                f'managed process is still running; reconnecting transport'
+                            )
+                            self.error_phase = MCPSessionErrorPhase.RELAY_CONNECT
+                            # Preserve the live process across the finally-block
+                            # cleanup: only the WS transport should be torn down.
+                            self._preserve_managed_process = True
+                            raise _TransportReconnect('Box managed process transport dropped; reconnecting')
                         self.error_phase = MCPSessionErrorPhase.RUNTIME
                         raise Exception('Box managed process exited unexpectedly')
             else:
-                await self._shutdown_event.wait()
+                shutdown_task = asyncio.create_task(self._shutdown_event.wait())
+                reconnect_task = asyncio.create_task(self._reconnect_event.wait())
+                done, pending = await asyncio.wait(
+                    [shutdown_task, reconnect_task],
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+                for task in pending:
+                    task.cancel()
+                await asyncio.gather(*pending, return_exceptions=True)
+                if reconnect_task in done and not self._shutdown_event.is_set():
+                    self._reconnect_event.clear()
+                    self.ap.logger.info(
+                        f'MCP session {self.server_name}: caller requested reconnect (server session expired)'
+                    )
+                    raise _CallerReconnect('Caller requested reconnect after session expiry')
 
+        except _ColdStartRetry:
+            # Cold-start in progress: set the preserve flag BEFORE the finally
+            # block runs so it does not stop the live managed process. The outer
+            # _lifecycle_loop_with_retry will reuse it on the next attempt.
+            self._preserve_managed_process = True
+            raise
         except Exception as e:
             self.status = MCPSessionStatus.ERROR
             self.error_message = str(e)
@@ -424,26 +647,136 @@ class RuntimeMCPSession:
             except Exception as e:
                 self.ap.logger.error(f'Error cleaning up MCP session {self.server_name}: {e}\n{traceback.format_exc()}')
             finally:
-                await self._cleanup_box_stdio_session()
+                # On a transport-only reconnect the managed process is healthy
+                # and will be re-attached on the next initialize(); do NOT stop
+                # it. Any other exit path fully tears the session down.
+                if getattr(self, '_preserve_managed_process', False):
+                    self._preserve_managed_process = False
+                else:
+                    await self._cleanup_box_stdio_session()
 
     async def _lifecycle_loop_with_retry(self):
         """Wrap _lifecycle_loop with retry and exponential backoff."""
-        for attempt in range(self._MAX_RETRIES + 1):
+        attempt = 0
+        while attempt <= self._MAX_RETRIES:
             try:
                 await self._lifecycle_loop()
                 return  # Normal shutdown, don't retry
+            except _TransportReconnect as e:
+                # Transient WS transport drop while the managed process is still
+                # alive. Reconnect promptly WITHOUT consuming the fatal retry
+                # budget and WITHOUT stopping the process — initialize() will
+                # re-attach to the live process. This is what lets a long-lived
+                # stdio MCP survive repeated brief event-loop stalls / pings.
+                if self._shutdown_event.is_set():
+                    return
+                self.ap.logger.info(
+                    f'MCP session {self.server_name}: reconnecting transport ({self._describe_exception(e)})'
+                )
+                self.status = MCPSessionStatus.CONNECTING
+                self.error_message = None
+                self.error_phase = None
+                try:
+                    await self._sleep_with_execution_fence(1)
+                except WorkspaceError as fence_error:
+                    self._stop_for_stale_execution(fence_error)
+                    return
+                continue
+            except _CallerReconnect:
+                # A tool/resource call hit a server-expired session and asked us
+                # to rebuild the connection. Same treatment as _TransportReconnect:
+                # reconnect immediately WITHOUT consuming the fatal retry budget.
+                # Wake any callers waiting in _trigger_reconnect() regardless of
+                # outcome so they don't block for the full timeout.
+                reconnected_event = self._reconnected_event
+                if self._shutdown_event.is_set():
+                    if reconnected_event is not None:
+                        reconnected_event.set()
+                    return
+                self.status = MCPSessionStatus.CONNECTING
+                self.error_message = None
+                self.error_phase = None
+                try:
+                    await self._assert_execution_active()
+                    if self.server_config['mode'] == 'stdio':
+                        await self._init_stdio_python_server()
+                    elif self.server_config['mode'] == 'remote':
+                        await self._init_remote_server()
+                    elif self.server_config['mode'] == 'sse':
+                        await self._init_sse_server()
+                    elif self.server_config['mode'] == 'http':
+                        await self._init_streamable_http_server()
+                    await self.refresh()
+                    await self._assert_execution_active()
+                    self.status = MCPSessionStatus.CONNECTED
+                    self.ap.logger.info(f'MCP session {self.server_name} reconnected successfully after session expiry')
+                except WorkspaceError as reconnect_err:
+                    self._stop_for_stale_execution(reconnect_err)
+                    return
+                except Exception as reconnect_err:
+                    self.status = MCPSessionStatus.ERROR
+                    self.error_message = str(reconnect_err)
+                    self.ap.logger.error(
+                        f'MCP session {self.server_name}: reconnect after session expiry failed: '
+                        f'{self._describe_exception(reconnect_err)}'
+                    )
+                finally:
+                    if reconnected_event is not None:
+                        reconnected_event.set()
+                continue
+            except _ColdStartRetry as e:
+                # The managed process is alive but still cold-starting (e.g.
+                # `npx -y <pkg>` is still installing) and cannot yet answer the
+                # handshake. Reuse the live process and retry the attach WITHOUT
+                # consuming the fatal retry budget or stopping the process, so a
+                # slow cold start is waited out instead of failing. Preserve the
+                # process across the finally-block cleanup.
+                if self._shutdown_event.is_set():
+                    return
+                self._preserve_managed_process = True
+                self.ap.logger.debug(
+                    f'MCP session {self.server_name}: waiting for cold start ({self._describe_exception(e)})'
+                )
+                self.status = MCPSessionStatus.CONNECTING
+                self.error_message = None
+                self.error_phase = None
+                try:
+                    await self._sleep_with_execution_fence(2)
+                except WorkspaceError as fence_error:
+                    self._stop_for_stale_execution(fence_error)
+                    return
+                continue
+            except WorkspaceError as e:
+                self._stop_for_stale_execution(e)
+                return
             except Exception as e:
-                self.retry_count = attempt + 1
                 if self._shutdown_event.is_set():
                     return  # Shutdown requested, don't retry
-                # BOX_UNAVAILABLE is a deliberate refusal, not a transient
-                # failure — retrying produces log spam and a misleading
-                # "Failed after N attempts" message. Surface it immediately.
                 if self.error_phase == MCPSessionErrorPhase.BOX_UNAVAILABLE:
+                    box_service = getattr(self.ap, 'box_service', None)
+                    if box_service is not None and getattr(box_service, 'enabled', True):
+                        # Box is configured and may recover independently of
+                        # this MCP session. Keep retrying without consuming the
+                        # fatal budget; _wait_for_box_runtime() rate-limits the
+                        # loop to one warning per startup timeout.
+                        self.status = MCPSessionStatus.CONNECTING
+                        self.error_message = None
+                        self.error_phase = None
+                        try:
+                            await self._sleep_with_execution_fence(1)
+                        except WorkspaceError as fence_error:
+                            self._stop_for_stale_execution(fence_error)
+                            return
+                        continue
+                    # Explicitly disabled Box is a deliberate refusal, not a
+                    # transient failure. Surface it immediately without log
+                    # spam or a misleading "Failed after N attempts" message.
+                    self.retry_count = attempt + 1
                     self.status = MCPSessionStatus.ERROR
                     self.error_message = str(e)
                     self._ready_event.set()
                     return
+                self.retry_count = attempt + 1
                 if attempt >= self._MAX_RETRIES:
                     self.status = MCPSessionStatus.ERROR
                     self.error_message = f'Failed after {self._MAX_RETRIES + 1} attempts: {self._describe_exception(e)}'
@@ -459,7 +792,12 @@ class RuntimeMCPSession:
                 self.status = MCPSessionStatus.CONNECTING
                 self.error_message = None
                 self.error_phase = None
-                await asyncio.sleep(delay)
+                try:
+                    await self._sleep_with_execution_fence(delay)
+                except WorkspaceError as fence_error:
+                    self._stop_for_stale_execution(fence_error)
+                    return
+                attempt += 1
 
     @staticmethod
     def _describe_exception(exc: BaseException) -> str:
@@ -485,6 +823,79 @@ class RuntimeMCPSession:
         unique = [m for m in leaves if not (m in seen or seen.add(m))]
         return '; '.join(unique) if unique else f'{type(exc).__name__}: {exc}'
 
+    @staticmethod
+    def _iter_exception_leaves(exc: BaseException) -> typing.Iterator[BaseException]:
+        sub = getattr(exc, 'exceptions', None)
+        if sub:  # ExceptionGroup / BaseExceptionGroup
+            for child in sub:
+                yield from RuntimeMCPSession._iter_exception_leaves(child)
+        else:
+            yield exc
+
+    @staticmethod
+    def _should_fallback_to_sse(exc: BaseException) -> bool:
+        """Whether a Streamable HTTP failure matches legacy-SSE fallback.
+
+        Only protocol-compatibility responses trigger fallback. Authentication,
+        authorization, throttling, and server failures must remain visible
+        instead of being retried against a different transport.
+
+        MCP SDK 1.26 translates an HTTP 404 initialize response into a synthetic
+        ``McpError(32600, 'Session terminated')`` rather than preserving the
+        HTTPStatusError, so recognize that exact SDK sentinel as 404-compatible.
+        """
+        fallback_statuses = {400, 404, 405}
+        for leaf in RuntimeMCPSession._iter_exception_leaves(exc):
+            if isinstance(leaf, httpx.HTTPStatusError):
+                if leaf.response.status_code in fallback_statuses:
+                    return True
+            elif isinstance(leaf, McpError) and leaf.error.code == 32600 and leaf.error.message == 'Session terminated':
+                return True
+        return False
+
+    @staticmethod
+    def _is_session_terminated(exc: BaseException) -> bool:
+        """Whether exc indicates the server-side session expired.
+
+        Long-lived MCP servers (notably UDP/HTTP transports) commonly enforce
+        their own session timeout (e.g. ~30 minutes); once it fires, any call
+        on the cached session raises this rather than a transport-level error.
+        """
+        for leaf in RuntimeMCPSession._iter_exception_leaves(exc):
+            msg = str(leaf).lower()
+            if 'session terminated' in msg or 'session expired' in msg:
+                return True
+        return False
+
+    _RECONNECT_WAIT_TIMEOUT = 30.0
+
+    async def _trigger_reconnect(self) -> bool:
+        """Ask the owning lifecycle loop to rebuild the session and wait for it.
+
+        Concurrent callers that hit the timeout at the same time all signal
+        the same _reconnect_event and await the same _reconnected_event, so
+        the lifecycle loop reconnects once and every caller resumes together
+        — instead of each caller racing to rebuild the session itself.
+
+        Returns True if reconnection succeeded within the timeout.
+        """
+        await self._assert_execution_active()
+        if self._shutdown_event.is_set():
+            return False
+
+        if self._reconnected_event is None or self._reconnected_event.is_set():
+            self._reconnected_event = asyncio.Event()
+        reconnected_event = self._reconnected_event
+        self._reconnect_event.set()
+
+        try:
+            await asyncio.wait_for(reconnected_event.wait(), timeout=self._RECONNECT_WAIT_TIMEOUT)
+            await self._assert_execution_active()
+            return self.status == MCPSessionStatus.CONNECTED
+        except asyncio.TimeoutError:
+            self.ap.logger.warning(f'MCP session {self.server_name} reconnect timed out')
+            return False
+
     _MONITOR_POLL_INTERVAL = 5
     _MONITOR_MAX_CONSECUTIVE_ERRORS = 3
 
@@ -495,6 +906,7 @@ class RuntimeMCPSession:
         if not self.enable:
             return
 
+        await self._assert_execution_active()
         # Create background task for lifecycle management with retry
         self._lifecycle_task = asyncio.create_task(self._lifecycle_loop_with_retry())
 
@@ -506,11 +918,13 @@ class RuntimeMCPSession:
             self.status = MCPSessionStatus.ERROR
             raise Exception(f'Connection timeout after {startup_timeout} seconds')
 
+        await self._assert_execution_active()
         # Check for errors
         if self.status == MCPSessionStatus.ERROR:
             raise Exception('Connection failed, please check URL')
 
     async def refresh(self):
+        await self._assert_execution_active()
         if not self.session:
             return
 
@@ -526,6 +940,7 @@ class RuntimeMCPSession:
             self.resource_capabilities = {}
 
         tools = await self.session.list_tools()
+        await self._assert_execution_active()
 
         self.ap.logger.debug(f'Refresh MCP tools: {tools}')
 
@@ -547,34 +962,44 @@ class RuntimeMCPSession:
             )
 
         await self._refresh_resources()
+        await self._assert_execution_active()
 
     async def _refresh_resources(self):
+        await self._assert_execution_active()
         if not self.session:
             return
 
         try:
             cursor: str | None = None
             for _ in range(MCP_RESOURCE_DISCOVERY_MAX_PAGES):
+                await self._assert_execution_active()
                 resources_result = await self.session.list_resources(cursor)
+                await self._assert_execution_active()
                 for resource in resources_result.resources:
                     self.resources.append(_resource_to_dict(resource))
                 cursor = getattr(resources_result, 'nextCursor', None)
                 if not cursor:
                     break
             self.ap.logger.debug(f'Refresh MCP resources: {len(self.resources)} resources found')
+        except WorkspaceError:
+            raise
         except Exception as e:
             self.ap.logger.debug(f'MCP server {self.server_name} does not support resources or failed to list: {e}')
 
         try:
             cursor = None
             for _ in range(MCP_RESOURCE_DISCOVERY_MAX_PAGES):
+                await self._assert_execution_active()
                 templates_result = await self.session.list_resource_templates(cursor)
+                await self._assert_execution_active()
                 for template in templates_result.resourceTemplates:
                     self.resource_templates.append(_resource_template_to_dict(template))
                 cursor = getattr(templates_result, 'nextCursor', None)
                 if not cursor:
                     break
             self.ap.logger.debug(f'Refresh MCP resource templates: {len(self.resource_templates)} templates found')
+        except WorkspaceError:
+            raise
         except Exception as e:
             self.ap.logger.debug(
                 f'MCP server {self.server_name} does not support resource templates or failed to list: {e}'
@@ -693,21 +1118,61 @@ class RuntimeMCPSession:
         arguments: dict,
         query: pipeline_query.Query | None = None,
     ) -> list[provider_message.ContentElement]:
-        if not self.session:
-            raise Exception('MCP session is not connected')
+        await self._assert_execution_active()
+        for attempt in range(2):
+            if not self.session:
+                raise Exception('MCP session is not connected')
 
-        result = await self.session.call_tool(tool_name, arguments)
-        if result.isError:
-            error_texts = []
+            try:
+                await self._assert_execution_active()
+                read_timeout = timedelta(seconds=self.tool_call_timeout_sec) if self.tool_call_timeout_sec > 0 else None
+                result = await self.session.call_tool(
+                    tool_name,
+                    arguments,
+                    read_timeout_seconds=read_timeout,
+                )
+                await self._assert_execution_active()
+            except Exception as e:
+                if self._is_tool_call_timeout(e):
+                    self.ap.logger.warning(
+                        f'MCP tool {tool_name} on {self.server_name} timed out after '
+                        f'{self.tool_call_timeout_sec:g} seconds'
+                    )
+                    raise MCPToolCallTimeoutError(
+                        f"MCP tool '{tool_name}' on server '{self.server_name}' timed out after "
+                        f'{self.tool_call_timeout_sec:g} seconds'
+                    ) from e
+                if attempt == 0 and self._is_session_terminated(e):
+                    self.ap.logger.warning(
+                        f'MCP tool {tool_name} on {self.server_name} got session terminated, triggering reconnect...'
+                    )
+                    if await self._trigger_reconnect():
+                        continue
+                raise
+
+            if result.isError:
+                error_texts = []
+                for content in result.content:
+                    if getattr(content, 'type', '') == 'text':
+                        error_texts.append(content.text)
+                raise Exception('\n'.join(error_texts) if error_texts else 'Unknown error from MCP tool')
+
+            result_contents: list[provider_message.ContentElement] = []
             for content in result.content:
-                if getattr(content, 'type', '') == 'text':
-                    error_texts.append(content.text)
-            raise Exception('\n'.join(error_texts) if error_texts else 'Unknown error from MCP tool')
+                result_contents.extend(self._content_to_provider_elements(content, query=query, source_tool=tool_name))
+            return result_contents
 
-        result_contents: list[provider_message.ContentElement] = []
-        for content in result.content:
-            result_contents.extend(self._content_to_provider_elements(content, query=query, source_tool=tool_name))
-        return result_contents
+        raise Exception('MCP session is not connected')
+
+    @staticmethod
+    def _is_tool_call_timeout(exc: BaseException) -> bool:
+        """Recognize the MCP SDK's per-request timeout without retrying it."""
+        return any(
+            isinstance(leaf, McpError)
+            and leaf.error.code == httpx.codes.REQUEST_TIMEOUT
+            and leaf.error.message.startswith('Timed out while waiting for response')
+            for leaf in RuntimeMCPSession._iter_exception_leaves(exc)
+        )
 
     def get_tools(self) -> list[resource_tool.LLMTool]:
         return self.functions
@@ -751,6 +1216,7 @@ class RuntimeMCPSession:
         query: pipeline_query.Query | None = None,
     ) -> dict:
         """Read a resource by URI with safety limits and audit metadata."""
+        await self._assert_execution_active()
         if not self.session:
             raise Exception('MCP session is not connected')
 
@@ -762,6 +1228,9 @@ class RuntimeMCPSession:
 
         cache_key = (uri, max_bytes, max_tokens, include_blob)
         now = time.time()
+        for expired_key, entry in tuple(self._resource_cache.items()):
+            if now - entry.get('cached_at', 0) > MCP_RESOURCE_CACHE_TTL_SECONDS:
+                self._resource_cache.pop(expired_key, None)
         cached = self._resource_cache.get(cache_key)
         if cached and now - cached.get('cached_at', 0) <= MCP_RESOURCE_CACHE_TTL_SECONDS:
             envelope = {
@@ -772,7 +1241,23 @@ class RuntimeMCPSession:
             self._record_resource_read_trace(query, envelope)
             return envelope
 
-        result = await self.session.read_resource(AnyUrl(uri))
+        result = None
+        for attempt in range(2):
+            if not self.session:
+                raise Exception('MCP session is not connected')
+            try:
+                await self._assert_execution_active()
+                result = await self.session.read_resource(AnyUrl(uri))
+                await self._assert_execution_active()
+                break
+            except Exception as e:
+                if attempt == 0 and self._is_session_terminated(e):
+                    self.ap.logger.warning(
+                        f'MCP resource read on {self.server_name} got session terminated, triggering reconnect...'
+                    )
+                    if await self._trigger_reconnect():
+                        continue
+                raise
         contents: list[dict] = []
         total_bytes = 0
         truncated_any = False
@@ -844,6 +1329,13 @@ class RuntimeMCPSession:
             'cache_hit': False,
             'warnings': warnings,
         }
+        await self._assert_execution_active()
+        if cache_key not in self._resource_cache and len(self._resource_cache) >= MCP_RESOURCE_CACHE_MAX_ENTRIES:
+            oldest_key = min(
+                self._resource_cache,
+                key=lambda key: self._resource_cache[key].get('cached_at', 0),
+            )
+            self._resource_cache.pop(oldest_key, None)
         self._resource_cache[cache_key] = {'cached_at': now, 'envelope': envelope}
         self._record_resource_read_trace(query, envelope)
         return envelope
@@ -878,7 +1370,11 @@ class RuntimeMCPSession:
     def get_runtime_info_dict(self) -> dict:
         info = {
             'status': self.status.value,
-            'error_message': self.error_message,
+            # Raw transport exceptions may echo command arguments, headers, or
+            # environment values. Detailed diagnostics belong in AUDIT_VIEW
+            # logs; resource-list responses expose only a stable status.
+            'error_message': 'MCP runtime failed' if self.error_message else None,
+            'error_code': 'runtime_error' if self.error_message else None,
             'error_phase': self.error_phase.value if self.error_phase else None,
             'retry_count': self.retry_count,
             'tool_count': len(self.get_tools()),
@@ -927,12 +1423,34 @@ class RuntimeMCPSession:
         return self._box_stdio_runtime.uses_box_stdio()
 
     def _build_box_session_id(self) -> str:
-        # Transient test sessions get their own isolated Box session so a
-        # failing/short-lived test can never disturb the shared session that
-        # hosts live, already-connected MCP servers.
-        if self.is_transient:
-            return f'mcp-test-{self.server_uuid}'
-        return 'mcp-shared'
+        # Compatible MCP servers share a session and remain isolated by
+        # process_id. A server with a different immutable resource profile gets
+        # another session; Docker/E2B cannot change memory/image/etc. after a
+        # session has been created.
+        config = self._box_stdio_runtime.config
+        default_memory = _get_default_memory_mb(self.ap)
+        profile = {
+            'image': config.image,
+            'network': config.network,
+            'host_path_mode': config.host_path_mode,
+            'cpus': config.cpus,
+            'memory_mb': config.memory_mb or default_memory,
+            'pids_limit': config.pids_limit,
+            'read_only_rootfs': (config.read_only_rootfs if config.read_only_rootfs is not None else False),
+        }
+        default_profile = {
+            'image': None,
+            'network': 'on',
+            'host_path_mode': 'ro',
+            'cpus': None,
+            'memory_mb': default_memory,
+            'pids_limit': None,
+            'read_only_rootfs': False,
+        }
+        if profile == default_profile:
+            return 'mcp-shared'
+        digest = hashlib.sha256(json.dumps(profile, sort_keys=True).encode('utf-8')).hexdigest()[:12]
+        return f'mcp-shared-{digest}'
 
     def _rewrite_path(self, path: str, host_path: str | None) -> str:
         return self._box_stdio_runtime.rewrite_path(path, host_path)
@@ -964,6 +1482,37 @@ class RuntimeMCPSession:
         await self._box_stdio_runtime.cleanup_session()
 
 
+def _execution_context_from_tenant(context: TenantContext) -> ExecutionContext:
+    workspace_uuid = require_workspace_uuid(context)
+    instance_uuid = str(getattr(context, 'instance_uuid', '') or '').strip()
+    generation = getattr(context, 'placement_generation', None)
+    if not instance_uuid:
+        raise ValueError('MCP runtime requires an explicit instance UUID')
+    if isinstance(generation, bool) or not isinstance(generation, int) or generation <= 0:
+        raise ValueError('MCP runtime requires a positive placement generation')
+    return ExecutionContext(
+        instance_uuid=instance_uuid,
+        workspace_uuid=workspace_uuid,
+        placement_generation=generation,
+        bot_uuid=getattr(context, 'bot_uuid', None),
+        pipeline_uuid=getattr(context, 'pipeline_uuid', None),
+        query_uuid=getattr(context, 'query_uuid', None),
+    )
+
+
+def _execution_context_from_query(query: pipeline_query.Query) -> ExecutionContext:
+    return _execution_context_from_tenant(
+        ExecutionContext(
+            instance_uuid=str(getattr(query, 'instance_uuid', '') or ''),
+            workspace_uuid=str(getattr(query, 'workspace_uuid', '') or ''),
+            placement_generation=getattr(query, 'placement_generation', 0) or 0,
+            bot_uuid=getattr(query, 'bot_uuid', None),
+            pipeline_uuid=getattr(query, 'pipeline_uuid', None),
+            query_uuid=getattr(query, 'query_uuid', None),
+        )
+    )
+
+
 # @loader.loader_class('mcp')
 class MCPLoader(loader.ToolLoader):
     """MCP 工具加载器。
@@ -971,17 +1520,326 @@ class MCPLoader(loader.ToolLoader):
     在此加载器中管理所有与 MCP Server 的连接。
     """
 
-    sessions: dict[str, RuntimeMCPSession]
-
-    _last_listed_functions: list[resource_tool.LLMTool]
+    _sessions: dict[tuple[str, str, int, str], RuntimeMCPSession]
 
     _hosted_mcp_tasks: list[asyncio.Task]
 
     def __init__(self, ap: app.Application):
         super().__init__(ap)
         self.sessions = {}
-        self._last_listed_functions = []
         self._hosted_mcp_tasks = []
+        self._hosted_mcp_tasks_by_scope: dict[
+            tuple[str, str, int],
+            set[asyncio.Task],
+        ] = {}
+        self._host_dispatch_tasks: set[asyncio.Task] = set()
+        self._pending_projection_retirements: set[tuple[str, str, int]] = set()
+        self._projection_reconcile_task: asyncio.Task[None] | None = None
+        config = getattr(getattr(ap, 'instance_config', None), 'data', {})
+        mcp_config = config.get('mcp', {}) if isinstance(config, dict) else {}
+        raw_lifecycle_concurrency = mcp_config.get('lifecycle_concurrency', 16) if isinstance(mcp_config, dict) else 16
+        if (
+            isinstance(raw_lifecycle_concurrency, bool)
+            or not isinstance(raw_lifecycle_concurrency, int)
+            or raw_lifecycle_concurrency < 1
+        ):
+            raw_lifecycle_concurrency = 16
+        self._lifecycle_concurrency = min(
+            raw_lifecycle_concurrency,
+            128,
+        )
+        self._lifecycle_semaphore = asyncio.Semaphore(self._lifecycle_concurrency)
+
+    @property
+    def sessions(
+        self,
+    ) -> dict[tuple[str, str, int, str], RuntimeMCPSession]:
+        return self._sessions
+
+    @sessions.setter
+    def sessions(self, sessions: dict) -> None:
+        """Compatibility setter that rebuilds the per-scope session index."""
+
+        self._sessions = sessions
+        self._session_keys_by_scope: dict[
+            tuple[str, str, int],
+            set[tuple[str, str, int, str]],
+        ] = {}
+        self._scope_generations: dict[tuple[str, str], int] = {}
+        for key in sessions:
+            if not isinstance(key, tuple) or len(key) != 4:
+                continue
+            scope_key = key[:3]
+            self._session_keys_by_scope.setdefault(scope_key, set()).add(key)
+            self._scope_generations[scope_key[:2]] = scope_key[2]
+
+    def _register_session(
+        self,
+        context: TenantContext,
+        server_name: str,
+        session: RuntimeMCPSession,
+    ) -> None:
+        scope_key = self._scope_key(context)
+        workspace_scope = scope_key[:2]
+        previous_generation = self._scope_generations.get(workspace_scope)
+        if previous_generation is not None and previous_generation != scope_key[2]:
+            raise WorkspaceInvariantError('MCP session registration crossed a Workspace generation')
+        key = (*scope_key, server_name)
+        self._sessions[key] = session
+        self._session_keys_by_scope.setdefault(scope_key, set()).add(key)
+        self._scope_generations[workspace_scope] = scope_key[2]
+
+    def _pop_session(
+        self,
+        context: TenantContext,
+        server_name: str,
+    ) -> RuntimeMCPSession | None:
+        scope_key = self._scope_key(context)
+        key = (*scope_key, server_name)
+        session = self._sessions.pop(key, None)
+        keys = self._session_keys_by_scope.get(scope_key)
+        if keys is not None:
+            keys.discard(key)
+            if not keys:
+                self._session_keys_by_scope.pop(scope_key, None)
+        self._drop_empty_scope(scope_key)
+        return session
+
+    def _drop_empty_scope(self, scope_key: tuple[str, str, int]) -> None:
+        if (
+            scope_key not in self._session_keys_by_scope
+            and scope_key not in self._hosted_mcp_tasks_by_scope
+            and self._scope_generations.get(scope_key[:2]) == scope_key[2]
+        ):
+            self._scope_generations.pop(scope_key[:2], None)
+
+    def track_hosted_task(
+        self,
+        task: asyncio.Task,
+        context: TenantContext,
+    ) -> asyncio.Task:
+        """Track a host task without retaining it after completion."""
+
+        scope_key = self._scope_key(context)
+        workspace_scope = scope_key[:2]
+        previous_generation = self._scope_generations.get(workspace_scope)
+        if previous_generation is not None and previous_generation != scope_key[2]:
+            task.cancel()
+            raise WorkspaceInvariantError('MCP host task crossed a Workspace generation')
+        self._scope_generations[workspace_scope] = scope_key[2]
+        self._hosted_mcp_tasks.append(task)
+        self._hosted_mcp_tasks_by_scope.setdefault(scope_key, set()).add(task)
+
+        def discard(completed: asyncio.Task) -> None:
+            try:
+                self._hosted_mcp_tasks.remove(completed)
+            except ValueError:
+                pass
+            tasks = self._hosted_mcp_tasks_by_scope.get(scope_key)
+            if tasks is not None:
+                tasks.discard(completed)
+                if not tasks:
+                    self._hosted_mcp_tasks_by_scope.pop(scope_key, None)
+            self._drop_empty_scope(scope_key)
+
+        task.add_done_callback(discard)
+        return task
+
+    def _track_host_dispatch_task(self, task: asyncio.Task) -> None:
+        """Track the bounded startup dispatcher without retaining it."""
+
+        self._host_dispatch_tasks.add(task)
+
+        def discard(completed: asyncio.Task) -> None:
+            self._host_dispatch_tasks.discard(completed)
+            if completed.cancelled():
+                return
+            exception = completed.exception()
+            if exception is not None:
+                self.ap.logger.error(
+                    f'MCP startup dispatcher failed: {exception}',
+                )
+
+        task.add_done_callback(discard)
+
+    async def _retire_runtime_scope(
+        self,
+        scope_key: tuple[str, str, int],
+    ) -> None:
+        tasks = tuple(self._hosted_mcp_tasks_by_scope.pop(scope_key, ()))
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+        keys = tuple(self._session_keys_by_scope.pop(scope_key, ()))
+        sessions = [session for key in keys if (session := self._sessions.pop(key, None)) is not None]
+        await self._shutdown_sessions(sessions)
+        if self._scope_generations.get(scope_key[:2]) == scope_key[2]:
+            self._scope_generations.pop(scope_key[:2], None)
+
+    def reconcile_execution_projection(
+        self,
+        instance_uuid: str,
+        active_generations: typing.Mapping[str, int],
+        *,
+        affected_workspace_uuids: typing.Iterable[str] | None = None,
+    ) -> None:
+        """Queue stale MCP scopes for one coalesced, bounded cleanup worker."""
+
+        affected = None if affected_workspace_uuids is None else set(affected_workspace_uuids)
+        for workspace_scope, generation in tuple(self._scope_generations.items()):
+            scoped_instance_uuid, workspace_uuid = workspace_scope
+            if scoped_instance_uuid != instance_uuid:
+                continue
+            if affected is not None and workspace_uuid not in affected:
+                continue
+            if active_generations.get(workspace_uuid) == generation:
+                continue
+            self._pending_projection_retirements.add((*workspace_scope, generation))
+
+        if not self._pending_projection_retirements:
+            return
+        if self._projection_reconcile_task is not None and not self._projection_reconcile_task.done():
+            return
+        task = asyncio.create_task(
+            self._drain_projection_retirements(),
+            name='mcp-projection-reconcile',
+        )
+        self._projection_reconcile_task = task
+        task.add_done_callback(self._projection_reconcile_done)
+
+    async def _drain_projection_retirements(self) -> None:
+        while self._pending_projection_retirements:
+            scope_key = next(iter(self._pending_projection_retirements))
+            self._pending_projection_retirements.discard(scope_key)
+            await self._retire_runtime_scope(scope_key)
+
+    def _projection_reconcile_done(
+        self,
+        completed: asyncio.Task[None],
+    ) -> None:
+        if self._projection_reconcile_task is completed:
+            self._projection_reconcile_task = None
+        if completed.cancelled():
+            return
+        exception = completed.exception()
+        if exception is not None:
+            self.ap.logger.error(
+                f'MCP projection reconciliation failed: {exception}',
+            )
+
+    async def _observe_execution_context(
+        self,
+        context: ExecutionContext,
+    ) -> None:
+        workspace_scope = (
+            context.instance_uuid,
+            context.workspace_uuid,
+        )
+        previous_generation = self._scope_generations.get(workspace_scope)
+        if previous_generation is None:
+            return
+        if context.placement_generation < previous_generation:
+            raise WorkspaceInvariantError('MCP runtime placement generation rolled back')
+        if context.placement_generation == previous_generation:
+            return
+        await self._retire_runtime_scope((*workspace_scope, previous_generation))
+
+    async def _reset_runtime_state(self) -> None:
+        """Cancel host tasks and close sessions before reload or shutdown."""
+
+        projection_task = self._projection_reconcile_task
+        self._projection_reconcile_task = None
+        self._pending_projection_retirements.clear()
+        if projection_task is not None and not projection_task.done():
+            projection_task.cancel()
+            await asyncio.gather(projection_task, return_exceptions=True)
+
+        dispatch_tasks = tuple(self._host_dispatch_tasks)
+        self._host_dispatch_tasks.clear()
+        for task in dispatch_tasks:
+            if not task.done():
+                task.cancel()
+        if dispatch_tasks:
+            await asyncio.gather(*dispatch_tasks, return_exceptions=True)
+
+        tasks = tuple(self._hosted_mcp_tasks)
+        self._hosted_mcp_tasks.clear()
+        self._hosted_mcp_tasks_by_scope.clear()
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+        sessions = tuple(self._sessions.values())
+        self.sessions = {}
+        await self._shutdown_sessions(sessions)
+
+    async def _shutdown_sessions(
+        self,
+        sessions: typing.Iterable[RuntimeMCPSession],
+    ) -> None:
+        """Close MCP sessions in bounded batches to avoid shutdown storms."""
+
+        session_list = list(sessions)
+        for offset in range(0, len(session_list), self._lifecycle_concurrency):
+            batch = session_list[offset : offset + self._lifecycle_concurrency]
+            results = await asyncio.gather(
+                *(session.shutdown() for session in batch),
+                return_exceptions=True,
+            )
+            for session, result in zip(batch, results, strict=True):
+                if isinstance(result, BaseException):
+                    self.ap.logger.error(f'Error shutting down MCP session {session.server_name}: {result}')
+
+    async def _host_server_configs_bounded(
+        self,
+        server_configs: typing.Sequence[tuple[ExecutionContext, dict],],
+    ) -> None:
+        """Create at most one lifecycle batch of MCP host tasks at a time."""
+
+        for offset in range(0, len(server_configs), self._lifecycle_concurrency):
+            batch = server_configs[offset : offset + self._lifecycle_concurrency]
+            tasks: list[asyncio.Task] = []
+            for execution_context, config in batch:
+                task = create_detached_task(
+                    self.host_mcp_server(execution_context, config),
+                    after_commit_manager=getattr(
+                        self.ap,
+                        'persistence_mgr',
+                        None,
+                    ),
+                    workspace_uuid=execution_context.workspace_uuid,
+                )
+                tasks.append(task)
+                try:
+                    self.track_hosted_task(task, execution_context)
+                except WorkspaceInvariantError as exc:
+                    self.ap.logger.warning(
+                        f'Skipping stale MCP startup task for {execution_context.workspace_uuid}: {exc}'
+                    )
+                    continue
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
+
+    async def _assert_execution_active(
+        self,
+        context: TenantContext,
+    ) -> ExecutionContext:
+        """Validate a caller's placement before accessing an MCP session."""
+
+        execution_context = _execution_context_from_tenant(context)
+        binding = await self.ap.workspace_service.get_execution_binding(
+            execution_context.workspace_uuid,
+            expected_generation=execution_context.placement_generation,
+        )
+        if binding.instance_uuid != execution_context.instance_uuid:
+            raise WorkspaceInvariantError('MCP caller instance does not match the active Workspace binding')
+        await self._observe_execution_context(execution_context)
+        return execution_context
 
     async def initialize(self):
         await self.load_mcp_servers_from_db()
@@ -989,22 +1847,124 @@ class MCPLoader(loader.ToolLoader):
     async def load_mcp_servers_from_db(self):
         self.ap.logger.info('Loading MCP servers from db...')
 
-        self.sessions = {}
+        await self._reset_runtime_state()
 
-        result = await self.ap.persistence_mgr.execute_async(sqlalchemy.select(persistence_mcp.MCPServer))
-        servers = result.all()
+        pending_hosts: list[tuple[ExecutionContext, dict]] = []
 
-        for server in servers:
-            config = self.ap.persistence_mgr.serialize_model(persistence_mcp.MCPServer, server)
+        async def queue_server(binding, server) -> None:
+            config = self.ap.persistence_mgr.serialize_model(
+                persistence_mcp.MCPServer,
+                server,
+            )
+            if config.get('mode') == 'stdio' and not stdio_mcp_enabled(self.ap):
+                self.ap.logger.info(
+                    f'Skipping disabled stdio MCP server {server.uuid}; '
+                    'the persisted configuration is retained but no process is launched'
+                )
+                return
+            try:
+                if binding is None:
+                    binding = await self.ap.workspace_service.get_execution_binding(server.workspace_uuid)
+                execution_context = ExecutionContext(
+                    instance_uuid=binding.instance_uuid,
+                    workspace_uuid=binding.workspace_uuid,
+                    placement_generation=binding.placement_generation,
+                )
+            except Exception as exc:
+                self.ap.logger.warning(
+                    f'Skipping MCP server {server.uuid}: Workspace execution binding is unavailable: {exc}'
+                )
+                return
+            pending_hosts.append((execution_context, config))
 
-            task = asyncio.create_task(self.host_mcp_server(config))
-            self._hosted_mcp_tasks.append(task)
+        list_bindings = getattr(self.ap.workspace_service, 'list_active_execution_bindings', None)
+        tenant_uow = getattr(self.ap.persistence_mgr, 'tenant_uow', None)
+        cloud_runtime = getattr(getattr(self.ap.persistence_mgr, 'mode', None), 'value', None) == 'cloud_runtime'
+        if cloud_runtime:
+            if not callable(list_bindings) or not callable(tenant_uow):
+                raise RuntimeError('Cloud MCP loading requires explicit instance discovery and tenant UoWs')
+            for binding in await list_bindings():
+                async with tenant_uow(binding.workspace_uuid):
+                    result = await self.ap.persistence_mgr.execute_async(
+                        sqlalchemy.select(persistence_mcp.MCPServer)
+                        .where(persistence_mcp.MCPServer.workspace_uuid == binding.workspace_uuid)
+                        .order_by(persistence_mcp.MCPServer.uuid)
+                    )
+                    for server in result.all():
+                        await queue_server(binding, server)
+        else:
+            # Compatibility path for isolated loader tests and older embedders.
+            result = await self.ap.persistence_mgr.execute_async(sqlalchemy.select(persistence_mcp.MCPServer))
+            for server in result.all():
+                await queue_server(None, server)
 
-    async def host_mcp_server(self, server_config: dict):
+        if pending_hosts:
+            dispatch_task = create_detached_task(
+                self._host_server_configs_bounded(pending_hosts),
+                after_commit_manager=getattr(self.ap, 'persistence_mgr', None),
+            )
+            self._track_host_dispatch_task(dispatch_task)
+
+    @staticmethod
+    def _scope_key(context: TenantContext) -> tuple[str, str, int]:
+        execution_context = _execution_context_from_tenant(context)
+        return (
+            execution_context.instance_uuid,
+            execution_context.workspace_uuid,
+            execution_context.placement_generation,
+        )
+
+    @classmethod
+    def _session_key(cls, context: TenantContext, server_name: str) -> tuple[str, str, int, str]:
+        return (*cls._scope_key(context), server_name)
+
+    def _sessions_for_context(self, context: TenantContext) -> list[RuntimeMCPSession]:
+        scope_key = self._scope_key(context)
+        return [
+            session
+            for key in self._session_keys_by_scope.get(scope_key, ())
+            if (session := self._sessions.get(key)) is not None
+        ]
+
+    async def host_mcp_server(
+        self,
+        context: TenantContext,
+        server_config: dict,
+    ) -> None:
+        async with self._lifecycle_semaphore:
+            await self._host_mcp_server(context, server_config)
+
+    async def _host_mcp_server(
+        self,
+        context: TenantContext,
+        server_config: dict,
+    ) -> None:
+        requested_context = _execution_context_from_tenant(context)
+        execution_context = await run_in_workspace_uow(
+            self.ap,
+            requested_context.workspace_uuid,
+            lambda: self._assert_execution_active(requested_context),
+        )
+        configured_workspace = str(server_config.get('workspace_uuid') or '').strip()
+        if configured_workspace and configured_workspace != execution_context.workspace_uuid:
+            raise ValueError('MCP server configuration belongs to another Workspace')
+        server_config = dict(server_config)
+        server_config['workspace_uuid'] = execution_context.workspace_uuid
         self.ap.logger.debug(f'Loading MCP server {server_config}')
         try:
-            session = await self.load_mcp_server(server_config)
-            self.sessions[server_config['name']] = session
+            session = await self.load_mcp_server(execution_context, server_config)
+            await self._assert_execution_active(execution_context)
+            old_session = self._pop_session(
+                execution_context,
+                server_config['name'],
+            )
+            if old_session is not None:
+                await old_session.shutdown()
+            self._register_session(
+                execution_context,
+                server_config['name'],
+                session,
+            )
         except Exception as e:
             self.ap.logger.error(
                 f'Failed to load MCP server from db: {server_config["name"]}({server_config["uuid"]}): {e}\n{traceback.format_exc()}'
@@ -1013,6 +1973,7 @@ class MCPLoader(loader.ToolLoader):
 
         self.ap.logger.debug(f'Starting MCP server {server_config["name"]}({server_config["uuid"]})')
         try:
+            await self._assert_execution_active(execution_context)
             await session.start()
         except Exception as e:
             self.ap.logger.error(
@@ -1022,7 +1983,7 @@ class MCPLoader(loader.ToolLoader):
 
         self.ap.logger.debug(f'Started MCP server {server_config["name"]}({server_config["uuid"]})')
 
-    async def load_mcp_server(self, server_config: dict) -> RuntimeMCPSession:
+    async def load_mcp_server(self, context: TenantContext, server_config: dict) -> RuntimeMCPSession:
         """加载 MCP 服务器到运行时
 
         Args:
@@ -1032,6 +1993,14 @@ class MCPLoader(loader.ToolLoader):
                 - enable: 是否启用
                 - extra_args: 额外的配置参数 (可选)
         """
+        execution_context = await self._assert_execution_active(context)
+        server_config = dict(server_config)
+        require_stdio_mcp_enabled(self.ap, server_config)
+        configured_workspace = str(server_config.get('workspace_uuid') or '').strip()
+        if configured_workspace and configured_workspace != execution_context.workspace_uuid:
+            raise ValueError('MCP server configuration belongs to another Workspace')
+        server_config['workspace_uuid'] = execution_context.workspace_uuid
+
         uuid_ = server_config.get('uuid')
         is_transient = False
         if not uuid_:
@@ -1057,7 +2026,7 @@ class MCPLoader(loader.ToolLoader):
             **extra_args,
         }
 
-        session = RuntimeMCPSession(name, mixed_config, enable, self.ap)
+        session = RuntimeMCPSession(name, mixed_config, enable, self.ap, execution_context)
 
         return session
 
@@ -1066,9 +2035,13 @@ class MCPLoader(loader.ToolLoader):
         v = getattr(query, 'variables', None) or {}
         return v.get('_pipeline_bound_mcp_servers', None)
 
-    def _eligible_sessions_for_bound(self, bound_mcp_servers: list[str] | None) -> list[RuntimeMCPSession]:
+    def _eligible_sessions_for_bound(
+        self,
+        context: TenantContext,
+        bound_mcp_servers: list[str] | None,
+    ) -> list[RuntimeMCPSession]:
         out: list[RuntimeMCPSession] = []
-        for session in self.sessions.values():
+        for session in self._sessions_for_context(context):
             if not session.enable:
                 continue
             if session.status != MCPSessionStatus.CONNECTED:
@@ -1080,10 +2053,14 @@ class MCPLoader(loader.ToolLoader):
             out.append(session)
         return out
 
-    def _eligible_resource_sessions_for_bound(self, bound_mcp_servers: list[str] | None) -> list[RuntimeMCPSession]:
+    def _eligible_resource_sessions_for_bound(
+        self,
+        context: TenantContext,
+        bound_mcp_servers: list[str] | None,
+    ) -> list[RuntimeMCPSession]:
         return [
             session
-            for session in self._eligible_sessions_for_bound(bound_mcp_servers)
+            for session in self._eligible_sessions_for_bound(context, bound_mcp_servers)
             if session.has_resource_support()
         ]
 
@@ -1114,12 +2091,13 @@ class MCPLoader(loader.ToolLoader):
         ]
 
     async def _invoke_mcp_list_resources(self, parameters: dict, query: pipeline_query.Query) -> typing.Any:
+        execution_context = _execution_context_from_query(query)
         server_name = parameters.get('server_name') if parameters else None
         if not server_name or not isinstance(server_name, str):
             return [provider_message.ContentElement.from_text('Error: "server_name" (string) is required.')]
 
         bound = self._get_bound_mcp_from_query(query)
-        allowed = {s.server_name for s in self._eligible_resource_sessions_for_bound(bound)}
+        allowed = {s.server_name for s in self._eligible_resource_sessions_for_bound(execution_context, bound)}
         if server_name not in allowed:
             return [
                 provider_message.ContentElement.from_text(
@@ -1129,7 +2107,7 @@ class MCPLoader(loader.ToolLoader):
                 )
             ]
 
-        session = self.get_session(server_name)
+        session = self.get_session(execution_context, server_name)
         if session is None or session.status != MCPSessionStatus.CONNECTED:
             return [provider_message.ContentElement.from_text(f'Error: MCP server not connected: {server_name!r}')]
 
@@ -1146,6 +2124,7 @@ class MCPLoader(loader.ToolLoader):
         return [provider_message.ContentElement.from_text(json.dumps(body, ensure_ascii=False, indent=2))]
 
     async def _invoke_mcp_read_resource(self, parameters: dict, query: pipeline_query.Query) -> typing.Any:
+        execution_context = _execution_context_from_query(query)
         server_name = parameters.get('server_name') if parameters else None
         uri = parameters.get('uri') if parameters else None
         if not server_name or not isinstance(server_name, str):
@@ -1154,7 +2133,7 @@ class MCPLoader(loader.ToolLoader):
             return [provider_message.ContentElement.from_text('Error: "uri" (string) is required.')]
 
         bound = self._get_bound_mcp_from_query(query)
-        allowed = {s.server_name for s in self._eligible_resource_sessions_for_bound(bound)}
+        allowed = {s.server_name for s in self._eligible_resource_sessions_for_bound(execution_context, bound)}
         if server_name not in allowed:
             return [
                 provider_message.ContentElement.from_text(
@@ -1163,7 +2142,7 @@ class MCPLoader(loader.ToolLoader):
                 )
             ]
 
-        session = self.get_session(server_name)
+        session = self.get_session(execution_context, server_name)
         if session is None or session.status != MCPSessionStatus.CONNECTED:
             return [provider_message.ContentElement.from_text(f'Error: MCP server not connected: {server_name!r}')]
 
@@ -1214,13 +2193,15 @@ class MCPLoader(loader.ToolLoader):
 
     async def get_tools(
         self,
+        context: TenantContext,
         bound_mcp_servers: list[str] | None = None,
         *,
         include_resource_tools: bool = True,
     ) -> list[resource_tool.LLMTool]:
+        await self._assert_execution_active(context)
         all_functions: list[resource_tool.LLMTool] = []
 
-        for session in self.sessions.values():
+        for session in self._sessions_for_context(context):
             # If bound_mcp_servers is specified, only include tools from those servers
             if bound_mcp_servers is not None:
                 if session.server_uuid in bound_mcp_servers:
@@ -1229,22 +2210,22 @@ class MCPLoader(loader.ToolLoader):
                 # If no bound servers specified, include all tools
                 all_functions.extend(session.get_tools())
 
-        if include_resource_tools and self._eligible_resource_sessions_for_bound(bound_mcp_servers):
+        if include_resource_tools and self._eligible_resource_sessions_for_bound(context, bound_mcp_servers):
             all_functions.extend(self._mcp_synthetic_resource_tools())
-
-        self._last_listed_functions = all_functions
 
         return all_functions
 
     async def get_tool_catalog(
         self,
+        context: TenantContext,
         bound_mcp_servers: list[str] | None = None,
         *,
         include_resource_tools: bool = False,
     ) -> list[dict[str, typing.Any]]:
+        await self._assert_execution_active(context)
         items: list[dict[str, typing.Any]] = []
 
-        for session in self.sessions.values():
+        for session in self._sessions_for_context(context):
             if bound_mcp_servers is not None and session.server_uuid not in bound_mcp_servers:
                 continue
             for tool in session.get_tools():
@@ -1260,7 +2241,7 @@ class MCPLoader(loader.ToolLoader):
                     }
                 )
 
-        if include_resource_tools and self._eligible_resource_sessions_for_bound(bound_mcp_servers):
+        if include_resource_tools and self._eligible_resource_sessions_for_bound(context, bound_mcp_servers):
             for tool in self._mcp_synthetic_resource_tools():
                 items.append(
                     {
@@ -1276,18 +2257,20 @@ class MCPLoader(loader.ToolLoader):
 
         return items
 
-    async def has_tool(self, name: str) -> bool:
+    async def has_tool(self, context: TenantContext, name: str) -> bool:
         """检查工具是否存在"""
+        await self._assert_execution_active(context)
         if name in (MCP_TOOL_LIST_RESOURCES, MCP_TOOL_READ_RESOURCE):
-            return bool(self._eligible_resource_sessions_for_bound(None))
-        for session in self.sessions.values():
+            return bool(self._eligible_resource_sessions_for_bound(context, None))
+        for session in self._sessions_for_context(context):
             for function in session.get_tools():
                 if function.name == name:
                     return True
         return False
 
-    async def get_tool(self, name: str) -> resource_tool.LLMTool | None:
-        for session in self.sessions.values():
+    async def get_tool(self, context: TenantContext, name: str) -> resource_tool.LLMTool | None:
+        await self._assert_execution_active(context)
+        for session in self._sessions_for_context(context):
             for function in session.get_tools():
                 if function.name == name:
                     return function
@@ -1295,6 +2278,7 @@ class MCPLoader(loader.ToolLoader):
 
     async def invoke_tool(self, name: str, parameters: dict, query: pipeline_query.Query) -> typing.Any:
         """执行工具调用"""
+        execution_context = await self._assert_execution_active(_execution_context_from_query(query))
         if name == MCP_TOOL_LIST_RESOURCES:
             if getattr(query, 'variables', {}).get('_pipeline_mcp_resource_agent_read_enabled', True) is False:
                 return [provider_message.ContentElement.from_text('Error: MCP resource agent reads are disabled.')]
@@ -1304,7 +2288,7 @@ class MCPLoader(loader.ToolLoader):
                 return [provider_message.ContentElement.from_text('Error: MCP resource agent reads are disabled.')]
             return await self._invoke_mcp_read_resource(parameters, query)
 
-        for session in self.sessions.values():
+        for session in self._sessions_for_context(execution_context):
             for function in session.get_tools():
                 if function.name == name:
                     self.ap.logger.debug(f'Invoking MCP tool: {name} with parameters: {parameters}')
@@ -1318,22 +2302,25 @@ class MCPLoader(loader.ToolLoader):
 
         raise ValueError(f'Tool not found: {name}')
 
-    async def get_resources(self, server_name: str) -> list[dict]:
+    async def get_resources(self, context: TenantContext, server_name: str) -> list[dict]:
         """Get resources from a specific MCP server."""
-        session = self.get_session(server_name)
+        await self._assert_execution_active(context)
+        session = self.get_session(context, server_name)
         if session is None:
             raise ValueError(f'MCP server not found: {server_name}')
         return session.get_resources()
 
-    async def get_resource_templates(self, server_name: str) -> list[dict]:
+    async def get_resource_templates(self, context: TenantContext, server_name: str) -> list[dict]:
         """Get resource templates from a specific MCP server."""
-        session = self.get_session(server_name)
+        await self._assert_execution_active(context)
+        session = self.get_session(context, server_name)
         if session is None:
             raise ValueError(f'MCP server not found: {server_name}')
         return session.get_resource_templates()
 
     async def read_resource_envelope(
         self,
+        context: TenantContext,
         server_name: str,
         uri: str,
         *,
@@ -1344,7 +2331,8 @@ class MCPLoader(loader.ToolLoader):
         query: pipeline_query.Query | None = None,
     ) -> dict:
         """Read a resource from a specific MCP server and return metadata plus contents."""
-        session = self.get_session(server_name)
+        await self._assert_execution_active(context)
+        session = self.get_session(context, server_name)
         if session is None:
             raise ValueError(f'MCP server not found: {server_name}')
         return await session.read_resource_envelope(
@@ -1356,24 +2344,28 @@ class MCPLoader(loader.ToolLoader):
             query=query,
         )
 
-    async def read_resource(self, server_name: str, uri: str) -> list[dict]:
+    async def read_resource(self, context: TenantContext, server_name: str, uri: str) -> list[dict]:
         """Read a resource from a specific MCP server."""
-        envelope = await self.read_resource_envelope(server_name, uri)
+        envelope = await self.read_resource_envelope(context, server_name, uri)
         return envelope['contents']
 
-    def get_session_by_uuid(self, server_uuid: str) -> RuntimeMCPSession | None:
-        for session in self.sessions.values():
+    def get_session_by_uuid(self, context: TenantContext, server_uuid: str) -> RuntimeMCPSession | None:
+        for session in self._sessions_for_context(context):
             if session.server_uuid == server_uuid:
                 return session
         return None
 
-    def _resolve_attachment_session(self, attachment: dict) -> RuntimeMCPSession | None:
+    def _resolve_attachment_session(
+        self,
+        context: TenantContext,
+        attachment: dict,
+    ) -> RuntimeMCPSession | None:
         server_uuid = attachment.get('server_uuid') or attachment.get('server_id')
         server_name = attachment.get('server_name')
         if server_uuid:
-            return self.get_session_by_uuid(server_uuid)
+            return self.get_session_by_uuid(context, server_uuid)
         if server_name:
-            return self.get_session(server_name)
+            return self.get_session(context, server_name)
         return None
 
     async def build_resource_context_for_query(
@@ -1384,6 +2376,7 @@ class MCPLoader(loader.ToolLoader):
         default_max_bytes: int = MCP_RESOURCE_CONTEXT_MAX_BYTES,
     ) -> str:
         """Build host-controlled MCP resource context for the current query."""
+        execution_context = await self._assert_execution_active(_execution_context_from_query(query))
         if getattr(query, 'variables', {}).get('_pipeline_mcp_resource_agent_read_enabled', True) is False:
             return ''
 
@@ -1392,7 +2385,7 @@ class MCPLoader(loader.ToolLoader):
             return ''
 
         bound = self._get_bound_mcp_from_query(query)
-        eligible = self._eligible_resource_sessions_for_bound(bound)
+        eligible = self._eligible_resource_sessions_for_bound(execution_context, bound)
         eligible_by_uuid = {session.server_uuid: session for session in eligible}
         eligible_by_name = {session.server_name: session for session in eligible}
 
@@ -1400,6 +2393,7 @@ class MCPLoader(loader.ToolLoader):
         remaining_tokens = default_max_tokens
 
         for raw_attachment in attachments:
+            await self._assert_execution_active(execution_context)
             if remaining_tokens <= 0:
                 break
             if not isinstance(raw_attachment, dict) or raw_attachment.get('enabled') is False:
@@ -1414,7 +2408,7 @@ class MCPLoader(loader.ToolLoader):
             if not uri or not isinstance(uri, str):
                 continue
 
-            session = self._resolve_attachment_session(attachment)
+            session = self._resolve_attachment_session(execution_context, attachment)
             if session is None:
                 continue
             if session.server_uuid not in eligible_by_uuid and session.server_name not in eligible_by_name:
@@ -1432,6 +2426,8 @@ class MCPLoader(loader.ToolLoader):
                     source='preloaded',
                     query=query,
                 )
+            except WorkspaceError:
+                raise
             except Exception as e:
                 self.ap.logger.warning(f'Failed to preload MCP resource {uri!r} from {session.server_name!r}: {e}')
                 continue
@@ -1471,37 +2467,42 @@ class MCPLoader(loader.ToolLoader):
                 pass
         return context
 
-    async def remove_mcp_server(self, server_name: str):
+    async def remove_mcp_server(self, context: TenantContext, server_name: str):
         """移除 MCP 服务器"""
-        if server_name not in self.sessions:
+        await self._assert_execution_active(context)
+        key = self._session_key(context, server_name)
+        if key not in self.sessions:
             self.ap.logger.warning(f'MCP server {server_name} not found in sessions, skipping removal')
             return
 
-        session = self.sessions.pop(server_name)
+        session = self._pop_session(context, server_name)
+        if session is None:
+            return
         await session.shutdown()
         self.ap.logger.info(f'Removed MCP server: {server_name}')
 
-    def get_session(self, server_name: str) -> RuntimeMCPSession | None:
+    def get_session(self, context: TenantContext, server_name: str) -> RuntimeMCPSession | None:
         """获取指定名称的 MCP 会话"""
-        return self.sessions.get(server_name)
+        return self.sessions.get(self._session_key(context, server_name))
 
-    def has_session(self, server_name: str) -> bool:
+    def has_session(self, context: TenantContext, server_name: str) -> bool:
         """检查是否存在指定名称的 MCP 会话"""
-        return server_name in self.sessions
+        return self._session_key(context, server_name) in self.sessions
 
-    def get_all_server_names(self) -> list[str]:
+    def get_all_server_names(self, context: TenantContext) -> list[str]:
         """获取所有已加载的 MCP 服务器名称"""
-        return list(self.sessions.keys())
+        return [session.server_name for session in self._sessions_for_context(context)]
 
-    def get_server_tool_count(self, server_name: str) -> int:
+    def get_server_tool_count(self, context: TenantContext, server_name: str) -> int:
         """获取指定服务器的工具数量"""
-        session = self.get_session(server_name)
+        session = self.get_session(context, server_name)
         return len(session.get_tools()) if session else 0
 
-    def get_all_servers_info(self) -> dict[str, dict]:
+    def get_all_servers_info(self, context: TenantContext) -> dict[str, dict]:
         """获取所有服务器的信息"""
         info = {}
-        for server_name, session in self.sessions.items():
+        for session in self._sessions_for_context(context):
+            server_name = session.server_name
             tools = session.get_tools()
             info[server_name] = {
                 'name': server_name,
@@ -1515,11 +2516,6 @@ class MCPLoader(loader.ToolLoader):
     async def shutdown(self):
         """关闭所有工具"""
         self.ap.logger.info('Shutting down all MCP sessions...')
-        for server_name, session in list(self.sessions.items()):
-            try:
-                await session.shutdown()
-                self.ap.logger.debug(f'Shutdown MCP session: {server_name}')
-            except Exception as e:
-                self.ap.logger.error(f'Error shutting down MCP session {server_name}: {e}\n{traceback.format_exc()}')
-        self.sessions.clear()
+
+        await self._reset_runtime_state()
         self.ap.logger.info('All MCP sessions shutdown complete')

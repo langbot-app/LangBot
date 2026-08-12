@@ -23,7 +23,7 @@ class BaiduCloudExamine(filter_model.ContentFilter):
                 'client_secret': self.ap.pipeline_cfg.data['baidu-cloud-examine']['api-secret'],
             },
         ) as resp:
-            return (await resp.json())['access_token']
+            return (await httpclient.read_json_limited(resp))['access_token']
 
     async def process(self, query: pipeline_query.Query, message: str) -> entities.FilterResult:
         session = httpclient.get_session()
@@ -35,7 +35,7 @@ class BaiduCloudExamine(filter_model.ContentFilter):
             },
             data=f'text={message}'.encode('utf-8'),
         ) as resp:
-            result = await resp.json()
+            result = await httpclient.read_json_limited(resp)
 
             if 'error_code' in result:
                 return entities.FilterResult(

@@ -81,7 +81,7 @@ const jaJP = {
     loading: '読み込み中...',
     fieldRequired: 'この項目は必須です',
     or: 'または',
-    loginWithSpace: 'Space でログイン',
+    loginWithSpace: 'LangBot アカウントでログイン',
     spaceLoginRecommended:
       'おすすめ：公式の安定したモデル API とクラウドサービスを利用',
     loginLocal: 'ローカルアカウントでログイン',
@@ -169,6 +169,7 @@ const jaJP = {
     actions: 'アクション',
     apiKeyCreatedMessage:
       'この API キーをコピーしてください。もしボタンが無効な場合は手動でコピーしてください。',
+    apiKeyStoredSecurely: 'シークレットは作成時のみ表示されます',
     none: 'なし',
     more: 'もっと見る ({{count}})',
     less: '折りたたむ',
@@ -216,6 +217,19 @@ const jaJP = {
     selectModelAbilities: 'モデル機能を選択',
     visionAbility: '視覚機能',
     functionCallAbility: '関数呼び出し',
+    reasoningAbility: '推論',
+    reasoningLevel: '推論レベル',
+    reasoningLevels: {
+      providerDefault: 'Provider デフォルト',
+      disabled: 'オフ',
+      enabled: 'オン',
+      minimal: '最小',
+      low: '低',
+      medium: '中',
+      high: '高',
+      xhigh: '最高',
+      max: '最大',
+    },
     contextLength: 'コンテキストウィンドウ',
     contextLengthPlaceholder: '不明',
     contextLengthInvalid:
@@ -281,8 +295,12 @@ const jaJP = {
     searchProviders: 'プロバイダーを検索...',
     langbotModelsDescription: 'LangBot Space が提供するクラウドモデル',
     credits: 'クレジット',
-    loginWithSpace: 'Space でログイン',
+    loginWithSpace: 'LangBot アカウントでログイン',
     loginToUseModels: 'Space でログインしてクラウドモデルを使用',
+    ownerMustBindSpace:
+      'LangBot モデルを使うにはワークスペース所有者が Space を連携する必要があります。',
+    usesOwnerSpaceBilling:
+      'ワークスペース所有者の Space 課金とクレジットを使用します。',
     noModels: 'モデルがありません',
     langbotModels: 'LangBot モデル',
     spaceTrialTooltip:
@@ -526,9 +544,10 @@ const jaJP = {
     debugInfoTitle: 'プラグインデバッグ情報',
     debugUrl: 'デバッグURL',
     debugKey: 'デバッグキー',
+    debugKeyExpires:
+      '{{time}} にローテーションします。Workspace ごとにキーが異なります',
     noDebugKey: '(未設定)',
-    debugKeyDisabled:
-      'デバッグキーが設定されていません。プラグインデバッグには認証が不要です',
+    debugKeyDisabled: 'デバッグ認証情報を一時的に利用できません',
     boxStatusTitle: 'Box ランタイム',
     boxStatus: 'ステータス',
     boxConnected: '接続済み',
@@ -710,6 +729,7 @@ const jaJP = {
     notFound: 'プラグイン情報が見つかりません',
     sortBy: '並び順',
     sort: {
+      hottest: '人気順',
       recentlyAdded: '最近追加',
       recentlyUpdated: '最近更新',
       mostDownloads: 'ダウンロード数多',
@@ -717,6 +737,9 @@ const jaJP = {
     },
     downloads: '回ダウンロード',
     download: 'ダウンロード',
+    like: 'いいね',
+    unlike: 'いいねを解除',
+    likeFailed: 'いいねを更新できませんでした。もう一度お試しください。',
     repository: 'リポジトリ',
     downloadFailed: 'ダウンロード失敗',
     noReadme: 'このプラグインはREADMEドキュメントを提供していません',
@@ -807,6 +830,9 @@ const jaJP = {
     url: 'URL',
     headers: 'ヘッダー',
     timeout: 'タイムアウト',
+    toolCallTimeout: 'ツール呼び出しタイムアウト（秒）',
+    toolCallTimeoutDescription:
+      '1 回のツール呼び出しの最大待機時間です。0 で無制限、既定値は 300 秒です。',
     addArgument: '引数を追加',
     addEnvVar: '環境変数を追加',
     addHeader: 'ヘッダーを追加',
@@ -829,6 +855,9 @@ const jaJP = {
     boxStdioRefusedSuggestion:
       'Box を有効化（box.enabled = true）してランタイムの接続を確認するか、このサーバーを http/sse モードに切り替えてください。',
     boxRequired: 'Box が必要',
+    disabledByPolicy: 'ポリシーにより無効',
+    stdioDisabledByPolicy:
+      'このデプロイでは Stdio MCP が無効です。リモート MCP サーバーを使用してください。',
     stdioBlockedByBoxToast:
       'Box サンドボックスが無効または利用できないため、stdio モードの MCP は保存できません。Box を有効化するか、http/sse モードに切り替えてください。',
     toolsFound: '個のツール',
@@ -838,6 +867,11 @@ const jaJP = {
     tabTools: 'ツール',
     tabResources: 'リソース',
     tabDocs: 'ドキュメント',
+    tabLogs: 'ログ',
+    logsLevelAll: 'すべてのレベル',
+    logsRefresh: '更新',
+    logsAutoRefresh: '自動更新',
+    logsEmpty: 'ログはありません。MCPサーバーの実行ログがここに表示されます。',
     noReadme: 'ドキュメントがありません',
     parseResultFailed: 'テスト結果の解析に失敗しました',
     noResultReturned: 'テスト結果が返されませんでした',
@@ -1277,6 +1311,96 @@ const jaJP = {
       'パスワードを設定するとメールとパスワードでログインできます',
     spaceEmailMismatch:
       'Spaceログインのメールアドレスがローカルアカウントのメールアドレスと一致しません',
+    space_account_not_registeredTitle: 'アカウントが登録されていません',
+    space_account_not_registered:
+      'この Space メールアドレスのローカルアカウントはありません。ワークスペース所有者に招待を依頼してください。',
+    space_account_binding_requiredTitle: 'Space の連携が必要です',
+    space_account_binding_required:
+      'Space ログインを使用する前に、アカウント設定でこのローカルアカウントを Space に連携してください。',
+  },
+  workspace: {
+    title: 'ワークスペース',
+    description: 'メンバー、ロール、招待リンクを管理します',
+    selectTitle: 'ワークスペースを選択',
+    selectDescription: 'LangBot で使用するワークスペースを選択してください。',
+    selectionLoadFailed:
+      'ワークスペースを読み込めませんでした。もう一度お試しください。',
+    switchWorkspace: 'ワークスペースを切り替え',
+    ossSingletonDescription:
+      'このセルフホストインスタンスには1つのワークスペースがあり、複数のユーザーを追加できます。',
+    cloudManagedDescription:
+      'このワークスペースは LangBot Cloud でホストされています。メンバーはここで管理し、請求は Cloud で開きます。',
+    loadFailed: 'ワークスペース情報の読み込みに失敗しました',
+    members: 'メンバー',
+    you: 'あなた',
+    inviteMember: 'メンバーを招待',
+    inviteDescription:
+      '現在のワークスペースにユーザーを追加する一度限りのリンクを作成します。',
+    emailPlaceholder: 'member@example.com',
+    createInvitation: '招待を作成',
+    invitationCreated: '招待を作成しました',
+    delivery: {
+      sent: '招待メールを送信しました',
+      link_only: '招待リンクを作成しました',
+      failed: '招待リンクを作成しましたが、メールを送信できませんでした',
+    },
+    invitationCreateFailed: '招待の作成に失敗しました',
+    oneTimeLinkWarning:
+      'このリンクを今すぐコピーしてください。一度だけ表示されます。',
+    copyInvitation: '招待リンクをコピー',
+    invitationCopied: '招待リンクをコピーしました',
+    pendingInvitations: '保留中の招待',
+    expiresAt: '{{date}} に期限切れ',
+    revokeInvitation: '招待を取り消す',
+    invitationRevoked: '招待を取り消しました',
+    invitationRevokeFailed: '招待の取り消しに失敗しました',
+    acceptInvitation: '招待を承認',
+    invitedToWorkspace: '{{workspace}} に招待されました',
+    checkingInvitation: '招待を確認しています...',
+    invitationMissing: 'この招待リンクには必要な情報がありません。',
+    invitationExpired: 'この招待は期限切れです。',
+    invitationAlreadyRevoked: 'この招待は取り消されました。',
+    invitationAlreadyUsed: 'この招待はすでに使用されています。',
+    invitationInvalid: 'この招待は無効か、利用できなくなっています。',
+    invitationAccepted: '招待を承認しました',
+    invitationAcceptFailed: '招待の承認に失敗しました',
+    invitationEmailMismatch: 'この招待は別のメールアドレスに送られたものです。',
+    existingAccountLoginRequired:
+      'このメールアドレスのアカウントは既に存在します。ログインしてください。',
+    acceptAsCurrentAccount: '現在のアカウントで承認',
+    authenticatedInvitationNotice:
+      '一度ログアウトし、招待されたアカウントでログインしてください。招待は保持されます。',
+    logoutAndReturn: 'ログアウトしてこの招待に戻る',
+    switchAccount: 'アカウントを切り替える',
+    registerAndAccept: 'アカウントを作成して承認',
+    alreadyHaveAccount: 'アカウントを持っています',
+    confirmPassword: 'パスワードを確認',
+    passwordMinimum: 'パスワードは8文字以上にしてください。',
+    passwordMismatch: 'パスワードが一致しません。',
+    backToLogin: 'ログインに戻る',
+    memberUpdated: 'メンバーのロールを更新しました',
+    memberUpdateFailed: 'メンバーのロール更新に失敗しました',
+    removeMember: 'メンバーを削除',
+    removeMemberConfirm: 'このメンバーをワークスペースから削除しますか？',
+    memberRemoved: 'メンバーを削除しました',
+    memberRemoveFailed: 'メンバーの削除に失敗しました',
+    transferOwnership: '所有権を移譲',
+    types: {
+      personal: '個人',
+      team: 'チーム',
+    },
+    roles: {
+      owner: '所有者',
+      admin: '管理者',
+      developer: '開発者',
+      operator: 'オペレーター',
+      viewer: '閲覧者',
+    },
+
+    settings: 'Workspace Settings',
+    currentPlan: 'Current plan',
+    planUnavailable: 'Unavailable',
+    upgradePlan: 'Change or upgrade plan',
   },
   monitoring: {
     title: 'ダッシュボード',
@@ -1340,6 +1464,20 @@ const jaJP = {
       level: 'レベル',
       runner: 'ランナー',
       viewConversation: '会話詳細を表示',
+      turns: '{{count}} 会話ターン',
+      userMessage: 'ユーザー',
+      noUserMessage: 'ユーザー入力は記録されていません',
+      assistantMessage: 'アシスタント',
+      assistantMessageCount: 'アシスタント +{{count}}',
+      noAssistantMessage: 'アシスタントの返信は記録されていません',
+      messageCount: 'メッセージ数',
+      conversationTrace: '会話トレース',
+      noLlmCalls: 'モデル呼び出しは記録されていません',
+      roles: {
+        user: 'ユーザー',
+        assistant: 'アシスタント',
+        message: 'メッセージ',
+      },
     },
     llmCalls: {
       title: 'LLM呼び出し',
@@ -1353,6 +1491,15 @@ const jaJP = {
       totalTokens: '合計トークン数',
       avgDuration: '平均期間',
       calls: '呼び出し',
+    },
+    toolCalls: {
+      title: 'ツール呼び出し',
+      totalCalls: '呼び出し',
+      duration: 'ツール時間',
+      errorCalls: '失敗した呼び出し',
+      arguments: '引数',
+      result: '結果',
+      noToolCalls: 'ツール呼び出しは記録されていません',
     },
     tokens: {
       totalTokens: '総トークン数',
@@ -1507,6 +1654,7 @@ const jaJP = {
   settingsDialog: {
     title: '設定',
     nav: {
+      workspace: 'ワークスペース',
       models: 'モデル',
       api: 'API',
       storage: 'ストレージ',
@@ -1555,6 +1703,12 @@ const jaJP = {
       'パイプライン数が上限（{{max}}個）に達しました。新しいパイプラインを作成するには、既存のパイプラインを削除してください。',
     maxExtensionsReached:
       '拡張機能数が上限（{{max}}個）に達しました。新しい MCP サーバーやプラグインを追加するには、既存のものを削除してください。',
+    quotaLoadingTooltip:
+      'ワークスペースの使用状況を読み込んでいます。リソースを作成する前にお待ちください。',
+    quotaCheckFailed:
+      '現在のワークスペース上限を確認できません。もう一度お試しください。',
+    createDisabledTooltip:
+      'このワークスペースの{{resource}}数が上限（{{max}}個）に達しました。新しく作成する前に既存の{{resource}}を削除してください。',
   },
   wizard: {
     sidebarDescription: 'ガイド付きステップでボットを作成',
@@ -1687,6 +1841,9 @@ const jaJP = {
     scanQRCode: '以下のQRコードをWeChatでスキャンし、トークンを自動入力',
     loginSuccess: 'ログイン成功！トークンが自動入力されました',
     loginFailed: 'ログイン失敗',
+    connecting: 'WeChatサービスに接続中...',
+    waitingForScan: 'スキャン待ち',
+    retry: '再試行',
   },
   dingtalk: {
     createApp: 'ワンクリックでDingTalkアプリ作成',
@@ -1708,6 +1865,19 @@ const jaJP = {
     connecting: 'WeComサービスに接続中...',
     retry: '再試行',
     robotNameNote: 'ロボット名は自動取得できません。手動で入力してください。',
+  },
+  qqofficial: {
+    createBinding: 'ワンクリックで QQ 公式ボットを QR バインド',
+    scanQRCode:
+      '以下の QR コードをモバイル QQ でスキャンし、「QQ ボットアシスタント」でバインドを承認してください',
+    waitingForScan: 'スキャン待ち',
+    bindSuccess: 'バインド成功！AppID と Secret が自動入力されました',
+    bindFailed: 'バインド失敗',
+    connecting: 'QQ サービスに接続中...',
+    retry: '再試行',
+    tokenNote:
+      'Token フィールドは現行アダプターでは使用しません。空欄のままで構いません。',
+    boundBy: 'QQ ユーザー {{openid}} によりバインドされました',
   },
   pluginPages: {
     selectFromSidebar: 'サイドバーからプラグインページを選択してください',

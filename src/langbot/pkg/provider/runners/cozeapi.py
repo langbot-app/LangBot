@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import typing
 import json
-import base64
 
 from langbot.pkg.provider import runner
 from langbot.pkg.core import app
@@ -10,6 +9,16 @@ import langbot_plugin.api.entities.builtin.provider.message as provider_message
 from langbot.pkg.utils import image
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 from langbot.libs.coze_server_api.client import AsyncCozeAPIClient
+
+_MAX_COZE_GENERATED_CHARS = 1024 * 1024
+_MAX_COZE_MEDIA_BYTES = 10 * 1024 * 1024
+
+
+def _append_bounded(current: str, addition: typing.Any) -> str:
+    addition = str(addition or '')
+    if len(current) + len(addition) > _MAX_COZE_GENERATED_CHARS:
+        raise ValueError('Coze response exceeds the runtime limit')
+    return current + addition
 
 
 @runner.runner_class('coze-api')
@@ -77,7 +86,10 @@ class CozeAPIRunner(runner.RequestRunner):
                     content_parts.append({'type': 'text', 'text': ce.text})
                 elif ce.type == 'image_base64':
                     image_b64, image_format = await image.extract_b64_and_format(ce.image_base64)
-                    file_bytes = base64.b64decode(image_b64)
+                    file_bytes = await image.decode_base64_limited(
+                        image_b64,
+                        max_bytes=_MAX_COZE_MEDIA_BYTES,
+                    )
                     file_id = await self._get_file_id(file_bytes)
                     content_parts.append({'type': 'image', 'file_id': file_id})
                 elif ce.type == 'file':
@@ -144,7 +156,7 @@ class CozeAPIRunner(runner.RequestRunner):
                 auto_save_history=self.auto_save_history,
                 stream=True,
             ):
-                self.ap.logger.debug(f'coze-chat-stream: {chunk}')
+                self.ap.logger.debug(f'coze-chat-stream: {str(chunk)[:1000]}')
 
                 event_type = chunk.get('event')
                 data = chunk.get('data', {})
@@ -153,11 +165,17 @@ class CozeAPIRunner(runner.RequestRunner):
                 if event_type == 'conversation.message.delta':
                     # 收集内容
                     if 'content' in data:
-                        full_content += data.get('content', '')
+                        full_content = _append_bounded(
+                            full_content,
+                            data.get('content', ''),
+                        )
 
                     # 收集推理内容（如果有）
                     if 'reasoning_content' in data:
-                        full_reasoning += data.get('reasoning_content', '')
+                        full_reasoning = _append_bounded(
+                            full_reasoning,
+                            data.get('reasoning_content', ''),
+                        )
 
                 elif event_type.split('.')[-1] == 'done':  # 本地部署coze时，结束event不为done
                     # 保存会话ID
@@ -179,6 +197,8 @@ class CozeAPIRunner(runner.RequestRunner):
                 remove_think = self.pipeline_config.get('output', {}).get('misc', {}).get('remove-think', False)
                 if not remove_think:
                     content = f'<think>\n{full_reasoning}\n</think>\n{content}'.strip()
+                    if len(content) > _MAX_COZE_GENERATED_CHARS:
+                        raise ValueError('Coze response exceeds the runtime limit')
 
             # 一次性返回完整内容
             yield provider_message.Message(
@@ -227,7 +247,7 @@ class CozeAPIRunner(runner.RequestRunner):
                 auto_save_history=self.auto_save_history,
                 stream=True,
             ):
-                self.ap.logger.debug(f'coze-chat-stream-chunk: {chunk}')
+                self.ap.logger.debug(f'coze-chat-stream-chunk: {str(chunk)[:1000]}')
 
                 event_type = chunk.get('event')
                 data = chunk.get('data', {})
@@ -263,7 +283,7 @@ class CozeAPIRunner(runner.RequestRunner):
                     error_msg = f'Coze API错误: {data.get("message", "未知错误")}'
                     yield provider_message.MessageChunk(role='assistant', content=error_msg, finish_reason='error')
                     return
-                full_content += content
+                full_content = _append_bounded(full_content, content)
                 if message_idx % 8 == 0 or is_final:
                     if full_content:
                         yield provider_message.MessageChunk(role='assistant', content=full_content, is_final=is_final)
@@ -286,3 +306,6 @@ class CozeAPIRunner(runner.RequestRunner):
         else:
             async for msg in self._chat_messages(query):
                 yield msg
+
+    async def aclose(self) -> None:
+        await self.coze.close()

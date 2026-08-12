@@ -52,7 +52,7 @@ LangBot 是一個**開源的生產級平台**，用於建構 AI 驅動的即時�
 
 [→ 了解更多功能特性](https://link.langbot.app/zh/docs/features)
 
-📍 實踐指南：[5 分鐘部署多平台 AI 機器人](https://blog.langbot.app/zh/blog/deploy-ai-bot-in-5-minutes/)、[將 DeepSeek 接入微信、企業微信與 Discord](https://blog.langbot.app/zh/blog/connect-deepseek-to-wechat/)、[讓 Dify Agent 跑在 Discord、Telegram 和 Slack 上](https://blog.langbot.app/zh/blog/dify-agent-discord-telegram-slack/)，以及[用 n8n 建構多平台 AI 聊天機器人](https://blog.langbot.app/zh/blog/n8n-multi-platform-ai-chatbot/)。
+📍 實踐指南：[5 分鐘部署多平台 AI 機器人](https://langbot.app/zh/blog/deploy-ai-bot-in-5-minutes/)、[將 DeepSeek 接入微信、企業微信與 Discord](https://langbot.app/zh/blog/connect-deepseek-to-wechat/)、[讓 Dify Agent 跑在 Discord、Telegram 和 Slack 上](https://langbot.app/zh/blog/dify-agent-discord-telegram-slack/)，以及[用 n8n 建構多平台 AI 聊天機器人](https://langbot.app/zh/blog/n8n-multi-platform-ai-chatbot/)。
 
 ---
 
@@ -90,6 +90,16 @@ docker compose --profile all up -d
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.app/template/yRrAyL?referralCode=vogKPF)
 
 **更多方式：** [Docker](https://link.langbot.app/zh/docs/docker) · [手動部署](https://link.langbot.app/zh/docs/manual-deploy) · [寶塔面板](https://link.langbot.app/zh/docs/bt-panel) · [Kubernetes](https://docs.langbot.app/zh/deploy/langbot/kubernetes)
+
+---
+
+## 線上演示
+
+**立即體驗：** https://demo.langbot.dev/
+- 信箱：`demo@langbot.app`
+- 密碼：`langbot123456`
+
+*注意：公開演示環境，請不要在其中填入任何敏感資訊。*
 
 ---
 
@@ -169,14 +179,6 @@ docker compose --profile all up -d
 
 ---
 
-## 線上演示
-
-**立即體驗：** https://demo.langbot.dev/
-- 信箱：`demo@langbot.app`
-- 密碼：`langbot123456`
-
-*注意：公開演示環境，請不要在其中填入任何敏感資訊。*
-
 ## 為 AI Agent 而生 🤖
 
 LangBot **從設計上就對 Agent 友善** —— 你的編碼 Agent（Claude Code、Codex、Copilot、Cursor 等）可以一等公民般地操作、擴充和部署 LangBot：
@@ -197,12 +199,6 @@ LangBot **從設計上就對 Agent 友善** —— 你的編碼 Agent（Claude C
 
 - [Discord 社群](https://discord.gg/wdNEHETs87)
 - [QQ 社群群](https://qm.qq.com/q/JLi38whHum)
-
----
-
-## Star 趨勢
-
-[![Star History Chart](https://api.star-history.com/svg?repos=langbot-app/LangBot&type=Date)](https://star-history.com/#langbot-app/LangBot&Date)
 
 ---
 

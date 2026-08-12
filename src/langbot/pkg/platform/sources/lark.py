@@ -15,7 +15,7 @@ import hashlib
 from Crypto.Cipher import AES
 import tempfile
 import os
-import mimetypes
+import threading
 
 from langbot.pkg.utils import httpclient
 import lark_oapi.ws.exception
@@ -31,6 +31,289 @@ import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
 import langbot_plugin.api.definition.abstract.platform.event_logger as abstract_platform_logger
+import langbot_plugin.api.entities.builtin.provider.session as provider_session
+
+
+_MAX_LARK_MEDIA_BYTES = 10 * 1024 * 1024
+
+
+def _decode_lark_base64_limited(value: str) -> bytes:
+    if ',' in value:
+        value = value.split(',', 1)[1]
+    max_encoded_bytes = 4 * ((_MAX_LARK_MEDIA_BYTES + 2) // 3)
+    if len(value) > max_encoded_bytes:
+        raise ValueError('Lark media exceeds the size limit')
+    decoded = base64.b64decode(value)
+    if len(decoded) > _MAX_LARK_MEDIA_BYTES:
+        raise ValueError('Lark media exceeds the size limit')
+    return decoded
+
+
+def _read_lark_path_limited(path: str) -> bytes:
+    if os.path.getsize(path) > _MAX_LARK_MEDIA_BYTES:
+        raise ValueError('Lark media exceeds the size limit')
+    with open(path, 'rb') as file:
+        body = file.read(_MAX_LARK_MEDIA_BYTES + 1)
+    if len(body) > _MAX_LARK_MEDIA_BYTES:
+        raise ValueError('Lark media exceeds the size limit')
+    return body
+
+
+def _write_lark_temp_file(data: bytes) -> str:
+    with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+        temp_file.write(data)
+        temp_file.flush()
+        return temp_file.name
+
+
+def _read_lark_response_file_limited(response) -> bytes:
+    content_length = response.raw.headers.get('content-length')
+    if content_length is not None:
+        try:
+            if int(content_length) > _MAX_LARK_MEDIA_BYTES:
+                raise ValueError('Lark media exceeds the size limit')
+        except (TypeError, ValueError) as exc:
+            if 'exceeds' in str(exc):
+                raise
+    body = response.file.read(_MAX_LARK_MEDIA_BYTES + 1)
+    if len(body) > _MAX_LARK_MEDIA_BYTES:
+        raise ValueError('Lark media exceeds the size limit')
+    return body
+
+
+def _lark_form_component_name(prefix: str, field_name: str, index: int) -> str:
+    safe_name = re.sub(r'[^A-Za-z0-9_]', '_', field_name)[:8] or 'field'
+    digest = hashlib.sha1(field_name.encode('utf-8')).hexdigest()[:6]
+    return f'{prefix}_{index}_{safe_name}_{digest}'[:32]
+
+
+def _dify_field_name(field: dict) -> str:
+    return str(field.get('output_variable_name') or field.get('name') or field.get('id') or '').strip()
+
+
+def _dify_field_type(field: dict) -> str:
+    return str(field.get('type') or 'text').strip().lower()
+
+
+def _dify_select_options(field: dict) -> list[str]:
+    source = field.get('option_source') or {}
+    value = source.get('value') if isinstance(source, dict) else None
+    if isinstance(value, list):
+        return [str(item) for item in value]
+    if isinstance(value, str):
+        return [part.strip() for part in value.splitlines() if part.strip()]
+    options = field.get('options')
+    if isinstance(options, list):
+        result: list[str] = []
+        for item in options:
+            if isinstance(item, dict):
+                result.append(str(item.get('label') or item.get('value') or ''))
+            else:
+                result.append(str(item))
+        return [item for item in result if item]
+    return []
+
+
+def _dify_default_value(field: dict) -> str:
+    default = field.get('default')
+    if isinstance(default, dict):
+        value = default.get('value') if default.get('type') == 'constant' or 'value' in default else ''
+    else:
+        value = default
+    return '' if value is None else str(value)
+
+
+def _lark_clean_form_content(form_content: str, input_defs: list[dict]) -> str:
+    field_names = {_dify_field_name(field) for field in input_defs if _dify_field_name(field)}
+    kept_lines: list[str] = []
+    for line in (form_content or '').splitlines():
+        placeholder = re.fullmatch(r'\s*\{\{#\$output\.([^#{}]+)#\}\}\s*', line)
+        if placeholder and placeholder.group(1) in field_names:
+            continue
+        kept_lines.append(line)
+    return re.sub(r'\n{3,}', '\n\n', '\n'.join(kept_lines).strip())
+
+
+def _lark_form_input_defs(form_data: dict) -> list[dict]:
+    return list(form_data.get('all_input_defs') or form_data.get('input_defs') or [])
+
+
+def _lark_current_input_defs(form_data: dict) -> list[dict]:
+    """Return only the field that belongs to the current interactive step."""
+    if form_data.get('_action_select_only'):
+        return []
+    input_defs = list(form_data.get('input_defs') or [])
+    current_field = str(form_data.get('_current_input_field') or '').strip()
+    if not current_field:
+        return input_defs
+    return [field for field in input_defs if _dify_field_name(field) == current_field]
+
+
+def _lark_should_update_stream_element(
+    *,
+    resume_from: bool,
+    form_data: dict | None,
+    msg_seq: int,
+    is_final: bool,
+) -> bool:
+    """Return whether the still-open streaming element should be updated."""
+    return not resume_from and not form_data and (msg_seq % 8 == 0 or is_final)
+
+
+def _lark_display_input_value(field: dict, value: typing.Any) -> str:
+    field_type = _dify_field_type(field)
+    if field_type == 'file':
+        if isinstance(value, dict):
+            return value.get('url') or value.get('upload_file_id') or '1 file'
+        return str(value)
+    if field_type == 'file-list':
+        if isinstance(value, list):
+            return f'{len(value)} file(s)'
+        return str(value)
+    if isinstance(value, dict):
+        if 'value' in value and value.get('value') not in (None, ''):
+            return str(value.get('value'))
+        text = value.get('text')
+        if isinstance(text, dict):
+            content = text.get('content')
+            if content not in (None, ''):
+                return str(content)
+        if text not in (None, ''):
+            return str(text)
+    if isinstance(value, list):
+        return ', '.join(_lark_display_input_value(field, item) for item in value if item not in (None, ''))
+    return str(value)
+
+
+def _lark_visible_form_content(form_data: dict) -> str:
+    """Return stage content with completed values interleaved for final actions."""
+    source_content = form_data.get('form_content') or ''
+    if form_data.get('_action_select_only'):
+        source_content = form_data.get('raw_form_content') or source_content
+
+        fields = {
+            _dify_field_name(field): field for field in _lark_form_input_defs(form_data) if _dify_field_name(field)
+        }
+        inputs = form_data.get('inputs') or {}
+
+        def replace_placeholder(match: re.Match[str]) -> str:
+            field_name = match.group(1).strip()
+            field = fields.get(field_name)
+            if not field or inputs.get(field_name) in (None, '', []):
+                return ''
+            lines = _lark_completed_input_lines(
+                {
+                    'input_defs': [field],
+                    'inputs': {field_name: inputs[field_name]},
+                }
+            )
+            return lines[0] if lines else ''
+
+        source_content = re.sub(
+            r'\{\{#\$output\.([^#{}]+)#\}\}',
+            replace_placeholder,
+            str(source_content),
+        )
+    return _lark_clean_form_content(
+        str(source_content),
+        _lark_form_input_defs(form_data),
+    )
+
+
+def _lark_completed_input_lines(form_data: dict) -> list[str]:
+    inputs = form_data.get('inputs') or {}
+    if not isinstance(inputs, dict):
+        return []
+
+    lines: list[str] = []
+    for field in _lark_form_input_defs(form_data):
+        field_name = _dify_field_name(field)
+        if not field_name:
+            continue
+        value = inputs.get(field_name)
+        if value in (None, '', []):
+            continue
+        display_value = _lark_display_input_value(field, value)
+        lines.append(f'✅ {field_name}：{display_value}')
+    return lines
+
+
+def _lark_mapping_from_value(value: typing.Any) -> dict:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except (json.JSONDecodeError, TypeError):
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+    return {}
+
+
+def _lark_action_attr(action: typing.Any, name: str) -> typing.Any:
+    if isinstance(action, dict):
+        return action.get(name)
+    return getattr(action, name, None)
+
+
+def _lark_extract_action_form_inputs(action: typing.Any, action_value_obj: dict) -> dict:
+    input_name_map = action_value_obj.get('input_name_map', {})
+    if not isinstance(input_name_map, dict):
+        input_name_map = {}
+
+    form_value = _lark_mapping_from_value(_lark_action_attr(action, 'form_value'))
+    if not form_value:
+        for key in ('form_value', 'formValue', 'form_values', 'formValues'):
+            form_value = _lark_mapping_from_value(action_value_obj.get(key))
+            if form_value:
+                break
+
+    if not form_value:
+        action_name = _lark_action_attr(action, 'name')
+        input_value = _lark_action_attr(action, 'input_value')
+        option_value = _lark_action_attr(action, 'option')
+        if action_name and input_value not in (None, ''):
+            form_value = {action_name: input_value}
+        elif action_name and option_value not in (None, ''):
+            form_value = {action_name: option_value}
+
+    form_inputs = {}
+    for component_name, value in form_value.items():
+        field_name = input_name_map.get(component_name)
+        if not field_name and isinstance(component_name, str) and '.' in component_name:
+            field_name = input_name_map.get(component_name.rsplit('.', 1)[-1], component_name)
+        if not field_name:
+            field_name = component_name
+        if field_name and value not in (None, '', []):
+            form_inputs[str(field_name)] = value
+    return form_inputs
+
+
+class NonBlockingLarkWSClient(lark_oapi.ws.Client):
+    """Keep the SDK's synchronous connection lookup off LangBot's event loop.
+
+    lark-oapi performs ``requests.post`` inside its async ``_connect`` method.
+    A stalled TLS handshake therefore freezes Quart and every other adapter in
+    the process. Pre-fetch the URL in a worker thread, then let the SDK finish
+    the WebSocket setup on the main loop with the already-resolved URL.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._langbot_connect_lock = asyncio.Lock()
+
+    async def _connect(self) -> None:
+        async with self._langbot_connect_lock:
+            if self._conn is not None:
+                return
+
+            conn_url = await asyncio.to_thread(self._get_conn_url)
+            original_get_conn_url = self._get_conn_url
+            self._get_conn_url = lambda: conn_url
+            try:
+                await super()._connect()
+            finally:
+                self._get_conn_url = original_get_conn_url
 
 
 class AESCipher(object):
@@ -63,68 +346,33 @@ class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
     @staticmethod
     async def upload_image_to_lark(msg: platform_message.Image, api_client: lark_oapi.Client) -> typing.Optional[str]:
         """Upload an image to Lark and return the image_key, or None if upload fails."""
-        image_bytes = None
-
-        if msg.base64:
-            try:
-                # Remove data URL prefix if present
-                base64_data = msg.base64
-                if base64_data.startswith('data:'):
-                    base64_data = base64_data.split(',', 1)[1]
-                image_bytes = base64.b64decode(base64_data)
-            except Exception as e:
-                print(f'Failed to decode base64 image: {e}')
-                traceback.print_exc()
-                return None
-        elif msg.url:
-            try:
-                session = httpclient.get_session()
-                async with session.get(msg.url) as response:
-                    if response.status == 200:
-                        image_bytes = await response.read()
-                    else:
-                        print(f'Failed to download image from {msg.url}: HTTP {response.status}')
-                        return None
-            except Exception as e:
-                print(f'Failed to download image from {msg.url}: {e}')
-                traceback.print_exc()
-                return None
-        elif msg.path:
-            try:
-                with open(msg.path, 'rb') as f:
-                    image_bytes = f.read()
-            except Exception as e:
-                print(f'Failed to read image from path {msg.path}: {e}')
-                traceback.print_exc()
-                return None
-
-        if image_bytes is None:
+        try:
+            image_bytes, _mime_type = await msg.get_bytes()
+        except Exception as exc:
+            print(f'Failed to load Lark image: {exc}')
+            traceback.print_exc()
+            return None
+        if not image_bytes:
             print(
                 f'No image data available for Image message (url={msg.url}, base64={bool(msg.base64)}, path={msg.path})'
             )
             return None
 
         try:
-            # Create a temporary file to store the image bytes
-            import tempfile
-            import os
-
-            with tempfile.NamedTemporaryFile(delete=False) as temp_file:
-                temp_file.write(image_bytes)
-                temp_file.flush()
-                temp_file_path = temp_file.name
+            temp_file_path = await asyncio.to_thread(
+                _write_lark_temp_file,
+                image_bytes,
+            )
 
             try:
-                # Create image request using the temporary file
-                request = (
-                    CreateImageRequest.builder()
-                    .request_body(
-                        CreateImageRequestBody.builder().image_type('message').image(open(temp_file_path, 'rb')).build()
+                with open(temp_file_path, 'rb') as upload_file:
+                    request = (
+                        CreateImageRequest.builder()
+                        .request_body(CreateImageRequestBody.builder().image_type('message').image(upload_file).build())
+                        .build()
                     )
-                    .build()
-                )
 
-                response = await api_client.im.v1.image.acreate(request)
+                    response = await api_client.im.v1.image.acreate(request)
 
                 if not response.success():
                     print(
@@ -159,23 +407,24 @@ class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
             duration: Duration in milliseconds (for audio files).
         """
         try:
-            with tempfile.NamedTemporaryFile(delete=False) as temp_file:
-                temp_file.write(file_bytes)
-                temp_file_path = temp_file.name
+            if len(file_bytes) > _MAX_LARK_MEDIA_BYTES:
+                raise ValueError('Lark media exceeds the size limit')
+            temp_file_path = await asyncio.to_thread(
+                _write_lark_temp_file,
+                file_bytes,
+            )
 
             try:
-                body_builder = (
-                    CreateFileRequestBody.builder()
-                    .file_type(file_type)
-                    .file_name(file_name)
-                    .file(open(temp_file_path, 'rb'))
-                )
-                if duration is not None:
-                    body_builder = body_builder.duration(duration)
+                with open(temp_file_path, 'rb') as upload_file:
+                    body_builder = (
+                        CreateFileRequestBody.builder().file_type(file_type).file_name(file_name).file(upload_file)
+                    )
+                    if duration is not None:
+                        body_builder = body_builder.duration(duration)
 
-                request = CreateFileRequest.builder().request_body(body_builder.build()).build()
+                    request = CreateFileRequest.builder().request_body(body_builder.build()).build()
 
-                response = await api_client.im.v1.file.acreate(request)
+                    response = await api_client.im.v1.file.acreate(request)
 
                 if not response.success():
                     print(
@@ -200,10 +449,10 @@ class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
 
         if msg.base64:
             try:
-                base64_str = msg.base64
-                if ',' in base64_str:
-                    base64_str = base64_str.split(',', 1)[1]
-                data = base64.b64decode(base64_str)
+                data = await asyncio.to_thread(
+                    _decode_lark_base64_limited,
+                    msg.base64,
+                )
             except Exception:
                 pass
         elif msg.url:
@@ -211,13 +460,18 @@ class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
                 session = httpclient.get_session()
                 async with session.get(msg.url) as resp:
                     if resp.status == 200:
-                        data = await resp.read()
+                        data = await httpclient.read_limited(
+                            resp,
+                            max_bytes=_MAX_LARK_MEDIA_BYTES,
+                        )
             except Exception:
                 pass
         elif msg.path:
             try:
-                with open(msg.path, 'rb') as f:
-                    data = f.read()
+                data = await asyncio.to_thread(
+                    _read_lark_path_limited,
+                    str(msg.path),
+                )
             except Exception:
                 pass
 
@@ -458,8 +712,11 @@ class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
                         f'client.im.v1.message_resource.get failed, code: {response.code}, msg: {response.msg}, log_id: {response.get_log_id()}, resp: \n{json.dumps(json.loads(response.raw.content), indent=4, ensure_ascii=False)}'
                     )
 
-                image_bytes = response.file.read()
-                image_base64 = base64.b64encode(image_bytes).decode()
+                image_bytes = await asyncio.to_thread(
+                    _read_lark_response_file_limited,
+                    response,
+                )
+                image_base64 = (await asyncio.to_thread(base64.b64encode, image_bytes)).decode()
 
                 image_format = response.raw.headers['content-type']
 
@@ -485,27 +742,18 @@ class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
                         lb_msg_list.append(platform_message.Plain(text='[Audio file download failed]'))
                         return platform_message.MessageChain(lb_msg_list)
 
-                    # Read audio bytes
-                    audio_bytes = response.file.read()
-                    audio_base64 = base64.b64encode(audio_bytes).decode()
+                    audio_bytes = await asyncio.to_thread(
+                        _read_lark_response_file_limited,
+                        response,
+                    )
+                    audio_base64 = (await asyncio.to_thread(base64.b64encode, audio_bytes)).decode()
 
                     # Get content type from response headers
                     content_type = response.raw.headers.get('content-type', 'audio/mpeg')
 
-                    mime_main = content_type.split(';')[0].strip()
-                    ext = mimetypes.guess_extension(mime_main) or '.bin'
-                    temp_dir = tempfile.gettempdir()
-                    temp_file_path = os.path.join(temp_dir, f'lark_audio_{file_key}{ext}')
-
-                    with open(temp_file_path, 'wb') as f:
-                        f.write(audio_bytes)
-
-                    # Create Voice message: prefer path/url + length, include base64 as optional data URI
                     lb_msg_list.append(
                         platform_message.Voice(
                             voice_id=file_key,
-                            url=f'file://{temp_file_path}',
-                            path=temp_file_path,
                             base64=f'data:{content_type};base64,{audio_base64}',
                             length=(duration // 1000) if duration else None,
                         )
@@ -534,40 +782,22 @@ class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
                         f'client.im.v1.message_resource.get failed, code: {response.code}, msg: {response.msg}, log_id: {response.get_log_id()}, resp: \n{json.dumps(json.loads(response.raw.content), indent=4, ensure_ascii=False)}'
                     )
 
-                file_bytes = response.file.read()
-                file_base64 = base64.b64encode(file_bytes).decode()
+                file_bytes = await asyncio.to_thread(
+                    _read_lark_response_file_limited,
+                    response,
+                )
+                file_base64 = (await asyncio.to_thread(base64.b64encode, file_bytes)).decode()
 
                 file_format = response.raw.headers['content-type']
 
                 file_size = len(file_bytes)
 
-                # Determine extension from content-type if possible
-                content_type = response.raw.headers.get('content-type', '')
-                mime_main = content_type.split(';')[0].strip() if content_type else ''
-                ext = mimetypes.guess_extension(mime_main) or ''
-
-                # Ensure a safe filename (avoid path components)
-                safe_name = os.path.basename(file_name).replace('/', '_').replace('\\', '_')
-                if ext and not safe_name.lower().endswith(ext.lower()):
-                    filename_with_ext = f'{safe_name}{ext}'
-                else:
-                    filename_with_ext = safe_name
-
-                temp_dir = tempfile.gettempdir()
-                temp_file_path = os.path.join(temp_dir, f'lark_{file_key}_{filename_with_ext}')
-
-                with open(temp_file_path, 'wb') as f:
-                    f.write(file_bytes)
-
-                # Create File message with local path and file:// URL
                 lb_msg_list.append(
                     platform_message.File(
                         id=file_key,
                         name=file_name,
                         size=file_size,
-                        url=f'file://{temp_file_path}',
-                        path=temp_file_path,
-                        base64=f'data:{file_format};base64,{file_base64}',  # not including base64 by default to save memory; can be added if needed
+                        base64=f'data:{file_format};base64,{file_base64}',
                     )
                 )
 
@@ -770,6 +1000,7 @@ CARD_ID_CACHE_MAX_LIFETIME = 20 * 60  # 20分钟
 class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     bot: lark_oapi.ws.Client = pydantic.Field(exclude=True)
     api_client: lark_oapi.Client = pydantic.Field(exclude=True)
+    ap: typing.Any = pydantic.Field(exclude=True, default=None)
 
     bot_account_id: str  # 用于在流水线中识别at是否是本bot，直接以bot_name作为标识
     lark_tenant_key: str = pydantic.Field(exclude=True, default='')  # 飞书企业key
@@ -792,14 +1023,39 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     pending_monitoring_msg: dict[str, str]
     # Final: reply Lark message ID → (monitoring_message_id, timestamp) (used by feedback callbacks)
     reply_to_monitoring_msg: dict[str, tuple[str, float]]
+    reply_message_card_ids: dict[str, str]
+    card_sequence_dict: dict[str, int]
+    # card_id → set of source message ids registered against it (for cleanup)
+    card_id_to_source_ids: dict[str, set[str]]
+    # card_id → current streaming_txt content cache (needed for full aupdate during resume transition)
+    card_streaming_text: dict[str, str]
+    # card_id → pre-pause streaming_txt text (captured when resume first chunk arrives)
+    card_pre_pause_text: dict[str, str]
+    # card_id → form_content captured when the form is first shown (for resume notice)
+    card_form_content: dict[str, str]
+    # card_id → input_defs / inputs captured for the selected-action notice
+    card_form_input_defs: dict[str, list[dict]]
+    card_form_inputs: dict[str, dict]
+    card_last_accessed: dict[str, float]
+    card_cleanup_at: float
+    # set of card_ids that have already transitioned from "buttons visible" to "resume layout"
+    card_resume_transitioned: set[str]
+    inbound_event_tasks: set[asyncio.Task]
+    threadsafe_event_futures: set[typing.Any]
+    threadsafe_event_lock: typing.Any = pydantic.Field(exclude=True)
     _MONITORING_MAPPING_TTL = 600  # 10 minutes
+    _MAX_INBOUND_EVENTS = 100
+    _MAX_TENANT_ACCESS_TOKENS = 1024
 
     seq: int  # 用于在发送卡片消息中识别消息顺序，直接以seq作为标识
     bot_uuid: str = None  # 机器人UUID
     app_ticket: str = None  # 商店应用用到
     app_access_token: str = None  # 商店应用用到
     app_access_token_expire_at: int = None
-    tenant_access_tokens: dict[str, dict[str, str]] = {}  # 租户access_token映射
+    tenant_access_tokens: dict[str, dict[str, str]] = pydantic.Field(
+        default_factory=dict,
+        exclude=True,
+    )
 
     def __init__(self, config: dict, logger: abstract_platform_logger.AbstractEventLogger, **kwargs):
         quart_app = quart.Quart(__name__)
@@ -810,12 +1066,148 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             await self.listeners[type(lb_event)](lb_event, self)
 
         def sync_on_message(event: lark_oapi.im.v1.P2ImMessageReceiveV1):
-            asyncio.create_task(on_message(event))
+            self._schedule_inbound_event(on_message(event))
+
+        def schedule_on_app_loop(coro):
+            """Run a coroutine on the application event loop from sync callbacks."""
+            return self._schedule_threadsafe_event(coro)
 
         def sync_on_card_action(event):
             try:
-                action_value_obj = getattr(getattr(event.event, 'action', None), 'value', {})
+                action_value_raw = getattr(getattr(event.event, 'action', None), 'value', {})
+                # Parse JSON string values (from form action buttons)
+                action_value_obj = _lark_mapping_from_value(action_value_raw)
                 action_value = action_value_obj.get('feedback', '') if isinstance(action_value_obj, dict) else ''
+
+                # Handle Dify form action button clicks
+                if isinstance(action_value_obj, dict) and action_value_obj.get('form_action'):
+                    form_token = action_value_obj.get('form_token', '')
+                    workflow_run_id = action_value_obj.get('workflow_run_id', '')
+                    action_id = action_value_obj.get('action_id', '')
+                    session_key = action_value_obj.get('session_key', '')
+                    action = getattr(event.event, 'action', None)
+                    form_inputs = _lark_extract_action_form_inputs(action, action_value_obj)
+
+                    if session_key.startswith('group_') or session_key.startswith('g:'):
+                        launcher_type = provider_session.LauncherTypes.GROUP
+                        launcher_id = (
+                            session_key.split(':', 1)[1]
+                            if session_key.startswith('g:')
+                            else session_key[len('group_') :]
+                        )
+                    else:
+                        launcher_type = provider_session.LauncherTypes.PERSON
+                        launcher_id = (
+                            session_key.split(':', 1)[1]
+                            if session_key.startswith('p:')
+                            else session_key[len('person_') :]
+                        )
+
+                    # Find the bot entity to get bot_uuid and pipeline_uuid
+                    bot_uuid = ''
+                    pipeline_uuid = action_value_obj.get('pipeline_uuid') or None
+                    for bot in self.ap.platform_mgr.bots:
+                        if bot.adapter is self:
+                            bot_uuid = bot.bot_entity.uuid
+                            pipeline_uuid = pipeline_uuid or bot.bot_entity.use_pipeline_uuid
+                            break
+
+                    form_action_data = {
+                        'form_token': form_token,
+                        'workflow_run_id': workflow_run_id,
+                        'action_id': action_id,
+                        'user': f'{launcher_type.value}_{launcher_id}',
+                        'inputs': form_inputs,
+                    }
+                    if action_value_obj.get('_input_progress'):
+                        form_action_data['_input_progress'] = True
+
+                    context = getattr(event.event, 'context', None)
+                    open_message_id = getattr(context, 'open_message_id', None)
+                    if open_message_id and form_inputs:
+                        card_id = self.reply_message_card_ids.get(str(open_message_id))
+                    else:
+                        card_id = None
+                    if not card_id:
+                        card_id = str(action_value_obj.get('card_id') or '')
+                    if card_id and form_inputs:
+                        cached_inputs = dict(self.card_form_inputs.get(card_id) or {})
+                        cached_inputs.update(form_inputs)
+                        self.card_form_inputs[card_id] = cached_inputs
+                        if self.ap is not None:
+                            self.ap.logger.info(
+                                f'Lark form action inputs cached: card_id={card_id} '
+                                f'open_message_id={open_message_id} keys={list(form_inputs.keys())}'
+                            )
+                    source_time = datetime.datetime.now()
+                    event_time = source_time.timestamp()
+                    action_text = action_value_obj.get('action_id', 'confirm')
+                    message_chain = platform_message.MessageChain(
+                        [platform_message.Plain(text=f'[Form Action: {action_text}]')]
+                    )
+                    if open_message_id:
+                        message_chain.insert(
+                            0,
+                            platform_message.Source(
+                                id=open_message_id,
+                                time=source_time,
+                            ),
+                        )
+
+                    operator = getattr(event.event, 'operator', None)
+                    user_id = (
+                        getattr(operator, 'open_id', None) or getattr(operator, 'user_id', None) or str(launcher_id)
+                    )
+
+                    if launcher_type == provider_session.LauncherTypes.GROUP:
+                        synthetic_event = platform_events.GroupMessage(
+                            sender=platform_entities.GroupMember(
+                                id=user_id,
+                                member_name='',
+                                permission=platform_entities.Permission.Member,
+                                group=platform_entities.Group(
+                                    id=launcher_id,
+                                    name='',
+                                    permission=platform_entities.Permission.Member,
+                                ),
+                            ),
+                            message_chain=message_chain,
+                            time=event_time,
+                            source_platform_object=event,
+                        )
+                    else:
+                        synthetic_event = platform_events.FriendMessage(
+                            sender=platform_entities.Friend(
+                                id=user_id,
+                                nickname='',
+                                remark='',
+                            ),
+                            message_chain=message_chain,
+                            time=event_time,
+                            source_platform_object=event,
+                        )
+
+                    async def add_form_action_query():
+                        await self.ap.query_pool.add_query(
+                            bot_uuid=bot_uuid,
+                            launcher_type=launcher_type,
+                            launcher_id=launcher_id,
+                            sender_id=user_id,
+                            message_event=synthetic_event,
+                            message_chain=message_chain,
+                            adapter=self,
+                            pipeline_uuid=pipeline_uuid,
+                            variables={
+                                '_dify_form_action': form_action_data,
+                                '_routed_by_rule': True,
+                            },
+                        )
+
+                    schedule_on_app_loop(add_form_action_query())
+
+                    from lark_oapi.event.callback.model.p2_card_action_trigger import P2CardActionTriggerResponse
+
+                    return P2CardActionTriggerResponse({'toast': {'type': 'success', 'content': '操作成功'}})
 
                 if action_value == '有帮助':
                     feedback_type = 1
@@ -857,17 +1249,14 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 )
 
                 if platform_events.FeedbackEvent in self.listeners:
-                    loop = asyncio.get_event_loop()
-                    if loop.is_running():
-                        asyncio.create_task(self.listeners[platform_events.FeedbackEvent](feedback_event, self))
-                    else:
-                        loop.run_until_complete(self.listeners[platform_events.FeedbackEvent](feedback_event, self))
+                    schedule_on_app_loop(self.listeners[platform_events.FeedbackEvent](feedback_event, self))
 
                 from lark_oapi.event.callback.model.p2_card_action_trigger import P2CardActionTriggerResponse
 
                 return P2CardActionTriggerResponse({'toast': {'type': 'success', 'content': '感谢您的反馈'}})
             except Exception:
-                asyncio.create_task(self.logger.error(f'Error in lark card action callback: {traceback.format_exc()}'))
+                traceback.print_exc()
+                schedule_on_app_loop(self.logger.error(f'Error in lark card action callback: {traceback.format_exc()}'))
                 from lark_oapi.event.callback.model.p2_card_action_trigger import P2CardActionTriggerResponse
 
                 return P2CardActionTriggerResponse({'toast': {'type': 'error', 'content': '反馈处理失败'}})
@@ -882,7 +1271,9 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         bot_account_id = config['bot_name']
 
         domain = self._resolve_domain(config)
-        bot = lark_oapi.ws.Client(config['app_id'], config['app_secret'], event_handler=event_handler, domain=domain)
+        bot = NonBlockingLarkWSClient(
+            config['app_id'], config['app_secret'], event_handler=event_handler, domain=domain
+        )
         api_client = self.build_api_client(config)
         cipher = AESCipher(config.get('encrypt-key', ''))
         self.request_app_ticket(api_client, config)
@@ -894,6 +1285,21 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             card_id_dict={},
             pending_monitoring_msg={},
             reply_to_monitoring_msg={},
+            reply_message_card_ids={},
+            card_sequence_dict={},
+            card_id_to_source_ids={},
+            card_streaming_text={},
+            card_pre_pause_text={},
+            card_form_content={},
+            card_form_input_defs={},
+            card_form_inputs={},
+            card_last_accessed={},
+            card_cleanup_at=0.0,
+            card_resume_transitioned=set(),
+            inbound_event_tasks=set(),
+            threadsafe_event_futures=set(),
+            threadsafe_event_lock=threading.Lock(),
+            tenant_access_tokens={},
             seq=1,
             listeners={},
             quart_app=quart_app,
@@ -903,6 +1309,45 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             cipher=cipher,
             **kwargs,
         )
+
+    def _schedule_inbound_event(self, coro) -> None:
+        for task in tuple(self.inbound_event_tasks):
+            if task.done():
+                self.inbound_event_tasks.discard(task)
+        if len(self.inbound_event_tasks) >= self._MAX_INBOUND_EVENTS:
+            coro.close()
+            return
+        task = asyncio.create_task(coro)
+        self.inbound_event_tasks.add(task)
+
+        def done(done_task: asyncio.Task) -> None:
+            self.inbound_event_tasks.discard(done_task)
+            if not done_task.cancelled():
+                done_task.exception()
+
+        task.add_done_callback(done)
+
+    def _schedule_threadsafe_event(self, coro):
+        """Submit one bounded callback from the Lark SDK's sync boundary."""
+
+        with self.threadsafe_event_lock:
+            for future in tuple(self.threadsafe_event_futures):
+                if future.done():
+                    self.threadsafe_event_futures.discard(future)
+            if len(self.threadsafe_event_futures) >= self._MAX_INBOUND_EVENTS:
+                coro.close()
+                return None
+            future = asyncio.run_coroutine_threadsafe(coro, self.ap.event_loop)
+            self.threadsafe_event_futures.add(future)
+
+        def done(done_future) -> None:
+            with self.threadsafe_event_lock:
+                self.threadsafe_event_futures.discard(done_future)
+            if not done_future.cancelled():
+                done_future.exception()
+
+        future.add_done_callback(done)
+        return future
 
     def request_app_ticket(self, api_client, config):
         app_id = config['app_id']
@@ -980,6 +1425,12 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 'token': tenant_access_token,
                 'expire_at': int(time.time()) + expire - 300,
             }
+            now = int(time.time())
+            for cached_key, cached_token in tuple(self.tenant_access_tokens.items()):
+                if int(cached_token.get('expire_at', 0)) <= now:
+                    self.tenant_access_tokens.pop(cached_key, None)
+            while len(self.tenant_access_tokens) > self._MAX_TENANT_ACCESS_TOKENS:
+                self.tenant_access_tokens.pop(next(iter(self.tenant_access_tokens)), None)
 
     def get_tenant_access_token(self, tenant_key: str):
         if tenant_key is None or 'isv' != self.config.get('app_type', 'self'):
@@ -1040,6 +1491,27 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             )
         return api_client
 
+    @staticmethod
+    def _has_markdown_table(text_elements: list) -> bool:
+        """Check if text elements contain markdown table syntax (|...|).
+
+        A markdown table requires:
+        - At least one line with pipe characters (|)
+        - A separator line with pipes and dashes (|---|)
+        """
+        # Regex to detect markdown table: lines with pipes and separator lines with dashes
+        table_pattern = re.compile(r'^\s*\|.+\|\s*$', re.MULTILINE)
+        separator_pattern = re.compile(r'^\s*\|\s*-+(\s*\|\s*-+)*\s*\|\s*$', re.MULTILINE)
+
+        for paragraph in text_elements:
+            for ele in paragraph:
+                if ele.get('tag') == 'md':
+                    text = ele.get('text', '')
+                    # Quick check: if has pipes and separator line, it's likely a table
+                    if '|' in text and table_pattern.search(text) and separator_pattern.search(text):
+                        return True
+        return False
+
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
         text_elements, media_items = await self.message_converter.yiri2target(message, self.api_client)
 
@@ -1053,7 +1525,10 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
         # Send text message if there are text elements
         if text_elements:
-            needs_post = any(ele['tag'] == 'at' for paragraph in text_elements for ele in paragraph)
+            # Use 'post' format if: has @mentions OR has markdown tables
+            has_at = any(ele['tag'] == 'at' for paragraph in text_elements for ele in paragraph)
+            has_table = self._has_markdown_table(text_elements)
+            needs_post = has_at or has_table
 
             if needs_post:
                 msg_type = 'post'
@@ -1138,6 +1613,8 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             user_msg_id = query.message_event.message_chain.message_id
             if user_msg_id:
                 self.pending_monitoring_msg[user_msg_id] = monitoring_message_id
+                while len(self.pending_monitoring_msg) > CARD_ID_CACHE_SIZE:
+                    self.pending_monitoring_msg.pop(next(iter(self.pending_monitoring_msg)), None)
         except Exception as e:
             await self.logger.debug(f'Failed to map message to monitoring message: {e}')
 
@@ -1147,6 +1624,54 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         expired = [k for k, (_, ts) in self.reply_to_monitoring_msg.items() if now - ts > self._MONITORING_MAPPING_TTL]
         for k in expired:
             del self.reply_to_monitoring_msg[k]
+
+    def _next_card_sequence(self, card_id: str, suggested: int = 1) -> int:
+        """Return the next strictly increasing sequence for a card update."""
+        self._touch_card(card_id)
+        current = self.card_sequence_dict.get(card_id, 0)
+        next_seq = max(current + 1, suggested)
+        self.card_sequence_dict[card_id] = next_seq
+        return next_seq
+
+    def _register_card_for_source(self, card_id: str, *source_ids: str) -> None:
+        """Register a card_id under one or more source message ids."""
+        self._touch_card(card_id)
+        bucket = self.card_id_to_source_ids.setdefault(card_id, set())
+        for sid in source_ids:
+            if not sid:
+                continue
+            self.reply_message_card_ids[sid] = card_id
+            bucket.add(sid)
+
+    def _drop_card_state(self, card_id: str) -> None:
+        """Pop all per-card state for the given card_id."""
+        if not card_id:
+            return
+        for sid in self.card_id_to_source_ids.pop(card_id, set()):
+            self.reply_message_card_ids.pop(sid, None)
+        self.card_sequence_dict.pop(card_id, None)
+        self.card_streaming_text.pop(card_id, None)
+        self.card_pre_pause_text.pop(card_id, None)
+        self.card_form_content.pop(card_id, None)
+        self.card_form_input_defs.pop(card_id, None)
+        self.card_form_inputs.pop(card_id, None)
+        self.card_last_accessed.pop(card_id, None)
+        self.card_resume_transitioned.discard(card_id)
+
+    def _touch_card(self, card_id: str) -> None:
+        now = time.monotonic()
+        if now - self.card_cleanup_at >= 60 or len(self.card_last_accessed) >= CARD_ID_CACHE_SIZE:
+            self.card_cleanup_at = now
+            for stale_card_id, last_accessed in tuple(self.card_last_accessed.items()):
+                if now - last_accessed >= CARD_ID_CACHE_MAX_LIFETIME:
+                    self._drop_card_state(stale_card_id)
+            while len(self.card_last_accessed) >= CARD_ID_CACHE_SIZE:
+                oldest_card_id = min(
+                    self.card_last_accessed,
+                    key=self.card_last_accessed.__getitem__,
+                )
+                self._drop_card_state(oldest_card_id)
+        self.card_last_accessed[card_id] = now
 
     async def create_card_id(self, message_id):
         try:
@@ -1343,6 +1868,8 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             self.card_id_dict[message_id] = response.data.card_id
 
             card_id = response.data.card_id
+            self._touch_card(card_id)
+            self.card_sequence_dict[card_id] = 0
             return card_id
 
         except Exception as e:
@@ -1354,6 +1881,12 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         使用卡片消息是因为普通消息更新次数有限制，而大模型流式返回结果可能很多而超过限制，而飞书卡片没有这个限制（api免费次数有限）
         """
         # message_id = event.message_chain.message_id
+
+        source_message_id = str(event.message_chain.message_id)
+        existing_card_id = self.reply_message_card_ids.get(source_message_id)
+        if existing_card_id:
+            self.card_id_dict[message_id] = existing_card_id
+            return True
 
         card_id = await self.create_card_id(message_id)
         content = {
@@ -1393,13 +1926,110 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             user_msg_id = event.message_chain.message_id
             reply_msg_id = getattr(response.data, 'message_id', None)
             monitoring_msg_id = self.pending_monitoring_msg.pop(user_msg_id, None)
+            # Register the card under both the user-incoming msg id (so a
+            # second reply_message_first_chunk for the same user message
+            # reuses this card) AND the bot-reply msg id (so a synthetic
+            # event from a form-button callback — whose Source.id equals
+            # the bot's card message id — hits the same card and renders
+            # the resume content into it).
+            if reply_msg_id:
+                self._register_card_for_source(card_id, str(user_msg_id), str(reply_msg_id))
+            else:
+                self._register_card_for_source(card_id, str(user_msg_id))
             if reply_msg_id and monitoring_msg_id:
                 self.reply_to_monitoring_msg[reply_msg_id] = (monitoring_msg_id, time.time())
                 self._cleanup_monitoring_mapping()
         except Exception as e:
-            asyncio.create_task(self.logger.debug(f'Failed to transfer monitoring mapping in create_message_card: {e}'))
+            await self.logger.debug(f'Failed to transfer monitoring mapping in create_message_card: {e}')
 
         return True
+
+    async def _open_new_form_card(
+        self,
+        message_id: str,
+        message_source: platform_events.MessageEvent,
+        form_data: dict,
+    ) -> str | None:
+        """Spawn a fresh card to host a re-paused human-input prompt.
+
+        Creates a new card_id (rebinding ``self.card_id_dict[message_id]``),
+        replies it to the current incoming message so it appears as the next
+        step in the chat, registers the new reply_msg_id so subsequent button
+        callbacks resolve back to it, and renders the prompt + buttons on it.
+
+        Returns the new card_id, or ``None`` if creation failed (caller is
+        responsible for falling back to in-place update so the workflow
+        remains continuable).
+        """
+        source_message_id = getattr(message_source.message_chain, 'message_id', None)
+        if not source_message_id:
+            await self.logger.error('Cannot open new form card: source message_id missing')
+            return None
+
+        try:
+            new_card_id = await self.create_card_id(message_id)
+        except Exception:
+            await self.logger.error(f'Failed to create new form card: {traceback.format_exc()}')
+            return None
+
+        tenant_key = (
+            message_source.source_platform_object.header.tenant_key if message_source.source_platform_object else None
+        )
+        app_access_token = self.get_app_access_token()
+        tenant_access_token = self.get_tenant_access_token(tenant_key)
+        req_opt: RequestOption = (
+            RequestOption.builder()
+            .app_ticket(self.app_ticket)
+            .tenant_key(tenant_key)
+            .app_access_token(app_access_token)
+            .tenant_access_token(tenant_access_token)
+            .build()
+        )
+
+        content = {
+            'type': 'card',
+            'data': {'card_id': new_card_id, 'template_variable': {'content': ''}},
+        }
+        request: ReplyMessageRequest = (
+            ReplyMessageRequest.builder()
+            .message_id(str(source_message_id))
+            .request_body(
+                ReplyMessageRequestBody.builder()
+                .content(json.dumps(content))
+                .msg_type('interactive')
+                .uuid(str(uuid.uuid4()))
+                .build()
+            )
+            .build()
+        )
+
+        try:
+            response: ReplyMessageResponse = await self.api_client.im.v1.message.areply(request, req_opt)
+        except Exception:
+            await self.logger.error(f'Failed to send new form card: {traceback.format_exc()}')
+            return None
+
+        if not response.success():
+            await self.logger.error(
+                f'Failed to send new form card: code={response.code}, msg={response.msg}, '
+                f'log_id={response.get_log_id()}'
+            )
+            return None
+
+        reply_msg_id = getattr(response.data, 'message_id', None)
+        if reply_msg_id:
+            self._register_card_for_source(new_card_id, str(source_message_id), str(reply_msg_id))
+
+        sequence = self._next_card_sequence(new_card_id, 1)
+        await self._update_card_layout(
+            card_id=new_card_id,
+            message_source=message_source,
+            text_message='',
+            sequence=sequence,
+            form_data=form_data,
+            show_form_prompt=True,
+        )
+        return new_card_id
 
     async def reply_message(
         self,
@@ -1413,9 +2043,10 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
         # Send text message if there are text elements
         if text_elements:
-            # Determine msg_type based on content: use 'post' if at mentions
-            # are present (requires post paragraph structure), otherwise 'text'
-            needs_post = any(ele['tag'] == 'at' for paragraph in text_elements for ele in paragraph)
+            # Use 'post' format if: has @mentions OR has markdown tables
+            has_at = any(ele['tag'] == 'at' for paragraph in text_elements for ele in paragraph)
+            has_table = self._has_markdown_table(text_elements)
+            needs_post = has_at or has_table
 
             if needs_post:
                 msg_type = 'post'
@@ -1520,45 +2151,717 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     ):
         """
         回复消息变成更新卡片消息
+
+        Supports Dify form-action resume:  when the runner yields a chunk with
+        ``_resume_from_form=True``, the card transitions from buttons to a
+        grey selection notice and a new ``streaming_txt_resume`` element is added
+        for subsequent resume chunks to stream into.
+
+        When ``_open_new_card=True`` on the final chunk, the existing card is
+        left as-is and the pipeline will create a new card (with fresh form
+        buttons) for the re-pause.
         """
-        # self.seq += 1
         message_id = bot_message.resp_message_id
         msg_seq = bot_message.msg_sequence
-        if msg_seq % 8 == 0 or is_final:
-            text_elements, media_items = await self.message_converter.yiri2target(message, self.api_client)
 
-            text_message = ''
-            if text_elements:
-                parts = []
-                for paragraph in text_elements:
-                    para_text = ''.join(ele['text'] for ele in paragraph if ele['tag'] in ('text', 'md'))
-                    if para_text:
-                        parts.append(para_text)
-                text_message = '\n\n'.join(parts)
+        form_data = getattr(bot_message, '_form_data', None)
+        resume_from = getattr(bot_message, '_resume_from_form', False)
+        action_title = getattr(bot_message, '_resume_action_title', '')
+        resume_node_title = getattr(bot_message, '_resume_node_title', '')
+        open_new_card = getattr(bot_message, '_open_new_card', False)
 
-            # content = {
-            #     'type': 'card_json',
-            #     'data': {'card_id': self.card_id_dict[message_id], 'elements': {'content': text_message}},
-            # }
+        # ── decide whether this chunk needs a card update ────────────────────
+        card_id = self.card_id_dict.get(message_id)
+        if not card_id:
+            return
 
-            request: ContentCardElementRequest = (
-                ContentCardElementRequest.builder()
-                .card_id(self.card_id_dict[message_id])
-                .element_id('streaming_txt')
-                .request_body(
-                    ContentCardElementRequestBody.builder()
-                    # .uuid("a0d69e20-1dd1-458b-k525-dfeca4015204")
-                    .content(text_message)
-                    .sequence(msg_seq)
+        if action_title:
+            # Build the selected notice with node_title, form_content, and action
+            notice_parts = []
+            if resume_node_title:
+                notice_parts.append(f'**{resume_node_title}**')
+            stored_form_content = self.card_form_content.get(card_id, '')
+            if stored_form_content:
+                notice_parts.append(stored_form_content)
+            completed_lines = _lark_completed_input_lines(
+                {
+                    'input_defs': self.card_form_input_defs.get(card_id, []),
+                    'inputs': self.card_form_inputs.get(card_id, {}),
+                }
+            )
+            if completed_lines and not all(line in stored_form_content for line in completed_lines):
+                notice_parts.append('---\n' + '\n'.join(completed_lines))
+            notice_parts.append(f'---\n✅ {action_title}')
+            selected_notice = '\n\n'.join(notice_parts)
+        else:
+            selected_notice = ''
+
+        # ── convert message chain → text ─────────────────────────────────────
+        text_elements, media_items = await self.message_converter.yiri2target(message, self.api_client)
+
+        text_message = ''
+        if text_elements:
+            parts = []
+            for paragraph in text_elements:
+                para_text = ''.join(ele['text'] for ele in paragraph if ele['tag'] in ('text', 'md'))
+                if para_text:
+                    parts.append(para_text)
+            text_message = '\n\n'.join(parts)
+
+        tenant_key = (
+            message_source.source_platform_object.header.tenant_key if message_source.source_platform_object else None
+        )
+        app_access_token = self.get_app_access_token()
+        tenant_access_token = self.get_tenant_access_token(tenant_key)
+        req_opt: RequestOption = (
+            RequestOption.builder()
+            .app_ticket(self.app_ticket)
+            .tenant_key(tenant_key)
+            .app_access_token(app_access_token)
+            .tenant_access_token(tenant_access_token)
+            .build()
+        )
+
+        card_sequence = self._next_card_sequence(card_id, msg_seq)
+
+        # ── RESUME: first chunk after button click ───────────────────────────
+        if resume_from and card_id not in self.card_resume_transitioned:
+            # Transition the card from the form state into resume mode.
+            # Preserve the text that was shown before the pause, and seed the
+            # resume placeholder with the current resume content if we already
+            # have any on the first yielded chunk.
+            pre_pause_text = self.card_pre_pause_text.get(card_id) or self.card_streaming_text.get(card_id, '')
+            initial_resume_text = text_message or '\u200b'
+            await self._update_card_layout(
+                card_id=card_id,
+                message_source=message_source,
+                text_message=pre_pause_text,
+                sequence=card_sequence,
+                form_data=None,
+                notice_text=selected_notice,
+                resume_placeholder_text=initial_resume_text,
+            )
+            self.card_resume_transitioned.add(card_id)
+            self.card_pre_pause_text[card_id] = pre_pause_text
+            self.card_streaming_text[card_id] = text_message
+            if not is_final:
+                return
+
+        # ── RESUME: subsequent chunks → full card update ─────────────────────
+        if resume_from and card_id in self.card_resume_transitioned:
+            cached = self.card_streaming_text.get(card_id, '')
+            if text_message != cached:
+                self.card_streaming_text[card_id] = text_message
+                pre_pause_text = self.card_pre_pause_text.get(card_id, '')
+                await self._update_card_layout(
+                    card_id=card_id,
+                    message_source=message_source,
+                    text_message=pre_pause_text,
+                    sequence=card_sequence,
+                    form_data=None,
+                    notice_text=selected_notice,
+                    resume_placeholder_text=text_message,
+                )
+            if not is_final:
+                return
+
+        # ── NORMAL streaming (non-resume): update streaming_txt in-place ──────
+        if _lark_should_update_stream_element(
+            resume_from=resume_from,
+            form_data=form_data,
+            msg_seq=msg_seq,
+            is_final=is_final,
+        ):
+            cached = self.card_streaming_text.get(card_id)
+            if text_message != cached:
+                self.card_streaming_text[card_id] = text_message
+                request: ContentCardElementRequest = (
+                    ContentCardElementRequest.builder()
+                    .card_id(card_id)
+                    .element_id('streaming_txt')
+                    .request_body(
+                        ContentCardElementRequestBody.builder().content(text_message).sequence(card_sequence).build()
+                    )
                     .build()
                 )
-                .build()
+                response: ContentCardElementResponse = await self.api_client.cardkit.v1.card_element.acontent(
+                    request, req_opt
+                )
+                if not response.success():
+                    raise Exception(
+                        f'client.cardkit.v1.card_element.acontent failed, code: {response.code}, '
+                        f'msg: {response.msg}, log_id: {response.get_log_id()}, '
+                        f'resp: \n{json.dumps(json.loads(response.raw.content), indent=4, ensure_ascii=False)}'
+                    )
+
+        # ── FINAL chunk: full card layout update ─────────────────────────────
+        if is_final:
+            final_seq = self._next_card_sequence(card_id, card_sequence + 1)
+            pre_pause = self.card_pre_pause_text.get(card_id, text_message)
+            resume_cached = self.card_streaming_text.get(card_id, '')
+            if form_data:
+                if open_new_card:
+                    # The old card has already been laid out into resume mode
+                    # by the resume-transition block above (notice + resume
+                    # placeholder). Finalise it as a frozen step snapshot and
+                    # spawn a brand-new card to host the next human-input
+                    # prompt — each step stays visible as its own card in the
+                    # chat history.
+                    new_card_id = await self._open_new_form_card(message_id, message_source, form_data)
+                    if new_card_id is None:
+                        # Fallback: keep the existing in-place behaviour so the
+                        # workflow remains continuable even if creating the
+                        # new card failed.
+                        await self._update_card_layout(
+                            card_id=card_id,
+                            message_source=message_source,
+                            text_message=pre_pause,
+                            sequence=final_seq,
+                            form_data=form_data,
+                            resume_placeholder_text=resume_cached,
+                            show_form_prompt=True,
+                        )
+                        self.card_streaming_text.pop(card_id, None)
+                        self.card_pre_pause_text.pop(card_id, None)
+                        self.card_form_content.pop(card_id, None)
+                        self.card_form_input_defs.pop(card_id, None)
+                        self.card_form_inputs.pop(card_id, None)
+                    else:
+                        # The old card is now a frozen snapshot; let go of its
+                        # streaming-side state but keep its source registrations
+                        # intact (no _drop_card_state) so historical button
+                        # callbacks aimed at it can still be matched if needed.
+                        self.card_streaming_text.pop(card_id, None)
+                        self.card_pre_pause_text.pop(card_id, None)
+                        self.card_form_content.pop(card_id, None)
+                        self.card_form_input_defs.pop(card_id, None)
+                        self.card_form_inputs.pop(card_id, None)
+                        self.card_resume_transitioned.discard(card_id)
+                else:
+                    # Initial pause path: render prompt + buttons in place on
+                    # the current card.
+                    await self._update_card_layout(
+                        card_id=card_id,
+                        message_source=message_source,
+                        text_message=text_message,
+                        sequence=final_seq,
+                        form_data=form_data,
+                        show_form_prompt=True,
+                    )
+                    # Preserve the pre-pause text so the main content can be
+                    # restored when the user clicks a button and the card
+                    # transitions to resume mode.
+                    self.card_pre_pause_text[card_id] = self.card_streaming_text.get(card_id, '')
+                    self.card_streaming_text[card_id] = ''
+                    # Store cleaned form state for the resume notice.
+                    self.card_form_content[card_id] = _lark_visible_form_content(form_data)
+                    self.card_form_input_defs[card_id] = _lark_form_input_defs(form_data)
+                    self.card_form_inputs[card_id] = dict(form_data.get('inputs') or {})
+            else:
+                # Normal finish: keep pre-pause + resume content visible,
+                # remove buttons/notice, drop the resume placeholder.
+                await self._update_card_layout(
+                    card_id=card_id,
+                    message_source=message_source,
+                    text_message=pre_pause,
+                    sequence=final_seq,
+                    form_data=None,
+                    notice_text=selected_notice if resume_from else '',
+                    resume_placeholder_text=resume_cached,
+                )
+                self._drop_card_state(card_id)
+            self.card_id_dict.pop(message_id, None)
+
+        # ── media (images / files) appended at the end ───────────────────────
+        if is_final and media_items:
+            for media in media_items:
+                media_request: ReplyMessageRequest = (
+                    ReplyMessageRequest.builder()
+                    .message_id(message_source.message_chain.message_id)
+                    .request_body(
+                        ReplyMessageRequestBody.builder()
+                        .content(json.dumps(media['content']))
+                        .msg_type(media['msg_type'])
+                        .reply_in_thread(False)
+                        .uuid(str(uuid.uuid4()))
+                        .build()
+                    )
+                    .build()
+                )
+                media_response: ReplyMessageResponse = await self.api_client.im.v1.message.areply(
+                    media_request, req_opt
+                )
+                if not media_response.success():
+                    raise Exception(
+                        f'client.im.v1.message.reply ({media["msg_type"]}) failed, code: {media_response.code}, msg: {media_response.msg}, log_id: {media_response.get_log_id()}'
+                    )
+
+    async def _add_form_buttons_to_card(
+        self,
+        card_id: str,
+        message_source: platform_events.MessageEvent,
+        form_data: dict,
+        text_message: str = '',
+        sequence: int = 1,
+    ):
+        """Update the entire card to include form action buttons.
+
+        Uses card.aupdate to replace the card JSON with a template that
+        includes the streaming text content plus interactive buttons.
+        """
+        await self._update_card_layout(
+            card_id=card_id,
+            message_source=message_source,
+            text_message=text_message,
+            sequence=sequence,
+            form_data=form_data,
+        )
+
+    async def _remove_form_buttons_from_card(
+        self,
+        card_id: str,
+        message_source: platform_events.MessageEvent,
+        text_message: str = '',
+        sequence: int = 1,
+    ):
+        """Replace the human-input card layout with the plain final layout."""
+        await self._update_card_layout(
+            card_id=card_id,
+            message_source=message_source,
+            text_message=text_message,
+            sequence=sequence,
+            form_data=None,
+        )
+
+    def _build_lark_form_field_elements(self, form_data: dict) -> tuple[list[dict], dict[str, str], list[str]]:
+        elements: list[dict] = []
+        input_name_map: dict[str, str] = {}
+        file_help_lines: list[str] = []
+
+        for idx, field in enumerate(_lark_current_input_defs(form_data), start=1):
+            field_name = _dify_field_name(field)
+            if not field_name:
+                continue
+            field_type = _dify_field_type(field)
+
+            if field_type == 'select':
+                options = _dify_select_options(field)
+                component_name = _lark_form_component_name('Select', field_name, idx)
+                input_name_map[component_name] = field_name
+                elements.append(
+                    {
+                        'tag': 'select_static',
+                        'name': component_name,
+                        'label': {'tag': 'plain_text', 'content': field_name},
+                        'placeholder': {'tag': 'plain_text', 'content': '请选择'},
+                        'options': [
+                            {
+                                'text': {'tag': 'plain_text', 'content': option},
+                                'value': option,
+                            }
+                            for option in options
+                        ],
+                        'type': 'default',
+                        'width': 'fill',
+                        'required': False,
+                    }
+                )
+            elif field_type in {'file', 'file-list'}:
+                allowed_types = ', '.join(field.get('allowed_file_types') or [])
+                allowed = f' ({allowed_types})' if allowed_types else ''
+                if field_type == 'file-list':
+                    limit = field.get('number_limits')
+                    suffix = f', up to {limit}' if limit else ''
+                    file_help_lines.append(
+                        f'- {field_name}: upload file(s){allowed}{suffix} in chat or reply `{field_name}: <url>`'
+                    )
+                else:
+                    file_help_lines.append(
+                        f'- {field_name}: upload a file{allowed} in chat or reply `{field_name}: <url>`'
+                    )
+            else:
+                component_name = _lark_form_component_name('Input', field_name, idx)
+                input_name_map[component_name] = field_name
+                is_multiline = field_type in {'paragraph', 'long_text', 'multiline_text', 'textarea'}
+                input_element = {
+                    'tag': 'input',
+                    'name': component_name,
+                    'label': {'tag': 'plain_text', 'content': field_name},
+                    'placeholder': {'tag': 'plain_text', 'content': '请输入'},
+                    'default_value': _dify_default_value(field),
+                    'width': 'fill',
+                    'required': False,
+                }
+                if is_multiline:
+                    input_element.update(
+                        {
+                            'input_type': 'multiline_text',
+                            'rows': 3,
+                            'auto_resize': True,
+                            'max_rows': 6,
+                        }
+                    )
+                elements.append(input_element)
+
+        return elements, input_name_map, file_help_lines
+
+    async def _update_card_layout(
+        self,
+        card_id: str,
+        message_source: platform_events.MessageEvent,
+        text_message: str = '',
+        sequence: int = 1,
+        form_data: dict | None = None,
+        notice_text: str = '',
+        resume_placeholder_text: str = '',
+        show_form_prompt: bool = True,
+    ):
+        """Update the entire card layout.
+
+        • form_data → show interactive buttons (initial Dify pause)
+        • notice_text → replace buttons with a grey selection notice (resume transition)
+        • resume_placeholder_text → add a streaming_txt_resume markdown element
+        """
+        form_data = form_data or {}
+        actions = form_data.get('actions', [])
+        form_token = form_data.get('form_token', '')
+        workflow_run_id = form_data.get('workflow_run_id', '')
+        pipeline_uuid = form_data.get('pipeline_uuid', '')
+        node_title = form_data.get('node_title', '') or 'Human Input Required'
+        form_content = form_data.get('form_content', '')
+        input_defs = _lark_form_input_defs(form_data)
+
+        # When form_data is set, the visible content is rendered inside the
+        # interactive container, so the top streaming text should stay empty
+        # to avoid duplicate text above the action area.
+        #
+        # For resume notice state, keep the existing text visible in the card
+        # and only add the grey "selected" notice below it.
+        if form_data:
+            render_text_message = ''
+        else:
+            render_text_message = text_message
+
+        # Determine session key from message source
+        if isinstance(message_source, platform_events.GroupMessage):
+            session_key = f'group_{message_source.group.id}'
+        else:
+            session_key = f'person_{message_source.sender.id}'
+
+        # Build button elements matching the existing card template's thumbsup/down format
+        action_buttons = []
+        form_field_elements, input_name_map, file_help_lines = self._build_lark_form_field_elements(form_data)
+        uses_form_container = bool(form_field_elements or input_name_map)
+        if form_data:
+            form_content = _lark_visible_form_content(form_data)
+            self.card_form_content[card_id] = form_content
+            self.card_form_input_defs[card_id] = input_defs
+            self.card_form_inputs[card_id] = dict(form_data.get('inputs') or {})
+        is_field_step = bool(form_data.get('_current_input_field')) and not form_data.get('_action_select_only')
+        if is_field_step:
+            actions = (
+                [{'_input_progress': True, 'id': '', 'title': 'Next', 'button_style': 'primary'}]
+                if uses_form_container
+                else []
             )
+        for action in actions:
+            action_id = action.get('id', '')
+            action_title = action.get('title', action_id)
+            button_style = action.get('button_style', 'default')
 
-            if is_final and bot_message.tool_calls is None:
-                # self.seq = 1  # 消息回复结束之后重置seq
-                self.card_id_dict.pop(message_id)  # 清理已经使用过的卡片
+            if button_style == 'primary':
+                lark_button_type = 'primary'
+            elif button_style == 'danger':
+                lark_button_type = 'danger'
+            else:
+                lark_button_type = 'default'
 
+            button = {
+                'tag': 'button',
+                'text': {'tag': 'plain_text', 'content': action_title},
+                'type': lark_button_type,
+                'width': 'fill',
+                'size': 'medium',
+                'hover_tips': {'tag': 'plain_text', 'content': action_title},
+                'behaviors': [
+                    {
+                        'type': 'callback',
+                        'value': {
+                            'form_action': True,
+                            'form_token': form_token,
+                            'workflow_run_id': workflow_run_id,
+                            'pipeline_uuid': pipeline_uuid,
+                            'action_id': action_id,
+                            'session_key': session_key,
+                            'card_id': card_id,
+                            'input_name_map': input_name_map,
+                            '_input_progress': bool(action.get('_input_progress')),
+                        },
+                    }
+                ],
+                'margin': '0px 0px 0px 0px',
+            }
+            if uses_form_container:
+                button['name'] = _lark_form_component_name('Button', action_id or action_title, len(action_buttons) + 1)
+                button['form_action_type'] = 'submit'
+            action_buttons.append(button)
+
+        interactive_elements = []
+        if form_data:
+            if show_form_prompt:
+                interactive_elements = [
+                    {
+                        'tag': 'markdown',
+                        'content': f'**[Human Input Required] {node_title}**',
+                        'text_align': 'left',
+                        'text_size': 'normal',
+                        'margin': '0px 0px 4px 0px',
+                    }
+                ]
+                if form_content:
+                    interactive_elements.append(
+                        {
+                            'tag': 'markdown',
+                            'content': form_content,
+                            'text_align': 'left',
+                            'text_size': 'normal',
+                            'margin': '0px 0px 8px 0px',
+                        }
+                    )
+                completed_lines = (
+                    []
+                    if form_data.get('_action_select_only')
+                    else _lark_completed_input_lines(
+                        {
+                            'input_defs': input_defs,
+                            'inputs': form_data.get('inputs') or {},
+                        }
+                    )
+                )
+                if completed_lines:
+                    interactive_elements.append(
+                        {
+                            'tag': 'markdown',
+                            'content': '---\n' + '\n'.join(completed_lines),
+                            'text_align': 'left',
+                            'text_size': 'normal',
+                            'margin': '0px 0px 8px 0px',
+                        }
+                    )
+                if file_help_lines:
+                    interactive_elements.append(
+                        {
+                            'tag': 'markdown',
+                            'content': '\n'.join(file_help_lines),
+                            'text_align': 'left',
+                            'text_size': 'normal',
+                            'text_color': 'grey',
+                            'margin': '0px 0px 8px 0px',
+                        }
+                    )
+            if action_buttons:
+                interactive_elements.append(
+                    {
+                        'tag': 'column_set',
+                        'horizontal_spacing': '8px',
+                        'horizontal_align': 'left',
+                        'margin': '0px 0px 0px 0px',
+                        'columns': [
+                            {
+                                'tag': 'column',
+                                'width': 'weighted',
+                                'elements': [btn],
+                                'padding': '0px 0px 0px 0px',
+                            }
+                            for btn in action_buttons
+                        ],
+                    }
+                )
+
+        # Build the full card JSON with buttons, same structure as create_card_id
+        # ── mid_section: either form buttons, resume notice, or empty ──
+        mid_section_elements = []
+        if form_data:
+            if uses_form_container:
+                form_elements = interactive_elements[:-1] if action_buttons else interactive_elements[:]
+                form_elements.extend(form_field_elements)
+                if action_buttons:
+                    form_elements.append(interactive_elements[-1])
+                mid_section_elements = [
+                    {
+                        'tag': 'form',
+                        'name': _lark_form_component_name('Form', form_token or workflow_run_id or card_id, 1),
+                        'direction': 'vertical',
+                        'vertical_spacing': '12px',
+                        'margin': '12px 0px 8px 0px',
+                        'padding': '12px 12px 12px 12px',
+                        'elements': form_elements,
+                    },
+                    {'tag': 'hr', 'margin': '0px 0px 0px 0px'},
+                ]
+            else:
+                mid_section_elements = [
+                    {
+                        'tag': 'interactive_container',
+                        'margin': '12px 0px 8px 0px',
+                        'padding': '12px 12px 12px 12px',
+                        'has_border': True,
+                        'elements': interactive_elements,
+                    },
+                    {'tag': 'hr', 'margin': '0px 0px 0px 0px'},
+                ]
+        elif notice_text:
+            mid_section_elements = [
+                {
+                    'tag': 'markdown',
+                    'content': notice_text,
+                    'text_align': 'left',
+                    'text_size': 'normal',
+                    'margin': '8px 0px 4px 0px',
+                    'text_color': 'grey',
+                },
+                {'tag': 'hr', 'margin': '0px 0px 0px 0px'},
+            ]
+
+        # ── resume placeholder element (empty, filled via acontent on each chunk) ──
+        resume_elements = []
+        if resume_placeholder_text:
+            resume_elements = [
+                {
+                    'tag': 'markdown',
+                    'content': resume_placeholder_text,
+                    'text_align': 'left',
+                    'text_size': 'normal',
+                    'margin': '0px 0px 0px 0px',
+                    'element_id': 'streaming_txt_resume',
+                },
+            ]
+
+        card_data = {
+            'schema': '2.0',
+            'config': {
+                'update_multi': True,
+                'streaming_mode': False,
+            },
+            'body': {
+                'direction': 'vertical',
+                'padding': '12px 12px 12px 12px',
+                'elements': [
+                    {
+                        'tag': 'div',
+                        'text': {
+                            'tag': 'plain_text',
+                            'content': 'LangBot',
+                            'text_size': 'normal',
+                            'text_align': 'left',
+                            'text_color': 'default',
+                        },
+                        'icon': {
+                            'tag': 'custom_icon',
+                            'img_key': 'img_v3_02p3_05c65d5d-9bad-440a-a2fb-c89571bfd5bg',
+                        },
+                    },
+                    {
+                        'tag': 'markdown',
+                        'content': render_text_message,
+                        'text_align': 'left',
+                        'text_size': 'normal',
+                        'margin': '0px 0px 0px 0px',
+                        'element_id': 'streaming_txt',
+                    },
+                    *mid_section_elements,
+                    *resume_elements,
+                    {
+                        'tag': 'column_set',
+                        'horizontal_spacing': '12px',
+                        'horizontal_align': 'right',
+                        'columns': [
+                            {
+                                'tag': 'column',
+                                'width': 'weighted',
+                                'elements': [
+                                    {
+                                        'tag': 'markdown',
+                                        'content': '<font color="grey-600">以上内容由 AI 生成，仅供参考。更多详细、准确信息可点击引用链接查看</font>',
+                                        'text_align': 'left',
+                                        'text_size': 'notation',
+                                        'margin': '4px 0px 0px 0px',
+                                        'icon': {
+                                            'tag': 'standard_icon',
+                                            'token': 'robot_outlined',
+                                            'color': 'grey',
+                                        },
+                                    }
+                                ],
+                                'padding': '0px 0px 0px 0px',
+                                'direction': 'vertical',
+                                'horizontal_spacing': '8px',
+                                'vertical_spacing': '8px',
+                                'horizontal_align': 'left',
+                                'vertical_align': 'top',
+                                'margin': '0px 0px 0px 0px',
+                                'weight': 1,
+                            },
+                            *(
+                                []
+                                if form_data
+                                else [
+                                    {
+                                        'tag': 'column',
+                                        'width': '20px',
+                                        'elements': [
+                                            {
+                                                'tag': 'button',
+                                                'text': {'tag': 'plain_text', 'content': ''},
+                                                'type': 'text',
+                                                'width': 'fill',
+                                                'size': 'medium',
+                                                'icon': {'tag': 'standard_icon', 'token': 'thumbsup_outlined'},
+                                                'hover_tips': {'tag': 'plain_text', 'content': '有帮助'},
+                                                'behaviors': [{'type': 'callback', 'value': {'feedback': '有帮助'}}],
+                                                'margin': '0px 0px 0px 0px',
+                                            }
+                                        ],
+                                        'padding': '0px 0px 0px 0px',
+                                        'direction': 'vertical',
+                                        'horizontal_spacing': '8px',
+                                        'vertical_spacing': '8px',
+                                        'horizontal_align': 'left',
+                                        'vertical_align': 'top',
+                                        'margin': '0px 0px 0px 0px',
+                                    },
+                                    {
+                                        'tag': 'column',
+                                        'width': '30px',
+                                        'elements': [
+                                            {
+                                                'tag': 'button',
+                                                'text': {'tag': 'plain_text', 'content': ''},
+                                                'type': 'text',
+                                                'width': 'default',
+                                                'size': 'medium',
+                                                'icon': {'tag': 'standard_icon', 'token': 'thumbdown_outlined'},
+                                                'hover_tips': {'tag': 'plain_text', 'content': '无帮助'},
+                                                'behaviors': [{'type': 'callback', 'value': {'feedback': '无帮助'}}],
+                                                'margin': '0px 0px 0px 0px',
+                                            }
+                                        ],
+                                        'padding': '0px 0px 0px 0px',
+                                        'vertical_spacing': '8px',
+                                        'horizontal_align': 'left',
+                                        'vertical_align': 'top',
+                                        'margin': '0px 0px 0px 0px',
+                                    },
+                                ]
+                            ),
+                        ],
+                        'margin': '0px 0px 4px 0px',
+                    },
+                ],
+            },
+        }
+
+        try:
             tenant_key = (
                 message_source.source_platform_object.header.tenant_key
                 if message_source.source_platform_object
@@ -1574,39 +2877,27 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 .tenant_access_token(tenant_access_token)
                 .build()
             )
-            # 发起请求
-            response: ContentCardElementResponse = self.api_client.cardkit.v1.card_element.content(request, req_opt)
 
-            # 处理失败返回
-            if not response.success():
-                raise Exception(
-                    f'client.im.v1.message.patch failed, code: {response.code}, msg: {response.msg}, log_id: {response.get_log_id()}, resp: \n{json.dumps(json.loads(response.raw.content), indent=4, ensure_ascii=False)}'
+            request: UpdateCardRequest = (
+                UpdateCardRequest.builder()
+                .card_id(card_id)
+                .request_body(
+                    UpdateCardRequestBody.builder()
+                    .sequence(sequence)
+                    .uuid(str(uuid.uuid4()))
+                    .card(Card.builder().type('card_json').data(json.dumps(card_data)).build())
+                    .build()
                 )
-                return
-
-            # Send media messages when streaming is done
-            if is_final and media_items:
-                for media in media_items:
-                    media_request: ReplyMessageRequest = (
-                        ReplyMessageRequest.builder()
-                        .message_id(message_source.message_chain.message_id)
-                        .request_body(
-                            ReplyMessageRequestBody.builder()
-                            .content(json.dumps(media['content']))
-                            .msg_type(media['msg_type'])
-                            .reply_in_thread(False)
-                            .uuid(str(uuid.uuid4()))
-                            .build()
-                        )
-                        .build()
-                    )
-                    media_response: ReplyMessageResponse = await self.api_client.im.v1.message.areply(
-                        media_request, req_opt
-                    )
-                    if not media_response.success():
-                        raise Exception(
-                            f'client.im.v1.message.reply ({media["msg_type"]}) failed, code: {media_response.code}, msg: {media_response.msg}, log_id: {media_response.get_log_id()}'
-                        )
+                .build()
+            )
+            response: UpdateCardResponse = await self.api_client.cardkit.v1.card.aupdate(request, req_opt)
+            if not response.success():
+                await self.logger.error(
+                    f'Failed to update lark card with form buttons: code={response.code}, msg={response.msg}, '
+                    f'log_id={response.get_log_id()}, resp={getattr(getattr(response, "raw", None), "content", None)}'
+                )
+        except Exception:
+            await self.logger.error(f'Error updating lark card with form buttons: {traceback.format_exc()}')
 
     async def is_muted(self, group_id: int) -> bool:
         return False
@@ -1657,8 +2948,8 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             data = await request.json
 
             if 'encrypt' in data:
-                data = self.cipher.decrypt_string(data['encrypt'])
-                data = json.loads(data)
+                encrypted = data['encrypt']
+                data = await asyncio.to_thread(lambda: json.loads(self.cipher.decrypt_string(encrypted)))
             type = self.get_event_type(data)
             context = EventContext(data)
             if 'url_verification' == type:
@@ -1688,8 +2979,122 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                     action = event_data.get('action', {})
                     context_data = event_data.get('context', {})
 
-                    action_value_obj = action.get('value', {})
+                    action_value_obj = _lark_mapping_from_value(action.get('value', {}))
                     action_value = action_value_obj.get('feedback', '') if isinstance(action_value_obj, dict) else ''
+
+                    if isinstance(action_value_obj, dict) and action_value_obj.get('form_action'):
+                        form_token = action_value_obj.get('form_token', '')
+                        workflow_run_id = action_value_obj.get('workflow_run_id', '')
+                        action_id = action_value_obj.get('action_id', '')
+                        session_key = action_value_obj.get('session_key', '')
+                        form_inputs = _lark_extract_action_form_inputs(action, action_value_obj)
+
+                        if session_key.startswith('group_') or session_key.startswith('g:'):
+                            launcher_type = provider_session.LauncherTypes.GROUP
+                            launcher_id = (
+                                session_key.split(':', 1)[1]
+                                if session_key.startswith('g:')
+                                else session_key[len('group_') :]
+                            )
+                        else:
+                            launcher_type = provider_session.LauncherTypes.PERSON
+                            launcher_id = (
+                                session_key.split(':', 1)[1]
+                                if session_key.startswith('p:')
+                                else session_key[len('person_') :]
+                            )
+
+                        form_action_data = {
+                            'form_token': form_token,
+                            'workflow_run_id': workflow_run_id,
+                            'action_id': action_id,
+                            'user': f'{launcher_type.value}_{launcher_id}',
+                            'inputs': form_inputs,
+                        }
+                        if action_value_obj.get('_input_progress'):
+                            form_action_data['_input_progress'] = True
+
+                        open_message_id = context_data.get('open_message_id')
+                        card_id = self.reply_message_card_ids.get(str(open_message_id)) if open_message_id else None
+                        if not card_id:
+                            card_id = str(action_value_obj.get('card_id') or '')
+                        if card_id and form_inputs:
+                            cached_inputs = dict(self.card_form_inputs.get(card_id) or {})
+                            cached_inputs.update(form_inputs)
+                            self.card_form_inputs[card_id] = cached_inputs
+                            if self.ap is not None:
+                                self.ap.logger.info(
+                                    f'Lark form action inputs cached: card_id={card_id} '
+                                    f'open_message_id={open_message_id} keys={list(form_inputs.keys())}'
+                                )
+
+                        source_time = datetime.datetime.now()
+                        message_chain = platform_message.MessageChain(
+                            [platform_message.Plain(text=f'[Form Action: {action_id or "confirm"}]')]
+                        )
+                        if open_message_id:
+                            message_chain.insert(
+                                0,
+                                platform_message.Source(
+                                    id=open_message_id,
+                                    time=source_time,
+                                ),
+                            )
+
+                        user_id = operator.get('open_id') or operator.get('user_id') or str(launcher_id)
+                        event_time = source_time.timestamp()
+                        if launcher_type == provider_session.LauncherTypes.GROUP:
+                            synthetic_event = platform_events.GroupMessage(
+                                sender=platform_entities.GroupMember(
+                                    id=user_id,
+                                    member_name='',
+                                    permission=platform_entities.Permission.Member,
+                                    group=platform_entities.Group(
+                                        id=launcher_id,
+                                        name='',
+                                        permission=platform_entities.Permission.Member,
+                                    ),
+                                ),
+                                message_chain=message_chain,
+                                time=event_time,
+                                source_platform_object=data,
+                            )
+                        else:
+                            synthetic_event = platform_events.FriendMessage(
+                                sender=platform_entities.Friend(
+                                    id=user_id,
+                                    nickname='',
+                                    remark='',
+                                ),
+                                message_chain=message_chain,
+                                time=event_time,
+                                source_platform_object=data,
+                            )
+
+                        bot_uuid = ''
+                        pipeline_uuid = action_value_obj.get('pipeline_uuid') or None
+                        for bot in self.ap.platform_mgr.bots:
+                            if bot.adapter is self:
+                                bot_uuid = bot.bot_entity.uuid
+                                pipeline_uuid = pipeline_uuid or bot.bot_entity.use_pipeline_uuid
+                                break
+
+                        await self.ap.query_pool.add_query(
+                            bot_uuid=bot_uuid,
+                            launcher_type=launcher_type,
+                            launcher_id=launcher_id,
+                            sender_id=user_id,
+                            message_event=synthetic_event,
+                            message_chain=message_chain,
+                            adapter=self,
+                            pipeline_uuid=pipeline_uuid,
+                            variables={
+                                '_dify_form_action': form_action_data,
+                                '_routed_by_rule': True,
+                            },
+                        )
+
+                        return {'toast': {'type': 'success', 'content': '操作成功'}}
 
                     if action_value == '有帮助':
                         feedback_type = 1
@@ -1814,4 +3219,38 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         # 所以要设置_auto_reconnect=False,让其不重连。
         self.bot._auto_reconnect = False
         await self.bot._disconnect()
+        inbound_tasks = list(self.inbound_event_tasks)
+        for task in inbound_tasks:
+            if not task.done():
+                task.cancel()
+        if inbound_tasks:
+            await asyncio.gather(*inbound_tasks, return_exceptions=True)
+        self.inbound_event_tasks.clear()
+        with self.threadsafe_event_lock:
+            threadsafe_futures = list(self.threadsafe_event_futures)
+        for future in threadsafe_futures:
+            future.cancel()
+        if threadsafe_futures:
+            await asyncio.gather(
+                *(asyncio.wrap_future(future) for future in threadsafe_futures),
+                return_exceptions=True,
+            )
+        with self.threadsafe_event_lock:
+            self.threadsafe_event_futures.clear()
+        self.tenant_access_tokens.clear()
+        self.card_id_dict.clear()
+        self.pending_monitoring_msg.clear()
+        self.reply_to_monitoring_msg.clear()
+        for card_id in tuple(self.card_last_accessed):
+            self._drop_card_state(card_id)
+        self.card_last_accessed.clear()
+        self.reply_message_card_ids.clear()
+        self.card_sequence_dict.clear()
+        self.card_id_to_source_ids.clear()
+        self.card_streaming_text.clear()
+        self.card_pre_pause_text.clear()
+        self.card_form_content.clear()
+        self.card_form_input_defs.clear()
+        self.card_form_inputs.clear()
+        self.card_resume_transitioned.clear()
         return False

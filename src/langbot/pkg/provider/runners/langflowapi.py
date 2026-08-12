@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import codecs
 import typing
 import json
 import httpx
@@ -10,6 +11,44 @@ from .. import runner
 from ...core import app
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
+
+_MAX_LANGFLOW_LINE_CHARS = 1024 * 1024
+_MAX_LANGFLOW_TOTAL_BYTES = 16 * 1024 * 1024
+_MAX_LANGFLOW_RESPONSE_BYTES = 1024 * 1024
+
+
+async def _iter_limited_lines(
+    response: httpx.Response,
+) -> typing.AsyncGenerator[str, None]:
+    decoder = codecs.getincrementaldecoder('utf-8')('replace')
+    buffer = ''
+    total_bytes = 0
+    async for chunk in response.aiter_bytes(chunk_size=8192):
+        total_bytes += len(chunk)
+        if total_bytes > _MAX_LANGFLOW_TOTAL_BYTES:
+            raise ValueError('Langflow stream exceeds the runtime limit')
+        buffer += decoder.decode(chunk)
+        while '\n' in buffer:
+            line, buffer = buffer.split('\n', 1)
+            if len(line) > _MAX_LANGFLOW_LINE_CHARS:
+                raise ValueError('Langflow event exceeds the runtime limit')
+            yield line.rstrip('\r')
+        if len(buffer) > _MAX_LANGFLOW_LINE_CHARS:
+            raise ValueError('Langflow event exceeds the runtime limit')
+    buffer += decoder.decode(b'', final=True)
+    if buffer:
+        if len(buffer) > _MAX_LANGFLOW_LINE_CHARS:
+            raise ValueError('Langflow event exceeds the runtime limit')
+        yield buffer.rstrip('\r')
+
+
+async def _read_limited_response(response: httpx.Response) -> bytes:
+    body = bytearray()
+    async for chunk in response.aiter_bytes(chunk_size=8192):
+        body.extend(chunk)
+        if len(body) > _MAX_LANGFLOW_RESPONSE_BYTES:
+            raise ValueError('Langflow response exceeds the runtime limit')
+    return bytes(body)
 
 
 @runner.runner_class('langflow-api')
@@ -99,7 +138,7 @@ class LangflowAPIRunner(runner.RequestRunner):
                     accumulated_content = ''
                     message_count = 0
 
-                    async for line in response.aiter_lines():
+                    async for line in _iter_limited_lines(response):
                         data_str = line
 
                         if data_str.startswith('data: '):
@@ -144,11 +183,15 @@ class LangflowAPIRunner(runner.RequestRunner):
                     yield provider_message.MessageChunk(role='assistant', content=accumulated_content, is_final=True)
             else:
                 # 非流式请求
-                response = await client.post(url, json=payload, headers=headers, timeout=120.0)
-                response.raise_for_status()
-
-                # 解析响应
-                response_data = response.json()
+                async with client.stream(
+                    'POST',
+                    url,
+                    json=payload,
+                    headers=headers,
+                    timeout=120.0,
+                ) as response:
+                    response.raise_for_status()
+                    response_data = json.loads(await _read_limited_response(response))
 
                 # 提取消息内容
                 # 根据Langflow API文档，响应结构可能在outputs[0].outputs[0].outputs.message.message中

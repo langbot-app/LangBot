@@ -67,13 +67,44 @@ interface BotMock {
   updated_at: string;
 }
 
+export interface WorkspaceEntryMock {
+  workspace: {
+    uuid: string;
+    instance_uuid: string;
+    name: string;
+    slug: string;
+    type: 'personal' | 'team';
+    status: 'active';
+    source: 'local' | 'cloud_projection';
+  };
+  membership: {
+    uuid: string;
+    workspace_uuid: string;
+    account_uuid: string;
+    display_name: string;
+    email: string;
+    role: 'owner' | 'admin' | 'developer' | 'operator' | 'viewer';
+    status: 'active';
+    joined_at: string;
+    created_at: string;
+  };
+  permissions: string[];
+  placement_generation: number;
+}
+
 interface LangBotApiMockState {
+  authenticated: boolean;
   bots: BotMock[];
   counters: Record<string, number>;
   knowledgeBases: KnowledgeBaseMock[];
   mcpServers: MCPServerMock[];
+  monitoringData: unknown;
+  monitoringSessions: unknown[];
   pipelines: PipelineMock[];
+  sessionAnalyses: Record<string, unknown>;
+  sessionMessages: Record<string, unknown[]>;
   skills: SkillMock[];
+  workspaces: WorkspaceEntryMock[];
 }
 
 function ok(data: unknown) {
@@ -105,6 +136,59 @@ function now() {
   return new Date().toISOString();
 }
 
+export function makeWorkspaceEntry(
+  uuid: string,
+  name: string,
+  source: 'local' | 'cloud_projection' = 'cloud_projection',
+): WorkspaceEntryMock {
+  const createdAt = now();
+  return {
+    workspace: {
+      uuid,
+      instance_uuid: 'instance-playwright',
+      name,
+      slug: uuid,
+      type: 'team',
+      status: 'active',
+      source,
+    },
+    membership: {
+      uuid: `membership-${uuid}`,
+      workspace_uuid: uuid,
+      account_uuid: 'account-playwright',
+      display_name: 'Playwright Admin',
+      email: 'admin@example.com',
+      role: 'owner',
+      status: 'active',
+      joined_at: createdAt,
+      created_at: createdAt,
+    },
+    permissions: [
+      'api_key.manage',
+      'audit.view',
+      'data.export',
+      'member.invite',
+      'member.remove',
+      'member.update_role',
+      'member.view',
+      'provider_secret.manage',
+      'resource.manage',
+      'resource.view',
+      'runtime.operate',
+      'workspace.view',
+    ],
+    placement_generation: 1,
+  };
+}
+
+function defaultWorkspaceEntry(): WorkspaceEntryMock {
+  return makeWorkspaceEntry(
+    'workspace-playwright',
+    'Playwright Workspace',
+    'local',
+  );
+}
+
 function nextId(state: LangBotApiMockState, prefix: string) {
   state.counters[prefix] = (state.counters[prefix] || 0) + 1;
   return `${prefix}-${state.counters[prefix]}`;
@@ -122,12 +206,14 @@ function emptyMonitoringData() {
     },
     messages: [],
     llmCalls: [],
+    toolCalls: [],
     embeddingCalls: [],
     sessions: [],
     errors: [],
     totalCount: {
       messages: 0,
       llmCalls: 0,
+      toolCalls: 0,
       embeddingCalls: 0,
       sessions: 0,
       errors: 0,
@@ -185,6 +271,102 @@ function makePipeline(
     emoji: String(data.emoji || '⚙️'),
     is_default: false,
     updated_at: now(),
+  };
+}
+
+function pipelineMetadata() {
+  return {
+    configs: [
+      {
+        name: 'ai',
+        label: {
+          en_US: 'AI Capabilities',
+          zh_Hans: 'AI 能力',
+        },
+        stages: [
+          {
+            name: 'runner',
+            label: {
+              en_US: 'Runtime',
+              zh_Hans: '运行方式',
+            },
+            config: [
+              {
+                id: 'runner',
+                name: 'runner',
+                label: {
+                  en_US: 'Runner',
+                  zh_Hans: '运行器',
+                },
+                type: 'select',
+                required: true,
+                default: 'local-agent',
+                options: [
+                  {
+                    name: 'local-agent',
+                    label: {
+                      en_US: 'Built-in Agent',
+                      zh_Hans: '内置 Agent',
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+          {
+            name: 'local-agent',
+            label: {
+              en_US: 'Built-in Agent',
+              zh_Hans: '内置 Agent',
+            },
+            config: [
+              {
+                id: 'model',
+                name: 'model',
+                label: {
+                  en_US: 'Model',
+                  zh_Hans: '模型',
+                },
+                type: 'model-fallback-selector',
+                required: true,
+                default: {
+                  primary: 'llm-valid',
+                  fallbacks: [],
+                },
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function providerModelList() {
+  return {
+    models: [
+      {
+        uuid: '',
+        name: 'Broken Empty UUID Model',
+        provider_uuid: 'provider-empty',
+        provider: {
+          uuid: 'provider-empty',
+          name: 'Broken Provider',
+          requester: 'mock-provider',
+        },
+      },
+      {
+        uuid: 'llm-valid',
+        name: 'Valid Mock Model',
+        provider_uuid: 'provider-valid',
+        provider: {
+          uuid: 'provider-valid',
+          name: 'Mock Provider',
+          requester: 'mock-provider',
+        },
+        abilities: ['func_call'],
+      },
+    ],
   };
 }
 
@@ -321,21 +503,33 @@ async function handleBackendApi(route: Route, state: LangBotApiMockState) {
   if (path === '/api/v1/user/account-info') {
     return fulfillJson(route, {
       initialized: true,
-      account_type: 'local',
-      has_password: true,
+      password_login_enabled: true,
+      space_login_enabled: false,
     });
   }
 
   if (path === '/api/v1/user/check-token') {
-    return fulfillJson(route, { token: '' });
+    return fulfillJson(route, {
+      token: state.authenticated ? 'playwright-token' : '',
+    });
   }
 
   if (path === '/api/v1/user/auth') {
+    state.authenticated = true;
     return fulfillJson(route, { token: 'playwright-token' });
+  }
+
+  if (path === '/api/v1/user/space/callback') {
+    state.authenticated = true;
+    return fulfillJson(route, {
+      token: 'playwright-space-token',
+      user: 'admin@example.com',
+    });
   }
 
   if (path === '/api/v1/user/info') {
     return fulfillJson(route, {
+      account_uuid: 'account-playwright',
       user: 'admin@example.com',
       account_type: 'local',
       has_password: true,
@@ -344,6 +538,24 @@ async function handleBackendApi(route: Route, state: LangBotApiMockState) {
 
   if (path === '/api/v1/user/space-credits') {
     return fulfillJson(route, { credits: null });
+  }
+
+  if (path === '/api/v1/workspaces/bootstrap') {
+    return fulfillJson(route, { workspaces: state.workspaces });
+  }
+
+  if (path === '/api/v1/workspaces/current') {
+    const selectedWorkspaceUuid = request.headers()['x-workspace-id'];
+    const entry = state.workspaces.find(
+      (item) => item.workspace.uuid === selectedWorkspaceUuid,
+    );
+    return fulfillJson(route, entry || state.workspaces[0]);
+  }
+
+  if (path === '/api/v1/workspaces') {
+    return fulfillJson(route, {
+      workspaces: state.workspaces.map((entry) => entry.workspace),
+    });
   }
 
   if (path === '/api/v1/platform/adapters') {
@@ -365,7 +577,7 @@ async function handleBackendApi(route: Route, state: LangBotApiMockState) {
 
   const botLogsMatch = path.match(/^\/api\/v1\/platform\/bots\/([^/]+)\/logs$/);
   if (botLogsMatch) {
-    return fulfillJson(route, { logs: [], total: 0 });
+    return fulfillJson(route, { logs: [], total_count: 0 });
   }
 
   const botMatch = path.match(/^\/api\/v1\/platform\/bots\/([^/]+)$/);
@@ -389,8 +601,20 @@ async function handleBackendApi(route: Route, state: LangBotApiMockState) {
     });
   }
 
+  if (path === '/api/v1/provider/models/llm') {
+    return fulfillJson(route, providerModelList());
+  }
+
+  if (path === '/api/v1/provider/models/embedding') {
+    return fulfillJson(route, { models: [] });
+  }
+
+  if (path === '/api/v1/provider/models/rerank') {
+    return fulfillJson(route, { models: [] });
+  }
+
   if (path === '/api/v1/pipelines/_/metadata') {
-    return fulfillJson(route, { configs: [] });
+    return fulfillJson(route, pipelineMetadata());
   }
 
   if (path === '/api/v1/pipelines') {
@@ -689,11 +913,43 @@ async function handleBackendApi(route: Route, state: LangBotApiMockState) {
   }
 
   if (path === '/api/v1/monitoring/data') {
-    return fulfillJson(route, emptyMonitoringData());
+    return fulfillJson(route, state.monitoringData);
+  }
+
+  if (path === '/api/v1/monitoring/sessions') {
+    return fulfillJson(route, {
+      sessions: state.monitoringSessions,
+      total: state.monitoringSessions.length,
+    });
+  }
+
+  if (path === '/api/v1/monitoring/messages') {
+    const sessionId = url.searchParams.get('sessionId') || '';
+    const messages = state.sessionMessages[sessionId] || [];
+    return fulfillJson(route, {
+      messages,
+      total: messages.length,
+    });
+  }
+
+  const sessionAnalysisMatch = path.match(
+    /^\/api\/v1\/monitoring\/sessions\/([^/]+)\/analysis$/,
+  );
+  if (sessionAnalysisMatch) {
+    const sessionId = decodeURIComponent(sessionAnalysisMatch[1]);
+    return fulfillJson(
+      route,
+      state.sessionAnalyses[sessionId] || {
+        session_id: sessionId,
+        found: true,
+        tool_calls: [],
+      },
+    );
   }
 
   if (path === '/api/v1/monitoring/overview') {
-    return fulfillJson(route, emptyMonitoringData().overview);
+    const data = state.monitoringData as { overview?: unknown };
+    return fulfillJson(route, data.overview || emptyMonitoringData().overview);
   }
 
   if (path === '/api/v1/monitoring/token-statistics') {
@@ -798,16 +1054,38 @@ async function handleCloudApi(route: Route) {
 
 export async function installLangBotApiMocks(
   page: Page,
-  options: { authenticated?: boolean; storage?: JsonRecord } = {},
+  options: {
+    authenticated?: boolean;
+    monitoringData?: unknown;
+    monitoringSessions?: unknown[];
+    sessionAnalyses?: Record<string, unknown>;
+    sessionMessages?: Record<string, unknown[]>;
+    storage?: JsonRecord;
+    workspaces?: WorkspaceEntryMock[];
+  } = {},
 ) {
-  const { authenticated = false, storage = {} } = options;
+  const {
+    authenticated = false,
+    monitoringData,
+    monitoringSessions,
+    sessionAnalyses,
+    sessionMessages,
+    storage = {},
+    workspaces = [defaultWorkspaceEntry()],
+  } = options;
   const state: LangBotApiMockState = {
+    authenticated,
     bots: [],
     counters: {},
     knowledgeBases: [],
     mcpServers: [],
+    monitoringData: monitoringData || emptyMonitoringData(),
+    monitoringSessions: monitoringSessions || [],
     pipelines: [],
+    sessionAnalyses: sessionAnalyses || {},
+    sessionMessages: sessionMessages || {},
     skills: [],
+    workspaces,
   };
 
   await page.addInitScript(

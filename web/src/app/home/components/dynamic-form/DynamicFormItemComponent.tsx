@@ -25,6 +25,7 @@ import {
   EmbeddingModel,
   RerankModel,
   PluginTool,
+  ReasoningLevel,
 } from '@/app/infra/entities/api';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
@@ -66,17 +67,18 @@ import SettingsDialog, {
 } from '@/app/home/components/settings-dialog/SettingsDialog';
 import ToolResourceSelectors from '@/app/home/components/dynamic-form/ToolResourceSelectors';
 import { LANGBOT_MODELS_PROVIDER_REQUESTER } from '@/app/home/components/models-dialog/types';
+import ReasoningLevelPicker, {
+  REASONING_LEVELS,
+} from '@/app/home/components/reasoning/ReasoningLevelPicker';
 
-const EMPTY_SELECT_ITEM_VALUE = '__langbot_empty_select_item_value__';
-
-function toSelectValue(value: unknown): string {
-  return typeof value === 'string' ? value : '';
-}
-
-function hasNonEmptyUuid<T extends { uuid?: string | null }>(
+function hasUsableUuid<T extends { uuid?: string | null }>(
   item: T,
 ): item is T & { uuid: string } {
-  return typeof item.uuid === 'string' && item.uuid.length > 0;
+  return typeof item.uuid === 'string' && item.uuid.trim().length > 0;
+}
+
+function hasUsableOptionName(option: { name?: string | null }): boolean {
+  return typeof option.name === 'string' && option.name.trim().length > 0;
 }
 
 export default function DynamicFormItemComponent({
@@ -116,7 +118,7 @@ export default function DynamicFormItemComponent({
     httpClient
       .getProviderLLMModels()
       .then((resp) => {
-        setLlmModels(resp.models);
+        setLlmModels(resp.models.filter(hasUsableUuid));
       })
       .catch((err) => {
         toast.error(t('models.getModelListError') + err.msg);
@@ -127,7 +129,7 @@ export default function DynamicFormItemComponent({
     httpClient
       .getProviderEmbeddingModels()
       .then((resp) => {
-        setEmbeddingModels(resp.models);
+        setEmbeddingModels(resp.models.filter(hasUsableUuid));
       })
       .catch((err) => {
         toast.error(t('embedding.getModelListError') + err.msg);
@@ -138,7 +140,7 @@ export default function DynamicFormItemComponent({
     httpClient
       .getProviderRerankModels()
       .then((resp) => {
-        setRerankModels(resp.models);
+        setRerankModels(resp.models.filter(hasUsableUuid));
       })
       .catch((err) => {
         toast.error('Failed to load rerank models: ' + err.msg);
@@ -190,15 +192,10 @@ export default function DynamicFormItemComponent({
 
   const handleSpaceLogin = () => {
     try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        toast.error(t('common.error'));
-        return;
-      }
       const currentOrigin = window.location.origin;
       const redirectUri = `${currentOrigin}/auth/space/callback?mode=bind`;
       httpClient
-        .getSpaceAuthorizeUrl(redirectUri, token)
+        .getSpaceBindAuthorizeUrl(redirectUri)
         .then((response) => {
           window.location.href = response.authorize_url;
         })
@@ -242,7 +239,7 @@ export default function DynamicFormItemComponent({
       httpClient
         .getKnowledgeBases()
         .then((resp) => {
-          setKnowledgeBases(resp.bases);
+          setKnowledgeBases(resp.bases.filter(hasUsableUuid));
         })
         .catch((err) => {
           toast.error(t('knowledge.getKnowledgeBaseListError') + err.msg);
@@ -255,7 +252,7 @@ export default function DynamicFormItemComponent({
       httpClient
         .getBots()
         .then((resp) => {
-          setBots(resp.bots);
+          setBots(resp.bots.filter(hasUsableUuid));
         })
         .catch((err) => {
           toast.error(t('bots.getBotListError') + err.msg);
@@ -392,33 +389,19 @@ export default function DynamicFormItemComponent({
         </div>
       );
 
-    case DynamicFormItemType.SELECT: {
-      const hasEmptyOption =
-        config.options?.some((option) => option.name === '') ?? false;
-      const selectValue =
-        hasEmptyOption && field.value === ''
-          ? EMPTY_SELECT_ITEM_VALUE
-          : toSelectValue(field.value);
-
+    case DynamicFormItemType.SELECT:
       return (
-        <Select
-          value={selectValue}
-          onValueChange={(value) =>
-            field.onChange(value === EMPTY_SELECT_ITEM_VALUE ? '' : value)
-          }
-        >
+        <Select value={field.value} onValueChange={field.onChange}>
           <SelectTrigger className="w-full max-w-md bg-[#ffffff] dark:bg-[#2a2a2e]">
             <SelectValue placeholder={t('common.select')} />
           </SelectTrigger>
           <SelectContent>
             <SelectGroup>
-              {config.options?.map((option, index) => (
+              {config.options?.filter(hasUsableOptionName).map((option) => (
                 <SelectItem
-                  key={`${option.name}-${index}`}
-                  value={
-                    option.name === '' ? EMPTY_SELECT_ITEM_VALUE : option.name
-                  }
-                  description={option.name || undefined}
+                  key={option.name}
+                  value={option.name}
+                  description={option.name}
                 >
                   {extractI18nObject(option.label)}
                 </SelectItem>
@@ -427,7 +410,6 @@ export default function DynamicFormItemComponent({
           </SelectContent>
         </Select>
       );
-    }
 
     case DynamicFormItemType.LLM_MODEL_SELECTOR:
       // Separate space models from regular models
@@ -482,7 +464,7 @@ export default function DynamicFormItemComponent({
                 {Object.entries(groupedModels).map(([providerName, models]) => (
                   <SelectGroup key={providerName}>
                     <SelectLabel>{providerName}</SelectLabel>
-                    {models.filter(hasNonEmptyUuid).map((model) => (
+                    {models.map((model) => (
                       <SelectItem key={model.uuid} value={model.uuid}>
                         <span className="inline-flex items-center gap-1">
                           {model.name}
@@ -586,7 +568,7 @@ export default function DynamicFormItemComponent({
                             {providerName}
                           </span>
                         </SelectLabel>
-                        {models.filter(hasNonEmptyUuid).map((model) => (
+                        {models.map((model) => (
                           <SelectItem key={model.uuid} value={model.uuid}>
                             <span className="inline-flex items-center gap-1">
                               {model.name}
@@ -683,7 +665,7 @@ export default function DynamicFormItemComponent({
                   ([providerName, models]) => (
                     <SelectGroup key={providerName}>
                       <SelectLabel>{providerName}</SelectLabel>
-                      {models.filter(hasNonEmptyUuid).map((model) => (
+                      {models.map((model) => (
                         <SelectItem key={model.uuid} value={model.uuid}>
                           {model.name}
                         </SelectItem>
@@ -775,7 +757,7 @@ export default function DynamicFormItemComponent({
                             {providerName}
                           </span>
                         </SelectLabel>
-                        {models.filter(hasNonEmptyUuid).map((model) => (
+                        {models.map((model) => (
                           <SelectItem key={model.uuid} value={model.uuid}>
                             {model.name}
                           </SelectItem>
@@ -840,7 +822,7 @@ export default function DynamicFormItemComponent({
                 ([providerName, models]) => (
                   <SelectGroup key={providerName}>
                     <SelectLabel>{providerName}</SelectLabel>
-                    {models.filter(hasNonEmptyUuid).map((model) => (
+                    {models.map((model) => (
                       <SelectItem key={model.uuid} value={model.uuid}>
                         {model.name}
                       </SelectItem>
@@ -896,7 +878,11 @@ export default function DynamicFormItemComponent({
       ];
 
       const rawModelValue = field.value;
-      const modelValue: { primary: string; fallbacks: string[] } =
+      const modelValue: {
+        primary: string;
+        fallbacks: string[];
+        reasoning: Record<string, ReasoningLevel>;
+      } =
         rawModelValue != null &&
         typeof rawModelValue === 'object' &&
         !Array.isArray(rawModelValue)
@@ -915,10 +901,29 @@ export default function DynamicFormItemComponent({
                       .fallbacks as unknown[]
                   ).filter((v): v is string => typeof v === 'string')
                 : [],
+              reasoning:
+                (rawModelValue as Record<string, unknown>).reasoning != null &&
+                typeof (rawModelValue as Record<string, unknown>).reasoning ===
+                  'object' &&
+                !Array.isArray(
+                  (rawModelValue as Record<string, unknown>).reasoning,
+                )
+                  ? (Object.fromEntries(
+                      Object.entries(
+                        (rawModelValue as Record<string, unknown>)
+                          .reasoning as Record<string, unknown>,
+                      ).filter(
+                        (entry): entry is [string, ReasoningLevel] =>
+                          typeof entry[1] === 'string' &&
+                          REASONING_LEVELS.includes(entry[1] as ReasoningLevel),
+                      ),
+                    ) as Record<string, ReasoningLevel>)
+                  : {},
             }
           : {
               primary: typeof rawModelValue === 'string' ? rawModelValue : '',
               fallbacks: [],
+              reasoning: {},
             };
 
       const renderModelSelect = (
@@ -935,7 +940,7 @@ export default function DynamicFormItemComponent({
               ([providerName, models]) => (
                 <SelectGroup key={providerName}>
                   <SelectLabel>{providerName}</SelectLabel>
-                  {models.filter(hasNonEmptyUuid).map((model) => (
+                  {models.map((model) => (
                     <SelectItem key={model.uuid} value={model.uuid}>
                       <span className="inline-flex items-center gap-1">
                         {model.name}
@@ -1040,7 +1045,7 @@ export default function DynamicFormItemComponent({
                         {providerName}
                       </span>
                     </SelectLabel>
-                    {models.filter(hasNonEmptyUuid).map((model) => (
+                    {models.map((model) => (
                       <SelectItem key={model.uuid} value={model.uuid}>
                         <span className="inline-flex items-center gap-1">
                           {model.name}
@@ -1065,20 +1070,79 @@ export default function DynamicFormItemComponent({
         field.onChange({ ...modelValue, ...patch });
       };
 
+      const updateModelReasoning = (
+        modelUuid: string,
+        level: ReasoningLevel,
+      ) => {
+        if (!modelUuid) return;
+        const updated = { ...modelValue.reasoning };
+        if (level === 'provider_default') {
+          delete updated[modelUuid];
+        } else {
+          updated[modelUuid] = level;
+        }
+        updateValue({ reasoning: updated });
+      };
+
+      const replaceModel = (
+        currentUuid: string,
+        nextUuid: string,
+        patch: Partial<typeof modelValue>,
+      ) => {
+        const nextValue = { ...modelValue, ...patch };
+        const updatedReasoning = { ...modelValue.reasoning };
+        const currentModelStillSelected =
+          nextValue.primary === currentUuid ||
+          nextValue.fallbacks.includes(currentUuid);
+        if (
+          currentUuid &&
+          currentUuid !== nextUuid &&
+          !currentModelStillSelected
+        ) {
+          delete updatedReasoning[currentUuid];
+        }
+        updateValue({ ...nextValue, reasoning: updatedReasoning });
+      };
+
+      const renderReasoningPicker = (modelUuid: string) => {
+        if (!modelUuid) return null;
+        const model = llmModels.find(
+          (candidate) => candidate.uuid === modelUuid,
+        );
+        const currentLevel =
+          modelValue.reasoning[modelUuid] || 'provider_default';
+        const availableLevels = model?.reasoning_capabilities?.levels || [
+          'provider_default',
+        ];
+        const levels = REASONING_LEVELS.filter(
+          (level) => availableLevels.includes(level) || level === currentLevel,
+        );
+
+        return (
+          <ReasoningLevelPicker
+            value={currentLevel}
+            levels={levels}
+            onChange={(level) => updateModelReasoning(modelUuid, level)}
+          />
+        );
+      };
+
       const addFallbackModel = () => {
         updateValue({ fallbacks: [...modelValue.fallbacks, ''] });
       };
 
       const updateFallbackModel = (index: number, value: string) => {
         const updated = [...modelValue.fallbacks];
+        const currentUuid = updated[index];
         updated[index] = value;
-        updateValue({ fallbacks: updated });
+        replaceModel(currentUuid, value, { fallbacks: updated });
       };
 
       const removeFallbackModel = (index: number) => {
         const updated = [...modelValue.fallbacks];
+        const removedUuid = updated[index];
         updated.splice(index, 1);
-        updateValue({ fallbacks: updated });
+        replaceModel(removedUuid, '', { fallbacks: updated });
       };
 
       const moveFallbackModel = (index: number, direction: 'up' | 'down') => {
@@ -1103,10 +1167,12 @@ export default function DynamicFormItemComponent({
               <div className="min-w-0 flex-1">
                 {renderModelSelect(
                   modelValue.primary,
-                  (val) => updateValue({ primary: val }),
+                  (val) =>
+                    replaceModel(modelValue.primary, val, { primary: val }),
                   t('models.selectModel'),
                 )}
               </div>
+              {renderReasoningPicker(modelValue.primary)}
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -1140,15 +1206,18 @@ export default function DynamicFormItemComponent({
               </p>
               {modelValue.fallbacks.map((fbUuid: string, index: number) => (
                 <div key={index} className="flex min-w-0 items-center gap-2">
-                  <span className="text-xs text-muted-foreground w-4 shrink-0">
+                  <span className="w-4 shrink-0 text-xs text-muted-foreground">
                     {index + 1}.
                   </span>
-                  <div className="min-w-0 flex-1">
-                    {renderModelSelect(
-                      fbUuid,
-                      (val) => updateFallbackModel(index, val),
-                      t('models.selectModel'),
-                    )}
+                  <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                    <div className="min-w-0 flex-1">
+                      {renderModelSelect(
+                        fbUuid,
+                        (val) => updateFallbackModel(index, val),
+                        t('models.selectModel'),
+                      )}
+                    </div>
+                    {renderReasoningPicker(fbUuid)}
                   </div>
                   <div className="flex gap-1 shrink-0">
                     <Button
@@ -1203,7 +1272,8 @@ export default function DynamicFormItemComponent({
 
     case DynamicFormItemType.KNOWLEDGE_BASE_SELECTOR:
       // Group KBs by Knowledge Engine name
-      const kbsByEngine = knowledgeBases.reduce(
+      const validKnowledgeBases = knowledgeBases.filter(hasUsableUuid);
+      const kbsByEngine = validKnowledgeBases.reduce(
         (acc, kb) => {
           const engineName = kb.knowledge_engine?.name
             ? extractI18nObject(kb.knowledge_engine.name)
@@ -1214,7 +1284,7 @@ export default function DynamicFormItemComponent({
           acc[engineName].push(kb);
           return acc;
         },
-        {} as Record<string, typeof knowledgeBases>,
+        {} as Record<string, typeof validKnowledgeBases>,
       );
 
       return (
@@ -1222,7 +1292,7 @@ export default function DynamicFormItemComponent({
           <SelectTrigger className="min-w-0 bg-[#ffffff] dark:bg-[#2a2a2e]">
             {field.value && field.value !== '__none__' ? (
               (() => {
-                const selectedKb = knowledgeBases.find(
+                const selectedKb = validKnowledgeBases.find(
                   (kb) => kb.uuid === field.value,
                 );
                 return (
@@ -1250,7 +1320,7 @@ export default function DynamicFormItemComponent({
             {Object.entries(kbsByEngine).map(([engineName, kbs]) => (
               <SelectGroup key={engineName}>
                 <SelectLabel>{engineName}</SelectLabel>
-                {kbs.filter(hasNonEmptyUuid).map((base) => (
+                {kbs.map((base) => (
                   <SelectItem key={base.uuid} value={base.uuid}>
                     <div className="flex items-center gap-2">
                       {base.emoji && (
@@ -1268,7 +1338,8 @@ export default function DynamicFormItemComponent({
 
     case DynamicFormItemType.KNOWLEDGE_BASE_MULTI_SELECTOR:
       // Group KBs by Knowledge Engine name for multi-selector
-      const multiKbsByEngine = knowledgeBases.reduce(
+      const validMultiKnowledgeBases = knowledgeBases.filter(hasUsableUuid);
+      const multiKbsByEngine = validMultiKnowledgeBases.reduce(
         (acc, kb) => {
           const engineName = kb.knowledge_engine?.name
             ? extractI18nObject(kb.knowledge_engine.name)
@@ -1279,7 +1350,7 @@ export default function DynamicFormItemComponent({
           acc[engineName].push(kb);
           return acc;
         },
-        {} as Record<string, typeof knowledgeBases>,
+        {} as Record<string, typeof validMultiKnowledgeBases>,
       );
 
       return (
@@ -1288,7 +1359,7 @@ export default function DynamicFormItemComponent({
             {field.value && field.value.length > 0 ? (
               <div className="min-w-0 space-y-2">
                 {field.value.map((kbId: string) => {
-                  const currentKb = knowledgeBases.find(
+                  const currentKb = validMultiKnowledgeBases.find(
                     (base) => base.uuid === kbId,
                   );
                   if (!currentKb) return null;
@@ -1374,15 +1445,13 @@ export default function DynamicFormItemComponent({
                       {engineName}
                     </div>
                     {kbs.map((base) => {
-                      const isSelected = tempSelectedKBIds.includes(
-                        base.uuid ?? '',
-                      );
+                      const isSelected = tempSelectedKBIds.includes(base.uuid);
                       return (
                         <div
                           key={base.uuid}
                           className="flex items-center gap-3 rounded-lg border p-3 hover:bg-accent cursor-pointer"
                           onClick={() => {
-                            const kbId = base.uuid ?? '';
+                            const kbId = base.uuid;
                             setTempSelectedKBIds((prev) =>
                               prev.includes(kbId)
                                 ? prev.filter((id) => id !== kbId)
@@ -1444,7 +1513,7 @@ export default function DynamicFormItemComponent({
           </SelectTrigger>
           <SelectContent>
             <SelectGroup>
-              {bots.filter(hasNonEmptyUuid).map((bot) => (
+              {bots.filter(hasUsableUuid).map((bot) => (
                 <SelectItem key={bot.uuid} value={bot.uuid}>
                   {bot.name}
                 </SelectItem>

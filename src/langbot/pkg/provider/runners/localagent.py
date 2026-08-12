@@ -6,11 +6,13 @@ import typing
 from .. import runner
 from ...telemetry import features as telemetry_features
 from ..modelmgr import requester as modelmgr_requester
+from ..modelmgr import reasoning as modelmgr_reasoning
 from ..tools.loaders.native import EXEC_TOOL_NAME
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
 import langbot_plugin.api.entities.builtin.rag.context as rag_context
 
+from ...pipeline.pool import get_query_execution_context
 
 rag_combined_prompt_template = """
 The following are relevant context entries retrieved from the knowledge base. 
@@ -49,12 +51,24 @@ def _model_has_ability(model: modelmgr_requester.RuntimeLLMModel, ability: str) 
 class _StreamAccumulator:
     """Accumulate streamed content and fragmented OpenAI-style tool calls."""
 
-    def __init__(self, msg_sequence: int = 0, initial_content: str | None = None):
+    def __init__(
+        self,
+        msg_sequence: int = 0,
+        initial_content: str | None = None,
+        remove_think: bool = False,
+    ):
         self.tool_calls_map: dict[str, provider_message.ToolCall] = {}
         self.msg_idx = 0
         self.accumulated_content = initial_content or ''
         self.last_role = 'assistant'
+        self.provider_specific_fields: dict[str, typing.Any] = {}
         self.msg_sequence = msg_sequence
+        self.remove_think = remove_think
+        self._think_state = None
+        if remove_think:
+            from ..modelmgr.requesters.litellmchat import _ThinkStripState
+
+            self._think_state = _ThinkStripState()
 
     def add(self, msg: provider_message.MessageChunk) -> provider_message.MessageChunk | None:
         self.msg_idx += 1
@@ -63,7 +77,10 @@ class _StreamAccumulator:
             self.last_role = msg.role
 
         if msg.content:
-            self.accumulated_content += msg.content
+            content = msg.content
+            if self._think_state is not None:
+                content = self._think_state.feed(content)
+            self.accumulated_content += content
 
         if msg.tool_calls:
             for tool_call in msg.tool_calls:
@@ -75,16 +92,37 @@ class _StreamAccumulator:
                             name=tool_call.function.name if tool_call.function else '',
                             arguments='',
                         ),
+                        provider_specific_fields=(
+                            dict(tool_call.provider_specific_fields) if tool_call.provider_specific_fields else None
+                        ),
                     )
+                elif tool_call.provider_specific_fields:
+                    existing_fields = self.tool_calls_map[tool_call.id].provider_specific_fields or {}
+                    self.tool_calls_map[tool_call.id].provider_specific_fields = {
+                        **existing_fields,
+                        **tool_call.provider_specific_fields,
+                    }
                 if tool_call.function and tool_call.function.arguments:
                     self.tool_calls_map[tool_call.id].function.arguments += tool_call.function.arguments
+
+        if msg.provider_specific_fields:
+            for key, value in msg.provider_specific_fields.items():
+                if key == 'reasoning_content' and isinstance(value, str):
+                    previous = self.provider_specific_fields.get(key, '')
+                    self.provider_specific_fields[key] = f'{previous}{value}'
+                else:
+                    self.provider_specific_fields[key] = value
+
+        if msg.is_final:
+            self._flush_think_state()
 
         if self.msg_idx % 8 == 0 or msg.is_final:
             self.msg_sequence += 1
             return provider_message.MessageChunk(
                 role=self.last_role,
-                content=self.accumulated_content,
+                content=self._maybe_strip_think(self.accumulated_content),
                 tool_calls=list(self.tool_calls_map.values()) if (self.tool_calls_map and msg.is_final) else None,
+                provider_specific_fields=(self.provider_specific_fields or None) if msg.is_final else None,
                 is_final=msg.is_final,
                 msg_sequence=self.msg_sequence,
             )
@@ -92,12 +130,29 @@ class _StreamAccumulator:
         return None
 
     def final_message(self) -> provider_message.MessageChunk:
+        self._flush_think_state()
         return provider_message.MessageChunk(
             role=self.last_role,
-            content=self.accumulated_content,
+            content=self._maybe_strip_think(self.accumulated_content),
             tool_calls=list(self.tool_calls_map.values()) if self.tool_calls_map else None,
+            provider_specific_fields=self.provider_specific_fields or None,
             msg_sequence=self.msg_sequence,
         )
+
+    def _maybe_strip_think(self, content: str) -> str:
+        if not self.remove_think or not content:
+            return content
+
+        from ..modelmgr.requesters.litellmchat import LiteLLMRequester
+
+        return LiteLLMRequester._strip_think(content)
+
+    def _flush_think_state(self) -> None:
+        if self._think_state is None:
+            return
+        pending = self._think_state.flush()
+        if pending:
+            self.accumulated_content += pending
 
 
 @runner.runner_class('local-agent')
@@ -177,7 +232,7 @@ class LocalAgentRunner(runner.RequestRunner):
             req_messages.append(
                 provider_message.Message(
                     role='system',
-                    content=self.ap.box_service.get_system_guidance(query.query_id),
+                    content=self.ap.box_service.get_system_guidance(query),
                 )
             )
 
@@ -190,25 +245,52 @@ class LocalAgentRunner(runner.RequestRunner):
     ) -> list[modelmgr_requester.RuntimeLLMModel]:
         """Build ordered list of models to try: primary model + fallback models."""
         candidates = []
+        execution_context = get_query_execution_context(query)
 
         # Primary model
         if query.use_llm_model_uuid:
             try:
-                primary = await self.ap.model_mgr.get_model_by_uuid(query.use_llm_model_uuid)
-                candidates.append(primary)
+                primary = await self.ap.model_mgr.get_model_by_uuid(
+                    execution_context,
+                    query.use_llm_model_uuid,
+                )
             except ValueError:
                 self.ap.logger.warning(f'Primary model {query.use_llm_model_uuid} not found')
+            else:
+                candidates.append(LocalAgentRunner._apply_pipeline_reasoning_config(query, primary))
 
         # Fallback models
         fallback_uuids = (query.variables or {}).get('_fallback_model_uuids', [])
         for fb_uuid in fallback_uuids:
             try:
-                fb_model = await self.ap.model_mgr.get_model_by_uuid(fb_uuid)
-                candidates.append(fb_model)
+                fb_model = await self.ap.model_mgr.get_model_by_uuid(
+                    execution_context,
+                    fb_uuid,
+                )
             except ValueError:
                 self.ap.logger.warning(f'Fallback model {fb_uuid} not found, skipping')
+            else:
+                candidates.append(LocalAgentRunner._apply_pipeline_reasoning_config(query, fb_model))
 
         return candidates
+
+    @staticmethod
+    def _apply_pipeline_reasoning_config(
+        query: pipeline_query.Query,
+        model: modelmgr_requester.RuntimeLLMModel,
+    ) -> modelmgr_requester.RuntimeLLMModel:
+        local_agent_config = query.pipeline_config.get('ai', {}).get('local-agent', {})
+        model_config = local_agent_config.get('model', {})
+        reasoning_by_model = model_config.get('reasoning', {}) if isinstance(model_config, dict) else {}
+        level = (
+            reasoning_by_model.get(model.model_entity.uuid, 'provider_default')
+            if isinstance(reasoning_by_model, dict)
+            else 'provider_default'
+        )
+        reasoning_config = modelmgr_reasoning.normalize_reasoning_config({'level': level})
+        configured_model = copy.copy(model)
+        configured_model.reasoning_config_override = reasoning_config
+        return configured_model
 
     async def _invoke_with_fallback(
         self,
@@ -313,12 +395,13 @@ class LocalAgentRunner(runner.RequestRunner):
         if kb_uuids and user_message_text:
             # only support text for now
             all_results: list[rag_context.RetrievalResultEntry] = []
+            execution_context = get_query_execution_context(query)
 
             kb_engine_plugins: set[str] = set()
 
             # Retrieve from each knowledge base
             for kb_uuid in kb_uuids:
-                kb = await self.ap.rag_mgr.get_knowledge_base_by_uuid(kb_uuid)
+                kb = await self.ap.rag_mgr.get_knowledge_base_by_uuid(execution_context, kb_uuid)
 
                 if not kb:
                     self.ap.logger.warning(f'Knowledge base {kb_uuid} not found, skipping')
@@ -331,6 +414,7 @@ class LocalAgentRunner(runner.RequestRunner):
                 kb_engine_plugins.add(engine_plugin_id)
 
                 result = await kb.retrieve(
+                    execution_context,
                     user_message_text,
                     settings={
                         'bot_uuid': query.bot_uuid or '',
@@ -365,7 +449,10 @@ class LocalAgentRunner(runner.RequestRunner):
             )
             if all_results and rerank_model_uuid:
                 try:
-                    rerank_model = await self.ap.model_mgr.get_rerank_model_by_uuid(rerank_model_uuid)
+                    rerank_model = await self.ap.model_mgr.get_rerank_model_by_uuid(
+                        execution_context,
+                        rerank_model_uuid,
+                    )
                     rerank_top_k = int(local_agent_config.get('rerank-top-k', 5))
 
                     doc_texts = []
@@ -378,6 +465,7 @@ class LocalAgentRunner(runner.RequestRunner):
                         model=rerank_model,
                         query=user_message_text,
                         documents=doc_texts_capped,
+                        execution_context=execution_context,
                     )
 
                     scored = sorted(scores, key=lambda x: x.get('relevance_score', 0), reverse=True)
@@ -448,7 +536,7 @@ class LocalAgentRunner(runner.RequestRunner):
         except AttributeError:
             is_stream = False
 
-        remove_think = query.pipeline_config['output'].get('misc', '').get('remove-think')
+        remove_think = ((query.pipeline_config.get('output') or {}).get('misc') or {}).get('remove-think', False)
 
         # Build ordered candidate list (primary + fallbacks)
         candidates = await self._get_model_candidates(query)
@@ -472,7 +560,7 @@ class LocalAgentRunner(runner.RequestRunner):
             final_msg = msg
         else:
             # Streaming: invoke with fallback
-            stream_accumulator = _StreamAccumulator(msg_sequence=1)
+            stream_accumulator = _StreamAccumulator(msg_sequence=1, remove_think=remove_think)
 
             stream_src, use_llm_model = await self._invoke_stream_with_fallback(
                 query,
@@ -490,7 +578,6 @@ class LocalAgentRunner(runner.RequestRunner):
             final_msg = stream_accumulator.final_message()
 
         pending_tool_calls = final_msg.tool_calls
-        first_content = final_msg.content
         if isinstance(final_msg, provider_message.MessageChunk):
             first_end_sequence = final_msg.msg_sequence
 
@@ -573,9 +660,14 @@ class LocalAgentRunner(runner.RequestRunner):
             )
 
             if is_stream:
+                # Do NOT re-seed the accumulator with first_content:
+                # the previous round's text was already pushed to the
+                # platform adapter. Re-seeding would cause every
+                # subsequent round to repeat the entire opening line,
+                # which the platform then forwards as a duplicate message.
                 stream_accumulator = _StreamAccumulator(
                     msg_sequence=first_end_sequence,
-                    initial_content=first_content,
+                    remove_think=remove_think,
                 )
 
                 tool_stream_src = use_llm_model.provider.invoke_llm_stream(

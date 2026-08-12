@@ -50,7 +50,7 @@ LangBot est une **plateforme open-source de niveau production** pour créer des 
 
 [→ En savoir plus sur toutes les fonctionnalités](https://link.langbot.app/en/docs/features)
 
-📍 Guides pratiques : [déployer un bot IA multiplateforme en 5 minutes](https://blog.langbot.app/en/blog/deploy-ai-bot-in-5-minutes/), [connecter DeepSeek à WeChat, Discord et Telegram](https://blog.langbot.app/en/blog/connect-deepseek-to-wechat/), [exécuter un Dify Agent dans Discord, Telegram et Slack](https://blog.langbot.app/en/blog/dify-agent-discord-telegram-slack/) et [créer un chatbot avec n8n](https://blog.langbot.app/en/blog/n8n-multi-platform-ai-chatbot/).
+📍 Guides pratiques : [déployer un bot IA multiplateforme en 5 minutes](https://langbot.app/en/blog/deploy-ai-bot-in-5-minutes/), [connecter DeepSeek à WeChat, Discord et Telegram](https://langbot.app/en/blog/connect-deepseek-to-wechat/), [exécuter un Dify Agent dans Discord, Telegram et Slack](https://langbot.app/en/blog/dify-agent-discord-telegram-slack/) et [créer un chatbot avec n8n](https://langbot.app/en/blog/n8n-multi-platform-ai-chatbot/).
 
 ---
 
@@ -88,6 +88,16 @@ docker compose --profile all up -d
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.app/template/yRrAyL?referralCode=vogKPF)
 
 **Plus d'options :** [Docker](https://link.langbot.app/en/docs/docker) · [Manuel](https://link.langbot.app/en/docs/manual-deploy) · [BTPanel](https://link.langbot.app/en/docs/bt-panel) · [Kubernetes](https://docs.langbot.app/en/deploy/langbot/kubernetes)
+
+---
+
+## Démo en Ligne
+
+**Essayez maintenant :** https://demo.langbot.dev/
+- Email : `demo@langbot.app`
+- Mot de passe : `langbot123456`
+
+*Note : Environnement de démonstration public. Ne saisissez pas d'informations sensibles.*
 
 ---
 
@@ -153,14 +163,6 @@ docker compose --profile all up -d
 
 ---
 
-## Démo en Ligne
-
-**Essayez maintenant :** https://demo.langbot.dev/
-- Email : `demo@langbot.app`
-- Mot de passe : `langbot123456`
-
-*Note : Environnement de démonstration public. Ne saisissez pas d'informations sensibles.*
-
 ## Conçu pour les agents IA 🤖
 
 LangBot est **agent-friendly par conception** —— vos agents de codage (Claude Code, Codex, Copilot, Cursor, …) peuvent exploiter, étendre et déployer LangBot avec un support de premier ordre :
@@ -179,12 +181,6 @@ LangBot est **agent-friendly par conception** —— vos agents de codage (Claud
 [![Discord](https://img.shields.io/discord/1335141740050649118?logo=discord&label=Discord)](https://discord.gg/wdNEHETs87)
 
 - [Communauté Discord](https://discord.gg/wdNEHETs87)
-
----
-
-## Historique des Stars
-
-[![Star History Chart](https://api.star-history.com/svg?repos=langbot-app/LangBot&type=Date)](https://star-history.com/#langbot-app/LangBot&Date)
 
 ---
 

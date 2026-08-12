@@ -104,6 +104,17 @@ def create_minimal_config(tmpdir: Path, port: int = 15300) -> Path:
                 'user': 'postgres',
                 'password': 'postgres',
             },
+            'valkey_search': {
+                'host': 'localhost',
+                'port': 6379,
+                'db': 0,
+                'password': '',
+                'username': '',
+                'tls': False,
+                'index_algorithm': 'HNSW',
+                'distance_metric': 'COSINE',
+                'request_timeout': 5000,
+            },
         },
         'storage': {
             'use': 'local',

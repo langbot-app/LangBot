@@ -9,6 +9,7 @@ import traceback
 import uuid
 
 from ..core import app
+from ..api.http.context import ExecutionContext
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.definition.abstract.platform.event_logger as abstract_platform_event_logger
 
@@ -54,6 +55,7 @@ class EventLog(pydantic.BaseModel):
 
 MAX_LOG_COUNT = 200
 DELETE_COUNT_PER_TIME = 50
+MAX_LOG_TEXT_CHARS = 20000
 
 
 class EventLogger(abstract_platform_event_logger.AbstractEventLogger):
@@ -65,13 +67,21 @@ class EventLogger(abstract_platform_event_logger.AbstractEventLogger):
 
     logs: list[EventLog]
 
+    execution_context: ExecutionContext
+
+    owner: str
+
     def __init__(
         self,
         name: str,
         ap: app.Application,
+        execution_context: ExecutionContext,
+        owner: str,
     ):
         self.name = name
         self.ap = ap
+        self.execution_context = execution_context
+        self.owner = owner
         self.logs = []
         self.seq_id_inc = 0
 
@@ -120,8 +130,12 @@ class EventLogger(abstract_platform_event_logger.AbstractEventLogger):
     async def _truncate_logs(self):
         if len(self.logs) > MAX_LOG_COUNT:
             for i in range(DELETE_COUNT_PER_TIME):
-                for image_key in self.logs[i].images:  # type: ignore
-                    await self.ap.storage_mgr.storage_provider.delete(image_key)
+                for image_key in self.logs[i].images or []:
+                    await self.ap.storage_mgr.delete_scoped_object_key(
+                        self.execution_context,
+                        image_key,
+                        expected_owner_type='bot_log',
+                    )
             self.logs = self.logs[DELETE_COUNT_PER_TIME:]
 
     async def _add_log(
@@ -134,6 +148,10 @@ class EventLogger(abstract_platform_event_logger.AbstractEventLogger):
     ):
         try:
             image_keys = []
+            text = str(text)
+            if len(text) > MAX_LOG_TEXT_CHARS:
+                marker = '\n[log truncated]'
+                text = text[: MAX_LOG_TEXT_CHARS - len(marker)] + marker
 
             if images is None:
                 images = []
@@ -149,8 +167,14 @@ class EventLogger(abstract_platform_event_logger.AbstractEventLogger):
                 extension = mimetypes.guess_extension(mime_type)
                 if extension is None:
                     extension = '.jpg'
-                image_key = f'bot_log_images/{message_session_id}-{uuid.uuid4()}{extension}'
-                await self.ap.storage_mgr.storage_provider.save(image_key, img_bytes)
+                logical_key = f'{message_session_id}-{uuid.uuid4()}{extension}'
+                image_key = await self.ap.storage_mgr.save_scoped(
+                    self.execution_context,
+                    owner_type='bot_log',
+                    owner=self.owner,
+                    key=logical_key,
+                    value=img_bytes,
+                )
                 image_keys.append(image_key)
 
             self.logs.append(

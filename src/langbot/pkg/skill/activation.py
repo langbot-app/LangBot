@@ -3,6 +3,7 @@ from __future__ import annotations
 import typing
 
 from ..provider.tools.loaders import skill as skill_loader
+from ..api.http.context import ExecutionContext
 
 if typing.TYPE_CHECKING:
     from ..core import app
@@ -27,7 +28,15 @@ def register_activated_skill(
     if skill_mgr is None:
         return False
 
-    skill_data = skill_mgr.get_skill_by_name(skill_name)
+    execution_context = ExecutionContext(
+        instance_uuid=str(getattr(query, 'instance_uuid', '') or ''),
+        workspace_uuid=str(getattr(query, 'workspace_uuid', '') or ''),
+        placement_generation=getattr(query, 'placement_generation', 0) or 0,
+        bot_uuid=getattr(query, 'bot_uuid', None),
+        pipeline_uuid=getattr(query, 'pipeline_uuid', None),
+        query_uuid=getattr(query, 'query_uuid', None),
+    )
+    skill_data = skill_mgr.get_skill_by_name(execution_context, skill_name)
     if skill_data is None:
         return False
 

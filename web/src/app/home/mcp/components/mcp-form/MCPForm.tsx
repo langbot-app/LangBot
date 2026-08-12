@@ -41,6 +41,7 @@ import {
 } from '@/components/ui/card';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import MCPLogs from '@/app/home/mcp/components/mcp-form/MCPLogs';
 import MCPReadme from '@/app/home/mcp/components/mcp-form/MCPReadme';
 import {
   MCPServerRuntimeInfo,
@@ -55,6 +56,7 @@ import {
 import { CustomApiError } from '@/app/infra/entities/common';
 import { BoxUnavailableNotice } from '@/app/home/components/BoxUnavailableNotice';
 import { useBoxStatus } from '@/app/infra/hooks/useBoxStatus';
+import { useMCPStdioPolicy } from '@/app/infra/hooks/useMCPStdioPolicy';
 
 function StatusDisplay({
   testing,
@@ -434,6 +436,10 @@ const getFormSchema = (t: TFunction) =>
         .number({ invalid_type_error: t('mcp.timeoutMustBeNumber') })
         .positive({ message: t('mcp.timeoutMustBePositive') })
         .default(30),
+      tool_call_timeout_sec: z
+        .number({ invalid_type_error: t('mcp.timeoutMustBeNumber') })
+        .nonnegative({ message: t('mcp.timeoutNonNegative') })
+        .default(300),
       ssereadtimeout: z
         .number({ invalid_type_error: t('mcp.sseTimeoutMustBeNumber') })
         .positive({ message: t('mcp.timeoutMustBePositive') })
@@ -473,6 +479,7 @@ const getFormSchema = (t: TFunction) =>
 
 type FormValues = z.infer<ReturnType<typeof getFormSchema>> & {
   timeout: number;
+  tool_call_timeout_sec: number;
   ssereadtimeout: number;
 };
 
@@ -487,6 +494,7 @@ interface MCPFormProps {
   onDirtyChange?: (dirty: boolean) => void;
   onTestingChange?: (testing: boolean) => void;
   onRuntimeInfoChange?: (runtimeInfo: MCPServerRuntimeInfo | null) => void;
+  onPersistedTestComplete?: (serverName: string) => void | Promise<void>;
   /** Reported when the form cannot be saved because the current mode is
    * ``stdio`` and the Box sandbox is disabled/unavailable. Parents that
    * render the Save button outside this component should disable it. */
@@ -511,6 +519,7 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
     onDirtyChange,
     onTestingChange,
     onRuntimeInfoChange,
+    onPersistedTestComplete,
     onSaveBlockedChange,
     layout = 'stacked',
     sideHeader,
@@ -532,6 +541,7 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
       command: '',
       args: [],
       timeout: 30,
+      tool_call_timeout_sec: 300,
       ssereadtimeout: 300,
       extra_args: [],
       ...initialDraftRef.current,
@@ -557,11 +567,15 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
     hint: boxHint,
     reason: boxReason,
   } = useBoxStatus();
+  const { enabled: mcpStdioEnabled } = useMCPStdioPolicy();
   // stdio mode requires the Box sandbox at runtime. If the user picks
   // stdio while Box is disabled / unreachable, the server would refuse
   // to start anyway — block creation upfront so they aren't surprised
   // by an immediate "Connection failed" on the detail page.
-  const stdioBlockedByBox = watchMode === 'stdio' && !boxAvailable;
+  const stdioBlockedByPolicy = watchMode === 'stdio' && !mcpStdioEnabled;
+  const stdioBlockedByBox =
+    watchMode === 'stdio' && mcpStdioEnabled && !boxAvailable;
+  const stdioBlocked = stdioBlockedByPolicy || stdioBlockedByBox;
 
   const { isDirty } = form.formState;
   useEffect(() => {
@@ -569,8 +583,8 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
   }, [isDirty, onDirtyChange]);
 
   useEffect(() => {
-    onSaveBlockedChange?.(stdioBlockedByBox);
-  }, [stdioBlockedByBox, onSaveBlockedChange]);
+    onSaveBlockedChange?.(stdioBlocked);
+  }, [stdioBlocked, onSaveBlockedChange]);
 
   useEffect(() => {
     onTestingChange?.(mcpTesting);
@@ -586,10 +600,9 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
       testMcp: () => testMcp(),
       isTesting: mcpTesting,
     }),
-    // testMcp now reads everything via form.getValues(), so it does not need
-    // the latest stdioArgs/extraArgs closure — but keep mcpTesting so the
-    // exposed isTesting flag stays accurate.
-    [mcpTesting],
+    // Form values are read through form.getValues(); policy and runtime health
+    // remain closure values and must refresh the imperative handler.
+    [mcpTesting, mcpStdioEnabled, boxAvailable],
   );
 
   useEffect(() => {
@@ -606,6 +619,7 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
         command: '',
         args: [],
         timeout: 30,
+        tool_call_timeout_sec: 300,
         ssereadtimeout: 300,
         extra_args: [],
         ...initialDraftRef.current,
@@ -684,9 +698,15 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
         command: '',
         args: [],
         timeout: 30,
+        tool_call_timeout_sec: 300,
         ssereadtimeout: 300,
         extra_args: [],
       };
+
+      if (typeof server.extra_args.tool_call_timeout_sec === 'number') {
+        formValues.tool_call_timeout_sec =
+          server.extra_args.tool_call_timeout_sec;
+      }
 
       let newExtraArgs: {
         key: string;
@@ -744,12 +764,18 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
   async function handleFormSubmit(value: z.infer<typeof formSchema>) {
     // Belt-and-suspenders: even though the Save button is disabled when
     // stdio is unselectable, intercept programmatic submits too.
+    if (value.mode === 'stdio' && !mcpStdioEnabled) {
+      toast.error(t('mcp.stdioDisabledByPolicy'));
+      return;
+    }
     if (value.mode === 'stdio' && !boxAvailable) {
       toast.error(t('mcp.stdioBlockedByBoxToast'));
       return;
     }
     try {
       let serverConfig: MCPServer;
+      const serverName =
+        isEditMode && initServerName ? initServerName : value.name;
 
       if (value.mode === 'remote') {
         const headers: Record<string, string> = {};
@@ -758,13 +784,14 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
         });
 
         serverConfig = {
-          name: value.name,
+          name: serverName,
           mode: 'remote',
           enable: true,
           extra_args: {
             url: value.url!,
             headers,
             timeout: value.timeout,
+            tool_call_timeout_sec: value.tool_call_timeout_sec,
           },
         };
       } else {
@@ -774,13 +801,14 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
         });
 
         serverConfig = {
-          name: value.name,
+          name: serverName,
           mode: 'stdio',
           enable: true,
           extra_args: {
             command: value.command!,
             args: value.args?.map((arg) => arg.value) || [],
             env,
+            tool_call_timeout_sec: value.tool_call_timeout_sec,
           },
         };
       }
@@ -809,6 +837,16 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
 
     try {
       const mode = form.getValues('mode');
+      if (mode === 'stdio' && !mcpStdioEnabled) {
+        toast.error(t('mcp.stdioDisabledByPolicy'));
+        setMcpTesting(false);
+        return;
+      }
+      if (mode === 'stdio' && !boxAvailable) {
+        toast.error(t('mcp.stdioBlockedByBoxToast'));
+        setMcpTesting(false);
+        return;
+      }
       // Read every field via form.getValues() rather than the captured
       // `stdioArgs` / `extraArgs` state. testMcp() is invoked through an
       // imperative handle (formRef.current.testMcp()) whose closure is only
@@ -818,6 +856,10 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
       // `uvx` with no package (exit 2 / "Connection closed", no detail).
       // The form values are kept in sync on every edit and on load, so they
       // are always current.
+      const serverName =
+        isEditMode && initServerName ? initServerName : form.getValues('name');
+      const shouldTestPersistedServer =
+        isEditMode && !!initServerName && !form.formState.isDirty;
       const formExtraArgs = form.getValues('extra_args') ?? [];
       const formStdioArgs = form.getValues('args') ?? [];
       let extraArgsData: MCPServerExtraArgsRemote | MCPServerExtraArgsStdio;
@@ -826,6 +868,7 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
         extraArgsData = {
           url: form.getValues('url')!,
           timeout: form.getValues('timeout'),
+          tool_call_timeout_sec: form.getValues('tool_call_timeout_sec'),
           headers: Object.fromEntries(
             formExtraArgs.map((arg) => [arg.key, arg.value]),
           ),
@@ -837,15 +880,24 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
           env: Object.fromEntries(
             formExtraArgs.map((arg) => [arg.key, arg.value]),
           ),
+          tool_call_timeout_sec: form.getValues('tool_call_timeout_sec'),
         };
       }
 
-      const { task_id } = await httpClient.testMCPServer('_', {
-        name: form.getValues('name'),
-        mode,
-        enable: true,
-        extra_args: extraArgsData,
-      } as MCPServer);
+      const testTarget = shouldTestPersistedServer ? serverName : '_';
+      const testPayload = shouldTestPersistedServer
+        ? {}
+        : ({
+            name: serverName,
+            mode,
+            enable: true,
+            extra_args: extraArgsData,
+          } as MCPServer);
+
+      const { task_id } = await httpClient.testMCPServer(
+        testTarget,
+        testPayload,
+      );
 
       if (!task_id) {
         throw new Error(t('mcp.noTaskId'));
@@ -871,14 +923,18 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
                 resource_count: 0,
                 resources: [],
               });
+              if (shouldTestPersistedServer) {
+                await onPersistedTestComplete?.(serverName);
+              }
             } else {
-              if (isEditMode) {
-                await loadServerForEdit(form.getValues('name'));
+              if (shouldTestPersistedServer) {
+                await loadServerForEdit(serverName);
+                await onPersistedTestComplete?.(serverName);
               } else {
-                // Create mode has no persisted server to reload tools from.
+                // Transient tests have no persisted server to reload tools from.
                 // The backend stashes the discovered runtime info (status +
-                // tools) in the test task's metadata before tearing the
-                // transient session down — surface it so a successful test
+                // tools) in the task metadata before tearing the transient
+                // session down — surface it so a successful test
                 // shows the tool list instead of "no tools found".
                 const runtimeInfoFromTest = taskResp.task_context?.metadata
                   ?.runtime_info as MCPServerRuntimeInfo | undefined;
@@ -999,13 +1055,20 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
                 </FormControl>
                 <SelectContent>
                   <SelectItem value="remote">{t('mcp.remote')}</SelectItem>
-                  <SelectItem value="stdio" disabled={!boxAvailable}>
+                  <SelectItem
+                    value="stdio"
+                    disabled={!mcpStdioEnabled || !boxAvailable}
+                  >
                     {t('mcp.local')}
-                    {!boxAvailable && (
+                    {!mcpStdioEnabled ? (
+                      <span className="ml-2 text-xs text-muted-foreground">
+                        ({t('mcp.disabledByPolicy')})
+                      </span>
+                    ) : !boxAvailable ? (
                       <span className="ml-2 text-xs text-muted-foreground">
                         ({t('mcp.boxRequired')})
                       </span>
-                    )}
+                    ) : null}
                   </SelectItem>
                 </SelectContent>
               </Select>
@@ -1014,6 +1077,14 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
                   ? t('mcp.localModeDescription')
                   : t('mcp.remoteModeDescription')}
               </FormDescription>
+              {stdioBlockedByPolicy && (
+                <div
+                  role="alert"
+                  className="mt-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-200"
+                >
+                  {t('mcp.stdioDisabledByPolicy')}
+                </div>
+              )}
               {stdioBlockedByBox && (
                 <BoxUnavailableNotice
                   hint={boxHint}
@@ -1021,6 +1092,30 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
                   className="mt-2"
                 />
               )}
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="tool_call_timeout_sec"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>{t('mcp.toolCallTimeout')}</FormLabel>
+              <FormControl>
+                <Input
+                  type="number"
+                  min={0}
+                  step={1}
+                  placeholder="300"
+                  {...field}
+                  onChange={(e) => field.onChange(Number(e.target.value))}
+                />
+              </FormControl>
+              <FormDescription>
+                {t('mcp.toolCallTimeoutDescription')}
+              </FormDescription>
               <FormMessage />
             </FormItem>
           )}
@@ -1163,11 +1258,14 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
     </Card>
   );
 
+  const persistedServerName =
+    isEditMode && initServerName ? initServerName : form.getValues('name');
+
   const runtimePanel = (
     <RuntimePanel
       mcpTesting={mcpTesting}
       runtimeInfo={runtimeInfo}
-      serverName={form.getValues('name')}
+      serverName={persistedServerName}
       t={t}
     />
   );
@@ -1200,6 +1298,9 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
         <TabsTrigger value="resources" className="flex-none px-4">
           {resourcesTabLabel}
         </TabsTrigger>
+        <TabsTrigger value="logs" className="flex-none px-4">
+          {t('mcp.tabLogs')}
+        </TabsTrigger>
       </TabsList>
       <TabsContent value="docs" className="mt-4 min-h-0 flex-1 overflow-y-auto">
         <MCPReadme readme={readme} />
@@ -1211,7 +1312,7 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
         <RuntimePanel
           mcpTesting={mcpTesting}
           runtimeInfo={runtimeInfo}
-          serverName={form.getValues('name')}
+          serverName={persistedServerName}
           content="tools"
           t={t}
         />
@@ -1223,10 +1324,13 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
         <RuntimePanel
           mcpTesting={mcpTesting}
           runtimeInfo={runtimeInfo}
-          serverName={form.getValues('name')}
+          serverName={persistedServerName}
           content="resources"
           t={t}
         />
+      </TabsContent>
+      <TabsContent value="logs" className="mt-4 min-h-0 flex-1 overflow-y-auto">
+        {persistedServerName && <MCPLogs serverName={persistedServerName} />}
       </TabsContent>
     </Tabs>
   ) : (

@@ -3,7 +3,7 @@ import { useRef, useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import PluginComponentList from '../PluginComponentList';
 import { Badge } from '@/components/ui/badge';
-import { Info, Package, ExternalLink } from 'lucide-react';
+import { Info, Package, ExternalLink, Heart, Loader2 } from 'lucide-react';
 import {
   Tooltip,
   TooltipContent,
@@ -11,20 +11,34 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/button';
+import { toast } from 'sonner';
+import {
+  getMarketplaceExtensionLiked,
+  marketplaceExtensionKey,
+  subscribeMarketplaceLikeChanges,
+  toggleMarketplaceExtensionLike,
+} from '../marketplace-likes';
 
 export default function PluginMarketCardComponent({
   cardVO,
   onInstall,
   tagNames = {},
+  installDisabled = false,
+  installDisabledTooltip,
 }: {
   cardVO: PluginMarketCardVO;
   onInstall?: (cardVO: PluginMarketCardVO) => void;
   tagNames?: Record<string, string>;
+  installDisabled?: boolean;
+  installDisabledTooltip?: string;
 }) {
   const { t } = useTranslation();
   const bottomRef = useRef<HTMLDivElement>(null);
   const [visibleTags, setVisibleTags] = useState(2);
   const [iconFailed, setIconFailed] = useState(!cardVO.iconURL);
+  const [liked, setLiked] = useState(false);
+  const [likeCount, setLikeCount] = useState(cardVO.likeCount);
+  const [isLiking, setIsLiking] = useState(false);
 
   const pluginDetailUrl = `https://space.langbot.app/market/${cardVO.author}/${cardVO.pluginName}`;
 
@@ -51,6 +65,37 @@ export default function PluginMarketCardComponent({
   useEffect(() => {
     setIconFailed(!cardVO.iconURL);
   }, [cardVO.iconURL]);
+
+  useEffect(() => {
+    setLikeCount(cardVO.likeCount);
+  }, [cardVO.likeCount]);
+
+  useEffect(() => {
+    let cancelled = false;
+    getMarketplaceExtensionLiked(cardVO.type, cardVO.author, cardVO.pluginName)
+      .then((value) => {
+        if (!cancelled) setLiked(value);
+      })
+      .catch(() => {
+        // The count still renders if the viewer-state request is unavailable.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [cardVO.author, cardVO.pluginName, cardVO.type]);
+
+  useEffect(() => {
+    const key = marketplaceExtensionKey(
+      cardVO.type,
+      cardVO.author,
+      cardVO.pluginName,
+    );
+    return subscribeMarketplaceLikeChanges((change) => {
+      if (change.key !== key) return;
+      setLiked(change.liked);
+      setLikeCount(change.likeCount);
+    });
+  }, [cardVO.author, cardVO.pluginName, cardVO.type]);
 
   useEffect(() => {
     const tags = cardVO.tags;
@@ -86,18 +131,50 @@ export default function PluginMarketCardComponent({
 
   const remainingTags = cardVO.tags ? cardVO.tags.length - visibleTags : 0;
   const handleInstallClick = () => {
+    if (installDisabled) return;
     onInstall?.(cardVO);
   };
 
-  return (
+  const handleLikeClick = async (
+    event: React.MouseEvent<HTMLButtonElement>,
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (isLiking) return;
+    setIsLiking(true);
+    try {
+      const change = await toggleMarketplaceExtensionLike(
+        cardVO.type,
+        cardVO.author,
+        cardVO.pluginName,
+        !liked,
+      );
+      setLiked(change.liked);
+      setLikeCount(change.likeCount);
+    } catch {
+      toast.error(t('market.likeFailed'));
+    } finally {
+      setIsLiking(false);
+    }
+  };
+
+  const cardContent = (
     <div
-      role="button"
+      role={installDisabled ? 'group' : 'button'}
       tabIndex={0}
+      aria-disabled={installDisabled}
       aria-label={t('market.installCard', { name: cardVO.label })}
-      className="w-[100%] h-[10rem] cursor-pointer bg-white rounded-[10px] border border-border shadow-[0px_1px_2px_0_rgba(0,0,0,0.06)] p-3 sm:p-[1rem] hover:shadow-[0px_2px_5px_0_rgba(0,0,0,0.08)] transition-shadow duration-200 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:bg-[#1f1f22] dark:shadow-[0px_1px_2px_0_rgba(255,255,255,0.04)] dark:hover:shadow-[0px_2px_5px_0_rgba(255,255,255,0.07)] relative"
+      className={`w-[100%] h-[10rem] bg-white rounded-[10px] border border-border shadow-[0px_1px_2px_0_rgba(0,0,0,0.06)] p-3 sm:p-[1rem] transition-shadow duration-200 outline-none dark:bg-[#1f1f22] dark:shadow-[0px_1px_2px_0_rgba(255,255,255,0.04)] relative ${
+        installDisabled
+          ? 'cursor-not-allowed opacity-60'
+          : 'cursor-pointer hover:shadow-[0px_2px_5px_0_rgba(0,0,0,0.08)] focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:hover:shadow-[0px_2px_5px_0_rgba(255,255,255,0.07)]'
+      }`}
       onClick={handleInstallClick}
       onKeyDown={(event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
+        if (
+          event.target === event.currentTarget &&
+          (event.key === 'Enter' || event.key === ' ')
+        ) {
           event.preventDefault();
           handleInstallClick();
         }
@@ -177,6 +254,26 @@ export default function PluginMarketCardComponent({
           </div>
 
           <div className="flex flex-row items-start justify-center gap-1 flex-shrink-0">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              title={t(liked ? 'market.unlike' : 'market.like')}
+              aria-label={t(liked ? 'market.unlike' : 'market.like')}
+              aria-pressed={liked}
+              disabled={isLiking}
+              className="h-7 min-w-7 gap-1 rounded-md px-1.5 text-muted-foreground hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-950/30"
+              onClick={handleLikeClick}
+            >
+              {isLiking ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Heart
+                  className={`h-3.5 w-3.5 ${liked ? 'fill-red-500 text-red-500' : ''}`}
+                />
+              )}
+              <span className="text-xs tabular-nums">{likeCount}</span>
+            </Button>
             <Button
               type="button"
               variant="ghost"
@@ -294,5 +391,18 @@ export default function PluginMarketCardComponent({
         </div>
       </div>
     </div>
+  );
+
+  if (!installDisabled || !installDisabledTooltip) return cardContent;
+
+  return (
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger asChild>{cardContent}</TooltipTrigger>
+        <TooltipContent side="top" className="max-w-72 text-left">
+          {installDisabledTooltip}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }

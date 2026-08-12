@@ -9,6 +9,7 @@ import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platf
 import langbot_plugin.api.definition.abstract.platform.event_logger as abstract_platform_logger
 
 from langbot.pkg.pipeline.pool import QueryPool
+from langbot.pkg.api.http.context import ExecutionContext
 
 
 class DummyEventLogger(abstract_platform_logger.AbstractEventLogger):
@@ -64,12 +65,18 @@ async def test_add_query_returns_created_query_and_preserves_side_effects(
         adapter=adapter,
         pipeline_uuid='test-pipeline-uuid',
         routed_by_rule=True,
+        execution_context=ExecutionContext(
+            instance_uuid='test-instance-uuid',
+            workspace_uuid='test-workspace-uuid',
+            placement_generation=1,
+        ),
     )
 
     assert query is query_pool.queries[0]
-    assert query_pool.cached_queries[0] is query
+    assert query_pool.cached_queries[('test-workspace-uuid', query.query_uuid)] is query
     assert query_pool.query_id_counter == 1
     assert query.query_id == 0
     assert query.bot_uuid == 'test-bot-uuid'
     assert query.pipeline_uuid == 'test-pipeline-uuid'
+    assert query.workspace_uuid == 'test-workspace-uuid'
     assert query.variables == {'_routed_by_rule': True}

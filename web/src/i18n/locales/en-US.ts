@@ -80,7 +80,7 @@ const enUS = {
     loading: 'Loading...',
     fieldRequired: 'This field is required',
     or: 'or',
-    loginWithSpace: 'Login with Space',
+    loginWithSpace: 'Login with LangBot Account',
     spaceLoginRecommended:
       'Recommended: Use official stable model APIs and cloud services',
     loginLocal: 'Login with local account',
@@ -167,6 +167,7 @@ const enUS = {
     actions: 'Actions',
     apiKeyCreatedMessage:
       'Please copy this API key, if the button is invalid, please copy manually.',
+    apiKeyStoredSecurely: 'Secret shown only when created',
     none: 'None',
     more: 'More ({{count}})',
     less: 'Less',
@@ -213,6 +214,19 @@ const enUS = {
     selectModelAbilities: 'Select model abilities',
     visionAbility: 'Vision Ability',
     functionCallAbility: 'Function Call',
+    reasoningAbility: 'Reasoning',
+    reasoningLevel: 'Reasoning level',
+    reasoningLevels: {
+      providerDefault: 'Provider default',
+      disabled: 'Off',
+      enabled: 'On',
+      minimal: 'Minimal',
+      low: 'Low',
+      medium: 'Medium',
+      high: 'High',
+      xhigh: 'Extra high',
+      max: 'Maximum',
+    },
     contextLength: 'Context Window',
     contextLengthPlaceholder: 'Unknown',
     contextLengthInvalid: 'Context window must be a positive integer',
@@ -276,8 +290,12 @@ const enUS = {
     searchProviders: 'Search providers...',
     langbotModelsDescription: 'Cloud models powered by LangBot Space',
     credits: 'Credits',
-    loginWithSpace: 'Login with Space',
+    loginWithSpace: 'Login with LangBot Account',
     loginToUseModels: 'Login with Space to use cloud models',
+    ownerMustBindSpace:
+      'The Workspace owner must connect Space for LangBot Models.',
+    usesOwnerSpaceBilling:
+      "Uses the Workspace owner's Space billing and credits.",
     noModels: 'No models configured',
     langbotModels: 'LangBot Models',
     spaceTrialTooltip:
@@ -520,9 +538,9 @@ const enUS = {
     debugInfoTitle: 'Plugin Debug Information',
     debugUrl: 'Debug URL',
     debugKey: 'Debug Key',
+    debugKeyExpires: 'Rotates at {{time}}; each Workspace has a different key',
     noDebugKey: '(Not Set)',
-    debugKeyDisabled:
-      'Debug key is not set, plugin debugging does not require authentication',
+    debugKeyDisabled: 'Debug credential is temporarily unavailable',
     boxStatusTitle: 'Box Runtime',
     boxStatus: 'Status',
     boxConnected: 'Connected',
@@ -704,6 +722,7 @@ const enUS = {
     notFound: 'Plugin information not found',
     sortBy: 'Sort by',
     sort: {
+      hottest: 'Most Popular',
       recentlyAdded: 'Recently Added',
       recentlyUpdated: 'Recently Updated',
       mostDownloads: 'Most Downloads',
@@ -711,6 +730,9 @@ const enUS = {
     },
     downloads: 'downloads',
     download: 'Download',
+    like: 'Like',
+    unlike: 'Unlike',
+    likeFailed: 'Failed to update like. Please try again.',
     repository: 'Repository',
     downloadFailed: 'Download failed',
     noReadme: 'This plugin does not provide README documentation',
@@ -801,6 +823,9 @@ const enUS = {
     url: 'URL',
     headers: 'Headers',
     timeout: 'Timeout',
+    toolCallTimeout: 'Tool call timeout (seconds)',
+    toolCallTimeoutDescription:
+      'Maximum wait for one tool call. Set to 0 for no timeout. Defaults to 300 seconds.',
     addArgument: 'Add Argument',
     addEnvVar: 'Add Environment Variable',
     addHeader: 'Add Header',
@@ -823,6 +848,9 @@ const enUS = {
     boxStdioRefusedSuggestion:
       'Enable Box (box.enabled = true) and ensure the runtime is healthy, or switch this server to http/sse mode.',
     boxRequired: 'requires Box',
+    disabledByPolicy: 'disabled by policy',
+    stdioDisabledByPolicy:
+      'Stdio MCP is disabled for this deployment. Use a remote MCP server instead.',
     stdioBlockedByBoxToast:
       'Stdio MCP cannot be saved while the Box sandbox is disabled or unreachable. Enable Box or pick http/sse.',
     toolsFound: 'tools',
@@ -832,6 +860,12 @@ const enUS = {
     tabTools: 'Tools',
     tabResources: 'Resources',
     tabDocs: 'Docs',
+    tabLogs: 'Logs',
+    logsLevelAll: 'All levels',
+    logsRefresh: 'Refresh',
+    logsAutoRefresh: 'Auto refresh',
+    logsEmpty:
+      'No logs yet. Runtime logs from the MCP server will appear here.',
     noReadme: 'No documentation available',
     parseResultFailed: 'Failed to parse test result',
     noResultReturned: 'Test returned no result',
@@ -1270,7 +1304,96 @@ const enUS = {
       'Invalid bind request. Please try again from account settings.',
     setPasswordHint: 'Set a password to login with email and password',
     spaceEmailMismatch:
-      'Space login email does not match the local account email',
+      'The Space login email does not match the local account email.',
+    space_account_not_registeredTitle: 'Account not registered',
+    space_account_not_registered:
+      'No local account is registered for this Space email. Ask the Workspace owner for an invitation.',
+    space_account_binding_requiredTitle: 'Space connection required',
+    space_account_binding_required:
+      'This local account must connect Space from Account settings before using Space login.',
+  },
+  workspace: {
+    title: 'Workspace',
+    description: 'Manage members, roles, and invitation links',
+    selectTitle: 'Choose a Workspace',
+    selectDescription: 'Select where you want to continue in LangBot.',
+    selectionLoadFailed:
+      'Your Workspaces could not be loaded. Please try again.',
+    switchWorkspace: 'Switch Workspace',
+    settings: 'Workspace Settings',
+    currentPlan: 'Current plan',
+    planUnavailable: 'Unavailable',
+    upgradePlan: 'Change or upgrade plan',
+    ossSingletonDescription:
+      'This self-hosted instance has one Workspace and can include multiple users.',
+    cloudManagedDescription:
+      'This Workspace is hosted by LangBot Cloud. Manage members here; billing opens in Cloud.',
+    loadFailed: 'Failed to load Workspace information',
+    members: 'Members',
+    you: 'You',
+    inviteMember: 'Invite a member',
+    inviteDescription:
+      'Create a one-time link to add another user to this Workspace.',
+    emailPlaceholder: 'member@example.com',
+    createInvitation: 'Create invitation',
+    invitationCreated: 'Invitation created',
+    delivery: {
+      sent: 'Invitation sent',
+      link_only: 'Invitation link created',
+      failed: 'Invitation link created, but email could not be sent',
+    },
+    invitationCreateFailed: 'Failed to create invitation',
+    oneTimeLinkWarning: 'Copy this link now. It is shown only once.',
+    copyInvitation: 'Copy invitation link',
+    invitationCopied: 'Invitation link copied',
+    pendingInvitations: 'Pending invitations',
+    expiresAt: 'Expires {{date}}',
+    revokeInvitation: 'Revoke invitation',
+    invitationRevoked: 'Invitation revoked',
+    invitationRevokeFailed: 'Failed to revoke invitation',
+    acceptInvitation: 'Accept invitation',
+    invitedToWorkspace: 'You were invited to {{workspace}}',
+    checkingInvitation: 'Checking this invitation...',
+    invitationMissing: 'This invitation link is missing required information.',
+    invitationExpired: 'This invitation has expired.',
+    invitationAlreadyRevoked: 'This invitation was revoked.',
+    invitationAlreadyUsed: 'This invitation was already used.',
+    invitationInvalid: 'This invitation is invalid or no longer available.',
+    invitationAccepted: 'Invitation accepted',
+    invitationAcceptFailed: 'Failed to accept invitation',
+    invitationEmailMismatch:
+      'This invitation belongs to a different email address.',
+    existingAccountLoginRequired:
+      'An account already exists for this email. Sign in to continue.',
+    acceptAsCurrentAccount: 'Accept with current account',
+    authenticatedInvitationNotice:
+      'Sign out first, then sign in with the invited account. Your invitation will be preserved.',
+    logoutAndReturn: 'Sign out and return to this invitation',
+    switchAccount: 'Switch account',
+    registerAndAccept: 'Create account and accept',
+    alreadyHaveAccount: 'I already have an account',
+    confirmPassword: 'Confirm password',
+    passwordMinimum: 'Password must contain at least 8 characters.',
+    passwordMismatch: 'The passwords do not match.',
+    backToLogin: 'Back to sign in',
+    memberUpdated: 'Member role updated',
+    memberUpdateFailed: 'Failed to update member role',
+    removeMember: 'Remove member',
+    removeMemberConfirm: 'Remove this member from the Workspace?',
+    memberRemoved: 'Member removed',
+    memberRemoveFailed: 'Failed to remove member',
+    transferOwnership: 'Transfer ownership',
+    types: {
+      personal: 'Personal',
+      team: 'Team',
+    },
+    roles: {
+      owner: 'Owner',
+      admin: 'Admin',
+      developer: 'Developer',
+      operator: 'Operator',
+      viewer: 'Viewer',
+    },
   },
   monitoring: {
     title: 'Dashboard',
@@ -1333,6 +1456,20 @@ const enUS = {
       level: 'Level',
       runner: 'Runner',
       viewConversation: 'View Conversation',
+      turns: '{{count}} conversation turns',
+      userMessage: 'User',
+      noUserMessage: 'No user input recorded',
+      assistantMessage: 'Assistant',
+      assistantMessageCount: 'Assistant +{{count}}',
+      noAssistantMessage: 'No assistant reply recorded',
+      messageCount: 'Messages',
+      conversationTrace: 'Conversation Trace',
+      noLlmCalls: 'No model calls recorded',
+      roles: {
+        user: 'User',
+        assistant: 'Assistant',
+        message: 'Message',
+      },
     },
     llmCalls: {
       title: 'LLM Calls',
@@ -1346,6 +1483,15 @@ const enUS = {
       totalTokens: 'Total Tokens',
       avgDuration: 'Avg Duration',
       calls: 'Calls',
+    },
+    toolCalls: {
+      title: 'Tool Calls',
+      totalCalls: 'Calls',
+      duration: 'Tool Duration',
+      errorCalls: 'Failed Calls',
+      arguments: 'Arguments',
+      result: 'Result',
+      noToolCalls: 'No tool calls recorded',
     },
     tokens: {
       totalTokens: 'Total Tokens',
@@ -1500,6 +1646,7 @@ const enUS = {
   settingsDialog: {
     title: 'Settings',
     nav: {
+      workspace: 'Workspace',
       models: 'Models',
       api: 'API',
       storage: 'Storage',
@@ -1548,6 +1695,12 @@ const enUS = {
       'Maximum number of pipelines ({{max}}) reached. Please remove an existing pipeline before creating a new one.',
     maxExtensionsReached:
       'Maximum number of extensions ({{max}}) reached. Please remove an existing extension before adding a new one.',
+    quotaLoadingTooltip:
+      'Workspace usage is still loading. Please wait before creating a resource.',
+    quotaCheckFailed:
+      'Unable to verify the current workspace quota. Please try again.',
+    createDisabledTooltip:
+      'The {{resource}} limit ({{max}}) for this workspace has been reached. Delete one existing item before creating another.',
   },
   skills: {
     title: 'Skills',
@@ -1772,6 +1925,9 @@ const enUS = {
       'Scan the QR code below with WeChat to authorize and automatically fill in the token',
     loginSuccess: 'Login successful! Token has been filled in',
     loginFailed: 'Login failed',
+    connecting: 'Connecting to WeChat service...',
+    waitingForScan: 'Waiting for scan',
+    retry: 'Retry',
   },
   itchat: {
     scanLogin: 'Scan QR Login',
@@ -1806,6 +1962,19 @@ const enUS = {
     retry: 'Retry',
     robotNameNote:
       'Robot Name cannot be obtained automatically. Please fill it in manually.',
+  },
+  qqofficial: {
+    createBinding: 'One-Click QR Binding for QQ Official Bot',
+    scanQRCode:
+      'Scan the QR code below with mobile QQ and authorize the binding in QQ Bot Assistant',
+    waitingForScan: 'Waiting for scan',
+    bindSuccess: 'Bound successfully! AppID and Secret have been filled in',
+    bindFailed: 'Binding failed',
+    connecting: 'Connecting to QQ service...',
+    retry: 'Retry',
+    tokenNote:
+      'The Token field is not used by the current adapter — you can leave it blank.',
+    boundBy: 'Bound by QQ user {{openid}}',
   },
   pluginPages: {
     selectFromSidebar: 'Select a plugin page from the sidebar',

@@ -106,6 +106,9 @@ export function useMonitoringData(filterState: FilterState) {
       const llmCalls = Array.isArray(response?.llmCalls)
         ? response.llmCalls
         : [];
+      const toolCalls = Array.isArray(response?.toolCalls)
+        ? response.toolCalls
+        : [];
       const embeddingCalls = Array.isArray(response?.embeddingCalls)
         ? response.embeddingCalls
         : [];
@@ -116,6 +119,7 @@ export function useMonitoringData(filterState: FilterState) {
       const totalCount = response?.totalCount ?? {
         messages: messages.length,
         llmCalls: llmCalls.length,
+        toolCalls: toolCalls.length,
         embeddingCalls: embeddingCalls.length,
         sessions: sessions.length,
         errors: errors.length,
@@ -145,8 +149,10 @@ export function useMonitoringData(filterState: FilterState) {
             level: string;
             platform?: string;
             user_id?: string;
+            user_name?: string;
             runner_name?: string;
             variables?: string;
+            role?: string;
           }) => ({
             id: msg.id,
             timestamp: parseUTCTimestamp(msg.timestamp),
@@ -160,8 +166,10 @@ export function useMonitoringData(filterState: FilterState) {
             level: msg.level as 'info' | 'warning' | 'error' | 'debug',
             platform: msg.platform,
             userId: msg.user_id,
+            userName: msg.user_name,
             runnerName: msg.runner_name,
             variables: msg.variables,
+            role: msg.role,
           }),
         ),
         llmCalls: llmCalls.map(
@@ -179,6 +187,7 @@ export function useMonitoringData(filterState: FilterState) {
             bot_name: string;
             pipeline_id: string;
             pipeline_name: string;
+            session_id?: string;
             error_message?: string;
             message_id?: string;
           }) => ({
@@ -197,8 +206,44 @@ export function useMonitoringData(filterState: FilterState) {
             botName: call.bot_name,
             pipelineId: call.pipeline_id,
             pipelineName: call.pipeline_name,
+            sessionId: call.session_id,
             errorMessage: call.error_message,
             messageId: call.message_id,
+          }),
+        ),
+        toolCalls: toolCalls.map(
+          (call: {
+            id: string;
+            timestamp: string;
+            tool_name: string;
+            tool_source: string;
+            duration: number;
+            status: string;
+            bot_id: string;
+            bot_name: string;
+            pipeline_id: string;
+            pipeline_name: string;
+            session_id?: string;
+            message_id?: string;
+            arguments?: string;
+            result?: string;
+            error_message?: string;
+          }) => ({
+            id: call.id,
+            timestamp: parseUTCTimestamp(call.timestamp),
+            toolName: call.tool_name,
+            toolSource: call.tool_source,
+            duration: call.duration,
+            status: call.status as 'success' | 'error',
+            botId: call.bot_id,
+            botName: call.bot_name,
+            pipelineId: call.pipeline_id,
+            pipelineName: call.pipeline_name,
+            sessionId: call.session_id,
+            messageId: call.message_id,
+            arguments: call.arguments,
+            result: call.result,
+            errorMessage: call.error_message,
           }),
         ),
         embeddingCalls: embeddingCalls.map(
@@ -294,6 +339,7 @@ export function useMonitoringData(filterState: FilterState) {
         totalCount: {
           messages: totalCount.messages,
           llmCalls: totalCount.llmCalls,
+          toolCalls: totalCount.toolCalls ?? toolCalls.length,
           embeddingCalls: totalCount.embeddingCalls || 0,
           sessions: totalCount.sessions,
           errors: totalCount.errors,
@@ -317,6 +363,7 @@ export function useMonitoringData(filterState: FilterState) {
           botName: call.botName,
           pipelineId: call.pipelineId,
           pipelineName: call.pipelineName,
+          sessionId: call.sessionId,
         }),
       );
 

@@ -464,3 +464,13 @@ class TestChatHandlerHelper:
         handler = chat.ChatMessageHandler(fake_app)
         result = handler.cut_str('first line\nsecond line')
         assert '...' in result
+
+    def test_response_size_limit_uses_instance_config(self, fake_app):
+        from langbot_plugin.api.entities.builtin.provider.message import Message
+
+        fake_app.instance_config.data['system'] = {'response_limits': {'max_generated_chars': 4}}
+        chat = get_chat_handler()
+        handler = chat.ChatMessageHandler(fake_app)
+
+        with pytest.raises(RuntimeError, match='configured limit'):
+            handler._check_response_size(Message(role='assistant', content='12345'))

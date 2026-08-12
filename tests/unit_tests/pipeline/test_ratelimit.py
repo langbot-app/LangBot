@@ -152,8 +152,18 @@ class TestFixedWindowAlgo:
         # First request creates container
         await algo.require_access(sample_query_with_rate_limit, provider_session.LauncherTypes.PERSON, '12345')
 
-        # Key format: 'LauncherTypes.PERSON_12345' (enum string representation)
-        expected_key = 'LauncherTypes.PERSON_12345'
+        context = sample_query_with_rate_limit._execution_context
+        expected_key = ':'.join(
+            (
+                context.instance_uuid,
+                context.workspace_uuid,
+                str(context.placement_generation),
+                str(sample_query_with_rate_limit.bot_uuid),
+                str(sample_query_with_rate_limit.pipeline_uuid),
+                str(provider_session.LauncherTypes.PERSON),
+                '12345',
+            )
+        )
         assert expected_key in algo.containers
         container = algo.containers[expected_key]
 
@@ -191,8 +201,18 @@ class TestFixedWindowAlgo:
         for i in range(5):
             await algo.require_access(sample_query, provider_session.LauncherTypes.PERSON, 'test')
 
-        # Key format: 'LauncherTypes.PERSON_test'
-        expected_key = 'LauncherTypes.PERSON_test'
+        context = sample_query._execution_context
+        expected_key = ':'.join(
+            (
+                context.instance_uuid,
+                context.workspace_uuid,
+                str(context.placement_generation),
+                str(sample_query.bot_uuid),
+                str(sample_query.pipeline_uuid),
+                str(provider_session.LauncherTypes.PERSON),
+                'test',
+            )
+        )
         container = algo.containers[expected_key]
         assert window_start in container.records
         assert container.records[window_start] == 5

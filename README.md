@@ -51,7 +51,7 @@ LangBot is an **open-source, production-grade platform** for building AI-powered
 
 [→ Learn more about all features](https://link.langbot.app/en/docs/features)
 
-📍 Practical guides: [deploy a multi-platform AI bot in 5 minutes](https://blog.langbot.app/en/blog/deploy-ai-bot-in-5-minutes/), [connect DeepSeek to WeChat, Discord, and Telegram](https://blog.langbot.app/en/blog/connect-deepseek-to-wechat/), [run a Dify Agent in Discord, Telegram, and Slack](https://blog.langbot.app/en/blog/dify-agent-discord-telegram-slack/), and [build an n8n-powered chatbot](https://blog.langbot.app/en/blog/n8n-multi-platform-ai-chatbot/).
+📍 Practical guides: [deploy a multi-platform AI bot in 5 minutes](https://langbot.app/en/blog/deploy-ai-bot-in-5-minutes/), [connect DeepSeek to WeChat, Discord, and Telegram](https://langbot.app/en/blog/connect-deepseek-to-wechat/), [run a Dify Agent in Discord, Telegram, and Slack](https://langbot.app/en/blog/dify-agent-discord-telegram-slack/), and [build an n8n-powered chatbot](https://langbot.app/en/blog/n8n-multi-platform-ai-chatbot/).
 
 ---
 
@@ -89,6 +89,17 @@ docker compose --profile all up -d
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.app/template/yRrAyL?referralCode=vogKPF)
 
 **More options:** [Docker](https://link.langbot.app/en/docs/docker) · [Manual](https://link.langbot.app/en/docs/manual-deploy) · [BTPanel](https://link.langbot.app/en/docs/bt-panel) · [Kubernetes](https://docs.langbot.app/en/deploy/langbot/kubernetes)
+
+---
+
+## Live Demo
+
+**Try it now:** https://demo.langbot.dev/
+
+- Email: `demo@langbot.app`
+- Password: `langbot123456`
+
+_Note: Public demo environment. Do not enter sensitive information._
 
 ---
 
@@ -167,28 +178,11 @@ LangBot is **agent-friendly by design** — your coding agents (Claude Code, Cod
 
 ---
 
-## Live Demo
-
-**Try it now:** https://demo.langbot.dev/
-
-- Email: `demo@langbot.app`
-- Password: `langbot123456`
-
-_Note: Public demo environment. Do not enter sensitive information._
-
----
-
 ## Community
 
 [![Discord](https://img.shields.io/discord/1335141740050649118?logo=discord&label=Discord)](https://discord.gg/wdNEHETs87)
 
 - [Discord Community](https://discord.gg/wdNEHETs87)
-
----
-
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=langbot-app/LangBot&type=Date)](https://star-history.com/#langbot-app/LangBot&Date)
 
 ---
 

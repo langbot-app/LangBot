@@ -278,3 +278,19 @@ class TestResolvePipelineUuid:
         uuid, routed = bot.resolve_pipeline_uuid('person', '123', 'normal message')
         assert uuid == 'default-uuid'
         assert routed is False
+
+    def test_websocket_task_override_does_not_mutate_bot_default(self):
+        bot = self._make_bot('default-uuid', [])
+        adapter = Mock()
+        adapter.get_pipeline_uuid_override.return_value = 'connection-pipeline'
+
+        pipeline_uuid, routed = bot.resolve_event_pipeline_uuid(
+            adapter,
+            'person',
+            'launcher',
+            'hello',
+        )
+
+        assert pipeline_uuid == 'connection-pipeline'
+        assert routed is False
+        assert bot.bot_entity.use_pipeline_uuid == 'default-uuid'

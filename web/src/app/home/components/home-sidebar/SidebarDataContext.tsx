@@ -4,6 +4,7 @@ import React, {
   useState,
   useEffect,
   useCallback,
+  useRef,
 } from 'react';
 import { httpClient, getCloudServiceClientSync } from '@/app/infra/http';
 import { extractI18nObject } from '@/i18n/I18nProvider';
@@ -48,9 +49,11 @@ export interface SidebarDataContextValue {
   pipelines: SidebarEntityItem[];
   knowledgeBases: SidebarEntityItem[];
   plugins: SidebarEntityItem[];
+  pluginCount: number;
   mcpServers: SidebarEntityItem[];
   skills: SidebarEntityItem[];
   pluginPages: PluginPageItem[];
+  quotaDataLoaded: boolean;
   refreshBots: () => Promise<void>;
   refreshPipelines: () => Promise<void>;
   refreshKnowledgeBases: () => Promise<void>;
@@ -77,9 +80,36 @@ export function SidebarDataProvider({
   const [pipelines, setPipelines] = useState<SidebarEntityItem[]>([]);
   const [knowledgeBases, setKnowledgeBases] = useState<SidebarEntityItem[]>([]);
   const [plugins, setPlugins] = useState<SidebarEntityItem[]>([]);
+  const [pluginCount, setPluginCount] = useState(0);
   const [mcpServers, setMCPServers] = useState<SidebarEntityItem[]>([]);
   const [skills, setSkills] = useState<SidebarEntityItem[]>([]);
   const [pluginPages, setPluginPages] = useState<PluginPageItem[]>([]);
+  const [quotaDataLoaded, setQuotaDataLoaded] = useState(false);
+  const refreshRequestIds = useRef({
+    bots: 0,
+    pipelines: 0,
+    knowledgeBases: 0,
+    plugins: 0,
+    mcpServers: 0,
+    skills: 0,
+  });
+  const quotaResourceLoaded = useRef({
+    bots: false,
+    pipelines: false,
+    knowledgeBases: false,
+    plugins: false,
+    mcpServers: false,
+    skills: false,
+  });
+  const setQuotaResourceLoaded = useCallback(
+    (resource: keyof typeof quotaResourceLoaded.current, loaded: boolean) => {
+      quotaResourceLoaded.current[resource] = loaded;
+      setQuotaDataLoaded(
+        Object.values(quotaResourceLoaded.current).every(Boolean),
+      );
+    },
+    [],
+  );
   const [detailEntityName, setDetailEntityName] = useState<string | null>(null);
   const [extensionsGroupByType, setExtensionsGroupByTypeState] =
     useState<boolean>(() => {
@@ -96,8 +126,11 @@ export function SidebarDataProvider({
   }, []);
 
   const refreshBots = useCallback(async () => {
+    const requestId = ++refreshRequestIds.current.bots;
     try {
       const resp = await httpClient.getBots();
+      if (requestId !== refreshRequestIds.current.bots) return;
+      setQuotaResourceLoaded('bots', true);
       setBots(
         resp.bots.map((bot) => ({
           id: bot.uuid || '',
@@ -109,13 +142,18 @@ export function SidebarDataProvider({
         })),
       );
     } catch (error) {
+      if (requestId !== refreshRequestIds.current.bots) return;
+      setQuotaResourceLoaded('bots', false);
       console.error('Failed to fetch bots for sidebar:', error);
     }
-  }, []);
+  }, [setQuotaResourceLoaded]);
 
   const refreshPipelines = useCallback(async () => {
+    const requestId = ++refreshRequestIds.current.pipelines;
     try {
       const resp = await httpClient.getPipelines();
+      if (requestId !== refreshRequestIds.current.pipelines) return;
+      setQuotaResourceLoaded('pipelines', true);
       setPipelines(
         resp.pipelines.map((p) => ({
           id: p.uuid || '',
@@ -126,13 +164,18 @@ export function SidebarDataProvider({
         })),
       );
     } catch (error) {
+      if (requestId !== refreshRequestIds.current.pipelines) return;
+      setQuotaResourceLoaded('pipelines', false);
       console.error('Failed to fetch pipelines for sidebar:', error);
     }
-  }, []);
+  }, [setQuotaResourceLoaded]);
 
   const refreshKnowledgeBases = useCallback(async () => {
+    const requestId = ++refreshRequestIds.current.knowledgeBases;
     try {
       const resp = await httpClient.getKnowledgeBases();
+      if (requestId !== refreshRequestIds.current.knowledgeBases) return;
+      setQuotaResourceLoaded('knowledgeBases', true);
       setKnowledgeBases(
         resp.bases.map((kb) => ({
           id: kb.uuid || '',
@@ -143,11 +186,14 @@ export function SidebarDataProvider({
         })),
       );
     } catch (error) {
+      if (requestId !== refreshRequestIds.current.knowledgeBases) return;
+      setQuotaResourceLoaded('knowledgeBases', false);
       console.error('Failed to fetch knowledge bases for sidebar:', error);
     }
-  }, []);
+  }, [setQuotaResourceLoaded]);
 
   const refreshPlugins = useCallback(async () => {
+    const requestId = ++refreshRequestIds.current.plugins;
     try {
       const [pluginsResp, marketplaceResp] = await Promise.all([
         httpClient.getPlugins(),
@@ -155,6 +201,9 @@ export function SidebarDataProvider({
           .getMarketplacePlugins(1, 100)
           .catch(() => ({ plugins: [] })),
       ]);
+      if (requestId !== refreshRequestIds.current.plugins) return;
+      setQuotaResourceLoaded('plugins', true);
+      setPluginCount(pluginsResp.plugins?.length ?? 0);
 
       // Build marketplace version lookup: "author/name" -> latest_version
       const marketplaceVersions = new Map<string, string>();
@@ -166,6 +215,19 @@ export function SidebarDataProvider({
 
       // Deduplicate plugins by composite key (prefer debug over installed)
       const pluginMap = new Map<string, SidebarEntityItem>();
+      const pluginIconURLs = new Map<string, string>(
+        await Promise.all(
+          pluginsResp.plugins.map(async (plugin) => {
+            const meta = plugin.manifest.manifest.metadata;
+            const author = meta.author ?? '';
+            const name = meta.name;
+            const url = await httpClient
+              .getAuthenticatedPluginIconURL(author, name)
+              .catch(() => '');
+            return [`${author}/${name}`, url] as const;
+          }),
+        ),
+      );
       for (const plugin of pluginsResp.plugins) {
         const meta = plugin.manifest.manifest.metadata;
         const author = meta.author ?? '';
@@ -184,7 +246,7 @@ export function SidebarDataProvider({
         const item: SidebarEntityItem = {
           id: compositeKey,
           name: extractI18nObject(meta.label),
-          iconURL: httpClient.getPluginIconURL(author, name),
+          iconURL: pluginIconURLs.get(compositeKey) || '',
           installSource: plugin.install_source,
           installInfo: plugin.install_info,
           hasUpdate,
@@ -218,7 +280,7 @@ export function SidebarDataProvider({
                 pluginAuthor: author,
                 pluginName: name,
                 pluginLabel: label,
-                pluginIconURL: httpClient.getPluginIconURL(author, name),
+                pluginIconURL: pluginIconURLs.get(`${author}/${name}`) || '',
                 pageId: page.id,
                 path: page.path,
               });
@@ -228,13 +290,18 @@ export function SidebarDataProvider({
       }
       setPluginPages(pages);
     } catch (error) {
+      if (requestId !== refreshRequestIds.current.plugins) return;
+      setQuotaResourceLoaded('plugins', false);
       console.error('Failed to fetch plugins for sidebar:', error);
     }
-  }, []);
+  }, [setQuotaResourceLoaded]);
 
   const refreshMCPServers = useCallback(async () => {
+    const requestId = ++refreshRequestIds.current.mcpServers;
     try {
       const resp = await httpClient.getMCPServers();
+      if (requestId !== refreshRequestIds.current.mcpServers) return;
+      setQuotaResourceLoaded('mcpServers', true);
       setMCPServers(
         resp.servers.map((server) => ({
           id: server.name, // Keep __ for API calls
@@ -244,13 +311,18 @@ export function SidebarDataProvider({
         })),
       );
     } catch (error) {
+      if (requestId !== refreshRequestIds.current.mcpServers) return;
+      setQuotaResourceLoaded('mcpServers', false);
       console.error('Failed to fetch MCP servers for sidebar:', error);
     }
-  }, []);
+  }, [setQuotaResourceLoaded]);
 
   const refreshSkills = useCallback(async () => {
+    const requestId = ++refreshRequestIds.current.skills;
     try {
       const resp = await httpClient.getSkills();
+      if (requestId !== refreshRequestIds.current.skills) return;
+      setQuotaResourceLoaded('skills', true);
       setSkills(
         resp.skills.map((skill) => ({
           id: skill.name,
@@ -260,11 +332,22 @@ export function SidebarDataProvider({
         })),
       );
     } catch (error) {
+      if (requestId !== refreshRequestIds.current.skills) return;
+      setQuotaResourceLoaded('skills', false);
       console.error('Failed to fetch skills for sidebar:', error);
     }
-  }, []);
+  }, [setQuotaResourceLoaded]);
 
   const refreshAll = useCallback(async () => {
+    quotaResourceLoaded.current = {
+      bots: false,
+      pipelines: false,
+      knowledgeBases: false,
+      plugins: false,
+      mcpServers: false,
+      skills: false,
+    };
+    setQuotaDataLoaded(false);
     await Promise.all([
       refreshBots(),
       refreshPipelines(),
@@ -294,9 +377,11 @@ export function SidebarDataProvider({
         pipelines,
         knowledgeBases,
         plugins,
+        pluginCount,
         mcpServers,
         skills,
         pluginPages,
+        quotaDataLoaded,
         refreshBots,
         refreshPipelines,
         refreshKnowledgeBases,

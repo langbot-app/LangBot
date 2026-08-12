@@ -21,8 +21,14 @@ xml_template = """
 </xml>
 """
 
+_MAX_CALLBACK_BODY_BYTES = 1024 * 1024
+
 
 class OAClient:
+    _STATE_TTL_SECONDS = 600
+    _STATE_MAX = 4096
+    _MAX_CONTENT_CHARS = 200000
+
     def __init__(
         self,
         token: str,
@@ -41,6 +47,7 @@ class OAClient:
         self.access_token = ''
         self.unified_mode = unified_mode
         self.app = Quart(__name__)
+        self.app.config['MAX_CONTENT_LENGTH'] = _MAX_CALLBACK_BODY_BYTES
 
         # 只有在非统一模式下才注册独立路由
         if not self.unified_mode:
@@ -57,7 +64,37 @@ class OAClient:
         self.access_token_expiry_time = None
         self.msg_id_map = {}
         self.generated_content = {}
+        self._msg_seen_at = {}
+        self._generated_at = {}
+        self._last_state_prune = 0.0
         self.logger = logger
+
+    def _prune_state(self) -> None:
+        now = time.monotonic()
+        if now - self._last_state_prune >= 60:
+            self._last_state_prune = now
+            for message_id, seen_at in tuple(self._msg_seen_at.items()):
+                if now - seen_at > self._STATE_TTL_SECONDS:
+                    self._msg_seen_at.pop(message_id, None)
+                    self.msg_id_map.pop(message_id, None)
+            for message_id, generated_at in tuple(self._generated_at.items()):
+                if now - generated_at > self._STATE_TTL_SECONDS:
+                    self._generated_at.pop(message_id, None)
+                    self.generated_content.pop(message_id, None)
+        while len(self.msg_id_map) > self._STATE_MAX:
+            message_id = next(iter(self.msg_id_map))
+            self.msg_id_map.pop(message_id, None)
+            self._msg_seen_at.pop(message_id, None)
+        while len(self.generated_content) > self._STATE_MAX:
+            message_id = next(iter(self.generated_content))
+            self.generated_content.pop(message_id, None)
+            self._generated_at.pop(message_id, None)
+
+    def clear(self) -> None:
+        self.msg_id_map.clear()
+        self.generated_content.clear()
+        self._msg_seen_at.clear()
+        self._generated_at.clear()
 
     async def handle_callback_request(self):
         """处理回调请求（独立端口模式，使用全局 request）。"""
@@ -104,8 +141,16 @@ class OAClient:
                     raise Exception('拒绝请求')
             elif req.method == 'POST':
                 encryt_msg = await req.data
+                if len(encryt_msg) > _MAX_CALLBACK_BODY_BYTES:
+                    raise ValueError('Official Account callback body exceeds the size limit')
                 wxcpt = WXBizMsgCrypt(self.token, self.aes, self.appid)
-                ret, xml_msg = wxcpt.DecryptMsg(encryt_msg, msg_signature, timestamp, nonce)
+                ret, xml_msg = await asyncio.to_thread(
+                    wxcpt.DecryptMsg,
+                    encryt_msg,
+                    msg_signature,
+                    timestamp,
+                    nonce,
+                )
                 xml_msg = xml_msg.decode('utf-8')
 
                 if ret != 0:
@@ -118,7 +163,7 @@ class OAClient:
                     if event:
                         await self._handle_message(event)
 
-                root = ET.fromstring(xml_msg)
+                root = await asyncio.to_thread(ET.fromstring, xml_msg)
                 from_user = root.find('FromUserName').text  # 发送者
                 to_user = root.find('ToUserName').text  # 机器人
 
@@ -126,6 +171,7 @@ class OAClient:
                 interval = 0.1
                 while True:
                     content = self.generated_content.pop(message_data['MsgId'], None)
+                    self._generated_at.pop(message_data['MsgId'], None)
                     if content:
                         response_xml = xml_template.format(
                             to_user=from_user,
@@ -156,7 +202,7 @@ class OAClient:
             traceback.print_exc()
 
     async def get_message(self, xml_msg: str):
-        root = ET.fromstring(xml_msg)
+        root = await asyncio.to_thread(ET.fromstring, xml_msg)
 
         message_data = {
             'ToUserName': root.find('ToUserName').text,
@@ -193,21 +239,30 @@ class OAClient:
         处理消息事件。
         """
         message_id = event.message_id
+        self._prune_state()
         if message_id in self.msg_id_map.keys():
             self.msg_id_map[message_id] += 1
+            self._msg_seen_at[message_id] = time.monotonic()
             return
 
         self.msg_id_map[message_id] = 1
+        self._msg_seen_at[message_id] = time.monotonic()
         msg_type = event.type
         if msg_type in self._message_handlers:
             for handler in self._message_handlers[msg_type]:
                 await handler(event)
 
     async def set_message(self, msg_id: int, content: str):
-        self.generated_content[msg_id] = content
+        self.generated_content[msg_id] = str(content)[: self._MAX_CONTENT_CHARS]
+        self._generated_at[msg_id] = time.monotonic()
+        self._prune_state()
 
 
 class OAClientForLongerResponse:
+    _MAX_USERS = 4096
+    _MAX_MESSAGES_PER_USER = 20
+    _MAX_CONTENT_CHARS = 200000
+
     def __init__(
         self,
         token: str,
@@ -227,6 +282,7 @@ class OAClientForLongerResponse:
         self.access_token = ''
         self.unified_mode = unified_mode
         self.app = Quart(__name__)
+        self.app.config['MAX_CONTENT_LENGTH'] = _MAX_CALLBACK_BODY_BYTES
 
         # 只有在非统一模式下才注册独立路由
         if not self.unified_mode:
@@ -244,7 +300,27 @@ class OAClientForLongerResponse:
         self.loading_message = LoadingMessage
         self.msg_queue = {}
         self.user_msg_queue = {}
+        self._last_queue_cleanup = 0.0
         self.logger = logger
+
+    def _prune_queues(self) -> None:
+        now = time.monotonic()
+        if now - self._last_queue_cleanup >= 60:
+            self._last_queue_cleanup = now
+            for user_id, queue in tuple(self.msg_queue.items()):
+                if not queue:
+                    self.msg_queue.pop(user_id, None)
+            for user_id, queue in tuple(self.user_msg_queue.items()):
+                if not queue:
+                    self.user_msg_queue.pop(user_id, None)
+        while len(self.msg_queue) > self._MAX_USERS:
+            self.msg_queue.pop(next(iter(self.msg_queue)), None)
+        while len(self.user_msg_queue) > self._MAX_USERS:
+            self.user_msg_queue.pop(next(iter(self.user_msg_queue)), None)
+
+    def clear(self) -> None:
+        self.msg_queue.clear()
+        self.user_msg_queue.clear()
 
     async def handle_callback_request(self):
         """处理回调请求（独立端口模式，使用全局 request）。"""
@@ -285,8 +361,16 @@ class OAClientForLongerResponse:
 
             elif req.method == 'POST':
                 encryt_msg = await req.data
+                if len(encryt_msg) > _MAX_CALLBACK_BODY_BYTES:
+                    raise ValueError('Official Account callback body exceeds the size limit')
                 wxcpt = WXBizMsgCrypt(self.token, self.aes, self.appid)
-                ret, xml_msg = wxcpt.DecryptMsg(encryt_msg, msg_signature, timestamp, nonce)
+                ret, xml_msg = await asyncio.to_thread(
+                    wxcpt.DecryptMsg,
+                    encryt_msg,
+                    msg_signature,
+                    timestamp,
+                    nonce,
+                )
                 xml_msg = xml_msg.decode('utf-8')
 
                 if ret != 0:
@@ -294,7 +378,7 @@ class OAClientForLongerResponse:
                     raise Exception('消息解密失败')
 
                 # 解析 XML
-                root = ET.fromstring(xml_msg)
+                root = await asyncio.to_thread(ET.fromstring, xml_msg)
                 from_user = root.find('FromUserName').text
                 to_user = root.find('ToUserName').text
 
@@ -305,6 +389,7 @@ class OAClientForLongerResponse:
                     # 弹出用户消息
                     if self.user_msg_queue.get(from_user) and self.user_msg_queue[from_user]:
                         self.user_msg_queue[from_user].pop(0)
+                    self._prune_queues()
 
                     response_xml = xml_template.format(
                         to_user=from_user,
@@ -332,9 +417,13 @@ class OAClientForLongerResponse:
                             if event:
                                 self.user_msg_queue.setdefault(from_user, []).append(
                                     {
-                                        'content': event.message,
+                                        'content': str(event.message)[: self._MAX_CONTENT_CHARS],
                                     }
                                 )
+                                self.user_msg_queue[from_user] = self.user_msg_queue[from_user][
+                                    -self._MAX_MESSAGES_PER_USER :
+                                ]
+                                self._prune_queues()
                                 await self._handle_message(event)
 
                         return response_xml
@@ -344,7 +433,7 @@ class OAClientForLongerResponse:
             traceback.print_exc()
 
     async def get_message(self, xml_msg: str):
-        root = ET.fromstring(xml_msg)
+        root = await asyncio.to_thread(ET.fromstring, xml_msg)
 
         message_data = {
             'ToUserName': root.find('ToUserName').text,
@@ -393,6 +482,8 @@ class OAClientForLongerResponse:
         self.msg_queue[from_user].append(
             {
                 'msg_id': message_id,
-                'content': content,
+                'content': str(content)[: self._MAX_CONTENT_CHARS],
             }
         )
+        self.msg_queue[from_user] = self.msg_queue[from_user][-self._MAX_MESSAGES_PER_USER :]
+        self._prune_queues()

@@ -15,6 +15,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import DynamicFormItemComponent from '@/app/home/components/dynamic-form/DynamicFormItemComponent';
+import { normalizeDynamicFormValuesForSave } from '@/app/home/components/dynamic-form/DynamicFormSaveValues';
 import QrCodeLoginDialog, {
   QrLoginPlatform,
 } from '@/app/home/components/qrcode-login/QrCodeLoginDialog';
@@ -24,7 +25,15 @@ import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Copy, Check, Globe, Info, QrCode } from 'lucide-react';
+import {
+  Copy,
+  Check,
+  Globe,
+  Info,
+  QrCode,
+  Download,
+  ExternalLink,
+} from 'lucide-react';
 import { copyToClipboard } from '@/app/utils/clipboard';
 import {
   Tooltip,
@@ -33,6 +42,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { systemInfo } from '@/app/infra/http';
+import { getAdapterDocUrl } from '@/app/infra/entities/adapter-docs';
 
 /**
  * Resolve the value referenced by a `show_if.field` string.
@@ -134,6 +144,7 @@ function getValueSchema(spec: DynamicFormValueSpec) {
       return z.object({
         primary: z.string(),
         fallbacks: z.array(z.string()),
+        reasoning: z.record(z.string()),
       });
     case DynamicFormItemType.PROMPT_EDITOR:
       return z.array(
@@ -291,6 +302,52 @@ function WebhookUrlField({
   );
 }
 
+function DownloadLinkField({
+  label,
+  description,
+  url,
+  filename,
+  helpUrl,
+  helpLabel,
+}: {
+  label: string;
+  description?: string;
+  url: string;
+  filename?: string;
+  helpUrl?: string | null;
+  helpLabel: string;
+}) {
+  const baseUrl = import.meta.env.VITE_API_BASE_URL || window.location.origin;
+  const downloadUrl = url.startsWith('http') ? url : `${baseUrl}${url}`;
+
+  return (
+    <FormItem className="min-w-0">
+      <FormLabel className="break-words">{label}</FormLabel>
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
+        <Button asChild variant="outline" size="sm">
+          <a href={downloadUrl} download={filename}>
+            <Download className="h-4 w-4" />
+            {label}
+          </a>
+        </Button>
+        {helpUrl && (
+          <Button asChild variant="ghost" size="sm">
+            <a href={helpUrl} target="_blank" rel="noopener noreferrer">
+              <ExternalLink className="h-4 w-4" />
+              {helpLabel}
+            </a>
+          </Button>
+        )}
+      </div>
+      {description && (
+        <p className="max-w-2xl text-sm break-words text-muted-foreground">
+          {description}
+        </p>
+      )}
+    </FormItem>
+  );
+}
+
 /**
  * Display-only component for `__system.*` fields (e.g. the deployment's
  * outbound IPs that the operator must add to a platform's trusted-IP list).
@@ -405,7 +462,7 @@ export default function DynamicFormComponent({
 }) {
   const isInitialMount = useRef(true);
   const previousInitialValues = useRef(initialValues);
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
 
   // Normalize a form value according to its field type.
   // This ensures legacy/malformed data (e.g. a plain string for
@@ -432,12 +489,24 @@ export default function DynamicFormComponent({
                 (v): v is string => typeof v === 'string',
               )
             : [],
+          reasoning:
+            obj.reasoning != null &&
+            typeof obj.reasoning === 'object' &&
+            !Array.isArray(obj.reasoning)
+              ? Object.fromEntries(
+                  Object.entries(obj.reasoning).filter(
+                    (entry): entry is [string, string] =>
+                      typeof entry[1] === 'string',
+                  ),
+                )
+              : {},
         };
       }
       // Legacy string format or any other unexpected type
       return {
         primary: typeof value === 'string' ? value : '',
         fallbacks: [],
+        reasoning: {},
       };
     }
     if (item.type === 'prompt-editor') {
@@ -460,6 +529,7 @@ export default function DynamicFormComponent({
           item.type !== 'webhook-url' &&
           item.type !== 'embed-code' &&
           item.type !== 'qr-code-login' &&
+          item.type !== 'download-link' &&
           !item.name.startsWith(SYSTEM_FIELD_PREFIX),
       ),
     [itemConfigList],
@@ -575,12 +645,9 @@ export default function DynamicFormComponent({
     // even if the user saves without modifying any field.
     // form.watch(callback) only fires on subsequent changes, not on mount.
     const formValues = form.getValues();
-    const initialFinalValues = editableValueSpecs.reduce(
-      (acc, item) => {
-        acc[item.name] = formValues[item.name] ?? item.default;
-        return acc;
-      },
-      {} as Record<string, object>,
+    const initialFinalValues = normalizeDynamicFormValuesForSave(
+      editableValueSpecs,
+      formValues as Record<string, unknown>,
     );
     onSubmitRef.current?.(initialFinalValues);
 
@@ -595,12 +662,9 @@ export default function DynamicFormComponent({
 
     const subscription = form.watch(() => {
       const formValues = form.getValues();
-      const finalValues = editableValueSpecs.reduce(
-        (acc, item) => {
-          acc[item.name] = formValues[item.name] ?? item.default;
-          return acc;
-        },
-        {} as Record<string, object>,
+      const finalValues = normalizeDynamicFormValuesForSave(
+        editableValueSpecs,
+        formValues as Record<string, unknown>,
       );
       onSubmitRef.current?.(finalValues);
       previousInitialValues.current = finalValues as Record<string, object>;
@@ -776,6 +840,30 @@ export default function DynamicFormComponent({
                     : undefined
                 }
                 snippet={embedSnippet}
+              />
+            );
+          }
+
+          if (config.type === 'download-link') {
+            if (!config.url) return null;
+
+            return (
+              <DownloadLinkField
+                key={config.id}
+                label={extractI18nObject(config.label)}
+                description={
+                  config.description
+                    ? extractI18nObject(config.description)
+                    : undefined
+                }
+                url={config.url}
+                filename={config.download_filename}
+                helpUrl={getAdapterDocUrl(config.help_links, i18n.language)}
+                helpLabel={
+                  config.help_label
+                    ? extractI18nObject(config.help_label)
+                    : t('bots.viewAdapterDocs')
+                }
               />
             );
           }

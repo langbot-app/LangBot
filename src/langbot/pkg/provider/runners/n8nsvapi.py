@@ -12,6 +12,8 @@ from ...core import app
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
 
+_MAX_N8N_RESPONSE_CHARS = 1024 * 1024
+
 
 class N8nAPIError(Exception):
     """N8n API 请求失败"""
@@ -94,6 +96,8 @@ class N8nServiceAPIRunner(runner.RequestRunner):
                 else:
                     chunk_str = str(raw_chunk)
 
+                if len(full_text) + len(chunk_str) > _MAX_N8N_RESPONSE_CHARS:
+                    raise N8nAPIError('n8n response exceeds the runtime limit')
                 full_text += chunk_str
                 buffer += chunk_str
 
@@ -112,7 +116,9 @@ class N8nServiceAPIRunner(runner.RequestRunner):
 
                         if obj.get('type') == 'item' and 'content' in obj:
                             chunk_idx += 1
-                            content = obj['content']
+                            content = str(obj['content'])
+                            if len(full_content) + len(content) > _MAX_N8N_RESPONSE_CHARS:
+                                raise N8nAPIError('n8n response exceeds the runtime limit')
                             full_content += content
                         elif obj.get('type') == 'end':
                             is_final = True
@@ -128,6 +134,8 @@ class N8nServiceAPIRunner(runner.RequestRunner):
                     except json.JSONDecodeError:
                         # buffer 末尾可能是一个不完整的 JSON，等待更多数据
                         break
+            except N8nAPIError:
+                raise
             except Exception as e:
                 # 记录解析失败并继续接收后续 chunk
                 try:
@@ -255,7 +263,12 @@ class N8nServiceAPIRunner(runner.RequestRunner):
                 self.webhook_url, json=payload, headers=headers, auth=auth, timeout=self.timeout
             ) as response:
                 if response.status != 200:
-                    error_text = await response.text()
+                    error_text = (
+                        await httpclient.read_limited(
+                            response,
+                            max_bytes=_MAX_N8N_RESPONSE_CHARS,
+                        )
+                    ).decode('utf-8', errors='replace')
                     self.ap.logger.error(f'n8n webhook call failed: {response.status}, {error_text}')
                     raise Exception(f'n8n webhook call failed: {response.status}, {error_text}')
 

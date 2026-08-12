@@ -280,6 +280,122 @@ class TestInvokeLLMStreamUsage:
         assert query.variables['_stream_usage']['total_tokens'] == 12
 
     @pytest.mark.asyncio
+    async def test_stream_removes_leading_think_across_chunks(self):
+        """A leading think block split across chunks must be removed."""
+        import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
+        import langbot_plugin.api.entities.builtin.provider.message as provider_message
+
+        mock_ap = Mock()
+        mock_ap.tool_mgr = Mock()
+        mock_ap.tool_mgr.generate_tools_for_openai = AsyncMock(return_value=None)
+        requester = litellmchat.LiteLLMRequester(ap=mock_ap, config={})
+        model = MockRuntimeModel('minimax-m3', 'test-api-key')
+
+        chunks = [
+            self._make_chunk(content='<thi'),
+            self._make_chunk(content='nk>hidden'),
+            self._make_chunk(content=' reasoning</thi'),
+            self._make_chunk(content='nk>Visible answer', finish_reason='stop'),
+        ]
+
+        async def _aiter(*args, **kwargs):
+            for c in chunks:
+                yield c
+
+        query = Mock(spec=pipeline_query.Query)
+        query.variables = {}
+        messages = [provider_message.Message(role='user', content='Hi')]
+
+        with patch.object(litellmchat, 'acompletion', new=AsyncMock(side_effect=lambda **kw: _aiter())):
+            collected = [
+                chunk
+                async for chunk in requester.invoke_llm_stream(
+                    query=query,
+                    model=model,
+                    messages=messages,
+                    remove_think=True,
+                )
+            ]
+
+        assert ''.join(chunk.content or '' for chunk in collected) == 'Visible answer'
+
+    @pytest.mark.asyncio
+    async def test_stream_removes_initial_orphan_think_close(self):
+        """Initial reasoning content without an open tag is removed until </think>."""
+        import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
+        import langbot_plugin.api.entities.builtin.provider.message as provider_message
+
+        mock_ap = Mock()
+        mock_ap.tool_mgr = Mock()
+        mock_ap.tool_mgr.generate_tools_for_openai = AsyncMock(return_value=None)
+        requester = litellmchat.LiteLLMRequester(ap=mock_ap, config={})
+        model = MockRuntimeModel('minimax-m3', 'test-api-key')
+
+        chunks = [
+            self._make_chunk(content='hidden reasoning'),
+            self._make_chunk(content=' still hidden</thi'),
+            self._make_chunk(content='nk>Visible answer', finish_reason='stop'),
+        ]
+
+        async def _aiter(*args, **kwargs):
+            for c in chunks:
+                yield c
+
+        query = Mock(spec=pipeline_query.Query)
+        query.variables = {}
+        messages = [provider_message.Message(role='user', content='Hi')]
+
+        with patch.object(litellmchat, 'acompletion', new=AsyncMock(side_effect=lambda **kw: _aiter())):
+            collected = [
+                chunk
+                async for chunk in requester.invoke_llm_stream(
+                    query=query,
+                    model=model,
+                    messages=messages,
+                    remove_think=True,
+                )
+            ]
+
+        assert ''.join(chunk.content or '' for chunk in collected) == 'Visible answer'
+
+    @pytest.mark.asyncio
+    async def test_stream_removes_non_leading_think_content(self):
+        """A think block in the answer body is removed with its content."""
+        import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
+        import langbot_plugin.api.entities.builtin.provider.message as provider_message
+
+        mock_ap = Mock()
+        mock_ap.tool_mgr = Mock()
+        mock_ap.tool_mgr.generate_tools_for_openai = AsyncMock(return_value=None)
+        requester = litellmchat.LiteLLMRequester(ap=mock_ap, config={})
+        model = MockRuntimeModel('gpt-4o', 'test-api-key')
+
+        chunks = [
+            self._make_chunk(content='Use <think>x</think> as an XML-like example.', finish_reason='stop'),
+        ]
+
+        async def _aiter(*args, **kwargs):
+            for c in chunks:
+                yield c
+
+        query = Mock(spec=pipeline_query.Query)
+        query.variables = {}
+        messages = [provider_message.Message(role='user', content='Hi')]
+
+        with patch.object(litellmchat, 'acompletion', new=AsyncMock(side_effect=lambda **kw: _aiter())):
+            collected = [
+                chunk
+                async for chunk in requester.invoke_llm_stream(
+                    query=query,
+                    model=model,
+                    messages=messages,
+                    remove_think=True,
+                )
+            ]
+
+        assert ''.join(chunk.content or '' for chunk in collected) == 'Use  as an XML-like example.'
+
+    @pytest.mark.asyncio
     async def test_stream_tool_call_delta_missing_id_and_name(self):
         """LiteLLM may stream tool-call argument deltas with id/name set to None."""
         import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
@@ -482,6 +598,38 @@ class TestProcessThinkingContent:
         result = requester._process_thinking_content(content, None, remove_think=True)
         assert result == 'The answer is 42.'
 
+    def test_remove_leading_think_tag(self):
+        """Test removing a leading <think> block when remove_think=True"""
+        requester = litellmchat.LiteLLMRequester(ap=Mock(), config={})
+
+        content = '<think>Let me think...</think> The answer is 42.'
+        result = requester._process_thinking_content(content, None, remove_think=True)
+        assert result == 'The answer is 42.'
+
+    def test_remove_non_leading_think_tag(self):
+        """Test removing <think> and its content in the answer body"""
+        requester = litellmchat.LiteLLMRequester(ap=Mock(), config={})
+
+        content = 'Use <think>example</think> in the document.'
+        result = requester._process_thinking_content(content, None, remove_think=True)
+        assert result == 'Use  in the document.'
+
+    def test_remove_initial_orphan_think_close(self):
+        """Test removing leading reasoning content when only </think> is visible"""
+        requester = litellmchat.LiteLLMRequester(ap=Mock(), config={})
+
+        content = 'hidden reasoning</think> Visible answer.'
+        result = requester._process_thinking_content(content, None, remove_think=True)
+        assert result == 'Visible answer.'
+
+    def test_remove_multiple_think_tags(self):
+        """Test removing multiple <think> blocks"""
+        requester = litellmchat.LiteLLMRequester(ap=Mock(), config={})
+
+        content = '<think>hidden</think> Keep <think>example</think>.'
+        result = requester._process_thinking_content(content, None, remove_think=True)
+        assert result == 'Keep .'
+
     def test_preserve_thinking_markers(self):
         """Test preserving thinking markers when remove_think=False"""
         requester = litellmchat.LiteLLMRequester(ap=Mock(), config={})
@@ -490,6 +638,20 @@ class TestProcessThinkingContent:
         result = requester._process_thinking_content(content, None, remove_think=False)
         assert 'CRETIRE_REASONING_BEGINk' in result
         assert 'The answer is 42.' in result
+
+    def test_preserve_reasoning_content_when_remove_think_false(self):
+        """Test showing separate reasoning_content when remove_think=False"""
+        requester = litellmchat.LiteLLMRequester(ap=Mock(), config={})
+
+        result = requester._process_thinking_content('The answer is 42.', 'Let me think...', remove_think=False)
+        assert result == '<think>\nLet me think...\n</think>\nThe answer is 42.'
+
+    def test_hide_reasoning_content_when_remove_think_true(self):
+        """Test hiding separate reasoning_content when remove_think=True"""
+        requester = litellmchat.LiteLLMRequester(ap=Mock(), config={})
+
+        result = requester._process_thinking_content('The answer is 42.', 'Let me think...', remove_think=True)
+        assert result == 'The answer is 42.'
 
     def test_empty_content(self):
         """Test empty content"""
@@ -985,6 +1147,46 @@ class TestInvokeRerank:
         assert results[0]['relevance_score'] == 1.0
         assert results[1]['relevance_score'] == 0.0
 
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ('model_extra_args', 'expected_url'),
+        [
+            ({'rerank_path': 'reranks'}, 'https://gateway.example.com/v1/reranks'),
+            ({'rerank_url': 'https://rerank.example.com/api/rerank'}, 'https://rerank.example.com/api/rerank'),
+        ],
+    )
+    async def test_invoke_rerank_openai_compatible_endpoint_override(self, model_extra_args, expected_url):
+        """Endpoint configuration controls routing and is not sent in the Cohere body."""
+        requester = litellmchat.LiteLLMRequester(
+            ap=Mock(),
+            config={
+                'base_url': 'https://gateway.example.com/v1/',
+                'custom_llm_provider': 'openai',
+            },
+        )
+        model = MockRuntimeRerankModel('Qwen3-Reranker-8B', 'test-api-key')
+        model.model_entity.extra_args = model_extra_args
+
+        mock_resp = Mock()
+        mock_resp.raise_for_status = Mock()
+        mock_resp.json = Mock(return_value={'results': [{'index': 0, 'relevance_score': 0.8}]})
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(return_value=mock_resp)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch('httpx.AsyncClient', return_value=mock_client):
+            await requester.invoke_rerank(model=model, query='query', documents=['document'])
+
+        assert mock_client.post.call_args.args[0] == expected_url
+        payload = mock_client.post.call_args.kwargs['json']
+        assert payload == {
+            'model': 'Qwen3-Reranker-8B',
+            'query': 'query',
+            'documents': ['document'],
+            'top_n': 1,
+        }
+
 
 class TestConvertMessages:
     """Test _convert_messages method"""
@@ -1102,6 +1304,7 @@ class TestScanModels:
         )
         requester._supports_function_calling = Mock(side_effect=lambda model_id: model_id == 'gpt-4o')
         requester._supports_vision = Mock(side_effect=lambda model_id: model_id == 'gpt-4o')
+        requester._supports_reasoning = Mock(side_effect=lambda model_id: model_id == 'o3')
         requester._safe_context_length = Mock(side_effect=lambda model_id: 128000 if model_id == 'gpt-4o' else None)
 
         mock_response = Mock()
@@ -1109,6 +1312,7 @@ class TestScanModels:
             return_value={
                 'data': [
                     {'id': 'gpt-4o'},
+                    {'id': 'o3'},
                     {'id': 'text-embedding-3-small'},
                     {'id': 'bge-reranker-v2'},
                 ]
@@ -1125,6 +1329,7 @@ class TestScanModels:
         by_id = {model['id']: model for model in result['models']}
         assert by_id['gpt-4o']['abilities'] == ['func_call', 'vision']
         assert by_id['gpt-4o']['context_length'] == 128000
+        assert by_id['o3']['abilities'] == ['reasoning']
         assert by_id['text-embedding-3-small']['type'] == 'embedding'
         assert by_id['bge-reranker-v2']['type'] == 'rerank'
 
@@ -1172,8 +1377,8 @@ class TestScanModels:
         )
 
         with patch.object(litellmchat.litellm, 'get_model_info') as mock_get_model_info:
-            mock_get_model_info.side_effect = (
-                lambda model: {'max_input_tokens': 131072} if model == 'moonshot/moonshot-v1-128k' else {}
+            mock_get_model_info.side_effect = lambda model: (
+                {'max_input_tokens': 131072} if model == 'moonshot/moonshot-v1-128k' else {}
             )
 
             assert requester._safe_context_length('moonshot-v1-128k') == 131072
@@ -1202,8 +1407,8 @@ class TestScanModels:
         )
 
         with patch.object(litellmchat.litellm, 'supports_function_calling') as mock_supports_function_calling:
-            mock_supports_function_calling.side_effect = (
-                lambda model, custom_llm_provider=None: model == 'moonshot/kimi-k2.6' and custom_llm_provider is None
+            mock_supports_function_calling.side_effect = lambda model, custom_llm_provider=None: (
+                model == 'moonshot/kimi-k2.6' and custom_llm_provider is None
             )
 
             assert requester._supports_function_calling('kimi-k2.6') is True

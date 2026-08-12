@@ -1,9 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import dataclasses
+import functools
 import json
 import re
+import time
 import traceback
+import uuid
 import sqlalchemy
 
 from ..core import app, entities as core_entities, taskmgr
@@ -12,8 +17,12 @@ from ..discover import engine
 
 from ..entity.persistence import bot as persistence_bot
 from ..entity.persistence import pipeline as persistence_pipeline
+from ..entity.persistence import workspace as persistence_workspace
 
 from ..entity.errors import platform as platform_errors
+from ..api.http.context import ExecutionContext, PrincipalContext, PrincipalType, RequestContext
+from ..api.http.authz import WorkspaceRequiredError
+from ..workspace.errors import WorkspaceInvariantError
 
 from .logger import EventLogger
 
@@ -34,11 +43,17 @@ class RuntimeBot:
 
     adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter
 
-    task_wrapper: taskmgr.TaskWrapper
+    task_wrapper: taskmgr.TaskWrapper | None
 
     task_context: taskmgr.TaskContext
 
     logger: EventLogger
+
+    execution_context: ExecutionContext
+
+    workspace_uuid: str
+
+    placement_generation: int
 
     def __init__(
         self,
@@ -46,13 +61,40 @@ class RuntimeBot:
         bot_entity: persistence_bot.Bot,
         adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
         logger: EventLogger,
+        execution_context: ExecutionContext,
     ):
+        if not isinstance(execution_context, ExecutionContext):
+            raise WorkspaceRequiredError('RuntimeBot requires an ExecutionContext')
+        if not execution_context.instance_uuid.strip() or not execution_context.workspace_uuid.strip():
+            raise WorkspaceRequiredError('RuntimeBot requires an instance and Workspace')
+        if execution_context.placement_generation <= 0:
+            raise WorkspaceRequiredError('RuntimeBot requires a positive placement generation')
+        entity_workspace_uuid = getattr(bot_entity, 'workspace_uuid', None)
+        if entity_workspace_uuid != execution_context.workspace_uuid:
+            raise WorkspaceRequiredError('RuntimeBot entity Workspace does not match its ExecutionContext')
+        if execution_context.bot_uuid not in (None, bot_entity.uuid):
+            raise WorkspaceRequiredError('RuntimeBot bot UUID does not match its ExecutionContext')
+
         self.ap = ap
         self.bot_entity = bot_entity
+        self.execution_context = dataclasses.replace(execution_context, bot_uuid=bot_entity.uuid)
+        self.workspace_uuid = self.execution_context.workspace_uuid
+        self.placement_generation = self.execution_context.placement_generation
         self.enable = bot_entity.enable
         self.adapter = adapter
         self.task_context = taskmgr.TaskContext()
+        self.task_wrapper = None
         self.logger = logger
+        self._shutdown_lock = asyncio.Lock()
+        self._shutdown_complete = False
+
+    async def assert_execution_active(self) -> None:
+        """Fail closed when this long-lived adapter belongs to a stale placement."""
+
+        await self.ap.workspace_service.get_execution_binding(
+            self.workspace_uuid,
+            expected_generation=self.placement_generation,
+        )
 
     @staticmethod
     def _match_operator(actual: str, operator: str, expected: str) -> bool:
@@ -135,6 +177,28 @@ class RuntimeBot:
 
         return self.bot_entity.use_pipeline_uuid, False
 
+    def resolve_event_pipeline_uuid(
+        self,
+        adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
+        launcher_type: str,
+        launcher_id: str,
+        message_text: str,
+        message_element_types: list[str] | None = None,
+    ) -> tuple[str | None, bool]:
+        """Resolve a pipeline, honoring a trusted per-task adapter override."""
+
+        get_override = getattr(adapter, 'get_pipeline_uuid_override', None)
+        if callable(get_override):
+            override = get_override()
+            if override:
+                return str(override), False
+        return self.resolve_pipeline_uuid(
+            launcher_type,
+            launcher_id,
+            message_text,
+            message_element_types,
+        )
+
     async def _record_discarded_message(
         self,
         launcher_type: provider_session.LauncherTypes,
@@ -162,6 +226,7 @@ class RuntimeBot:
             platform = launcher_type.value if hasattr(launcher_type, 'value') else str(launcher_type)
 
             await self.ap.monitoring_service.record_message(
+                self.execution_context,
                 bot_id=self.bot_entity.uuid,
                 bot_name=self.bot_entity.name or self.bot_entity.uuid,
                 pipeline_id=self.PIPELINE_DISCARD,
@@ -179,11 +244,13 @@ class RuntimeBot:
             # Don't overwrite pipeline info — a session may have messages from
             # multiple pipelines; discarding shouldn't change the displayed pipeline.
             session_updated = await self.ap.monitoring_service.update_session_activity(
+                self.execution_context,
                 session_id,
             )
             if not session_updated:
                 # No session yet (first message for this launcher was discarded).
                 await self.ap.monitoring_service.record_session_start(
+                    self.execution_context,
                     session_id=session_id,
                     bot_id=self.bot_entity.uuid,
                     bot_name=self.bot_entity.name or self.bot_entity.uuid,
@@ -197,10 +264,29 @@ class RuntimeBot:
             await self.logger.error(f'Failed to record discarded message: {e}')
 
     async def initialize(self):
+        def tenant_scoped_listener(listener):
+            """Bind adapter callbacks to a Workspace without holding a DB transaction."""
+
+            @functools.wraps(listener)
+            async def wrapped(*args, **kwargs):
+                tenant_scope = getattr(self.ap.persistence_mgr, 'tenant_scope', None)
+                cloud_runtime = (
+                    getattr(getattr(self.ap.persistence_mgr, 'mode', None), 'value', None) == 'cloud_runtime'
+                )
+                if cloud_runtime:
+                    if not callable(tenant_scope):
+                        raise RuntimeError('Cloud platform callbacks require an explicit tenant scope')
+                    async with tenant_scope(self.workspace_uuid):
+                        return await listener(*args, **kwargs)
+                return await listener(*args, **kwargs)
+
+            return wrapped
+
         async def on_friend_message(
             event: platform_events.FriendMessage,
             adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
         ):
+            await self.assert_execution_active()
             image_components = [
                 component for component in event.message_chain if isinstance(component, platform_message.Image)
             ]
@@ -215,7 +301,10 @@ class RuntimeBot:
             skip_pipeline = False
             if hasattr(self.ap, 'webhook_pusher') and self.ap.webhook_pusher:
                 skip_pipeline = await self.ap.webhook_pusher.push_person_message(
-                    event, self.bot_entity.uuid, adapter.__class__.__name__
+                    self.execution_context,
+                    event,
+                    self.bot_entity.uuid,
+                    adapter.__class__.__name__,
                 )
 
             # Only add to query pool if no webhook requested to skip pipeline
@@ -229,8 +318,12 @@ class RuntimeBot:
 
                 message_text = str(event.message_chain)
                 element_types = [comp.type for comp in event.message_chain]
-                pipeline_uuid, routed_by_rule = self.resolve_pipeline_uuid(
-                    'person', launcher_id, message_text, element_types
+                pipeline_uuid, routed_by_rule = self.resolve_event_pipeline_uuid(
+                    adapter,
+                    'person',
+                    launcher_id,
+                    message_text,
+                    element_types,
                 )
 
                 if pipeline_uuid == self.PIPELINE_DISCARD:
@@ -254,6 +347,7 @@ class RuntimeBot:
                     adapter=adapter,
                     pipeline_uuid=pipeline_uuid,
                     routed_by_rule=routed_by_rule,
+                    execution_context=self.execution_context,
                 )
             else:
                 await self.logger.info('Pipeline skipped for person message due to webhook response')
@@ -262,6 +356,7 @@ class RuntimeBot:
             event: platform_events.GroupMessage,
             adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
         ):
+            await self.assert_execution_active()
             image_components = [
                 component for component in event.message_chain if isinstance(component, platform_message.Image)
             ]
@@ -276,7 +371,10 @@ class RuntimeBot:
             skip_pipeline = False
             if hasattr(self.ap, 'webhook_pusher') and self.ap.webhook_pusher:
                 skip_pipeline = await self.ap.webhook_pusher.push_group_message(
-                    event, self.bot_entity.uuid, adapter.__class__.__name__
+                    self.execution_context,
+                    event,
+                    self.bot_entity.uuid,
+                    adapter.__class__.__name__,
                 )
 
             # Only add to query pool if no webhook requested to skip pipeline
@@ -290,8 +388,12 @@ class RuntimeBot:
 
                 message_text = str(event.message_chain)
                 element_types = [comp.type for comp in event.message_chain]
-                pipeline_uuid, routed_by_rule = self.resolve_pipeline_uuid(
-                    'group', launcher_id, message_text, element_types
+                pipeline_uuid, routed_by_rule = self.resolve_event_pipeline_uuid(
+                    adapter,
+                    'group',
+                    launcher_id,
+                    message_text,
+                    element_types,
                 )
 
                 if pipeline_uuid == self.PIPELINE_DISCARD:
@@ -315,12 +417,13 @@ class RuntimeBot:
                     adapter=adapter,
                     pipeline_uuid=pipeline_uuid,
                     routed_by_rule=routed_by_rule,
+                    execution_context=self.execution_context,
                 )
             else:
                 await self.logger.info('Pipeline skipped for group message due to webhook response')
 
-        self.adapter.register_listener(platform_events.FriendMessage, on_friend_message)
-        self.adapter.register_listener(platform_events.GroupMessage, on_group_message)
+        self.adapter.register_listener(platform_events.FriendMessage, tenant_scoped_listener(on_friend_message))
+        self.adapter.register_listener(platform_events.GroupMessage, tenant_scoped_listener(on_group_message))
 
         # Register feedback listener (only effective on adapters that support it)
         async def on_feedback(
@@ -328,13 +431,15 @@ class RuntimeBot:
             adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
         ):
             try:
+                await self.assert_execution_active()
                 # Resolve pipeline name
                 pipeline_name = ''
                 if self.bot_entity.use_pipeline_uuid:
                     try:
                         pipeline_result = await self.ap.persistence_mgr.execute_async(
                             sqlalchemy.select(persistence_pipeline.LegacyPipeline.name).where(
-                                persistence_pipeline.LegacyPipeline.uuid == self.bot_entity.use_pipeline_uuid
+                                persistence_pipeline.LegacyPipeline.workspace_uuid == self.workspace_uuid,
+                                persistence_pipeline.LegacyPipeline.uuid == self.bot_entity.use_pipeline_uuid,
                             )
                         )
                         pipeline_row = pipeline_result.first()
@@ -344,6 +449,7 @@ class RuntimeBot:
                         pass
 
                 await self.ap.monitoring_service.record_feedback(
+                    self.execution_context,
                     feedback_id=event.feedback_id,
                     feedback_type=event.feedback_type,
                     feedback_content=event.feedback_content,
@@ -364,7 +470,7 @@ class RuntimeBot:
             except Exception:
                 await self.logger.error(f'Failed to record feedback: {traceback.format_exc()}')
 
-        self.adapter.register_listener(platform_events.FeedbackEvent, on_feedback)
+        self.adapter.register_listener(platform_events.FeedbackEvent, tenant_scoped_listener(on_feedback))
 
     async def run(self):
         async def exception_wrapper():
@@ -390,12 +496,27 @@ class RuntimeBot:
                 core_entities.LifecycleControlScope.APPLICATION,
                 core_entities.LifecycleControlScope.PLATFORM,
             ],
+            instance_uuid=self.execution_context.instance_uuid,
+            workspace_uuid=self.execution_context.workspace_uuid,
+            placement_generation=(self.execution_context.placement_generation),
         )
 
     async def shutdown(self):
-        await self.adapter.kill()
+        async with self._shutdown_lock:
+            if self._shutdown_complete:
+                return
 
-        self.ap.task_mgr.cancel_task(self.task_wrapper.id)
+            wrapper = self.task_wrapper
+            self.task_wrapper = None
+            try:
+                await asyncio.wait_for(self.adapter.kill(), timeout=15)
+            finally:
+                if wrapper is not None:
+                    self.ap.task_mgr.cancel_task(wrapper.id)
+                    if wrapper.task is not asyncio.current_task():
+                        with contextlib.suppress(asyncio.CancelledError, asyncio.TimeoutError):
+                            await asyncio.wait_for(wrapper.task, timeout=5)
+            self._shutdown_complete = True
 
 
 # 控制QQ消息输入输出的类
@@ -405,7 +526,7 @@ class PlatformManager:
 
     bots: list[RuntimeBot]
 
-    websocket_proxy_bot: RuntimeBot
+    websocket_proxy_bots: dict[str, RuntimeBot]
 
     adapter_components: list[engine.Component]
 
@@ -413,9 +534,140 @@ class PlatformManager:
 
     def __init__(self, ap: app.Application = None):
         self.ap = ap
-        self.bots = []
+        self._bots_by_key: dict[tuple[str, str, str], RuntimeBot] = {}
+        self._bot_keys_by_workspace: dict[
+            str,
+            set[tuple[str, str, str]],
+        ] = {}
+        self._bot_keys_by_uuid: dict[str, set[tuple[str, str, str]]] = {}
+        self.websocket_proxy_bots = {}
         self.adapter_components = []
         self.adapter_dict = {}
+        self._scope_generations: dict[tuple[str, str], int] = {}
+        self._proxy_last_accessed: dict[str, float] = {}
+        self._runtime_mutation_lock = asyncio.Lock()
+
+    @staticmethod
+    def _runtime_bot_key(bot: RuntimeBot) -> tuple[str, str, str]:
+        context = getattr(bot, 'execution_context', None)
+        instance_uuid = str(getattr(context, 'instance_uuid', '__test_instance__'))
+        workspace_uuid = str(
+            getattr(bot, 'workspace_uuid', None) or getattr(context, 'workspace_uuid', '__test_workspace__')
+        )
+        bot_uuid = str(
+            getattr(getattr(bot, 'bot_entity', None), 'uuid', None)
+            or getattr(context, 'bot_uuid', None)
+            or f'__runtime_{id(bot)}'
+        )
+        return instance_uuid, workspace_uuid, bot_uuid
+
+    def _register_runtime_bot(self, bot: RuntimeBot) -> RuntimeBot | None:
+        key = self._runtime_bot_key(bot)
+        previous = self._bots_by_key.get(key)
+        self._bots_by_key[key] = bot
+        self._bot_keys_by_workspace.setdefault(key[1], set()).add(key)
+        self._bot_keys_by_uuid.setdefault(key[2], set()).add(key)
+        return previous
+
+    def _pop_runtime_bot(
+        self,
+        key: tuple[str, str, str],
+    ) -> RuntimeBot | None:
+        bot = self._bots_by_key.pop(key, None)
+        if bot is None:
+            return None
+        workspace_keys = self._bot_keys_by_workspace.get(key[1])
+        if workspace_keys is not None:
+            workspace_keys.discard(key)
+            if not workspace_keys:
+                self._bot_keys_by_workspace.pop(key[1], None)
+        uuid_keys = self._bot_keys_by_uuid.get(key[2])
+        if uuid_keys is not None:
+            uuid_keys.discard(key)
+            if not uuid_keys:
+                self._bot_keys_by_uuid.pop(key[2], None)
+        return bot
+
+    @property
+    def bots(self) -> list[RuntimeBot]:
+        """Compatibility view over the indexed platform runtime registry."""
+
+        return list(self._bots_by_key.values())
+
+    @bots.setter
+    def bots(self, bots: list[RuntimeBot]) -> None:
+        self._bots_by_key = {}
+        self._bot_keys_by_workspace = {}
+        self._bot_keys_by_uuid = {}
+        for bot in bots:
+            self._register_runtime_bot(bot)
+
+    def _max_workspace_proxies(self) -> int:
+        instance_data = getattr(
+            getattr(self.ap, 'instance_config', None),
+            'data',
+            {},
+        )
+        value = instance_data.get('system', {}).get('websocket_retention', {}).get('max_workspace_proxies', 1024)
+        try:
+            return max(int(value), 1)
+        except (TypeError, ValueError):
+            return 1024
+
+    async def _evict_idle_websocket_proxy_unlocked(self) -> None:
+        """Make room without interrupting a live socket or in-flight query."""
+
+        if len(self.websocket_proxy_bots) < self._max_workspace_proxies():
+            return
+        from .sources.websocket_manager import WebSocketScope, ws_connection_manager
+
+        for workspace_uuid in sorted(
+            self.websocket_proxy_bots,
+            key=lambda item: self._proxy_last_accessed.get(item, 0.0),
+        ):
+            proxy_bot = self.websocket_proxy_bots[workspace_uuid]
+            listener_tasks = getattr(proxy_bot.adapter, 'inbound_listener_tasks', ())
+            if any(not task.done() for task in tuple(listener_tasks)):
+                continue
+            scope = WebSocketScope.from_context(proxy_bot.execution_context)
+            if ws_connection_manager.get_stats(scope=scope)['total_connections'] > 0:
+                continue
+            self.websocket_proxy_bots.pop(workspace_uuid, None)
+            self._proxy_last_accessed.pop(workspace_uuid, None)
+            await proxy_bot.shutdown()
+            if not self._bot_keys_by_workspace.get(workspace_uuid):
+                self._scope_generations.pop(
+                    (proxy_bot.execution_context.instance_uuid, workspace_uuid),
+                    None,
+                )
+            return
+        raise RuntimeError('WebSocket Workspace proxy capacity reached and every proxy is active')
+
+    async def _observe_execution_context(self, context: ExecutionContext) -> None:
+        """Shutdown superseded Workspace adapters when placement advances."""
+
+        async with self._runtime_mutation_lock:
+            await self._observe_execution_context_unlocked(context)
+
+    async def _observe_execution_context_unlocked(self, context: ExecutionContext) -> None:
+        scope = (context.instance_uuid, context.workspace_uuid)
+        previous_generation = self._scope_generations.get(scope)
+        if previous_generation is not None and context.placement_generation < previous_generation:
+            raise WorkspaceInvariantError('Platform runtime placement generation rolled back')
+        if previous_generation == context.placement_generation:
+            return
+        if previous_generation is not None:
+            proxy_bot = self.websocket_proxy_bots.pop(context.workspace_uuid, None)
+            self._proxy_last_accessed.pop(context.workspace_uuid, None)
+            if proxy_bot is not None and proxy_bot.enable:
+                await proxy_bot.shutdown()
+            for key in tuple(self._bot_keys_by_workspace.get(context.workspace_uuid, ())):
+                bot = self._pop_runtime_bot(key)
+                if bot is None:
+                    continue
+                if bot.enable:
+                    await bot.shutdown()
+        self._scope_generations[scope] = context.placement_generation
 
     async def initialize(self):
         # delete all bot log images
@@ -435,48 +687,248 @@ class PlatformManager:
         if disabled_adapters:
             self.adapter_components = [c for c in self.adapter_components if c.metadata.name not in disabled_adapters]
 
-        # initialize websocket adapter
-        websocket_adapter_class = self.adapter_dict['websocket']
-        websocket_logger = EventLogger(name='websocket-adapter', ap=self.ap)
-        websocket_adapter_inst = websocket_adapter_class(
-            {},
-            websocket_logger,
-            ap=self.ap,
-        )
-
-        self.websocket_proxy_bot = RuntimeBot(
-            ap=self.ap,
-            bot_entity=persistence_bot.Bot(
-                uuid='websocket-proxy-bot',
-                name='WebSocket',
-                description='',
-                adapter='websocket',
-                adapter_config={},
-                enable=True,
-            ),
-            adapter=websocket_adapter_inst,
-            logger=websocket_logger,
-        )
-        await self.websocket_proxy_bot.initialize()
-
         await self.load_bots_from_db()
 
-    def get_running_adapters(self) -> list[abstract_platform_adapter.AbstractMessagePlatformAdapter]:
-        return [bot.adapter for bot in self.bots if bot.enable]
+        # OSS may have no persisted bots.  Its singleton Workspace still needs
+        # a debug WebSocket proxy.  SaaS creates proxies lazily from an explicit
+        # request/runtime context instead of guessing among Workspaces.
+        if not self.websocket_proxy_bots:
+            try:
+                binding = await self.ap.workspace_service.get_execution_binding()
+            except Exception:
+                pass
+            else:
+                await self.get_websocket_proxy_bot(
+                    ExecutionContext(
+                        instance_uuid=binding.instance_uuid,
+                        workspace_uuid=binding.workspace_uuid,
+                        placement_generation=binding.placement_generation,
+                        trigger_principal=PrincipalContext(PrincipalType.SYSTEM),
+                    )
+                )
+
+    @property
+    def websocket_proxy_bot(self) -> RuntimeBot:
+        """Compatibility accessor that is safe only for a singleton Workspace."""
+
+        if len(self.websocket_proxy_bots) != 1:
+            raise WorkspaceRequiredError('An explicit Workspace is required for the WebSocket proxy bot')
+        return next(iter(self.websocket_proxy_bots.values()))
+
+    @websocket_proxy_bot.setter
+    def websocket_proxy_bot(self, runtime_bot: RuntimeBot) -> None:
+        """Keep isolated tests that inject one proxy bot working."""
+
+        workspace_uuid = getattr(runtime_bot, 'workspace_uuid', '__test_singleton__')
+        self.websocket_proxy_bots = {workspace_uuid: runtime_bot}
+
+    @staticmethod
+    def _normalize_execution_context(
+        context: ExecutionContext | RequestContext,
+        *,
+        bot_uuid: str | None = None,
+        pipeline_uuid: str | None = None,
+    ) -> ExecutionContext:
+        if isinstance(context, RequestContext):
+            return ExecutionContext.from_request(
+                context,
+                bot_uuid=bot_uuid,
+                pipeline_uuid=pipeline_uuid,
+            )
+        if not isinstance(context, ExecutionContext):
+            raise WorkspaceRequiredError('Runtime operations require an ExecutionContext')
+        if not context.instance_uuid.strip() or not context.workspace_uuid.strip():
+            raise WorkspaceRequiredError('Runtime operations require an instance and Workspace')
+        if context.placement_generation <= 0:
+            raise WorkspaceRequiredError('Runtime operations require a positive placement generation')
+        updates = {}
+        if bot_uuid is not None:
+            if context.bot_uuid not in (None, bot_uuid):
+                raise WorkspaceRequiredError('Runtime bot UUID does not match its ExecutionContext')
+            updates['bot_uuid'] = bot_uuid
+        if pipeline_uuid is not None:
+            if context.pipeline_uuid not in (None, pipeline_uuid):
+                raise WorkspaceRequiredError('Runtime pipeline UUID does not match its ExecutionContext')
+            updates['pipeline_uuid'] = pipeline_uuid
+        return dataclasses.replace(context, **updates) if updates else context
+
+    async def get_websocket_proxy_bot(
+        self,
+        context: ExecutionContext | RequestContext,
+    ) -> RuntimeBot:
+        execution_context = self._normalize_execution_context(context)
+        await self.ap.workspace_service.get_execution_binding(
+            execution_context.workspace_uuid,
+            expected_generation=execution_context.placement_generation,
+        )
+        async with self._runtime_mutation_lock:
+            await self.ap.workspace_service.get_execution_binding(
+                execution_context.workspace_uuid,
+                expected_generation=execution_context.placement_generation,
+            )
+            await self._observe_execution_context_unlocked(execution_context)
+            existing = self.websocket_proxy_bots.get(execution_context.workspace_uuid)
+            if existing is not None:
+                if existing.placement_generation != execution_context.placement_generation:
+                    raise WorkspaceRequiredError('WebSocket proxy placement generation is stale')
+                self._proxy_last_accessed[execution_context.workspace_uuid] = time.monotonic()
+                return existing
+
+            await self._evict_idle_websocket_proxy_unlocked()
+            binding = await self.ap.workspace_service.get_execution_binding(
+                execution_context.workspace_uuid,
+                expected_generation=execution_context.placement_generation,
+            )
+            websocket_adapter_class = self.adapter_dict['websocket']
+            websocket_logger = EventLogger(
+                name='websocket-adapter',
+                ap=self.ap,
+                execution_context=execution_context,
+                owner='websocket-proxy-bot',
+            )
+            websocket_adapter_inst = websocket_adapter_class({}, websocket_logger, ap=self.ap)
+            proxy_context = dataclasses.replace(
+                execution_context,
+                instance_uuid=binding.instance_uuid,
+                bot_uuid='websocket-proxy-bot',
+            )
+            runtime_bot = RuntimeBot(
+                ap=self.ap,
+                bot_entity=persistence_bot.Bot(
+                    uuid='websocket-proxy-bot',
+                    workspace_uuid=binding.workspace_uuid,
+                    name='WebSocket',
+                    description='',
+                    adapter='websocket',
+                    adapter_config={},
+                    enable=True,
+                ),
+                adapter=websocket_adapter_inst,
+                logger=websocket_logger,
+                execution_context=proxy_context,
+            )
+            await runtime_bot.initialize()
+            self.websocket_proxy_bots[binding.workspace_uuid] = runtime_bot
+            self._proxy_last_accessed[binding.workspace_uuid] = time.monotonic()
+            return runtime_bot
+
+    def get_running_adapters(
+        self,
+        context: ExecutionContext | RequestContext,
+    ) -> list[abstract_platform_adapter.AbstractMessagePlatformAdapter]:
+        execution_context = self._normalize_execution_context(context)
+        return [
+            bot.adapter
+            for bot in self.bots
+            if bot.enable
+            and bot.workspace_uuid == execution_context.workspace_uuid
+            and bot.placement_generation == execution_context.placement_generation
+        ]
 
     async def load_bots_from_db(self):
         self.ap.logger.info('Loading bots from db...')
 
-        self.bots = []
+        async with self._runtime_mutation_lock:
+            old_bots = [*self.websocket_proxy_bots.values(), *self.bots]
+            self.websocket_proxy_bots = {}
+            self._proxy_last_accessed = {}
+            self.bots = []
+            self._scope_generations = {}
+            for bot in old_bots:
+                if not bot.enable:
+                    continue
+                try:
+                    await bot.shutdown()
+                except Exception as exc:
+                    self.ap.logger.warning(f'Failed to stop old platform runtime during reload: {exc}')
 
-        result = await self.ap.persistence_mgr.execute_async(sqlalchemy.select(persistence_bot.Bot))
+        list_bindings = getattr(
+            self.ap.workspace_service,
+            'list_active_execution_bindings',
+            None,
+        )
+        tenant_uow = getattr(self.ap.persistence_mgr, 'tenant_uow', None)
+        cloud_runtime = getattr(getattr(self.ap.persistence_mgr, 'mode', None), 'value', None) == 'cloud_runtime'
+        if cloud_runtime:
+            if not callable(list_bindings) or not callable(tenant_uow):
+                raise RuntimeError('Cloud platform loading requires explicit instance discovery and tenant UoWs')
+            for binding in await list_bindings():
+                try:
+                    async with tenant_uow(binding.workspace_uuid):
+                        await self._load_workspace_bots(
+                            binding.workspace_uuid,
+                            _binding=binding,
+                        )
+                except Exception as exc:
+                    self.ap.logger.error(
+                        f'Failed to load Workspace bots for {binding.workspace_uuid}: {exc}\n{traceback.format_exc()}'
+                    )
+            return
 
-        bots = result.all()
+        instance_uow = getattr(self.ap.persistence_mgr, 'instance_discovery_uow', None)
+        tenant_scope = getattr(self.ap.persistence_mgr, 'tenant_scope', None)
+        if callable(instance_uow) and callable(tenant_scope):
+            async with instance_uow(self.ap.workspace_service.instance_uuid) as discovery:
+                workspace_uuids = list(
+                    (
+                        await discovery.session.scalars(
+                            sqlalchemy.select(persistence_workspace.WorkspaceExecutionState.workspace_uuid)
+                            .where(
+                                persistence_workspace.WorkspaceExecutionState.instance_uuid
+                                == self.ap.workspace_service.instance_uuid,
+                                persistence_workspace.WorkspaceExecutionState.state
+                                == persistence_workspace.WorkspaceExecutionStatus.ACTIVE.value,
+                                persistence_workspace.WorkspaceExecutionState.write_fenced.is_(False),
+                            )
+                            .order_by(persistence_workspace.WorkspaceExecutionState.workspace_uuid)
+                        )
+                    ).all()
+                )
+        else:
+            # Compatibility for lightweight tests and pre-tenancy managers.
+            result = await self.ap.persistence_mgr.execute_async(sqlalchemy.select(persistence_bot.Bot))
+            workspace_uuids = sorted({bot.workspace_uuid for bot in result.all()})
 
-        for bot in bots:
-            # load all bots here, enable or disable will be handled in runtime
+        for workspace_uuid in workspace_uuids:
             try:
-                await self.load_bot(bot)
+                if callable(tenant_scope):
+                    async with tenant_scope(workspace_uuid):
+                        await self._load_workspace_bots(workspace_uuid)
+                else:
+                    await self._load_workspace_bots(workspace_uuid)
+            except Exception as e:
+                self.ap.logger.error(
+                    f'Failed to load Workspace bots for {workspace_uuid}: {e}\n{traceback.format_exc()}'
+                )
+
+    async def _load_workspace_bots(
+        self,
+        workspace_uuid: str,
+        *,
+        _binding=None,
+    ) -> None:
+        result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(persistence_bot.Bot)
+            .where(persistence_bot.Bot.workspace_uuid == workspace_uuid)
+            .order_by(persistence_bot.Bot.uuid)
+        )
+        binding = _binding
+        for bot in result.all():
+            try:
+                if binding is None:
+                    binding = await self.ap.workspace_service.get_execution_binding(workspace_uuid)
+                execution_context = ExecutionContext(
+                    instance_uuid=binding.instance_uuid,
+                    workspace_uuid=binding.workspace_uuid,
+                    placement_generation=binding.placement_generation,
+                    bot_uuid=bot.uuid,
+                    trigger_principal=PrincipalContext(PrincipalType.SYSTEM),
+                )
+                await self.load_bot(
+                    execution_context,
+                    bot,
+                    _binding_validated=True,
+                )
             except platform_errors.AdapterNotFoundError as e:
                 self.ap.logger.warning(f'Adapter {e.adapter_name} not found, skipping bot {bot.uuid}')
             except Exception as e:
@@ -484,7 +936,10 @@ class PlatformManager:
 
     async def load_bot(
         self,
+        context: ExecutionContext | RequestContext,
         bot_entity: persistence_bot.Bot | sqlalchemy.Row[persistence_bot.Bot] | dict,
+        *,
+        _binding_validated: bool = False,
     ) -> RuntimeBot:
         """加载机器人"""
         if isinstance(bot_entity, sqlalchemy.Row):
@@ -492,43 +947,145 @@ class PlatformManager:
         elif isinstance(bot_entity, dict):
             bot_entity = persistence_bot.Bot(**bot_entity)
 
-        logger = EventLogger(name=f'platform-adapter-{bot_entity.name}', ap=self.ap)
+        execution_context = self._normalize_execution_context(context, bot_uuid=bot_entity.uuid)
+        if bot_entity.workspace_uuid != execution_context.workspace_uuid:
+            raise WorkspaceRequiredError('Bot entity Workspace does not match its runtime context')
+        if not _binding_validated:
+            await self.ap.workspace_service.get_execution_binding(
+                execution_context.workspace_uuid,
+                expected_generation=execution_context.placement_generation,
+            )
+        async with self._runtime_mutation_lock:
+            if not _binding_validated:
+                await self.ap.workspace_service.get_execution_binding(
+                    execution_context.workspace_uuid,
+                    expected_generation=execution_context.placement_generation,
+                )
+            await self._observe_execution_context_unlocked(execution_context)
 
-        if bot_entity.adapter not in self.adapter_dict:
-            raise platform_errors.AdapterNotFoundError(bot_entity.adapter)
+            logger = EventLogger(
+                name=f'platform-adapter-{bot_entity.name}',
+                ap=self.ap,
+                execution_context=execution_context,
+                owner=bot_entity.uuid,
+            )
 
-        adapter_inst = self.adapter_dict[bot_entity.adapter](
-            bot_entity.adapter_config,
-            logger,
+            if bot_entity.adapter not in self.adapter_dict:
+                raise platform_errors.AdapterNotFoundError(bot_entity.adapter)
+
+            adapter_inst = self.adapter_dict[bot_entity.adapter](
+                bot_entity.adapter_config,
+                logger,
+            )
+            if hasattr(adapter_inst, 'ap'):
+                adapter_inst.ap = self.ap
+
+            # 如果 adapter 支持 set_bot_uuid 方法，设置 bot_uuid（用于统一 webhook）
+            if hasattr(adapter_inst, 'set_bot_uuid'):
+                adapter_inst.set_bot_uuid(bot_entity.uuid)
+
+            runtime_bot = RuntimeBot(
+                ap=self.ap,
+                bot_entity=bot_entity,
+                adapter=adapter_inst,
+                logger=logger,
+                execution_context=execution_context,
+            )
+
+            await runtime_bot.initialize()
+
+            bot_key = self._runtime_bot_key(runtime_bot)
+            existing_bot = self._bots_by_key.get(bot_key)
+            if existing_bot is not None and existing_bot is not runtime_bot:
+                try:
+                    if existing_bot.enable:
+                        await existing_bot.shutdown()
+                except BaseException:
+                    if runtime_bot.enable:
+                        await runtime_bot.shutdown()
+                    raise
+            self._register_runtime_bot(runtime_bot)
+
+            return runtime_bot
+
+    async def get_bot_by_uuid(
+        self,
+        context: ExecutionContext | RequestContext,
+        bot_uuid: str,
+    ) -> RuntimeBot | None:
+        execution_context = self._normalize_execution_context(context, bot_uuid=bot_uuid)
+        await self.ap.workspace_service.get_execution_binding(
+            execution_context.workspace_uuid,
+            expected_generation=execution_context.placement_generation,
         )
+        await self._observe_execution_context(execution_context)
+        proxy_bot = self.websocket_proxy_bots.get(execution_context.workspace_uuid)
+        if proxy_bot and proxy_bot.bot_entity.uuid == bot_uuid:
+            if proxy_bot.placement_generation != execution_context.placement_generation:
+                return None
+            return proxy_bot
+        bot = self._bots_by_key.get(
+            (
+                execution_context.instance_uuid,
+                execution_context.workspace_uuid,
+                bot_uuid,
+            )
+        )
+        if bot is None or bot.placement_generation != execution_context.placement_generation:
+            return None
+        return bot
 
-        # 如果 adapter 支持 set_bot_uuid 方法，设置 bot_uuid（用于统一 webhook）
-        if hasattr(adapter_inst, 'set_bot_uuid'):
-            adapter_inst.set_bot_uuid(bot_entity.uuid)
+    async def resolve_public_bot(self, route_key: str) -> RuntimeBot | None:
+        """Resolve an opaque public bot UUID without consulting request headers."""
 
-        runtime_bot = RuntimeBot(ap=self.ap, bot_entity=bot_entity, adapter=adapter_inst, logger=logger)
-
-        await runtime_bot.initialize()
-
-        self.bots.append(runtime_bot)
-
-        return runtime_bot
-
-    async def get_bot_by_uuid(self, bot_uuid: str) -> RuntimeBot | None:
-        if self.websocket_proxy_bot and self.websocket_proxy_bot.bot_entity.uuid == bot_uuid:
-            return self.websocket_proxy_bot
-        for bot in self.bots:
-            if bot.bot_entity.uuid == bot_uuid:
-                return bot
+        try:
+            normalized = str(uuid.UUID(route_key))
+        except (ValueError, AttributeError, TypeError):
+            return None
+        keys = tuple(self._bot_keys_by_uuid.get(normalized, ()))
+        if len(keys) != 1:
+            return None
+        key = keys[0]
+        bot = self._bots_by_key.get(key)
+        if bot is None:
+            return None
+        try:
+            await self.ap.workspace_service.get_execution_binding(
+                bot.workspace_uuid,
+                expected_generation=bot.placement_generation,
+            )
+        except Exception:
+            return None
+        if self._bots_by_key.get(key) is bot:
+            return bot
         return None
 
-    async def remove_bot(self, bot_uuid: str):
-        for bot in self.bots[:]:
-            if bot.bot_entity.uuid == bot_uuid:
+    async def remove_bot(
+        self,
+        context: ExecutionContext | RequestContext,
+        bot_uuid: str,
+    ) -> None:
+        execution_context = self._normalize_execution_context(context, bot_uuid=bot_uuid)
+        await self.ap.workspace_service.get_execution_binding(
+            execution_context.workspace_uuid,
+            expected_generation=execution_context.placement_generation,
+        )
+        async with self._runtime_mutation_lock:
+            await self.ap.workspace_service.get_execution_binding(
+                execution_context.workspace_uuid,
+                expected_generation=execution_context.placement_generation,
+            )
+            await self._observe_execution_context_unlocked(execution_context)
+            key = (
+                execution_context.instance_uuid,
+                execution_context.workspace_uuid,
+                bot_uuid,
+            )
+            bot = self._bots_by_key.get(key)
+            if bot is not None and bot.placement_generation == execution_context.placement_generation:
                 if bot.enable:
                     await bot.shutdown()
-                self.bots.remove(bot)
-                return
+                self._pop_runtime_bot(key)
 
     def get_available_adapters_info(self) -> list[dict]:
         return [
@@ -549,14 +1106,24 @@ class PlatformManager:
 
     async def run(self):
         # This method will only be called when the application launching
-        await self.websocket_proxy_bot.run()
+        for proxy_bot in self.websocket_proxy_bots.values():
+            await proxy_bot.run()
 
         for bot in self.bots:
             if bot.enable:
                 await bot.run()
 
     async def shutdown(self):
-        for bot in self.bots:
-            if bot.enable:
-                await bot.shutdown()
+        async with self._runtime_mutation_lock:
+            runtime_bots = [*self.websocket_proxy_bots.values(), *self.bots]
+            self.websocket_proxy_bots = {}
+            self._proxy_last_accessed = {}
+            self.bots = []
+            for bot in runtime_bots:
+                if not bot.enable:
+                    continue
+                try:
+                    await bot.shutdown()
+                except Exception as exc:
+                    self.ap.logger.warning(f'Failed to stop platform runtime during shutdown: {exc}')
         self.ap.task_mgr.cancel_by_scope(core_entities.LifecycleControlScope.PLATFORM)

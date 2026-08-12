@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Plus, Boxes } from 'lucide-react';
 import { httpClient, systemInfo } from '@/app/infra/http/HttpClient';
-import { ModelProvider } from '@/app/infra/entities/api';
+import { ModelProvider, ReasoningConfig } from '@/app/infra/entities/api';
 import {
   Dialog,
   DialogContent,
@@ -15,6 +15,7 @@ import ProviderForm from './component/provider-form/ProviderForm';
 import { ProviderCard } from './components';
 import {
   ExtraArg,
+  DEFAULT_REASONING_CONFIG,
   ModelType,
   ScanModelsResult,
   SelectedScannedModel,
@@ -24,6 +25,8 @@ import {
 } from './types';
 import { CustomApiError } from '@/app/infra/entities/common';
 import { PanelBody } from '../settings-dialog/panel-layout';
+import { useCurrentWorkspace } from '@/app/infra/http';
+import type { WorkspaceSpaceBilling } from '@/app/infra/entities/workspace';
 
 interface ModelsPanelProps {
   // True when this panel is the active section and the dialog is open.
@@ -83,10 +86,13 @@ export default function ModelsPanel({
   onBlockingChange,
 }: ModelsPanelProps) {
   const { t } = useTranslation();
+  const currentWorkspace = useCurrentWorkspace();
+  const canManage =
+    currentWorkspace?.permissions.includes('provider_secret.manage') ?? false;
 
   const [providers, setProviders] = useState<ModelProvider[]>([]);
-  const [accountType, setAccountType] = useState<'local' | 'space'>('local');
-  const [spaceCredits, setSpaceCredits] = useState<number | null>(null);
+  const [spaceBilling, setSpaceBilling] =
+    useState<WorkspaceSpaceBilling | null>(null);
 
   // Expanded providers and their models
   const [expandedProviders, setExpandedProviders] = useState<Set<string>>(
@@ -140,7 +146,7 @@ export default function ModelsPanel({
 
   useEffect(() => {
     if (active) {
-      loadUserInfo();
+      loadWorkspaceBilling();
       loadProviders();
       loadRequesterSupportTypes();
     }
@@ -163,16 +169,11 @@ export default function ModelsPanel({
     }
   }, [providersLoaded, providers]);
 
-  async function loadUserInfo() {
+  async function loadWorkspaceBilling() {
     try {
-      const userInfo = await httpClient.getUserInfo();
-      setAccountType(userInfo.account_type);
-      if (userInfo.account_type === 'space') {
-        const creditsInfo = await httpClient.getSpaceCredits();
-        setSpaceCredits(creditsInfo.credits);
-      }
+      setSpaceBilling(await httpClient.getWorkspaceSpaceBilling());
     } catch {
-      setAccountType('local');
+      setSpaceBilling(null);
     }
   }
 
@@ -270,17 +271,9 @@ export default function ModelsPanel({
 
   async function handleSpaceLogin() {
     try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        toast.error(t('common.error'));
-        return;
-      }
       const currentOrigin = window.location.origin;
       const redirectUri = `${currentOrigin}/auth/space/callback?mode=bind`;
-      const response = await httpClient.getSpaceAuthorizeUrl(
-        redirectUri,
-        token,
-      );
+      const response = await httpClient.getSpaceBindAuthorizeUrl(redirectUri);
       window.location.href = response.authorize_url;
     } catch {
       toast.error(t('common.spaceLoginFailed'));
@@ -293,6 +286,7 @@ export default function ModelsPanel({
     name: string,
     abilities: string[],
     extraArgs: ExtraArg[],
+    reasoningConfig: ReasoningConfig,
     contextLength?: number | null,
   ) {
     if (!name.trim()) {
@@ -308,6 +302,7 @@ export default function ModelsPanel({
           name,
           provider_uuid: providerUuid,
           abilities,
+          reasoning_config: reasoningConfig,
           context_length: parseContextLength(
             contextLength,
             t('models.contextLengthInvalid'),
@@ -369,6 +364,7 @@ export default function ModelsPanel({
             name: item.model.name,
             provider_uuid: providerUuid,
             abilities: item.abilities,
+            reasoning_config: DEFAULT_REASONING_CONFIG,
             context_length: item.model.context_length ?? null,
             extra_args: {},
           } as never);
@@ -406,6 +402,7 @@ export default function ModelsPanel({
     name: string,
     abilities: string[],
     extraArgs: ExtraArg[],
+    reasoningConfig: ReasoningConfig,
     contextLength?: number | null,
   ) {
     if (!name.trim()) {
@@ -421,6 +418,7 @@ export default function ModelsPanel({
           name,
           provider_uuid: providerUuid,
           abilities,
+          reasoning_config: reasoningConfig,
           context_length: parseContextLength(
             contextLength,
             t('models.contextLengthInvalid'),
@@ -477,6 +475,7 @@ export default function ModelsPanel({
     modelType: ModelType,
     abilities: string[],
     extraArgs: ExtraArg[],
+    reasoningConfig: ReasoningConfig,
   ) {
     setIsTesting(true);
     setTestResult(null);
@@ -499,6 +498,7 @@ export default function ModelsPanel({
           provider_uuid: '',
           provider: providerData,
           abilities,
+          reasoning_config: reasoningConfig,
           extra_args: extraArgsObj,
         } as never);
       } else if (modelType === 'embedding') {
@@ -544,13 +544,15 @@ export default function ModelsPanel({
       <ProviderCard
         key={provider.uuid}
         provider={provider}
+        canManage={canManage}
         isLangBotModels={isLangBotModels}
         supportTypes={requesterSupportTypes[provider.requester]}
         isExpanded={expandedProviders.has(provider.uuid)}
         isLoading={loadingProviders.has(provider.uuid)}
         models={providerModels[provider.uuid]}
-        accountType={accountType}
-        spaceCredits={spaceCredits}
+        isWorkspaceOwner={currentWorkspace?.membership.role === 'owner'}
+        ownerSpaceBound={spaceBilling?.owner_space_bound ?? false}
+        spaceCredits={spaceBilling?.credits ?? null}
         addModelPopoverOpen={addModelPopoverOpen}
         editModelPopoverOpen={editModelPopoverOpen}
         deleteConfirmOpen={deleteConfirmOpen}
@@ -560,13 +562,21 @@ export default function ModelsPanel({
         onSpaceLogin={handleSpaceLogin}
         onOpenAddModel={() => setAddModelPopoverOpen(provider.uuid)}
         onCloseAddModel={() => setAddModelPopoverOpen(null)}
-        onAddModel={(modelType, name, abilities, extraArgs, contextLength) =>
+        onAddModel={(
+          modelType,
+          name,
+          abilities,
+          extraArgs,
+          reasoningConfig,
+          contextLength,
+        ) =>
           handleAddModel(
             provider.uuid,
             modelType,
             name,
             abilities,
             extraArgs,
+            reasoningConfig,
             contextLength,
           )
         }
@@ -582,6 +592,7 @@ export default function ModelsPanel({
           name,
           abilities,
           extraArgs,
+          reasoningConfig,
           contextLength,
         ) =>
           handleUpdateModel(
@@ -591,6 +602,7 @@ export default function ModelsPanel({
             name,
             abilities,
             extraArgs,
+            reasoningConfig,
             contextLength,
           )
         }
@@ -599,8 +611,15 @@ export default function ModelsPanel({
         onDeleteModel={(modelId, modelType) =>
           handleDeleteModel(provider.uuid, modelId, modelType)
         }
-        onTestModel={(name, modelType, abilities, extraArgs) =>
-          handleTestModel(provider.uuid, name, modelType, abilities, extraArgs)
+        onTestModel={(name, modelType, abilities, extraArgs, reasoningConfig) =>
+          handleTestModel(
+            provider.uuid,
+            name,
+            modelType,
+            abilities,
+            extraArgs,
+            reasoningConfig,
+          )
         }
         isSubmitting={isSubmitting}
         isTesting={isTesting}
@@ -628,10 +647,12 @@ export default function ModelsPanel({
                 )
               : t('models.providerCount', { count: otherProviders.length })}
           </span>
-          <Button size="sm" variant="outline" onClick={handleCreateProvider}>
-            <Plus className="h-4 w-4 mr-1" />
-            {t('models.addProvider')}
-          </Button>
+          {canManage && (
+            <Button size="sm" variant="outline" onClick={handleCreateProvider}>
+              <Plus className="h-4 w-4 mr-1" />
+              {t('models.addProvider')}
+            </Button>
+          )}
         </div>
 
         {/* Provider List */}

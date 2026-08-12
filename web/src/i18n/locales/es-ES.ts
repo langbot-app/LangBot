@@ -83,7 +83,7 @@ const esES = {
     loading: 'Cargando...',
     fieldRequired: 'Este campo es obligatorio',
     or: 'o',
-    loginWithSpace: 'Iniciar sesión con Space',
+    loginWithSpace: 'Iniciar sesión con una cuenta de LangBot',
     spaceLoginRecommended:
       'Recomendado: Usa API de modelos oficiales estables y servicios en la nube',
     loginLocal: 'Iniciar sesión con cuenta local',
@@ -175,6 +175,8 @@ const esES = {
     more: 'Más ({{count}})',
     less: 'Menos',
     noItems: 'Sin elementos',
+
+    apiKeyStoredSecurely: 'Secret shown only when created',
   },
   notFound: {
     title: 'Página no encontrada',
@@ -218,6 +220,19 @@ const esES = {
     selectModelAbilities: 'Seleccionar capacidades del modelo',
     visionAbility: 'Capacidad de visión',
     functionCallAbility: 'Llamada a funciones',
+    reasoningAbility: 'Razonamiento',
+    reasoningLevel: 'Nivel de razonamiento',
+    reasoningLevels: {
+      providerDefault: 'Predeterminado del proveedor',
+      disabled: 'Desactivado',
+      enabled: 'Activado',
+      minimal: 'Mínimo',
+      low: 'Bajo',
+      medium: 'Medio',
+      high: 'Alto',
+      xhigh: 'Extra alto',
+      max: 'Máximo',
+    },
     contextLength: 'Ventana de contexto',
     contextLengthPlaceholder: 'Desconocido',
     contextLengthInvalid: 'La ventana de contexto debe ser un entero positivo',
@@ -286,7 +301,7 @@ const esES = {
     searchProviders: 'Buscar proveedores...',
     langbotModelsDescription: 'Modelos en la nube impulsados por LangBot Space',
     credits: 'Créditos',
-    loginWithSpace: 'Iniciar sesión con Space',
+    loginWithSpace: 'Iniciar sesión con una cuenta de LangBot',
     loginToUseModels: 'Inicia sesión con Space para usar modelos en la nube',
     noModels: 'No hay modelos configurados',
     langbotModels: 'Modelos LangBot',
@@ -324,6 +339,11 @@ const esES = {
       fallbackList: 'Modelos de respaldo',
       addFallback: 'Añadir modelo de respaldo',
     },
+
+    ownerMustBindSpace:
+      'The Workspace owner must connect Space for LangBot Models.',
+    usesOwnerSpaceBilling:
+      "Uses the Workspace owner's Space billing and credits.",
   },
   bots: {
     title: 'Bots',
@@ -528,9 +548,11 @@ const esES = {
     debugInfoTitle: 'Información de depuración del plugin',
     debugUrl: 'URL de depuración',
     debugKey: 'Clave de depuración',
+    debugKeyExpires:
+      'Rota a las {{time}}; cada Workspace tiene una clave distinta',
     noDebugKey: '(No establecida)',
     debugKeyDisabled:
-      'La clave de depuración no está configurada, la depuración del plugin no requiere autenticación',
+      'La credencial de depuración no está disponible temporalmente',
     boxStatusTitle: 'Box Runtime',
     boxStatus: 'Estado',
     boxConnected: 'Conectado',
@@ -713,6 +735,7 @@ const esES = {
     notFound: 'No se encontró la información del plugin',
     sortBy: 'Ordenar por',
     sort: {
+      hottest: 'Más populares',
       recentlyAdded: 'Añadidos recientemente',
       recentlyUpdated: 'Actualizados recientemente',
       mostDownloads: 'Más descargas',
@@ -720,6 +743,9 @@ const esES = {
     },
     downloads: 'descargas',
     download: 'Descargar',
+    like: 'Me gusta',
+    unlike: 'Ya no me gusta',
+    likeFailed: 'No se pudo actualizar el Me gusta. Inténtalo de nuevo.',
     repository: 'Repositorio',
     downloadFailed: 'Error en la descarga',
     noReadme: 'Este plugin no proporciona documentación README',
@@ -811,6 +837,9 @@ const esES = {
     url: 'URL',
     headers: 'Encabezados',
     timeout: 'Tiempo de espera',
+    toolCallTimeout: 'Tiempo de espera de herramienta (segundos)',
+    toolCallTimeoutDescription:
+      'Espera máxima para una llamada de herramienta. Use 0 para no limitar. El valor predeterminado es 300 segundos.',
     addArgument: 'Añadir argumento',
     addEnvVar: 'Añadir variable de entorno',
     addHeader: 'Añadir encabezado',
@@ -833,6 +862,9 @@ const esES = {
     boxStdioRefusedSuggestion:
       'Active Box (box.enabled = true) y asegúrese de que el runtime está conectado, o cambie este servidor a modo http/sse.',
     boxRequired: 'requiere Box',
+    disabledByPolicy: 'desactivado por la política',
+    stdioDisabledByPolicy:
+      'Stdio MCP está deshabilitado en este despliegue. Use un servidor MCP remoto.',
     stdioBlockedByBoxToast:
       'No se puede guardar el MCP en modo stdio mientras el sandbox de Box está desactivado o no disponible. Active Box o seleccione modo http/sse.',
     toolsFound: 'herramientas',
@@ -842,6 +874,12 @@ const esES = {
     tabTools: 'Herramientas',
     tabResources: 'Recursos',
     tabDocs: 'Documentación',
+    tabLogs: 'Registros',
+    logsLevelAll: 'Todos los niveles',
+    logsRefresh: 'Actualizar',
+    logsAutoRefresh: 'Actualización automática',
+    logsEmpty:
+      'Aún no hay registros. Los registros de ejecución del servidor MCP aparecerán aquí.',
     noReadme: 'No hay documentación disponible',
     parseResultFailed: 'Error al analizar el resultado de la prueba',
     noResultReturned: 'La prueba no devolvió resultados',
@@ -1299,6 +1337,13 @@ const esES = {
       'Establece una contraseña para iniciar sesión con correo y contraseña',
     spaceEmailMismatch:
       'El correo de inicio de sesión de Space no coincide con el correo de la cuenta local',
+
+    space_account_not_registeredTitle: 'Account not registered',
+    space_account_not_registered:
+      'No local account is registered for this Space email. Ask the Workspace owner for an invitation.',
+    space_account_binding_requiredTitle: 'Space connection required',
+    space_account_binding_required:
+      'This local account must connect Space from Account settings before using Space login.',
   },
   monitoring: {
     title: 'Panel de control',
@@ -1363,6 +1408,20 @@ const esES = {
       level: 'Nivel',
       runner: 'Ejecutor',
       viewConversation: 'Ver conversación',
+      turns: '{{count}} turnos de conversación',
+      userMessage: 'Usuario',
+      noUserMessage: 'No se registró entrada del usuario',
+      assistantMessage: 'Asistente',
+      assistantMessageCount: 'Asistente +{{count}}',
+      noAssistantMessage: 'No se registró respuesta del asistente',
+      messageCount: 'Mensajes',
+      conversationTrace: 'Flujo de conversación',
+      noLlmCalls: 'No se registraron llamadas al modelo',
+      roles: {
+        user: 'Usuario',
+        assistant: 'Asistente',
+        message: 'Mensaje',
+      },
     },
     llmCalls: {
       title: 'Llamadas LLM',
@@ -1376,6 +1435,15 @@ const esES = {
       totalTokens: 'Tokens totales',
       avgDuration: 'Duración promedio',
       calls: 'Llamadas',
+    },
+    toolCalls: {
+      title: 'Llamadas de herramientas',
+      totalCalls: 'Llamadas',
+      duration: 'Duración de herramientas',
+      errorCalls: 'Llamadas fallidas',
+      arguments: 'Argumentos',
+      result: 'Resultado',
+      noToolCalls: 'No se registraron llamadas de herramientas',
     },
     tokens: {
       totalTokens: 'Tokens totales',
@@ -1534,6 +1602,8 @@ const esES = {
       api: 'API',
       storage: 'Almacenamiento',
       account: 'Cuenta',
+
+      workspace: 'Workspace',
     },
   },
   storageAnalysis: {
@@ -1579,6 +1649,12 @@ const esES = {
       'Se ha alcanzado el número máximo de Pipelines ({{max}}). Por favor, elimina un Pipeline existente antes de crear uno nuevo.',
     maxExtensionsReached:
       'Se ha alcanzado el número máximo de extensiones ({{max}}). Por favor, elimina un servidor MCP o plugin existente antes de añadir uno nuevo.',
+    quotaLoadingTooltip:
+      'El uso del espacio de trabajo aún se está cargando. Espera antes de crear un recurso.',
+    quotaCheckFailed:
+      'No se pudo verificar la cuota actual del espacio de trabajo. Inténtalo de nuevo.',
+    createDisabledTooltip:
+      'Se alcanzó el límite de {{resource}} ({{max}}) de este espacio de trabajo. Elimina uno existente antes de crear otro.',
   },
   wizard: {
     sidebarDescription: 'Crea un Bot con pasos guiados',
@@ -1684,6 +1760,9 @@ const esES = {
     loginSuccess:
       '¡Inicio de sesión correcto! El token se ha rellenado automáticamente',
     loginFailed: 'Error al iniciar sesión',
+    connecting: 'Conectando con el servicio de WeChat...',
+    waitingForScan: 'Esperando escaneo',
+    retry: 'Reintentar',
   },
   dingtalk: {
     createApp: 'Crear aplicación de DingTalk con un clic',
@@ -1710,6 +1789,20 @@ const esES = {
     retry: 'Reintentar',
     robotNameNote:
       'El nombre del robot no puede obtenerse automáticamente. Introdúcelo manualmente.',
+  },
+  qqofficial: {
+    createBinding: 'Vinculación QR con un clic para el bot oficial de QQ',
+    scanQRCode:
+      'Escanea el código QR siguiente con QQ móvil y autoriza la vinculación en «QQ Bot Assistant»',
+    waitingForScan: 'Esperando escaneo',
+    bindSuccess:
+      '¡Vinculación correcta! AppID y Secret se han rellenado automáticamente',
+    bindFailed: 'Error en la vinculación',
+    connecting: 'Conectando con el servicio de QQ...',
+    retry: 'Reintentar',
+    tokenNote:
+      'El campo Token no es utilizado por el adaptador actual; puedes dejarlo vacío.',
+    boundBy: 'Vinculado por el usuario QQ {{openid}}',
   },
   pluginPages: {
     selectFromSidebar: 'Selecciona una página de plugin en la barra lateral',
@@ -1840,6 +1933,90 @@ const esES = {
     createSkillHint: 'Importar desde un directorio local o crear manualmente',
     unsupportedFileType:
       'Tipo de archivo no admitido. Solo se admiten archivos .zip y .lbpkg',
+  },
+
+  workspace: {
+    title: 'Workspace',
+    description: 'Manage members, roles, and invitation links',
+    selectTitle: 'Choose a Workspace',
+    selectDescription: 'Select where you want to continue in LangBot.',
+    selectionLoadFailed:
+      'Your Workspaces could not be loaded. Please try again.',
+    switchWorkspace: 'Switch Workspace',
+    settings: 'Workspace Settings',
+    currentPlan: 'Current plan',
+    planUnavailable: 'Unavailable',
+    upgradePlan: 'Change or upgrade plan',
+    ossSingletonDescription:
+      'This self-hosted instance has one Workspace and can include multiple users.',
+    cloudManagedDescription:
+      'This Workspace is hosted by LangBot Cloud. Manage members here; billing opens in Cloud.',
+    loadFailed: 'Failed to load Workspace information',
+    members: 'Members',
+    you: 'You',
+    inviteMember: 'Invite a member',
+    inviteDescription:
+      'Create a one-time link to add another user to this Workspace.',
+    emailPlaceholder: 'member@example.com',
+    createInvitation: 'Create invitation',
+    invitationCreated: 'Invitation created',
+    delivery: {
+      sent: 'Invitation sent',
+      link_only: 'Invitation link created',
+      failed: 'Invitation link created, but email could not be sent',
+    },
+    invitationCreateFailed: 'Failed to create invitation',
+    oneTimeLinkWarning: 'Copy this link now. It is shown only once.',
+    copyInvitation: 'Copy invitation link',
+    invitationCopied: 'Invitation link copied',
+    pendingInvitations: 'Pending invitations',
+    expiresAt: 'Expires {{date}}',
+    revokeInvitation: 'Revoke invitation',
+    invitationRevoked: 'Invitation revoked',
+    invitationRevokeFailed: 'Failed to revoke invitation',
+    acceptInvitation: 'Accept invitation',
+    invitedToWorkspace: 'You were invited to {{workspace}}',
+    checkingInvitation: 'Checking this invitation...',
+    invitationMissing: 'This invitation link is missing required information.',
+    invitationExpired: 'This invitation has expired.',
+    invitationAlreadyRevoked: 'This invitation was revoked.',
+    invitationAlreadyUsed: 'This invitation was already used.',
+    invitationInvalid: 'This invitation is invalid or no longer available.',
+    invitationAccepted: 'Invitation accepted',
+    invitationAcceptFailed: 'Failed to accept invitation',
+    invitationEmailMismatch:
+      'This invitation belongs to a different email address.',
+    existingAccountLoginRequired:
+      'An account already exists for this email. Sign in to continue.',
+    acceptAsCurrentAccount: 'Accept with current account',
+    authenticatedInvitationNotice:
+      'Sign out first, then sign in with the invited account. Your invitation will be preserved.',
+    logoutAndReturn: 'Sign out and return to this invitation',
+    switchAccount: 'Switch account',
+    registerAndAccept: 'Create account and accept',
+    alreadyHaveAccount: 'I already have an account',
+    confirmPassword: 'Confirm password',
+    passwordMinimum: 'Password must contain at least 8 characters.',
+    passwordMismatch: 'The passwords do not match.',
+    backToLogin: 'Back to sign in',
+    memberUpdated: 'Member role updated',
+    memberUpdateFailed: 'Failed to update member role',
+    removeMember: 'Remove member',
+    removeMemberConfirm: 'Remove this member from the Workspace?',
+    memberRemoved: 'Member removed',
+    memberRemoveFailed: 'Failed to remove member',
+    transferOwnership: 'Transfer ownership',
+    types: {
+      personal: 'Personal',
+      team: 'Team',
+    },
+    roles: {
+      owner: 'Owner',
+      admin: 'Admin',
+      developer: 'Developer',
+      operator: 'Operator',
+      viewer: 'Viewer',
+    },
   },
 };
 

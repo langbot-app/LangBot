@@ -80,7 +80,7 @@ const thTH = {
     loading: 'กำลังโหลด...',
     fieldRequired: 'ช่องนี้จำเป็นต้องกรอก',
     or: 'หรือ',
-    loginWithSpace: 'เข้าสู่ระบบด้วย Space',
+    loginWithSpace: 'เข้าสู่ระบบด้วยบัญชี LangBot',
     spaceLoginRecommended:
       'แนะนำ: ใช้ API โมเดลที่เสถียรอย่างเป็นทางการและบริการคลาวด์',
     loginLocal: 'เข้าสู่ระบบด้วยบัญชีท้องถิ่น',
@@ -169,6 +169,8 @@ const thTH = {
     more: 'เพิ่มเติม ({{count}})',
     less: 'น้อยลง',
     noItems: 'ไม่มีรายการ',
+
+    apiKeyStoredSecurely: 'Secret shown only when created',
   },
   notFound: {
     title: 'ไม่พบหน้า',
@@ -211,6 +213,19 @@ const thTH = {
     selectModelAbilities: 'เลือกความสามารถของโมเดล',
     visionAbility: 'ความสามารถด้านภาพ',
     functionCallAbility: 'การเรียกฟังก์ชัน',
+    reasoningAbility: 'ความสามารถในการให้เหตุผล',
+    reasoningLevel: 'ระดับการให้เหตุผล',
+    reasoningLevels: {
+      providerDefault: 'ค่าเริ่มต้นของผู้ให้บริการ',
+      disabled: 'ปิด',
+      enabled: 'เปิด',
+      minimal: 'ต่ำสุด',
+      low: 'ต่ำ',
+      medium: 'ปานกลาง',
+      high: 'สูง',
+      xhigh: 'สูงมาก',
+      max: 'สูงสุด',
+    },
     contextLength: 'หน้าต่างบริบท',
     contextLengthPlaceholder: 'ไม่ทราบ',
     contextLengthInvalid: 'หน้าต่างบริบทต้องเป็นจำนวนเต็มบวก',
@@ -273,7 +288,7 @@ const thTH = {
     searchProviders: 'ค้นหาผู้ให้บริการ...',
     langbotModelsDescription: 'โมเดลคลาวด์ขับเคลื่อนโดย LangBot Space',
     credits: 'เครดิต',
-    loginWithSpace: 'เข้าสู่ระบบด้วย Space',
+    loginWithSpace: 'เข้าสู่ระบบด้วยบัญชี LangBot',
     loginToUseModels: 'เข้าสู่ระบบด้วย Space เพื่อใช้โมเดลคลาวด์',
     noModels: 'ยังไม่มีโมเดลที่กำหนดค่า',
     langbotModels: 'โมเดล LangBot',
@@ -310,6 +325,11 @@ const thTH = {
       fallbackList: 'โมเดลสำรอง',
       addFallback: 'เพิ่มโมเดลสำรอง',
     },
+
+    ownerMustBindSpace:
+      'The Workspace owner must connect Space for LangBot Models.',
+    usesOwnerSpaceBilling:
+      "Uses the Workspace owner's Space billing and credits.",
   },
   bots: {
     title: 'บอท',
@@ -511,9 +531,9 @@ const thTH = {
     debugInfoTitle: 'ข้อมูลดีบักปลั๊กอิน',
     debugUrl: 'URL ดีบัก',
     debugKey: 'คีย์ดีบัก',
+    debugKeyExpires: 'หมุนเวียนเวลา {{time}}; แต่ละ Workspace ใช้คีย์ต่างกัน',
     noDebugKey: '(ไม่ได้ตั้งค่า)',
-    debugKeyDisabled:
-      'ไม่ได้ตั้งค่าคีย์ดีบัก การดีบักปลั๊กอินไม่ต้องยืนยันตัวตน',
+    debugKeyDisabled: 'ข้อมูลรับรองการดีบักไม่พร้อมใช้งานชั่วคราว',
     boxStatusTitle: 'Box Runtime',
     boxStatus: 'สถานะ',
     boxConnected: 'เชื่อมต่อแล้ว',
@@ -690,6 +710,7 @@ const thTH = {
     notFound: 'ไม่พบข้อมูลปลั๊กอิน',
     sortBy: 'เรียงตาม',
     sort: {
+      hottest: 'ยอดนิยมที่สุด',
       recentlyAdded: 'เพิ่มล่าสุด',
       recentlyUpdated: 'อัปเดตล่าสุด',
       mostDownloads: 'ดาวน์โหลดมากที่สุด',
@@ -697,6 +718,9 @@ const thTH = {
     },
     downloads: 'ดาวน์โหลด',
     download: 'ดาวน์โหลด',
+    like: 'ถูกใจ',
+    unlike: 'เลิกถูกใจ',
+    likeFailed: 'อัปเดตการถูกใจไม่สำเร็จ โปรดลองอีกครั้ง',
     repository: 'Repository',
     downloadFailed: 'ดาวน์โหลดล้มเหลว',
     noReadme: 'ปลั๊กอินนี้ไม่มีเอกสาร README',
@@ -786,6 +810,9 @@ const thTH = {
     url: 'URL',
     headers: 'ส่วนหัว',
     timeout: 'หมดเวลา',
+    toolCallTimeout: 'หมดเวลาการเรียกเครื่องมือ (วินาที)',
+    toolCallTimeoutDescription:
+      'เวลารอสูงสุดต่อการเรียกเครื่องมือหนึ่งครั้ง ตั้งเป็น 0 เพื่อไม่จำกัด ค่าเริ่มต้นคือ 300 วินาที',
     addArgument: 'เพิ่มอาร์กิวเมนต์',
     addEnvVar: 'เพิ่มตัวแปรสภาพแวดล้อม',
     addHeader: 'เพิ่มส่วนหัว',
@@ -808,6 +835,9 @@ const thTH = {
     boxStdioRefusedSuggestion:
       'กรุณาเปิดใช้งาน Box (box.enabled = true) และตรวจสอบว่ารันไทม์ทำงานปกติ หรือเปลี่ยน MCP server เป็นโหมด http/sse',
     boxRequired: 'ต้องใช้ Box',
+    disabledByPolicy: 'ถูกปิดใช้งานโดยนโยบาย',
+    stdioDisabledByPolicy:
+      'การติดตั้งใช้งานนี้ปิด Stdio MCP อยู่ โปรดใช้เซิร์ฟเวอร์ MCP แบบระยะไกล',
     stdioBlockedByBoxToast:
       'ไม่สามารถบันทึก MCP โหมด stdio เนื่องจาก Sandbox Box ถูกปิดใช้งานหรือไม่พร้อมใช้งาน กรุณาเปิดใช้งาน Box หรือเลือกโหมด http/sse',
     toolsFound: 'เครื่องมือ',
@@ -817,6 +847,11 @@ const thTH = {
     tabTools: 'เครื่องมือ',
     tabResources: 'ทรัพยากร',
     tabDocs: 'เอกสาร',
+    tabLogs: 'บันทึก',
+    logsLevelAll: 'ทุกระดับ',
+    logsRefresh: 'รีเฟรช',
+    logsAutoRefresh: 'รีเฟรชอัตโนมัติ',
+    logsEmpty: 'ยังไม่มีบันทึก บันทึกการทำงานของ MCP Server จะแสดงที่นี่',
     noReadme: 'ไม่มีเอกสาร',
     parseResultFailed: 'ไม่สามารถแยกวิเคราะห์ผลการทดสอบได้',
     noResultReturned: 'การทดสอบไม่ส่งผลลัพธ์กลับมา',
@@ -1245,6 +1280,13 @@ const thTH = {
     bindSpaceInvalidState: 'คำขอผูกไม่ถูกต้อง กรุณาลองใหม่จากการตั้งค่าบัญชี',
     setPasswordHint: 'ตั้งรหัสผ่านเพื่อเข้าสู่ระบบด้วยอีเมลและรหัสผ่าน',
     spaceEmailMismatch: 'อีเมลเข้าสู่ระบบ Space ไม่ตรงกับอีเมลบัญชีท้องถิ่น',
+
+    space_account_not_registeredTitle: 'Account not registered',
+    space_account_not_registered:
+      'No local account is registered for this Space email. Ask the Workspace owner for an invitation.',
+    space_account_binding_requiredTitle: 'Space connection required',
+    space_account_binding_required:
+      'This local account must connect Space from Account settings before using Space login.',
   },
   monitoring: {
     title: 'แดชบอร์ด',
@@ -1307,6 +1349,20 @@ const thTH = {
       level: 'ระดับ',
       runner: 'ตัวประมวลผล',
       viewConversation: 'ดูการสนทนา',
+      turns: '{{count}} รอบการสนทนา',
+      userMessage: 'ผู้ใช้',
+      noUserMessage: 'ยังไม่มีการบันทึกข้อความจากผู้ใช้',
+      assistantMessage: 'ผู้ช่วย',
+      assistantMessageCount: 'ผู้ช่วย +{{count}}',
+      noAssistantMessage: 'ยังไม่มีการบันทึกคำตอบจากผู้ช่วย',
+      messageCount: 'จำนวนข้อความ',
+      conversationTrace: 'ลำดับการสนทนา',
+      noLlmCalls: 'ยังไม่มีการบันทึกการเรียกโมเดล',
+      roles: {
+        user: 'ผู้ใช้',
+        assistant: 'ผู้ช่วย',
+        message: 'ข้อความ',
+      },
     },
     llmCalls: {
       title: 'การเรียก LLM',
@@ -1320,6 +1376,15 @@ const thTH = {
       totalTokens: 'โทเคนทั้งหมด',
       avgDuration: 'ระยะเวลาเฉลี่ย',
       calls: 'การเรียก',
+    },
+    toolCalls: {
+      title: 'การเรียกใช้เครื่องมือ',
+      totalCalls: 'การเรียก',
+      duration: 'ระยะเวลาเครื่องมือ',
+      errorCalls: 'การเรียกที่ล้มเหลว',
+      arguments: 'อาร์กิวเมนต์',
+      result: 'ผลลัพธ์',
+      noToolCalls: 'ยังไม่มีการบันทึกการเรียกใช้เครื่องมือ',
     },
     tokens: {
       totalTokens: 'Token ทั้งหมด',
@@ -1478,6 +1543,8 @@ const thTH = {
       api: 'API',
       storage: 'พื้นที่จัดเก็บ',
       account: 'บัญชี',
+
+      workspace: 'Workspace',
     },
   },
   storageAnalysis: {
@@ -1522,6 +1589,12 @@ const thTH = {
       'จำนวน Pipeline สูงสุด ({{max}}) ถึงขีดจำกัดแล้ว กรุณาลบ Pipeline ที่มีอยู่ก่อนสร้างใหม่',
     maxExtensionsReached:
       'จำนวนส่วนขยายสูงสุด ({{max}}) ถึงขีดจำกัดแล้ว กรุณาลบเซิร์ฟเวอร์ MCP หรือปลั๊กอินที่มีอยู่ก่อนเพิ่มใหม่',
+    quotaLoadingTooltip:
+      'กำลังโหลดการใช้งานพื้นที่ทำงาน โปรดรอก่อนสร้างทรัพยากร',
+    quotaCheckFailed:
+      'ไม่สามารถตรวจสอบโควตาปัจจุบันของพื้นที่ทำงานได้ โปรดลองอีกครั้ง',
+    createDisabledTooltip:
+      'ถึงขีดจำกัด {{resource}} ({{max}}) ของเวิร์กสเปซนี้แล้ว โปรดลบรายการเดิมก่อนสร้างรายการใหม่',
   },
   wizard: {
     sidebarDescription: 'สร้าง Bot ด้วยขั้นตอนที่แนะนำ',
@@ -1620,6 +1693,9 @@ const thTH = {
       'สแกนคิวอาร์โค้ดด้านล่างด้วย WeChat เพื่ออนุญาตและกรอกโทเคนอัตโนมัติ',
     loginSuccess: 'เข้าสู่ระบบสำเร็จ และกรอกโทเคนอัตโนมัติแล้ว',
     loginFailed: 'เข้าสู่ระบบไม่สำเร็จ',
+    connecting: 'กำลังเชื่อมต่อบริการ WeChat...',
+    waitingForScan: 'กำลังรอการสแกน',
+    retry: 'ลองอีกครั้ง',
   },
   dingtalk: {
     createApp: 'สร้างแอป DingTalk ด้วยคลิกเดียว',
@@ -1643,6 +1719,18 @@ const thTH = {
     connecting: 'กำลังเชื่อมต่อบริการ WeCom...',
     retry: 'ลองใหม่',
     robotNameNote: 'ไม่สามารถดึงชื่อบอตได้โดยอัตโนมัติ กรุณากรอกด้วยตนเอง',
+  },
+  qqofficial: {
+    createBinding: 'ผูกบอต QQ Official ด้วย QR คลิกเดียว',
+    scanQRCode:
+      'สแกนคิวอาร์โค้ดด้านล่างด้วย QQ มือถือ แล้วอนุญาตการผูกใน «QQ Bot Assistant»',
+    waitingForScan: 'กำลังรอสแกน',
+    bindSuccess: 'ผูกสำเร็จ! AppID และ Secret ถูกกรอกอัตโนมัติแล้ว',
+    bindFailed: 'การผูกล้มเหลว',
+    connecting: 'กำลังเชื่อมต่อบริการ QQ...',
+    retry: 'ลองใหม่',
+    tokenNote: 'อะแดปเตอร์ปัจจุบันไม่ได้ใช้ฟิลด์ Token จึงเว้นว่างไว้ได้',
+    boundBy: 'ผูกโดยผู้ใช้ QQ {{openid}}',
   },
   pluginPages: {
     selectFromSidebar: 'เลือกหน้าปลั๊กอินจากแถบด้านข้าง',
@@ -1768,6 +1856,90 @@ const thTH = {
     createSkill: 'สร้างสกิลใหม่',
     createSkillHint: 'นำเข้าจากไดเรกทอรีในเครื่องหรือสร้างด้วยตนเอง',
     unsupportedFileType: 'ประเภทไฟล์ไม่รองรับ รองรับเฉพาะไฟล์ .zip และ .lbpkg',
+  },
+
+  workspace: {
+    title: 'Workspace',
+    description: 'Manage members, roles, and invitation links',
+    selectTitle: 'Choose a Workspace',
+    selectDescription: 'Select where you want to continue in LangBot.',
+    selectionLoadFailed:
+      'Your Workspaces could not be loaded. Please try again.',
+    switchWorkspace: 'Switch Workspace',
+    settings: 'Workspace Settings',
+    currentPlan: 'Current plan',
+    planUnavailable: 'Unavailable',
+    upgradePlan: 'Change or upgrade plan',
+    ossSingletonDescription:
+      'This self-hosted instance has one Workspace and can include multiple users.',
+    cloudManagedDescription:
+      'This Workspace is hosted by LangBot Cloud. Manage members here; billing opens in Cloud.',
+    loadFailed: 'Failed to load Workspace information',
+    members: 'Members',
+    you: 'You',
+    inviteMember: 'Invite a member',
+    inviteDescription:
+      'Create a one-time link to add another user to this Workspace.',
+    emailPlaceholder: 'member@example.com',
+    createInvitation: 'Create invitation',
+    invitationCreated: 'Invitation created',
+    delivery: {
+      sent: 'Invitation sent',
+      link_only: 'Invitation link created',
+      failed: 'Invitation link created, but email could not be sent',
+    },
+    invitationCreateFailed: 'Failed to create invitation',
+    oneTimeLinkWarning: 'Copy this link now. It is shown only once.',
+    copyInvitation: 'Copy invitation link',
+    invitationCopied: 'Invitation link copied',
+    pendingInvitations: 'Pending invitations',
+    expiresAt: 'Expires {{date}}',
+    revokeInvitation: 'Revoke invitation',
+    invitationRevoked: 'Invitation revoked',
+    invitationRevokeFailed: 'Failed to revoke invitation',
+    acceptInvitation: 'Accept invitation',
+    invitedToWorkspace: 'You were invited to {{workspace}}',
+    checkingInvitation: 'Checking this invitation...',
+    invitationMissing: 'This invitation link is missing required information.',
+    invitationExpired: 'This invitation has expired.',
+    invitationAlreadyRevoked: 'This invitation was revoked.',
+    invitationAlreadyUsed: 'This invitation was already used.',
+    invitationInvalid: 'This invitation is invalid or no longer available.',
+    invitationAccepted: 'Invitation accepted',
+    invitationAcceptFailed: 'Failed to accept invitation',
+    invitationEmailMismatch:
+      'This invitation belongs to a different email address.',
+    existingAccountLoginRequired:
+      'An account already exists for this email. Sign in to continue.',
+    acceptAsCurrentAccount: 'Accept with current account',
+    authenticatedInvitationNotice:
+      'Sign out first, then sign in with the invited account. Your invitation will be preserved.',
+    logoutAndReturn: 'Sign out and return to this invitation',
+    switchAccount: 'Switch account',
+    registerAndAccept: 'Create account and accept',
+    alreadyHaveAccount: 'I already have an account',
+    confirmPassword: 'Confirm password',
+    passwordMinimum: 'Password must contain at least 8 characters.',
+    passwordMismatch: 'The passwords do not match.',
+    backToLogin: 'Back to sign in',
+    memberUpdated: 'Member role updated',
+    memberUpdateFailed: 'Failed to update member role',
+    removeMember: 'Remove member',
+    removeMemberConfirm: 'Remove this member from the Workspace?',
+    memberRemoved: 'Member removed',
+    memberRemoveFailed: 'Failed to remove member',
+    transferOwnership: 'Transfer ownership',
+    types: {
+      personal: 'Personal',
+      team: 'Team',
+    },
+    roles: {
+      owner: 'Owner',
+      admin: 'Admin',
+      developer: 'Developer',
+      operator: 'Operator',
+      viewer: 'Viewer',
+    },
   },
 };
 

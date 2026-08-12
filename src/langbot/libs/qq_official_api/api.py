@@ -9,13 +9,153 @@ import langbot_plugin.api.entities.builtin.platform.events as platform_events
 from .qqofficialevent import QQOfficialEvent
 import json
 import traceback
+from contextlib import asynccontextmanager
 from cryptography.hazmat.primitives.asymmetric import ed25519
+from langbot.pkg.utils import httpclient
+
+
+QQ_SELECT_ACTION_PREFIX = '__langbot_select__:'
+_MAX_CALLBACK_BODY_BYTES = 1024 * 1024
+
+
+def get_select_field_options(form_data: dict) -> tuple[str, list[str]]:
+    """Return the active select field name and its display/submission values."""
+    field_name = str(form_data.get('_current_input_field') or '').strip()
+    if not field_name:
+        return '', []
+
+    field = next(
+        (
+            item
+            for item in form_data.get('input_defs') or []
+            if str(item.get('output_variable_name') or '').strip() == field_name
+        ),
+        None,
+    )
+    if not field or str(field.get('type') or '').strip().lower() != 'select':
+        return '', []
+
+    source = field.get('option_source') or {}
+    source_value = source.get('value') if isinstance(source, dict) else None
+    if isinstance(source_value, list):
+        return field_name, [str(item) for item in source_value]
+    if isinstance(source_value, str):
+        return field_name, [part.strip() for part in source_value.splitlines() if part.strip()]
+
+    options = field.get('options')
+    if not isinstance(options, list):
+        return field_name, []
+    values = []
+    for item in options:
+        if isinstance(item, dict):
+            values.append(str(item.get('label') or item.get('value') or ''))
+        else:
+            values.append(str(item))
+    return field_name, [value for value in values if value]
+
+
+def build_keyboard_from_select_field(form_data: dict, *, buttons_per_row: int | None = None) -> dict:
+    """Build callback buttons for the currently active Dify select field."""
+    _, options = get_select_field_options(form_data)
+    visible_options = options[:25]
+    if buttons_per_row is None:
+        # Keep small choices readable while fitting up to QQ's 5x5 limit.
+        buttons_per_row = min(5, max(2, (len(visible_options) + 4) // 5))
+    selection_actions = [
+        {
+            'id': f'{QQ_SELECT_ACTION_PREFIX}{idx}',
+            'title': option,
+            'button_style': 'secondary',
+        }
+        for idx, option in enumerate(visible_options)
+    ]
+    return build_keyboard_from_form({'actions': selection_actions}, buttons_per_row=buttons_per_row)
+
+
+def resolve_select_button_action(form_data: dict, action_id: str) -> tuple[str, str] | None:
+    """Resolve a select-button callback to ``(field_name, option_value)``."""
+    if not action_id.startswith(QQ_SELECT_ACTION_PREFIX):
+        return None
+    try:
+        option_index = int(action_id[len(QQ_SELECT_ACTION_PREFIX) :])
+    except ValueError:
+        return None
+
+    field_name, options = get_select_field_options(form_data)
+    if not field_name or option_index < 0 or option_index >= len(options) or option_index >= 25:
+        return None
+    return field_name, options[option_index]
+
+
+def build_keyboard_from_form(form_data: dict, *, buttons_per_row: int = 2) -> dict:
+    """Build a QQ keyboard JSON payload from a Dify human-input form_data.
+
+    Each Dify ``action`` becomes a callback button (``action.type=1``)
+    whose ``data`` is set directly to the Dify ``action_id``. The
+    INTERACTION_CREATE event carries this back as
+    ``data.resolved.button_data`` so the adapter can match the click to
+    the originating form.
+
+    Layout limits per spec: max 5 rows, max 5 buttons per row. We default
+    to 2 buttons per row for legibility; oversized button lists wrap
+    onto additional rows and overflow gets dropped (max 25 visible).
+
+    Args:
+        form_data: Dify ``{"actions": [{"id", "title", "button_style"}, ...]}``.
+        buttons_per_row: 1..5. Mobile UI looks best at 2.
+
+    Returns:
+        ``{"content": {"rows": [{"buttons": [...]}]}}``.
+    """
+    actions = list(form_data.get('actions') or [])[:25]  # 5×5 hard cap
+    buttons_per_row = max(1, min(5, buttons_per_row))
+
+    def _button(idx: int, action: dict) -> dict:
+        action_id = str(action.get('id') or '')
+        label = str(action.get('title') or action_id or f'选项 {idx + 1}')
+        style_raw = (action.get('button_style') or '').lower()
+        # QQ: 0 灰色线框, 1 蓝色线框. Highlight the primary / first action.
+        if style_raw == 'primary' or (style_raw == '' and idx == 0):
+            style = 1
+        else:
+            style = 0
+        return {
+            'id': str(idx + 1),
+            'render_data': {
+                'label': label,
+                # Shown after the user clicks — gives local "已选择" feedback
+                # without a follow-up message. Style mimics DingTalk/Lark's
+                # in-card selection state.
+                'visited_label': f'✓ {label}',
+                'style': style,
+            },
+            'action': {
+                'type': 1,  # callback button
+                'permission': {'type': 2},  # everyone can click
+                'data': action_id,
+                'unsupport_tips': '当前客户端版本不支持此按钮，请升级 QQ',
+            },
+        }
+
+    rows = []
+    for row_start in range(0, len(actions), buttons_per_row):
+        row_actions = actions[row_start : row_start + buttons_per_row]
+        rows.append(
+            {
+                'buttons': [_button(row_start + j, a) for j, a in enumerate(row_actions)],
+            }
+        )
+        if len(rows) >= 5:
+            break
+
+    return {'content': {'rows': rows}}
 
 
 class QQOfficialClient:
     def __init__(self, secret: str, token: str, app_id: str, logger: None, unified_mode: bool = False):
         self.unified_mode = unified_mode
         self.app = Quart(__name__)
+        self.app.config['MAX_CONTENT_LENGTH'] = _MAX_CALLBACK_BODY_BYTES
 
         # 只有在非统一模式下才注册独立路由
         if not self.unified_mode:
@@ -30,12 +170,42 @@ class QQOfficialClient:
         self.token = token
         self.app_id = app_id
         self._message_handlers = {}
+        # Single optional handler for INTERACTION_CREATE (button click). We
+        # don't multiplex like message handlers — only the adapter cares,
+        # and the click<->resume path needs a single source of truth.
+        self._interaction_handler: Optional[Callable[[Dict[str, Any], Optional[str]], Any]] = None
         self.base_url = 'https://api.sgroup.qq.com'
         self.access_token = ''
         self.access_token_expiry_time = None
         self.logger = logger
         self._msg_seq_counter = 0
         self._token_refresh_task: Optional[asyncio.Task] = None
+        self._http_clients: dict[float | None, httpx.AsyncClient] = {}
+
+    @asynccontextmanager
+    async def _http_client_context(self, timeout: float | None = None):
+        client = self._http_clients.get(timeout)
+        if client is None or client.is_closed:
+            response_hooks = httpclient.httpx_response_limit_hooks()
+            client = (
+                httpx.AsyncClient(event_hooks=response_hooks)
+                if timeout is None
+                else httpx.AsyncClient(timeout=timeout, event_hooks=response_hooks)
+            )
+            self._http_clients[timeout] = client
+        yield client
+
+    async def close(self) -> None:
+        """Stop client-owned background work."""
+
+        if self._token_refresh_task and not self._token_refresh_task.done():
+            self._token_refresh_task.cancel()
+            await asyncio.gather(self._token_refresh_task, return_exceptions=True)
+        self._token_refresh_task = None
+        clients = list(self._http_clients.values())
+        self._http_clients.clear()
+        if clients:
+            await asyncio.gather(*(client.aclose() for client in clients), return_exceptions=True)
 
     async def check_access_token(self):
         """检查access_token是否存在"""
@@ -46,7 +216,7 @@ class QQOfficialClient:
     async def get_access_token(self):
         """获取access_token"""
         url = 'https://bots.qq.com/app/getAppAccessToken'
-        async with httpx.AsyncClient() as client:
+        async with self._http_client_context() as client:
             params = {
                 'appId': self.app_id,
                 'clientSecret': self.secret,
@@ -56,8 +226,9 @@ class QQOfficialClient:
             }
             response = await client.post(url, json=params, headers=headers)
             if response.status_code != 200:
-                raise Exception(f'Failed to get access_token: HTTP {response.status_code} {response.text}')
-            response_data = response.json()
+                body = await httpclient.response_text(response)
+                raise Exception(f'Failed to get access_token: HTTP {response.status_code} {body}')
+            response_data = await httpclient.parse_json_response(response)
             access_token = response_data.get('access_token')
             expires_in = int(response_data.get('expires_in', 7200))
             self.access_token_expiry_time = time.time() + expires_in - 60
@@ -96,8 +267,10 @@ class QQOfficialClient:
             if not body or len(body) == 0:
                 await self.logger.info('Received empty body, might be health check or GET request')
                 return {'code': 0, 'message': 'ok'}, 200
+            if len(body) > _MAX_CALLBACK_BODY_BYTES:
+                return {'error': 'callback body exceeds the size limit'}, 413
 
-            payload = json.loads(body)
+            payload = await asyncio.to_thread(json.loads, body)
 
             if payload.get('op') == 13:
                 validation_data = payload.get('d')
@@ -107,6 +280,23 @@ class QQOfficialClient:
                 return response, 200
 
             if payload.get('op') == 0:
+                # INTERACTION_CREATE (button click) skips ``get_message`` —
+                # that helper only flattens message-event fields and would
+                # drop ``data.resolved.button_data`` / ``data.button_id``.
+                if payload.get('t') == 'INTERACTION_CREATE':
+                    if self._interaction_handler:
+                        try:
+                            d = payload.get('d') or {}
+                            # Top-level ``id`` is the ws/event id used as
+                            # ``event_id`` for passive replies. ``d.id``
+                            # is the interaction id used for ACK. Do not
+                            # confuse the two — QQ rejects misuse with
+                            # 40034025.
+                            ws_event_id = payload.get('id')
+                            await self._interaction_handler(d, ws_event_id)
+                        except Exception:
+                            await self.logger.error(f'Error in interaction handler: {traceback.format_exc()}')
+                    return {'code': 0, 'message': 'success'}
                 message_data = await self.get_message(payload)
                 if message_data:
                     event = QQOfficialEvent.from_payload(message_data)
@@ -129,6 +319,21 @@ class QQOfficialClient:
             if msg_type not in self._message_handlers:
                 self._message_handlers[msg_type] = []
             self._message_handlers[msg_type].append(func)
+            return func
+
+        return decorator
+
+    def on_interaction(self):
+        """Register a single handler for INTERACTION_CREATE events.
+
+        The handler receives ``(data_dict, interaction_id)`` — the raw
+        ``d`` payload plus the top-level ``id`` field (the interaction
+        id, needed for the PUT /interactions/{id} ack and for reuse as
+        an ``event_id`` on the resumed reply within 30 minutes).
+        """
+
+        def decorator(func: Callable[[Dict[str, Any], Optional[str]], Any]):
+            self._interaction_handler = func
             return func
 
         return decorator
@@ -177,52 +382,84 @@ class QQOfficialClient:
         content_type = attachment.get('content_type', '')
         return content_type.startswith('image/')
 
-    async def send_private_text_msg(self, user_openid: str, content: str, msg_id: str):
-        """发送私聊消息"""
+    async def send_private_text_msg(
+        self,
+        user_openid: str,
+        content: str,
+        msg_id: Optional[str] = None,
+        event_id: Optional[str] = None,
+        msg_seq: int = 1,
+    ):
+        """Send a c2c text message.
+
+        Either ``msg_id`` (inbound user msg, free passive reply) or
+        ``event_id`` (e.g. INTERACTION_CREATE id, valid 30 min) is
+        required. Without either, the call costs the proactive-send quota.
+        """
         if not await self.check_access_token():
             await self.get_access_token()
 
         url = self.base_url + '/v2/users/' + user_openid + '/messages'
-        async with httpx.AsyncClient() as client:
+        async with self._http_client_context() as client:
             headers = {
                 'Authorization': f'QQBot {self.access_token}',
                 'Content-Type': 'application/json',
             }
-            data = {
+            data: dict[str, Any] = {
                 'content': content,
                 'msg_type': 0,
-                'msg_id': msg_id,
+                'msg_seq': msg_seq,
             }
+            if msg_id:
+                data['msg_id'] = msg_id
+            if event_id:
+                data['event_id'] = event_id
             response = await client.post(url, headers=headers, json=data)
-            response_data = response.json()
+            response_data = await httpclient.parse_json_response(response)
             if response.status_code == 200:
                 return
             else:
                 await self.logger.error(f'Failed to send private message: {response_data}')
                 raise ValueError(response)
 
-    async def send_group_text_msg(self, group_openid: str, content: str, msg_id: str):
-        """发送群聊消息"""
+    async def send_group_text_msg(
+        self,
+        group_openid: str,
+        content: str,
+        msg_id: Optional[str] = None,
+        event_id: Optional[str] = None,
+        msg_seq: int = 1,
+    ):
+        """Send a group text message.
+
+        Either ``msg_id`` or ``event_id`` is required (see
+        :meth:`send_private_text_msg` for the distinction).
+        """
         if not await self.check_access_token():
             await self.get_access_token()
 
         url = self.base_url + '/v2/groups/' + group_openid + '/messages'
-        async with httpx.AsyncClient() as client:
+        async with self._http_client_context() as client:
             headers = {
                 'Authorization': f'QQBot {self.access_token}',
                 'Content-Type': 'application/json',
             }
-            data = {
+            data: dict[str, Any] = {
                 'content': content,
                 'msg_type': 0,
-                'msg_id': msg_id,
+                'msg_seq': msg_seq,
             }
+            if msg_id:
+                data['msg_id'] = msg_id
+            if event_id:
+                data['event_id'] = event_id
             response = await client.post(url, headers=headers, json=data)
             if response.status_code == 200:
                 return
             else:
-                await self.logger.error(f'Failed to send group message: {response.json()}')
-                raise Exception(response.read().decode())
+                error_payload = await httpclient.parse_json_response(response)
+                await self.logger.error(f'Failed to send group message: {error_payload}')
+                raise Exception(str(error_payload))
 
     async def send_channle_group_text_msg(self, channel_id: str, content: str, msg_id: str):
         """发送频道群聊消息"""
@@ -230,7 +467,7 @@ class QQOfficialClient:
             await self.get_access_token()
 
         url = self.base_url + '/channels/' + channel_id + '/messages'
-        async with httpx.AsyncClient() as client:
+        async with self._http_client_context() as client:
             headers = {
                 'Authorization': f'QQBot {self.access_token}',
                 'Content-Type': 'application/json',
@@ -244,7 +481,8 @@ class QQOfficialClient:
             if response.status_code == 200:
                 return True
             else:
-                await self.logger.error(f'Failed to send channel group message: {response.json()}')
+                error_payload = await httpclient.parse_json_response(response)
+                await self.logger.error(f'Failed to send channel group message: {error_payload}')
                 raise Exception(response)
 
     async def send_channle_private_text_msg(self, guild_id: str, content: str, msg_id: str):
@@ -253,7 +491,7 @@ class QQOfficialClient:
             await self.get_access_token()
 
         url = self.base_url + '/dms/' + guild_id + '/messages'
-        async with httpx.AsyncClient() as client:
+        async with self._http_client_context() as client:
             headers = {
                 'Authorization': f'QQBot {self.access_token}',
                 'Content-Type': 'application/json',
@@ -267,7 +505,8 @@ class QQOfficialClient:
             if response.status_code == 200:
                 return True
             else:
-                await self.logger.error(f'Failed to send channel private message: {response.json()}')
+                error_payload = await httpclient.parse_json_response(response)
+                await self.logger.error(f'Failed to send channel private message: {error_payload}')
                 raise Exception(response)
 
     # ---- 富媒体消息 ----
@@ -329,20 +568,21 @@ class QQOfficialClient:
         if file_type == self.MEDIA_TYPE_FILE and file_name:
             body['file_name'] = file_name
 
-        async with httpx.AsyncClient(timeout=120) as client:
+        async with self._http_client_context(timeout=120) as client:
             headers = {
                 'Authorization': f'QQBot {self.access_token}',
                 'Content-Type': 'application/json',
             }
             response = await client.post(url, headers=headers, json=body)
             if response.status_code == 200:
-                data = response.json()
+                data = await httpclient.parse_json_response(response)
                 file_info = data.get('file_info', '')
                 preview = file_info[:80] + '...' if len(file_info) > 80 else file_info
                 await self.logger.info(f'Upload media success, file_info={preview}')
                 return file_info
             else:
-                raise Exception(f'Failed to upload media: HTTP {response.status_code} {response.text}')
+                body = await httpclient.response_text(response)
+                raise Exception(f'Failed to upload media: HTTP {response.status_code} {body}')
 
     async def _send_media_msg(
         self,
@@ -375,7 +615,7 @@ class QQOfficialClient:
         if msg_id:
             body['msg_id'] = msg_id
 
-        async with httpx.AsyncClient(timeout=120) as client:
+        async with self._http_client_context(timeout=120) as client:
             headers = {
                 'Authorization': f'QQBot {self.access_token}',
                 'Content-Type': 'application/json',
@@ -383,7 +623,8 @@ class QQOfficialClient:
             await self.logger.info(f'Sending rich media: {json.dumps(body, ensure_ascii=False)[:200]}')
             response = await client.post(url, headers=headers, json=body)
             if response.status_code != 200:
-                raise Exception(f'Failed to send rich media message: HTTP {response.status_code} {response.text}')
+                response_body = await httpclient.response_text(response)
+                raise Exception(f'Failed to send rich media message: HTTP {response.status_code} {response_body}')
 
     async def send_image_msg(
         self,
@@ -475,15 +716,119 @@ class QQOfficialClient:
         if stream_msg_id:
             body['stream_msg_id'] = stream_msg_id
 
-        async with httpx.AsyncClient(timeout=120) as client:
+        async with self._http_client_context(timeout=120) as client:
             headers = {
                 'Authorization': f'QQBot {self.access_token}',
                 'Content-Type': 'application/json',
             }
             response = await client.post(url, headers=headers, json=body)
             if response.status_code != 200:
-                raise Exception(f'Failed to send stream message: HTTP {response.status_code} {response.text}')
-            return response.json()
+                response_body = await httpclient.response_text(response)
+                raise Exception(f'Failed to send stream message: HTTP {response.status_code} {response_body}')
+            return await httpclient.parse_json_response(response)
+
+    async def send_markdown_keyboard(
+        self,
+        target_type: str,
+        target_id: str,
+        markdown_content: str,
+        keyboard: Optional[dict] = None,
+        msg_id: Optional[str] = None,
+        event_id: Optional[str] = None,
+        msg_seq: int = 1,
+    ) -> dict:
+        """Send a ``msg_type=2`` (markdown) message carrying a keyboard.
+
+        The keyboard ride-along is the only documented way to attach
+        buttons in QQ official; pure keyboard-only messages are not
+        accepted by the server (markdown content is required).
+
+        Args:
+            target_type: 'c2c' (single chat), 'group', 'channel' (text
+                channel — uses POST /channels/{id}/messages instead of v2).
+            target_id: openid for c2c/group, channel_id for channel.
+            markdown_content: Plain markdown text shown above the buttons.
+            keyboard: ``{'content': {'rows': [{'buttons': [...]}]}}`` per
+                the official spec. Use :func:`build_keyboard_from_form`
+                to construct from Dify form_data.
+            msg_id: Inbound user message id; turns this into a passive
+                reply (preferred — no monthly quota cost).
+            event_id: Use ``INTERACTION_CREATE`` event id from a prior
+                button click to keep within the 30-minute passive window
+                without an inbound msg_id.
+            msg_seq: De-dup counter when reusing msg_id.
+        """
+        if not await self.check_access_token():
+            await self.get_access_token()
+
+        if target_type == 'c2c':
+            url = f'{self.base_url}/v2/users/{target_id}/messages'
+        elif target_type == 'group':
+            url = f'{self.base_url}/v2/groups/{target_id}/messages'
+        elif target_type == 'channel':
+            url = f'{self.base_url}/channels/{target_id}/messages'
+        else:
+            raise ValueError(f'Unsupported target_type for markdown+keyboard: {target_type}')
+
+        body: dict[str, Any] = {
+            'msg_type': 2,
+            'markdown': {'content': markdown_content},
+            'msg_seq': msg_seq,
+        }
+        if keyboard and keyboard.get('content', {}).get('rows'):
+            body['keyboard'] = keyboard
+        if msg_id:
+            body['msg_id'] = msg_id
+        if event_id:
+            body['event_id'] = event_id
+
+        async with self._http_client_context(timeout=30) as client:
+            headers = {
+                'Authorization': f'QQBot {self.access_token}',
+                'Content-Type': 'application/json',
+            }
+            response = await client.post(url, headers=headers, json=body)
+            if response.status_code != 200:
+                response_body = await httpclient.response_text(response)
+                await self.logger.error(
+                    f'Failed to send markdown+keyboard: HTTP {response.status_code} {response_body}'
+                )
+                raise Exception(f'Failed to send markdown+keyboard: HTTP {response.status_code} {response_body}')
+            return await httpclient.parse_json_response(response)
+
+    async def ack_interaction(self, interaction_id: str, code: int = 0) -> None:
+        """Acknowledge a button-click INTERACTION_CREATE event.
+
+        QQ keeps the client in a loading spinner until this ack is
+        received. Should be called as soon as the click is parsed, before
+        any heavier downstream work (the actual workflow resume can run
+        async).
+
+        Args:
+            interaction_id: The ``id`` field from the INTERACTION_CREATE event.
+            code: 0=success, 1=fail, 2=rate-limited, 3=duplicate, 4=no
+                permission, 5=admin only. Default 0.
+        """
+        if not interaction_id:
+            return
+        if not await self.check_access_token():
+            await self.get_access_token()
+
+        url = f'{self.base_url}/interactions/{interaction_id}'
+        async with self._http_client_context(timeout=10) as client:
+            headers = {
+                'Authorization': f'QQBot {self.access_token}',
+                'Content-Type': 'application/json',
+            }
+            try:
+                response = await client.put(url, headers=headers, json={'code': code})
+                if response.status_code >= 400:
+                    response_body = await httpclient.response_text(response)
+                    await self.logger.warning(
+                        f'ack_interaction non-success: HTTP {response.status_code} {response_body}'
+                    )
+            except Exception as e:
+                await self.logger.warning(f'ack_interaction error (non-fatal): {e}')
 
     async def is_token_expired(self):
         """检查token是否过期"""
@@ -492,10 +837,11 @@ class QQOfficialClient:
         return time.time() > self.access_token_expiry_time
 
     async def repeat_seed(self, bot_secret: str, target_size: int = 32) -> bytes:
-        seed = bot_secret
-        while len(seed) < target_size:
-            seed *= 2
-        return seed[:target_size].encode('utf-8')
+        if not bot_secret:
+            raise ValueError('QQ bot secret must not be empty')
+        target_size = max(int(target_size), 1)
+        repeats = (target_size + len(bot_secret) - 1) // len(bot_secret)
+        return (bot_secret * repeats)[:target_size].encode('utf-8')
 
     async def verify(self, validation_payload: dict):
         seed = await self.repeat_seed(self.secret)
@@ -539,19 +885,20 @@ class QQOfficialClient:
             await self.get_access_token()
 
         url = f'{self.base_url}/gateway'
-        async with httpx.AsyncClient() as client:
+        async with self._http_client_context() as client:
             headers = {
                 'Authorization': f'QQBot {self.access_token}',
             }
             response = await client.get(url, headers=headers)
             if response.status_code == 200:
-                data = response.json()
+                data = await httpclient.parse_json_response(response)
                 ws_url = data.get('url', '')
                 if not ws_url:
                     raise Exception('Gateway URL is empty')
                 return ws_url
             else:
-                raise Exception(f'Failed to get Gateway URL: HTTP {response.status_code} {response.text}')
+                body = await httpclient.response_text(response)
+                raise Exception(f'Failed to get Gateway URL: HTTP {response.status_code} {body}')
 
     async def _background_token_refresh(self):
         """在 token 到期前主动刷新"""
@@ -631,7 +978,7 @@ class QQOfficialClient:
 
             try:
                 await self.logger.info('Connecting to WebSocket gateway...')
-                ws = await websockets.connect(ws_url)
+                ws = await websockets.connect(ws_url, max_size=_MAX_CALLBACK_BODY_BYTES)
                 await self.logger.info('WebSocket connected')
             except Exception as e:
                 await self.logger.error(f'WebSocket connection failed: {e}')
@@ -644,7 +991,7 @@ class QQOfficialClient:
             try:
                 async for raw_msg in ws:
                     try:
-                        payload = json.loads(raw_msg)
+                        payload = await asyncio.to_thread(json.loads, raw_msg)
                     except json.JSONDecodeError:
                         await self.logger.error(f'Failed to parse message: {raw_msg}')
                         continue
@@ -653,6 +1000,12 @@ class QQOfficialClient:
                     d = payload.get('d', {})
                     s = payload.get('s')
                     t = payload.get('t')
+                    # Top-level event id, distinct from `d.id`. Per QQ
+                    # spec this is the only value accepted as ``event_id``
+                    # in subsequent passive-reply send-message calls
+                    # (``d.id`` for INTERACTION_CREATE is the interaction
+                    # id, used solely for PUT /interactions/{id} ack).
+                    ws_event_id = payload.get('id')
 
                     if not isinstance(d, dict):
                         d = {}
@@ -731,7 +1084,22 @@ class QQOfficialClient:
 
                         else:
                             await self.logger.debug(f'Received event: {t}, seq={s}')
-                            if on_event:
+                            # INTERACTION_CREATE bypasses the regular
+                            # on_event dispatcher so the adapter sees the
+                            # top-level ws_event_id (needed as event_id
+                            # for the resumed reply) — same shape as the
+                            # webhook handler.
+                            if t == 'INTERACTION_CREATE':
+                                if self._interaction_handler:
+                                    try:
+                                        result = self._interaction_handler(d, ws_event_id)
+                                        if asyncio.iscoroutine(result):
+                                            await result
+                                    except Exception:
+                                        await self.logger.error(
+                                            f'Error in interaction handler (ws): {traceback.format_exc()}'
+                                        )
+                            elif on_event:
                                 try:
                                     result = on_event(t, d)
                                     if asyncio.iscoroutine(result):

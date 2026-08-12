@@ -10,6 +10,7 @@ import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
 
+from langbot.pkg.api.http.context import ExecutionContext
 from langbot.pkg.provider.runners.localagent import LocalAgentRunner, _StreamAccumulator
 
 
@@ -95,7 +96,7 @@ def make_query() -> pipeline_query.Query:
     adapter = AsyncMock()
     adapter.is_stream_output_supported = AsyncMock(return_value=False)
 
-    return pipeline_query.Query.model_construct(
+    query = pipeline_query.Query.model_construct(
         query_id='avg-query',
         launcher_type=provider_session.LauncherTypes.PERSON,
         launcher_id=12345,
@@ -122,6 +123,20 @@ def make_query() -> pipeline_query.Query:
         use_llm_model_uuid='test-model-uuid',
         variables={},
     )
+    object.__setattr__(
+        query,
+        '_execution_context',
+        ExecutionContext(
+            instance_uuid='instance-test',
+            workspace_uuid='workspace-test',
+            placement_generation=1,
+            bot_uuid='bot-uuid',
+            pipeline_uuid='pipeline-uuid',
+            query_uuid='query-avg',
+        ),
+    )
+    object.__setattr__(query, 'query_uuid', 'query-avg')
+    return query
 
 
 def test_stream_accumulator_merges_fragmented_tool_call_arguments():
@@ -161,6 +176,72 @@ def test_stream_accumulator_merges_fragmented_tool_call_arguments():
     final_msg = accumulator.final_message()
     assert final_msg.tool_calls[0].function.name == 'exec'
     assert final_msg.tool_calls[0].function.arguments == '{"command":"pwd"}'
+
+
+def test_stream_accumulator_preserves_tool_call_provider_specific_fields():
+    accumulator = _StreamAccumulator()
+    emitted = accumulator.add(
+        provider_message.MessageChunk(
+            role='assistant',
+            tool_calls=[
+                provider_message.ToolCall(
+                    id='call-gemini',
+                    type='function',
+                    function=provider_message.FunctionCall(name='lookup', arguments='{}'),
+                    provider_specific_fields={'thought_signature': 'sig'},
+                )
+            ],
+            is_final=True,
+        )
+    )
+
+    assert emitted is not None
+    assert emitted.tool_calls[0].provider_specific_fields == {'thought_signature': 'sig'}
+
+
+def test_stream_accumulator_strips_leading_think_from_tool_round_content():
+    accumulator = _StreamAccumulator(
+        msg_sequence=3,
+        initial_content='I will search for LangBot.',
+        remove_think=True,
+    )
+
+    assert accumulator.add(provider_message.MessageChunk(role='assistant', content='<thi')) is None
+    assert accumulator.add(provider_message.MessageChunk(role='assistant', content='nk>hidden')) is None
+    emitted = accumulator.add(
+        provider_message.MessageChunk(
+            role='assistant',
+            content=' reasoning</think>Here is the answer.',
+            is_final=True,
+        )
+    )
+
+    assert emitted is not None
+    assert emitted.content == 'I will search for LangBot.Here is the answer.'
+    assert '<think>' not in emitted.content
+    assert 'hidden reasoning' not in emitted.content
+
+
+def test_stream_accumulator_strips_initial_orphan_think_close_from_tool_round_content():
+    accumulator = _StreamAccumulator(
+        msg_sequence=3,
+        initial_content='I will search for LangBot.',
+        remove_think=True,
+    )
+
+    assert accumulator.add(provider_message.MessageChunk(role='assistant', content='hidden reasoning')) is None
+    emitted = accumulator.add(
+        provider_message.MessageChunk(
+            role='assistant',
+            content=' still hidden</think>Here is the answer.',
+            is_final=True,
+        )
+    )
+
+    assert emitted is not None
+    assert emitted.content == 'I will search for LangBot.Here is the answer.'
+    assert '</think>' not in emitted.content
+    assert 'hidden reasoning' not in emitted.content
 
 
 @pytest.mark.asyncio

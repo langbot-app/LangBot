@@ -126,24 +126,30 @@ def should_prepare_python_env(host_path: str | None) -> bool:
     return bool(list_python_manifest_files(normalized_root))
 
 
-def wrap_python_command_with_env(command: str, *, mount_path: str = '/workspace') -> str:
+def wrap_python_command_with_env(
+    command: str,
+    *,
+    mount_path: str = '/workspace',
+    state_path: str | None = None,
+) -> str:
     """Wrap a command with a reusable sandbox-local Python env bootstrap.
 
-    This is the generic "workspace is a Python project" path used by mutable
-    workspaces such as skills. Read-only installation strategies stay in the
-    higher-level caller because they are application policy, not workspace
-    semantics.
+    ``mount_path`` is always the source tree used for manifest hashing and
+    installation. ``state_path`` may point at a separate writable directory
+    for read-only source mounts; when omitted, legacy mutable-workspace behavior
+    stores the environment beside the source.
     """
+    writable_state_path = state_path or mount_path
     bootstrap = textwrap.dedent(
         f"""
         set -e
 
-        _LB_VENV_DIR="{mount_path}/.venv"
-        _LB_META_DIR="{mount_path}/.langbot"
+        _LB_VENV_DIR="{writable_state_path}/.venv"
+        _LB_META_DIR="{writable_state_path}/.langbot"
         _LB_META_FILE="$_LB_META_DIR/python-env.json"
         _LB_LOCK_DIR="$_LB_META_DIR/python-env.lock"
-        _LB_TMP_DIR="{mount_path}/.tmp"
-        _LB_PIP_CACHE_DIR="{mount_path}/.cache/pip"
+        _LB_TMP_DIR="{writable_state_path}/.tmp"
+        _LB_PIP_CACHE_DIR="{writable_state_path}/.cache/pip"
 
         mkdir -p "$_LB_META_DIR" "$_LB_TMP_DIR" "$_LB_PIP_CACHE_DIR"
         _LB_SYSTEM_PYTHON="$(command -v python3 || command -v python || true)"
@@ -165,17 +171,23 @@ def wrap_python_command_with_env(command: str, *, mount_path: str = '/workspace'
         import sys
 
         root = "{mount_path}"
+        max_manifest_bytes = 10 * 1024 * 1024
         digest = hashlib.sha256()
         manifest_files = []
         for rel in ("requirements.txt", "pyproject.toml", "setup.py", "setup.cfg"):
             path = os.path.join(root, rel)
             if not os.path.isfile(path):
                 continue
+            if os.path.getsize(path) > max_manifest_bytes:
+                raise RuntimeError(
+                    f"Python project manifest exceeds {{max_manifest_bytes}} bytes: {{rel}}"
+                )
             manifest_files.append(rel)
             with open(path, "rb") as handle:
                 digest.update(rel.encode("utf-8"))
                 digest.update(b"\\0")
-                digest.update(handle.read())
+                while chunk := handle.read(1024 * 1024):
+                    digest.update(chunk)
                 digest.update(b"\\0")
 
         print(
@@ -274,6 +286,7 @@ class BoxWorkspaceSession:
     def __init__(
         self,
         box_service,
+        execution_context,
         session_id: str,
         *,
         host_path: str | None = None,
@@ -290,6 +303,7 @@ class BoxWorkspaceSession:
         persistent: bool = False,
     ):
         self.box_service = box_service
+        self.execution_context = execution_context
         self.session_id = session_id
         self.host_path = host_path
         self.host_path_mode = host_path_mode
@@ -363,7 +377,7 @@ class BoxWorkspaceSession:
         timeout_sec: int | None = None,
     ):
         payload = self.build_exec_payload(cmd, workdir=workdir, env=env, timeout_sec=timeout_sec)
-        return await self.box_service.client.execute(self.box_service.build_spec(payload))
+        return await self.box_service.execute_in_context(self.execution_context, payload)
 
     async def execute_for_query(
         self,
@@ -378,7 +392,7 @@ class BoxWorkspaceSession:
         return await self.box_service.execute_spec_payload(payload, query)
 
     async def create_session(self):
-        return await self.box_service.create_session(self.build_session_payload())
+        return await self.box_service.create_session(self.execution_context, self.build_session_payload())
 
     def build_process_payload(
         self,
@@ -415,16 +429,26 @@ class BoxWorkspaceSession:
     ):
         payload = self.build_process_payload(command, args, env=env, cwd=cwd)
         payload['process_id'] = process_id
-        return await self.box_service.start_managed_process(self.session_id, payload)
+        return await self.box_service.start_managed_process(self.execution_context, self.session_id, payload)
 
     async def get_managed_process(self, process_id: str = 'default'):
-        return await self.box_service.get_managed_process(self.session_id, process_id)
+        return await self.box_service.get_managed_process(self.execution_context, self.session_id, process_id)
 
     async def stop_managed_process(self, process_id: str = 'default') -> None:
-        await self.box_service.stop_managed_process(self.session_id, process_id)
+        await self.box_service.stop_managed_process(self.execution_context, self.session_id, process_id)
 
-    def get_managed_process_websocket_url(self, process_id: str = 'default') -> str:
-        return self.box_service.get_managed_process_websocket_url(self.session_id, process_id)
+    async def get_managed_process_websocket_connection(
+        self,
+        process_id: str = 'default',
+    ) -> tuple[str, dict[str, str]]:
+        return await self.box_service.get_managed_process_websocket_connection(
+            self.execution_context,
+            self.session_id,
+            process_id,
+        )
 
     async def cleanup(self) -> None:
-        await self.box_service.client.delete_session(self.session_id)
+        await self.box_service.client.delete_session(
+            self.session_id,
+            action_context=self.box_service._action_context(self.execution_context),
+        )

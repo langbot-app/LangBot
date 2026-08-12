@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import os
 import aiofiles
 import shutil
@@ -40,10 +41,9 @@ class LocalStorageProvider(provider.StorageProvider):
         key: str,
         value: bytes,
     ):
-        resolved = _safe_resolve(LOCAL_STORAGE_PATH, key)
+        resolved = await asyncio.to_thread(_safe_resolve, LOCAL_STORAGE_PATH, key)
         parent = os.path.dirname(resolved)
-        if not os.path.exists(parent):
-            os.makedirs(parent)
+        await asyncio.to_thread(os.makedirs, parent, exist_ok=True)
         async with aiofiles.open(resolved, 'wb') as f:
             await f.write(value)
 
@@ -51,36 +51,51 @@ class LocalStorageProvider(provider.StorageProvider):
         self,
         key: str,
     ) -> bytes:
-        resolved = _safe_resolve(LOCAL_STORAGE_PATH, key)
+        return await self.load_bounded(key, max_bytes=provider.HARD_MAX_STORAGE_OBJECT_BYTES)
+
+    async def load_bounded(
+        self,
+        key: str,
+        *,
+        max_bytes: int,
+    ) -> bytes:
+        max_bytes = provider.normalize_read_limit(max_bytes)
+        resolved = await asyncio.to_thread(_safe_resolve, LOCAL_STORAGE_PATH, key)
         async with aiofiles.open(resolved, 'rb') as f:
-            return await f.read()
+            value = await f.read(max_bytes + 1)
+        if len(value) > max_bytes:
+            raise ValueError(f'Storage object exceeds the {max_bytes}-byte read limit')
+        return value
 
     async def exists(
         self,
         key: str,
     ) -> bool:
-        resolved = _safe_resolve(LOCAL_STORAGE_PATH, key)
-        return os.path.exists(resolved)
+        resolved = await asyncio.to_thread(_safe_resolve, LOCAL_STORAGE_PATH, key)
+        return await asyncio.to_thread(os.path.exists, resolved)
 
     async def delete(
         self,
         key: str,
     ):
-        resolved = _safe_resolve(LOCAL_STORAGE_PATH, key)
-        os.remove(resolved)
+        resolved = await asyncio.to_thread(_safe_resolve, LOCAL_STORAGE_PATH, key)
+        await asyncio.to_thread(os.remove, resolved)
 
     async def size(
         self,
         key: str,
     ) -> int:
-        resolved = _safe_resolve(LOCAL_STORAGE_PATH, key)
-        return os.path.getsize(resolved)
+        resolved = await asyncio.to_thread(_safe_resolve, LOCAL_STORAGE_PATH, key)
+        return await asyncio.to_thread(os.path.getsize, resolved)
 
     async def delete_dir_recursive(
         self,
         dir_path: str,
     ):
-        resolved = _safe_resolve(LOCAL_STORAGE_PATH, dir_path)
-        # 直接删除整个目录
-        if os.path.exists(resolved):
-            shutil.rmtree(resolved)
+        resolved = await asyncio.to_thread(
+            _safe_resolve,
+            LOCAL_STORAGE_PATH,
+            dir_path,
+        )
+        if await asyncio.to_thread(os.path.exists, resolved):
+            await asyncio.to_thread(shutil.rmtree, resolved)

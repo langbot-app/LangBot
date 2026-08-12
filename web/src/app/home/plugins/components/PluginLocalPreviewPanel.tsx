@@ -7,6 +7,8 @@ import { httpClient } from '@/app/infra/http/HttpClient';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import { usePluginInstallTasks } from '@/app/home/plugins/components/plugin-install-task';
 import PluginComponentList from '@/app/home/plugins/components/plugin-installed/PluginComponentList';
+import { WorkspaceQuotaTooltip } from '@/app/home/components/workspace-quota/WorkspaceQuotaTooltip';
+import type { WorkspaceQuotaItem } from '@/app/home/components/workspace-quota/useWorkspaceQuotaStatus';
 
 type PluginLocalPreview = Awaited<
   ReturnType<typeof httpClient.previewPluginInstallFromLocal>
@@ -16,6 +18,8 @@ interface PluginLocalPreviewPanelProps {
   file: File;
   onInstallStarted?: () => void;
   onCancel?: () => void;
+  quota?: WorkspaceQuotaItem;
+  quotaResource?: string;
 }
 
 function formatFileSize(bytes: number): string {
@@ -30,6 +34,8 @@ export default function PluginLocalPreviewPanel({
   file,
   onInstallStarted,
   onCancel,
+  quota,
+  quotaResource = '',
 }: PluginLocalPreviewPanelProps) {
   const { t } = useTranslation();
   const { addTask, setSelectedTaskId } = usePluginInstallTasks();
@@ -63,6 +69,7 @@ export default function PluginLocalPreviewPanel({
   }, [loadPreview]);
 
   async function handleInstall() {
+    if (quota?.disabled) return;
     setInstalling(true);
     setErrorMessage(null);
     try {
@@ -190,13 +197,27 @@ export default function PluginLocalPreviewPanel({
             {t('common.cancel')}
           </Button>
         )}
-        <Button
-          type="button"
-          onClick={handleInstall}
-          disabled={!preview || previewing || installing}
-        >
-          {installing ? t('plugins.installing') : t('plugins.confirmInstall')}
-        </Button>
+        {quota ? (
+          <WorkspaceQuotaTooltip quota={quota} resource={quotaResource}>
+            <Button
+              type="button"
+              onClick={handleInstall}
+              disabled={quota.disabled || !preview || previewing || installing}
+            >
+              {installing
+                ? t('plugins.installing')
+                : t('plugins.confirmInstall')}
+            </Button>
+          </WorkspaceQuotaTooltip>
+        ) : (
+          <Button
+            type="button"
+            onClick={handleInstall}
+            disabled={!preview || previewing || installing}
+          >
+            {installing ? t('plugins.installing') : t('plugins.confirmInstall')}
+          </Button>
+        )}
       </div>
     </div>
   );

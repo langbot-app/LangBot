@@ -7,12 +7,20 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
+from langbot.pkg.api.http.context import ExecutionContext
 from langbot.pkg.box.workspace import (
     BoxWorkspaceSession,
     classify_python_workspace,
     infer_workspace_host_path,
     rewrite_mounted_path,
     wrap_python_command_with_env,
+)
+
+
+_CONTEXT = ExecutionContext(
+    instance_uuid='instance-a',
+    workspace_uuid='workspace-a',
+    placement_generation=1,
 )
 
 
@@ -57,6 +65,9 @@ def test_wrap_python_command_with_env_contains_bootstrap_and_command():
     assert '_LB_SYSTEM_PYTHON="$(command -v python3 || command -v python || true)"' in command
     assert '"$_LB_SYSTEM_PYTHON" -m venv "$_LB_VENV_DIR"' in command
     assert 'kill -0 "$_LB_LOCK_OWNER"' in command
+    assert 'max_manifest_bytes = 10 * 1024 * 1024' in command
+    assert 'handle.read(1024 * 1024)' in command
+    assert 'digest.update(handle.read())' not in command
     assert 'export VIRTUAL_ENV="$_LB_VENV_DIR"' in command
     assert command.rstrip().endswith('python script.py')
 
@@ -66,6 +77,7 @@ async def test_workspace_session_execute_for_query_uses_session_payload():
     box_service = SimpleNamespace(execute_spec_payload=AsyncMock(return_value={'ok': True}))
     workspace = BoxWorkspaceSession(
         box_service,
+        _CONTEXT,
         'skill-person_123-demo',
         host_path='/tmp/project',
         host_path_mode='rw',
@@ -94,6 +106,7 @@ async def test_workspace_session_start_managed_process_rewrites_command_and_args
     box_service = SimpleNamespace(start_managed_process=AsyncMock(return_value={'status': 'running'}))
     workspace = BoxWorkspaceSession(
         box_service,
+        _CONTEXT,
         'mcp-u1',
         host_path='/tmp/project',
         host_path_mode='ro',
@@ -106,8 +119,10 @@ async def test_workspace_session_start_managed_process_rewrites_command_and_args
     )
 
     assert result == {'status': 'running'}
-    session_id = box_service.start_managed_process.await_args.args[0]
-    payload = box_service.start_managed_process.await_args.args[1]
+    execution_context = box_service.start_managed_process.await_args.args[0]
+    session_id = box_service.start_managed_process.await_args.args[1]
+    payload = box_service.start_managed_process.await_args.args[2]
+    assert execution_context == _CONTEXT
     assert session_id == 'mcp-u1'
     assert payload == {
         'command': 'python',
@@ -118,9 +133,39 @@ async def test_workspace_session_start_managed_process_rewrites_command_and_args
     }
 
 
+@pytest.mark.asyncio
+async def test_workspace_session_relay_connection_keeps_execution_context():
+    box_service = SimpleNamespace(
+        get_managed_process_websocket_connection=AsyncMock(
+            return_value=(
+                'ws://box/relay',
+                {'X-LangBot-Placement-Generation': '1'},
+            )
+        )
+    )
+    workspace = BoxWorkspaceSession(
+        box_service,
+        _CONTEXT,
+        'mcp-shared',
+    )
+
+    connection = await workspace.get_managed_process_websocket_connection('server-a')
+
+    assert connection == (
+        'ws://box/relay',
+        {'X-LangBot-Placement-Generation': '1'},
+    )
+    box_service.get_managed_process_websocket_connection.assert_awaited_once_with(
+        _CONTEXT,
+        'mcp-shared',
+        'server-a',
+    )
+
+
 def test_workspace_session_build_session_payload_keeps_generic_workspace_shape():
     workspace = BoxWorkspaceSession(
         Mock(),
+        _CONTEXT,
         'workspace-1',
         host_path='/tmp/project',
         host_path_mode='rw',

@@ -50,7 +50,7 @@ LangBot — это **платформа с открытым исходным к�
 
 [→ Подробнее обо всех возможностях](https://link.langbot.app/en/docs/features)
 
-📍 Практические руководства: [развернуть мультиплатформенного ИИ-бота за 5 минут](https://blog.langbot.app/en/blog/deploy-ai-bot-in-5-minutes/), [подключить DeepSeek к WeChat, Discord и Telegram](https://blog.langbot.app/en/blog/connect-deepseek-to-wechat/), [запустить Dify Agent в Discord, Telegram и Slack](https://blog.langbot.app/en/blog/dify-agent-discord-telegram-slack/) и [создать чат-бота на n8n](https://blog.langbot.app/en/blog/n8n-multi-platform-ai-chatbot/).
+📍 Практические руководства: [развернуть мультиплатформенного ИИ-бота за 5 минут](https://langbot.app/en/blog/deploy-ai-bot-in-5-minutes/), [подключить DeepSeek к WeChat, Discord и Telegram](https://langbot.app/en/blog/connect-deepseek-to-wechat/), [запустить Dify Agent в Discord, Telegram и Slack](https://langbot.app/en/blog/dify-agent-discord-telegram-slack/) и [создать чат-бота на n8n](https://langbot.app/en/blog/n8n-multi-platform-ai-chatbot/).
 
 ---
 
@@ -88,6 +88,16 @@ docker compose --profile all up -d
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.app/template/yRrAyL?referralCode=vogKPF)
 
 **Другие варианты:** [Docker](https://link.langbot.app/en/docs/docker) · [Ручная установка](https://link.langbot.app/en/docs/manual-deploy) · [BTPanel](https://link.langbot.app/en/docs/bt-panel) · [Kubernetes](https://docs.langbot.app/en/deploy/langbot/kubernetes)
+
+---
+
+## Демо
+
+**Попробуйте прямо сейчас:** https://demo.langbot.dev/
+- Email: `demo@langbot.app`
+- Пароль: `langbot123456`
+
+*Примечание: Публичная демо-среда. Не вводите конфиденциальную информацию.*
 
 ---
 
@@ -153,14 +163,6 @@ docker compose --profile all up -d
 
 ---
 
-## Демо
-
-**Попробуйте прямо сейчас:** https://demo.langbot.dev/
-- Email: `demo@langbot.app`
-- Пароль: `langbot123456`
-
-*Примечание: Публичная демо-среда. Не вводите конфиденциальную информацию.*
-
 ## Создано для ИИ-агентов 🤖
 
 LangBot **дружелюбен к агентам по своей архитектуре** —— ваши кодинг-агенты (Claude Code, Codex, Copilot, Cursor и др.) могут управлять, расширять и развёртывать LangBot с первоклассной поддержкой:
@@ -179,12 +181,6 @@ LangBot **дружелюбен к агентам по своей архитек�
 [![Discord](https://img.shields.io/discord/1335141740050649118?logo=discord&label=Discord)](https://discord.gg/wdNEHETs87)
 
 - [Сообщество Discord](https://discord.gg/wdNEHETs87)
-
----
-
-## История Stars
-
-[![Star History Chart](https://api.star-history.com/svg?repos=langbot-app/LangBot&type=Date)](https://star-history.com/#langbot-app/LangBot&Date)
 
 ---
 

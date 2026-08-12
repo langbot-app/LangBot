@@ -164,6 +164,7 @@ class OfficialAccountAdapter(abstract_platform_adapter.AbstractMessagePlatformAd
         await keep_alive()
 
     async def kill(self) -> bool:
+        self.bot.clear()
         return False
 
     async def unregister_listener(

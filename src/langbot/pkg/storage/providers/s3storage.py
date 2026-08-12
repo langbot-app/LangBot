@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import asyncio
+
 import boto3
 from botocore.exceptions import ClientError
 
 from ...core import app
+from ...utils import bounded_executor
 from .. import provider
 
 
@@ -14,6 +17,7 @@ class S3StorageProvider(provider.StorageProvider):
         super().__init__(ap)
         self.s3_client = None
         self.bucket_name = None
+        self._io_semaphore = asyncio.Semaphore(16)
 
     async def initialize(self):
         """Initialize S3 client with configuration from config.yaml"""
@@ -26,6 +30,11 @@ class S3StorageProvider(provider.StorageProvider):
         secret_access_key = s3_config.get('secret_access_key', '')
         region_name = s3_config.get('region', 'us-east-1')
         self.bucket_name = s3_config.get('bucket', 'langbot-storage')
+        try:
+            max_concurrency = int(s3_config.get('max_concurrency', 16))
+        except (TypeError, ValueError):
+            max_concurrency = 16
+        self._io_semaphore = asyncio.Semaphore(max(1, min(max_concurrency, 128)))
 
         # Initialize S3 client
         session = boto3.session.Session()
@@ -37,7 +46,25 @@ class S3StorageProvider(provider.StorageProvider):
             aws_secret_access_key=secret_access_key,
         )
 
-        # Ensure bucket exists
+        await self._run_io(self._ensure_bucket)
+
+    async def shutdown(self) -> None:
+        """Close the botocore HTTP connection pool without blocking the loop."""
+
+        client = self.s3_client
+        self.s3_client = None
+        if client is not None:
+            await bounded_executor.run_blocking_cleanup(client.close)
+
+    async def _run_io(self, operation, /, *args, **kwargs):
+        """Run one blocking boto3 operation behind a bounded concurrency gate."""
+
+        async with self._io_semaphore:
+            return await asyncio.to_thread(operation, *args, **kwargs)
+
+    def _ensure_bucket(self) -> None:
+        """Probe/create the bucket without blocking the application event loop."""
+
         try:
             self.s3_client.head_bucket(Bucket=self.bucket_name)
         except ClientError as e:
@@ -61,7 +88,8 @@ class S3StorageProvider(provider.StorageProvider):
     ):
         """Save bytes to S3"""
         try:
-            self.s3_client.put_object(
+            await self._run_io(
+                self.s3_client.put_object,
                 Bucket=self.bucket_name,
                 Key=key,
                 Body=value,
@@ -74,16 +102,38 @@ class S3StorageProvider(provider.StorageProvider):
         self,
         key: str,
     ) -> bytes:
+        return await self.load_bounded(key, max_bytes=provider.HARD_MAX_STORAGE_OBJECT_BYTES)
+
+    async def load_bounded(
+        self,
+        key: str,
+        *,
+        max_bytes: int,
+    ) -> bytes:
         """Load bytes from S3"""
+        max_bytes = provider.normalize_read_limit(max_bytes)
         try:
-            response = self.s3_client.get_object(
-                Bucket=self.bucket_name,
-                Key=key,
-            )
-            return response['Body'].read()
+            return await self._run_io(self._load_sync, key, max_bytes)
         except Exception as e:
             self.ap.logger.error(f'Failed to load from S3: {e}')
             raise
+
+    def _load_sync(self, key: str, max_bytes: int) -> bytes:
+        response = self.s3_client.get_object(
+            Bucket=self.bucket_name,
+            Key=key,
+        )
+        body = response['Body']
+        try:
+            declared_size = response.get('ContentLength')
+            if declared_size is not None and declared_size > max_bytes:
+                raise ValueError(f'Storage object exceeds the {max_bytes}-byte read limit')
+            value = body.read(max_bytes + 1)
+            if len(value) > max_bytes:
+                raise ValueError(f'Storage object exceeds the {max_bytes}-byte read limit')
+            return value
+        finally:
+            body.close()
 
     async def exists(
         self,
@@ -91,7 +141,8 @@ class S3StorageProvider(provider.StorageProvider):
     ) -> bool:
         """Check if object exists in S3"""
         try:
-            self.s3_client.head_object(
+            await self._run_io(
+                self.s3_client.head_object,
                 Bucket=self.bucket_name,
                 Key=key,
             )
@@ -109,7 +160,8 @@ class S3StorageProvider(provider.StorageProvider):
     ):
         """Delete object from S3"""
         try:
-            self.s3_client.delete_object(
+            await self._run_io(
+                self.s3_client.delete_object,
                 Bucket=self.bucket_name,
                 Key=key,
             )
@@ -123,7 +175,8 @@ class S3StorageProvider(provider.StorageProvider):
     ) -> int:
         """Get object size from S3 without downloading it"""
         try:
-            response = self.s3_client.head_object(
+            response = await self._run_io(
+                self.s3_client.head_object,
                 Bucket=self.bucket_name,
                 Key=key,
             )
@@ -138,23 +191,23 @@ class S3StorageProvider(provider.StorageProvider):
     ):
         """Delete all objects with the given prefix (directory)"""
         try:
-            # Ensure dir_path ends with /
-            if not dir_path.endswith('/'):
-                dir_path = dir_path + '/'
-
-            # List all objects with the prefix
-            paginator = self.s3_client.get_paginator('list_objects_v2')
-            pages = paginator.paginate(Bucket=self.bucket_name, Prefix=dir_path)
-
-            # Delete all objects
-            for page in pages:
-                if 'Contents' in page:
-                    objects_to_delete = [{'Key': obj['Key']} for obj in page['Contents']]
-                    if objects_to_delete:
-                        self.s3_client.delete_objects(
-                            Bucket=self.bucket_name,
-                            Delete={'Objects': objects_to_delete},
-                        )
+            await self._run_io(self._delete_dir_recursive_sync, dir_path)
         except Exception as e:
             self.ap.logger.error(f'Failed to delete directory from S3: {e}')
             raise
+
+    def _delete_dir_recursive_sync(self, dir_path: str) -> None:
+        if not dir_path.endswith('/'):
+            dir_path = dir_path + '/'
+
+        paginator = self.s3_client.get_paginator('list_objects_v2')
+        pages = paginator.paginate(Bucket=self.bucket_name, Prefix=dir_path)
+        for page in pages:
+            if 'Contents' not in page:
+                continue
+            objects_to_delete = [{'Key': obj['Key']} for obj in page['Contents']]
+            if objects_to_delete:
+                self.s3_client.delete_objects(
+                    Bucket=self.bucket_name,
+                    Delete={'Objects': objects_to_delete},
+                )

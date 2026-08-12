@@ -1,16 +1,29 @@
 from __future__ import annotations
 
+import asyncio
 import base64
+import contextlib
+import errno
+import heapq
 import json
 import os
+import posixpath
+import stat
+import time
+from collections.abc import Iterator
+from dataclasses import dataclass
+from pathlib import PurePosixPath
 
 import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 from langbot_plugin.api.entities.events import pipeline_query
+import regex
 
 from .. import loader
 from ..errors import ToolNotFoundError
 from .availability import is_box_backend_available
 from . import skill as skill_loader
+from ....api.http.context import ExecutionContext
+from ....utils.bounded_executor import run_blocking_atomic
 
 EXEC_TOOL_NAME = 'exec'
 READ_TOOL_NAME = 'read'
@@ -28,10 +41,170 @@ _DEFAULT_READ_MAX_LINES = 2000
 _MAX_READ_MAX_LINES = 10000
 _DEFAULT_TOOL_RESULT_MAX_BYTES = 50 * 1024
 _BOX_FILE_SCRIPT_MAX_BYTES = 2048
+_MAX_HOST_EDIT_FILE_BYTES = 1024 * 1024
 _GLOB_MAX_MATCHES = 100
+_FILE_WALK_MAX_ENTRIES = 100_000
+_DIRECTORY_MAX_ENTRIES = 10_000
 _GREP_MAX_MATCHES = 200
 _GREP_MAX_FILES = 5000
 _GREP_MAX_LINE_CHARS = 500
+_GREP_MAX_SCAN_LINE_CHARS = 1024 * 1024
+_GREP_MAX_FILE_SCAN_CHARS = 10 * 1024 * 1024
+_GREP_MAX_TOTAL_SCAN_CHARS = 50 * 1024 * 1024
+_GREP_MAX_PATTERN_CHARS = 1024
+_GREP_REGEX_TIMEOUT_SECONDS = 0.25
+
+_DIRECTORY_OPEN_FLAGS = (
+    os.O_RDONLY | getattr(os, 'O_DIRECTORY', 0) | getattr(os, 'O_NOFOLLOW', 0) | getattr(os, 'O_CLOEXEC', 0)
+)
+_FILE_OPEN_FLAGS = getattr(os, 'O_NOFOLLOW', 0) | getattr(os, 'O_CLOEXEC', 0) | getattr(os, 'O_NONBLOCK', 0)
+_SECURE_HOST_FILE_OPS_AVAILABLE = bool(
+    getattr(os, 'O_NOFOLLOW', 0)
+    and os.open in os.supports_dir_fd
+    and os.stat in os.supports_dir_fd
+    and os.mkdir in os.supports_dir_fd
+    and os.listdir in os.supports_fd
+    and os.scandir in os.supports_fd
+)
+
+
+@dataclass(frozen=True)
+class _HostLocation:
+    root: str
+    relative_parts: tuple[str, ...]
+    selected_skill: dict | None
+    workspace_anchor: str | None = None
+
+
+def _unsafe_host_path(path: str, exc: BaseException | None = None) -> ValueError:
+    error = ValueError(f'Path escapes the workspace boundary or contains a symbolic link: {path}')
+    if exc is not None:
+        error.__cause__ = exc
+    return error
+
+
+def _relative_workspace_parts(path: str) -> tuple[str, ...]:
+    normalized = posixpath.normpath(str(path or '/workspace').strip() or '/workspace')
+    if normalized == '/workspace':
+        return ()
+    if not normalized.startswith('/workspace/'):
+        raise ValueError('Path escapes the workspace boundary.')
+
+    parts = tuple(part for part in normalized.removeprefix('/workspace/').split('/') if part)
+    if any(part in {'.', '..'} or '\x00' in part for part in parts):
+        raise ValueError('Path escapes the workspace boundary.')
+    return parts
+
+
+def _is_symlink_at(parent_fd: int, name: str) -> bool:
+    try:
+        return stat.S_ISLNK(os.stat(name, dir_fd=parent_fd, follow_symlinks=False).st_mode)
+    except FileNotFoundError:
+        return False
+
+
+def _open_directory_at(parent_fd: int, name: str, *, create: bool) -> int:
+    if create:
+        try:
+            os.mkdir(name, mode=0o777, dir_fd=parent_fd)
+        except FileExistsError:
+            pass
+
+    try:
+        directory_fd = os.open(name, _DIRECTORY_OPEN_FLAGS, dir_fd=parent_fd)
+    except OSError as exc:
+        if exc.errno == errno.ELOOP or _is_symlink_at(parent_fd, name):
+            raise _unsafe_host_path(name, exc)
+        raise
+    if not stat.S_ISDIR(os.fstat(directory_fd).st_mode):
+        os.close(directory_fd)
+        raise NotADirectoryError(name)
+    return directory_fd
+
+
+def _open_directory_parts(root_fd: int, parts: tuple[str, ...], *, create: bool) -> int:
+    current_fd = os.dup(root_fd)
+    try:
+        for part in parts:
+            next_fd = _open_directory_at(current_fd, part, create=create)
+            os.close(current_fd)
+            current_fd = next_fd
+        return current_fd
+    except BaseException:
+        os.close(current_fd)
+        raise
+
+
+@contextlib.contextmanager
+def _open_host_root(location: _HostLocation, *, create: bool) -> Iterator[int]:
+    """Open and pin the tenant root before resolving tenant-controlled names."""
+
+    if location.workspace_anchor is None:
+        root_path = os.path.realpath(location.root)
+        try:
+            root_fd = os.open(root_path, _DIRECTORY_OPEN_FLAGS)
+        except OSError as exc:
+            if exc.errno == errno.ELOOP:
+                raise _unsafe_host_path(location.root, exc)
+            raise
+    else:
+        anchor_path = os.path.abspath(location.workspace_anchor)
+        root_path = os.path.abspath(location.root)
+        try:
+            if os.path.commonpath((anchor_path, root_path)) != anchor_path:
+                raise _unsafe_host_path(location.root)
+        except ValueError as exc:
+            raise _unsafe_host_path(location.root, exc)
+
+        anchor_real_path = os.path.realpath(anchor_path)
+        try:
+            anchor_fd = os.open(anchor_real_path, _DIRECTORY_OPEN_FLAGS)
+        except OSError as exc:
+            if exc.errno == errno.ELOOP:
+                raise _unsafe_host_path(location.workspace_anchor, exc)
+            raise
+        try:
+            root_relative = os.path.relpath(root_path, anchor_path)
+            root_parts = () if root_relative == '.' else tuple(root_relative.split(os.sep))
+            root_fd = _open_directory_parts(anchor_fd, root_parts, create=create)
+        finally:
+            os.close(anchor_fd)
+
+    try:
+        if not stat.S_ISDIR(os.fstat(root_fd).st_mode):
+            raise _unsafe_host_path(location.root)
+        yield root_fd
+    finally:
+        os.close(root_fd)
+
+
+@contextlib.contextmanager
+def _open_location_fd(
+    root_fd: int,
+    relative_parts: tuple[str, ...],
+    flags: int,
+    *,
+    create_parents: bool = False,
+    mode: int = 0o666,
+) -> Iterator[int]:
+    if not relative_parts:
+        target_fd = os.dup(root_fd)
+    else:
+        parent_fd = _open_directory_parts(root_fd, relative_parts[:-1], create=create_parents)
+        try:
+            try:
+                target_fd = os.open(relative_parts[-1], flags | _FILE_OPEN_FLAGS, mode, dir_fd=parent_fd)
+            except OSError as exc:
+                if exc.errno == errno.ELOOP or _is_symlink_at(parent_fd, relative_parts[-1]):
+                    raise _unsafe_host_path(relative_parts[-1], exc)
+                raise
+        finally:
+            os.close(parent_fd)
+
+    try:
+        yield target_fd
+    finally:
+        os.close(target_fd)
 
 
 class NativeToolLoader(loader.ToolLoader):
@@ -56,8 +229,23 @@ class NativeToolLoader(loader.ToolLoader):
         """Check if the box backend is truly available (not just the runtime)."""
         return await is_box_backend_available(self.ap)
 
+    @staticmethod
+    def _execution_context(query: pipeline_query.Query) -> ExecutionContext:
+        attached_context = getattr(query, '_execution_context', None)
+        if isinstance(attached_context, ExecutionContext):
+            return attached_context
+        return ExecutionContext(
+            instance_uuid=str(getattr(query, 'instance_uuid', '') or ''),
+            workspace_uuid=str(getattr(query, 'workspace_uuid', '') or ''),
+            placement_generation=getattr(query, 'placement_generation', 0) or 0,
+            bot_uuid=getattr(query, 'bot_uuid', None),
+            pipeline_uuid=getattr(query, 'pipeline_uuid', None),
+            query_uuid=getattr(query, 'query_uuid', None),
+            entitlement_revision=getattr(query, 'entitlement_revision', 0),
+        )
+
     async def get_tools(self, bound_plugins: list[str] | None = None) -> list[resource_tool.LLMTool]:
-        if not self._is_sandbox_available():
+        if not await self._is_sandbox_available():
             return []
         if self._tools is None:
             self._tools = [
@@ -71,9 +259,16 @@ class NativeToolLoader(loader.ToolLoader):
         return list(self._tools)
 
     async def has_tool(self, name: str) -> bool:
-        return name in _ALL_TOOL_NAMES and self._is_sandbox_available()
+        return name in _ALL_TOOL_NAMES and await self._is_sandbox_available()
 
     async def invoke_tool(self, name: str, parameters: dict, query: pipeline_query.Query):
+        require_sandbox = getattr(
+            getattr(self.ap, 'box_service', None),
+            'require_workspace_sandbox',
+            None,
+        )
+        if callable(require_sandbox):
+            await require_sandbox(self._execution_context(query))
         if name == EXEC_TOOL_NAME:
             self.ap.logger.info(
                 'exec tool invoked: '
@@ -99,6 +294,7 @@ class NativeToolLoader(loader.ToolLoader):
     async def _invoke_exec(self, parameters: dict, query: pipeline_query.Query) -> dict:
         command = str(parameters['command'])
         workdir = str(parameters.get('workdir', '/workspace') or '/workspace')
+        selected_skill_name: str | None = None
 
         # Validate that skill references target activated skills.
         selected_skill, _ = skill_loader.resolve_virtual_skill_path(
@@ -128,31 +324,51 @@ class NativeToolLoader(loader.ToolLoader):
             if not package_root:
                 raise ValueError(f'Activated skill "{selected_skill_name}" has no package_root.')
 
+            # Pass only the logical name across the authenticated Core→Runtime
+            # boundary. In Cloud mode the shared Box Runtime resolves the
+            # Workspace-scoped package root and constructs the read-only mount;
+            # Core host paths are never accepted as mount authority.
             # Wrap command with Python venv bootstrap if the skill has a Python project.
             # The venv is created inside the skill's mount path.
             skill_mount = f'/workspace/.skills/{selected_skill_name}'
-            if skill_loader.should_prepare_skill_python_env(package_root):
+            python_project = selected_skill.get('python_project') is True
+            if 'python_project' not in selected_skill and bool(
+                getattr(self.ap.box_service, 'shares_filesystem_with_box', False)
+            ):
+                # Backward compatibility for a same-process OSS Runtime that
+                # predates trusted Box metadata. Never probe a path reported by
+                # an external Runtime from the Core filesystem.
+                python_project = skill_loader.should_prepare_skill_python_env(package_root)
+            if python_project:
                 parameters = dict(parameters)
-                parameters['command'] = skill_loader.wrap_skill_command_with_python_env(command, mount_path=skill_mount)
+                parameters['command'] = skill_loader.wrap_skill_command_with_python_env(
+                    command,
+                    mount_path=skill_mount,
+                    state_path=f'/workspace/.skill-envs/{selected_skill_name}',
+                )
 
         # All exec calls (with or without skills) go through the same container
         # via execute_tool. Skills are mounted at /workspace/.skills/{name}/
         # via extra_mounts built by BoxService.
-        result = await self.ap.box_service.execute_tool(parameters, query)
+        result = await self.ap.box_service.execute_tool(
+            parameters,
+            query,
+            skill_name=selected_skill_name,
+        )
         result = self._normalize_exec_result(result)
 
         if selected_skill is not None:
-            self._refresh_skill_from_disk(selected_skill)
+            self._refresh_skill_from_disk(query, selected_skill)
         return result
 
-    def _resolve_host_path(
+    def _resolve_host_location(
         self,
         query: pipeline_query.Query,
         sandbox_path: str,
         *,
         include_visible: bool,
         include_activated: bool,
-    ) -> tuple[str, dict | None]:
+    ) -> _HostLocation:
         selected_skill, rewritten_path = skill_loader.resolve_virtual_skill_path(
             self.ap,
             query,
@@ -162,22 +378,26 @@ class NativeToolLoader(loader.ToolLoader):
         )
 
         box_service = self.ap.box_service
-        host_root = selected_skill.get('package_root') if selected_skill is not None else box_service.default_workspace
+        if selected_skill is not None:
+            if not self._can_interpret_skill_host_paths():
+                raise ValueError(
+                    'Skill package paths are owned by the Box Runtime; '
+                    'this operation requires a Runtime skill-file API.'
+                )
+            host_root = selected_skill.get('package_root')
+            workspace_anchor = None
+        else:
+            host_root = box_service._tenant_workspace(self._execution_context(query))
+            workspace_anchor = getattr(box_service, 'default_workspace', None)
         if not host_root:
             raise ValueError('No host workspace configured for file operations.')
 
-        mount_path = '/workspace'
-        if not rewritten_path.startswith(mount_path):
-            raise ValueError(f'Path must be under {mount_path}.')
-
-        relative = rewritten_path[len(mount_path) :].lstrip('/')
-        host_path = os.path.realpath(os.path.join(host_root, relative))
-        host_root = os.path.realpath(host_root)
-
-        if not (host_path == host_root or host_path.startswith(host_root + os.sep)):
-            raise ValueError('Path escapes the workspace boundary.')
-
-        return host_path, selected_skill
+        return _HostLocation(
+            root=str(host_root),
+            relative_parts=_relative_workspace_parts(rewritten_path),
+            selected_skill=selected_skill,
+            workspace_anchor=str(workspace_anchor) if workspace_anchor else None,
+        )
 
     def _resolve_skill_relative_path(
         self,
@@ -197,11 +417,15 @@ class NativeToolLoader(loader.ToolLoader):
         if selected_skill is None:
             return None
 
-        mount_path = '/workspace'
-        if not rewritten_path.startswith(mount_path):
-            raise ValueError(f'Path must be under {mount_path}.')
-        relative = rewritten_path[len(mount_path) :].lstrip('/') or '.'
+        relative = '/'.join(_relative_workspace_parts(rewritten_path)) or '.'
         return selected_skill, relative
+
+    def _can_interpret_skill_host_paths(self) -> bool:
+        """Require an explicitly proven shared Core/Runtime filesystem view."""
+
+        return _SECURE_HOST_FILE_OPS_AVAILABLE and bool(
+            getattr(self.ap.box_service, 'shares_filesystem_with_box', False)
+        )
 
     def _should_use_box_workspace_files(self, selected_skill: dict | None) -> bool:
         if selected_skill is not None:
@@ -209,8 +433,312 @@ class NativeToolLoader(loader.ToolLoader):
         box_service = getattr(self.ap, 'box_service', None)
         if box_service is None or not hasattr(box_service, 'execute_tool'):
             return False
+        if not _SECURE_HOST_FILE_OPS_AVAILABLE:
+            # Preserve the OSS API on platforms without openat/O_NOFOLLOW by
+            # running inside the tenant-scoped Box mount, never via a racy
+            # host-path fallback.
+            return True
         default_workspace = getattr(box_service, 'default_workspace', None)
         return bool(default_workspace and not os.path.isdir(os.path.realpath(default_workspace)))
+
+    def _read_host_location(self, location: _HostLocation, parameters: dict) -> dict:
+        with _open_host_root(location, create=False) as root_fd:
+            with _open_location_fd(root_fd, location.relative_parts, os.O_RDONLY) as target_fd:
+                metadata = os.fstat(target_fd)
+                if stat.S_ISDIR(metadata.st_mode):
+                    entries: list[str] = []
+                    truncated = False
+                    with os.scandir(target_fd) as iterator:
+                        for entry in iterator:
+                            if len(entries) >= _DIRECTORY_MAX_ENTRIES:
+                                truncated = True
+                                break
+                            entries.append(entry.name)
+                    return self._build_directory_result(
+                        entries,
+                        total=len(entries) + int(truncated),
+                        force_truncated_by='entries' if truncated else None,
+                    )
+                if not stat.S_ISREG(metadata.st_mode):
+                    raise ValueError('Path must reference a regular file or directory.')
+                return self._read_text_file_preview(target_fd, parameters, metadata=metadata)
+
+    def _write_host_location(self, location: _HostLocation, content: str, parameters: dict) -> None:
+        if not location.relative_parts:
+            raise ValueError('Path must reference a file under /workspace.')
+
+        encoding, mode = self._write_options(parameters)
+        if encoding == 'base64':
+            try:
+                payload = base64.b64decode(content, validate=True)
+            except Exception as exc:
+                raise ValueError(f'invalid base64 content: {exc}') from exc
+        else:
+            payload = content.encode('utf-8')
+
+        flags = os.O_WRONLY | os.O_CREAT
+        if mode == 'append':
+            flags |= os.O_APPEND
+        with _open_host_root(location, create=True) as root_fd:
+            with _open_location_fd(
+                root_fd,
+                location.relative_parts,
+                flags,
+                create_parents=True,
+            ) as target_fd:
+                if not stat.S_ISREG(os.fstat(target_fd).st_mode):
+                    raise ValueError('Path must reference a regular file.')
+                if mode != 'append':
+                    os.ftruncate(target_fd, 0)
+                    os.lseek(target_fd, 0, os.SEEK_SET)
+                self._write_all(target_fd, payload)
+
+    def _edit_host_location(
+        self,
+        location: _HostLocation,
+        old_string: str,
+        new_string: str,
+    ) -> tuple[bool, str | None]:
+        if not location.relative_parts:
+            raise ValueError('Path must reference a file under /workspace.')
+
+        with _open_host_root(location, create=False) as root_fd:
+            with _open_location_fd(root_fd, location.relative_parts, os.O_RDWR) as target_fd:
+                metadata = os.fstat(target_fd)
+                if not stat.S_ISREG(metadata.st_mode):
+                    return False, 'File not found.'
+                if metadata.st_size > _MAX_HOST_EDIT_FILE_BYTES:
+                    return False, f'File exceeds the {_MAX_HOST_EDIT_FILE_BYTES}-byte edit limit.'
+                with os.fdopen(os.dup(target_fd), 'rb') as file_obj:
+                    raw_content = file_obj.read(_MAX_HOST_EDIT_FILE_BYTES + 1)
+                if len(raw_content) > _MAX_HOST_EDIT_FILE_BYTES:
+                    return False, f'File exceeds the {_MAX_HOST_EDIT_FILE_BYTES}-byte edit limit.'
+                content = raw_content.decode('utf-8', errors='replace')
+                count = content.count(old_string)
+                if count == 0:
+                    return False, 'old_string not found in file.'
+                if count > 1:
+                    return False, f'old_string matches {count} locations; provide a more unique string.'
+
+                payload = content.replace(old_string, new_string, 1).encode('utf-8')
+                if len(payload) > _MAX_HOST_EDIT_FILE_BYTES:
+                    return False, f'Edited file exceeds the {_MAX_HOST_EDIT_FILE_BYTES}-byte limit.'
+                os.ftruncate(target_fd, 0)
+                os.lseek(target_fd, 0, os.SEEK_SET)
+                self._write_all(target_fd, payload)
+                return True, None
+
+    @staticmethod
+    def _write_all(file_fd: int, payload: bytes) -> None:
+        view = memoryview(payload)
+        while view:
+            written = os.write(file_fd, view)
+            if written <= 0:
+                raise OSError('Could not write the complete workspace file.')
+            view = view[written:]
+
+    @staticmethod
+    def _rglob_matches(relative_path: str, pattern: str) -> bool:
+        candidates = {pattern}
+        pending = [pattern]
+        while pending:
+            candidate = pending.pop()
+            marker = candidate.find('**/')
+            while marker >= 0:
+                without_recursive_segment = candidate[:marker] + candidate[marker + 3 :]
+                if without_recursive_segment not in candidates:
+                    candidates.add(without_recursive_segment)
+                    pending.append(without_recursive_segment)
+                marker = candidate.find('**/', marker + 3)
+        return any(candidate and PurePosixPath(relative_path).match(candidate) for candidate in candidates)
+
+    def _glob_host_location(self, location: _HostLocation, pattern: str, sandbox_base: str) -> dict:
+        newest_hits: list[tuple[float, str]] = []
+        total = 0
+        entries_seen = 0
+        scan_truncated = False
+
+        def walk(directory_fd: int, prefix: str) -> bool:
+            nonlocal entries_seen, scan_truncated, total
+            with os.scandir(directory_fd) as entries:
+                for entry in entries:
+                    entries_seen += 1
+                    if entries_seen > _FILE_WALK_MAX_ENTRIES:
+                        scan_truncated = True
+                        return True
+                    name = entry.name
+                    if name in _SKIP_DIRS:
+                        continue
+                    try:
+                        child_fd = os.open(name, os.O_RDONLY | _FILE_OPEN_FLAGS, dir_fd=directory_fd)
+                    except OSError:
+                        continue
+                    try:
+                        metadata = os.fstat(child_fd)
+                        relative = f'{prefix}/{name}' if prefix else name
+                        if self._rglob_matches(relative, pattern):
+                            total += 1
+                            candidate = (metadata.st_mtime, relative)
+                            if len(newest_hits) < _GLOB_MAX_MATCHES:
+                                heapq.heappush(newest_hits, candidate)
+                            elif candidate > newest_hits[0]:
+                                heapq.heapreplace(newest_hits, candidate)
+                        if stat.S_ISDIR(metadata.st_mode) and walk(child_fd, relative):
+                            return True
+                    finally:
+                        os.close(child_fd)
+            return False
+
+        with _open_host_root(location, create=False) as root_fd:
+            with _open_location_fd(root_fd, location.relative_parts, os.O_RDONLY) as target_fd:
+                if not stat.S_ISDIR(os.fstat(target_fd).st_mode):
+                    return {'ok': False, 'error': f'Path is not a directory: {sandbox_base}'}
+                walk(target_fd, '')
+
+        hits = sorted(newest_hits, reverse=True)
+        sandbox_paths: list[str] = []
+        output_bytes = 0
+        truncated_by_bytes = False
+        for _mtime, relative in hits:
+            sandbox_path = self._sandbox_child_path(sandbox_base, relative)
+            entry_bytes = len(sandbox_path.encode('utf-8')) + (1 if sandbox_paths else 0)
+            if output_bytes + entry_bytes > _DEFAULT_TOOL_RESULT_MAX_BYTES:
+                truncated_by_bytes = True
+                break
+            sandbox_paths.append(sandbox_path)
+            output_bytes += entry_bytes
+
+        return {
+            'ok': True,
+            'matches': sandbox_paths,
+            'preview': '\n'.join(sandbox_paths),
+            'total': total,
+            'truncated': scan_truncated or total > len(sandbox_paths) or truncated_by_bytes,
+            'truncated_by': (
+                'scan'
+                if scan_truncated
+                else ('bytes' if truncated_by_bytes else ('matches' if total > len(sandbox_paths) else None))
+            ),
+        }
+
+    def _grep_host_location(
+        self,
+        location: _HostLocation,
+        pattern: str,
+        include: str | None,
+        sandbox_base: str,
+    ) -> dict:
+        try:
+            compiled = regex.compile(pattern)
+        except regex.error as exc:
+            return {'ok': False, 'error': f'Invalid regex: {exc}'}
+
+        matches: list[dict] = []
+        output_bytes = 0
+        truncated_by: str | None = None
+        files_seen = 0
+        entries_seen = 0
+        total_chars_seen = 0
+        deadline = time.monotonic() + _GREP_REGEX_TIMEOUT_SECONDS
+
+        def grep_file(file_fd: int, sandbox_path: str) -> bool:
+            nonlocal output_bytes, total_chars_seen, truncated_by
+            file_chars_seen = 0
+            with os.fdopen(os.dup(file_fd), 'r', encoding='utf-8', errors='ignore') as handle:
+                lineno = 0
+                while True:
+                    line = handle.readline(_GREP_MAX_SCAN_LINE_CHARS + 1)
+                    if not line:
+                        break
+                    lineno += 1
+                    line_chars = len(line)
+                    file_chars_seen += line_chars
+                    total_chars_seen += line_chars
+                    if file_chars_seen > _GREP_MAX_FILE_SCAN_CHARS or total_chars_seen > _GREP_MAX_TOTAL_SCAN_CHARS:
+                        truncated_by = 'scan'
+                        return True
+                    if line_chars > _GREP_MAX_SCAN_LINE_CHARS and not line.endswith('\n'):
+                        truncated_by = truncated_by or 'line'
+                        return False
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise TimeoutError
+                    if not compiled.search(line, timeout=remaining, concurrent=True):
+                        continue
+                    content, line_truncated = self._truncate_grep_line(line.rstrip())
+                    entry = {'file': sandbox_path, 'line': lineno, 'content': content}
+                    entry_bytes = len(json.dumps(entry, ensure_ascii=False).encode('utf-8')) + 1
+                    if output_bytes + entry_bytes > _DEFAULT_TOOL_RESULT_MAX_BYTES:
+                        truncated_by = 'bytes'
+                        return True
+                    if line_truncated and truncated_by is None:
+                        truncated_by = 'line'
+                    matches.append(entry)
+                    output_bytes += entry_bytes
+                    if len(matches) >= _GREP_MAX_MATCHES:
+                        truncated_by = truncated_by or 'matches'
+                        return True
+            return False
+
+        def walk(directory_fd: int, prefix: str) -> bool:
+            nonlocal entries_seen, files_seen, truncated_by
+            with os.scandir(directory_fd) as entries:
+                for entry in entries:
+                    entries_seen += 1
+                    if entries_seen > _FILE_WALK_MAX_ENTRIES:
+                        truncated_by = 'scan'
+                        return True
+                    name = entry.name
+                    if name in _SKIP_DIRS:
+                        continue
+                    try:
+                        child_fd = os.open(name, os.O_RDONLY | _FILE_OPEN_FLAGS, dir_fd=directory_fd)
+                    except OSError:
+                        continue
+                    try:
+                        metadata = os.fstat(child_fd)
+                        relative = f'{prefix}/{name}' if prefix else name
+                        if stat.S_ISDIR(metadata.st_mode):
+                            if walk(child_fd, relative):
+                                return True
+                            continue
+                        if not stat.S_ISREG(metadata.st_mode):
+                            continue
+                        if include and not self._rglob_matches(relative, include):
+                            continue
+                        files_seen += 1
+                        if grep_file(child_fd, self._sandbox_child_path(sandbox_base, relative)):
+                            return True
+                        if files_seen >= _GREP_MAX_FILES:
+                            return True
+                    finally:
+                        os.close(child_fd)
+            return False
+
+        with _open_host_root(location, create=False) as root_fd:
+            with _open_location_fd(root_fd, location.relative_parts, os.O_RDONLY) as target_fd:
+                try:
+                    metadata = os.fstat(target_fd)
+                    if stat.S_ISREG(metadata.st_mode):
+                        grep_file(target_fd, sandbox_base)
+                    elif stat.S_ISDIR(metadata.st_mode):
+                        walk(target_fd, '')
+                    else:
+                        return {'ok': False, 'error': f'Path not found: {sandbox_base}'}
+                except TimeoutError:
+                    return {'ok': False, 'error': 'Regex search timed out'}
+
+        return {
+            'ok': True,
+            'matches': matches,
+            'total': len(matches),
+            'truncated': truncated_by is not None,
+            'truncated_by': truncated_by,
+        }
+
+    @staticmethod
+    def _sandbox_child_path(base: str, relative: str) -> str:
+        return f'{str(base).rstrip("/")}/{relative}'
 
     async def _run_workspace_file_script(self, script: str, query: pipeline_query.Query) -> dict:
         result = await self.ap.box_service.execute_tool(
@@ -256,9 +784,24 @@ if not path.startswith('/workspace'):
 elif not os.path.exists(path):
     print(json.dumps({{'ok': False, 'error': f'File not found: {{path}}'}}))
 elif os.path.isdir(path):
-    entries = sorted(os.listdir(path))
+    entries = []
+    directory_truncated = False
+    with os.scandir(path) as iterator:
+        for entry in iterator:
+            if len(entries) >= {_DIRECTORY_MAX_ENTRIES}:
+                directory_truncated = True
+                break
+            entries.append(entry.name)
+    entries.sort()
     content = '\\n'.join(entries)
-    print(json.dumps({{'ok': True, 'content': content, 'is_directory': True, 'total': len(entries), 'truncated': False}}))
+    print(json.dumps({{
+        'ok': True,
+        'content': content,
+        'is_directory': True,
+        'total': len(entries) + int(directory_truncated),
+        'truncated': directory_truncated,
+        'truncated_by': 'entries' if directory_truncated else None,
+    }}))
 elif encoding == 'base64':
     size_bytes = os.path.getsize(path)
     with open(path, 'rb') as f:
@@ -362,24 +905,34 @@ if not path.startswith('/workspace'):
     print(json.dumps({{'ok': False, 'error': 'Path must be under /workspace.'}}))
 elif not os.path.isfile(path):
     print(json.dumps({{'ok': False, 'error': f'File not found: {{path}}'}}))
+elif os.path.getsize(path) > {_MAX_HOST_EDIT_FILE_BYTES}:
+    print(json.dumps({{'ok': False, 'error': 'File exceeds the {_MAX_HOST_EDIT_FILE_BYTES}-byte edit limit.'}}))
 else:
-    with open(path, 'r', encoding='utf-8', errors='replace') as f:
-        content = f.read()
+    with open(path, 'rb') as f:
+        raw_content = f.read({_MAX_HOST_EDIT_FILE_BYTES + 1})
+    if len(raw_content) > {_MAX_HOST_EDIT_FILE_BYTES}:
+        print(json.dumps({{'ok': False, 'error': 'File exceeds the {_MAX_HOST_EDIT_FILE_BYTES}-byte edit limit.'}}))
+        raise SystemExit(0)
+    content = raw_content.decode('utf-8', errors='replace')
     count = content.count(old_string)
     if count == 0:
         print(json.dumps({{'ok': False, 'error': 'old_string not found in file.'}}))
     elif count > 1:
         print(json.dumps({{'ok': False, 'error': f'old_string matches {{count}} locations; provide a more unique string.'}}))
     else:
+        new_content = content.replace(old_string, new_string, 1)
+        if len(new_content.encode('utf-8')) > {_MAX_HOST_EDIT_FILE_BYTES}:
+            print(json.dumps({{'ok': False, 'error': 'Edited file exceeds the {_MAX_HOST_EDIT_FILE_BYTES}-byte limit.'}}))
+            raise SystemExit(0)
         with open(path, 'w', encoding='utf-8') as f:
-            f.write(content.replace(old_string, new_string, 1))
+            f.write(new_content)
         print(json.dumps({{'ok': True, 'path': path}}))
 """.strip()
         return await self._run_workspace_file_script(script, query)
 
     async def _glob_workspace_via_box(self, path: str, pattern: str, query: pipeline_query.Query) -> dict:
         script = f"""
-import json, os
+import heapq, json, os
 from pathlib import Path
 path = {json.dumps(path)}
 pattern = {json.dumps(pattern)}
@@ -390,12 +943,28 @@ elif not os.path.isdir(path):
     print(json.dumps({{'ok': False, 'error': f'Path is not a directory: {{path}}'}}))
 else:
     base = Path(path)
-    hits = [
-        item for item in base.rglob(pattern)
-        if not any(part in skip_dirs for part in item.parts)
-    ]
-    hits.sort(key=lambda item: item.stat().st_mtime if item.exists() else 0, reverse=True)
-    shown = hits[:{_GLOB_MAX_MATCHES}]
+    newest_hits = []
+    total = 0
+    entries_seen = 0
+    scan_truncated = False
+    for item in base.rglob(pattern):
+        entries_seen += 1
+        if entries_seen > {_FILE_WALK_MAX_ENTRIES}:
+            scan_truncated = True
+            break
+        if any(part in skip_dirs for part in item.parts):
+            continue
+        total += 1
+        try:
+            mtime = item.stat().st_mtime
+        except OSError:
+            mtime = 0
+        candidate = (mtime, str(item))
+        if len(newest_hits) < {_GLOB_MAX_MATCHES}:
+            heapq.heappush(newest_hits, candidate)
+        elif candidate > newest_hits[0]:
+            heapq.heapreplace(newest_hits, candidate)
+    shown = [Path(item_path) for _mtime, item_path in sorted(newest_hits, reverse=True)]
     matches = []
     output_bytes = 0
     truncated_by_bytes = False
@@ -412,9 +981,12 @@ else:
         'ok': True,
         'matches': matches,
         'preview': '\\n'.join(matches),
-        'total': len(hits),
-        'truncated': len(hits) > len(matches) or truncated_by_bytes,
-        'truncated_by': 'bytes' if truncated_by_bytes else ('matches' if len(hits) > len(matches) else None),
+        'total': total,
+        'truncated': scan_truncated or total > len(matches) or truncated_by_bytes,
+        'truncated_by': (
+            'scan' if scan_truncated
+            else ('bytes' if truncated_by_bytes else ('matches' if total > len(matches) else None))
+        ),
     }}))
 """.strip()
         return await self._run_workspace_file_script(script, query)
@@ -427,12 +999,15 @@ else:
         query: pipeline_query.Query,
     ) -> dict:
         script = f"""
-import json, os, re
+import json, os, re, signal, time
 from pathlib import Path
 path = {json.dumps(path)}
 pattern = {json.dumps(pattern)}
 include = {json.dumps(include)}
 skip_dirs = {json.dumps(sorted(_SKIP_DIRS))}
+def regex_timeout(_signum, _frame):
+    raise TimeoutError
+signal.signal(signal.SIGALRM, regex_timeout)
 try:
     regex = re.compile(pattern)
 except re.error as exc:
@@ -443,6 +1018,17 @@ else:
     elif not os.path.exists(path):
         print(json.dumps({{'ok': False, 'error': f'Path not found: {{path}}'}}))
     else:
+        regex_deadline = time.monotonic() + {_GREP_REGEX_TIMEOUT_SECONDS}
+        def bounded_search(value):
+            remaining = regex_deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError
+            signal.setitimer(signal.ITIMER_REAL, remaining)
+            try:
+                return regex.search(value)
+            finally:
+                signal.setitimer(signal.ITIMER_REAL, 0)
+
         base = Path(path)
         if base.is_file():
             files = [base]
@@ -459,14 +1045,37 @@ else:
         matches = []
         output_bytes = 0
         truncated_by = None
+        total_chars_seen = 0
         for fp in files:
             try:
                 handle = fp.open('r', encoding='utf-8', errors='ignore')
             except OSError:
                 continue
+            file_chars_seen = 0
             with handle:
-                for lineno, line in enumerate(handle, 1):
-                    if regex.search(line):
+                lineno = 0
+                while True:
+                    line = handle.readline({_GREP_MAX_SCAN_LINE_CHARS + 1})
+                    if not line:
+                        break
+                    lineno += 1
+                    file_chars_seen += len(line)
+                    total_chars_seen += len(line)
+                    if (
+                        file_chars_seen > {_GREP_MAX_FILE_SCAN_CHARS}
+                        or total_chars_seen > {_GREP_MAX_TOTAL_SCAN_CHARS}
+                    ):
+                        truncated_by = 'scan'
+                        break
+                    if len(line) > {_GREP_MAX_SCAN_LINE_CHARS} and not line.endswith('\\n'):
+                        truncated_by = truncated_by or 'line'
+                        break
+                    try:
+                        matched = bounded_search(line)
+                    except TimeoutError:
+                        print(json.dumps({{'ok': False, 'error': 'Regex search timed out'}}))
+                        raise SystemExit(0)
+                    if matched:
                         if base.is_file():
                             file_path = path
                         else:
@@ -489,9 +1098,9 @@ else:
                         if len(matches) >= {_GREP_MAX_MATCHES}:
                             truncated_by = truncated_by or 'matches'
                             break
-                if truncated_by == 'bytes' or len(matches) >= {_GREP_MAX_MATCHES}:
+                if truncated_by in ('bytes', 'scan') or len(matches) >= {_GREP_MAX_MATCHES}:
                     break
-            if truncated_by == 'bytes' or len(matches) >= {_GREP_MAX_MATCHES}:
+            if truncated_by in ('bytes', 'scan') or len(matches) >= {_GREP_MAX_MATCHES}:
                 break
 
         print(json.dumps({{
@@ -515,37 +1124,47 @@ else:
         )
         if skill_request is not None and hasattr(self.ap.box_service, 'read_skill_file'):
             selected_skill, relative = skill_request
-            host_path = self._resolve_skill_host_path(selected_skill, relative)
-            if host_path and os.path.exists(host_path):
-                if os.path.isdir(host_path):
-                    return self._build_directory_result(os.listdir(host_path))
-                return self._read_text_file_preview(host_path, parameters)
+            if self._can_interpret_skill_host_paths():
+                host_location = self._resolve_skill_host_location(selected_skill, relative)
+            else:
+                host_location = None
+            if host_location is not None:
+                try:
+                    return await asyncio.to_thread(self._read_host_location, host_location, parameters)
+                except FileNotFoundError:
+                    pass
 
             try:
-                result = await self.ap.box_service.read_skill_file(selected_skill['name'], relative)
+                result = await self.ap.box_service.read_skill_file(
+                    self._execution_context(query),
+                    selected_skill['name'],
+                    relative,
+                )
                 return self._build_read_result_from_text(str(result.get('content', '')), parameters)
             except Exception:
                 try:
-                    result = await self.ap.box_service.list_skill_files(selected_skill['name'], relative)
+                    result = await self.ap.box_service.list_skill_files(
+                        self._execution_context(query),
+                        selected_skill['name'],
+                        relative,
+                    )
                     entries = [entry['name'] for entry in result.get('entries', [])]
                     return self._build_directory_result(entries)
                 except Exception as exc:
                     return {'ok': False, 'error': str(exc)}
 
-        host_path, selected_skill = self._resolve_host_path(
+        host_location = self._resolve_host_location(
             query,
             path,
             include_visible=True,
             include_activated=True,
         )
-        if self._should_use_box_workspace_files(selected_skill):
+        if self._should_use_box_workspace_files(host_location.selected_skill):
             return await self._read_workspace_via_box(path, parameters, query)
-        if not os.path.exists(host_path):
+        try:
+            return await asyncio.to_thread(self._read_host_location, host_location, parameters)
+        except (FileNotFoundError, NotADirectoryError):
             return {'ok': False, 'error': f'File not found: {path}'}
-        if os.path.isdir(host_path):
-            entries = os.listdir(host_path)
-            return self._build_directory_result(entries)
-        return self._read_text_file_preview(host_path, parameters)
 
     async def _invoke_write(self, parameters: dict, query: pipeline_query.Query) -> dict:
         path = parameters['path']
@@ -562,24 +1181,24 @@ else:
             if encoding != 'text':
                 return {'ok': False, 'error': 'base64 writes to skill packages are not supported.'}
             selected_skill, relative = skill_request
-            await self.ap.box_service.write_skill_file(selected_skill['name'], relative, content)
-            await self.ap.skill_mgr.reload_skills()
+            execution_context = self._execution_context(query)
+            await self.ap.box_service.write_skill_file(execution_context, selected_skill['name'], relative, content)
+            await self.ap.skill_mgr.reload_skills(execution_context)
             return {'ok': True, 'path': path}
 
-        host_path, selected_skill = self._resolve_host_path(
+        host_location = self._resolve_host_location(
             query,
             path,
             include_visible=False,
             include_activated=True,
         )
-        if self._should_use_box_workspace_files(selected_skill):
+        if self._should_use_box_workspace_files(host_location.selected_skill):
             return await self._write_workspace_via_box(path, content, parameters, query)
-        os.makedirs(os.path.dirname(host_path), exist_ok=True)
         try:
-            self._write_host_file(host_path, content, parameters)
+            await run_blocking_atomic(self._write_host_location, host_location, content, parameters)
         except ValueError as exc:
             return {'ok': False, 'error': str(exc)}
-        self._refresh_skill_from_disk(selected_skill)
+        self._refresh_skill_from_disk(query, host_location.selected_skill)
         return {'ok': True, 'path': path}
 
     async def _invoke_edit(self, parameters: dict, query: pipeline_query.Query) -> dict:
@@ -603,7 +1222,11 @@ else:
         ):
             selected_skill, relative = skill_request
             try:
-                result = await self.ap.box_service.read_skill_file(selected_skill['name'], relative)
+                result = await self.ap.box_service.read_skill_file(
+                    self._execution_context(query),
+                    selected_skill['name'],
+                    relative,
+                )
             except Exception:
                 return {'ok': False, 'error': f'File not found: {path}'}
             content = result.get('content', '')
@@ -613,34 +1236,39 @@ else:
             if count > 1:
                 return {'ok': False, 'error': f'old_string matches {count} locations; provide a more unique string.'}
             new_content = content.replace(old_string, new_string, 1)
-            await self.ap.box_service.write_skill_file(selected_skill['name'], relative, new_content)
-            await self.ap.skill_mgr.reload_skills()
+            execution_context = self._execution_context(query)
+            await self.ap.box_service.write_skill_file(
+                execution_context,
+                selected_skill['name'],
+                relative,
+                new_content,
+            )
+            await self.ap.skill_mgr.reload_skills(execution_context)
             return {'ok': True, 'path': path}
 
-        host_path, selected_skill = self._resolve_host_path(
+        host_location = self._resolve_host_location(
             query,
             path,
             include_visible=False,
             include_activated=True,
         )
-        if self._should_use_box_workspace_files(selected_skill):
+        if self._should_use_box_workspace_files(host_location.selected_skill):
             return await self._edit_workspace_via_box(path, old_string, new_string, query)
-        if not os.path.isfile(host_path):
+        try:
+            changed, error = await run_blocking_atomic(
+                self._edit_host_location,
+                host_location,
+                old_string,
+                new_string,
+            )
+        except (FileNotFoundError, NotADirectoryError):
             return {'ok': False, 'error': f'File not found: {path}'}
-        with open(host_path, 'r', encoding='utf-8', errors='replace') as f:
-            content = f.read()
-        count = content.count(old_string)
-        if count == 0:
-            return {'ok': False, 'error': 'old_string not found in file.'}
-        if count > 1:
-            return {'ok': False, 'error': f'old_string matches {count} locations; provide a more unique string.'}
-        new_content = content.replace(old_string, new_string, 1)
-        with open(host_path, 'w', encoding='utf-8') as f:
-            f.write(new_content)
-        self._refresh_skill_from_disk(selected_skill)
+        if not changed:
+            return {'ok': False, 'error': error or f'File not found: {path}'}
+        self._refresh_skill_from_disk(query, host_location.selected_skill)
         return {'ok': True, 'path': path}
 
-    def _refresh_skill_from_disk(self, selected_skill: dict | None) -> None:
+    def _refresh_skill_from_disk(self, query: pipeline_query.Query, selected_skill: dict | None) -> None:
         if selected_skill is None:
             return
 
@@ -650,14 +1278,11 @@ else:
 
         refresh_skill = getattr(skill_mgr, 'refresh_skill_from_disk', None)
         if callable(refresh_skill):
-            refresh_skill(selected_skill.get('name', ''))
+            refresh_skill(self._execution_context(query), selected_skill.get('name', ''))
 
-    def _is_sandbox_available(self) -> bool:
-        """Check if sandbox backend is available.
-
-        This checks the cached backend availability from initialization,
-        not just whether the box_service process is running.
-        """
+    async def _is_sandbox_available(self) -> bool:
+        """Refresh backend availability so Box reconnects restore tool exposure."""
+        self._backend_available = await self._check_backend_available()
         return bool(self._backend_available)
 
     def _build_exec_tool(self) -> resource_tool.LLMTool:
@@ -899,54 +1524,18 @@ else:
         path = str(parameters.get('path', '/workspace') or '/workspace')
         self.ap.logger.info(f'glob tool invoked: query_id={query.query_id} pattern={pattern} path={path}')
 
-        host_path, selected_skill = self._resolve_host_path(
+        host_location = self._resolve_host_location(
             query,
             path,
             include_visible=True,
             include_activated=True,
         )
-        if self._should_use_box_workspace_files(selected_skill):
+        if self._should_use_box_workspace_files(host_location.selected_skill):
             return await self._glob_workspace_via_box(path, pattern, query)
-
-        if not os.path.isdir(host_path):
+        try:
+            return await asyncio.to_thread(self._glob_host_location, host_location, pattern, path)
+        except (FileNotFoundError, NotADirectoryError):
             return {'ok': False, 'error': f'Path is not a directory: {path}'}
-
-        from pathlib import Path
-
-        base = Path(host_path)
-        hits = list(base.rglob(pattern))
-
-        # Filter out skipped directories
-        hits = [h for h in hits if not any(skip in h.parts for skip in _SKIP_DIRS)]
-
-        # Sort by mtime, newest first
-        hits.sort(key=lambda p: p.stat().st_mtime if p.exists() else 0, reverse=True)
-
-        total = len(hits)
-        shown = hits[:_GLOB_MAX_MATCHES]
-
-        # Convert back to sandbox paths
-        sandbox_paths = []
-        output_bytes = 0
-        truncated_by_bytes = False
-        for h in shown:
-            rel = os.path.relpath(str(h), host_path)
-            sandbox_path = os.path.join(path, rel)
-            entry_bytes = len(sandbox_path.encode('utf-8')) + (1 if sandbox_paths else 0)
-            if output_bytes + entry_bytes > _DEFAULT_TOOL_RESULT_MAX_BYTES:
-                truncated_by_bytes = True
-                break
-            sandbox_paths.append(sandbox_path)
-            output_bytes += entry_bytes
-
-        return {
-            'ok': True,
-            'matches': sandbox_paths,
-            'preview': '\n'.join(sandbox_paths),
-            'total': total,
-            'truncated': total > len(sandbox_paths) or truncated_by_bytes,
-            'truncated_by': 'bytes' if truncated_by_bytes else ('matches' if total > len(sandbox_paths) else None),
-        }
 
     async def _invoke_grep(self, parameters: dict, query: pipeline_query.Query) -> dict:
         pattern = parameters['pattern']
@@ -954,100 +1543,39 @@ else:
         include = parameters.get('include')
         self.ap.logger.info(f'grep tool invoked: query_id={query.query_id} pattern={pattern} path={path}')
 
-        import re
-        from pathlib import Path
+        if not isinstance(pattern, str) or len(pattern) > _GREP_MAX_PATTERN_CHARS:
+            return {'ok': False, 'error': f'Regex patterns may contain at most {_GREP_MAX_PATTERN_CHARS} characters'}
 
-        try:
-            regex = re.compile(pattern)
-        except re.error as e:
-            return {'ok': False, 'error': f'Invalid regex: {e}'}
-
-        host_path, selected_skill = self._resolve_host_path(
+        host_location = self._resolve_host_location(
             query,
             path,
             include_visible=True,
             include_activated=True,
         )
-        if self._should_use_box_workspace_files(selected_skill):
+        if self._should_use_box_workspace_files(host_location.selected_skill):
             return await self._grep_workspace_via_box(path, pattern, include, query)
-
-        if not os.path.exists(host_path):
+        try:
+            return await asyncio.to_thread(
+                self._grep_host_location,
+                host_location,
+                pattern,
+                include,
+                path,
+            )
+        except (FileNotFoundError, NotADirectoryError):
             return {'ok': False, 'error': f'Path not found: {path}'}
 
-        base = Path(host_path)
-
-        if base.is_file():
-            files = [base]
-        else:
-            files = self._grep_walk(base, include)
-
-        matches = []
-        output_bytes = 0
-        truncated_by = None
-        for fp in files:
-            try:
-                handle = fp.open('r', encoding='utf-8', errors='ignore')
-            except OSError:
-                continue
-            with handle:
-                for lineno, line in enumerate(handle, 1):
-                    if regex.search(line):
-                        rel = os.path.relpath(str(fp), host_path)
-                        sandbox_path = os.path.join(path, rel)
-                        content, line_truncated = self._truncate_grep_line(line.rstrip())
-                        entry = {
-                            'file': sandbox_path,
-                            'line': lineno,
-                            'content': content,
-                        }
-                        entry_bytes = len(json.dumps(entry, ensure_ascii=False).encode('utf-8')) + 1
-                        if output_bytes + entry_bytes > _DEFAULT_TOOL_RESULT_MAX_BYTES:
-                            truncated_by = 'bytes'
-                            break
-                        if line_truncated and truncated_by is None:
-                            truncated_by = 'line'
-                        matches.append(entry)
-                        output_bytes += entry_bytes
-                        if len(matches) >= _GREP_MAX_MATCHES:
-                            truncated_by = truncated_by or 'matches'
-                            break
-                if truncated_by == 'bytes' or len(matches) >= _GREP_MAX_MATCHES:
-                    break
-            if truncated_by == 'bytes' or len(matches) >= _GREP_MAX_MATCHES:
-                break
-
-        return {
-            'ok': True,
-            'matches': matches,
-            'total': len(matches),
-            'truncated': truncated_by is not None,
-            'truncated_by': truncated_by,
-        }
-
     @staticmethod
-    def _grep_walk(root, include: str | None) -> list:
-        """Walk dir tree for grep, skipping junk dirs."""
-        results = []
-        for item in root.rglob(include or '*'):
-            if any(skip in item.parts for skip in _SKIP_DIRS):
-                continue
-            if item.is_file():
-                results.append(item)
-            if len(results) >= _GREP_MAX_FILES:
-                break
-        return results
-
-    @staticmethod
-    def _resolve_skill_host_path(selected_skill: dict, relative: str) -> str | None:
+    def _resolve_skill_host_location(selected_skill: dict, relative: str) -> _HostLocation | None:
         package_root = str(selected_skill.get('package_root', '') or '').strip()
         if not package_root:
             return None
-
-        host_root = os.path.realpath(package_root)
-        host_path = os.path.realpath(os.path.join(host_root, relative))
-        if not (host_path == host_root or host_path.startswith(host_root + os.sep)):
-            raise ValueError('Path escapes the skill package boundary.')
-        return host_path
+        relative_path = '/workspace' if relative in {'', '.'} else f'/workspace/{relative}'
+        return _HostLocation(
+            root=package_root,
+            relative_parts=_relative_workspace_parts(relative_path),
+            selected_skill=selected_skill,
+        )
 
     def _normalize_exec_result(self, result: dict) -> dict:
         normalized = dict(result)
@@ -1073,23 +1601,29 @@ else:
             normalized['truncated_by'] = 'bytes'
         return normalized
 
-    def _build_directory_result(self, entries: list[str]) -> dict:
+    def _build_directory_result(
+        self,
+        entries: list[str],
+        *,
+        total: int | None = None,
+        force_truncated_by: str | None = None,
+    ) -> dict:
         sorted_entries = sorted(str(entry) for entry in entries)
         content = '\n'.join(sorted_entries)
         preview = self._truncate_text_to_bytes(content, _DEFAULT_TOOL_RESULT_MAX_BYTES)
-        truncated = preview != content
+        truncated_by = force_truncated_by or ('bytes' if preview != content else None)
         return {
             'ok': True,
             'content': preview,
             'is_directory': True,
-            'total': len(sorted_entries),
-            'truncated': truncated,
-            'truncated_by': 'bytes' if truncated else None,
+            'total': len(sorted_entries) if total is None else total,
+            'truncated': truncated_by is not None,
+            'truncated_by': truncated_by,
         }
 
-    def _read_text_file_preview(self, host_path: str, parameters: dict) -> dict:
+    def _read_text_file_preview(self, file_fd: int, parameters: dict, *, metadata: os.stat_result) -> dict:
         if self._read_encoding(parameters) == 'base64':
-            return self._read_binary_file_chunk(host_path, parameters)
+            return self._read_binary_file_chunk(file_fd, parameters, metadata=metadata)
 
         offset = self._positive_int(parameters.get('offset'), default=1)
         max_lines = self._positive_int(
@@ -1109,7 +1643,7 @@ else:
         truncated_by: str | None = None
         next_offset: int | None = None
 
-        with open(host_path, 'r', encoding='utf-8', errors='replace') as f:
+        with os.fdopen(os.dup(file_fd), 'r', encoding='utf-8', errors='replace') as f:
             for line_number, line in enumerate(f, 1):
                 if line_number < offset:
                     continue
@@ -1150,15 +1684,15 @@ else:
             'max_bytes': max_bytes,
         }
 
-    def _read_binary_file_chunk(self, host_path: str, parameters: dict) -> dict:
+    def _read_binary_file_chunk(self, file_fd: int, parameters: dict, *, metadata: os.stat_result) -> dict:
         byte_offset = self._non_negative_int(parameters.get('byte_offset'), default=0)
         max_bytes = self._positive_int(
             parameters.get('max_bytes'),
             default=_DEFAULT_TOOL_RESULT_MAX_BYTES,
             max_value=_DEFAULT_TOOL_RESULT_MAX_BYTES,
         )
-        size_bytes = os.path.getsize(host_path)
-        with open(host_path, 'rb') as f:
+        size_bytes = metadata.st_size
+        with os.fdopen(os.dup(file_fd), 'rb') as f:
             f.seek(byte_offset)
             data = f.read(max_bytes + 1)
         chunk = data[:max_bytes]
@@ -1174,19 +1708,6 @@ else:
             'next_byte_offset': byte_offset + len(chunk) if has_more else None,
             'max_bytes': max_bytes,
         }
-
-    def _write_host_file(self, host_path: str, content: str, parameters: dict) -> None:
-        encoding, mode = self._write_options(parameters)
-        if encoding == 'base64':
-            try:
-                data = base64.b64decode(content, validate=True)
-            except Exception as exc:
-                raise ValueError(f'invalid base64 content: {exc}') from exc
-            with open(host_path, 'ab' if mode == 'append' else 'wb') as f:
-                f.write(data)
-            return
-        with open(host_path, 'a' if mode == 'append' else 'w', encoding='utf-8') as f:
-            f.write(content)
 
     @staticmethod
     def _read_encoding(parameters: dict) -> str:

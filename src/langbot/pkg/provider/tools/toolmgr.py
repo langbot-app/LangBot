@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import typing
+import time
+import inspect
 from typing import TYPE_CHECKING
 
 import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
@@ -8,6 +10,8 @@ from langbot_plugin.api.entities.events import pipeline_query
 
 from . import loader as tool_loader
 from .errors import ToolNotFoundError
+from ...pipeline.pool import get_query_execution_context
+from ...api.http.service.tenant import TenantContext
 
 if TYPE_CHECKING:
     from ...core import app
@@ -31,6 +35,36 @@ class ToolManager:
 
     def __init__(self, ap: app.Application):
         self.ap = ap
+
+    async def _bind_plugin_workspace(self, context: TenantContext) -> None:
+        """Select the tenant before any plugin catalog lookup.
+
+        Tool discovery happens before invocation, so relying on ``call_tool``
+        to bind the Workspace is too late and can expose another task's
+        catalog in a shared Runtime.
+        """
+
+        connector = getattr(self.ap, 'plugin_connector', None)
+        require_context = getattr(connector, 'require_workspace_context', None)
+        if require_context is None:
+            return
+        result = require_context(context)
+        if inspect.isawaitable(result):
+            await result
+
+    async def _workspace_sandbox_available(self, context: TenantContext) -> bool:
+        """Resolve the Workspace capability before exposing sandbox tools."""
+
+        box_service = getattr(self.ap, 'box_service', None)
+        checker = getattr(box_service, 'is_workspace_sandbox_available', None)
+        if not callable(checker):
+            # Compatibility for OSS embedders and isolated manager tests. The
+            # BoxService execution path remains the final authority.
+            return True
+        try:
+            return bool(await checker(context))
+        except Exception:
+            return False
 
     async def initialize(self):
         from langbot.pkg.utils import importutil
@@ -56,19 +90,24 @@ class ToolManager:
 
     async def get_all_tools(
         self,
+        context: TenantContext,
         bound_plugins: list[str] | None = None,
         bound_mcp_servers: list[str] | None = None,
         include_skill_authoring: bool = False,
         include_mcp_resource_tools: bool = True,
     ) -> list[resource_tool.LLMTool]:
+        await self._bind_plugin_workspace(context)
         all_functions: list[resource_tool.LLMTool] = []
 
-        all_functions.extend(await self.native_tool_loader.get_tools())
-        if include_skill_authoring:
+        sandbox_available = await self._workspace_sandbox_available(context)
+        if sandbox_available:
+            all_functions.extend(await self.native_tool_loader.get_tools())
+        if include_skill_authoring and sandbox_available:
             all_functions.extend(await self.skill_tool_loader.get_tools())
         all_functions.extend(await self.plugin_tool_loader.get_tools(bound_plugins))
         all_functions.extend(
             await self.mcp_tool_loader.get_tools(
+                context,
                 bound_mcp_servers,
                 include_resource_tools=include_mcp_resource_tools,
             )
@@ -78,11 +117,13 @@ class ToolManager:
 
     async def get_tool_catalog(
         self,
+        context: TenantContext,
         bound_plugins: list[str] | None = None,
         bound_mcp_servers: list[str] | None = None,
         include_skill_authoring: bool = False,
         include_mcp_resource_tools: bool = False,
     ) -> list[dict[str, typing.Any]]:
+        await self._bind_plugin_workspace(context)
         catalog: list[dict[str, typing.Any]] = []
 
         def append_tools(source: str, source_name: str, tools: list[resource_tool.LLMTool]) -> None:
@@ -98,13 +139,16 @@ class ToolManager:
                     }
                 )
 
-        append_tools('builtin', 'LangBot', await self.native_tool_loader.get_tools())
-        if include_skill_authoring:
+        sandbox_available = await self._workspace_sandbox_available(context)
+        if sandbox_available:
+            append_tools('builtin', 'LangBot', await self.native_tool_loader.get_tools())
+        if include_skill_authoring and sandbox_available:
             append_tools('skill', 'LangBot', await self.skill_tool_loader.get_tools())
         catalog.extend(await self.plugin_tool_loader.get_tool_catalog(bound_plugins))
 
         if self.mcp_tool_loader:
             for item in await self.mcp_tool_loader.get_tool_catalog(
+                context,
                 bound_mcp_servers,
                 include_resource_tools=include_mcp_resource_tools,
             ):
@@ -112,19 +156,24 @@ class ToolManager:
 
         return catalog
 
-    async def get_tool_by_name(self, name: str) -> tool_loader.ToolLookupResult | None:
+    async def get_tool_by_name(self, context: TenantContext, name: str) -> tool_loader.ToolLookupResult | None:
         """Get tool by name from any active loader."""
-        for active_loader in (
-            self.native_tool_loader,
-            self.plugin_tool_loader,
-            self.mcp_tool_loader,
-            self.skill_tool_loader,
-        ):
+        await self._bind_plugin_workspace(context)
+        sandbox_available = await self._workspace_sandbox_available(context)
+        if sandbox_available:
+            tool = await self.native_tool_loader.get_tool(name)
+            if tool:
+                return tool
+        for active_loader in (self.plugin_tool_loader,):
             tool = await active_loader.get_tool(name)
             if tool:
                 return tool
+        if sandbox_available:
+            tool = await self.skill_tool_loader.get_tool(name)
+            if tool:
+                return tool
 
-        return None
+        return await self.mcp_tool_loader.get_tool(context, name)
 
     async def generate_tools_for_openai(self, use_funcs: list[resource_tool.LLMTool]) -> list:
         tools = []
@@ -142,21 +191,134 @@ class ToolManager:
 
         return tools
 
+    def _get_query_session_id(self, query: pipeline_query.Query) -> str | None:
+        launcher_type = getattr(query, 'launcher_type', None)
+        launcher_id = getattr(query, 'launcher_id', None)
+        if launcher_type is None or launcher_id is None:
+            return None
+
+        launcher_type_value = launcher_type.value if hasattr(launcher_type, 'value') else launcher_type
+        return f'{launcher_type_value}_{launcher_id}'
+
+    async def _record_tool_call(
+        self,
+        *,
+        name: str,
+        source: str,
+        parameters: dict,
+        query: pipeline_query.Query,
+        duration_ms: int,
+        status: str,
+        result: typing.Any = None,
+        error_message: str | None = None,
+    ) -> None:
+        monitoring_service = getattr(self.ap, 'monitoring_service', None)
+        if not monitoring_service:
+            return
+
+        variables = getattr(query, 'variables', {}) or {}
+        message_id = variables.get('_monitoring_message_id') if isinstance(variables, dict) else None
+        bot_name = variables.get('_monitoring_bot_name') if isinstance(variables, dict) else None
+        pipeline_name = variables.get('_monitoring_pipeline_name') if isinstance(variables, dict) else None
+
+        try:
+            await monitoring_service.record_tool_call(
+                get_query_execution_context(query),
+                tool_name=name,
+                tool_source=source,
+                duration=duration_ms,
+                status=status,
+                bot_id=getattr(query, 'bot_uuid', None),
+                bot_name=bot_name,
+                pipeline_name=pipeline_name,
+                session_id=self._get_query_session_id(query),
+                message_id=message_id,
+                arguments=parameters,
+                result=result,
+                error_message=error_message,
+            )
+        except Exception as e:
+            self.ap.logger.warning(f'Failed to record tool call: {e}')
+
+    async def _invoke_tool_with_monitoring(
+        self,
+        *,
+        source: str,
+        name: str,
+        parameters: dict,
+        query: pipeline_query.Query,
+        invoke: typing.Callable[[], typing.Awaitable[typing.Any]],
+    ) -> typing.Any:
+        start_time = time.perf_counter()
+        try:
+            result = await invoke()
+        except Exception as e:
+            duration_ms = int((time.perf_counter() - start_time) * 1000)
+            await self._record_tool_call(
+                name=name,
+                source=source,
+                parameters=parameters,
+                query=query,
+                duration_ms=duration_ms,
+                status='error',
+                error_message=str(e),
+            )
+            raise
+
+        duration_ms = int((time.perf_counter() - start_time) * 1000)
+        await self._record_tool_call(
+            name=name,
+            source=source,
+            parameters=parameters,
+            query=query,
+            duration_ms=duration_ms,
+            status='success',
+            result=result,
+        )
+        return result
+
     async def execute_func_call(self, name: str, parameters: dict, query: pipeline_query.Query) -> typing.Any:
         from langbot.pkg.telemetry import features as telemetry_features
 
-        if await self.native_tool_loader.has_tool(name):
+        execution_context = get_query_execution_context(query)
+        await self._bind_plugin_workspace(execution_context)
+        sandbox_available = await self._workspace_sandbox_available(execution_context)
+        if sandbox_available and await self.native_tool_loader.has_tool(name):
             telemetry_features.increment(query, 'tool_calls', 'native')
-            return await self.native_tool_loader.invoke_tool(name, parameters, query)
+            return await self._invoke_tool_with_monitoring(
+                source='native',
+                name=name,
+                parameters=parameters,
+                query=query,
+                invoke=lambda: self.native_tool_loader.invoke_tool(name, parameters, query),
+            )
         if await self.plugin_tool_loader.has_tool(name):
             telemetry_features.increment(query, 'tool_calls', 'plugin')
-            return await self.plugin_tool_loader.invoke_tool(name, parameters, query)
-        if await self.mcp_tool_loader.has_tool(name):
+            return await self._invoke_tool_with_monitoring(
+                source='plugin',
+                name=name,
+                parameters=parameters,
+                query=query,
+                invoke=lambda: self.plugin_tool_loader.invoke_tool(name, parameters, query),
+            )
+        if await self.mcp_tool_loader.has_tool(execution_context, name):
             telemetry_features.increment(query, 'tool_calls', 'mcp')
-            return await self.mcp_tool_loader.invoke_tool(name, parameters, query)
-        if await self.skill_tool_loader.has_tool(name):
+            return await self._invoke_tool_with_monitoring(
+                source='mcp',
+                name=name,
+                parameters=parameters,
+                query=query,
+                invoke=lambda: self.mcp_tool_loader.invoke_tool(name, parameters, query),
+            )
+        if sandbox_available and await self.skill_tool_loader.has_tool(name):
             telemetry_features.increment(query, 'tool_calls', 'skill')
-            return await self.skill_tool_loader.invoke_tool(name, parameters, query)
+            return await self._invoke_tool_with_monitoring(
+                source='skill',
+                name=name,
+                parameters=parameters,
+                query=query,
+                invoke=lambda: self.skill_tool_loader.invoke_tool(name, parameters, query),
+            )
         raise ToolNotFoundError(name)
 
     async def shutdown(self):

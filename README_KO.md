@@ -50,7 +50,7 @@ LangBot은 AI 기반 인스턴트 메시징 봇을 구축하기 위한 **오픈�
 
 [→ 모든 기능 자세히 보기](https://link.langbot.app/en/docs/features)
 
-📍 실전 가이드: [5분 만에 멀티 플랫폼 AI 봇 배포하기](https://blog.langbot.app/en/blog/deploy-ai-bot-in-5-minutes/), [DeepSeek를 WeChat, Discord, Telegram에 연결하기](https://blog.langbot.app/en/blog/connect-deepseek-to-wechat/), [Dify Agent를 Discord, Telegram, Slack에서 실행하기](https://blog.langbot.app/en/blog/dify-agent-discord-telegram-slack/), [n8n 기반 챗봇 만들기](https://blog.langbot.app/en/blog/n8n-multi-platform-ai-chatbot/).
+📍 실전 가이드: [5분 만에 멀티 플랫폼 AI 봇 배포하기](https://langbot.app/en/blog/deploy-ai-bot-in-5-minutes/), [DeepSeek를 WeChat, Discord, Telegram에 연결하기](https://langbot.app/en/blog/connect-deepseek-to-wechat/), [Dify Agent를 Discord, Telegram, Slack에서 실행하기](https://langbot.app/en/blog/dify-agent-discord-telegram-slack/), [n8n 기반 챗봇 만들기](https://langbot.app/en/blog/n8n-multi-platform-ai-chatbot/).
 
 ---
 
@@ -88,6 +88,16 @@ docker compose --profile all up -d
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.app/template/yRrAyL?referralCode=vogKPF)
 
 **더 많은 옵션:** [Docker](https://link.langbot.app/en/docs/docker) · [수동 배포](https://link.langbot.app/en/docs/manual-deploy) · [BTPanel](https://link.langbot.app/en/docs/bt-panel) · [Kubernetes](https://docs.langbot.app/en/deploy/langbot/kubernetes)
+
+---
+
+## 라이브 데모
+
+**지금 체험:** https://demo.langbot.dev/
+- 이메일: `demo@langbot.app`
+- 비밀번호: `langbot123456`
+
+*참고: 공개 데모 환경입니다. 민감한 정보를 입력하지 마세요.*
 
 ---
 
@@ -153,14 +163,6 @@ docker compose --profile all up -d
 
 ---
 
-## 라이브 데모
-
-**지금 체험:** https://demo.langbot.dev/
-- 이메일: `demo@langbot.app`
-- 비밀번호: `langbot123456`
-
-*참고: 공개 데모 환경입니다. 민감한 정보를 입력하지 마세요.*
-
 ## AI 에이전트를 위한 설계 🤖
 
 LangBot은 **설계 단계부터 에이전트 친화적**입니다 —— 코딩 에이전트(Claude Code, Codex, Copilot, Cursor 등)가 일급 지원으로 LangBot을 운영·확장·배포할 수 있습니다:
@@ -179,12 +181,6 @@ LangBot은 **설계 단계부터 에이전트 친화적**입니다 —— 코딩
 [![Discord](https://img.shields.io/discord/1335141740050649118?logo=discord&label=Discord)](https://discord.gg/wdNEHETs87)
 
 - [Discord 커뮤니티](https://discord.gg/wdNEHETs87)
-
----
-
-## Star 추이
-
-[![Star History Chart](https://api.star-history.com/svg?repos=langbot-app/LangBot&type=Date)](https://star-history.com/#langbot-app/LangBot&Date)
 
 ---
 

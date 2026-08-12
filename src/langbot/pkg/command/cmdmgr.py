@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import typing
+import inspect
 
 from ..core import app
 from . import operator
@@ -63,6 +64,12 @@ class CommandManager:
     ) -> typing.AsyncGenerator[command_context.CommandReturn, None]:
         """执行命令"""
 
+        require_context = getattr(self.ap.plugin_connector, 'require_workspace_context', None)
+        if require_context is not None:
+            result = require_context(context)
+            if inspect.isawaitable(result):
+                await result
+
         command_list = await self.ap.plugin_connector.list_commands(bound_plugins)
 
         for command in command_list:
@@ -89,6 +96,7 @@ class CommandManager:
 
         _admins = await self.ap.persistence_mgr.execute_async(
             _sa.select(_BotAdmin).where(
+                _BotAdmin.workspace_uuid == query.workspace_uuid,
                 _BotAdmin.bot_uuid == (query.bot_uuid or ''),
                 _BotAdmin.launcher_type == query.launcher_type.value,
                 _BotAdmin.launcher_id == str(query.launcher_id),
@@ -98,7 +106,11 @@ class CommandManager:
             privilege = 2
 
         ctx = command_context.ExecuteContext(
+            instance_uuid=query.instance_uuid,
+            workspace_uuid=query.workspace_uuid,
+            placement_generation=query.placement_generation,
             query_id=query.query_id,
+            query_uuid=query.query_uuid,
             session=session,
             command_text=command_text,
             full_command_text=full_command_text,

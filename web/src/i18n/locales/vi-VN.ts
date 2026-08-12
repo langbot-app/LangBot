@@ -81,7 +81,7 @@ const viVN = {
     loading: 'Đang tải...',
     fieldRequired: 'Trường này là bắt buộc',
     or: 'hoặc',
-    loginWithSpace: 'Đăng nhập với Space',
+    loginWithSpace: 'Đăng nhập bằng tài khoản LangBot',
     spaceLoginRecommended:
       'Khuyến nghị: Sử dụng API mô hình ổn định chính thức và dịch vụ đám mây',
     loginLocal: 'Đăng nhập với tài khoản cục bộ',
@@ -172,6 +172,8 @@ const viVN = {
     more: 'Thêm ({{count}})',
     less: 'Thu gọn',
     noItems: 'Không có mục nào',
+
+    apiKeyStoredSecurely: 'Secret shown only when created',
   },
   notFound: {
     title: 'Không tìm thấy trang',
@@ -215,6 +217,19 @@ const viVN = {
     selectModelAbilities: 'Chọn khả năng mô hình',
     visionAbility: 'Khả năng thị giác',
     functionCallAbility: 'Gọi hàm',
+    reasoningAbility: 'Khả năng suy luận',
+    reasoningLevel: 'Mức độ suy luận',
+    reasoningLevels: {
+      providerDefault: 'Mặc định của nhà cung cấp',
+      disabled: 'Tắt',
+      enabled: 'Bật',
+      minimal: 'Tối thiểu',
+      low: 'Thấp',
+      medium: 'Trung bình',
+      high: 'Cao',
+      xhigh: 'Rất cao',
+      max: 'Tối đa',
+    },
     contextLength: 'Cửa sổ ngữ cảnh',
     contextLengthPlaceholder: 'Không rõ',
     contextLengthInvalid: 'Cửa sổ ngữ cảnh phải là số nguyên dương',
@@ -281,7 +296,7 @@ const viVN = {
     searchProviders: 'Tìm kiếm nhà cung cấp...',
     langbotModelsDescription: 'Mô hình đám mây được cung cấp bởi LangBot Space',
     credits: 'Tín dụng',
-    loginWithSpace: 'Đăng nhập với Space',
+    loginWithSpace: 'Đăng nhập bằng tài khoản LangBot',
     loginToUseModels: 'Đăng nhập với Space để sử dụng mô hình đám mây',
     noModels: 'Chưa cấu hình mô hình nào',
     langbotModels: 'Mô hình LangBot',
@@ -319,6 +334,11 @@ const viVN = {
       fallbackList: 'Mô hình dự phòng',
       addFallback: 'Thêm mô hình dự phòng',
     },
+
+    ownerMustBindSpace:
+      'The Workspace owner must connect Space for LangBot Models.',
+    usesOwnerSpaceBilling:
+      "Uses the Workspace owner's Space billing and credits.",
   },
   bots: {
     title: 'Bot',
@@ -522,9 +542,9 @@ const viVN = {
     debugInfoTitle: 'Thông tin gỡ lỗi Plugin',
     debugUrl: 'URL gỡ lỗi',
     debugKey: 'Khóa gỡ lỗi',
+    debugKeyExpires: 'Xoay vòng lúc {{time}}; mỗi Workspace có khóa riêng',
     noDebugKey: '(Chưa đặt)',
-    debugKeyDisabled:
-      'Khóa gỡ lỗi chưa được đặt, gỡ lỗi plugin không yêu cầu xác thực',
+    debugKeyDisabled: 'Thông tin xác thực gỡ lỗi tạm thời không khả dụng',
     boxStatusTitle: 'Box Runtime',
     boxStatus: 'Trạng thái',
     boxConnected: 'Đã kết nối',
@@ -705,6 +725,7 @@ const viVN = {
     notFound: 'Không tìm thấy thông tin plugin',
     sortBy: 'Sắp xếp theo',
     sort: {
+      hottest: 'Phổ biến nhất',
       recentlyAdded: 'Mới thêm gần đây',
       recentlyUpdated: 'Mới cập nhật gần đây',
       mostDownloads: 'Tải nhiều nhất',
@@ -712,6 +733,9 @@ const viVN = {
     },
     downloads: 'lượt tải',
     download: 'Tải xuống',
+    like: 'Thích',
+    unlike: 'Bỏ thích',
+    likeFailed: 'Không thể cập nhật lượt thích. Vui lòng thử lại.',
     repository: 'Kho lưu trữ',
     downloadFailed: 'Tải xuống thất bại',
     noReadme: 'Plugin này không cung cấp tài liệu README',
@@ -801,6 +825,9 @@ const viVN = {
     url: 'URL',
     headers: 'Tiêu đề',
     timeout: 'Thời gian chờ',
+    toolCallTimeout: 'Thời gian chờ gọi công cụ (giây)',
+    toolCallTimeoutDescription:
+      'Thời gian chờ tối đa cho một lần gọi công cụ. Đặt 0 để không giới hạn. Mặc định là 300 giây.',
     addArgument: 'Thêm tham số',
     addEnvVar: 'Thêm biến môi trường',
     addHeader: 'Thêm tiêu đề',
@@ -823,6 +850,9 @@ const viVN = {
     boxStdioRefusedSuggestion:
       'Hãy bật Box (box.enabled = true) và đảm bảo runtime hoạt động, hoặc chuyển server này sang chế độ http/sse.',
     boxRequired: 'cần Box',
+    disabledByPolicy: 'bị tắt theo chính sách',
+    stdioDisabledByPolicy:
+      'Stdio MCP đã bị tắt trong bản triển khai này. Hãy dùng máy chủ MCP từ xa.',
     stdioBlockedByBoxToast:
       'Không thể lưu MCP ở chế độ stdio khi Sandbox Box bị tắt hoặc không khả dụng. Hãy bật Box hoặc chọn chế độ http/sse.',
     toolsFound: 'công cụ',
@@ -832,6 +862,12 @@ const viVN = {
     tabTools: 'Công cụ',
     tabResources: 'Tài nguyên',
     tabDocs: 'Tài liệu',
+    tabLogs: 'Nhật ký',
+    logsLevelAll: 'Tất cả cấp độ',
+    logsRefresh: 'Làm mới',
+    logsAutoRefresh: 'Tự động làm mới',
+    logsEmpty:
+      'Chưa có nhật ký. Nhật ký chạy của MCP Server sẽ hiển thị ở đây.',
     noReadme: 'Không có tài liệu',
     parseResultFailed: 'Phân tích kết quả kiểm tra thất bại',
     noResultReturned: 'Kiểm tra không trả về kết quả',
@@ -1270,6 +1306,13 @@ const viVN = {
     setPasswordHint: 'Đặt mật khẩu để đăng nhập bằng email và mật khẩu',
     spaceEmailMismatch:
       'Email đăng nhập Space không khớp với email tài khoản cục bộ',
+
+    space_account_not_registeredTitle: 'Account not registered',
+    space_account_not_registered:
+      'No local account is registered for this Space email. Ask the Workspace owner for an invitation.',
+    space_account_binding_requiredTitle: 'Space connection required',
+    space_account_binding_required:
+      'This local account must connect Space from Account settings before using Space login.',
   },
   monitoring: {
     title: 'Bảng điều khiển',
@@ -1332,6 +1375,20 @@ const viVN = {
       level: 'Mức',
       runner: 'Trình chạy',
       viewConversation: 'Xem cuộc trò chuyện',
+      turns: '{{count}} lượt hội thoại',
+      userMessage: 'Người dùng',
+      noUserMessage: 'Chưa ghi nhận đầu vào người dùng',
+      assistantMessage: 'Trợ lý',
+      assistantMessageCount: 'Trợ lý +{{count}}',
+      noAssistantMessage: 'Chưa ghi nhận phản hồi của trợ lý',
+      messageCount: 'Số tin nhắn',
+      conversationTrace: 'Luồng hội thoại',
+      noLlmCalls: 'Chưa ghi nhận lệnh gọi mô hình',
+      roles: {
+        user: 'Người dùng',
+        assistant: 'Trợ lý',
+        message: 'Tin nhắn',
+      },
     },
     llmCalls: {
       title: 'Cuộc gọi LLM',
@@ -1345,6 +1402,15 @@ const viVN = {
       totalTokens: 'Tổng Token',
       avgDuration: 'Thời lượng trung bình',
       calls: 'Cuộc gọi',
+    },
+    toolCalls: {
+      title: 'Lượt gọi công cụ',
+      totalCalls: 'Lượt gọi',
+      duration: 'Thời lượng công cụ',
+      errorCalls: 'Lượt gọi thất bại',
+      arguments: 'Tham số',
+      result: 'Kết quả',
+      noToolCalls: 'Chưa ghi nhận lượt gọi công cụ',
     },
     tokens: {
       totalTokens: 'Tổng số Token',
@@ -1503,6 +1569,8 @@ const viVN = {
       api: 'API',
       storage: 'Lưu trữ',
       account: 'Tài khoản',
+
+      workspace: 'Workspace',
     },
   },
   storageAnalysis: {
@@ -1547,6 +1615,12 @@ const viVN = {
       'Đã đạt số lượng Pipeline tối đa ({{max}}). Vui lòng xóa một Pipeline hiện có trước khi tạo mới.',
     maxExtensionsReached:
       'Đã đạt số lượng tiện ích mở rộng tối đa ({{max}}). Vui lòng xóa một máy chủ MCP hoặc plugin hiện có trước khi thêm mới.',
+    quotaLoadingTooltip:
+      'Dữ liệu sử dụng không gian làm việc đang tải. Vui lòng chờ trước khi tạo tài nguyên.',
+    quotaCheckFailed:
+      'Không thể kiểm tra hạn mức hiện tại của không gian làm việc. Vui lòng thử lại.',
+    createDisabledTooltip:
+      'Đã đạt giới hạn {{resource}} ({{max}}) của workspace này. Hãy xóa một mục hiện có trước khi tạo mới.',
   },
   wizard: {
     sidebarDescription: 'Tạo Bot với các bước hướng dẫn',
@@ -1647,6 +1721,9 @@ const viVN = {
       'Quét mã QR bên dưới bằng WeChat để ủy quyền và tự động điền token',
     loginSuccess: 'Đăng nhập thành công! Token đã được điền tự động',
     loginFailed: 'Đăng nhập thất bại',
+    connecting: 'Đang kết nối tới dịch vụ WeChat...',
+    waitingForScan: 'Đang chờ quét mã',
+    retry: 'Thử lại',
   },
   dingtalk: {
     createApp: 'Tạo ứng dụng DingTalk chỉ với một lần nhấp',
@@ -1671,6 +1748,19 @@ const viVN = {
     connecting: 'Đang kết nối tới dịch vụ WeCom...',
     retry: 'Thử lại',
     robotNameNote: 'Không thể tự động lấy tên bot. Vui lòng điền thủ công.',
+  },
+  qqofficial: {
+    createBinding: 'Liên kết bot QQ Official bằng QR một chạm',
+    scanQRCode:
+      'Quét mã QR bên dưới bằng QQ trên di động và xác nhận liên kết trong «QQ Bot Assistant»',
+    waitingForScan: 'Đang chờ quét',
+    bindSuccess: 'Liên kết thành công! AppID và Secret đã được điền tự động',
+    bindFailed: 'Liên kết thất bại',
+    connecting: 'Đang kết nối tới dịch vụ QQ...',
+    retry: 'Thử lại',
+    tokenNote:
+      'Bộ chuyển đổi hiện tại không dùng trường Token; có thể để trống.',
+    boundBy: 'Được liên kết bởi người dùng QQ {{openid}}',
   },
   pluginPages: {
     selectFromSidebar: 'Chọn một trang plugin từ thanh bên',
@@ -1800,6 +1890,90 @@ const viVN = {
     createSkillHint: 'Nhập từ thư mục cục bộ hoặc tạo thủ công',
     unsupportedFileType:
       'Loại tệp không được hỗ trợ. Chỉ hỗ trợ tệp .zip và .lbpkg',
+  },
+
+  workspace: {
+    title: 'Workspace',
+    description: 'Manage members, roles, and invitation links',
+    selectTitle: 'Choose a Workspace',
+    selectDescription: 'Select where you want to continue in LangBot.',
+    selectionLoadFailed:
+      'Your Workspaces could not be loaded. Please try again.',
+    switchWorkspace: 'Switch Workspace',
+    settings: 'Workspace Settings',
+    currentPlan: 'Current plan',
+    planUnavailable: 'Unavailable',
+    upgradePlan: 'Change or upgrade plan',
+    ossSingletonDescription:
+      'This self-hosted instance has one Workspace and can include multiple users.',
+    cloudManagedDescription:
+      'This Workspace is hosted by LangBot Cloud. Manage members here; billing opens in Cloud.',
+    loadFailed: 'Failed to load Workspace information',
+    members: 'Members',
+    you: 'You',
+    inviteMember: 'Invite a member',
+    inviteDescription:
+      'Create a one-time link to add another user to this Workspace.',
+    emailPlaceholder: 'member@example.com',
+    createInvitation: 'Create invitation',
+    invitationCreated: 'Invitation created',
+    delivery: {
+      sent: 'Invitation sent',
+      link_only: 'Invitation link created',
+      failed: 'Invitation link created, but email could not be sent',
+    },
+    invitationCreateFailed: 'Failed to create invitation',
+    oneTimeLinkWarning: 'Copy this link now. It is shown only once.',
+    copyInvitation: 'Copy invitation link',
+    invitationCopied: 'Invitation link copied',
+    pendingInvitations: 'Pending invitations',
+    expiresAt: 'Expires {{date}}',
+    revokeInvitation: 'Revoke invitation',
+    invitationRevoked: 'Invitation revoked',
+    invitationRevokeFailed: 'Failed to revoke invitation',
+    acceptInvitation: 'Accept invitation',
+    invitedToWorkspace: 'You were invited to {{workspace}}',
+    checkingInvitation: 'Checking this invitation...',
+    invitationMissing: 'This invitation link is missing required information.',
+    invitationExpired: 'This invitation has expired.',
+    invitationAlreadyRevoked: 'This invitation was revoked.',
+    invitationAlreadyUsed: 'This invitation was already used.',
+    invitationInvalid: 'This invitation is invalid or no longer available.',
+    invitationAccepted: 'Invitation accepted',
+    invitationAcceptFailed: 'Failed to accept invitation',
+    invitationEmailMismatch:
+      'This invitation belongs to a different email address.',
+    existingAccountLoginRequired:
+      'An account already exists for this email. Sign in to continue.',
+    acceptAsCurrentAccount: 'Accept with current account',
+    authenticatedInvitationNotice:
+      'Sign out first, then sign in with the invited account. Your invitation will be preserved.',
+    logoutAndReturn: 'Sign out and return to this invitation',
+    switchAccount: 'Switch account',
+    registerAndAccept: 'Create account and accept',
+    alreadyHaveAccount: 'I already have an account',
+    confirmPassword: 'Confirm password',
+    passwordMinimum: 'Password must contain at least 8 characters.',
+    passwordMismatch: 'The passwords do not match.',
+    backToLogin: 'Back to sign in',
+    memberUpdated: 'Member role updated',
+    memberUpdateFailed: 'Failed to update member role',
+    removeMember: 'Remove member',
+    removeMemberConfirm: 'Remove this member from the Workspace?',
+    memberRemoved: 'Member removed',
+    memberRemoveFailed: 'Failed to remove member',
+    transferOwnership: 'Transfer ownership',
+    types: {
+      personal: 'Personal',
+      team: 'Team',
+    },
+    roles: {
+      owner: 'Owner',
+      admin: 'Admin',
+      developer: 'Developer',
+      operator: 'Operator',
+      viewer: 'Viewer',
+    },
   },
 };
 

@@ -1,8 +1,13 @@
 from quart import request
 from ..wecom_api.WXBizMsgCrypt3 import WXBizMsgCrypt
+import asyncio
 import base64
 import binascii
+import contextvars
+import functools
 import httpx
+import json
+import os
 import traceback
 from quart import Quart
 import xml.etree.ElementTree as ET
@@ -11,9 +16,72 @@ from .wecomcsevent import WecomCSEvent
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import aiofiles
 import time
+from contextlib import asynccontextmanager
+from langbot.pkg.utils import httpclient
+
+_MAX_MEDIA_BYTES = 10 * 1024 * 1024
+_MAX_CALLBACK_BODY_BYTES = 1024 * 1024
+
+
+async def _read_httpx_media_limited(response: httpx.Response) -> bytes:
+    content_length = response.headers.get('Content-Length')
+    if content_length is not None:
+        try:
+            if int(content_length) > _MAX_MEDIA_BYTES:
+                raise ValueError('WeCom customer-service media exceeds the size limit')
+        except (TypeError, ValueError) as exc:
+            if 'exceeds' in str(exc):
+                raise
+    content = bytearray()
+    async for chunk in response.aiter_bytes():
+        content.extend(chunk)
+        if len(content) > _MAX_MEDIA_BYTES:
+            raise ValueError('WeCom customer-service media exceeds the size limit')
+    return bytes(content)
+
+
+async def _read_local_media_limited(path: str) -> bytes:
+    if await asyncio.to_thread(os.path.getsize, path) > _MAX_MEDIA_BYTES:
+        raise ValueError('WeCom customer-service media exceeds the size limit')
+    async with aiofiles.open(path, 'rb') as file:
+        content = await file.read(_MAX_MEDIA_BYTES + 1)
+    if len(content) > _MAX_MEDIA_BYTES:
+        raise ValueError('WeCom customer-service media exceeds the size limit')
+    return content
+
+
+async def _decode_media_base64_limited(value: str) -> bytes:
+    max_encoded_chars = 4 * ((_MAX_MEDIA_BYTES + 2) // 3) + 4
+    if len(value) > max_encoded_chars:
+        raise ValueError('WeCom customer-service media exceeds the size limit')
+    content = await asyncio.to_thread(base64.b64decode, value)
+    if len(content) > _MAX_MEDIA_BYTES:
+        raise ValueError('WeCom customer-service media exceeds the size limit')
+    return content
+
+
+def _bounded_token_retry(method):
+    """Allow one token-refresh retry without unbounded async recursion."""
+
+    depth = contextvars.ContextVar(f'{method.__name__}_token_retry_depth', default=0)
+
+    @functools.wraps(method)
+    async def wrapped(*args, **kwargs):
+        current_depth = depth.get()
+        if current_depth >= 2:
+            raise RuntimeError(f'{method.__name__} exceeded the token refresh retry limit')
+        token = depth.set(current_depth + 1)
+        try:
+            return await method(*args, **kwargs)
+        finally:
+            depth.reset(token)
+
+    return wrapped
 
 
 class WecomCSClient:
+    _CUSTOMER_CACHE_MAX = 4096
+
     def __init__(
         self,
         corpid: str,
@@ -34,10 +102,12 @@ class WecomCSClient:
         self.logger = logger
         self.unified_mode = unified_mode
         self.app = Quart(__name__)
+        self.app.config['MAX_CONTENT_LENGTH'] = _MAX_CALLBACK_BODY_BYTES
 
         # Customer info cache: {external_userid: (info_dict, timestamp)}
         self._customer_cache: dict[str, tuple[dict, float]] = {}
         self._cache_ttl = 60  # Cache TTL in seconds (1 minute)
+        self._customer_cache_cleanup_at = 0.0
 
         # 只有在非统一模式下才注册独立路由
         if not self.unified_mode:
@@ -48,29 +118,40 @@ class WecomCSClient:
         self._message_handlers = {
             'example': [],
         }
+        self._http_client: httpx.AsyncClient | None = None
 
+    @asynccontextmanager
+    async def _http_client_context(self):
+        if self._http_client is None or self._http_client.is_closed:
+            self._http_client = httpx.AsyncClient(event_hooks=httpclient.httpx_response_limit_hooks())
+        yield self._http_client
+
+    async def close(self) -> None:
+        if self._http_client is not None:
+            await self._http_client.aclose()
+            self._http_client = None
+
+    @_bounded_token_retry
     async def get_pic_url(self, media_id: str):
         if not await self.check_access_token():
             self.access_token = await self.get_access_token(self.secret)
 
         url = f'{self.base_url}/media/get?access_token={self.access_token}&media_id={media_id}'
 
-        async with httpx.AsyncClient() as client:
-            response = await client.get(url)
-            if response.headers.get('Content-Type', '').startswith('application/json'):
-                data = response.json()
-                if data.get('errcode') in [40014, 42001]:
-                    self.access_token = await self.get_access_token(self.secret)
-                    return await self.get_pic_url(media_id)
-                else:
+        async with self._http_client_context() as client:
+            async with client.stream('GET', url) as response:
+                image_bytes = await _read_httpx_media_limited(response)
+                content_type = response.headers.get('Content-Type', '')
+                if content_type.startswith('application/json'):
+                    data = json.loads(image_bytes)
+                    if data.get('errcode') in [40014, 42001]:
+                        self.access_token = await self.get_access_token(self.secret)
+                        return await self.get_pic_url(media_id)
                     raise Exception('Failed to get image: ' + str(data))
 
-            # 否则是图片，转成 base64
-            image_bytes = response.content
-            content_type = response.headers.get('Content-Type', '')
-            base64_str = base64.b64encode(image_bytes).decode('utf-8')
-            base64_str = f'data:{content_type};base64,{base64_str}'
-            return base64_str
+                # 否则是图片，转成 base64
+                base64_str = (await asyncio.to_thread(base64.b64encode, image_bytes)).decode('utf-8')
+                return f'data:{content_type};base64,{base64_str}'
 
     # access——token操作
     async def check_access_token(self):
@@ -81,19 +162,20 @@ class WecomCSClient:
 
     async def get_access_token(self, secret):
         url = f'{self.base_url}/gettoken?corpid={self.corpid}&corpsecret={secret}'
-        async with httpx.AsyncClient() as client:
+        async with self._http_client_context() as client:
             response = await client.get(url)
-            data = response.json()
+            data = await httpclient.parse_json_response(response)
             if 'access_token' in data:
                 return data['access_token']
             else:
                 raise Exception(f'未获取access token: {data}')
 
+    @_bounded_token_retry
     async def get_detailed_message_list(self, xml_msg: str):
         # 在本方法中解析消息，并且获得消息的具体内容
         if isinstance(xml_msg, bytes):
             xml_msg = xml_msg.decode('utf-8')
-        root = ET.fromstring(xml_msg)
+        root = await asyncio.to_thread(ET.fromstring, xml_msg)
         token = root.find('Token').text
         open_kfid = root.find('OpenKfId').text
 
@@ -106,14 +188,14 @@ class WecomCSClient:
             self.access_token = await self.get_access_token(self.secret)
 
         url = self.base_url + '/kf/sync_msg?access_token=' + self.access_token
-        async with httpx.AsyncClient() as client:
+        async with self._http_client_context() as client:
             params = {
                 'token': token,
                 'voice_format': 0,
                 'open_kfid': open_kfid,
             }
             response = await client.post(url, json=params)
-            data = response.json()
+            data = await httpclient.parse_json_response(response)
             if data['errcode'] == 40014 or data['errcode'] == 42001:
                 self.access_token = await self.get_access_token(self.secret)
                 return await self.get_detailed_message_list(xml_msg)
@@ -130,11 +212,12 @@ class WecomCSClient:
             # await self.change_service_status(userid=external_userid,openkfid=open_kfid,servicer=servicer)
             return last_msg_data
 
+    @_bounded_token_retry
     async def change_service_status(self, userid: str, openkfid: str, servicer: str):
         if not await self.check_access_token():
             self.access_token = await self.get_access_token(self.secret)
         url = self.base_url + '/kf/service_state/get?access_token=' + self.access_token
-        async with httpx.AsyncClient() as client:
+        async with self._http_client_context() as client:
             params = {
                 'open_kfid': openkfid,
                 'external_userid': userid,
@@ -142,18 +225,19 @@ class WecomCSClient:
                 'servicer_userid': servicer,
             }
             response = await client.post(url, json=params)
-            data = response.json()
+            data = await httpclient.parse_json_response(response)
             if data['errcode'] == 40014 or data['errcode'] == 42001:
                 self.access_token = await self.get_access_token(self.secret)
-                return await self.change_service_status(userid, openkfid)
+                return await self.change_service_status(userid, openkfid, servicer)
             if data['errcode'] != 0:
                 raise Exception('Failed to change service status: ' + str(data))
 
+    @_bounded_token_retry
     async def send_image(self, user_id: str, agent_id: int, media_id: str):
         if not await self.check_access_token():
             self.access_token = await self.get_access_token(self.secret)
         url = self.base_url + '/media/upload?access_token=' + self.access_token
-        async with httpx.AsyncClient() as client:
+        async with self._http_client_context() as client:
             params = {
                 'touser': user_id,
                 'toparty': '',
@@ -170,7 +254,7 @@ class WecomCSClient:
             }
             try:
                 response = await client.post(url, json=params)
-                data = response.json()
+                data = await httpclient.parse_json_response(response)
             except Exception as e:
                 raise Exception('Failed to send image: ' + str(e))
 
@@ -182,6 +266,7 @@ class WecomCSClient:
             if data['errcode'] != 0:
                 raise Exception('Failed to send image: ' + str(data))
 
+    @_bounded_token_retry
     async def send_text_msg(self, open_kfid: str, external_userid: str, msgid: str, content: str):
         if not await self.check_access_token():
             self.access_token = await self.get_access_token(self.secret)
@@ -198,10 +283,10 @@ class WecomCSClient:
             },
         }
 
-        async with httpx.AsyncClient() as client:
+        async with self._http_client_context() as client:
             response = await client.post(url, json=payload)
 
-            data = response.json()
+            data = await httpclient.parse_json_response(response)
             if data['errcode'] == 40014 or data['errcode'] == 42001:
                 self.access_token = await self.get_access_token(self.secret)
                 return await self.send_text_msg(open_kfid, external_userid, msgid, content)
@@ -250,7 +335,15 @@ class WecomCSClient:
 
             elif req.method == 'POST':
                 encrypt_msg = await req.data
-                ret, xml_msg = wxcpt.DecryptMsg(encrypt_msg, msg_signature, timestamp, nonce)
+                if len(encrypt_msg) > _MAX_CALLBACK_BODY_BYTES:
+                    raise ValueError('WeCom customer-service callback body exceeds the size limit')
+                ret, xml_msg = await asyncio.to_thread(
+                    wxcpt.DecryptMsg,
+                    encrypt_msg,
+                    msg_signature,
+                    timestamp,
+                    nonce,
+                )
                 if ret != 0:
                     raise Exception(f'消息解密失败，错误码: {ret}')
 
@@ -315,6 +408,7 @@ class WecomCSClient:
                 return ext
         return 'jpg'  # 默认返回jpg
 
+    @_bounded_token_retry
     async def upload_to_work(self, image: platform_message.Image):
         """
         获取 media_id
@@ -328,9 +422,8 @@ class WecomCSClient:
 
         # 获取文件的二进制数据
         if image.path:
-            async with aiofiles.open(image.path, 'rb') as f:
-                file_bytes = await f.read()
-                file_name = image.path.split('/')[-1]
+            file_bytes = await _read_local_media_limited(image.path)
+            file_name = image.path.split('/')[-1]
         elif image.url:
             file_bytes = await self.download_image_to_bytes(image.url)
             file_name = image.url.split('/')[-1]
@@ -341,13 +434,15 @@ class WecomCSClient:
                     base64_data = base64_data.split(',', 1)[1]
                 padding = 4 - (len(base64_data) % 4) if len(base64_data) % 4 else 0
                 padded_base64 = base64_data + '=' * padding
-                file_bytes = base64.b64decode(padded_base64)
+                file_bytes = await _decode_media_base64_limited(padded_base64)
             except binascii.Error as e:
                 raise ValueError(f'Invalid base64 string: {str(e)}')
         else:
             raise ValueError('image对象出错')
 
         # 设置 multipart/form-data 格式的文件
+        if len(file_bytes) > _MAX_MEDIA_BYTES:
+            raise ValueError('WeCom customer-service media exceeds the size limit')
         boundary = '-------------------------acebdf13572468'
         headers = {'Content-Type': f'multipart/form-data; boundary={boundary}'}
         body = (
@@ -361,9 +456,9 @@ class WecomCSClient:
         )
 
         # 上传文件
-        async with httpx.AsyncClient() as client:
+        async with self._http_client_context() as client:
             response = await client.post(url, headers=headers, content=body)
-            data = response.json()
+            data = await httpclient.parse_json_response(response)
             if data['errcode'] == 40014 or data['errcode'] == 42001:
                 self.access_token = await self.get_access_token(self.secret)
                 media_id = await self.upload_to_work(image)
@@ -374,16 +469,17 @@ class WecomCSClient:
             return media_id
 
     async def download_image_to_bytes(self, url: str) -> bytes:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(url)
-            response.raise_for_status()
-            return response.content
+        async with self._http_client_context() as client:
+            async with client.stream('GET', url) as response:
+                response.raise_for_status()
+                return await _read_httpx_media_limited(response)
 
     # 进行media_id的获取
     async def get_media_id(self, image: platform_message.Image):
         media_id = await self.upload_to_work(image=image)
         return media_id
 
+    @_bounded_token_retry
     async def get_customer_info(self, external_userid: str) -> dict | None:
         """
         Get customer information by external_userid with caching.
@@ -398,6 +494,11 @@ class WecomCSClient:
         """
         # Check cache first
         current_time = time.time()
+        if current_time - self._customer_cache_cleanup_at >= 30:
+            self._customer_cache_cleanup_at = current_time
+            for user_id, (_, cached_time) in tuple(self._customer_cache.items()):
+                if current_time - cached_time >= self._cache_ttl:
+                    self._customer_cache.pop(user_id, None)
         if external_userid in self._customer_cache:
             cached_info, cached_time = self._customer_cache[external_userid]
             if current_time - cached_time < self._cache_ttl:
@@ -413,9 +514,9 @@ class WecomCSClient:
             'external_userid_list': [external_userid],
         }
 
-        async with httpx.AsyncClient() as client:
+        async with self._http_client_context() as client:
             response = await client.post(url, json=payload)
-            data = response.json()
+            data = await httpclient.parse_json_response(response)
 
             if data.get('errcode') in [40014, 42001]:
                 self.access_token = await self.get_access_token(self.secret)
@@ -431,5 +532,10 @@ class WecomCSClient:
                 customer_info = customer_list[0]
                 # Store in cache
                 self._customer_cache[external_userid] = (customer_info, current_time)
+                while len(self._customer_cache) > self._CUSTOMER_CACHE_MAX:
+                    self._customer_cache.pop(next(iter(self._customer_cache)), None)
                 return customer_info
             return None
+
+    def clear(self) -> None:
+        self._customer_cache.clear()

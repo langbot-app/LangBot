@@ -1,6 +1,6 @@
 [project]
 name = "langbot"
-version = "4.10.4"
+version = "4.10.7"
 description = "Production-grade platform for building agentic IM bots"
 readme = "README.md"
 license-files = ["LICENSE"]
@@ -24,7 +24,7 @@ dependencies = [
     "gewechat-client>=0.1.5",
     "itchat-uos>=1.5.0.dev",
     "lark-oapi>=1.5.5",
-    "mcp>=1.25.0",
+    "mcp>=1.25.0,<2.0.0",
     "nakuru-project-idk>=0.0.2.1",
     "ollama>=0.4.8",
     "openai>1.0.0",
@@ -40,6 +40,7 @@ dependencies = [
     "quart>=0.20.0",
     "quart-cors>=0.8.0",
     "requests>=2.33.0",
+    "regex>=2026.1.15",
     "slack-sdk>=3.35.0",
     "alembic>=1.15.0",
     "sqlalchemy[asyncio]>=2.0.40",
@@ -71,7 +72,7 @@ dependencies = [
     "chromadb>=1.0.0,<2.0.0",
     "qdrant-client (>=1.15.1,<2.0.0)",
     "pyseekdb==1.1.0.post3",
-    "langbot-plugin==0.4.6",
+    "langbot-plugin @ git+https://github.com/langbot-app/langbot-plugin-sdk.git@7b559da430a50f80a7d30c9d3d66f088503ddbb3",
     "asyncpg>=0.30.0",
     "line-bot-sdk>=3.19.0",
     "matrix-nio>=0.25.2",
@@ -81,6 +82,7 @@ dependencies = [
     "pgvector>=0.4.1",
     "botocore>=1.42.39",
     "litellm>=1.0.0",
+    "valkey-glide>=2.4.1,<3.0.0; sys_platform != 'win32'", # No Windows wheels are published
 ]
 keywords = [
     "bot",

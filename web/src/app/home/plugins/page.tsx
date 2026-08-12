@@ -57,6 +57,7 @@ function PluginListView() {
   const [debugInfo, setDebugInfo] = useState<{
     debug_url: string;
     plugin_debug_key: string;
+    expires_at: string;
   } | null>(null);
   const [debugPopoverOpen, setDebugPopoverOpen] = useState(false);
   const [copiedDebugUrl, setCopiedDebugUrl] = useState(false);
@@ -275,6 +276,13 @@ function PluginListView() {
                       )}
                     </Button>
                   </div>
+                  {debugInfo?.expires_at && (
+                    <p className="text-xs text-muted-foreground pl-[58px]">
+                      {t('plugins.debugKeyExpires', {
+                        time: new Date(debugInfo.expires_at).toLocaleString(),
+                      })}
+                    </p>
+                  )}
                   {!debugInfo?.plugin_debug_key && (
                     <p className="text-xs text-muted-foreground ml-[58px]">
                       {t('plugins.debugKeyDisabled')}

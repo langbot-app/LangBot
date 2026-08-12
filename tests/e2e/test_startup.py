@@ -27,6 +27,21 @@ class TestStartupFlow:
         """Verify LangBot API is responding."""
         assert langbot_process.health_check()
 
+    def test_health_check_exposes_bounded_blocking_executor(self, e2e_client):
+        """The production startup path installs blocking-work admission."""
+        response = e2e_client.get('/healthz')
+
+        assert response.status_code == 200
+        executor = response.json()['resources']['blocking_executor']
+        assert executor['max_workers'] == 8
+        assert executor['max_pending'] == 128
+        assert executor['max_inflight_per_scope'] == 4
+        assert executor['inflight'] >= 0
+        assert executor['rejected_total'] >= 0
+        event_loop = response.json()['resources']['event_loop']
+        assert event_loop['running'] is True
+        assert event_loop['recent_max_lag_ms'] >= 0
+
     def test_system_info_endpoint(self, e2e_client):
         """Test /api/v1/system/info endpoint."""
         response = e2e_client.get('/api/v1/system/info')

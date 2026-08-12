@@ -2,6 +2,8 @@
  * WebSocket客户端类
  * 用于管理WebSocket连接和消息处理
  */
+import { getActiveWorkspaceUuid } from '@/app/infra/http/workspaceContext';
+
 export interface WebSocketMessage {
   id: number;
   role: 'user' | 'assistant';
@@ -91,7 +93,22 @@ export class WebSocketClient {
         this.ws.onopen = () => {
           this.reconnectAttempts = 0;
           this.isConnecting = false;
-          this.startHeartbeat();
+          const token = this.token || localStorage.getItem('token');
+          const workspaceUuid = getActiveWorkspaceUuid();
+          if (!token || !workspaceUuid) {
+            const error = new Error('WebSocket认证信息缺失');
+            this.onErrorCallback?.(error);
+            this.ws?.close();
+            reject(error);
+            return;
+          }
+          this.ws?.send(
+            JSON.stringify({
+              type: 'authenticate',
+              token,
+              workspace_uuid: workspaceUuid,
+            }),
+          );
         };
 
         // 接收消息
@@ -103,6 +120,7 @@ export class WebSocketClient {
             // 第一次连接成功
             if (data.type === 'connected' && data.connection_id) {
               this.connectionId = data.connection_id;
+              this.startHeartbeat();
               resolve(data.connection_id);
             }
           } catch (error) {

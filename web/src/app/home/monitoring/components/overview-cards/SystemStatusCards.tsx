@@ -67,7 +67,7 @@ export default function SystemStatusCard({
     try {
       const [plugin, box] = await Promise.all([
         httpClient.getPluginSystemStatus().catch(() => null),
-        httpClient.getBoxStatus().catch(() => null),
+        httpClient.getBoxRuntimeStatus().catch(() => null),
       ]);
       const sessions = box?.hidden
         ? []

@@ -27,6 +27,19 @@ The `all` / `box` profile starts three services:
 - `langbot_box` — Box sandbox runtime (`:5410`). Uses the host Docker socket to
   spawn sandbox containers, so the **Box root host path and in-container path
   must be identical** (`BOX__LOCAL__HOST_ROOT=${LANGBOT_BOX_ROOT:-${PWD}/data/box}`).
+  OSS allows its RPC and managed-process relay to run without a token when both
+  sides leave `LANGBOT_BOX_CONTROL_TOKEN` unset. For an exposed endpoint, set
+  the same value of at least 32 non-whitespace characters in both the LangBot
+  and Box containers. Generate it once with `openssl rand -hex 32`; never put
+  it in `box.runtime.endpoint` or commit it to config.
+
+A Compose deployment may optionally set
+`LANGBOT_PLUGIN_RUNTIME_CONTROL_TOKEN` on both `langbot` and
+`langbot_plugin_runtime` when port 5400 needs shared-secret protection. OSS
+defaults to leaving it unset on both sides. If enabled, generate one value with
+`openssl rand -hex 32`; configuring only one side causes the control connection
+to fail. Kubernetes may use the `langbot-plugin-runtime-control` Secret shown in
+`docker/kubernetes.yaml`.
 
 With Box off, the dashboard/skills list stays visible (read-only) but sandbox
 tools, skill add/edit, and stdio MCP are disabled. Set `box.enabled: false`

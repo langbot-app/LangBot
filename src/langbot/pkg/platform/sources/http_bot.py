@@ -28,6 +28,7 @@ See docs/platforms/http-bot.md for the full integration guide.
 from __future__ import annotations
 
 import asyncio
+import itertools
 import json
 import time
 import typing
@@ -54,6 +55,7 @@ _ERR = {
     'bad_signature': (401, 40101),
     'duplicate': (409, 40901),
     'too_large': (413, 41301),
+    'overloaded': (503, 50301),
     'internal': (500, 50001),
 }
 
@@ -63,16 +65,27 @@ _MAX_BODY = 1 * 1024 * 1024
 # Idempotency dedup window (seconds) and cap.
 _IDEMPOTENCY_TTL = 600
 _IDEMPOTENCY_MAX = 4096
+_IDEMPOTENCY_PRUNE_SCAN_MAX = 64
+_OUTBOUND_QUEUE_MAX = 100
+_OUTBOUND_IDLE_SECONDS = 60
+_OUTBOUND_STATE_MAX = 4096
+_OUTBOUND_PRUNE_SCAN_MAX = 64
+_INBOUND_TASK_MAX = 100
+
+
+class _OutboundStateCapacityError(RuntimeError):
+    """Raised when a new outbound session cannot be admitted safely."""
 
 
 class _SessionOutbound:
     """Per-session outbound state: ordered delivery queue + sequence counter."""
 
     def __init__(self) -> None:
-        self.queue: asyncio.Queue = asyncio.Queue(maxsize=1000)
+        self.queue: asyncio.Queue = asyncio.Queue(maxsize=_OUTBOUND_QUEUE_MAX)
         self.worker: asyncio.Task | None = None
         self.sequence: int = 0
         self.last_was_final: bool = True  # so the first reply of a turn starts at seq 1
+        self.last_active: float = time.monotonic()
 
 
 class _SyncCollector:
@@ -99,6 +112,7 @@ class HttpBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     idempotency_cache: dict[str, float] = pydantic.Field(default_factory=dict, exclude=True)
     # session_id -> sync collector (set while a /sync request is awaiting a turn)
     sync_waiters: dict[str, '_SyncCollector'] = pydantic.Field(default_factory=dict, exclude=True)
+    inbound_tasks: set[asyncio.Task] = pydantic.Field(default_factory=set, exclude=True)
 
     model_config = pydantic.ConfigDict(arbitrary_types_allowed=True)
 
@@ -108,6 +122,7 @@ class HttpBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         self.outbound_states = {}
         self.idempotency_cache = {}
         self.sync_waiters = {}
+        self.inbound_tasks = set()
 
     # -- framework hooks ------------------------------------------------------
 
@@ -156,10 +171,19 @@ class HttpBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             await asyncio.sleep(3600)
 
     async def kill(self):
-        # Cancel any outbound workers.
+        tasks = list(self.inbound_tasks)
+        for task in tasks:
+            if not task.done():
+                task.cancel()
         for state in self.outbound_states.values():
             if state.worker and not state.worker.done():
                 state.worker.cancel()
+                tasks.append(state.worker)
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        self.outbound_states.clear()
+        self.sync_waiters.clear()
+        self.inbound_tasks.clear()
         return True
 
     # -- inbound --------------------------------------------------------------
@@ -168,14 +192,52 @@ class HttpBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         status, code = _ERR[kind]
         return quart.jsonify({'code': code, 'msg': detail or kind, 'data': None}), status
 
-    def _prune_idempotency(self) -> None:
-        now = time.time()
-        if len(self.idempotency_cache) > _IDEMPOTENCY_MAX:
-            self.idempotency_cache.clear()
-            return
-        expired = [k for k, ts in self.idempotency_cache.items() if now - ts > _IDEMPOTENCY_TTL]
-        for k in expired:
-            self.idempotency_cache.pop(k, None)
+    def _reserve_idempotency_key(self, key: str) -> str:
+        """Reserve a key without allowing unbounded state or full-map scans."""
+        now = time.monotonic()
+        accepted_at = self.idempotency_cache.get(key)
+        if accepted_at is not None:
+            if now - accepted_at <= _IDEMPOTENCY_TTL:
+                return 'duplicate'
+            self.idempotency_cache.pop(key, None)
+
+        if len(self.idempotency_cache) >= _IDEMPOTENCY_MAX:
+            self._prune_idempotency(now)
+        if len(self.idempotency_cache) >= _IDEMPOTENCY_MAX:
+            return 'overloaded'
+
+        self.idempotency_cache[key] = now
+        return 'accepted'
+
+    def _prune_idempotency(self, now: float | None = None) -> None:
+        """Remove at most a fixed number of oldest expired keys."""
+        current_time = time.monotonic() if now is None else now
+        oldest = itertools.islice(
+            self.idempotency_cache.items(),
+            _IDEMPOTENCY_PRUNE_SCAN_MAX,
+        )
+        for key, accepted_at in list(oldest):
+            if current_time - accepted_at <= _IDEMPOTENCY_TTL:
+                break
+            self.idempotency_cache.pop(key, None)
+
+    def _start_inbound_task(self, coro: typing.Coroutine) -> asyncio.Task | None:
+        self.inbound_tasks = {task for task in self.inbound_tasks if not task.done()}
+        if len(self.inbound_tasks) >= _INBOUND_TASK_MAX:
+            coro.close()
+            return None
+        task = asyncio.create_task(coro)
+        self.inbound_tasks.add(task)
+
+        def task_done(done_task: asyncio.Task) -> None:
+            self.inbound_tasks.discard(done_task)
+            if not done_task.cancelled():
+                # Retrieve failures so fire-and-forget callbacks never emit
+                # "Task exception was never retrieved" or retain tracebacks.
+                done_task.exception()
+
+        task.add_done_callback(task_done)
+        return task
 
     async def handle_unified_webhook(self, bot_uuid: str, path: str, request):
         """Handle an inbound POST from the unified webhook dispatcher.
@@ -213,7 +275,7 @@ class HttpBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 return None, self._err('bad_signature', f'invalid signature: {reason}')
 
         try:
-            data = json.loads(body)
+            data = await asyncio.to_thread(json.loads, body)
         except (json.JSONDecodeError, ValueError):
             return None, self._err('bad_request', 'body is not valid JSON')
         if not isinstance(data, dict):
@@ -264,10 +326,11 @@ class HttpBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         # Idempotency.
         idem = request.headers.get(signing.HEADER_IDEMPOTENCY)
         if idem:
-            self._prune_idempotency()
-            if idem in self.idempotency_cache:
+            idempotency_result = self._reserve_idempotency_key(idem)
+            if idempotency_result == 'duplicate':
                 return self._err('duplicate', 'idempotency key already accepted')
-            self.idempotency_cache[idem] = time.time()
+            if idempotency_result == 'overloaded':
+                return self._err('overloaded', 'idempotency capacity reached; retry later')
 
         try:
             event, session_id, session_type, message_id = self._build_event(data)
@@ -282,7 +345,8 @@ class HttpBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             return await self._run_sync(event, listener, session_id, message_id)
 
         # Fire-and-collect: kick the pipeline, return 202 immediately.
-        asyncio.create_task(listener(event, self))
+        if self._start_inbound_task(listener(event, self)) is None:
+            return self._err('overloaded', 'too many inbound messages are already being processed')
         return quart.jsonify(
             {
                 'code': 0,
@@ -311,17 +375,39 @@ class HttpBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
     async def _reset_session(self, launcher_type: str, launcher_id: str) -> bool:
         """Drop the matching session so the next message starts a fresh conversation."""
+        execution_context = getattr(self.logger, 'execution_context', None)
+        if (
+            execution_context is None
+            or not execution_context.instance_uuid
+            or not execution_context.workspace_uuid
+            or execution_context.placement_generation <= 0
+            or not self.bot_uuid
+        ):
+            raise RuntimeError('http_bot reset requires a trusted execution scope')
+        expected_prefix = (
+            execution_context.instance_uuid,
+            execution_context.workspace_uuid,
+            execution_context.placement_generation,
+            self.bot_uuid,
+            launcher_type,
+        )
+
         sess_mgr = self.ap.sess_mgr
         before = len(sess_mgr.session_list)
         sess_mgr.session_list = [
-            s
-            for s in sess_mgr.session_list
-            if not (
-                str(s.launcher_type.value if hasattr(s.launcher_type, 'value') else s.launcher_type) == launcher_type
-                and str(s.launcher_id) == launcher_id
-            )
+            s for s in sess_mgr.session_list if not self._matches_session_scope(s, expected_prefix, launcher_id)
         ]
         return len(sess_mgr.session_list) < before
+
+    @staticmethod
+    def _matches_session_scope(session, expected_prefix: tuple[str, str, int, str, str], launcher_id: str) -> bool:
+        session_key = getattr(session, '_langbot_session_key', None)
+        return (
+            isinstance(session_key, tuple)
+            and len(session_key) == 6
+            and session_key[:5] == expected_prefix
+            and str(session_key[5]) == launcher_id
+        )
 
     # -- outbound -------------------------------------------------------------
 
@@ -339,7 +425,8 @@ class HttpBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         return ''
 
     def _next_sequence(self, session_id: str, is_final: bool) -> int:
-        state = self.outbound_states.setdefault(session_id, _SessionOutbound())
+        state = self._outbound_state(session_id)
+        state.last_active = time.monotonic()
         if state.last_was_final:
             state.sequence = 1
         else:
@@ -347,8 +434,43 @@ class HttpBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         state.last_was_final = is_final
         return state.sequence
 
+    def _outbound_state(self, session_id: str) -> _SessionOutbound:
+        state = self.outbound_states.get(session_id)
+        if state is not None:
+            # Dicts retain insertion order. Moving active sessions to the end
+            # keeps bounded admission-time pruning focused on old entries.
+            self.outbound_states.pop(session_id)
+            self.outbound_states[session_id] = state
+            return state
+
+        if len(self.outbound_states) >= _OUTBOUND_STATE_MAX:
+            self._prune_outbound_states()
+        if len(self.outbound_states) >= _OUTBOUND_STATE_MAX:
+            raise _OutboundStateCapacityError(f'http_bot outbound session capacity reached ({_OUTBOUND_STATE_MAX})')
+
+        state = _SessionOutbound()
+        self.outbound_states[session_id] = state
+        return state
+
+    def _prune_outbound_states(self) -> None:
+        now = time.monotonic()
+        oldest = itertools.islice(
+            self.outbound_states.items(),
+            _OUTBOUND_PRUNE_SCAN_MAX,
+        )
+        for session_id, state in list(oldest):
+            if (
+                (state.worker is not None and not state.worker.done())
+                or not state.queue.empty()
+                or now - state.last_active < _OUTBOUND_IDLE_SECONDS
+            ):
+                continue
+            if self.outbound_states.get(session_id) is state:
+                self.outbound_states.pop(session_id, None)
+
     async def _enqueue_callback(self, session_id: str, payload: dict) -> None:
-        state = self.outbound_states.setdefault(session_id, _SessionOutbound())
+        state = self._outbound_state(session_id)
+        state.last_active = time.monotonic()
         if state.worker is None or state.worker.done():
             state.worker = asyncio.create_task(self._outbound_worker(session_id, state))
         try:
@@ -364,13 +486,23 @@ class HttpBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
     async def _outbound_worker(self, session_id: str, state: _SessionOutbound) -> None:
         while True:
-            payload = await state.queue.get()
+            try:
+                payload = await asyncio.wait_for(
+                    state.queue.get(),
+                    timeout=_OUTBOUND_IDLE_SECONDS,
+                )
+            except asyncio.TimeoutError:
+                if self.outbound_states.get(session_id) is state and state.queue.empty():
+                    self.outbound_states.pop(session_id, None)
+                    return
+                continue
             try:
                 await self._deliver_callback(payload)
             except Exception as e:  # noqa: BLE001
                 await self.logger.error(f'http_bot callback delivery failed for {session_id}: {e}')
             finally:
                 state.queue.task_done()
+                state.last_active = time.monotonic()
 
     async def _deliver_callback(self, payload: dict) -> None:
         callback_url = self.config.get('callback_url', '')
@@ -486,8 +618,11 @@ class HttpBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
         collector = _SyncCollector()
         self.sync_waiters[session_id] = collector
+        listener_task = self._start_inbound_task(listener(event, self))
+        if listener_task is None:
+            self.sync_waiters.pop(session_id, None)
+            return self._err('overloaded', 'too many inbound messages are already being processed')
         try:
-            asyncio.create_task(listener(event, self))
             timeout = int(self.config.get('callback_timeout', 15)) * 4
             try:
                 await asyncio.wait_for(collector.done.wait(), timeout=timeout)
@@ -495,6 +630,9 @@ class HttpBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 await self.logger.warning(f'http_bot sync wait timed out for session {session_id}')
         finally:
             self.sync_waiters.pop(session_id, None)
+            state = self.outbound_states.get(session_id)
+            if state is not None and state.worker is None and state.queue.empty():
+                self.outbound_states.pop(session_id, None)
 
         return quart.jsonify(
             {

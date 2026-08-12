@@ -8,6 +8,7 @@ import langbot_plugin.api.entities.events as events
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
+from ...pipeline.pool import get_query_execution_context
 
 
 @stage.stage_class('PreProcessor')
@@ -40,6 +41,29 @@ class PreProcessor(stage.PipelineStage):
         selected_tool_names = {tool for tool in selected_tools if isinstance(tool, str)}
         return [tool for tool in tools if tool.name in selected_tool_names]
 
+    @staticmethod
+    def _append_to_system_prompt(
+        messages: list[provider_message.Message],
+        addition: str,
+    ) -> None:
+        """Append text to the first system message, creating one if none exists.
+
+        Handles both plain-string and content-element (list) message bodies.
+        """
+        if messages and messages[0].role == 'system':
+            head = messages[0]
+            if isinstance(head.content, str):
+                head.content = head.content + addition
+            elif isinstance(head.content, list):
+                for ce in head.content:
+                    if getattr(ce, 'type', None) == 'text':
+                        ce.text = (ce.text or '') + addition
+                        break
+                else:
+                    head.content.append(provider_message.ContentElement(type='text', text=addition))
+        else:
+            messages.insert(0, provider_message.Message(role='system', content=addition.strip()))
+
     async def process(
         self,
         query: pipeline_query.Query,
@@ -70,7 +94,10 @@ class PreProcessor(stage.PipelineStage):
 
             if primary_uuid:
                 try:
-                    llm_model = await self.ap.model_mgr.get_model_by_uuid(primary_uuid)
+                    llm_model = await self.ap.model_mgr.get_model_by_uuid(
+                        get_query_execution_context(query),
+                        primary_uuid,
+                    )
                 except ValueError:
                     self.ap.logger.warning(f'LLM model {primary_uuid} not found or not configured')
 
@@ -79,7 +106,10 @@ class PreProcessor(stage.PipelineStage):
                 valid_fallbacks = []
                 for fb_uuid in fallback_uuids:
                     try:
-                        await self.ap.model_mgr.get_model_by_uuid(fb_uuid)
+                        await self.ap.model_mgr.get_model_by_uuid(
+                            get_query_execution_context(query),
+                            fb_uuid,
+                        )
                         valid_fallbacks.append(fb_uuid)
                     except ValueError:
                         self.ap.logger.warning(f'Fallback model {fb_uuid} not found, skipping')
@@ -131,6 +161,7 @@ class PreProcessor(stage.PipelineStage):
                     bound_mcp_servers = query.variables.get('_pipeline_bound_mcp_servers', None)
                     include_mcp_resource_tools = query.variables.get('_pipeline_mcp_resource_agent_read_enabled', True)
                     all_tools = await self.ap.tool_mgr.get_all_tools(
+                        get_query_execution_context(query),
                         bound_plugins,
                         bound_mcp_servers,
                         include_skill_authoring=include_skill_authoring,
@@ -149,6 +180,7 @@ class PreProcessor(stage.PipelineStage):
                 bound_mcp_servers = query.variables.get('_pipeline_bound_mcp_servers', None)
                 include_mcp_resource_tools = query.variables.get('_pipeline_mcp_resource_agent_read_enabled', True)
                 all_tools = await self.ap.tool_mgr.get_all_tools(
+                    get_query_execution_context(query),
                     bound_plugins,
                     bound_mcp_servers,
                     include_skill_authoring=include_skill_authoring,
@@ -266,6 +298,23 @@ class PreProcessor(stage.PipelineStage):
         query.prompt.messages = event_ctx.event.default_prompt
         query.messages = event_ctx.event.prompt
 
+        # =========== Current date grounding for the local-agent runner ===========
+        # local-agent system prompts are static strings with no template-variable
+        # support, so without an explicit anchor the LLM resolves relative time
+        # references (e.g. "this quarter", "latest", "currently") against whichever
+        # period is best represented in its training data instead of the real date,
+        # and won't reliably know to double check time-sensitive facts with a tool.
+        if selected_runner == 'local-agent':
+            date_addition = (
+                f'\n\nCurrent date: {datetime.datetime.now().strftime("%Y-%m-%d (%A)")}. '
+                'Resolve relative time references (e.g. "today", "this quarter", "latest", '
+                '"currently") based on this date, not your training cutoff. For anything '
+                'time-sensitive that may have changed since training — stock prices, '
+                'financial results, news, current events, exchange rates, or similar — '
+                'verify with a search tool if one is available rather than answering from memory.'
+            )
+            self._append_to_system_prompt(query.prompt.messages, date_addition)
+
         # =========== Skill awareness for the local-agent runner ===========
         # The actual activation goes through the ``activate`` Tool Call so the
         # LLM doesn't see full SKILL.md instructions until it commits to a
@@ -279,7 +328,13 @@ class PreProcessor(stage.PipelineStage):
         #      relied on this injection; without it the LLM never discovers
         #      the skills are there and just calls native tools instead.
         if selected_runner == 'local-agent' and self.ap.skill_mgr:
-            pipeline_data = await self.ap.pipeline_service.get_pipeline(query.pipeline_uuid)
+            skill_execution_context = get_query_execution_context(query)
+            await self.ap.skill_mgr.ensure_loaded(skill_execution_context)
+            pipeline_data = await self.ap.pipeline_service.get_pipeline(
+                query.workspace_uuid,
+                query.pipeline_uuid,
+                include_secret=True,
+            )
             extensions_prefs = (pipeline_data or {}).get('extensions_preferences', {})
             enable_all_skills = extensions_prefs.get('enable_all_skills', True)
 
@@ -291,41 +346,22 @@ class PreProcessor(stage.PipelineStage):
             query.variables['_pipeline_bound_skills'] = bound_skills
 
             skill_addition = self.ap.skill_mgr.build_skill_aware_prompt_addition(
+                skill_execution_context,
                 bound_skills=bound_skills,
             )
             if skill_addition:
-                # Append to the first system message; create one if the
-                # prompt has none. Handles both plain-string and
-                # content-element (list) message bodies.
-                if query.prompt.messages and query.prompt.messages[0].role == 'system':
-                    head = query.prompt.messages[0]
-                    if isinstance(head.content, str):
-                        head.content = head.content + skill_addition
-                    elif isinstance(head.content, list):
-                        appended = False
-                        for ce in head.content:
-                            if getattr(ce, 'type', None) == 'text':
-                                ce.text = (ce.text or '') + skill_addition
-                                appended = True
-                                break
-                        if not appended:
-                            head.content.append(provider_message.ContentElement(type='text', text=skill_addition))
-                else:
-                    query.prompt.messages.insert(
-                        0,
-                        provider_message.Message(role='system', content=skill_addition.strip()),
-                    )
+                self._append_to_system_prompt(query.prompt.messages, skill_addition)
                 self.ap.logger.debug(
                     f'Skill index injected into system prompt: '
                     f'pipeline={query.pipeline_uuid} '
                     f'bound_skills={bound_skills or "all"} '
-                    f'loaded_skills={len(self.ap.skill_mgr.skills)}'
+                    f'loaded_skills={len(self.ap.skill_mgr.get_skills(skill_execution_context))}'
                 )
             else:
                 self.ap.logger.debug(
                     f'No skills available for prompt injection: '
                     f'pipeline={query.pipeline_uuid} '
-                    f'loaded_skills={len(self.ap.skill_mgr.skills)} '
+                    f'loaded_skills={len(self.ap.skill_mgr.get_skills(skill_execution_context))} '
                     f'bound_skills={bound_skills}'
                 )
 

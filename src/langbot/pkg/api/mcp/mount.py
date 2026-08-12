@@ -19,7 +19,10 @@ from __future__ import annotations
 
 import contextlib
 import typing
+import uuid
 
+from ..http.context import PrincipalContext, PrincipalType, RequestContext, WorkspaceContext
+from .context import bind_request_context, reset_request_context
 from .server import LangBotMCPServer
 
 if typing.TYPE_CHECKING:
@@ -28,6 +31,9 @@ if typing.TYPE_CHECKING:
 
 # JSON-RPC-ish 401 body returned before the MCP app is reached.
 _UNAUTHORIZED_BODY = b'{"error":"unauthorized","message":"A valid LangBot API key is required for MCP access."}'
+_ENTITLEMENT_UNAVAILABLE_BODY = (
+    b'{"error":"entitlement_unavailable","message":"Workspace entitlement is unavailable for MCP access."}'
+)
 
 
 def _extract_api_key(headers: list[tuple[bytes, bytes]]) -> str:
@@ -76,7 +82,7 @@ class MCPMount:
     def wrap(self, quart_asgi: typing.Callable) -> typing.Callable:
         """Return a dispatcher ASGI app fronting ``quart_asgi``."""
         mcp_asgi = self._mcp_asgi
-        verify_api_key = self.ap.apikey_service.verify_api_key
+        authenticate_api_key = self.ap.apikey_service.authenticate_api_key
         is_mcp_path = self._is_mcp_path
 
         async def dispatcher(scope, receive, send):  # type: ignore[no-untyped-def]
@@ -88,12 +94,12 @@ class MCPMount:
 
             # Authenticate MCP HTTP requests with a LangBot API key.
             api_key = _extract_api_key(scope.get('headers', []))
-            authorized = False
+            identity = None
             if api_key:
                 with contextlib.suppress(Exception):
-                    authorized = await verify_api_key(api_key)
+                    identity = await authenticate_api_key(api_key)
 
-            if not authorized:
+            if identity is None:
                 await send(
                     {
                         'type': 'http.response.start',
@@ -107,6 +113,56 @@ class MCPMount:
                 await send({'type': 'http.response.body', 'body': _UNAUTHORIZED_BODY})
                 return
 
-            await mcp_asgi(scope, receive, send)
+            deployment_admission = getattr(self.ap, 'deployment_admission', None)
+            try:
+                if deployment_admission is not None:
+                    deployment_admission.require_active()
+                entitlement_revision = 0
+                deployment = getattr(self.ap, 'deployment', None)
+                if deployment is not None and getattr(deployment, 'multi_workspace_enabled', False):
+                    resolver = getattr(self.ap, 'entitlement_resolver', None)
+                    if resolver is None or identity.instance_uuid != resolver.instance_uuid:
+                        raise RuntimeError('Workspace entitlement resolver is unavailable')
+                    entitlement = await resolver.resolve(identity.workspace_uuid)
+                    entitlement_revision = entitlement.entitlement_revision
+            except Exception:
+                await send(
+                    {
+                        'type': 'http.response.start',
+                        'status': 403,
+                        'headers': [(b'content-type', b'application/json')],
+                    }
+                )
+                await send({'type': 'http.response.body', 'body': _ENTITLEMENT_UNAVAILABLE_BODY})
+                return
+
+            request_context = RequestContext(
+                instance_uuid=identity.instance_uuid,
+                placement_generation=identity.placement_generation,
+                request_id=str(uuid.uuid4()),
+                auth_type='api-key',
+                principal=PrincipalContext(
+                    principal_type=PrincipalType.API_KEY,
+                    api_key_uuid=identity.api_key_uuid,
+                ),
+                workspace=WorkspaceContext(
+                    workspace_uuid=identity.workspace_uuid,
+                    membership_uuid=None,
+                    role=None,
+                    permissions=identity.permissions,
+                ),
+                entitlement_revision=entitlement_revision,
+            )
+            tenant_scope = getattr(self.ap.persistence_mgr, 'tenant_scope', None)
+            if not callable(tenant_scope):
+                raise RuntimeError('MCP request persistence scope is unavailable')
+            async with tenant_scope(identity.workspace_uuid):
+                token = bind_request_context(request_context)
+                try:
+                    await mcp_asgi(scope, receive, send)
+                    if deployment_admission is not None:
+                        deployment_admission.require_active()
+                finally:
+                    reset_request_context(token)
 
         return dispatcher

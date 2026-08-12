@@ -50,7 +50,7 @@ LangBot は、AI搭載のインスタントメッセージングボットを構�
 
 [→ すべての機能について詳しく見る](https://link.langbot.app/ja/docs/features)
 
-📍 実践ガイド: [5分でマルチプラットフォームAIボットをデプロイ](https://blog.langbot.app/en/blog/deploy-ai-bot-in-5-minutes/)、[DeepSeekをWeChat・Discord・Telegramに接続](https://blog.langbot.app/en/blog/connect-deepseek-to-wechat/)、[Dify AgentをDiscord・Telegram・Slackで動かす](https://blog.langbot.app/en/blog/dify-agent-discord-telegram-slack/)、[n8n連携チャットボットを構築](https://blog.langbot.app/en/blog/n8n-multi-platform-ai-chatbot/)。
+📍 実践ガイド: [5分でマルチプラットフォームAIボットをデプロイ](https://langbot.app/en/blog/deploy-ai-bot-in-5-minutes/)、[DeepSeekをWeChat・Discord・Telegramに接続](https://langbot.app/en/blog/connect-deepseek-to-wechat/)、[Dify AgentをDiscord・Telegram・Slackで動かす](https://langbot.app/en/blog/dify-agent-discord-telegram-slack/)、[n8n連携チャットボットを構築](https://langbot.app/en/blog/n8n-multi-platform-ai-chatbot/)。
 
 ---
 
@@ -88,6 +88,16 @@ docker compose --profile all up -d
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.app/template/yRrAyL?referralCode=vogKPF)
 
 **その他:** [Docker](https://link.langbot.app/en/docs/docker) · [手動デプロイ](https://link.langbot.app/en/docs/manual-deploy) · [BTPanel](https://link.langbot.app/en/docs/bt-panel) · [Kubernetes](https://docs.langbot.app/en/deploy/langbot/kubernetes)
+
+---
+
+## ライブデモ
+
+**今すぐ試す:** https://demo.langbot.dev/
+- メール: `demo@langbot.app`
+- パスワード: `langbot123456`
+
+*注意: 公開デモ環境です。機密情報を入力しないでください。*
 
 ---
 
@@ -153,14 +163,6 @@ docker compose --profile all up -d
 
 ---
 
-## ライブデモ
-
-**今すぐ試す:** https://demo.langbot.dev/
-- メール: `demo@langbot.app`
-- パスワード: `langbot123456`
-
-*注意: 公開デモ環境です。機密情報を入力しないでください。*
-
 ## AI エージェントのために 🤖
 
 LangBot は **設計段階からエージェントフレンドリー** です。お使いのコーディングエージェント（Claude Code、Codex、Copilot、Cursor など）が、ファーストクラスのサポートで LangBot を操作・拡張・デプロイできます：
@@ -179,12 +181,6 @@ LangBot は **設計段階からエージェントフレンドリー** です。
 [![Discord](https://img.shields.io/discord/1335141740050649118?logo=discord&label=Discord)](https://discord.gg/wdNEHETs87)
 
 - [Discord コミュニティ](https://discord.gg/wdNEHETs87)
-
----
-
-## Star 推移
-
-[![Star History Chart](https://api.star-history.com/svg?repos=langbot-app/LangBot&type=Date)](https://star-history.com/#langbot-app/LangBot&Date)
 
 ---
 

@@ -37,7 +37,11 @@ _saved_modules = {name: sys.modules.get(name) for name in _import_stubs}
 for _name, _stub in _import_stubs.items():
     sys.modules[_name] = _stub
 try:
-    from langbot.pkg.provider.runners.n8nsvapi import N8nServiceAPIRunner
+    from langbot.pkg.provider.runners.n8nsvapi import (
+        N8nAPIError,
+        N8nServiceAPIRunner,
+        _MAX_N8N_RESPONSE_CHARS,
+    )
 finally:
     for _name, _original in _saved_modules.items():
         if _original is None:
@@ -228,6 +232,17 @@ async def test_plain_json_non_dict_response():
     assert len(chunks) == 1
     assert chunks[0].is_final is True
     assert chunks[0].content == '["a", "b"]'
+
+
+@pytest.mark.asyncio
+async def test_response_size_is_bounded():
+    runner = make_runner()
+
+    with pytest.raises(N8nAPIError, match='exceeds the runtime limit'):
+        await collect_chunks(
+            runner,
+            [b'x' * (_MAX_N8N_RESPONSE_CHARS + 1)],
+        )
 
 
 @pytest.mark.asyncio
