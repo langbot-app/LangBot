@@ -300,7 +300,8 @@ const ruRU = {
     langbotModelsDescription: 'Облачные модели на базе LangBot Space',
     credits: 'Кредиты',
     loginWithSpace: 'Войти с аккаунтом LangBot',
-    loginToUseModels: 'Войдите с аккаунтом LangBot, чтобы использовать облачные модели',
+    loginToUseModels:
+      'Войдите с аккаунтом LangBot, чтобы использовать облачные модели',
     noModels: 'Модели не настроены',
     langbotModels: 'Модели LangBot',
     spaceTrialTooltip:

@@ -280,7 +280,8 @@ const zhHans = {
     credits: '积分',
     loginWithSpace: '使用 LangBot 账号登录',
     loginToUseModels: '通过 LangBot 账号登录以使用云端模型',
-    ownerMustBindSpace: '工作区所有者需要绑定 LangBot 账号才能使用 LangBot 模型。',
+    ownerMustBindSpace:
+      '工作区所有者需要绑定 LangBot 账号才能使用 LangBot 模型。',
     usesOwnerSpaceBilling: '使用工作区所有者的 LangBot 账号计费与积分。',
     noModels: '暂无模型',
     langbotModels: 'LangBot 模型',

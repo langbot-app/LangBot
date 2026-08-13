@@ -261,7 +261,8 @@ const esES = {
     llmModels: 'Modelos LLM',
     localProvider: 'Local',
     localProviderDescription: 'Modelos configurados y gestionados localmente',
-    spaceProviderDescription: 'Modelos sincronizados desde tu cuenta de LangBot',
+    spaceProviderDescription:
+      'Modelos sincronizados desde tu cuenta de LangBot',
     spaceDisabledForLocalAccount:
       'Inicia sesión con una cuenta de LangBot para usar modelos en la nube',
     syncModels: 'Sincronizar',
@@ -302,7 +303,8 @@ const esES = {
     langbotModelsDescription: 'Modelos en la nube impulsados por LangBot Space',
     credits: 'Créditos',
     loginWithSpace: 'Iniciar sesión con una cuenta de LangBot',
-    loginToUseModels: 'Inicia sesión con una cuenta de LangBot para usar modelos en la nube',
+    loginToUseModels:
+      'Inicia sesión con una cuenta de LangBot para usar modelos en la nube',
     noModels: 'No hay modelos configurados',
     langbotModels: 'Modelos LangBot',
     spaceTrialTooltip:

@@ -1,9 +1,11 @@
-import assert from 'node:assert/strict'
-import { readdirSync, readFileSync } from 'node:fs'
-import test from 'node:test'
+import assert from 'node:assert/strict';
+import { readdirSync, readFileSync } from 'node:fs';
+import test from 'node:test';
 
-const localeDir = new URL('../../src/i18n/locales/', import.meta.url)
-const localeFiles = readdirSync(localeDir).filter((name) => name.endsWith('.ts'))
+const localeDir = new URL('../../src/i18n/locales/', import.meta.url);
+const localeFiles = readdirSync(localeDir).filter((name) =>
+  name.endsWith('.ts'),
+);
 
 const deprecatedAccountCopy = [
   /Initialize with Space/i,
@@ -29,17 +31,17 @@ const deprecatedAccountCopy = [
   /บัญชี Space/,
   /аккаунт(?:ов|а)? Space/i,
   /аккаунт Space/i,
-]
+];
 
 test('user-facing account authentication copy uses LangBot Account terminology', () => {
-  const violations = []
+  const violations = [];
 
   for (const file of localeFiles) {
-    const source = readFileSync(new URL(file, localeDir), 'utf8')
+    const source = readFileSync(new URL(file, localeDir), 'utf8');
     for (const pattern of deprecatedAccountCopy) {
-      if (pattern.test(source)) violations.push(`${file}: ${pattern}`)
+      if (pattern.test(source)) violations.push(`${file}: ${pattern}`);
     }
   }
 
-  assert.deepEqual(violations, [])
-})
+  assert.deepEqual(violations, []);
+});

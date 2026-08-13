@@ -253,7 +253,8 @@ const thTH = {
     localProvider: 'ท้องถิ่น',
     localProviderDescription: 'โมเดลที่กำหนดค่าและจัดการในเครื่อง',
     spaceProviderDescription: 'โมเดลที่ซิงค์จากบัญชี LangBot ของคุณ',
-    spaceDisabledForLocalAccount: 'เข้าสู่ระบบด้วยบัญชี LangBot เพื่อใช้โมเดลคลาวด์',
+    spaceDisabledForLocalAccount:
+      'เข้าสู่ระบบด้วยบัญชี LangBot เพื่อใช้โมเดลคลาวด์',
     syncModels: 'ซิงค์',
     syncSuccess:
       'ซิงค์เสร็จสมบูรณ์: สร้าง {{created}} รายการ, อัปเดต {{updated}} รายการ',
@@ -1272,14 +1273,16 @@ const thTH = {
     bindSpaceDescription: 'ผูกเพื่อใช้ API โมเดลอย่างเป็นทางการและบริการคลาวด์',
     bindSpaceButton: 'ผูก',
     bindSpaceConfirmTitle: 'ยืนยันการผูก',
-    bindSpaceConfirmDescription: 'คุณกำลังจะผูกอินสแตนซ์ท้องถิ่นกับบัญชี LangBot',
+    bindSpaceConfirmDescription:
+      'คุณกำลังจะผูกอินสแตนซ์ท้องถิ่นกับบัญชี LangBot',
     bindSpaceWarning:
       'หลังจากผูกแล้ว อีเมลเข้าสู่ระบบของคุณจะเปลี่ยนจาก {{localEmail}} เป็นอีเมลบัญชี LangBot',
     bindSpaceSuccess: 'ผูกบัญชี LangBot สำเร็จ',
     bindSpaceFailed: 'ผูกบัญชี LangBot ล้มเหลว',
     bindSpaceInvalidState: 'คำขอผูกไม่ถูกต้อง กรุณาลองใหม่จากการตั้งค่าบัญชี',
     setPasswordHint: 'ตั้งรหัสผ่านเพื่อเข้าสู่ระบบด้วยอีเมลและรหัสผ่าน',
-    spaceEmailMismatch: 'อีเมลเข้าสู่ระบบด้วยบัญชี LangBot ไม่ตรงกับอีเมลบัญชีท้องถิ่น',
+    spaceEmailMismatch:
+      'อีเมลเข้าสู่ระบบด้วยบัญชี LangBot ไม่ตรงกับอีเมลบัญชีท้องถิ่น',
 
     space_account_not_registeredTitle: 'Account not registered',
     space_account_not_registered:

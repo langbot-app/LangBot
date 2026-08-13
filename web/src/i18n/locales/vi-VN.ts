@@ -297,7 +297,8 @@ const viVN = {
     langbotModelsDescription: 'Mô hình đám mây được cung cấp bởi LangBot Space',
     credits: 'Tín dụng',
     loginWithSpace: 'Đăng nhập bằng tài khoản LangBot',
-    loginToUseModels: 'Đăng nhập bằng tài khoản LangBot để sử dụng mô hình đám mây',
+    loginToUseModels:
+      'Đăng nhập bằng tài khoản LangBot để sử dụng mô hình đám mây',
     noModels: 'Chưa cấu hình mô hình nào',
     langbotModels: 'Mô hình LangBot',
     spaceTrialTooltip:

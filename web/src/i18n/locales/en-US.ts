@@ -255,7 +255,8 @@ const enUS = {
     localProvider: 'Local',
     localProviderDescription: 'Models configured and managed locally',
     spaceProviderDescription: 'Models synced from your LangBot Account',
-    spaceDisabledForLocalAccount: 'Login with LangBot Account to use cloud models',
+    spaceDisabledForLocalAccount:
+      'Login with LangBot Account to use cloud models',
     syncModels: 'Sync',
     syncSuccess: 'Sync complete: {{created}} created, {{updated}} updated',
     syncError: 'Sync failed: ',

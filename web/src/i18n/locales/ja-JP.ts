@@ -258,7 +258,8 @@ const jaJP = {
     localProvider: 'ローカル',
     localProviderDescription: 'ローカルで設定・管理されているモデル',
     spaceProviderDescription: 'LangBot アカウントから同期されたモデル',
-    spaceDisabledForLocalAccount: 'LangBot アカウントでログインしてクラウドモデルを使用',
+    spaceDisabledForLocalAccount:
+      'LangBot アカウントでログインしてクラウドモデルを使用',
     syncModels: '同期',
     syncSuccess: '同期完了：{{created}} 件作成、{{updated}} 件更新',
     syncError: '同期に失敗しました：',
