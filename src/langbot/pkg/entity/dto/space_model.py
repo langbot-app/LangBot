@@ -47,3 +47,10 @@ class SpaceModel(pydantic.BaseModel):
     status: str
     created_at: str | None = None
     updated_at: str | None = None
+
+
+class SpaceModelSelection(pydantic.BaseModel):
+    """Minimal model identity returned by the ranked selection endpoint."""
+
+    uuid: str
+    model_id: str

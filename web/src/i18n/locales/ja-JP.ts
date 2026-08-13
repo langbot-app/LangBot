@@ -1744,6 +1744,10 @@ const jaJP = {
       resaveBot: '設定を再保存',
       botSaved:
         'ボット設定が保存され、有効になりました。ログを確認して接続を検証してください。',
+      waitingForMessage:
+        'ボットが有効になりました。続行するには IM からメッセージを送信してください。',
+      messageReceived:
+        'ボットが IM メッセージを受信しました。次のステップに進めます。',
       logsTitle: 'ボットログ',
       logsDescription:
         'ボットの活動を監視して、プラットフォーム接続が正常に動作していることを確認します。',
@@ -1752,6 +1756,22 @@ const jaJP = {
       title: 'AIエンジンを選択',
       description:
         'ボットのインテリジェンスを駆動するAIエンジンを選択してください。',
+      optionalDescription:
+        'このステップは任意です。現在の Agent をどのように設定するか選択してください。',
+      externalTitle: '外部プラットフォームの Agent を接続',
+      externalDescription:
+        'Dify、n8n、Coze などを接続し、ボットのパイプラインを置き換えます。',
+      ownModelTitle: '自分のモデルを使用',
+      ownModelDescription:
+        '現在の Local Agent パイプラインを開き、自分のモデルを設定します。',
+      moreFeaturesTitle: 'Agent に機能を追加',
+      moreFeaturesDescription:
+        'ワークベンチを開き、ツールやナレッジなどの機能を追加します。',
+      runnerDescription: '外部 Agent の Runner を選択し、接続を設定します。',
+      backToChoices: '選択肢に戻る',
+      createExternal: '作成して関連付ける',
+      configurePipeline: 'パイプラインを設定',
+      openWorkbench: 'ワークベンチを開く',
     },
     spaceBanner: {
       message:

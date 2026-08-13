@@ -1046,10 +1046,19 @@ export class BackendClient extends BaseHttpClient {
     step: number;
     selected_adapter: string | null;
     created_bot_uuid: string | null;
+    created_pipeline_uuid?: string | null;
     bot_saved: boolean;
+    message_received?: boolean;
     selected_runner: string | null;
   }): Promise<void> {
     return this.put('/api/v1/system/wizard/progress', progress);
+  }
+
+  public getWizardRecommendedModel(): Promise<{
+    uuid: string;
+    name: string;
+  }> {
+    return this.get('/api/v1/system/wizard/recommended-model');
   }
 
   public getAsyncTasks(params?: {

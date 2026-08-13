@@ -1827,6 +1827,10 @@ const enUS = {
       resaveBot: 'Re-save Configuration',
       botSaved:
         'Bot configuration saved and enabled. Check the logs to verify the connection.',
+      waitingForMessage:
+        'The bot is enabled. Send it a message from your IM platform to continue.',
+      messageReceived:
+        'The bot received an IM message. You can continue to the next step.',
       logsTitle: 'Bot Logs',
       logsDescription:
         'Monitor bot activity to verify the platform connection is working.',
@@ -1835,6 +1839,23 @@ const enUS = {
       title: 'Select an AI Engine',
       description:
         "Choose the AI engine that will power your bot's intelligence.",
+      optionalDescription:
+        'This step is optional. Choose how you want to continue with the current agent.',
+      externalTitle: 'Connect an External Agent',
+      externalDescription:
+        'Connect Dify, n8n, Coze, or another platform and replace the bot pipeline.',
+      ownModelTitle: 'Use My Own Model',
+      ownModelDescription:
+        'Open the current Local Agent pipeline and configure your own model.',
+      moreFeaturesTitle: 'Add More Agent Features',
+      moreFeaturesDescription:
+        'Open the workbench to add tools, knowledge, and other capabilities.',
+      runnerDescription:
+        'Select a runner for the external agent and configure its connection.',
+      backToChoices: 'Back to options',
+      createExternal: 'Create and Bind',
+      configurePipeline: 'Configure Pipeline',
+      openWorkbench: 'Open Workbench',
     },
     spaceBanner: {
       message:
