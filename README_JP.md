@@ -82,6 +82,8 @@ cd LangBot/docker
 docker compose --profile all up -d
 ```
 
+> インターネットからアクセス可能な環境では、`LANGBOT_PLUGIN_RUNTIME_CONTROL_TOKEN` と `LANGBOT_BOX_CONTROL_TOKEN` に強力な共有シークレット（空白以外の文字を32文字以上）を設定することを推奨します。各値は `openssl rand -hex 32` で生成でき、Compose が対応する接続の両端に同じ値を渡します。両端とも Token を未設定にした場合、オープンソース版では互換性のため Token なしの接続を許可します。
+
 ### ワンクリッククラウドデプロイ
 
 [![Deploy on Zeabur](https://zeabur.com/button.svg)](https://zeabur.com/en-US/templates/ZKTBDH)

@@ -83,6 +83,16 @@ cd LangBot/docker
 docker compose --profile all up -d
 ```
 
+> If the deployment is accessible from the Internet, protect the internal Runtime connections with strong tokens:
+>
+> ```bash
+> export LANGBOT_PLUGIN_RUNTIME_CONTROL_TOKEN="$(openssl rand -hex 32)"
+> export LANGBOT_BOX_CONTROL_TOKEN="$(openssl rand -hex 32)"
+> docker compose --profile all up -d
+> ```
+>
+> Compose passes each value to both ends of its connection. If both ends leave a token unset, the open-source deployment permits a tokenless connection for backward compatibility. Store configured values in your deployment secret manager; do not commit them.
+
 ### One-Click Cloud Deploy
 
 [![Deploy on Zeabur](https://zeabur.com/button.svg)](https://zeabur.com/en-US/templates/ZKTBDH)

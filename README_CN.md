@@ -83,6 +83,16 @@ cd LangBot/docker
 docker compose --profile all up -d
 ```
 
+> 如果部署环境可从公网访问，建议为内部 Runtime 连接设置强 Token：
+>
+> ```bash
+> export LANGBOT_PLUGIN_RUNTIME_CONTROL_TOKEN="$(openssl rand -hex 32)"
+> export LANGBOT_BOX_CONTROL_TOKEN="$(openssl rand -hex 32)"
+> docker compose --profile all up -d
+> ```
+>
+> Compose 会把每个 Token 传给对应连接的两端。开源版在两端都未设置 Token 时仍允许无 Token 连接，以保持向后兼容。已配置的 Token 应保存在部署平台的 Secret 管理中，不要提交到仓库。
+
 ### 一键云部署
 
 [![Deploy on Zeabur](https://zeabur.com/button.svg)](https://zeabur.com/zh-CN/templates/ZKTBDH)

@@ -82,6 +82,8 @@ cd LangBot/docker
 docker compose --profile all up -d
 ```
 
+> Với triển khai có thể truy cập từ Internet, bạn nên đặt `LANGBOT_PLUGIN_RUNTIME_CONTROL_TOKEN` và `LANGBOT_BOX_CONTROL_TOKEN` thành các khóa bí mật dùng chung đủ mạnh (ít nhất 32 ký tự không phải khoảng trắng). Có thể tạo từng giá trị bằng `openssl rand -hex 32`; Compose sẽ truyền cùng giá trị tới hai đầu của kết nối tương ứng. Nếu cả hai đầu đều không đặt Token, bản mã nguồn mở vẫn cho phép kết nối không Token để duy trì khả năng tương thích.
+
 ### Triển khai đám mây một cú nhấp
 
 [![Deploy on Zeabur](https://zeabur.com/button.svg)](https://zeabur.com/en-US/templates/ZKTBDH)
