@@ -82,7 +82,6 @@ cd LangBot/docker
 docker compose --profile all up -d
 ```
 
-> 인터넷에서 접근 가능한 배포 환경에서는 `LANGBOT_PLUGIN_RUNTIME_CONTROL_TOKEN`과 `LANGBOT_BOX_CONTROL_TOKEN`에 강력한 공유 시크릿(공백이 아닌 문자 32자 이상)을 설정하는 것을 권장합니다. 각 값은 `openssl rand -hex 32`로 생성할 수 있으며 Compose가 해당 연결의 양쪽에 동일한 값을 전달합니다. 양쪽 모두 Token을 설정하지 않으면 오픈 소스 버전은 호환성을 위해 Token 없는 연결을 허용합니다.
 
 ### 원클릭 클라우드 배포
 

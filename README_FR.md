@@ -82,7 +82,6 @@ cd LangBot/docker
 docker compose --profile all up -d
 ```
 
-> Pour un déploiement accessible depuis Internet, nous recommandons de définir `LANGBOT_PLUGIN_RUNTIME_CONTROL_TOKEN` et `LANGBOT_BOX_CONTROL_TOKEN` avec des secrets partagés robustes (au moins 32 caractères non blancs). Générez chaque valeur avec `openssl rand -hex 32` ; Compose la transmet aux deux extrémités de la connexion concernée. Si les deux extrémités ne définissent aucun Token, l’édition open source autorise la connexion sans Token pour assurer la compatibilité.
 
 ### Déploiement Cloud en un Clic
 
