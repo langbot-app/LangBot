@@ -187,34 +187,36 @@ class ItchatEventConverter(abstract_platform_adapter.AbstractEventConverter):
         bot_account_id = adapter.bot_account_id
         bot_nickname = adapter._bot_nickname
 
+        # Ignore the bot's own messages to avoid reply loops
+        bot_user_name = getattr(adapter._core.storageClass, 'userName', '')
+        if from_user == bot_account_id or (bot_user_name and from_user == bot_user_name):
+            return None
+
         message_chain = ItchatMessageConverter.target2yiri(msg)
         if not message_chain:
             return None
 
         # Determine if this is a group message
         # itchat uses '@@' prefix for chatroom IDs (not '@chatroom' suffix)
-        is_group = '@@' in from_user
+        is_group = from_user.startswith('@@')
         timestamp = msg.get('CreateTime', 0)
 
         if is_group:
             # Actual sender within the group
             actual_user = msg.get('ActualUserName', '')
-            actual_nick = msg.get('ActualNickName', '')
-            if not actual_nick:
-                actual_nick = actual_user
+            actual_nick = msg.get('ActualNickName', '') or actual_user
+            if not actual_user:
+                return None
 
             # Prepend @bot if the bot was mentioned
             # itchat uses 'IsAt' (capital I, capital A) in produce_group_chat
             if msg.get('IsAt', False):
                 # Strip @bot_nickname from the text content to avoid LLM confusion
                 if bot_nickname:
-                    at_pattern = '@' + bot_nickname + (' ' if ' ' in msg.get('Content', '') else ' ')
+                    at_re = re.compile(re.escape('@' + bot_nickname) + r'[  ]?')
                     for component in message_chain:
                         if isinstance(component, platform_message.Plain):
-                            if component.text.startswith(at_pattern):
-                                component.text = component.text[len(at_pattern) :]
-                            elif at_pattern in component.text:
-                                component.text = component.text.replace(at_pattern, '')
+                            component.text = at_re.sub('', component.text, count=1)
                             break
                 message_chain = platform_message.MessageChain(
                     [platform_message.At(target=bot_account_id)] + list(message_chain)
@@ -230,8 +232,8 @@ class ItchatEventConverter(abstract_platform_adapter.AbstractEventConverter):
 
             return platform_events.GroupMessage(
                 sender=platform_entities.GroupMember(
-                    id=actual_user or actual_nick,
-                    member_name=actual_nick or actual_user,
+                    id=actual_user,
+                    member_name=actual_nick,
                     permission=platform_entities.Permission.Member,
                     group=platform_entities.Group(
                         id=from_user,
@@ -246,18 +248,15 @@ class ItchatEventConverter(abstract_platform_adapter.AbstractEventConverter):
             )
         else:
             # Private / friend message
-            sender_nick = ''
             user_obj = msg.get('User', {})
-            if hasattr(user_obj, 'NickName'):
-                sender_nick = user_obj.NickName
-            elif isinstance(user_obj, dict):
-                sender_nick = user_obj.get('NickName', '')
+            sender_nick = adapter._get_obj_value(user_obj, 'NickName')
+            sender_remark = adapter._get_obj_value(user_obj, 'RemarkName')
 
             return platform_events.FriendMessage(
                 sender=platform_entities.Friend(
                     id=from_user,
                     nickname=sender_nick or from_user,
-                    remark='',
+                    remark=sender_remark,
                 ),
                 message_chain=message_chain,
                 time=timestamp,
