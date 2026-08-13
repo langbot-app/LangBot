@@ -14,11 +14,6 @@ from ...service.user import ControlPlaneDirectoryRequiredError, PublicRegistrati
 
 @group.group_class('user', '/api/v1/user')
 class UserRouterGroup(group.RouterGroup):
-    @staticmethod
-    def _is_loopback_host(hostname: str) -> bool:
-        normalized = hostname.casefold().rstrip('.')
-        return normalized in {'localhost', '127.0.0.1', '::1'}
-
     def _validate_space_redirect_uri(self, redirect_uri: str, *, bind: bool) -> str:
         parsed = urlsplit(redirect_uri)
         if (
@@ -38,10 +33,6 @@ class UserRouterGroup(group.RouterGroup):
         elif query:
             raise ValueError('Invalid LangBot Account login redirect_uri')
 
-        # OSS instances can live behind arbitrary domains and gateway ports.
-        # Accept any HTTPS callback, plus HTTP only for local development.
-        if parsed.scheme == 'http' and not self._is_loopback_host(parsed.hostname):
-            raise ValueError('Insecure redirect_uri origin')
         return redirect_uri
 
     async def initialize(self) -> None:

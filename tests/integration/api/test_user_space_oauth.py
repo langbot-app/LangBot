@@ -165,7 +165,7 @@ async def test_bind_state_is_account_bound_and_requires_authentication(space_oau
 
 
 @pytest.mark.asyncio
-async def test_redirect_allows_dynamic_https_origin_and_loopback_http(space_oauth_api):
+async def test_redirect_allows_any_http_or_https_origin(space_oauth_api):
     _, client = space_oauth_api
 
     responses = [
@@ -181,6 +181,8 @@ async def test_redirect_allows_dynamic_https_origin_and_loopback_http(space_oaut
             'http://localhost:5300/auth/space/callback',
             'http://127.0.0.1:5300/auth/space/callback',
             'http://[::1]:5300/auth/space/callback',
+            'http://langbot.example/auth/space/callback',
+            'http://192.0.2.10:5300/auth/space/callback',
         )
     ]
 
@@ -190,7 +192,7 @@ async def test_redirect_allows_dynamic_https_origin_and_loopback_http(space_oaut
 
 
 @pytest.mark.asyncio
-async def test_redirect_rejects_insecure_remote_origin_and_invalid_callback_shape(space_oauth_api):
+async def test_redirect_rejects_invalid_callback_shape(space_oauth_api):
     _, client = space_oauth_api
 
     responses = [
@@ -199,7 +201,6 @@ async def test_redirect_rejects_insecure_remote_origin_and_invalid_callback_shap
             query_string={'redirect_uri': redirect_uri},
         )
         for redirect_uri in (
-            'http://langbot.example/auth/space/callback',
             'https://langbot.example/arbitrary',
             'https://langbot.example/auth/space/callback?next=https://evil.example',
             'https://user@langbot.example/auth/space/callback',
