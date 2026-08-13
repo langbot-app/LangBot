@@ -17,4 +17,4 @@ class SpaceAccountBindingRequiredError(AccountEmailMismatchError):
     code = 'space_account_binding_required'
 
     def __str__(self) -> str:
-        return 'This local Account must bind Space from Account settings before Space login'
+        return 'This local account must bind a LangBot Account from Account settings before LangBot Account login'

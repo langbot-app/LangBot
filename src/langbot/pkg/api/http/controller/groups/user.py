@@ -15,11 +15,9 @@ from ...service.user import ControlPlaneDirectoryRequiredError, PublicRegistrati
 @group.group_class('user', '/api/v1/user')
 class UserRouterGroup(group.RouterGroup):
     @staticmethod
-    def _origin(value: str) -> tuple[str, str, int | None] | None:
-        parsed = urlsplit(value)
-        if parsed.scheme not in {'http', 'https'} or not parsed.hostname:
-            return None
-        return parsed.scheme, parsed.hostname.casefold(), parsed.port
+    def _is_loopback_host(hostname: str) -> bool:
+        normalized = hostname.casefold().rstrip('.')
+        return normalized in {'localhost', '127.0.0.1', '::1'}
 
     def _validate_space_redirect_uri(self, redirect_uri: str, *, bind: bool) -> str:
         parsed = urlsplit(redirect_uri)
@@ -38,17 +36,12 @@ class UserRouterGroup(group.RouterGroup):
             if query != {'mode': ['bind']}:
                 raise ValueError('Invalid Space binding redirect_uri')
         elif query:
-            raise ValueError('Invalid Space login redirect_uri')
+            raise ValueError('Invalid LangBot Account login redirect_uri')
 
-        redirect_origin = self._origin(redirect_uri)
-        api_config = self.ap.instance_config.data.get('api', {})
-        trusted_origins = {
-            self._origin(str(api_config.get(config_key, '') or '').strip())
-            for config_key in ('webui_url', 'webhook_prefix')
-        }
-        trusted_origins.discard(None)
-        if redirect_origin not in trusted_origins:
-            raise ValueError('Untrusted redirect_uri origin')
+        # OSS instances can live behind arbitrary domains and gateway ports.
+        # Accept any HTTPS callback, plus HTTP only for local development.
+        if parsed.scheme == 'http' and not self._is_loopback_host(parsed.hostname):
+            raise ValueError('Insecure redirect_uri origin')
         return redirect_uri
 
     async def initialize(self) -> None:
@@ -416,7 +409,7 @@ class UserRouterGroup(group.RouterGroup):
                     'Bind the LangBot Account with the same email as this local Account',
                 )
             except ValueError:
-                return self.http_status(400, -1, 'Space account binding failed')
+                return self.http_status(400, -1, 'LangBot Account binding failed')
             except Exception:
                 raise
 

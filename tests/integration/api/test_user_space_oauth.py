@@ -165,34 +165,50 @@ async def test_bind_state_is_account_bound_and_requires_authentication(space_oau
 
 
 @pytest.mark.asyncio
-async def test_redirect_origin_and_callback_path_are_restricted(space_oauth_api):
+async def test_redirect_allows_dynamic_https_origin_and_loopback_http(space_oauth_api):
     _, client = space_oauth_api
 
-    wrong_origin = await client.get(
-        '/api/v1/user/space/authorize-url',
-        query_string={'redirect_uri': 'https://evil.example/auth/space/callback'},
-        headers={'Origin': 'http://localhost'},
-    )
-    wrong_path = await client.get(
-        '/api/v1/user/space/authorize-url',
-        query_string={'redirect_uri': 'http://localhost/arbitrary'},
-        headers={'Origin': 'http://localhost'},
-    )
-    forged_origin = await client.get(
-        '/api/v1/user/space/authorize-url',
-        query_string={'redirect_uri': 'https://evil.example/auth/space/callback'},
-        headers={'Origin': 'https://evil.example'},
-    )
-    forged_host = await client.get(
-        '/api/v1/user/space/authorize-url',
-        query_string={'redirect_uri': 'https://evil.example/auth/space/callback'},
-        headers={'Host': 'evil.example'},
-    )
+    responses = [
+        await client.get(
+            '/api/v1/user/space/authorize-url',
+            query_string={'redirect_uri': redirect_uri},
+            headers={'Origin': 'https://irrelevant.example'},
+        )
+        for redirect_uri in (
+            'https://langbot.example/auth/space/callback',
+            'https://gateway.example:8443/auth/space/callback',
+            'https://192.0.2.10/auth/space/callback',
+            'http://localhost:5300/auth/space/callback',
+            'http://127.0.0.1:5300/auth/space/callback',
+            'http://[::1]:5300/auth/space/callback',
+        )
+    ]
 
-    assert (await wrong_origin.get_json())['code'] == 1
-    assert (await wrong_path.get_json())['code'] == 1
-    assert (await forged_origin.get_json())['code'] == 1
-    assert (await forged_host.get_json())['code'] == 1
+    assert all(response.status_code == 200 for response in responses)
+    payloads = [await response.get_json() for response in responses]
+    assert all(payload['code'] == 0 for payload in payloads)
+
+
+@pytest.mark.asyncio
+async def test_redirect_rejects_insecure_remote_origin_and_invalid_callback_shape(space_oauth_api):
+    _, client = space_oauth_api
+
+    responses = [
+        await client.get(
+            '/api/v1/user/space/authorize-url',
+            query_string={'redirect_uri': redirect_uri},
+        )
+        for redirect_uri in (
+            'http://langbot.example/auth/space/callback',
+            'https://langbot.example/arbitrary',
+            'https://langbot.example/auth/space/callback?next=https://evil.example',
+            'https://user@langbot.example/auth/space/callback',
+            'https://langbot.example/auth/space/callback#fragment',
+        )
+    ]
+
+    payloads = [await response.get_json() for response in responses]
+    assert all(payload['code'] == 1 for payload in payloads)
 
 
 @pytest.mark.asyncio
