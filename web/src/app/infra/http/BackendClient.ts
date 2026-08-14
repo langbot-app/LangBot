@@ -710,11 +710,32 @@ export class BackendClient extends BaseHttpClient {
     );
   }
 
-  private async getAuthenticatedObjectURL(path: string): Promise<string> {
+  private async getAuthenticatedObjectURL(
+    path: string,
+    rewritePluginPageSdk = false,
+  ): Promise<string> {
     const response = await this.instance.get<Blob>(path, {
       responseType: 'blob',
     });
-    return URL.createObjectURL(response.data);
+    let blob = response.data;
+    if (rewritePluginPageSdk && blob.type.startsWith('text/html')) {
+      const apiBase =
+        this.instance.defaults.baseURL === '/'
+          ? window.location.origin
+          : this.instance.defaults.baseURL?.replace(/\/$/, '');
+      const pageSdkUrl = `${apiBase}/api/v1/plugins/_sdk/page-sdk.js`;
+      const html = await blob.text();
+      blob = new Blob(
+        [
+          html.replace(
+            /(<script\b[^>]*\bsrc\s*=\s*)(["'])\/api\/v1\/plugins\/_sdk\/page-sdk\.js\2/gi,
+            `$1$2${pageSdkUrl}$2`,
+          ),
+        ],
+        { type: blob.type },
+      );
+    }
+    return URL.createObjectURL(blob);
   }
 
   public getAuthenticatedPluginAssetURL(
@@ -724,6 +745,7 @@ export class BackendClient extends BaseHttpClient {
   ): Promise<string> {
     return this.getAuthenticatedObjectURL(
       `/api/v1/plugins/${author}/${name}/authenticated-assets/${filepath}`,
+      true,
     );
   }
 
