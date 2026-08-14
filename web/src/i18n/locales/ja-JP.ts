@@ -1748,6 +1748,17 @@ const jaJP = {
         'ボットが有効になりました。続行するには IM からメッセージを送信してください。',
       messageReceived:
         'ボットが IM メッセージを受信しました。次のステップに進めます。',
+      webhookTestPrompt:
+        'コールバック URL の準備ができました。外部プラットフォームに設定し、ボットへ実際のメッセージを送信してください。',
+      httpTestPrompt:
+        'HTTP Bot が有効になりました。実際の受信メッセージを送信して接続を確認できます。',
+      httpTestDefaultMessage: 'こんにちは。これは接続テストメッセージです。',
+      sendHttpTest: 'テストメッセージを送信',
+      httpTestAccepted:
+        'テストメッセージを受け付けました。まもなくログに表示されます。',
+      httpTestMissingSecret:
+        '受信署名シークレットを入力し、先に設定を保存してください。',
+      httpTestFailed: 'テストメッセージの送信に失敗しました：{{error}}',
       logsTitle: 'ボットログ',
       logsDescription:
         'ボットの活動を監視して、プラットフォーム接続が正常に動作していることを確認します。',

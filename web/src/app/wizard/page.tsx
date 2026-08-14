@@ -14,6 +14,9 @@ import {
   Cable,
   Settings2,
   Blocks,
+  Copy,
+  Send,
+  Webhook,
 } from 'lucide-react';
 
 import { httpClient } from '@/app/infra/http/HttpClient';
@@ -45,6 +48,7 @@ import { getAdapterDocUrl } from '@/app/infra/entities/adapter-docs';
 import i18n from 'i18next';
 
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   Card,
   CardContent,
@@ -996,6 +1000,10 @@ function StepBotConfig({
   extraWebhookUrl: string;
 }) {
   const { t } = useTranslation();
+  const [testMessage, setTestMessage] = useState(
+    t('wizard.botConfig.httpTestDefaultMessage'),
+  );
+  const [isSendingTest, setIsSendingTest] = useState(false);
 
   const adapterLabel = useMemo(() => {
     const a = adapters.find((ad) => ad.name === selectedAdapterName);
@@ -1010,6 +1018,29 @@ function StepBotConfig({
     [],
   );
 
+  const copyWebhookUrl = useCallback(async () => {
+    if (!webhookUrl) return;
+    await navigator.clipboard.writeText(webhookUrl);
+    toast.success(t('common.copySuccess'));
+  }, [t, webhookUrl]);
+
+  const sendHttpBotTest = useCallback(async () => {
+    if (!createdBotUuid || !testMessage.trim()) return;
+    setIsSendingTest(true);
+    try {
+      await httpClient.testHttpBotInbound(createdBotUuid, testMessage.trim());
+      toast.success(t('wizard.botConfig.httpTestAccepted'));
+    } catch (error) {
+      toast.error(
+        t('wizard.botConfig.httpTestFailed', {
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
+    } finally {
+      setIsSendingTest(false);
+    }
+  }, [createdBotUuid, testMessage, t]);
+
   return (
     <div className="max-w-5xl mx-auto space-y-6">
       <div className="text-center">
@@ -1018,6 +1049,100 @@ function StepBotConfig({
           {t('wizard.botConfig.description')}
         </p>
       </div>
+
+      {botSaved && (
+        <div
+          className={cn(
+            'border px-4 py-3',
+            messageReceived
+              ? 'border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950/30'
+              : 'border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30',
+          )}
+        >
+          <div className="flex items-start gap-3">
+            <div
+              className={cn(
+                'mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full',
+                messageReceived ? 'bg-green-500' : 'bg-amber-500',
+              )}
+            >
+              {messageReceived ? (
+                <Check className="size-3 text-white" />
+              ) : selectedAdapterName === 'http_bot' ? (
+                <Send className="size-3 text-white" />
+              ) : webhookUrl ? (
+                <Webhook className="size-3 text-white" />
+              ) : (
+                <Loader2 className="size-3 animate-spin text-white" />
+              )}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p
+                className={cn(
+                  'text-sm font-medium',
+                  messageReceived
+                    ? 'text-green-800 dark:text-green-200'
+                    : 'text-amber-800 dark:text-amber-200',
+                )}
+              >
+                {messageReceived
+                  ? t('wizard.botConfig.messageReceived')
+                  : selectedAdapterName === 'http_bot'
+                    ? t('wizard.botConfig.httpTestPrompt')
+                    : webhookUrl
+                      ? t('wizard.botConfig.webhookTestPrompt')
+                      : t('wizard.botConfig.waitingForMessage')}
+              </p>
+
+              {!messageReceived && webhookUrl && (
+                <div className="mt-3 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <code className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap border bg-background px-2.5 py-2 text-xs">
+                      {webhookUrl}
+                    </code>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="size-9 shrink-0"
+                      onClick={copyWebhookUrl}
+                      title={t('common.copy')}
+                    >
+                      <Copy className="size-4" />
+                    </Button>
+                  </div>
+
+                  {selectedAdapterName === 'http_bot' && (
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <Input
+                        value={testMessage}
+                        onChange={(event) => setTestMessage(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') void sendHttpBotTest();
+                        }}
+                        className="bg-background"
+                      />
+                      <Button
+                        type="button"
+                        onClick={() => void sendHttpBotTest()}
+                        disabled={isSendingTest || !testMessage.trim()}
+                        className="shrink-0"
+                      >
+                        {isSendingTest ? (
+                          <Loader2 className="mr-1.5 size-4 animate-spin" />
+                        ) : (
+                          <Send className="mr-1.5 size-4" />
+                        )}
+                        {t('wizard.botConfig.sendHttpTest')}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid gap-6 grid-cols-1 lg:grid-cols-2">
         {/* Left column: Adapter config form */}
@@ -1081,20 +1206,6 @@ function StepBotConfig({
                 />
               </CardContent>
             </Card>
-          )}
-
-          {/* Bot and inbound-message verification status */}
-          {botSaved && (
-            <div className="flex items-center gap-2 px-4 py-3 rounded-lg border border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950/30">
-              <div className="w-5 h-5 rounded-full bg-green-500 flex items-center justify-center shrink-0">
-                <Check className="w-3 h-3 text-white" />
-              </div>
-              <span className="text-sm text-green-700 dark:text-green-300">
-                {messageReceived
-                  ? t('wizard.botConfig.messageReceived')
-                  : t('wizard.botConfig.waitingForMessage')}
-              </span>
-            </div>
           )}
         </div>
 

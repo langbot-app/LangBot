@@ -114,6 +114,24 @@ class BotsRouterGroup(group.RouterGroup):
             return self.success(data={'sent': True})
 
         @self.route(
+            '/<bot_uuid>/test-inbound',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN,
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def _(bot_uuid: str, request_context: RequestContext) -> str:
+            json_data = await quart.request.get_json(silent=True) or {}
+            try:
+                result = await self.ap.bot_service.send_http_bot_test_message(
+                    request_context,
+                    bot_uuid,
+                    str(json_data.get('message') or ''),
+                )
+            except ValueError as exc:
+                return self.http_status(400, -1, str(exc))
+            return self.success(data=result)
+
+        @self.route(
             '/<bot_uuid>/admins',
             methods=['GET'],
             auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,

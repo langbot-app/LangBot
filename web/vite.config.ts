@@ -26,6 +26,10 @@ export default defineConfig(({ mode }) => {
           target: apiProxyTarget,
           changeOrigin: true,
         },
+        '/bots': {
+          target: apiProxyTarget,
+          changeOrigin: true,
+        },
       },
     },
     build: {

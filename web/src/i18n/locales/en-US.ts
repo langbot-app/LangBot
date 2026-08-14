@@ -1831,6 +1831,17 @@ const enUS = {
         'The bot is enabled. Send it a message from your IM platform to continue.',
       messageReceived:
         'The bot received an IM message. You can continue to the next step.',
+      webhookTestPrompt:
+        'The callback URL is ready. Configure it on the external platform, then send the bot a real message.',
+      httpTestPrompt:
+        'HTTP Bot is enabled. Send a real inbound message here to verify the connection.',
+      httpTestDefaultMessage: 'Hello, this is a connection test message.',
+      sendHttpTest: 'Send Test Message',
+      httpTestAccepted:
+        'The test message was accepted. It will appear in the log shortly.',
+      httpTestMissingSecret:
+        'Enter an inbound signing secret and save the configuration first.',
+      httpTestFailed: 'Failed to send the test message: {{error}}',
       logsTitle: 'Bot Logs',
       logsDescription:
         'Monitor bot activity to verify the platform connection is working.',

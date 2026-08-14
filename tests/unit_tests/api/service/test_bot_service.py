@@ -9,8 +9,9 @@ Source: src/langbot/pkg/api/http/service/bot.py
 from __future__ import annotations
 
 import pytest
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 from types import SimpleNamespace
+import json
 import uuid
 
 from langbot.pkg.api.http.service.bot import BotService
@@ -240,6 +241,29 @@ class TestBotServiceGetRuntimeBotInfo:
         # Verify
         assert result['adapter_runtime_values']['webhook_url'] == '/bots/wecom-uuid'
         assert result['adapter_runtime_values']['webhook_full_url'] == 'http://127.0.0.1:5300/bots/wecom-uuid'
+
+    async def test_get_runtime_bot_info_returns_webhook_for_http_bot(self):
+        ap = SimpleNamespace(
+            instance_config=SimpleNamespace(
+                data={'api': {'webhook_prefix': 'https://bot.example.com'}}
+            ),
+            platform_mgr=SimpleNamespace(get_bot_by_uuid=AsyncMock(return_value=None)),
+        )
+        service = BotService(ap)
+        service.get_bot = AsyncMock(
+            return_value={
+                'uuid': 'http-bot-uuid',
+                'name': 'HTTP Bot',
+                'adapter': 'http_bot',
+                'adapter_config': {},
+            }
+        )
+
+        result = await service.get_runtime_bot_info(WORKSPACE_UUID, 'http-bot-uuid')
+
+        assert result['adapter_runtime_values']['webhook_full_url'] == (
+            'https://bot.example.com/bots/http-bot-uuid'
+        )
 
     async def test_get_runtime_bot_info_no_webhook_for_telegram(self):
         """Returns no webhook URL for non-webhook adapters like telegram."""
@@ -603,6 +627,77 @@ class TestBotServiceListEventLogs:
         assert len(logs) == 1
         assert logs[0] == {'msg': 'log1'}
         assert total == 5
+
+
+class TestBotServiceHttpBotInboundTest:
+    async def test_sends_signed_message_through_public_ingress(self):
+        ap = SimpleNamespace(
+            instance_config=SimpleNamespace(data={'api': {'port': 5300}}),
+        )
+        service = BotService(ap)
+        service.get_bot = AsyncMock(
+            return_value={
+                'uuid': 'http-bot-uuid',
+                'adapter': 'http_bot',
+                'adapter_config': {
+                    'signature_required': True,
+                    'inbound_secret': 'test-secret',
+                },
+                'enable': True,
+            }
+        )
+        response = MagicMock(status=202)
+        session = MagicMock()
+        session.post.return_value.__aenter__ = AsyncMock(return_value=response)
+        session.post.return_value.__aexit__ = AsyncMock(return_value=None)
+
+        with (
+            patch('langbot.pkg.api.http.service.bot.httpclient.get_session', return_value=session),
+            patch(
+                'langbot.pkg.api.http.service.bot.httpclient.read_json_limited',
+                new=AsyncMock(
+                    return_value={
+                        'code': 0,
+                        'data': {
+                            'session_id': 'wizard-session',
+                            'accepted_message_id': 'in-message',
+                        },
+                    }
+                ),
+            ),
+        ):
+            result = await service.send_http_bot_test_message(
+                WORKSPACE_UUID,
+                'http-bot-uuid',
+                'hello',
+            )
+
+        assert result['accepted_message_id'] == 'in-message'
+        request = session.post.call_args
+        assert request.args[0] == 'http://127.0.0.1:5300/bots/http-bot-uuid'
+        payload = json.loads(request.kwargs['data'])
+        assert payload['message'] == [{'type': 'Plain', 'text': 'hello'}]
+        headers = request.kwargs['headers']
+        assert headers['X-LB-Timestamp']
+        assert headers['X-LB-Signature'].startswith('sha256=')
+
+    async def test_rejects_non_http_bot(self):
+        service = BotService(SimpleNamespace())
+        service.get_bot = AsyncMock(
+            return_value={
+                'uuid': 'telegram-bot',
+                'adapter': 'telegram',
+                'adapter_config': {},
+                'enable': True,
+            }
+        )
+
+        with pytest.raises(ValueError, match='only available for HTTP Bot'):
+            await service.send_http_bot_test_message(
+                WORKSPACE_UUID,
+                'telegram-bot',
+                'hello',
+            )
 
 
 class TestBotServiceSendMessage:

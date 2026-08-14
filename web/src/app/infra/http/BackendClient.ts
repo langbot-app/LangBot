@@ -461,6 +461,15 @@ export class BackendClient extends BaseHttpClient {
     return this.post(`/api/v1/platform/bots/${botId}/logs`, request);
   }
 
+  public testHttpBotInbound(
+    botId: string,
+    message: string,
+  ): Promise<{ session_id: string; accepted_message_id: string }> {
+    return this.post(`/api/v1/platform/bots/${botId}/test-inbound`, {
+      message,
+    });
+  }
+
   public getBotSessions(
     botId: string,
     limit: number = 100,
