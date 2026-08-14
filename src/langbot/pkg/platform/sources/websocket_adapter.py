@@ -5,6 +5,7 @@ import contextvars
 import logging
 import time
 import typing
+from dataclasses import dataclass
 from datetime import datetime
 
 import pydantic
@@ -23,6 +24,15 @@ _current_pipeline_uuid: contextvars.ContextVar[str | None] = contextvars.Context
     'websocket_pipeline_uuid',
     default=None,
 )
+
+
+@dataclass(frozen=True)
+class WebSocketReplyContext:
+    """Trusted routing context retained when the originating socket reconnects."""
+
+    scope: WebSocketScope
+    pipeline_uuid: str
+    session_id: str | None
 
 
 class WebSocketMessage(pydantic.BaseModel):
@@ -265,10 +275,14 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
         embed_target = self._parse_embed_target(sender_id)
         if embed_target is not None:
             return embed_target
+        reply_context = getattr(message_source, '_websocket_reply_context', None)
+        if isinstance(reply_context, WebSocketReplyContext):
+            if reply_context.scope != self._scope():
+                raise ValueError('WebSocket reply context does not match this adapter scope')
+            return reply_context.pipeline_uuid, reply_context.session_id
         pipeline_uuid = getattr(message_source, '_langbot_pipeline_uuid', None)
         if isinstance(pipeline_uuid, str) and pipeline_uuid:
             return pipeline_uuid, None
-
         raise ValueError('WebSocket reply target is not bound to this adapter scope')
 
     async def send_message(
@@ -439,9 +453,9 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
             # 更新历史记录中的对应消息
             message_list[existing_index] = message_data
 
-        # Keep the index for the lifetime of the history entry. Some runners
-        # emit a final delta followed by message.completed/run.completed. They
-        # all share one Host response id and must update one UI message.
+        # Keep the index for the lifetime of the history entry. AgentRunner can
+        # emit a final delta followed by message.completed/run.completed; all
+        # events with the same Host response id must update one UI message.
 
         await ws_connection_manager.broadcast_to_pipeline(
             pipeline_uuid,
@@ -537,8 +551,7 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
         Image / Voice / File components uploaded from the web client carry a
         storage key in ``path``. Resolve it to a base64 data URI so downstream
         stages (multimodal LLM input and the Box sandbox inbox) have a usable
-        payload. Keep the storage key for browser history; the configured
-        storage-retention cleanup removes expired uploads.
+        payload, then drop the now-consumed storage object.
 
         Args:
             message_chain_obj: 消息链对象列表
@@ -593,6 +606,12 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
                     mime_type = mimetypes.guess_type(comp_path)[0] or 'application/octet-stream'
 
                 component['base64'] = f'data:{mime_type};base64,{base64_str}'
+                await storage_mgr.delete_scoped_object_key(
+                    execution_context,
+                    comp_path,
+                    expected_owner_type='upload_image',
+                )
+                component['path'] = ''
             except Exception as e:
                 await self.logger.error(f'Failed to load {comp_type} file {comp_path}: {e}')
                 raise
@@ -683,10 +702,19 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
                 sender=sender, message_chain=message_chain, time=datetime.now().timestamp()
             )
 
-        object.__setattr__(event, '_langbot_pipeline_uuid', pipeline_uuid)
-
         # 异步触发事件处理
         # Use owner_bot's listeners if available, otherwise fall back to proxy bot
+        object.__setattr__(
+            event,
+            '_websocket_reply_context',
+            WebSocketReplyContext(
+                scope=connection.scope,
+                pipeline_uuid=pipeline_uuid,
+                session_id=connection.session_id,
+            ),
+        )
+        object.__setattr__(event, '_langbot_pipeline_uuid', pipeline_uuid)
+
         listeners = (
             owner_bot.adapter.listeners
             if (owner_bot and hasattr(owner_bot.adapter, 'listeners') and owner_bot.adapter.listeners)

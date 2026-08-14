@@ -30,6 +30,57 @@ def _prepare_scheduler(mock_app):
 
 
 @pytest.mark.asyncio
+async def test_consumer_schedules_query_after_running_transition(
+    mock_app,
+    sample_query,
+):
+    query_pool = MagicMock()
+    query_pool.queries = [sample_query]
+    query_pool.__aenter__ = AsyncMock(return_value=query_pool)
+    query_pool.__aexit__ = AsyncMock(return_value=None)
+    query_pool.remove_query = AsyncMock(return_value=True)
+    wait_for_query = asyncio.Event()
+    query_pool.condition = SimpleNamespace(
+        wait=AsyncMock(side_effect=wait_for_query.wait),
+        notify_all=Mock(),
+    )
+    query_pool.mark_query_running_locked = Mock(side_effect=query_pool.queries.remove)
+    mock_app.query_pool = query_pool
+
+    session = SimpleNamespace(_semaphore=asyncio.Semaphore(1))
+    mock_app.sess_mgr.get_session = AsyncMock(return_value=session)
+    runtime_pipeline = SimpleNamespace(run=AsyncMock())
+    mock_app.pipeline_mgr = SimpleNamespace(get_pipeline_by_uuid=AsyncMock(return_value=runtime_pipeline))
+
+    task_created = asyncio.Event()
+    process_tasks = []
+
+    def create_process_task(coro, **_kwargs):
+        process_tasks.append(asyncio.create_task(coro))
+        task_created.set()
+
+    mock_app.task_mgr.create_task = Mock(side_effect=create_process_task)
+    controller = Controller(mock_app)
+    initial_slots = controller.semaphore._value
+    consumer_task = asyncio.create_task(controller.consumer())
+
+    try:
+        await asyncio.wait_for(task_created.wait(), timeout=2)
+    finally:
+        consumer_task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await consumer_task
+        await asyncio.gather(*process_tasks)
+
+    query_pool.mark_query_running_locked.assert_called_once_with(sample_query)
+    runtime_pipeline.run.assert_awaited_once_with(sample_query)
+    query_pool.remove_query.assert_awaited_once_with(sample_query)
+    assert query_pool.queries == []
+    assert session._semaphore._value == 1
+    assert controller.semaphore._value == initial_slots
+
+
+@pytest.mark.asyncio
 async def test_controller_drops_stale_query_before_pipeline_lookup(
     mock_app,
     sample_query,

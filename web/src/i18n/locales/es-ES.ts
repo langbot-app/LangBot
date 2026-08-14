@@ -88,19 +88,19 @@ const esES = {
       'Recomendado: Usa API de modelos oficiales estables y servicios en la nube',
     loginLocal: 'Iniciar sesión con cuenta local',
     loginWithPassword: 'Iniciar sesión con contraseña',
-    spaceLoginTitle: 'Iniciar sesión con Space',
+    spaceLoginTitle: 'Iniciar sesión con una cuenta de LangBot',
     spaceLoginDescription:
       'Escanea el código QR o visita el enlace para autorizar',
     spaceLoginUserCode: 'Tu código',
     spaceLoginExpires: 'El código expira en {{seconds}} segundos',
     spaceLoginWaiting: 'Esperando autorización...',
     spaceLoginSuccess: 'Autorización exitosa',
-    spaceLoginFailed: 'Error de inicio de sesión con Space',
+    spaceLoginFailed: 'Error de inicio de sesión con una cuenta de LangBot',
     spaceLoginExpired:
       'El código de autorización ha expirado, por favor inténtalo de nuevo',
     spaceLoginCancel: 'Cancelar',
     spaceLoginVisitLink: 'Visitar enlace',
-    spaceLoginProcessing: 'Iniciando sesión con Space',
+    spaceLoginProcessing: 'Iniciando sesión con una cuenta de LangBot',
     spaceLoginProcessingDescription:
       'Por favor espera mientras completamos tu inicio de sesión...',
     spaceLoginSuccessDescription: 'Redirigiendo a LangBot...',
@@ -109,7 +109,7 @@ const esES = {
     backToLogin: 'Volver al inicio de sesión',
     backToHome: 'Volver al inicio',
     spaceAccountCannotChangePassword:
-      'Las cuentas de Space no pueden cambiar la contraseña aquí',
+      'Las cuentas de LangBot no pueden cambiar la contraseña aquí',
     theme: 'Tema',
     changePassword: 'Cambiar contraseña',
     currentPassword: 'Contraseña actual',
@@ -220,6 +220,19 @@ const esES = {
     selectModelAbilities: 'Seleccionar capacidades del modelo',
     visionAbility: 'Capacidad de visión',
     functionCallAbility: 'Llamada a funciones',
+    reasoningAbility: 'Razonamiento',
+    reasoningLevel: 'Nivel de razonamiento',
+    reasoningLevels: {
+      providerDefault: 'Predeterminado del proveedor',
+      disabled: 'Desactivado',
+      enabled: 'Activado',
+      minimal: 'Mínimo',
+      low: 'Bajo',
+      medium: 'Medio',
+      high: 'Alto',
+      xhigh: 'Extra alto',
+      max: 'Máximo',
+    },
     contextLength: 'Ventana de contexto',
     contextLengthPlaceholder: 'Desconocido',
     contextLengthInvalid: 'La ventana de contexto debe ser un entero positivo',
@@ -248,9 +261,10 @@ const esES = {
     llmModels: 'Modelos LLM',
     localProvider: 'Local',
     localProviderDescription: 'Modelos configurados y gestionados localmente',
-    spaceProviderDescription: 'Modelos sincronizados desde tu cuenta de Space',
+    spaceProviderDescription:
+      'Modelos sincronizados desde tu cuenta de LangBot',
     spaceDisabledForLocalAccount:
-      'Inicia sesión con Space para usar modelos en la nube',
+      'Inicia sesión con una cuenta de LangBot para usar modelos en la nube',
     syncModels: 'Sincronizar',
     syncSuccess:
       'Sincronización completa: {{created}} creados, {{updated}} actualizados',
@@ -289,11 +303,12 @@ const esES = {
     langbotModelsDescription: 'Modelos en la nube impulsados por LangBot Space',
     credits: 'Créditos',
     loginWithSpace: 'Iniciar sesión con una cuenta de LangBot',
-    loginToUseModels: 'Inicia sesión con Space para usar modelos en la nube',
+    loginToUseModels:
+      'Inicia sesión con una cuenta de LangBot para usar modelos en la nube',
     noModels: 'No hay modelos configurados',
     langbotModels: 'Modelos LangBot',
     spaceTrialTooltip:
-      '¡Créditos de prueba gratuitos disponibles! Inicia sesión con Space para acceder a modelos en la nube sin configuración.',
+      '¡Créditos de prueba gratuitos disponibles! Inicia sesión con una cuenta de LangBot para acceder a modelos en la nube sin configuración.',
     unlockModels: 'Inicia sesión para usar',
     editProvider: 'Editar proveedor',
     addProvider: 'Añadir proveedor',
@@ -328,9 +343,9 @@ const esES = {
     },
 
     ownerMustBindSpace:
-      'The Workspace owner must connect Space for LangBot Models.',
+      'The Workspace owner must connect a LangBot Account for LangBot Models.',
     usesOwnerSpaceBilling:
-      "Uses the Workspace owner's Space billing and credits.",
+      "Uses the Workspace owner's LangBot Account billing and credits.",
   },
   bots: {
     title: 'Bots',
@@ -592,9 +607,11 @@ const esES = {
     debugInfoTitle: 'Información de depuración del plugin',
     debugUrl: 'URL de depuración',
     debugKey: 'Clave de depuración',
+    debugKeyExpires:
+      'Rota a las {{time}}; cada Workspace tiene una clave distinta',
     noDebugKey: '(No establecida)',
     debugKeyDisabled:
-      'La clave de depuración no está configurada, la depuración del plugin no requiere autenticación',
+      'La credencial de depuración no está disponible temporalmente',
     boxStatusTitle: 'Box Runtime',
     boxStatus: 'Estado',
     boxConnected: 'Conectado',
@@ -1295,13 +1312,13 @@ const esES = {
     adminAccountNote:
       'La cuenta que uses aquí se establecerá como cuenta de administrador',
     register: 'Registrarse',
-    initWithSpace: 'Inicializar con Space',
+    initWithSpace: 'Inicializar con una cuenta de LangBot',
     spaceRecommended:
       'Recomendado: Usa API de modelos oficiales estables y servicios en la nube',
     spaceInfoTip1:
       'Space proporciona servicios de autenticación unificada de cuentas sin subir ninguna de tu información sensible.',
     spaceInfoTip2:
-      'Iniciar sesión con una cuenta de Space te da acceso a los modelos de LangBot y otros servicios en la nube, incluyendo créditos gratuitos de llamadas a modelos para ayudarte a comenzar rápidamente.',
+      'Iniciar sesión con una cuenta de LangBot te da acceso a los modelos de LangBot y otros servicios en la nube, incluyendo créditos gratuitos de llamadas a modelos para ayudarte a comenzar rápidamente.',
     spaceInfoTip3:
       'Tu método de inicio de sesión no afecta otras funciones. Puedes configurar y usar modelos de otras fuentes en cualquier momento.',
     registerLocal: 'Registrar cuenta local',
@@ -1359,35 +1376,35 @@ const esES = {
     passwordNotSet: 'No establecida',
     passwordSetDescription:
       'La contraseña está establecida, puedes iniciar sesión con correo y contraseña',
-    spaceStatus: 'Cuenta de Space',
+    spaceStatus: 'Cuenta de LangBot',
     spaceBound: 'Vinculada',
     spaceNotBound: 'No vinculada',
     spaceBoundDescription:
-      'Cuenta de Space vinculada, API de modelos oficiales y servicios en la nube disponibles',
-    bindSpace: 'Vincular cuenta de Space',
+      'Cuenta de LangBot vinculada, API de modelos oficiales y servicios en la nube disponibles',
+    bindSpace: 'Vincular cuenta de LangBot',
     bindSpaceDescription:
       'Vincular para usar API de modelos oficiales y servicios en la nube',
     bindSpaceButton: 'Vincular',
     bindSpaceConfirmTitle: 'Confirmar vinculación',
     bindSpaceConfirmDescription:
-      'Estás a punto de vincular tu instancia local a una cuenta de Space',
+      'Estás a punto de vincular tu instancia local a una cuenta de LangBot',
     bindSpaceWarning:
-      'Después de vincular, tu correo de inicio de sesión se cambiará de {{localEmail}} al correo de la cuenta de Space.',
-    bindSpaceSuccess: 'Cuenta de Space vinculada correctamente',
-    bindSpaceFailed: 'Error al vincular la cuenta de Space',
+      'Después de vincular, tu correo de inicio de sesión se cambiará de {{localEmail}} al correo de la cuenta de LangBot.',
+    bindSpaceSuccess: 'Cuenta de LangBot vinculada correctamente',
+    bindSpaceFailed: 'Error al vincular la cuenta de LangBot',
     bindSpaceInvalidState:
       'Solicitud de vinculación no válida. Por favor, inténtalo de nuevo desde la configuración de la cuenta.',
     setPasswordHint:
       'Establece una contraseña para iniciar sesión con correo y contraseña',
     spaceEmailMismatch:
-      'El correo de inicio de sesión de Space no coincide con el correo de la cuenta local',
+      'El correo de la cuenta de LangBot no coincide con el correo de la cuenta local',
 
     space_account_not_registeredTitle: 'Account not registered',
     space_account_not_registered:
-      'No local account is registered for this Space email. Ask the Workspace owner for an invitation.',
-    space_account_binding_requiredTitle: 'Space connection required',
+      'No local account is registered for this LangBot Account email. Ask the Workspace owner for an invitation.',
+    space_account_binding_requiredTitle: 'LangBot Account connection required',
     space_account_binding_required:
-      'This local account must connect Space from Account settings before using Space login.',
+      'This local account must connect a LangBot Account from Account settings before using LangBot Account login.',
   },
   monitoring: {
     title: 'Panel de control',
@@ -1716,7 +1733,6 @@ const esES = {
     botCreateSuccess: '¡Bot creado correctamente!',
     botSaveSuccess: '¡Configuración del Bot guardada y activada!',
     createError: 'Error al crear los recursos',
-    spaceAuthError: 'Error al iniciar la autorización de Space',
     skipSaveError:
       'Error al guardar el estado de omisión. Por favor, inténtalo de nuevo.',
     completeSaveError:
@@ -1799,6 +1815,9 @@ const esES = {
     loginSuccess:
       '¡Inicio de sesión correcto! El token se ha rellenado automáticamente',
     loginFailed: 'Error al iniciar sesión',
+    connecting: 'Conectando con el servicio de WeChat...',
+    waitingForScan: 'Esperando escaneo',
+    retry: 'Reintentar',
   },
   dingtalk: {
     createApp: 'Crear aplicación de DingTalk con un clic',

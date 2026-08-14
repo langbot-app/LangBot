@@ -10,6 +10,7 @@ from ....core import app
 from ....entity.persistence import model as persistence_model
 from ....entity.persistence import pipeline as persistence_pipeline
 from ....provider.modelmgr import requester as model_requester
+from ....provider.modelmgr import reasoning as model_reasoning
 from ....workspace.errors import WorkspaceNotFoundError
 from .secrets import mask_secret_value, redact_secrets, restore_secret_placeholders
 from .tenant import TenantContext, require_workspace_uuid, scope_statement
@@ -53,6 +54,53 @@ def _redact_model_secrets(model_data: dict) -> dict:
             provider['api_keys'] = mask_secret_value(provider['api_keys'])
         redacted['provider'] = provider
     return redacted
+
+
+def _normalize_llm_reasoning(model_data: dict) -> None:
+    model_data['reasoning_config'] = model_reasoning.validate_reasoning_config(
+        model_data.get('reasoning_config'),
+        model_data.get('abilities'),
+        model_data.get('extra_args'),
+    )
+
+
+def _validate_llm_reasoning_capability(
+    model_entity: persistence_model.LLMModel,
+    runtime_provider: model_requester.RuntimeProvider,
+) -> None:
+    config = model_reasoning.normalize_reasoning_config(model_entity.reasoning_config)
+    if config['level'] == 'provider_default':
+        return
+
+    runtime_model = model_requester.RuntimeLLMModel(
+        execution_context=runtime_provider.execution_context,
+        model_entity=model_entity,
+        provider=runtime_provider,
+    )
+    capabilities = runtime_provider.requester.get_reasoning_capabilities(runtime_model)
+    model_reasoning.validate_reasoning_capabilities(config, capabilities, model_entity.name)
+
+
+def _reasoning_capabilities(ap: app.Application, model: persistence_model.LLMModel) -> dict:
+    model_mgr = getattr(ap, 'model_mgr', None)
+    runtime_models = getattr(model_mgr, 'llm_model_dict', {}) if model_mgr is not None else {}
+    for runtime_model in runtime_models.values():
+        if (
+            runtime_model.model_entity.uuid == model.uuid
+            and runtime_model.model_entity.workspace_uuid == model.workspace_uuid
+        ):
+            return runtime_model.provider.requester.get_reasoning_capabilities(runtime_model)
+    return model_reasoning.default_reasoning_capabilities(
+        supported='reasoning' in (model.abilities or []),
+        source='manual' if 'reasoning' in (model.abilities or []) else 'unknown',
+    )
+
+
+def _serialize_llm_model(ap: app.Application, model: persistence_model.LLMModel) -> dict:
+    model_dict = ap.persistence_mgr.serialize_model(persistence_model.LLMModel, model)
+    model_dict['reasoning_config'] = model_reasoning.normalize_reasoning_config(model_dict.get('reasoning_config'))
+    model_dict['reasoning_capabilities'] = _reasoning_capabilities(ap, model)
+    return model_dict
 
 
 async def _validate_provider_supports(
@@ -165,7 +213,7 @@ class LLMModelsService:
 
         models_list = []
         for model in models:
-            model_dict = self.ap.persistence_mgr.serialize_model(persistence_model.LLMModel, model)
+            model_dict = _serialize_llm_model(self.ap, model)
             provider = providers.get(model.provider_uuid)
             if provider:
                 provider_dict = self.ap.persistence_mgr.serialize_model(persistence_model.ModelProvider, provider)
@@ -196,7 +244,7 @@ class LLMModelsService:
             )
         )
         models = result.all()
-        serialized = [self.ap.persistence_mgr.serialize_model(persistence_model.LLMModel, m) for m in models]
+        serialized = [_serialize_llm_model(self.ap, model) for model in models]
         return serialized if include_secret else [_redact_model_secrets(model) for model in serialized]
 
     async def create_llm_model(
@@ -233,13 +281,17 @@ class LLMModelsService:
         await _require_workspace_provider(self.ap, context, model_data['provider_uuid'])
         await _assert_cloud_managed_provider_mutable(self.ap, context, model_data['provider_uuid'])
         await _validate_provider_supports(self.ap, context, model_data['provider_uuid'], 'llm')
+        _normalize_llm_reasoning(model_data)
+
+        runtime_provider = await _require_runtime_provider(self.ap, context, model_data['provider_uuid'])
+        model_entity = persistence_model.LLMModel(**model_data)
+        _validate_llm_reasoning_capability(model_entity, runtime_provider)
 
         await self.ap.persistence_mgr.execute_async(sqlalchemy.insert(persistence_model.LLMModel).values(**model_data))
 
-        runtime_provider = await _require_runtime_provider(self.ap, context, model_data['provider_uuid'])
         runtime_llm_model = await self.ap.model_mgr.load_llm_model_with_provider(
             context,
-            persistence_model.LLMModel(**model_data),
+            model_entity,
             runtime_provider,
         )
         await self.ap.model_mgr.cache_llm_model(context, runtime_llm_model)
@@ -287,7 +339,7 @@ class LLMModelsService:
         if model is None:
             return None
 
-        model_dict = self.ap.persistence_mgr.serialize_model(persistence_model.LLMModel, model)
+        model_dict = _serialize_llm_model(self.ap, model)
 
         # Get provider
         provider_result = await self.ap.persistence_mgr.execute_async(
@@ -349,6 +401,18 @@ class LLMModelsService:
         await _assert_cloud_managed_provider_mutable(self.ap, context, provider_uuid)
         await _validate_provider_supports(self.ap, context, provider_uuid, 'llm')
 
+        merged_model_data = {
+            key: value
+            for key, value in {**existing_model, **model_data, 'provider_uuid': provider_uuid}.items()
+            if key not in {'provider', 'created_at', 'updated_at', 'reasoning_capabilities'}
+        }
+        _normalize_llm_reasoning(merged_model_data)
+        model_data['reasoning_config'] = merged_model_data['reasoning_config']
+
+        runtime_provider = await _require_runtime_provider(self.ap, context, provider_uuid)
+        model_entity = persistence_model.LLMModel(**_runtime_model_data(model_uuid, merged_model_data))
+        _validate_llm_reasoning_capability(model_entity, runtime_provider)
+
         result = await self.ap.persistence_mgr.execute_async(
             scope_statement(
                 sqlalchemy.update(persistence_model.LLMModel)
@@ -362,19 +426,9 @@ class LLMModelsService:
             raise WorkspaceNotFoundError('Model not found')
 
         await self.ap.model_mgr.remove_llm_model(context, model_uuid)
-        runtime_provider = await _require_runtime_provider(self.ap, context, provider_uuid)
         runtime_llm_model = await self.ap.model_mgr.load_llm_model_with_provider(
             context,
-            persistence_model.LLMModel(
-                **_runtime_model_data(
-                    model_uuid,
-                    {
-                        key: value
-                        for key, value in {**existing_model, **model_data, 'provider_uuid': provider_uuid}.items()
-                        if key not in {'provider', 'created_at', 'updated_at'}
-                    },
-                )
-            ),
+            model_entity,
             runtime_provider,
         )
         await self.ap.model_mgr.cache_llm_model(context, runtime_llm_model)
@@ -407,6 +461,7 @@ class LLMModelsService:
                 raise WorkspaceNotFoundError('Model not found')
             runtime_llm_model = await self.ap.model_mgr.get_model_by_uuid(context, model_uuid)
         else:
+            _normalize_llm_reasoning(model_data)
             runtime_llm_model = await self.ap.model_mgr.init_temporary_runtime_llm_model(context, model_data)
 
         extra_args = model_data.get('extra_args', {})

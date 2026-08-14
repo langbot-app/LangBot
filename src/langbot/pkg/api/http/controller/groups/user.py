@@ -1,6 +1,7 @@
 import quart
 import argon2
 import asyncio
+import datetime
 import uuid
 from urllib.parse import parse_qs, urlsplit
 
@@ -13,13 +14,6 @@ from ...service.user import ControlPlaneDirectoryRequiredError, PublicRegistrati
 
 @group.group_class('user', '/api/v1/user')
 class UserRouterGroup(group.RouterGroup):
-    @staticmethod
-    def _origin(value: str) -> tuple[str, str, int | None] | None:
-        parsed = urlsplit(value)
-        if parsed.scheme not in {'http', 'https'} or not parsed.hostname:
-            return None
-        return parsed.scheme, parsed.hostname.casefold(), parsed.port
-
     def _validate_space_redirect_uri(self, redirect_uri: str, *, bind: bool) -> str:
         parsed = urlsplit(redirect_uri)
         if (
@@ -37,17 +31,8 @@ class UserRouterGroup(group.RouterGroup):
             if query != {'mode': ['bind']}:
                 raise ValueError('Invalid Space binding redirect_uri')
         elif query:
-            raise ValueError('Invalid Space login redirect_uri')
+            raise ValueError('Invalid LangBot Account login redirect_uri')
 
-        redirect_origin = self._origin(redirect_uri)
-        api_config = self.ap.instance_config.data.get('api', {})
-        trusted_origins = {
-            self._origin(str(api_config.get(config_key, '') or '').strip())
-            for config_key in ('webui_url', 'webhook_prefix')
-        }
-        trusted_origins.discard(None)
-        if redirect_origin not in trusted_origins:
-            raise ValueError('Untrusted redirect_uri origin')
         return redirect_uri
 
     async def initialize(self) -> None:
@@ -218,7 +203,22 @@ class UserRouterGroup(group.RouterGroup):
             try:
                 consumed_state = await self.ap.user_service.consume_space_oauth_state_details(state, 'login')
                 # Exchange code for tokens
-                token_data = await self.ap.space_service.exchange_oauth_code(code)
+                launch_workspace_uuid = consumed_state.launch_workspace_uuid
+                workspace_uuids = [launch_workspace_uuid] if launch_workspace_uuid else []
+                workspace_created_ats: dict[str, int] = {}
+                if not workspace_uuids and getattr(getattr(self.ap, 'deployment', None), 'mode', 'oss') != 'cloud':
+                    binding = await self.ap.workspace_service.get_execution_binding()
+                    workspace_uuids = [binding.workspace_uuid]
+                    workspace_created_at = binding.workspace_created_at
+                    if workspace_created_at is not None:
+                        if workspace_created_at.tzinfo is None:
+                            workspace_created_at = workspace_created_at.replace(tzinfo=datetime.UTC)
+                        workspace_created_ats[binding.workspace_uuid] = int(workspace_created_at.timestamp())
+                token_data = await self.ap.space_service.exchange_oauth_code(
+                    code,
+                    workspace_uuids,
+                    workspace_created_ats,
+                )
                 access_token = token_data.get('access_token')
                 refresh_token = token_data.get('refresh_token')
                 expires_in = token_data.get('expires_in', 0)
@@ -231,7 +231,6 @@ class UserRouterGroup(group.RouterGroup):
                     access_token, refresh_token, expires_in
                 )
 
-                launch_workspace_uuid = consumed_state.launch_workspace_uuid
                 if launch_workspace_uuid:
                     try:
                         access = await self.ap.workspace_collaboration_service.resolve_account_workspace(
@@ -401,7 +400,7 @@ class UserRouterGroup(group.RouterGroup):
                     'Bind the LangBot Account with the same email as this local Account',
                 )
             except ValueError:
-                return self.http_status(400, -1, 'Space account binding failed')
+                return self.http_status(400, -1, 'LangBot Account binding failed')
             except Exception:
                 raise
 

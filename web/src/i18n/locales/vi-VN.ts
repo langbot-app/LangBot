@@ -86,18 +86,18 @@ const viVN = {
       'Khuyến nghị: Sử dụng API mô hình ổn định chính thức và dịch vụ đám mây',
     loginLocal: 'Đăng nhập với tài khoản cục bộ',
     loginWithPassword: 'Đăng nhập bằng mật khẩu',
-    spaceLoginTitle: 'Đăng nhập với Space',
+    spaceLoginTitle: 'Đăng nhập bằng tài khoản LangBot',
     spaceLoginDescription:
       'Quét mã QR hoặc truy cập liên kết bên dưới để ủy quyền',
     spaceLoginUserCode: 'Mã của bạn',
     spaceLoginExpires: 'Mã hết hạn sau {{seconds}} giây',
     spaceLoginWaiting: 'Đang chờ ủy quyền...',
     spaceLoginSuccess: 'Ủy quyền thành công',
-    spaceLoginFailed: 'Đăng nhập Space thất bại',
+    spaceLoginFailed: 'Đăng nhập bằng tài khoản LangBot thất bại',
     spaceLoginExpired: 'Mã ủy quyền đã hết hạn, vui lòng thử lại',
     spaceLoginCancel: 'Hủy',
     spaceLoginVisitLink: 'Truy cập liên kết',
-    spaceLoginProcessing: 'Đang đăng nhập với Space',
+    spaceLoginProcessing: 'Đang đăng nhập bằng tài khoản LangBot',
     spaceLoginProcessingDescription:
       'Vui lòng chờ trong khi chúng tôi hoàn tất đăng nhập...',
     spaceLoginSuccessDescription: 'Đang chuyển hướng đến LangBot...',
@@ -106,7 +106,7 @@ const viVN = {
     backToLogin: 'Quay lại đăng nhập',
     backToHome: 'Quay lại trang chủ',
     spaceAccountCannotChangePassword:
-      'Tài khoản Space không thể đổi mật khẩu tại đây',
+      'Tài khoản LangBot không thể đổi mật khẩu tại đây',
     theme: 'Giao diện',
     changePassword: 'Đổi mật khẩu',
     currentPassword: 'Mật khẩu hiện tại',
@@ -217,6 +217,19 @@ const viVN = {
     selectModelAbilities: 'Chọn khả năng mô hình',
     visionAbility: 'Khả năng thị giác',
     functionCallAbility: 'Gọi hàm',
+    reasoningAbility: 'Khả năng suy luận',
+    reasoningLevel: 'Mức độ suy luận',
+    reasoningLevels: {
+      providerDefault: 'Mặc định của nhà cung cấp',
+      disabled: 'Tắt',
+      enabled: 'Bật',
+      minimal: 'Tối thiểu',
+      low: 'Thấp',
+      medium: 'Trung bình',
+      high: 'Cao',
+      xhigh: 'Rất cao',
+      max: 'Tối đa',
+    },
     contextLength: 'Cửa sổ ngữ cảnh',
     contextLengthPlaceholder: 'Không rõ',
     contextLengthInvalid: 'Cửa sổ ngữ cảnh phải là số nguyên dương',
@@ -245,9 +258,9 @@ const viVN = {
     localProvider: 'Cục bộ',
     localProviderDescription: 'Các mô hình được cấu hình và quản lý cục bộ',
     spaceProviderDescription:
-      'Các mô hình được đồng bộ từ tài khoản Space của bạn',
+      'Các mô hình được đồng bộ từ tài khoản LangBot của bạn',
     spaceDisabledForLocalAccount:
-      'Đăng nhập với Space để sử dụng mô hình đám mây',
+      'Đăng nhập bằng tài khoản LangBot để sử dụng mô hình đám mây',
     syncModels: 'Đồng bộ',
     syncSuccess:
       'Đồng bộ hoàn tất: {{created}} đã tạo, {{updated}} đã cập nhật',
@@ -284,11 +297,12 @@ const viVN = {
     langbotModelsDescription: 'Mô hình đám mây được cung cấp bởi LangBot Space',
     credits: 'Tín dụng',
     loginWithSpace: 'Đăng nhập bằng tài khoản LangBot',
-    loginToUseModels: 'Đăng nhập với Space để sử dụng mô hình đám mây',
+    loginToUseModels:
+      'Đăng nhập bằng tài khoản LangBot để sử dụng mô hình đám mây',
     noModels: 'Chưa cấu hình mô hình nào',
     langbotModels: 'Mô hình LangBot',
     spaceTrialTooltip:
-      'Có tín dụng dùng thử miễn phí! Đăng nhập với Space để truy cập mô hình đám mây không cần cấu hình.',
+      'Có tín dụng dùng thử miễn phí! Đăng nhập bằng tài khoản LangBot để truy cập mô hình đám mây không cần cấu hình.',
     unlockModels: 'Đăng nhập để sử dụng',
     editProvider: 'Chỉnh sửa nhà cung cấp',
     addProvider: 'Thêm nhà cung cấp',
@@ -323,9 +337,9 @@ const viVN = {
     },
 
     ownerMustBindSpace:
-      'The Workspace owner must connect Space for LangBot Models.',
+      'The Workspace owner must connect a LangBot Account for LangBot Models.',
     usesOwnerSpaceBilling:
-      "Uses the Workspace owner's Space billing and credits.",
+      "Uses the Workspace owner's LangBot Account billing and credits.",
   },
   bots: {
     title: 'Bot',
@@ -584,9 +598,9 @@ const viVN = {
     debugInfoTitle: 'Thông tin gỡ lỗi Plugin',
     debugUrl: 'URL gỡ lỗi',
     debugKey: 'Khóa gỡ lỗi',
+    debugKeyExpires: 'Xoay vòng lúc {{time}}; mỗi Workspace có khóa riêng',
     noDebugKey: '(Chưa đặt)',
-    debugKeyDisabled:
-      'Khóa gỡ lỗi chưa được đặt, gỡ lỗi plugin không yêu cầu xác thực',
+    debugKeyDisabled: 'Thông tin xác thực gỡ lỗi tạm thời không khả dụng',
     boxStatusTitle: 'Box Runtime',
     boxStatus: 'Trạng thái',
     boxConnected: 'Đã kết nối',
@@ -1266,13 +1280,13 @@ const viVN = {
     adminAccountNote:
       'Tài khoản bạn sử dụng ở đây sẽ được đặt làm tài khoản quản trị viên',
     register: 'Đăng ký',
-    initWithSpace: 'Khởi tạo với Space',
+    initWithSpace: 'Khởi tạo bằng tài khoản LangBot',
     spaceRecommended:
       'Khuyến nghị: Sử dụng API mô hình ổn định chính thức và dịch vụ đám mây',
     spaceInfoTip1:
       'Space cung cấp dịch vụ xác thực tài khoản thống nhất mà không tải lên bất kỳ thông tin nhạy cảm nào của bạn.',
     spaceInfoTip2:
-      'Đăng nhập bằng tài khoản Space cho phép bạn truy cập Mô hình LangBot và các dịch vụ đám mây khác, bao gồm tín dụng gọi mô hình miễn phí để giúp bạn bắt đầu nhanh chóng.',
+      'Đăng nhập bằng tài khoản LangBot cho phép bạn truy cập Mô hình LangBot và các dịch vụ đám mây khác, bao gồm tín dụng gọi mô hình miễn phí để giúp bạn bắt đầu nhanh chóng.',
     spaceInfoTip3:
       'Phương thức đăng nhập của bạn không ảnh hưởng đến các tính năng khác. Bạn có thể cấu hình và sử dụng mô hình từ các nguồn khác bất cứ lúc nào.',
     registerLocal: 'Đăng ký tài khoản cục bộ',
@@ -1329,34 +1343,34 @@ const viVN = {
     passwordNotSet: 'Chưa đặt',
     passwordSetDescription:
       'Mật khẩu đã được đặt, bạn có thể đăng nhập bằng email và mật khẩu',
-    spaceStatus: 'Tài khoản Space',
+    spaceStatus: 'Tài khoản LangBot',
     spaceBound: 'Đã liên kết',
     spaceNotBound: 'Chưa liên kết',
     spaceBoundDescription:
-      'Tài khoản Space đã liên kết, có thể sử dụng API mô hình chính thức và dịch vụ đám mây',
-    bindSpace: 'Liên kết tài khoản Space',
+      'Tài khoản LangBot đã liên kết, có thể sử dụng API mô hình chính thức và dịch vụ đám mây',
+    bindSpace: 'Liên kết tài khoản LangBot',
     bindSpaceDescription:
       'Liên kết để sử dụng API mô hình chính thức và dịch vụ đám mây',
     bindSpaceButton: 'Liên kết',
     bindSpaceConfirmTitle: 'Xác nhận liên kết',
     bindSpaceConfirmDescription:
-      'Bạn sắp liên kết phiên bản cục bộ với tài khoản Space',
+      'Bạn sắp liên kết phiên bản cục bộ với tài khoản LangBot',
     bindSpaceWarning:
-      'Sau khi liên kết, email đăng nhập của bạn sẽ được đổi từ {{localEmail}} sang email tài khoản Space.',
-    bindSpaceSuccess: 'Liên kết tài khoản Space thành công',
-    bindSpaceFailed: 'Liên kết tài khoản Space thất bại',
+      'Sau khi liên kết, email đăng nhập của bạn sẽ được đổi từ {{localEmail}} sang email tài khoản LangBot.',
+    bindSpaceSuccess: 'Liên kết tài khoản LangBot thành công',
+    bindSpaceFailed: 'Liên kết tài khoản LangBot thất bại',
     bindSpaceInvalidState:
       'Yêu cầu liên kết không hợp lệ. Vui lòng thử lại từ cài đặt tài khoản.',
     setPasswordHint: 'Đặt mật khẩu để đăng nhập bằng email và mật khẩu',
     spaceEmailMismatch:
-      'Email đăng nhập Space không khớp với email tài khoản cục bộ',
+      'Email tài khoản LangBot không khớp với email tài khoản cục bộ',
 
     space_account_not_registeredTitle: 'Account not registered',
     space_account_not_registered:
-      'No local account is registered for this Space email. Ask the Workspace owner for an invitation.',
-    space_account_binding_requiredTitle: 'Space connection required',
+      'No local account is registered for this LangBot Account email. Ask the Workspace owner for an invitation.',
+    space_account_binding_requiredTitle: 'LangBot Account connection required',
     space_account_binding_required:
-      'This local account must connect Space from Account settings before using Space login.',
+      'This local account must connect a LangBot Account from Account settings before using LangBot Account login.',
   },
   monitoring: {
     title: 'Bảng điều khiển',
@@ -1682,7 +1696,6 @@ const viVN = {
     botCreateSuccess: 'Tạo Bot thành công!',
     botSaveSuccess: 'Cấu hình Bot đã lưu và bật!',
     createError: 'Tạo tài nguyên thất bại',
-    spaceAuthError: 'Khởi tạo ủy quyền Space thất bại',
     skipSaveError: 'Lưu trạng thái bỏ qua thất bại. Vui lòng thử lại.',
     completeSaveError: 'Lưu trạng thái hoàn tất thất bại. Vui lòng thử lại.',
     step: {
@@ -1760,6 +1773,9 @@ const viVN = {
       'Quét mã QR bên dưới bằng WeChat để ủy quyền và tự động điền token',
     loginSuccess: 'Đăng nhập thành công! Token đã được điền tự động',
     loginFailed: 'Đăng nhập thất bại',
+    connecting: 'Đang kết nối tới dịch vụ WeChat...',
+    waitingForScan: 'Đang chờ quét mã',
+    retry: 'Thử lại',
   },
   dingtalk: {
     createApp: 'Tạo ứng dụng DingTalk chỉ với một lần nhấp',

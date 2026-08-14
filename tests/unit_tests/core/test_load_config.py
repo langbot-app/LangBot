@@ -319,6 +319,7 @@ class TestApplyEnvOverridesToConfig:
         load_config = get_load_config_module()
         cfg = {
             'plugin': {
+                'connect_timeout_seconds': 30.0,
                 'worker': {
                     'max_cpus': 1.0,
                     'max_memory_mb': 512,
@@ -329,11 +330,12 @@ class TestApplyEnvOverridesToConfig:
                     'restart_failure_threshold': 8,
                     'restart_failure_window_seconds': 30.0,
                     'restart_circuit_open_seconds': 60.0,
-                }
+                },
             },
             'mcp': {'stdio': {'enabled': True}},
         }
         env = {
+            'PLUGIN__CONNECT_TIMEOUT_SECONDS': '180',
             'PLUGIN__WORKER__MAX_CPUS': '2.5',
             'PLUGIN__WORKER__MAX_MEMORY_MB': '1024',
             'PLUGIN__WORKER__MAX_PIDS': '64',
@@ -349,6 +351,7 @@ class TestApplyEnvOverridesToConfig:
         with patch.dict(os.environ, env, clear=True):
             result = load_config._apply_env_overrides_to_config(cfg)
 
+        assert result['plugin']['connect_timeout_seconds'] == 180.0
         assert result['plugin']['worker'] == {
             'max_cpus': 2.5,
             'max_memory_mb': 1024,
@@ -392,6 +395,14 @@ class TestApplyEnvOverridesToConfig:
         assert result['plugin']['worker']['max_memory_mb'] == 768
         assert isinstance(result['plugin']['worker']['max_memory_mb'], int)
         assert result['mcp']['stdio']['enabled'] is False
+
+    def test_runtime_policy_defaults_add_typed_plugin_connect_timeout(self):
+        load_config = get_load_config_module()
+
+        completed = load_config._complete_runtime_policy_defaults({'plugin': {'enable': True}})
+
+        assert completed['plugin']['connect_timeout_seconds'] == 180.0
+        assert isinstance(completed['plugin']['connect_timeout_seconds'], float)
 
     def test_webhook_prefix_override(self):
         """Test overriding webhook_prefix via environment variable."""

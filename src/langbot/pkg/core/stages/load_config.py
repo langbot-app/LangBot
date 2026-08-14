@@ -41,6 +41,7 @@ _RUNTIME_POLICY_DEFAULTS = {
         }
     },
     'plugin': {
+        'connect_timeout_seconds': 180.0,
         'worker': {
             'max_cpus': 1.0,
             'max_memory_mb': 512,
@@ -56,7 +57,7 @@ _RUNTIME_POLICY_DEFAULTS = {
             'restart_failure_window_seconds': 30.0,
             'restart_circuit_open_seconds': 60.0,
             'require_hard_limits': False,
-        }
+        },
     },
     'mcp': {'stdio': {'enabled': True}},
     'monitoring': {

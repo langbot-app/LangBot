@@ -92,7 +92,7 @@ def _application(postgres_url: str, *, runtime_role: str = 'langbot_runtime_not_
                     'use': 'pgvector',
                     'pgvector': {
                         'use_business_database': True,
-                        'allowed_dimensions': [384, 512, 768, 1024, 1536],
+                        'allowed_dimensions': [384, 512, 768, 1024, 1536, 3072],
                     },
                 },
             }

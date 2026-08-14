@@ -7,8 +7,8 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
+import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
 from langbot.pkg.platform.sources import websocket_adapter as websocket_adapter_module
@@ -347,9 +347,9 @@ async def test_stable_session_launcher_resolves_to_active_connection(monkeypatch
 
 
 @pytest.mark.asyncio
-async def test_dashboard_reply_uses_event_pipeline_after_connection_closes(monkeypatch):
+async def test_dashboard_reply_survives_connection_replacement(monkeypatch):
     manager = WebSocketConnectionManager()
-    connection = await manager.add_connection(
+    original = await manager.add_connection(
         websocket=Mock(),
         scope=SCOPE_A,
         pipeline_uuid='pipeline-1',
@@ -357,22 +357,36 @@ async def test_dashboard_reply_uses_event_pipeline_after_connection_closes(monke
     )
     monkeypatch.setattr(websocket_adapter_module, 'ws_connection_manager', manager)
 
-    app = Mock()
-    app.platform_mgr.websocket_proxy_bot.bot_entity = Mock(spec=[])
-    adapter = WebSocketAdapter.model_construct(ap=app, logger=AsyncMock())
-    message_source = platform_events.FriendMessage(
-        sender=platform_entities.Friend(
-            id=f'websocket_{connection.connection_id}',
-            nickname='User',
-            remark='User',
-        ),
-        message_chain=platform_message.MessageChain([platform_message.Plain(text='hello')]),
-        time=1,
-    )
-    object.__setattr__(message_source, '_langbot_pipeline_uuid', 'pipeline-1')
-    await manager.remove_connection(connection.connection_id)
+    adapter = WebSocketAdapter.model_construct(ap=Mock(), logger=_adapter_logger())
+    adapter.websocket_person_session = WebSocketSession(id='person')
+    adapter.websocket_group_session = WebSocketSession(id='group')
+    received = []
 
-    assert await adapter._get_message_context(message_source) == ('pipeline-1', None)
+    async def listener(event, _callback_adapter):
+        received.append(event)
+
+    adapter.listeners = {platform_events.FriendMessage: listener}
+    await adapter.handle_websocket_message(
+        original,
+        {'message': [{'type': 'Plain', 'text': 'hello'}], 'stream': False},
+    )
+    await asyncio.sleep(0)
+    await manager.remove_connection(original.connection_id)
+    replacement = await manager.add_connection(
+        websocket=Mock(),
+        scope=SCOPE_A,
+        pipeline_uuid='pipeline-1',
+        session_type='person',
+    )
+
+    await adapter.reply_message(
+        received[0],
+        platform_message.MessageChain([platform_message.Plain(text='done')]),
+    )
+
+    response = await replacement.send_queue.get()
+    assert response['type'] == 'response'
+    assert response['data']['content'] == 'done'
 
 
 @pytest.mark.asyncio
@@ -468,7 +482,7 @@ async def test_attachment_key_must_belong_to_connection_upload_scope():
     await adapter._process_image_components(connection, message_chain)
 
     assert message_chain[0]['base64'].startswith('data:image/png;base64,')
-    assert message_chain[0]['path'] == 'v1/current/upload_image/key.png'
+    assert message_chain[0]['path'] == ''
     storage_mgr.scoped_prefix.assert_called_once_with(
         connection.execution_context,
         owner_type='upload_image',
@@ -482,7 +496,11 @@ async def test_attachment_key_must_belong_to_connection_upload_scope():
         'v1/current/upload_image/key.png',
         expected_owner_type='upload_image',
     )
-    storage_mgr.delete_scoped_object_key.assert_not_awaited()
+    storage_mgr.delete_scoped_object_key.assert_awaited_once_with(
+        connection.execution_context,
+        'v1/current/upload_image/key.png',
+        expected_owner_type='upload_image',
+    )
 
     with pytest.raises(ValueError, match='does not belong'):
         await adapter._process_image_components(

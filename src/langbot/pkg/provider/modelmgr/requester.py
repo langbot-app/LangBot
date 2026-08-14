@@ -10,6 +10,7 @@ from ...entity.persistence import model as persistence_model
 from ...workspace.errors import WorkspaceInvariantError
 import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 from . import token
+from . import reasoning
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
 
@@ -377,11 +378,15 @@ class RuntimeLLMModel:
     provider: RuntimeProvider
     """提供商实例"""
 
+    reasoning_config_override: dict[str, str] | None
+    """Request-scoped reasoning policy supplied by the active pipeline."""
+
     def __init__(
         self,
         execution_context: ExecutionContext,
         model_entity: persistence_model.LLMModel,
         provider: RuntimeProvider,
+        reasoning_config_override: dict[str, str] | None = None,
     ):
         _ensure_same_execution_scope(provider.execution_context, execution_context, resource='LLM model')
         if model_entity.workspace_uuid != execution_context.workspace_uuid:
@@ -391,6 +396,7 @@ class RuntimeLLMModel:
         self.execution_context = execution_context
         self.model_entity = model_entity
         self.provider = provider
+        self.reasoning_config_override = reasoning_config_override
 
 
 class RuntimeEmbeddingModel:
@@ -481,6 +487,13 @@ class ProviderAPIRequester(metaclass=abc.ABCMeta):
         can enumerate remote models should override this method.
         """
         raise NotImplementedError('This provider does not support model scanning')
+
+    def get_reasoning_capabilities(self, model: RuntimeLLMModel) -> dict[str, typing.Any]:
+        """Return normalized reasoning controls supported by a model."""
+        return reasoning.default_reasoning_capabilities(
+            supported='reasoning' in (model.model_entity.abilities or []),
+            source='manual' if 'reasoning' in (model.model_entity.abilities or []) else 'unknown',
+        )
 
     @abc.abstractmethod
     async def invoke_llm(

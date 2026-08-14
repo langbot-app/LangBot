@@ -34,12 +34,26 @@ test('normalizes only single-line text fields in a dynamic form save snapshot', 
     { name: 'multiline', type: 'text', default: '' },
     { name: 'string-list', type: 'array[string]', default: [] },
     { name: 'count', type: 'integer', default: 0 },
+    {
+      name: 'model',
+      type: 'model-fallback-selector',
+      default: { primary: '', fallbacks: [], reasoning: {} },
+    },
   ];
   const values = {
     'single-line': '\t  hello  world \n',
     multiline: '  keep multiline whitespace  \n',
     'string-list': ['  first  ', ' second '],
     count: 3,
+    model: {
+      primary: 'primary-model',
+      fallbacks: ['fallback-model'],
+      reasoning: {
+        'primary-model': 'high',
+        'fallback-model': 'provider_default',
+        'removed-model': 'medium',
+      },
+    },
   };
 
   assert.deepEqual(normalizeDynamicFormValuesForSave(specs, values), {
@@ -47,5 +61,12 @@ test('normalizes only single-line text fields in a dynamic form save snapshot', 
     multiline: '  keep multiline whitespace  \n',
     'string-list': ['  first  ', ' second '],
     count: 3,
+    model: {
+      primary: 'primary-model',
+      fallbacks: ['fallback-model'],
+      reasoning: {
+        'primary-model': 'high',
+      },
+    },
   });
 });

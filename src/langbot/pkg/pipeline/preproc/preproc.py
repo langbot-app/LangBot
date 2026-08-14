@@ -70,24 +70,18 @@ class PreProcessor(stage.PipelineStage):
         if primary_uuid in config_schema.NONE_SENTINELS:
             return None
         try:
-            return await self.ap.model_mgr.get_model_by_uuid(
-                get_query_execution_context(query), primary_uuid
-            )
+            return await self.ap.model_mgr.get_model_by_uuid(get_query_execution_context(query), primary_uuid)
         except ValueError:
             self.ap.logger.warning(f'LLM model {primary_uuid} not found or not configured')
             return None
 
-    async def _resolve_fallback_models(
-        self, query: pipeline_query.Query, fallback_uuids: list[str]
-    ) -> list[str]:
+    async def _resolve_fallback_models(self, query: pipeline_query.Query, fallback_uuids: list[str]) -> list[str]:
         valid_fallbacks = []
         for fallback_uuid in fallback_uuids:
             if fallback_uuid in config_schema.NONE_SENTINELS:
                 continue
             try:
-                await self.ap.model_mgr.get_model_by_uuid(
-                    get_query_execution_context(query), fallback_uuid
-                )
+                await self.ap.model_mgr.get_model_by_uuid(get_query_execution_context(query), fallback_uuid)
                 valid_fallbacks.append(fallback_uuid)
             except ValueError:
                 self.ap.logger.warning(f'Fallback model {fallback_uuid} not found, skipping')
@@ -225,9 +219,7 @@ class PreProcessor(stage.PipelineStage):
         if uses_host_models:
             primary_uuid, fallback_uuids = config_schema.extract_model_selection(descriptor, runner_config)
             llm_model = await self._resolve_llm_model(query, primary_uuid)
-            valid_fallbacks = await self._resolve_fallback_models(
-                query, fallback_uuids
-            )
+            valid_fallbacks = await self._resolve_fallback_models(query, fallback_uuids)
             if valid_fallbacks:
                 query.variables['_fallback_model_uuids'] = valid_fallbacks
 
@@ -426,9 +418,7 @@ class PreProcessor(stage.PipelineStage):
                 query.pipeline_uuid,
                 include_secret=True,
             )
-            extensions_prefs = normalize_extension_preferences(
-                (pipeline_data or {}).get('extensions_preferences')
-            )
+            extensions_prefs = normalize_extension_preferences((pipeline_data or {}).get('extensions_preferences'))
             enable_all_skills = extensions_prefs['enable_all_skills']
 
             if enable_all_skills:

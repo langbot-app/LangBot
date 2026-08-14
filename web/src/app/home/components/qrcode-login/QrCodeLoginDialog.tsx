@@ -15,6 +15,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import QRCode from 'qrcode';
+import { getActiveWorkspaceUuid } from '@/app/infra/http/workspaceContext';
 
 export type QrLoginPlatform =
   | 'feishu'
@@ -55,12 +56,12 @@ const PLATFORM_CONFIGS: Record<QrLoginPlatform, PlatformConfig> = {
   },
   weixin: {
     titleKey: 'weixin.scanLogin',
-    connectingKey: 'feishu.connecting',
+    connectingKey: 'weixin.connecting',
     scanQRCodeKey: 'weixin.scanQRCode',
-    waitingKey: 'feishu.waitingForScan',
+    waitingKey: 'weixin.waitingForScan',
     successKey: 'weixin.loginSuccess',
     failedKey: 'weixin.loginFailed',
-    retryKey: 'feishu.retry',
+    retryKey: 'weixin.retry',
     apiBase: '/api/v1/platform/adapters/weixin/login',
     extractSuccess: (data) => ({
       token: data.token,
@@ -146,6 +147,8 @@ export default function QrCodeLoginDialog({
   const checkExpiredRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const sessionIdRef = useRef<string | null>(null);
+  const sessionWorkspaceUuidRef = useRef<string | null>(null);
+  const sessionApiBaseRef = useRef('');
   const baseUrlRef = useRef('');
   const cleanedRef = useRef(false);
 
@@ -180,18 +183,23 @@ export default function QrCodeLoginDialog({
     }
     if (sessionIdRef.current) {
       const token = localStorage.getItem('token');
-      const baseUrl =
-        import.meta.env.VITE_API_BASE_URL || window.location.origin;
+      const workspaceUuid = sessionWorkspaceUuidRef.current;
       fetch(
-        `${baseUrl}${platformConfigRef.current.apiBase}/${sessionIdRef.current}`,
+        `${baseUrlRef.current}${sessionApiBaseRef.current}/${sessionIdRef.current}`,
         {
           method: 'DELETE',
-          headers: { Authorization: `Bearer ${token}` },
+          headers: {
+            Authorization: `Bearer ${token}`,
+            ...(workspaceUuid ? { 'X-Workspace-Id': workspaceUuid } : {}),
+          },
           keepalive: true,
         },
       ).catch(() => {});
       sessionIdRef.current = null;
     }
+    sessionWorkspaceUuidRef.current = null;
+    sessionApiBaseRef.current = '';
+    baseUrlRef.current = '';
   }, []);
 
   const startLogin = useCallback(async () => {
@@ -204,6 +212,7 @@ export default function QrCodeLoginDialog({
     setSuccessMeta('');
 
     const token = localStorage.getItem('token');
+    const workspaceUuid = getActiveWorkspaceUuid();
     const baseUrl = import.meta.env.VITE_API_BASE_URL || window.location.origin;
     baseUrlRef.current = baseUrl;
     const cfg = platformConfigRef.current;
@@ -214,7 +223,10 @@ export default function QrCodeLoginDialog({
 
       const res = await fetch(`${baseUrl}${cfg.apiBase}`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
+        headers: {
+          Authorization: `Bearer ${token}`,
+          ...(workspaceUuid ? { 'X-Workspace-Id': workspaceUuid } : {}),
+        },
         signal: controller.signal,
       });
 
@@ -225,6 +237,8 @@ export default function QrCodeLoginDialog({
 
       const { session_id, qr_data_url, qr_url, expire_at } = json.data;
       sessionIdRef.current = session_id;
+      sessionWorkspaceUuidRef.current = workspaceUuid;
+      sessionApiBaseRef.current = cfg.apiBase;
 
       if (qr_data_url) {
         setQrDataUrl(qr_data_url);
@@ -270,11 +284,19 @@ export default function QrCodeLoginDialog({
                 `${baseUrlRef.current}${cfg.apiBase}/${sessionIdRef.current}`,
                 {
                   method: 'DELETE',
-                  headers: { Authorization: `Bearer ${token}` },
+                  headers: {
+                    Authorization: `Bearer ${token}`,
+                    ...(workspaceUuid
+                      ? { 'X-Workspace-Id': workspaceUuid }
+                      : {}),
+                  },
                   keepalive: true,
                 },
               ).catch(() => {});
               sessionIdRef.current = null;
+              sessionWorkspaceUuidRef.current = null;
+              sessionApiBaseRef.current = '';
+              baseUrlRef.current = '';
             }
             setState('expired');
           }
@@ -286,7 +308,12 @@ export default function QrCodeLoginDialog({
         try {
           const pollRes = await fetch(
             `${baseUrl}${cfg.apiBase}/status/${session_id}`,
-            { headers: { Authorization: `Bearer ${token}` } },
+            {
+              headers: {
+                Authorization: `Bearer ${token}`,
+                ...(workspaceUuid ? { 'X-Workspace-Id': workspaceUuid } : {}),
+              },
+            },
           );
           if (!pollRes.ok) return;
 

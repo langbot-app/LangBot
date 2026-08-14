@@ -18,7 +18,7 @@ from .model_catalog import CloudModelCatalogProvider
 
 CLOUD_BOOTSTRAP_ENTRY_POINT = 'langbot.cloud_bootstrap'
 REQUIRED_TENANT_ISOLATION_VERSION = 2
-SUPPORTED_PGVECTOR_DIMENSIONS = frozenset({384, 512, 768, 1024, 1536})
+SUPPORTED_PGVECTOR_DIMENSIONS = frozenset({384, 512, 768, 1024, 1536, 3072})
 
 
 class CloudBootstrapError(RuntimeError):

@@ -58,12 +58,8 @@ class Controller:
             query.session = await self.ap.sess_mgr.get_session(query)
             query.pipeline_config = pipeline.pipeline_entity.config
             query.variables['_pipeline_bound_plugins'] = pipeline.bound_plugins
-            query.variables['_pipeline_bound_mcp_servers'] = (
-                pipeline.bound_mcp_servers
-            )
-            return await self.ap.agent_run_orchestrator.try_claim_steering_from_query(
-                query
-            )
+            query.variables['_pipeline_bound_mcp_servers'] = pipeline.bound_mcp_servers
+            return await self.ap.agent_run_orchestrator.try_claim_steering_from_query(query)
         except Exception as exc:
             self.ap.logger.warning(
                 f'Failed to claim query {query.query_id} as steering input: {exc}',
@@ -157,9 +153,7 @@ class Controller:
                         # that can cause memory overflow in high-traffic scenarios
 
                         if session._semaphore.locked():
-                            if await self._try_claim_steering_before_session_slot(
-                                query
-                            ):
+                            if await self._try_claim_steering_before_session_slot(query):
                                 claimed_steering_query = query
                                 break
                             continue
@@ -175,9 +169,7 @@ class Controller:
                             break
 
                     if claimed_steering_query is not None:
-                        self.ap.query_pool.remove_query_locked(
-                            claimed_steering_query
-                        )
+                        self.ap.query_pool.remove_query_locked(claimed_steering_query)
                         self.ap.query_pool.condition.notify_all()
                         continue
                     if selected_query is None:  # 没找到 说明：没有请求 或者 所有query对应的session都已达到并发上限

@@ -151,6 +151,7 @@ class CloudModelCatalogSyncService:
         # following database reconciliation is a no-op.
         self._runtime_reload_pending = False
         self._workspace_credits: dict[str, int | None] = {}
+        self._sync_requested = asyncio.Event()
 
     def get_workspace_credits(self, workspace_uuid: str) -> int | None:
         """Return the latest signed owner-credit projection for a Workspace."""
@@ -159,9 +160,18 @@ class CloudModelCatalogSyncService:
     async def initialize(self) -> None:
         await self.sync_once(reload_runtime=False)
 
+    def request_sync(self) -> None:
+        """Wake the catalog loop after a directory Workspace change."""
+
+        self._sync_requested.set()
+
     async def run(self) -> None:
         while True:
-            await asyncio.sleep(self.sync_interval_seconds)
+            try:
+                await asyncio.wait_for(self._sync_requested.wait(), timeout=self.sync_interval_seconds)
+            except TimeoutError:
+                pass
+            self._sync_requested.clear()
             try:
                 await self.sync_once(reload_runtime=True)
             except asyncio.CancelledError:

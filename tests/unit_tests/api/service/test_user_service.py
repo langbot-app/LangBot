@@ -377,7 +377,7 @@ class TestUserServiceAuthenticate:
         service = UserService(ap)
 
         # Execute & Verify
-        with pytest.raises(ValueError, match='请使用 Space 账户登录'):
+        with pytest.raises(ValueError, match='请使用 LangBot 账号登录'):
             await service.authenticate('space@example.com', 'password')
 
 
@@ -726,7 +726,7 @@ class TestUserServiceCreateOrUpdateSpaceUser:
         )
         service = UserService(ap)
 
-        with pytest.raises(ControlPlaneDirectoryRequiredError, match='Space account'):
+        with pytest.raises(ControlPlaneDirectoryRequiredError, match='LangBot Account'):
             await service.register_invited_account('invite-token', 'member@example.com', 'password')
 
     async def test_create_or_update_new_space_user_first_init(self):

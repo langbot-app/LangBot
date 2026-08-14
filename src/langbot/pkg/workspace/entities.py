@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime
 from dataclasses import dataclass
 
 
@@ -12,3 +13,4 @@ class WorkspaceExecutionBinding:
     placement_generation: int
     write_fenced: bool
     state: str
+    workspace_created_at: datetime.datetime | None = None

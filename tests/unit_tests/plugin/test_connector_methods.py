@@ -93,14 +93,10 @@ class TestRunAgent:
     @pytest.mark.asyncio
     async def test_revalidates_trusted_execution_context(self):
         connector = create_mock_connector()
-        connector._current_execution_context = AsyncMock(
-            return_value=TEST_EXECUTION_CONTEXT
-        )
+        connector._current_execution_context = AsyncMock(return_value=TEST_EXECUTION_CONTEXT)
 
         class RuntimeHandler:
-            installation_scope = Mock(
-                side_effect=lambda _binding: nullcontext()
-            )
+            installation_scope = Mock(side_effect=lambda _binding: nullcontext())
 
             async def run_agent(self, *_args):
                 yield {'type': 'run.completed'}
@@ -113,16 +109,12 @@ class TestRunAgent:
         )
 
         assert results == [{'type': 'run.completed'}]
-        connector.require_workspace_context.assert_awaited_once_with(
-            TEST_EXECUTION_CONTEXT
-        )
+        connector.require_workspace_context.assert_awaited_once_with(TEST_EXECUTION_CONTEXT)
 
     @pytest.mark.asyncio
     async def test_rejects_payload_workspace_mismatch(self):
         connector = create_mock_connector()
-        connector._current_execution_context = AsyncMock(
-            return_value=TEST_EXECUTION_CONTEXT
-        )
+        connector._current_execution_context = AsyncMock(return_value=TEST_EXECUTION_CONTEXT)
         configure_handler(connector, AsyncMock())
 
         with pytest.raises(WorkspaceNotFoundError, match='Plugin resource not found'):
@@ -670,8 +662,13 @@ class TestDisabledPluginEarlyReturns:
         mock_app.instance_config.data = {'plugin': {'enable': False}}
 
         connector = connector_module.PluginRuntimeConnector(mock_app, mock_disconnect)
+        execution_context = connector_module.ExecutionContext(
+            instance_uuid='instance-a',
+            workspace_uuid='workspace-a',
+            placement_generation=1,
+        )
 
-        result = await connector.get_debug_info()
+        result = await connector.get_debug_info(execution_context)
 
         assert result == {}
 

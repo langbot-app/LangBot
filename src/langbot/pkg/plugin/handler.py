@@ -81,6 +81,7 @@ def _is_host_reserved_query_var(key: str) -> bool:
     """Return whether a Query variable controls Host authorization or runtime state."""
     return key in _HOST_RESERVED_QUERY_VAR_KEYS or key.startswith(_HOST_RESERVED_QUERY_VAR_PREFIXES)
 
+
 _DEFAULT_BINARY_STORAGE_VALUE_BYTES = 10 * 1024 * 1024
 _HARD_MAX_BINARY_STORAGE_VALUE_BYTES = 64 * 1024 * 1024
 
@@ -322,9 +323,7 @@ def _get_cached_query(
     try:
         if isinstance(query_id, str):
             return ap.query_pool.cached_queries.get((workspace_uuid, query_id))
-        query_uuid = ap.query_pool.legacy_query_index.get(
-            (workspace_uuid, query_id)
-        )
+        query_uuid = ap.query_pool.legacy_query_index.get((workspace_uuid, query_id))
         if query_uuid is None:
             return None
         return ap.query_pool.cached_queries.get((workspace_uuid, query_uuid))
@@ -669,20 +668,14 @@ class RuntimeConnectionHandler(handler.Handler):
                         trusted_plugin_identity = None
                         if not _runtime_scoped:
                             action_context, identity = await self._require_plugin_action_context()
-                            trusted_plugin_identity = (
-                                f'{identity.plugin_author}/{identity.plugin_name}'
-                            )
+                            trusted_plugin_identity = f'{identity.plugin_author}/{identity.plugin_name}'
                         await self._require_active_action_context(action_context)
-                        safe_data = {
-                            key: value
-                            for key, value in data.items()
-                            if key not in _UNTRUSTED_SCOPE_FIELDS
-                        }
+                        safe_data = {key: value for key, value in data.items() if key not in _UNTRUSTED_SCOPE_FIELDS}
                         claimed_identity = safe_data.get('caller_plugin_identity')
-                        if (
-                            trusted_plugin_identity is not None
-                            and claimed_identity not in {None, trusted_plugin_identity}
-                        ):
+                        if trusted_plugin_identity is not None and claimed_identity not in {
+                            None,
+                            trusted_plugin_identity,
+                        }:
                             yield handler.ActionResponse.error(
                                 message='Caller plugin identity does not match the installation binding'
                             )
@@ -706,16 +699,11 @@ class RuntimeConnectionHandler(handler.Handler):
                     trusted_plugin_identity = None
                     if not _runtime_scoped:
                         action_context, identity = await self._require_plugin_action_context()
-                        trusted_plugin_identity = (
-                            f'{identity.plugin_author}/{identity.plugin_name}'
-                        )
+                        trusted_plugin_identity = f'{identity.plugin_author}/{identity.plugin_name}'
                     await self._require_active_action_context(action_context)
                     safe_data = {key: value for key, value in data.items() if key not in _UNTRUSTED_SCOPE_FIELDS}
                     claimed_identity = safe_data.get('caller_plugin_identity')
-                    if (
-                        trusted_plugin_identity is not None
-                        and claimed_identity not in {None, trusted_plugin_identity}
-                    ):
+                    if trusted_plugin_identity is not None and claimed_identity not in {None, trusted_plugin_identity}:
                         return handler.ActionResponse.error(
                             message='Caller plugin identity does not match the installation binding'
                         )
@@ -874,9 +862,7 @@ class RuntimeConnectionHandler(handler.Handler):
     ):
         super().__init__(connection, disconnect_callback)
         self.ap = ap
-        self._outbound_installation_context: contextvars.ContextVar[
-            InstallationBinding | None | object
-        ] = (
+        self._outbound_installation_context: contextvars.ContextVar[InstallationBinding | None | object] = (
             contextvars.ContextVar(
                 f'{self.__class__.__name__}_{id(self)}_outbound_installation',
                 default=_OUTBOUND_INSTALLATION_CONTEXT_UNSET,
@@ -2497,7 +2483,7 @@ class RuntimeConnectionHandler(handler.Handler):
             return await self.call_action(
                 LangBotToRuntimeAction.RECONCILE_PLUGIN_INSTALLATIONS,
                 request.model_dump(),
-                timeout=120,
+                timeout=300,
             )
 
     async def apply_plugin_installation(
@@ -2938,14 +2924,19 @@ class RuntimeConnectionHandler(handler.Handler):
         )
         return result
 
-    async def get_debug_info(self) -> dict[str, Any]:
+    async def get_debug_info(self, execution_context: ExecutionContext) -> dict[str, Any]:
         """Get debug information including debug key and WS URL"""
-        with self.installation_scope(None):
-            result = await self.call_action(
-                LangBotToRuntimeAction.GET_DEBUG_INFO,
-                {},
-                timeout=10,
-            )
+        action_context = ActionContext(
+            instance_uuid=execution_context.instance_uuid,
+            workspace_uuid=execution_context.workspace_uuid,
+            placement_generation=execution_context.placement_generation,
+        )
+        result = await self.call_action(
+            LangBotToRuntimeAction.GET_DEBUG_INFO,
+            {},
+            timeout=10,
+            action_context=action_context,
+        )
         return result
 
     # ================= RAG Capability Callers (LangBot -> Runtime) =================

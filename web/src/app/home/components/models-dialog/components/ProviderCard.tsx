@@ -9,7 +9,7 @@ import {
   Radar,
 } from 'lucide-react';
 import { httpClient, systemInfo } from '@/app/infra/http/HttpClient';
-import { ModelProvider } from '@/app/infra/entities/api';
+import { ModelProvider, ReasoningConfig } from '@/app/infra/entities/api';
 import { Button } from '@/components/ui/button';
 import {
   Collapsible,
@@ -63,6 +63,7 @@ interface ProviderCardProps {
     name: string,
     abilities: string[],
     extraArgs: ExtraArg[],
+    reasoningConfig: ReasoningConfig,
     contextLength?: number | null,
   ) => Promise<void>;
   onScanModels: (modelType?: ModelType) => Promise<ScanModelsResult>;
@@ -78,6 +79,7 @@ interface ProviderCardProps {
     name: string,
     abilities: string[],
     extraArgs: ExtraArg[],
+    reasoningConfig: ReasoningConfig,
     contextLength?: number | null,
   ) => Promise<void>;
   onOpenDeleteConfirm: (modelId: string) => void;
@@ -88,6 +90,7 @@ interface ProviderCardProps {
     modelType: ModelType,
     abilities: string[],
     extraArgs: ExtraArg[],
+    reasoningConfig: ReasoningConfig,
   ) => Promise<void>;
   isSubmitting: boolean;
   isTesting: boolean;
@@ -432,6 +435,7 @@ export default function ProviderCard({
                       name,
                       abilities,
                       extraArgs,
+                      reasoningConfig,
                       contextLength,
                     ) =>
                       onUpdateModel(
@@ -440,11 +444,23 @@ export default function ProviderCard({
                         name,
                         abilities,
                         extraArgs,
+                        reasoningConfig,
                         contextLength,
                       )
                     }
-                    onTestModel={(name, abilities, extraArgs) =>
-                      onTestModel(name, 'llm', abilities, extraArgs)
+                    onTestModel={(
+                      name,
+                      abilities,
+                      extraArgs,
+                      reasoningConfig,
+                    ) =>
+                      onTestModel(
+                        name,
+                        'llm',
+                        abilities,
+                        extraArgs,
+                        reasoningConfig,
+                      )
                     }
                     isSubmitting={isSubmitting}
                     isTesting={isTesting}
@@ -466,17 +482,34 @@ export default function ProviderCard({
                     onOpenDeleteConfirm={onOpenDeleteConfirm}
                     onCloseDeleteConfirm={onCloseDeleteConfirm}
                     onDeleteModel={() => onDeleteModel(model.uuid, 'embedding')}
-                    onUpdateModel={(name, abilities, extraArgs) =>
+                    onUpdateModel={(
+                      name,
+                      abilities,
+                      extraArgs,
+                      reasoningConfig,
+                    ) =>
                       onUpdateModel(
                         model.uuid,
                         'embedding',
                         name,
                         abilities,
                         extraArgs,
+                        reasoningConfig,
                       )
                     }
-                    onTestModel={(name, abilities, extraArgs) =>
-                      onTestModel(name, 'embedding', abilities, extraArgs)
+                    onTestModel={(
+                      name,
+                      abilities,
+                      extraArgs,
+                      reasoningConfig,
+                    ) =>
+                      onTestModel(
+                        name,
+                        'embedding',
+                        abilities,
+                        extraArgs,
+                        reasoningConfig,
+                      )
                     }
                     isSubmitting={isSubmitting}
                     isTesting={isTesting}
@@ -498,17 +531,34 @@ export default function ProviderCard({
                     onOpenDeleteConfirm={onOpenDeleteConfirm}
                     onCloseDeleteConfirm={onCloseDeleteConfirm}
                     onDeleteModel={() => onDeleteModel(model.uuid, 'rerank')}
-                    onUpdateModel={(name, abilities, extraArgs) =>
+                    onUpdateModel={(
+                      name,
+                      abilities,
+                      extraArgs,
+                      reasoningConfig,
+                    ) =>
                       onUpdateModel(
                         model.uuid,
                         'rerank',
                         name,
                         abilities,
                         extraArgs,
+                        reasoningConfig,
                       )
                     }
-                    onTestModel={(name, abilities, extraArgs) =>
-                      onTestModel(name, 'rerank', abilities, extraArgs)
+                    onTestModel={(
+                      name,
+                      abilities,
+                      extraArgs,
+                      reasoningConfig,
+                    ) =>
+                      onTestModel(
+                        name,
+                        'rerank',
+                        abilities,
+                        extraArgs,
+                        reasoningConfig,
+                      )
                     }
                     isSubmitting={isSubmitting}
                     isTesting={isTesting}

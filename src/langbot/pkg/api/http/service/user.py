@@ -114,7 +114,7 @@ class UserService:
         if purpose == 'login' and account_uuid is not None:
             raise ValueError('Login state cannot be bound to an Account')
         if purpose != 'login' and launch_workspace_uuid is not None:
-            raise ValueError('Launch Workspace state is only valid for Space login')
+            raise ValueError('Launch Workspace state is only valid for LangBot Account login')
         if ttl_seconds <= 0:
             raise ValueError('OAuth state lifetime must be positive')
 
@@ -327,7 +327,7 @@ class UserService:
         normalized_email = normalize_email(user_email)
         if self._uses_control_plane_directory():
             raise ControlPlaneDirectoryRequiredError(
-                'Cloud invitation registration must use a Space account to preserve control-plane identity'
+                'Cloud invitation registration must use a LangBot Account to preserve control-plane identity'
             )
         invitation, _ = await self.ap.workspace_collaboration_service.inspect_invitation(invitation_token)
         if invitation.normalized_email != normalized_email:
@@ -394,7 +394,7 @@ class UserService:
 
         # Check if this user has a local password set
         if not user_obj.password:
-            raise ValueError('请使用 Space 账户登录')
+            raise ValueError('请使用 LangBot 账号登录')
 
         await self._verify_password(user_obj.password, password)
 
@@ -779,8 +779,27 @@ class UserService:
         local_account = await self.get_user_by_email(user_email)
         if local_account is None:
             raise ValueError('User not found')
-        # Exchange code for tokens
-        token_data = await self.ap.space_service.exchange_oauth_code(code)
+        # Exchange code for tokens and bind both installation and the active
+        # OSS Workspace as independent identities.
+        workspace_service = getattr(self.ap, 'workspace_service', None)
+        if workspace_service is not None:
+            binding = await workspace_service.get_execution_binding()
+            created_at = binding.workspace_created_at
+            created_ts = (
+                int(created_at.replace(tzinfo=datetime.timezone.utc).timestamp())
+                if created_at.tzinfo is None
+                else int(created_at.timestamp())
+            )
+            token_data = await self.ap.space_service.exchange_oauth_code(
+                code,
+                [binding.workspace_uuid],
+                {binding.workspace_uuid: created_ts},
+            )
+        else:
+            # Compatibility for early/bootstrap call sites that have not wired
+            # WorkspaceService yet; old Space servers still derive the legacy
+            # Workspace identity from instance_id when the field is omitted.
+            token_data = await self.ap.space_service.exchange_oauth_code(code)
         access_token = token_data.get('access_token')
         refresh_token = token_data.get('refresh_token')
         expires_in = token_data.get('expires_in', 0)
@@ -806,7 +825,7 @@ class UserService:
         # Check if this Space account is already bound to another user
         existing_space_user = await self.get_user_by_space_account_uuid(space_account_uuid)
         if existing_space_user and existing_space_user.normalized_email != normalize_email(user_email):
-            raise ValueError('This Space account is already bound to another user')
+            raise ValueError('This LangBot Account is already bound to another user')
 
         # Update local account to Space account
         normalized_email = normalize_email(user_email)

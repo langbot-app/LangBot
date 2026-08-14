@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -12,6 +13,12 @@ from importlib import import_module
 
 def get_heartbeat_module():
     return import_module('langbot.pkg.telemetry.heartbeat')
+
+
+def test_workspace_created_timestamp_treats_naive_database_values_as_utc():
+    heartbeat = get_heartbeat_module()
+    created_at = datetime(2026, 8, 4, 0, 0, 0)
+    assert heartbeat._workspace_created_timestamp(created_at) == 1785801600
 
 
 def make_app():
@@ -57,15 +64,17 @@ def make_app():
 
 class TestBuildHeartbeatPayload:
     @pytest.mark.asyncio
-    async def test_payload_shape(self):
+    async def test_payload_shape(self, monkeypatch):
         heartbeat = get_heartbeat_module()
+        monkeypatch.setattr(heartbeat.constants, 'instance_id', 'instance-test')
         ap = make_app()
         payload = await heartbeat.build_heartbeat_payload(ap, workspace_uuid='workspace-a')
 
         assert payload['event_type'] == 'instance_heartbeat'
         assert payload['query_id'] == ''
         assert payload['workspace_uuid'] == 'workspace-a'
-        assert 'instance_id' not in payload
+        assert payload['instance_id']
+        assert payload['workspace_create_ts'] == 0
         assert 'instance_create_ts' in payload
         assert 'timestamp' in payload
         f = payload['features']
@@ -100,8 +109,9 @@ class TestBuildHeartbeatPayload:
         assert payload['features']['pipeline_count'] == -1
 
     @pytest.mark.asyncio
-    async def test_cloud_counts_loaded_registries_without_tenant_sql(self):
+    async def test_cloud_counts_loaded_registries_without_tenant_sql(self, monkeypatch):
         heartbeat = get_heartbeat_module()
+        monkeypatch.setattr(heartbeat.constants, 'instance_id', 'instance-test')
         ap = make_app()
         ap.persistence_mgr.mode = SimpleNamespace(value='cloud_runtime')
         ap.persistence_mgr.execute_async = AsyncMock(
@@ -140,7 +150,11 @@ class TestBuildHeartbeatPayload:
         ap.workspace_service.list_active_execution_bindings = AsyncMock(
             return_value=[
                 SimpleNamespace(workspace_uuid='workspace-a', placement_generation=7),
-                SimpleNamespace(workspace_uuid='workspace-b', placement_generation=9),
+                SimpleNamespace(
+                    workspace_uuid='workspace-b',
+                    placement_generation=9,
+                    workspace_created_at=datetime(2026, 8, 4, tzinfo=timezone.utc),
+                ),
             ],
         )
         ap.platform_mgr._bots_by_key[('instance-a', 'workspace-b', 'bot-b')] = SimpleNamespace(
@@ -150,7 +164,9 @@ class TestBuildHeartbeatPayload:
         payloads = await heartbeat.build_heartbeat_payloads(ap)
 
         assert [payload['workspace_uuid'] for payload in payloads] == ['workspace-a', 'workspace-b']
-        assert all('instance_id' not in payload for payload in payloads)
+        assert all(payload['instance_id'] for payload in payloads)
+        assert payloads[0]['workspace_create_ts'] == 0
+        assert payloads[1]['workspace_create_ts'] == 1785801600
         by_workspace = {payload['workspace_uuid']: payload['features'] for payload in payloads}
         assert by_workspace['workspace-a']['pipeline_count'] == 2
         assert by_workspace['workspace-a']['mcp_server_count'] == 3

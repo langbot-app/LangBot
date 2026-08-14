@@ -2,8 +2,8 @@
 
 The web debug client uploads Image / Voice / File components carrying a storage
 key in ``path``. This helper resolves each to a base64 data URI (so multimodal
-LLM input and the Box sandbox inbox have usable bytes) while retaining the key
-for browser history. Covers mimetype selection per type and fail-closed error
+LLM input and the Box sandbox inbox have usable bytes), then deletes the
+consumed upload. Covers mimetype selection per type and fail-closed error
 handling.
 """
 
@@ -52,7 +52,7 @@ def _make_adapter(load_return=b'hello', load_side_effect=None):
 
 
 @pytest.mark.asyncio
-async def test_image_jpeg_mimetype_and_retained_storage_key():
+async def test_image_jpeg_mimetype_and_consumed_storage_key():
     adapter, storage_mgr, _ = _make_adapter(load_return=b'\xff\xd8\xff')
     path = f'{_UPLOAD_PREFIX}photo.jpg'
     chain = [{'type': 'Image', 'path': path}]
@@ -61,8 +61,12 @@ async def test_image_jpeg_mimetype_and_retained_storage_key():
 
     expected_b64 = base64.b64encode(b'\xff\xd8\xff').decode('utf-8')
     assert chain[0]['base64'] == f'data:image/jpeg;base64,{expected_b64}'
-    assert chain[0]['path'] == path
-    storage_mgr.delete_scoped_object_key.assert_not_awaited()
+    assert chain[0]['path'] == ''
+    storage_mgr.delete_scoped_object_key.assert_awaited_once_with(
+        _CONTEXT,
+        path,
+        expected_owner_type='upload_image',
+    )
 
 
 def test_history_retains_storage_key_without_large_base64_payload():

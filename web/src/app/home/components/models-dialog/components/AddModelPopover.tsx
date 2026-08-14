@@ -6,6 +6,7 @@ import {
   ArrowUpDown,
   Eye,
   Wrench,
+  BrainCircuit,
   Check,
   RefreshCw,
 } from 'lucide-react';
@@ -20,8 +21,12 @@ import {
 } from '@/components/ui/popover';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useTranslation } from 'react-i18next';
-import { ScannedProviderModel } from '@/app/infra/entities/api';
 import {
+  ReasoningConfig,
+  ScannedProviderModel,
+} from '@/app/infra/entities/api';
+import {
+  DEFAULT_REASONING_CONFIG,
   ExtraArg,
   ModelType,
   ScanModelsResult,
@@ -42,6 +47,7 @@ interface AddModelPopoverProps {
     name: string,
     abilities: string[],
     extraArgs: ExtraArg[],
+    reasoningConfig: ReasoningConfig,
     contextLength?: number | null,
   ) => Promise<void>;
   onScanModels: (modelType?: ModelType) => Promise<ScanModelsResult>;
@@ -54,6 +60,7 @@ interface AddModelPopoverProps {
     modelType: ModelType,
     abilities: string[],
     extraArgs: ExtraArg[],
+    reasoningConfig: ReasoningConfig,
   ) => Promise<void>;
   isSubmitting: boolean;
   isTesting: boolean;
@@ -143,11 +150,24 @@ export default function AddModelPopover({
       tab === 'llm' && contextLength.trim()
         ? Number(contextLength.trim())
         : null;
-    await onAddModel(tab, name, abilities, extraArgs, parsedContextLength);
+    await onAddModel(
+      tab,
+      name,
+      abilities,
+      extraArgs,
+      DEFAULT_REASONING_CONFIG,
+      parsedContextLength,
+    );
   };
 
   const handleTest = async () => {
-    await onTestModel(name, tab, tab === 'llm' ? abilities : [], extraArgs);
+    await onTestModel(
+      name,
+      tab,
+      tab === 'llm' ? abilities : [],
+      extraArgs,
+      DEFAULT_REASONING_CONFIG,
+    );
   };
 
   const handleScan = async () => {
@@ -322,7 +342,7 @@ export default function AddModelPopover({
                   {tab === 'llm' && (
                     <div className="space-y-2">
                       <Label>{t('models.abilities')}</Label>
-                      <div className="flex gap-4">
+                      <div className="flex flex-wrap gap-4">
                         <div className="flex items-center gap-2">
                           <Checkbox
                             id="add-vision"
@@ -347,6 +367,19 @@ export default function AddModelPopover({
                           <Label htmlFor="add-func-call" className="text-sm">
                             <Wrench className="h-3 w-3 inline mr-1" />
                             {t('models.functionCallAbility')}
+                          </Label>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Checkbox
+                            id="add-reasoning"
+                            checked={abilities.includes('reasoning')}
+                            onCheckedChange={(checked) =>
+                              toggleAbility('reasoning', checked as boolean)
+                            }
+                          />
+                          <Label htmlFor="add-reasoning" className="text-sm">
+                            <BrainCircuit className="h-3 w-3 inline mr-1" />
+                            {t('models.reasoningAbility')}
                           </Label>
                         </div>
                       </div>

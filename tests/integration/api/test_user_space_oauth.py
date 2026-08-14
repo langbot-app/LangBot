@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 from urllib.parse import parse_qs, urlsplit
@@ -14,6 +15,7 @@ from langbot.pkg.api.http.controller.groups.user import UserRouterGroup
 
 pytestmark = pytest.mark.integration
 WORKSPACE_UUID = '11111111-1111-4111-8111-111111111111'
+WORKSPACE_CREATED_AT = datetime.datetime(2026, 1, 2, 3, 4, 5, tzinfo=datetime.UTC)
 
 
 @pytest.fixture
@@ -58,6 +60,12 @@ async def space_oauth_api():
         return_value={'account_uuid': 'account-a', 'workspace_uuid': WORKSPACE_UUID}
     )
     application.workspace_collaboration_service.resolve_account_workspace = AsyncMock(return_value=access)
+    application.workspace_service.get_execution_binding = AsyncMock(
+        return_value=SimpleNamespace(
+            workspace_uuid=WORKSPACE_UUID,
+            workspace_created_at=WORKSPACE_CREATED_AT,
+        )
+    )
     application.space_service.get_oauth_authorize_url = Mock(
         side_effect=lambda redirect_uri, state: f'https://space.example/authorize?state={state}'
     )
@@ -157,34 +165,51 @@ async def test_bind_state_is_account_bound_and_requires_authentication(space_oau
 
 
 @pytest.mark.asyncio
-async def test_redirect_origin_and_callback_path_are_restricted(space_oauth_api):
+async def test_redirect_allows_any_http_or_https_origin(space_oauth_api):
     _, client = space_oauth_api
 
-    wrong_origin = await client.get(
-        '/api/v1/user/space/authorize-url',
-        query_string={'redirect_uri': 'https://evil.example/auth/space/callback'},
-        headers={'Origin': 'http://localhost'},
-    )
-    wrong_path = await client.get(
-        '/api/v1/user/space/authorize-url',
-        query_string={'redirect_uri': 'http://localhost/arbitrary'},
-        headers={'Origin': 'http://localhost'},
-    )
-    forged_origin = await client.get(
-        '/api/v1/user/space/authorize-url',
-        query_string={'redirect_uri': 'https://evil.example/auth/space/callback'},
-        headers={'Origin': 'https://evil.example'},
-    )
-    forged_host = await client.get(
-        '/api/v1/user/space/authorize-url',
-        query_string={'redirect_uri': 'https://evil.example/auth/space/callback'},
-        headers={'Host': 'evil.example'},
-    )
+    responses = [
+        await client.get(
+            '/api/v1/user/space/authorize-url',
+            query_string={'redirect_uri': redirect_uri},
+            headers={'Origin': 'https://irrelevant.example'},
+        )
+        for redirect_uri in (
+            'https://langbot.example/auth/space/callback',
+            'https://gateway.example:8443/auth/space/callback',
+            'https://192.0.2.10/auth/space/callback',
+            'http://localhost:5300/auth/space/callback',
+            'http://127.0.0.1:5300/auth/space/callback',
+            'http://[::1]:5300/auth/space/callback',
+            'http://langbot.example/auth/space/callback',
+            'http://192.0.2.10:5300/auth/space/callback',
+        )
+    ]
 
-    assert (await wrong_origin.get_json())['code'] == 1
-    assert (await wrong_path.get_json())['code'] == 1
-    assert (await forged_origin.get_json())['code'] == 1
-    assert (await forged_host.get_json())['code'] == 1
+    assert all(response.status_code == 200 for response in responses)
+    payloads = [await response.get_json() for response in responses]
+    assert all(payload['code'] == 0 for payload in payloads)
+
+
+@pytest.mark.asyncio
+async def test_redirect_rejects_invalid_callback_shape(space_oauth_api):
+    _, client = space_oauth_api
+
+    responses = [
+        await client.get(
+            '/api/v1/user/space/authorize-url',
+            query_string={'redirect_uri': redirect_uri},
+        )
+        for redirect_uri in (
+            'https://langbot.example/arbitrary',
+            'https://langbot.example/auth/space/callback?next=https://evil.example',
+            'https://user@langbot.example/auth/space/callback',
+            'https://langbot.example/auth/space/callback#fragment',
+        )
+    ]
+
+    payloads = [await response.get_json() for response in responses]
+    assert all(payload['code'] == 1 for payload in payloads)
 
 
 @pytest.mark.asyncio
@@ -234,7 +259,11 @@ async def test_login_callback_requires_and_consumes_server_state(space_oauth_api
     assert response.status_code == 200
     assert (await response.get_json())['data']['token'] == 'space-login-token'
     application.user_service.consume_space_oauth_state_details.assert_awaited_once_with('opaque-login-state', 'login')
-    application.space_service.exchange_oauth_code.assert_awaited_once_with('oauth-code')
+    application.space_service.exchange_oauth_code.assert_awaited_once_with(
+        'oauth-code',
+        [WORKSPACE_UUID],
+        {WORKSPACE_UUID: int(WORKSPACE_CREATED_AT.timestamp())},
+    )
 
 
 @pytest.mark.asyncio
