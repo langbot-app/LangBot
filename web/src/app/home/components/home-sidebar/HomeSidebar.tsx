@@ -40,6 +40,7 @@ import {
   Workflow,
   ListTree,
   UsersRound,
+  HardDrive,
 } from 'lucide-react';
 import { useTheme } from '@/components/providers/theme-provider';
 
@@ -2282,6 +2283,7 @@ export default function HomeSidebar({
                           openSettings('storageAnalysis');
                         }}
                       >
+                        <HardDrive />
                         {t('storageAnalysis.title')}
                       </DropdownMenuItem>
                     )}
