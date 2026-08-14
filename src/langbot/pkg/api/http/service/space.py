@@ -262,7 +262,14 @@ class SpaceService:
                 data = data.get('models', data.get('items', []))
             if not isinstance(data, list):
                 raise ValueError('Failed to get model selection: invalid response')
-            return [SpaceModelSelection.model_validate(model) for model in data]
+
+            models = []
+            for selection in data:
+                if isinstance(selection, dict) and isinstance(selection.get('model'), dict):
+                    models.append(selection['model'])
+                else:
+                    models.append(selection)
+            return [SpaceModelSelection.model_validate(model) for model in models]
 
     async def get_recommended_chat_model(self, context: typing.Any) -> dict:
         """Resolve Space's first ranked chat model to a local Workspace model."""

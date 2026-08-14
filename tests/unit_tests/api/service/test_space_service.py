@@ -823,8 +823,8 @@ class TestSpaceServiceGetModels:
 class TestSpaceServiceGetModelSelection:
     """Tests for availability-ranked model selection."""
 
-    @pytest.mark.parametrize('use_envelope', [False, True])
-    async def test_preserves_selection_order_and_category_query(self, use_envelope):
+    @pytest.mark.parametrize('response_shape', ['direct', 'models-envelope', 'availability-wrapper'])
+    async def test_preserves_selection_order_and_category_query(self, response_shape):
         ap = SimpleNamespace(instance_config=SimpleNamespace(data={}))
         service = SpaceService(ap)
         models = [
@@ -843,7 +843,16 @@ class TestSpaceServiceGetModelSelection:
                 'status': 'active',
             },
         ]
-        payload = {'code': 0, 'data': {'models': models} if use_envelope else models}
+        if response_shape == 'models-envelope':
+            data = {'models': models}
+        elif response_shape == 'availability-wrapper':
+            data = [
+                {'model': model, 'latency_ms': index + 10, 'http_code': 200}
+                for index, model in enumerate(models)
+            ]
+        else:
+            data = models
+        payload = {'code': 0, 'data': data}
         mock_response = MagicMock(status=200)
 
         with (
