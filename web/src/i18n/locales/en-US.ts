@@ -1831,6 +1831,8 @@ const enUS = {
         'The bot is enabled. Send it a message from your IM platform to continue.',
       messageReceived:
         'The bot received an IM message. You can continue to the next step.',
+      pageBotTestPrompt:
+        'Page Bot is enabled. Click the chat bubble in the lower-right corner and send a message to verify the full conversation flow.',
       webhookTestPrompt:
         'The callback URL is ready. Configure it on the external platform, then send the bot a real message.',
       httpTestPrompt:

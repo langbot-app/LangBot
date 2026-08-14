@@ -17,6 +17,7 @@ import {
   Copy,
   Send,
   Webhook,
+  MessageSquare,
 } from 'lucide-react';
 
 import { httpClient } from '@/app/infra/http/HttpClient';
@@ -970,6 +971,35 @@ function StepPlatform({
 // Step 1: Bot Configuration + Logs
 // ---------------------------------------------------------------------------
 
+function PageBotFloatingWidget({
+  botUuid,
+  title,
+}: {
+  botUuid: string;
+  title?: string;
+}) {
+  useEffect(() => {
+    const script = document.createElement('script');
+    script.src = `${window.location.origin}/api/v1/embed/${botUuid}/widget.js`;
+    script.dataset.title = title || 'LangBot';
+    document.body.appendChild(script);
+
+    return () => {
+      script.remove();
+      const root = document.getElementById('langbot-widget-root') as
+        | (HTMLElement & { langbotDestroy?: () => void })
+        | null;
+      if (root?.langbotDestroy) {
+        root.langbotDestroy();
+      } else {
+        root?.remove();
+      }
+    };
+  }, [botUuid, title]);
+
+  return null;
+}
+
 function StepBotConfig({
   adapterConfigItems,
   adapterConfigValues,
@@ -1043,6 +1073,17 @@ function StepBotConfig({
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
+      {selectedAdapterName === 'web_page_bot' && botSaved && createdBotUuid && (
+        <PageBotFloatingWidget
+          botUuid={createdBotUuid}
+          title={
+            typeof adapterConfigValues.title === 'string'
+              ? adapterConfigValues.title
+              : undefined
+          }
+        />
+      )}
+
       <div className="text-center">
         <h2 className="text-xl font-semibold">{t('wizard.botConfig.title')}</h2>
         <p className="text-sm text-muted-foreground mt-1">
@@ -1068,6 +1109,8 @@ function StepBotConfig({
             >
               {messageReceived ? (
                 <Check className="size-3 text-white" />
+              ) : selectedAdapterName === 'web_page_bot' ? (
+                <MessageSquare className="size-3 text-white" />
               ) : selectedAdapterName === 'http_bot' ? (
                 <Send className="size-3 text-white" />
               ) : webhookUrl ? (
@@ -1087,11 +1130,13 @@ function StepBotConfig({
               >
                 {messageReceived
                   ? t('wizard.botConfig.messageReceived')
-                  : selectedAdapterName === 'http_bot'
-                    ? t('wizard.botConfig.httpTestPrompt')
-                    : webhookUrl
-                      ? t('wizard.botConfig.webhookTestPrompt')
-                      : t('wizard.botConfig.waitingForMessage')}
+                  : selectedAdapterName === 'web_page_bot'
+                    ? t('wizard.botConfig.pageBotTestPrompt')
+                    : selectedAdapterName === 'http_bot'
+                      ? t('wizard.botConfig.httpTestPrompt')
+                      : webhookUrl
+                        ? t('wizard.botConfig.webhookTestPrompt')
+                        : t('wizard.botConfig.waitingForMessage')}
               </p>
 
               {!messageReceived && webhookUrl && (

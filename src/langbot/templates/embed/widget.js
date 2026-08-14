@@ -1240,6 +1240,14 @@
     // Root container
     var root = document.createElement("div");
     root.id = "langbot-widget-root";
+    root.langbotDestroy = function () {
+      wsDisconnect();
+      if (state.historyReloadTimer) {
+        clearTimeout(state.historyReloadTimer);
+        state.historyReloadTimer = null;
+      }
+      root.remove();
+    };
     document.body.appendChild(root);
 
     var shadow = root.attachShadow({ mode: "open" });
