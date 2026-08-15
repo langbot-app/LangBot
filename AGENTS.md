@@ -38,6 +38,16 @@ pnpm lint
 pnpm test:e2e
 ```
 
+Before calling backend work done, prefer the Makefile gates over ad hoc commands — they match CI:
+
+```bash
+make lint             # ruff check + ruff format --check
+make lint-fix          # ruff check --fix + ruff format
+make test-quick         # lint + unit + smoke, no credentials needed
+make test-integration-fast  # integration tests, excludes slow/external-service ones
+make test-coverage       # full suite with coverage gate
+```
+
 Run the narrowest useful test first, then broader checks when confidence is needed.
 
 ## Where to Look
