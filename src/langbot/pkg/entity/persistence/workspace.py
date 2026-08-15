@@ -40,6 +40,11 @@ class MembershipStatus(enum.StrEnum):
     REMOVED = 'removed'
 
 
+class MembershipSource(enum.StrEnum):
+    LOCAL = 'local'
+    CLOUD_PROJECTION = 'cloud_projection'
+
+
 class InvitationStatus(enum.StrEnum):
     PENDING = 'pending'
     ACCEPTED = 'accepted'
@@ -151,6 +156,11 @@ class WorkspaceMembership(Base):
         nullable=True,
     )
     joined_at = sqlalchemy.Column(sqlalchemy.DateTime, nullable=True)
+    source = sqlalchemy.Column(
+        sqlalchemy.String(32),
+        nullable=False,
+        server_default=MembershipSource.LOCAL.value,
+    )
     projection_revision = sqlalchemy.Column(sqlalchemy.BigInteger, nullable=False, server_default='0')
     created_at = sqlalchemy.Column(sqlalchemy.DateTime, nullable=False, server_default=sqlalchemy.func.now())
     updated_at = sqlalchemy.Column(
@@ -177,6 +187,10 @@ class WorkspaceMembership(Base):
         sqlalchemy.CheckConstraint(
             "status IN ('active', 'disabled', 'removed')",
             name='ck_workspace_memberships_status',
+        ),
+        sqlalchemy.CheckConstraint(
+            "source IN ('local', 'cloud_projection')",
+            name='ck_workspace_memberships_source',
         ),
     )
 

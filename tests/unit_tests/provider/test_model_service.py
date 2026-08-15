@@ -249,7 +249,11 @@ async def test_updated_llm_model_is_immediately_usable_by_local_agent_pipeline()
         'ai': {
             'runner': {'runner': 'local-agent'},
             'local-agent': {
-                'model': {'primary': model_uuid, 'fallbacks': []},
+                'model': {
+                    'primary': model_uuid,
+                    'fallbacks': [],
+                    'reasoning': {model_uuid: 'high'},
+                },
                 'prompt': [],
                 'knowledge-bases': [],
             },
@@ -293,3 +297,134 @@ async def test_updated_llm_model_is_immediately_usable_by_local_agent_pipeline()
     candidates = await LocalAgentRunner._get_model_candidates(runner, processed_query)
 
     assert [model.model_entity.uuid for model in candidates] == [model_uuid]
+    assert candidates[0].reasoning_config_override == {'level': 'high'}
+
+
+@pytest.mark.asyncio
+async def test_local_agent_applies_reasoning_per_fallback_model():
+    execution_context = ExecutionContext(
+        instance_uuid='instance-test',
+        workspace_uuid='workspace-test',
+        placement_generation=1,
+    )
+    provider = Mock(
+        execution_context=execution_context,
+        provider_entity=persistence_model.ModelProvider(
+            workspace_uuid='workspace-test',
+            uuid='provider',
+            name='provider',
+            requester='openai',
+            base_url='https://example.com',
+            api_keys=[],
+        ),
+    )
+    primary = requester.RuntimeLLMModel(
+        execution_context,
+        persistence_model.LLMModel(
+            workspace_uuid='workspace-test',
+            uuid='primary-model',
+            name='primary',
+            provider_uuid='provider',
+            abilities=['reasoning'],
+            extra_args={},
+        ),
+        provider,
+    )
+    fallback = requester.RuntimeLLMModel(
+        execution_context,
+        persistence_model.LLMModel(
+            workspace_uuid='workspace-test',
+            uuid='fallback-model',
+            name='fallback',
+            provider_uuid='provider',
+            abilities=['reasoning'],
+            extra_args={},
+        ),
+        provider,
+    )
+    models = {'primary-model': primary, 'fallback-model': fallback}
+    runner = SimpleNamespace(
+        ap=SimpleNamespace(
+            model_mgr=SimpleNamespace(
+                get_model_by_uuid=AsyncMock(side_effect=lambda _context, model_uuid: models[model_uuid]),
+            ),
+            logger=Mock(),
+        )
+    )
+    query = SimpleNamespace(
+        use_llm_model_uuid='primary-model',
+        variables={'_fallback_model_uuids': ['fallback-model']},
+        pipeline_config={
+            'ai': {
+                'local-agent': {
+                    'model': {
+                        'primary': 'primary-model',
+                        'fallbacks': ['fallback-model'],
+                        'reasoning': {
+                            'primary-model': 'low',
+                            'fallback-model': 'high',
+                        },
+                    }
+                }
+            }
+        },
+        _execution_context=execution_context,
+    )
+
+    candidates = await LocalAgentRunner._get_model_candidates(runner, query)
+
+    assert [candidate.reasoning_config_override for candidate in candidates] == [
+        {'level': 'low'},
+        {'level': 'high'},
+    ]
+    assert candidates[0] is not primary
+    assert candidates[1] is not fallback
+    assert primary.reasoning_config_override is None
+    assert fallback.reasoning_config_override is None
+
+
+def test_local_agent_rejects_invalid_pipeline_reasoning_level():
+    execution_context = ExecutionContext(
+        instance_uuid='instance-test',
+        workspace_uuid='workspace-test',
+        placement_generation=1,
+    )
+    provider = Mock(
+        execution_context=execution_context,
+        provider_entity=persistence_model.ModelProvider(
+            workspace_uuid='workspace-test',
+            uuid='provider',
+            name='provider',
+            requester='openai',
+            base_url='https://example.com',
+            api_keys=[],
+        ),
+    )
+    model = requester.RuntimeLLMModel(
+        execution_context,
+        persistence_model.LLMModel(
+            workspace_uuid='workspace-test',
+            uuid='primary-model',
+            name='primary',
+            provider_uuid='provider',
+            abilities=['reasoning'],
+            extra_args={},
+        ),
+        provider,
+    )
+    query = SimpleNamespace(
+        pipeline_config={
+            'ai': {
+                'local-agent': {
+                    'model': {
+                        'primary': 'primary-model',
+                        'fallbacks': [],
+                        'reasoning': {'primary-model': 'turbo'},
+                    }
+                }
+            }
+        }
+    )
+
+    with pytest.raises(ValueError, match='Unsupported reasoning level'):
+        LocalAgentRunner._apply_pipeline_reasoning_config(query, model)

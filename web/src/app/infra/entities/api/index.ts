@@ -99,7 +99,31 @@ export interface LLMModel {
   provider?: ModelProvider;
   abilities?: string[];
   context_length?: number | null;
+  reasoning_config?: ReasoningConfig;
+  reasoning_capabilities?: ReasoningCapabilities;
   extra_args?: object;
+}
+
+export type ReasoningLevel =
+  | 'provider_default'
+  | 'disabled'
+  | 'enabled'
+  | 'minimal'
+  | 'low'
+  | 'medium'
+  | 'high'
+  | 'xhigh'
+  | 'max';
+
+export interface ReasoningConfig {
+  level: ReasoningLevel;
+}
+
+export interface ReasoningCapabilities {
+  supported: boolean;
+  levels: ReasoningLevel[];
+  legacy_levels?: ReasoningLevel[];
+  source: 'litellm' | 'provider' | 'manual' | 'unknown';
 }
 
 export interface ApiRespProviderEmbeddingModels {

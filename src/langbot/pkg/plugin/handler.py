@@ -1579,7 +1579,7 @@ class RuntimeConnectionHandler(handler.Handler):
             return await self.call_action(
                 LangBotToRuntimeAction.RECONCILE_PLUGIN_INSTALLATIONS,
                 request.model_dump(),
-                timeout=120,
+                timeout=300,
             )
 
     async def apply_plugin_installation(
@@ -1962,11 +1962,16 @@ class RuntimeConnectionHandler(handler.Handler):
 
     async def get_debug_info(self, execution_context: ExecutionContext) -> dict[str, Any]:
         """Get debug information including debug key and WS URL"""
+        action_context = ActionContext(
+            instance_uuid=execution_context.instance_uuid,
+            workspace_uuid=execution_context.workspace_uuid,
+            placement_generation=execution_context.placement_generation,
+        )
         result = await self.call_action(
             LangBotToRuntimeAction.GET_DEBUG_INFO,
             {},
             timeout=10,
-            action_context=execution_context,
+            action_context=action_context,
         )
         return result
 

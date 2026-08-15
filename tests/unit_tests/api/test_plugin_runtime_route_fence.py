@@ -124,24 +124,37 @@ async def test_background_plugin_operation_refences_captured_generation(plugin_r
 
 
 @pytest.mark.asyncio
-async def test_background_plugin_operation_revalidates_inside_short_tenant_uow(plugin_router_cls):
+async def test_background_plugin_operation_revalidates_and_runs_inside_tenant_uow(plugin_router_cls):
     scopes = []
+    active_scope = None
+
+    transaction_active = False
 
     @asynccontextmanager
-    async def tenant_uow(workspace_uuid):
+    async def tenant_scope(workspace_uuid):
+        nonlocal active_scope
         scopes.append(workspace_uuid)
-        yield
+        active_scope = workspace_uuid
+        try:
+            yield
+        finally:
+            active_scope = None
 
     connector = SimpleNamespace(
         require_workspace_context=AsyncMock(side_effect=lambda context: context),
     )
-    operation = AsyncMock(return_value='done')
+
+    async def operation():
+        assert active_scope == CONTEXT.workspace_uuid
+        assert transaction_active is False
+        return 'done'
+
     router = object.__new__(plugin_router_cls)
     router.ap = SimpleNamespace(
         plugin_connector=connector,
         persistence_mgr=SimpleNamespace(
             mode=SimpleNamespace(value='cloud_runtime'),
-            tenant_uow=tenant_uow,
+            tenant_scope=tenant_scope,
         ),
     )
 
@@ -150,4 +163,3 @@ async def test_background_plugin_operation_revalidates_inside_short_tenant_uow(p
     assert result == 'done'
     assert scopes == [CONTEXT.workspace_uuid]
     connector.require_workspace_context.assert_awaited_once_with(CONTEXT)
-    operation.assert_awaited_once()

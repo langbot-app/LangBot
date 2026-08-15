@@ -87,7 +87,10 @@ async def test_runtime_resource_stats_are_aggregate_and_constant_time() -> None:
     app.platform_mgr = SimpleNamespace(_bots_by_key={})
     app.pipeline_mgr = SimpleNamespace(_pipelines_by_key={})
     app.rag_mgr = SimpleNamespace(knowledge_bases={})
-    app.plugin_connector = SimpleNamespace(_known_desired_states={'installation': object()})
+    app.plugin_connector = SimpleNamespace(
+        _known_desired_states={'installation': object()},
+        _runtime_available=lambda: True,
+    )
     app.persistence_mgr = SimpleNamespace(
         get_resource_stats=lambda: {
             'configured_capacity': 20,
@@ -140,3 +143,4 @@ async def test_runtime_resource_stats_are_aggregate_and_constant_time() -> None:
     }
     assert stats['models']['providers'] == 1
     assert stats['runtimes']['plugin_installations'] == 1
+    assert stats['runtimes']['plugin_runtime_connected'] is True

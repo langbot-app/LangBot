@@ -47,11 +47,10 @@ services:
     restart: on-failure
     environment:
       - TZ=Asia/Shanghai
-      # Shared control-plane secret used to authenticate both the RPC socket
-      # and managed-process relay. Generate once (for example with
-      # ``openssl rand -hex 32``) and export it before enabling this profile.
-      # An empty value is accepted by Compose so Box can remain optional, but
-      # the Box runtime itself fails closed when the profile is started.
+      # Optional shared control-plane secret used to authenticate both the RPC
+      # socket and managed-process relay. Leave unset on both OSS services, or
+      # generate one with ``openssl rand -hex 32`` and set the same value on
+      # both ends. Strongly recommended when the deployment is Internet-accessible.
       - LANGBOT_BOX_CONTROL_TOKEN=${LANGBOT_BOX_CONTROL_TOKEN:-}
       # Box has its own process-wide blocking-work budget.
       - LANGBOT_BLOCKING_EXECUTOR_MAX_WORKERS=${LANGBOT_BLOCKING_EXECUTOR_MAX_WORKERS:-8}
@@ -79,8 +78,9 @@ services:
       - TZ=Asia/Shanghai
       # Optional. Leave unset on both OSS services, or match plugin Runtime.
       - LANGBOT_PLUGIN_RUNTIME_CONTROL_TOKEN=${LANGBOT_PLUGIN_RUNTIME_CONTROL_TOKEN:-}
-      # Must match the value supplied to langbot_box. The token is sent only
-      # in WebSocket handshake headers, never in URLs or action payloads.
+      # When set, this must match langbot_box. If both ends leave it unset,
+      # OSS permits the connection without token authentication. The token is
+      # sent only in WebSocket handshake headers, never in URLs or payloads.
       - LANGBOT_BOX_CONTROL_TOKEN=${LANGBOT_BOX_CONTROL_TOKEN:-}
       # Core process-wide blocking-work admission. These are native config
       # overrides and are persisted with the effective data/config.yaml.

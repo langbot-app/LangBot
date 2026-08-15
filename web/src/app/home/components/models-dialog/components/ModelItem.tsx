@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Trash2, Eye, Wrench, Check } from 'lucide-react';
+import { Trash2, Eye, Wrench, Check, BrainCircuit } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -11,8 +11,17 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { useTranslation } from 'react-i18next';
-import { LLMModel, EmbeddingModel } from '@/app/infra/entities/api';
-import { ExtraArg, ModelType, TestResult } from '../types';
+import {
+  LLMModel,
+  EmbeddingModel,
+  ReasoningConfig,
+} from '@/app/infra/entities/api';
+import {
+  DEFAULT_REASONING_CONFIG,
+  ExtraArg,
+  ModelType,
+  TestResult,
+} from '../types';
 import ExtraArgsEditor from './ExtraArgsEditor';
 import { userInfo } from '@/app/infra/http';
 
@@ -32,12 +41,14 @@ interface ModelItemProps {
     name: string,
     abilities: string[],
     extraArgs: ExtraArg[],
+    reasoningConfig: ReasoningConfig,
     contextLength?: number | null,
   ) => Promise<void>;
   onTestModel: (
     name: string,
     abilities: string[],
     extraArgs: ExtraArg[],
+    reasoningConfig: ReasoningConfig,
   ) => Promise<void>;
   isSubmitting: boolean;
   isTesting: boolean;
@@ -103,7 +114,6 @@ export default function ModelItem({
   const [editExtraArgs, setEditExtraArgs] = useState<ExtraArg[]>(
     convertExtraArgsToArray(model.extra_args),
   );
-
   const isEditOpen = editModelPopoverOpen === model.uuid;
   const isDeleteOpen = deleteConfirmOpen === model.uuid;
 
@@ -133,12 +143,20 @@ export default function ModelItem({
       editName,
       editAbilities,
       editExtraArgs,
+      modelType === 'llm'
+        ? (model as LLMModel).reasoning_config || DEFAULT_REASONING_CONFIG
+        : DEFAULT_REASONING_CONFIG,
       parsedContextLength,
     );
   };
 
   const handleTest = async () => {
-    await onTestModel(editName, editAbilities, editExtraArgs);
+    await onTestModel(
+      editName,
+      editAbilities,
+      editExtraArgs,
+      DEFAULT_REASONING_CONFIG,
+    );
   };
 
   const toggleAbility = (ability: string, checked: boolean) => {
@@ -148,6 +166,12 @@ export default function ModelItem({
       setEditAbilities(editAbilities.filter((a) => a !== ability));
     }
   };
+
+  const supportsReasoning =
+    modelType === 'llm' &&
+    ((model as LLMModel).reasoning_capabilities?.supported === true ||
+      (model as LLMModel).abilities?.includes('reasoning'));
+  const canSaveModel = !isLangBotModels;
 
   // Check if popover should be disabled (space models when not logged in)
   const isPopoverDisabled =
@@ -194,6 +218,12 @@ export default function ModelItem({
                   <Wrench className="h-3 w-3" />
                 </Badge>
               )}
+            {supportsReasoning && (
+              <Badge variant="outline" className="text-xs gap-1">
+                <BrainCircuit className="h-3 w-3" />
+                {t('models.reasoningAbility')}
+              </Badge>
+            )}
           </div>
           {canManage && !isLangBotModels && (
             <Popover
@@ -270,7 +300,7 @@ export default function ModelItem({
           {modelType === 'llm' && (
             <div className="space-y-2">
               <Label>{t('models.abilities')}</Label>
-              <div className="flex gap-4">
+              <div className="flex flex-wrap gap-4">
                 <div className="flex items-center gap-2">
                   <Checkbox
                     id={`edit-vision-${model.uuid}`}
@@ -305,6 +335,23 @@ export default function ModelItem({
                     {t('models.functionCallAbility')}
                   </Label>
                 </div>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id={`edit-reasoning-${model.uuid}`}
+                    checked={editAbilities.includes('reasoning')}
+                    disabled={isLangBotModels}
+                    onCheckedChange={(checked) =>
+                      toggleAbility('reasoning', checked as boolean)
+                    }
+                  />
+                  <Label
+                    htmlFor={`edit-reasoning-${model.uuid}`}
+                    className="text-sm"
+                  >
+                    <BrainCircuit className="h-3 w-3 inline mr-1" />
+                    {t('models.reasoningAbility')}
+                  </Label>
+                </div>
               </div>
             </div>
           )}
@@ -336,7 +383,7 @@ export default function ModelItem({
           />
 
           <div className="flex gap-2">
-            {!isLangBotModels && (
+            {canSaveModel && (
               <Button
                 className="flex-1"
                 size="sm"
@@ -347,7 +394,7 @@ export default function ModelItem({
               </Button>
             )}
             <Button
-              className={isLangBotModels ? 'w-full' : 'flex-1'}
+              className={canSaveModel ? 'flex-1' : 'w-full'}
               size="sm"
               variant="outline"
               onClick={handleTest}

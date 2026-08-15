@@ -201,7 +201,7 @@ vdb:
         # keep this false when deliberately using an external pgvector DB.
         use_business_database: false
         # Release migrations create one partial ANN index per enabled value.
-        allowed_dimensions: [384, 512, 768, 1024, 1536]
+        allowed_dimensions: [384, 512, 768, 1024, 1536, 3072]
         host: '127.0.0.1'
         port: 5433
         database: 'langbot'
@@ -245,6 +245,8 @@ storage:
         max_concurrency: 16
 plugin:
     enable: true
+    # Maximum time for the Runtime transport, handshake, and desired-state replay.
+    connect_timeout_seconds: 180.0
     runtime_ws_url: 'ws://langbot_plugin_runtime:5400/control/ws'
     enable_marketplace: true
     display_plugin_debug_url: 'ws://localhost:5401/plugin/debug/ws'
@@ -326,8 +328,9 @@ box:
     enabled: true
     backend: 'local'  # 'local' (Docker/nsjail), 'docker', 'nsjail', or 'e2b'. Can be written via BOX__BACKEND.
     runtime:
-        # External WebSocket runtimes also require LANGBOT_BOX_CONTROL_TOKEN in
-        # both LangBot and Box. Keep the shared secret out of this config file.
+        # LANGBOT_BOX_CONTROL_TOKEN is optional for OSS external WebSocket
+        # runtimes. To protect an exposed endpoint, set the same strong secret
+        # in both LangBot and Box. Keep it out of this config file.
         endpoint: ''  # External Box Runtime base URL, e.g. 'ws://127.0.0.1:5410'. Leave empty for local auto-managed runtime.
     limits:
         max_sessions: 64

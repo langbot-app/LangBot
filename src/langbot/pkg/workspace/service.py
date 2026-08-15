@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from ..entity.persistence.workspace import (
     MembershipRole,
+    MembershipSource,
     MembershipStatus,
     Workspace,
     WorkspaceExecutionSource,
@@ -451,6 +452,7 @@ class WorkspaceService:
                 account_uuid=account_uuid,
                 role=MembershipRole.OWNER.value,
                 status=MembershipStatus.ACTIVE.value,
+                source=MembershipSource.LOCAL.value,
                 joined_at=joined_at,
                 projection_revision=0,
             )
@@ -458,6 +460,7 @@ class WorkspaceService:
         else:
             membership.role = MembershipRole.OWNER.value
             membership.status = MembershipStatus.ACTIVE.value
+            membership.source = MembershipSource.LOCAL.value
             membership.joined_at = membership.joined_at or joined_at
 
         if workspace.created_by_account_uuid is None:

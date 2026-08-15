@@ -235,11 +235,22 @@ async def test_debug_key_requires_resource_manage_permission(plugin_security_api
     assert operator_denied.status_code == 403
     assert allowed.status_code == 200
     assert (await allowed.get_json())['data'] == {
-        'debug_url': 'http://localhost:5401',
+        'debug_url': 'ws://localhost:5401/plugin/debug/ws',
         'plugin_debug_key': 'runtime-debug-secret',
         'expires_at': '2026-08-04T12:00:00Z',
     }
     application.plugin_connector.get_debug_info.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_debug_info_uses_websocket_endpoint_for_legacy_config(plugin_security_api):
+    application, client, _ = plugin_security_api
+    application.instance_config.data['plugin'].pop('display_plugin_debug_url')
+
+    response = await client.get('/api/v1/plugins/debug-info', headers=_headers('manager-token'))
+
+    assert response.status_code == 200
+    assert (await response.get_json())['data']['debug_url'] == 'ws://localhost:5401/plugin/debug/ws'
 
 
 @pytest.mark.asyncio

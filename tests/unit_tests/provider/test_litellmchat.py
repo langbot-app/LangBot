@@ -1304,6 +1304,7 @@ class TestScanModels:
         )
         requester._supports_function_calling = Mock(side_effect=lambda model_id: model_id == 'gpt-4o')
         requester._supports_vision = Mock(side_effect=lambda model_id: model_id == 'gpt-4o')
+        requester._supports_reasoning = Mock(side_effect=lambda model_id: model_id == 'o3')
         requester._safe_context_length = Mock(side_effect=lambda model_id: 128000 if model_id == 'gpt-4o' else None)
 
         mock_response = Mock()
@@ -1311,6 +1312,7 @@ class TestScanModels:
             return_value={
                 'data': [
                     {'id': 'gpt-4o'},
+                    {'id': 'o3'},
                     {'id': 'text-embedding-3-small'},
                     {'id': 'bge-reranker-v2'},
                 ]
@@ -1327,6 +1329,7 @@ class TestScanModels:
         by_id = {model['id']: model for model in result['models']}
         assert by_id['gpt-4o']['abilities'] == ['func_call', 'vision']
         assert by_id['gpt-4o']['context_length'] == 128000
+        assert by_id['o3']['abilities'] == ['reasoning']
         assert by_id['text-embedding-3-small']['type'] == 'embedding'
         assert by_id['bge-reranker-v2']['type'] == 'rerank'
 
@@ -1374,8 +1377,8 @@ class TestScanModels:
         )
 
         with patch.object(litellmchat.litellm, 'get_model_info') as mock_get_model_info:
-            mock_get_model_info.side_effect = (
-                lambda model: {'max_input_tokens': 131072} if model == 'moonshot/moonshot-v1-128k' else {}
+            mock_get_model_info.side_effect = lambda model: (
+                {'max_input_tokens': 131072} if model == 'moonshot/moonshot-v1-128k' else {}
             )
 
             assert requester._safe_context_length('moonshot-v1-128k') == 131072
@@ -1404,8 +1407,8 @@ class TestScanModels:
         )
 
         with patch.object(litellmchat.litellm, 'supports_function_calling') as mock_supports_function_calling:
-            mock_supports_function_calling.side_effect = (
-                lambda model, custom_llm_provider=None: model == 'moonshot/kimi-k2.6' and custom_llm_provider is None
+            mock_supports_function_calling.side_effect = lambda model, custom_llm_provider=None: (
+                model == 'moonshot/kimi-k2.6' and custom_llm_provider is None
             )
 
             assert requester._supports_function_calling('kimi-k2.6') is True

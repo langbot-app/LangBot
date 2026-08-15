@@ -649,6 +649,7 @@ class ModelManager:
             provider_uuid=runtime_provider.provider_entity.uuid,
             abilities=model_info.get('abilities', []),
             context_length=model_info.get('context_length'),
+            reasoning_config=model_info.get('reasoning_config', {'level': 'provider_default'}),
             extra_args=model_info.get('extra_args', {}),
         )
         return self._build_llm_model(execution_context, model_entity, runtime_provider)
@@ -717,7 +718,10 @@ class ModelManager:
         provider_entity = self._coerce_provider(provider_info, context)
         requester_manifest = self.get_available_requester_manifest_by_name(provider_entity.requester)
         litellm_provider = self._get_litellm_provider_from_manifest(requester_manifest)
-        config = {'base_url': provider_entity.base_url}
+        config = {
+            'base_url': provider_entity.base_url,
+            'requester_name': provider_entity.requester,
+        }
 
         if litellm_provider:
             from .requesters import litellmchat

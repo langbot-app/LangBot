@@ -17,12 +17,14 @@ import pytest
 from unittest.mock import AsyncMock, Mock
 from types import SimpleNamespace
 
+from langbot.pkg.api.http.context import ExecutionContext
 from langbot.pkg.api.http.service.model import (
     LLMModelsService,
     EmbeddingModelsService,
     RerankModelsService,
     _parse_provider_api_keys,
     _runtime_model_data,
+    _serialize_llm_model,
     _validate_provider_supports,
 )
 from langbot.pkg.api.http.service import model as model_service_module
@@ -64,15 +66,19 @@ def _create_mock_llm_model(
     abilities: list = None,
     context_length: int | None = None,
     extra_args: dict = None,
+    reasoning_config: dict = None,
 ) -> Mock:
     """Helper to create mock LLMModel entity."""
     model = Mock(spec=LLMModel)
+    model.workspace_uuid = WORKSPACE_UUID
     model.uuid = model_uuid
     model.name = name
     model.provider_uuid = provider_uuid
     model.abilities = abilities or []
     model.context_length = context_length
     model.extra_args = extra_args or {}
+    model.reasoning_config = reasoning_config or {'level': 'provider_default'}
+    model.prefered_ranking = 0
     return model
 
 
@@ -156,6 +162,26 @@ def _create_runtime_model_mgr() -> SimpleNamespace:
     return manager
 
 
+def _create_reasoning_runtime_provider(capabilities: dict) -> SimpleNamespace:
+    execution_context = ExecutionContext(
+        instance_uuid='instance-test',
+        workspace_uuid=WORKSPACE_UUID,
+        placement_generation=1,
+    )
+    return SimpleNamespace(
+        execution_context=execution_context,
+        provider_entity=ModelProvider(
+            workspace_uuid=WORKSPACE_UUID,
+            uuid='provider-uuid',
+            name='Reasoning Provider',
+            requester='openai',
+            base_url='https://api.openai.com',
+            api_keys=[],
+        ),
+        requester=SimpleNamespace(get_reasoning_capabilities=Mock(return_value=capabilities)),
+    )
+
+
 class TestParseProviderApiKeys:
     """Tests for _parse_provider_api_keys helper function."""
 
@@ -207,6 +233,42 @@ class TestRuntimeModelData:
         assert result['abilities'] == ['vision']
         assert result['context_length'] == 128000
         assert result['extra_args'] == {'temp': 0.7}
+
+
+class TestSerializeLLMModel:
+    def test_includes_runtime_reasoning_capabilities(self):
+        model = _create_mock_llm_model(
+            abilities=['reasoning'],
+            reasoning_config={'level': 'high'},
+        )
+        capabilities = {
+            'supported': True,
+            'levels': ['provider_default', 'low', 'high'],
+            'source': 'litellm',
+        }
+        runtime_model = SimpleNamespace(
+            model_entity=model,
+            provider=SimpleNamespace(
+                requester=SimpleNamespace(get_reasoning_capabilities=Mock(return_value=capabilities))
+            ),
+        )
+        ap = SimpleNamespace(
+            persistence_mgr=SimpleNamespace(
+                serialize_model=Mock(
+                    return_value={
+                        'uuid': model.uuid,
+                        'name': model.name,
+                        'reasoning_config': {'level': 'high'},
+                    }
+                )
+            ),
+            model_mgr=SimpleNamespace(llm_model_dict={('workspace', model.uuid): runtime_model}),
+        )
+
+        serialized = _serialize_llm_model(ap, model)
+
+        assert serialized['reasoning_config'] == {'level': 'high'}
+        assert serialized['reasoning_capabilities'] == capabilities
 
 
 class TestLLMModelsServiceGetLLMModels:
@@ -580,6 +642,66 @@ class TestLLMModelsServiceCreateLLMModel:
         ap.provider_service.find_or_create_provider.assert_called_once()
         assert result_uuid is not None
 
+    async def test_create_llm_model_validates_explicit_reasoning_level(self):
+        ap = SimpleNamespace()
+        ap.persistence_mgr = SimpleNamespace(execute_async=AsyncMock(return_value=_create_mock_result([])))
+        runtime_provider = _create_reasoning_runtime_provider(
+            {
+                'supported': True,
+                'levels': ['provider_default', 'low', 'high'],
+                'source': 'litellm',
+            }
+        )
+        ap.model_mgr = _create_runtime_model_mgr()
+        ap.model_mgr.provider_dict = {'provider-uuid': runtime_provider}
+
+        service = LLMModelsService(ap)
+        await service.create_llm_model(
+            WORKSPACE_UUID,
+            {
+                'uuid': 'reasoning-model',
+                'name': 'Reasoning Model',
+                'provider_uuid': 'provider-uuid',
+                'abilities': ['reasoning'],
+                'reasoning_config': {'level': 'high'},
+                'extra_args': {},
+            },
+            preserve_uuid=True,
+            auto_set_to_default_pipeline=False,
+        )
+
+        runtime_entity = ap.model_mgr.load_llm_model_with_provider.await_args.args[1]
+        assert runtime_entity.reasoning_config == {'level': 'high'}
+
+    async def test_create_llm_model_rejects_unsupported_reasoning_before_insert(self):
+        ap = SimpleNamespace()
+        ap.persistence_mgr = SimpleNamespace(execute_async=AsyncMock())
+        runtime_provider = _create_reasoning_runtime_provider(
+            {
+                'supported': True,
+                'levels': ['provider_default'],
+                'source': 'manual',
+            }
+        )
+        ap.model_mgr = _create_runtime_model_mgr()
+        ap.model_mgr.provider_dict = {'provider-uuid': runtime_provider}
+
+        service = LLMModelsService(ap)
+        with pytest.raises(ValueError, match='Available levels: provider_default'):
+            await service.create_llm_model(
+                WORKSPACE_UUID,
+                {
+                    'name': 'Unknown Reasoning Model',
+                    'provider_uuid': 'provider-uuid',
+                    'abilities': ['reasoning'],
+                    'reasoning_config': {'level': 'high'},
+                    'extra_args': {},
+                },
+                auto_set_to_default_pipeline=False,
+            )
+
+        ap.persistence_mgr.execute_async.assert_not_awaited()
+
 
 class TestLLMModelsServiceUpdateLLMModel:
     """Tests for LLMModelsService.update_llm_model method."""
@@ -595,7 +717,10 @@ class TestLLMModelsServiceUpdateLLMModel:
         ap.model_mgr.remove_llm_model = AsyncMock()
         ap.model_mgr.load_llm_model_with_provider = AsyncMock(return_value=Mock())
 
-        ap.persistence_mgr.execute_async = AsyncMock()
+        existing_model = _create_mock_llm_model()
+        ap.persistence_mgr.execute_async = AsyncMock(
+            side_effect=[_create_mock_result(first_item=existing_model), _create_mock_result()]
+        )
 
         service = LLMModelsService(ap)
         service.get_llm_model = AsyncMock(return_value=_existing_llm_data())
@@ -623,7 +748,8 @@ class TestLLMModelsServiceUpdateLLMModel:
         ap.model_mgr.provider_dict = {}  # Empty
         ap.model_mgr.remove_llm_model = AsyncMock()
 
-        ap.persistence_mgr.execute_async = AsyncMock()
+        existing_model = _create_mock_llm_model()
+        ap.persistence_mgr.execute_async = AsyncMock(return_value=_create_mock_result(first_item=existing_model))
 
         service = LLMModelsService(ap)
         service.get_llm_model = AsyncMock(return_value=_existing_llm_data('nonexistent-provider'))

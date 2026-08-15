@@ -83,6 +83,7 @@ cd LangBot/docker
 docker compose --profile all up -d
 ```
 
+
 ### One-Click Cloud Deploy
 
 [![Deploy on Zeabur](https://zeabur.com/button.svg)](https://zeabur.com/en-US/templates/ZKTBDH)

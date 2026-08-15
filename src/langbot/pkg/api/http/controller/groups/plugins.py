@@ -15,7 +15,6 @@ import posixpath
 import sqlalchemy
 
 from .....core import taskmgr
-from .....core.task_boundary import run_in_workspace_uow
 from .....entity.persistence import plugin as persistence_plugin
 from ...authz import Permission
 from ...context import ExecutionContext, RequestContext
@@ -311,11 +310,13 @@ class PluginsRouterGroup(group.RouterGroup):
     ):
         """Revalidate a captured task context immediately before Runtime I/O."""
 
-        await run_in_workspace_uow(
-            self.ap,
-            execution_context.workspace_uuid,
-            lambda: self.ap.plugin_connector.require_workspace_context(execution_context),
-        )
+        persistence_mgr = getattr(self.ap, 'persistence_mgr', None)
+        tenant_scope = getattr(persistence_mgr, 'tenant_scope', None)
+        if callable(tenant_scope):
+            async with tenant_scope(execution_context.workspace_uuid):
+                await self.ap.plugin_connector.require_workspace_context(execution_context)
+                return await operation()
+        await self.ap.plugin_connector.require_workspace_context(execution_context)
         return await operation()
 
     async def _require_authenticated_plugin_runtime_context(
@@ -397,7 +398,16 @@ class PluginsRouterGroup(group.RouterGroup):
 
             # Get debug URL from config
             plugin_config = self.ap.instance_config.data.get('plugin', {})
-            debug_url = plugin_config.get('display_plugin_debug_url', 'http://localhost:5401')
+            debug_url = plugin_config.get(
+                'display_plugin_debug_url',
+                'ws://localhost:5401/plugin/debug/ws',
+            )
+            parsed_debug_url = urlparse(debug_url)
+            if parsed_debug_url.scheme in {'http', 'https'}:
+                debug_url = parsed_debug_url._replace(
+                    scheme='wss' if parsed_debug_url.scheme == 'https' else 'ws',
+                    path=parsed_debug_url.path or '/plugin/debug/ws',
+                ).geturl()
 
             return self.success(
                 data={

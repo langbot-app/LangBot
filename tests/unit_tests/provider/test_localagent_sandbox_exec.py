@@ -178,6 +178,27 @@ def test_stream_accumulator_merges_fragmented_tool_call_arguments():
     assert final_msg.tool_calls[0].function.arguments == '{"command":"pwd"}'
 
 
+def test_stream_accumulator_preserves_tool_call_provider_specific_fields():
+    accumulator = _StreamAccumulator()
+    emitted = accumulator.add(
+        provider_message.MessageChunk(
+            role='assistant',
+            tool_calls=[
+                provider_message.ToolCall(
+                    id='call-gemini',
+                    type='function',
+                    function=provider_message.FunctionCall(name='lookup', arguments='{}'),
+                    provider_specific_fields={'thought_signature': 'sig'},
+                )
+            ],
+            is_final=True,
+        )
+    )
+
+    assert emitted is not None
+    assert emitted.tool_calls[0].provider_specific_fields == {'thought_signature': 'sig'}
+
+
 def test_stream_accumulator_strips_leading_think_from_tool_round_content():
     accumulator = _StreamAccumulator(
         msg_sequence=3,

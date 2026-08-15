@@ -25,6 +25,7 @@ import {
   EmbeddingModel,
   RerankModel,
   PluginTool,
+  ReasoningLevel,
 } from '@/app/infra/entities/api';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
@@ -66,6 +67,9 @@ import SettingsDialog, {
 } from '@/app/home/components/settings-dialog/SettingsDialog';
 import ToolResourceSelectors from '@/app/home/components/dynamic-form/ToolResourceSelectors';
 import { LANGBOT_MODELS_PROVIDER_REQUESTER } from '@/app/home/components/models-dialog/types';
+import ReasoningLevelPicker, {
+  REASONING_LEVELS,
+} from '@/app/home/components/reasoning/ReasoningLevelPicker';
 
 function hasUsableUuid<T extends { uuid?: string | null }>(
   item: T,
@@ -874,7 +878,11 @@ export default function DynamicFormItemComponent({
       ];
 
       const rawModelValue = field.value;
-      const modelValue: { primary: string; fallbacks: string[] } =
+      const modelValue: {
+        primary: string;
+        fallbacks: string[];
+        reasoning: Record<string, ReasoningLevel>;
+      } =
         rawModelValue != null &&
         typeof rawModelValue === 'object' &&
         !Array.isArray(rawModelValue)
@@ -893,10 +901,29 @@ export default function DynamicFormItemComponent({
                       .fallbacks as unknown[]
                   ).filter((v): v is string => typeof v === 'string')
                 : [],
+              reasoning:
+                (rawModelValue as Record<string, unknown>).reasoning != null &&
+                typeof (rawModelValue as Record<string, unknown>).reasoning ===
+                  'object' &&
+                !Array.isArray(
+                  (rawModelValue as Record<string, unknown>).reasoning,
+                )
+                  ? (Object.fromEntries(
+                      Object.entries(
+                        (rawModelValue as Record<string, unknown>)
+                          .reasoning as Record<string, unknown>,
+                      ).filter(
+                        (entry): entry is [string, ReasoningLevel] =>
+                          typeof entry[1] === 'string' &&
+                          REASONING_LEVELS.includes(entry[1] as ReasoningLevel),
+                      ),
+                    ) as Record<string, ReasoningLevel>)
+                  : {},
             }
           : {
               primary: typeof rawModelValue === 'string' ? rawModelValue : '',
               fallbacks: [],
+              reasoning: {},
             };
 
       const renderModelSelect = (
@@ -1043,20 +1070,79 @@ export default function DynamicFormItemComponent({
         field.onChange({ ...modelValue, ...patch });
       };
 
+      const updateModelReasoning = (
+        modelUuid: string,
+        level: ReasoningLevel,
+      ) => {
+        if (!modelUuid) return;
+        const updated = { ...modelValue.reasoning };
+        if (level === 'provider_default') {
+          delete updated[modelUuid];
+        } else {
+          updated[modelUuid] = level;
+        }
+        updateValue({ reasoning: updated });
+      };
+
+      const replaceModel = (
+        currentUuid: string,
+        nextUuid: string,
+        patch: Partial<typeof modelValue>,
+      ) => {
+        const nextValue = { ...modelValue, ...patch };
+        const updatedReasoning = { ...modelValue.reasoning };
+        const currentModelStillSelected =
+          nextValue.primary === currentUuid ||
+          nextValue.fallbacks.includes(currentUuid);
+        if (
+          currentUuid &&
+          currentUuid !== nextUuid &&
+          !currentModelStillSelected
+        ) {
+          delete updatedReasoning[currentUuid];
+        }
+        updateValue({ ...nextValue, reasoning: updatedReasoning });
+      };
+
+      const renderReasoningPicker = (modelUuid: string) => {
+        if (!modelUuid) return null;
+        const model = llmModels.find(
+          (candidate) => candidate.uuid === modelUuid,
+        );
+        const currentLevel =
+          modelValue.reasoning[modelUuid] || 'provider_default';
+        const availableLevels = model?.reasoning_capabilities?.levels || [
+          'provider_default',
+        ];
+        const levels = REASONING_LEVELS.filter(
+          (level) => availableLevels.includes(level) || level === currentLevel,
+        );
+
+        return (
+          <ReasoningLevelPicker
+            value={currentLevel}
+            levels={levels}
+            onChange={(level) => updateModelReasoning(modelUuid, level)}
+          />
+        );
+      };
+
       const addFallbackModel = () => {
         updateValue({ fallbacks: [...modelValue.fallbacks, ''] });
       };
 
       const updateFallbackModel = (index: number, value: string) => {
         const updated = [...modelValue.fallbacks];
+        const currentUuid = updated[index];
         updated[index] = value;
-        updateValue({ fallbacks: updated });
+        replaceModel(currentUuid, value, { fallbacks: updated });
       };
 
       const removeFallbackModel = (index: number) => {
         const updated = [...modelValue.fallbacks];
+        const removedUuid = updated[index];
         updated.splice(index, 1);
-        updateValue({ fallbacks: updated });
+        replaceModel(removedUuid, '', { fallbacks: updated });
       };
 
       const moveFallbackModel = (index: number, direction: 'up' | 'down') => {
@@ -1081,10 +1167,12 @@ export default function DynamicFormItemComponent({
               <div className="min-w-0 flex-1">
                 {renderModelSelect(
                   modelValue.primary,
-                  (val) => updateValue({ primary: val }),
+                  (val) =>
+                    replaceModel(modelValue.primary, val, { primary: val }),
                   t('models.selectModel'),
                 )}
               </div>
+              {renderReasoningPicker(modelValue.primary)}
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -1118,15 +1206,18 @@ export default function DynamicFormItemComponent({
               </p>
               {modelValue.fallbacks.map((fbUuid: string, index: number) => (
                 <div key={index} className="flex min-w-0 items-center gap-2">
-                  <span className="text-xs text-muted-foreground w-4 shrink-0">
+                  <span className="w-4 shrink-0 text-xs text-muted-foreground">
                     {index + 1}.
                   </span>
-                  <div className="min-w-0 flex-1">
-                    {renderModelSelect(
-                      fbUuid,
-                      (val) => updateFallbackModel(index, val),
-                      t('models.selectModel'),
-                    )}
+                  <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                    <div className="min-w-0 flex-1">
+                      {renderModelSelect(
+                        fbUuid,
+                        (val) => updateFallbackModel(index, val),
+                        t('models.selectModel'),
+                      )}
+                    </div>
+                    {renderReasoningPicker(fbUuid)}
                   </div>
                   <div className="flex gap-1 shrink-0">
                     <Button

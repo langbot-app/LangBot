@@ -108,7 +108,7 @@ def _cloud_config() -> dict:
             'use': 'pgvector',
             'pgvector': {
                 'use_business_database': True,
-                'allowed_dimensions': [384, 768, 1536],
+                'allowed_dimensions': [384, 768, 1536, 3072],
             },
         },
         'mcp': {'stdio': {'enabled': False}},
@@ -216,7 +216,6 @@ async def test_cloud_directory_capacity_contract_is_fail_closed(directory_config
     [
         ({'use_business_database': False, 'allowed_dimensions': [1536]}, 'use_business_database=true'),
         ({'use_business_database': True, 'allowed_dimensions': []}, 'allowed_dimensions'),
-        ({'use_business_database': True, 'allowed_dimensions': [3072]}, 'allowed_dimensions'),
         ({'use_business_database': True, 'allowed_dimensions': [True]}, 'allowed_dimensions'),
     ],
 )

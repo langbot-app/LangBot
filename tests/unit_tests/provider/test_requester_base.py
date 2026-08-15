@@ -400,6 +400,7 @@ def test_runtime_llm_model_initialization(runtime_llm_model, fake_persistence_da
     assert model.model_entity.abilities == model_entity.abilities
     assert model.model_entity.extra_args == model_entity.extra_args
     assert model.provider is not None
+    assert model.reasoning_config_override is None
 
 
 def test_runtime_llm_model_provider_ref(runtime_llm_model):

@@ -132,7 +132,7 @@ class Controller:
 
                             break
 
-                    if not selected_query:  # 没找到 说明：没有请求 或者 所有query对应的session都已达到并发上限
+                    if not selected_query:  # No query is runnable under the current session limits.
                         await self.ap.query_pool.condition.wait()
                         continue
 
