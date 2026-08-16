@@ -11,7 +11,6 @@ from langbot.pkg.entity.persistence import model as persistence_model
 from langbot.pkg.provider.modelmgr import errors, reasoning, requester
 from langbot.pkg.provider.modelmgr.requesters import litellmchat
 from langbot.pkg.provider.modelmgr.requesters.litellmchat import LiteLLMRequester
-from langbot.pkg.provider.runners.localagent import _StreamAccumulator
 
 
 def _runtime_model(
@@ -242,9 +241,7 @@ def test_qwen3_exposes_budget_based_reasoning_levels(monkeypatch):
     monkeypatch.setattr(request, '_supports_reasoning', lambda _: False)
 
     mixed = request.get_reasoning_capabilities(_runtime_model(request, name='qwen3.8-max', abilities=[]))
-    dedicated = request.get_reasoning_capabilities(
-        _runtime_model(request, name='qwen3.7-max-preview', abilities=[])
-    )
+    dedicated = request.get_reasoning_capabilities(_runtime_model(request, name='qwen3.7-max-preview', abilities=[]))
 
     assert mixed['levels'] == ['provider_default', 'disabled', 'low', 'medium', 'high']
     assert mixed['legacy_levels'] == ['enabled']
@@ -728,20 +725,25 @@ async def test_stream_reasoning_round_trip_with_hidden_display(monkeypatch):
         )
 
     monkeypatch.setattr(litellmchat, 'acompletion', AsyncMock(return_value=chunks()))
-    accumulator = _StreamAccumulator(remove_think=True)
-    emitted: provider_message.MessageChunk | None = None
+    emitted = [
+        chunk
+        async for chunk in request.invoke_llm_stream(
+            None,
+            _runtime_model(request),
+            [],
+            remove_think=True,
+        )
+    ]
 
-    async for chunk in request.invoke_llm_stream(
-        None,
-        _runtime_model(request),
-        [],
-        remove_think=True,
-    ):
-        emitted = accumulator.add(chunk) or emitted
-
-    assert emitted is not None
-    assert emitted.content == 'answer'
-    assert emitted.provider_specific_fields == {'reasoning_content': 'private '}
+    assert ''.join(chunk.content or '' for chunk in emitted) == 'answer'
+    assert (
+        ''.join(
+            chunk.provider_specific_fields.get('reasoning_content', '')
+            for chunk in emitted
+            if chunk.provider_specific_fields
+        )
+        == 'private '
+    )
 
 
 @pytest.mark.asyncio
@@ -770,20 +772,25 @@ async def test_stream_reasoning_content_is_wrapped_for_display(monkeypatch):
         )
 
     monkeypatch.setattr(litellmchat, 'acompletion', AsyncMock(return_value=chunks()))
-    accumulator = _StreamAccumulator(remove_think=False)
-    emitted: provider_message.MessageChunk | None = None
+    emitted = [
+        chunk
+        async for chunk in request.invoke_llm_stream(
+            None,
+            _runtime_model(request),
+            [],
+            remove_think=False,
+        )
+    ]
 
-    async for chunk in request.invoke_llm_stream(
-        None,
-        _runtime_model(request),
-        [],
-        remove_think=False,
-    ):
-        emitted = accumulator.add(chunk) or emitted
-
-    assert emitted is not None
-    assert emitted.content == '<think>\nprivate \n</think>\nanswer'
-    assert emitted.provider_specific_fields == {'reasoning_content': 'private '}
+    assert ''.join(chunk.content or '' for chunk in emitted) == '<think>\nprivate \n</think>\nanswer'
+    assert (
+        ''.join(
+            chunk.provider_specific_fields.get('reasoning_content', '')
+            for chunk in emitted
+            if chunk.provider_specific_fields
+        )
+        == 'private '
+    )
 
 
 @pytest.mark.asyncio
@@ -813,20 +820,25 @@ async def test_stream_anthropic_thinking_blocks_are_preserved(monkeypatch):
         )
 
     monkeypatch.setattr(litellmchat, 'acompletion', AsyncMock(return_value=chunks()))
-    accumulator = _StreamAccumulator(remove_think=False)
-    emitted: provider_message.MessageChunk | None = None
+    emitted = [
+        chunk
+        async for chunk in request.invoke_llm_stream(
+            None,
+            _runtime_model(request, 'high', name='claude-sonnet-4-6'),
+            [],
+            remove_think=False,
+        )
+    ]
 
-    async for chunk in request.invoke_llm_stream(
-        None,
-        _runtime_model(request, 'high', name='claude-sonnet-4-6'),
-        [],
-        remove_think=False,
-    ):
-        emitted = accumulator.add(chunk) or emitted
-
-    assert emitted is not None
-    assert emitted.content == '<think>\nprivate \n</think>\nanswer'
-    assert emitted.provider_specific_fields == {'thinking_blocks': thinking_blocks}
+    assert ''.join(chunk.content or '' for chunk in emitted) == '<think>\nprivate \n</think>\nanswer'
+    assert (
+        next(
+            chunk.provider_specific_fields['thinking_blocks']
+            for chunk in emitted
+            if chunk.provider_specific_fields and 'thinking_blocks' in chunk.provider_specific_fields
+        )
+        == thinking_blocks
+    )
 
 
 @pytest.mark.asyncio

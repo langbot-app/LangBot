@@ -12,6 +12,7 @@ metadata:
     zh_Hant: 企業微信內部機器人，請查看文件了解使用方式
   icon: wecom.png
 spec:
+  legacy: true
   categories:
     - popular
     - china

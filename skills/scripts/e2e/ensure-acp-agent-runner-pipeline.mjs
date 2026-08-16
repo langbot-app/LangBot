@@ -12,7 +12,7 @@ import {
   writeResult,
 } from "./lib/langbot-e2e.mjs";
 
-const RUNNER_ID = "plugin:langbot/acp-agent-runner/default";
+const RUNNER_ID = "plugin:langbot-team/ACPAgentRunner/default";
 const DEFAULT_PIPELINE_NAME = "Agent QA ACP Claude Debug Chat";
 const DEFAULT_LOCAL_PASSWORD = "LangBotE2ELocalPass!2026";
 const caseId = "ensure-acp-agent-runner-pipeline";
@@ -78,6 +78,14 @@ try {
     provider: "claude-code",
     location: "remote-ssh",
     workspace: remoteWorkspace,
+    "env-json": JSON.stringify({
+      ALL_PROXY: "",
+      all_proxy: "",
+      HTTP_PROXY: "",
+      http_proxy: "",
+      HTTPS_PROXY: "",
+      https_proxy: "",
+    }),
     "ssh-target": sshTarget,
     "ssh-port": Number.parseInt(sshPort, 10),
     "ssh-identity-file": sshIdentityFile,
@@ -102,7 +110,7 @@ try {
   });
   Object.assign(result, prepared);
   if (result.pipeline_id) {
-    result.pipeline_url = `${frontendUrl.replace(/\/$/, "")}/home/pipelines?id=${encodeURIComponent(result.pipeline_id)}`;
+    result.pipeline_url = `${frontendUrl.replace(/\/$/, "")}/home/agents?id=${encodeURIComponent(result.pipeline_id)}`;
   }
 
   if (writeEnv && result.pipeline_id) {

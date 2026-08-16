@@ -14,6 +14,7 @@ from langbot.pkg.platform.botmgr import PlatformManager, RuntimeBot
 from langbot.pkg.workspace.entities import WorkspaceExecutionBinding
 from langbot.pkg.workspace.errors import WorkspaceInvariantError
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
+from tests.factories import friend_message_event, text_chain
 
 
 WORKSPACE_A = '00000000-0000-0000-0000-00000000000a'
@@ -37,8 +38,7 @@ def _runtime(application, workspace_uuid: str, bot_uuid: str) -> RuntimeBot:
         workspace_uuid=workspace_uuid,
         name='Same Name',
         enable=True,
-        pipeline_routing_rules=[],
-        use_pipeline_uuid=None,
+        event_bindings=[],
     )
     return RuntimeBot(
         ap=application,
@@ -273,7 +273,7 @@ async def test_cloud_startup_reuses_validated_platform_binding():
         adapter='probe',
         adapter_config={},
         enable=False,
-        pipeline_routing_rules=[],
+        event_bindings=[],
     )
     workspace_service = SimpleNamespace(
         list_active_execution_bindings=AsyncMock(return_value=[binding]),
@@ -321,8 +321,7 @@ def test_runtime_bot_rejects_workspace_mismatch():
         workspace_uuid=WORKSPACE_A,
         name='Bot',
         enable=True,
-        pipeline_routing_rules=[],
-        use_pipeline_uuid=None,
+        event_bindings=[],
     )
     with pytest.raises(WorkspaceRequiredError):
         RuntimeBot(
@@ -381,8 +380,7 @@ async def test_platform_callback_carries_scope_without_holding_database_session(
         workspace_uuid=WORKSPACE_A,
         name='Bot',
         enable=True,
-        pipeline_routing_rules=[],
-        use_pipeline_uuid=None,
+        event_bindings=[],
     )
     logger = SimpleNamespace(info=AsyncMock(), error=AsyncMock())
     runtime = RuntimeBot(
@@ -395,7 +393,7 @@ async def test_platform_callback_carries_scope_without_holding_database_session(
     await runtime.initialize()
 
     listener = adapter.listeners[platform_events.FriendMessage]
-    event = SimpleNamespace(message_chain=[], sender=SimpleNamespace(id='user'))
+    event = friend_message_event(text_chain('hello'), sender_id='user')
     await listener(event, adapter)
 
     assert persistence_mgr.active_workspace is None

@@ -1,0 +1,55 @@
+id: workspace-plugin-pages-smoke
+title: "Major workspace plugin pages render and answer read-only Page APIs"
+mode: agent-browser
+area: plugin
+type: smoke
+priority: p0
+risk: high
+ci_eligible: false
+tags:
+  - workspace
+  - plugin
+  - page
+  - browser
+skills:
+  - langbot-env-setup
+  - langbot-testing
+env:
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BACKEND_URL
+automation: scripts/e2e/workspace-plugin-pages-smoke.mjs
+automation_env:
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_BROWSER_PROFILE
+  - LANGBOT_CHROMIUM_EXECUTABLE
+preconditions:
+  - "Control Plane, LongTermMemory, LangRAG, and Skill Authoring are installed and initialized in the selected local test instance."
+  - "The browser profile is authenticated for the same LangBot backend, or LANGBOT_E2E_LOGIN_USER is configured for local recovery login."
+steps:
+  - "Open each /home/plugin-pages route through the LangBot WebUI."
+  - "Verify the iframe visibly renders Agent Control Plane, Memory Console, LangRAG Observability, and Skill Authoring."
+  - "Using the same browser login, call the read-only Page APIs /health, /summary, /snapshot, and /health respectively."
+  - "Capture one screenshot per page plus browser console/network diagnostics."
+checks:
+  - "Every page has ui_status pass and api_status pass."
+  - "No blank iframe, Page API error, frontend uncaught exception, or HTTP 5xx is recorded."
+  - "No plugin is silently skipped when missing; fixture absence is blocked."
+evidence_required:
+  - ui
+  - screenshot
+  - console
+  - network
+  - api_diagnostic
+diagnostics:
+  - "blocked means one or more required plugins are not installed in the selected test instance."
+  - "A UI-only failure with a passing Page API usually points to plugin asset routing, iframe loading, or frontend page discovery."
+success_patterns:
+  - "All workspace plugin pages rendered"
+failure_patterns:
+  - "Required plugin page fixture"
+  - "Page API"
+  - "Browser diagnostics found"
+troubleshooting:
+  - plugin-runtime-timeout
+  - backend-not-listening

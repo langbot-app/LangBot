@@ -47,3 +47,10 @@ def read_resource_file_bytes(resource_path: str) -> bytes:
 
 def list_resource_files(resource_path: str) -> list[str]:
     return [f.name for f in importlib.resources.files('langbot').joinpath(resource_path).iterdir()]
+
+
+def is_resource_dir(resource_path: str) -> bool:
+    try:
+        return importlib.resources.files('langbot').joinpath(resource_path).is_dir()
+    except (TypeError, FileNotFoundError):
+        return False

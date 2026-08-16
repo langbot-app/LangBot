@@ -162,6 +162,45 @@ export interface ApiRespPipelines {
   pipelines: Pipeline[];
 }
 
+export type AgentKind = 'agent' | 'pipeline';
+
+export interface AgentCapability {
+  supported_event_patterns: string[];
+  message_only: boolean;
+}
+
+export interface Agent {
+  uuid?: string;
+  name: string;
+  description: string;
+  emoji?: string;
+  kind: AgentKind;
+  component_ref?: string | null;
+  config?: Record<string, unknown>;
+  enabled?: boolean;
+  supported_event_patterns?: string[];
+  capability?: AgentCapability;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ApiRespAgents {
+  agents: Agent[];
+}
+
+export interface ApiRespAgent {
+  agent: Agent;
+}
+
+export interface GetAgentMetadataResponseData {
+  runner_config?: PipelineConfigTab;
+  kinds: Array<{
+    name: AgentKind;
+    supported_event_patterns: string[];
+    message_only: boolean;
+  }>;
+}
+
 export interface Pipeline {
   uuid?: string;
   name: string;
@@ -190,7 +229,10 @@ export interface Adapter {
   icon?: string;
   spec: {
     categories?: string[];
+    legacy?: boolean;
     help_links?: Record<string, string>;
+    supported_events?: string[];
+    supported_apis?: string[];
     config: IDynamicFormItemSchema[];
   };
 }
@@ -210,31 +252,98 @@ export interface Bot {
   enable?: boolean;
   adapter: string;
   adapter_config: object;
-  use_pipeline_name?: string;
-  use_pipeline_uuid?: string;
-  pipeline_routing_rules?: PipelineRoutingRule[];
+  event_bindings?: EventBinding[];
   created_at?: string;
   updated_at?: string;
   adapter_runtime_values?: object;
 }
 
-export type RoutingRuleOperator =
-  | 'eq'
-  | 'neq'
-  | 'contains'
-  | 'not_contains'
-  | 'starts_with'
-  | 'regex';
+export interface EventBinding {
+  id?: string;
+  event_pattern: string;
+  target_type: 'agent' | 'pipeline' | 'discard';
+  target_uuid: string;
+  filters?: Array<Record<string, unknown>>;
+  priority: number;
+  enabled: boolean;
+  description?: string;
+  order?: number;
+}
 
-export interface PipelineRoutingRule {
-  type:
-    | 'launcher_type'
-    | 'launcher_id'
-    | 'message_content'
-    | 'message_has_element';
-  operator: RoutingRuleOperator;
-  value: string;
-  pipeline_uuid: string;
+export interface BotRouteDryRunRequest {
+  event_type: string;
+  payload?: Record<string, unknown>;
+  event_bindings?: EventBinding[];
+}
+
+export interface BotRouteTestRequest {
+  event_type: string;
+  payload?: Record<string, unknown>;
+}
+
+export interface BotRouteDryRunTarget {
+  target_type: EventBinding['target_type'];
+  target_uuid?: string | null;
+  target_name?: string | null;
+  kind?: AgentKind | 'discard' | null;
+}
+
+export interface BotRouteDryRunResult {
+  matched: boolean;
+  target?: BotRouteDryRunTarget | null;
+  binding_id?: string | null;
+  event_pattern?: string | null;
+  target_type?: EventBinding['target_type'] | null;
+  target_uuid?: string | null;
+  reason?: string | null;
+  failure_code?: string | null;
+  diagnostic_steps: string[];
+  diagnostic_details?: Array<Record<string, unknown>>;
+  matched_binding_id?: string | null;
+  matched_binding_index?: number | null;
+}
+
+export interface BotEventRouteStatus {
+  binding_id?: string | null;
+  event_pattern?: string | null;
+  event_type?: string | null;
+  target_type?: EventBinding['target_type'] | string | null;
+  target_uuid?: string | null;
+  last_status?:
+    | 'matched'
+    | 'delivered'
+    | 'discarded'
+    | 'failed'
+    | 'not_matched'
+    | string
+    | null;
+  failure_code?: string | null;
+  reason?: string | null;
+  run_id?: string | null;
+  timestamp?: number | null;
+  seq_id?: number | null;
+  level?: string | null;
+  message?: string | null;
+  order?: number | null;
+  enabled?: boolean;
+  current?: boolean;
+}
+
+export interface BotEventRouteStatusResponse {
+  routes: BotEventRouteStatus[];
+  unmatched_events: BotEventRouteStatus[];
+  stale_routes: BotEventRouteStatus[];
+}
+
+export interface BotRouteTestResult {
+  dispatched: boolean;
+  event_type: string;
+  status?: BotEventRouteStatus['last_status'];
+  binding_id?: string | null;
+  failure_code?: string | null;
+  reason?: string | null;
+  suppressed_outputs: Array<Record<string, unknown>>;
+  route_status: BotEventRouteStatusResponse;
 }
 
 export interface ApiRespKnowledgeBases {
@@ -361,6 +470,7 @@ export interface SystemLimitation {
 
 export interface WizardProgress {
   step: number;
+  selected_scenario?: string | null;
   selected_adapter: string | null;
   created_bot_uuid: string | null;
   bot_saved: boolean;
@@ -725,7 +835,10 @@ export interface ApiRespTools {
 }
 
 export interface ApiRespToolDetail {
-  tool: PluginTool;
+  tool: Omit<PluginTool, 'source' | 'source_id'> & {
+    source: NonNullable<PluginTool['source']>;
+    source_id: string | null;
+  };
 }
 
 // Skills

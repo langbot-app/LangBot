@@ -83,6 +83,7 @@ def fake_embed_app():
 
     mock_runtime_bot = Mock()
     mock_runtime_bot.bot_entity = mock_bot_entity
+    mock_runtime_bot.get_pipeline_target_for_event_type = Mock(return_value='test-pipeline-uuid')
     mock_runtime_bot.execution_context = SimpleNamespace(
         instance_uuid='instance-test',
         workspace_uuid='workspace-test',

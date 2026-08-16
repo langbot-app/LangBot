@@ -6,6 +6,10 @@ from ....authz import Permission, has_permission
 from ....context import RequestContext
 from ....service.secrets import redact_secrets
 from ... import group
+from ......pipeline.extension_preferences import (
+    normalize_extension_preferences,
+    validate_extension_preferences,
+)
 
 
 @group.group_class('pipelines', '/api/v1/pipelines')
@@ -39,7 +43,13 @@ class PipelinesRouterGroup(group.RouterGroup):
             permission=Permission.RESOURCE_MANAGE,
         )
         async def _(request_context: RequestContext) -> str:
-            pipeline_uuid = await self.ap.pipeline_service.create_pipeline(request_context, await quart.request.json)
+            try:
+                pipeline_uuid = await self.ap.pipeline_service.create_pipeline(
+                    request_context,
+                    await quart.request.json,
+                )
+            except ValueError as exc:
+                return self.http_status(400, -1, str(exc))
             return self.success(data={'uuid': pipeline_uuid})
 
         @self.route(
@@ -116,8 +126,14 @@ class PipelinesRouterGroup(group.RouterGroup):
                 await self.ap.plugin_connector.require_workspace_context(request_context)
             plugins = await self.ap.plugin_connector.list_plugins(component_kinds=pipeline_component_kinds)
             mcp_servers = await self.ap.mcp_service.get_mcp_servers(request_context, contain_runtime_info=True)
-            available_skills = await self.ap.skill_service.list_skills(request_context)
-            extensions_prefs = pipeline.get('extensions_preferences', {})
+            try:
+                available_skills = await self.ap.skill_service.list_skills(request_context)
+            except Exception as exc:
+                self.ap.logger.warning('Unable to list skills for pipeline extensions: %s', exc)
+                available_skills = []
+            extensions_prefs = normalize_extension_preferences(
+                pipeline.get('extensions_preferences')
+            )
             return self.success(
                 data={
                     'enable_all_plugins': extensions_prefs.get('enable_all_plugins', True),
@@ -142,16 +158,44 @@ class PipelinesRouterGroup(group.RouterGroup):
         )
         async def _(pipeline_uuid: str, request_context: RequestContext) -> str:
             json_data = await quart.request.json
-            await self.ap.pipeline_service.update_pipeline_extensions(
-                request_context,
-                pipeline_uuid,
-                json_data.get('bound_plugins', []),
-                json_data.get('bound_mcp_servers', []),
-                json_data.get('enable_all_plugins', True),
-                json_data.get('enable_all_mcp_servers', True),
-                bound_skills=json_data.get('bound_skills', []),
-                enable_all_skills=json_data.get('enable_all_skills', True),
-                bound_mcp_resources=json_data.get('bound_mcp_resources'),
-                mcp_resource_agent_read_enabled=json_data.get('mcp_resource_agent_read_enabled'),
-            )
+            try:
+                validate_extension_preferences(
+                    {
+                        canonical: json_data[field]
+                        for field, canonical in {
+                            'bound_plugins': 'plugins',
+                            'bound_mcp_servers': 'mcp_servers',
+                            'bound_skills': 'skills',
+                            'bound_mcp_resources': 'mcp_resources',
+                            'enable_all_plugins': 'enable_all_plugins',
+                            'enable_all_mcp_servers': 'enable_all_mcp_servers',
+                            'enable_all_skills': 'enable_all_skills',
+                            'mcp_resource_agent_read_enabled': 'mcp_resource_agent_read_enabled',
+                        }.items()
+                        if field in json_data
+                    },
+                    context='Pipeline extension',
+                    field_aliases={
+                        'plugins': 'bound_plugins',
+                        'mcp_servers': 'bound_mcp_servers',
+                        'skills': 'bound_skills',
+                        'mcp_resources': 'bound_mcp_resources',
+                    },
+                )
+                await self.ap.pipeline_service.update_pipeline_extensions(
+                    request_context,
+                    pipeline_uuid,
+                    json_data.get('bound_plugins', []),
+                    json_data.get('bound_mcp_servers', []),
+                    json_data.get('enable_all_plugins', True),
+                    json_data.get('enable_all_mcp_servers', True),
+                    bound_skills=json_data.get('bound_skills', []),
+                    enable_all_skills=json_data.get('enable_all_skills', True),
+                    bound_mcp_resources=json_data.get('bound_mcp_resources'),
+                    mcp_resource_agent_read_enabled=json_data.get(
+                        'mcp_resource_agent_read_enabled'
+                    ),
+                )
+            except ValueError as exc:
+                return self.http_status(400, -1, str(exc))
             return self.success()

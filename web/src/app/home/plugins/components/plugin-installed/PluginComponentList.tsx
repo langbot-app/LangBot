@@ -6,6 +6,7 @@ import {
   Book,
   FileText,
   PanelTop,
+  Bot,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 
@@ -31,6 +32,7 @@ export default function PluginComponentList({
     KnowledgeEngine: <Book className="w-5 h-5" />,
     Parser: <FileText className="w-5 h-5" />,
     Page: <PanelTop className="w-5 h-5" />,
+    AgentRunner: <Bot className="w-5 h-5" />,
   };
 
   const componentKindList = Object.keys(components || {});

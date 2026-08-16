@@ -6,6 +6,9 @@ import {
   ApiRespProviderLLMModel,
   LLMModel,
   ApiRespPipelines,
+  ApiRespAgents,
+  ApiRespAgent,
+  Agent,
   Pipeline,
   ApiRespPlatformAdapters,
   ApiRespPlatformAdapter,
@@ -22,6 +25,7 @@ import {
   ApiRespUserToken,
   GetPipelineResponseData,
   GetPipelineMetadataResponseData,
+  GetAgentMetadataResponseData,
   AsyncTask,
   ApiRespWebChatMessages,
   ApiRespKnowledgeBases,
@@ -55,6 +59,11 @@ import {
   Skill,
   ApiRespSkills,
   ApiRespSkill,
+  BotRouteDryRunRequest,
+  BotRouteDryRunResult,
+  BotRouteTestRequest,
+  BotRouteTestResult,
+  BotEventRouteStatusResponse,
 } from '@/app/infra/entities/api';
 import { Plugin } from '@/app/infra/entities/plugin';
 import type { PluginLogEntry } from '@/app/infra/entities/plugin';
@@ -239,6 +248,37 @@ export class BackendClient extends BaseHttpClient {
   }
 
   // ============ Pipeline API ============
+  public getAgents(
+    sortBy?: string,
+    sortOrder?: string,
+  ): Promise<ApiRespAgents> {
+    const params = new URLSearchParams();
+    if (sortBy) params.append('sort_by', sortBy);
+    if (sortOrder) params.append('sort_order', sortOrder);
+    const queryString = params.toString();
+    return this.get(`/api/v1/agents${queryString ? `?${queryString}` : ''}`);
+  }
+
+  public getAgent(uuid: string): Promise<ApiRespAgent> {
+    return this.get(`/api/v1/agents/${uuid}`);
+  }
+
+  public getAgentMetadata(): Promise<GetAgentMetadataResponseData> {
+    return this.get('/api/v1/agents/_/metadata');
+  }
+
+  public createAgent(agent: Agent): Promise<{ uuid: string; kind: string }> {
+    return this.post('/api/v1/agents', agent);
+  }
+
+  public updateAgent(uuid: string, agent: Partial<Agent>): Promise<object> {
+    return this.put(`/api/v1/agents/${uuid}`, agent);
+  }
+
+  public deleteAgent(uuid: string): Promise<object> {
+    return this.delete(`/api/v1/agents/${uuid}`);
+  }
+
   public getGeneralPipelineMetadata(): Promise<GetPipelineMetadataResponseData> {
     // as designed, this method will be deprecated, and only for developer to check the prefered config schema
     return this.get('/api/v1/pipelines/_/metadata');
@@ -427,6 +467,32 @@ export class BackendClient extends BaseHttpClient {
 
   public updateBot(uuid: string, bot: Bot): Promise<object> {
     return this.put(`/api/v1/platform/bots/${uuid}`, bot);
+  }
+
+  public dryRunBotEventRoute(
+    botId: string,
+    request: BotRouteDryRunRequest,
+  ): Promise<BotRouteDryRunResult> {
+    return this.post(
+      `/api/v1/platform/bots/${botId}/event-routes/dry-run`,
+      request,
+    );
+  }
+
+  public getBotEventRouteStatuses(
+    botId: string,
+  ): Promise<BotEventRouteStatusResponse> {
+    return this.get(`/api/v1/platform/bots/${botId}/event-routes/status`);
+  }
+
+  public testBotEventRoute(
+    botId: string,
+    request: BotRouteTestRequest,
+  ): Promise<BotRouteTestResult> {
+    return this.post(
+      `/api/v1/platform/bots/${botId}/event-routes/test`,
+      request,
+    );
   }
 
   public deleteBot(uuid: string): Promise<object> {
@@ -722,8 +788,37 @@ export class BackendClient extends BaseHttpClient {
     name: string,
     filepath: string,
   ): Promise<string> {
-    return this.getAuthenticatedObjectURL(
+    return this.getAuthenticatedPluginPageURL(
       `/api/v1/plugins/${author}/${name}/authenticated-assets/${filepath}`,
+    );
+  }
+
+  private async getAuthenticatedPluginPageURL(path: string): Promise<string> {
+    const response = await this.instance.get<Blob>(path, {
+      responseType: 'blob',
+    });
+    if (!response.data.type.startsWith('text/html')) {
+      return URL.createObjectURL(response.data);
+    }
+
+    const html = await response.data.text();
+    const pageSdkPattern =
+      /<script\b[^>]*\bsrc=(['"])\/api\/v1\/plugins\/_sdk\/page-sdk\.js\1[^>]*>\s*<\/script>/i;
+    if (!pageSdkPattern.test(html)) {
+      return URL.createObjectURL(response.data);
+    }
+
+    const sdkResponse = await this.instance.get<string>(
+      '/api/v1/plugins/_sdk/page-sdk.js',
+      { responseType: 'text' },
+    );
+    const inlineSdk = sdkResponse.data.replace(/<\/script/gi, '<\\/script');
+    const hydratedHtml = html.replace(
+      pageSdkPattern,
+      `<script>${inlineSdk}</script>`,
+    );
+    return URL.createObjectURL(
+      new Blob([hydratedHtml], { type: response.data.type }),
     );
   }
 
@@ -954,8 +1049,14 @@ export class BackendClient extends BaseHttpClient {
     );
   }
 
-  public getToolDetail(toolName: string): Promise<ApiRespToolDetail> {
-    return this.get(`/api/v1/tools/${toolName}`);
+  public getToolDetail(
+    toolName: string,
+    pipelineId?: string,
+  ): Promise<ApiRespToolDetail> {
+    return this.get(
+      `/api/v1/tools/${encodeURIComponent(toolName)}`,
+      pipelineId ? { pipeline_uuid: pipelineId } : undefined,
+    );
   }
 
   public getMCPServer(serverName: string): Promise<ApiRespMCPServer> {
@@ -1044,6 +1145,7 @@ export class BackendClient extends BaseHttpClient {
 
   public saveWizardProgress(progress: {
     step: number;
+    selected_scenario?: string | null;
     selected_adapter: string | null;
     created_bot_uuid: string | null;
     bot_saved: boolean;

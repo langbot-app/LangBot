@@ -46,6 +46,7 @@ TENANT_TABLE_COLUMNS: dict[str, str] = {
     'support_admin_temporary_sessions': 'workspace_uuid',
     'workspace_metadata': 'workspace_uuid',
     'api_keys': 'workspace_uuid',
+    'agents': 'workspace_uuid',
     'bots': 'workspace_uuid',
     'bot_admins': 'workspace_uuid',
     'binary_storages': 'workspace_uuid',

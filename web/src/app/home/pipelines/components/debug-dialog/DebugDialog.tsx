@@ -49,6 +49,68 @@ interface DebugDialogProps {
   onConnectionStatusChange?: (isConnected: boolean) => void;
 }
 
+function AuthenticatedMessageImage({
+  image,
+  onOpen,
+}: {
+  image: Image;
+  onOpen: (imageUrl: string) => void;
+}) {
+  const [downloadedUrl, setDownloadedUrl] = useState('');
+  const directUrl =
+    image.url ||
+    (image.base64
+      ? image.base64.startsWith('data:')
+        ? image.base64
+        : `data:image/jpeg;base64,${image.base64}`
+      : '');
+
+  useEffect(() => {
+    if (directUrl || !image.path) return;
+
+    let disposed = false;
+    let objectUrl = '';
+    const encodedPath = image.path
+      .split('/')
+      .map((segment) => encodeURIComponent(segment))
+      .join('/');
+
+    void httpClient
+      .downloadFile(`/api/v1/files/image/${encodedPath}`)
+      .then((response) => {
+        objectUrl = URL.createObjectURL(response.data);
+        if (disposed) {
+          URL.revokeObjectURL(objectUrl);
+          return;
+        }
+        setDownloadedUrl(objectUrl);
+      })
+      .catch((error) => {
+        console.error('Failed to load Debug Chat image:', error);
+      });
+
+    return () => {
+      disposed = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [directUrl, image.path]);
+
+  const imageUrl = directUrl || downloadedUrl;
+  if (!imageUrl) return null;
+
+  return (
+    <div className="my-2">
+      <img
+        src={imageUrl}
+        alt="Image"
+        data-debug-chat-message-image="true"
+        className="max-w-full max-h-96 rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+        onClick={() => onOpen(imageUrl)}
+      />
+    </div>
+  );
+}
+
 export default function DebugDialog({
   open,
   pipelineId,
@@ -477,22 +539,15 @@ export default function DebugDialog({
 
       case 'Image': {
         const img = component as Image;
-        const imageUrl = img.url || (img.base64 ? img.base64 : '');
-
-        if (!imageUrl) return null;
-
         return (
-          <div key={index} className="my-2">
-            <img
-              src={imageUrl}
-              alt="Image"
-              className="max-w-full max-h-96 rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
-              onClick={() => {
-                setPreviewImageUrl(imageUrl);
-                setShowImagePreview(true);
-              }}
-            />
-          </div>
+          <AuthenticatedMessageImage
+            key={`${index}-${img.path || img.url || 'inline'}`}
+            image={img}
+            onOpen={(imageUrl) => {
+              setPreviewImageUrl(imageUrl);
+              setShowImagePreview(true);
+            }}
+          />
         );
       }
 
@@ -907,6 +962,7 @@ export default function DebugDialog({
                     <img
                       src={image.preview}
                       alt={`preview-${index}`}
+                      data-debug-chat-attachment-preview="true"
                       className="w-20 h-20 object-cover rounded-lg border"
                     />
                   ) : (

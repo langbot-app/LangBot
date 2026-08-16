@@ -83,7 +83,7 @@ Config keys to verify in `data/config.yaml` / `src/langbot/templates/config.yaml
 ## Change Rules
 
 - HTTP API changes that should be agent-accessible must update the matching MCP tool in `src/langbot/pkg/api/mcp/server.py` and the relevant skill under `skills/` in the same pass.
-- New schema changes use Alembic under `src/langbot/pkg/persistence/alembic/versions/`; do not add legacy `dbmXXX` migrations.
+- New schema changes use Alembic under `src/langbot/pkg/persistence/alembic/versions/`. LangBot 4.x does not support upgrading 3.x databases.
 - New platform behavior belongs in platform adapters only for platform translation; pipeline/business logic belongs in `pkg/pipeline/` or services.
 - User-facing strings must support i18n (`en_US`, `zh_Hans`; include `ja_JP` where the repo already does).
 - Code comments and docstrings must be English.

@@ -16,9 +16,11 @@ from langbot_plugin.api.entities.builtin.provider.message import Message
 from langbot_plugin.api.entities.builtin.provider.prompt import Prompt
 from langbot_plugin.api.entities.builtin.provider.session import Conversation, LauncherTypes, Session
 
+from langbot.pkg.agent.runner.descriptor import AgentRunnerDescriptor
 from langbot.pkg.api.http.context import ExecutionContext
 
 
+_RUNNER_ID = 'plugin:langbot-team/LocalAgent/default'
 _CONTEXT = ExecutionContext(
     instance_uuid='instance-a',
     workspace_uuid='workspace-a',
@@ -45,11 +47,13 @@ def _make_query() -> Query:
         pipeline_uuid='pipe-1',
         pipeline_config={
             'ai': {
-                'runner': {'runner': 'local-agent'},
-                'local-agent': {
-                    'model': {'primary': 'model-1', 'fallbacks': []},
-                    'prompt': 'default',
-                    'knowledge-bases': [],
+                'runner': {'id': _RUNNER_ID},
+                'runner_config': {
+                    _RUNNER_ID: {
+                        'model': {'primary': 'model-1', 'fallbacks': []},
+                        'prompt': [{'role': 'system', 'content': 'system prompt'}],
+                        'knowledge-bases': [],
+                    }
                 },
             },
             'trigger': {'misc': {}},
@@ -74,7 +78,26 @@ def _make_app(*, skill_service) -> SimpleNamespace:
     session = Session(launcher_type=LauncherTypes.PERSON, launcher_id='launcher-1', sender_id='sender-1')
     conversation = _make_conversation()
     model = SimpleNamespace(model_entity=SimpleNamespace(uuid='model-1', abilities={'func_call'}))
-    tool_mgr = SimpleNamespace(get_all_tools=AsyncMock(return_value=[]))
+    tool_mgr = SimpleNamespace(get_resolved_tool_catalog=AsyncMock(return_value=[]))
+    descriptor = AgentRunnerDescriptor(
+        id=_RUNNER_ID,
+        source='plugin',
+        label={'en_US': 'Local Agent'},
+        plugin_author='langbot-team',
+        plugin_name='LocalAgent',
+        runner_name='default',
+        config_schema=[
+            {'name': 'model', 'type': 'model-fallback-selector'},
+            {'name': 'prompt', 'type': 'prompt-editor'},
+            {'name': 'knowledge-bases', 'type': 'knowledge-base-multi-selector'},
+        ],
+        capabilities={
+            'tool_calling': True,
+            'knowledge_retrieval': True,
+            'multimodal_input': True,
+            'skill_authoring': True,
+        },
+    )
 
     return SimpleNamespace(
         sess_mgr=SimpleNamespace(
@@ -82,6 +105,7 @@ def _make_app(*, skill_service) -> SimpleNamespace:
             get_conversation=AsyncMock(return_value=conversation),
         ),
         model_mgr=SimpleNamespace(get_model_by_uuid=AsyncMock(return_value=model)),
+        agent_runner_registry=SimpleNamespace(get=AsyncMock(return_value=descriptor)),
         tool_mgr=tool_mgr,
         plugin_connector=SimpleNamespace(
             emit_event=AsyncMock(
@@ -124,7 +148,7 @@ def _import_preproc_modules():
 
 
 @pytest.mark.asyncio
-async def test_preproc_enables_skill_authoring_tools_when_skill_service_available():
+async def test_preproc_resolves_host_tools_for_plugin_runner():
     preproc_module, entities_module = _import_preproc_modules()
 
     app = _make_app(skill_service=SimpleNamespace())
@@ -133,7 +157,7 @@ async def test_preproc_enables_skill_authoring_tools_when_skill_service_availabl
     result = await stage.process(_make_query(), 'PreProcessor')
 
     assert result.result_type == entities_module.ResultType.CONTINUE
-    app.tool_mgr.get_all_tools.assert_awaited_once_with(
+    app.tool_mgr.get_resolved_tool_catalog.assert_awaited_once_with(
         _CONTEXT,
         None,
         None,
@@ -143,7 +167,7 @@ async def test_preproc_enables_skill_authoring_tools_when_skill_service_availabl
 
 
 @pytest.mark.asyncio
-async def test_preproc_disables_skill_authoring_tools_when_skill_service_missing():
+async def test_preproc_keeps_host_skill_tools_visible_when_skill_service_missing():
     preproc_module, entities_module = _import_preproc_modules()
 
     app = _make_app(skill_service=None)
@@ -152,11 +176,11 @@ async def test_preproc_disables_skill_authoring_tools_when_skill_service_missing
     result = await stage.process(_make_query(), 'PreProcessor')
 
     assert result.result_type == entities_module.ResultType.CONTINUE
-    app.tool_mgr.get_all_tools.assert_awaited_once_with(
+    app.tool_mgr.get_resolved_tool_catalog.assert_awaited_once_with(
         _CONTEXT,
         None,
         None,
-        include_skill_authoring=False,
+        include_skill_authoring=True,
         include_mcp_resource_tools=True,
     )
 
@@ -173,7 +197,7 @@ async def test_preproc_disables_mcp_resource_tools_when_agent_reading_is_disable
     result = await stage.process(query, 'PreProcessor')
 
     assert result.result_type == entities_module.ResultType.CONTINUE
-    app.tool_mgr.get_all_tools.assert_awaited_once_with(
+    app.tool_mgr.get_resolved_tool_catalog.assert_awaited_once_with(
         _CONTEXT,
         None,
         None,
@@ -183,33 +207,27 @@ async def test_preproc_disables_mcp_resource_tools_when_agent_reading_is_disable
 
 
 @pytest.mark.asyncio
-async def test_preproc_injects_skill_index_into_system_prompt():
-    """The Tool Call activation pattern still needs the LLM to know which
-    skills exist. PreProcessor must append the SkillManager's index
-    addendum to the first system message."""
+async def test_preproc_leaves_skill_prompt_projection_to_agent_runner_resources():
     preproc_module, entities_module = _import_preproc_modules()
 
     app = _make_app(skill_service=SimpleNamespace())
-    addendum = '\n\nAvailable Skills:\n- demo (demo): Demo skill.\n\nCall activate ...'
-    app.skill_mgr.build_skill_aware_prompt_addition = Mock(return_value=addendum)
+    app.skill_mgr.build_skill_aware_prompt_addition = Mock(
+        return_value='\n\nAvailable Skills:\n- demo (demo): Demo skill.\n\nCall activate ...'
+    )
 
     query = _make_query()
     result = await stage_process_capture(preproc_module, app, query)
 
     assert result.result_type == entities_module.ResultType.CONTINUE
-    app.skill_mgr.build_skill_aware_prompt_addition.assert_called_once_with(
-        _CONTEXT,
-        bound_skills=None,
-    )
+    app.skill_mgr.build_skill_aware_prompt_addition.assert_not_called()
     head = query.prompt.messages[0]
     assert head.role == 'system'
-    assert head.content.endswith(addendum)
+    assert head.content == 'system prompt'
 
 
 @pytest.mark.asyncio
 async def test_preproc_respects_pipeline_bound_skills_subset():
-    """When ``enable_all_skills`` is false the bound list is passed through
-    so the addendum only mentions skills allowed for this pipeline."""
+    """When all skills are disabled, the authorized subset is retained for resources."""
     preproc_module, entities_module = _import_preproc_modules()
 
     app = _make_app(skill_service=SimpleNamespace())
@@ -227,10 +245,7 @@ async def test_preproc_respects_pipeline_bound_skills_subset():
     result = await stage_process_capture(preproc_module, app, query)
 
     assert result.result_type == entities_module.ResultType.CONTINUE
-    app.skill_mgr.build_skill_aware_prompt_addition.assert_called_once_with(
-        _CONTEXT,
-        bound_skills=['only-this'],
-    )
+    app.skill_mgr.build_skill_aware_prompt_addition.assert_not_called()
     assert query.variables.get('_pipeline_bound_skills') == ['only-this']
 
 
@@ -247,6 +262,7 @@ async def test_preproc_skips_injection_when_addendum_is_empty():
     result = await stage_process_capture(preproc_module, app, query)
 
     assert result.result_type == entities_module.ResultType.CONTINUE
+    app.skill_mgr.build_skill_aware_prompt_addition.assert_not_called()
     if query.prompt and query.prompt.messages:
         assert 'Available Skills' not in (query.prompt.messages[0].content or '')
 

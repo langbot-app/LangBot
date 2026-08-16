@@ -123,6 +123,7 @@ class SkillToolLoader(loader.ToolLoader):
 
         # Register activated skill for sandbox mount path resolution
         skill_loader.register_activated_skill(query, skill_data)
+        await skill_loader.persist_activated_skill(self.ap, query, skill_name)
 
         # Return SKILL.md content as Tool Result (injects into context)
         instructions = skill_data.get('instructions', '')
@@ -153,6 +154,8 @@ class SkillToolLoader(loader.ToolLoader):
 
     async def _invoke_register_skill(self, parameters: dict, query) -> typing.Any:
         """Register a skill from sandbox directory to data/skills/."""
+        from . import skill as skill_loader
+
         sandbox_path = str(parameters.get('path', '') or '').strip()
         if not sandbox_path:
             raise ValueError('path is required')
@@ -185,6 +188,7 @@ class SkillToolLoader(loader.ToolLoader):
                 'package_root': host_path,
             },
         )
+        skill_loader.register_created_skill_visibility(query, skill_name)
 
         return {
             'registered': True,

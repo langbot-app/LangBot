@@ -9,9 +9,9 @@ const appRoutes = [
     bodyText: 'Select a bot from the sidebar',
   },
   {
-    path: '/home/pipelines',
-    heading: 'Pipelines',
-    bodyText: 'Select a pipeline from the sidebar',
+    path: '/home/agents',
+    heading: 'Processors',
+    bodyText: 'Select an Agent or Pipeline from the sidebar',
   },
   {
     path: '/home/extensions',

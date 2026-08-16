@@ -13,13 +13,13 @@ import re
 import sqlalchemy.ext.asyncio as sqlalchemy_asyncio
 import sqlalchemy
 
-from . import database, migration, sqlite_migration_backup
+from . import database, sqlite_migration_backup
 from ..entity.persistence import base, metadata, model as persistence_model
 from ..entity.persistence import workspace as persistence_workspace
 from ..entity import persistence
 from ..core import app
 from ..utils import constants, importutil
-from . import databases, migrations
+from . import databases
 from .tenant_uow import (
     ActivePersistenceScope,
     ActiveScopedTransaction,
@@ -45,7 +45,6 @@ from .tenant_uow import (
 )
 
 importutil.import_modules_in_pkg(databases)
-importutil.import_modules_in_pkg(migrations)
 importutil.import_modules_in_pkg(persistence)
 
 
@@ -57,6 +56,7 @@ _ALEMBIC_TENANT_TABLES = {
     'support_admin_temporary_sessions',
     'workspace_metadata',
     'api_keys',
+    'agents',
     'bots',
     'bot_admins',
     'binary_storages',
@@ -242,38 +242,6 @@ class PersistenceManager:
 
         await self.create_tables()
 
-        # run migrations
-        database_version = await self.execute_async(
-            sqlalchemy.select(metadata.Metadata).where(metadata.Metadata.key == 'database_version')
-        )
-
-        database_version = int(database_version.fetchone()[1])
-        required_database_version = constants.required_database_version
-
-        if database_version < required_database_version:
-            migrations = migration.preregistered_db_migrations
-            migrations.sort(key=lambda x: x.number)
-
-            last_migration_number = database_version
-
-            for migration_cls in migrations:
-                migration_instance = migration_cls(self.ap)
-
-                if (
-                    migration_instance.number > database_version
-                    and migration_instance.number <= required_database_version
-                ):
-                    await migration_instance.upgrade()
-                    await self.execute_async(
-                        sqlalchemy.update(metadata.Metadata)
-                        .where(metadata.Metadata.key == 'database_version')
-                        .values({'value': str(migration_instance.number)})
-                    )
-                    last_migration_number = migration_instance.number
-                    self.ap.logger.info(f'Migration {migration_instance.number} completed.')
-
-            self.ap.logger.info(f'Successfully upgraded database to version {last_migration_number}.')
-
         if engine.dialect.name == 'postgresql':
             current_revision = await alembic_runner.get_alembic_current(engine)
             head_revision = alembic_runner.get_alembic_head()
@@ -326,19 +294,6 @@ class PersistenceManager:
             await conn.run_sync(create_compatible_tables)
 
             await conn.commit()
-
-        # ======= write initial data =======
-
-        # write initial metadata
-        self.ap.logger.info('Creating initial metadata...')
-        for item in metadata.initial_metadata:
-            # check if the item exists
-            result = await self.execute_async(
-                sqlalchemy.select(metadata.Metadata).where(metadata.Metadata.key == item['key'])
-            )
-            row = result.first()
-            if row is None:
-                await self.execute_async(sqlalchemy.insert(metadata.Metadata).values(item))
 
         await self._ensure_instance_uuid_metadata()
 
@@ -1694,7 +1649,7 @@ class PersistenceManager:
     # =================================
 
     async def _run_alembic_migrations(self, target_revision: str = 'head'):
-        """Run Alembic-based migrations after legacy migrations complete."""
+        """Run the supported Alembic-based 4.x migrations."""
         from . import alembic_runner
 
         engine = self.get_db_engine()

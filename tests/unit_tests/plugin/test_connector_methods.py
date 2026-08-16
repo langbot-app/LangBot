@@ -20,6 +20,7 @@ from tests.factories import text_query
 from langbot_plugin.entities.io.context import InstallationBinding
 
 from langbot.pkg.api.http.context import ExecutionContext
+from langbot.pkg.workspace.errors import WorkspaceNotFoundError
 
 
 TEST_EXECUTION_CONTEXT = ExecutionContext(
@@ -74,6 +75,55 @@ def configure_handler(connector, runtime_handler):
     runtime_handler.installation_scope = Mock(side_effect=lambda _binding: nullcontext())
     connector.handler = runtime_handler
     return runtime_handler
+
+
+async def _collect_agent_results(connector, context):
+    return [
+        result
+        async for result in connector.run_agent(
+            'qa',
+            'agent-runner',
+            'default',
+            context,
+        )
+    ]
+
+
+class TestRunAgent:
+    @pytest.mark.asyncio
+    async def test_revalidates_trusted_execution_context(self):
+        connector = create_mock_connector()
+        connector._current_execution_context = AsyncMock(return_value=TEST_EXECUTION_CONTEXT)
+
+        class RuntimeHandler:
+            installation_scope = Mock(side_effect=lambda _binding: nullcontext())
+
+            async def run_agent(self, *_args):
+                yield {'type': 'run.completed'}
+
+        configure_handler(connector, RuntimeHandler())
+
+        results = await _collect_agent_results(
+            connector,
+            {'conversation': {'workspace_id': TEST_EXECUTION_CONTEXT.workspace_uuid}},
+        )
+
+        assert results == [{'type': 'run.completed'}]
+        connector.require_workspace_context.assert_awaited_once_with(TEST_EXECUTION_CONTEXT)
+
+    @pytest.mark.asyncio
+    async def test_rejects_payload_workspace_mismatch(self):
+        connector = create_mock_connector()
+        connector._current_execution_context = AsyncMock(return_value=TEST_EXECUTION_CONTEXT)
+        configure_handler(connector, AsyncMock())
+
+        with pytest.raises(WorkspaceNotFoundError, match='Plugin resource not found'):
+            await _collect_agent_results(
+                connector,
+                {'conversation': {'workspace_id': 'workspace-other'}},
+            )
+
+        connector.require_workspace_context.assert_not_awaited()
 
 
 class TestListPlugins:

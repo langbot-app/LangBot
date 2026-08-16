@@ -1,6 +1,6 @@
 # Box 系统测试覆盖分析
 
-> 更新日期: 2026-06-02
+> 更新日期: 2026-07-12
 > 状态更新: 自部署社区版已具备发布条件（box 可选、降级完善、无迁移欠债）；工具调用循环上限、配额遍历异步化、`host_path` 挂载白名单等已落地。剩余多租户 / 安全硬化项见 [SaaS 阻塞项清单](./box-issues.md)。
 > 分支: `feat/sandbox` (LangBot + langbot-plugin-sdk)
 
@@ -15,13 +15,14 @@
 | `tests/unit_tests/box/test_box_connector.py` | 106 | 是 | Connector 传输决策、WS relay URL、dispose、心跳/重连 |
 | `tests/unit_tests/box/test_box_service.py` | 1224 | 是 | Service 核心逻辑（最全面） |
 | `tests/unit_tests/box/test_workspace.py` | 147 | 是 | WorkspaceSession 路径重写、payload 构建 |
+| `tests/unit_tests/agent/test_execution_context.py` | 144 | 是 | Pipeline/纯 EBA execution Query、canonical Host scope、adapter/instance 隔离 |
+| `tests/unit_tests/plugin/test_handler_actions.py` | 1071 | 是 | AgentRun CALL_TOOL 恢复 execution Query、纯 EBA native exec |
 | `tests/unit_tests/provider/test_mcp_box_integration.py` | 707 | 是 | MCP Box 配置、路径重写、payload、shared-session/multi-process、runtime info |
-| `tests/unit_tests/provider/test_localagent_sandbox_exec.py` | 444 | 是 | LocalAgent exec 流程、流式、Skill 激活 (Tool Call) |
 | `tests/unit_tests/provider/test_tool_manager_native.py` | 249 | 是 | ToolManager 路由、native tool CRUD、路径穿越、6 工具暴露 |
 | `tests/unit_tests/provider/test_skill_tools.py` | 582 | 是 | Skill 管理、Tool Call 激活、路径、authoring CRUD |
 | `tests/unit_tests/test_skill_service.py` | 396 | 是 | HTTP service：skill CRUD、zip/GitHub install、文件浏览 |
 | `tests/unit_tests/test_paths.py` | 23 | 是 | paths 工具 |
-| `tests/unit_tests/test_preproc.py` | 134 | 是 | PreProcessor 注入 session 变量、bound skill 解析 |
+| `tests/unit_tests/test_preproc.py` | 134 | 是 | PreProcessor 的模型、历史与 bound skill 解析 |
 | `tests/unit_tests/pipeline/test_chat_handler_logging.py` | 78 | 是 | Chat handler 日志相关回归 |
 | `tests/integration_tests/box/test_box_integration.py` | 329 | **否** | 真实容器执行、超时、网络隔离 |
 | `tests/integration_tests/box/test_box_mcp_integration.py` | 368 | **否** | Managed process、WS attach、shared-session 清理 |
@@ -35,7 +36,7 @@
 | `tests/box/test_e2b_backend.py` | 482 | 是 | E2B SDK mock、session 生命周期、extra_mounts 同步 |
 | `tests/box/test_skill_store.py` | 88 | 是 | zip preview/install、基础 file CRUD |
 
-**总计**: 17 个测试文件, ~6,500 行测试代码; 其中 2 个集成测试（约 700 行）在 CI 中不运行。
+**说明**: 本表按当前主链列出 Box 相关测试；其中 2 个真实容器集成测试默认不在 CI 中运行。
 
 > 较 2026-04-16 版增加：`test_skill_service.py`、`test_paths.py`、`test_preproc.py`、`test_chat_handler_logging.py` (LangBot)，`test_backend_selection.py`、`test_e2b_backend.py`、`test_skill_store.py` (SDK)。`test_nsjail_backend.py` 增加 CLI 兼容性 case (commit `feed530`)。
 
@@ -51,7 +52,7 @@
 | BoxService workspace quota | 优秀 | 前置/后置配额检查、超额清理 |
 | BoxService 输出截断 | 优秀 | 短/精确边界/长输出、独立 stderr |
 | BoxService 可观测性 | 优秀 | 状态报告、error ring buffer、buffer 上限 |
-| BoxService session 模板 | 良好 | `resolve_box_session_id` + `build_skill_extra_mounts` 在 service / native / mcp 三处都有覆盖 |
+| BoxService Host-owned session | 优秀 | 覆盖 `lb-box-<sha256>` 固定格式、原始 identity 不泄露、同 scope 稳定、不同 conversation/scope 隔离、缺 identity fail closed |
 | RPC client/server 协议 | 优秀 | execute/get_sessions/delete/create/conflict error |
 | BoxRuntimeConnector | 良好 | local/remote 模式、Docker 平台、relay URL、心跳与重连回调 |
 | BoxWorkspaceSession | 良好 | payload 构建、managed process 路径重写、stage host file |
@@ -61,7 +62,7 @@
 | Backend selection | 良好 | 显式 backend 优先级、local 探测顺序、配置变更触发 reselect |
 | MCP Box 集成 | 良好 | config model、路径重写、payload、shared-session 多 process |
 | Native tool loader | 良好 | 6 工具（exec/read/write/edit/glob/grep）、路径穿越拦截 |
-| LocalAgent exec 流程 | 良好 | 完整 tool call 循环、流式、system prompt 注入、Tool Call 激活 |
+| AgentRunner 工具入口 | 良好 | SDK proxy 与 MCP bridge 都映射到 `PluginToRuntimeAction.CALL_TOOL`；Host action 测试覆盖 run-scoped execution Query 与纯 EBA native exec |
 | Skill 系统 | 良好 | 加载、Tool Call 激活、marker、路径解析、authoring CRUD、HTTP service |
 
 ---

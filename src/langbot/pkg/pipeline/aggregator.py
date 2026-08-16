@@ -47,6 +47,7 @@ class PendingMessage:
     adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter
     pipeline_uuid: str | None
     routed_by_rule: bool = False
+    variables: dict[str, typing.Any] | None = None
     timestamp: float = field(default_factory=time.time)
 
 
@@ -148,6 +149,7 @@ class MessageAggregator:
         pipeline_uuid: str | None = None,
         routed_by_rule: bool = False,
         execution_context: ExecutionContext | None = None,
+        variables: dict[str, typing.Any] | None = None,
     ) -> None:
         """Buffer or directly enqueue a message in its trusted Workspace."""
 
@@ -157,6 +159,8 @@ class MessageAggregator:
             pipeline_uuid=pipeline_uuid,
         )
         enabled, delay = await self._get_aggregation_config(execution_context, pipeline_uuid)
+        if variables:
+            enabled = False
 
         if not enabled:
             await self.ap.query_pool.add_query(
@@ -170,6 +174,7 @@ class MessageAggregator:
                 pipeline_uuid=pipeline_uuid,
                 routed_by_rule=routed_by_rule,
                 execution_context=execution_context,
+                variables=variables,
             )
             return
 
@@ -191,6 +196,7 @@ class MessageAggregator:
             adapter=adapter,
             pipeline_uuid=pipeline_uuid,
             routed_by_rule=routed_by_rule,
+            variables=variables,
         )
 
         force_flush = False
@@ -247,6 +253,7 @@ class MessageAggregator:
                 pipeline_uuid=pipeline_uuid,
                 routed_by_rule=routed_by_rule,
                 execution_context=execution_context,
+                variables=variables,
             )
             return
 
@@ -317,6 +324,7 @@ class MessageAggregator:
             pipeline_uuid=message.pipeline_uuid,
             routed_by_rule=message.routed_by_rule,
             execution_context=message.execution_context,
+            variables=message.variables,
         )
 
     def _merge_messages(self, messages: list[PendingMessage]) -> PendingMessage:
@@ -364,6 +372,7 @@ class MessageAggregator:
             adapter=base_msg.adapter,
             pipeline_uuid=base_msg.pipeline_uuid,
             routed_by_rule=any(message.routed_by_rule for message in messages),
+            variables=base_msg.variables,
         )
 
     async def flush_all(self) -> None:

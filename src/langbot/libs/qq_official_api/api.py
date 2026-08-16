@@ -760,7 +760,6 @@ class QQOfficialClient:
         """
         if not await self.check_access_token():
             await self.get_access_token()
-
         if target_type == 'c2c':
             url = f'{self.base_url}/v2/users/{target_id}/messages'
         elif target_type == 'group':
@@ -769,7 +768,6 @@ class QQOfficialClient:
             url = f'{self.base_url}/channels/{target_id}/messages'
         else:
             raise ValueError(f'Unsupported target_type for markdown+keyboard: {target_type}')
-
         body: dict[str, Any] = {
             'msg_type': 2,
             'markdown': {'content': markdown_content},

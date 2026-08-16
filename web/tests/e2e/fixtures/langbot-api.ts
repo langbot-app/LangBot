@@ -17,6 +17,7 @@ interface PipelineMock {
   description: string;
   config: JsonRecord;
   emoji: string;
+  kind: 'agent' | 'pipeline';
   is_default: boolean;
   updated_at: string;
 }
@@ -62,6 +63,7 @@ interface BotMock {
   adapter: string;
   adapter_config: JsonRecord;
   use_pipeline_uuid?: string;
+  event_bindings: unknown[];
   pipeline_routing_rules: unknown[];
   adapter_runtime_values: JsonRecord;
   updated_at: string;
@@ -104,6 +106,7 @@ interface LangBotApiMockState {
   sessionAnalyses: Record<string, unknown>;
   sessionMessages: Record<string, unknown[]>;
   skills: SkillMock[];
+  withRunnerToolSelector: boolean;
   workspaces: WorkspaceEntryMock[];
 }
 
@@ -258,29 +261,52 @@ function makePipeline(
   data: JsonRecord,
   uuid = nextId(state, 'pipeline'),
 ): PipelineMock {
+  const kind =
+    data.kind === 'agent' || uuid.startsWith('agent-') ? 'agent' : 'pipeline';
+  const runnerId = 'plugin:langbot-team/LocalAgent/default';
+  const runnerConfig = {
+    model: {
+      primary: 'llm-valid',
+      fallbacks: [],
+    },
+    'enable-all-tools': false,
+    tools: ['unavailable_plugin_tool'],
+  };
+  const defaultConfig =
+    kind === 'agent'
+      ? {
+          runner: { id: runnerId, 'expire-time': 0 },
+          runner_config: { [runnerId]: runnerConfig },
+        }
+      : {
+          ai: {
+            runner: { id: runnerId, 'expire-time': 0 },
+            runner_config: { [runnerId]: runnerConfig },
+          },
+          trigger: {},
+          safety: {},
+          output: {},
+        };
   return {
     uuid,
     name: String(data.name || ''),
     description: String(data.description || ''),
-    config: (data.config as JsonRecord | undefined) || {
-      ai: {},
-      trigger: {},
-      safety: {},
-      output: {},
-    },
+    config: (data.config as JsonRecord | undefined) || defaultConfig,
     emoji: String(data.emoji || '⚙️'),
+    kind,
     is_default: false,
     updated_at: now(),
   };
 }
 
-function pipelineMetadata() {
+function pipelineMetadata(withRunnerToolSelector = false) {
+  const runnerId = 'plugin:langbot-team/LocalAgent/default';
   return {
     configs: [
       {
         name: 'ai',
         label: {
-          en_US: 'AI Capabilities',
+          en_US: 'AI Feature',
           zh_Hans: 'AI 能力',
         },
         stages: [
@@ -292,21 +318,20 @@ function pipelineMetadata() {
             },
             config: [
               {
-                id: 'runner',
-                name: 'runner',
+                name: 'id',
                 label: {
                   en_US: 'Runner',
                   zh_Hans: '运行器',
                 },
                 type: 'select',
                 required: true,
-                default: 'local-agent',
+                default: runnerId,
                 options: [
                   {
-                    name: 'local-agent',
+                    name: runnerId,
                     label: {
-                      en_US: 'Built-in Agent',
-                      zh_Hans: '内置 Agent',
+                      en_US: 'Local Agent',
+                      zh_Hans: '本地 Agent',
                     },
                   },
                 ],
@@ -314,10 +339,10 @@ function pipelineMetadata() {
             ],
           },
           {
-            name: 'local-agent',
+            name: runnerId,
             label: {
-              en_US: 'Built-in Agent',
-              zh_Hans: '内置 Agent',
+              en_US: 'Local Agent',
+              zh_Hans: '本地 Agent',
             },
             config: [
               {
@@ -334,9 +359,43 @@ function pipelineMetadata() {
                   fallbacks: [],
                 },
               },
+              ...(withRunnerToolSelector
+                ? [
+                    {
+                      id: 'plugin:langbot-team/LocalAgent/default.tools',
+                      name: 'tools',
+                      label: {
+                        en_US: 'Tools',
+                        zh_Hans: '工具',
+                      },
+                      type: 'rich-tools-selector',
+                      required: false,
+                      default: [],
+                    },
+                  ]
+                : []),
             ],
           },
         ],
+      },
+    ],
+  };
+}
+
+function agentMetadata(withRunnerToolSelector = false) {
+  const metadata = pipelineMetadata(withRunnerToolSelector);
+  return {
+    runner_config: metadata.configs[0],
+    kinds: [
+      {
+        name: 'agent',
+        supported_event_patterns: ['*'],
+        message_only: false,
+      },
+      {
+        name: 'pipeline',
+        supported_event_patterns: ['message.*'],
+        message_only: true,
       },
     ],
   };
@@ -444,6 +503,7 @@ function makeBot(
     use_pipeline_uuid: data.use_pipeline_uuid
       ? String(data.use_pipeline_uuid)
       : undefined,
+    event_bindings: (data.event_bindings as unknown[] | undefined) || [],
     pipeline_routing_rules:
       (data.pipeline_routing_rules as unknown[] | undefined) || [],
     adapter_runtime_values: {
@@ -613,8 +673,72 @@ async function handleBackendApi(route: Route, state: LangBotApiMockState) {
     return fulfillJson(route, { models: [] });
   }
 
+  if (path === '/api/v1/tools') {
+    return fulfillJson(route, {
+      tools: [
+        {
+          name: 'available_plugin_tool',
+          human_desc: 'Available plugin tool for frontend E2E tests.',
+          source: 'plugin',
+          source_id: 'qa/plugin-smoke',
+          source_name: 'qa/plugin-smoke',
+        },
+      ],
+    });
+  }
+
+  if (path === '/api/v1/agents/_/metadata') {
+    return fulfillJson(route, agentMetadata(true));
+  }
+
+  if (path === '/api/v1/agents') {
+    if (method === 'POST') {
+      const agent = makePipeline(state, parseJsonBody(route));
+      state.pipelines = [
+        ...state.pipelines.filter((item) => item.uuid !== agent.uuid),
+        agent,
+      ];
+      return fulfillJson(route, { uuid: agent.uuid, kind: agent.kind });
+    }
+
+    return fulfillJson(route, { agents: state.pipelines });
+  }
+
+  const agentMatch = path.match(/^\/api\/v1\/agents\/([^/]+)$/);
+  if (agentMatch) {
+    const agentId = decodeURIComponent(agentMatch[1]);
+
+    if (method === 'PUT') {
+      const agent = makePipeline(state, parseJsonBody(route), agentId);
+      state.pipelines = [
+        ...state.pipelines.filter((item) => item.uuid !== agentId),
+        agent,
+      ];
+      return fulfillJson(route, {});
+    }
+
+    if (method === 'DELETE') {
+      state.pipelines = state.pipelines.filter((item) => item.uuid !== agentId);
+      return fulfillJson(route, {});
+    }
+
+    const agent = state.pipelines.find((item) => item.uuid === agentId);
+    return fulfillJson(route, {
+      agent:
+        agent ||
+        makePipeline(
+          state,
+          {
+            name: agentId,
+            kind: agentId.startsWith('agent-') ? 'agent' : 'pipeline',
+          },
+          agentId,
+        ),
+    });
+  }
+
   if (path === '/api/v1/pipelines/_/metadata') {
-    return fulfillJson(route, pipelineMetadata());
+    return fulfillJson(route, pipelineMetadata(state.withRunnerToolSelector));
   }
 
   if (path === '/api/v1/pipelines') {
@@ -1061,6 +1185,7 @@ export async function installLangBotApiMocks(
     sessionAnalyses?: Record<string, unknown>;
     sessionMessages?: Record<string, unknown[]>;
     storage?: JsonRecord;
+    withRunnerToolSelector?: boolean;
     workspaces?: WorkspaceEntryMock[];
   } = {},
 ) {
@@ -1071,6 +1196,7 @@ export async function installLangBotApiMocks(
     sessionAnalyses,
     sessionMessages,
     storage = {},
+    withRunnerToolSelector = false,
     workspaces = [defaultWorkspaceEntry()],
   } = options;
   const state: LangBotApiMockState = {
@@ -1085,6 +1211,7 @@ export async function installLangBotApiMocks(
     sessionAnalyses: sessionAnalyses || {},
     sessionMessages: sessionMessages || {},
     skills: [],
+    withRunnerToolSelector,
     workspaces,
   };
 

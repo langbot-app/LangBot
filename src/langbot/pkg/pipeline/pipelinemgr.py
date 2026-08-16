@@ -19,6 +19,8 @@ from ..api.http.context import ExecutionContext, PrincipalContext, PrincipalType
 from ..workspace.errors import WorkspaceError, WorkspaceInvariantError
 from .config_coercion import coerce_pipeline_config
 from .pool import get_query_execution_context
+from ..agent.runner.config_resolver import RunnerConfigResolver
+from .extension_preferences import normalize_extension_preferences
 
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
@@ -33,7 +35,6 @@ from . import (
     wrapper,
     preproc,
     ratelimit,
-    msgtrun,
 )
 
 importutil.import_modules_in_pkgs(
@@ -47,7 +48,6 @@ importutil.import_modules_in_pkgs(
         wrapper,
         preproc,
         ratelimit,
-        msgtrun,
     ]
 )
 
@@ -122,32 +122,48 @@ class RuntimePipeline:
         self.placement_generation = self.execution_context.placement_generation
 
         # Extract bound plugins and MCP servers from extensions_preferences
-        extensions_prefs = pipeline_entity.extensions_preferences or {}
-        self.enable_all_plugins = extensions_prefs.get('enable_all_plugins', True)
-        self.enable_all_mcp_servers = extensions_prefs.get('enable_all_mcp_servers', True)
-        local_agent_config = (pipeline_entity.config or {}).get('ai', {}).get('local-agent', {})
-        self.mcp_resource_attachments = local_agent_config.get(
-            'mcp-resources',
-            extensions_prefs.get('mcp_resources', []),
+        extensions_prefs = normalize_extension_preferences(
+            pipeline_entity.extensions_preferences
         )
-        self.mcp_resource_agent_read_enabled = local_agent_config.get(
-            'mcp-resource-agent-read-enabled',
-            extensions_prefs.get('mcp_resource_agent_read_enabled', True),
+        self.enable_all_plugins = extensions_prefs['enable_all_plugins'] is True
+        self.enable_all_mcp_servers = (
+            extensions_prefs['enable_all_mcp_servers'] is True
+        )
+        pipeline_config = pipeline_entity.config or {}
+        runner_config: dict[str, typing.Any] = {}
+        runner_id = RunnerConfigResolver.resolve_runner_id(pipeline_config)
+        if runner_id:
+            resolved = RunnerConfigResolver.resolve_runner_config(
+                pipeline_config, runner_id
+            )
+            if isinstance(resolved, dict):
+                runner_config = resolved
+        self.mcp_resource_attachments = runner_config.get(
+            'mcp-resources',
+            extensions_prefs['mcp_resources'],
+        )
+        self.mcp_resource_agent_read_enabled = (
+            runner_config.get(
+                'mcp-resource-agent-read-enabled',
+                extensions_prefs['mcp_resource_agent_read_enabled'],
+            )
+            is True
         )
 
         if self.enable_all_plugins:
             # None indicates to use all available plugins
             self.bound_plugins = None
         else:
-            plugin_list = extensions_prefs.get('plugins', [])
-            self.bound_plugins = [f'{p["author"]}/{p["name"]}' for p in plugin_list] if plugin_list else []
+            self.bound_plugins = [
+                f'{plugin["author"]}/{plugin["name"]}'
+                for plugin in extensions_prefs['plugins']
+            ]
 
         if self.enable_all_mcp_servers:
             # None indicates to use all available MCP servers
             self.bound_mcp_servers = None
         else:
-            mcp_server_list = extensions_prefs.get('mcp_servers', [])
-            self.bound_mcp_servers = mcp_server_list if mcp_server_list else []
+            self.bound_mcp_servers = extensions_prefs['mcp_servers']
 
     async def _assert_execution_active(
         self,
@@ -234,7 +250,7 @@ class RuntimePipeline:
                     bot_message=query.resp_messages[-1],
                     message=result.user_notice,
                     quote_origin=query.pipeline_config['output']['misc']['quote-origin'],
-                    is_final=[msg.is_final for msg in query.resp_messages][-1],
+                    is_final=query.resp_messages[-1].is_final,
                 )
             else:
                 await query.adapter.reply_message(
@@ -368,8 +384,10 @@ class RuntimePipeline:
 
         # Get runner name from pipeline config
         runner_name = None
-        if query.pipeline_config and 'ai' in query.pipeline_config and 'runner' in query.pipeline_config['ai']:
-            runner_name = query.pipeline_config['ai']['runner'].get('runner')
+        if query.pipeline_config:
+            runner_name = RunnerConfigResolver.resolve_runner_id(
+                query.pipeline_config
+            )
 
         # Record query start and store message_id
         message_id = ''
@@ -650,6 +668,11 @@ class PipelineManager:
         # initialize stage containers according to pipeline_entity.stages
         stage_containers: list[StageInstContainer] = []
         for stage_name in pipeline_entity.stages:
+            if stage_name not in self.stage_dict:
+                self.ap.logger.warning(
+                    f'Pipeline stage {stage_name} is not registered; skipping'
+                )
+                continue
             stage_containers.append(StageInstContainer(inst_name=stage_name, inst=self.stage_dict[stage_name](self.ap)))
 
         for stage_container in stage_containers:

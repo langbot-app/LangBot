@@ -12,6 +12,7 @@ metadata:
     zh_Hant: 釘釘適配器，請查看文件了解使用方式
   icon: dingtalk.svg
 spec:
+  legacy: true
   categories:
     - china
   help_links:

@@ -12,6 +12,9 @@ from langbot.pkg.workspace.entities import WorkspaceExecutionBinding
 from langbot.pkg.workspace.errors import WorkspaceGenerationMismatchError, WorkspaceInvariantError
 
 
+RUNNER_ID = 'plugin:langbot-team/LocalAgent/default'
+
+
 def _context(pipeline_uuid: str = 'test-uuid') -> ExecutionContext:
     return ExecutionContext(
         instance_uuid='test-instance',
@@ -350,7 +353,7 @@ async def test_runtime_pipeline_revalidates_after_awaited_stage(
 
 
 def test_runtime_pipeline_prefers_local_agent_mcp_resources(mock_app):
-    """Local Agent resource selection should override legacy extension prefs."""
+    """AgentRunner resource selection should override legacy extension prefs."""
     pipelinemgr = get_pipelinemgr_module()
     persistence_pipeline = get_persistence_pipeline_module()
 
@@ -359,10 +362,13 @@ def test_runtime_pipeline_prefers_local_agent_mcp_resources(mock_app):
     pipeline_entity.workspace_uuid = 'test-workspace'
     pipeline_entity.config = {
         'ai': {
-            'local-agent': {
-                'mcp-resources': [{'server_uuid': 'srv-new', 'uri': 'file:///new.md'}],
-                'mcp-resource-agent-read-enabled': False,
-            }
+            'runner': {'id': RUNNER_ID},
+            'runner_config': {
+                RUNNER_ID: {
+                    'mcp-resources': [{'server_uuid': 'srv-new', 'uri': 'file:///new.md'}],
+                    'mcp-resource-agent-read-enabled': False,
+                },
+            },
         }
     }
     pipeline_entity.extensions_preferences = {
@@ -377,14 +383,19 @@ def test_runtime_pipeline_prefers_local_agent_mcp_resources(mock_app):
 
 
 def test_runtime_pipeline_falls_back_to_extension_mcp_resources(mock_app):
-    """Existing extension prefs remain compatible until a Local Agent value exists."""
+    """Existing extension prefs remain compatible until a runner value exists."""
     pipelinemgr = get_pipelinemgr_module()
     persistence_pipeline = get_persistence_pipeline_module()
 
     pipeline_entity = Mock(spec=persistence_pipeline.LegacyPipeline)
     pipeline_entity.uuid = 'test-uuid'
     pipeline_entity.workspace_uuid = 'test-workspace'
-    pipeline_entity.config = {'ai': {'local-agent': {}}}
+    pipeline_entity.config = {
+        'ai': {
+            'runner': {'id': RUNNER_ID},
+            'runner_config': {RUNNER_ID: {}},
+        }
+    }
     pipeline_entity.extensions_preferences = {
         'mcp_resources': [{'server_uuid': 'srv-old', 'uri': 'file:///old.md'}],
         'mcp_resource_agent_read_enabled': False,

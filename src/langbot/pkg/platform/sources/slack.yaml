@@ -20,6 +20,7 @@ metadata:
     es_ES: Adaptador de Slack, requiere una dirección pública para recibir notificaciones de mensajes de Slack, consulte la documentación para obtener instrucciones de uso
   icon: slack.png
 spec:
+  legacy: true
   categories:
     - popular
     - global

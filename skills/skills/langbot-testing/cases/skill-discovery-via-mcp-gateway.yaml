@@ -1,0 +1,58 @@
+id: skill-discovery-via-mcp-gateway
+title: "External harness discovers LangBot skills via langbot_list_assets (all-tool model)"
+mode: agent-browser
+area: sandbox
+type: regression
+priority: p2
+risk: medium
+ci_eligible: false
+tags:
+  - skills
+  - mcp-gateway
+  - acp-agent-runner
+  - all-tool-model
+  - tools
+skills:
+  - langbot-env-setup
+  - langbot-testing
+env:
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_ACP_AGENT_RUNNER_PIPELINE_URL
+  - LANGBOT_ACP_AGENT_RUNNER_PIPELINE_NAME
+preconditions:
+  - "An external-harness runner pipeline (e.g. ACP remote claude-code) is configured with langbot-assets-enabled=true so the LangBot MCP gateway is exposed to the harness."
+  - "The remote harness (claude-code) is reachable and responsive (claude -p returns within the runner timeout)."
+  - "At least one pipeline-visible skill exists in the Box skill store (otherwise the count is 0, which is still a valid pass for the discovery surface)."
+automation: scripts/e2e/pipeline-debug-chat.mjs
+automation_env:
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BROWSER_PROFILE
+  - LANGBOT_CHROMIUM_EXECUTABLE
+  - LANGBOT_ACP_AGENT_RUNNER_PIPELINE_URL
+  - LANGBOT_ACP_AGENT_RUNNER_PIPELINE_NAME
+automation_pipeline_url_env: LANGBOT_ACP_AGENT_RUNNER_PIPELINE_URL
+automation_pipeline_name_env: LANGBOT_ACP_AGENT_RUNNER_PIPELINE_NAME
+automation_prompt: "You have LangBot tools available via an MCP server (tools prefixed langbot_). Call langbot_list_assets with asset_types = [\"skills\",\"tools\"]. Then reply with one single line: the literal token PROBEDONE, a space, the number of skills you found, a space, and the number of tools you found."
+automation_expected_text: "PROBEDONE"
+automation_response_timeout_ms: "540000"
+steps:
+  - "Open LANGBOT_FRONTEND_URL and navigate to the external-harness (ACP) pipeline."
+  - "Open Debug Chat with langbot-assets-enabled on the runner."
+  - "Send the automation_prompt asking the harness to call langbot_list_assets with asset_types [skills, tools]."
+  - "Capture the final reply, backend logs, and the MCP gateway call trace."
+checks:
+  - "UI: final reply contains PROBEDONE followed by a skill count and a tool count."
+  - "Logs: backend shows the harness invoked langbot_list_assets and the response included a 'skills' asset class (this is the all-tool-model discovery surface added on this branch)."
+  - "Behavior parity: a local-agent runner reaches the same skills via use_funcs / activate; the external harness reaches them via langbot_list_assets + langbot_call_tool."
+evidence_required:
+  - ui
+  - screenshot
+  - backend_log
+expected_failures:
+  - "runner.timeout when the remote claude-code harness is unauthenticated or slow to start — this is an environment issue, not a discovery-surface regression."
+diagnostics:
+  - "If runner.timeout: ssh into the harness host and confirm `claude -p 'hi'` returns quickly; the ACP runner cannot complete until the harness responds."
+  - "Activated-skill OPERATE on docker+shared-fs is tracked separately by issue #2271 and is out of scope for this discovery case."
+troubleshooting:
+  - sandbox-native-tools-unavailable

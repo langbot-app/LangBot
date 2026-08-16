@@ -38,6 +38,35 @@ class Controller:
             raise WorkspaceInvariantError('Queued query instance does not match the active Workspace binding')
         return execution_context
 
+    async def _try_claim_steering_before_session_slot(
+        self,
+        query: pipeline_query.Query,
+    ) -> bool:
+        """Offer follow-up input to an active AgentRunner before it queues."""
+
+        try:
+            pipeline_uuid = query.pipeline_uuid
+            if not pipeline_uuid:
+                return False
+            execution_context = get_query_execution_context(query)
+            pipeline = await self.ap.pipeline_mgr.get_pipeline_by_uuid(
+                execution_context,
+                pipeline_uuid,
+            )
+            if pipeline is None:
+                return False
+            query.session = await self.ap.sess_mgr.get_session(query)
+            query.pipeline_config = pipeline.pipeline_entity.config
+            query.variables['_pipeline_bound_plugins'] = pipeline.bound_plugins
+            query.variables['_pipeline_bound_mcp_servers'] = pipeline.bound_mcp_servers
+            return await self.ap.agent_run_orchestrator.try_claim_steering_from_query(query)
+        except Exception as exc:
+            self.ap.logger.warning(
+                f'Failed to claim query {query.query_id} as steering input: {exc}',
+                exc_info=True,
+            )
+            return False
+
     async def _process_query(
         self,
         selected_query: pipeline_query.Query,
@@ -112,6 +141,7 @@ class Controller:
             try:
                 selected_query: pipeline_query.Query = None
                 selected_session = None
+                claimed_steering_query: pipeline_query.Query = None
 
                 # 取请求
                 async with self.ap.query_pool:
@@ -121,6 +151,12 @@ class Controller:
                         session = await self.ap.sess_mgr.get_session(query)
                         # Debug logging removed from tight loop to prevent excessive log generation
                         # that can cause memory overflow in high-traffic scenarios
+
+                        if session._semaphore.locked():
+                            if await self._try_claim_steering_before_session_slot(query):
+                                claimed_steering_query = query
+                                break
+                            continue
 
                         if not session._semaphore.locked():
                             selected_query = query
@@ -132,7 +168,11 @@ class Controller:
 
                             break
 
-                    if not selected_query:  # No query is runnable under the current session limits.
+                    if claimed_steering_query is not None:
+                        self.ap.query_pool.remove_query_locked(claimed_steering_query)
+                        self.ap.query_pool.condition.notify_all()
+                        continue
+                    if selected_query is None:  # 没找到 说明：没有请求 或者 所有query对应的session都已达到并发上限
                         await self.ap.query_pool.condition.wait()
                         continue
 

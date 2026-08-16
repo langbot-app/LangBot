@@ -14,10 +14,10 @@ from __future__ import annotations
 import pytest
 from unittest.mock import AsyncMock, Mock
 from importlib import import_module
-from types import SimpleNamespace
 
 from langbot_plugin.api.entities.builtin.provider import session as provider_session
 
+from langbot.pkg.agent.runner.descriptor import AgentRunnerDescriptor
 from tests.factories import (
     FakeApp,
     text_query,
@@ -25,6 +25,28 @@ from tests.factories import (
     image_query,
     group_text_query,
 )
+
+
+RUNNER_ID = 'plugin:langbot-team/LocalAgent/default'
+
+
+def attach_agent_runner_descriptor(app):
+    descriptor = AgentRunnerDescriptor(
+        id=RUNNER_ID,
+        source='plugin',
+        label={'en_US': 'Local Agent'},
+        plugin_author='langbot-team',
+        plugin_name='LocalAgent',
+        runner_name='default',
+        config_schema=[
+            {'name': 'model', 'type': 'model-fallback-selector'},
+            {'name': 'prompt', 'type': 'prompt-editor', 'default': []},
+        ],
+        capabilities={'tool_calling': True, 'multimodal_input': True},
+    )
+    app.agent_runner_registry = Mock()
+    app.agent_runner_registry.get = AsyncMock(return_value=descriptor)
+    app.tool_mgr.get_resolved_tool_catalog = AsyncMock(return_value=[])
 
 
 def get_preproc_module():
@@ -277,7 +299,7 @@ class TestPreProcessorModelSelection:
         mock_model = Mock()
         mock_model.model_entity = Mock(uuid='primary-model-uuid', abilities=['func_call'])
         app.model_mgr.get_model_by_uuid = AsyncMock(return_value=mock_model)
-        app.tool_mgr.get_all_tools = AsyncMock(return_value=[])
+        attach_agent_runner_descriptor(app)
 
         mock_event_ctx = Mock()
         mock_event_ctx.event = Mock(default_prompt=[], prompt=[])
@@ -289,10 +311,12 @@ class TestPreProcessorModelSelection:
         # Set pipeline config with primary model
         query.pipeline_config = {
             'ai': {
-                'runner': {'runner': 'local-agent'},
-                'local-agent': {
-                    'model': {'primary': 'primary-model-uuid', 'fallbacks': []},
-                    'prompt': 'default',
+                'runner': {'id': RUNNER_ID},
+                'runner_config': {
+                    RUNNER_ID: {
+                        'model': {'primary': 'primary-model-uuid', 'fallbacks': []},
+                        'prompt': [],
+                    },
                 },
             },
             'output': {'misc': {'at-sender': False}},
@@ -334,7 +358,7 @@ class TestPreProcessorModelSelection:
             raise ValueError(f'Model {uuid} not found')
 
         app.model_mgr.get_model_by_uuid = AsyncMock(side_effect=mock_get_model)
-        app.tool_mgr.get_all_tools = AsyncMock(return_value=[])
+        attach_agent_runner_descriptor(app)
 
         mock_event_ctx = Mock()
         mock_event_ctx.event = Mock(default_prompt=[], prompt=[])
@@ -345,10 +369,12 @@ class TestPreProcessorModelSelection:
 
         query.pipeline_config = {
             'ai': {
-                'runner': {'runner': 'local-agent'},
-                'local-agent': {
-                    'model': {'primary': 'primary-uuid', 'fallbacks': ['fallback-uuid']},
-                    'prompt': 'default',
+                'runner': {'id': RUNNER_ID},
+                'runner_config': {
+                    RUNNER_ID: {
+                        'model': {'primary': 'primary-uuid', 'fallbacks': ['fallback-uuid']},
+                        'prompt': [],
+                    },
                 },
             },
             'output': {'misc': {'at-sender': False}},
@@ -457,11 +483,12 @@ class TestPreProcessorToolSelection:
         mock_model = Mock()
         mock_model.model_entity = Mock(uuid='primary-model-uuid', abilities=['func_call'])
         app.model_mgr.get_model_by_uuid = AsyncMock(return_value=mock_model)
-        app.tool_mgr.get_all_tools = AsyncMock(
+        attach_agent_runner_descriptor(app)
+        app.tool_mgr.get_resolved_tool_catalog = AsyncMock(
             return_value=[
-                SimpleNamespace(name='exec'),
-                SimpleNamespace(name='plugin_tool'),
-                SimpleNamespace(name='mcp_tool'),
+                {'name': 'exec', 'source': 'builtin'},
+                {'name': 'plugin_tool', 'source': 'plugin', 'source_id': 'test/plugin'},
+                {'name': 'mcp_tool', 'source': 'mcp', 'source_id': 'test-mcp'},
             ]
         )
 
@@ -473,12 +500,14 @@ class TestPreProcessorToolSelection:
         query = text_query('hello')
         query.pipeline_config = {
             'ai': {
-                'runner': {'runner': 'local-agent'},
-                'local-agent': {
-                    'model': {'primary': 'primary-model-uuid', 'fallbacks': []},
-                    'prompt': 'default',
-                    'enable-all-tools': False,
-                    'tools': ['plugin_tool'],
+                'runner': {'id': RUNNER_ID},
+                'runner_config': {
+                    RUNNER_ID: {
+                        'model': {'primary': 'primary-model-uuid', 'fallbacks': []},
+                        'prompt': [],
+                        'enable-all-tools': False,
+                        'tools': ['plugin_tool'],
+                    },
                 },
             },
             'output': {'misc': {'at-sender': False}},
@@ -488,115 +517,3 @@ class TestPreProcessorToolSelection:
         result = await stage.process(query, 'PreProcessor')
 
         assert [tool.name for tool in result.new_query.use_funcs] == ['plugin_tool']
-
-
-class TestPreProcessorDateGrounding:
-    """Tests for current-date injection into the local-agent system prompt."""
-
-    @pytest.mark.asyncio
-    async def test_local_agent_appends_date_to_existing_system_message(self):
-        """Date grounding text should be appended to an existing system prompt."""
-        preproc = get_preproc_module()
-
-        app = FakeApp()
-        mock_session = make_session()
-        app.sess_mgr.get_session = AsyncMock(return_value=mock_session)
-
-        mock_conversation = Mock()
-        mock_conversation.prompt = Mock(messages=[])
-        mock_conversation.prompt.copy = Mock(return_value=Mock(messages=[]))
-        mock_conversation.messages = []
-        mock_conversation.uuid = None
-        app.sess_mgr.get_conversation = AsyncMock(return_value=mock_conversation)
-
-        app.model_mgr.get_model_by_uuid = AsyncMock(return_value=None)
-        app.tool_mgr.get_all_tools = AsyncMock(return_value=[])
-
-        from langbot_plugin.api.entities.builtin.provider import message as provider_message
-
-        system_message = provider_message.Message(role='system', content='You are a helpful assistant.')
-        mock_event_ctx = Mock()
-        mock_event_ctx.event = Mock(default_prompt=[system_message], prompt=[])
-        app.plugin_connector.emit_event = AsyncMock(return_value=mock_event_ctx)
-
-        stage = preproc.PreProcessor(app)
-        query = text_query('hello')
-
-        result = await stage.process(query, 'PreProcessor')
-
-        messages = result.new_query.prompt.messages
-        assert len(messages) == 1
-        assert messages[0].role == 'system'
-        assert messages[0].content.startswith('You are a helpful assistant.')
-        assert 'Current date:' in messages[0].content
-
-    @pytest.mark.asyncio
-    async def test_local_agent_creates_system_message_when_none_exists(self):
-        """A system message should be created when the prompt has none."""
-        preproc = get_preproc_module()
-
-        app = FakeApp()
-        mock_session = make_session()
-        app.sess_mgr.get_session = AsyncMock(return_value=mock_session)
-
-        mock_conversation = Mock()
-        mock_conversation.prompt = Mock(messages=[])
-        mock_conversation.prompt.copy = Mock(return_value=Mock(messages=[]))
-        mock_conversation.messages = []
-        mock_conversation.uuid = None
-        app.sess_mgr.get_conversation = AsyncMock(return_value=mock_conversation)
-
-        app.model_mgr.get_model_by_uuid = AsyncMock(return_value=None)
-        app.tool_mgr.get_all_tools = AsyncMock(return_value=[])
-
-        mock_event_ctx = Mock()
-        mock_event_ctx.event = Mock(default_prompt=[], prompt=[])
-        app.plugin_connector.emit_event = AsyncMock(return_value=mock_event_ctx)
-
-        stage = preproc.PreProcessor(app)
-        query = text_query('hello')
-
-        result = await stage.process(query, 'PreProcessor')
-
-        messages = result.new_query.prompt.messages
-        assert len(messages) == 1
-        assert messages[0].role == 'system'
-        assert 'Current date:' in messages[0].content
-
-    @pytest.mark.asyncio
-    async def test_non_local_agent_runner_skips_date_injection(self):
-        """Runners other than local-agent should not get the date addition."""
-        preproc = get_preproc_module()
-
-        app = FakeApp()
-        mock_session = make_session()
-        app.sess_mgr.get_session = AsyncMock(return_value=mock_session)
-
-        mock_conversation = Mock()
-        mock_conversation.prompt = Mock(messages=[])
-        mock_conversation.prompt.copy = Mock(return_value=Mock(messages=[]))
-        mock_conversation.messages = []
-        mock_conversation.uuid = None
-        app.sess_mgr.get_conversation = AsyncMock(return_value=mock_conversation)
-
-        app.model_mgr.get_model_by_uuid = AsyncMock(return_value=None)
-        app.tool_mgr.get_all_tools = AsyncMock(return_value=[])
-
-        mock_event_ctx = Mock()
-        mock_event_ctx.event = Mock(default_prompt=[], prompt=[])
-        app.plugin_connector.emit_event = AsyncMock(return_value=mock_event_ctx)
-
-        stage = preproc.PreProcessor(app)
-        query = text_query('hello')
-        query.pipeline_config = {
-            'ai': {
-                'runner': {'runner': 'dify-service-api'},
-                'local-agent': {'model': {'primary': '', 'fallbacks': []}, 'prompt': 'default'},
-            },
-            'output': {'misc': {'at-sender': False}},
-            'trigger': {'misc': {}},
-        }
-
-        result = await stage.process(query, 'PreProcessor')
-
-        assert result.new_query.prompt.messages == []

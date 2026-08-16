@@ -142,15 +142,20 @@ async function main() {
   const evidenceDir = resolve(env.LBS_EVIDENCE_DIR || join(root, "reports", "evidence", runId));
   await mkdir(evidenceDir, { recursive: true });
   const startedAt = new Date();
-  const langbotRepo = resolve(root, env.LANGBOT_REPO || "../LangBot");
-  const sdkSrc = resolve(root, env.LANGBOT_PLUGIN_SDK_REPO || "../langbot-plugin-sdk/src");
+  const langbotRepo = resolve(root, env.LANGBOT_REPO || "..");
+  const sdkRepo = resolve(root, env.LANGBOT_PLUGIN_SDK_REPO || "../../langbot-plugin-sdk");
+  const sdkSrc = resolve(sdkRepo, "src");
   const fixturePath = resolve(root, "skills/langbot-testing/fixtures/agent-runner/qa-runner-behaviors.json");
   const stdoutLog = join(evidenceDir, "probe-stdout.log");
   const stderrLog = join(evidenceDir, "probe-stderr.log");
   const automationResultJson = join(evidenceDir, "automation-result.json");
   const resultJson = join(evidenceDir, "result.json");
   const timeoutMs = Number(env.LANGBOT_AGENT_RUNNER_PROBE_TIMEOUT_MS || "30000");
-  const command = { executable: "rtk", args: ["uv", "run", "python", "-c", script, fixturePath], cwd: langbotRepo };
+  const command = {
+    executable: "rtk",
+    args: [resolve(langbotRepo, ".venv/bin/python"), "-c", script, fixturePath],
+    cwd: langbotRepo,
+  };
   const result = {
     source: "automation",
     probe: "agent-runner-behavior-matrix",
