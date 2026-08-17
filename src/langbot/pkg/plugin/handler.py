@@ -1116,7 +1116,7 @@ class RuntimeConnectionHandler(handler.Handler):
 
             return handler.ActionResponse.success(
                 data={
-                    'keys': result.scalars().all(),
+                    'keys': list(dict.fromkeys(result.scalars().all())),
                 },
             )
 

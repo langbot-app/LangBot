@@ -711,7 +711,7 @@ class TestDeleteAndListBinaryStorage:
     @pytest.mark.asyncio
     async def test_list_keys_uses_trusted_plugin_owner(self, app):
         result = Mock()
-        result.scalars.return_value.all.return_value = ['first', 'second']
+        result.scalars.return_value.all.return_value = ['first', 'second', 'first']
         app.persistence_mgr.execute_async.return_value = result
         runtime_handler = make_handler(app)
 
