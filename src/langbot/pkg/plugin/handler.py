@@ -927,12 +927,18 @@ class RuntimeConnectionHandler(handler.Handler):
                 )
                 storage = result.first()
                 if storage is not None:
-                    await self.ap.persistence_mgr.execute_async(
+                    update_result = await self.ap.persistence_mgr.execute_async(
                         sqlalchemy.update(persistence_bstorage.BinaryStorage)
                         .where(persistence_bstorage.BinaryStorage.workspace_uuid == action_context.workspace_uuid)
                         .where(persistence_bstorage.BinaryStorage.unique_key == legacy_key)
-                        .values(unique_key=unique_key)
+                        .where(persistence_bstorage.BinaryStorage.key == key)
+                        .where(persistence_bstorage.BinaryStorage.owner_type == owner_type)
+                        .where(persistence_bstorage.BinaryStorage.owner == owner)
+                        .values(unique_key=unique_key, value=value)
                     )
+                    if update_result.rowcount:
+                        return handler.ActionResponse.success(data={})
+                    storage = None
 
             if storage is not None:
                 await self.ap.persistence_mgr.execute_async(
