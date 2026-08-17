@@ -610,6 +610,26 @@ class TestGetBinaryStorage:
         assert app.persistence_mgr.execute_async.await_count == 2
 
     @pytest.mark.asyncio
+    async def test_retries_canonical_after_concurrent_legacy_adoption(self, app):
+        runtime_handler = make_handler(app)
+        canonical_storage = SimpleNamespace(value=b'adopted bytes')
+        app.persistence_mgr.execute_async.side_effect = [
+            make_result(),
+            make_result(),
+            make_result(canonical_storage),
+        ]
+
+        response = await runtime_handler.actions[RuntimeToLangBotAction.GET_BINARY_STORAGE.value](
+            {'key': 'test-key', 'owner_type': 'plugin', 'owner': 'ignored'}
+        )
+
+        assert response.code == 0
+        assert base64.b64decode(response.data['value_base64']) == b'adopted bytes'
+        assert app.persistence_mgr.execute_async.await_count == 3
+        retry_params = compiled_params(app.persistence_mgr.execute_async.await_args_list[2].args[0])
+        assert canonical_binary_key('plugin', 'test-author/test-plugin', 'test-key') in retry_params.values()
+
+    @pytest.mark.asyncio
     async def test_returns_error_when_not_found(self, app):
         """Missing binary storage rows return an error response."""
         runtime_handler = make_handler(app)
