@@ -431,6 +431,19 @@ class RuntimeConnectionHandler(handler.Handler):
             return f'{identity.plugin_author}/{identity.plugin_name}'
         raise ValueError(f'Unsupported binary storage owner_type {owner_type!r}')
 
+    @staticmethod
+    def _legacy_binary_storage_key(
+        action_context: ActionContext,
+        *,
+        owner_type: str,
+        owner: str,
+        key: str,
+    ) -> str:
+        """Return the pre-tenancy key shape for a row already scoped to this Workspace."""
+
+        legacy_owner = action_context.workspace_uuid if owner_type == 'workspace' else owner
+        return f'{owner_type}:{legacy_owner}:{key}'
+
     @classmethod
     def _binary_storage_key(
         cls,
@@ -896,8 +909,32 @@ class RuntimeConnectionHandler(handler.Handler):
                 .where(persistence_bstorage.BinaryStorage.workspace_uuid == action_context.workspace_uuid)
                 .where(persistence_bstorage.BinaryStorage.unique_key == unique_key)
             )
+            storage = result.first()
+            if storage is None:
+                legacy_key = self._legacy_binary_storage_key(
+                    action_context,
+                    owner_type=owner_type,
+                    owner=owner,
+                    key=key,
+                )
+                result = await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.select(persistence_bstorage.BinaryStorage)
+                    .where(persistence_bstorage.BinaryStorage.workspace_uuid == action_context.workspace_uuid)
+                    .where(persistence_bstorage.BinaryStorage.unique_key == legacy_key)
+                    .where(persistence_bstorage.BinaryStorage.key == key)
+                    .where(persistence_bstorage.BinaryStorage.owner_type == owner_type)
+                    .where(persistence_bstorage.BinaryStorage.owner == owner)
+                )
+                storage = result.first()
+                if storage is not None:
+                    await self.ap.persistence_mgr.execute_async(
+                        sqlalchemy.update(persistence_bstorage.BinaryStorage)
+                        .where(persistence_bstorage.BinaryStorage.workspace_uuid == action_context.workspace_uuid)
+                        .where(persistence_bstorage.BinaryStorage.unique_key == legacy_key)
+                        .values(unique_key=unique_key)
+                    )
 
-            if result.first() is not None:
+            if storage is not None:
                 await self.ap.persistence_mgr.execute_async(
                     sqlalchemy.update(persistence_bstorage.BinaryStorage)
                     .where(persistence_bstorage.BinaryStorage.workspace_uuid == action_context.workspace_uuid)
@@ -946,6 +983,29 @@ class RuntimeConnectionHandler(handler.Handler):
             )
 
             storage = result.first()
+            if storage is None:
+                legacy_key = self._legacy_binary_storage_key(
+                    action_context,
+                    owner_type=owner_type,
+                    owner=owner,
+                    key=key,
+                )
+                result = await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.select(persistence_bstorage.BinaryStorage)
+                    .where(persistence_bstorage.BinaryStorage.workspace_uuid == action_context.workspace_uuid)
+                    .where(persistence_bstorage.BinaryStorage.unique_key == legacy_key)
+                    .where(persistence_bstorage.BinaryStorage.key == key)
+                    .where(persistence_bstorage.BinaryStorage.owner_type == owner_type)
+                    .where(persistence_bstorage.BinaryStorage.owner == owner)
+                )
+                storage = result.first()
+                if storage is not None:
+                    await self.ap.persistence_mgr.execute_async(
+                        sqlalchemy.update(persistence_bstorage.BinaryStorage)
+                        .where(persistence_bstorage.BinaryStorage.workspace_uuid == action_context.workspace_uuid)
+                        .where(persistence_bstorage.BinaryStorage.unique_key == legacy_key)
+                        .values(unique_key=unique_key)
+                    )
             if storage is None:
                 return handler.ActionResponse.error(
                     message=f'Storage with key {key} not found',
