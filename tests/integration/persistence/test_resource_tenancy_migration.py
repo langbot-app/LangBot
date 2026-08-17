@@ -76,6 +76,26 @@ async def test_legacy_sqlite_resources_are_backfilled_and_contracted(tmp_path):
             )
             assert legacy_kb['collection_id'] == 'collection-1'
             assert legacy_kb['legacy_vector_collection'] == 1
+            legacy_binary_storage = (
+                (
+                    await conn.execute(
+                        sa.text(
+                            'SELECT workspace_uuid, unique_key, key, owner_type, owner, value '
+                            "FROM binary_storages WHERE owner_type = 'plugin' AND owner = 'demo'"
+                        )
+                    )
+                )
+                .mappings()
+                .one()
+            )
+            assert legacy_binary_storage == {
+                'workspace_uuid': workspace_uuid,
+                'unique_key': 'plugin:demo:key',
+                'key': 'key',
+                'owner_type': 'plugin',
+                'owner': 'demo',
+                'value': b'legacy-plugin-value',
+            }
             assert (
                 await conn.scalar(
                     sa.text(
@@ -209,8 +229,8 @@ async def test_sqlite_scoped_keys_allow_cross_workspace_but_reject_same_workspac
             await conn.execute(
                 sa.text(
                     'INSERT INTO binary_storages '
-                    '(workspace_uuid, unique_key, key, owner_type, owner) '
-                    "VALUES (:workspace_uuid, 'plugin:demo:key', 'key', 'plugin', 'demo')"
+                    '(workspace_uuid, unique_key, key, owner_type, owner, value) '
+                    "VALUES (:workspace_uuid, 'plugin:demo:key', 'key', 'plugin', 'demo', X'')"
                 ),
                 {'workspace_uuid': second_workspace_uuid},
             )
