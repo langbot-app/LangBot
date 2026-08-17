@@ -552,7 +552,7 @@ class TestGetBinaryStorage:
         )
 
     @pytest.mark.asyncio
-    async def test_adopts_legacy_storage_before_returning_value(self, app):
+    async def test_reads_legacy_storage_without_mutating_key(self, app):
         runtime_handler = make_handler(app)
         legacy_storage = SimpleNamespace(
             unique_key='plugin:test-author/test-plugin:test-key',
@@ -561,7 +561,6 @@ class TestGetBinaryStorage:
         app.persistence_mgr.execute_async.side_effect = [
             make_result(),
             make_result(legacy_storage),
-            make_result(),
         ]
 
         response = await runtime_handler.actions[RuntimeToLangBotAction.GET_BINARY_STORAGE.value](
@@ -570,9 +569,7 @@ class TestGetBinaryStorage:
 
         assert response.code == 0
         assert base64.b64decode(response.data['value_base64']) == b'legacy bytes'
-        assert app.persistence_mgr.execute_async.await_count == 3
-        adoption_params = compiled_params(app.persistence_mgr.execute_async.await_args_list[2].args[0])
-        assert canonical_binary_key('plugin', 'test-author/test-plugin', 'test-key') in adoption_params.values()
+        assert app.persistence_mgr.execute_async.await_count == 2
 
     @pytest.mark.asyncio
     async def test_returns_error_when_not_found(self, app):

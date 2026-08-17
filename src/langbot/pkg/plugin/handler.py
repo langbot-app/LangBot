@@ -999,13 +999,6 @@ class RuntimeConnectionHandler(handler.Handler):
                     .where(persistence_bstorage.BinaryStorage.owner == owner)
                 )
                 storage = result.first()
-                if storage is not None:
-                    await self.ap.persistence_mgr.execute_async(
-                        sqlalchemy.update(persistence_bstorage.BinaryStorage)
-                        .where(persistence_bstorage.BinaryStorage.workspace_uuid == action_context.workspace_uuid)
-                        .where(persistence_bstorage.BinaryStorage.unique_key == legacy_key)
-                        .values(unique_key=unique_key)
-                    )
             if storage is None:
                 return handler.ActionResponse.error(
                     message=f'Storage with key {key} not found',
