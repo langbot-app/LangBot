@@ -616,16 +616,19 @@ class TestDeleteAndListBinaryStorage:
 
         assert response.code == 0
         statement_params = compiled_params(app.persistence_mgr.execute_async.await_args.args[0])
-        assert 'workspace-a' in statement_params.values()
+        flat_values = [
+            item for value in statement_params.values() for item in (value if isinstance(value, list) else [value])
+        ]
+        assert 'workspace-a' in flat_values
         assert (
             canonical_binary_key(
                 'plugin',
                 'test-author/test-plugin',
                 'test-key',
             )
-            in statement_params.values()
+            in flat_values
         )
-        assert 'forged-owner' not in statement_params.values()
+        assert 'forged-owner' not in flat_values
 
     @pytest.mark.asyncio
     async def test_delete_removes_canonical_and_legacy_scoped_keys(self, app):
@@ -641,7 +644,9 @@ class TestDeleteAndListBinaryStorage:
 
         assert response.code == 0
         statement_params = compiled_params(app.persistence_mgr.execute_async.await_args.args[0])
-        values = set(statement_params.values())
+        values = [
+            item for value in statement_params.values() for item in (value if isinstance(value, list) else [value])
+        ]
         assert 'workspace-a' in values
         assert canonical_binary_key('plugin', 'test-author/test-plugin', 'test-key') in values
         assert 'plugin:test-author/test-plugin:test-key' in values
