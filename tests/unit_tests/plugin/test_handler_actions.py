@@ -322,6 +322,26 @@ class TestSetBinaryStorage:
         assert expected_key in adoption_params.values()
         assert adoption_params['value'] == b'new'
 
+    async def test_legacy_adoption_race_updates_winning_canonical_row(self, app):
+        runtime_handler = make_handler(app)
+        legacy_storage = SimpleNamespace(unique_key='plugin:test-author/test-plugin:test-key')
+        lost_race = SimpleNamespace(rowcount=0)
+        canonical_winner = SimpleNamespace(rowcount=1)
+        app.persistence_mgr.execute_async.side_effect = [
+            make_result(),
+            make_result(legacy_storage),
+            lost_race,
+            canonical_winner,
+        ]
+
+        response = await runtime_handler.actions[RuntimeToLangBotAction.SET_BINARY_STORAGE.value](self.payload(b'new'))
+
+        assert response.code == 0
+        assert app.persistence_mgr.execute_async.await_count == 4
+        winner_update = compiled_params(app.persistence_mgr.execute_async.await_args_list[3].args[0])
+        assert canonical_binary_key('plugin', 'test-author/test-plugin', 'test-key') in winner_update.values()
+        assert winner_update['value'] == b'new'
+
     @pytest.mark.asyncio
     async def test_legacy_adoption_lost_to_delete_inserts_new_value(self, app):
         runtime_handler = make_handler(app)
@@ -331,14 +351,15 @@ class TestSetBinaryStorage:
             make_result(),
             make_result(legacy_storage),
             lost_race,
+            SimpleNamespace(rowcount=0),
             make_result(),
         ]
 
         response = await runtime_handler.actions[RuntimeToLangBotAction.SET_BINARY_STORAGE.value](self.payload(b'new'))
 
         assert response.code == 0
-        assert app.persistence_mgr.execute_async.await_count == 4
-        insert_params = compiled_params(app.persistence_mgr.execute_async.await_args_list[3].args[0])
+        assert app.persistence_mgr.execute_async.await_count == 5
+        insert_params = compiled_params(app.persistence_mgr.execute_async.await_args_list[4].args[0])
         assert insert_params['unique_key'] == canonical_binary_key('plugin', 'test-author/test-plugin', 'test-key')
         assert insert_params['value'] == b'new'
 

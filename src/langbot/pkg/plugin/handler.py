@@ -938,6 +938,17 @@ class RuntimeConnectionHandler(handler.Handler):
                     )
                     if update_result.rowcount:
                         return handler.ActionResponse.success(data={})
+                    canonical_update = await self.ap.persistence_mgr.execute_async(
+                        sqlalchemy.update(persistence_bstorage.BinaryStorage)
+                        .where(persistence_bstorage.BinaryStorage.workspace_uuid == action_context.workspace_uuid)
+                        .where(persistence_bstorage.BinaryStorage.unique_key == unique_key)
+                        .where(persistence_bstorage.BinaryStorage.key == key)
+                        .where(persistence_bstorage.BinaryStorage.owner_type == owner_type)
+                        .where(persistence_bstorage.BinaryStorage.owner == owner)
+                        .values(value=value)
+                    )
+                    if canonical_update.rowcount:
+                        return handler.ActionResponse.success(data={})
                     storage = None
 
             if storage is not None:
