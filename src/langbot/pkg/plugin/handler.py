@@ -11,6 +11,8 @@ import traceback
 from dataclasses import dataclass
 
 import sqlalchemy
+import sqlalchemy.dialects.postgresql
+import sqlalchemy.dialects.sqlite
 
 from langbot_plugin.runtime.io import handler
 from langbot_plugin.runtime.io.connection import Connection
@@ -956,19 +958,35 @@ class RuntimeConnectionHandler(handler.Handler):
                     sqlalchemy.update(persistence_bstorage.BinaryStorage)
                     .where(persistence_bstorage.BinaryStorage.workspace_uuid == action_context.workspace_uuid)
                     .where(persistence_bstorage.BinaryStorage.unique_key == unique_key)
+                    .where(persistence_bstorage.BinaryStorage.key == key)
+                    .where(persistence_bstorage.BinaryStorage.owner_type == owner_type)
+                    .where(persistence_bstorage.BinaryStorage.owner == owner)
                     .values(value=value)
                 )
-            else:
-                await self.ap.persistence_mgr.execute_async(
-                    sqlalchemy.insert(persistence_bstorage.BinaryStorage).values(
-                        workspace_uuid=action_context.workspace_uuid,
-                        unique_key=unique_key,
-                        key=key,
-                        owner_type=owner_type,
-                        owner=owner,
-                        value=value,
-                    )
+                return handler.ActionResponse.success(data={})
+
+            dialect_name = self.ap.persistence_mgr.get_db_engine().dialect.name
+            insert = {
+                'postgresql': sqlalchemy.dialects.postgresql.insert,
+                'sqlite': sqlalchemy.dialects.sqlite.insert,
+            }.get(dialect_name)
+            if insert is None:
+                return handler.ActionResponse.error(message=f'Unsupported storage database dialect: {dialect_name}')
+            await self.ap.persistence_mgr.execute_async(
+                insert(persistence_bstorage.BinaryStorage)
+                .values(
+                    workspace_uuid=action_context.workspace_uuid,
+                    unique_key=unique_key,
+                    key=key,
+                    owner_type=owner_type,
+                    owner=owner,
+                    value=value,
                 )
+                .on_conflict_do_update(
+                    index_elements=['workspace_uuid', 'unique_key'],
+                    set_={'value': value},
+                )
+            )
 
             return handler.ActionResponse.success(
                 data={},

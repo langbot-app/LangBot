@@ -234,6 +234,7 @@ class TestSetBinaryStorage:
             },
         }
         mock_app.persistence_mgr = Mock()
+        mock_app.persistence_mgr.get_db_engine.return_value = SimpleNamespace(dialect=SimpleNamespace(name='sqlite'))
         mock_app.persistence_mgr.execute_async = AsyncMock(return_value=make_result())
         mock_app.logger = Mock()
         return mock_app
@@ -322,6 +323,7 @@ class TestSetBinaryStorage:
         assert expected_key in adoption_params.values()
         assert adoption_params['value'] == b'new'
 
+    @pytest.mark.asyncio
     async def test_legacy_adoption_race_updates_winning_canonical_row(self, app):
         runtime_handler = make_handler(app)
         legacy_storage = SimpleNamespace(unique_key='plugin:test-author/test-plugin:test-key')
