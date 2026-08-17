@@ -628,6 +628,27 @@ class TestDeleteAndListBinaryStorage:
         assert 'forged-owner' not in statement_params.values()
 
     @pytest.mark.asyncio
+    async def test_delete_removes_canonical_and_legacy_scoped_keys(self, app):
+        runtime_handler = make_handler(app)
+
+        response = await runtime_handler.actions[RuntimeToLangBotAction.DELETE_BINARY_STORAGE.value](
+            {
+                'key': 'test-key',
+                'owner_type': 'plugin',
+                'owner': 'forged-owner',
+            }
+        )
+
+        assert response.code == 0
+        statement_params = compiled_params(app.persistence_mgr.execute_async.await_args.args[0])
+        values = set(statement_params.values())
+        assert 'workspace-a' in values
+        assert canonical_binary_key('plugin', 'test-author/test-plugin', 'test-key') in values
+        assert 'plugin:test-author/test-plugin:test-key' in values
+        assert 'test-author/test-plugin' in values
+        assert 'forged-owner' not in values
+
+    @pytest.mark.asyncio
     async def test_list_keys_uses_trusted_plugin_owner(self, app):
         result = Mock()
         result.scalars.return_value.all.return_value = ['first', 'second']

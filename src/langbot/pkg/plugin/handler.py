@@ -1041,10 +1041,19 @@ class RuntimeConnectionHandler(handler.Handler):
                     message=str(e),
                 )
 
+            legacy_key = self._legacy_binary_storage_key(
+                action_context,
+                owner_type=owner_type,
+                owner=owner,
+                key=key,
+            )
             await self.ap.persistence_mgr.execute_async(
                 sqlalchemy.delete(persistence_bstorage.BinaryStorage)
                 .where(persistence_bstorage.BinaryStorage.workspace_uuid == action_context.workspace_uuid)
-                .where(persistence_bstorage.BinaryStorage.unique_key == unique_key)
+                .where(persistence_bstorage.BinaryStorage.unique_key.in_((unique_key, legacy_key)))
+                .where(persistence_bstorage.BinaryStorage.key == key)
+                .where(persistence_bstorage.BinaryStorage.owner_type == owner_type)
+                .where(persistence_bstorage.BinaryStorage.owner == owner)
             )
 
             return handler.ActionResponse.success(
