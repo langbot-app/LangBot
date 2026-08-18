@@ -107,7 +107,7 @@ class WecomEventConverter(abstract_platform_adapter.AbstractEventConverter):
         if event.type == 'text':
             yiri_chain = await WecomMessageConverter.target2yiri(event.message, event.message_id)
             friend = platform_entities.Friend(
-                id=f'u{event.user_id}',
+                id=f'{event.receiver_id}|u{event.user_id}',
                 nickname=nickname,
                 remark='',
             )
@@ -117,7 +117,7 @@ class WecomEventConverter(abstract_platform_adapter.AbstractEventConverter):
             )
         elif event.type == 'image':
             friend = platform_entities.Friend(
-                id=f'u{event.user_id}',
+                id=f'{event.receiver_id}|u{event.user_id}',
                 nickname=nickname,
                 remark='',
             )
