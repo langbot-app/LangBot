@@ -609,7 +609,6 @@ class WecomBotWsClient:
         if not media_id:
             await self.logger.warning(f'upload_media finish returned no media_id: ack={finish_ack!r}')
             return None
-        await self.logger.info(f'upload_media OK: filename={filename!r} media_id={media_id!r}')
         return {'media_id': media_id, 'ack': finish_ack}
 
     async def _reply_media(
