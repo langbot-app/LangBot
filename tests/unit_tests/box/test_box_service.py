@@ -2166,7 +2166,7 @@ class TestInboundOutboundRoundTrip:
         async def fake_client_execute(spec):
             cmd = spec.cmd
             calls.append(cmd)
-            if 'os.walk' in cmd:
+            if 'os.scandir' in cmd:
                 return BoxExecutionResult(
                     session_id='s',
                     backend_name='test',
@@ -2186,13 +2186,15 @@ class TestInboundOutboundRoundTrip:
             )
 
         service.client.execute = AsyncMock(side_effect=fake_client_execute)
+        service.execute_tool = AsyncMock(return_value={'ok': True, 'stdout': '', 'stderr': ''})
 
         attachments = await service.collect_outbound_attachments(query)
         assert len(attachments) == 1
         assert attachments[0]['type'] == 'Image'
         assert attachments[0]['name'] == 'out.png'
         # cleanup (rm -rf) must have been issued after a successful collection
-        assert any('rm -rf' in c for c in calls)
+        service.execute_tool.assert_awaited_once()
+        assert 'rm -rf' in service.execute_tool.await_args.args[0]['command']
 
     @pytest.mark.asyncio
     async def test_collect_outbound_empty_still_clears(self):
@@ -2207,7 +2209,7 @@ class TestInboundOutboundRoundTrip:
         async def fake_client_execute(spec):
             cmd = spec.cmd
             calls.append(cmd)
-            if 'os.walk' in cmd:
+            if 'os.scandir' in cmd:
                 return BoxExecutionResult(
                     session_id='s',
                     backend_name='test',
@@ -2226,9 +2228,11 @@ class TestInboundOutboundRoundTrip:
             )
 
         service.client.execute = AsyncMock(side_effect=fake_client_execute)
+        service.execute_tool = AsyncMock(return_value={'ok': True, 'stdout': '', 'stderr': ''})
         assert await service.collect_outbound_attachments(query) == []
         # cleanup (rm -rf) is issued unconditionally now
-        assert any('rm -rf' in c for c in calls)
+        service.execute_tool.assert_awaited_once()
+        assert 'rm -rf' in service.execute_tool.await_args.args[0]['command']
 
     @pytest.mark.asyncio
     async def test_passthrough_noop_when_unavailable(self):
