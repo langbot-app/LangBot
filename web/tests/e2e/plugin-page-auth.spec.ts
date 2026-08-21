@@ -69,7 +69,55 @@ test('loads a Cloud plugin page through the authenticated asset route', async ({
       await route.fulfill({
         status: 200,
         contentType: 'text/html',
-        body: '<!doctype html><html><body><h1>LangRAG Observability</h1></body></html>',
+        body: `<!doctype html>
+          <html>
+            <body>
+              <h1>LangRAG Observability</h1>
+              <button id="save">Save</button>
+              <script src="/api/v1/plugins/_sdk/page-sdk.js"></script>
+              <script>
+                document.querySelector('#save').addEventListener('click', async () => {
+                  await window.langbot.api('/settings', { enabled: true }, 'POST');
+                  document.body.dataset.saved = 'true';
+                });
+              </script>
+            </body>
+          </html>`,
+      });
+    },
+  );
+  let pageSdkRequests = 0;
+  await page.route('**/api/v1/plugins/_sdk/page-sdk.js', async (route) => {
+    pageSdkRequests += 1;
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/javascript',
+      body: `window.langbot = {
+        api(endpoint, body, method) {
+          return new Promise((resolve) => {
+            const requestId = 'request-' + Date.now();
+            const handler = (event) => {
+              if (event.data?.type === 'langbot:api:response' && event.data.requestId === requestId) {
+                window.removeEventListener('message', handler);
+                resolve(event.data.data);
+              }
+            };
+            window.addEventListener('message', handler);
+            window.parent.postMessage({ type: 'langbot:api', requestId, endpoint, body, method }, '*');
+          });
+        },
+      };`,
+    });
+  });
+  let pageApiRequests = 0;
+  await page.route(
+    '**/api/v1/plugins/langbot-team/LangRAG/page-api',
+    async (route) => {
+      pageApiRequests += 1;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: wrapped({ saved: true }),
       });
     },
   );
@@ -78,11 +126,17 @@ test('loads a Cloud plugin page through the authenticated asset route', async ({
     '/home/plugin-pages?id=langbot-team%2FLangRAG%2Fobservability',
   );
 
+  const pluginFrame = page.frameLocator('iframe');
   await expect(
-    page
-      .frameLocator('iframe')
-      .getByRole('heading', { name: 'LangRAG Observability' }),
+    pluginFrame.getByRole('heading', { name: 'LangRAG Observability' }),
   ).toBeVisible();
+  await pluginFrame.getByRole('button', { name: 'Save' }).click();
+  await expect(pluginFrame.locator('body')).toHaveAttribute(
+    'data-saved',
+    'true',
+  );
   expect(authenticatedAssetRequests).toBeGreaterThan(0);
+  expect(pageSdkRequests).toBe(1);
+  expect(pageApiRequests).toBe(1);
   await expect(page.getByText('Loading...')).toHaveCount(0);
 });
