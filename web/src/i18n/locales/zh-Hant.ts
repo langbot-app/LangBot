@@ -805,6 +805,9 @@ const zhHant = {
     connectionSuccess: '連接成功',
     connectionFailed: '連接失敗，請檢查URL',
     connectionFailedStatus: '連接失敗',
+    oauthAuthorizationRequired: '需要 OAuth 授權',
+    oauthAuthorizationRequiredSuggestion:
+      '此 MCP 伺服器需要 OAuth 登入。目前尚不支援 OAuth 登入；如果伺服器允許，可以手動新增 Authorization 請求標頭。',
     boxDisabledStdioRefused:
       'Stdio 模式的 MCP 伺服器依賴 Box 沙箱，目前已在設定中停用（box.enabled = false）。',
     boxUnavailableStdioRefused:

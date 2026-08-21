@@ -829,6 +829,9 @@ const thTH = {
     connectionSuccess: 'เชื่อมต่อสำเร็จ',
     connectionFailed: 'เชื่อมต่อล้มเหลว กรุณาตรวจสอบ URL',
     connectionFailedStatus: 'เชื่อมต่อล้มเหลว',
+    oauthAuthorizationRequired: 'ต้องมีการอนุญาต OAuth',
+    oauthAuthorizationRequiredSuggestion:
+      'MCP server นี้ต้องเข้าสู่ระบบด้วย OAuth ซึ่งยังไม่รองรับในขณะนี้ หาก server อนุญาต คุณสามารถเพิ่ม Authorization header ด้วยตนเองได้',
     boxDisabledStdioRefused:
       'MCP server แบบ stdio ต้องใช้ Sandbox Box ซึ่งถูกปิดใช้งานในการตั้งค่า (box.enabled = false)',
     boxUnavailableStdioRefused:

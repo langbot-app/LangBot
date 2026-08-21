@@ -838,6 +838,9 @@ const enUS = {
     connectionSuccess: 'Connection successful',
     connectionFailed: 'Connection failed, please check URL',
     connectionFailedStatus: 'Connection Failed',
+    oauthAuthorizationRequired: 'OAuth authorization required',
+    oauthAuthorizationRequiredSuggestion:
+      'This MCP server requires OAuth sign-in. OAuth sign-in is not available yet; add an Authorization header manually if the server supports it.',
     boxDisabledStdioRefused:
       'Stdio MCP servers require the Box sandbox, which is disabled in config (box.enabled = false).',
     boxUnavailableStdioRefused:

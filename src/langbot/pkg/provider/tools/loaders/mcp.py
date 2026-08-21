@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import enum
 import json
 import math
@@ -204,6 +205,13 @@ class MCPSessionStatus(enum.Enum):
     CONNECTING = 'connecting'
     CONNECTED = 'connected'
     ERROR = 'error'
+
+
+@dataclasses.dataclass(frozen=True)
+class MCPOAuthChallenge:
+    """Bearer challenge metadata returned by an OAuth-protected MCP server."""
+
+    resource_metadata_url: str | None
 
 
 class _TransportReconnect(Exception):
@@ -510,6 +518,13 @@ class RuntimeMCPSession:
             await self._init_streamable_http_server()
             return
         except Exception as e:
+            if self._extract_oauth_challenge(e) is not None:
+                self.error_phase = MCPSessionErrorPhase.OAUTH_REQUIRED
+                self.ap.logger.info(
+                    f'MCP server {self.server_name}: remote server requires OAuth authorization; '
+                    'not falling back to SSE'
+                )
+                raise
             if not self._should_fallback_to_sse(e):
                 self.ap.logger.info(
                     f'MCP server {self.server_name}: Streamable HTTP transport failed '
@@ -752,6 +767,11 @@ class RuntimeMCPSession:
             except Exception as e:
                 if self._shutdown_event.is_set():
                     return  # Shutdown requested, don't retry
+                if self.error_phase == MCPSessionErrorPhase.OAUTH_REQUIRED:
+                    self.retry_count = attempt + 1
+                    self.status = MCPSessionStatus.ERROR
+                    self._ready_event.set()
+                    return
                 if self.error_phase == MCPSessionErrorPhase.BOX_UNAVAILABLE:
                     box_service = getattr(self.ap, 'box_service', None)
                     if box_service is not None and getattr(box_service, 'enabled', True):
@@ -831,6 +851,27 @@ class RuntimeMCPSession:
                 yield from RuntimeMCPSession._iter_exception_leaves(child)
         else:
             yield exc
+
+    @staticmethod
+    def _extract_oauth_challenge(exc: BaseException) -> MCPOAuthChallenge | None:
+        """Extract an OAuth Bearer challenge from a remote MCP connection failure."""
+        for leaf in RuntimeMCPSession._iter_exception_leaves(exc):
+            if not isinstance(leaf, httpx.HTTPStatusError) or leaf.response.status_code != 401:
+                continue
+            for header in leaf.response.headers.get_list('www-authenticate'):
+                bearer_match = re.search(r'(?:^|,)\s*Bearer(?:\s|,|$)', header, flags=re.IGNORECASE)
+                if bearer_match is None:
+                    continue
+                metadata_match = re.search(
+                    r'(?:^|,)\s*resource_metadata\s*=\s*(?:"([^"]+)"|([^,\s]+))',
+                    header[bearer_match.end() :],
+                    flags=re.IGNORECASE,
+                )
+                if metadata_match is None:
+                    continue
+                resource_metadata_url = metadata_match.group(1) or metadata_match.group(2)
+                return MCPOAuthChallenge(resource_metadata_url=resource_metadata_url)
+        return None
 
     @staticmethod
     def _should_fallback_to_sse(exc: BaseException) -> bool:
