@@ -274,11 +274,11 @@ class WecomAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 if content['type'] == 'text':
                     await self.bot.send_private_msg(user_id, agent_id, content['content'])
                 if content['type'] == 'image':
-                    await self.bot.send_image(user_id, agent_id, content['media'])
+                    await self.bot.send_image(user_id, agent_id, content['media_id'])
                 if content['type'] == 'voice':
-                    await self.bot.send_voice(user_id, agent_id, content['media'])
+                    await self.bot.send_voice(user_id, agent_id, content['media_id'])
                 if content['type'] == 'file':
-                    await self.bot.send_file(user_id, agent_id, content['media'])
+                    await self.bot.send_file(user_id, agent_id, content['media_id'])
 
     def register_listener(
         self,
