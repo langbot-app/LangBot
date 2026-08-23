@@ -111,9 +111,7 @@ class TestAgentServiceMetadata:
         )
 
         metadata = await AgentService(app).get_agent_metadata(WORKSPACE_UUID)
-        app.pipeline_service.get_pipeline_metadata.assert_awaited_once_with(
-            WORKSPACE_UUID
-        )
+        app.pipeline_service.get_pipeline_metadata.assert_awaited_once_with(WORKSPACE_UUID)
 
         assert metadata['runner_config'] == ai_metadata
         assert metadata['kinds'] == [
@@ -128,6 +126,88 @@ class TestAgentServiceMetadata:
                 'message_only': True,
             },
         ]
+
+
+class TestAgentServiceDebug:
+    async def test_debug_agent_runs_configured_runner_with_synthetic_event(self):
+        app = _make_app()
+
+        async def run_agent(event, binding, adapter_context):
+            yield SimpleNamespace(
+                role='assistant',
+                content='debug result',
+                all_content=None,
+            )
+
+        app.agent_run_orchestrator = SimpleNamespace(run=Mock(side_effect=run_agent))
+        service = AgentService(app)
+        service.get_agent = AsyncMock(
+            return_value={
+                'uuid': 'agent-1',
+                'kind': AGENT_KIND_AGENT,
+                'enabled': True,
+                'supported_event_patterns': ['*'],
+                'config': _agent_row().config,
+            }
+        )
+        context = SimpleNamespace(
+            instance_uuid='instance-test',
+            workspace_uuid=WORKSPACE_UUID,
+            placement_generation=1,
+            principal=SimpleNamespace(account_uuid='account-test'),
+            entitlement_revision=0,
+        )
+
+        result = await service.debug_agent(
+            context,
+            'agent-1',
+            {
+                'event_type': 'group.member.joined',
+                'text': 'A member joined.',
+                'data': {'member_id': 'user-1'},
+                'conversation_id': 'debug-session',
+            },
+        )
+
+        assert result['event_type'] == 'group.member.joined'
+        assert result['conversation_id'] == 'debug-session'
+        assert result['final_text'] == 'debug result'
+        assert result['outputs'] == [
+            {
+                'kind': 'SimpleNamespace',
+                'role': 'assistant',
+                'text': 'debug result',
+            }
+        ]
+        event, binding = app.agent_run_orchestrator.run.call_args.args
+        assert event.workspace_id == WORKSPACE_UUID
+        assert event.data == {'member_id': 'user-1'}
+        assert binding.agent_id == 'agent-1'
+        assert binding.runner_id == 'plugin:test/runner/default'
+        assert (
+            app.agent_run_orchestrator.run.call_args.kwargs['adapter_context']['_execution_context'].workspace_uuid
+            == WORKSPACE_UUID
+        )
+
+    async def test_debug_agent_rejects_unsupported_event_type(self):
+        app = _make_app()
+        service = AgentService(app)
+        service.get_agent = AsyncMock(
+            return_value={
+                'uuid': 'agent-1',
+                'kind': AGENT_KIND_AGENT,
+                'supported_event_patterns': ['message.*'],
+                'config': _agent_row().config,
+            }
+        )
+        context = SimpleNamespace(workspace_uuid=WORKSPACE_UUID)
+
+        with pytest.raises(ValueError, match='does not support'):
+            await service.debug_agent(
+                context,
+                'agent-1',
+                {'event_type': 'group.member.joined'},
+            )
 
 
 class TestAgentServiceListAndLookup:
@@ -237,7 +317,7 @@ class TestAgentServiceCreateUpdateDelete:
                 'description': 'Handles support events',
                 'emoji': 'S',
                 'component_ref': 'plugin:caller/must-not-win/default',
-            }
+            },
         )
 
         insert_values = _compiled_params(app.persistence_mgr.execute_async.await_args.args[0])
@@ -309,7 +389,7 @@ class TestAgentServiceCreateUpdateDelete:
                         'runner': {'id': runner_id},
                         'runner_config': {runner_id: {field_name: invalid_value}},
                     },
-                }
+                },
             )
 
         app.persistence_mgr.execute_async.assert_not_awaited()
@@ -334,7 +414,7 @@ class TestAgentServiceCreateUpdateDelete:
                             }
                         },
                     },
-                }
+                },
             )
 
         app.persistence_mgr.execute_async.assert_not_awaited()
@@ -352,7 +432,7 @@ class TestAgentServiceCreateUpdateDelete:
                     'runner': {'id': ''},
                     'runner_config': {},
                 },
-            }
+            },
         )
 
         insert_values = _compiled_params(app.persistence_mgr.execute_async.await_args.args[0])
@@ -491,7 +571,7 @@ class TestAgentServiceCreateUpdateDelete:
                 'name': 'Pipeline Agent',
                 'description': 'Legacy pipeline',
                 'emoji': 'P',
-            }
+            },
         )
         await service.update_agent(
             WORKSPACE_UUID,
@@ -508,7 +588,7 @@ class TestAgentServiceCreateUpdateDelete:
                 'description': 'Legacy pipeline',
                 'emoji': 'P',
                 'config': {},
-            }
+            },
         )
         app.pipeline_service.update_pipeline.assert_awaited_once_with(
             WORKSPACE_UUID,

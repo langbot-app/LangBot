@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type React from 'react';
 import { Link } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -7,11 +6,8 @@ import { z } from 'zod';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import {
-  Brain,
   CircleAlert,
   CircleCheck,
-  FileJson2,
-  Info,
   LoaderCircle,
   Power,
   RefreshCw,
@@ -26,7 +22,6 @@ import {
 } from '@/app/infra/entities/pipeline';
 import DynamicFormComponent from '@/app/home/components/dynamic-form/DynamicFormComponent';
 import { extractI18nObject } from '@/i18n/I18nProvider';
-import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
@@ -65,12 +60,6 @@ interface AgentFormComponentProps {
   onSavingChange?: (saving: boolean) => void;
 }
 
-interface SectionItem {
-  label: string;
-  name: 'basic' | 'runner' | 'events';
-  icon: React.ElementType;
-}
-
 export default function AgentFormComponent({
   agentId,
   onFinish,
@@ -79,8 +68,6 @@ export default function AgentFormComponent({
   onSavingChange,
 }: AgentFormComponentProps) {
   const { t } = useTranslation();
-  const [activeSection, setActiveSection] =
-    useState<SectionItem['name']>('basic');
   const [runnerConfigSchema, setRunnerConfigSchema] =
     useState<PipelineConfigTab | null>(null);
   const [pluginSystemStatus, setPluginSystemStatus] =
@@ -182,12 +169,6 @@ export default function AgentFormComponent({
   useEffect(() => {
     void loadPluginSystemStatus();
   }, [loadPluginSystemStatus]);
-
-  const sections: SectionItem[] = [
-    { label: t('agents.basicInfo'), name: 'basic', icon: Info },
-    { label: t('agents.runnerSettings'), name: 'runner', icon: Brain },
-    { label: t('agents.advanced'), name: 'events', icon: FileJson2 },
-  ];
 
   const currentRunner = (form.watch('runner') as Record<string, any>)?.id;
   const runnerOptions = useMemo(() => {
@@ -450,55 +431,65 @@ export default function AgentFormComponent({
           <form
             id="agent-form"
             onSubmit={form.handleSubmit(handleSubmit)}
-            className="h-full flex flex-col flex-1 min-h-0 mb-2"
+            className="mb-2 flex h-full min-h-0 min-w-0 flex-1 flex-col"
           >
-            <div className="flex-1 flex flex-col md:flex-row min-h-0">
-              <nav className="shrink-0 mb-4 md:mb-0 md:w-44 md:pr-4 md:mr-4 md:border-r overflow-x-auto md:overflow-x-visible md:overflow-y-auto">
-                <ul className="flex md:flex-col gap-1 md:space-y-1">
-                  {sections.map((section) => {
-                    const Icon = section.icon;
-                    return (
-                      <li key={section.name}>
-                        <button
-                          type="button"
-                          onClick={() => setActiveSection(section.name)}
-                          className={cn(
-                            'w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors text-left cursor-pointer whitespace-nowrap',
-                            activeSection === section.name
-                              ? 'bg-accent text-accent-foreground'
-                              : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-                          )}
-                        >
-                          <Icon className="size-4 shrink-0" />
-                          {section.label}
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </nav>
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+              <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
+                <div className="mx-auto flex w-full min-w-0 max-w-5xl flex-col gap-6 pb-8">
+                  {
+                    <div className="contents">
+                      <Card className="order-2">
+                        <CardHeader>
+                          <CardTitle>{t('agents.basicInfo')}</CardTitle>
+                          <CardDescription>
+                            {t('agents.basicInfoDescription')}
+                          </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                          <div className="flex gap-4 items-start">
+                            <FormField
+                              control={form.control}
+                              name="basic.name"
+                              render={({ field }) => (
+                                <FormItem className="flex-1">
+                                  <FormLabel>
+                                    {t('common.name')}
+                                    <span className="text-destructive">*</span>
+                                  </FormLabel>
+                                  <FormControl>
+                                    <Input
+                                      {...field}
+                                      value={field.value ?? ''}
+                                    />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={form.control}
+                              name="basic.emoji"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>{t('common.icon')}</FormLabel>
+                                  <FormControl>
+                                    <EmojiPicker
+                                      value={field.value}
+                                      onChange={field.onChange}
+                                    />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                          </div>
 
-              <div className="flex-1 overflow-y-auto min-h-0">
-                {activeSection === 'basic' && (
-                  <div className="space-y-6">
-                    <Card>
-                      <CardHeader>
-                        <CardTitle>{t('agents.basicInfo')}</CardTitle>
-                        <CardDescription>
-                          {t('agents.basicInfoDescription')}
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent className="space-y-4">
-                        <div className="flex gap-4 items-start">
                           <FormField
                             control={form.control}
-                            name="basic.name"
+                            name="basic.description"
                             render={({ field }) => (
-                              <FormItem className="flex-1">
-                                <FormLabel>
-                                  {t('common.name')}
-                                  <span className="text-destructive">*</span>
-                                </FormLabel>
+                              <FormItem>
+                                <FormLabel>{t('common.description')}</FormLabel>
                                 <FormControl>
                                   <Input {...field} value={field.value ?? ''} />
                                 </FormControl>
@@ -506,150 +497,122 @@ export default function AgentFormComponent({
                               </FormItem>
                             )}
                           />
+
                           <FormField
                             control={form.control}
-                            name="basic.emoji"
+                            name="basic.enabled"
                             render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>{t('common.icon')}</FormLabel>
+                              <FormItem className="flex items-center justify-between rounded-lg border p-4">
+                                <div className="space-y-0.5">
+                                  <FormLabel className="flex items-center gap-2">
+                                    <Power className="size-4" />
+                                    {t('agents.enabled')}
+                                  </FormLabel>
+                                  <FormDescription>
+                                    {t('agents.enabledDescription')}
+                                  </FormDescription>
+                                </div>
                                 <FormControl>
-                                  <EmojiPicker
-                                    value={field.value}
-                                    onChange={field.onChange}
+                                  <Switch
+                                    checked={field.value ?? true}
+                                    onCheckedChange={field.onChange}
                                   />
                                 </FormControl>
-                                <FormMessage />
                               </FormItem>
                             )}
                           />
-                        </div>
+                        </CardContent>
+                      </Card>
 
+                      <Card className="order-4 border-destructive/50">
+                        <CardHeader>
+                          <CardTitle className="text-destructive">
+                            {t('agents.dangerZone')}
+                          </CardTitle>
+                          <CardDescription>
+                            {t('agents.dangerZoneDescription')}
+                          </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="flex items-center justify-between">
+                            <div className="space-y-1">
+                              <p className="text-sm font-medium">
+                                {t('agents.deleteAgentAction')}
+                              </p>
+                              <p className="text-sm text-muted-foreground">
+                                {t('agents.deleteAgentHint')}
+                              </p>
+                            </div>
+                            <Button
+                              type="button"
+                              variant="destructive"
+                              size="sm"
+                              disabled={isSaving}
+                              onClick={() => setShowDeleteConfirm(true)}
+                            >
+                              <Trash2 className="size-4 mr-1.5" />
+                              {t('common.delete')}
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </div>
+                  }
+
+                  {
+                    <div className="order-1 space-y-6">
+                      {renderRunnerStatus()}
+                      {runnerConfigSchema?.stages.map((stage) =>
+                        renderDynamicStage(stage),
+                      )}
+                      {!runnerConfigSchema && (
+                        <Card>
+                          <CardHeader>
+                            <CardTitle>{t('agents.runnerSettings')}</CardTitle>
+                            <CardDescription>
+                              {t('agents.noRunnerMetadata')}
+                            </CardDescription>
+                          </CardHeader>
+                        </Card>
+                      )}
+                    </div>
+                  }
+
+                  {
+                    <Card className="order-3">
+                      <CardHeader>
+                        <CardTitle>{t('agents.bindableEvents')}</CardTitle>
+                        <CardDescription>
+                          {t('agents.bindableEventsDescription')}
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
                         <FormField
                           control={form.control}
-                          name="basic.description"
+                          name="supported_event_patterns_text"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>{t('common.description')}</FormLabel>
+                              <FormLabel>
+                                {t('agents.supportedEvents')}
+                              </FormLabel>
                               <FormControl>
-                                <Input {...field} value={field.value ?? ''} />
+                                <Textarea
+                                  {...field}
+                                  className="min-h-32 font-mono text-sm"
+                                  placeholder={'*\nmessage.received\ngroup.*'}
+                                />
                               </FormControl>
+                              <FormDescription>
+                                {t('agents.supportedEventsDescription')}
+                              </FormDescription>
                               <FormMessage />
                             </FormItem>
                           )}
                         />
-
-                        <FormField
-                          control={form.control}
-                          name="basic.enabled"
-                          render={({ field }) => (
-                            <FormItem className="flex items-center justify-between rounded-lg border p-4">
-                              <div className="space-y-0.5">
-                                <FormLabel className="flex items-center gap-2">
-                                  <Power className="size-4" />
-                                  {t('agents.enabled')}
-                                </FormLabel>
-                                <FormDescription>
-                                  {t('agents.enabledDescription')}
-                                </FormDescription>
-                              </div>
-                              <FormControl>
-                                <Switch
-                                  checked={field.value ?? true}
-                                  onCheckedChange={field.onChange}
-                                />
-                              </FormControl>
-                            </FormItem>
-                          )}
-                        />
                       </CardContent>
                     </Card>
-
-                    <Card className="border-destructive/50">
-                      <CardHeader>
-                        <CardTitle className="text-destructive">
-                          {t('agents.dangerZone')}
-                        </CardTitle>
-                        <CardDescription>
-                          {t('agents.dangerZoneDescription')}
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="flex items-center justify-between">
-                          <div className="space-y-1">
-                            <p className="text-sm font-medium">
-                              {t('agents.deleteAgentAction')}
-                            </p>
-                            <p className="text-sm text-muted-foreground">
-                              {t('agents.deleteAgentHint')}
-                            </p>
-                          </div>
-                          <Button
-                            type="button"
-                            variant="destructive"
-                            size="sm"
-                            disabled={isSaving}
-                            onClick={() => setShowDeleteConfirm(true)}
-                          >
-                            <Trash2 className="size-4 mr-1.5" />
-                            {t('common.delete')}
-                          </Button>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </div>
-                )}
-
-                {activeSection === 'runner' && (
-                  <div className="space-y-6">
-                    {renderRunnerStatus()}
-                    {runnerConfigSchema?.stages.map((stage) =>
-                      renderDynamicStage(stage),
-                    )}
-                    {!runnerConfigSchema && (
-                      <Card>
-                        <CardHeader>
-                          <CardTitle>{t('agents.runnerSettings')}</CardTitle>
-                          <CardDescription>
-                            {t('agents.noRunnerMetadata')}
-                          </CardDescription>
-                        </CardHeader>
-                      </Card>
-                    )}
-                  </div>
-                )}
-
-                {activeSection === 'events' && (
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>{t('agents.bindableEvents')}</CardTitle>
-                      <CardDescription>
-                        {t('agents.bindableEventsDescription')}
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <FormField
-                        control={form.control}
-                        name="supported_event_patterns_text"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>{t('agents.supportedEvents')}</FormLabel>
-                            <FormControl>
-                              <Textarea
-                                {...field}
-                                className="min-h-32 font-mono text-sm"
-                                placeholder={'*\nmessage.received\ngroup.*'}
-                              />
-                            </FormControl>
-                            <FormDescription>
-                              {t('agents.supportedEventsDescription')}
-                            </FormDescription>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </CardContent>
-                  </Card>
-                )}
+                  }
+                </div>
               </div>
             </div>
           </form>

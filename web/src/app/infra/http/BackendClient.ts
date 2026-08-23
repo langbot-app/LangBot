@@ -279,6 +279,30 @@ export class BackendClient extends BaseHttpClient {
     return this.delete(`/api/v1/agents/${uuid}`);
   }
 
+  public debugAgent(
+    uuid: string,
+    payload: {
+      event_type: string;
+      text?: string;
+      data?: Record<string, unknown>;
+      conversation_id?: string;
+      actor?: Record<string, unknown>;
+      subject?: Record<string, unknown>;
+    },
+  ): Promise<{
+    event_id: string;
+    event_type: string;
+    conversation_id: string;
+    final_text: string;
+    outputs: Array<{
+      kind: string;
+      role: string;
+      text: string;
+    }>;
+  }> {
+    return this.post(`/api/v1/agents/${uuid}/debug`, payload);
+  }
+
   public getGeneralPipelineMetadata(): Promise<GetPipelineMetadataResponseData> {
     // as designed, this method will be deprecated, and only for developer to check the prefered config schema
     return this.get('/api/v1/pipelines/_/metadata');

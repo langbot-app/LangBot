@@ -410,8 +410,12 @@ export default function BotForm({
         id="bot-form"
         onSubmit={form.handleSubmit(onDynamicFormSubmit)}
         aria-busy={isLoading}
+        className="w-full min-w-0 max-w-full"
       >
-        <fieldset className="space-y-6" disabled={isLoading}>
+        <fieldset
+          className="w-full min-w-0 max-w-full space-y-6"
+          disabled={isLoading}
+        >
           {/* Card 1: Basic Information */}
           <Card>
             <CardHeader>

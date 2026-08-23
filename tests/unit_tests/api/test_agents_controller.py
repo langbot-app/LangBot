@@ -41,12 +41,8 @@ async def _create_test_client(agent_service: SimpleNamespace):
     ap = SimpleNamespace(
         agent_service=agent_service,
         user_service=user_service,
-        apikey_service=SimpleNamespace(
-            authenticate_api_key=AsyncMock(return_value=None)
-        ),
-        workspace_collaboration_service=SimpleNamespace(
-            resolve_account_workspace=AsyncMock(return_value=access)
-        ),
+        apikey_service=SimpleNamespace(authenticate_api_key=AsyncMock(return_value=None)),
+        workspace_collaboration_service=SimpleNamespace(resolve_account_workspace=AsyncMock(return_value=access)),
     )
     AgentsRouterGroup = import_module('langbot.pkg.api.http.controller.groups.agents').AgentsRouterGroup
     group = AgentsRouterGroup(ap, app)
@@ -91,3 +87,58 @@ async def test_update_agent_returns_bad_request_for_invalid_runner_config():
         'agent-1',
         {'config': {'runner': {'id': 7}}},
     )
+
+
+async def test_debug_agent_executes_with_runtime_permission():
+    result = {
+        'event_id': 'debug-event',
+        'event_type': 'message.received',
+        'conversation_id': 'debug-session',
+        'final_text': 'hello',
+        'outputs': [],
+    }
+    agent_service = SimpleNamespace(debug_agent=AsyncMock(return_value=result))
+    client = await _create_test_client(agent_service)
+
+    response = await client.post(
+        '/api/v1/agents/agent-1/debug',
+        json={
+            'event_type': 'message.received',
+            'text': 'hello',
+            'data': {},
+            'conversation_id': 'debug-session',
+        },
+        headers={'Authorization': 'Bearer test-token'},
+    )
+
+    assert response.status_code == 200
+    assert (await response.get_json())['data'] == result
+    agent_service.debug_agent.assert_awaited_once_with(
+        ANY,
+        'agent-1',
+        {
+            'event_type': 'message.received',
+            'text': 'hello',
+            'data': {},
+            'conversation_id': 'debug-session',
+        },
+    )
+
+
+async def test_debug_agent_returns_bad_request_for_invalid_event():
+    agent_service = SimpleNamespace(
+        debug_agent=AsyncMock(side_effect=ValueError('Invalid event_type')),
+    )
+    client = await _create_test_client(agent_service)
+
+    response = await client.post(
+        '/api/v1/agents/agent-1/debug',
+        json={'event_type': ''},
+        headers={'Authorization': 'Bearer test-token'},
+    )
+
+    assert response.status_code == 400
+    assert await response.get_json() == {
+        'code': -1,
+        'msg': 'Invalid event_type',
+    }

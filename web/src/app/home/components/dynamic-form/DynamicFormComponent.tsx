@@ -181,13 +181,15 @@ function EmbedCodeField({
   };
 
   return (
-    <div className="space-y-2">
+    <div className="min-w-0 max-w-full space-y-2">
       <label className="text-sm font-medium leading-none">{label}</label>
       {description && (
-        <p className="text-sm text-muted-foreground">{description}</p>
+        <p className="break-words text-sm text-muted-foreground">
+          {description}
+        </p>
       )}
-      <div className="flex items-center gap-2">
-        <pre className="flex-1 overflow-x-auto rounded-md bg-muted p-3 text-sm font-mono select-all">
+      <div className="flex min-w-0 max-w-full items-center gap-2">
+        <pre className="min-w-0 max-w-full flex-1 overflow-x-auto rounded-md bg-muted p-3 text-sm font-mono select-all">
           <code>{snippet}</code>
         </pre>
         <Button

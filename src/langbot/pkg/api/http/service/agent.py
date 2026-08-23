@@ -1,15 +1,33 @@
 from __future__ import annotations
 
 import datetime
+import fnmatch
+import time
 import uuid
 import typing
 
 import sqlalchemy
+from langbot_plugin.api.entities.builtin.agent_runner.delivery import DeliveryContext
+from langbot_plugin.api.entities.builtin.agent_runner.event import (
+    ActorContext,
+    RawEventRef,
+    SubjectContext,
+)
+from langbot_plugin.api.entities.builtin.agent_runner.input import AgentInput
 
 from ....core import app
 from ....agent.runner.config_resolver import RunnerConfigResolver
+from ....agent.runner.host_models import (
+    AgentBinding,
+    AgentEventEnvelope,
+    BindingScope,
+    DeliveryPolicy,
+    StatePolicy,
+)
+from ....agent.runner.resource_policy import ResourcePolicyProjector
 from ....entity.persistence import agent as persistence_agent
 from ....workspace.errors import WorkspaceNotFoundError
+from ..context import ExecutionContext, RequestContext
 from .tenant import TenantContext, require_workspace_uuid, scope_statement
 
 
@@ -78,6 +96,173 @@ class AgentService:
 
         return None
 
+    async def debug_agent(
+        self,
+        context: RequestContext,
+        agent_uuid: str,
+        payload: dict[str, typing.Any],
+    ) -> dict[str, typing.Any]:
+        """Execute one synthetic event against a configured Agent.
+
+        The debug surface uses a trusted Workspace execution context, never
+        delivers outputs to a real platform, and supports both message and
+        non-message event envelopes.
+        """
+        agent = await self.get_agent(context, agent_uuid)
+        if agent is None or agent.get('kind') != AGENT_KIND_AGENT:
+            raise ValueError('Agent not found')
+
+        event_type = str(payload.get('event_type') or 'message.received').strip()
+        if not event_type or len(event_type) > 128:
+            raise ValueError('Invalid event_type')
+        if not self._supports_event_type(
+            agent.get('supported_event_patterns'),
+            event_type,
+        ):
+            raise ValueError('Agent does not support this event type')
+
+        text = str(payload.get('text') or '').strip()
+        if len(text) > 20_000:
+            raise ValueError('Debug input is too long')
+        event_data = payload.get('data') or {}
+        if not isinstance(event_data, dict):
+            raise ValueError('Debug event data must be an object')
+
+        config = agent.get('config')
+        if not isinstance(config, dict):
+            raise ValueError('Agent configuration is invalid')
+        _, runner_id, runner_config = RunnerConfigResolver.resolve_agent_runner_config(config)
+        if not runner_id:
+            raise ValueError('Agent has no configured runner')
+
+        conversation_id = str(payload.get('conversation_id') or f'debug:{agent_uuid}').strip()
+        if not conversation_id or len(conversation_id) > 256:
+            raise ValueError('Invalid debug conversation_id')
+
+        actor_payload = payload.get('actor') or {
+            'actor_type': 'user',
+            'actor_id': 'debug-user',
+            'actor_name': 'Debug User',
+        }
+        subject_payload = payload.get('subject') or {
+            'subject_type': 'message' if event_type.startswith('message.') else event_type.split('.', 1)[0],
+            'subject_id': 'debug-subject',
+            'data': event_data,
+        }
+        if not isinstance(actor_payload, dict) or not isinstance(subject_payload, dict):
+            raise ValueError('Debug actor and subject must be objects')
+
+        event_id = f'debug:{agent_uuid}:{uuid.uuid4()}'
+        event = AgentEventEnvelope(
+            event_id=event_id,
+            event_type=event_type,
+            event_time=int(time.time()),
+            source='webui',
+            source_event_type=event_type,
+            workspace_id=context.workspace_uuid,
+            conversation_id=conversation_id,
+            actor=ActorContext.model_validate(actor_payload),
+            subject=SubjectContext.model_validate(subject_payload),
+            input=AgentInput.model_validate(
+                {
+                    'text': text or event_type,
+                    'contents': [
+                        {'type': 'text', 'text': text or event_type},
+                    ],
+                    'attachments': [],
+                }
+            ),
+            delivery=DeliveryContext(
+                surface='webui',
+                reply_target=None,
+                supports_streaming=False,
+                supports_edit=False,
+                supports_reaction=False,
+                platform_capabilities={
+                    'event_type': event_type,
+                    'debug': True,
+                },
+            ),
+            raw_ref=RawEventRef(ref_id=event_id, storage_key=None),
+            data=event_data,
+        )
+        binding = AgentBinding(
+            binding_id=f'debug:{agent_uuid}:{runner_id}',
+            scope=BindingScope(scope_type='agent', scope_id=agent_uuid),
+            event_types=[event_type],
+            runner_id=runner_id,
+            runner_config=runner_config,
+            resource_policy=ResourcePolicyProjector.from_runner_config(runner_config),
+            state_policy=StatePolicy(
+                state_scopes=['conversation', 'actor', 'subject', 'runner'],
+            ),
+            delivery_policy=DeliveryPolicy(
+                enable_streaming=False,
+                enable_reply=False,
+                enable_interactions=False,
+            ),
+            enabled=True,
+            agent_id=agent_uuid,
+            processor_type='agent',
+            processor_id=agent_uuid,
+        )
+        execution_context = ExecutionContext.from_request(
+            context,
+            query_uuid=event_id,
+        )
+
+        output_items: list[dict[str, typing.Any]] = []
+        final_text = ''
+        async for output in self.ap.agent_run_orchestrator.run(
+            event,
+            binding,
+            adapter_context={'_execution_context': execution_context},
+        ):
+            output_text = self._provider_output_to_text(output)
+            if output_text:
+                final_text = output_text
+            output_items.append(
+                {
+                    'kind': output.__class__.__name__,
+                    'role': str(getattr(output, 'role', '') or ''),
+                    'text': output_text,
+                }
+            )
+
+        return {
+            'event_id': event_id,
+            'event_type': event_type,
+            'conversation_id': conversation_id,
+            'final_text': final_text,
+            'outputs': output_items,
+        }
+
+    @staticmethod
+    def _supports_event_type(patterns: typing.Any, event_type: str) -> bool:
+        normalized = patterns if isinstance(patterns, list) else AGENT_DEFAULT_EVENT_PATTERNS
+        return any(isinstance(pattern, str) and fnmatch.fnmatchcase(event_type, pattern) for pattern in normalized)
+
+    @staticmethod
+    def _provider_output_to_text(output: typing.Any) -> str:
+        all_content = getattr(output, 'all_content', None)
+        if all_content:
+            return str(all_content)
+        content = getattr(output, 'content', None)
+        if content is None:
+            return ''
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            parts: list[str] = []
+            for item in content:
+                item_data = item.model_dump(mode='json') if hasattr(item, 'model_dump') else item
+                if isinstance(item_data, dict) and item_data.get('text') is not None:
+                    parts.append(str(item_data['text']))
+                elif item_data is not None and not isinstance(item_data, dict):
+                    parts.append(str(item_data))
+            return ''.join(parts)
+        return str(content)
+
     async def create_agent(self, context: TenantContext, agent_data: dict) -> dict[str, str]:
         workspace_uuid = require_workspace_uuid(context)
         kind = agent_data.get('kind') or AGENT_KIND_AGENT
@@ -89,7 +274,7 @@ class AgentService:
                     'description': agent_data.get('description') or '',
                     'emoji': agent_data.get('emoji') or '⚙️',
                     'config': {},
-                }
+                },
             )
             return {'uuid': pipeline_uuid, 'kind': AGENT_KIND_PIPELINE}
 

@@ -133,7 +133,7 @@ export default function BotDetailContent({ id }: { id: string }) {
   // ==================== Create Mode ====================
   if (isCreateMode) {
     return (
-      <div className="flex h-full flex-col">
+      <div className="flex h-full min-w-0 flex-col">
         {/* Header */}
         <div className="flex items-center justify-between pb-4 shrink-0">
           <h1 className="text-xl font-semibold">{t('bots.createBot')}</h1>
@@ -145,8 +145,8 @@ export default function BotDetailContent({ id }: { id: string }) {
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto min-h-0">
-          <div className="mx-auto max-w-3xl pb-8">
+        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
+          <div className="mx-auto w-full min-w-0 max-w-3xl pb-8">
             <fieldset className="contents" disabled={!canManage}>
               <BotForm
                 initBotId={undefined}
@@ -163,7 +163,7 @@ export default function BotDetailContent({ id }: { id: string }) {
   // ==================== Edit Mode ====================
   return (
     <>
-      <div className="flex h-full flex-col">
+      <div className="flex h-full min-w-0 flex-col">
         {/* Sticky Header: title + enable switch + save button */}
         <div className="flex items-center justify-between pb-4 shrink-0">
           <div className="flex items-center gap-4">
@@ -202,7 +202,7 @@ export default function BotDetailContent({ id }: { id: string }) {
           key={id}
           value={activeTab}
           onValueChange={setActiveTab}
-          className="flex flex-1 flex-col min-h-0"
+          className="flex min-h-0 min-w-0 flex-1 flex-col"
         >
           <div className="flex shrink-0 items-center gap-1">
             <TabsList>
@@ -253,9 +253,9 @@ export default function BotDetailContent({ id }: { id: string }) {
           {/* Tab: Configuration */}
           <TabsContent
             value="config"
-            className="flex-1 min-h-0 overflow-y-auto mt-4"
+            className="mt-4 min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden"
           >
-            <div className="mx-auto max-w-3xl space-y-6 pb-8">
+            <div className="mx-auto w-full min-w-0 max-w-3xl space-y-6 pb-8">
               <fieldset className="contents" disabled={!canManage}>
                 <BotForm
                   initBotId={id}

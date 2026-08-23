@@ -48,6 +48,24 @@ class AgentsRouterGroup(group.RouterGroup):
             return self.success(data=await self.ap.agent_service.get_agent_metadata(request_context))
 
         @self.route(
+            '/<agent_uuid>/debug',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RUNTIME_OPERATE,
+        )
+        async def _(agent_uuid: str, request_context: RequestContext) -> str:
+            json_data = await quart.request.json
+            try:
+                result = await self.ap.agent_service.debug_agent(
+                    request_context,
+                    agent_uuid,
+                    json_data or {},
+                )
+            except ValueError as exc:
+                return self.http_status(400, -1, str(exc))
+            return self.success(data=result)
+
+        @self.route(
             '/<agent_uuid>',
             methods=['GET', 'PUT', 'DELETE'],
             auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
