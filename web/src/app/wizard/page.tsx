@@ -48,6 +48,11 @@ import {
 import { getAdapterDocUrl } from '@/app/infra/entities/adapter-docs';
 import i18n from 'i18next';
 
+import {
+  ensureHttpBotSigningSecret,
+  getErrorMessage,
+} from '@/app/wizard/utils';
+
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -177,15 +182,30 @@ export default function WizardPage() {
             const botData = await httpClient.getBot(progress.created_bot_uuid);
             if (cancelled) return;
 
-            setSelectedAdapter(progress.selected_adapter);
+            const restoredAdapter =
+              progress.selected_adapter ?? botData.bot.adapter;
+            const restoredConfig = (botData.bot.adapter_config ?? {}) as Record<
+              string,
+              unknown
+            >;
+            const configToRestore = ensureHttpBotSigningSecret(
+              restoredAdapter,
+              restoredConfig,
+            );
+            const configNeedsSave = configToRestore !== restoredConfig;
+
+            setSelectedAdapter(restoredAdapter);
             setCreatedBotUuid(progress.created_bot_uuid);
             setCreatedPipelineUuid(progress.created_pipeline_uuid ?? null);
-            setBotSaved(progress.bot_saved ?? false);
+            setBotSaved(
+              configNeedsSave ? false : (progress.bot_saved ?? false),
+            );
             setMessageReceived(progress.message_received ?? false);
             setSelectedRunner(progress.selected_runner);
 
             // Restore bot name from fetched bot data
             setBotName(botData.bot.name);
+            setAdapterConfig(configToRestore);
 
             // Restore webhook URLs
             const runtimeValues = botData.bot.adapter_runtime_values as
@@ -360,12 +380,17 @@ export default function WizardPage() {
       const defaultConfig = adapter
         ? getDefaultValues(adapter.spec.config)
         : {};
+      const initialConfig = ensureHttpBotSigningSecret(
+        selectedAdapter,
+        defaultConfig,
+      );
+      setAdapterConfig(initialConfig);
 
       const bot: Bot = {
         name: defaultName,
         description: '',
         adapter: selectedAdapter,
-        adapter_config: defaultConfig,
+        adapter_config: initialConfig,
         enable: false,
       };
       const resp = await httpClient.createBot(bot);
@@ -454,11 +479,17 @@ export default function WizardPage() {
         setCreatedPipelineUuid(pipelineUuid);
       }
 
+      const configToSave = ensureHttpBotSigningSecret(
+        selectedAdapter,
+        adapterConfig,
+      );
+      setAdapterConfig(configToSave);
+
       await httpClient.updateBot(createdBotUuid, {
         name: botName,
         description: botDescription || '',
         adapter: selectedAdapter,
-        adapter_config: adapterConfig,
+        adapter_config: configToSave,
         enable: true,
         use_pipeline_uuid: pipelineUuid,
       });
@@ -1063,7 +1094,7 @@ function StepBotConfig({
     } catch (error) {
       toast.error(
         t('wizard.botConfig.httpTestFailed', {
-          error: error instanceof Error ? error.message : String(error),
+          error: getErrorMessage(error),
         }),
       );
     } finally {
