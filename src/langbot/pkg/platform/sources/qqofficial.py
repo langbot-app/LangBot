@@ -329,17 +329,12 @@ class QQOfficialAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
             content_type = content.get('type', 'text')
 
             if content_type == 'text':
-                if target_type == 'c2c':
-                    await self.bot.send_private_text_msg(
+                if target_type in {'c2c', 'group'}:
+                    await self._send_c2c_or_group_text_reply(
+                        target_type,
                         target_id,
                         content['content'],
-                        qq_official_event.d_id,
-                    )
-                elif target_type == 'group':
-                    await self.bot.send_group_text_msg(
-                        target_id,
-                        content['content'],
-                        qq_official_event.d_id,
+                        msg_id=qq_official_event.d_id,
                     )
 
             elif content_type == 'image':
@@ -382,6 +377,39 @@ class QQOfficialAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
 
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
         pass
+
+    async def _send_c2c_or_group_text_reply(
+        self,
+        target_type: str,
+        target_id: str,
+        content: str,
+        *,
+        msg_id: typing.Optional[str] = None,
+        event_id: typing.Optional[str] = None,
+        msg_seq: int = 1,
+    ) -> None:
+        """Send a text reply using the configured C2C/group render mode."""
+        use_markdown = self.config.get('enable-markdown-rendering', False)
+        if target_type == 'c2c':
+            send = self.bot.send_private_markdown_msg if use_markdown else self.bot.send_private_text_msg
+            await send(
+                user_openid=target_id,
+                content=content,
+                msg_id=msg_id,
+                event_id=event_id,
+                msg_seq=msg_seq,
+            )
+        elif target_type == 'group':
+            send = self.bot.send_group_markdown_msg if use_markdown else self.bot.send_group_text_msg
+            await send(
+                group_openid=target_id,
+                content=content,
+                msg_id=msg_id,
+                event_id=event_id,
+                msg_seq=msg_seq,
+            )
+        else:
+            raise ValueError(f'Unsupported QQ Official text reply target: {target_type}')
 
     def register_listener(
         self,
@@ -778,20 +806,13 @@ class QQOfficialAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
             return
 
         try:
-            if target_type == 'c2c':
-                await self.bot.send_private_text_msg(
-                    user_openid=target_id,
-                    content=text,
-                    event_id=event_id,
-                    msg_seq=msg_seq,
-                )
-            elif target_type == 'group':
-                await self.bot.send_group_text_msg(
-                    group_openid=target_id,
-                    content=text,
-                    event_id=event_id,
-                    msg_seq=msg_seq,
-                )
+            await self._send_c2c_or_group_text_reply(
+                target_type,
+                target_id,
+                text,
+                event_id=event_id,
+                msg_seq=msg_seq,
+            )
         except Exception:
             await self.logger.error(f'QQ Official: synthetic reply delivery failed: {traceback.format_exc()}')
 
