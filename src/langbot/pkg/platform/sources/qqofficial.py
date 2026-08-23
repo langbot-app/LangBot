@@ -650,13 +650,13 @@ class QQOfficialAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
             # 用第一个 chunk 的文本建立会话（不发 "..." 避免污染前缀）
             ctx['session_started'] = True
 
-        # 发送内容 = 全量累积文本
-        # QQ API 的 replace 模式不允许修改已下发前缀，所以：
-        # - 首次：发送全部文本，建立会话
-        # - 后续：只能发送新增部分（append 行为）
-        content_to_send = ctx['accumulated_text'][ctx['sent_length'] :]
-        if not content_to_send and not is_final:
+        # `replace` mode requires every update to contain the previously
+        # delivered content as its prefix. `sent_length` only tells us whether
+        # a non-final snapshot has new content; it must not truncate the
+        # content sent to QQ.
+        if len(ctx['accumulated_text']) <= ctx['sent_length'] and not is_final:
             return
+        content_to_send = ctx['accumulated_text']
 
         input_state = 10 if is_final else 1
 

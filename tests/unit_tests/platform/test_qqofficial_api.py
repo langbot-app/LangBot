@@ -108,7 +108,7 @@ def _stream_test_adapter():
 
 
 @pytest.mark.asyncio
-async def test_qq_stream_uses_cumulative_chunks_as_snapshots():
+async def test_qq_stream_replace_mode_sends_complete_snapshots():
     adapter = _stream_test_adapter()
     adapter._stream_ctx['message-1'] = {
         'user_openid': 'user-1',
@@ -138,7 +138,7 @@ async def test_qq_stream_uses_cumulative_chunks_as_snapshots():
 
     assert [call.kwargs['content'] for call in adapter.bot.send_stream_msg.await_args_list] == [
         '<think>one',
-        ' two',
+        '<think>one two',
     ]
 
 
