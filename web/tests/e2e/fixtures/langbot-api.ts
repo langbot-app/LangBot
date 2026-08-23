@@ -503,6 +503,8 @@ async function handleBackendApi(route: Route, state: LangBotApiMockState) {
   if (path === '/api/v1/user/account-info') {
     return fulfillJson(route, {
       initialized: true,
+      authenticated_invitation_acceptance_enabled: false,
+      invitation_registration_enabled: true,
       password_login_enabled: true,
       space_login_enabled: false,
     });

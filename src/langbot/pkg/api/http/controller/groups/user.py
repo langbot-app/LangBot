@@ -322,6 +322,7 @@ class UserRouterGroup(group.RouterGroup):
             if cloud_mode:
                 capabilities['password_login_enabled'] = False
             capabilities['authenticated_invitation_acceptance_enabled'] = cloud_mode
+            capabilities['invitation_registration_enabled'] = not cloud_mode
             return self.success(data={'initialized': True, **capabilities})
 
         @self.route('/set-password', methods=['POST'], auth_type=group.AuthType.USER_TOKEN)

@@ -1181,6 +1181,7 @@ export class BackendClient extends BaseHttpClient {
   public getAccountInfo(): Promise<{
     initialized: boolean;
     authenticated_invitation_acceptance_enabled?: boolean;
+    invitation_registration_enabled?: boolean;
     password_login_enabled?: boolean;
     space_login_enabled?: boolean;
   }> {

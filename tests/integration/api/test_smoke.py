@@ -307,6 +307,7 @@ class TestUserInitEndpoint:
         assert data['data'] == {
             'initialized': True,
             'authenticated_invitation_acceptance_enabled': False,
+            'invitation_registration_enabled': True,
             'password_login_enabled': True,
             'space_login_enabled': False,
         }
@@ -330,6 +331,28 @@ class TestUserInitEndpoint:
         assert data['data'] == {
             'initialized': True,
             'authenticated_invitation_acceptance_enabled': True,
+            'invitation_registration_enabled': False,
+            'password_login_enabled': False,
+            'space_login_enabled': True,
+        }
+
+    @pytest.mark.asyncio
+    async def test_account_info_enables_local_invitation_registration_for_oauth_only_oss(
+        self, quart_test_client, fake_api_app
+    ):
+        fake_api_app.user_service.is_initialized.return_value = True
+        fake_api_app.user_service.get_login_capabilities = AsyncMock(
+            return_value={'password_login_enabled': False, 'space_login_enabled': True}
+        )
+
+        response = await quart_test_client.get('/api/v1/user/account-info')
+
+        assert response.status_code == 200
+        data = await response.get_json()
+        assert data['data'] == {
+            'initialized': True,
+            'authenticated_invitation_acceptance_enabled': False,
+            'invitation_registration_enabled': True,
             'password_login_enabled': False,
             'space_login_enabled': True,
         }

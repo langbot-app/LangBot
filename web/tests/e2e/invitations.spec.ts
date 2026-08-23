@@ -107,6 +107,101 @@ test('login preserves an explicit invitation email mismatch error', async ({
   await expect(page.getByText('Login successful')).toHaveCount(0);
 });
 
+test('an OAuth-only OSS instance registers the invited email with a local password', async ({
+  page,
+}) => {
+  let registration: { email?: string; password?: string } | undefined;
+  await installLangBotApiMocks(page, { authenticated: false });
+  await page.route('**/api/v1/user/account-info', async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 0,
+        data: {
+          initialized: true,
+          authenticated_invitation_acceptance_enabled: false,
+          invitation_registration_enabled: true,
+          password_login_enabled: false,
+          space_login_enabled: true,
+        },
+        msg: 'ok',
+      }),
+    });
+  });
+  await page.route('**/api/v1/invitations/inspect', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 0,
+        data: {
+          invitation: {
+            uuid: 'oss-local-registration',
+            workspace_uuid: 'workspace-playwright',
+            normalized_email: 'invited@example.com',
+            role: 'viewer',
+            status: 'pending',
+          },
+          workspace: {
+            uuid: 'workspace-playwright',
+            name: 'Playwright Workspace',
+          },
+        },
+        msg: 'ok',
+      }),
+    });
+  });
+  await page.route('**/api/v1/invitations/accept', async (route) => {
+    const body = JSON.parse(route.request().postData() || '{}') as {
+      registration?: { email?: string; password?: string };
+    };
+    registration = body.registration;
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 0,
+        data: {
+          login_required: true,
+          workspace_uuid: 'workspace-playwright',
+        },
+        msg: 'ok',
+      }),
+    });
+  });
+
+  await page.goto('/invitations/accept#token=oss-local-registration');
+
+  await expect(page.getByText('Playwright Workspace')).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Login with LangBot Account' }),
+  ).toHaveCount(0);
+  await expect(page.locator('#invite-email')).toHaveValue(
+    'invited@example.com',
+  );
+  await expect(page.locator('#invite-email')).toHaveAttribute('readonly', '');
+  await expect(page.locator('#invite-password')).toBeVisible();
+  await expect(page.locator('#invite-password-confirm')).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Create account and accept' }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Login with LangBot Account' }),
+  ).toHaveCount(0);
+
+  await page.locator('#invite-password').fill('invite-password-123');
+  await page.locator('#invite-password-confirm').fill('invite-password-123');
+  await page.getByRole('button', { name: 'Create account and accept' }).click();
+
+  await expect(page).toHaveURL(/\/login\?invitation=1$/);
+  expect(registration).toEqual({
+    email: 'invited@example.com',
+    password: 'invite-password-123',
+  });
+});
+
 test('an authenticated OSS invitation requires logout before registration', async ({
   page,
 }) => {
@@ -185,6 +280,7 @@ test('an authenticated Cloud Account can accept its invitation directly', async 
         data: {
           initialized: true,
           authenticated_invitation_acceptance_enabled: true,
+          invitation_registration_enabled: false,
           password_login_enabled: false,
           space_login_enabled: true,
         },

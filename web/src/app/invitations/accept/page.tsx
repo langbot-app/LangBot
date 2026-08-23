@@ -91,7 +91,9 @@ export default function AcceptInvitationPage() {
   const [errorMessage, setErrorMessage] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [passwordRegistrationEnabled, setPasswordRegistrationEnabled] =
+  const [invitationRegistrationEnabled, setInvitationRegistrationEnabled] =
+    useState(false);
+  const [invitationCapabilitiesLoaded, setInvitationCapabilitiesLoaded] =
     useState(false);
   const [
     authenticatedInvitationAcceptanceEnabled,
@@ -116,12 +118,16 @@ export default function AcceptInvitationPage() {
     backendClient
       .getAccountInfo()
       .then((info) => {
-        setPasswordRegistrationEnabled(info.password_login_enabled !== false);
+        setInvitationRegistrationEnabled(
+          info.invitation_registration_enabled ??
+            info.password_login_enabled !== false,
+        );
         setAuthenticatedInvitationAcceptanceEnabled(
           info.authenticated_invitation_acceptance_enabled === true,
         );
       })
-      .catch(() => setPasswordRegistrationEnabled(false));
+      .catch(() => setInvitationRegistrationEnabled(false))
+      .finally(() => setInvitationCapabilitiesLoaded(true));
     if (!invitationToken) {
       setErrorMessage(t('workspace.invitationMissing'));
       setStatus('error');
@@ -311,7 +317,11 @@ export default function AcceptInvitationPage() {
                 </div>
               )}
 
-              {hasLoginToken && authenticatedInvitationAcceptanceEnabled ? (
+              {!invitationCapabilitiesLoaded ? (
+                <div className="flex justify-center py-8">
+                  <Loader2 className="size-6 animate-spin" />
+                </div>
+              ) : hasLoginToken && authenticatedInvitationAcceptanceEnabled ? (
                 <Button
                   className="w-full"
                   disabled={status === 'submitting'}
@@ -331,7 +341,7 @@ export default function AcceptInvitationPage() {
                     {t('workspace.logoutAndReturn')}
                   </Button>
                 </div>
-              ) : passwordRegistrationEnabled ? (
+              ) : invitationRegistrationEnabled ? (
                 <>
                   <div className="space-y-2">
                     <label
