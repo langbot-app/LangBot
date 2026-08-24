@@ -117,4 +117,7 @@ async def test_cloud_invitation_email_uses_quiet_cloud_lockup_and_compact_fallba
     assert 'Open invitation link' in html
     assert 'linear-gradient' not in html
     assert 'box-shadow' not in html
+    assert 'height="28"' in html
+    assert 'height="32"' in html
+    assert 'margin-top:32px' not in html
     assert f'>{link}<' not in html

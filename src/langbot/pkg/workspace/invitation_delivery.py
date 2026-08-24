@@ -284,14 +284,18 @@ class InvitationDeliveryService:
                     <h1 style="margin:0 0 16px;font-size:28px;line-height:1.25;font-weight:700;letter-spacing:-.025em;color:#111827;">You’re invited to collaborate</h1>
                     <p style="margin:0 0 28px;font-size:15px;line-height:1.7;color:#526173;">Join your team on LangBot Cloud and start building together in this Workspace.</p>
 
-                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin:0 0 28px;background:#f5f8ff;border:1px solid #dbe7ff;border-radius:10px;">
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f5f8ff;border:1px solid #dbe7ff;border-radius:10px;">
                       <tr>
                         <td style="width:4px;background:#2563eb;border-radius:10px 0 0 10px;font-size:0;line-height:0;">&nbsp;</td>
                         <td style="padding:16px 18px;">
-                          <div style="margin:0 0 4px;font-size:11px;line-height:1.4;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#6b7a90;">Workspace</div>
+                          <div style="margin:0 0 4px;font-size:11px;line-height:1.4;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#5f6f84;">Workspace</div>
                           <div style="font-size:18px;line-height:1.4;font-weight:700;color:#111827;">{escaped_workspace}</div>
                         </td>
                       </tr>
+                    </table>
+
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                      <tr><td height="28" style="height:28px;font-size:0;line-height:0;">&nbsp;</td></tr>
                     </table>
 
                     <table role="presentation" cellspacing="0" cellpadding="0" border="0">
@@ -302,10 +306,14 @@ class InvitationDeliveryService:
                       </tr>
                     </table>
 
-                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-top:32px;border-top:1px solid #e8edf4;">
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                      <tr><td height="32" style="height:32px;font-size:0;line-height:0;">&nbsp;</td></tr>
+                    </table>
+
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border-top:1px solid #e8edf4;">
                       <tr>
                         <td style="padding-top:22px;">
-                          <p style="margin:0 0 10px;font-size:13px;line-height:1.6;color:#6b7a90;">For your security, this invitation expires in 7 days and only works for the email address that received it.</p>
+                          <p style="margin:0 0 10px;font-size:13px;line-height:1.6;color:#5f6f84;">For your security, this invitation expires in 7 days and only works for the email address that received it.</p>
                           <a href="{escaped_link}" target="_blank" style="font-size:13px;line-height:1.6;font-weight:600;color:#2563eb;text-decoration:none;">Open invitation link&nbsp;&rarr;</a>
                         </td>
                       </tr>
@@ -316,7 +324,7 @@ class InvitationDeliveryService:
             </td>
           </tr>
           <tr>
-            <td align="center" style="padding:20px 24px 0;font-size:12px;line-height:1.6;color:#8996a8;">
+            <td align="center" style="padding:20px 24px 0;font-size:12px;line-height:1.6;color:#5f6f84;">
               Sent by LangBot Cloud<br>
               If you were not expecting this invitation, you can safely ignore this email.
             </td>
