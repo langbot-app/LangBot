@@ -108,6 +108,19 @@ def shared_connector(
 
 
 @pytest.mark.asyncio
+async def test_shared_reconcile_uses_configured_cold_start_timeout():
+    binding = execution_binding("workspace-a")
+    setting = plugin_setting("01", "a" * 64)
+    connector = shared_connector([[binding]], {"workspace-a": [setting]})
+    connector.ap.instance_config.data["plugin"]["connect_timeout_seconds"] = 900
+    connector.handler = runtime_handler()
+
+    await connector._prepare_connected_runtime()
+
+    assert connector.handler.reconcile_plugin_installations.await_args.kwargs["timeout"] == 900
+
+
+@pytest.mark.asyncio
 async def test_shared_reconnect_replays_two_workspaces_and_removes_missing_projection():
     binding_a = execution_binding('workspace-a')
     binding_b = execution_binding('workspace-b')
@@ -150,7 +163,7 @@ async def test_empty_projected_workspaces_do_not_retain_installation_sets():
 
     assert connector._workspace_installations == {}
     assert connector._known_desired_states == {}
-    connector.handler.reconcile_plugin_installations.assert_awaited_once_with(())
+    connector.handler.reconcile_plugin_installations.assert_awaited_once_with((), timeout=300.0)
 
 
 @pytest.mark.asyncio

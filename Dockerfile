@@ -62,7 +62,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -f /tmp/nodesource_setup.sh \
     && python -m pip install --no-cache-dir uv \
-    && uv sync \
+    && uv sync --extra seekdb \
     && apt-get purge -y --auto-remove curl git gnupg \
     && rm -rf /var/lib/apt/lists/* \
     && touch /.dockerenv

@@ -10,6 +10,19 @@ uvx langbot
 
 This will automatically download and run the latest version of LangBot.
 
+SeekDB support is optional and is not installed by the command above. If you
+want to use the SeekDB vector database or the built-in SeekDB embedding model,
+run LangBot with the `seekdb` extra:
+
+```bash
+uvx --from 'langbot[seekdb]@latest' langbot
+```
+
+The extra includes native dependencies whose supported operating systems may
+be narrower than LangBot's. In particular, the current Apple Silicon wheels
+require macOS 15 or later. The default Chroma backend does not have this
+requirement.
+
 ## Install with pip/uv
 
 You can also install LangBot as a regular Python package:
@@ -20,6 +33,10 @@ pip install langbot
 
 # Using uv
 uv pip install langbot
+
+# Include optional SeekDB support
+pip install 'langbot[seekdb]'
+# or: uv pip install 'langbot[seekdb]'
 ```
 
 Then run it:
@@ -101,7 +118,7 @@ uvx langbot
 
 ## System Requirements
 
-- Python 3.10.1 or higher
+- Python 3.11 or higher (lower than Python 4)
 - Operating System: Linux, macOS, or Windows
 
 ## Differences from Source Installation

@@ -181,6 +181,11 @@ vdb:
         host: localhost
         port: 6333
         api_key: ''
+    # SeekDB is optional. Native/package installs need the `seekdb` extra:
+    # `uv sync --extra seekdb` (source) or
+    # `uvx --from 'langbot[seekdb]@latest' langbot` (PyPI).
+    # The official Docker image already includes it.
+    # Embedded-mode platform support depends on the native pylibseekdb wheels.
     seekdb:
         mode: embedded  # 'embedded' or 'server'
         # Embedded mode options:

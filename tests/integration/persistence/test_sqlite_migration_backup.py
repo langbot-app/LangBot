@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import pathlib
 import sqlite3
 
@@ -9,7 +10,7 @@ import pytest
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from langbot.pkg.persistence import alembic_runner
+from langbot.pkg.persistence import alembic_runner, sqlite_migration_backup
 from langbot.pkg.persistence.mgr import PersistenceManager
 
 from .resource_migration_support import create_legacy_resource_schema
@@ -103,5 +104,33 @@ async def test_failed_tenancy_migration_restores_backup_and_revision(
         monkeypatch.setattr(alembic_runner, 'run_alembic_upgrade', real_upgrade)
         await _manager(engine)._run_alembic_migrations()
         assert await alembic_runner.get_alembic_current(engine) == alembic_runner.get_alembic_head()
+    finally:
+        await engine.dispose()
+
+
+async def test_backup_retries_transient_reopen_failure_after_replace(tmp_path, monkeypatch):
+    database_path = tmp_path / 'legacy-bind-mount.db'
+    engine = create_async_engine(f'sqlite+aiosqlite:///{database_path}')
+    real_open = os.open
+    transient_failures = 0
+
+    def transient_open(path, flags, *args, **kwargs):
+        nonlocal transient_failures
+        candidate = pathlib.Path(path)
+        if candidate.suffix == '.sqlite3' and candidate.parent.name == 'migration-backups' and transient_failures == 0:
+            transient_failures += 1
+            raise FileNotFoundError(2, 'simulated delayed bind-mount visibility', str(candidate))
+        return real_open(path, flags, *args, **kwargs)
+
+    try:
+        await create_legacy_resource_schema(engine, instance_uuid='backup-bind-mount')
+        await alembic_runner.run_alembic_stamp(engine, '0008_mcp_resource_prefs')
+        monkeypatch.setattr(sqlite_migration_backup.os, 'open', transient_open)
+
+        await _manager(engine)._run_alembic_migrations()
+
+        assert transient_failures == 1
+        assert await alembic_runner.get_alembic_current(engine) == alembic_runner.get_alembic_head()
+        assert len(_manifest_payloads(tmp_path / 'migration-backups')) == 2
     finally:
         await engine.dispose()

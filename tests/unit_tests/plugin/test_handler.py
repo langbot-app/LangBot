@@ -81,6 +81,18 @@ async def test_reconcile_plugin_installations_allows_cloud_cold_start_to_finish(
     assert runtime_handler.call_action.await_args.kwargs['timeout'] == 300
 
 
+@pytest.mark.asyncio
+async def test_reconcile_plugin_installations_accepts_configured_cold_start_timeout():
+    runtime_handler = make_handler(SimpleNamespace())
+    runtime_handler.call_action = AsyncMock(return_value={})
+    binding = next(iter(runtime_handler._installation_bindings.values()))[0]
+    desired = PluginInstallationDesiredState(binding=binding, enabled=True)
+
+    await runtime_handler.reconcile_plugin_installations((desired,), timeout=900)
+
+    assert runtime_handler.call_action.await_args.kwargs["timeout"] == 900
+
+
 class TestHandlerQueryVariables:
     """Tests for handler query variable logic."""
 

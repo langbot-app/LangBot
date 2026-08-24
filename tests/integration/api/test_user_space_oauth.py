@@ -313,6 +313,29 @@ async def test_space_credits_are_resolved_from_workspace_owner(space_oauth_api):
 
 
 @pytest.mark.asyncio
+async def test_oss_local_only_owner_requires_space_binding_for_langbot_models(space_oauth_api):
+    application, client = space_oauth_api
+    application.user_service.get_workspace_owner = AsyncMock(
+        return_value=SimpleNamespace(user='owner@example.com', space_account_uuid=None)
+    )
+    application.space_service.get_credits = AsyncMock()
+
+    response = await client.get(
+        '/api/v1/user/space-credits',
+        headers={'Authorization': 'Bearer account-token', 'X-Workspace-Id': WORKSPACE_UUID},
+    )
+    payload = await response.get_json()
+
+    assert response.status_code == 200
+    assert payload['data'] == {
+        'credits': None,
+        'owner_space_bound': False,
+        'is_workspace_owner': True,
+    }
+    application.space_service.get_credits.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_cloud_workspace_owner_is_always_space_bound_after_login(space_oauth_api):
     application, client = space_oauth_api
     application.deployment.mode = 'cloud'

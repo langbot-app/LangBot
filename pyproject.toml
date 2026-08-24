@@ -69,7 +69,6 @@ dependencies = [
     "langchain-text-splitters>=1.1.2",
     "chromadb>=1.0.0,<2.0.0",
     "qdrant-client (>=1.15.1,<2.0.0)",
-    "pyseekdb==1.1.0.post3",
     "langbot-plugin==0.5.3",
     "asyncpg>=0.30.0",
     "line-bot-sdk>=3.19.0",
@@ -105,6 +104,11 @@ classifiers = [
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Topic :: Communications :: Chat",
+]
+
+[project.optional-dependencies]
+seekdb = [
+    "pyseekdb==1.1.0.post3",
 ]
 
 [project.urls]

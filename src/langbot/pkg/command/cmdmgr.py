@@ -3,6 +3,7 @@ from __future__ import annotations
 import typing
 import inspect
 
+from ..api.http.context import ExecutionContext
 from ..core import app
 from . import operator
 from ..utils import importutil
@@ -66,7 +67,14 @@ class CommandManager:
 
         require_context = getattr(self.ap.plugin_connector, 'require_workspace_context', None)
         if require_context is not None:
-            result = require_context(context)
+            result = require_context(
+                ExecutionContext(
+                    instance_uuid=context.instance_uuid,
+                    workspace_uuid=context.workspace_uuid,
+                    placement_generation=context.placement_generation,
+                    query_uuid=context.query_uuid,
+                )
+            )
             if inspect.isawaitable(result):
                 await result
 
