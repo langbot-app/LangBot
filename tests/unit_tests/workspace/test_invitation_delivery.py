@@ -88,14 +88,15 @@ async def test_environment_mapping_enables_provider_without_leaking_secret(monke
     assert service.capability() == {'enabled': True, 'provider': 'smtp'}
 
 
-async def test_cloud_invitation_email_has_branded_html_plain_fallback_and_expiry_copy():
+async def test_invitation_email_has_generic_langbot_brand_plain_fallback_and_expiry_copy():
     service = InvitationDeliveryService(_app({}))
     link = 'https://cloud.langbot.app/invitations/accept#token=lbi_secret&next=<unsafe>'
 
     text = service._plain_text('Research & Development', link)
     html = service._html('Research & Development', link)
 
-    assert 'LangBot Cloud' in text
+    assert 'LangBot' in text
+    assert 'LangBot Cloud' not in text
     assert 'Research & Development' in text
     assert '7 days' in text
     assert link in text
@@ -103,21 +104,55 @@ async def test_cloud_invitation_email_has_branded_html_plain_fallback_and_expiry
     assert 'Research &amp; Development' in html
     assert 'expires in 7 days' in html
     assert 'lbi_secret&amp;next=&lt;unsafe&gt;' in html
+    assert 'LangBot Cloud' not in html
 
 
-async def test_cloud_invitation_email_uses_quiet_cloud_lockup_and_compact_fallback_link():
+async def test_invitation_email_uses_quiet_brand_lockup_and_compact_fallback_link():
     service = InvitationDeliveryService(_app({}))
     link = 'https://cloud.langbot.app/invitations/accept#token=lbi_secret'
 
     html = service._html("RockChinQ's Workspace", link)
 
     assert 'https://docs.langbot.app/langbot-logo.png' in html
-    assert 'LangBot Cloud' in html
+    assert '>LangBot<' in html
     assert 'Workspace invitation' in html
     assert 'Open invitation link' in html
     assert 'linear-gradient' not in html
     assert 'box-shadow' not in html
+    assert 'border-top:4px solid' not in html
+    assert 'border:1px solid #dfe6f0' not in html
     assert 'height="28"' in html
     assert 'height="32"' in html
     assert 'margin-top:32px' not in html
     assert f'>{link}<' not in html
+
+
+async def test_oss_smtp_configuration_delivers_the_generic_invitation_email():
+    service = InvitationDeliveryService(
+        _app(
+            {
+                'workspace': {
+                    'invitations': {
+                        'email': {
+                            'provider': 'smtp',
+                            'from': 'LangBot <noreply@example.com>',
+                            'smtp': {'host': 'smtp.example.com'},
+                        }
+                    }
+                }
+            }
+        )
+    )
+    service._send_smtp = AsyncMock(return_value=True)
+    link = 'https://self-hosted.example/invitations/accept#token=lbi_secret'
+
+    result = await service.deliver_invitation(
+        recipient_email='member@example.com',
+        workspace_name='Self-hosted Workspace',
+        invitation_link=link,
+    )
+
+    assert result == InvitationDeliveryResult(status='sent', provider='smtp')
+    service._send_smtp.assert_awaited_once()
+    assert 'LangBot Cloud' not in service._plain_text('Self-hosted Workspace', link)
+    assert 'LangBot Cloud' not in service._html('Self-hosted Workspace', link)

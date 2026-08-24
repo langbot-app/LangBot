@@ -240,7 +240,7 @@ class InvitationDeliveryService:
     @staticmethod
     def _plain_text(workspace_name: str, invitation_link: str) -> str:
         return (
-            'You have been invited to LangBot Cloud\n\n'
+            'You have been invited to join a Workspace in LangBot\n\n'
             f'Join the Workspace “{workspace_name}” to collaborate with your team.\n\n'
             f'Accept invitation: {invitation_link}\n\n'
             'This secure invitation expires in 7 days and can only be accepted by the email address '
@@ -259,34 +259,31 @@ class InvitationDeliveryService:
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
-  <title>Join {escaped_workspace} on LangBot Cloud</title>
+  <title>Join {escaped_workspace} in LangBot</title>
 </head>
 <body style="margin:0;padding:0;background:#f4f7fb;color:#111827;font-family:Arial,'Helvetica Neue',sans-serif;">
-  <div style="display:none;max-height:0;overflow:hidden;opacity:0;">You have been invited to join {escaped_workspace} on LangBot Cloud.</div>
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;">You have been invited to join {escaped_workspace} in LangBot.</div>
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background:#f4f7fb;">
     <tr>
       <td align="center" style="padding:48px 16px;">
         <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;max-width:600px;">
           <tr>
             <td style="padding:0 4px 20px;">
-              <a href="https://cloud.langbot.app" style="display:inline-block;text-decoration:none;color:#111827;">
-                <img src="https://docs.langbot.app/langbot-logo.png" alt="LangBot" width="34" height="34" style="display:inline-block;width:34px;height:34px;border:0;vertical-align:middle;">
-                <span style="display:inline-block;margin-left:10px;vertical-align:middle;font-size:18px;font-weight:700;letter-spacing:-.01em;">LangBot Cloud</span>
-              </a>
+              <img src="https://docs.langbot.app/langbot-logo.png" alt="LangBot" width="34" height="34" style="display:inline-block;width:34px;height:34px;border:0;vertical-align:middle;">
+              <span style="display:inline-block;margin-left:10px;vertical-align:middle;font-size:18px;font-weight:700;letter-spacing:-.01em;">LangBot</span>
             </td>
           </tr>
           <tr>
-            <td style="background:#ffffff;border:1px solid #dfe6f0;border-top:4px solid #2563eb;border-radius:14px;overflow:hidden;">
+            <td style="background:#ffffff;border-radius:10px;overflow:hidden;">
               <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
                 <tr>
                   <td style="padding:42px 42px 38px;">
-                    <div style="margin:0 0 12px;font-size:12px;line-height:1.4;font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:#2563eb;">Workspace invitation</div>
+                    <div style="margin:0 0 12px;font-size:13px;line-height:1.4;font-weight:600;color:#5f6f84;">Workspace invitation</div>
                     <h1 style="margin:0 0 16px;font-size:28px;line-height:1.25;font-weight:700;letter-spacing:-.025em;color:#111827;">You’re invited to collaborate</h1>
-                    <p style="margin:0 0 28px;font-size:15px;line-height:1.7;color:#526173;">Join your team on LangBot Cloud and start building together in this Workspace.</p>
+                    <p style="margin:0 0 28px;font-size:15px;line-height:1.7;color:#526173;">Join your team in LangBot and start building together in this Workspace.</p>
 
-                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f5f8ff;border:1px solid #dbe7ff;border-radius:10px;">
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f6f8fb;border-radius:8px;">
                       <tr>
-                        <td style="width:4px;background:#2563eb;border-radius:10px 0 0 10px;font-size:0;line-height:0;">&nbsp;</td>
                         <td style="padding:16px 18px;">
                           <div style="margin:0 0 4px;font-size:11px;line-height:1.4;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#5f6f84;">Workspace</div>
                           <div style="font-size:18px;line-height:1.4;font-weight:700;color:#111827;">{escaped_workspace}</div>
@@ -325,7 +322,7 @@ class InvitationDeliveryService:
           </tr>
           <tr>
             <td align="center" style="padding:20px 24px 0;font-size:12px;line-height:1.6;color:#5f6f84;">
-              Sent by LangBot Cloud<br>
+              Sent by LangBot<br>
               If you were not expecting this invitation, you can safely ignore this email.
             </td>
           </tr>
