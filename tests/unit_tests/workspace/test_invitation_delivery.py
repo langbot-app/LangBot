@@ -103,3 +103,18 @@ async def test_cloud_invitation_email_has_branded_html_plain_fallback_and_expiry
     assert 'Research &amp; Development' in html
     assert 'expires in 7 days' in html
     assert 'lbi_secret&amp;next=&lt;unsafe&gt;' in html
+
+
+async def test_cloud_invitation_email_uses_quiet_cloud_lockup_and_compact_fallback_link():
+    service = InvitationDeliveryService(_app({}))
+    link = 'https://cloud.langbot.app/invitations/accept#token=lbi_secret'
+
+    html = service._html("RockChinQ's Workspace", link)
+
+    assert 'https://docs.langbot.app/langbot-logo.png' in html
+    assert 'LangBot Cloud' in html
+    assert 'Workspace invitation' in html
+    assert 'Open invitation link' in html
+    assert 'linear-gradient' not in html
+    assert 'box-shadow' not in html
+    assert f'>{link}<' not in html

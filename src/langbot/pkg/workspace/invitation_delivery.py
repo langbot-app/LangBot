@@ -258,30 +258,72 @@ class InvitationDeliveryService:
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <title>Join {escaped_workspace} on LangBot Cloud</title>
 </head>
-<body style="margin:0;background:#f4f7fb;color:#152033;font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+<body style="margin:0;padding:0;background:#f4f7fb;color:#111827;font-family:Arial,'Helvetica Neue',sans-serif;">
   <div style="display:none;max-height:0;overflow:hidden;opacity:0;">You have been invited to join {escaped_workspace} on LangBot Cloud.</div>
-  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f4f7fb;padding:40px 16px;">
-    <tr><td align="center">
-      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;background:#ffffff;border:1px solid #e5eaf2;border-radius:16px;overflow:hidden;box-shadow:0 12px 32px rgba(20,49,93,.08);">
-        <tr><td style="padding:28px 36px;background:linear-gradient(135deg,#0f172a,#1d4ed8);color:#ffffff;">
-          <div style="font-size:14px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;opacity:.78;">LangBot Cloud</div>
-          <div style="font-size:26px;font-weight:700;margin-top:8px;line-height:1.25;">You’re invited</div>
-        </td></tr>
-        <tr><td style="padding:36px;">
-          <p style="margin:0 0 18px;font-size:16px;line-height:1.65;color:#475569;">You have been invited to collaborate in this Workspace:</p>
-          <div style="margin:0 0 26px;padding:18px 20px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;font-size:18px;font-weight:700;color:#0f172a;">{escaped_workspace}</div>
-          <table role="presentation" cellspacing="0" cellpadding="0"><tr><td style="border-radius:9px;background:#2563eb;">
-            <a href="{escaped_link}" style="display:inline-block;padding:13px 22px;color:#ffffff;text-decoration:none;font-size:15px;font-weight:700;">Accept invitation</a>
-          </td></tr></table>
-          <p style="margin:26px 0 8px;font-size:14px;line-height:1.6;color:#64748b;">This invitation expires in 7 days and is bound to the email address that received it.</p>
-          <p style="margin:0 0 8px;font-size:13px;line-height:1.6;color:#94a3b8;">If the button does not work, copy and paste this URL into your browser:</p>
-          <p style="margin:0;padding:12px;background:#f8fafc;border-radius:8px;word-break:break-all;font-size:12px;line-height:1.55;color:#475569;">{escaped_link}</p>
-        </td></tr>
-        <tr><td style="padding:20px 36px;border-top:1px solid #eef2f7;font-size:12px;line-height:1.6;color:#94a3b8;">If you were not expecting this invitation, you can safely ignore this email.</td></tr>
-      </table>
-    </td></tr>
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background:#f4f7fb;">
+    <tr>
+      <td align="center" style="padding:48px 16px;">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;max-width:600px;">
+          <tr>
+            <td style="padding:0 4px 20px;">
+              <a href="https://cloud.langbot.app" style="display:inline-block;text-decoration:none;color:#111827;">
+                <img src="https://docs.langbot.app/langbot-logo.png" alt="LangBot" width="34" height="34" style="display:inline-block;width:34px;height:34px;border:0;vertical-align:middle;">
+                <span style="display:inline-block;margin-left:10px;vertical-align:middle;font-size:18px;font-weight:700;letter-spacing:-.01em;">LangBot Cloud</span>
+              </a>
+            </td>
+          </tr>
+          <tr>
+            <td style="background:#ffffff;border:1px solid #dfe6f0;border-top:4px solid #2563eb;border-radius:14px;overflow:hidden;">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                <tr>
+                  <td style="padding:42px 42px 38px;">
+                    <div style="margin:0 0 12px;font-size:12px;line-height:1.4;font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:#2563eb;">Workspace invitation</div>
+                    <h1 style="margin:0 0 16px;font-size:28px;line-height:1.25;font-weight:700;letter-spacing:-.025em;color:#111827;">You’re invited to collaborate</h1>
+                    <p style="margin:0 0 28px;font-size:15px;line-height:1.7;color:#526173;">Join your team on LangBot Cloud and start building together in this Workspace.</p>
+
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin:0 0 28px;background:#f5f8ff;border:1px solid #dbe7ff;border-radius:10px;">
+                      <tr>
+                        <td style="width:4px;background:#2563eb;border-radius:10px 0 0 10px;font-size:0;line-height:0;">&nbsp;</td>
+                        <td style="padding:16px 18px;">
+                          <div style="margin:0 0 4px;font-size:11px;line-height:1.4;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#6b7a90;">Workspace</div>
+                          <div style="font-size:18px;line-height:1.4;font-weight:700;color:#111827;">{escaped_workspace}</div>
+                        </td>
+                      </tr>
+                    </table>
+
+                    <table role="presentation" cellspacing="0" cellpadding="0" border="0">
+                      <tr>
+                        <td style="background:#2563eb;border-radius:8px;">
+                          <a href="{escaped_link}" target="_blank" style="display:inline-block;padding:13px 22px;font-size:15px;line-height:1.2;font-weight:700;color:#ffffff;text-decoration:none;border-radius:8px;">Accept invitation</a>
+                        </td>
+                      </tr>
+                    </table>
+
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-top:32px;border-top:1px solid #e8edf4;">
+                      <tr>
+                        <td style="padding-top:22px;">
+                          <p style="margin:0 0 10px;font-size:13px;line-height:1.6;color:#6b7a90;">For your security, this invitation expires in 7 days and only works for the email address that received it.</p>
+                          <a href="{escaped_link}" target="_blank" style="font-size:13px;line-height:1.6;font-weight:600;color:#2563eb;text-decoration:none;">Open invitation link&nbsp;&rarr;</a>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td align="center" style="padding:20px 24px 0;font-size:12px;line-height:1.6;color:#8996a8;">
+              Sent by LangBot Cloud<br>
+              If you were not expecting this invitation, you can safely ignore this email.
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
   </table>
 </body>
 </html>'''
