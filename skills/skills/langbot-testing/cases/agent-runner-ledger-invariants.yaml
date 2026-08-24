@@ -17,7 +17,7 @@ env:
 automation: skills/langbot-testing/probes/agent-runner-ledger-invariants.mjs
 steps:
   - "Run `rtk bin/lbs test run agent-runner-ledger-invariants --dry-run` first; remove `--dry-run` after checking the planned evidence directory."
-  - "Automation resolves LANGBOT_REPO, defaulting to ../LangBot, and imports the sibling SDK from LANGBOT_PLUGIN_SDK_REPO or ../langbot-plugin-sdk/src."
+  - "Automation resolves LANGBOT_REPO, defaulting to the parent LangBot checkout, and imports the sibling SDK from LANGBOT_PLUGIN_SDK_REPO or ../../langbot-plugin-sdk/src."
   - "Automation checks run status sets, terminal status validation, ledger table/index DDL, and a minimal synchronous insert/read path."
 checks:
   - "automation-result.json status is pass."

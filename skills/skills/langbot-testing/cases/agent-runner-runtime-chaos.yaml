@@ -18,7 +18,7 @@ env:
 automation: skills/langbot-testing/probes/agent-runner-runtime-chaos.mjs
 steps:
   - "Run `rtk bin/lbs test run agent-runner-runtime-chaos --dry-run` first; remove `--dry-run` after checking the SDK repo target and evidence directory."
-  - "Automation resolves LANGBOT_PLUGIN_SDK_REPO, defaulting to ../langbot-plugin-sdk when the env var is unset."
+  - "Automation resolves LANGBOT_PLUGIN_SDK_REPO, defaulting to ../../langbot-plugin-sdk when the env var is unset."
   - "Automation runs the existing SDK pytest files tests/runtime/plugin/test_mgr_agent_runner.py and tests/runtime/test_pull_api_handlers.py."
 checks:
   - "automation-result.json status is pass."
@@ -28,7 +28,7 @@ evidence_required:
   - filesystem
 diagnostics:
   - "This probe does not open the WebUI; it runs SDK pytest targets directly."
-  - "env_issue means LANGBOT_PLUGIN_SDK_REPO/default ../langbot-plugin-sdk did not resolve, rtk/uv was unavailable, or the expected test files are missing."
+  - "env_issue means LANGBOT_PLUGIN_SDK_REPO/default ../../langbot-plugin-sdk did not resolve, rtk/uv was unavailable, or the expected test files are missing."
   - "fail means the existing SDK runtime pytest target failed or timed out."
 success_patterns:
   - "pytest passed"

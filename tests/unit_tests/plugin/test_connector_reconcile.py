@@ -288,6 +288,57 @@ async def test_local_install_persists_verified_package_before_runtime_apply():
 
 
 @pytest.mark.asyncio
+async def test_local_install_cleans_untracked_legacy_plugin_before_runtime_apply():
+    package = b'local-lbpkg-bytes'
+    digest = hashlib.sha256(package).hexdigest()
+    execution_context = ExecutionContext(
+        instance_uuid='instance-a',
+        workspace_uuid='workspace-a',
+        placement_generation=1,
+    )
+    binding = InstallationBinding(
+        instance_uuid='instance-a',
+        workspace_uuid='workspace-a',
+        placement_generation=1,
+        installation_uuid='00000000-0000-4000-8000-000000000001',
+        runtime_revision=1,
+        artifact_digest=digest,
+    )
+    app = SimpleNamespace(
+        instance_config=SimpleNamespace(data={'plugin': {'enable': True}}),
+        deployment=SimpleNamespace(mode='oss'),
+        logger=Mock(),
+    )
+    connector = PluginRuntimeConnector(app, AsyncMock())
+    connector.handler = runtime_handler()
+    connector._current_execution_context = AsyncMock(return_value=execution_context)
+    connector._inspect_plugin_package = Mock(return_value=('author', 'plugin'))
+    connector._store_artifact_package = AsyncMock()
+    connector._persist_installation_package = AsyncMock(return_value=(binding, None, False))
+    connector._wait_for_installed_plugin_ready = AsyncMock()
+    events: list[str] = []
+
+    async def delete_legacy_plugin(plugin_author: str, plugin_name: str):
+        assert (plugin_author, plugin_name) == ('author', 'plugin')
+        events.append('cleanup')
+        yield {'current_action': 'plugin deleted'}
+
+    async def apply_installation(*_args, **_kwargs):
+        events.append('apply')
+        return {'state': 'starting'}
+
+    connector.handler.delete_plugin = delete_legacy_plugin
+    connector.handler.apply_plugin_installation = AsyncMock(side_effect=apply_installation)
+
+    await connector.install_plugin(
+        PluginInstallSource.LOCAL,
+        {'plugin_file': package},
+    )
+
+    assert events == ['cleanup', 'apply']
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(('remaining_references', 'statement_count'), [(1, 1), (0, 2)])
 async def test_artifact_cleanup_is_reference_counted_within_workspace(
     remaining_references: int,

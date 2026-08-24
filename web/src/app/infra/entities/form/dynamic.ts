@@ -55,6 +55,7 @@ export enum DynamicFormItemType {
   FLOAT = 'float',
   BOOLEAN = 'boolean',
   STRING = 'string',
+  SECRET = 'secret',
   TEXT = 'text',
   STRING_ARRAY = 'array[string]',
   FILE = 'file',
@@ -77,6 +78,11 @@ export enum DynamicFormItemType {
   EMBED_CODE = 'embed-code',
   QR_CODE_LOGIN = 'qr-code-login',
   DOWNLOAD_LINK = 'download-link',
+  // Plugin manifest type aliases for compatibility
+  SELECT_LLM_MODEL = 'select-llm-model',
+  SELECT_KNOWLEDGE_BASES = 'select-knowledge-bases',
+  NUMBER = 'number',
+  JSON = 'json',
 }
 
 export interface IFileConfig {

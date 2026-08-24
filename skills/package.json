@@ -13,7 +13,7 @@
     "pretest": "node scripts/bootstrap-lbs.mjs",
     "precheck": "node scripts/bootstrap-lbs.mjs",
     "lbs": "node src/lbs.ts",
-    "test": "node test/lbs-cli.test.ts",
+    "test": "node test/lbs-cli.test.ts && python3 -m unittest discover -s test -p 'test_*.py'",
     "validate": "node src/lbs.ts validate",
     "index": "node src/lbs.ts index",
     "index:check": "node src/lbs.ts index --check",

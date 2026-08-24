@@ -4,14 +4,14 @@ import abc
 import typing
 from typing import TYPE_CHECKING
 
-from langbot_plugin.api.definition.components.manifest import ComponentManifest
 from langbot_plugin.api.entities.events import pipeline_query
 import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 
 if TYPE_CHECKING:
     from ...core import app
 
-ToolLookupResult = resource_tool.LLMTool | ComponentManifest
+# All loaders normalize their tools to resource_tool.LLMTool.
+ToolLookupResult = resource_tool.LLMTool
 
 
 preregistered_loaders: list[typing.Type[ToolLoader]] = []

@@ -1,0 +1,57 @@
+id: wizard-runner-marketplace-catalog
+title: "Quick Start installs a published AgentRunner on a clean instance"
+mode: agent-browser
+area: wizard
+type: feature
+priority: p0
+risk: high
+ci_eligible: false
+tags:
+  - wizard
+  - agent-runner
+  - marketplace
+  - clean-install
+  - productization
+skills:
+  - langbot-env-setup
+  - langbot-testing
+env:
+  - LANGBOT_REPO
+automation: scripts/e2e/wizard-runner-marketplace-catalog.mjs
+automation_env:
+  - LANGBOT_REPO
+  - LANGBOT_BROWSER_PROFILE
+  - LANGBOT_CHROMIUM_EXECUTABLE
+preconditions:
+  - "The local checkout can start an isolated backend and Vite frontend and can reach LangBot Space."
+steps:
+  - "Start an isolated first-run instance and confirm zero installed plugins and zero registered runners."
+  - "Resume Quick Start at the AI Engine step with a temporary disabled Bot."
+  - "Confirm the browser requests Marketplace plugins with component_filter=AgentRunner."
+  - "Confirm langbot-team/LocalAgent is published with an installable version and the Runner Extensions link is correct."
+  - "Install LocalAgent and wait for plugin initialization and AgentRunner registration."
+  - "Confirm Create & Deploy is disabled before installation and enabled after LocalAgent is selected."
+  - "Verify the layout at desktop and mobile widths."
+checks:
+  - "API: The instance has zero installed plugins and zero registered runners."
+  - "API: The instance wizard status is none."
+  - "Network: Marketplace search uses component_filter=AgentRunner and type_filter=plugin."
+  - "UI: The AI Engine step displays the published langbot-team/LocalAgent card."
+  - "Marketplace: LocalAgent includes latest_version so installation can proceed."
+  - "Runtime: LocalAgent installs and registers plugin:langbot-team/LocalAgent/default."
+  - "UI: Browse Runner Extensions links to the AgentRunner-filtered market."
+  - "UI: Create & Deploy transitions from disabled to enabled only after Runner selection."
+  - "Console: No unexpected frontend errors appear during the flow."
+  - "Cleanup: Wizard progress and the temporary Bot are removed."
+evidence_required:
+  - ui
+  - screenshot
+  - console
+  - api_diagnostic
+diagnostics:
+  - "The automation owns a temporary data root and random ports; it must not reuse or reset the developer instance."
+  - "A Marketplace API response alone is not a pass; LocalAgent must install and register through the visible Wizard flow."
+troubleshooting:
+  - backend-not-listening
+  - plugin-runtime-timeout
+  - proxy-env-mismatch

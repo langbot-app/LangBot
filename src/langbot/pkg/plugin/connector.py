@@ -1039,7 +1039,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         self._connected.clear()
         runtime_handler = getattr(self, 'handler', None)
         if runtime_handler is not None:
-            with contextlib.suppress(Exception):
+            with contextlib.suppress(Exception, asyncio.CancelledError):
                 await runtime_handler.close()
             if getattr(self, 'handler', None) is runtime_handler:
                 del self.handler
@@ -1060,7 +1060,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             del self.handler_task
         close_ctrl = getattr(getattr(self, 'ctrl', None), 'close', None)
         if close_ctrl is not None:
-            with contextlib.suppress(Exception):
+            with contextlib.suppress(Exception, asyncio.CancelledError):
                 await close_ctrl()
 
     async def aclose(self) -> None:
@@ -1078,8 +1078,26 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         await self._stop_transport()
         await self._close_managed_subprocess()
 
+    @staticmethod
+    def _runtime_debug_port_from_url(debug_url: str) -> int:
+        """Extract the local plugin runtime debug port from its display URL."""
+        try:
+            parsed = urlparse(debug_url if '://' in debug_url else f'//{debug_url}')
+            return parsed.port or 5401
+        except (TypeError, ValueError):
+            return 5401
+
     async def initialize_plugins(self):
         pass
+
+    async def _refresh_agent_runner_registry(self) -> None:
+        registry = getattr(self.ap, 'agent_runner_registry', None)
+        if registry is None:
+            return
+        try:
+            await registry.refresh(await self._current_execution_context())
+        except Exception as e:
+            self.ap.logger.warning(f'Failed to refresh agent runner registry: {e}')
 
     async def ping_plugin_runtime(self):
         return await self._runtime_handler().ping()
@@ -1744,6 +1762,14 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         except Exception:
             await self._delete_artifact_if_unreferenced(execution_context, artifact_digest)
             raise
+        if not previous_was_durable and self.runtime_profile == 'oss_dev':
+            bridge = self._legacy_oss_bridge_binding(execution_context)
+            try:
+                with runtime_handler.installation_scope(bridge):
+                    async for _ in runtime_handler.delete_plugin(plugin_author, plugin_name):
+                        pass
+            except Exception as exc:
+                self.ap.logger.debug(f'Legacy OSS plugin cleanup skipped: {exc}')
         runtime_handler.register_installation_binding(
             binding,
             plugin_author=plugin_author,
@@ -1758,15 +1784,8 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         self._workspace_installations.setdefault(binding.workspace_uuid, set()).add(binding.installation_uuid)
         if previous_digest is not None and previous_digest != artifact_digest:
             await self._delete_artifact_if_unreferenced(execution_context, previous_digest)
-        if previous_digest is not None and not previous_was_durable and self.runtime_profile == 'oss_dev':
-            bridge = self._legacy_oss_bridge_binding(execution_context)
-            try:
-                with runtime_handler.installation_scope(bridge):
-                    async for _ in runtime_handler.delete_plugin(plugin_author, plugin_name):
-                        pass
-            except Exception as exc:
-                self.ap.logger.debug(f'Legacy OSS plugin cleanup skipped: {exc}')
         await self._wait_for_installed_plugin_ready(plugin_author, plugin_name, task_context)
+        await self._refresh_agent_runner_registry()
 
     async def upgrade_plugin(
         self,
@@ -1784,6 +1803,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             {'plugin_author': plugin_author, 'plugin_name': plugin_name},
             task_context=task_context,
         )
+        await self._refresh_agent_runner_registry()
         return {}
 
     async def delete_plugin(
@@ -1843,6 +1863,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                 self._workspace_installations.pop(binding.workspace_uuid, None)
         if task_context is not None:
             task_context.set_current_action('plugin removed')
+        await self._refresh_agent_runner_registry()
         return {}
 
     async def list_plugins(self, component_kinds: list[str] | None = None) -> list[dict[str, Any]]:
@@ -2174,6 +2195,78 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             )
             async for ret in gen:
                 yield command_context.CommandReturn.model_validate(ret)
+
+    # AgentRunner methods
+    async def list_agent_runners(self, bound_plugins: list[str] | None = None) -> list[dict[str, Any]]:
+        """List all available AgentRunner components.
+
+        Returns list of dicts with plugin_author, plugin_name, runner_name, manifest, etc.
+        """
+        if not self.is_enable_plugin:
+            return []
+
+        if not self._runtime_available():
+            return []
+        runtime_handler = self._runtime_handler()
+        runners: list[dict[str, Any]] = []
+        for binding in await self._operation_bindings(include_plugins=bound_plugins):
+            with runtime_handler.installation_scope(binding):
+                runners.extend(await runtime_handler.list_agent_runners(include_plugins=bound_plugins))
+        return runners
+
+    async def run_agent(
+        self,
+        plugin_author: str,
+        plugin_name: str,
+        runner_name: str,
+        context: dict[str, Any],
+    ) -> typing.AsyncGenerator[dict[str, Any], None]:
+        """Run an AgentRunner from a plugin.
+
+        Args:
+            plugin_author: Plugin author
+            plugin_name: Plugin name
+            runner_name: AgentRunner component name
+            context: AgentRunContext as dict
+
+        Yields:
+            AgentRunResult dicts
+        """
+        if not self.is_enable_plugin:
+            # Return a protocol-level failure result.
+            yield {
+                'type': 'run.failed',
+                'data': {
+                    'error': 'Plugin system is disabled',
+                    'code': 'plugin.disabled',
+                    'retryable': False,
+                },
+            }
+            return
+
+        workspace_id = (context.get('conversation') or {}).get('workspace_id') or (context.get('runtime') or {}).get(
+            'metadata', {}
+        ).get('workspace_id')
+        if not isinstance(workspace_id, str) or not workspace_id.strip():
+            raise ValueError('AgentRunner execution requires a Workspace')
+        execution_context = await self._current_execution_context()
+        if workspace_id.strip() != execution_context.workspace_uuid:
+            raise WorkspaceNotFoundError('Plugin resource not found')
+        await self.require_workspace_context(execution_context)
+        binding = await self._target_binding(
+            plugin_author,
+            plugin_name,
+            require_enabled=True,
+        )
+        runtime_handler = self._runtime_handler()
+        with runtime_handler.installation_scope(binding):
+            async for ret in runtime_handler.run_agent(
+                plugin_author,
+                plugin_name,
+                runner_name,
+                context,
+            ):
+                yield ret
 
     async def retrieve_knowledge(
         self,

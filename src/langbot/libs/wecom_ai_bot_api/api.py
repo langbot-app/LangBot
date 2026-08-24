@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import base64
 import json
@@ -7,7 +9,7 @@ import uuid
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 import re
-from typing import Any, Callable, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Optional, Tuple
 from urllib.parse import unquote
 
 from Crypto.Cipher import AES
@@ -15,7 +17,8 @@ from quart import Quart, request, Response, jsonify
 
 from langbot.libs.wecom_ai_bot_api import wecombotevent
 from langbot.libs.wecom_ai_bot_api.WXBizMsgCrypt3 import WXBizMsgCrypt
-from langbot.pkg.platform.logger import EventLogger
+if TYPE_CHECKING:
+    from langbot.pkg.platform.logger import EventLogger
 from langbot.pkg.utils import httpclient
 
 _CLIENT_TRANSIENT_CACHE_MAX = 4096

@@ -30,9 +30,13 @@ export function getOrderedCategories(): AdapterCategoryId[] {
 
 /**
  * Groups items that have a `categories` string array into ordered category
- * buckets. An item can appear in multiple groups if it belongs to multiple
- * categories. Items without any recognised category are collected into a
- * trailing "uncategorized" group (null key).
+ * buckets. Each item is placed into exactly one bucket — its highest-priority
+ * matching category in display order (e.g. an adapter tagged both `popular`
+ * and `china` lands in `popular`). This keeps item values unique, which is
+ * required when the result feeds a Select (duplicate values break Radix's
+ * item tracking and trigger React duplicate-key warnings). Items without any
+ * recognised category are collected into a trailing "uncategorized" group
+ * (null key).
  */
 export function groupByCategory<T extends { categories?: string[] }>(
   items: T[],
@@ -54,10 +58,13 @@ export function groupByCategory<T extends { categories?: string[] }>(
     }
 
     let placed = false;
-    for (const cat of cats) {
-      if (ordered.includes(cat as AdapterCategoryId)) {
-        buckets.get(cat as AdapterCategoryId)!.push(item);
+    // Assign to the highest-priority matching category (display order) only,
+    // so each item appears in exactly one bucket.
+    for (const cat of ordered) {
+      if (cats.includes(cat)) {
+        buckets.get(cat)!.push(item);
         placed = true;
+        break;
       }
     }
     if (!placed) {

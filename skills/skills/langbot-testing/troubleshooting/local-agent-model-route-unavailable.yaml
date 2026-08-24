@@ -6,18 +6,24 @@ symptoms:
   - "Debug Chat shows Agent runner temporarily unavailable after the user message is sent."
   - "Basic streaming prompts may work, but tool-call, non-streaming, or multimodal prompts fail with the same runner and pipeline."
   - "The failure happens after the local-agent runner starts, not during plugin discovery."
+  - "A short model preflight passes, but a sustained Agent run later fails after the provider quota is exhausted."
 patterns:
   - "runner.llm_error"
   - "runner.tool_loop_error"
   - "model_not_found"
   - "no available channel for model"
   - "invalid api key"
+  - "insufficient user quota"
+  - "insufficient_quota"
+  - "quota exceeded"
+  - "余额不足"
   - "当前分组上游负载已饱和"
   - "All models failed during streaming setup"
 likely_causes:
   - "The selected model route is unavailable in the current LangBot Space or upstream group."
   - "The selected model works for plain chat but is not available for tool-call, multimodal, or non-streaming request shapes."
   - "The provider credential or quota is invalid for the non-streaming path."
+  - "The provider account has enough balance for a short preflight but not for the sustained task."
   - "The selected model has function-call or vision metadata, but the upstream distributor cannot currently serve that model."
 fix_steps:
   - "First rerun a basic local-agent Debug Chat prompt on the same pipeline to confirm the runner host path still works."
@@ -25,6 +31,7 @@ fix_steps:
   - "When tool-call cases fail, retest with a model that is known to support function calling in the active environment."
   - "When multimodal cases fail, retest with a model route that is known to accept image content."
   - "When non-streaming fails with invalid api key, verify the provider credential used by the non-streaming requester path."
+  - "When logs report insufficient quota, restore provider balance or switch to another authorized route before rerunning the live-model case."
   - "Do not classify this as an MCP, RAG, or local-agent runner implementation failure until the same model route works for the requested request shape outside the failing case."
 verification: "The same case produces the expected bot-visible sentinel or tool result, and backend logs show request completion without runner.llm_error, runner.tool_loop_error, or All models failed."
 related_cases:
@@ -33,3 +40,4 @@ related_cases:
   - mcp-stdio-tool-call
   - local-agent-multimodal-debug-chat
   - local-agent-nonstreaming-debug-chat
+  - local-agent-complex-coding-task-debug-chat

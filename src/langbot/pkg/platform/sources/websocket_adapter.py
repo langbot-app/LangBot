@@ -280,6 +280,9 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
             if reply_context.scope != self._scope():
                 raise ValueError('WebSocket reply context does not match this adapter scope')
             return reply_context.pipeline_uuid, reply_context.session_id
+        pipeline_uuid = getattr(message_source, '_langbot_pipeline_uuid', None)
+        if isinstance(pipeline_uuid, str) and pipeline_uuid:
+            return pipeline_uuid, None
         raise ValueError('WebSocket reply target is not bound to this adapter scope')
 
     async def send_message(
@@ -450,8 +453,9 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
             # 更新历史记录中的对应消息
             message_list[existing_index] = message_data
 
-        if message_is_final and resp_message_id:
-            stream_message_indexes.pop(resp_message_id, None)
+        # Keep the index for the lifetime of the history entry. AgentRunner can
+        # emit a final delta followed by message.completed/run.completed; all
+        # events with the same Host response id must update one UI message.
 
         await ws_connection_manager.broadcast_to_pipeline(
             pipeline_uuid,
@@ -709,6 +713,7 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
                 session_id=connection.session_id,
             ),
         )
+        object.__setattr__(event, '_langbot_pipeline_uuid', pipeline_uuid)
 
         listeners = (
             owner_bot.adapter.listeners

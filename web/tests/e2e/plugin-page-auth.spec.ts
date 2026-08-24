@@ -62,6 +62,15 @@ test('loads a Cloud plugin page through the authenticated asset route', async ({
   });
 
   let authenticatedAssetRequests = 0;
+  let pageSdkRequests = 0;
+  await page.route('**/api/v1/plugins/_sdk/page-sdk.js', async (route) => {
+    pageSdkRequests += 1;
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/javascript',
+      body: 'window.langbot = { onReady(callback) { callback(); } };',
+    });
+  });
   await page.route(
     '**/api/v1/plugins/langbot-team/LangRAG/authenticated-assets/**',
     async (route) => {
@@ -69,7 +78,14 @@ test('loads a Cloud plugin page through the authenticated asset route', async ({
       await route.fulfill({
         status: 200,
         contentType: 'text/html',
-        body: '<!doctype html><html><body><h1>LangRAG Observability</h1></body></html>',
+        body: `<!doctype html><html><body><main></main>
+          <script src="/api/v1/plugins/_sdk/page-sdk.js"></script>
+          <script>
+            langbot.onReady(() => {
+              document.querySelector('main').innerHTML = '<h1>LangRAG Observability</h1>';
+            });
+          </script>
+        </body></html>`,
       });
     },
   );
@@ -84,5 +100,6 @@ test('loads a Cloud plugin page through the authenticated asset route', async ({
       .getByRole('heading', { name: 'LangRAG Observability' }),
   ).toBeVisible();
   expect(authenticatedAssetRequests).toBeGreaterThan(0);
+  expect(pageSdkRequests).toBeGreaterThan(0);
   await expect(page.getByText('Loading...')).toHaveCount(0);
 });

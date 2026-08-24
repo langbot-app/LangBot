@@ -1,0 +1,57 @@
+id: bot-event-routing-product-flow
+title: "Bot event routing can be configured and tested from the WebUI"
+mode: agent-browser
+area: bot
+type: feature
+priority: p0
+risk: medium
+ci_eligible: false
+tags:
+  - bot
+  - eba
+  - event-routing
+  - productization
+skills:
+  - langbot-env-setup
+  - langbot-testing
+env:
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_BROWSER_PROFILE
+automation: scripts/e2e/bot-event-routing-product-flow.mjs
+automation_env:
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_BROWSER_PROFILE
+  - LANGBOT_CHROMIUM_EXECUTABLE
+preconditions:
+  - "The target is a local test instance where a temporary HTTP Bot may be created and deleted."
+steps:
+  - "Open Create Bot, choose HTTP Bot, and add a message-reply behavior before the first save."
+  - "Create a temporary HTTP Bot with a saved message.received route to the discard processor."
+  - "Open the Bot configuration in the WebUI."
+  - "Confirm the adapter capability summary, friendly event name, target, and route status are visible."
+  - "Confirm overlapping routes and unmatched-event fallback behavior are explained before save."
+  - "Open Test event route and run a dry-run against the current form."
+  - "Run the saved runtime route with a synthetic event."
+  - "Close the dialog and confirm the route card shows the latest discarded status."
+checks:
+  - "UI: A user can choose a channel and add a scenario-labeled behavior during initial Bot creation."
+  - "UI: Event routing uses user-facing labels and does not require the raw event name in the primary route card."
+  - "UI: Definite route shadowing and unmatched-event fallback behavior are visible without opening raw logs."
+  - "UI: Dry-run visibly reports that the route matched the discard processor."
+  - "UI: Saved-route execution visibly succeeds, explains its side-effect boundary, and updates route status to discarded."
+  - "Console: No unexpected frontend errors appear during the flow."
+  - "Network: Bot, dry-run, route-status, and test-event requests return without 5xx responses."
+  - "Cleanup: The temporary Bot is deleted after evidence is collected."
+evidence_required:
+  - ui
+  - screenshot
+  - console
+  - api_diagnostic
+diagnostics:
+  - "The fixture deliberately uses the discard processor so the product-flow test cannot invoke a model, tool, or external callback."
+  - "A passing API call without the visible matched and discarded UI states is not a pass."
+troubleshooting:
+  - backend-not-listening
+  - proxy-env-mismatch

@@ -54,6 +54,19 @@ def _create_mock_result(items: list = None, first_item=None):
     return result
 
 
+def _set_discovered_adapters(ap, *webhook_adapters: str) -> None:
+    components = [
+        SimpleNamespace(
+            metadata=SimpleNamespace(name=adapter_name),
+            spec={'config': [{'name': 'webhook', 'type': 'webhook-url'}]},
+        )
+        for adapter_name in webhook_adapters
+    ]
+    ap.discover = SimpleNamespace(
+        get_components_by_kind=Mock(return_value=components)
+    )
+
+
 class TestBotServiceGetBots:
     """Tests for get_bots method."""
 
@@ -223,6 +236,7 @@ class TestBotServiceGetRuntimeBotInfo:
         }
         ap.platform_mgr = SimpleNamespace()
         ap.platform_mgr.get_bot_by_uuid = AsyncMock(return_value=None)
+        _set_discovered_adapters(ap, 'wecom')
 
         bot_data = {
             'uuid': 'wecom-uuid',
@@ -249,6 +263,7 @@ class TestBotServiceGetRuntimeBotInfo:
         ap.instance_config.data = {'api': {}}
         ap.platform_mgr = SimpleNamespace()
         ap.platform_mgr.get_bot_by_uuid = AsyncMock(return_value=None)
+        _set_discovered_adapters(ap)
 
         bot_data = {
             'uuid': 'telegram-uuid',
@@ -274,6 +289,7 @@ class TestBotServiceGetRuntimeBotInfo:
         ap.instance_config = SimpleNamespace()
         ap.instance_config.data = {'api': {}}
         ap.platform_mgr = SimpleNamespace()
+        _set_discovered_adapters(ap)
 
         # Mock runtime bot with adapter
         runtime_bot = SimpleNamespace()
@@ -372,8 +388,8 @@ class TestBotServiceCreateBot:
         assert bot_uuid is not None
         assert len(bot_uuid) == 36  # UUID format
 
-    async def test_create_bot_sets_default_pipeline(self):
-        """Sets default pipeline when one exists."""
+    async def test_create_bot_scopes_insert_without_legacy_pipeline_fields(self):
+        """Creates a Workspace-owned Bot without restoring removed pipeline columns."""
         # Setup
         ap = SimpleNamespace()
         ap.persistence_mgr = SimpleNamespace()
@@ -381,13 +397,6 @@ class TestBotServiceCreateBot:
         ap.instance_config.data = {'system': {'limitation': {'max_bots': -1}}}
         ap.platform_mgr = SimpleNamespace()
         ap.platform_mgr.load_bot = AsyncMock()
-
-        # Mock default pipeline
-        mock_pipeline = SimpleNamespace()
-        mock_pipeline.uuid = 'default-pipeline-uuid'
-        mock_pipeline.name = 'Default Pipeline'
-        pipeline_result = Mock()
-        pipeline_result.first = Mock(return_value=mock_pipeline)
 
         # Mock bot after insert
         bot_result = Mock()
@@ -399,8 +408,6 @@ class TestBotServiceCreateBot:
             nonlocal call_count
             call_count += 1
             if call_count == 1:
-                return pipeline_result  # Check default pipeline
-            elif call_count == 2:
                 return Mock()  # Insert
             return bot_result  # Get bot
 
@@ -409,8 +416,6 @@ class TestBotServiceCreateBot:
             return_value={
                 'uuid': 'new-uuid',
                 'name': 'New Bot',
-                'use_pipeline_uuid': 'default-pipeline-uuid',
-                'use_pipeline_name': 'Default Pipeline',
             }
         )
 
@@ -422,11 +427,11 @@ class TestBotServiceCreateBot:
 
         # The service owns a copy and cannot mutate caller input while adding tenant data.
         assert bot_data == {'name': 'New Bot', 'adapter': 'telegram', 'adapter_config': {}}
-        insert_statement = ap.persistence_mgr.execute_async.await_args_list[1].args[0]
+        insert_statement = ap.persistence_mgr.execute_async.await_args_list[0].args[0]
         insert_values = insert_statement.compile().params
         assert insert_values['workspace_uuid'] == WORKSPACE_UUID
-        assert insert_values['use_pipeline_uuid'] == 'default-pipeline-uuid'
-        assert insert_values['use_pipeline_name'] == 'Default Pipeline'
+        assert 'use_pipeline_uuid' not in insert_values
+        assert 'use_pipeline_name' not in insert_values
         assert bot_uuid is not None  # Verify UUID was returned
 
 
@@ -462,63 +467,36 @@ class TestBotServiceUpdateBot:
         assert update_params['name'] == 'Updated Name'
         assert 'should-be-removed' not in update_params.values()
 
-    async def test_update_bot_pipeline_not_found_raises(self):
-        """Raises Exception when updating with nonexistent pipeline UUID."""
+    async def test_update_bot_ignores_removed_pipeline_fields(self):
+        """Legacy pipeline fields cannot be written through the current Bot API."""
         # Setup
         ap = SimpleNamespace()
         ap.persistence_mgr = SimpleNamespace()
 
-        # Mock pipeline query returns None
-        pipeline_result = Mock()
-        pipeline_result.first = Mock(return_value=None)
-        ap.persistence_mgr.execute_async = AsyncMock(return_value=pipeline_result)
-
-        service = BotService(ap)
-
-        # Execute & Verify
-        with pytest.raises(Exception, match='Pipeline not found'):
-            await service.update_bot(WORKSPACE_UUID, 'test-uuid', {'use_pipeline_uuid': 'nonexistent-pipeline'})
-
-    async def test_update_bot_sets_pipeline_name(self):
-        """Sets use_pipeline_name when updating use_pipeline_uuid."""
-        # Setup
-        ap = SimpleNamespace()
-        ap.persistence_mgr = SimpleNamespace()
-        ap.platform_mgr = SimpleNamespace()
-        ap.platform_mgr.remove_bot = AsyncMock()
-
-        # Mock pipeline query
-        mock_pipeline = SimpleNamespace()
-        mock_pipeline.name = 'Updated Pipeline'
-        pipeline_result = Mock()
-        pipeline_result.first = Mock(return_value=mock_pipeline)
-
-        call_count = 0
-
-        async def mock_execute(query):
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                return pipeline_result
-            return Mock()
-
-        ap.persistence_mgr.execute_async = AsyncMock(side_effect=mock_execute)
-        ap.sess_mgr = SimpleNamespace()
-        ap.sess_mgr.session_list = []
+        ap.persistence_mgr.execute_async = AsyncMock(return_value=Mock())
+        ap.platform_mgr = SimpleNamespace(
+            remove_bot=AsyncMock(),
+            load_bot=AsyncMock(return_value=SimpleNamespace(enable=False)),
+        )
+        ap.sess_mgr = SimpleNamespace(session_list=[])
 
         service = BotService(ap)
         service.get_bot = AsyncMock(return_value={'uuid': 'test-uuid'})
 
-        runtime_bot = SimpleNamespace()
-        runtime_bot.enable = False
-        ap.platform_mgr.load_bot = AsyncMock(return_value=runtime_bot)
+        await service.update_bot(
+            WORKSPACE_UUID,
+            'test-uuid',
+            {
+                'name': 'Updated',
+                'use_pipeline_uuid': 'nonexistent-pipeline',
+                'use_pipeline_name': 'forged-name',
+            },
+        )
 
-        # Execute
-        await service.update_bot(WORKSPACE_UUID, 'test-uuid', {'use_pipeline_uuid': 'pipeline-uuid'})
-
-        update_params = ap.persistence_mgr.execute_async.await_args_list[1].args[0].compile().params
-        assert update_params['use_pipeline_uuid'] == 'pipeline-uuid'
-        assert update_params['use_pipeline_name'] == 'Updated Pipeline'
+        update_params = ap.persistence_mgr.execute_async.await_args.args[0].compile().params
+        assert update_params['name'] == 'Updated'
+        assert 'use_pipeline_uuid' not in update_params
+        assert 'use_pipeline_name' not in update_params
 
 
 class TestBotServiceDeleteBot:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime
+import typing
 
 from .. import stage, entities
 from langbot_plugin.api.entities.builtin.provider import message as provider_message
@@ -9,6 +10,18 @@ import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
 from ...pipeline.pool import get_query_execution_context
+
+from ...agent.runner.descriptor import AgentRunnerDescriptor
+from ...agent.runner.config_resolver import RunnerConfigResolver
+from ...agent.runner import config_schema
+from ...agent.runner.resource_policy import ResourcePolicyProjector
+from ...provider.tools.toolmgr import ToolManager
+from ..extension_preferences import normalize_extension_preferences
+
+
+DEFAULT_PROMPT_CONFIG = [
+    {'role': 'system', 'content': 'You are a helpful assistant.'},
+]
 
 
 @stage.stage_class('PreProcessor')
@@ -26,43 +39,158 @@ class PreProcessor(stage.PipelineStage):
         - use_funcs
     """
 
-    @staticmethod
-    def _filter_selected_tools(
-        tools: list,
-        local_agent_config: dict,
-    ) -> list:
-        if local_agent_config.get('enable-all-tools', True) is not False:
-            return tools
+    async def _get_runner_descriptor(
+        self,
+        query: pipeline_query.Query,
+        runner_id: str | None,
+        bound_plugins: list[str] | None,
+    ) -> AgentRunnerDescriptor | None:
+        if not runner_id:
+            return None
 
-        selected_tools = local_agent_config.get('tools', [])
-        if not isinstance(selected_tools, list):
-            return []
+        registry = getattr(self.ap, 'agent_runner_registry', None)
+        if registry is None:
+            return None
 
-        selected_tool_names = {tool for tool in selected_tools if isinstance(tool, str)}
-        return [tool for tool in tools if tool.name in selected_tool_names]
+        try:
+            return await registry.get(
+                get_query_execution_context(query),
+                runner_id,
+                bound_plugins,
+            )
+        except Exception as e:
+            self.ap.logger.debug(f'Unable to load AgentRunner descriptor for {runner_id}: {e}')
+            return None
 
-    @staticmethod
-    def _append_to_system_prompt(
-        messages: list[provider_message.Message],
-        addition: str,
-    ) -> None:
-        """Append text to the first system message, creating one if none exists.
+    async def _resolve_llm_model(
+        self,
+        query: pipeline_query.Query,
+        primary_uuid: str,
+    ) -> typing.Any | None:
+        if primary_uuid in config_schema.NONE_SENTINELS:
+            return None
+        try:
+            return await self.ap.model_mgr.get_model_by_uuid(get_query_execution_context(query), primary_uuid)
+        except ValueError:
+            self.ap.logger.warning(f'LLM model {primary_uuid} not found or not configured')
+            return None
 
-        Handles both plain-string and content-element (list) message bodies.
-        """
-        if messages and messages[0].role == 'system':
-            head = messages[0]
-            if isinstance(head.content, str):
-                head.content = head.content + addition
-            elif isinstance(head.content, list):
-                for ce in head.content:
-                    if getattr(ce, 'type', None) == 'text':
-                        ce.text = (ce.text or '') + addition
-                        break
-                else:
-                    head.content.append(provider_message.ContentElement(type='text', text=addition))
-        else:
-            messages.insert(0, provider_message.Message(role='system', content=addition.strip()))
+    async def _resolve_fallback_models(self, query: pipeline_query.Query, fallback_uuids: list[str]) -> list[str]:
+        valid_fallbacks = []
+        for fallback_uuid in fallback_uuids:
+            if fallback_uuid in config_schema.NONE_SENTINELS:
+                continue
+            try:
+                await self.ap.model_mgr.get_model_by_uuid(get_query_execution_context(query), fallback_uuid)
+                valid_fallbacks.append(fallback_uuid)
+            except ValueError:
+                self.ap.logger.warning(f'Fallback model {fallback_uuid} not found, skipping')
+        return valid_fallbacks
+
+    async def _resolve_host_tools(
+        self,
+        query: pipeline_query.Query,
+        runner_config: dict[str, typing.Any],
+        bound_plugins: list[str] | None,
+        bound_mcp_servers: list[str] | None,
+        include_mcp_resource_tools: bool,
+    ) -> list[typing.Any]:
+        catalog = await self.ap.tool_mgr.get_resolved_tool_catalog(
+            get_query_execution_context(query),
+            bound_plugins,
+            bound_mcp_servers,
+            include_skill_authoring=True,
+            include_mcp_resource_tools=include_mcp_resource_tools,
+        )
+        policy = ResourcePolicyProjector.from_runner_config(
+            runner_config,
+            resolved_tool_names=ResourcePolicyProjector.extract_tool_names(catalog),
+        )
+        catalog = ResourcePolicyProjector.filter_tools(catalog, policy)
+        ToolManager.bind_query_tool_sources(query, catalog)
+        return ToolManager.tools_from_catalog(catalog)
+
+    def _runner_accepts_multimodal_input(self, descriptor: AgentRunnerDescriptor | None) -> bool:
+        if descriptor is None:
+            return True
+        return descriptor.capabilities.multimodal_input
+
+    def _model_supports_vision(self, llm_model: typing.Any | None) -> bool:
+        if not llm_model:
+            return False
+        abilities = getattr(getattr(llm_model, 'model_entity', None), 'abilities', [])
+        return 'vision' in (abilities or [])
+
+    def _should_keep_image_inputs(
+        self,
+        descriptor: AgentRunnerDescriptor | None,
+        uses_host_models: bool,
+        llm_model: typing.Any | None,
+    ) -> bool:
+        if not self._runner_accepts_multimodal_input(descriptor):
+            return False
+        if uses_host_models:
+            return self._model_supports_vision(llm_model)
+        return True
+
+    def _strip_images_from_history(self, query: pipeline_query.Query) -> None:
+        for msg in query.messages:
+            if isinstance(msg.content, list):
+                msg.content = [elem for elem in msg.content if elem.type != 'image_url']
+
+    def _has_declared_db_engine(self) -> bool:
+        persistence_mgr = getattr(self.ap, 'persistence_mgr', None)
+        if persistence_mgr is None:
+            return False
+        if 'get_db_engine' in getattr(persistence_mgr, '__dict__', {}):
+            return True
+        return hasattr(type(persistence_mgr), 'get_db_engine')
+
+    async def _load_agent_runner_history_messages(
+        self,
+        runner_id: str | None,
+        conversation_uuid: str | None,
+        bot_id: str | None = None,
+        workspace_id: str | None = None,
+        thread_id: str | None = None,
+    ) -> list[provider_message.Message] | None:
+        if not runner_id or not conversation_uuid or not self._has_declared_db_engine():
+            return None
+
+        try:
+            from ...agent.runner.transcript_store import TranscriptStore
+
+            store = TranscriptStore(self.ap.persistence_mgr.get_db_engine())
+            messages = await store.get_legacy_provider_messages(
+                str(conversation_uuid),
+                bot_id=bot_id,
+                workspace_id=workspace_id,
+                thread_id=thread_id,
+                strict_thread=True,
+            )
+        except Exception as e:
+            self.ap.logger.warning(f'Unable to load Transcript history view for conversation {conversation_uuid}: {e}')
+            return None
+
+        return messages or None
+
+    async def _resolve_history_messages(
+        self,
+        runner_id: str | None,
+        conversation: typing.Any,
+        bot_id: str | None = None,
+        workspace_id: str | None = None,
+    ) -> list[provider_message.Message]:
+        transcript_messages = await self._load_agent_runner_history_messages(
+            runner_id,
+            getattr(conversation, 'uuid', None),
+            bot_id=bot_id,
+            workspace_id=workspace_id,
+            thread_id=getattr(conversation, 'thread_id', None),
+        )
+        if transcript_messages is not None:
+            return transcript_messages
+        return conversation.messages.copy()
 
     async def process(
         self,
@@ -70,56 +198,37 @@ class PreProcessor(stage.PipelineStage):
         stage_inst_name: str,
     ) -> entities.StageProcessResult:
         """Process"""
-        selected_runner = query.pipeline_config['ai']['runner']['runner']
-        local_agent_config = query.pipeline_config.get('ai', {}).get('local-agent', {})
-        include_skill_authoring = (
-            selected_runner == 'local-agent' and getattr(self.ap, 'skill_service', None) is not None
+        # Resolve runner ID from the current ai.runner.id shape.
+        runner_id = RunnerConfigResolver.resolve_runner_id(query.pipeline_config)
+
+        # Get runner config from ai.runner_config[runner_id].
+        runner_config = (
+            RunnerConfigResolver.resolve_runner_config(query.pipeline_config, runner_id) if runner_id else {}
         )
+        query.variables = query.variables or {}
+        bound_plugins = query.variables.get('_pipeline_bound_plugins', None)
+        bound_mcp_servers = query.variables.get('_pipeline_bound_mcp_servers', None)
+        include_mcp_resource_tools = query.variables.get('_pipeline_mcp_resource_agent_read_enabled', True) is True
+        descriptor = await self._get_runner_descriptor(query, runner_id, bound_plugins)
 
         session = await self.ap.sess_mgr.get_session(query)
 
-        # When not local-agent, llm_model is None
+        uses_host_models = config_schema.uses_host_models(descriptor)
+        uses_host_tools = config_schema.uses_host_tools(descriptor)
         llm_model = None
-        if selected_runner == 'local-agent':
-            # Read model config — new format is { primary: str, fallbacks: [str] },
-            # but handle legacy plain string for backward compatibility
-            model_config = local_agent_config.get('model', {})
-            if isinstance(model_config, str):
-                # Legacy format: plain UUID string
-                primary_uuid = model_config
-                fallback_uuids = []
-            else:
-                primary_uuid = model_config.get('primary', '')
-                fallback_uuids = model_config.get('fallbacks', [])
+        if uses_host_models:
+            primary_uuid, fallback_uuids = config_schema.extract_model_selection(descriptor, runner_config)
+            llm_model = await self._resolve_llm_model(query, primary_uuid)
+            valid_fallbacks = await self._resolve_fallback_models(query, fallback_uuids)
+            if valid_fallbacks:
+                query.variables['_fallback_model_uuids'] = valid_fallbacks
 
-            if primary_uuid:
-                try:
-                    llm_model = await self.ap.model_mgr.get_model_by_uuid(
-                        get_query_execution_context(query),
-                        primary_uuid,
-                    )
-                except ValueError:
-                    self.ap.logger.warning(f'LLM model {primary_uuid} not found or not configured')
-
-            # Resolve fallback model UUIDs
-            if fallback_uuids:
-                valid_fallbacks = []
-                for fb_uuid in fallback_uuids:
-                    try:
-                        await self.ap.model_mgr.get_model_by_uuid(
-                            get_query_execution_context(query),
-                            fb_uuid,
-                        )
-                        valid_fallbacks.append(fb_uuid)
-                    except ValueError:
-                        self.ap.logger.warning(f'Fallback model {fb_uuid} not found, skipping')
-                if valid_fallbacks:
-                    query.variables['_fallback_model_uuids'] = valid_fallbacks
+        prompt_config = config_schema.extract_prompt_config(descriptor, runner_config, DEFAULT_PROMPT_CONFIG)
 
         conversation = await self.ap.sess_mgr.get_conversation(
             query,
             session,
-            query.pipeline_config['ai']['local-agent']['prompt'],
+            prompt_config,
             query.pipeline_uuid,
             query.bot_uuid,
         )
@@ -128,7 +237,7 @@ class PreProcessor(stage.PipelineStage):
         # been idle for longer than the configured conversation expire time.
         # The idle window is measured from the last preprocess/update time, not
         # from the conversation creation time.
-        conversation_expire_time = query.pipeline_config.get('ai', {}).get('runner', {}).get('expire-time', None)
+        conversation_expire_time = RunnerConfigResolver.get_expire_time(query.pipeline_config)
         now = datetime.datetime.now()
         if conversation_expire_time is not None and conversation_expire_time > 0:
             last_update_time = getattr(conversation, 'update_time', None) or getattr(conversation, 'create_time', None)
@@ -145,29 +254,29 @@ class PreProcessor(stage.PipelineStage):
         # time instead of the first message/creation time.
         conversation.update_time = now
 
-        # 设置query
+        # Attach resolved session state to the query.
         query.session = session
         query.prompt = conversation.prompt.copy()
-        query.messages = conversation.messages.copy()
+        query.messages = await self._resolve_history_messages(
+            runner_id,
+            conversation,
+            bot_id=query.bot_uuid,
+            workspace_id=query.workspace_uuid,
+        )
 
-        if selected_runner == 'local-agent':
+        if uses_host_models:
             query.use_funcs = []
             if llm_model:
                 query.use_llm_model_uuid = llm_model.model_entity.uuid
 
-                if 'func_call' in (llm_model.model_entity.abilities or []):
-                    # Get bound plugins and MCP servers for filtering tools
-                    bound_plugins = query.variables.get('_pipeline_bound_plugins', None)
-                    bound_mcp_servers = query.variables.get('_pipeline_bound_mcp_servers', None)
-                    include_mcp_resource_tools = query.variables.get('_pipeline_mcp_resource_agent_read_enabled', True)
-                    all_tools = await self.ap.tool_mgr.get_all_tools(
-                        get_query_execution_context(query),
+                if uses_host_tools and 'func_call' in (llm_model.model_entity.abilities or []):
+                    query.use_funcs = await self._resolve_host_tools(
+                        query,
+                        runner_config,
                         bound_plugins,
                         bound_mcp_servers,
-                        include_skill_authoring=include_skill_authoring,
-                        include_mcp_resource_tools=include_mcp_resource_tools,
+                        include_mcp_resource_tools,
                     )
-                    query.use_funcs = self._filter_selected_tools(all_tools, local_agent_config)
 
                     self.ap.logger.debug(f'Bound plugins: {bound_plugins}')
                     self.ap.logger.debug(f'Bound MCP servers: {bound_mcp_servers}')
@@ -175,18 +284,26 @@ class PreProcessor(stage.PipelineStage):
 
             # If primary model doesn't support func_call but fallback models exist,
             # load tools anyway since fallback models may support them
-            if not query.use_funcs and query.variables.get('_fallback_model_uuids'):
-                bound_plugins = query.variables.get('_pipeline_bound_plugins', None)
-                bound_mcp_servers = query.variables.get('_pipeline_bound_mcp_servers', None)
-                include_mcp_resource_tools = query.variables.get('_pipeline_mcp_resource_agent_read_enabled', True)
-                all_tools = await self.ap.tool_mgr.get_all_tools(
-                    get_query_execution_context(query),
+            if uses_host_tools and not query.use_funcs and query.variables.get('_fallback_model_uuids'):
+                query.use_funcs = await self._resolve_host_tools(
+                    query,
+                    runner_config,
                     bound_plugins,
                     bound_mcp_servers,
-                    include_skill_authoring=include_skill_authoring,
-                    include_mcp_resource_tools=include_mcp_resource_tools,
+                    include_mcp_resource_tools,
                 )
-                query.use_funcs = self._filter_selected_tools(all_tools, local_agent_config)
+        elif uses_host_tools:
+            query.use_funcs = await self._resolve_host_tools(
+                query,
+                runner_config,
+                bound_plugins,
+                bound_mcp_servers,
+                include_mcp_resource_tools,
+            )
+
+            self.ap.logger.debug(f'Bound plugins: {bound_plugins}')
+            self.ap.logger.debug(f'Bound MCP servers: {bound_mcp_servers}')
+            self.ap.logger.debug(f'Use funcs: {query.use_funcs}')
 
         sender_name = ''
 
@@ -211,32 +328,28 @@ class PreProcessor(stage.PipelineStage):
         }
         query.variables.update(variables)
 
-        # Check if this model supports vision, if not, remove all images
-        # TODO this checking should be performed in runner, and in this stage, the image should be reserved
-        if selected_runner == 'local-agent' and llm_model and 'vision' not in (llm_model.model_entity.abilities or []):
-            for msg in query.messages:
-                if isinstance(msg.content, list):
-                    for me in msg.content:
-                        if me.type == 'image_url':
-                            msg.content.remove(me)
+        keep_image_inputs = self._should_keep_image_inputs(descriptor, uses_host_models, llm_model)
+        if not keep_image_inputs:
+            self._strip_images_from_history(query)
 
         content_list: list[provider_message.ContentElement] = []
 
         plain_text = ''
-        quote_msg = query.pipeline_config['trigger'].get('misc', '').get('combine-quote-message')
+        quote_msg = query.pipeline_config['trigger'].get('misc', {}).get('combine-quote-message', False)
 
         for me in query.message_chain:
             if isinstance(me, platform_message.Plain):
                 content_list.append(provider_message.ContentElement.from_text(me.text))
                 plain_text += me.text
             elif isinstance(me, platform_message.Image):
-                if selected_runner != 'local-agent' or (
-                    llm_model and 'vision' in (llm_model.model_entity.abilities or [])
-                ):
+                if keep_image_inputs:
                     if me.base64 is not None:
                         content_list.append(provider_message.ContentElement.from_image_base64(me.base64))
+                else:
+                    content_list.append(provider_message.ContentElement.from_text('[Image]'))
+                    plain_text += '[Image]'
             elif isinstance(me, platform_message.Voice):
-                # 转成文件链接，让下游 runner 上传到目标模型
+                # Convert voice input into file content for downstream model upload.
                 if me.base64:
                     content_list.append(provider_message.ContentElement.from_file_base64(me.base64, 'voice.silk'))
                 elif me.url:
@@ -251,11 +364,12 @@ class PreProcessor(stage.PipelineStage):
                     if isinstance(msg, platform_message.Plain):
                         content_list.append(provider_message.ContentElement.from_text(msg.text))
                     elif isinstance(msg, platform_message.Image):
-                        if selected_runner != 'local-agent' or (
-                            llm_model and 'vision' in (llm_model.model_entity.abilities or [])
-                        ):
+                        if keep_image_inputs:
                             if msg.base64 is not None:
                                 content_list.append(provider_message.ContentElement.from_image_base64(msg.base64))
+                        else:
+                            content_list.append(provider_message.ContentElement.from_text('[Image]'))
+                            plain_text += '[Image]'
                     elif isinstance(msg, platform_message.File):
                         if msg.base64:
                             content_list.append(provider_message.ContentElement.from_file_base64(msg.base64, msg.name))
@@ -273,16 +387,14 @@ class PreProcessor(stage.PipelineStage):
 
         query.user_message = provider_message.Message(role='user', content=content_list)
 
-        # Extract knowledge base UUIDs into query variables so plugins can modify them
-        # during PromptPreProcessing before the runner performs retrieval.
-        kb_uuids = query.pipeline_config['ai']['local-agent'].get('knowledge-bases', [])
-        if not kb_uuids:
-            old_kb_uuid = query.pipeline_config['ai']['local-agent'].get('knowledge-base', '')
-            if old_kb_uuid and old_kb_uuid != '__none__':
-                kb_uuids = [old_kb_uuid]
-        query.variables['_knowledge_base_uuids'] = list(kb_uuids)
+        # Extract configured KB UUIDs into query variables so PromptPreProcessing
+        # plugins can still adjust the authorized retrieval set before run_agent.
+        query.variables['_knowledge_base_uuids'] = config_schema.extract_knowledge_base_uuids(
+            descriptor,
+            runner_config,
+        )
 
-        # =========== 触发事件 PromptPreProcessing
+        # Emit PromptPreProcessing before the runner receives the query.
 
         event = events.PromptPreProcessing(
             session_name=f'{query.session.launcher_type.value}_{query.session.launcher_id}',
@@ -298,71 +410,21 @@ class PreProcessor(stage.PipelineStage):
         query.prompt.messages = event_ctx.event.default_prompt
         query.messages = event_ctx.event.prompt
 
-        # =========== Current date grounding for the local-agent runner ===========
-        # local-agent system prompts are static strings with no template-variable
-        # support, so without an explicit anchor the LLM resolves relative time
-        # references (e.g. "this quarter", "latest", "currently") against whichever
-        # period is best represented in its training data instead of the real date,
-        # and won't reliably know to double check time-sensitive facts with a tool.
-        if selected_runner == 'local-agent':
-            date_addition = (
-                f'\n\nCurrent date: {datetime.datetime.now().strftime("%Y-%m-%d (%A)")}. '
-                'Resolve relative time references (e.g. "today", "this quarter", "latest", '
-                '"currently") based on this date, not your training cutoff. For anything '
-                'time-sensitive that may have changed since training — stock prices, '
-                'financial results, news, current events, exchange rates, or similar — '
-                'verify with a search tool if one is available rather than answering from memory.'
-            )
-            self._append_to_system_prompt(query.prompt.messages, date_addition)
-
-        # =========== Skill awareness for the local-agent runner ===========
-        # The actual activation goes through the ``activate`` Tool Call so the
-        # LLM doesn't see full SKILL.md instructions until it commits to a
-        # skill (Claude Code's progressive disclosure). But the LLM still has
-        # to KNOW which skills exist to make that choice, so we:
-        #   1. resolve the pipeline's bound skills and stash them in
-        #      ``query.variables['_pipeline_bound_skills']`` for downstream
-        #      visibility checks (skill loader, native exec workdir);
-        #   2. inject a short ``Available Skills`` index (name + description
-        #      only) into the system prompt. The contributor's original PR
-        #      relied on this injection; without it the LLM never discovers
-        #      the skills are there and just calls native tools instead.
-        if selected_runner == 'local-agent' and self.ap.skill_mgr:
+        if getattr(self.ap, 'skill_mgr', None) is not None:
             skill_execution_context = get_query_execution_context(query)
             await self.ap.skill_mgr.ensure_loaded(skill_execution_context)
             pipeline_data = await self.ap.pipeline_service.get_pipeline(
-                query.workspace_uuid,
+                skill_execution_context,
                 query.pipeline_uuid,
                 include_secret=True,
             )
-            extensions_prefs = (pipeline_data or {}).get('extensions_preferences', {})
-            enable_all_skills = extensions_prefs.get('enable_all_skills', True)
+            extensions_prefs = normalize_extension_preferences((pipeline_data or {}).get('extensions_preferences'))
+            enable_all_skills = extensions_prefs['enable_all_skills']
 
             if enable_all_skills:
                 bound_skills = None  # None = all loaded skills are visible
             else:
-                bound_skills = extensions_prefs.get('skills', [])
+                bound_skills = extensions_prefs['skills']
 
             query.variables['_pipeline_bound_skills'] = bound_skills
-
-            skill_addition = self.ap.skill_mgr.build_skill_aware_prompt_addition(
-                skill_execution_context,
-                bound_skills=bound_skills,
-            )
-            if skill_addition:
-                self._append_to_system_prompt(query.prompt.messages, skill_addition)
-                self.ap.logger.debug(
-                    f'Skill index injected into system prompt: '
-                    f'pipeline={query.pipeline_uuid} '
-                    f'bound_skills={bound_skills or "all"} '
-                    f'loaded_skills={len(self.ap.skill_mgr.get_skills(skill_execution_context))}'
-                )
-            else:
-                self.ap.logger.debug(
-                    f'No skills available for prompt injection: '
-                    f'pipeline={query.pipeline_uuid} '
-                    f'loaded_skills={len(self.ap.skill_mgr.get_skills(skill_execution_context))} '
-                    f'bound_skills={bound_skills}'
-                )
-
         return entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)

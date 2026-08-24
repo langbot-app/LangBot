@@ -129,7 +129,7 @@ export async function runPytestProbe({
   const resultJson = join(evidenceDir, "result.json");
   const command = {
     executable: "rtk",
-    args: ["uv", "run", "pytest", "-q", ...testTargets],
+    args: ["uv", "run", "--no-sync", "pytest", "-q", ...testTargets],
     cwd: repoPath,
   };
   const result = {

@@ -23,6 +23,20 @@ TEST_EXECUTION_CONTEXT = ExecutionContext(
 )
 
 
+@pytest.fixture(autouse=True)
+def _isolate_loopback_transport_from_proxy_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep real loopback transport tests independent of workstation proxies."""
+    for variable in (
+        'ALL_PROXY',
+        'all_proxy',
+        'HTTP_PROXY',
+        'http_proxy',
+        'HTTPS_PROXY',
+        'https_proxy',
+    ):
+        monkeypatch.delenv(variable, raising=False)
+
+
 class _TransportProbe:
     def __init__(self, streamable_status: int | None) -> None:
         self.streamable_status = streamable_status

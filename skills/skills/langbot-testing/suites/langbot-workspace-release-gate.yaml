@@ -1,0 +1,26 @@
+id: langbot-workspace-release-gate
+title: "LangBot workspace top-down release gate"
+description: "Broad release gate combining deterministic repository contracts with representative browser workflows, plugin pages, RAG/parser, EBA, external AgentRunner, and one complex LocalAgent task."
+type: release_gate
+priority: p0
+tags:
+  - workspace
+  - release-gate
+  - browser
+  - agent
+cases:
+  - workspace-compatibility-preflight
+  - workspace-repository-contracts
+  - agent-runner-release-preflight
+  - webui-login-state
+  - wizard-scenario-routing
+  - bot-event-routing-product-flow
+  - agent-runner-health-visibility
+  - agent-runner-qa-debug-chat
+  - local-agent-complex-coding-task-debug-chat
+  - agent-run-ledger-audit
+  - langrag-kb-retrieve
+  - workspace-plugin-pages-smoke
+  - mcp-stdio-register
+  - mcp-stdio-tool-call
+  - wizard-onebot-agent-runtime

@@ -1,402 +1,181 @@
-# Box Session Scope Design
+# Box Session Scope
 
-> Date: 2026-04-18 (last reviewed 2026-06-02)
-> Status (2026-06-02): the self-hosted community edition is release-ready (box optional, clean degradation, no migration debt). Tool-call loop cap, async quota scan, and the host_path mount allowlist have landed. Remaining multi-tenant / security hardening is tracked in [box-issues.md](./box-issues.md).
-> Branch: `feat/sandbox` (LangBot + langbot-plugin-sdk)
+> Last reviewed: 2026-07-12
+> Status: implemented Host-owned, hashed execution scope; Runner/Pipeline session templates are removed.
 > Related: [Box Architecture](./box-architecture.md) | [Box vs Plugin Runtime](./box-vs-plugin-runtime.md)
 
----
+## 1. Decision
 
-## 0. Implementation Status (2026-05-19)
+The LangBot Host owns the Box session used by an event run. A Pipeline, Agent,
+or AgentRunner cannot choose a global, per-user, per-conversation, or per-query
+sandbox mode.
 
-This document was authored as a design proposal. The current `feat/sandbox` branch
-has shipped the design largely as written:
+`BoxService.resolve_box_session_id(query)` always returns this shape:
 
-| Item | Status | Notes |
-|------|--------|-------|
-| `BoxMountSpec` + `BoxSpec.extra_mounts` | ✅ Shipped | SDK `box/models.py` |
-| Docker / nsjail / E2B backends apply extra mounts | ✅ Shipped | Last gap closed by SDK commit `0fea9b1` (E2B) |
-| `box-session-id-template` in `local-agent` pipeline config | ✅ Shipped | `templates/metadata/pipeline/ai.yaml`, default `{launcher_type}_{launcher_id}` |
-| `BoxService.resolve_box_session_id(query)` | ✅ Shipped | `pkg/box/service.py:166` |
-| `BoxService.build_skill_extra_mounts(query)` | ✅ Shipped | `pkg/box/service.py:189` |
-| Skill exec uses unified container + extra mounts | ✅ Shipped | `pkg/provider/tools/loaders/native.py` skill branch |
-| MCP-in-Box uses shared persistent session, multi-process | ✅ Shipped (earlier than originally scoped) | SDK commit `529088e`, LangBot `mcp_stdio.py:_build_box_session_id` |
-| `BoxManagedProcessSpec.process_id` + multi-process per session | ✅ Shipped | `BoxRuntime` keeps `managed_processes: dict[pid, _ManagedProcess]` |
-| Per-tenant / quota integration with templates | ❌ Not started | See [box-tob-analysis.md](./box-tob-analysis.md) |
-
-The "Phase 2 deferred" note in §10 is **out of date** — MCP unification went in on
-the same line. Pipeline-scoped (not user-scoped) MCP container is the realized
-behavior: each pipeline's MCP servers share one `mcp-<pipeline>` session, and
-user exec sessions use the template-derived id.
-
-The remaining open work is multi-tenant overlays (tenant_id in session_id,
-quota counters keyed by tenant), tracked in the toB analysis doc rather than here.
-
----
-
-## 1. Problems
-
-### 1.1 Default exec: per-message containers
-
-Currently, `BoxService.execute_tool()` sets `session_id = str(query.query_id)` — an
-auto-incrementing integer per incoming message. Every user message creates a new sandbox
-container. Dependencies installed and in-container state are lost between messages.
-
-### 1.2 Three isolated container pools
-
-Default exec, skills, and MCP servers each manage their own containers with
-independent session IDs:
-
-| Path         | Session ID                                    | Container   |
-|--------------|-----------------------------------------------|-------------|
-| Default exec | `str(query_id)` (per message)                 | Ephemeral   |
-| Skill exec   | `skill-{launcher}_{id}-{skill_name}`          | Per skill   |
-| MCP stdio    | `mcp-{server_uuid}`                           | Per server  |
-
-This means a single logical user interaction can spawn 3+ containers that cannot
-share state, see each other's files, or reuse installed dependencies.
-
-### 1.3 Single bind mount limitation
-
-`BoxSpec` currently supports only **one** `host_path` → `mount_path` bind mount.
-This prevents mounting both a default workspace and skill directories into the
-same container.
-
----
-
-## 2. Concept Model
-
-```
-Platform Message
-  → Query (query_id: int, auto-increment, per message)
-    → Session (launcher_type + launcher_id, per chat window)
-      → Conversation (uuid, per dialogue context within a Session)
+```text
+lb-box-<64 lowercase SHA-256 hex characters>
 ```
 
-| Concept       | Key                                 | Example                    | Scope                        |
-|---------------|-------------------------------------|----------------------------|------------------------------|
-| Query         | `query_id`                          | `42`                       | Single message               |
-| Session       | `launcher_type` + `launcher_id`     | `group_123456`             | Chat window (group or PM)    |
-| Conversation  | `conversation_id` (UUID)            | `a1b2c3d4-...`             | Dialogue context within a Session |
-| Sender        | `sender_id`                         | `789`                      | Individual user              |
+The result is exactly 71 ASCII characters. Raw platform, user, group,
+conversation, thread, and event identifiers never appear in the Box session
+id. This avoids unsafe path characters, unbounded identifier length, and
+identity leakage through runtime/container metadata.
 
-Note: in a **group chat**, all users share the same Session (keyed by `group_id`). The
-individual sender is tracked as `sender_id` but does not affect Session/Conversation routing.
+This rule replaces all former concepts of:
 
----
+- Pipeline or Runner `box-session-id-template` fields;
+- a global forced session template;
+- API fields that let a caller supply sandbox scope;
+- LocalAgent-specific Host injection of Box availability, scope, or Pipeline id.
 
-## 3. Target Scenarios
+## 2. Canonical Host scope
 
-| #  | Scenario                       | Box Granularity                          | Desired `session_id`                                   |
-|----|--------------------------------|------------------------------------------|---------------------------------------------------------|
-| 1  | Personal assistant             | 1 Box per user, long-lived               | `{launcher_type}_{launcher_id}`                          |
-| 2  | Customer service               | 1 Box per customer, cross-pipeline       | `{launcher_type}_{launcher_id}`                          |
-| 3  | Internal employee tool         | 1 Box per employee                       | `{launcher_type}_{launcher_id}`                          |
-| 4  | Group chat shared assistant    | 1 Box per group                          | `{launcher_type}_{launcher_id}`                          |
-| 5  | Group chat isolated per user   | 1 Box per user within a group            | `{launcher_type}_{launcher_id}_{sender_id}`              |
-| 6  | Teaching (cross-channel)       | 1 Box per student across groups/PMs      | `{sender_id}`                                           |
-| 7  | One-off execution              | 1 Box per message (current behavior)     | `{query_id}`                                            |
-| 8  | Multi-project development      | 1 Box per conversation context           | `{launcher_type}_{launcher_id}_{conversation_id}`        |
+Before hashing, the Host creates a canonical, sorted JSON scope with these
+dimensions:
 
-No single fixed granularity covers all scenarios. A template-based approach is needed.
+| Dimension | Purpose |
+| --- | --- |
+| `instance_id` | Isolate separate LangBot installations |
+| `workspace_id` | Preserve workspace/tenant boundary when available |
+| `bot_id` | Prevent two bots from sharing a sandbox accidentally |
+| `platform_adapter` | Separate identical target ids from different adapters |
+| `target_type` / `target_id` | Identify the platform session or event target |
+| `thread_id` | Isolate threads within a target when available |
 
----
+The canonical JSON is domain-separated and hashed by the Host. Runner input,
+runner config, and tool parameters are not trusted sources for this scope.
 
-## 4. Design Overview
+### 2.1 Target identity priority
 
-Two key changes:
+The Host resolves `target_type` / `target_id` in this order:
 
-1. **Unified container**: exec, skills, and MCP all share the same container per
-   session scope. No more separate container pools.
-2. **Configurable session scope**: `session_id` is generated from a template with
-   pipeline variables, configurable per pipeline.
+1. For a Pipeline-backed run, use the exact Query launcher tuple.
+2. For a pure EBA run, use `delivery.reply_target.target_type/target_id`
+   (`launcher_type/launcher_id` aliases are accepted).
+3. If there is no delivery target, use `conversation_id`.
+4. For a non-message event without a conversation, use `event_id`, producing
+   an event-scoped sandbox.
 
-### 4.1 Unified Container with Multiple Mounts
+The adapter class or declared adapter capability supplies platform adapter
+identity. The Host includes the active LangBot instance, workspace, bot, and
+thread dimensions when they exist.
 
-A single container per session scope is created on first use. It has:
+### 2.2 Stability and isolation
 
-- **Primary mount**: default workspace at `/workspace` (from `default_host_workspace`)
-- **Skill mounts**: each pipeline-bound skill's `package_root` mounted at
-  `/workspace/.skills/{skill_name}/`
-- **MCP servers**: run as managed processes inside the same container
+The same normalized scope always produces the same hash, so repeated runs in
+the same platform conversation reuse the same Box workspace. A rotating
+transcript/conversation id does not change the scope when an explicit platform
+reply target remains the same.
 
-```
-Container (session_id = "group_123456")
-  /workspace/                          ← default workspace (bind mount, rw)
-  /workspace/.skills/web-search/       ← skill package (bind mount, rw)
-  /workspace/.skills/data-analysis/    ← skill package (bind mount, rw)
-  [managed process: mcp-server-a]      ← MCP server running inside
-  [managed process: mcp-server-b]      ← MCP server running inside
-```
+A different target, thread, workspace, bot, platform adapter, or LangBot
+instance changes the hash. If delivery target is unavailable and
+`conversation_id` is the fallback, different conversations also produce
+different hashes. Event-scoped fallback isolates unrelated non-message events.
 
-This requires extending `BoxSpec` to support multiple mounts (see §5).
+### 2.3 Fail closed
 
-### 4.2 Session ID Template
+If the private Host scope marker is present but empty or malformed, Box rejects
+execution with `BoxValidationError`. A direct Query without either a valid
+Host scope or launcher/session identity is also rejected. There is no
+`unknown`, raw query id, global, or caller-selected fallback.
 
-A new field `box-session-id-template` in the `local-agent` pipeline runner config
-controls the session scope:
+## 3. Host execution Query
 
-```yaml
-# templates/metadata/pipeline/ai.yaml (under local-agent.config)
-- name: box-session-id-template
-  label:
-    en_US: Sandbox Scope
-    zh_Hans: 沙箱作用域
-  description:
-    en_US: >-
-      Determines how sandbox environments are shared. Use variables to
-      control isolation granularity.
-    zh_Hans: >-
-      决定沙箱环境的共享方式。使用变量控制隔离粒度。
-  type: select
-  required: false
-  default: "{launcher_type}_{launcher_id}"
-  options:
-    - value: "{launcher_type}_{launcher_id}"
-      label:
-        en_US: Per chat (Recommended)
-        zh_Hans: 每个会话（推荐）
-    - value: "{launcher_type}_{launcher_id}_{sender_id}"
-      label:
-        en_US: Per user in chat
-        zh_Hans: 会话中每个用户
-    - value: "{launcher_type}_{launcher_id}_{conversation_id}"
-      label:
-        en_US: Per conversation context
-        zh_Hans: 每个对话上下文
-    - value: "{query_id}"
-      label:
-        en_US: Per message (isolated)
-        zh_Hans: 每条消息（完全隔离）
-```
+AgentRunner callbacks need a Host-owned Query view because model/tool loaders
+already consume that type. The Query is internal and is never exposed as a
+Runner-controlled object.
 
-Available template variables (populated by PreProcessor in `query.variables`):
+- A Pipeline run stores the exact current Query in `AgentRunSession`.
+- A pure EBA run builds a minimal Query with a valid Session and
+  `pipeline_config=None`, `pipeline_uuid=None`.
+- The Host attaches canonical `_host_box_scope` and the authorized skill names
+  in `_pipeline_bound_skills`.
+- `PluginToRuntimeAction.CALL_TOOL` restores this Query from the active
+  `run_id` before dispatching to `ToolManager`.
 
-| Variable            | Source                          | Example              |
-|---------------------|---------------------------------|----------------------|
-| `{launcher_type}`   | `query.session.launcher_type`   | `person` / `group`   |
-| `{launcher_id}`     | `query.session.launcher_id`     | `123456`             |
-| `{sender_id}`       | `query.sender_id`               | `789`                |
-| `{conversation_id}` | `conversation.uuid`             | `a1b2c3d4-...`       |
-| `{query_id}`        | `query.query_id`                | `42`                 |
+This gives Pipeline and pure EBA execution the same Host tool path without
+inventing a fake Pipeline for an independent Agent.
 
-Default `{launcher_type}_{launcher_id}` covers scenarios 1–4 out of the box.
+## 4. AgentRunner callback paths
 
----
+AgentRunner implementations may use either callback transport:
 
-## 5. SDK Changes: Multi-Mount BoxSpec
+1. SDK/Python runners call `AgentRunAPIProxy.call_tool`.
+2. External harnesses call the SDK-owned scoped MCP bridge.
 
-### 5.1 Model Extension
+Both transports emit the same `PluginToRuntimeAction.CALL_TOOL`. The Host then
+validates the same run authorization, restores the same execution Query, and
+dispatches to the same ToolManager and BoxService.
 
-```python
-# box/models.py
-
-class BoxMountSpec(pydantic.BaseModel):
-    """A single bind mount specification."""
-    host_path: str
-    mount_path: str
-    mode: BoxHostMountMode = BoxHostMountMode.READ_WRITE
-
-class BoxSpec(pydantic.BaseModel):
-    # ... existing fields ...
-    host_path: str | None = None              # Primary mount (backward compat)
-    host_path_mode: BoxHostMountMode = BoxHostMountMode.READ_WRITE
-    mount_path: str = DEFAULT_BOX_MOUNT_PATH
-    extra_mounts: list[BoxMountSpec] = []     # NEW: additional mounts
+```text
+AgentRunner
+  +-- AgentRunAPIProxy.call_tool --------+
+  |                                      |
+  +-- SDK-owned scoped MCP bridge -------+--> PluginToRuntimeAction.CALL_TOOL
+                                              --> run authorization
+                                              --> execution Query
+                                              --> ToolManager
+                                              --> BoxService
+                                              --> lb-box-<sha256>
 ```
 
-`extra_mounts` is additive — the existing `host_path` / `mount_path` pair remains
-the primary mount for backward compatibility.
+An AgentRunner is not required to use MCP. Local Python runners can use the SDK
+directly; code-agent harnesses can use the bridge. The transports do not define
+different authorization or sandbox semantics.
 
-### 5.2 Backend: Apply Extra Mounts
+## 5. Skills and mounts
 
-```python
-# box/backend.py — CLISandboxBackend.start_session()
+Native exec and skill-backed exec for one Host scope use the same hashed
+session. `BoxService.build_skill_extra_mounts(query)` adds visible, authorized
+skill packages under `/workspace/.skills/<name>` when the session is created.
 
-# Primary mount (unchanged)
-if spec.host_path is not None and spec.host_path_mode != BoxHostMountMode.NONE:
-    args.extend(['-v', f'{spec.host_path}:{spec.mount_path}:{spec.host_path_mode.value}'])
+Skill activation controls which skill-backed tools and paths are available. It
+does not create a different session and does not grant the Runner authority to
+change the session id.
 
-# Extra mounts (NEW)
-for mount in spec.extra_mounts:
-    if mount.mode != BoxHostMountMode.NONE:
-        args.extend(['-v', f'{mount.host_path}:{mount.mount_path}:{mount.mode.value}'])
-```
+## 6. `mcp-shared` is a different session
 
-Same pattern for nsjail backend.
+LangBot can host configured stdio MCP servers as managed processes inside Box.
+Those long-lived infrastructure processes share the dedicated `mcp-shared`
+session and are isolated from one another by `process_id`.
 
----
+This is separate from the scoped MCP bridge above:
 
-## 6. LangBot Changes
+| Path | Purpose | Session rule |
+| --- | --- | --- |
+| AgentRunner scoped MCP bridge | Call authorized Host tools for one active run | Host-owned `lb-box-<sha256>` from the run execution Query |
+| MCP-in-Box stdio server | Keep configured MCP server processes running | Dedicated persistent `mcp-shared` session |
 
-### 6.1 Session ID Resolution
+Calling a sandbox tool through the AgentRunner bridge never redirects the run
+workspace into `mcp-shared`. Conversely, an MCP server's managed-process
+lifecycle does not inherit the current event scope.
 
-In `BoxService.execute_tool()`:
+## 7. Configuration and compatibility
 
-```python
-# Before:
-spec_payload.setdefault('session_id', str(query.query_id))
+There is no Box session scope field in Pipeline metadata, AgentRunner config,
+or the public Pipeline/Runner API. Operators configure the Box subsystem itself
+(`box.enabled`, backend/runtime settings, profiles, mount allowlists, quotas,
+and workspace roots), not per-Runner session templates.
 
-# After:
-template = (query.pipeline_config or {}).get('ai', {}) \
-    .get('local-agent', {}).get('box-session-id-template',
-         '{launcher_type}_{launcher_id}')
-variables = query.variables or {}
-session_id = template.format_map(collections.defaultdict(
-    lambda: 'unknown', variables
-))
-spec_payload.setdefault('session_id', session_id)
-```
+Old configuration containing `box-session-id-template` is unsupported in the
+4.x contract. LangBot 4.x does not migrate LangBot 3.x configuration or
+databases, so the removed field is not read as a compatibility fallback.
 
-### 6.2 Skill Exec: Use Same Container
+## 8. Regression coverage
 
-Currently `native.py:_invoke_exec` creates a separate `BoxWorkspaceSession` per
-skill with `host_path=package_root`. Instead:
+Release tests should prove:
 
-1. Use the **same session_id** as default exec (from the template).
-2. Pass the skill's `package_root` as an **extra mount** at
-   `/workspace/.skills/{skill_name}/` instead of replacing `/workspace`.
-3. The container already has the default workspace at `/workspace`.
-
-```python
-# native.py — _invoke_exec, skill branch (REVISED)
-
-# Same session_id as default exec
-session_id = resolve_box_session_id(query)
-
-spec_payload = {
-    'cmd': rewritten_command,
-    'workdir': rewritten_workdir,
-    'session_id': session_id,
-    'extra_mounts': [{
-        'host_path': package_root,
-        'mount_path': f'/workspace/.skills/{selected_skill_name}',
-        'mode': 'rw',
-    }],
-}
-result = await self.ap.box_service.execute_spec_payload(spec_payload, query)
-```
-
-The virtual path `/workspace/.skills/{name}` no longer needs rewriting at the
-command level — it maps directly to the bind mount path inside the container.
-
-### 6.3 MCP: Use Same Container
-
-MCP servers should run inside the same container as exec and skills. Changes:
-
-1. `BoxStdioSessionRuntime` uses the pipeline's session_id template instead of
-   `mcp-{server_uuid}`.
-2. MCP server's working directory is a subdirectory (e.g. `/workspace/.mcp/{name}/`).
-3. MCP server's dependencies are mounted or installed into that subdirectory.
-4. The MCP server runs as a managed process inside the shared container.
-
-Since MCP servers start at LangBot boot (not per-query), the session must be
-created eagerly. The container will be kept alive by the managed process
-exemption in TTL reaping (`runtime.py:259`).
-
-**Note**: MCP sessions are pipeline-scoped (not per-launcher), so their session_id
-should be a **fixed identifier per pipeline** rather than the user-facing template.
-This means one shared MCP container per pipeline, with user exec sessions separate.
-
-Alternatively, in a future iteration, MCP managed processes could be launched
-lazily into the user's container on first MCP tool call. This is more complex
-but maximizes sharing. For V1, keeping MCP containers at pipeline scope is
-simpler and more predictable.
-
----
-
-## 7. Mount Layout Summary
-
-### Default exec (no skills activated)
-
-```
-Container (session_id from template)
-  /workspace/          ← default_host_workspace (rw)
-```
-
-### Exec with activated skills
-
-```
-Container (same session_id)
-  /workspace/                          ← default_host_workspace (rw)
-  /workspace/.skills/web-search/       ← skill package_root (rw)
-  /workspace/.skills/data-analysis/    ← skill package_root (rw)
-```
-
-Extra mounts are **additive** — they are added when the container is first
-created (or on the first exec that references a skill). Since Docker bind
-mounts are specified at container creation time, skills must be known at
-creation time.
-
-**Resolution**: When creating a container, inject `extra_mounts` for **all
-pipeline-bound skills** (from `extensions_preferences`), not just the
-currently activated one. This way any skill can be activated later without
-recreating the container.
-
-### MCP servers (V1: pipeline-scoped)
-
-```
-Container (session_id = "mcp-pipeline-{pipeline_uuid}")
-  /workspace/                    ← MCP shared workspace
-  /workspace/.mcp/server-a/      ← MCP server A files
-  /workspace/.mcp/server-b/      ← MCP server B files
-  [managed process: server-a]
-  [managed process: server-b]
-```
-
----
-
-## 8. Data Migration
-
-Existing pipelines do not have `box-session-id-template`. The backend uses
-`.get(..., default)` so missing keys fall back to `{launcher_type}_{launcher_id}`.
-This changes behavior from per-message to per-launcher for existing pipelines.
-
-Recommendation: **accept the behavior change** — per-launcher is the more
-intuitive default, and the old per-message behavior was rarely desired.
-
----
-
-## 9. Cloud Quota Implications
-
-| Scope                                         | Typical concurrent containers |
-|-----------------------------------------------|-------------------------------|
-| `{query_id}` (per message)                    | Many, short-lived             |
-| `{launcher_type}_{launcher_id}` (per chat)    | = active chat count           |
-| `{sender_id}` (per user)                      | = active user count           |
-| `{conversation_id}` (per conversation)        | Between per-chat and per-msg  |
-
-With the unified container model, each scope value maps to exactly **one**
-container (instead of potentially 3+ per-message). This significantly reduces
-resource usage.
-
-Quota enforcement point: `BoxRuntime._get_or_create_session()` in the SDK.
-
----
-
-## 10. Implementation Phases
-
-### Phase 1: Session scope + skill unification (this PR)
-
-1. **SDK**: Extend `BoxSpec` with `extra_mounts: list[BoxMountSpec]`.
-2. **SDK**: Update Docker/nsjail backends to apply extra mounts.
-3. **LangBot**: Add `box-session-id-template` to `local-agent` YAML metadata
-   and default pipeline config JSON.
-4. **LangBot**: Update `BoxService.execute_tool()` to use template interpolation.
-5. **LangBot**: Update `native.py:_invoke_exec` skill branch to use same
-   session_id + extra mounts instead of separate `BoxWorkspaceSession`.
-6. **LangBot**: On container creation, inject extra mounts for all
-   pipeline-bound skills.
-7. **Frontend**: No code change — `DynamicFormComponent` renders `select` fields.
-8. **Tests**: Unit tests for template interpolation and multi-mount specs.
-
-### Phase 2: MCP unification (future)
-
-1. Refactor `BoxStdioSessionRuntime` to use pipeline-scoped shared container.
-2. MCP servers become managed processes in the shared container.
-3. Support multiple concurrent managed processes per container.
-
-MCP unification is deferred because it requires changes to the managed process
-model (currently 1 managed process per session) and has startup ordering
-concerns (MCP servers start at boot, before any user query determines
-a session_id).
+- every event-run session id matches `lb-box-[0-9a-f]{64}` and contains no raw
+  identity;
+- the same canonical Host scope is stable while different targets,
+  conversations, threads, bots, adapters, workspaces, or instances are
+  isolated;
+- Pipeline and pure EBA runs representing the same platform session produce
+  the same canonical scope;
+- missing Host/Query identity fails closed;
+- SDK/Python `call_tool` and the scoped MCP bridge both enter
+  `PluginToRuntimeAction.CALL_TOOL` and restore the run execution Query;
+- Runner payload/config cannot override the session id;
+- stdio MCP processes remain in `mcp-shared` and are isolated by process id;
+- authorized skills are mounted into the hashed run session without creating
+  per-skill sessions.

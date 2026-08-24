@@ -110,10 +110,21 @@ export class CloudServiceClient extends BaseHttpClient {
       '/api/v1/marketplace/extensions/search',
       data,
     )
-      .then((resp) => ({
-        plugins: resp?.extensions || [],
-        total: resp?.total || 0,
-      }))
+      .then((resp) => {
+        const extensions = resp?.extensions || [];
+        // Runner installation needs a concrete version. Older Space
+        // deployments omit it from the unified extension response.
+        if (
+          data.component_filter &&
+          extensions.some((extension) => !extension.latest_version)
+        ) {
+          return this.searchMarketplaceExtensionsLegacy(data);
+        }
+        return {
+          plugins: extensions,
+          total: resp?.total || 0,
+        };
+      })
       .catch(() => this.searchMarketplaceExtensionsLegacy(data));
   }
 

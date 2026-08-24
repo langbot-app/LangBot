@@ -20,7 +20,7 @@ An old `langbot_plugin` runtime process survived a backend restart, or multiple 
 
 ### Fix
 
-Stop the LangBot backend and any orphaned `langbot_plugin.cli` runtime processes, confirm the configured backend URL is free/reachable as appropriate, then start LangBot again. A healthy startup logs `Connected to plugin runtime`, mounts `langbot/local-agent`, and initializes the default agent runner.
+Stop the LangBot backend and any orphaned `langbot_plugin.cli` runtime processes, confirm the configured backend URL is free/reachable as appropriate, then start LangBot again. A healthy startup logs `Connected to plugin runtime`, mounts `langbot-team/LocalAgent`, and initializes the default agent runner.
 
 ### Verification
 

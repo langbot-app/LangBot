@@ -16,7 +16,7 @@ fix_steps:
   - "Change metadata.label to the provider or runner family name, such as Dify, Local Agent, Coze, DashScope, Langflow, n8n, or Tbox."
   - "Restart LangBot or plugin runtime to refresh runner metadata cache."
   - "Check /api/v1/pipelines/_/metadata and the WebUI runner selector."
-verification: "Runner options are distinguishable by visible label while their ids remain stable, such as plugin:langbot/dify-agent/default."
+verification: "Runner options are distinguishable by visible label while their ids remain stable, such as plugin:langbot-team/DifyAgent/default."
 related_cases:
   - dify-agent-debug-chat
   - local-agent-rag-debug-chat

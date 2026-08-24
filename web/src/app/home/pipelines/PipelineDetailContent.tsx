@@ -10,7 +10,13 @@ import { useTranslation } from 'react-i18next';
 import { Settings, Bug, BarChart3 } from 'lucide-react';
 import { useCurrentWorkspace } from '@/app/infra/http';
 
-export default function PipelineDetailContent({ id }: { id: string }) {
+export default function PipelineDetailContent({
+  id,
+  routeBase = '/home/pipelines',
+}: {
+  id: string;
+  routeBase?: string;
+}) {
   const isCreateMode = id === 'new';
   const navigate = useNavigate();
   const { t } = useTranslation();
@@ -37,6 +43,7 @@ export default function PipelineDetailContent({ id }: { id: string }) {
   const [activeTab, setActiveTab] = useState('config');
   const [isWebSocketConnected, setIsWebSocketConnected] = useState(false);
   const [formDirty, setFormDirty] = useState(false);
+  const [formSaving, setFormSaving] = useState(false);
 
   function handleFinish() {
     refreshPipelines();
@@ -44,7 +51,7 @@ export default function PipelineDetailContent({ id }: { id: string }) {
 
   function handleNewPipelineCreated(newPipelineId: string) {
     refreshPipelines();
-    navigate(`/home/pipelines?id=${encodeURIComponent(newPipelineId)}`);
+    navigate(`${routeBase}?id=${encodeURIComponent(newPipelineId)}`);
   }
 
   // ==================== Create Mode ====================
@@ -56,7 +63,7 @@ export default function PipelineDetailContent({ id }: { id: string }) {
             {t('pipelines.createPipeline')}
           </h1>
           {canManage && (
-            <Button type="submit" form="pipeline-form">
+            <Button type="submit" form="pipeline-form" disabled={formSaving}>
               {t('common.submit')}
             </Button>
           )}
@@ -73,6 +80,7 @@ export default function PipelineDetailContent({ id }: { id: string }) {
                 onFinish={handleFinish}
                 onNewPipelineCreated={handleNewPipelineCreated}
                 onDeletePipeline={() => {}}
+                onSavingChange={setFormSaving}
               />
             </fieldset>
           </div>
@@ -83,7 +91,7 @@ export default function PipelineDetailContent({ id }: { id: string }) {
 
   function handleDeletePipeline() {
     refreshPipelines();
-    navigate('/home/pipelines');
+    navigate(routeBase);
   }
 
   // ==================== Edit Mode ====================
@@ -96,7 +104,7 @@ export default function PipelineDetailContent({ id }: { id: string }) {
           <Button
             type="submit"
             form="pipeline-form"
-            disabled={!formDirty}
+            disabled={!formDirty || formSaving}
             className={activeTab !== 'config' ? 'invisible' : ''}
           >
             {t('common.save')}
@@ -151,8 +159,9 @@ export default function PipelineDetailContent({ id }: { id: string }) {
               onFinish={handleFinish}
               onNewPipelineCreated={handleNewPipelineCreated}
               onDeletePipeline={handleDeletePipeline}
-              onCancel={() => navigate('/home/pipelines')}
+              onCancel={() => navigate(routeBase)}
               onDirtyChange={setFormDirty}
+              onSavingChange={setFormSaving}
             />
           </fieldset>
         </TabsContent>

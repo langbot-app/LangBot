@@ -291,11 +291,19 @@ async def test_cross_workspace_uuid_guessing_cannot_read_update_or_delete(tenant
 async def test_cross_workspace_parent_references_are_rejected(tenant_services):
     application, _engine = tenant_services
 
-    with pytest.raises(WorkspaceNotFoundError):
+    with pytest.raises(ValueError, match='Pipeline not found'):
         await application.bot_service.update_bot(
             WORKSPACE_A,
             'bot-a',
-            {'use_pipeline_uuid': 'pipeline-b'},
+            {
+                'event_bindings': [
+                    {
+                        'event_pattern': 'message.*',
+                        'target_type': 'pipeline',
+                        'target_uuid': 'pipeline-b',
+                    }
+                ]
+            },
         )
 
     with pytest.raises(WorkspaceNotFoundError):

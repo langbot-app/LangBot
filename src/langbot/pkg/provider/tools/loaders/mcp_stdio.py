@@ -242,9 +242,9 @@ class BoxStdioSessionRuntime:
         box_service = getattr(self.ap, 'box_service', None)
         if box_service is None:
             return False
-        # An enabled Box service remains the required transport while it is
-        # reconnecting. initialize() waits for availability instead of
-        # permanently failing the MCP server or falling through to host stdio.
+        # Transport selection follows operator intent, not momentary health.
+        # An enabled Box may be reconnecting; initialize() waits for it instead
+        # of falling through to unsandboxed host stdio or exhausting retries.
         return bool(getattr(box_service, 'enabled', True))
 
     async def initialize(self) -> None:
@@ -487,10 +487,15 @@ class BoxStdioSessionRuntime:
         )
 
     def _shared_workspace_host_path(self) -> str:
-        default_workspace = getattr(self.ap.box_service, 'default_workspace', None)
-        if not default_workspace:
-            raise RuntimeError('Box default workspace is required for shared MCP host_path staging')
-        shared_host_path = normalize_host_path(default_workspace)
+        workspace_host_path = getattr(self.ap.box_service, 'workspace_host_path', None)
+        if callable(workspace_host_path):
+            shared_workspace = workspace_host_path(self.owner.execution_context)
+        else:
+            # Compatibility for older BoxService embedders used by plugins and tests.
+            shared_workspace = getattr(self.ap.box_service, 'default_workspace', None)
+        if not shared_workspace:
+            raise RuntimeError('Box Workspace host path is required for shared MCP host_path staging')
+        shared_host_path = normalize_host_path(shared_workspace)
         os.makedirs(shared_host_path, exist_ok=True)
         return shared_host_path
 

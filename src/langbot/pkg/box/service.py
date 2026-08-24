@@ -38,6 +38,8 @@ _INT_ADAPTER = pydantic.TypeAdapter(int)
 _UTC = _dt.timezone.utc
 _MAX_RECENT_ERRORS = 50
 _MIB = 1024 * 1024
+_HOST_BOX_SCOPE_VARIABLE = '_host_box_scope'
+_BOX_SESSION_ID_PREFIX = 'lb-box-'
 _DEFAULT_MAX_WORKSPACE_ENTRIES = 100_000
 _HARD_MAX_WORKSPACE_ENTRIES = 1_000_000
 
@@ -557,6 +559,11 @@ class BoxService:
         namespace = box_namespace(self._action_context(context))
         return os.path.join(self.default_workspace, 'tenants', namespace)
 
+    def workspace_host_path(self, context: TenantContext) -> str | None:
+        """Return the host path mounted as /workspace for one execution context."""
+
+        return self._tenant_workspace(context)
+
     async def execute_spec_payload(
         self,
         spec_payload: dict,
@@ -618,17 +625,20 @@ class BoxService:
         return self._serialize_result(result)
 
     def resolve_box_session_id(self, query: pipeline_query.Query) -> str:
-        """Resolve the Box session_id from the pipeline's template and query variables.
+        """Resolve a Host-owned Box session ID for the current conversation."""
+        if query is None:
+            raise BoxValidationError('Box execution requires a Host session context.')
 
-        When ``system.limitation.force_box_session_id_template`` is set to a
-        non-empty value, that template overrides whatever the pipeline
-        configured. This is the authoritative SaaS guard: it runs on every
-        ``exec`` call, so a tenant cannot escape a single shared sandbox even
-        by editing the pipeline config directly through the API (which only
-        gates the web UI).
-        """
         if self._cloud_managed:
             return 'global'
+
+        variables = getattr(query, 'variables', None)
+        if isinstance(variables, dict) and _HOST_BOX_SCOPE_VARIABLE in variables:
+            private_scope = variables[_HOST_BOX_SCOPE_VARIABLE]
+            if not isinstance(private_scope, str) or not private_scope.strip():
+                raise BoxValidationError('Box execution requires a Host conversation scope.')
+            return self._hash_box_session_scope(f'host:{private_scope}')
+
         forced_template = self._forced_box_session_id_template()
         if forced_template:
             template = forced_template
@@ -641,18 +651,23 @@ class BoxService:
             )
         variables = dict(query.variables or {})
         launcher_type = getattr(query, 'launcher_type', None)
+        launcher_id = getattr(query, 'launcher_id', None)
         if hasattr(launcher_type, 'value'):
             launcher_type = launcher_type.value
-        launcher_id = getattr(query, 'launcher_id', None)
+
         sender_id = getattr(query, 'sender_id', None)
         query_id = getattr(query, 'query_id', None)
-
         variables.setdefault('query_id', str(query_id or 'unknown'))
         variables.setdefault('launcher_type', str(launcher_type or 'query'))
         variables.setdefault('launcher_id', str(launcher_id or query_id or 'unknown'))
         variables.setdefault('sender_id', str(sender_id or launcher_id or query_id or 'unknown'))
         variables.setdefault('global', 'global')
         return template.format_map(collections.defaultdict(lambda: 'unknown', variables))
+
+    @staticmethod
+    def _hash_box_session_scope(scope: str) -> str:
+        digest = hashlib.sha256(scope.encode('utf-8')).hexdigest()
+        return f'{_BOX_SESSION_ID_PREFIX}{digest}'
 
     def build_skill_extra_mounts(self, query: pipeline_query.Query) -> list[dict]:
         """Build extra_mounts entries for all pipeline-bound skills.
@@ -1802,12 +1817,8 @@ class BoxService:
         return raw or None
 
     def _forced_box_session_id_template(self) -> str:
-        """Return the SaaS-forced sandbox-scope template, or '' when unset.
+        """Return the operator-forced sandbox scope template, if configured."""
 
-        Read from ``system.limitation.force_box_session_id_template``. A
-        non-empty value pins every pipeline to a single sandbox scope
-        (e.g. ``'{global}'``) and cannot be overridden per-pipeline.
-        """
         limitation = (
             (self.ap.instance_config.data or {}).get('system', {}).get('limitation', {})
             if getattr(self.ap, 'instance_config', None) is not None

@@ -1,0 +1,79 @@
+apiVersion: v1
+kind: MessagePlatformAdapter
+
+metadata:
+  name: kook-eba
+  label:
+    en_US: KOOK
+    zh_Hans: KOOK
+    zh_Hant: KOOK
+  description:
+    en_US: KOOK adapter with event-driven orchestration support, supporting channel and direct messages.
+    zh_Hans: KOOK 适配器，支持事件驱动编排、频道消息和私聊消息。
+    zh_Hant: KOOK 適配器，支援事件驅動編排、頻道訊息和私聊訊息。
+  icon: kook.png
+  docs:
+    zh: https://link.langbot.app/zh/platforms/kook
+    en: https://link.langbot.app/en/platforms/kook
+    ja: https://link.langbot.app/ja/platforms/kook
+
+spec:
+  categories:
+    - global
+  config:
+    - name: token
+      label:
+        en_US: Bot Token
+        zh_Hans: Bot Token
+        zh_Hant: Bot Token
+      type: string
+      required: true
+      default: ""
+    - name: enable-stream-reply
+      label:
+        en_US: Enable stream reply
+        zh_Hans: 启用流式回复
+        zh_Hant: 啟用串流回覆
+      type: boolean
+      required: true
+      default: false
+
+  supported_events:
+    - message.received
+    - platform.specific
+
+  supported_apis:
+    required:
+      - send_message
+      - reply_message
+    optional:
+      - get_message
+      - get_group_info
+      - get_group_list
+      - get_group_member_info
+      - get_user_info
+      - get_friend_list
+      - upload_file
+      - get_file_url
+      - delete_message
+      - forward_message
+      - call_platform_api
+
+  platform_specific_apis:
+    - action: get_current_user
+      description: { en_US: "Get current bot user", zh_Hans: "获取当前机器人用户" }
+    - action: get_user
+      description: { en_US: "Get user information", zh_Hans: "获取用户信息" }
+    - action: get_channel
+      description: { en_US: "Get channel information", zh_Hans: "获取频道信息" }
+    - action: get_guild
+      description: { en_US: "Get guild information", zh_Hans: "获取服务器信息" }
+    - action: get_gateway
+      description: { en_US: "Get WebSocket gateway URL", zh_Hans: "获取 WebSocket 网关地址" }
+    - action: send_direct_message
+      description: { en_US: "Send a direct KOOK message", zh_Hans: "发送 KOOK 私聊消息" }
+
+execution:
+  python:
+    path: ./adapter.py
+    attr: KookAdapter

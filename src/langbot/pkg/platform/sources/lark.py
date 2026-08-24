@@ -37,6 +37,16 @@ import langbot_plugin.api.entities.builtin.provider.session as provider_session
 _MAX_LARK_MEDIA_BYTES = 10 * 1024 * 1024
 
 
+async def _cancel_lark_ws_cache_task(client: typing.Any) -> None:
+    """Stop the Lark SDK cache cron, which has no public shutdown API."""
+    cache_task = getattr(getattr(client, '_cache', None), '_cron', None)
+    if not isinstance(cache_task, asyncio.Task):
+        return
+    cache_task.cancel()
+    if cache_task.get_loop() is asyncio.get_running_loop():
+        await asyncio.gather(cache_task, return_exceptions=True)
+
+
 def _decode_lark_base64_limited(value: str) -> bytes:
     if ',' in value:
         value = value.split(',', 1)[1]
@@ -3219,6 +3229,7 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         # 所以要设置_auto_reconnect=False,让其不重连。
         self.bot._auto_reconnect = False
         await self.bot._disconnect()
+        await _cancel_lark_ws_cache_task(self.bot)
         inbound_tasks = list(self.inbound_event_tasks)
         for task in inbound_tasks:
             if not task.done():

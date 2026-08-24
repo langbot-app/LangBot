@@ -26,6 +26,7 @@ from mcp.shared.exceptions import McpError
 from pydantic import AnyUrl
 
 from .. import loader
+from ..errors import ToolExecutionDeniedError
 from ....core import app
 from ....core.task_boundary import create_detached_task, run_in_workspace_uow
 from ....api.http.context import ExecutionContext
@@ -60,6 +61,7 @@ MCP_RESOURCE_CONTEXT_MAX_BYTES = 96 * 1024
 MCP_RESOURCE_TRACE_QUERY_KEY = '_mcp_resource_reads'
 MCP_RESOURCE_LINKS_QUERY_KEY = '_mcp_resource_links'
 MCP_RESOURCE_CONTEXT_QUERY_KEY = '_mcp_resource_context'
+MCP_TRANSPORT_CLEANUP_TIMEOUT_SECONDS = 5.0
 MCP_TOOL_CALL_TIMEOUT_DEFAULT_SECONDS = 300.0
 
 TEXT_LIKE_MIME_TYPES = {
@@ -316,6 +318,7 @@ class RuntimeMCPSession:
         # together, instead of each racing to rebuild the session itself.
         self._reconnect_event = asyncio.Event()
         self._reconnected_event: asyncio.Event | None = None
+        self._connection_generation = 0
         # Set transiently when a WS transport drop should NOT stop the managed
         # process (it will be re-attached on the next initialize()).
         self._preserve_managed_process = False
@@ -538,6 +541,7 @@ class RuntimeMCPSession:
 
     async def _lifecycle_loop(self):
         """Manage the full MCP session lifecycle in a background task."""
+        wait_tasks: list[asyncio.Task] = []
         try:
             await self._assert_execution_active()
             if self.server_config['mode'] == 'stdio':
@@ -556,6 +560,7 @@ class RuntimeMCPSession:
             await self._assert_execution_active()
 
             self.status = MCPSessionStatus.CONNECTED
+            self._connection_generation += 1
 
             # Notify start() that connection is established
             self._ready_event.set()
@@ -565,8 +570,9 @@ class RuntimeMCPSession:
                 monitor_task = asyncio.create_task(self._box_stdio_runtime.monitor_process_health())
                 shutdown_task = asyncio.create_task(self._shutdown_event.wait())
                 reconnect_task = asyncio.create_task(self._reconnect_event.wait())
+                wait_tasks = [shutdown_task, monitor_task, reconnect_task]
                 done, pending = await asyncio.wait(
-                    [shutdown_task, monitor_task, reconnect_task],
+                    wait_tasks,
                     return_when=asyncio.FIRST_COMPLETED,
                 )
                 for task in pending:
@@ -636,31 +642,31 @@ class RuntimeMCPSession:
             # are exhausted or on success.
             raise  # Re-raise so _lifecycle_loop_with_retry can catch it
         finally:
-            # Clean up all resources in the same task
-            try:
-                if self.exit_stack:
-                    await self.exit_stack.aclose()
-                    self.exit_stack = AsyncExitStack()
-                self.functions.clear()
-                self.resources.clear()
-                self.session = None
-            except Exception as e:
-                self.ap.logger.error(f'Error cleaning up MCP session {self.server_name}: {e}\n{traceback.format_exc()}')
-            finally:
-                # On a transport-only reconnect the managed process is healthy
-                # and will be re-attached on the next initialize(); do NOT stop
-                # it. Any other exit path fully tears the session down.
-                if getattr(self, '_preserve_managed_process', False):
-                    self._preserve_managed_process = False
-                else:
-                    await self._cleanup_box_stdio_session()
+            for task in wait_tasks:
+                if not task.done():
+                    task.cancel()
+            # AsyncExitStack contains AnyIO cancel scopes that must exit in
+            # the same task where their contexts were entered.
+            await self._cleanup_lifecycle_attempt()
 
     async def _lifecycle_loop_with_retry(self):
         """Wrap _lifecycle_loop with retry and exponential backoff."""
         attempt = 0
         while attempt <= self._MAX_RETRIES:
+            connection_generation_before = self._connection_generation
             try:
-                await self._lifecycle_loop()
+                lifecycle_task = asyncio.create_task(self._lifecycle_loop())
+                try:
+                    await lifecycle_task
+                except asyncio.CancelledError as exc:
+                    if self._shutdown_event.is_set():
+                        return
+                    if not self._uses_box_stdio():
+                        raise
+                    error = self._prepare_box_transport_retry('Box MCP transport task was cancelled unexpectedly')
+                    raise error from exc
+                if self._uses_box_stdio() and not self._shutdown_event.is_set():
+                    raise self._prepare_box_transport_retry('Box MCP lifecycle ended unexpectedly')
                 return  # Normal shutdown, don't retry
             except _TransportReconnect as e:
                 # Transient WS transport drop while the managed process is still
@@ -750,8 +756,15 @@ class RuntimeMCPSession:
                 self._stop_for_stale_execution(e)
                 return
             except Exception as e:
+                self.retry_count += 1
                 if self._shutdown_event.is_set():
                     return  # Shutdown requested, don't retry
+                # A lifecycle that reached CONNECTED proved its preceding
+                # startup attempt was healthy. Give a later runtime failure a
+                # fresh consecutive-startup retry budget instead of exhausting
+                # the budget across the entire process lifetime.
+                if self._connection_generation > connection_generation_before:
+                    attempt = 0
                 if self.error_phase == MCPSessionErrorPhase.BOX_UNAVAILABLE:
                     box_service = getattr(self.ap, 'box_service', None)
                     if box_service is not None and getattr(box_service, 'enabled', True):
@@ -787,7 +800,6 @@ class RuntimeMCPSession:
                     f'MCP session {self.server_name} failed (attempt {attempt + 1}), '
                     f'retrying in {delay}s: {self._describe_exception(e)}'
                 )
-                await self._cleanup_box_stdio_session()
                 # Reset status for retry
                 self.status = MCPSessionStatus.CONNECTING
                 self.error_message = None
@@ -798,6 +810,59 @@ class RuntimeMCPSession:
                     self._stop_for_stale_execution(fence_error)
                     return
                 attempt += 1
+
+    def _prepare_box_transport_retry(self, message: str) -> RuntimeError:
+        error = RuntimeError(message)
+        self.status = MCPSessionStatus.ERROR
+        self.error_message = str(error)
+        self.error_phase = MCPSessionErrorPhase.RELAY_CONNECT
+        self.ap.logger.error(f'Error in MCP session lifecycle {self.server_name}: {error}')
+        self.functions.clear()
+        self.resources.clear()
+        self.resource_templates.clear()
+        self.resource_capabilities = {}
+        self._resource_cache.clear()
+        self.session = None
+        return error
+
+    async def _cleanup_lifecycle_attempt(self) -> None:
+        stale_exit_stack = self.exit_stack
+        self.exit_stack = AsyncExitStack()
+        try:
+            async with asyncio.timeout(MCP_TRANSPORT_CLEANUP_TIMEOUT_SECONDS):
+                await stale_exit_stack.aclose()
+        except TimeoutError:
+            self.ap.logger.warning(
+                f'Timed out cleaning up MCP transport for {self.server_name}; continuing lifecycle recovery'
+            )
+        except asyncio.CancelledError:
+            self.ap.logger.warning(
+                f'MCP transport cleanup was cancelled for {self.server_name}; continuing lifecycle recovery'
+            )
+        except Exception as e:
+            self.ap.logger.warning(
+                f'Error cleaning up MCP transport for {self.server_name}; '
+                f'continuing lifecycle recovery: {self._describe_exception(e)}'
+            )
+
+        self.functions.clear()
+        self.resources.clear()
+        self.resource_templates.clear()
+        self.resource_capabilities = {}
+        self._resource_cache.clear()
+        self.session = None
+        if self._preserve_managed_process:
+            self._preserve_managed_process = False
+            return
+        try:
+            await asyncio.wait_for(
+                self._cleanup_box_stdio_session(),
+                timeout=MCP_TRANSPORT_CLEANUP_TIMEOUT_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            self.ap.logger.warning(
+                f'Timed out cleaning up MCP managed process for {self.server_name}; continuing lifecycle recovery'
+            )
 
     @staticmethod
     def _describe_exception(exc: BaseException) -> str:
@@ -1501,6 +1566,11 @@ def _execution_context_from_tenant(context: TenantContext) -> ExecutionContext:
 
 
 def _execution_context_from_query(query: pipeline_query.Query) -> ExecutionContext:
+    if isinstance(getattr(query, '_execution_context', None), ExecutionContext):
+        # Import lazily to keep the loader module independent during app boot.
+        from ....pipeline.pool import get_query_execution_context
+
+        return get_query_execution_context(query)
     return _execution_context_from_tenant(
         ExecutionContext(
             instance_uuid=str(getattr(query, 'instance_uuid', '') or ''),
@@ -2257,38 +2327,96 @@ class MCPLoader(loader.ToolLoader):
 
         return items
 
-    async def has_tool(self, context: TenantContext, name: str) -> bool:
+    def _session_by_source_id(
+        self, context: TenantContext, source_id: str
+    ) -> RuntimeMCPSession | None:
+        return next(
+            (
+                session
+                for session in self._sessions_for_context(context)
+                if session.server_uuid == source_id
+            ),
+            None,
+        )
+
+    async def has_tool(
+        self,
+        context: TenantContext,
+        name: str,
+        source_id: str | None = None,
+    ) -> bool:
         """检查工具是否存在"""
         await self._assert_execution_active(context)
-        if name in (MCP_TOOL_LIST_RESOURCES, MCP_TOOL_READ_RESOURCE):
+        if source_id is None and name in (MCP_TOOL_LIST_RESOURCES, MCP_TOOL_READ_RESOURCE):
             return bool(self._eligible_resource_sessions_for_bound(context, None))
-        for session in self._sessions_for_context(context):
+        sessions = (
+            [self._session_by_source_id(context, source_id)]
+            if source_id is not None
+            else self._sessions_for_context(context)
+        )
+        for session in sessions:
+            if session is None:
+                continue
             for function in session.get_tools():
                 if function.name == name:
                     return True
         return False
 
-    async def get_tool(self, context: TenantContext, name: str) -> resource_tool.LLMTool | None:
+    async def get_tool(
+        self,
+        context: TenantContext,
+        name: str,
+        source_id: str | None = None,
+    ) -> resource_tool.LLMTool | None:
         await self._assert_execution_active(context)
-        for session in self._sessions_for_context(context):
+        if source_id is None and name in (MCP_TOOL_LIST_RESOURCES, MCP_TOOL_READ_RESOURCE):
+            if not self._eligible_resource_sessions_for_bound(context, None):
+                return None
+            return next(
+                (tool for tool in self._mcp_synthetic_resource_tools() if tool.name == name),
+                None,
+            )
+        sessions = (
+            [self._session_by_source_id(context, source_id)]
+            if source_id is not None
+            else self._sessions_for_context(context)
+        )
+        for session in sessions:
+            if session is None:
+                continue
             for function in session.get_tools():
                 if function.name == name:
                     return function
         return None
 
-    async def invoke_tool(self, name: str, parameters: dict, query: pipeline_query.Query) -> typing.Any:
+    async def invoke_tool(
+        self,
+        name: str,
+        parameters: dict,
+        query: pipeline_query.Query,
+        source_id: str | None = None,
+    ) -> typing.Any:
         """执行工具调用"""
-        execution_context = await self._assert_execution_active(_execution_context_from_query(query))
-        if name == MCP_TOOL_LIST_RESOURCES:
-            if getattr(query, 'variables', {}).get('_pipeline_mcp_resource_agent_read_enabled', True) is False:
-                return [provider_message.ContentElement.from_text('Error: MCP resource agent reads are disabled.')]
+        execution_context = await self._assert_execution_active(
+            _execution_context_from_query(query)
+        )
+        if source_id is None and name == MCP_TOOL_LIST_RESOURCES:
+            if getattr(query, 'variables', {}).get('_pipeline_mcp_resource_agent_read_enabled', True) is not True:
+                raise ToolExecutionDeniedError(name, 'MCP resource agent reads are disabled')
             return await self._invoke_mcp_list_resources(parameters, query)
-        if name == MCP_TOOL_READ_RESOURCE:
-            if getattr(query, 'variables', {}).get('_pipeline_mcp_resource_agent_read_enabled', True) is False:
-                return [provider_message.ContentElement.from_text('Error: MCP resource agent reads are disabled.')]
+        if source_id is None and name == MCP_TOOL_READ_RESOURCE:
+            if getattr(query, 'variables', {}).get('_pipeline_mcp_resource_agent_read_enabled', True) is not True:
+                raise ToolExecutionDeniedError(name, 'MCP resource agent reads are disabled')
             return await self._invoke_mcp_read_resource(parameters, query)
 
-        for session in self._sessions_for_context(execution_context):
+        sessions = (
+            [self._session_by_source_id(execution_context, source_id)]
+            if source_id is not None
+            else self._sessions_for_context(execution_context)
+        )
+        for session in sessions:
+            if session is None:
+                continue
             for function in session.get_tools():
                 if function.name == name:
                     self.ap.logger.debug(f'Invoking MCP tool: {name} with parameters: {parameters}')
@@ -2377,7 +2505,7 @@ class MCPLoader(loader.ToolLoader):
     ) -> str:
         """Build host-controlled MCP resource context for the current query."""
         execution_context = await self._assert_execution_active(_execution_context_from_query(query))
-        if getattr(query, 'variables', {}).get('_pipeline_mcp_resource_agent_read_enabled', True) is False:
+        if getattr(query, 'variables', {}).get('_pipeline_mcp_resource_agent_read_enabled', True) is not True:
             return ''
 
         attachments = (query.variables or {}).get('_pipeline_mcp_resource_attachments', [])
@@ -2396,7 +2524,7 @@ class MCPLoader(loader.ToolLoader):
             await self._assert_execution_active(execution_context)
             if remaining_tokens <= 0:
                 break
-            if not isinstance(raw_attachment, dict) or raw_attachment.get('enabled') is False:
+            if not isinstance(raw_attachment, dict) or raw_attachment.get('enabled', True) is not True:
                 continue
 
             attachment = raw_attachment.copy()
@@ -2414,8 +2542,23 @@ class MCPLoader(loader.ToolLoader):
             if session.server_uuid not in eligible_by_uuid and session.server_name not in eligible_by_name:
                 continue
 
-            max_tokens = min(int(attachment.get('max_tokens') or remaining_tokens), remaining_tokens)
-            max_bytes = int(attachment.get('max_bytes') or default_max_bytes)
+            raw_max_tokens = attachment.get('max_tokens')
+            raw_max_bytes = attachment.get('max_bytes')
+            if raw_max_tokens is None:
+                max_tokens = remaining_tokens
+            elif isinstance(raw_max_tokens, bool) or not isinstance(raw_max_tokens, int) or raw_max_tokens <= 0:
+                self.ap.logger.warning(f'Ignoring MCP resource {uri!r}: max_tokens must be a positive integer')
+                continue
+            else:
+                max_tokens = min(raw_max_tokens, remaining_tokens)
+
+            if raw_max_bytes is None:
+                max_bytes = default_max_bytes
+            elif isinstance(raw_max_bytes, bool) or not isinstance(raw_max_bytes, int) or raw_max_bytes <= 0:
+                self.ap.logger.warning(f'Ignoring MCP resource {uri!r}: max_bytes must be a positive integer')
+                continue
+            else:
+                max_bytes = raw_max_bytes
 
             try:
                 envelope = await session.read_resource_envelope(

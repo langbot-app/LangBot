@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import fnmatch
 import contextlib
 import errno
 import heapq
@@ -1523,6 +1524,23 @@ else:
         pattern = parameters['pattern']
         path = str(parameters.get('path', '/workspace') or '/workspace')
         self.ap.logger.info(f'glob tool invoked: query_id={query.query_id} pattern={pattern} path={path}')
+
+        if path.rstrip('/') == skill_loader.SKILL_MOUNT_PREFIX:
+            skill_names = set(skill_loader.get_visible_skills(self.ap, query))
+            skill_names.update(skill_loader.get_activated_skills(query))
+            matches = [
+                skill_loader.get_virtual_skill_mount_path(skill_name)
+                for skill_name in sorted(skill_names)
+                if fnmatch.fnmatchcase(skill_name, pattern)
+            ]
+            return {
+                'ok': True,
+                'matches': matches,
+                'preview': '\n'.join(matches),
+                'total': len(matches),
+                'truncated': False,
+                'truncated_by': None,
+            }
 
         host_location = self._resolve_host_location(
             query,

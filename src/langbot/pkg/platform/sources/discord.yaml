@@ -20,6 +20,7 @@ metadata:
     es_ES: Adaptador de Discord, requiere un entorno de red con acceso al servidor de Discord
   icon: discord.svg
 spec:
+  legacy: true
   categories:
     - popular
     - global

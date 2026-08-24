@@ -129,7 +129,7 @@ async function main() {
   const evidenceDir = resolve(env.LBS_EVIDENCE_DIR || join(root, "reports", "evidence", runId));
   await mkdir(evidenceDir, { recursive: true });
   const startedAt = new Date();
-  const sdkRepo = resolve(root, env.LANGBOT_PLUGIN_SDK_REPO || "../langbot-plugin-sdk");
+  const sdkRepo = resolve(root, env.LANGBOT_PLUGIN_SDK_REPO || "../../langbot-plugin-sdk");
   const sdkSrc = resolve(sdkRepo, "src");
   const fixturePath = resolve(root, "skills/langbot-testing/fixtures/plugins/qa-agent-runner");
   const stdoutLog = join(evidenceDir, "probe-stdout.log");
@@ -137,7 +137,7 @@ async function main() {
   const automationResultJson = join(evidenceDir, "automation-result.json");
   const resultJson = join(evidenceDir, "result.json");
   const timeoutMs = Number(env.LANGBOT_AGENT_RUNNER_PROBE_TIMEOUT_MS || "30000");
-  const command = { executable: "rtk", args: ["uv", "run", "python", "-c", script, fixturePath], cwd: sdkRepo };
+  const command = { executable: "rtk", args: ["uv", "run", "--no-sync", "python", "-c", script, fixturePath], cwd: sdkRepo };
   const result = {
     source: "automation",
     probe: "agent-runner-fixture-contract",

@@ -1,0 +1,71 @@
+id: codex-agent-debug-chat
+title: "Codex Agent can retrieve LangBot history through MCP"
+mode: agent-browser
+area: pipeline
+type: regression
+priority: p2
+risk: high
+ci_eligible: false
+tags:
+  - agent-runner
+  - codex
+  - external-runner
+  - mcp
+  - pipeline
+skills:
+  - langbot-env-setup
+  - langbot-testing
+env:
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BACKEND_URL
+env_any:
+  - LANGBOT_CODEX_AGENT_PIPELINE_URL|LANGBOT_CODEX_AGENT_PIPELINE_NAME
+automation: scripts/e2e/pipeline-debug-chat.mjs
+automation_env:
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_BROWSER_PROFILE
+  - LANGBOT_CHROMIUM_EXECUTABLE
+  - LANGBOT_CODEX_AGENT_PIPELINE_URL
+  - LANGBOT_CODEX_AGENT_PIPELINE_NAME
+automation_pipeline_url_env: LANGBOT_CODEX_AGENT_PIPELINE_URL
+automation_pipeline_name_env: LANGBOT_CODEX_AGENT_PIPELINE_NAME
+automation_expected_runner_id: "plugin:langbot-team/CodexAgent/default"
+automation_reset_debug_chat: "1"
+automation_prompts_json: '[{"prompt":"Do not launch a subagent. Remember this exact passcode for the LangBot conversation: codex-history-proof-9157. Do not repeat the passcode. Reply exactly CODEX_HISTORY_SEEDED with no other text.","expected_text":"CODEX_HISTORY_SEEDED","response_timeout_ms":"600000"},{"prompt":"Do not launch a subagent. This CLI turn has no reused Codex session. Directly call the langbot_history_page tool exposed by the langbot_agent MCP server exactly once and wait for its result. Use only the returned LangBot history to recover the passcode from the previous user turn. If the tool is unavailable, do not guess or claim success. Reply with only the recovered passcode.","expected_text":"codex-history-proof-9157","response_timeout_ms":"600000"}]'
+automation_expected_text: "codex-history-proof-9157"
+automation_response_timeout_ms: "600000"
+preconditions:
+  - "Codex CLI is installed, authenticated, and runnable non-interactively by the LangBot plugin process."
+  - "The configured workspace exists and is writable, with approval policy never and sandbox mode appropriate for the QA host."
+  - "The pipeline has reuse-session=false so the second turn cannot use Codex CLI thread memory."
+steps:
+  - "Open LANGBOT_FRONTEND_URL."
+  - "Open the Codex Agent QA pipeline."
+  - "Confirm the pipeline runner is plugin:langbot-team/CodexAgent/default."
+  - "Open Debug Chat, seed the passcode, then ask a fresh Codex CLI turn to recover it through langbot_agent.langbot_history_page."
+checks:
+  - "UI: The first Bot message contains CODEX_HISTORY_SEEDED and the second contains codex-history-proof-9157."
+  - "Runner evidence: The second run records a real LangBot history MCP tool call, not only model text."
+  - "Logs: The request completes without codex process, MCP, approval, sandbox, or runtime errors."
+  - "Console: No unexpected frontend errors appear during Debug Chat."
+evidence_required:
+  - ui
+  - screenshot
+  - console
+  - backend_log
+success_patterns:
+  - "CODEX_HISTORY_SEEDED"
+  - "codex-history-proof-9157"
+  - "Streaming completed"
+failure_patterns:
+  - "codex.command_not_found"
+  - "codex.process_exited"
+  - "not available among the connected MCP tools"
+  - "not accessible in this session"
+  - "Agent runner not found"
+  - "Agent runner plugin:langbot-team/CodexAgent/default execution failed"
+troubleshooting:
+  - backend-not-listening
+  - plugin-runtime-timeout
+  - proxy-env-mismatch

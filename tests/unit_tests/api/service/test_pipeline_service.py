@@ -461,8 +461,8 @@ class TestPipelineServiceUpdatePipeline:
         # Execute with name change
         await service.update_pipeline(WORKSPACE_UUID, 'test-uuid', {'name': 'New Name'})
 
-        # Verify - bot_service.update_bot was called for each bot
-        assert ap.bot_service.update_bot.call_count == 2
+        # Bots no longer denormalize Pipeline names in the EventBindings model.
+        ap.bot_service.update_bot.assert_not_awaited()
 
     async def test_update_pipeline_clears_conversations(self):
         """Clears session conversations using this pipeline."""
@@ -705,7 +705,7 @@ class TestPipelineServiceUpdatePipelineExtensions:
                 'uuid': 'test-uuid',
                 'extensions_preferences': {
                     'enable_all_plugins': False,
-                    'plugins': [{'plugin_uuid': 'plugin-1'}],
+                    'plugins': [{'author': 'test', 'name': 'plugin-1'}],
                 },
             }
         )
@@ -716,13 +716,13 @@ class TestPipelineServiceUpdatePipelineExtensions:
                 'uuid': 'test-uuid',
                 'extensions_preferences': {
                     'enable_all_plugins': False,
-                    'plugins': [{'plugin_uuid': 'plugin-1'}],
+                    'plugins': [{'author': 'test', 'name': 'plugin-1'}],
                 },
             }
         )
 
         # Execute
-        bound_plugins = [{'plugin_uuid': 'plugin-1'}]
+        bound_plugins = [{'author': 'test', 'name': 'plugin-1'}]
         await service.update_pipeline_extensions(
             WORKSPACE_UUID,
             'test-uuid',

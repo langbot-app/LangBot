@@ -1,6 +1,6 @@
 # Dify AgentRunner
 
-Use this reference when validating `langbot/dify-agent` through LangBot WebUI.
+Use this reference when validating `langbot-team/DifyAgent` through LangBot WebUI.
 
 ## Prepare Dify
 
@@ -38,7 +38,7 @@ Pass only when:
 
 ## Diagnostics
 
-- `GET /api/v1/pipelines/{uuid}` can confirm the saved runner id is `plugin:langbot/dify-agent/default` and runner config contains `app-type`, `base-url`, and `api-key`.
+- `GET /api/v1/pipelines/{uuid}` can confirm the saved runner id is `plugin:langbot-team/DifyAgent/default` and runner config contains `app-type`, `base-url`, and `api-key`.
 - Direct Dify streaming API calls are useful only to distinguish invalid Dify credentials from LangBot runner issues.
 - If Debug Chat returns `Agent runner execution failed`, inspect backend logs before changing UI settings.
 
