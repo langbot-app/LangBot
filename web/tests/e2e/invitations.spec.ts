@@ -93,7 +93,7 @@ test('login preserves an explicit invitation email mismatch error', async ({
   });
 
   await page.goto('/invitations/accept#token=mismatch-invitation');
-  await page.getByRole('button', { name: 'I already have an account' }).click();
+  await page.goto('/login?invitation=1');
   await page.getByPlaceholder('Enter email address').fill('other@example.com');
   await page.getByPlaceholder('Enter password').fill('password');
   await page.getByRole('button', { name: 'Login with password' }).click();
@@ -184,9 +184,19 @@ test('an OAuth-only OSS instance registers the invited email with a local passwo
   await expect(page.locator('#invite-email')).toHaveAttribute('readonly', '');
   await expect(page.locator('#invite-password')).toBeVisible();
   await expect(page.locator('#invite-password-confirm')).toBeVisible();
+  for (const inputId of ['invite-password', 'invite-password-confirm']) {
+    const input = page.locator(`#${inputId}`);
+    const field = input.locator('xpath=..');
+    await expect(field).toHaveClass(/relative/);
+    await expect(field.locator('svg')).toBeVisible();
+    await expect(input).toHaveClass(/pl-10/);
+  }
   await expect(
     page.getByRole('button', { name: 'Create account and accept' }),
   ).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'I already have an account' }),
+  ).toHaveCount(0);
   await expect(
     page.getByRole('button', { name: 'Login with LangBot Account' }),
   ).toHaveCount(0);

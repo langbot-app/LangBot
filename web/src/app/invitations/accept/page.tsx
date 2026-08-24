@@ -386,15 +386,19 @@ export default function AcceptInvitationPage() {
                     >
                       {t('workspace.confirmPassword')}
                     </label>
-                    <Input
-                      id="invite-password-confirm"
-                      type="password"
-                      value={confirmPassword}
-                      onChange={(event) =>
-                        setConfirmPassword(event.target.value)
-                      }
-                      autoComplete="new-password"
-                    />
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-3 size-4 text-muted-foreground" />
+                      <Input
+                        id="invite-password-confirm"
+                        type="password"
+                        value={confirmPassword}
+                        onChange={(event) =>
+                          setConfirmPassword(event.target.value)
+                        }
+                        className="pl-10"
+                        autoComplete="new-password"
+                      />
+                    </div>
                   </div>
                   <Button
                     className="w-full"
@@ -405,14 +409,6 @@ export default function AcceptInvitationPage() {
                       <Loader2 className="size-4 animate-spin" />
                     )}
                     {t('workspace.registerAndAccept')}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    className="w-full"
-                    disabled={status === 'submitting'}
-                    onClick={() => navigate('/login?invitation=1')}
-                  >
-                    {t('workspace.alreadyHaveAccount')}
                   </Button>
                 </>
               ) : (
