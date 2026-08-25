@@ -1,9 +1,8 @@
 import { useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { AlertTriangle, LoaderCircle, Play, RotateCcw } from 'lucide-react';
+import { LoaderCircle, Play, RotateCcw } from 'lucide-react';
 import { httpClient } from '@/app/infra/http/HttpClient';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -233,14 +232,6 @@ export default function AgentDebugPanel({
             />
           </div>
         )}
-
-        <Alert className="py-2">
-          <AlertTriangle />
-          <AlertTitle>{t('agents.debugActualRun')}</AlertTitle>
-          <AlertDescription className="text-xs">
-            {t('agents.debugActualRunDescription')}
-          </AlertDescription>
-        </Alert>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-3">

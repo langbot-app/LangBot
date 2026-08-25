@@ -702,9 +702,6 @@ const zhHans = {
     debugTitle: 'Agent 事件调试',
     debugDescription: '用消息或平台事件直接运行当前 Agent，并查看真实输出。',
     debugResetSession: '重置会话',
-    debugActualRun: '这是真实运行',
-    debugActualRunDescription:
-      '测试会调用当前运行器、模型与已授权工具，但不会把输出发送到真实聊天平台。',
     debugEventType: '事件类型',
     debugMessageReceived: '收到消息',
     debugGroupMemberJoined: '成员加入群组',

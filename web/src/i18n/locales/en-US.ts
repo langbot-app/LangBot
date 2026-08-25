@@ -735,9 +735,6 @@ const enUS = {
     debugDescription:
       'Run the current Agent with a message or platform event and inspect the real output.',
     debugResetSession: 'Reset session',
-    debugActualRun: 'This is a real run',
-    debugActualRunDescription:
-      'The test calls the configured runner, models, and authorized tools, but does not deliver output to a real chat platform.',
     debugEventType: 'Event type',
     debugMessageReceived: 'Message received',
     debugGroupMemberJoined: 'Group member joined',
