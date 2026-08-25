@@ -1753,6 +1753,7 @@ const zhHans = {
       messageReceived: '机器人已成功收到 IM 消息，可以进入下一步。',
       pageBotTestPrompt:
         '页面机器人已启用。点击右下角聊天气泡并发送一条消息，验证完整对话链路。',
+      pageBotTestNotice: '仅供测试使用，请嵌入代码到真实外部网页。',
       webhookTestPrompt:
         '回调地址已就绪。将它配置到外部平台，然后向机器人发送一条真实消息。',
       httpTestPrompt: 'HTTP Bot 已启用。可直接发送一条真实入站消息验证连接。',

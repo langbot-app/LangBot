@@ -1833,6 +1833,8 @@ const enUS = {
         'The bot received an IM message. You can continue to the next step.',
       pageBotTestPrompt:
         'Page Bot is enabled. Click the chat bubble in the lower-right corner and send a message to verify the full conversation flow.',
+      pageBotTestNotice:
+        'For testing only. Embed the code on a real external webpage.',
       webhookTestPrompt:
         'The callback URL is ready. Configure it on the external platform, then send the bot a real message.',
       httpTestPrompt:

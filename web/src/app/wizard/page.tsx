@@ -1128,14 +1128,17 @@ function StepPlatform({
 function PageBotFloatingWidget({
   botUuid,
   title,
+  testNotice,
 }: {
   botUuid: string;
   title?: string;
+  testNotice: string;
 }) {
   useEffect(() => {
     const script = document.createElement('script');
-    script.src = `${window.location.origin}/api/v1/embed/${botUuid}/widget.js`;
+    script.src = `${window.location.origin}/api/v1/embed/${botUuid}/widget.js?preview=wizard&v=${Date.now()}`;
     script.dataset.title = title || 'LangBot';
+    script.dataset.testNotice = testNotice;
     document.body.appendChild(script);
 
     return () => {
@@ -1149,7 +1152,7 @@ function PageBotFloatingWidget({
         root?.remove();
       }
     };
-  }, [botUuid, title]);
+  }, [botUuid, testNotice, title]);
 
   return null;
 }
@@ -1242,6 +1245,7 @@ function StepBotConfig({
               ? adapterConfigValues.title
               : undefined
           }
+          testNotice={t('wizard.botConfig.pageBotTestNotice')}
         />
       )}
 
