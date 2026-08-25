@@ -16,12 +16,7 @@ export interface WebSocketMessage {
 
 export interface WebSocketResponse {
   type:
-    | 'connected'
-    | 'response'
-    | 'user_message'
-    | 'pong'
-    | 'broadcast'
-    | 'error';
+    'connected' | 'response' | 'user_message' | 'pong' | 'broadcast' | 'error';
   connection_id?: string;
   pipeline_uuid?: string;
   session_type?: string;
@@ -91,7 +86,6 @@ export class WebSocketClient {
 
         // 连接打开
         this.ws.onopen = () => {
-          this.reconnectAttempts = 0;
           this.isConnecting = false;
           const token = this.token || localStorage.getItem('token');
           const workspaceUuid = getActiveWorkspaceUuid();
@@ -119,6 +113,10 @@ export class WebSocketClient {
 
             // 第一次连接成功
             if (data.type === 'connected' && data.connection_id) {
+              // Only a fully authenticated runtime connection should reset
+              // the retry budget. Resetting on TCP open makes server-side
+              // errors (for example a pipeline still loading) retry forever.
+              this.reconnectAttempts = 0;
               this.connectionId = data.connection_id;
               this.startHeartbeat();
               resolve(data.connection_id);

@@ -156,7 +156,16 @@ export default function PipelineFormComponent({
         },
       ];
 
-  const [activeSection, setActiveSection] = useState(formLabelList[0].name);
+  const [activeSection, setActiveSection] = useState(
+    isEditMode ? 'trigger' : 'basic',
+  );
+  const primarySectionNames = ['trigger', 'ai', 'output'];
+  const primarySections = primarySectionNames
+    .map((name) => formLabelList.find((section) => section.name === name))
+    .filter((section): section is SectionItem => Boolean(section));
+  const secondarySections = formLabelList.filter(
+    (section) => !primarySectionNames.includes(section.name),
+  );
 
   const [aiConfigTabSchema, setAIConfigTabSchema] =
     useState<PipelineConfigTab>();
@@ -567,12 +576,48 @@ export default function PipelineFormComponent({
             onSubmit={form.handleSubmit(handleFormSubmit)}
             className="h-full flex flex-col flex-1 min-h-0 mb-2"
           >
-            <div className="flex-1 flex flex-col md:flex-row min-h-0">
-              {/* Vertical section navigation (only show when multiple sections) */}
+            <div className="flex-1 flex min-h-0 flex-col">
+              {/* Keep the primary pipeline flow visible while editing. */}
               {formLabelList.length > 1 && (
-                <nav className="shrink-0 mb-4 md:mb-0 md:w-44 md:pr-4 md:mr-4 md:border-r overflow-x-auto md:overflow-x-visible md:overflow-y-auto">
-                  <ul className="flex md:flex-col gap-1 md:space-y-1">
-                    {formLabelList.map((section) => {
+                <nav className="mb-4 shrink-0 space-y-2 border-b pb-4">
+                  <div className="overflow-x-auto">
+                    <ol className="grid min-w-[34rem] grid-cols-3 gap-2">
+                      {primarySections.map((section, index) => {
+                        const Icon = section.icon;
+                        return (
+                          <li key={section.name} className="relative min-w-0">
+                            <button
+                              type="button"
+                              onClick={() => setActiveSection(section.name)}
+                              className={cn(
+                                'flex w-full min-w-0 items-center gap-2 rounded-lg border px-3 py-3 text-left text-sm font-medium transition-colors',
+                                activeSection === section.name
+                                  ? 'border-primary/50 bg-primary/5 text-foreground shadow-sm'
+                                  : 'border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground',
+                              )}
+                            >
+                              <span
+                                className={cn(
+                                  'flex size-7 shrink-0 items-center justify-center rounded-full text-xs',
+                                  activeSection === section.name
+                                    ? 'bg-primary text-primary-foreground'
+                                    : 'bg-muted text-muted-foreground',
+                                )}
+                              >
+                                {index + 1}
+                              </span>
+                              <Icon className="hidden size-4 shrink-0 xl:block" />
+                              <span className="min-w-0 leading-tight">
+                                {section.label}
+                              </span>
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ol>
+                  </div>
+                  <ul className="flex flex-wrap gap-1">
+                    {secondarySections.map((section) => {
                       const Icon = section.icon;
                       return (
                         <li key={section.name}>
@@ -580,13 +625,13 @@ export default function PipelineFormComponent({
                             type="button"
                             onClick={() => setActiveSection(section.name)}
                             className={cn(
-                              'w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors text-left cursor-pointer whitespace-nowrap',
+                              'flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors',
                               activeSection === section.name
                                 ? 'bg-accent text-accent-foreground'
                                 : 'text-muted-foreground hover:bg-muted hover:text-foreground',
                             )}
                           >
-                            <Icon className="size-4 shrink-0" />
+                            <Icon className="size-3.5" />
                             {section.label}
                           </button>
                         </li>

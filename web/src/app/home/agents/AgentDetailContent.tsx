@@ -1,13 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Bug, Settings } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { useCurrentWorkspace } from '@/app/infra/http';
 import { Agent } from '@/app/infra/entities/api';
 import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
+import ProcessorDetailWorkbench from '@/app/home/components/processor-detail/ProcessorDetailWorkbench';
 import PipelineDetailContent from '@/app/home/pipelines/PipelineDetailContent';
 import AgentCreateContent from './components/AgentCreateContent';
 import AgentDebugPanel from './components/AgentDebugPanel';
@@ -18,6 +16,8 @@ export default function AgentDetailContent({ id }: { id: string }) {
   const navigate = useNavigate();
   const { t } = useTranslation();
   const currentWorkspace = useCurrentWorkspace();
+  const canManage =
+    currentWorkspace?.permissions.includes('resource.manage') ?? false;
   const canOperate =
     currentWorkspace?.permissions.includes('runtime.operate') ?? false;
   const { refreshPipelines, pipelines, setDetailEntityName } = useSidebarData();
@@ -25,7 +25,6 @@ export default function AgentDetailContent({ id }: { id: string }) {
   const [loading, setLoading] = useState(!isCreateMode);
   const [formDirty, setFormDirty] = useState(false);
   const [formSaving, setFormSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState('config');
 
   useEffect(() => {
     if (isCreateMode) {
@@ -79,42 +78,17 @@ export default function AgentDetailContent({ id }: { id: string }) {
   }
 
   return (
-    <div className="flex h-full min-w-0 flex-col">
-      <div className="flex items-center justify-between pb-4 shrink-0">
-        <h1 className="text-xl font-semibold">{t('agents.editAgent')}</h1>
-        <Button
-          type="submit"
-          form="agent-form"
-          disabled={!formDirty || formSaving}
-          className={activeTab !== 'config' ? 'invisible' : ''}
-        >
-          {t('common.save')}
-        </Button>
-      </div>
-
-      <Tabs
-        key={id}
-        value={activeTab}
-        onValueChange={setActiveTab}
-        className="flex min-h-0 min-w-0 flex-1 flex-col"
-      >
-        <TabsList className="shrink-0">
-          <TabsTrigger value="config" className="gap-1.5">
-            <Settings className="size-3.5" />
-            {t('pipelines.configuration')}
-          </TabsTrigger>
-          {canOperate && (
-            <TabsTrigger value="debug" className="gap-1.5">
-              <Bug className="size-3.5" />
-              {t('agents.debugTab')}
-            </TabsTrigger>
-          )}
-        </TabsList>
-
-        <TabsContent
-          value="config"
-          className="mt-4 min-h-0 min-w-0 flex-1 overflow-hidden"
-        >
+    <ProcessorDetailWorkbench
+      key={id}
+      title={t('agents.editAgent')}
+      saveLabel={t('common.save')}
+      saveFormId="agent-form"
+      canSave={canManage}
+      isDirty={formDirty}
+      isSaving={formSaving}
+      configTitle={t('pipelines.configuration')}
+      configContent={
+        <fieldset className="contents" disabled={!canManage}>
           <AgentFormComponent
             agentId={id}
             onFinish={() => {
@@ -127,23 +101,21 @@ export default function AgentDetailContent({ id }: { id: string }) {
             onDirtyChange={setFormDirty}
             onSavingChange={setFormSaving}
           />
-        </TabsContent>
-
-        {canOperate && (
-          <TabsContent
-            value="debug"
-            className="mt-4 min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden"
-          >
-            <AgentDebugPanel
-              agentId={id}
-              supportedEventPatterns={
-                agent.supported_event_patterns ??
-                agent.capability?.supported_event_patterns ?? ['*']
-              }
-            />
-          </TabsContent>
-        )}
-      </Tabs>
-    </div>
+        </fieldset>
+      }
+      debugTitle={canOperate ? t('agents.debugTab') : undefined}
+      debugContent={
+        canOperate ? (
+          <AgentDebugPanel
+            agentId={id}
+            supportedEventPatterns={
+              agent.supported_event_patterns ??
+              agent.capability?.supported_event_patterns ?? ['*']
+            }
+          />
+        ) : undefined
+      }
+      unsavedLabel={t('pipelines.unsavedChanges')}
+    />
   );
 }

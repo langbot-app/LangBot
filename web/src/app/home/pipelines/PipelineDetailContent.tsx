@@ -1,13 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import PipelineFormComponent from '@/app/home/pipelines/components/pipeline-form/PipelineFormComponent';
 import DebugDialog from '@/app/home/pipelines/components/debug-dialog/DebugDialog';
 import PipelineMonitoringTab from '@/app/home/pipelines/components/monitoring-tab/PipelineMonitoringTab';
+import ProcessorDetailWorkbench from '@/app/home/components/processor-detail/ProcessorDetailWorkbench';
 import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
 import { useTranslation } from 'react-i18next';
-import { Settings, Bug, BarChart3 } from 'lucide-react';
 import { useCurrentWorkspace } from '@/app/infra/http';
 
 export default function PipelineDetailContent({
@@ -40,7 +39,6 @@ export default function PipelineDetailContent({
     return () => setDetailEntityName(null);
   }, [id, isCreateMode, pipelines, setDetailEntityName, t]);
 
-  const [activeTab, setActiveTab] = useState('config');
   const [isWebSocketConnected, setIsWebSocketConnected] = useState(false);
   const [formDirty, setFormDirty] = useState(false);
   const [formSaving, setFormSaving] = useState(false);
@@ -96,103 +94,62 @@ export default function PipelineDetailContent({
 
   // ==================== Edit Mode ====================
   return (
-    <div className="flex h-full flex-col">
-      {/* Sticky Header: title + save button */}
-      <div className="flex items-center justify-between pb-4 shrink-0">
-        <h1 className="text-xl font-semibold">{t('pipelines.editPipeline')}</h1>
-        {canManage && (
-          <Button
-            type="submit"
-            form="pipeline-form"
-            disabled={!formDirty || formSaving}
-            className={activeTab !== 'config' ? 'invisible' : ''}
-          >
-            {t('common.save')}
-          </Button>
-        )}
-      </div>
-
-      {/* Horizontal Tabs */}
-      <Tabs
-        key={id}
-        value={activeTab}
-        onValueChange={setActiveTab}
-        className="flex flex-1 flex-col min-h-0"
-      >
-        <TabsList className="shrink-0">
-          <TabsTrigger value="config" className="gap-1.5">
-            <Settings className="size-3.5" />
-            {t('pipelines.configuration')}
-          </TabsTrigger>
-          {canOperate && (
-            <TabsTrigger value="debug" className="gap-1.5">
-              <Bug className="size-3.5" />
-              {t('pipelines.debugChat')}
-              {activeTab === 'debug' && (
-                <span
-                  className={`inline-block size-2 rounded-full ${
-                    isWebSocketConnected ? 'bg-green-500' : 'bg-red-500'
-                  }`}
+    <ProcessorDetailWorkbench
+      key={id}
+      title={t('pipelines.editPipeline')}
+      saveLabel={t('common.save')}
+      saveFormId="pipeline-form"
+      canSave={canManage}
+      isDirty={formDirty}
+      isSaving={formSaving}
+      configTitle={t('pipelines.configuration')}
+      configContent={
+        <fieldset className="contents" disabled={!canManage}>
+          <PipelineFormComponent
+            pipelineId={id}
+            isEditMode={true}
+            disableForm={!canManage}
+            showButtons={false}
+            onFinish={handleFinish}
+            onNewPipelineCreated={handleNewPipelineCreated}
+            onDeletePipeline={handleDeletePipeline}
+            onCancel={() => navigate(routeBase)}
+            onDirtyChange={setFormDirty}
+            onSavingChange={setFormSaving}
+          />
+        </fieldset>
+      }
+      debugTitle={canOperate ? t('pipelines.debugChat') : undefined}
+      debugConnected={canOperate ? isWebSocketConnected : undefined}
+      debugConnectedLabel={t('pipelines.debugDialog.connected')}
+      debugDisconnectedLabel={t('pipelines.debugDialog.disconnected')}
+      debugContent={
+        canOperate ? (
+          <DebugDialog
+            open={true}
+            pipelineId={id}
+            isEmbedded={true}
+            compact={true}
+            onConnectionStatusChange={setIsWebSocketConnected}
+          />
+        ) : undefined
+      }
+      unsavedLabel={t('pipelines.unsavedChanges')}
+      monitoring={
+        canViewMonitoring
+          ? {
+              label: t('pipelines.monitoring.title'),
+              content: (
+                <PipelineMonitoringTab
+                  pipelineId={id}
+                  onNavigateToMonitoring={() => {
+                    navigate('/home/monitoring');
+                  }}
                 />
-              )}
-            </TabsTrigger>
-          )}
-          {canViewMonitoring && (
-            <TabsTrigger value="monitoring" className="gap-1.5">
-              <BarChart3 className="size-3.5" />
-              {t('pipelines.monitoring.title')}
-            </TabsTrigger>
-          )}
-        </TabsList>
-
-        {/* Tab: Configuration */}
-        <TabsContent
-          value="config"
-          className="flex-1 min-h-0 overflow-y-auto mt-4"
-        >
-          <fieldset className="contents" disabled={!canManage}>
-            <PipelineFormComponent
-              pipelineId={id}
-              isEditMode={true}
-              disableForm={!canManage}
-              showButtons={false}
-              onFinish={handleFinish}
-              onNewPipelineCreated={handleNewPipelineCreated}
-              onDeletePipeline={handleDeletePipeline}
-              onCancel={() => navigate(routeBase)}
-              onDirtyChange={setFormDirty}
-              onSavingChange={setFormSaving}
-            />
-          </fieldset>
-        </TabsContent>
-
-        {/* Tab: Debug */}
-        {canOperate && (
-          <TabsContent value="debug" className="flex-1 min-h-0 mt-4">
-            <DebugDialog
-              open={activeTab === 'debug'}
-              pipelineId={id}
-              isEmbedded={true}
-              onConnectionStatusChange={setIsWebSocketConnected}
-            />
-          </TabsContent>
-        )}
-
-        {/* Tab: Monitoring */}
-        {canViewMonitoring && (
-          <TabsContent
-            value="monitoring"
-            className="flex-1 min-h-0 overflow-y-auto mt-4"
-          >
-            <PipelineMonitoringTab
-              pipelineId={id}
-              onNavigateToMonitoring={() => {
-                navigate('/home/monitoring');
-              }}
-            />
-          </TabsContent>
-        )}
-      </Tabs>
-    </div>
+              ),
+            }
+          : undefined
+      }
+    />
   );
 }

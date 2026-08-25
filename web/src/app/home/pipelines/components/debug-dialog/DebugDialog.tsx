@@ -46,6 +46,7 @@ interface DebugDialogProps {
   open: boolean;
   pipelineId: string;
   isEmbedded?: boolean;
+  compact?: boolean;
   onConnectionStatusChange?: (isConnected: boolean) => void;
 }
 
@@ -115,6 +116,7 @@ export default function DebugDialog({
   open,
   pipelineId,
   isEmbedded = false,
+  compact = false,
   onConnectionStatusChange,
 }: DebugDialogProps) {
   const { t } = useTranslation();
@@ -805,7 +807,12 @@ export default function DebugDialog({
 
   const renderContent = () => (
     <div className="flex flex-1 h-full min-h-0">
-      <div className="w-14 p-2 pl-0 shrink-0 flex flex-col justify-start gap-2">
+      <div
+        className={cn(
+          'w-14 p-2 pl-0 shrink-0 flex flex-col justify-start gap-2',
+          compact && 'w-12 p-1.5 pl-1',
+        )}
+      >
         <Button
           variant="ghost"
           size="icon"
@@ -835,8 +842,13 @@ export default function DebugDialog({
       </div>
 
       <div className="flex-1 flex flex-col w-[10rem] h-full min-h-0">
-        <ScrollArea className="flex-1 p-6 overflow-y-auto min-h-0 scroll-area">
-          <div className="space-y-6">
+        <ScrollArea
+          className={cn(
+            'flex-1 overflow-y-auto min-h-0 scroll-area',
+            compact ? 'p-3' : 'p-6',
+          )}
+        >
+          <div className={compact ? 'space-y-3' : 'space-y-6'}>
             {messages.length === 0 ? (
               <div className="text-center text-muted-foreground py-12 text-lg">
                 {t('pipelines.debugDialog.noMessages')}
@@ -852,7 +864,10 @@ export default function DebugDialog({
                 >
                   <div
                     className={cn(
-                      'max-w-3xl px-5 py-3 rounded-2xl',
+                      'rounded-2xl',
+                      compact
+                        ? 'max-w-[92%] px-3 py-2 text-sm'
+                        : 'max-w-3xl px-5 py-3',
                       message.role === 'user'
                         ? 'user-message-bubble bg-primary/10 text-foreground rounded-br-none'
                         : 'bg-muted text-foreground rounded-bl-none',
@@ -990,7 +1005,9 @@ export default function DebugDialog({
           </div>
         )}
 
-        <div className="p-4 pb-0 flex gap-2">
+        <div
+          className={cn('p-4 pb-0 flex gap-2', compact && 'flex-col p-3 pb-0')}
+        >
           <div className="flex gap-2 items-center">
             <div className="flex items-center gap-1">
               <span className="text-xs text-muted-foreground">
@@ -1072,7 +1089,10 @@ export default function DebugDialog({
               !isConnected ||
               isUploading
             }
-            className="rounded-md w-20 px-6 py-2 text-base font-medium transition-none flex items-center gap-2 shadow-none disabled:opacity-50"
+            className={cn(
+              'rounded-md w-20 px-6 py-2 text-base font-medium transition-none flex items-center gap-2 shadow-none disabled:opacity-50',
+              compact && 'w-auto px-3 text-sm',
+            )}
           >
             {isUploading ? (
               t('pipelines.debugDialog.uploading')
