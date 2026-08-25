@@ -284,8 +284,7 @@ class SpaceService:
                 .join(
                     persistence_model.ModelProvider,
                     sqlalchemy.and_(
-                        persistence_model.ModelProvider.workspace_uuid
-                        == persistence_model.LLMModel.workspace_uuid,
+                        persistence_model.ModelProvider.workspace_uuid == persistence_model.LLMModel.workspace_uuid,
                         persistence_model.ModelProvider.uuid == persistence_model.LLMModel.provider_uuid,
                     ),
                 )
@@ -307,9 +306,7 @@ class SpaceService:
             from ..context import ExecutionContext
 
             try:
-                await self.ap.model_mgr.sync_new_models_from_space(
-                    ExecutionContext.from_request(context)
-                )
+                await self.ap.model_mgr.sync_new_models_from_space(ExecutionContext.from_request(context))
             except Exception:
                 pass
             local_model = await find_local_model()
