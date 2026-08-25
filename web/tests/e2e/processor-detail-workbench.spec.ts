@@ -226,6 +226,31 @@ test.describe('processor detail workbench', () => {
     page,
   }) => {
     await installLangBotApiMocks(page, { authenticated: true });
+    const debugImageKey =
+      'v1/mock-instance/workspace-default/1/upload_image/mock-owner/debug-image.png';
+    const debugImageBytes = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=',
+      'base64',
+    );
+    await page.route('**/api/v1/files/images', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          code: 0,
+          message: 'ok',
+          data: { file_key: debugImageKey },
+          timestamp: Date.now(),
+        }),
+      });
+    });
+    await page.route('**/api/v1/files/image/**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'image/png',
+        body: debugImageBytes,
+      });
+    });
     await page.routeWebSocket('**/api/v1/pipelines/**/ws/connect**', (ws) => {
       ws.onMessage((raw) => {
         const message = JSON.parse(String(raw));
@@ -236,6 +261,21 @@ test.describe('processor detail workbench', () => {
               connection_id: 'playwright-connection',
               pipeline_uuid: 'pipeline-workbench',
               session_type: 'person',
+            }),
+          );
+        } else if (message.type === 'message') {
+          ws.send(
+            JSON.stringify({
+              type: 'user_message',
+              session_type: 'person',
+              data: {
+                id: 1,
+                role: 'user',
+                content: 'Describe this image',
+                message_chain: message.message,
+                timestamp: new Date().toISOString(),
+                is_final: true,
+              },
             }),
           );
         }
@@ -302,6 +342,21 @@ test.describe('processor detail workbench', () => {
     expect(Math.abs(sendBox!.height - inputBox!.height)).toBeLessThanOrEqual(1);
     expect(Math.abs(sendBox!.y - inputBox!.y)).toBeLessThanOrEqual(1);
     expect(toolbarBox!.y).toBeLessThan(emptyStateBox!.y);
+
+    await composer.locator('input[type="file"]').setInputFiles({
+      name: 'debug-image.png',
+      mimeType: 'image/png',
+      buffer: debugImageBytes,
+    });
+    await expect(
+      debugPanel.locator('[data-debug-chat-attachment-preview="true"]'),
+    ).toBeVisible();
+    await messageInput.fill('Describe this image');
+    await sendButton.click();
+    await expect(
+      debugPanel.locator('[data-debug-chat-message-image="true"]'),
+    ).toBeVisible();
+    await expect(debugPanel.getByText('Describe this image')).toBeVisible();
 
     const streamSwitchBox = await composer.getByRole('switch').boundingBox();
     const resetBox = await resetButton.boundingBox();

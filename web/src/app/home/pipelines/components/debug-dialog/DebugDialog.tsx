@@ -457,7 +457,7 @@ export default function DebugDialog({
         return;
       }
 
-      const messageChain = [];
+      const messageChain: MessageChainComponent[] = [];
 
       // Add quoted message if present
       if (quotedMessage) {
@@ -511,17 +511,21 @@ export default function DebugDialog({
               type: 'Image',
               path: result.file_key,
             });
-          } else {
+          } else if (attachment.kind === 'voice') {
             // Voice / File go through the generic document upload endpoint,
             // which returns a storage key the backend resolves into the
             // sandbox inbox just like images.
             const result = await httpClient.uploadDocumentFile(attachment.file);
             messageChain.push({
-              type: attachment.kind === 'voice' ? 'Voice' : 'File',
+              type: 'Voice',
               path: result.file_id,
-              ...(attachment.kind === 'file'
-                ? { name: attachment.file.name }
-                : {}),
+            });
+          } else {
+            const result = await httpClient.uploadDocumentFile(attachment.file);
+            messageChain.push({
+              type: 'File',
+              path: result.file_id,
+              name: attachment.file.name,
             });
           }
         } catch (error) {

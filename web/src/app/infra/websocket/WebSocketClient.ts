@@ -3,12 +3,13 @@
  * 用于管理WebSocket连接和消息处理
  */
 import { getActiveWorkspaceUuid } from '@/app/infra/http/workspaceContext';
+import type { MessageChainComponent } from '@/app/infra/entities/message';
 
 export interface WebSocketMessage {
   id: number;
   role: 'user' | 'assistant';
   content: string;
-  message_chain: Array<{ type: string; text?: string; target?: string }>;
+  message_chain: MessageChainComponent[];
   timestamp: string;
   is_final?: boolean;
   connection_id?: string;
@@ -16,7 +17,12 @@ export interface WebSocketMessage {
 
 export interface WebSocketResponse {
   type:
-    'connected' | 'response' | 'user_message' | 'pong' | 'broadcast' | 'error';
+    | 'connected'
+    | 'response'
+    | 'user_message'
+    | 'pong'
+    | 'broadcast'
+    | 'error';
   connection_id?: string;
   pipeline_uuid?: string;
   session_type?: string;
@@ -262,7 +268,7 @@ export class WebSocketClient {
    * 发送消息
    */
   public sendMessage(
-    messageChain: Array<{ type: string; text?: string; target?: string }>,
+    messageChain: MessageChainComponent[],
     stream: boolean = true,
   ) {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {

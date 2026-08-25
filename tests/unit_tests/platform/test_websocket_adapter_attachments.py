@@ -2,9 +2,10 @@
 
 The web debug client uploads Image / Voice / File components carrying a storage
 key in ``path``. This helper resolves each to a base64 data URI (so multimodal
-LLM input and the Box sandbox inbox have usable bytes), then deletes the
-consumed upload. Covers mimetype selection per type and fail-closed error
-handling.
+LLM input and the Box sandbox inbox have usable bytes). Image uploads remain as
+authenticated history references until storage retention cleanup, while other
+consumed uploads are deleted. Covers mimetype selection per type and
+fail-closed error handling.
 """
 
 from __future__ import annotations
@@ -52,7 +53,7 @@ def _make_adapter(load_return=b'hello', load_side_effect=None):
 
 
 @pytest.mark.asyncio
-async def test_image_jpeg_mimetype_and_consumed_storage_key():
+async def test_image_jpeg_mimetype_and_retained_history_key():
     adapter, storage_mgr, _ = _make_adapter(load_return=b'\xff\xd8\xff')
     path = f'{_UPLOAD_PREFIX}photo.jpg'
     chain = [{'type': 'Image', 'path': path}]
@@ -61,12 +62,11 @@ async def test_image_jpeg_mimetype_and_consumed_storage_key():
 
     expected_b64 = base64.b64encode(b'\xff\xd8\xff').decode('utf-8')
     assert chain[0]['base64'] == f'data:image/jpeg;base64,{expected_b64}'
-    assert chain[0]['path'] == ''
-    storage_mgr.delete_scoped_object_key.assert_awaited_once_with(
-        _CONTEXT,
-        path,
-        expected_owner_type='upload_image',
-    )
+    assert chain[0]['path'] == path
+    storage_mgr.delete_scoped_object_key.assert_not_awaited()
+
+    history = adapter._history_message_chain(chain)
+    assert history == [{'type': 'Image', 'path': path, 'base64': ''}]
 
 
 def test_history_retains_storage_key_without_large_base64_payload():
@@ -95,18 +95,22 @@ async def test_image_defaults_to_png():
 
 @pytest.mark.asyncio
 async def test_voice_uses_guessed_or_wav_mimetype():
-    adapter, _, _ = _make_adapter()
+    adapter, storage_mgr, _ = _make_adapter()
     chain = [{'type': 'Voice', 'path': f'{_UPLOAD_PREFIX}clip.wav'}]
     await adapter._process_image_components(_make_connection(), chain)
     assert chain[0]['base64'].startswith('data:audio/')
+    assert chain[0]['path'] == ''
+    storage_mgr.delete_scoped_object_key.assert_awaited_once()
 
 
 @pytest.mark.asyncio
 async def test_file_uses_octet_stream_fallback():
-    adapter, _, _ = _make_adapter()
+    adapter, storage_mgr, _ = _make_adapter()
     chain = [{'type': 'File', 'path': f'{_UPLOAD_PREFIX}unknownblob'}]
     await adapter._process_image_components(_make_connection(), chain)
     assert chain[0]['base64'].startswith('data:application/octet-stream;base64,')
+    assert chain[0]['path'] == ''
+    storage_mgr.delete_scoped_object_key.assert_awaited_once()
 
 
 @pytest.mark.asyncio
