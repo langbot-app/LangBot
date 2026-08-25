@@ -40,6 +40,9 @@ import {
 } from '@/app/home/components/dynamic-form/DynamicFormItemConfig';
 import DynamicFormComponent from '@/app/home/components/dynamic-form/DynamicFormComponent';
 import { BotLogListComponent } from '@/app/home/bots/components/bot-log/view/BotLogListComponent';
+import OwnModelSetup, {
+  OwnModelSelection,
+} from '@/app/wizard/components/OwnModelSetup';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import {
   groupByCategory,
@@ -49,8 +52,11 @@ import { getAdapterDocUrl } from '@/app/infra/entities/adapter-docs';
 import i18n from 'i18next';
 
 import {
+  configureLocalAgentPrimaryModel,
   ensureHttpBotSigningSecret,
+  findDefaultPipeline,
   getErrorMessage,
+  isWebhookModeEnabled,
 } from '@/app/wizard/utils';
 
 import { Button } from '@/components/ui/button';
@@ -120,6 +126,8 @@ export default function WizardPage() {
   const [aiChoice, setAiChoice] = useState<
     'external' | 'own-model' | 'more-features' | null
   >(null);
+  const [ownModelSelection, setOwnModelSelection] =
+    useState<OwnModelSelection | null>(null);
 
   // ---- Helper: persist wizard progress to backend (fire-and-forget) ----
   const saveProgress = useCallback(
@@ -357,6 +365,9 @@ export default function WizardPage() {
   const goPrev = useCallback(() => {
     if (currentStep > 0) {
       const prevStep = currentStep - 1;
+      if (currentStep === 2) {
+        setOwnModelSelection(null);
+      }
       setCurrentStep(prevStep);
       saveProgress({ step: prevStep });
     }
@@ -434,7 +445,7 @@ export default function WizardPage() {
   }, [selectedAdapter, adapters, t, saveProgress]);
 
   // ---- Save Bot Config & Enable (Step 1) ----
-  // Creates a recommended Local Agent pipeline, binds it, and enables the bot.
+  // Binds the bot to the Workspace default pipeline and enables it.
 
   const handleSaveBot = useCallback(async () => {
     if (!createdBotUuid || !selectedAdapter) return;
@@ -442,42 +453,74 @@ export default function WizardPage() {
 
     let createdPipelineThisAttempt: string | null = null;
     try {
-      let pipelineUuid = createdPipelineUuid;
+      const pipelinesResponse = await httpClient.getPipelines(
+        'updated_at',
+        'DESC',
+      );
+      const defaultPipeline = findDefaultPipeline(pipelinesResponse.pipelines);
+      let pipelineUuid = defaultPipeline?.uuid ?? null;
+      let createdDefaultPipeline = false;
+
       if (!pipelineUuid) {
-        const recommendedModel = await httpClient.getWizardRecommendedModel();
         const pipelineResp = await httpClient.createPipeline({
           name: `${botName} Agent`,
           description: botDescription || '',
           config: {},
+          is_default: true,
         });
         pipelineUuid = pipelineResp.uuid;
         createdPipelineThisAttempt = pipelineUuid;
-        const createdPipeline = await httpClient.getPipeline(pipelineUuid);
-        const aiConfig = createdPipeline.pipeline.config.ai as Record<
-          string,
-          unknown
-        >;
-        const localAgentConfig = (aiConfig['local-agent'] ?? {}) as Record<
-          string,
-          unknown
-        >;
+        createdDefaultPipeline = true;
+      }
+
+      const pipelineData = await httpClient.getPipeline(pipelineUuid);
+      const fullConfig = pipelineData.pipeline.config as unknown as Record<
+        string,
+        unknown
+      >;
+      const aiConfig = (fullConfig.ai ?? {}) as Record<string, unknown>;
+      const runnerConfig = (aiConfig.runner ?? {}) as Record<string, unknown>;
+      const localAgentConfig = (aiConfig['local-agent'] ?? {}) as Record<
+        string,
+        unknown
+      >;
+      const modelConfig = (localAgentConfig.model ?? {}) as Record<
+        string,
+        unknown
+      >;
+      const usesLocalAgent =
+        createdDefaultPipeline || runnerConfig.runner === 'local-agent';
+      const needsPrimaryModel =
+        usesLocalAgent &&
+        (typeof modelConfig.primary !== 'string' || !modelConfig.primary);
+
+      if (createdDefaultPipeline || needsPrimaryModel) {
+        const recommendedModel = await httpClient.getWizardRecommendedModel();
         await httpClient.updatePipeline(pipelineUuid, {
-          name: `${botName} Agent`,
-          description: botDescription || '',
+          name: pipelineData.pipeline.name,
+          description: pipelineData.pipeline.description || '',
           config: {
-            ...createdPipeline.pipeline.config,
+            ...fullConfig,
             ai: {
               ...aiConfig,
-              runner: { runner: 'local-agent' },
+              runner: createdDefaultPipeline
+                ? { ...runnerConfig, runner: 'local-agent' }
+                : runnerConfig,
               'local-agent': {
                 ...localAgentConfig,
-                model: { primary: recommendedModel.uuid, fallbacks: [] },
+                model: {
+                  ...modelConfig,
+                  primary: recommendedModel.uuid,
+                  fallbacks: Array.isArray(modelConfig.fallbacks)
+                    ? modelConfig.fallbacks
+                    : [],
+                },
               },
             },
           },
         });
-        setCreatedPipelineUuid(pipelineUuid);
       }
+      setCreatedPipelineUuid(pipelineUuid);
 
       const configToSave = ensureHttpBotSigningSecret(
         selectedAdapter,
@@ -537,7 +580,6 @@ export default function WizardPage() {
     botName,
     botDescription,
     adapterConfig,
-    createdPipelineUuid,
     t,
     saveProgress,
   ]);
@@ -559,9 +601,14 @@ export default function WizardPage() {
   const handleFinish = useCallback(async () => {
     if (!aiChoice || !createdBotUuid || !createdPipelineUuid) return;
     if (aiChoice === 'external' && !selectedRunner) return;
+    if (aiChoice === 'own-model' && !ownModelSelection) return;
     setIsSubmitting(true);
     let externalPipelineUuid: string | null = null;
     let externalPipelineBound = false;
+    let createdOwnModelUuid: string | null = null;
+    let ownModelPipelineUuid: string | null = null;
+    let ownModelPipelineBound = false;
+    let originalOwnModelBot: Bot | null = null;
 
     try {
       if (aiChoice === 'external' && selectedRunner) {
@@ -599,17 +646,90 @@ export default function WizardPage() {
         externalPipelineBound = true;
       }
 
-      await completeWizard();
-      if (aiChoice === 'own-model') {
-        navigate(`/home/pipelines?id=${createdPipelineUuid}`, {
-          replace: true,
+      if (aiChoice === 'own-model' && ownModelSelection) {
+        const modelResponse = await httpClient.createProviderLLMModel({
+          name: ownModelSelection.model.name,
+          provider_uuid: ownModelSelection.providerUuid,
+          abilities: ownModelSelection.model.abilities ?? [],
+          reasoning_config: { level: 'provider_default' },
+          context_length: ownModelSelection.model.context_length ?? null,
+          extra_args: {},
         });
-      } else {
-        navigate('/home', { replace: true });
+        createdOwnModelUuid = modelResponse.uuid;
+
+        const pipelineResponse = await httpClient.createPipeline({
+          name: `${botName} Custom Agent`,
+          description: botDescription || '',
+          config: {},
+        });
+        ownModelPipelineUuid = pipelineResponse.uuid;
+        const createdPipeline =
+          await httpClient.getPipeline(ownModelPipelineUuid);
+        const fullConfig = createdPipeline.pipeline.config as unknown as Record<
+          string,
+          unknown
+        >;
+        await httpClient.updatePipeline(ownModelPipelineUuid, {
+          name: `${botName} Custom Agent`,
+          description: botDescription || '',
+          config: configureLocalAgentPrimaryModel(
+            fullConfig,
+            createdOwnModelUuid,
+          ),
+        });
+
+        originalOwnModelBot = (await httpClient.getBot(createdBotUuid)).bot;
+        await httpClient.updateBot(createdBotUuid, {
+          name: originalOwnModelBot.name,
+          description: originalOwnModelBot.description,
+          adapter: originalOwnModelBot.adapter,
+          adapter_config: originalOwnModelBot.adapter_config,
+          enable: originalOwnModelBot.enable,
+          use_pipeline_uuid: ownModelPipelineUuid,
+        });
+        ownModelPipelineBound = true;
       }
+
+      await completeWizard();
+      navigate('/home', { replace: true });
     } catch (err) {
       if (externalPipelineUuid && !externalPipelineBound) {
         await httpClient.deletePipeline(externalPipelineUuid).catch(() => {});
+      }
+      if (createdOwnModelUuid) {
+        let canCleanUpOwnModelResources = !ownModelPipelineBound;
+        if (ownModelPipelineBound && originalOwnModelBot) {
+          try {
+            await httpClient.updateBot(createdBotUuid, {
+              name: originalOwnModelBot.name,
+              description: originalOwnModelBot.description,
+              adapter: originalOwnModelBot.adapter,
+              adapter_config: originalOwnModelBot.adapter_config,
+              enable: originalOwnModelBot.enable,
+              use_pipeline_uuid: originalOwnModelBot.use_pipeline_uuid,
+            });
+            canCleanUpOwnModelResources = true;
+          } catch {
+            canCleanUpOwnModelResources = false;
+          }
+        }
+
+        if (canCleanUpOwnModelResources) {
+          let pipelineDeleted = ownModelPipelineUuid === null;
+          if (ownModelPipelineUuid) {
+            try {
+              await httpClient.deletePipeline(ownModelPipelineUuid);
+              pipelineDeleted = true;
+            } catch {
+              pipelineDeleted = false;
+            }
+          }
+          if (pipelineDeleted) {
+            await httpClient
+              .deleteProviderLLMModel(createdOwnModelUuid)
+              .catch(() => {});
+          }
+        }
       }
       const apiErr = err as { msg?: string };
       toast.error(
@@ -626,6 +746,7 @@ export default function WizardPage() {
     botName,
     botDescription,
     runnerConfig,
+    ownModelSelection,
     completeWizard,
     navigate,
     t,
@@ -813,6 +934,7 @@ export default function WizardPage() {
             runnerConfigItems={selectedRunnerConfigItems}
             runnerConfigValues={runnerConfig}
             onRunnerConfigChange={setRunnerConfig}
+            onOwnModelSelectionChange={setOwnModelSelection}
           />
         )}
       </div>
@@ -851,7 +973,8 @@ export default function WizardPage() {
               disabled={
                 !canProceed() ||
                 isSubmitting ||
-                (aiChoice === 'external' && !selectedRunner)
+                (aiChoice === 'external' && !selectedRunner) ||
+                (aiChoice === 'own-model' && !ownModelSelection)
               }
             >
               {isSubmitting && (
@@ -860,7 +983,7 @@ export default function WizardPage() {
               {aiChoice === 'external'
                 ? t('wizard.aiEngine.createExternal')
                 : aiChoice === 'own-model'
-                  ? t('wizard.aiEngine.configurePipeline')
+                  ? t('wizard.aiEngine.finishWithModel')
                   : t('wizard.aiEngine.openWorkbench')}
             </Button>
           )}
@@ -1071,6 +1194,13 @@ function StepBotConfig({
     return a ? extractI18nObject(a.label) : (selectedAdapterName ?? '');
   }, [adapters, selectedAdapterName]);
 
+  const webhookModeEnabled = useMemo(
+    () =>
+      isWebhookModeEnabled(adapterConfigItems, adapterConfigValues) &&
+      Boolean(webhookUrl),
+    [adapterConfigItems, adapterConfigValues, webhookUrl],
+  );
+
   // Stable callback ref
   const onAdapterConfigRef = useRef(onAdapterConfigChange);
   onAdapterConfigRef.current = onAdapterConfigChange;
@@ -1144,7 +1274,7 @@ function StepBotConfig({
                 <MessageSquare className="size-3 text-white" />
               ) : selectedAdapterName === 'http_bot' ? (
                 <Send className="size-3 text-white" />
-              ) : webhookUrl ? (
+              ) : webhookModeEnabled ? (
                 <Webhook className="size-3 text-white" />
               ) : (
                 <Loader2 className="size-3 animate-spin text-white" />
@@ -1165,12 +1295,12 @@ function StepBotConfig({
                     ? t('wizard.botConfig.pageBotTestPrompt')
                     : selectedAdapterName === 'http_bot'
                       ? t('wizard.botConfig.httpTestPrompt')
-                      : webhookUrl
+                      : webhookModeEnabled
                         ? t('wizard.botConfig.webhookTestPrompt')
                         : t('wizard.botConfig.waitingForMessage')}
               </p>
 
-              {!messageReceived && webhookUrl && (
+              {!messageReceived && webhookModeEnabled && (
                 <div className="mt-3 space-y-3">
                   <div className="flex items-center gap-2">
                     <code className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap border bg-background px-2.5 py-2 text-xs">
@@ -1324,6 +1454,7 @@ function StepAIEngine({
   runnerConfigItems,
   runnerConfigValues,
   onRunnerConfigChange,
+  onOwnModelSelectionChange,
 }: {
   runnerOptions: { name: string; label: { en_US: string; zh_Hans: string } }[];
   choice: 'external' | 'own-model' | 'more-features' | null;
@@ -1337,6 +1468,7 @@ function StepAIEngine({
   runnerConfigItems: IDynamicFormItemSchema[];
   runnerConfigValues: Record<string, unknown>;
   onRunnerConfigChange: (v: Record<string, unknown>) => void;
+  onOwnModelSelectionChange: (selection: OwnModelSelection | null) => void;
 }) {
   const { t } = useTranslation();
 
@@ -1373,6 +1505,15 @@ function StepAIEngine({
       description: t('wizard.aiEngine.moreFeaturesDescription'),
     },
   ];
+
+  if (choice === 'own-model') {
+    return (
+      <OwnModelSetup
+        onBack={() => onChoiceChange(null)}
+        onSelectionChange={onOwnModelSelectionChange}
+      />
+    );
+  }
 
   if (choice !== 'external') {
     return (

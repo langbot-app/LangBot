@@ -255,6 +255,22 @@ class TestPipelinesCRUDEndpoints:
         assert 'uuid' in data['data']
 
     @pytest.mark.asyncio
+    async def test_create_default_pipeline_forwards_default_flag(self, quart_test_client, fake_pipeline_app):
+        """POST /api/v1/pipelines explicitly creates a default pipeline."""
+        fake_pipeline_app.pipeline_service.create_pipeline.reset_mock()
+
+        response = await quart_test_client.post(
+            '/api/v1/pipelines',
+            headers={'Authorization': 'Bearer test_token'},
+            json={'name': 'Default Pipeline', 'config': {}, 'is_default': True},
+        )
+
+        assert response.status_code == 200
+        call = fake_pipeline_app.pipeline_service.create_pipeline.await_args
+        assert call.kwargs == {'default': True}
+        assert call.args[1]['is_default'] is True
+
+    @pytest.mark.asyncio
     async def test_update_pipeline_success(self, quart_test_client):
         """PUT /api/v1/pipelines/{uuid} updates pipeline."""
         response = await quart_test_client.put(

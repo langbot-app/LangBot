@@ -75,6 +75,8 @@ shape as the corresponding HTTP API request body. Discover resources with the
 `list_*` / `get_*` tools before mutating; identifiers are UUIDs. Reads require
 `resource.view`; mutations require `resource.manage`. All service calls inherit
 the immutable Workspace context authenticated at the MCP transport boundary.
+Pass `is_default: true` to `create_pipeline` only when the Workspace does not
+already have a default pipeline.
 
 ## How to use
 

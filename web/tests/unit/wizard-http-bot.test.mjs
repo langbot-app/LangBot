@@ -27,7 +27,13 @@ function loadWizardUtils() {
   return loadedModule.exports;
 }
 
-const { ensureHttpBotSigningSecret, getErrorMessage } = loadWizardUtils();
+const {
+  configureLocalAgentPrimaryModel,
+  ensureHttpBotSigningSecret,
+  findDefaultPipeline,
+  getErrorMessage,
+  isWebhookModeEnabled,
+} = loadWizardUtils();
 
 test('generates an HTTP Bot signing secret when signatures are enabled', () => {
   const config = ensureHttpBotSigningSecret('http_bot', {
@@ -58,4 +64,58 @@ test('extracts the backend message from structured API errors', () => {
     'Signing secret is required',
   );
   assert.equal(getErrorMessage(new Error('Network failed')), 'Network failed');
+});
+
+test('selects only a usable Workspace default pipeline', () => {
+  const pipelines = [
+    { uuid: 'recent-pipeline', is_default: false },
+    { uuid: '', is_default: true },
+    { uuid: 'default-pipeline', is_default: true },
+  ];
+
+  assert.equal(findDefaultPipeline(pipelines)?.uuid, 'default-pipeline');
+});
+
+test('configures the selected model as the Local Agent primary model', () => {
+  const config = {
+    trigger: { prefix: '!' },
+    ai: {
+      runner: { runner: 'plugin:external', timeout: 30 },
+      'local-agent': {
+        model: { primary: 'old-model', fallbacks: ['fallback-model'] },
+        tools: { enabled: true },
+      },
+    },
+  };
+
+  const updated = configureLocalAgentPrimaryModel(config, 'selected-model');
+
+  assert.equal(updated.ai.runner.runner, 'local-agent');
+  assert.equal(updated.ai.runner.timeout, 30);
+  assert.equal(updated.ai['local-agent'].model.primary, 'selected-model');
+  assert.deepEqual(updated.ai['local-agent'].model.fallbacks, [
+    'fallback-model',
+  ]);
+  assert.deepEqual(updated.ai['local-agent'].tools, { enabled: true });
+  assert.deepEqual(updated.trigger, { prefix: '!' });
+});
+
+test('shows webhook guidance only when the adapter webhook mode is active', () => {
+  const dualModeFields = [
+    {
+      name: 'webhook_url',
+      show_if: { field: 'enable-webhook', operator: 'eq', value: true },
+    },
+  ];
+
+  assert.equal(
+    isWebhookModeEnabled(dualModeFields, { 'enable-webhook': false }),
+    false,
+  );
+  assert.equal(
+    isWebhookModeEnabled(dualModeFields, { 'enable-webhook': true }),
+    true,
+  );
+  assert.equal(isWebhookModeEnabled([{ name: 'webhook_url' }], {}), true);
+  assert.equal(isWebhookModeEnabled([], {}), false);
 });

@@ -150,7 +150,9 @@ export class BackendClient extends BaseHttpClient {
     return this.get(`/api/v1/provider/models/llm/${uuid}`);
   }
 
-  public createProviderLLMModel(model: LLMModel): Promise<object> {
+  public createProviderLLMModel(
+    model: Omit<LLMModel, 'uuid'>,
+  ): Promise<{ uuid: string }> {
     return this.post('/api/v1/provider/models/llm', model);
   }
 

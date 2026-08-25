@@ -1859,7 +1859,35 @@ const enUS = {
         'Connect Dify, n8n, Coze, or another platform and replace the bot pipeline.',
       ownModelTitle: 'Use My Own Model',
       ownModelDescription:
-        'Open the current Local Agent pipeline and configure your own model.',
+        'Add a provider, then scan or manually enter a model to finish setup.',
+      ownModelSetupTitle: 'Add Your Own Model',
+      ownModelSetupDescription:
+        'Add a model provider. Chat models are scanned automatically, or you can enter a model ID manually.',
+      addProviderTitle: 'Add Provider',
+      addProviderDescription:
+        'Enter the provider details and API key used to connect and scan models.',
+      selectModelTitle: 'Choose a Model',
+      selectScannedModelTitle: 'Choose a Model',
+      selectScannedModelDescription:
+        'The selected model will be the primary model of a new pipeline, and the bot will switch to it.',
+      scanModelMode: 'Scan Models',
+      manualModelMode: 'Add Manually',
+      scanningModels: 'Scanning available models…',
+      noScannedModels:
+        'No available chat models were found. Check the provider configuration.',
+      scanModelsFailed:
+        'Model scanning failed. Check the URL and API key, then try again.',
+      manualFallbackFailed:
+        'Automatic scanning failed. Enter a model ID supported by the provider.',
+      manualFallbackEmpty:
+        'No models were found. Enter a model ID supported by the provider.',
+      manualModelId: 'Model ID',
+      manualModelIdPlaceholder: 'For example: gpt-4o',
+      manualModelIdDescription:
+        'Enter the model parameter used in model requests.',
+      manualModelOptions: 'Optional Model Capabilities',
+      editProvider: 'Edit provider',
+      rescanModels: 'Scan models again',
       moreFeaturesTitle: 'Add More Agent Features',
       moreFeaturesDescription:
         'Open the workbench to add tools, knowledge, and other capabilities.',
@@ -1867,7 +1895,7 @@ const enUS = {
         'Select a runner for the external agent and configure its connection.',
       backToChoices: 'Back to options',
       createExternal: 'Create and Bind',
-      configurePipeline: 'Configure Pipeline',
+      finishWithModel: 'Use Selected Model & Finish',
       openWorkbench: 'Open Workbench',
     },
     spaceBanner: {

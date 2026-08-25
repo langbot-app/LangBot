@@ -1776,14 +1776,42 @@ const jaJP = {
         'Dify、n8n、Coze などを接続し、ボットのパイプラインを置き換えます。',
       ownModelTitle: '自分のモデルを使用',
       ownModelDescription:
-        '現在の Local Agent パイプラインを開き、自分のモデルを設定します。',
+        'プロバイダーを追加し、モデルをスキャンまたは手動入力して設定を完了します。',
+      ownModelSetupTitle: '自分のモデルを追加',
+      ownModelSetupDescription:
+        'モデルプロバイダーを追加すると自動スキャンされます。モデル ID の手動入力も可能です。',
+      addProviderTitle: 'プロバイダーを追加',
+      addProviderDescription:
+        '接続とモデルスキャンに使用するプロバイダー情報と API キーを入力します。',
+      selectModelTitle: 'モデルを選択',
+      selectScannedModelTitle: 'モデルを選択',
+      selectScannedModelDescription:
+        '選択したモデルを新しいパイプラインのメインモデルに設定し、ボットをそのパイプラインへ切り替えます。',
+      scanModelMode: 'モデルをスキャン',
+      manualModelMode: '手動で追加',
+      scanningModels: '利用可能なモデルをスキャン中…',
+      noScannedModels:
+        '利用可能なチャットモデルが見つかりません。プロバイダー設定を確認してください。',
+      scanModelsFailed:
+        'モデルのスキャンに失敗しました。URL と API キーを確認して再試行してください。',
+      manualFallbackFailed:
+        '自動スキャンに失敗しました。プロバイダーが対応するモデル ID を直接入力できます。',
+      manualFallbackEmpty:
+        'モデルが見つかりませんでした。プロバイダーが対応するモデル ID を直接入力できます。',
+      manualModelId: 'モデル ID',
+      manualModelIdPlaceholder: '例：gpt-4o',
+      manualModelIdDescription:
+        'モデルリクエストで実際に使用する model パラメーターを入力します。',
+      manualModelOptions: '任意のモデル機能',
+      editProvider: 'プロバイダーを編集',
+      rescanModels: 'モデルを再スキャン',
       moreFeaturesTitle: 'Agent に機能を追加',
       moreFeaturesDescription:
         'ワークベンチを開き、ツールやナレッジなどの機能を追加します。',
       runnerDescription: '外部 Agent の Runner を選択し、接続を設定します。',
       backToChoices: '選択肢に戻る',
       createExternal: '作成して関連付ける',
-      configurePipeline: 'パイプラインを設定',
+      finishWithModel: '選択したモデルを使用して完了',
       openWorkbench: 'ワークベンチを開く',
     },
     spaceBanner: {

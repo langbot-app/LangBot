@@ -39,7 +39,13 @@ class PipelinesRouterGroup(group.RouterGroup):
             permission=Permission.RESOURCE_MANAGE,
         )
         async def _(request_context: RequestContext) -> str:
-            pipeline_uuid = await self.ap.pipeline_service.create_pipeline(request_context, await quart.request.json)
+            pipeline_data = await quart.request.json
+            create_as_default = pipeline_data.get('is_default') is True
+            pipeline_uuid = await self.ap.pipeline_service.create_pipeline(
+                request_context,
+                pipeline_data,
+                default=create_as_default,
+            )
             return self.success(data={'uuid': pipeline_uuid})
 
         @self.route(

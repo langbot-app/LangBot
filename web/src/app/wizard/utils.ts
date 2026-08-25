@@ -34,3 +34,71 @@ export function ensureHttpBotSigningSecret(
     inbound_secret: createSigningSecret(),
   };
 }
+
+export function findDefaultPipeline<
+  T extends { uuid?: string; is_default?: boolean },
+>(pipelines: T[]): T | undefined {
+  return pipelines.find(
+    (pipeline) =>
+      pipeline.is_default === true &&
+      typeof pipeline.uuid === 'string' &&
+      pipeline.uuid.length > 0,
+  );
+}
+
+interface WebhookConfigItem {
+  name: string;
+  show_if?: {
+    field: string;
+    operator: 'eq' | 'neq' | 'in';
+    value: unknown;
+  };
+}
+
+export function isWebhookModeEnabled(
+  configItems: WebhookConfigItem[],
+  configValues: Record<string, unknown>,
+): boolean {
+  const webhookField = configItems.find((item) => item.name === 'webhook_url');
+  if (!webhookField) return false;
+  if (!webhookField.show_if) return true;
+
+  const condition = webhookField.show_if;
+  const actualValue = configValues[condition.field];
+  if (condition.operator === 'eq') return actualValue === condition.value;
+  if (condition.operator === 'neq') return actualValue !== condition.value;
+  return (
+    Array.isArray(condition.value) && condition.value.includes(actualValue)
+  );
+}
+
+export function configureLocalAgentPrimaryModel(
+  config: Record<string, unknown>,
+  modelUuid: string,
+): Record<string, unknown> {
+  const aiConfig = (config.ai ?? {}) as Record<string, unknown>;
+  const runnerConfig = (aiConfig.runner ?? {}) as Record<string, unknown>;
+  const localAgentConfig = (aiConfig['local-agent'] ?? {}) as Record<
+    string,
+    unknown
+  >;
+  const modelConfig = (localAgentConfig.model ?? {}) as Record<string, unknown>;
+
+  return {
+    ...config,
+    ai: {
+      ...aiConfig,
+      runner: { ...runnerConfig, runner: 'local-agent' },
+      'local-agent': {
+        ...localAgentConfig,
+        model: {
+          ...modelConfig,
+          primary: modelUuid,
+          fallbacks: Array.isArray(modelConfig.fallbacks)
+            ? modelConfig.fallbacks
+            : [],
+        },
+      },
+    },
+  };
+}

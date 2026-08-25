@@ -147,7 +147,16 @@ class LangBotMCPServer:
         )
         async def create_pipeline(pipeline_data: dict) -> str:
             context = _authorized(Permission.RESOURCE_MANAGE)
-            return _dump({'uuid': await ap.pipeline_service.create_pipeline(context, pipeline_data)})
+            create_as_default = pipeline_data.get('is_default') is True
+            return _dump(
+                {
+                    'uuid': await ap.pipeline_service.create_pipeline(
+                        context,
+                        pipeline_data,
+                        default=create_as_default,
+                    )
+                }
+            )
 
         @mcp.tool(description='Update a pipeline by UUID. `pipeline_data` matches the PUT body.')
         async def update_pipeline(pipeline_uuid: str, pipeline_data: dict) -> str:
