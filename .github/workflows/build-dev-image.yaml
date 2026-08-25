@@ -7,23 +7,42 @@ on:
 jobs:
   build-dev-image:
     runs-on: ubuntu-latest
-    # 如果是tag则跳过
     if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+    permissions:
+      contents: read
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           persist-credentials: false
 
-      - name: Generate Tag
-        id: generate_tag
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Generate image metadata
+        id: image
+        shell: bash
         run: |
-          # 获取分支名称，把/替换为-
-          echo ${{ github.ref }} | sed 's/refs\/heads\///g' | sed 's/\//-/g'
-          echo ::set-output name=tag::$(echo ${{ github.ref }} | sed 's/refs\/heads\///g' | sed 's/\//-/g')
-      - name: Login to Registry
-        run: docker login --username=${{ secrets.DOCKER_USERNAME }} --password ${{ secrets.DOCKER_PASSWORD }}
-      - name: Build Docker Image
-        run: |
-          docker buildx create --name mybuilder --use
-          docker build -t rockchin/langbot:${{ steps.generate_tag.outputs.tag }} . --push
+          set -euo pipefail
+          branch_tag="${GITHUB_REF#refs/heads/}"
+          branch_tag="${branch_tag//\//-}"
+          echo "branch_tag=${branch_tag}" >> "$GITHUB_OUTPUT"
+          echo "sha_tag=sha-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and push immutable Core image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            rockchin/langbot:${{ steps.image.outputs.branch_tag }}
+            rockchin/langbot:${{ steps.image.outputs.sha_tag }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}

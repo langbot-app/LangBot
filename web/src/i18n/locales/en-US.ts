@@ -85,18 +85,18 @@ const enUS = {
       'Recommended: Use official stable model APIs and cloud services',
     loginLocal: 'Login with local account',
     loginWithPassword: 'Login with password',
-    spaceLoginTitle: 'Login with Space',
+    spaceLoginTitle: 'Login with LangBot Account',
     spaceLoginDescription:
       'Scan the QR code or visit the link below to authorize',
     spaceLoginUserCode: 'Your code',
     spaceLoginExpires: 'Code expires in {{seconds}} seconds',
     spaceLoginWaiting: 'Waiting for authorization...',
     spaceLoginSuccess: 'Authorization successful',
-    spaceLoginFailed: 'Space login failed',
+    spaceLoginFailed: 'LangBot Account login failed',
     spaceLoginExpired: 'Authorization code expired, please try again',
     spaceLoginCancel: 'Cancel',
     spaceLoginVisitLink: 'Visit link',
-    spaceLoginProcessing: 'Logging in with Space',
+    spaceLoginProcessing: 'Logging in with LangBot Account',
     spaceLoginProcessingDescription:
       'Please wait while we complete your login...',
     spaceLoginSuccessDescription: 'Redirecting to LangBot...',
@@ -105,7 +105,7 @@ const enUS = {
     backToLogin: 'Back to Login',
     backToHome: 'Back to Home',
     spaceAccountCannotChangePassword:
-      'Space accounts cannot change password here',
+      'LangBot Accounts cannot change password here',
     theme: 'Theme',
     changePassword: 'Change Password',
     currentPassword: 'Current Password',
@@ -254,8 +254,9 @@ const enUS = {
     llmModels: 'LLM Models',
     localProvider: 'Local',
     localProviderDescription: 'Models configured and managed locally',
-    spaceProviderDescription: 'Models synced from your Space account',
-    spaceDisabledForLocalAccount: 'Login with Space to use cloud models',
+    spaceProviderDescription: 'Models synced from your LangBot Account',
+    spaceDisabledForLocalAccount:
+      'Login with LangBot Account to use cloud models',
     syncModels: 'Sync',
     syncSuccess: 'Sync complete: {{created}} created, {{updated}} updated',
     syncError: 'Sync failed: ',
@@ -291,15 +292,15 @@ const enUS = {
     langbotModelsDescription: 'Cloud models powered by LangBot Space',
     credits: 'Credits',
     loginWithSpace: 'Login with LangBot Account',
-    loginToUseModels: 'Login with Space to use cloud models',
+    loginToUseModels: 'Login with LangBot Account to use cloud models',
     ownerMustBindSpace:
-      'The Workspace owner must connect Space for LangBot Models.',
+      'The Workspace owner must connect a LangBot Account for LangBot Models.',
     usesOwnerSpaceBilling:
-      "Uses the Workspace owner's Space billing and credits.",
+      "Uses the Workspace owner's LangBot Account billing and credits.",
     noModels: 'No models configured',
     langbotModels: 'LangBot Models',
     spaceTrialTooltip:
-      'Free trial credits available! Login with Space to access cloud models with zero configuration.',
+      'Free trial credits available! Login with LangBot Account to access cloud models with zero configuration.',
     unlockModels: 'Login to use',
     editProvider: 'Edit Provider',
     addProvider: 'Add Provider',
@@ -1218,13 +1219,13 @@ const enUS = {
     adminAccountNote:
       'The account you use here will be set as the administrator account',
     register: 'Register',
-    initWithSpace: 'Initialize with Space',
+    initWithSpace: 'Initialize with LangBot Account',
     spaceRecommended:
       'Recommended: Use official stable model APIs and cloud services',
     spaceInfoTip1:
       'Space provides unified account authentication services without uploading any of your sensitive information.',
     spaceInfoTip2:
-      'Logging in with a Space account gives you access to LangBot Models and other cloud services, including free model call credits to help you get started quickly.',
+      'Logging in with a LangBot Account gives you access to LangBot Models and other cloud services, including free model call credits to help you get started quickly.',
     spaceInfoTip3:
       'Your login method does not affect other features. You can configure and use models from other sources at any time.',
     registerLocal: 'Register local account',
@@ -1281,32 +1282,32 @@ const enUS = {
     passwordNotSet: 'Not Set',
     passwordSetDescription:
       'Password is set, you can login with email and password',
-    spaceStatus: 'Space Account',
+    spaceStatus: 'LangBot Account',
     spaceBound: 'Bound',
     spaceNotBound: 'Not Bound',
     spaceBoundDescription:
-      'Space account bound, official model APIs and cloud services available',
-    bindSpace: 'Bind Space Account',
+      'LangBot Account bound, official model APIs and cloud services available',
+    bindSpace: 'Bind LangBot Account',
     bindSpaceDescription: 'Bind to use official model APIs and cloud services',
     bindSpaceButton: 'Bind',
     bindSpaceConfirmTitle: 'Confirm Binding',
     bindSpaceConfirmDescription:
-      'You are about to bind your local instance to a Space account',
+      'You are about to bind your local instance to a LangBot Account',
     bindSpaceWarning:
-      'After binding, your login email will be changed from {{localEmail}} to the Space account email.',
-    bindSpaceSuccess: 'Space account bound successfully',
-    bindSpaceFailed: 'Failed to bind Space account',
+      'After binding, your login email will be changed from {{localEmail}} to the LangBot Account email.',
+    bindSpaceSuccess: 'LangBot Account bound successfully',
+    bindSpaceFailed: 'Failed to bind LangBot Account',
     bindSpaceInvalidState:
       'Invalid bind request. Please try again from account settings.',
     setPasswordHint: 'Set a password to login with email and password',
     spaceEmailMismatch:
-      'The Space login email does not match the local account email.',
+      'The LangBot Account login email does not match the local account email.',
     space_account_not_registeredTitle: 'Account not registered',
     space_account_not_registered:
-      'No local account is registered for this Space email. Ask the Workspace owner for an invitation.',
-    space_account_binding_requiredTitle: 'Space connection required',
+      'No local account is registered for this LangBot Account email. Ask the Workspace owner for an invitation.',
+    space_account_binding_requiredTitle: 'LangBot Account connection required',
     space_account_binding_required:
-      'This local account must connect Space from Account settings before using Space login.',
+      'This local account must connect a LangBot Account from Account settings before using LangBot Account login.',
   },
   workspace: {
     title: 'Workspace',

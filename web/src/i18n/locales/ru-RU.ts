@@ -85,18 +85,18 @@ const ruRU = {
       'Рекомендуется: Используйте официальные стабильные API моделей и облачные сервисы',
     loginLocal: 'Войти с локальной учётной записью',
     loginWithPassword: 'Войти с паролем',
-    spaceLoginTitle: 'Войти через Space',
+    spaceLoginTitle: 'Войти с аккаунтом LangBot',
     spaceLoginDescription:
       'Отсканируйте QR-код или перейдите по ссылке ниже для авторизации',
     spaceLoginUserCode: 'Ваш код',
     spaceLoginExpires: 'Код истекает через {{seconds}} секунд',
     spaceLoginWaiting: 'Ожидание авторизации...',
     spaceLoginSuccess: 'Авторизация успешна',
-    spaceLoginFailed: 'Ошибка входа через Space',
+    spaceLoginFailed: 'Ошибка входа с аккаунтом LangBot',
     spaceLoginExpired: 'Код авторизации истёк, попробуйте снова',
     spaceLoginCancel: 'Отмена',
     spaceLoginVisitLink: 'Перейти по ссылке',
-    spaceLoginProcessing: 'Вход через Space',
+    spaceLoginProcessing: 'Вход с аккаунтом LangBot',
     spaceLoginProcessingDescription:
       'Пожалуйста, подождите, пока мы завершим вход...',
     spaceLoginSuccessDescription: 'Перенаправление в LangBot...',
@@ -105,7 +105,7 @@ const ruRU = {
     backToLogin: 'Вернуться к входу',
     backToHome: 'На главную',
     spaceAccountCannotChangePassword:
-      'Для аккаунтов Space невозможно изменить пароль здесь',
+      'Для аккаунтов LangBot невозможно изменить пароль здесь',
     theme: 'Тема',
     changePassword: 'Изменить пароль',
     currentPassword: 'Текущий пароль',
@@ -259,9 +259,9 @@ const ruRU = {
     localProvider: 'Локальный',
     localProviderDescription: 'Модели, настроенные и управляемые локально',
     spaceProviderDescription:
-      'Модели, синхронизированные из вашего аккаунта Space',
+      'Модели, синхронизированные из вашего аккаунта LangBot',
     spaceDisabledForLocalAccount:
-      'Войдите через Space, чтобы использовать облачные модели',
+      'Войдите с аккаунтом LangBot, чтобы использовать облачные модели',
     syncModels: 'Синхронизировать',
     syncSuccess:
       'Синхронизация завершена: {{created}} создано, {{updated}} обновлено',
@@ -300,11 +300,12 @@ const ruRU = {
     langbotModelsDescription: 'Облачные модели на базе LangBot Space',
     credits: 'Кредиты',
     loginWithSpace: 'Войти с аккаунтом LangBot',
-    loginToUseModels: 'Войдите через Space, чтобы использовать облачные модели',
+    loginToUseModels:
+      'Войдите с аккаунтом LangBot, чтобы использовать облачные модели',
     noModels: 'Модели не настроены',
     langbotModels: 'Модели LangBot',
     spaceTrialTooltip:
-      'Доступны бесплатные пробные кредиты! Войдите через Space, чтобы получить доступ к облачным моделям без настройки.',
+      'Доступны бесплатные пробные кредиты! Войдите с аккаунтом LangBot, чтобы получить доступ к облачным моделям без настройки.',
     unlockModels: 'Войдите для использования',
     editProvider: 'Редактировать провайдера',
     addProvider: 'Добавить провайдера',
@@ -340,9 +341,9 @@ const ruRU = {
     },
 
     ownerMustBindSpace:
-      'The Workspace owner must connect Space for LangBot Models.',
+      'The Workspace owner must connect a LangBot Account for LangBot Models.',
     usesOwnerSpaceBilling:
-      "Uses the Workspace owner's Space billing and credits.",
+      "Uses the Workspace owner's LangBot Account billing and credits.",
   },
   bots: {
     title: 'Боты',
@@ -1229,13 +1230,13 @@ const ruRU = {
     adminAccountNote:
       'Указанная учётная запись будет настроена как администратор',
     register: 'Регистрация',
-    initWithSpace: 'Инициализация через Space',
+    initWithSpace: 'Инициализация с аккаунтом LangBot',
     spaceRecommended:
       'Рекомендуется: Используйте официальные стабильные API моделей и облачные сервисы',
     spaceInfoTip1:
       'Space предоставляет единую службу аутентификации без загрузки конфиденциальной информации.',
     spaceInfoTip2:
-      'Вход через Space даёт доступ к моделям LangBot и облачным сервисам, включая бесплатные кредиты для быстрого старта.',
+      'Вход с аккаунтом LangBot даёт доступ к моделям LangBot и облачным сервисам, включая бесплатные кредиты для быстрого старта.',
     spaceInfoTip3:
       'Способ входа не влияет на другие функции. Вы можете настроить модели из других источников в любое время.',
     registerLocal: 'Зарегистрировать локальную учётную запись',
@@ -1291,34 +1292,34 @@ const ruRU = {
     passwordNotSet: 'Не установлен',
     passwordSetDescription:
       'Пароль установлен, вы можете входить с email и паролем',
-    spaceStatus: 'Аккаунт Space',
+    spaceStatus: 'Аккаунт LangBot',
     spaceBound: 'Привязан',
     spaceNotBound: 'Не привязан',
     spaceBoundDescription:
-      'Аккаунт Space привязан, доступны официальные API моделей и облачные сервисы',
-    bindSpace: 'Привязать аккаунт Space',
+      'Аккаунт LangBot привязан, доступны официальные API моделей и облачные сервисы',
+    bindSpace: 'Привязать аккаунт LangBot',
     bindSpaceDescription:
       'Привяжите для использования официальных API моделей и облачных сервисов',
     bindSpaceButton: 'Привязать',
     bindSpaceConfirmTitle: 'Подтверждение привязки',
     bindSpaceConfirmDescription:
-      'Вы собираетесь привязать локальный экземпляр к аккаунту Space',
+      'Вы собираетесь привязать локальный экземпляр к аккаунту LangBot',
     bindSpaceWarning:
-      'После привязки ваш email для входа будет изменён с {{localEmail}} на email аккаунта Space.',
-    bindSpaceSuccess: 'Аккаунт Space успешно привязан',
-    bindSpaceFailed: 'Не удалось привязать аккаунт Space',
+      'После привязки ваш email для входа будет изменён с {{localEmail}} на email аккаунта LangBot.',
+    bindSpaceSuccess: 'Аккаунт LangBot успешно привязан',
+    bindSpaceFailed: 'Не удалось привязать аккаунт LangBot',
     bindSpaceInvalidState:
       'Недействительный запрос привязки. Повторите попытку из настроек аккаунта.',
     setPasswordHint: 'Установите пароль для входа с email и паролем',
     spaceEmailMismatch:
-      'Email входа через Space не совпадает с email локальной учётной записи',
+      'Email входа с аккаунтом LangBot не совпадает с email локальной учётной записи',
 
     space_account_not_registeredTitle: 'Account not registered',
     space_account_not_registered:
-      'No local account is registered for this Space email. Ask the Workspace owner for an invitation.',
-    space_account_binding_requiredTitle: 'Space connection required',
+      'No local account is registered for this LangBot Account email. Ask the Workspace owner for an invitation.',
+    space_account_binding_requiredTitle: 'LangBot Account connection required',
     space_account_binding_required:
-      'This local account must connect Space from Account settings before using Space login.',
+      'This local account must connect a LangBot Account from Account settings before using LangBot Account login.',
   },
   monitoring: {
     title: 'Мониторинг',

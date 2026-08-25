@@ -422,6 +422,69 @@ class QQOfficialClient:
                 await self.logger.error(f'Failed to send private message: {response_data}')
                 raise ValueError(response)
 
+    async def _send_markdown_msg(
+        self,
+        target_type: str,
+        target_id: str,
+        content: str,
+        msg_id: Optional[str] = None,
+        event_id: Optional[str] = None,
+        msg_seq: int = 1,
+    ) -> None:
+        """Send a Markdown message to a C2C user or QQ group."""
+        if not await self.check_access_token():
+            await self.get_access_token()
+
+        if target_type == 'c2c':
+            url = f'{self.base_url}/v2/users/{target_id}/messages'
+        elif target_type == 'group':
+            url = f'{self.base_url}/v2/groups/{target_id}/messages'
+        else:
+            raise ValueError(f'Unsupported Markdown target type: {target_type}')
+
+        data: dict[str, Any] = {
+            'msg_type': 2,
+            'markdown': {'content': content},
+            'msg_seq': msg_seq,
+        }
+        if msg_id:
+            data['msg_id'] = msg_id
+        if event_id:
+            data['event_id'] = event_id
+
+        async with self._http_client_context() as client:
+            headers = {
+                'Authorization': f'QQBot {self.access_token}',
+                'Content-Type': 'application/json',
+            }
+            response = await client.post(url, headers=headers, json=data)
+            if response.status_code != 200:
+                response_data = await httpclient.parse_json_response(response)
+                await self.logger.error(f'Failed to send Markdown message: {response_data}')
+                raise ValueError(response)
+
+    async def send_private_markdown_msg(
+        self,
+        user_openid: str,
+        content: str,
+        msg_id: Optional[str] = None,
+        event_id: Optional[str] = None,
+        msg_seq: int = 1,
+    ) -> None:
+        """Send a Markdown C2C message."""
+        await self._send_markdown_msg('c2c', user_openid, content, msg_id, event_id, msg_seq)
+
+    async def send_group_markdown_msg(
+        self,
+        group_openid: str,
+        content: str,
+        msg_id: Optional[str] = None,
+        event_id: Optional[str] = None,
+        msg_seq: int = 1,
+    ) -> None:
+        """Send a Markdown QQ group message."""
+        await self._send_markdown_msg('group', group_openid, content, msg_id, event_id, msg_seq)
+
     async def send_group_text_msg(
         self,
         group_openid: str,

@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, Mock
 
 from langbot.pkg.command import operator
 from langbot.pkg.command.cmdmgr import CommandManager
+from langbot.pkg.api.http.context import ExecutionContext
 from tests.factories import FakeApp, command_query
 
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
@@ -392,6 +393,32 @@ class TestCommandManagerInternalExecute:
 
         assert len(results) == 1
         assert results[0].text == 'plugin response'
+
+    @pytest.mark.asyncio
+    async def test_execute_selects_workspace_with_trusted_context(self):
+        """Plugin command discovery receives the typed runtime scope."""
+
+        fake_app = FakeApp()
+        mgr = CommandManager(fake_app)
+        mgr.cmd_list = []
+        fake_app.plugin_connector.require_workspace_context = AsyncMock()
+        fake_app.plugin_connector.list_commands = AsyncMock(return_value=[])
+
+        ctx = self._create_context(command='help')
+        ctx.instance_uuid = 'instance-a'
+        ctx.workspace_uuid = 'workspace-a'
+        ctx.placement_generation = 4
+        ctx.query_uuid = 'query-a'
+
+        async for _ in mgr._execute(ctx, mgr.cmd_list):
+            pass
+
+        selected = fake_app.plugin_connector.require_workspace_context.await_args.args[0]
+        assert isinstance(selected, ExecutionContext)
+        assert selected.instance_uuid == 'instance-a'
+        assert selected.workspace_uuid == 'workspace-a'
+        assert selected.placement_generation == 4
+        assert selected.query_uuid == 'query-a'
 
     @pytest.mark.asyncio
     async def test_execute_with_bound_plugins(self):

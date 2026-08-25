@@ -85,18 +85,18 @@ const thTH = {
       'แนะนำ: ใช้ API โมเดลที่เสถียรอย่างเป็นทางการและบริการคลาวด์',
     loginLocal: 'เข้าสู่ระบบด้วยบัญชีท้องถิ่น',
     loginWithPassword: 'เข้าสู่ระบบด้วยรหัสผ่าน',
-    spaceLoginTitle: 'เข้าสู่ระบบด้วย Space',
+    spaceLoginTitle: 'เข้าสู่ระบบด้วยบัญชี LangBot',
     spaceLoginDescription:
       'สแกน QR code หรือเข้าชมลิงก์ด้านล่างเพื่อยืนยันสิทธิ์',
     spaceLoginUserCode: 'รหัสของคุณ',
     spaceLoginExpires: 'รหัสจะหมดอายุใน {{seconds}} วินาที',
     spaceLoginWaiting: 'กำลังรอการยืนยันสิทธิ์...',
     spaceLoginSuccess: 'ยืนยันสิทธิ์สำเร็จ',
-    spaceLoginFailed: 'เข้าสู่ระบบ Space ล้มเหลว',
+    spaceLoginFailed: 'เข้าสู่ระบบด้วยบัญชี LangBot ล้มเหลว',
     spaceLoginExpired: 'รหัสยืนยันหมดอายุแล้ว กรุณาลองใหม่',
     spaceLoginCancel: 'ยกเลิก',
     spaceLoginVisitLink: 'เข้าชมลิงก์',
-    spaceLoginProcessing: 'กำลังเข้าสู่ระบบด้วย Space',
+    spaceLoginProcessing: 'กำลังเข้าสู่ระบบด้วยบัญชี LangBot',
     spaceLoginProcessingDescription: 'กรุณารอสักครู่ขณะดำเนินการเข้าสู่ระบบ...',
     spaceLoginSuccessDescription: 'กำลังเปลี่ยนเส้นทางไปยัง LangBot...',
     spaceLoginError: 'เข้าสู่ระบบล้มเหลว',
@@ -104,7 +104,7 @@ const thTH = {
     backToLogin: 'กลับไปหน้าเข้าสู่ระบบ',
     backToHome: 'กลับไปหน้าแรก',
     spaceAccountCannotChangePassword:
-      'บัญชี Space ไม่สามารถเปลี่ยนรหัสผ่านได้ที่นี่',
+      'บัญชี LangBot ไม่สามารถเปลี่ยนรหัสผ่านได้ที่นี่',
     theme: 'ธีม',
     changePassword: 'เปลี่ยนรหัสผ่าน',
     currentPassword: 'รหัสผ่านปัจจุบัน',
@@ -252,8 +252,9 @@ const thTH = {
     llmModels: 'โมเดล LLM',
     localProvider: 'ท้องถิ่น',
     localProviderDescription: 'โมเดลที่กำหนดค่าและจัดการในเครื่อง',
-    spaceProviderDescription: 'โมเดลที่ซิงค์จากบัญชี Space ของคุณ',
-    spaceDisabledForLocalAccount: 'เข้าสู่ระบบด้วย Space เพื่อใช้โมเดลคลาวด์',
+    spaceProviderDescription: 'โมเดลที่ซิงค์จากบัญชี LangBot ของคุณ',
+    spaceDisabledForLocalAccount:
+      'เข้าสู่ระบบด้วยบัญชี LangBot เพื่อใช้โมเดลคลาวด์',
     syncModels: 'ซิงค์',
     syncSuccess:
       'ซิงค์เสร็จสมบูรณ์: สร้าง {{created}} รายการ, อัปเดต {{updated}} รายการ',
@@ -289,11 +290,11 @@ const thTH = {
     langbotModelsDescription: 'โมเดลคลาวด์ขับเคลื่อนโดย LangBot Space',
     credits: 'เครดิต',
     loginWithSpace: 'เข้าสู่ระบบด้วยบัญชี LangBot',
-    loginToUseModels: 'เข้าสู่ระบบด้วย Space เพื่อใช้โมเดลคลาวด์',
+    loginToUseModels: 'เข้าสู่ระบบด้วยบัญชี LangBot เพื่อใช้โมเดลคลาวด์',
     noModels: 'ยังไม่มีโมเดลที่กำหนดค่า',
     langbotModels: 'โมเดล LangBot',
     spaceTrialTooltip:
-      'มีเครดิตทดลองใช้งานฟรี! เข้าสู่ระบบด้วย Space เพื่อเข้าถึงโมเดลคลาวด์โดยไม่ต้องตั้งค่า',
+      'มีเครดิตทดลองใช้งานฟรี! เข้าสู่ระบบด้วยบัญชี LangBot เพื่อเข้าถึงโมเดลคลาวด์โดยไม่ต้องตั้งค่า',
     unlockModels: 'เข้าสู่ระบบเพื่อใช้งาน',
     editProvider: 'แก้ไขผู้ให้บริการ',
     addProvider: 'เพิ่มผู้ให้บริการ',
@@ -327,9 +328,9 @@ const thTH = {
     },
 
     ownerMustBindSpace:
-      'The Workspace owner must connect Space for LangBot Models.',
+      'The Workspace owner must connect a LangBot Account for LangBot Models.',
     usesOwnerSpaceBilling:
-      "Uses the Workspace owner's Space billing and credits.",
+      "Uses the Workspace owner's LangBot Account billing and credits.",
   },
   bots: {
     title: 'บอท',
@@ -1202,13 +1203,13 @@ const thTH = {
     description: 'นี่เป็นครั้งแรกที่คุณเริ่มใช้งาน LangBot',
     adminAccountNote: 'บัญชีที่คุณใช้ที่นี่จะถูกตั้งเป็นบัญชีผู้ดูแลระบบ',
     register: 'ลงทะเบียน',
-    initWithSpace: 'เริ่มต้นด้วย Space',
+    initWithSpace: 'เริ่มต้นด้วยบัญชี LangBot',
     spaceRecommended:
       'แนะนำ: ใช้ API โมเดลที่เสถียรอย่างเป็นทางการและบริการคลาวด์',
     spaceInfoTip1:
       'Space ให้บริการยืนยันตัวตนแบบรวมโดยไม่อัปโหลดข้อมูลสำคัญใดๆ ของคุณ',
     spaceInfoTip2:
-      'การเข้าสู่ระบบด้วยบัญชี Space ช่วยให้คุณเข้าถึงโมเดล LangBot และบริการคลาวด์อื่นๆ รวมถึงเครดิตเรียกใช้โมเดลฟรีเพื่อช่วยให้คุณเริ่มต้นได้อย่างรวดเร็ว',
+      'การเข้าสู่ระบบด้วยบัญชี LangBot ช่วยให้คุณเข้าถึงโมเดล LangBot และบริการคลาวด์อื่นๆ รวมถึงเครดิตเรียกใช้โมเดลฟรีเพื่อช่วยให้คุณเริ่มต้นได้อย่างรวดเร็ว',
     spaceInfoTip3:
       'วิธีการเข้าสู่ระบบของคุณไม่มีผลต่อฟีเจอร์อื่นๆ คุณสามารถกำหนดค่าและใช้โมเดลจากแหล่งอื่นได้ตลอดเวลา',
     registerLocal: 'ลงทะเบียนบัญชีท้องถิ่น',
@@ -1263,30 +1264,32 @@ const thTH = {
     passwordNotSet: 'ยังไม่ได้ตั้งค่า',
     passwordSetDescription:
       'ตั้งรหัสผ่านแล้ว คุณสามารถเข้าสู่ระบบด้วยอีเมลและรหัสผ่าน',
-    spaceStatus: 'บัญชี Space',
+    spaceStatus: 'บัญชี LangBot',
     spaceBound: 'ผูกแล้ว',
     spaceNotBound: 'ยังไม่ผูก',
     spaceBoundDescription:
-      'ผูกบัญชี Space แล้ว สามารถใช้ API โมเดลอย่างเป็นทางการและบริการคลาวด์ได้',
-    bindSpace: 'ผูกบัญชี Space',
+      'ผูกบัญชี LangBot แล้ว สามารถใช้ API โมเดลอย่างเป็นทางการและบริการคลาวด์ได้',
+    bindSpace: 'ผูกบัญชี LangBot',
     bindSpaceDescription: 'ผูกเพื่อใช้ API โมเดลอย่างเป็นทางการและบริการคลาวด์',
     bindSpaceButton: 'ผูก',
     bindSpaceConfirmTitle: 'ยืนยันการผูก',
-    bindSpaceConfirmDescription: 'คุณกำลังจะผูกอินสแตนซ์ท้องถิ่นกับบัญชี Space',
+    bindSpaceConfirmDescription:
+      'คุณกำลังจะผูกอินสแตนซ์ท้องถิ่นกับบัญชี LangBot',
     bindSpaceWarning:
-      'หลังจากผูกแล้ว อีเมลเข้าสู่ระบบของคุณจะเปลี่ยนจาก {{localEmail}} เป็นอีเมลบัญชี Space',
-    bindSpaceSuccess: 'ผูกบัญชี Space สำเร็จ',
-    bindSpaceFailed: 'ผูกบัญชี Space ล้มเหลว',
+      'หลังจากผูกแล้ว อีเมลเข้าสู่ระบบของคุณจะเปลี่ยนจาก {{localEmail}} เป็นอีเมลบัญชี LangBot',
+    bindSpaceSuccess: 'ผูกบัญชี LangBot สำเร็จ',
+    bindSpaceFailed: 'ผูกบัญชี LangBot ล้มเหลว',
     bindSpaceInvalidState: 'คำขอผูกไม่ถูกต้อง กรุณาลองใหม่จากการตั้งค่าบัญชี',
     setPasswordHint: 'ตั้งรหัสผ่านเพื่อเข้าสู่ระบบด้วยอีเมลและรหัสผ่าน',
-    spaceEmailMismatch: 'อีเมลเข้าสู่ระบบ Space ไม่ตรงกับอีเมลบัญชีท้องถิ่น',
+    spaceEmailMismatch:
+      'อีเมลเข้าสู่ระบบด้วยบัญชี LangBot ไม่ตรงกับอีเมลบัญชีท้องถิ่น',
 
     space_account_not_registeredTitle: 'Account not registered',
     space_account_not_registered:
-      'No local account is registered for this Space email. Ask the Workspace owner for an invitation.',
-    space_account_binding_requiredTitle: 'Space connection required',
+      'No local account is registered for this LangBot Account email. Ask the Workspace owner for an invitation.',
+    space_account_binding_requiredTitle: 'LangBot Account connection required',
     space_account_binding_required:
-      'This local account must connect Space from Account settings before using Space login.',
+      'This local account must connect a LangBot Account from Account settings before using LangBot Account login.',
   },
   monitoring: {
     title: 'แดชบอร์ด',

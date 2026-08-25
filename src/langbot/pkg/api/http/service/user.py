@@ -114,7 +114,7 @@ class UserService:
         if purpose == 'login' and account_uuid is not None:
             raise ValueError('Login state cannot be bound to an Account')
         if purpose != 'login' and launch_workspace_uuid is not None:
-            raise ValueError('Launch Workspace state is only valid for Space login')
+            raise ValueError('Launch Workspace state is only valid for LangBot Account login')
         if ttl_seconds <= 0:
             raise ValueError('OAuth state lifetime must be positive')
 
@@ -327,7 +327,7 @@ class UserService:
         normalized_email = normalize_email(user_email)
         if self._uses_control_plane_directory():
             raise ControlPlaneDirectoryRequiredError(
-                'Cloud invitation registration must use a Space account to preserve control-plane identity'
+                'Cloud invitation registration must use a LangBot Account to preserve control-plane identity'
             )
         invitation, _ = await self.ap.workspace_collaboration_service.inspect_invitation(invitation_token)
         if invitation.normalized_email != normalized_email:
@@ -394,7 +394,7 @@ class UserService:
 
         # Check if this user has a local password set
         if not user_obj.password:
-            raise ValueError('请使用 Space 账户登录')
+            raise ValueError('请使用 LangBot 账号登录')
 
         await self._verify_password(user_obj.password, password)
 
@@ -825,7 +825,7 @@ class UserService:
         # Check if this Space account is already bound to another user
         existing_space_user = await self.get_user_by_space_account_uuid(space_account_uuid)
         if existing_space_user and existing_space_user.normalized_email != normalize_email(user_email):
-            raise ValueError('This Space account is already bound to another user')
+            raise ValueError('This LangBot Account is already bound to another user')
 
         # Update local account to Space account
         normalized_email = normalize_email(user_email)

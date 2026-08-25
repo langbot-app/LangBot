@@ -42,7 +42,10 @@ class SeekDBVectorDatabase(VectorDatabase):
 
     def __init__(self, ap: app.Application):
         if not SEEKDB_AVAILABLE:
-            raise ImportError('pyseekdb is not installed. Install it with: pip install pyseekdb')
+            raise ImportError(
+                "SeekDB support is not installed. Install LangBot with the 'seekdb' extra: "
+                "uv sync --extra seekdb (source) or uvx --from 'langbot[seekdb]@latest' langbot (PyPI)."
+            )
 
         self.ap = ap
         config = self.ap.instance_config.data['vdb']['seekdb']

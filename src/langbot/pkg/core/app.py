@@ -301,11 +301,36 @@ class Application:
     async def initialize(self):
         pass
 
+    async def _initialize_plugin_runtime(self) -> None:
+        try:
+            await self.plugin_connector.initialize()
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            self.logger.warning(f'Plugin runtime unavailable during startup; reconnecting in background: {exc}')
+            self.plugin_connector.schedule_reconnect()
+
+    def _start_plugin_runtime_initialization(self) -> asyncio.Task | None:
+        task = getattr(self, '_plugin_runtime_initialization_task', None)
+        if task is not None and not task.done():
+            return task
+        # This is application lifecycle work, not a request side effect. It must
+        # not wait on PersistenceManager's after-commit gate at boot.
+        task = asyncio.create_task(
+            self._initialize_plugin_runtime(),
+            name='plugin-runtime-initialization',
+        )
+        self._plugin_runtime_initialization_task = task
+        return task
+
     async def run(self):
         self.event_loop_monitor.start()
         try:
-            if self.directory_projection_service is not None:
-                self.task_mgr.create_task(
+            if (
+                self.directory_projection_service is not None
+                and getattr(self, 'directory_projection_task', None) is None
+            ):
+                self.directory_projection_task = self.task_mgr.create_task(
                     self.directory_projection_service.run(),
                     name='cloud-directory-projection',
                     scopes=[core_entities.LifecycleControlScope.APPLICATION],
@@ -322,7 +347,6 @@ class Application:
                     name='cloud-manifest-refresh',
                     scopes=[core_entities.LifecycleControlScope.APPLICATION],
                 )
-            await self.plugin_connector.initialize_plugins()
 
             # 后续可能会允许动态重启其他任务
             # 故为了防止程序在非 Ctrl-C 情况下退出，这里创建一个不会结束的协程
@@ -348,6 +372,7 @@ class Application:
                 name='http-api-controller',
                 scopes=[core_entities.LifecycleControlScope.APPLICATION],
             )
+            self._start_plugin_runtime_initialization()
 
             # Telemetry instance heartbeat (startup + daily); respects
             # space.disable_telemetry via TelemetryManager.send().
@@ -529,6 +554,11 @@ class Application:
 
             if self.task_mgr is not None:
                 self.task_mgr.cancel_by_scope(core_entities.LifecycleControlScope.APPLICATION)
+            plugin_runtime_task = getattr(self, '_plugin_runtime_initialization_task', None)
+            if plugin_runtime_task is not None and not plugin_runtime_task.done():
+                plugin_runtime_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await plugin_runtime_task
             with contextlib.suppress(Exception):
                 await self.event_loop_monitor.stop()
             mcp_mount = getattr(self.http_ctrl, 'mcp_mount', None)

@@ -1,6 +1,6 @@
 [project]
 name = "langbot"
-version = "4.10.7"
+version = "4.10.8"
 description = "Production-grade platform for building agentic IM bots"
 readme = "README.md"
 license-files = ["LICENSE"]
@@ -70,8 +70,7 @@ dependencies = [
     "langchain-text-splitters>=1.1.2",
     "chromadb>=1.0.0,<2.0.0",
     "qdrant-client (>=1.15.1,<2.0.0)",
-    "pyseekdb==1.1.0.post3",
-    "langbot-plugin @ git+https://github.com/langbot-app/langbot-plugin-sdk.git@7b559da430a50f80a7d30c9d3d66f088503ddbb3",
+    "langbot-plugin==0.5.5",
     "asyncpg>=0.30.0",
     "line-bot-sdk>=3.19.0",
     "matrix-nio>=0.25.2",
@@ -106,6 +105,11 @@ classifiers = [
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Topic :: Communications :: Chat",
+]
+
+[project.optional-dependencies]
+seekdb = [
+    "pyseekdb==1.1.0.post3",
 ]
 
 [project.urls]
