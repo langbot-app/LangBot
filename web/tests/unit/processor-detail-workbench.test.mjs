@@ -45,6 +45,20 @@ test('agent and pipeline details share the split processor workbench', () => {
     websocketClient,
     /data\.type === 'connected'[\s\S]*this\.reconnectAttempts = 0/,
   );
+  assert.match(websocketClient, /private reconnectTimeout:/);
+  assert.match(websocketClient, /private disconnectedByUser = false/);
+  assert.match(
+    websocketClient,
+    /if \(!this\.connectionId\)[\s\S]*this\.shouldReconnect = false/,
+  );
+  assert.match(
+    pipelineDebug,
+    /wsClientRef\.current = wsClient;[\s\S]*await wsClient\.connect\(\)/,
+  );
+  assert.match(
+    pipelineDebug,
+    /if \(wsClientRef\.current !== wsClient\) return;/,
+  );
   assert.match(pipelineDebug, /data-slot="scroll-area-viewport"/);
   assert.doesNotMatch(pipelineDebug, /scrollIntoView/);
 });

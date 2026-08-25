@@ -31,9 +31,12 @@ export class WebSocketClient {
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
   private reconnectDelay = 3000; // 3秒重连间隔
+  private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
   private heartbeatInterval: NodeJS.Timeout | null = null;
   private heartbeatIntervalMs = 30000; // 30秒
   private isConnecting = false; // 防止重复连接
+  private shouldReconnect = true;
+  private disconnectedByUser = false;
 
   // 事件回调
   private onConnectedCallback?: (data: WebSocketResponse) => void;
@@ -54,6 +57,13 @@ export class WebSocketClient {
   public connect(): Promise<string> {
     return new Promise((resolve, reject) => {
       try {
+        this.disconnectedByUser = false;
+        this.shouldReconnect = true;
+        if (this.reconnectTimeout) {
+          clearTimeout(this.reconnectTimeout);
+          this.reconnectTimeout = null;
+        }
+
         // 防止重复连接
         if (
           this.isConnecting ||
@@ -82,21 +92,27 @@ export class WebSocketClient {
           window.location.host;
         const url = `${protocol}//${host}/api/v1/pipelines/${this.pipelineId}/ws/connect?session_type=${this.sessionType}`;
 
-        this.ws = new WebSocket(url);
+        const socket = new WebSocket(url);
+        this.ws = socket;
 
         // 连接打开
-        this.ws.onopen = () => {
+        socket.onopen = () => {
+          if (this.disconnectedByUser || this.ws !== socket) {
+            socket.close();
+            return;
+          }
           this.isConnecting = false;
           const token = this.token || localStorage.getItem('token');
           const workspaceUuid = getActiveWorkspaceUuid();
           if (!token || !workspaceUuid) {
             const error = new Error('WebSocket认证信息缺失');
+            this.shouldReconnect = false;
             this.onErrorCallback?.(error);
-            this.ws?.close();
+            socket.close();
             reject(error);
             return;
           }
-          this.ws?.send(
+          socket.send(
             JSON.stringify({
               type: 'authenticate',
               token,
@@ -106,10 +122,16 @@ export class WebSocketClient {
         };
 
         // 接收消息
-        this.ws.onmessage = (event) => {
+        socket.onmessage = (event) => {
+          if (this.disconnectedByUser || this.ws !== socket) return;
           try {
             const data: WebSocketResponse = JSON.parse(event.data);
             this.handleMessage(data);
+
+            if (data.type === 'error' && !this.connectionId) {
+              reject(new Error(data.message || 'WebSocket连接失败'));
+              return;
+            }
 
             // 第一次连接成功
             if (data.type === 'connected' && data.connection_id) {
@@ -128,22 +150,36 @@ export class WebSocketClient {
         };
 
         // 连接关闭
-        this.ws.onclose = () => {
+        socket.onclose = () => {
+          if (this.ws === socket) {
+            this.ws = null;
+            this.connectionId = null;
+          }
           this.isConnecting = false;
           this.stopHeartbeat();
+          if (this.disconnectedByUser) return;
           this.onCloseCallback?.();
 
           // 自动重连
-          if (this.reconnectAttempts < this.maxReconnectAttempts) {
+          if (
+            this.shouldReconnect &&
+            this.reconnectAttempts < this.maxReconnectAttempts
+          ) {
             this.reconnectAttempts++;
-            setTimeout(() => {
+            this.reconnectTimeout = setTimeout(() => {
+              this.reconnectTimeout = null;
+              if (!this.shouldReconnect || this.disconnectedByUser) return;
               this.connect().catch(console.error);
             }, this.reconnectDelay * this.reconnectAttempts);
           }
         };
 
         // 连接错误
-        this.ws.onerror = (event) => {
+        socket.onerror = (event) => {
+          if (this.disconnectedByUser || this.ws !== socket) {
+            reject(new Error('WebSocket连接已取消'));
+            return;
+          }
           console.error('WebSocket错误:', event);
           this.isConnecting = false;
           const error = new Error('WebSocket连接失败');
@@ -208,6 +244,13 @@ export class WebSocketClient {
       case 'error':
         const error = new Error(data.message || '未知错误');
         this.onErrorCallback?.(error);
+        // Authentication/resource errors happen before the `connected`
+        // handshake. Retrying them cannot recover and would leak error toasts
+        // after the user leaves the Pipeline page.
+        if (!this.connectionId) {
+          this.shouldReconnect = false;
+          this.ws?.close();
+        }
         break;
 
       default:
@@ -270,21 +313,27 @@ export class WebSocketClient {
    * 断开连接
    */
   public disconnect() {
+    this.disconnectedByUser = true;
+    this.shouldReconnect = false;
+    this.reconnectAttempts = this.maxReconnectAttempts;
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
+    }
+
     if (this.ws) {
       this.stopHeartbeat();
-
-      // 停止自动重连
-      this.reconnectAttempts = this.maxReconnectAttempts;
+      const socket = this.ws;
 
       // 发送断开消息
-      if (this.ws.readyState === WebSocket.OPEN) {
-        this.ws.send(JSON.stringify({ type: 'disconnect' }));
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type: 'disconnect' }));
       }
 
-      this.ws.close();
       this.ws = null;
       this.connectionId = null;
       this.isConnecting = false;
+      socket.close();
     }
   }
 

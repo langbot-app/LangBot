@@ -150,6 +150,11 @@ export default function DebugDialog({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const wsClientRef = useRef<WebSocketClient | null>(null);
   const isInitializingRef = useRef<boolean>(false);
+  const historyRequestGenerationRef = useRef(0);
+
+  const invalidateHistoryRequests = useCallback(() => {
+    historyRequestGenerationRef.current++;
+  }, []);
 
   const scrollToBottom = useCallback(() => {
     setTimeout(() => {
@@ -165,13 +170,16 @@ export default function DebugDialog({
 
   const loadMessages = useCallback(
     async (pipelineId: string) => {
+      const generation = ++historyRequestGenerationRef.current;
       try {
         const response = await httpClient.getWebSocketHistoryMessages(
           pipelineId,
           sessionType,
         );
+        if (generation !== historyRequestGenerationRef.current) return;
         setMessages(response.messages);
       } catch (error) {
+        if (generation !== historyRequestGenerationRef.current) return;
         console.error('Failed to load messages:', error);
       }
     },
@@ -186,24 +194,30 @@ export default function DebugDialog({
         return;
       }
 
+      let wsClient: WebSocketClient | null = null;
+      let errorReported = false;
       try {
         isInitializingRef.current = true;
 
         // Disconnect old connection
-        if (wsClientRef.current) {
-          wsClientRef.current.disconnect();
-          wsClientRef.current = null;
-        }
+        const previousClient = wsClientRef.current;
+        wsClientRef.current = null;
+        previousClient?.disconnect();
 
         // Create new connection
-        const wsClient = new WebSocketClient(pipelineId, sessionType);
+        wsClient = new WebSocketClient(pipelineId, sessionType);
+        // Store the client before awaiting connect so effect cleanup can also
+        // cancel sockets that are still authenticating.
+        wsClientRef.current = wsClient;
 
         wsClient
           .onConnected(() => {
+            if (wsClientRef.current !== wsClient) return;
             setIsConnected(true);
             isInitializingRef.current = false;
           })
           .onMessage((wsMessage) => {
+            if (wsClientRef.current !== wsClient) return;
             // Convert WebSocketMessage to Message type
             const message: Message = {
               ...wsMessage,
@@ -228,26 +242,32 @@ export default function DebugDialog({
             });
           })
           .onError((error) => {
+            if (wsClientRef.current !== wsClient) return;
+            errorReported = true;
             console.error('WebSocket error:', error);
             setIsConnected(false);
             isInitializingRef.current = false;
             toast.error(t('pipelines.debugDialog.connectionError'));
           })
           .onClose(() => {
+            if (wsClientRef.current !== wsClient) return;
             setIsConnected(false);
             isInitializingRef.current = false;
           })
           .onBroadcast((message) => {
+            if (wsClientRef.current !== wsClient) return;
             toast.info(message);
           });
 
         await wsClient.connect();
-        wsClientRef.current = wsClient;
       } catch (error) {
+        if (!wsClient || wsClientRef.current !== wsClient) return;
         console.error('WebSocket connection failed:', error);
         setIsConnected(false);
         isInitializingRef.current = false;
-        toast.error(t('pipelines.debugDialog.connectionFailed'));
+        if (!errorReported) {
+          toast.error(t('pipelines.debugDialog.connectionFailed'));
+        }
       }
     },
     [sessionType, t],
@@ -263,24 +283,28 @@ export default function DebugDialog({
     if (open) {
       setSelectedPipelineId(pipelineId);
     } else {
+      invalidateHistoryRequests();
       // Disconnect WebSocket immediately when dialog closes
       if (wsClientRef.current) {
-        wsClientRef.current.disconnect();
+        const wsClient = wsClientRef.current;
         wsClientRef.current = null;
+        wsClient.disconnect();
         setIsConnected(false);
         isInitializingRef.current = false;
       }
     }
 
     return () => {
+      invalidateHistoryRequests();
       // Disconnect WebSocket on component unmount
       if (wsClientRef.current) {
-        wsClientRef.current.disconnect();
+        const wsClient = wsClientRef.current;
         wsClientRef.current = null;
+        wsClient.disconnect();
         isInitializingRef.current = false;
       }
     };
-  }, [open, pipelineId]);
+  }, [open, pipelineId, invalidateHistoryRequests]);
 
   // Reload messages and reconnect when sessionType or selectedPipelineId changes
   useEffect(() => {
