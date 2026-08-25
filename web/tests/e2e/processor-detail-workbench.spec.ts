@@ -10,6 +10,7 @@ test.describe('processor detail workbench', () => {
   }) => {
     await installLangBotApiMocks(page, {
       authenticated: true,
+      withAdapterEvents: true,
       withRunnerToolSelector: true,
     });
 
@@ -45,13 +46,22 @@ test.describe('processor detail workbench', () => {
     expect(debugBox!.y).toBeGreaterThanOrEqual(0);
 
     const flow = configPanel.getByRole('tablist');
-    await expect(flow.getByRole('tab').nth(0)).toContainText(
+    await expect(flow.getByRole('tab').nth(0)).toContainText('Runner');
+    await expect(flow.getByRole('tab').nth(1)).toContainText('Local Agent');
+    await expect(flow.getByRole('tab').nth(2)).toContainText(
       'Bindable Event Range',
     );
-    await expect(flow.getByRole('tab').nth(1)).toContainText('Runner');
-    await expect(flow.getByRole('tab').nth(2)).toContainText('Local Agent');
     await expect(flow.getByRole('tab')).toHaveCount(3);
     await expect(flow.getByText('Management')).toHaveCount(0);
+
+    await page.setViewportSize({ width: 1024, height: 900 });
+    const tabListMetrics = await flow.evaluate((element) => ({
+      clientWidth: element.clientWidth,
+      scrollWidth: element.scrollWidth,
+    }));
+    expect(tabListMetrics.scrollWidth).toBeLessThanOrEqual(
+      tabListMetrics.clientWidth,
+    );
 
     await expect(
       page.getByRole('heading', { name: /agent-workbench/ }),
@@ -83,11 +93,22 @@ test.describe('processor detail workbench', () => {
         .last(),
     ).toBeVisible();
 
-    await flow.getByRole('tab').nth(0).click();
+    await flow.getByRole('tab').nth(2).click();
     await expect(
       configPanel.getByText('Bindable Event Range', { exact: true }).last(),
     ).toBeVisible();
-    await flow.getByRole('tab').nth(2).click();
+    const eventPicker = configPanel.getByRole('combobox', {
+      name: 'Event Range',
+    });
+    await expect(eventPicker).toBeVisible();
+    await expect(configPanel.getByRole('textbox')).toHaveCount(0);
+    await eventPicker.click();
+    await expect(
+      page.getByRole('option').filter({ hasText: 'message.received' }),
+    ).toBeVisible();
+    await page.keyboard.press('Escape');
+
+    await flow.getByRole('tab').nth(1).click();
     await expect(
       configPanel.getByText('Local Agent', { exact: true }).last(),
     ).toBeVisible();

@@ -668,7 +668,9 @@ const zhHans = {
       '限制此 Agent 可被机器人事件路由选择的事件范围。通常保持默认即可。',
     supportedEvents: '事件范围',
     supportedEventsDescription:
-      '每行一个事件模式，例如 *、message.received、group.*。Pipeline 固定仅支持 message.*。',
+      '选择全部事件、事件组或具体事件。机器人路由只会在匹配的事件中显示此 Agent。',
+    searchEvents: '搜索事件…',
+    noEventsFound: '没有匹配的事件',
     nameRequired: '名称不能为空',
     createSuccess: '创建成功',
     createError: '创建失败：',

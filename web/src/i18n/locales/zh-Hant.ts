@@ -499,7 +499,9 @@ const zhHant = {
       '限制此 Agent 可被機器人事件路由選擇的事件範圍。通常保持預設即可。',
     supportedEvents: '事件範圍',
     supportedEventsDescription:
-      '每行一個事件模式，例如 *、message.received、group.*。Pipeline 固定僅支援 message.*。',
+      '選擇全部事件、事件群組或具體事件。機器人路由只會在符合的事件中顯示此 Agent。',
+    searchEvents: '搜尋事件…',
+    noEventsFound: '沒有符合的事件',
     nameRequired: '名稱不能為空',
     createSuccess: '建立成功',
     createError: '建立失敗：',

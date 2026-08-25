@@ -533,7 +533,9 @@ const esES = {
       'Limita qué rutas de eventos del bot pueden seleccionar este Agent. El valor predeterminado sirve para la mayoría de los casos.',
     supportedEvents: 'Rango de eventos',
     supportedEventsDescription:
-      'Usa un patrón de evento por línea, por ejemplo *, message.received, group.*. Los Pipelines están fijos en message.*.',
+      'Elige todos los eventos, un grupo o eventos concretos. Las rutas del bot solo mostrarán este Agent para los eventos compatibles.',
+    searchEvents: 'Buscar eventos…',
+    noEventsFound: 'No se encontraron eventos',
     nameRequired: 'El nombre no puede estar vacío',
     createSuccess: 'Creado correctamente',
     createError: 'Error al crear: ',

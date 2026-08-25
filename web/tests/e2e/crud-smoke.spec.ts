@@ -758,7 +758,10 @@ test.describe('agent and pipeline save concurrency', () => {
   test('agent save freezes its payload and keeps later edits dirty', async ({
     page,
   }) => {
-    await installLangBotApiMocks(page, { authenticated: true });
+    await installLangBotApiMocks(page, {
+      authenticated: true,
+      withAdapterEvents: true,
+    });
     const delayedSave = await installDelayedFirstSave(
       page,
       '/api/v1/agents/agent-save-race',
@@ -770,12 +773,23 @@ test.describe('agent and pipeline save concurrency', () => {
     const eventPatterns = page.getByLabel('Event Range');
     await expect(eventPatterns).toBeVisible();
 
-    await eventPatterns.fill('message.received');
+    await eventPatterns.click();
+    await page
+      .getByRole('option')
+      .filter({ hasText: 'message.received' })
+      .click();
+    await page.keyboard.press('Escape');
     await saveButton.click();
     await expect.poll(() => delayedSave.payloads.length).toBe(1);
     await expect(saveButton).toBeDisabled();
 
-    await eventPatterns.fill('group.*');
+    await eventPatterns.click();
+    await page.getByRole('option').filter({ hasText: 'group.*' }).click();
+    await page
+      .getByRole('option')
+      .filter({ hasText: 'message.received' })
+      .click();
+    await page.keyboard.press('Escape');
     await forceFormSubmit(page, '#agent-form');
     expect(delayedSave.payloads).toHaveLength(1);
     await expect(saveButton).toBeDisabled();

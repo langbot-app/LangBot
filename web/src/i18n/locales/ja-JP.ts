@@ -713,7 +713,9 @@ const jaJP = {
       'この Agent を選択できるボットイベントルートの範囲を制限します。通常は既定値のままで問題ありません。',
     supportedEvents: 'イベント範囲',
     supportedEventsDescription:
-      '1 行に 1 つのイベントパターンを指定します。例: *、message.received、group.*。Pipeline は message.* 固定です。',
+      'すべてのイベント、イベントグループ、または個別のイベントを選択します。ボットルートでは一致するイベントにのみこの Agent が表示されます。',
+    searchEvents: 'イベントを検索…',
+    noEventsFound: '一致するイベントがありません',
     nameRequired: '名前は必須です',
     createSuccess: '作成に成功しました',
     createError: '作成に失敗しました：',

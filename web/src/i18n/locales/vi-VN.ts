@@ -526,7 +526,9 @@ const viVN = {
       'Giới hạn những tuyến sự kiện bot có thể chọn Agent này. Mặc định phù hợp với hầu hết trường hợp.',
     supportedEvents: 'Phạm vi sự kiện',
     supportedEventsDescription:
-      'Mỗi dòng một mẫu sự kiện, ví dụ *, message.received, group.*. Pipeline cố định ở message.*.',
+      'Chọn tất cả sự kiện, một nhóm hoặc từng sự kiện. Tuyến bot chỉ hiển thị Agent này cho các sự kiện phù hợp.',
+    searchEvents: 'Tìm sự kiện…',
+    noEventsFound: 'Không tìm thấy sự kiện phù hợp',
     nameRequired: 'Tên không được để trống',
     createSuccess: 'Tạo thành công',
     createError: 'Tạo thất bại: ',

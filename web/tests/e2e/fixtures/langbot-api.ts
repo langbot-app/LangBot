@@ -106,6 +106,7 @@ interface LangBotApiMockState {
   sessionAnalyses: Record<string, unknown>;
   sessionMessages: Record<string, unknown[]>;
   skills: SkillMock[];
+  withAdapterEvents: boolean;
   withRunnerToolSelector: boolean;
   workspaces: WorkspaceEntryMock[];
 }
@@ -514,7 +515,7 @@ function makeBot(
   };
 }
 
-function mockAdapters() {
+function mockAdapters(withAdapterEvents = false) {
   return [
     {
       name: 'playwright-adapter',
@@ -528,6 +529,17 @@ function mockAdapters() {
       },
       spec: {
         categories: ['testing'],
+        ...(withAdapterEvents
+          ? {
+              supported_events: [
+                'message.received',
+                'message.edited',
+                'group.member_joined',
+                'group.member_left',
+                'feedback.received',
+              ],
+            }
+          : {}),
         config: [],
       },
     },
@@ -621,7 +633,9 @@ async function handleBackendApi(route: Route, state: LangBotApiMockState) {
   }
 
   if (path === '/api/v1/platform/adapters') {
-    return fulfillJson(route, { adapters: mockAdapters() });
+    return fulfillJson(route, {
+      adapters: mockAdapters(state.withAdapterEvents),
+    });
   }
 
   if (path === '/api/v1/platform/bots') {
@@ -1230,6 +1244,7 @@ export async function installLangBotApiMocks(
     sessionAnalyses?: Record<string, unknown>;
     sessionMessages?: Record<string, unknown[]>;
     storage?: JsonRecord;
+    withAdapterEvents?: boolean;
     withRunnerToolSelector?: boolean;
     workspaces?: WorkspaceEntryMock[];
   } = {},
@@ -1241,6 +1256,7 @@ export async function installLangBotApiMocks(
     sessionAnalyses,
     sessionMessages,
     storage = {},
+    withAdapterEvents = false,
     withRunnerToolSelector = false,
     workspaces = [defaultWorkspaceEntry()],
   } = options;
@@ -1256,6 +1272,7 @@ export async function installLangBotApiMocks(
     sessionAnalyses: sessionAnalyses || {},
     sessionMessages: sessionMessages || {},
     skills: [],
+    withAdapterEvents,
     withRunnerToolSelector,
     workspaces,
   };

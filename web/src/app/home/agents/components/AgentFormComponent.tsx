@@ -23,7 +23,6 @@ import {
 import DynamicFormComponent from '@/app/home/components/dynamic-form/DynamicFormComponent';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Textarea } from '@/components/ui/textarea';
 import {
   Card,
   CardContent,
@@ -33,13 +32,12 @@ import {
 } from '@/components/ui/card';
 import {
   Form,
-  FormControl,
   FormDescription,
   FormField,
   FormItem,
-  FormLabel,
   FormMessage,
 } from '@/components/ui/form';
+import AgentEventPatternPicker from './AgentEventPatternPicker';
 
 export interface AgentRunnerStatus {
   label: string;
@@ -114,8 +112,11 @@ function AgentFormComponent(
     useState<ApiRespPluginSystemStatus | null>(null);
   const [pluginStatusLoading, setPluginStatusLoading] = useState(true);
   const [pluginStatusError, setPluginStatusError] = useState(false);
+  const [availableEventTypes, setAvailableEventTypes] = useState<string[]>([
+    'message.received',
+  ]);
   const [activeSection, setActiveSection] =
-    useState<AgentConfigSection>('events');
+    useState<AgentConfigSection>('runner');
   const isSavingRef = useRef(false);
   const hasUnsavedChangesRef = useRef(false);
 
@@ -127,7 +128,7 @@ function AgentFormComponent(
     }),
     runner: z.record(z.string(), z.any()),
     runner_config: z.record(z.string(), z.any()),
-    supported_event_patterns_text: z.string(),
+    supported_event_patterns: z.array(z.string()).min(1),
   });
   type FormValues = z.infer<typeof formSchema>;
 
@@ -141,7 +142,7 @@ function AgentFormComponent(
       },
       runner: {},
       runner_config: {},
-      supported_event_patterns_text: '*',
+      supported_event_patterns: ['*'],
     },
   });
 
@@ -160,10 +161,22 @@ function AgentFormComponent(
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([httpClient.getAgentMetadata(), httpClient.getAgent(agentId)])
-      .then(([metadata, resp]) => {
+    Promise.all([
+      httpClient.getAgentMetadata(),
+      httpClient.getAgent(agentId),
+      httpClient.getAdapters().catch(() => ({ adapters: [] })),
+    ])
+      .then(([metadata, resp, adaptersResp]) => {
         if (cancelled) return;
         setRunnerConfigSchema(metadata.runner_config ?? null);
+        const adapterEvents = adaptersResp.adapters.flatMap(
+          (adapter) => adapter.spec.supported_events ?? [],
+        );
+        setAvailableEventTypes(
+          adapterEvents.length > 0
+            ? Array.from(new Set(adapterEvents)).sort()
+            : ['message.received'],
+        );
         const agent = resp.agent;
         const config = (agent.config ?? {}) as Record<string, any>;
         const loadedValues: FormValues = {
@@ -175,10 +188,8 @@ function AgentFormComponent(
           runner: (config.runner as Record<string, unknown>) ?? {},
           runner_config:
             (config.runner_config as Record<string, unknown>) ?? {},
-          supported_event_patterns_text: (
-            agent.supported_event_patterns ??
-            agent.capability?.supported_event_patterns ?? ['*']
-          ).join('\n'),
+          supported_event_patterns: agent.supported_event_patterns ??
+            agent.capability?.supported_event_patterns ?? ['*'],
         };
         form.reset(loadedValues);
         savedSnapshotRef.current = JSON.stringify(loadedValues);
@@ -251,11 +262,6 @@ function AgentFormComponent(
     icon: React.ElementType;
   }> = [
     {
-      name: 'events',
-      label: t('agents.bindableEvents'),
-      icon: Zap,
-    },
-    {
       name: 'runner',
       label: t('agents.runnerSettings'),
       icon: Bot,
@@ -266,6 +272,11 @@ function AgentFormComponent(
         ? extractI18nObject(selectedRunnerOption.label)
         : t('pipelines.configuration'),
       icon: SlidersHorizontal,
+    },
+    {
+      name: 'events',
+      label: t('agents.bindableEvents'),
+      icon: Zap,
     },
   ];
 
@@ -423,14 +434,6 @@ function AgentFormComponent(
     );
   }
 
-  function normalizeEventPatterns(value: string): string[] {
-    const patterns = value
-      .split(/[\n,]/)
-      .map((item) => item.trim())
-      .filter(Boolean);
-    return patterns.length > 0 ? patterns : ['*'];
-  }
-
   const saveValues = useCallback(
     async (values: FormValues) => {
       if (isSavingRef.current) return false;
@@ -441,9 +444,7 @@ function AgentFormComponent(
         description: values.basic.description ?? '',
         emoji: values.basic.emoji,
         component_ref: (runner.id as string) || null,
-        supported_event_patterns: normalizeEventPatterns(
-          values.supported_event_patterns_text,
-        ),
+        supported_event_patterns: values.supported_event_patterns,
         config: {
           runner,
           runner_config: values.runner_config ?? {},
@@ -525,14 +526,18 @@ function AgentFormComponent(
                 setActiveSection(value as AgentConfigSection)
               }
             >
-              <div className="overflow-x-auto">
-                <TabsList className="grid min-w-[34rem] w-full grid-cols-3">
+              <div className="min-w-0">
+                <TabsList className="grid h-auto w-full min-w-0 grid-cols-3">
                   {primarySections.map((section) => {
                     const Icon = section.icon;
                     return (
-                      <TabsTrigger key={section.name} value={section.name}>
-                        <Icon />
-                        {section.label}
+                      <TabsTrigger
+                        key={section.name}
+                        value={section.name}
+                        className="min-w-0 gap-1.5 px-2"
+                      >
+                        <Icon className="size-4 shrink-0" />
+                        <span className="truncate">{section.label}</span>
                       </TabsTrigger>
                     );
                   })}
@@ -588,17 +593,14 @@ function AgentFormComponent(
                   <CardContent>
                     <FormField
                       control={form.control}
-                      name="supported_event_patterns_text"
+                      name="supported_event_patterns"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>{t('agents.supportedEvents')}</FormLabel>
-                          <FormControl>
-                            <Textarea
-                              {...field}
-                              className="min-h-32 font-mono text-sm"
-                              placeholder={'*\nmessage.received\ngroup.*'}
-                            />
-                          </FormControl>
+                          <AgentEventPatternPicker
+                            events={availableEventTypes}
+                            value={field.value}
+                            onChange={field.onChange}
+                          />
                           <FormDescription>
                             {t('agents.supportedEventsDescription')}
                           </FormDescription>

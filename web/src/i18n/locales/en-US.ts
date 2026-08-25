@@ -698,7 +698,9 @@ const enUS = {
       'Limit which bot event routes can select this Agent. The default is suitable for most cases.',
     supportedEvents: 'Event Range',
     supportedEventsDescription:
-      'Use one event pattern per line, for example *, message.received, group.*. Pipelines are fixed to message.*.',
+      'Choose all events, an event group, or individual events. Bot routes will only list this Agent for matching events.',
+    searchEvents: 'Search events…',
+    noEventsFound: 'No matching events found',
     nameRequired: 'Name cannot be empty',
     createSuccess: 'Created successfully',
     createError: 'Creation failed: ',
