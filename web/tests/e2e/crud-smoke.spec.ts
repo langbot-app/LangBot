@@ -386,7 +386,7 @@ test.describe('bot advanced flows', () => {
     ).toBeVisible();
     await expect(
       routeDialog.getByText(
-        'Preview the match first. Run the saved configuration only when you need to test the processor.',
+        'Choose an event to see which processor handles it, or run a test.',
       ),
     ).toBeVisible();
     await expect(routeDialog.getByText('Sample event is ready')).toHaveCount(0);

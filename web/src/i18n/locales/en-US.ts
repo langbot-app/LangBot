@@ -478,7 +478,7 @@ const enUS = {
       'The processor and tools will run, but replies will not be sent to messaging platforms.',
     dryRunTitle: 'Test route',
     dryRunDescription:
-      'Preview the match first. Run the saved configuration only when you need to test the processor.',
+      'Choose an event to see which processor handles it, or run a test.',
     dryRunEventType: 'Event type',
     dryRunSampleReady: 'Sample event is ready',
     dryRunSampleDescription:

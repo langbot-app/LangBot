@@ -454,7 +454,7 @@ const zhHans = {
     routeTestSideEffectWarning:
       '测试会运行处理器和工具，但不会把回复发送到微信、QQ 等聊天平台。',
     dryRunTitle: '测试路由',
-    dryRunDescription: '先预览匹配结果；需要验证处理器时，再运行已保存配置。',
+    dryRunDescription: '选择事件，查看它会交给哪个处理器，或运行一次测试。',
     dryRunEventType: '事件类型',
     dryRunSampleReady: '示例事件已准备好',
     dryRunSampleDescription:

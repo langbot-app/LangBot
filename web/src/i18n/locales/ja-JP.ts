@@ -486,7 +486,7 @@ const jaJP = {
       'プロセッサーとツールは実行されますが、返信はメッセージプラットフォームへ送信されません。',
     dryRunTitle: 'ルートをテスト',
     dryRunDescription:
-      'まず一致結果を確認し、必要な場合のみ保存済み設定を実行します。',
+      'イベントを選び、処理先を確認するか、テストを実行します。',
     dryRunEventType: 'イベントタイプ',
     dryRunSampleReady: 'サンプルイベントを準備しました',
     dryRunSampleDescription:
