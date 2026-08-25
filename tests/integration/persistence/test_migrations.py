@@ -108,7 +108,7 @@ class TestSQLiteMigrationUpgrade:
         await run_alembic_upgrade(sqlite_engine, 'head')
 
         assert await get_alembic_current(sqlite_engine) == _get_script_head()
-        assert _get_script_head() == '0022_merge_agent_reasoning_heads'
+        assert _get_script_head() == '0023_drop_agent_enabled'
 
     @pytest.mark.asyncio
     async def test_upgrade_from_development_workspace_head_to_merged_head(self, sqlite_engine):
@@ -120,7 +120,7 @@ class TestSQLiteMigrationUpgrade:
         await run_alembic_upgrade(sqlite_engine, 'head')
 
         assert await get_alembic_current(sqlite_engine) == _get_script_head()
-        assert _get_script_head() == '0022_merge_agent_reasoning_heads'
+        assert _get_script_head() == '0023_drop_agent_enabled'
 
     @pytest.mark.asyncio
     async def test_upgrade_from_reasoning_config_head_to_merged_head(self, sqlite_engine):
@@ -131,7 +131,23 @@ class TestSQLiteMigrationUpgrade:
         await run_alembic_stamp(sqlite_engine, '0018_llm_reasoning_config')
         await run_alembic_upgrade(sqlite_engine, 'head')
 
-        assert await get_alembic_current(sqlite_engine) == '0022_merge_agent_reasoning_heads'
+        assert await get_alembic_current(sqlite_engine) == '0023_drop_agent_enabled'
+
+    @pytest.mark.asyncio
+    async def test_upgrade_removes_agent_enabled_column(self, sqlite_engine):
+        async with sqlite_engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+            await conn.exec_driver_sql('ALTER TABLE agents ADD COLUMN enabled BOOLEAN NOT NULL DEFAULT 1')
+
+        await run_alembic_stamp(sqlite_engine, '0022_merge_agent_reasoning_heads')
+        await run_alembic_upgrade(sqlite_engine, 'head')
+
+        async with sqlite_engine.connect() as conn:
+            columns = await conn.run_sync(
+                lambda sync_conn: {column['name'] for column in sqlalchemy.inspect(sync_conn).get_columns('agents')}
+            )
+
+        assert 'enabled' not in columns
 
     @pytest.mark.asyncio
     async def test_upgrade_from_baseline_to_head(self, sqlite_engine):

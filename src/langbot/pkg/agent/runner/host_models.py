@@ -181,9 +181,6 @@ class AgentConfig(pydantic.BaseModel):
     event_types: list[str] = pydantic.Field(default_factory=lambda: ['message.received'])
     """Event types this Agent handles."""
 
-    enabled: bool = True
-    """Whether this Agent can be selected by a binding resolver."""
-
     metadata: dict[str, typing.Any] = pydantic.Field(default_factory=dict)
     """Non-protocol diagnostic metadata, such as legacy config source."""
 
@@ -218,9 +215,6 @@ class AgentBinding(pydantic.BaseModel):
 
     delivery_policy: DeliveryPolicy = pydantic.Field(default_factory=DeliveryPolicy)
     """Delivery policy."""
-
-    enabled: bool = True
-    """Whether binding is enabled."""
 
     agent_id: str | None = None
     """Host-side Agent/config identifier for this binding."""

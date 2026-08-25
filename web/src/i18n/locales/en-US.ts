@@ -469,7 +469,6 @@ const enUS = {
       processor_incompatible:
         'The selected processor cannot handle this event.',
       processor_not_found: 'The selected processor is unavailable.',
-      processor_disabled: 'The selected processor is disabled.',
       bot_runtime_unavailable:
         'The bot is not running. Check its platform settings and enable it before running a full test.',
       runner_failed: 'The Agent runner failed while processing the event.',
@@ -691,10 +690,7 @@ const enUS = {
     allEvents: 'Supports all events',
     messageEventsOnly: 'Message events only',
     basicInfo: 'Basic Information',
-    basicInfoDescription: 'Set the name, icon, description and enabled state',
-    availability: 'Availability',
-    availabilityDescription:
-      'Control whether this Agent can receive and process events.',
+    basicInfoDescription: 'Set the name, icon and description',
     runnerSettings: 'Runner',
     advanced: 'Advanced',
     bindableEvents: 'Bindable Event Range',
@@ -703,9 +699,6 @@ const enUS = {
     supportedEvents: 'Event Range',
     supportedEventsDescription:
       'Use one event pattern per line, for example *, message.received, group.*. Pipelines are fixed to message.*.',
-    enabled: 'Enable Agent',
-    enabledDescription:
-      'When disabled, this Agent should not be selected by event routing.',
     nameRequired: 'Name cannot be empty',
     createSuccess: 'Created successfully',
     createError: 'Creation failed: ',

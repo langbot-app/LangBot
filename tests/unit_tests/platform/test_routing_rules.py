@@ -81,9 +81,9 @@ class TestEventRouteTrace:
                 'target_type': 'agent',
                 'target_uuid': 'agent-1',
             },
-            failure_code='processor_disabled',
-            reason='Agent target is disabled',
-            text='disabled',
+            failure_code='processor_not_found',
+            reason='Agent target is unavailable',
+            text='unavailable',
         )
 
         bot.logger.warning.assert_awaited_once()

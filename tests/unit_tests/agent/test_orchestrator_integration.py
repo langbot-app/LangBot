@@ -1069,7 +1069,6 @@ class TestQueryEntrySessionQueryId:
             resource_policy=ResourcePolicy(),
             state_policy=StatePolicy(enable_state=False, state_scopes=[]),
             delivery_policy=DeliveryPolicy(enable_streaming=True, enable_reply=True),
-            enabled=True,
         )
 
         messages = [

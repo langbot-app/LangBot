@@ -24,7 +24,6 @@ import DynamicFormComponent from '@/app/home/components/dynamic-form/DynamicForm
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import {
   Card,
@@ -141,7 +140,6 @@ function AgentFormComponent(
       name: z.string().min(1, { message: t('agents.nameRequired') }),
       description: z.string().optional(),
       emoji: z.string().optional(),
-      enabled: z.boolean().optional(),
     }),
     runner: z.record(z.string(), z.any()),
     runner_config: z.record(z.string(), z.any()),
@@ -156,7 +154,6 @@ function AgentFormComponent(
         name: '',
         description: '',
         emoji: '🤖',
-        enabled: true,
       },
       runner: {},
       runner_config: {},
@@ -190,7 +187,6 @@ function AgentFormComponent(
             name: agent.name ?? '',
             description: agent.description ?? '',
             emoji: agent.emoji || '🤖',
-            enabled: agent.enabled ?? true,
           },
           runner: (config.runner as Record<string, unknown>) ?? {},
           runner_config:
@@ -287,12 +283,12 @@ function AgentFormComponent(
         : t('pipelines.configuration'),
       icon: SlidersHorizontal,
     },
+    {
+      name: 'basic',
+      label: t('common.management'),
+      icon: Power,
+    },
   ];
-  const managementSection = {
-    name: 'basic' as const,
-    label: t('common.management'),
-    icon: Power,
-  };
 
   const runnerStatus = useMemo<AgentRunnerStatus>(() => {
     if (pluginStatusLoading) {
@@ -465,7 +461,6 @@ function AgentFormComponent(
         name: values.basic.name,
         description: values.basic.description ?? '',
         emoji: values.basic.emoji,
-        enabled: values.basic.enabled ?? true,
         component_ref: (runner.id as string) || null,
         supported_event_patterns: normalizeEventPatterns(
           values.supported_event_patterns_text,
@@ -568,32 +563,25 @@ function AgentFormComponent(
                 }
               >
                 <div className="overflow-x-auto">
-                  <TabsList className="grid min-w-[34rem] w-full grid-cols-3">
+                  <TabsList className="grid min-w-[42rem] w-full grid-cols-[repeat(3,minmax(0,1fr))_auto]">
                     {primarySections.map((section) => {
                       const Icon = section.icon;
                       return (
-                        <TabsTrigger key={section.name} value={section.name}>
+                        <TabsTrigger
+                          key={section.name}
+                          value={section.name}
+                          className={
+                            section.name === 'basic'
+                              ? 'px-4 text-muted-foreground data-[state=active]:text-foreground'
+                              : undefined
+                          }
+                        >
                           <Icon />
                           {section.label}
                         </TabsTrigger>
                       );
                     })}
                   </TabsList>
-                </div>
-                <div className="flex justify-end pt-2">
-                  <Button
-                    type="button"
-                    variant={
-                      activeSection === managementSection.name
-                        ? 'secondary'
-                        : 'ghost'
-                    }
-                    size="sm"
-                    onClick={() => setActiveSection(managementSection.name)}
-                  >
-                    <Power />
-                    {managementSection.label}
-                  </Button>
                 </div>
               </Tabs>
             </nav>
@@ -671,40 +659,6 @@ function AgentFormComponent(
 
                 {activeSection === 'basic' && (
                   <div className="space-y-6">
-                    <Card>
-                      <CardHeader>
-                        <CardTitle>{t('agents.availability')}</CardTitle>
-                        <CardDescription>
-                          {t('agents.availabilityDescription')}
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                        <FormField
-                          control={form.control}
-                          name="basic.enabled"
-                          render={({ field }) => (
-                            <FormItem className="flex items-center justify-between rounded-lg border p-4">
-                              <div className="space-y-0.5">
-                                <FormLabel className="flex items-center gap-2">
-                                  <Power className="size-4" />
-                                  {t('agents.enabled')}
-                                </FormLabel>
-                                <FormDescription>
-                                  {t('agents.enabledDescription')}
-                                </FormDescription>
-                              </div>
-                              <FormControl>
-                                <Switch
-                                  checked={field.value ?? true}
-                                  onCheckedChange={field.onChange}
-                                />
-                              </FormControl>
-                            </FormItem>
-                          )}
-                        />
-                      </CardContent>
-                    </Card>
-
                     <Card className="border-destructive/50">
                       <CardHeader>
                         <CardTitle className="text-destructive">

@@ -1135,7 +1135,6 @@ class RuntimeBot:
                 enable_reply=True,
                 enable_interactions=True,
             ),
-            enabled=True,
             agent_id=agent.get('uuid'),
             processor_type='agent',
             processor_id=agent.get('uuid'),
@@ -1321,17 +1320,6 @@ class RuntimeBot:
                 failure_code='processor_not_found',
                 reason='Agent target not found',
                 text=f'EBA event {event_type} target agent not found: {target_uuid}',
-            )
-        if not agent.get('enabled', True):
-            return await self._record_event_route_trace(
-                event_type=event_type,
-                status='failed',
-                binding=event_binding,
-                target_type=target_type,
-                target_uuid=target_uuid,
-                failure_code='processor_disabled',
-                reason='Agent target is disabled',
-                text=f'EBA event {event_type} target agent disabled: {target_uuid}',
             )
         if not self._agent_supports_event_type(agent.get('supported_event_patterns'), event_type):
             return await self._record_event_route_trace(
@@ -1711,7 +1699,7 @@ class RuntimeBot:
             self.execution_context,
             record['processor_id'],
         )
-        if not agent or agent.get('kind') != 'agent' or not agent.get('enabled', True):
+        if not agent or agent.get('kind') != 'agent':
             raise ValueError(f'Interaction target Agent is unavailable: {record["processor_id"]}')
 
         binding = self._agent_product_to_binding(
@@ -1810,9 +1798,7 @@ class RuntimeBot:
         def tenant_scoped_listener(listener):
             @functools.wraps(listener)
             async def wrapped(*args, **kwargs):
-                tenant_scope = getattr(
-                    self.ap.persistence_mgr, 'tenant_scope', None
-                )
+                tenant_scope = getattr(self.ap.persistence_mgr, 'tenant_scope', None)
                 cloud_runtime = (
                     getattr(
                         getattr(self.ap.persistence_mgr, 'mode', None),
@@ -1823,9 +1809,7 @@ class RuntimeBot:
                 )
                 if cloud_runtime:
                     if not callable(tenant_scope):
-                        raise RuntimeError(
-                            'Cloud platform callbacks require a tenant scope'
-                        )
+                        raise RuntimeError('Cloud platform callbacks require a tenant scope')
                     async with tenant_scope(self.workspace_uuid):
                         return await listener(*args, **kwargs)
                 return await listener(*args, **kwargs)

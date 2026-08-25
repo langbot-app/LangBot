@@ -151,7 +151,6 @@ class QueryEntryAdapter:
             state_policy=state_policy,
             delivery_policy=delivery_policy,
             event_types=[event_type],
-            enabled=True,
             metadata={'source': 'pipeline_adapter'},
         )
 

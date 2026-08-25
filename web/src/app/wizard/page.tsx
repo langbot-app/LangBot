@@ -839,7 +839,6 @@ export default function WizardPage() {
             runner: { id: selectedRunner, 'expire-time': 0 },
             runner_config: { [selectedRunner]: runnerConfig },
           },
-          enabled: true,
           supported_event_patterns: [selectedScenarioDefinition.eventType],
         });
         processorUuid = agentResp.uuid;

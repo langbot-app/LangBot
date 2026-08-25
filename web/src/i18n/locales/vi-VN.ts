@@ -518,7 +518,7 @@ const viVN = {
     allEvents: 'Hỗ trợ tất cả sự kiện',
     messageEventsOnly: 'Chỉ sự kiện tin nhắn',
     basicInfo: 'Thông tin cơ bản',
-    basicInfoDescription: 'Đặt tên, biểu tượng, mô tả và trạng thái kích hoạt',
+    basicInfoDescription: 'Đặt tên, biểu tượng và mô tả',
     runnerSettings: 'Runner',
     advanced: 'Nâng cao',
     bindableEvents: 'Phạm vi sự kiện có thể gắn',
@@ -527,9 +527,6 @@ const viVN = {
     supportedEvents: 'Phạm vi sự kiện',
     supportedEventsDescription:
       'Mỗi dòng một mẫu sự kiện, ví dụ *, message.received, group.*. Pipeline cố định ở message.*.',
-    enabled: 'Kích hoạt Agent',
-    enabledDescription:
-      'Khi bị tắt, Agent này sẽ không được định tuyến sự kiện chọn.',
     nameRequired: 'Tên không được để trống',
     createSuccess: 'Tạo thành công',
     createError: 'Tạo thất bại: ',

@@ -525,8 +525,7 @@ const esES = {
     allEvents: 'Compatible con todos los eventos',
     messageEventsOnly: 'Solo eventos de mensaje',
     basicInfo: 'Información básica',
-    basicInfoDescription:
-      'Establece el nombre, icono, descripción y estado de habilitación',
+    basicInfoDescription: 'Establece el nombre, icono y descripción',
     runnerSettings: 'Runner',
     advanced: 'Avanzado',
     bindableEvents: 'Rango de eventos vinculables',
@@ -535,9 +534,6 @@ const esES = {
     supportedEvents: 'Rango de eventos',
     supportedEventsDescription:
       'Usa un patrón de evento por línea, por ejemplo *, message.received, group.*. Los Pipelines están fijos en message.*.',
-    enabled: 'Habilitar Agent',
-    enabledDescription:
-      'Cuando está deshabilitado, este Agent no debe ser seleccionado por el enrutamiento de eventos.',
     nameRequired: 'El nombre no puede estar vacío',
     createSuccess: 'Creado correctamente',
     createError: 'Error al crear: ',

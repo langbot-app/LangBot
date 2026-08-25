@@ -476,7 +476,6 @@ const jaJP = {
       processor_incompatible:
         '選択したプロセッサーはこのイベントを処理できません。',
       processor_not_found: '選択したプロセッサーを利用できません。',
-      processor_disabled: '選択したプロセッサーは無効です。',
       bot_runtime_unavailable:
         'ボットが実行されていません。プラットフォーム設定を確認してボットを有効にした後、完全テストを実行してください。',
       runner_failed: 'Agent Runner がイベント処理中に失敗しました。',
@@ -706,10 +705,7 @@ const jaJP = {
     allEvents: 'すべてのイベントに対応',
     messageEventsOnly: 'メッセージイベントのみ',
     basicInfo: '基本情報',
-    basicInfoDescription: '名前、アイコン、説明、有効状態を設定します',
-    availability: '有効状態',
-    availabilityDescription:
-      'この Agent がイベントを受信して処理できるかを制御します。',
+    basicInfoDescription: '名前、アイコン、説明を設定します',
     runnerSettings: 'Runner',
     advanced: '詳細',
     bindableEvents: '紐付け可能なイベント範囲',
@@ -718,9 +714,6 @@ const jaJP = {
     supportedEvents: 'イベント範囲',
     supportedEventsDescription:
       '1 行に 1 つのイベントパターンを指定します。例: *、message.received、group.*。Pipeline は message.* 固定です。',
-    enabled: 'Agent を有効化',
-    enabledDescription:
-      '無効化すると、この Agent はイベントルーティングで選択されません。',
     nameRequired: '名前は必須です',
     createSuccess: '作成に成功しました',
     createError: '作成に失敗しました：',

@@ -491,7 +491,7 @@ const zhHant = {
     allEvents: '支援全部事件',
     messageEventsOnly: '僅支援訊息事件',
     basicInfo: '基本資訊',
-    basicInfoDescription: '設定名稱、圖示、描述和啟用狀態',
+    basicInfoDescription: '設定名稱、圖示和描述',
     runnerSettings: '執行器',
     advanced: '進階',
     bindableEvents: '可綁定事件範圍',
@@ -500,8 +500,6 @@ const zhHant = {
     supportedEvents: '事件範圍',
     supportedEventsDescription:
       '每行一個事件模式，例如 *、message.received、group.*。Pipeline 固定僅支援 message.*。',
-    enabled: '啟用 Agent',
-    enabledDescription: '停用後，此 Agent 不應被事件路由選中。',
     nameRequired: '名稱不能為空',
     createSuccess: '建立成功',
     createError: '建立失敗：',

@@ -201,7 +201,6 @@ class AgentService:
                 enable_reply=False,
                 enable_interactions=False,
             ),
-            enabled=True,
             agent_id=agent_uuid,
             processor_type='agent',
             processor_id=agent_uuid,
@@ -293,7 +292,6 @@ class AgentService:
             'kind': AGENT_KIND_AGENT,
             'component_ref': runner_id,
             'config': config,
-            'enabled': agent_data.get('enabled', True),
             'supported_event_patterns': agent_data.get('supported_event_patterns') or AGENT_DEFAULT_EVENT_PATTERNS,
         }
         await self.ap.persistence_mgr.execute_async(sqlalchemy.insert(persistence_agent.Agent).values(**values))
@@ -308,17 +306,11 @@ class AgentService:
             await self.ap.pipeline_service.update_pipeline(context, agent_uuid, agent_data)
             return
 
-        update_data = agent_data.copy()
-        for protected_field in (
-            'uuid',
-            'workspace_uuid',
-            'kind',
-            'component_ref',
-            'created_at',
-            'updated_at',
-            'capability',
-        ):
-            update_data.pop(protected_field, None)
+        update_data = {
+            field: agent_data[field]
+            for field in ('name', 'description', 'emoji', 'config', 'supported_event_patterns')
+            if field in agent_data
+        }
         if 'config' in update_data:
             config, runner_id, _ = RunnerConfigResolver.resolve_agent_runner_config(update_data['config'])
             update_data['config'] = config
@@ -425,7 +417,6 @@ class AgentService:
         item = pipeline.copy()
         item['kind'] = AGENT_KIND_PIPELINE
         item['component_ref'] = 'pipeline'
-        item['enabled'] = True
         item['supported_event_patterns'] = PIPELINE_EVENT_PATTERNS
         item['capability'] = {
             'supported_event_patterns': PIPELINE_EVENT_PATTERNS,

@@ -50,11 +50,9 @@ test.describe('processor detail workbench', () => {
     );
     await expect(flow.getByRole('tab').nth(1)).toContainText('Runner');
     await expect(flow.getByRole('tab').nth(2)).toContainText('Local Agent');
-    const agentManagement = configPanel.getByRole('button', {
-      name: 'Management',
-    });
-    await expect(agentManagement).toBeVisible();
-    await expect(flow.getByText('Management')).toHaveCount(0);
+    const agentManagement = flow.getByRole('tab').nth(3);
+    await expect(agentManagement).toContainText('Management');
+    await expect(agentManagement).toHaveClass(/text-muted-foreground/);
 
     await expect(
       page.getByRole('heading', { name: /agent-workbench/ }),
@@ -85,6 +83,12 @@ test.describe('processor detail workbench', () => {
     await expect(
       configPanel.getByText('Local Agent', { exact: true }).last(),
     ).toBeVisible();
+    await agentManagement.click();
+    await expect(configPanel.getByText('Danger Zone')).toBeVisible();
+    await expect(configPanel.getByText('Availability')).toHaveCount(0);
+    await expect(
+      configPanel.getByRole('switch', { name: 'Enable Agent' }),
+    ).toHaveCount(0);
   });
 
   test('agent saves edits before debugging and shows the real output', async ({

@@ -46,7 +46,6 @@ def _agent_row(
             'runner': {'id': 'plugin:test/runner/default', 'expire-time': 0},
             'runner_config': {'plugin:test/runner/default': {'temperature': 0.2}},
         },
-        enabled=True,
         supported_event_patterns=supported_event_patterns or ['*'],
         created_at=dt.datetime(2026, 1, 1, 9, 0, 0),
         updated_at=updated_at or dt.datetime(2026, 1, 1, 10, 0, 0),
@@ -63,7 +62,6 @@ def _serialize_agent(model_cls, entity, masked_columns=None):
         'kind': entity.kind,
         'component_ref': entity.component_ref,
         'config': entity.config,
-        'enabled': entity.enabled,
         'supported_event_patterns': entity.supported_event_patterns,
         'created_at': entity.created_at,
         'updated_at': entity.updated_at,
@@ -145,7 +143,6 @@ class TestAgentServiceDebug:
             return_value={
                 'uuid': 'agent-1',
                 'kind': AGENT_KIND_AGENT,
-                'enabled': True,
                 'supported_event_patterns': ['*'],
                 'config': _agent_row().config,
             }
@@ -288,7 +285,7 @@ class TestAgentServiceListAndLookup:
         result = await AgentService(app).get_agent(WORKSPACE_UUID, 'pipeline-1')
 
         assert result['kind'] == AGENT_KIND_PIPELINE
-        assert result['enabled'] is True
+        assert 'enabled' not in result
         assert result['config'] == {'ai': {'runner': {'id': 'pipeline-runner'}}}
         assert result['capability']['message_only'] is True
 
@@ -329,7 +326,7 @@ class TestAgentServiceCreateUpdateDelete:
             'runner': {'id': runner.id, 'expire-time': 0},
             'runner_config': {runner.id: {'model': 'gpt-4.1', 'temperature': 0.2}},
         }
-        assert insert_values['enabled'] is True
+        assert 'enabled' not in insert_values
         assert insert_values['supported_event_patterns'] == AGENT_DEFAULT_EVENT_PATTERNS
         app.pipeline_service._get_default_values_from_schema.assert_called_once_with(runner.config_schema)
 

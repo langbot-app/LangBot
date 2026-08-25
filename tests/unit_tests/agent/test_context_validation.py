@@ -74,7 +74,6 @@ class TestContextValidation:
             runner_id='plugin:test/plugin/runner',
             runner_config={'timeout': 300},
             agent_id='pipeline_1',
-            enabled=True,
         )
 
     def _make_resources(self) -> BuilderResources:

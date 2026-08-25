@@ -20,7 +20,6 @@ class Agent(Base):
     kind = sqlalchemy.Column(sqlalchemy.String(50), nullable=False, default='agent')
     component_ref = sqlalchemy.Column(sqlalchemy.String(255), nullable=True)
     config = sqlalchemy.Column(sqlalchemy.JSON, nullable=False, default={})
-    enabled = sqlalchemy.Column(sqlalchemy.Boolean, nullable=False, default=True)
     supported_event_patterns = sqlalchemy.Column(sqlalchemy.JSON, nullable=False, default=['*'])
     created_at = sqlalchemy.Column(sqlalchemy.DateTime, nullable=False, server_default=sqlalchemy.func.now())
     updated_at = sqlalchemy.Column(

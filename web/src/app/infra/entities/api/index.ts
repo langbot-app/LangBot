@@ -177,7 +177,6 @@ export interface Agent {
   kind: AgentKind;
   component_ref?: string | null;
   config?: Record<string, unknown>;
-  enabled?: boolean;
   supported_event_patterns?: string[];
   capability?: AgentCapability;
   created_at?: string;

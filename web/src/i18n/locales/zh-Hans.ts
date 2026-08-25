@@ -447,7 +447,6 @@ const zhHans = {
       route_not_found: '没有路由命中此事件。',
       processor_incompatible: '所选处理器无法处理此事件。',
       processor_not_found: '所选处理器不可用。',
-      processor_disabled: '所选处理器已禁用。',
       bot_runtime_unavailable:
         '机器人尚未运行。请检查平台配置并启用机器人，再运行完整测试。',
       runner_failed: 'Agent Runner 处理事件时失败。',
@@ -661,9 +660,7 @@ const zhHans = {
     allEvents: '支持全部事件',
     messageEventsOnly: '仅支持消息事件',
     basicInfo: '基础信息',
-    basicInfoDescription: '设置名称、图标、描述和启用状态',
-    availability: '启用状态',
-    availabilityDescription: '控制此 Agent 是否可以接收并处理事件。',
+    basicInfoDescription: '设置名称、图标和描述',
     runnerSettings: '运行器',
     advanced: '高级',
     bindableEvents: '可绑定事件范围',
@@ -672,8 +669,6 @@ const zhHans = {
     supportedEvents: '事件范围',
     supportedEventsDescription:
       '每行一个事件模式，例如 *、message.received、group.*。Pipeline 固定仅支持 message.*。',
-    enabled: '启用 Agent',
-    enabledDescription: '禁用后，此 Agent 不应被事件路由选中。',
     nameRequired: '名称不能为空',
     createSuccess: '创建成功',
     createError: '创建失败：',

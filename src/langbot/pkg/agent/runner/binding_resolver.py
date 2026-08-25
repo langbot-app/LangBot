@@ -22,7 +22,7 @@ class AgentBindingResolver:
         event: AgentEventEnvelope,
         agents: list[AgentConfig],
     ) -> AgentBinding:
-        """Resolve exactly one enabled Agent for the event.
+        """Resolve exactly one Agent for the event.
 
         Callers that source agents from bot/workspace/global configuration must
         pre-filter candidates to the event scope before calling this resolver.
@@ -30,7 +30,7 @@ class AgentBindingResolver:
         Agent and does not carry enough scope metadata to make that decision
         safely here.
         """
-        matches = [agent for agent in agents if agent.enabled and event.event_type in agent.event_types]
+        matches = [agent for agent in agents if event.event_type in agent.event_types]
 
         if not matches:
             raise AgentBindingResolutionError(f'No Agent binding matches event_type={event.event_type}')
@@ -59,7 +59,6 @@ class AgentBindingResolver:
             resource_policy=agent.resource_policy,
             state_policy=agent.state_policy,
             delivery_policy=agent.delivery_policy,
-            enabled=agent.enabled,
             agent_id=agent.agent_id,
             processor_type=agent.processor_type,
             processor_id=agent.processor_id or agent.agent_id,

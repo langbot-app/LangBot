@@ -18,7 +18,6 @@ class BotService:
 
     ap: app.Application
     FAILURE_ROUTE_NOT_FOUND = 'route_not_found'
-    FAILURE_PROCESSOR_DISABLED = 'processor_disabled'
     FAILURE_PROCESSOR_NOT_FOUND = 'processor_not_found'
     FAILURE_PROCESSOR_INCOMPATIBLE = 'processor_incompatible'
     FAILURE_INVALID_EVENT = 'invalid_event'
@@ -433,25 +432,6 @@ class BotService:
                             'matched': False,
                             'failure_code': self.FAILURE_PROCESSOR_NOT_FOUND,
                             'reason': 'Agent target not found',
-                        }
-                    ],
-                )
-            if not getattr(agent, 'enabled', True):
-                return self._diagnostic_result(
-                    matched=False,
-                    binding=selected_binding,
-                    failure_code=self.FAILURE_PROCESSOR_DISABLED,
-                    reason='Agent target is disabled',
-                    diagnostic_steps=diagnostic_steps
-                    + [
-                        {
-                            'step': 'validate_processor',
-                            'binding_id': selected_binding.get('id'),
-                            'target_type': target_type,
-                            'target_uuid': target_uuid,
-                            'matched': False,
-                            'failure_code': self.FAILURE_PROCESSOR_DISABLED,
-                            'reason': 'Agent target is disabled',
                         }
                     ],
                 )

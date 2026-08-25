@@ -508,7 +508,7 @@ const thTH = {
     allEvents: 'รองรับทุกเหตุการณ์',
     messageEventsOnly: 'เฉพาะเหตุการณ์ข้อความ',
     basicInfo: 'ข้อมูลพื้นฐาน',
-    basicInfoDescription: 'ตั้งชื่อ ไอคอน คำอธิบาย และสถานะการเปิดใช้งาน',
+    basicInfoDescription: 'ตั้งชื่อ ไอคอน และคำอธิบาย',
     runnerSettings: 'Runner',
     advanced: 'ขั้นสูง',
     bindableEvents: 'ช่วงเหตุการณ์ที่ผูกได้',
@@ -517,9 +517,6 @@ const thTH = {
     supportedEvents: 'ช่วงเหตุการณ์',
     supportedEventsDescription:
       'หนึ่งรูปแบบเหตุการณ์ต่อบรรทัด เช่น *, message.received, group.* Pipeline ถูกกำหนดไว้ที่ message.*',
-    enabled: 'เปิดใช้งาน Agent',
-    enabledDescription:
-      'เมื่อปิดใช้งาน Agent นี้จะไม่ถูกเลือกโดยการกำหนดเส้นทางเหตุการณ์',
     nameRequired: 'ชื่อต้องไม่ว่างเปล่า',
     createSuccess: 'สร้างสำเร็จ',
     createError: 'สร้างล้มเหลว: ',

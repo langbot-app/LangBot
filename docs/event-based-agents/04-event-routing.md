@@ -34,7 +34,6 @@ class Agent(Base):
     kind: str                         # 固定为 "agent"
     component_ref: str                # AgentRunner id
     config: dict                      # runner + runner_config
-    enabled: bool
     supported_event_patterns: list[str]
 ```
 
@@ -113,7 +112,7 @@ Binding 只保存引用与路由条件。它不复制 Pipeline 或 Agent 配置�
 
 1. 忽略 `enabled = false` 的 binding。
 2. 检查 `event_pattern` 与结构化 filters。
-3. 校验目标存在、启用且声明支持该事件。
+3. 校验目标存在且声明支持该事件。
 4. 按 `priority` 从高到低选择；同优先级按稳定列表顺序。
 5. 只执行一个响应目标。
 

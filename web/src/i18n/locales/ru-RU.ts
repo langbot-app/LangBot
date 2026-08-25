@@ -522,7 +522,7 @@ const ruRU = {
     allEvents: 'Поддерживает все события',
     messageEventsOnly: 'Только события сообщений',
     basicInfo: 'Основная информация',
-    basicInfoDescription: 'Задайте имя, иконку, описание и статус активации',
+    basicInfoDescription: 'Задайте имя, иконку и описание',
     runnerSettings: 'Runner',
     advanced: 'Дополнительно',
     bindableEvents: 'Диапазон привязываемых событий',
@@ -531,9 +531,6 @@ const ruRU = {
     supportedEvents: 'Диапазон событий',
     supportedEventsDescription:
       'Один шаблон события в строке, например *, message.received, group.*. Pipeline фиксирован на message.*.',
-    enabled: 'Включить Agent',
-    enabledDescription:
-      'При отключении этот Agent не должен выбираться маршрутизацией событий.',
     nameRequired: 'Имя не может быть пустым',
     createSuccess: 'Успешно создано',
     createError: 'Ошибка создания: ',

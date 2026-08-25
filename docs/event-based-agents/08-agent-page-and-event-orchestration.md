@@ -70,7 +70,6 @@ class Agent(Base):
     kind: str               # 首版固定为 "agent"
     component_ref: str      # runner id / workflow id / future external ref
     config: dict            # runner 与 runner_config
-    enabled: bool
     supported_event_patterns: list[str]
     created_at: datetime
     updated_at: datetime
