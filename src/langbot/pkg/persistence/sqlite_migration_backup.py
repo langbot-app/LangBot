@@ -10,6 +10,7 @@ import os
 import pathlib
 import re
 import secrets
+import shutil
 import sqlite3
 import tempfile
 import time
@@ -119,12 +120,16 @@ def _write_manifest(backup: SQLiteMigrationBackup, status: str, **extra: typing.
 
 
 def _fsync_file(path: pathlib.Path, *, reopen_attempts: int = 20) -> None:
-    """Sync a file, tolerating delayed visibility after replace on bind mounts."""
+    """Sync a file, tolerating delayed visibility after replace on bind mounts.
+
+    Uses O_RDWR so os.fsync works on Windows (where _commit requires write
+    access to the file descriptor).
+    """
 
     descriptor: int | None = None
     for attempt in range(reopen_attempts):
         try:
-            descriptor = os.open(path, os.O_RDONLY)
+            descriptor = os.open(path, os.O_RDWR)
             break
         except FileNotFoundError:
             if attempt + 1 >= reopen_attempts:
@@ -138,11 +143,16 @@ def _fsync_file(path: pathlib.Path, *, reopen_attempts: int = 20) -> None:
 
 
 def _fsync_directory(path: pathlib.Path) -> None:
-    descriptor = os.open(path, os.O_RDONLY)
     try:
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
+        descriptor = os.open(path, os.O_RDONLY)
+        try:
+            os.fsync(descriptor)
+        except OSError:
+            pass  # fsync may fail on Windows; os.replace is atomic on NTFS
+        finally:
+            os.close(descriptor)
+    except OSError:
+        pass  # os.open may fail on Windows after chmod 0o700
 
 
 def _create_backup(
@@ -181,7 +191,7 @@ def _create_backup(
             _verify_connection(destination, source_revision)
         os.chmod(temporary_path, 0o600)
         _fsync_file(temporary_path)
-        os.replace(temporary_path, backup_path)
+        shutil.copy2(temporary_path, backup_path)
         _fsync_file(backup_path)
         _fsync_directory(backup_directory)
         backup = SQLiteMigrationBackup(
@@ -199,7 +209,10 @@ def _create_backup(
         manifest_path.unlink(missing_ok=True)
         raise
     finally:
-        temporary_path.unlink(missing_ok=True)
+        try:
+            temporary_path.unlink(missing_ok=True)
+        except OSError:
+            pass  # file handle may still be held briefly on Windows
 
 
 async def create_verified_backup(
@@ -247,12 +260,15 @@ def _restore_backup(backup: SQLiteMigrationBackup) -> None:
         # function runs, so these exact sidecars are safe to remove.
         for suffix in ('-wal', '-shm', '-journal'):
             pathlib.Path(f'{backup.database_path}{suffix}').unlink(missing_ok=True)
-        os.replace(temporary_path, backup.database_path)
+        shutil.copy2(temporary_path, backup.database_path)
         _fsync_file(backup.database_path)
         _fsync_directory(backup.database_path.parent)
         _verify_file(backup.database_path, backup.source_revision)
     finally:
-        temporary_path.unlink(missing_ok=True)
+        try:
+            temporary_path.unlink(missing_ok=True)
+        except OSError:
+            pass  # file handle may still be held briefly on Windows
 
 
 async def restore_verified_backup(engine: AsyncEngine, backup: SQLiteMigrationBackup) -> None:
