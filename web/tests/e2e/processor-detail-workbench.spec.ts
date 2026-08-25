@@ -265,8 +265,14 @@ test.describe('processor detail workbench', () => {
       name: 'Group Chat',
     });
     await expect(privateChatButton).toHaveAttribute('aria-pressed', 'true');
+    await expect(privateChatButton).toHaveClass(/bg-primary\/15/);
+    await expect(privateChatButton).toHaveClass(/text-primary/);
+    await expect(groupChatButton).not.toHaveClass(/bg-primary\/15/);
     await groupChatButton.click();
     await expect(groupChatButton).toHaveAttribute('aria-pressed', 'true');
+    await expect(groupChatButton).toHaveClass(/bg-primary\/15/);
+    await expect(groupChatButton).toHaveClass(/text-primary/);
+    await expect(privateChatButton).not.toHaveClass(/bg-primary\/15/);
     await privateChatButton.click();
 
     const composer = debugPanel.locator('[data-debug-composer="true"]');

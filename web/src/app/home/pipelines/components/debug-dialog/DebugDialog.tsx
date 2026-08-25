@@ -861,9 +861,14 @@ export default function DebugDialog({
         </span>
         <Button
           type="button"
-          variant={sessionType === 'person' ? 'secondary' : 'ghost'}
+          variant="ghost"
           size="sm"
           aria-pressed={sessionType === 'person'}
+          className={cn(
+            'shadow-none',
+            sessionType === 'person' &&
+              'bg-primary/15 text-primary hover:bg-primary/20 hover:text-primary',
+          )}
           onClick={() => setSessionType('person')}
         >
           <User className="size-4" />
@@ -871,9 +876,14 @@ export default function DebugDialog({
         </Button>
         <Button
           type="button"
-          variant={sessionType === 'group' ? 'secondary' : 'ghost'}
+          variant="ghost"
           size="sm"
           aria-pressed={sessionType === 'group'}
+          className={cn(
+            'shadow-none',
+            sessionType === 'group' &&
+              'bg-primary/15 text-primary hover:bg-primary/20 hover:text-primary',
+          )}
           onClick={() => setSessionType('group')}
         >
           <Users className="size-4" />
