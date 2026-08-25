@@ -1,6 +1,13 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { UseFormReturn } from 'react-hook-form';
@@ -72,7 +79,11 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
@@ -1543,6 +1554,14 @@ export default function EventBindingsEditor({
       ),
     [dryRunEventOptions],
   );
+  const otherEventGroups = useMemo(() => {
+    const commonEventTypes = new Set(
+      behaviorPresets.map((preset) => preset.eventType),
+    );
+    return groupEventPatterns(
+      eventOptions.filter((event) => !commonEventTypes.has(event)),
+    );
+  }, [behaviorPresets, eventOptions]);
 
   const refreshRouteStatuses = useCallback(async () => {
     if (!botId) {
@@ -1780,6 +1799,9 @@ export default function EventBindingsEditor({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-[300px] max-w-[90vw]">
+            <DropdownMenuLabel className="px-2 pb-1 pt-1.5 text-xs font-normal text-muted-foreground">
+              {t('bots.commonScenarios')}
+            </DropdownMenuLabel>
             {behaviorPresets.map((preset) => {
               const Icon = preset.icon;
               return (
@@ -1799,18 +1821,44 @@ export default function EventBindingsEditor({
               );
             })}
             <DropdownMenuSeparator />
-            <DropdownMenuItem
-              className="items-start gap-2 py-2"
-              onClick={() => addBinding(dryRunEventOptions[0])}
-            >
-              <Workflow className="mt-0.5 h-4 w-4 shrink-0" />
-              <span className="flex min-w-0 flex-col gap-0.5">
-                <span>{t('bots.behaviorCustom')}</span>
-                <span className="text-xs text-muted-foreground">
-                  {t('bots.behaviorCustomDescription')}
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger
+                className="items-start gap-2 py-2"
+                disabled={otherEventGroups.length === 0}
+              >
+                <Workflow className="mt-0.5 h-4 w-4 shrink-0" />
+                <span className="flex min-w-0 flex-col gap-0.5 pr-2">
+                  <span>{t('bots.behaviorCustom')}</span>
+                  <span className="text-xs font-normal text-muted-foreground">
+                    {t('bots.behaviorCustomDescription')}
+                  </span>
                 </span>
-              </span>
-            </DropdownMenuItem>
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent className="max-h-[min(70vh,32rem)] w-[320px] max-w-[90vw] overflow-y-auto">
+                {otherEventGroups.map((group, groupIndex) => (
+                  <Fragment key={group.namespace}>
+                    {groupIndex > 0 && <DropdownMenuSeparator />}
+                    <DropdownMenuLabel className="px-2 py-1 text-xs font-normal text-muted-foreground">
+                      {eventGroupLabel(group.namespace, t)}
+                    </DropdownMenuLabel>
+                    {group.patterns.map((event) => (
+                      <DropdownMenuItem
+                        key={event}
+                        className="items-start py-2"
+                        onClick={() => addBinding(event)}
+                      >
+                        <span className="flex min-w-0 flex-col gap-0.5">
+                          <span>{eventLabel(event, t)}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {eventDescription(event, t)}
+                          </span>
+                        </span>
+                      </DropdownMenuItem>
+                    ))}
+                  </Fragment>
+                ))}
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
           </DropdownMenuContent>
         </DropdownMenu>
         <RouteDryRunDialog

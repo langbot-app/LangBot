@@ -375,6 +375,7 @@ const zhHans = {
     eventBindings: '事件路由',
     addEventBinding: '添加路由',
     addBehavior: '添加行为',
+    commonScenarios: '常用场景',
     dragEventRoute: '拖动第 {{index}} 条路由',
     behaviorReplyMessages: '回复收到的消息',
     behaviorReplyMessagesDescription:

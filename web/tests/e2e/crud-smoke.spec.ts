@@ -872,7 +872,7 @@ test.describe('agent and pipeline save concurrency', () => {
 });
 
 test.describe('cross-resource flows', () => {
-  test('reorders bot event routes with a visible drag preview', async ({
+  test('adds custom bot events and reorders routes with a drag preview', async ({
     page,
   }) => {
     await installLangBotApiMocks(page, {
@@ -887,6 +887,9 @@ test.describe('cross-resource flows', () => {
     await expect(page).toHaveURL(/\/home\/bots\?id=bot-1$/);
 
     await page.getByRole('button', { name: 'Add behavior' }).click();
+    await expect(
+      page.getByText('Common scenarios', { exact: true }),
+    ).toBeVisible();
     await page.getByRole('menuitem', { name: /^Reply to messages/ }).click();
     await page.getByRole('button', { name: 'Add behavior' }).click();
     await page.getByRole('menuitem', { name: /^Welcome new members/ }).click();
@@ -895,6 +898,25 @@ test.describe('cross-resource flows', () => {
     await expect(routeCards).toHaveCount(2);
     await expect(routeCards.nth(0)).toContainText('Message received');
     await expect(routeCards.nth(1)).toContainText('Member joined group');
+
+    await page.getByRole('button', { name: 'Add behavior' }).click();
+    await page
+      .getByRole('menuitem', { name: /^Configure another event/ })
+      .hover();
+    const eventSubmenu = page.locator(
+      '[data-slot="dropdown-menu-sub-content"]',
+    );
+    await expect(
+      eventSubmenu.getByText('Messages', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      eventSubmenu.getByRole('menuitem', { name: /^Message edited/ }),
+    ).toBeVisible();
+    await eventSubmenu
+      .getByRole('menuitem', { name: /^Message edited/ })
+      .click();
+    await expect(routeCards).toHaveCount(3);
+    await expect(routeCards.nth(2)).toContainText('Message edited');
 
     const firstHandle = page.getByRole('button', { name: 'Drag route 1' });
     const secondCard = routeCards.nth(1);
@@ -930,6 +952,7 @@ test.describe('cross-resource flows', () => {
     const savedRouteCards = page.locator('[data-testid^="event-route-"]');
     await expect(savedRouteCards.nth(0)).toContainText('Member joined group');
     await expect(savedRouteCards.nth(1)).toContainText('Message received');
+    await expect(savedRouteCards.nth(2)).toContainText('Message edited');
   });
 
   test('creates a pipeline then binds it to a bot', async ({ page }) => {
