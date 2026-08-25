@@ -378,6 +378,30 @@ test.describe('bot advanced flows', () => {
     await expect(
       page.getByText('Failed to refresh route status.'),
     ).toBeVisible();
+
+    await page.getByRole('button', { name: 'Test route' }).click();
+    const routeDialog = page.getByRole('dialog');
+    await expect(
+      routeDialog.getByText('Test route', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      routeDialog.getByText(
+        'Preview the match first. Run the saved configuration only when you need to test the processor.',
+      ),
+    ).toBeVisible();
+    await expect(routeDialog.getByText('Sample event is ready')).toHaveCount(0);
+    await expect(
+      routeDialog.getByRole('button', { name: 'Test data' }),
+    ).toBeVisible();
+    await expect(
+      routeDialog.getByRole('button', { name: 'Preview match' }),
+    ).toBeVisible();
+    await expect(
+      routeDialog.getByRole('button', { name: 'Run saved configuration' }),
+    ).toBeVisible();
+    const dialogBox = await routeDialog.boundingBox();
+    expect(dialogBox).not.toBeNull();
+    expect(dialogBox!.height).toBeLessThan(500);
   });
 
   test('toggles bot enable/disable state', async ({ page }) => {

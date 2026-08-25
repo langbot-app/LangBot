@@ -1013,82 +1013,70 @@ function RouteDryRunDialog({
         {t('bots.testRoute')}
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{t('bots.dryRunTitle')}</DialogTitle>
             <DialogDescription>{t('bots.dryRunDescription')}</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
-            <div className="space-y-3">
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium">
-                  {t('bots.dryRunEventType')}
-                </label>
-                <Select value={eventType} onValueChange={setEventType}>
-                  <SelectTrigger className="h-9">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {eventOptions.map((event) => (
-                      <SelectItem key={event} value={event}>
-                        {eventLabel(event, t)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="rounded-md border bg-muted/20 px-3 py-2.5">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium">
-                      {t('bots.dryRunSampleReady')}
-                    </p>
-                    <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
-                      {t('bots.dryRunSampleDescription', {
-                        event: eventLabel(eventType, t),
-                      })}
-                    </p>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 shrink-0 px-2 text-xs"
-                    onClick={() => setAdvancedPayloadOpen((value) => !value)}
-                  >
-                    {advancedPayloadOpen ? (
-                      <ChevronDown className="h-3.5 w-3.5" />
-                    ) : (
-                      <ChevronRight className="h-3.5 w-3.5" />
-                    )}
-                    {advancedPayloadOpen
-                      ? t('bots.dryRunHidePayload')
-                      : t('bots.dryRunEditPayload')}
-                  </Button>
+            <div className="space-y-2">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                <div className="min-w-0 flex-1 space-y-1.5">
+                  <label className="text-sm font-medium">
+                    {t('bots.dryRunEventType')}
+                  </label>
+                  <Select value={eventType} onValueChange={setEventType}>
+                    <SelectTrigger className="h-9">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {eventOptions.map((event) => (
+                        <SelectItem key={event} value={event}>
+                          {eventLabel(event, t)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-                {advancedPayloadOpen && (
-                  <div className="mt-3 space-y-1.5 border-t pt-3">
-                    <label className="text-xs font-medium">
-                      {t('bots.dryRunPayload')}
-                    </label>
-                    <Textarea
-                      value={payloadText}
-                      onChange={(e) => setPayloadText(e.target.value)}
-                      className="min-h-[118px] font-mono text-xs"
-                      spellCheck={false}
-                      placeholder='{"message_text": "hello"}'
-                    />
-                    {payloadError ? (
-                      <p className="text-xs text-destructive">{payloadError}</p>
-                    ) : (
-                      <p className="text-xs text-muted-foreground">
-                        {t('bots.dryRunPayloadHint')}
-                      </p>
-                    )}
-                  </div>
-                )}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-9 shrink-0 self-start px-2 text-xs text-muted-foreground sm:self-auto"
+                  onClick={() => setAdvancedPayloadOpen((value) => !value)}
+                >
+                  {advancedPayloadOpen ? (
+                    <ChevronDown className="h-3.5 w-3.5" />
+                  ) : (
+                    <ChevronRight className="h-3.5 w-3.5" />
+                  )}
+                  {advancedPayloadOpen
+                    ? t('bots.dryRunHidePayload')
+                    : t('bots.dryRunEditPayload')}
+                </Button>
               </div>
+              {advancedPayloadOpen && (
+                <div className="space-y-1.5 rounded-md border bg-muted/20 p-3">
+                  <label className="text-xs font-medium">
+                    {t('bots.dryRunPayload')}
+                  </label>
+                  <Textarea
+                    value={payloadText}
+                    onChange={(e) => setPayloadText(e.target.value)}
+                    className="min-h-[110px] font-mono text-xs"
+                    spellCheck={false}
+                    placeholder='{"message_text": "hello"}'
+                  />
+                  {payloadError ? (
+                    <p className="text-xs text-destructive">{payloadError}</p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      {t('bots.dryRunPayloadHint')}
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
 
             {runError && (
@@ -1188,9 +1176,9 @@ function RouteDryRunDialog({
               </Alert>
             )}
 
-            <Alert className="border-amber-200 bg-amber-50/60 text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-200">
+            <Alert className="border-amber-200 bg-amber-50/60 px-3 py-2 text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-200">
               <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
+              <AlertDescription className="text-xs">
                 {t('bots.routeTestSideEffectWarning')}
               </AlertDescription>
             </Alert>

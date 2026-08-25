@@ -476,32 +476,31 @@ const jaJP = {
       runner_failed: 'Agent Runner がイベント処理中に失敗しました。',
       delivery_failed: '処理は完了しましたが、結果の配信に失敗しました。',
     },
-    routeTestAction: '保存済みルートを実行',
+    routeTestAction: '保存済み設定を実行',
     routeTestRunning: '実行中…',
     routeTestFailed:
       '保存済みルートの実行に失敗しました。後でもう一度お試しください。',
     routeTestDispatched:
       '保存済みルートを実行しました。{{count}} 件のプラットフォーム操作を抑制しました。',
     routeTestSideEffectWarning:
-      '保存済みルートを実行するとプロセッサーが動作します。プラットフォームのメッセージ操作は抑制されますが、ツールや外部サービスには副作用が生じる場合があります。',
-    dryRunTitle: 'イベントルートをテスト',
+      'プラットフォームへの送信は抑制されますが、プロセッサーとツールは実行されます。',
+    dryRunTitle: 'ルートをテスト',
     dryRunDescription:
-      'プロセッサーを実行せずに現在のフォームをプレビューするか、保存済みルートを実行して設定を検証します。',
+      'まず一致結果を確認し、必要な場合のみ保存済み設定を実行します。',
     dryRunEventType: 'イベントタイプ',
     dryRunSampleReady: 'サンプルイベントを準備しました',
     dryRunSampleDescription:
       'LangBot が「{{event}}」用のサンプルデータを準備しました。通常はそのままテストできます。',
-    dryRunEditPayload: '詳細データを編集',
-    dryRunHidePayload: '詳細データを閉じる',
-    dryRunPayload: '詳細イベントデータ（JSON）',
-    dryRunPayloadHint:
-      'message_text、chat_type、chat_id などの簡単なフィールドで条件をテストできます。',
+    dryRunEditPayload: 'テストデータ',
+    dryRunHidePayload: 'データを閉じる',
+    dryRunPayload: 'テストデータ（JSON）',
+    dryRunPayloadHint: 'メッセージや会話の条件テストに使用します。',
     dryRunPayloadJsonError: '有効な JSON を入力してください。',
     dryRunPayloadObjectError:
       'ペイロードは JSON オブジェクトである必要があります。',
     dryRunNeedsSavedBot: 'ルートをテストする前にボットを保存してください。',
     dryRunFailed: 'ルートテストに失敗しました。後でもう一度お試しください。',
-    dryRunAction: 'ルートをプレビュー',
+    dryRunAction: '一致を確認',
     dryRunRunning: 'テスト中…',
     dryRunMatched: 'ルートに一致しました',
     dryRunNotMatched: '一致するルートはありません',
