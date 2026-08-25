@@ -40,7 +40,13 @@ import {
   Music,
   Code,
   AlignLeft,
+  RotateCcw,
 } from 'lucide-react';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 
 interface DebugDialogProps {
   open: boolean;
@@ -48,6 +54,8 @@ interface DebugDialogProps {
   isEmbedded?: boolean;
   compact?: boolean;
   onConnectionStatusChange?: (isConnected: boolean) => void;
+  beforeSend?: () => Promise<boolean>;
+  hasUnsavedChanges?: boolean;
 }
 
 function AuthenticatedMessageImage({
@@ -118,6 +126,8 @@ export default function DebugDialog({
   isEmbedded = false,
   compact = false,
   onConnectionStatusChange,
+  beforeSend,
+  hasUnsavedChanges = false,
 }: DebugDialogProps) {
   const { t } = useTranslation();
   const [selectedPipelineId, setSelectedPipelineId] = useState(pipelineId);
@@ -177,7 +187,7 @@ export default function DebugDialog({
           sessionType,
         );
         if (generation !== historyRequestGenerationRef.current) return;
-        setMessages(response.messages);
+        setMessages(Array.isArray(response.messages) ? response.messages : []);
       } catch (error) {
         if (generation !== historyRequestGenerationRef.current) return;
         console.error('Failed to load messages:', error);
@@ -185,6 +195,19 @@ export default function DebugDialog({
     },
     [sessionType],
   );
+
+  const resetConversation = useCallback(async () => {
+    try {
+      await httpClient.resetWebSocketSession(selectedPipelineId, sessionType);
+      invalidateHistoryRequests();
+      setMessages([]);
+      setQuotedMessage(null);
+      toast.success(t('pipelines.debugDialog.resetSuccess'));
+    } catch (error) {
+      console.error('Failed to reset Debug Chat session:', error);
+      toast.error(t('pipelines.debugDialog.resetFailed'));
+    }
+  }, [invalidateHistoryRequests, selectedPipelineId, sessionType, t]);
 
   // Initialize WebSocket connection
   const initWebSocket = useCallback(
@@ -435,6 +458,9 @@ export default function DebugDialog({
 
     try {
       setIsUploading(true);
+      if (hasUnsavedChanges && beforeSend && !(await beforeSend())) {
+        return;
+      }
 
       const messageChain = [];
 
@@ -834,32 +860,65 @@ export default function DebugDialog({
           compact && 'w-12 p-1.5 pl-1',
         )}
       >
-        <Button
-          variant="ghost"
-          size="icon"
-          className={cn(
-            'w-10 h-10 justify-center rounded-md transition-none border-0 shadow-none',
-            sessionType === 'person'
-              ? 'bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground'
-              : 'bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground',
-          )}
-          onClick={() => setSessionType('person')}
-        >
-          <User className="size-5" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className={cn(
-            'w-10 h-10 justify-center rounded-md transition-none border-0 shadow-none',
-            sessionType === 'group'
-              ? 'bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground'
-              : 'bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground',
-          )}
-          onClick={() => setSessionType('group')}
-        >
-          <Users className="size-5" />
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={t('pipelines.debugDialog.privateChat')}
+              className={cn(
+                'w-10 h-10 justify-center rounded-md transition-none border-0 shadow-none',
+                sessionType === 'person'
+                  ? 'bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground'
+                  : 'bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+              )}
+              onClick={() => setSessionType('person')}
+            >
+              <User className="size-5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="right">
+            {t('pipelines.debugDialog.privateChat')}
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={t('pipelines.debugDialog.groupChat')}
+              className={cn(
+                'w-10 h-10 justify-center rounded-md transition-none border-0 shadow-none',
+                sessionType === 'group'
+                  ? 'bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground'
+                  : 'bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+              )}
+              onClick={() => setSessionType('group')}
+            >
+              <Users className="size-5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="right">
+            {t('pipelines.debugDialog.groupChat')}
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label={t('pipelines.debugDialog.reset')}
+              className="w-10 h-10 justify-center rounded-md text-muted-foreground"
+              onClick={() => void resetConversation()}
+            >
+              <RotateCcw className="size-5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="right">
+            {t('pipelines.debugDialog.reset')}
+          </TooltipContent>
+        </Tooltip>
       </div>
 
       <div className="flex-1 flex flex-col w-[10rem] h-full min-h-0">
@@ -1120,7 +1179,9 @@ export default function DebugDialog({
             ) : (
               <>
                 <Send className="size-4" />
-                {t('pipelines.debugDialog.send')}
+                {hasUnsavedChanges
+                  ? t('pipelines.debugDialog.saveAndSend')
+                  : t('pipelines.debugDialog.send')}
               </>
             )}
           </Button>

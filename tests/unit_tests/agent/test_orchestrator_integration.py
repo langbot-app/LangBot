@@ -901,7 +901,7 @@ async def test_orchestrator_enforces_total_runner_deadline(clean_agent_state):
         [message async for message in orchestrator.run_from_query(query)]
 
     assert exc_info.value.retryable is True
-    assert 'runner.timeout' in str(exc_info.value)
+    assert exc_info.value.error_code == 'runner.timeout'
     assert await get_session_registry().list_active_runs() == []
 
 
@@ -1012,6 +1012,7 @@ class TestQueryEntrySessionQueryId:
             ]
         )
         ap = FakeApplication(plugin_connector, db_engine)
+
         async def build_resource_context(execution_query):
             from langbot.pkg.provider.tools.loaders.mcp import (
                 _execution_context_from_query,
@@ -1025,9 +1026,7 @@ class TestQueryEntrySessionQueryId:
             return 'Pinned documentation'
 
         mcp_loader = types.SimpleNamespace(
-            build_resource_context_for_query=AsyncMock(
-                side_effect=build_resource_context
-            )
+            build_resource_context_for_query=AsyncMock(side_effect=build_resource_context)
         )
         ap.tool_mgr = types.SimpleNamespace(mcp_tool_loader=mcp_loader)
         orchestrator = AgentRunOrchestrator(ap, FakeRegistry(descriptor))
@@ -1105,14 +1104,8 @@ class TestQueryEntrySessionQueryId:
         assert 'Pinned documentation' in plugin_connector.contexts[0]['input']['contents'][0]['text']
         assert event.input.text == 'hello'
         assert event.input.contents[0].text == 'hello'
-        assert (
-            plugin_connector.contexts[0]['conversation']['workspace_id']
-            == TEST_CONTEXT.workspace_uuid
-        )
-        assert (
-            plugin_connector.contexts[0]['runtime']['metadata']['workspace_id']
-            == TEST_CONTEXT.workspace_uuid
-        )
+        assert plugin_connector.contexts[0]['conversation']['workspace_id'] == TEST_CONTEXT.workspace_uuid
+        assert plugin_connector.contexts[0]['runtime']['metadata']['workspace_id'] == TEST_CONTEXT.workspace_uuid
         assert 'Pinned documentation' not in str(execution_query.user_message.content)
         mcp_loader.build_resource_context_for_query.assert_awaited_once_with(execution_query)
 

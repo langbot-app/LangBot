@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState, useMemo } from 'react';
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { GetPipelineResponseData, Pipeline } from '@/app/infra/entities/api';
 import {
@@ -51,17 +58,7 @@ import {
 } from 'lucide-react';
 import PipelineExtension from '@/app/home/pipelines/components/pipeline-extensions/PipelineExtension';
 
-export default function PipelineFormComponent({
-  onFinish,
-  onNewPipelineCreated,
-  isEditMode,
-  pipelineId,
-  showButtons = true,
-  onDeletePipeline,
-  onCancel,
-  onDirtyChange,
-  onSavingChange,
-}: {
+interface PipelineFormComponentProps {
   pipelineId?: string;
   isEditMode: boolean;
   disableForm: boolean;
@@ -72,7 +69,29 @@ export default function PipelineFormComponent({
   onCancel?: () => void;
   onDirtyChange?: (dirty: boolean) => void;
   onSavingChange?: (saving: boolean) => void;
-}) {
+}
+
+export interface PipelineFormHandle {
+  save: () => Promise<boolean>;
+}
+
+const PipelineFormComponent = forwardRef<
+  PipelineFormHandle,
+  PipelineFormComponentProps
+>(function PipelineFormComponent(
+  {
+    onFinish,
+    onNewPipelineCreated,
+    isEditMode,
+    pipelineId,
+    showButtons = true,
+    onDeletePipeline,
+    onCancel,
+    onDirtyChange,
+    onSavingChange,
+  },
+  ref,
+) {
   const { t } = useTranslation();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showCopyConfirm, setShowCopyConfirm] = useState(false);
@@ -268,7 +287,7 @@ export default function PipelineFormComponent({
 
   function handleFormSubmit(values: FormValues) {
     if (isEditMode) {
-      handleModify(values);
+      void handleModify(values);
     } else {
       handleCreate(values);
     }
@@ -302,8 +321,8 @@ export default function PipelineFormComponent({
       });
   }
 
-  function handleModify(values: FormValues) {
-    if (isSavingRef.current) return;
+  async function handleModify(values: FormValues): Promise<boolean> {
+    if (isSavingRef.current) return false;
     const submittedSnapshot = JSON.stringify(values);
     const realConfig = {
       ai: values.ai,
@@ -327,22 +346,35 @@ export default function PipelineFormComponent({
     isSavingRef.current = true;
     setIsSaving(true);
     onSavingChange?.(true);
-    httpClient
-      .updatePipeline(pipelineId || '', pipeline)
-      .then(() => {
-        savedSnapshotRef.current = submittedSnapshot;
-        onFinish();
-        toast.success(t('pipelines.saveSuccess'));
-      })
-      .catch((err) => {
-        toast.error(t('pipelines.saveError') + err.msg);
-      })
-      .finally(() => {
-        isSavingRef.current = false;
-        setIsSaving(false);
-        onSavingChange?.(false);
-      });
+    try {
+      await httpClient.updatePipeline(pipelineId || '', pipeline);
+      savedSnapshotRef.current = submittedSnapshot;
+      onFinish();
+      toast.success(t('pipelines.saveSuccess'));
+      return true;
+    } catch (err) {
+      const message =
+        typeof err === 'object' && err && 'msg' in err
+          ? String((err as { msg?: string }).msg || '')
+          : '';
+      toast.error(t('pipelines.saveError') + message);
+      return false;
+    } finally {
+      isSavingRef.current = false;
+      setIsSaving(false);
+      onSavingChange?.(false);
+    }
   }
+
+  useImperativeHandle(ref, () => ({
+    async save() {
+      if (!hasUnsavedChangesRef.current) return true;
+      if (isSavingRef.current || !isEditMode) return false;
+      const valid = await form.trigger();
+      if (!valid) return false;
+      return handleModify(form.getValues());
+    },
+  }));
 
   // Called from DynamicFormComponent onSubmit callbacks.
   // On the first emission for a stage (mount-time default filling), the
@@ -877,7 +909,9 @@ export default function PipelineFormComponent({
       </Dialog>
     </>
   );
-}
+});
+
+export default PipelineFormComponent;
 interface SectionItem {
   label: string;
   name: string;

@@ -1752,6 +1752,17 @@ function findSidebarChildForPath(pathname: string): SidebarChildVO | undefined {
     );
   if (matchedChild) return matchedChild;
 
+  // Keep the legacy Pipeline URL usable after Pipelines and Agents were
+  // unified under the Processors section.
+  if (
+    pathname === '/home/pipelines' ||
+    pathname.startsWith('/home/pipelines/')
+  ) {
+    return sidebarConfigList.find(
+      (childConfig) => childConfig.id === 'pipelines',
+    );
+  }
+
   if (
     pathname === '/home/mcp' ||
     pathname === '/home/skills' ||

@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import PipelineFormComponent from '@/app/home/pipelines/components/pipeline-form/PipelineFormComponent';
+import PipelineFormComponent, {
+  PipelineFormHandle,
+} from '@/app/home/pipelines/components/pipeline-form/PipelineFormComponent';
 import DebugDialog from '@/app/home/pipelines/components/debug-dialog/DebugDialog';
 import PipelineMonitoringTab from '@/app/home/pipelines/components/monitoring-tab/PipelineMonitoringTab';
 import ProcessorDetailWorkbench from '@/app/home/components/processor-detail/ProcessorDetailWorkbench';
@@ -42,6 +44,8 @@ export default function PipelineDetailContent({
   const [isWebSocketConnected, setIsWebSocketConnected] = useState(false);
   const [formDirty, setFormDirty] = useState(false);
   const [formSaving, setFormSaving] = useState(false);
+  const pipelineFormRef = useRef<PipelineFormHandle>(null);
+  const pipeline = pipelines.find((item) => item.id === id);
 
   function handleFinish() {
     refreshPipelines();
@@ -96,7 +100,7 @@ export default function PipelineDetailContent({
   return (
     <ProcessorDetailWorkbench
       key={id}
-      title={t('pipelines.editPipeline')}
+      title={`${pipeline?.emoji || '⚙️'} ${pipeline?.name || t('pipelines.editPipeline')}`}
       saveLabel={t('common.save')}
       saveFormId="pipeline-form"
       canSave={canManage}
@@ -106,6 +110,7 @@ export default function PipelineDetailContent({
       configContent={
         <fieldset className="contents" disabled={!canManage}>
           <PipelineFormComponent
+            ref={pipelineFormRef}
             pipelineId={id}
             isEditMode={true}
             disableForm={!canManage}
@@ -130,6 +135,8 @@ export default function PipelineDetailContent({
             pipelineId={id}
             isEmbedded={true}
             compact={true}
+            hasUnsavedChanges={formDirty}
+            beforeSend={async () => pipelineFormRef.current?.save() ?? false}
             onConnectionStatusChange={setIsWebSocketConnected}
           />
         ) : undefined

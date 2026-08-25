@@ -7,7 +7,10 @@ from collections.abc import Sequence
 import regex
 
 
-MAX_PATTERN_COUNT = 64
+# The bundled sensitive-word list already contains more than 64 entries. Keep
+# the deterministic cap, but leave enough room for the built-in defaults and
+# reasonable administrator customisation.
+MAX_PATTERN_COUNT = 256
 MAX_PATTERN_CHARS = 1024
 MAX_INPUT_CHARS = 1024 * 1024
 MAX_REPLACEMENT_CHARS = 64

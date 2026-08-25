@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  forwardRef,
+  type ForwardedRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -51,23 +60,62 @@ export interface AgentRunnerStatus {
 
 interface AgentFormComponentProps {
   agentId: string;
-  onFinish: () => void;
+  onFinish: (agent?: Partial<Agent>) => void;
   onDeleted: () => void;
   onDirtyChange?: (dirty: boolean) => void;
   onSavingChange?: (saving: boolean) => void;
   onRunnerStatusChange?: (status: AgentRunnerStatus) => void;
 }
 
-type AgentConfigSection = 'events' | 'runner' | 'runner_config' | 'basic';
+export type AgentConfigSection =
+  'events' | 'runner' | 'runner_config' | 'basic';
 
-export default function AgentFormComponent({
-  agentId,
-  onFinish,
-  onDeleted,
-  onDirtyChange,
-  onSavingChange,
-  onRunnerStatusChange,
-}: AgentFormComponentProps) {
+export interface AgentFormHandle {
+  openSection: (section: AgentConfigSection) => void;
+  save: () => Promise<boolean>;
+}
+
+function isRequiredRunnerValueMissing(value: unknown): boolean {
+  if (value === null || value === undefined) return true;
+  if (typeof value === 'string') return value.trim() === '';
+  if (Array.isArray(value)) return value.length === 0;
+  if (typeof value === 'object' && 'primary' in value) {
+    return !String((value as { primary?: unknown }).primary || '').trim();
+  }
+  return false;
+}
+
+function isRunnerFieldVisible(
+  field: PipelineConfigStage['config'][number],
+  values: Record<string, unknown>,
+) {
+  if (!field.show_if || field.show_if.field.startsWith('__system.')) {
+    return true;
+  }
+  const dependentValue = values[field.show_if.field];
+  if (field.show_if.operator === 'eq') {
+    return dependentValue === field.show_if.value;
+  }
+  if (field.show_if.operator === 'neq') {
+    return dependentValue !== field.show_if.value;
+  }
+  return (
+    Array.isArray(field.show_if.value) &&
+    field.show_if.value.includes(dependentValue)
+  );
+}
+
+function AgentFormComponent(
+  {
+    agentId,
+    onFinish,
+    onDeleted,
+    onDirtyChange,
+    onSavingChange,
+    onRunnerStatusChange,
+  }: AgentFormComponentProps,
+  ref: ForwardedRef<AgentFormHandle>,
+) {
   const { t } = useTranslation();
   const [runnerConfigSchema, setRunnerConfigSchema] =
     useState<PipelineConfigTab | null>(null);
@@ -80,6 +128,7 @@ export default function AgentFormComponent({
   const [activeSection, setActiveSection] =
     useState<AgentConfigSection>('basic');
   const isSavingRef = useRef(false);
+  const hasUnsavedChangesRef = useRef(false);
 
   const formSchema = z.object({
     basic: z.object({
@@ -116,6 +165,7 @@ export default function AgentFormComponent({
     if (!savedSnapshotRef.current) return false;
     return JSON.stringify(watchedValues) !== savedSnapshotRef.current;
   })();
+  hasUnsavedChangesRef.current = hasUnsavedChanges;
 
   useEffect(() => {
     onDirtyChange?.(hasUnsavedChanges);
@@ -190,6 +240,24 @@ export default function AgentFormComponent({
   );
   const activeRunnerStage = runnerConfigSchema?.stages.find(
     (stage) => stage.name === currentRunner,
+  );
+  const runnerConfigValues = form.watch('runner_config') as Record<
+    string,
+    Record<string, unknown>
+  >;
+  const activeRunnerValues = useMemo(
+    () => runnerConfigValues?.[currentRunner] ?? {},
+    [currentRunner, runnerConfigValues],
+  );
+  const missingRunnerFields = useMemo(
+    () =>
+      (activeRunnerStage?.config ?? []).filter(
+        (field) =>
+          field.required &&
+          isRunnerFieldVisible(field, activeRunnerValues) &&
+          isRequiredRunnerValueMissing(activeRunnerValues[field.name]),
+      ),
+    [activeRunnerStage, activeRunnerValues],
   );
   const primarySections: Array<{
     name: AgentConfigSection;
@@ -270,6 +338,18 @@ export default function AgentFormComponent({
       };
     }
 
+    if (missingRunnerFields.length > 0) {
+      return {
+        label: t('agents.runnerConfigIncomplete'),
+        description: t('agents.runnerConfigIncompleteDescription', {
+          fields: missingRunnerFields
+            .map((field) => extractI18nObject(field.label))
+            .join(', '),
+        }),
+        tone: 'warning',
+      };
+    }
+
     return {
       label: t('agents.runnerReady'),
       description: t('agents.runnerReadyDescription', {
@@ -283,6 +363,7 @@ export default function AgentFormComponent({
     pluginStatusLoading,
     pluginSystemStatus,
     runnerOptions.length,
+    missingRunnerFields,
     selectedRunnerOption,
     t,
   ]);
@@ -369,44 +450,69 @@ export default function AgentFormComponent({
     return patterns.length > 0 ? patterns : ['*'];
   }
 
-  function handleSubmit(values: FormValues) {
-    if (isSavingRef.current) return;
-    const submittedSnapshot = JSON.stringify(values);
-    const runner = values.runner || {};
-    const agent: Partial<Agent> = {
-      name: values.basic.name,
-      description: values.basic.description ?? '',
-      emoji: values.basic.emoji,
-      enabled: values.basic.enabled ?? true,
-      component_ref: (runner.id as string) || null,
-      supported_event_patterns: normalizeEventPatterns(
-        values.supported_event_patterns_text,
-      ),
-      config: {
-        runner,
-        runner_config: values.runner_config ?? {},
-      },
-    };
+  const saveValues = useCallback(
+    async (values: FormValues) => {
+      if (isSavingRef.current) return false;
+      const submittedSnapshot = JSON.stringify(values);
+      const runner = values.runner || {};
+      const agent: Partial<Agent> = {
+        name: values.basic.name,
+        description: values.basic.description ?? '',
+        emoji: values.basic.emoji,
+        enabled: values.basic.enabled ?? true,
+        component_ref: (runner.id as string) || null,
+        supported_event_patterns: normalizeEventPatterns(
+          values.supported_event_patterns_text,
+        ),
+        config: {
+          runner,
+          runner_config: values.runner_config ?? {},
+        },
+      };
 
-    isSavingRef.current = true;
-    setIsSaving(true);
-    onSavingChange?.(true);
-    httpClient
-      .updateAgent(agentId, agent)
-      .then(() => {
+      isSavingRef.current = true;
+      setIsSaving(true);
+      onSavingChange?.(true);
+      try {
+        await httpClient.updateAgent(agentId, agent);
         savedSnapshotRef.current = submittedSnapshot;
-        onFinish();
+        onFinish(agent);
         toast.success(t('agents.saveSuccess'));
-      })
-      .catch((err) => {
-        toast.error(t('agents.saveError') + err.msg);
-      })
-      .finally(() => {
+        return true;
+      } catch (err) {
+        const message =
+          typeof err === 'object' && err && 'msg' in err
+            ? String((err as { msg?: string }).msg || '')
+            : '';
+        toast.error(t('agents.saveError') + message);
+        return false;
+      } finally {
         isSavingRef.current = false;
         setIsSaving(false);
         onSavingChange?.(false);
-      });
+      }
+    },
+    [agentId, onFinish, onSavingChange, t],
+  );
+
+  function handleSubmit(values: FormValues) {
+    void saveValues(values);
   }
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      openSection: setActiveSection,
+      async save() {
+        if (!hasUnsavedChangesRef.current) return true;
+        if (isSavingRef.current) return false;
+        const valid = await form.trigger();
+        if (!valid) return false;
+        return (await saveValues(form.getValues())) ?? false;
+      },
+    }),
+    [form, saveValues],
+  );
 
   function confirmDelete() {
     httpClient
@@ -672,3 +778,5 @@ export default function AgentFormComponent({
     </>
   );
 }
+
+export default forwardRef(AgentFormComponent);

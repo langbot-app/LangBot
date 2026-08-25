@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { httpClient } from '@/app/infra/http/HttpClient';
@@ -10,6 +10,7 @@ import PipelineDetailContent from '@/app/home/pipelines/PipelineDetailContent';
 import AgentCreateContent from './components/AgentCreateContent';
 import AgentDebugPanel from './components/AgentDebugPanel';
 import AgentFormComponent, {
+  AgentFormHandle,
   AgentRunnerStatus,
 } from './components/AgentFormComponent';
 
@@ -30,6 +31,7 @@ export default function AgentDetailContent({ id }: { id: string }) {
   const [runnerStatus, setRunnerStatus] = useState<AgentRunnerStatus | null>(
     null,
   );
+  const agentFormRef = useRef<AgentFormHandle>(null);
 
   useEffect(() => {
     if (isCreateMode) {
@@ -89,7 +91,7 @@ export default function AgentDetailContent({ id }: { id: string }) {
   return (
     <ProcessorDetailWorkbench
       key={id}
-      title={t('agents.editAgent')}
+      title={`${agent.emoji || '🤖'} ${agent.name}`}
       status={runnerStatus}
       saveLabel={t('common.save')}
       saveFormId="agent-form"
@@ -100,8 +102,14 @@ export default function AgentDetailContent({ id }: { id: string }) {
       configContent={
         <fieldset className="contents" disabled={!canManage}>
           <AgentFormComponent
+            ref={agentFormRef}
             agentId={id}
-            onFinish={() => {
+            onFinish={(updatedAgent) => {
+              if (updatedAgent) {
+                setAgent((current) =>
+                  current ? { ...current, ...updatedAgent } : current,
+                );
+              }
               refreshPipelines();
             }}
             onDeleted={() => {
@@ -119,6 +127,11 @@ export default function AgentDetailContent({ id }: { id: string }) {
         canOperate ? (
           <AgentDebugPanel
             agentId={id}
+            hasUnsavedChanges={formDirty}
+            beforeRun={async () => agentFormRef.current?.save() ?? false}
+            onOpenRunnerConfig={() =>
+              agentFormRef.current?.openSection('runner_config')
+            }
             supportedEventPatterns={
               agent.supported_event_patterns ??
               agent.capability?.supported_event_patterns ?? ['*']

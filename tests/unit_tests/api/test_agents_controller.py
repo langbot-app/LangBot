@@ -9,6 +9,8 @@ from unittest.mock import ANY, AsyncMock
 import pytest
 import quart
 
+from langbot.pkg.agent.runner.errors import RunnerExecutionError
+
 core_app_module = types.ModuleType('langbot.pkg.core.app')
 core_app_module.Application = object
 sys.modules.setdefault('langbot.pkg.core.app', core_app_module)
@@ -141,4 +143,29 @@ async def test_debug_agent_returns_bad_request_for_invalid_event():
     assert await response.get_json() == {
         'code': -1,
         'msg': 'Invalid event_type',
+    }
+
+
+async def test_debug_agent_returns_actionable_runner_error():
+    agent_service = SimpleNamespace(
+        debug_agent=AsyncMock(
+            side_effect=RunnerExecutionError(
+                'plugin:langbot-team/DifyAgent/default',
+                'api-key is required',
+                error_code='dify.config_invalid',
+            )
+        ),
+    )
+    client = await _create_test_client(agent_service)
+
+    response = await client.post(
+        '/api/v1/agents/agent-1/debug',
+        json={'event_type': 'message.received', 'text': 'hello'},
+        headers={'Authorization': 'Bearer test-token'},
+    )
+
+    assert response.status_code == 422
+    assert await response.get_json() == {
+        'code': 'dify.config_invalid',
+        'msg': 'api-key is required',
     }

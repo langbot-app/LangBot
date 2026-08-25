@@ -152,10 +152,14 @@ class AgentResultNormalizer:
             error_msg = data.get('error', 'Unknown error')
             error_code = data.get('code', 'unknown')
             retryable = data.get('retryable', False)
+            normalized_error_code = str(error_code or '').strip()
             raise RunnerExecutionError(
                 descriptor.id,
-                f'{error_msg} (code: {error_code})',
+                str(error_msg),
                 retryable=retryable,
+                error_code=(
+                    normalized_error_code if normalized_error_code and normalized_error_code != 'unknown' else None
+                ),
             )
 
         elif result_type == 'action.requested':

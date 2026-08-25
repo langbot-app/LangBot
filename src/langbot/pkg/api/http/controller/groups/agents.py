@@ -2,6 +2,13 @@ from __future__ import annotations
 
 import quart
 
+from .....agent.runner.errors import (
+    AgentRunnerError,
+    RunnerExecutionError,
+    RunnerNotAuthorizedError,
+    RunnerNotFoundError,
+    RunnerProtocolError,
+)
 from ...authz import Permission, require_permission
 from ...context import RequestContext
 from .. import group
@@ -63,6 +70,36 @@ class AgentsRouterGroup(group.RouterGroup):
                 )
             except ValueError as exc:
                 return self.http_status(400, -1, str(exc))
+            except RunnerExecutionError as exc:
+                return self.http_status(
+                    422,
+                    exc.error_code or 'runner_execution_failed',
+                    exc.message,
+                )
+            except RunnerNotFoundError:
+                return self.http_status(
+                    409,
+                    'runner_not_found',
+                    'The configured Agent runner is unavailable',
+                )
+            except RunnerNotAuthorizedError:
+                return self.http_status(
+                    403,
+                    'runner_not_authorized',
+                    'The configured Agent runner is not authorized',
+                )
+            except RunnerProtocolError:
+                return self.http_status(
+                    502,
+                    'runner_protocol_error',
+                    'The Agent runner returned an invalid response',
+                )
+            except AgentRunnerError:
+                return self.http_status(
+                    502,
+                    'runner_error',
+                    'The Agent runner could not complete this test',
+                )
             return self.success(data=result)
 
         @self.route(

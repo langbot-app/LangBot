@@ -58,21 +58,21 @@ class AgentRunnerInvoker:
         except asyncio.TimeoutError as e:
             raise RunnerExecutionError(
                 descriptor.id,
-                'Runner timed out (code: runner.timeout)',
+                'Runner timed out',
                 retryable=True,
+                error_code='runner.timeout',
             ) from e
         except ActionCallTimeoutError as e:
             raise RunnerExecutionError(
                 descriptor.id,
-                f'{e} (code: runner.timeout)',
+                str(e),
                 retryable=True,
+                error_code='runner.timeout',
             ) from e
         except RunnerExecutionError:
             raise
         except Exception as e:
-            self.ap.logger.error(
-                f'Runner {descriptor.id} unexpected error: {traceback.format_exc()}'
-            )
+            self.ap.logger.error(f'Runner {descriptor.id} unexpected error: {traceback.format_exc()}')
             raise RunnerExecutionError(
                 descriptor.id,
                 str(e),

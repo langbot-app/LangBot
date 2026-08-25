@@ -25,7 +25,7 @@ class BanWordFilter(filter_model.ContentFilter):
             return entities.FilterResult(
                 level=entities.ResultLevel.BLOCK,
                 replacement='',
-                user_notice='内容检查规则执行失败，请联系管理员',
+                user_notice='内容安全检查配置有误，请检查敏感词设置',
                 console_notice=f'Sensitive-word regex rejected: {exc}',
             )
 

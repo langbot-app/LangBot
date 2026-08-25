@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import threading
+from pathlib import Path
 
 import pytest
 
@@ -51,6 +53,23 @@ async def test_matches_any_rejects_pattern_and_input_amplification():
             ['a'],
             'a' * (safe_regex.MAX_INPUT_CHARS + 1),
         )
+
+
+@pytest.mark.asyncio
+async def test_bundled_sensitive_words_fit_within_pattern_limit():
+    config_path = Path(__file__).parents[3] / 'src/langbot/templates/metadata/sensitive-words.json'
+    config = json.loads(config_path.read_text())
+
+    assert len(config['words']) <= safe_regex.MAX_PATTERN_COUNT
+    found, masked = await safe_regex.mask_patterns(
+        config['words'],
+        '普通消息',
+        mask=config['mask'],
+        mask_word=config['mask_word'],
+    )
+
+    assert found is False
+    assert masked == '普通消息'
 
 
 @pytest.mark.asyncio

@@ -727,6 +727,8 @@ const enUS = {
     selectedRunnerUnavailableDescription:
       '{{runner}} is not currently registered. Select another runner or restore its extension.',
     noRunnerSelected: 'No runner selected',
+    runnerConfigIncomplete: 'Runner configuration incomplete',
+    runnerConfigIncompleteDescription: 'Complete required fields: {{fields}}',
     runnerReady: 'Runner ready',
     runnerReadyDescription:
       '{{runner}} is registered and the plugin runtime is connected.',
@@ -749,18 +751,32 @@ const enUS = {
     debugEventPayload: 'Event payload (JSON)',
     debugSupportedEvents: 'Agent supports',
     debugRun: 'Run test',
+    debugSaveAndRun: 'Save and run',
     debugRunning: 'Running',
     debugTranscript: 'Debug transcript',
     debugTranscriptDescription:
       'Inputs and Agent outputs from the current debug session.',
+    debugEmptyTitle: 'Verify how this Agent behaves',
     debugEmptyTranscript:
-      'Choose an event and run a test to see the result here.',
+      'Choose an event, enter test content, then select “Run test”. Results stay on this page.',
     debugAgentOutput: 'Agent output',
     debugTestInput: 'Test input',
     debugNoTextOutput: 'The run completed without textual output.',
     debugEventTypeRequired: 'Enter an event type',
     debugInputRequired: 'Enter a conversation input',
     debugInvalidPayload: 'The event payload must be a valid JSON object',
+    debugUnsupportedEvent:
+      'This event is outside the Agent’s bindable event range',
+    debugRunnerConfigInvalidDescription:
+      'The runner configuration is incomplete: {{message}}',
+    debugRunnerExecutionFailedDescription:
+      'This run failed. Check the selected model and runner configuration, then try again.',
+    debugRunnerTimeoutDescription:
+      'The run timed out. Try again later or adjust the runner timeout.',
+    debugApiKeyRequired: 'API Key is missing',
+    debugOpenRunnerConfig: 'Open runner configuration',
+    debugReviewRunnerConfig: 'Review runner configuration',
+    debugErrorDetails: 'View error details',
     debugRunFailed: 'Agent debug run failed',
   },
   plugins: {
@@ -1324,6 +1340,7 @@ const enUS = {
       privateChat: 'Private Chat',
       groupChat: 'Group Chat',
       send: 'Send',
+      saveAndSend: 'Save and send',
       reset: 'Reset Conversation',
       inputPlaceholder: 'Send {{type}} message...',
       noMessages: 'No messages',

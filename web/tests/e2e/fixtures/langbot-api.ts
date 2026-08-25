@@ -706,6 +706,24 @@ async function handleBackendApi(route: Route, state: LangBotApiMockState) {
     return fulfillJson(route, { agents: state.pipelines });
   }
 
+  const agentDebugMatch = path.match(/^\/api\/v1\/agents\/([^/]+)\/debug$/);
+  if (agentDebugMatch) {
+    const payload = parseJsonBody(route);
+    return fulfillJson(route, {
+      event_id: nextId(state, 'event'),
+      event_type: String(payload.event_type || 'message.received'),
+      conversation_id: String(payload.conversation_id || 'debug-session'),
+      final_text: 'Mock Agent response',
+      outputs: [
+        {
+          kind: 'message',
+          role: 'assistant',
+          text: 'Mock Agent response',
+        },
+      ],
+    });
+  }
+
   const agentMatch = path.match(/^\/api\/v1\/agents\/([^/]+)$/);
   if (agentMatch) {
     const agentId = decodeURIComponent(agentMatch[1]);
@@ -754,6 +772,16 @@ async function handleBackendApi(route: Route, state: LangBotApiMockState) {
     }
 
     return fulfillJson(route, { pipelines: state.pipelines });
+  }
+
+  if (
+    /^\/api\/v1\/pipelines\/[^/]+\/ws\/messages\/(person|group)$/.test(path)
+  ) {
+    return fulfillJson(route, { messages: [] });
+  }
+
+  if (/^\/api\/v1\/pipelines\/[^/]+\/ws\/reset\/(person|group)$/.test(path)) {
+    return fulfillJson(route, { message: 'reset' });
   }
 
   const pipelineMatch = path.match(/^\/api\/v1\/pipelines\/([^/]+)$/);

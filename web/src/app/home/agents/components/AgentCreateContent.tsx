@@ -51,9 +51,12 @@ export default function AgentCreateContent({
   });
 
   function handleKindChange(nextKind: AgentKind) {
+    const previousDefaultEmoji = kind === 'pipeline' ? '⚙️' : '🤖';
+    const nextDefaultEmoji = nextKind === 'pipeline' ? '⚙️' : '🤖';
     setKind(nextKind);
-    if (!form.getValues('emoji')) {
-      form.setValue('emoji', nextKind === 'pipeline' ? '⚙️' : '🤖');
+    const currentEmoji = form.getValues('emoji');
+    if (!currentEmoji || currentEmoji === previousDefaultEmoji) {
+      form.setValue('emoji', nextDefaultEmoji);
     }
   }
 

@@ -1,7 +1,14 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { LoaderCircle, Play, RotateCcw } from 'lucide-react';
+import {
+  AlertCircle,
+  ChevronDown,
+  CircleHelp,
+  LoaderCircle,
+  Play,
+  RotateCcw,
+} from 'lucide-react';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -15,10 +22,19 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible';
 
 interface AgentDebugPanelProps {
   agentId: string;
   supportedEventPatterns?: string[];
+  beforeRun?: () => Promise<boolean>;
+  hasUnsavedChanges?: boolean;
+  onOpenRunnerConfig?: () => void;
 }
 
 interface DebugEntry {
@@ -26,6 +42,8 @@ interface DebugEntry {
   direction: 'input' | 'output' | 'error';
   eventType: string;
   text: string;
+  errorCode?: string;
+  detail?: string;
 }
 
 const EVENT_PRESETS = [
@@ -87,9 +105,17 @@ function createDebugSessionId(agentId: string) {
   return `webui:${agentId}:${nonce}`;
 }
 
+function matchesEventPattern(pattern: string, eventType: string) {
+  const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`^${escaped.replaceAll('*', '.*')}$`).test(eventType);
+}
+
 export default function AgentDebugPanel({
   agentId,
   supportedEventPatterns = ['*'],
+  beforeRun,
+  hasUnsavedChanges = false,
+  onOpenRunnerConfig,
 }: AgentDebugPanelProps) {
   const { t } = useTranslation();
   const [preset, setPreset] = useState('message.received');
@@ -106,6 +132,22 @@ export default function AgentDebugPanel({
     () => supportedEventPatterns.join(', '),
     [supportedEventPatterns],
   );
+  const availablePresets = useMemo(
+    () =>
+      EVENT_PRESETS.filter(
+        (item) =>
+          item.value === 'custom' ||
+          supportedEventPatterns.some((pattern) =>
+            matchesEventPattern(pattern, item.value),
+          ),
+      ),
+    [supportedEventPatterns],
+  );
+
+  useEffect(() => {
+    if (availablePresets.some((item) => item.value === preset)) return;
+    selectPreset(availablePresets[0]?.value ?? 'custom');
+  }, [availablePresets, preset]);
 
   function selectPreset(value: string) {
     setPreset(value);
@@ -129,6 +171,14 @@ export default function AgentDebugPanel({
       toast.error(t('agents.debugInputRequired'));
       return;
     }
+    if (
+      !supportedEventPatterns.some((pattern) =>
+        matchesEventPattern(pattern, eventType),
+      )
+    ) {
+      toast.error(t('agents.debugUnsupportedEvent'));
+      return;
+    }
 
     let eventData: Record<string, unknown>;
     try {
@@ -142,6 +192,12 @@ export default function AgentDebugPanel({
       return;
     }
 
+    setRunning(true);
+    if (hasUnsavedChanges && beforeRun && !(await beforeRun())) {
+      setRunning(false);
+      return;
+    }
+
     const requestId = globalThis.crypto?.randomUUID?.() ?? String(Date.now());
     setEntries((current) => [
       ...current,
@@ -152,7 +208,6 @@ export default function AgentDebugPanel({
         text: inputText.trim() || JSON.stringify(eventData, null, 2),
       },
     ]);
-    setRunning(true);
     try {
       const result = await httpClient.debugAgent(agentId, {
         event_type: eventType,
@@ -171,17 +226,41 @@ export default function AgentDebugPanel({
       ]);
       if (isMessageEvent) setInputText('');
     } catch (error) {
+      const errorCode =
+        typeof error === 'object' && error && 'code' in error
+          ? String((error as { code?: string }).code || '')
+          : '';
       const message =
         typeof error === 'object' && error && 'msg' in error
           ? String((error as { msg?: string }).msg || '')
           : t('agents.debugRunFailed');
+      const isConfigError = errorCode.endsWith('.config_invalid');
+      const isExecutionError = errorCode === 'runner_execution_failed';
+      const isTimeout = errorCode === 'runner.timeout';
+      const friendlyMessage = isConfigError
+        ? t('agents.debugRunnerConfigInvalidDescription', {
+            message:
+              message === 'api-key is required'
+                ? t('agents.debugApiKeyRequired')
+                : message,
+          })
+        : isExecutionError
+          ? t('agents.debugRunnerExecutionFailedDescription')
+          : isTimeout
+            ? t('agents.debugRunnerTimeoutDescription')
+            : message || t('agents.debugRunFailed');
       setEntries((current) => [
         ...current,
         {
           id: `error:${requestId}`,
           direction: 'error',
           eventType,
-          text: message || t('agents.debugRunFailed'),
+          text: friendlyMessage,
+          errorCode,
+          detail:
+            isExecutionError || isTimeout
+              ? message || t('agents.debugRunFailed')
+              : undefined,
         },
       ]);
     } finally {
@@ -200,7 +279,7 @@ export default function AgentDebugPanel({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {EVENT_PRESETS.map((item) => (
+                {availablePresets.map((item) => (
                   <SelectItem key={item.value} value={item.value}>
                     {t(item.labelKey)}
                   </SelectItem>
@@ -242,22 +321,30 @@ export default function AgentDebugPanel({
           </p>
         </div>
         {entries.length === 0 ? (
-          <div className="flex min-h-48 items-center justify-center rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-            {t('agents.debugEmptyTranscript')}
-          </div>
+          <Alert className="my-4 bg-muted/20">
+            <CircleHelp className="size-4" />
+            <AlertTitle>{t('agents.debugEmptyTitle')}</AlertTitle>
+            <AlertDescription>
+              {t('agents.debugEmptyTranscript')}
+            </AlertDescription>
+          </Alert>
         ) : (
           <div className="space-y-3">
             {entries.map((entry) => (
-              <div
+              <Alert
                 key={entry.id}
-                className={`rounded-lg border p-3 ${
+                variant={
+                  entry.direction === 'error' ? 'destructive' : 'default'
+                }
+                className={
                   entry.direction === 'output'
                     ? 'border-primary/20 bg-primary/5'
-                    : entry.direction === 'error'
-                      ? 'border-destructive/30 bg-destructive/5'
-                      : 'bg-muted/40'
-                }`}
+                    : entry.direction === 'input'
+                      ? 'bg-muted/40'
+                      : undefined
+                }
               >
+                {entry.direction === 'error' && <AlertCircle />}
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <Badge variant="outline">{entry.eventType}</Badge>
                   <span className="text-xs text-muted-foreground">
@@ -271,7 +358,36 @@ export default function AgentDebugPanel({
                 <pre className="min-w-0 whitespace-pre-wrap break-words font-sans text-sm leading-relaxed">
                   {entry.text}
                 </pre>
-              </div>
+                {entry.detail && (
+                  <Collapsible className="mt-3">
+                    <CollapsibleTrigger asChild>
+                      <Button type="button" variant="ghost" size="sm">
+                        {t('agents.debugErrorDetails')}
+                        <ChevronDown className="size-3.5" />
+                      </Button>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted p-2 font-mono text-xs text-muted-foreground">
+                        {entry.detail}
+                      </pre>
+                    </CollapsibleContent>
+                  </Collapsible>
+                )}
+                {(entry.errorCode?.endsWith('.config_invalid') ||
+                  entry.errorCode === 'runner_execution_failed' ||
+                  entry.errorCode === 'runner.timeout') &&
+                  onOpenRunnerConfig && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="mt-3"
+                      onClick={onOpenRunnerConfig}
+                    >
+                      {t('agents.debugReviewRunnerConfig')}
+                    </Button>
+                  )}
+              </Alert>
             ))}
           </div>
         )}
@@ -322,7 +438,11 @@ export default function AgentDebugPanel({
           ) : (
             <Play className="size-4" />
           )}
-          {running ? t('agents.debugRunning') : t('agents.debugRun')}
+          {running
+            ? t('agents.debugRunning')
+            : hasUnsavedChanges
+              ? t('agents.debugSaveAndRun')
+              : t('agents.debugRun')}
         </Button>
       </div>
     </div>

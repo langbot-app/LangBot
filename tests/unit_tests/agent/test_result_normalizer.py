@@ -1,4 +1,5 @@
 """Tests for agent runner result normalizer."""
+
 from __future__ import annotations
 
 import pytest
@@ -12,6 +13,7 @@ from langbot_plugin.api.entities.builtin.provider import message as provider_mes
 
 class FakeApplication:
     """Fake Application for testing."""
+
     def __init__(self):
         class FakeLogger:
             def __init__(self):
@@ -19,10 +21,13 @@ class FakeApplication:
 
             def info(self, msg):
                 pass
+
             def debug(self, msg):
                 pass
+
             def warning(self, msg):
                 self.warnings.append(msg)
+
             def error(self, msg):
                 pass
 
@@ -192,6 +197,7 @@ class TestNormalizeRunFailed:
 
         assert exc_info.value.runner_id == 'plugin:langbot-team/LocalAgent/default'
         assert exc_info.value.retryable is True
+        assert exc_info.value.error_code == 'upstream.timeout'
         assert 'timeout' in str(exc_info.value)
 
 
@@ -289,6 +295,7 @@ class TestNormalizeNonMessageResults:
 
         assert result is None
         assert app.logger.warnings
+
 
 class TestNormalizeInvalidResults:
     """Tests for handling invalid results."""
