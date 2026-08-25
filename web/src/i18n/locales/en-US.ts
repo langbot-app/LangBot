@@ -392,6 +392,7 @@ const enUS = {
     eventBindings: 'Event Routes',
     addEventBinding: 'Add Route',
     addBehavior: 'Add behavior',
+    dragEventRoute: 'Drag route {{index}}',
     behaviorReplyMessages: 'Reply to messages',
     behaviorReplyMessagesDescription:
       'Send incoming messages to an Agent or Pipeline.',

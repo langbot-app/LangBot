@@ -872,6 +872,66 @@ test.describe('agent and pipeline save concurrency', () => {
 });
 
 test.describe('cross-resource flows', () => {
+  test('reorders bot event routes with a visible drag preview', async ({
+    page,
+  }) => {
+    await installLangBotApiMocks(page, {
+      authenticated: true,
+      withAdapterEvents: true,
+    });
+
+    await page.goto('/home/bots?id=new');
+    await selectPlaywrightAdapter(page);
+    await page.locator('input[name="name"]').fill('Routing Bot');
+    await submit(page);
+    await expect(page).toHaveURL(/\/home\/bots\?id=bot-1$/);
+
+    await page.getByRole('button', { name: 'Add behavior' }).click();
+    await page.getByRole('menuitem', { name: /^Reply to messages/ }).click();
+    await page.getByRole('button', { name: 'Add behavior' }).click();
+    await page.getByRole('menuitem', { name: /^Welcome new members/ }).click();
+
+    const routeCards = page.locator('[data-testid^="event-route-"]');
+    await expect(routeCards).toHaveCount(2);
+    await expect(routeCards.nth(0)).toContainText('Message received');
+    await expect(routeCards.nth(1)).toContainText('Member joined group');
+
+    const firstHandle = page.getByRole('button', { name: 'Drag route 1' });
+    const secondCard = routeCards.nth(1);
+    const handleBox = await firstHandle.boundingBox();
+    const targetBox = await secondCard.boundingBox();
+    expect(handleBox).not.toBeNull();
+    expect(targetBox).not.toBeNull();
+
+    await page.mouse.move(
+      handleBox!.x + handleBox!.width / 2,
+      handleBox!.y + handleBox!.height / 2,
+    );
+    await page.mouse.down();
+    await page.mouse.move(
+      handleBox!.x + handleBox!.width / 2,
+      handleBox!.y + handleBox!.height / 2 + 10,
+      { steps: 4 },
+    );
+    await expect(page.locator('[data-drag-overlay="true"]')).toBeVisible();
+    await page.mouse.move(
+      targetBox!.x + targetBox!.width / 2,
+      targetBox!.y + targetBox!.height - 4,
+      { steps: 12 },
+    );
+    await page.mouse.up();
+
+    await expect(page.locator('[data-drag-overlay="true"]')).toHaveCount(0);
+    await expect(routeCards.nth(0)).toContainText('Member joined group');
+    await expect(routeCards.nth(1)).toContainText('Message received');
+
+    await save(page);
+    await page.reload();
+    const savedRouteCards = page.locator('[data-testid^="event-route-"]');
+    await expect(savedRouteCards.nth(0)).toContainText('Member joined group');
+    await expect(savedRouteCards.nth(1)).toContainText('Message received');
+  });
+
   test('creates a pipeline then binds it to a bot', async ({ page }) => {
     await installLangBotApiMocks(page, { authenticated: true });
 

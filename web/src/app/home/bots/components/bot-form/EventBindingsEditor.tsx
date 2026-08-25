@@ -1264,6 +1264,7 @@ function BindingCardContent({
   onUpdate,
   onRemove,
   dragHandleProps,
+  isOverlay = false,
 }: BindingCardProps) {
   const { t } = useTranslation();
   const isEnabled = binding.enabled ?? true;
@@ -1275,13 +1276,21 @@ function BindingCardContent({
   const statusDetail = routeStatusDetail(routeStatus, t);
 
   return (
-    <div className="rounded-lg border bg-card">
+    <div
+      className={`rounded-lg border bg-card ${
+        isOverlay ? 'pointer-events-none shadow-lg ring-1 ring-primary/20' : ''
+      }`}
+      data-drag-overlay={isOverlay ? 'true' : undefined}
+    >
       {/* main row */}
       <div className="flex flex-wrap items-center gap-2 p-2.5">
         {isEnabled && (
           <button
             type="button"
             className="cursor-grab active:cursor-grabbing shrink-0 text-muted-foreground hover:text-foreground touch-none"
+            aria-label={t('bots.dragEventRoute', {
+              index: globalIndex + 1,
+            })}
             {...dragHandleProps}
           >
             <GripVertical className="h-4 w-4" />
@@ -1435,15 +1444,32 @@ function BindingCardContent({
 
 // ── sortable wrapper ──────────────────────────────────────────────────────────
 
-function SortableBindingCard(props: BindingCardProps) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } =
-    useSortable({ id: props.binding.id ?? props.globalIndex });
+interface SortableBindingCardProps extends BindingCardProps {
+  sortableId: string;
+}
+
+function SortableBindingCard({
+  sortableId,
+  ...props
+}: SortableBindingCardProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: sortableId });
   return (
     <div
       ref={setNodeRef}
+      data-testid={`event-route-${sortableId}`}
       style={{
         transform: CSS.Transform.toString(transform),
+        transition,
         opacity: isDragging ? 0.3 : undefined,
+        position: 'relative',
+        zIndex: isDragging ? 1 : undefined,
       }}
     >
       <BindingCardContent
@@ -1686,6 +1712,7 @@ export default function EventBindingsEditor({
         collisionDetection={closestCenter}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
+        onDragCancel={() => setActiveId(null)}
       >
         <SortableContext
           items={idsRef.current}
@@ -1702,6 +1729,7 @@ export default function EventBindingsEditor({
               return (
                 <SortableBindingCard
                   key={idsRef.current[sortIdx]}
+                  sortableId={idsRef.current[sortIdx]}
                   binding={binding}
                   globalIndex={globalIdx}
                   routeStatus={
@@ -1720,7 +1748,7 @@ export default function EventBindingsEditor({
             })}
           </div>
         </SortableContext>
-        <DragOverlay dropAnimation={null}>
+        <DragOverlay adjustScale={false} dropAnimation={null}>
           {activeBinding && activeGlobalIdx >= 0 ? (
             <BindingCardContent
               binding={activeBinding}

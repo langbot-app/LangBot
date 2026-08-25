@@ -375,6 +375,7 @@ const zhHans = {
     eventBindings: '事件路由',
     addEventBinding: '添加路由',
     addBehavior: '添加行为',
+    dragEventRoute: '拖动第 {{index}} 条路由',
     behaviorReplyMessages: '回复收到的消息',
     behaviorReplyMessagesDescription:
       '把收到的消息交给 Agent 或 Pipeline 处理。',

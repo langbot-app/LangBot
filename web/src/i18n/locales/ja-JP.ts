@@ -398,6 +398,7 @@ const jaJP = {
     eventBindings: 'イベントルート',
     addEventBinding: 'ルートを追加',
     addBehavior: '動作を追加',
+    dragEventRoute: 'ルート {{index}} をドラッグ',
     behaviorReplyMessages: '受信メッセージに返信',
     behaviorReplyMessagesDescription:
       '受信メッセージを Agent または Pipeline で処理します。',
