@@ -10,6 +10,7 @@ interface EmojiPickerProps {
   value?: string;
   onChange: (emoji: string) => void;
   disabled?: boolean;
+  ariaLabel?: string;
 }
 
 // 扩展的emoji分类
@@ -179,6 +180,7 @@ export default function EmojiPicker({
   value,
   onChange,
   disabled,
+  ariaLabel,
 }: EmojiPickerProps) {
   const [open, setOpen] = useState(false);
   const [activeCategory, setActiveCategory] = useState<string>('common');
@@ -199,6 +201,7 @@ export default function EmojiPicker({
           disabled={disabled}
           className="w-16 h-16 text-3xl p-0 hover:bg-gray-100 dark:hover:bg-gray-800"
           type="button"
+          aria-label={ariaLabel}
         >
           {value || '😀'}
         </Button>

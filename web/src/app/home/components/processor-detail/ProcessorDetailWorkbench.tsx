@@ -1,6 +1,11 @@
 import { ReactNode, useState } from 'react';
 import { BarChart3, Bug, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 
 interface ProcessorMonitoringView {
@@ -8,8 +13,15 @@ interface ProcessorMonitoringView {
   content: ReactNode;
 }
 
+export interface ProcessorDetailStatus {
+  label: string;
+  description?: string;
+  tone: 'neutral' | 'success' | 'warning' | 'error';
+}
+
 interface ProcessorDetailWorkbenchProps {
   title: string;
+  status?: ProcessorDetailStatus | null;
   saveLabel: string;
   saveFormId: string;
   canSave: boolean;
@@ -28,6 +40,7 @@ interface ProcessorDetailWorkbenchProps {
 
 export default function ProcessorDetailWorkbench({
   title,
+  status,
   saveLabel,
   saveFormId,
   canSave,
@@ -51,7 +64,51 @@ export default function ProcessorDetailWorkbench({
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col">
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 pb-4">
-        <h1 className="text-xl font-semibold">{title}</h1>
+        <div className="flex min-w-0 items-center gap-2">
+          <h1 className="truncate text-xl font-semibold">{title}</h1>
+          {status && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span
+                  role="status"
+                  aria-label={status.label}
+                  tabIndex={0}
+                  className={cn(
+                    'inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2 py-1 text-xs font-medium',
+                    status.tone === 'success' &&
+                      'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+                    status.tone === 'warning' &&
+                      'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300',
+                    status.tone === 'error' &&
+                      'border-destructive/30 bg-destructive/10 text-destructive',
+                    status.tone === 'neutral' &&
+                      'border-border bg-muted/50 text-muted-foreground',
+                  )}
+                >
+                  <span
+                    className={cn(
+                      'size-1.5 rounded-full',
+                      status.tone === 'success' && 'bg-emerald-500',
+                      status.tone === 'warning' && 'bg-amber-500',
+                      status.tone === 'error' && 'bg-destructive',
+                      status.tone === 'neutral' &&
+                        'animate-pulse bg-muted-foreground',
+                    )}
+                  />
+                  {status.label}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="max-w-72">
+                <p className="font-medium">{status.label}</p>
+                {status.description && (
+                  <p className="mt-1 font-normal opacity-80">
+                    {status.description}
+                  </p>
+                )}
+              </TooltipContent>
+            </Tooltip>
+          )}
+        </div>
         <div className="flex items-center gap-2">
           {monitoring && (
             <Button

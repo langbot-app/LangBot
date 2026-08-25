@@ -9,7 +9,9 @@ import ProcessorDetailWorkbench from '@/app/home/components/processor-detail/Pro
 import PipelineDetailContent from '@/app/home/pipelines/PipelineDetailContent';
 import AgentCreateContent from './components/AgentCreateContent';
 import AgentDebugPanel from './components/AgentDebugPanel';
-import AgentFormComponent from './components/AgentFormComponent';
+import AgentFormComponent, {
+  AgentRunnerStatus,
+} from './components/AgentFormComponent';
 
 export default function AgentDetailContent({ id }: { id: string }) {
   const isCreateMode = id === 'new';
@@ -25,6 +27,9 @@ export default function AgentDetailContent({ id }: { id: string }) {
   const [loading, setLoading] = useState(!isCreateMode);
   const [formDirty, setFormDirty] = useState(false);
   const [formSaving, setFormSaving] = useState(false);
+  const [runnerStatus, setRunnerStatus] = useState<AgentRunnerStatus | null>(
+    null,
+  );
 
   useEffect(() => {
     if (isCreateMode) {
@@ -36,6 +41,10 @@ export default function AgentDetailContent({ id }: { id: string }) {
     setDetailEntityName(sidebarItem?.name ?? id);
     return () => setDetailEntityName(null);
   }, [id, isCreateMode, pipelines, setDetailEntityName, t]);
+
+  useEffect(() => {
+    setRunnerStatus(null);
+  }, [id]);
 
   useEffect(() => {
     if (isCreateMode) return;
@@ -81,6 +90,7 @@ export default function AgentDetailContent({ id }: { id: string }) {
     <ProcessorDetailWorkbench
       key={id}
       title={t('agents.editAgent')}
+      status={runnerStatus}
       saveLabel={t('common.save')}
       saveFormId="agent-form"
       canSave={canManage}
@@ -100,6 +110,7 @@ export default function AgentDetailContent({ id }: { id: string }) {
             }}
             onDirtyChange={setFormDirty}
             onSavingChange={setFormSaving}
+            onRunnerStatusChange={setRunnerStatus}
           />
         </fieldset>
       }

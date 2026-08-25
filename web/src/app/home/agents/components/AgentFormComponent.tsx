@@ -1,23 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import {
-  Bot,
-  CircleAlert,
-  CircleCheck,
-  Info,
-  LoaderCircle,
-  Power,
-  RefreshCw,
-  SlidersHorizontal,
-  Trash2,
-  Unplug,
-  Zap,
-} from 'lucide-react';
+import { Bot, Info, Power, SlidersHorizontal, Trash2, Zap } from 'lucide-react';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { Agent, ApiRespPluginSystemStatus } from '@/app/infra/entities/api';
 import {
@@ -54,7 +41,12 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+
+export interface AgentRunnerStatus {
+  label: string;
+  description?: string;
+  tone: 'neutral' | 'success' | 'warning' | 'error';
+}
 
 interface AgentFormComponentProps {
   agentId: string;
@@ -62,6 +54,7 @@ interface AgentFormComponentProps {
   onDeleted: () => void;
   onDirtyChange?: (dirty: boolean) => void;
   onSavingChange?: (saving: boolean) => void;
+  onRunnerStatusChange?: (status: AgentRunnerStatus) => void;
 }
 
 type AgentConfigSection = 'events' | 'runner' | 'runner_config' | 'basic';
@@ -72,6 +65,7 @@ export default function AgentFormComponent({
   onDeleted,
   onDirtyChange,
   onSavingChange,
+  onRunnerStatusChange,
 }: AgentFormComponentProps) {
   const { t } = useTranslation();
   const [runnerConfigSchema, setRunnerConfigSchema] =
@@ -83,7 +77,7 @@ export default function AgentFormComponent({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [activeSection, setActiveSection] =
-    useState<AgentConfigSection>('runner');
+    useState<AgentConfigSection>('basic');
   const isSavingRef = useRef(false);
 
   const formSchema = z.object({
@@ -202,6 +196,11 @@ export default function AgentFormComponent({
     icon: React.ElementType;
   }> = [
     {
+      name: 'basic',
+      label: t('agents.basicInfo'),
+      icon: Info,
+    },
+    {
       name: 'events',
       label: t('agents.bindableEvents'),
       icon: Zap,
@@ -220,116 +219,76 @@ export default function AgentFormComponent({
     },
   ];
 
-  function renderRunnerStatusActions(showRetry = true) {
-    return (
-      <div className="mt-3 flex flex-wrap gap-2">
-        {showRetry && (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => void loadPluginSystemStatus()}
-          >
-            <RefreshCw className="size-4" />
-            {t('common.retry')}
-          </Button>
-        )}
-        <Button type="button" variant="outline" size="sm" asChild>
-          <Link to="/home/extensions">{t('plugins.title')}</Link>
-        </Button>
-      </div>
-    );
-  }
-
-  function renderRunnerStatus() {
+  const runnerStatus = useMemo<AgentRunnerStatus>(() => {
     if (pluginStatusLoading) {
-      return (
-        <Alert>
-          <LoaderCircle className="animate-spin" />
-          <AlertTitle>{t('agents.runnerStatusLoading')}</AlertTitle>
-        </Alert>
-      );
+      return {
+        label: t('agents.runnerStatusLoading'),
+        tone: 'neutral',
+      };
     }
 
     if (pluginStatusError || !pluginSystemStatus) {
-      return (
-        <Alert variant="destructive">
-          <CircleAlert />
-          <AlertTitle>{t('agents.runnerStatusCheckFailed')}</AlertTitle>
-          <AlertDescription>
-            {t('agents.runnerStatusCheckFailedDescription')}
-            {renderRunnerStatusActions()}
-          </AlertDescription>
-        </Alert>
-      );
+      return {
+        label: t('agents.runnerStatusCheckFailed'),
+        description: t('agents.runnerStatusCheckFailedDescription'),
+        tone: 'error',
+      };
     }
 
     if (!pluginSystemStatus.is_enable) {
-      return (
-        <Alert variant="destructive">
-          <Power />
-          <AlertTitle>{t('plugins.systemDisabled')}</AlertTitle>
-          <AlertDescription>
-            {t('plugins.systemDisabledDesc')}
-            {renderRunnerStatusActions(false)}
-          </AlertDescription>
-        </Alert>
-      );
+      return {
+        label: t('plugins.systemDisabled'),
+        description: t('plugins.systemDisabledDesc'),
+        tone: 'error',
+      };
     }
 
     if (!pluginSystemStatus.is_connected) {
-      return (
-        <Alert variant="destructive">
-          <Unplug />
-          <AlertTitle>{t('plugins.connectionError')}</AlertTitle>
-          <AlertDescription>
-            {t('plugins.connectionErrorDesc')}
-            {renderRunnerStatusActions()}
-          </AlertDescription>
-        </Alert>
-      );
+      return {
+        label: t('plugins.connectionError'),
+        description: t('plugins.connectionErrorDesc'),
+        tone: 'error',
+      };
     }
 
     if (runnerOptions.length === 0) {
-      return (
-        <Alert variant="destructive">
-          <CircleAlert />
-          <AlertTitle>{t('agents.noRunnersAvailable')}</AlertTitle>
-          <AlertDescription>
-            {t('agents.noRunnersAvailableDescription')}
-            {renderRunnerStatusActions()}
-          </AlertDescription>
-        </Alert>
-      );
+      return {
+        label: t('agents.noRunnersAvailable'),
+        description: t('agents.noRunnersAvailableDescription'),
+        tone: 'error',
+      };
     }
 
     if (!currentRunner || !selectedRunnerOption) {
-      return (
-        <Alert variant="destructive">
-          <CircleAlert />
-          <AlertTitle>{t('agents.selectedRunnerUnavailable')}</AlertTitle>
-          <AlertDescription>
-            {t('agents.selectedRunnerUnavailableDescription', {
-              runner: currentRunner || t('agents.noRunnerSelected'),
-            })}
-            {renderRunnerStatusActions()}
-          </AlertDescription>
-        </Alert>
-      );
+      return {
+        label: t('agents.selectedRunnerUnavailable'),
+        description: t('agents.selectedRunnerUnavailableDescription', {
+          runner: currentRunner || t('agents.noRunnerSelected'),
+        }),
+        tone: 'warning',
+      };
     }
 
-    return (
-      <Alert className="border-emerald-600/40 bg-emerald-500/5 text-emerald-950 dark:text-emerald-100">
-        <CircleCheck className="text-emerald-600" />
-        <AlertTitle>{t('agents.runnerReady')}</AlertTitle>
-        <AlertDescription>
-          {t('agents.runnerReadyDescription', {
-            runner: extractI18nObject(selectedRunnerOption.label),
-          })}
-        </AlertDescription>
-      </Alert>
-    );
-  }
+    return {
+      label: t('agents.runnerReady'),
+      description: t('agents.runnerReadyDescription', {
+        runner: extractI18nObject(selectedRunnerOption.label),
+      }),
+      tone: 'success',
+    };
+  }, [
+    currentRunner,
+    pluginStatusError,
+    pluginStatusLoading,
+    pluginSystemStatus,
+    runnerOptions.length,
+    selectedRunnerOption,
+    t,
+  ]);
+
+  useEffect(() => {
+    onRunnerStatusChange?.(runnerStatus);
+  }, [onRunnerStatusChange, runnerStatus]);
 
   function updateSnapshotIfInitial(stageKey: string) {
     if (!initializedStagesRef.current.has(stageKey)) {
@@ -472,7 +431,7 @@ export default function AgentFormComponent({
           >
             <nav className="mb-4 shrink-0 space-y-2 border-b pb-4">
               <div className="overflow-x-auto">
-                <ol className="grid min-w-[34rem] grid-cols-3 gap-2">
+                <ol className="grid min-w-[44rem] grid-cols-4 gap-2">
                   {primarySections.map((section, index) => {
                     const Icon = section.icon;
                     return (
@@ -505,25 +464,12 @@ export default function AgentFormComponent({
                   })}
                 </ol>
               </div>
-              <button
-                type="button"
-                onClick={() => setActiveSection('basic')}
-                className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors ${
-                  activeSection === 'basic'
-                    ? 'bg-accent text-accent-foreground'
-                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                }`}
-              >
-                <Info className="size-3.5" />
-                {t('agents.basicInfo')}
-              </button>
             </nav>
 
             <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
               <div className="mx-auto w-full min-w-0 max-w-5xl space-y-6 pb-8">
                 {activeSection === 'runner' && (
                   <div className="space-y-6">
-                    {renderRunnerStatus()}
                     {runnerSelectorStage
                       ? renderDynamicStage(runnerSelectorStage)
                       : !runnerConfigSchema && (
@@ -628,6 +574,7 @@ export default function AgentFormComponent({
                                   <EmojiPicker
                                     value={field.value}
                                     onChange={field.onChange}
+                                    ariaLabel={t('common.icon')}
                                   />
                                 </FormControl>
                                 <FormMessage />

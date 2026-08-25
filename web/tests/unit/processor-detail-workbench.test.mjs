@@ -59,12 +59,12 @@ test('processor forms expose their primary orchestration flow horizontally', () 
 
   assert.match(
     agentForm,
-    /name: 'events'[\s\S]*name: 'runner'[\s\S]*name: 'runner_config'/,
+    /name: 'basic'[\s\S]*name: 'events'[\s\S]*name: 'runner'[\s\S]*name: 'runner_config'/,
   );
   assert.match(
     pipelineForm,
     /const primarySectionNames = \['trigger', 'ai', 'output'\]/,
   );
-  assert.match(agentForm, /grid min-w-\[34rem\] grid-cols-3/);
+  assert.match(agentForm, /grid min-w-\[44rem\] grid-cols-4/);
   assert.match(pipelineForm, /grid min-w-\[34rem\] grid-cols-3/);
 });

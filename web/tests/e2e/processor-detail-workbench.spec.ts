@@ -35,16 +35,32 @@ test.describe('processor detail workbench', () => {
 
     const flow = configPanel.locator('ol');
     await expect(flow.getByRole('button').nth(0)).toContainText(
+      'Basic Information',
+    );
+    await expect(flow.getByRole('button').nth(1)).toContainText(
       'Bindable Event Range',
     );
-    await expect(flow.getByRole('button').nth(1)).toContainText('Runner');
-    await expect(flow.getByRole('button').nth(2)).toContainText('Local Agent');
+    await expect(flow.getByRole('button').nth(2)).toContainText('Runner');
+    await expect(flow.getByRole('button').nth(3)).toContainText('Local Agent');
 
-    await flow.getByRole('button').nth(0).click();
+    await expect(configPanel.getByLabel('Name')).toBeVisible();
+    await expect(configPanel.getByLabel('Icon')).toBeVisible();
+    await expect(configPanel.getByLabel('Description')).toBeVisible();
+
+    const runnerStatus = page.getByRole('status', { name: 'Runner ready' });
+    await expect(runnerStatus).toBeVisible();
+    await runnerStatus.hover();
+    await expect(
+      page.getByText(
+        'Local Agent is registered and the plugin runtime is connected.',
+      ),
+    ).toBeVisible();
+
+    await flow.getByRole('button').nth(1).click();
     await expect(
       configPanel.getByText('Bindable Event Range', { exact: true }).last(),
     ).toBeVisible();
-    await flow.getByRole('button').nth(2).click();
+    await flow.getByRole('button').nth(3).click();
     await expect(
       configPanel.getByText('Local Agent', { exact: true }).last(),
     ).toBeVisible();
