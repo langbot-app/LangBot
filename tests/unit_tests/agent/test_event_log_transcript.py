@@ -1,4 +1,5 @@
 """Tests for EventLog, Transcript, and history/event APIs."""
+
 from __future__ import annotations
 
 import datetime
@@ -24,45 +25,46 @@ from langbot_plugin.api.entities.builtin.agent_runner.delivery import DeliveryCo
 
 
 def make_event_envelope(
-    event_id: str = "evt_1",
-    event_type: str = "message.received",
-    conversation_id: str | None = "conv_1",
-    actor_id: str | None = "user_1",
-    input_text: str = "Hello",
+    event_id: str = 'evt_1',
+    event_type: str = 'message.received',
+    conversation_id: str | None = 'conv_1',
+    actor_id: str | None = 'user_1',
+    input_text: str = 'Hello',
 ) -> AgentEventEnvelope:
     """Create a test event envelope."""
     return AgentEventEnvelope(
         event_id=event_id,
         event_type=event_type,
         event_time=1700000000,
-        source="platform",
-        bot_id="bot_1",
+        source='platform',
+        bot_id='bot_1',
         workspace_id=None,
         conversation_id=conversation_id,
         thread_id=None,
         actor=ActorContext(
-            actor_type="user",
+            actor_type='user',
             actor_id=actor_id,
-            actor_name="Test User",
-        ) if actor_id else None,
+            actor_name='Test User',
+        )
+        if actor_id
+        else None,
         subject=None,
         input=AgentInput(text=input_text),
-        delivery=DeliveryContext(surface="test"),
+        delivery=DeliveryContext(surface='test'),
     )
 
 
-def make_binding(runner_id: str = "plugin:test/plugin/runner") -> AgentBinding:
+def make_binding(runner_id: str = 'plugin:test/plugin/runner') -> AgentBinding:
     """Create a test binding."""
     return AgentBinding(
-        binding_id="binding_1",
-        scope=BindingScope(scope_type="agent", scope_id="pipeline_1"),
-        event_types=["message.received"],
+        binding_id='binding_1',
+        scope=BindingScope(scope_type='agent', scope_id='pipeline_1'),
+        event_types=['message.received'],
         runner_id=runner_id,
         runner_config={},
         resource_policy=ResourcePolicy(),
         state_policy=StatePolicy(),
         delivery_policy=DeliveryPolicy(),
-        enabled=True,
     )
 
 
@@ -84,19 +86,19 @@ class TestEventLogStore:
             mock_factory.return_value.__aenter__.return_value = mock_session
 
             event_id = await store.append_event(
-                event_id="evt_1",
-                event_type="message.received",
-                source="platform",
-                bot_id="bot_1",
-                conversation_id="conv_1",
-                actor_type="user",
-                actor_id="user_1",
-                input_summary="Hello world",
-                run_id="run_1",
-                runner_id="plugin:test/plugin/runner",
+                event_id='evt_1',
+                event_type='message.received',
+                source='platform',
+                bot_id='bot_1',
+                conversation_id='conv_1',
+                actor_type='user',
+                actor_id='user_1',
+                input_summary='Hello world',
+                run_id='run_1',
+                runner_id='plugin:test/plugin/runner',
             )
 
-            assert event_id == "evt_1"
+            assert event_id == 'evt_1'
             stored_event = mock_session.add.call_args.args[0]
             assert stored_event.metadata_json is None
 
@@ -115,20 +117,20 @@ class TestEventLogStore:
             mock_factory.return_value.__aenter__.return_value = mock_session
 
             event_id = await store.append_event(
-                event_id="evt_steering",
-                event_type="message.received",
-                source="platform",
-                run_id="run_1",
-                runner_id="plugin:test/plugin/runner",
+                event_id='evt_steering',
+                event_type='message.received',
+                source='platform',
+                run_id='run_1',
+                runner_id='plugin:test/plugin/runner',
                 metadata={
-                    "steering": {
-                        "status": "queued",
-                        "claimed_by_run_id": "run_1",
+                    'steering': {
+                        'status': 'queued',
+                        'claimed_by_run_id': 'run_1',
                     }
                 },
             )
 
-            assert event_id == "evt_steering"
+            assert event_id == 'evt_steering'
             stored_event = mock_session.add.call_args.args[0]
             assert '"status": "queued"' in stored_event.metadata_json
             assert '"claimed_by_run_id": "run_1"' in stored_event.metadata_json
@@ -147,15 +149,15 @@ class TestEventLogStore:
         with patch.object(store, '_session_factory') as mock_factory:
             mock_factory.return_value.__aenter__.return_value = mock_session
 
-            long_text = "x" * 2000
+            long_text = 'x' * 2000
             event_id = await store.append_event(
-                event_id="evt_2",
-                event_type="message.received",
-                source="platform",
+                event_id='evt_2',
+                event_type='message.received',
+                source='platform',
                 input_summary=long_text,
             )
 
-            assert event_id == "evt_2"
+            assert event_id == 'evt_2'
 
     @pytest.mark.asyncio
     async def test_page_events_with_conversation_filter(self, mock_db_engine):
@@ -174,7 +176,7 @@ class TestEventLogStore:
             mock_factory.return_value.__aenter__.return_value = mock_session
 
             items, next_seq, has_more = await store.page_events(
-                conversation_id="conv_1",
+                conversation_id='conv_1',
                 limit=10,
             )
 
@@ -202,10 +204,10 @@ class TestTranscriptStore:
 
                 transcript_id = await store.append_transcript(
                     transcript_id=None,  # Auto-generate
-                    event_id="evt_1",
-                    conversation_id="conv_1",
-                    role="user",
-                    content="Hello",
+                    event_id='evt_1',
+                    conversation_id='conv_1',
+                    role='user',
+                    content='Hello',
                 )
 
                 assert transcript_id is not None
@@ -227,13 +229,11 @@ class TestTranscriptStore:
 
                 transcript_id = await store.append_transcript(
                     transcript_id=None,  # Auto-generate
-                    event_id="evt_2",
-                    conversation_id="conv_1",
-                    role="assistant",
+                    event_id='evt_2',
+                    conversation_id='conv_1',
+                    role='assistant',
                     content="Here's an image",
-                    attachment_refs=[
-                        {"id": "att_1", "type": "image", "url": "http://example.com/img.png"}
-                    ],
+                    attachment_refs=[{'id': 'att_1', 'type': 'image', 'url': 'http://example.com/img.png'}],
                 )
 
                 assert transcript_id is not None
@@ -255,9 +255,9 @@ class TestTranscriptStore:
             mock_factory.return_value.__aenter__.return_value = mock_session
 
             items, next_seq, prev_seq, has_more = await store.page_transcript(
-                conversation_id="conv_1",
+                conversation_id='conv_1',
                 limit=10,
-                direction="backward",
+                direction='backward',
             )
 
             assert isinstance(items, list)
@@ -280,7 +280,7 @@ class TestTranscriptStore:
 
             # Request more than the hard limit
             items, next_seq, prev_seq, has_more = await store.page_transcript(
-                conversation_id="conv_1",
+                conversation_id='conv_1',
                 limit=200,  # Request 200, but hard limit is 100
             )
 
@@ -304,8 +304,8 @@ class TestTranscriptStore:
             mock_factory.return_value.__aenter__.return_value = mock_session
 
             items = await store.search_transcript(
-                conversation_id="conv_1",
-                query_text="database",
+                conversation_id='conv_1',
+                query_text='database',
                 top_k=10,
             )
 
@@ -323,11 +323,11 @@ class TestHistoryPageAuthorization:
         # Mock call_action to simulate the handler
         result = await mock_handler.call_action(
             PluginToRuntimeAction.HISTORY_PAGE,
-            {"run_id": None},
+            {'run_id': None},
         )
 
         # Should return error
-        assert result.get("ok") is False or "error" in str(result).lower()
+        assert result.get('ok') is False or 'error' in str(result).lower()
 
     @pytest.mark.asyncio
     async def test_history_page_validates_conversation_scope(self, mock_db_engine):
@@ -337,20 +337,20 @@ class TestHistoryPageAuthorization:
         session_registry = get_session_registry()
 
         await session_registry.register(
-            run_id="run_1",
-            runner_id="plugin:test/plugin/runner",
+            run_id='run_1',
+            runner_id='plugin:test/plugin/runner',
             query_id=None,
-            plugin_identity="test/plugin",
-            resources={"models": [], "tools": [], "knowledge_bases": [], "storage": {"plugin_storage": True}},
-            conversation_id="conv_1",
+            plugin_identity='test/plugin',
+            resources={'models': [], 'tools': [], 'knowledge_bases': [], 'storage': {'plugin_storage': True}},
+            conversation_id='conv_1',
         )
 
-        session = await session_registry.get("run_1")
+        session = await session_registry.get('run_1')
         assert session is not None
-        assert session["authorization"]["conversation_id"] == "conv_1"
+        assert session['authorization']['conversation_id'] == 'conv_1'
 
         # Cleanup
-        await session_registry.unregister("run_1")
+        await session_registry.unregister('run_1')
 
 
 class TestEventGetAuthorization:
@@ -363,11 +363,11 @@ class TestEventGetAuthorization:
 
         result = await mock_handler.call_action(
             PluginToRuntimeAction.EVENT_GET,
-            {"run_id": None, "event_id": "evt_1"},
+            {'run_id': None, 'event_id': 'evt_1'},
         )
 
         # Should return error
-        assert result.get("ok") is False or "error" in str(result).lower()
+        assert result.get('ok') is False or 'error' in str(result).lower()
 
 
 class TestContextAccessPopulation:
@@ -389,7 +389,7 @@ class TestContextAccessPopulation:
         with patch.object(store, '_session_factory') as mock_factory:
             mock_factory.return_value.__aenter__.return_value = mock_session
 
-            cursor = await store.get_latest_cursor("conv_1")
+            cursor = await store.get_latest_cursor('conv_1')
             # Should return None or a cursor string
             assert cursor is None or isinstance(cursor, str)
 
@@ -409,7 +409,7 @@ class TestContextAccessPopulation:
         with patch.object(store, '_session_factory') as mock_factory:
             mock_factory.return_value.__aenter__.return_value = mock_session
 
-            has_history = await store.has_history_before("conv_1", 10)
+            has_history = await store.has_history_before('conv_1', 10)
             assert isinstance(has_history, bool)
 
 
@@ -422,7 +422,7 @@ class TestEventLogStoreRealSQLite:
         from sqlalchemy.ext.asyncio import create_async_engine
         from langbot.pkg.entity.persistence.base import Base
 
-        engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+        engine = create_async_engine('sqlite+aiosqlite:///:memory:')
 
         # Create tables
         async with engine.begin() as conn:
@@ -439,30 +439,30 @@ class TestEventLogStoreRealSQLite:
 
         # Append event
         event_id = await store.append_event(
-            event_id="evt_real_001",
-            event_type="message.received",
-            source="platform",
-            bot_id="bot_001",
-            conversation_id="conv_001",
-            actor_type="user",
-            actor_id="user_001",
-            actor_name="Test User",
-            input_summary="Hello world",
-            run_id="run_001",
-            runner_id="plugin:test/plugin/runner",
+            event_id='evt_real_001',
+            event_type='message.received',
+            source='platform',
+            bot_id='bot_001',
+            conversation_id='conv_001',
+            actor_type='user',
+            actor_id='user_001',
+            actor_name='Test User',
+            input_summary='Hello world',
+            run_id='run_001',
+            runner_id='plugin:test/plugin/runner',
         )
 
-        assert event_id == "evt_real_001"
+        assert event_id == 'evt_real_001'
 
         # Get event
         event = await store.get_event(event_id)
         assert event is not None
-        assert event["event_id"] == "evt_real_001"
-        assert event["event_type"] == "message.received"
-        assert event["source"] == "platform"
-        assert event["conversation_id"] == "conv_001"
-        assert event["actor_type"] == "user"
-        assert event["actor_id"] == "user_001"
+        assert event['event_id'] == 'evt_real_001'
+        assert event['event_type'] == 'message.received'
+        assert event['source'] == 'platform'
+        assert event['conversation_id'] == 'conv_001'
+        assert event['actor_type'] == 'user'
+        assert event['actor_id'] == 'user_001'
 
     @pytest.mark.asyncio
     async def test_page_events(self, db_engine):
@@ -472,16 +472,16 @@ class TestEventLogStoreRealSQLite:
         # Append multiple events
         for i in range(5):
             await store.append_event(
-                event_id=f"evt_real_{i:03d}",
-                event_type="message.received",
-                source="platform",
-                conversation_id="conv_001",
-                input_summary=f"Message {i}",
+                event_id=f'evt_real_{i:03d}',
+                event_type='message.received',
+                source='platform',
+                conversation_id='conv_001',
+                input_summary=f'Message {i}',
             )
 
         # Page events
         items, next_seq, has_more = await store.page_events(
-            conversation_id="conv_001",
+            conversation_id='conv_001',
             limit=3,
         )
 
@@ -496,14 +496,14 @@ class TestEventLogStoreRealSQLite:
         # Append events
         for i in range(3):
             await store.append_event(
-                event_id=f"evt_cursor_{i:03d}",
-                event_type="message.received",
-                source="platform",
-                conversation_id="conv_cursor",
+                event_id=f'evt_cursor_{i:03d}',
+                event_type='message.received',
+                source='platform',
+                conversation_id='conv_cursor',
             )
 
         # Get latest cursor
-        cursor = await store.get_latest_cursor("conv_cursor")
+        cursor = await store.get_latest_cursor('conv_cursor')
         assert cursor is not None
         assert int(cursor) > 0
 
@@ -516,26 +516,26 @@ class TestEventLogStoreRealSQLite:
         store = EventLogStore(db_engine)
         cutoff = datetime.datetime.utcnow()
         await store.append_event(
-            event_id="evt_cleanup_old",
-            event_type="message.received",
-            source="platform",
-            conversation_id="conv_cleanup",
+            event_id='evt_cleanup_old',
+            event_type='message.received',
+            source='platform',
+            conversation_id='conv_cleanup',
         )
         await store.append_event(
-            event_id="evt_cleanup_new",
-            event_type="message.received",
-            source="platform",
-            conversation_id="conv_cleanup",
+            event_id='evt_cleanup_new',
+            event_type='message.received',
+            source='platform',
+            conversation_id='conv_cleanup',
         )
         async with store._session_factory() as session:
             await session.execute(
                 sqlalchemy.update(EventLog)
-                .where(EventLog.event_id == "evt_cleanup_old")
+                .where(EventLog.event_id == 'evt_cleanup_old')
                 .values(created_at=cutoff - datetime.timedelta(days=2))
             )
             await session.execute(
                 sqlalchemy.update(EventLog)
-                .where(EventLog.event_id == "evt_cleanup_new")
+                .where(EventLog.event_id == 'evt_cleanup_new')
                 .values(created_at=cutoff + datetime.timedelta(days=2))
             )
             await session.commit()
@@ -543,8 +543,8 @@ class TestEventLogStoreRealSQLite:
         removed = await store.cleanup_events_older_than(cutoff)
 
         assert removed == 1
-        assert await store.get_event("evt_cleanup_old") is None
-        assert await store.get_event("evt_cleanup_new") is not None
+        assert await store.get_event('evt_cleanup_old') is None
+        assert await store.get_event('evt_cleanup_new') is not None
 
 
 class TestTranscriptStoreRealSQLite:
@@ -556,7 +556,7 @@ class TestTranscriptStoreRealSQLite:
         from sqlalchemy.ext.asyncio import create_async_engine
         from langbot.pkg.entity.persistence.base import Base
 
-        engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+        engine = create_async_engine('sqlite+aiosqlite:///:memory:')
 
         # Create tables
         async with engine.begin() as conn:
@@ -574,21 +574,21 @@ class TestTranscriptStoreRealSQLite:
         # Append transcript items
         for i in range(3):
             await store.append_transcript(
-                transcript_id=f"trans_real_{i:03d}",
-                event_id=f"evt_{i:03d}",
-                conversation_id="conv_001",
-                role="user" if i % 2 == 0 else "assistant",
-                content=f"Message {i}",
+                transcript_id=f'trans_real_{i:03d}',
+                event_id=f'evt_{i:03d}',
+                conversation_id='conv_001',
+                role='user' if i % 2 == 0 else 'assistant',
+                content=f'Message {i}',
             )
 
         # Page transcript
         items, next_seq, prev_seq, has_more = await store.page_transcript(
-            conversation_id="conv_001",
+            conversation_id='conv_001',
             limit=10,
         )
 
         assert len(items) == 3
-        assert items[0]["conversation_id"] == "conv_001"
+        assert items[0]['conversation_id'] == 'conv_001'
 
     @pytest.mark.asyncio
     async def test_get_legacy_provider_messages_projects_transcript_history(self, db_engine):
@@ -596,37 +596,37 @@ class TestTranscriptStoreRealSQLite:
         store = TranscriptStore(db_engine)
 
         await store.append_transcript(
-            transcript_id="trans_view_001",
-            event_id="evt_view_001",
-            conversation_id="conv_view",
-            role="user",
-            content="User text",
+            transcript_id='trans_view_001',
+            event_id='evt_view_001',
+            conversation_id='conv_view',
+            role='user',
+            content='User text',
             content_json={
-                "role": "user",
-                "content": [{"type": "text", "text": "User structured text"}],
+                'role': 'user',
+                'content': [{'type': 'text', 'text': 'User structured text'}],
             },
         )
         await store.append_transcript(
-            transcript_id="trans_view_002",
-            event_id="evt_view_002",
-            conversation_id="conv_view",
-            role="tool",
-            item_type="tool_result",
-            content="ignored tool result",
+            transcript_id='trans_view_002',
+            event_id='evt_view_002',
+            conversation_id='conv_view',
+            role='tool',
+            item_type='tool_result',
+            content='ignored tool result',
         )
         await store.append_transcript(
-            transcript_id="trans_view_003",
-            event_id="evt_view_003",
-            conversation_id="conv_view",
-            role="assistant",
-            content="Assistant text",
+            transcript_id='trans_view_003',
+            event_id='evt_view_003',
+            conversation_id='conv_view',
+            role='assistant',
+            content='Assistant text',
         )
 
-        messages = await store.get_legacy_provider_messages("conv_view")
+        messages = await store.get_legacy_provider_messages('conv_view')
 
-        assert [message.role for message in messages] == ["user", "assistant"]
-        assert messages[0].content[0].text == "User structured text"
-        assert messages[1].content == "Assistant text"
+        assert [message.role for message in messages] == ['user', 'assistant']
+        assert messages[0].content[0].text == 'User structured text'
+        assert messages[1].content == 'Assistant text'
 
     @pytest.mark.asyncio
     async def test_get_legacy_provider_messages_filters_scope(self, db_engine):
@@ -634,45 +634,45 @@ class TestTranscriptStoreRealSQLite:
         store = TranscriptStore(db_engine)
 
         await store.append_transcript(
-            transcript_id="trans_scope_001",
-            event_id="evt_scope_001",
-            conversation_id="conv_scope",
-            bot_id="bot_001",
-            workspace_id="workspace_001",
-            thread_id="thread_001",
-            role="user",
-            content="Current scope text",
+            transcript_id='trans_scope_001',
+            event_id='evt_scope_001',
+            conversation_id='conv_scope',
+            bot_id='bot_001',
+            workspace_id='workspace_001',
+            thread_id='thread_001',
+            role='user',
+            content='Current scope text',
         )
         await store.append_transcript(
-            transcript_id="trans_scope_002",
-            event_id="evt_scope_002",
-            conversation_id="conv_scope",
-            bot_id="bot_002",
-            workspace_id="workspace_001",
-            thread_id="thread_001",
-            role="assistant",
-            content="Other bot text",
+            transcript_id='trans_scope_002',
+            event_id='evt_scope_002',
+            conversation_id='conv_scope',
+            bot_id='bot_002',
+            workspace_id='workspace_001',
+            thread_id='thread_001',
+            role='assistant',
+            content='Other bot text',
         )
         await store.append_transcript(
-            transcript_id="trans_scope_003",
-            event_id="evt_scope_003",
-            conversation_id="conv_scope",
-            bot_id="bot_001",
-            workspace_id="workspace_001",
-            thread_id="thread_002",
-            role="assistant",
-            content="Other thread text",
+            transcript_id='trans_scope_003',
+            event_id='evt_scope_003',
+            conversation_id='conv_scope',
+            bot_id='bot_001',
+            workspace_id='workspace_001',
+            thread_id='thread_002',
+            role='assistant',
+            content='Other thread text',
         )
 
         messages = await store.get_legacy_provider_messages(
-            "conv_scope",
-            bot_id="bot_001",
-            workspace_id="workspace_001",
-            thread_id="thread_001",
+            'conv_scope',
+            bot_id='bot_001',
+            workspace_id='workspace_001',
+            thread_id='thread_001',
             strict_thread=True,
         )
 
-        assert [message.content for message in messages] == ["Current scope text"]
+        assert [message.content for message in messages] == ['Current scope text']
 
     @pytest.mark.asyncio
     async def test_search_transcript_real_db(self, db_engine):
@@ -681,24 +681,24 @@ class TestTranscriptStoreRealSQLite:
 
         # Append transcript items
         await store.append_transcript(
-            transcript_id="trans_search_001",
-            event_id="evt_search_001",
-            conversation_id="conv_search",
-            role="user",
-            content="I want to learn about databases",
+            transcript_id='trans_search_001',
+            event_id='evt_search_001',
+            conversation_id='conv_search',
+            role='user',
+            content='I want to learn about databases',
         )
         await store.append_transcript(
-            transcript_id="trans_search_002",
-            event_id="evt_search_002",
-            conversation_id="conv_search",
-            role="assistant",
-            content="Here is information about databases",
+            transcript_id='trans_search_002',
+            event_id='evt_search_002',
+            conversation_id='conv_search',
+            role='assistant',
+            content='Here is information about databases',
         )
 
         # Search for "database"
         items = await store.search_transcript(
-            conversation_id="conv_search",
-            query_text="database",
+            conversation_id='conv_search',
+            query_text='database',
         )
 
         # Should find at least one match
@@ -712,15 +712,15 @@ class TestTranscriptStoreRealSQLite:
         # Append transcript items
         for i in range(3):
             await store.append_transcript(
-                transcript_id=f"trans_cursor_{i:03d}",
-                event_id=f"evt_cursor_{i:03d}",
-                conversation_id="conv_cursor",
-                role="user",
-                content=f"Message {i}",
+                transcript_id=f'trans_cursor_{i:03d}',
+                event_id=f'evt_cursor_{i:03d}',
+                conversation_id='conv_cursor',
+                role='user',
+                content=f'Message {i}',
             )
 
         # Get latest cursor
-        cursor = await store.get_latest_cursor("conv_cursor")
+        cursor = await store.get_latest_cursor('conv_cursor')
         assert cursor is not None
         assert int(cursor) > 0
 
@@ -733,37 +733,37 @@ class TestTranscriptStoreRealSQLite:
         store = TranscriptStore(db_engine)
         cutoff = datetime.datetime.utcnow()
         await store.append_transcript(
-            transcript_id="trans_cleanup_old",
-            event_id="evt_cleanup_old",
-            conversation_id="conv_cleanup",
-            role="user",
-            content="old",
+            transcript_id='trans_cleanup_old',
+            event_id='evt_cleanup_old',
+            conversation_id='conv_cleanup',
+            role='user',
+            content='old',
         )
         await store.append_transcript(
-            transcript_id="trans_cleanup_new",
-            event_id="evt_cleanup_new",
-            conversation_id="conv_cleanup",
-            role="assistant",
-            content="new",
+            transcript_id='trans_cleanup_new',
+            event_id='evt_cleanup_new',
+            conversation_id='conv_cleanup',
+            role='assistant',
+            content='new',
         )
         async with store._session_factory() as session:
             await session.execute(
                 sqlalchemy.update(Transcript)
-                .where(Transcript.transcript_id == "trans_cleanup_old")
+                .where(Transcript.transcript_id == 'trans_cleanup_old')
                 .values(created_at=cutoff - datetime.timedelta(days=2))
             )
             await session.execute(
                 sqlalchemy.update(Transcript)
-                .where(Transcript.transcript_id == "trans_cleanup_new")
+                .where(Transcript.transcript_id == 'trans_cleanup_new')
                 .values(created_at=cutoff + datetime.timedelta(days=2))
             )
             await session.commit()
 
         removed = await store.cleanup_transcripts_older_than(cutoff)
-        items, _, _, _ = await store.page_transcript("conv_cleanup", limit=10)
+        items, _, _, _ = await store.page_transcript('conv_cleanup', limit=10)
 
         assert removed == 1
-        assert [item["content"] for item in items] == ["new"]
+        assert [item['content'] for item in items] == ['new']
 
 
 # Fixtures
@@ -788,8 +788,8 @@ def mock_handler():
 
         async def call_action(self, action, data, timeout=30):
             # Simulate error response for missing run_id
-            if not data.get("run_id"):
-                return {"ok": False, "message": "run_id is required"}
-            return {"ok": True, "data": {}}
+            if not data.get('run_id'):
+                return {'ok': False, 'message': 'run_id is required'}
+            return {'ok': True, 'data': {}}
 
     return MockHandler()
