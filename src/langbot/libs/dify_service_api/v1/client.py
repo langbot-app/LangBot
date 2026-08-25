@@ -56,17 +56,23 @@ async def _iter_sse_json(
             line = raw_line.rstrip(b'\r').strip()
             if not line or not line.startswith(b'data:'):
                 continue
-            payload = json.loads(line[5:].decode('utf-8', errors='replace'))
-            if isinstance(payload, dict):
-                yield payload
+            try:
+                payload = json.loads(line[5:].decode('utf-8', errors='replace'))
+                if isinstance(payload, dict):
+                    yield payload
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                continue  # skip malformed/flushed SSE data lines
         if len(buffer) > _MAX_DIFY_SSE_LINE_BYTES:
             raise DifyAPIError('Dify SSE event exceeds the runtime limit')
 
     line = bytes(buffer).rstrip(b'\r').strip()
     if line.startswith(b'data:'):
-        payload = json.loads(line[5:].decode('utf-8', errors='replace'))
-        if isinstance(payload, dict):
-            yield payload
+        try:
+            payload = json.loads(line[5:].decode('utf-8', errors='replace'))
+            if isinstance(payload, dict):
+                yield payload
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            pass  # skip malformed/flushed SSE data lines
 
 
 def _read_local_file_limited(path: Path) -> bytes:
@@ -271,6 +277,7 @@ class AsyncDifyServiceClient:
             timeout=timeout,
         ) as response:
             body = await _read_limited_response(response)
-            if response.status_code != 201:
+            if response.status_code not in (200, 201):
                 raise DifyAPIError(f'{response.status_code} {body.decode(errors="replace")}')
-        return json.loads(body)
+        resp = json.loads(body)
+        return resp.get('data', resp)
