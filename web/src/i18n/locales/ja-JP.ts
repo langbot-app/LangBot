@@ -1329,8 +1329,8 @@ const jaJP = {
       atTips: 'ボットをメンション',
       streaming: 'ストリーミング',
       streamOutput: 'ストリーム',
-      connected: 'WebSocket接続済み',
-      disconnected: 'WebSocket未接続',
+      connected: '接続済み',
+      disconnected: '未接続',
       connectionError: 'WebSocket接続エラー',
       connectionFailed: 'WebSocket接続に失敗しました',
       notConnected:

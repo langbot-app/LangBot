@@ -249,6 +249,10 @@ test.describe('processor detail workbench', () => {
     await expect(debugPanel).toBeVisible();
     await expect(configPanel).toBeVisible();
     await expect(
+      debugPanel.getByText('Connected', { exact: true }),
+    ).toBeVisible();
+    await expect(debugPanel.getByText('WebSocket connected')).toHaveCount(0);
+    await expect(
       debugPanel.getByRole('button', { name: 'Private Chat' }),
     ).toBeVisible();
     await expect(
