@@ -254,6 +254,41 @@ test.describe('processor detail workbench', () => {
     await expect(
       debugPanel.getByRole('button', { name: 'Group Chat' }),
     ).toBeVisible();
+    const sessionToolbar = debugPanel.locator(
+      '[data-debug-session-toolbar="true"]',
+    );
+    await expect(sessionToolbar.getByText('Session Type')).toBeVisible();
+    const privateChatButton = sessionToolbar.getByRole('button', {
+      name: 'Private Chat',
+    });
+    const groupChatButton = sessionToolbar.getByRole('button', {
+      name: 'Group Chat',
+    });
+    await expect(privateChatButton).toHaveAttribute('aria-pressed', 'true');
+    await groupChatButton.click();
+    await expect(groupChatButton).toHaveAttribute('aria-pressed', 'true');
+    await privateChatButton.click();
+
+    const composer = debugPanel.locator('[data-debug-composer="true"]');
+    const messageInput = composer.locator('textarea');
+    const sendButton = composer.getByRole('button', { name: 'Send' });
+    await expect(messageInput).toBeVisible();
+    await expect(messageInput).toHaveAttribute('rows', '1');
+    const inputBox = await messageInput.boundingBox();
+    const sendBox = await sendButton.boundingBox();
+    const toolbarBox = await sessionToolbar.boundingBox();
+    const emptyStateBox = await debugPanel
+      .getByText('No messages', { exact: true })
+      .boundingBox();
+    expect(inputBox).not.toBeNull();
+    expect(sendBox).not.toBeNull();
+    expect(toolbarBox).not.toBeNull();
+    expect(emptyStateBox).not.toBeNull();
+    expect(sendBox!.x).toBeGreaterThan(inputBox!.x + inputBox!.width);
+    expect(Math.abs(sendBox!.height - inputBox!.height)).toBeLessThanOrEqual(1);
+    expect(Math.abs(sendBox!.y - inputBox!.y)).toBeLessThanOrEqual(1);
+    expect(toolbarBox!.y).toBeLessThan(emptyStateBox!.y);
+
     await debugPanel
       .getByRole('button', { name: 'Reset Conversation' })
       .click();

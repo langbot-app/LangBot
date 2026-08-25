@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { DialogContent } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
@@ -42,11 +42,6 @@ import {
   AlignLeft,
   RotateCcw,
 } from 'lucide-react';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
 
 interface DebugDialogProps {
   open: boolean;
@@ -155,7 +150,7 @@ export default function DebugDialog({
   );
   const [streamOutput, setStreamOutput] = useState(true);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const wsClientRef = useRef<WebSocketClient | null>(null);
@@ -367,7 +362,7 @@ export default function DebugDialog({
     }
   }, [showAtPopover]);
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value;
     if (sessionType === 'group') {
       if (value.endsWith('@')) {
@@ -853,75 +848,50 @@ export default function DebugDialog({
   };
 
   const renderContent = () => (
-    <div className="flex flex-1 h-full min-h-0">
+    <div className="flex flex-1 h-full min-h-0 flex-col">
       <div
         className={cn(
-          'w-14 p-2 pl-0 shrink-0 flex flex-col justify-start gap-2',
-          compact && 'w-12 p-1.5 pl-1',
+          'flex shrink-0 flex-wrap items-center gap-1 border-b px-4 py-2',
+          compact && 'px-3',
         )}
+        data-debug-session-toolbar="true"
       >
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label={t('pipelines.debugDialog.privateChat')}
-              className={cn(
-                'w-10 h-10 justify-center rounded-md transition-none border-0 shadow-none',
-                sessionType === 'person'
-                  ? 'bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground'
-                  : 'bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground',
-              )}
-              onClick={() => setSessionType('person')}
-            >
-              <User className="size-5" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="right">
-            {t('pipelines.debugDialog.privateChat')}
-          </TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label={t('pipelines.debugDialog.groupChat')}
-              className={cn(
-                'w-10 h-10 justify-center rounded-md transition-none border-0 shadow-none',
-                sessionType === 'group'
-                  ? 'bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground'
-                  : 'bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground',
-              )}
-              onClick={() => setSessionType('group')}
-            >
-              <Users className="size-5" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="right">
-            {t('pipelines.debugDialog.groupChat')}
-          </TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label={t('pipelines.debugDialog.reset')}
-              className="w-10 h-10 justify-center rounded-md text-muted-foreground"
-              onClick={() => void resetConversation()}
-            >
-              <RotateCcw className="size-5" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="right">
-            {t('pipelines.debugDialog.reset')}
-          </TooltipContent>
-        </Tooltip>
+        <span className="mr-1 text-xs text-muted-foreground">
+          {t('pipelines.debugDialog.sessionType')}
+        </span>
+        <Button
+          type="button"
+          variant={sessionType === 'person' ? 'secondary' : 'ghost'}
+          size="sm"
+          aria-pressed={sessionType === 'person'}
+          onClick={() => setSessionType('person')}
+        >
+          <User className="size-4" />
+          {t('pipelines.debugDialog.privateChat')}
+        </Button>
+        <Button
+          type="button"
+          variant={sessionType === 'group' ? 'secondary' : 'ghost'}
+          size="sm"
+          aria-pressed={sessionType === 'group'}
+          onClick={() => setSessionType('group')}
+        >
+          <Users className="size-4" />
+          {t('pipelines.debugDialog.groupChat')}
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="ml-auto text-muted-foreground"
+          onClick={() => void resetConversation()}
+        >
+          <RotateCcw className="size-4" />
+          {t('pipelines.debugDialog.reset')}
+        </Button>
       </div>
 
-      <div className="flex-1 flex flex-col w-[10rem] h-full min-h-0">
+      <div className="flex-1 flex flex-col w-full h-full min-h-0">
         <ScrollArea
           ref={scrollAreaRef}
           className={cn(
@@ -1086,9 +1056,10 @@ export default function DebugDialog({
         )}
 
         <div
-          className={cn('p-4 pb-0 flex gap-2', compact && 'flex-col p-3 pb-0')}
+          className={cn('shrink-0 border-t p-4', compact && 'p-3')}
+          data-debug-composer="true"
         >
-          <div className="flex gap-2 items-center">
+          <div className="mb-2 flex items-center gap-2">
             <div className="flex items-center gap-1">
               <span className="text-xs text-muted-foreground">
                 {t('pipelines.debugDialog.streamOutput')}
@@ -1118,73 +1089,82 @@ export default function DebugDialog({
               <ImageIcon className="size-5" />
             </Button>
           </div>
-          <div className="flex-1 flex items-center gap-2">
-            {hasAt && (
-              <AtBadge targetName="websocketbot" onRemove={handleAtRemove} />
-            )}
-            <div className="relative flex-1">
-              <Input
-                ref={inputRef}
-                value={inputValue}
-                onChange={handleInputChange}
-                onKeyPress={handleKeyPress}
-                placeholder={t('pipelines.debugDialog.inputPlaceholder', {
-                  type:
-                    sessionType === 'person'
-                      ? t('pipelines.debugDialog.privateChat')
-                      : t('pipelines.debugDialog.groupChat'),
-                })}
-                disabled={!isConnected || isUploading}
-                className="flex-1 rounded-md px-3 py-2 transition-none text-base disabled:opacity-50"
-              />
-              {showAtPopover && (
-                <div
-                  ref={popoverRef}
-                  className="absolute bottom-full left-0 mb-2 w-auto rounded-md border bg-popover text-popover-foreground shadow-lg"
-                >
-                  <div
-                    className={cn(
-                      'flex items-center gap-2 px-4 py-1.5 rounded cursor-pointer',
-                      isHovering ? 'bg-accent' : '',
-                    )}
-                    onClick={handleAtSelect}
-                    onMouseEnter={() => setIsHovering(true)}
-                    onMouseLeave={() => setIsHovering(false)}
-                  >
-                    <span>
-                      @websocketbot - {t('pipelines.debugDialog.atTips')}
-                    </span>
-                  </div>
+
+          <div className="flex min-w-0 items-end gap-2">
+            <div className="min-w-0 flex-1">
+              {hasAt && (
+                <div className="mb-1">
+                  <AtBadge
+                    targetName="websocketbot"
+                    onRemove={handleAtRemove}
+                  />
                 </div>
               )}
+              <div className="relative">
+                <Textarea
+                  ref={inputRef}
+                  value={inputValue}
+                  onChange={handleInputChange}
+                  onKeyDown={handleKeyPress}
+                  placeholder={t('pipelines.debugDialog.inputPlaceholder', {
+                    type:
+                      sessionType === 'person'
+                        ? t('pipelines.debugDialog.privateChat')
+                        : t('pipelines.debugDialog.groupChat'),
+                  })}
+                  disabled={!isConnected || isUploading}
+                  rows={1}
+                  className="h-11 min-h-11 max-h-32 resize-y rounded-md px-3 py-2 text-sm transition-none disabled:opacity-50"
+                />
+                {showAtPopover && (
+                  <div
+                    ref={popoverRef}
+                    className="absolute bottom-full left-0 mb-2 w-auto rounded-md border bg-popover text-popover-foreground shadow-lg"
+                  >
+                    <div
+                      className={cn(
+                        'flex items-center gap-2 px-4 py-1.5 rounded cursor-pointer',
+                        isHovering ? 'bg-accent' : '',
+                      )}
+                      onClick={handleAtSelect}
+                      onMouseEnter={() => setIsHovering(true)}
+                      onMouseLeave={() => setIsHovering(false)}
+                    >
+                      <span>
+                        @websocketbot - {t('pipelines.debugDialog.atTips')}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
+            <Button
+              onClick={sendMessage}
+              disabled={
+                (!inputValue.trim() &&
+                  !hasAt &&
+                  selectedImages.length === 0 &&
+                  !quotedMessage) ||
+                !isConnected ||
+                isUploading
+              }
+              className={cn(
+                'h-11 shrink-0 rounded-md px-4 text-sm font-medium transition-none shadow-none disabled:opacity-50',
+                !compact && 'px-6 text-base',
+              )}
+            >
+              {isUploading ? (
+                t('pipelines.debugDialog.uploading')
+              ) : (
+                <>
+                  <Send className="size-4" />
+                  {hasUnsavedChanges
+                    ? t('pipelines.debugDialog.saveAndSend')
+                    : t('pipelines.debugDialog.send')}
+                </>
+              )}
+            </Button>
           </div>
-          <Button
-            onClick={sendMessage}
-            disabled={
-              (!inputValue.trim() &&
-                !hasAt &&
-                selectedImages.length === 0 &&
-                !quotedMessage) ||
-              !isConnected ||
-              isUploading
-            }
-            className={cn(
-              'rounded-md w-20 px-6 py-2 text-base font-medium transition-none flex items-center gap-2 shadow-none disabled:opacity-50',
-              compact && 'w-auto px-3 text-sm',
-            )}
-          >
-            {isUploading ? (
-              t('pipelines.debugDialog.uploading')
-            ) : (
-              <>
-                <Send className="size-4" />
-                {hasUnsavedChanges
-                  ? t('pipelines.debugDialog.saveAndSend')
-                  : t('pipelines.debugDialog.send')}
-              </>
-            )}
-          </Button>
         </div>
       </div>
     </div>
