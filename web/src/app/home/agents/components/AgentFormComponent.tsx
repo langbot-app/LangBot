@@ -13,7 +13,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { Bot, Power, SlidersHorizontal, Trash2, Zap } from 'lucide-react';
+import { Bot, SlidersHorizontal, Zap } from 'lucide-react';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { Agent, ApiRespPluginSystemStatus } from '@/app/infra/entities/api';
 import {
@@ -22,7 +22,6 @@ import {
 } from '@/app/infra/entities/pipeline';
 import DynamicFormComponent from '@/app/home/components/dynamic-form/DynamicFormComponent';
 import { extractI18nObject } from '@/i18n/I18nProvider';
-import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -32,13 +31,6 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
 import {
   Form,
   FormControl,
@@ -58,17 +50,12 @@ export interface AgentRunnerStatus {
 interface AgentFormComponentProps {
   agentId: string;
   onFinish: (agent?: Partial<Agent>) => void;
-  onDeleted: () => void;
   onDirtyChange?: (dirty: boolean) => void;
   onSavingChange?: (saving: boolean) => void;
   onRunnerStatusChange?: (status: AgentRunnerStatus) => void;
 }
 
-export type AgentConfigSection =
-  | 'events'
-  | 'runner'
-  | 'runner_config'
-  | 'basic';
+export type AgentConfigSection = 'events' | 'runner' | 'runner_config';
 
 export interface AgentFormHandle {
   openSection: (section: AgentConfigSection) => void;
@@ -114,7 +101,6 @@ function AgentFormComponent(
   {
     agentId,
     onFinish,
-    onDeleted,
     onDirtyChange,
     onSavingChange,
     onRunnerStatusChange,
@@ -128,8 +114,6 @@ function AgentFormComponent(
     useState<ApiRespPluginSystemStatus | null>(null);
   const [pluginStatusLoading, setPluginStatusLoading] = useState(true);
   const [pluginStatusError, setPluginStatusError] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
   const [activeSection, setActiveSection] =
     useState<AgentConfigSection>('events');
   const isSavingRef = useRef(false);
@@ -282,11 +266,6 @@ function AgentFormComponent(
         ? extractI18nObject(selectedRunnerOption.label)
         : t('pipelines.configuration'),
       icon: SlidersHorizontal,
-    },
-    {
-      name: 'basic',
-      label: t('common.management'),
-      icon: Power,
     },
   ];
 
@@ -472,7 +451,6 @@ function AgentFormComponent(
       };
 
       isSavingRef.current = true;
-      setIsSaving(true);
       onSavingChange?.(true);
       try {
         await httpClient.updateAgent(agentId, agent);
@@ -489,7 +467,6 @@ function AgentFormComponent(
         return false;
       } finally {
         isSavingRef.current = false;
-        setIsSaving(false);
         onSavingChange?.(false);
       }
     },
@@ -533,192 +510,110 @@ function AgentFormComponent(
     [form, saveValues],
   );
 
-  function confirmDelete() {
-    httpClient
-      .deleteAgent(agentId)
-      .then(() => {
-        toast.success(t('agents.deleteSuccess'));
-        setShowDeleteConfirm(false);
-        onDeleted();
-      })
-      .catch((err) => {
-        toast.error(t('agents.deleteError') + err.msg);
-      });
-  }
-
   return (
-    <>
-      <div className="h-full p-0 flex flex-col">
-        <Form {...form}>
-          <form
-            id="agent-form"
-            onSubmit={form.handleSubmit(handleSubmit)}
-            className="mb-2 flex h-full min-h-0 min-w-0 flex-1 flex-col"
-          >
-            <nav className="mb-4 shrink-0 space-y-2 border-b pb-4">
-              <Tabs
-                value={activeSection}
-                onValueChange={(value) =>
-                  setActiveSection(value as AgentConfigSection)
-                }
-              >
-                <div className="overflow-x-auto">
-                  <TabsList className="grid min-w-[42rem] w-full grid-cols-[repeat(3,minmax(0,1fr))_auto]">
-                    {primarySections.map((section) => {
-                      const Icon = section.icon;
-                      return (
-                        <TabsTrigger
-                          key={section.name}
-                          value={section.name}
-                          className={
-                            section.name === 'basic'
-                              ? 'px-4 text-muted-foreground data-[state=active]:text-foreground'
-                              : undefined
-                          }
-                        >
-                          <Icon />
-                          {section.label}
-                        </TabsTrigger>
-                      );
-                    })}
-                  </TabsList>
+    <div className="h-full p-0 flex flex-col">
+      <Form {...form}>
+        <form
+          id="agent-form"
+          onSubmit={form.handleSubmit(handleSubmit)}
+          className="mb-2 flex h-full min-h-0 min-w-0 flex-1 flex-col"
+        >
+          <nav className="mb-4 shrink-0 space-y-2 border-b pb-4">
+            <Tabs
+              value={activeSection}
+              onValueChange={(value) =>
+                setActiveSection(value as AgentConfigSection)
+              }
+            >
+              <div className="overflow-x-auto">
+                <TabsList className="grid min-w-[34rem] w-full grid-cols-3">
+                  {primarySections.map((section) => {
+                    const Icon = section.icon;
+                    return (
+                      <TabsTrigger key={section.name} value={section.name}>
+                        <Icon />
+                        {section.label}
+                      </TabsTrigger>
+                    );
+                  })}
+                </TabsList>
+              </div>
+            </Tabs>
+          </nav>
+
+          <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
+            <div className="mx-auto w-full min-w-0 max-w-5xl space-y-6 pb-8">
+              {activeSection === 'runner' && (
+                <div className="space-y-6">
+                  {runnerSelectorStage
+                    ? renderDynamicStage(runnerSelectorStage)
+                    : !runnerConfigSchema && (
+                        <Card>
+                          <CardHeader>
+                            <CardTitle>{t('agents.runnerSettings')}</CardTitle>
+                            <CardDescription>
+                              {t('agents.noRunnerMetadata')}
+                            </CardDescription>
+                          </CardHeader>
+                        </Card>
+                      )}
                 </div>
-              </Tabs>
-            </nav>
+              )}
 
-            <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
-              <div className="mx-auto w-full min-w-0 max-w-5xl space-y-6 pb-8">
-                {activeSection === 'runner' && (
-                  <div className="space-y-6">
-                    {runnerSelectorStage
-                      ? renderDynamicStage(runnerSelectorStage)
-                      : !runnerConfigSchema && (
-                          <Card>
-                            <CardHeader>
-                              <CardTitle>
-                                {t('agents.runnerSettings')}
-                              </CardTitle>
-                              <CardDescription>
-                                {t('agents.noRunnerMetadata')}
-                              </CardDescription>
-                            </CardHeader>
-                          </Card>
-                        )}
-                  </div>
-                )}
-
-                {activeSection === 'runner_config' && (
-                  <div className="space-y-6">
-                    {activeRunnerStage ? (
-                      renderDynamicStage(activeRunnerStage)
-                    ) : (
-                      <Card>
-                        <CardHeader>
-                          <CardTitle>{t('agents.runnerSettings')}</CardTitle>
-                          <CardDescription>
-                            {t('agents.noRunnerMetadata')}
-                          </CardDescription>
-                        </CardHeader>
-                      </Card>
-                    )}
-                  </div>
-                )}
-
-                {activeSection === 'events' && (
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>{t('agents.bindableEvents')}</CardTitle>
-                      <CardDescription>
-                        {t('agents.bindableEventsDescription')}
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <FormField
-                        control={form.control}
-                        name="supported_event_patterns_text"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>{t('agents.supportedEvents')}</FormLabel>
-                            <FormControl>
-                              <Textarea
-                                {...field}
-                                className="min-h-32 font-mono text-sm"
-                                placeholder={'*\nmessage.received\ngroup.*'}
-                              />
-                            </FormControl>
-                            <FormDescription>
-                              {t('agents.supportedEventsDescription')}
-                            </FormDescription>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </CardContent>
-                  </Card>
-                )}
-
-                {activeSection === 'basic' && (
-                  <div className="space-y-6">
-                    <Card className="border-destructive/50">
+              {activeSection === 'runner_config' && (
+                <div className="space-y-6">
+                  {activeRunnerStage ? (
+                    renderDynamicStage(activeRunnerStage)
+                  ) : (
+                    <Card>
                       <CardHeader>
-                        <CardTitle className="text-destructive">
-                          {t('agents.dangerZone')}
-                        </CardTitle>
+                        <CardTitle>{t('agents.runnerSettings')}</CardTitle>
                         <CardDescription>
-                          {t('agents.dangerZoneDescription')}
+                          {t('agents.noRunnerMetadata')}
                         </CardDescription>
                       </CardHeader>
-                      <CardContent>
-                        <div className="flex items-center justify-between gap-4">
-                          <div className="space-y-1">
-                            <p className="text-sm font-medium">
-                              {t('agents.deleteAgentAction')}
-                            </p>
-                            <p className="text-sm text-muted-foreground">
-                              {t('agents.deleteAgentHint')}
-                            </p>
-                          </div>
-                          <Button
-                            type="button"
-                            variant="destructive"
-                            size="sm"
-                            disabled={isSaving}
-                            onClick={() => setShowDeleteConfirm(true)}
-                          >
-                            <Trash2 className="mr-1.5 size-4" />
-                            {t('common.delete')}
-                          </Button>
-                        </div>
-                      </CardContent>
                     </Card>
-                  </div>
-                )}
-              </div>
-            </div>
-          </form>
-        </Form>
-      </div>
+                  )}
+                </div>
+              )}
 
-      <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t('common.confirmDelete')}</DialogTitle>
-          </DialogHeader>
-          <div className="py-4">{t('agents.deleteConfirmation')}</div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setShowDeleteConfirm(false)}
-            >
-              {t('common.cancel')}
-            </Button>
-            <Button variant="destructive" onClick={confirmDelete}>
-              {t('common.confirmDelete')}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
+              {activeSection === 'events' && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>{t('agents.bindableEvents')}</CardTitle>
+                    <CardDescription>
+                      {t('agents.bindableEventsDescription')}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <FormField
+                      control={form.control}
+                      name="supported_event_patterns_text"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{t('agents.supportedEvents')}</FormLabel>
+                          <FormControl>
+                            <Textarea
+                              {...field}
+                              className="min-h-32 font-mono text-sm"
+                              placeholder={'*\nmessage.received\ngroup.*'}
+                            />
+                          </FormControl>
+                          <FormDescription>
+                            {t('agents.supportedEventsDescription')}
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          </div>
+        </form>
+      </Form>
+    </div>
   );
 }
 

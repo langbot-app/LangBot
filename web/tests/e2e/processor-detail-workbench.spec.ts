@@ -50,9 +50,8 @@ test.describe('processor detail workbench', () => {
     );
     await expect(flow.getByRole('tab').nth(1)).toContainText('Runner');
     await expect(flow.getByRole('tab').nth(2)).toContainText('Local Agent');
-    const agentManagement = flow.getByRole('tab').nth(3);
-    await expect(agentManagement).toContainText('Management');
-    await expect(agentManagement).toHaveClass(/text-muted-foreground/);
+    await expect(flow.getByRole('tab')).toHaveCount(3);
+    await expect(flow.getByText('Management')).toHaveCount(0);
 
     await expect(
       page.getByRole('heading', { name: /agent-workbench/ }),
@@ -60,6 +59,15 @@ test.describe('processor detail workbench', () => {
     await expect(
       page.getByRole('button', { name: 'Edit basic information' }),
     ).toBeVisible();
+    const saveButton = page.getByRole('button', { name: 'Save' });
+    const deleteButton = page.getByRole('button', { name: 'Delete' });
+    await expect(saveButton).toBeVisible();
+    await expect(deleteButton).toBeVisible();
+    const saveBox = await saveButton.boundingBox();
+    const deleteBox = await deleteButton.boundingBox();
+    expect(saveBox).not.toBeNull();
+    expect(deleteBox).not.toBeNull();
+    expect(deleteBox!.x).toBeGreaterThan(saveBox!.x);
     await expect(configPanel.getByLabel('Name')).toHaveCount(0);
     await expect(configPanel.getByLabel('Icon')).toHaveCount(0);
     await expect(configPanel.getByLabel('Description')).toHaveCount(0);
@@ -83,12 +91,14 @@ test.describe('processor detail workbench', () => {
     await expect(
       configPanel.getByText('Local Agent', { exact: true }).last(),
     ).toBeVisible();
-    await agentManagement.click();
-    await expect(configPanel.getByText('Danger Zone')).toBeVisible();
-    await expect(configPanel.getByText('Availability')).toHaveCount(0);
-    await expect(
-      configPanel.getByRole('switch', { name: 'Enable Agent' }),
-    ).toHaveCount(0);
+
+    await deleteButton.click();
+    const deleteDialog = page.getByRole('dialog');
+    await expect(deleteDialog).toContainText(
+      'Are you sure you want to delete this Agent?',
+    );
+    await deleteDialog.getByRole('button', { name: 'Cancel' }).click();
+    await expect(deleteDialog).toHaveCount(0);
   });
 
   test('agent saves edits before debugging and shows the real output', async ({
@@ -128,6 +138,27 @@ test.describe('processor detail workbench', () => {
 
     await expect(page.getByText('Mock Agent response')).toBeVisible();
     expect(requests).toEqual(['save', 'debug']);
+  });
+
+  test('agent deletion is confirmed from the header and returns to the list', async ({
+    page,
+  }) => {
+    await installLangBotApiMocks(page, { authenticated: true });
+    await page.goto('/home/agents?id=agent-workbench');
+
+    const deleteRequest = page.waitForRequest(
+      (request) =>
+        request.method() === 'DELETE' &&
+        new URL(request.url()).pathname === '/api/v1/agents/agent-workbench',
+    );
+    await page.getByRole('button', { name: 'Delete' }).click();
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: 'Confirm Delete' })
+      .click();
+
+    await deleteRequest;
+    await expect(page).toHaveURL(/\/home\/agents$/);
   });
 
   test('agent turns runner failures into an actionable message', async ({

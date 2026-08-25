@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
+import { Trash2 } from 'lucide-react';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { useCurrentWorkspace } from '@/app/infra/http';
 import { Agent } from '@/app/infra/entities/api';
@@ -11,6 +12,15 @@ import EntityBasicInfoDialog, {
   EntityBasicInfoValues,
 } from '@/app/home/components/entity-basic-info/EntityBasicInfoDialog';
 import EntityTitleEditButton from '@/app/home/components/entity-basic-info/EntityTitleEditButton';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import PipelineDetailContent from '@/app/home/pipelines/PipelineDetailContent';
 import AgentCreateContent from './components/AgentCreateContent';
 import AgentDebugPanel from './components/AgentDebugPanel';
@@ -34,6 +44,8 @@ export default function AgentDetailContent({ id }: { id: string }) {
   const [formDirty, setFormDirty] = useState(false);
   const [formSaving, setFormSaving] = useState(false);
   const [basicInfoOpen, setBasicInfoOpen] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [runnerStatus, setRunnerStatus] = useState<AgentRunnerStatus | null>(
     null,
   );
@@ -111,6 +123,25 @@ export default function AgentDetailContent({ id }: { id: string }) {
     }
   }
 
+  async function deleteAgent() {
+    setDeleting(true);
+    try {
+      await httpClient.deleteAgent(id);
+      toast.success(t('agents.deleteSuccess'));
+      setDeleteConfirmOpen(false);
+      await refreshPipelines();
+      navigate('/home/agents');
+    } catch (error) {
+      const message =
+        typeof error === 'object' && error && 'msg' in error
+          ? String((error as { msg?: string }).msg || '')
+          : '';
+      toast.error(t('agents.deleteError') + message);
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   return (
     <>
       <ProcessorDetailWorkbench
@@ -127,6 +158,19 @@ export default function AgentDetailContent({ id }: { id: string }) {
         canSave={canManage}
         isDirty={formDirty}
         isSaving={formSaving}
+        headerActions={
+          canManage ? (
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={formSaving || deleting}
+              onClick={() => setDeleteConfirmOpen(true)}
+            >
+              <Trash2 className="size-4" />
+              {t('common.delete')}
+            </Button>
+          ) : undefined
+        }
         configTitle={t('pipelines.configuration')}
         configContent={
           <fieldset className="contents" disabled={!canManage}>
@@ -140,10 +184,6 @@ export default function AgentDetailContent({ id }: { id: string }) {
                   );
                 }
                 refreshPipelines();
-              }}
-              onDeleted={() => {
-                refreshPipelines();
-                navigate('/home/agents');
               }}
               onDirtyChange={setFormDirty}
               onSavingChange={setFormSaving}
@@ -181,6 +221,35 @@ export default function AgentDetailContent({ id }: { id: string }) {
         defaultEmoji="🤖"
         onSave={saveBasicInfo}
       />
+      <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('common.confirmDelete')}</DialogTitle>
+            <DialogDescription>
+              {t('agents.deleteConfirmation')}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={deleting}
+              onClick={() => setDeleteConfirmOpen(false)}
+            >
+              {t('common.cancel')}
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={deleting}
+              onClick={deleteAgent}
+            >
+              <Trash2 className="size-4" />
+              {t('common.confirmDelete')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

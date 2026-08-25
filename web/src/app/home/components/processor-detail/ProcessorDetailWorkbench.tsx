@@ -23,6 +23,7 @@ export interface ProcessorDetailStatus {
 interface ProcessorDetailWorkbenchProps {
   title: string;
   titleAction?: ReactNode;
+  headerActions?: ReactNode;
   status?: ProcessorDetailStatus | null;
   saveLabel: string;
   saveFormId: string;
@@ -43,6 +44,7 @@ interface ProcessorDetailWorkbenchProps {
 export default function ProcessorDetailWorkbench({
   title,
   titleAction,
+  headerActions,
   status,
   saveLabel,
   saveFormId,
@@ -138,6 +140,7 @@ export default function ProcessorDetailWorkbench({
               {saveLabel}
             </Button>
           )}
+          {activeView === 'workbench' && headerActions}
         </div>
       </div>
 
