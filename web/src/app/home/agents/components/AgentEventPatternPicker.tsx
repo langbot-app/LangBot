@@ -17,6 +17,11 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
+import {
+  eventGroupLabel,
+  eventNamespaces,
+  groupEventPatterns,
+} from '@/app/home/components/event-patterns/event-pattern-groups';
 
 const FALLBACK_EVENTS = ['message.received'];
 
@@ -24,19 +29,6 @@ interface AgentEventPatternPickerProps {
   events: string[];
   value: string[];
   onChange: (patterns: string[]) => void;
-}
-
-function eventNamespaces(events: string[]) {
-  const counts = new Map<string, number>();
-  events.forEach((event) => {
-    if (event === '*' || event.endsWith('.*')) return;
-    const namespace = event.split('.')[0];
-    if (namespace) counts.set(namespace, (counts.get(namespace) ?? 0) + 1);
-  });
-  return Array.from(counts.entries())
-    .filter(([, count]) => count >= 2)
-    .map(([namespace]) => `${namespace}.*`)
-    .sort();
 }
 
 export default function AgentEventPatternPicker({
@@ -67,6 +59,7 @@ export default function AgentEventPatternPicker({
     ).sort();
     return ['*', ...namespaces, ...concreteEvents];
   }, [events, selectedPatterns]);
+  const optionGroups = useMemo(() => groupEventPatterns(options), [options]);
 
   function eventLabel(pattern: string) {
     if (pattern === '*') return t('bots.eventWildcard');
@@ -154,39 +147,44 @@ export default function AgentEventPatternPicker({
           <CommandInput placeholder={t('agents.searchEvents')} />
           <CommandList>
             <CommandEmpty>{t('agents.noEventsFound')}</CommandEmpty>
-            <CommandGroup heading={t('agents.supportedEvents')}>
-              {options.map((pattern) => {
-                const selected = selectedPatterns.includes(pattern);
-                return (
-                  <CommandItem
-                    key={pattern}
-                    value={`${eventLabel(pattern)} ${pattern}`}
-                    onSelect={() => togglePattern(pattern)}
-                    className="items-start gap-2 py-2"
-                  >
-                    <Check
-                      className={cn(
-                        'mt-0.5 size-4 shrink-0',
-                        selected ? 'opacity-100' : 'opacity-0',
-                      )}
-                    />
-                    <span className="min-w-0 flex-1">
-                      <span className="flex min-w-0 items-center gap-2">
-                        <span className="truncate font-medium">
-                          {eventLabel(pattern)}
+            {optionGroups.map((group) => (
+              <CommandGroup
+                key={group.namespace}
+                heading={eventGroupLabel(group.namespace, t)}
+              >
+                {group.patterns.map((pattern) => {
+                  const selected = selectedPatterns.includes(pattern);
+                  return (
+                    <CommandItem
+                      key={pattern}
+                      value={`${eventLabel(pattern)} ${pattern}`}
+                      onSelect={() => togglePattern(pattern)}
+                      className="items-start gap-2 py-2"
+                    >
+                      <Check
+                        className={cn(
+                          'mt-0.5 size-4 shrink-0',
+                          selected ? 'opacity-100' : 'opacity-0',
+                        )}
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="flex min-w-0 items-center gap-2">
+                          <span className="truncate font-medium">
+                            {eventLabel(pattern)}
+                          </span>
+                          <code className="shrink-0 text-[10px] text-muted-foreground">
+                            {pattern}
+                          </code>
                         </span>
-                        <code className="shrink-0 text-[10px] text-muted-foreground">
-                          {pattern}
-                        </code>
+                        <span className="mt-0.5 block text-xs text-muted-foreground">
+                          {eventDescription(pattern)}
+                        </span>
                       </span>
-                      <span className="mt-0.5 block text-xs text-muted-foreground">
-                        {eventDescription(pattern)}
-                      </span>
-                    </span>
-                  </CommandItem>
-                );
-              })}
-            </CommandGroup>
+                    </CommandItem>
+                  );
+                })}
+              </CommandGroup>
+            ))}
           </CommandList>
         </Command>
       </PopoverContent>

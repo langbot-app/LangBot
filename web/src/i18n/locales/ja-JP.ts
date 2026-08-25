@@ -440,6 +440,14 @@ const jaJP = {
     adapterEventsMore: 'ほか {{count}} 件',
     advancedEventValues: 'すべて表示',
     eventGroup: 'グループ',
+    eventGroupNames: {
+      bot: 'ボットの状態',
+      feedback: 'フィードバック',
+      friend: '友だち',
+      group: 'グループ',
+      message: 'メッセージ',
+      platform: 'プラットフォーム',
+    },
     routeConflictTitle: '一部のルートが重複しています',
     routeConflictShadowed:
       '{{winner}} が同じイベントを先に処理するため、{{shadowed}} は実行されない可能性があります。',

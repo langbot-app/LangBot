@@ -353,7 +353,10 @@ test.describe('bot advanced flows', () => {
   test('keeps event routing compact and hides raw status errors', async ({
     page,
   }) => {
-    await installLangBotApiMocks(page, { authenticated: true });
+    await installLangBotApiMocks(page, {
+      authenticated: true,
+      withAdapterEvents: true,
+    });
     await page.route('**/api/v1/platform/bots/*/event-routes/status', (route) =>
       route.fulfill({
         status: 500,
@@ -416,7 +419,9 @@ test.describe('bot advanced flows', () => {
 
     await expect(page).toHaveURL(/\/home\/bots\?id=bot-1$/);
     await expect(page.getByText('Supported events')).toBeVisible();
-    await expect(page.getByText('1 event types')).toBeVisible();
+    await expect(page.getByText('5 event types')).toBeVisible();
+    await expect(page.getByText('Messages · 2')).toBeVisible();
+    await expect(page.getByText('Groups · 2')).toBeVisible();
     await expect(page.getByText('Internal server error')).toHaveCount(0);
     await expect(
       page.getByText('Events that match no route are ignored.'),
@@ -435,6 +440,14 @@ test.describe('bot advanced flows', () => {
     expect(
       dangerBox!.y - (routingBox!.y + routingBox!.height),
     ).toBeGreaterThanOrEqual(20);
+
+    await routingCard.getByRole('button', { name: 'View all' }).click();
+    await expect(
+      routingCard.getByText('Messages', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      routingCard.getByText('Groups', { exact: true }),
+    ).toBeVisible();
 
     await page.getByRole('button', { name: 'Refresh status' }).hover();
     await expect(
@@ -461,6 +474,14 @@ test.describe('bot advanced flows', () => {
     await expect(
       routeDialog.getByRole('button', { name: 'Run full test' }),
     ).toBeVisible();
+    await routeDialog.getByRole('combobox').first().click();
+    await expect(
+      page.getByText('Messages', { exact: true }).last(),
+    ).toBeVisible();
+    await expect(
+      page.getByText('Groups', { exact: true }).last(),
+    ).toBeVisible();
+    await page.keyboard.press('Escape');
 
     await routeDialog.getByRole('button', { name: 'Preview match' }).click();
     await expect(routeDialog.getByText('Matched route')).toBeVisible();

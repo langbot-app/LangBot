@@ -433,6 +433,14 @@ const enUS = {
     adapterEventsMore: '{{count}} more',
     advancedEventValues: 'View all',
     eventGroup: 'Group',
+    eventGroupNames: {
+      bot: 'Bot status',
+      feedback: 'Feedback',
+      friend: 'Friends',
+      group: 'Groups',
+      message: 'Messages',
+      platform: 'Platform',
+    },
     routeConflictTitle: 'Some routes overlap',
     routeConflictShadowed:
       '{{shadowed}} may never run because {{winner}} handles the same events first.',

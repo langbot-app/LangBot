@@ -106,6 +106,8 @@ test.describe('processor detail workbench', () => {
     await expect(
       page.getByRole('option').filter({ hasText: 'message.received' }),
     ).toBeVisible();
+    await expect(page.getByRole('group', { name: 'Messages' })).toHaveCount(1);
+    await expect(page.getByRole('group', { name: 'Groups' })).toHaveCount(1);
     await page.keyboard.press('Escape');
 
     await flow.getByRole('tab').nth(1).click();

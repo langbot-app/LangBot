@@ -412,6 +412,14 @@ const zhHans = {
     adapterEventsMore: '另有 {{count}} 类',
     advancedEventValues: '查看全部',
     eventGroup: '事件组',
+    eventGroupNames: {
+      bot: '机器人状态',
+      feedback: '反馈',
+      friend: '好友',
+      group: '群组',
+      message: '消息',
+      platform: '平台',
+    },
     routeConflictTitle: '部分路由存在覆盖冲突',
     routeConflictShadowed:
       '{{shadowed}} 可能永远不会运行，因为 {{winner}} 会先处理相同事件。',

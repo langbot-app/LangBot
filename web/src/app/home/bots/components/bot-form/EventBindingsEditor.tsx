@@ -48,7 +48,9 @@ import {
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
@@ -102,6 +104,11 @@ import {
   BotRouteTestResult,
 } from '@/app/infra/entities/api';
 import { backendClient } from '@/app/infra/http';
+import {
+  eventGroupLabel,
+  eventNamespaces,
+  groupEventPatterns,
+} from '@/app/home/components/event-patterns/event-pattern-groups';
 
 export const PIPELINE_DISCARD = '__discard__';
 
@@ -300,20 +307,6 @@ function agentSupportsEventPattern(agent: Agent, pattern: string) {
   const patterns = agent.supported_event_patterns ??
     agent.capability?.supported_event_patterns ?? ['*'];
   return patterns.some((p) => eventPatternCovers(p, pattern));
-}
-
-function eventNamespaces(events: string[]) {
-  // Only surface a `ns.*` wildcard when the namespace actually has 2+
-  // concrete events — otherwise the wildcard is redundant with the single event.
-  const counts = new Map<string, number>();
-  events.forEach((e) => {
-    const n = e.split('.')[0];
-    if (n) counts.set(n, (counts.get(n) ?? 0) + 1);
-  });
-  return Array.from(counts.entries())
-    .filter(([, c]) => c >= 2)
-    .map(([n]) => `${n}.*`)
-    .sort();
 }
 
 // Localized label for an event pattern. Concrete events look up
@@ -771,7 +764,8 @@ function AdapterCapabilitySummary({
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const concreteEvents =
     supportedEvents.length > 0 ? supportedEvents : DEFAULT_EVENTS;
-  const previewEvents = concreteEvents.slice(0, 4);
+  const concreteEventGroups = groupEventPatterns(concreteEvents);
+  const optionGroups = groupEventPatterns(eventOptions);
 
   return (
     <div className="rounded-lg border bg-muted/20 p-3">
@@ -793,20 +787,22 @@ function AdapterCapabilitySummary({
             </div>
           </div>
           <div className="flex flex-wrap gap-1.5">
-            {previewEvents.map((event) => (
+            {concreteEventGroups.slice(0, 4).map((group) => (
               <Badge
-                key={event}
+                key={group.namespace}
                 variant="secondary"
                 className="max-w-full rounded-md px-2 py-0.5 font-normal"
-                title={event}
               >
-                <span className="truncate">{eventLabel(event, t)}</span>
+                <span className="truncate">
+                  {eventGroupLabel(group.namespace, t)} ·{' '}
+                  {group.patterns.length}
+                </span>
               </Badge>
             ))}
-            {concreteEvents.length > previewEvents.length && (
+            {concreteEventGroups.length > 4 && (
               <Badge variant="outline" className="rounded-md px-2 py-0.5">
                 {t('bots.adapterEventsMore', {
-                  count: concreteEvents.length - previewEvents.length,
+                  count: concreteEventGroups.length - 4,
                 })}
               </Badge>
             )}
@@ -828,25 +824,40 @@ function AdapterCapabilitySummary({
         </Button>
       </div>
       {advancedOpen && (
-        <div className="mt-3 grid gap-2 border-t pt-3 sm:grid-cols-2">
-          {eventOptions.map((event) => (
-            <div key={event} className="min-w-0 rounded-md bg-background p-2">
-              <div className="flex min-w-0 items-center justify-between gap-2">
-                <span className="truncate text-xs font-medium">
-                  {eventLabel(event, t)}
-                </span>
-                {event.endsWith('.*') && (
-                  <Badge variant="outline" className="shrink-0 text-[10px]">
-                    {t('bots.eventGroup')}
-                  </Badge>
-                )}
-              </div>
-              <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-muted-foreground">
-                {eventDescription(event, t)}
+        <div className="mt-3 space-y-4 border-t pt-3">
+          {optionGroups.map((group) => (
+            <div key={group.namespace} className="space-y-2">
+              <p className="text-xs font-medium text-muted-foreground">
+                {eventGroupLabel(group.namespace, t)}
               </p>
-              <code className="mt-1 block truncate text-[11px] text-muted-foreground">
-                {event}
-              </code>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {group.patterns.map((event) => (
+                  <div
+                    key={event}
+                    className="min-w-0 rounded-md bg-background p-2"
+                  >
+                    <div className="flex min-w-0 items-center justify-between gap-2">
+                      <span className="truncate text-xs font-medium">
+                        {eventLabel(event, t)}
+                      </span>
+                      {event.endsWith('.*') && (
+                        <Badge
+                          variant="outline"
+                          className="shrink-0 text-[10px]"
+                        >
+                          {t('bots.eventGroup')}
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-muted-foreground">
+                      {eventDescription(event, t)}
+                    </p>
+                    <code className="mt-1 block truncate text-[11px] text-muted-foreground">
+                      {event}
+                    </code>
+                  </div>
+                ))}
+              </div>
             </div>
           ))}
         </div>
@@ -1032,10 +1043,17 @@ function RouteDryRunDialog({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {eventOptions.map((event) => (
-                        <SelectItem key={event} value={event}>
-                          {eventLabel(event, t)}
-                        </SelectItem>
+                      {groupEventPatterns(eventOptions).map((group) => (
+                        <SelectGroup key={group.namespace}>
+                          <SelectLabel>
+                            {eventGroupLabel(group.namespace, t)}
+                          </SelectLabel>
+                          {group.patterns.map((event) => (
+                            <SelectItem key={event} value={event}>
+                              {eventLabel(event, t)}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
                       ))}
                     </SelectContent>
                   </Select>
@@ -1304,19 +1322,21 @@ function BindingCardContent({
             )}
           </SelectTrigger>
           <SelectContent>
-            {eventOptions.map((event) => {
-              const label = eventLabel(event, t);
-              return (
-                <SelectItem key={event} value={event}>
-                  <span className="flex flex-col">
-                    <span>{label}</span>
-                    <span className="text-[11px] text-muted-foreground">
-                      {eventDescription(event, t)}
+            {groupEventPatterns(eventOptions).map((group) => (
+              <SelectGroup key={group.namespace}>
+                <SelectLabel>{eventGroupLabel(group.namespace, t)}</SelectLabel>
+                {group.patterns.map((event) => (
+                  <SelectItem key={event} value={event}>
+                    <span className="flex flex-col">
+                      <span>{eventLabel(event, t)}</span>
+                      <span className="text-[11px] text-muted-foreground">
+                        {eventDescription(event, t)}
+                      </span>
                     </span>
-                  </span>
-                </SelectItem>
-              );
-            })}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            ))}
           </SelectContent>
         </Select>
 
