@@ -65,6 +65,8 @@ test('processor forms expose their primary orchestration flow horizontally', () 
     pipelineForm,
     /const primarySectionNames = \['trigger', 'ai', 'output'\]/,
   );
-  assert.match(agentForm, /grid min-w-\[44rem\] grid-cols-4/);
-  assert.match(pipelineForm, /grid min-w-\[34rem\] grid-cols-3/);
+  assert.match(agentForm, /<TabsList[^>]*grid-cols-4/);
+  assert.match(pipelineForm, /<TabsList[^>]*grid-cols-3/);
+  assert.doesNotMatch(agentForm, /<ol className=/);
+  assert.doesNotMatch(pipelineForm, /<ol className=/);
 });

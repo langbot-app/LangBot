@@ -33,15 +33,15 @@ test.describe('processor detail workbench', () => {
       .toBe(0);
     expect(debugBox!.y).toBeGreaterThanOrEqual(0);
 
-    const flow = configPanel.locator('ol');
-    await expect(flow.getByRole('button').nth(0)).toContainText(
+    const flow = configPanel.getByRole('tablist');
+    await expect(flow.getByRole('tab').nth(0)).toContainText(
       'Basic Information',
     );
-    await expect(flow.getByRole('button').nth(1)).toContainText(
+    await expect(flow.getByRole('tab').nth(1)).toContainText(
       'Bindable Event Range',
     );
-    await expect(flow.getByRole('button').nth(2)).toContainText('Runner');
-    await expect(flow.getByRole('button').nth(3)).toContainText('Local Agent');
+    await expect(flow.getByRole('tab').nth(2)).toContainText('Runner');
+    await expect(flow.getByRole('tab').nth(3)).toContainText('Local Agent');
 
     await expect(configPanel.getByLabel('Name')).toBeVisible();
     await expect(configPanel.getByLabel('Icon')).toBeVisible();
@@ -56,11 +56,11 @@ test.describe('processor detail workbench', () => {
       ),
     ).toBeVisible();
 
-    await flow.getByRole('button').nth(1).click();
+    await flow.getByRole('tab').nth(1).click();
     await expect(
       configPanel.getByText('Bindable Event Range', { exact: true }).last(),
     ).toBeVisible();
-    await flow.getByRole('button').nth(3).click();
+    await flow.getByRole('tab').nth(3).click();
     await expect(
       configPanel.getByText('Local Agent', { exact: true }).last(),
     ).toBeVisible();
@@ -91,18 +91,16 @@ test.describe('processor detail workbench', () => {
       .toBe(0);
     expect(debugBox!.y).toBeGreaterThanOrEqual(0);
 
-    const flow = configPanel.locator('ol');
-    await expect(flow.getByRole('button').nth(0)).toContainText(
+    const flow = configPanel.getByRole('tablist');
+    await expect(flow.getByRole('tab').nth(0)).toContainText(
       'Trigger Conditions',
     );
-    await expect(flow.getByRole('button').nth(1)).toContainText(
-      'AI Capabilities',
-    );
-    await expect(flow.getByRole('button').nth(2)).toContainText(
+    await expect(flow.getByRole('tab').nth(1)).toContainText('AI Capabilities');
+    await expect(flow.getByRole('tab').nth(2)).toContainText(
       'Output Processing',
     );
 
-    await flow.getByRole('button').nth(1).click();
+    await flow.getByRole('tab').nth(1).click();
     await expect(
       configPanel.getByText('Runtime', { exact: true }).last(),
     ).toBeVisible();

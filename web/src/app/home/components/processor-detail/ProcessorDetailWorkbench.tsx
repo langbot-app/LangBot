@@ -1,5 +1,6 @@
 import { ReactNode, useState } from 'react';
 import { BarChart3, Bug, Settings } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   Tooltip,
@@ -69,12 +70,13 @@ export default function ProcessorDetailWorkbench({
           {status && (
             <Tooltip>
               <TooltipTrigger asChild>
-                <span
+                <Badge
+                  variant="outline"
                   role="status"
                   aria-label={status.label}
                   tabIndex={0}
                   className={cn(
-                    'inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2 py-1 text-xs font-medium',
+                    'rounded-full',
                     status.tone === 'success' &&
                       'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
                     status.tone === 'warning' &&
@@ -96,7 +98,7 @@ export default function ProcessorDetailWorkbench({
                     )}
                   />
                   {status.label}
-                </span>
+                </Badge>
               </TooltipTrigger>
               <TooltipContent side="bottom" className="max-w-72">
                 <p className="font-medium">{status.label}</p>

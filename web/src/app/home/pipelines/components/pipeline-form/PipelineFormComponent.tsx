@@ -8,6 +8,7 @@ import {
 import DynamicFormComponent from '@/app/home/components/dynamic-form/DynamicFormComponent';
 import { getDefaultValues } from '@/app/home/components/dynamic-form/DynamicFormItemConfig';
 import { Button } from '@/components/ui/button';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -31,7 +32,6 @@ import {
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { extractI18nObject } from '@/i18n/I18nProvider';
-import { cn } from '@/lib/utils';
 import {
   Card,
   CardContent,
@@ -580,64 +580,45 @@ export default function PipelineFormComponent({
               {/* Keep the primary pipeline flow visible while editing. */}
               {formLabelList.length > 1 && (
                 <nav className="mb-4 shrink-0 space-y-2 border-b pb-4">
-                  <div className="overflow-x-auto">
-                    <ol className="grid min-w-[34rem] grid-cols-3 gap-2">
-                      {primarySections.map((section, index) => {
+                  <Tabs value={activeSection} onValueChange={setActiveSection}>
+                    <div className="overflow-x-auto">
+                      <TabsList className="grid min-w-[34rem] w-full grid-cols-3">
+                        {primarySections.map((section) => {
+                          const Icon = section.icon;
+                          return (
+                            <TabsTrigger
+                              key={section.name}
+                              value={section.name}
+                            >
+                              <Icon />
+                              {section.label}
+                            </TabsTrigger>
+                          );
+                        })}
+                      </TabsList>
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {secondarySections.map((section) => {
                         const Icon = section.icon;
                         return (
-                          <li key={section.name} className="relative min-w-0">
-                            <button
-                              type="button"
-                              onClick={() => setActiveSection(section.name)}
-                              className={cn(
-                                'flex w-full min-w-0 items-center gap-2 rounded-lg border px-3 py-3 text-left text-sm font-medium transition-colors',
-                                activeSection === section.name
-                                  ? 'border-primary/50 bg-primary/5 text-foreground shadow-sm'
-                                  : 'border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground',
-                              )}
-                            >
-                              <span
-                                className={cn(
-                                  'flex size-7 shrink-0 items-center justify-center rounded-full text-xs',
-                                  activeSection === section.name
-                                    ? 'bg-primary text-primary-foreground'
-                                    : 'bg-muted text-muted-foreground',
-                                )}
-                              >
-                                {index + 1}
-                              </span>
-                              <Icon className="hidden size-4 shrink-0 xl:block" />
-                              <span className="min-w-0 leading-tight">
-                                {section.label}
-                              </span>
-                            </button>
-                          </li>
+                          <Button
+                            key={section.name}
+                            type="button"
+                            variant={
+                              activeSection === section.name
+                                ? 'secondary'
+                                : 'ghost'
+                            }
+                            size="sm"
+                            onClick={() => setActiveSection(section.name)}
+                          >
+                            <Icon />
+                            {section.label}
+                          </Button>
                         );
                       })}
-                    </ol>
-                  </div>
-                  <ul className="flex flex-wrap gap-1">
-                    {secondarySections.map((section) => {
-                      const Icon = section.icon;
-                      return (
-                        <li key={section.name}>
-                          <button
-                            type="button"
-                            onClick={() => setActiveSection(section.name)}
-                            className={cn(
-                              'flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors',
-                              activeSection === section.name
-                                ? 'bg-accent text-accent-foreground'
-                                : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-                            )}
-                          >
-                            <Icon className="size-3.5" />
-                            {section.label}
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </ul>
+                    </div>
+                  </Tabs>
                 </nav>
               )}
 

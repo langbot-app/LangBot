@@ -14,6 +14,7 @@ import {
 import DynamicFormComponent from '@/app/home/components/dynamic-form/DynamicFormComponent';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import { Button } from '@/components/ui/button';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -430,40 +431,26 @@ export default function AgentFormComponent({
             className="mb-2 flex h-full min-h-0 min-w-0 flex-1 flex-col"
           >
             <nav className="mb-4 shrink-0 space-y-2 border-b pb-4">
-              <div className="overflow-x-auto">
-                <ol className="grid min-w-[44rem] grid-cols-4 gap-2">
-                  {primarySections.map((section, index) => {
-                    const Icon = section.icon;
-                    return (
-                      <li key={section.name} className="min-w-0">
-                        <button
-                          type="button"
-                          onClick={() => setActiveSection(section.name)}
-                          className={`flex w-full min-w-0 items-center gap-2 rounded-lg border px-3 py-3 text-left text-sm font-medium transition-colors ${
-                            activeSection === section.name
-                              ? 'border-primary/50 bg-primary/5 text-foreground shadow-sm'
-                              : 'border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground'
-                          }`}
-                        >
-                          <span
-                            className={`flex size-7 shrink-0 items-center justify-center rounded-full text-xs ${
-                              activeSection === section.name
-                                ? 'bg-primary text-primary-foreground'
-                                : 'bg-muted text-muted-foreground'
-                            }`}
-                          >
-                            {index + 1}
-                          </span>
-                          <Icon className="hidden size-4 shrink-0 xl:block" />
-                          <span className="min-w-0 leading-tight">
-                            {section.label}
-                          </span>
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ol>
-              </div>
+              <Tabs
+                value={activeSection}
+                onValueChange={(value) =>
+                  setActiveSection(value as AgentConfigSection)
+                }
+              >
+                <div className="overflow-x-auto">
+                  <TabsList className="grid min-w-[44rem] w-full grid-cols-4">
+                    {primarySections.map((section) => {
+                      const Icon = section.icon;
+                      return (
+                        <TabsTrigger key={section.name} value={section.name}>
+                          <Icon />
+                          {section.label}
+                        </TabsTrigger>
+                      );
+                    })}
+                  </TabsList>
+                </div>
+              </Tabs>
             </nav>
 
             <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
