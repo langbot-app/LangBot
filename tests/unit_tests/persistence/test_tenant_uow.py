@@ -964,6 +964,7 @@ async def test_scoped_session_rejects_raw_or_unapproved_sql(
             sa.func.date_trunc('hour', sa.column('timestamp')),
             sa.func.length(sa.literal('value')),
             sa.func.nullif(sa.literal('value'), sa.literal('')),
+            sa.func.strftime('%Y-%m-%d %H:00', sa.column('timestamp')),
         ),
         sa.select(sa.column('embedding').op('<=>')(sa.literal([0.1]))),
         sa.select(sa.cast(sa.column('embedding'), Vector(384))),

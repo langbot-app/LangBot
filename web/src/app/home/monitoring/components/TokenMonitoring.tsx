@@ -77,6 +77,14 @@ function formatNumber(n: number): string {
   return n.toLocaleString();
 }
 
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'object' && error !== null && 'msg' in error) {
+    return String((error as { msg?: unknown }).msg ?? '');
+  }
+  return String(error);
+}
+
 const TOOLTIP_STYLE: React.CSSProperties = {
   backgroundColor: 'var(--card)',
   border: '1px solid var(--border)',
@@ -152,7 +160,7 @@ export default function TokenMonitoring({
       });
       setStats(result);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(getErrorMessage(e));
     } finally {
       setLoading(false);
     }
