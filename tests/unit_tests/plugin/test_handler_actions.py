@@ -234,6 +234,7 @@ class TestSetBinaryStorage:
             },
         }
         mock_app.persistence_mgr = Mock()
+        mock_app.persistence_mgr.get_db_engine.return_value = SimpleNamespace(dialect=SimpleNamespace(name='sqlite'))
         mock_app.persistence_mgr.execute_async = AsyncMock(return_value=make_result())
         mock_app.logger = Mock()
         return mock_app
@@ -270,8 +271,8 @@ class TestSetBinaryStorage:
         )
 
         assert response.code == 0
-        assert app.persistence_mgr.execute_async.await_count == 2
-        insert_params = compiled_params(app.persistence_mgr.execute_async.await_args_list[1].args[0])
+        assert app.persistence_mgr.execute_async.await_count == 3
+        insert_params = compiled_params(app.persistence_mgr.execute_async.await_args_list[2].args[0])
         assert insert_params['workspace_uuid'] == 'workspace-a'
         assert insert_params['unique_key'] == canonical_binary_key(
             'plugin',
@@ -300,6 +301,69 @@ class TestSetBinaryStorage:
         assert expected_key in select_params.values()
         assert expected_key in update_params.values()
         assert update_params['value'] == b'new'
+
+    @pytest.mark.asyncio
+    async def test_adopts_legacy_storage_before_updating(self, app):
+        """A migrated pre-tenancy row is updated in place rather than duplicated."""
+        runtime_handler = make_handler(app)
+        legacy_storage = SimpleNamespace(unique_key='plugin:test-author/test-plugin:test-key')
+        adopted = SimpleNamespace(rowcount=1)
+        app.persistence_mgr.execute_async.side_effect = [
+            make_result(),
+            make_result(legacy_storage),
+            adopted,
+        ]
+
+        response = await runtime_handler.actions[RuntimeToLangBotAction.SET_BINARY_STORAGE.value](self.payload(b'new'))
+
+        assert response.code == 0
+        assert app.persistence_mgr.execute_async.await_count == 3
+        adoption_params = compiled_params(app.persistence_mgr.execute_async.await_args_list[2].args[0])
+        expected_key = canonical_binary_key('plugin', 'test-author/test-plugin', 'test-key')
+        assert expected_key in adoption_params.values()
+        assert adoption_params['value'] == b'new'
+
+    @pytest.mark.asyncio
+    async def test_legacy_adoption_race_updates_winning_canonical_row(self, app):
+        runtime_handler = make_handler(app)
+        legacy_storage = SimpleNamespace(unique_key='plugin:test-author/test-plugin:test-key')
+        lost_race = SimpleNamespace(rowcount=0)
+        canonical_winner = SimpleNamespace(rowcount=1)
+        app.persistence_mgr.execute_async.side_effect = [
+            make_result(),
+            make_result(legacy_storage),
+            lost_race,
+            canonical_winner,
+        ]
+
+        response = await runtime_handler.actions[RuntimeToLangBotAction.SET_BINARY_STORAGE.value](self.payload(b'new'))
+
+        assert response.code == 0
+        assert app.persistence_mgr.execute_async.await_count == 4
+        winner_update = compiled_params(app.persistence_mgr.execute_async.await_args_list[3].args[0])
+        assert canonical_binary_key('plugin', 'test-author/test-plugin', 'test-key') in winner_update.values()
+        assert winner_update['value'] == b'new'
+
+    @pytest.mark.asyncio
+    async def test_legacy_adoption_lost_to_delete_inserts_new_value(self, app):
+        runtime_handler = make_handler(app)
+        legacy_storage = SimpleNamespace(unique_key='plugin:test-author/test-plugin:test-key')
+        lost_race = SimpleNamespace(rowcount=0)
+        app.persistence_mgr.execute_async.side_effect = [
+            make_result(),
+            make_result(legacy_storage),
+            lost_race,
+            SimpleNamespace(rowcount=0),
+            make_result(),
+        ]
+
+        response = await runtime_handler.actions[RuntimeToLangBotAction.SET_BINARY_STORAGE.value](self.payload(b'new'))
+
+        assert response.code == 0
+        assert app.persistence_mgr.execute_async.await_count == 5
+        insert_params = compiled_params(app.persistence_mgr.execute_async.await_args_list[4].args[0])
+        assert insert_params['unique_key'] == canonical_binary_key('plugin', 'test-author/test-plugin', 'test-key')
+        assert insert_params['value'] == b'new'
 
     @pytest.mark.asyncio
     async def test_invalid_max_value_bytes_falls_back_to_default_limit(self, app):
@@ -526,6 +590,46 @@ class TestGetBinaryStorage:
         )
 
     @pytest.mark.asyncio
+    async def test_reads_legacy_storage_without_mutating_key(self, app):
+        runtime_handler = make_handler(app)
+        legacy_storage = SimpleNamespace(
+            unique_key='plugin:test-author/test-plugin:test-key',
+            value=b'legacy bytes',
+        )
+        app.persistence_mgr.execute_async.side_effect = [
+            make_result(),
+            make_result(legacy_storage),
+        ]
+
+        response = await runtime_handler.actions[RuntimeToLangBotAction.GET_BINARY_STORAGE.value](
+            {'key': 'test-key', 'owner_type': 'plugin', 'owner': 'ignored'}
+        )
+
+        assert response.code == 0
+        assert base64.b64decode(response.data['value_base64']) == b'legacy bytes'
+        assert app.persistence_mgr.execute_async.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_retries_canonical_after_concurrent_legacy_adoption(self, app):
+        runtime_handler = make_handler(app)
+        canonical_storage = SimpleNamespace(value=b'adopted bytes')
+        app.persistence_mgr.execute_async.side_effect = [
+            make_result(),
+            make_result(),
+            make_result(canonical_storage),
+        ]
+
+        response = await runtime_handler.actions[RuntimeToLangBotAction.GET_BINARY_STORAGE.value](
+            {'key': 'test-key', 'owner_type': 'plugin', 'owner': 'ignored'}
+        )
+
+        assert response.code == 0
+        assert base64.b64decode(response.data['value_base64']) == b'adopted bytes'
+        assert app.persistence_mgr.execute_async.await_count == 3
+        retry_params = compiled_params(app.persistence_mgr.execute_async.await_args_list[2].args[0])
+        assert canonical_binary_key('plugin', 'test-author/test-plugin', 'test-key') in retry_params.values()
+
+    @pytest.mark.asyncio
     async def test_returns_error_when_not_found(self, app):
         """Missing binary storage rows return an error response."""
         runtime_handler = make_handler(app)
@@ -567,21 +671,47 @@ class TestDeleteAndListBinaryStorage:
 
         assert response.code == 0
         statement_params = compiled_params(app.persistence_mgr.execute_async.await_args.args[0])
-        assert 'workspace-a' in statement_params.values()
+        flat_values = [
+            item for value in statement_params.values() for item in (value if isinstance(value, list) else [value])
+        ]
+        assert 'workspace-a' in flat_values
         assert (
             canonical_binary_key(
                 'plugin',
                 'test-author/test-plugin',
                 'test-key',
             )
-            in statement_params.values()
+            in flat_values
         )
-        assert 'forged-owner' not in statement_params.values()
+        assert 'forged-owner' not in flat_values
+
+    @pytest.mark.asyncio
+    async def test_delete_removes_canonical_and_legacy_scoped_keys(self, app):
+        runtime_handler = make_handler(app)
+
+        response = await runtime_handler.actions[RuntimeToLangBotAction.DELETE_BINARY_STORAGE.value](
+            {
+                'key': 'test-key',
+                'owner_type': 'plugin',
+                'owner': 'forged-owner',
+            }
+        )
+
+        assert response.code == 0
+        statement_params = compiled_params(app.persistence_mgr.execute_async.await_args.args[0])
+        values = [
+            item for value in statement_params.values() for item in (value if isinstance(value, list) else [value])
+        ]
+        assert 'workspace-a' in values
+        assert canonical_binary_key('plugin', 'test-author/test-plugin', 'test-key') in values
+        assert 'plugin:test-author/test-plugin:test-key' in values
+        assert 'test-author/test-plugin' in values
+        assert 'forged-owner' not in values
 
     @pytest.mark.asyncio
     async def test_list_keys_uses_trusted_plugin_owner(self, app):
         result = Mock()
-        result.scalars.return_value.all.return_value = ['first', 'second']
+        result.scalars.return_value.all.return_value = ['first', 'second', 'first']
         app.persistence_mgr.execute_async.return_value = result
         runtime_handler = make_handler(app)
 

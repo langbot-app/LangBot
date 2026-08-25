@@ -12,6 +12,7 @@ import re
 import secrets
 import sqlite3
 import tempfile
+import time
 import typing
 
 from sqlalchemy.ext.asyncio import AsyncEngine
@@ -117,8 +118,19 @@ def _write_manifest(backup: SQLiteMigrationBackup, status: str, **extra: typing.
         temporary_path.unlink(missing_ok=True)
 
 
-def _fsync_file(path: pathlib.Path) -> None:
-    descriptor = os.open(path, os.O_RDONLY)
+def _fsync_file(path: pathlib.Path, *, reopen_attempts: int = 20) -> None:
+    """Sync a file, tolerating delayed visibility after replace on bind mounts."""
+
+    descriptor: int | None = None
+    for attempt in range(reopen_attempts):
+        try:
+            descriptor = os.open(path, os.O_RDONLY)
+            break
+        except FileNotFoundError:
+            if attempt + 1 >= reopen_attempts:
+                raise
+            time.sleep(0.05)
+    assert descriptor is not None
     try:
         os.fsync(descriptor)
     finally:

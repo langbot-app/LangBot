@@ -9,10 +9,10 @@ resolution-markers = [
     "python_full_version == '3.13.*' and sys_platform == 'emscripten'",
     "python_full_version == '3.13.*' and sys_platform != 'emscripten' and sys_platform != 'win32'",
     "python_full_version == '3.12.*' and sys_platform == 'win32'",
-    "python_full_version < '3.12' and sys_platform == 'win32'",
     "python_full_version == '3.12.*' and sys_platform == 'emscripten'",
-    "python_full_version < '3.12' and sys_platform == 'emscripten'",
     "python_full_version == '3.12.*' and sys_platform != 'emscripten' and sys_platform != 'win32'",
+    "python_full_version < '3.12' and sys_platform == 'win32'",
+    "python_full_version < '3.12' and sys_platform == 'emscripten'",
     "python_full_version < '3.12' and sys_platform != 'emscripten' and sys_platform != 'win32'",
 ]
 
@@ -2008,7 +2008,7 @@ wheels = [
 
 [[package]]
 name = "langbot"
-version = "4.10.7"
+version = "4.10.8"
 source = { editable = "." }
 dependencies = [
     { name = "aiocqhttp" },
@@ -2063,7 +2063,6 @@ dependencies = [
     { name = "pymilvus" },
     { name = "pynacl" },
     { name = "pypdf2" },
-    { name = "pyseekdb" },
     { name = "python-docx" },
     { name = "python-multipart" },
     { name = "python-socks" },
@@ -2087,6 +2086,11 @@ dependencies = [
     { name = "uv" },
     { name = "valkey-glide", marker = "sys_platform != 'win32'" },
     { name = "websockets" },
+]
+
+[package.optional-dependencies]
+seekdb = [
+    { name = "pyseekdb" },
 ]
 
 [package.dev-dependencies]
@@ -2125,7 +2129,7 @@ requires-dist = [
     { name = "ebooklib", specifier = ">=0.18" },
     { name = "gewechat-client", specifier = ">=0.1.5" },
     { name = "html2text", specifier = ">=2024.2.26" },
-    { name = "langbot-plugin", git = "https://github.com/langbot-app/langbot-plugin-sdk.git?rev=9d216208cdfb41f0cb7fcb64632e2a46816d6dc6" },
+    { name = "langbot-plugin", specifier = "==0.5.5" },
     { name = "langchain", specifier = ">=1.3.9" },
     { name = "langchain-core", specifier = ">=1.3.3" },
     { name = "langchain-text-splitters", specifier = ">=1.1.2" },
@@ -2153,7 +2157,7 @@ requires-dist = [
     { name = "pymilvus", specifier = ">=2.6.4" },
     { name = "pynacl", specifier = ">=1.5.0" },
     { name = "pypdf2", specifier = ">=3.0.1" },
-    { name = "pyseekdb", specifier = "==1.1.0.post3" },
+    { name = "pyseekdb", marker = "extra == 'seekdb'", specifier = "==1.1.0.post3" },
     { name = "python-docx", specifier = ">=1.1.0" },
     { name = "python-multipart", specifier = ">=0.0.27" },
     { name = "python-socks", specifier = ">=2.7.1" },
@@ -2178,6 +2182,7 @@ requires-dist = [
     { name = "valkey-glide", marker = "sys_platform != 'win32'", specifier = ">=2.4.1,<3.0.0" },
     { name = "websockets", specifier = ">=15.0.1" },
 ]
+provides-extras = ["seekdb"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -2191,8 +2196,8 @@ dev = [
 
 [[package]]
 name = "langbot-plugin"
-version = "0.5.0"
-source = { git = "https://github.com/langbot-app/langbot-plugin-sdk.git?rev=9d216208cdfb41f0cb7fcb64632e2a46816d6dc6#9d216208cdfb41f0cb7fcb64632e2a46816d6dc6" }
+version = "0.5.5"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiofiles" },
     { name = "aiohttp" },
@@ -2211,6 +2216,10 @@ dependencies = [
     { name = "types-pyyaml" },
     { name = "watchdog" },
     { name = "websockets" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c3/be/1bbdf959d8c16b625e3721cde586b3bb22eaa22dd8c22d072c04f9b491ba/langbot_plugin-0.5.5.tar.gz", hash = "sha256:ea31b0ddf64c2ef8fdec012273b2d3dee6f0d140475f07694f31ea685be40695", size = 472639, upload-time = "2026-08-16T17:33:27.783Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/00/30/72caa601b571542fa4de5f2a3461d6f601f75c52d484d9fc95ebb82ce30c/langbot_plugin-0.5.5-py3-none-any.whl", hash = "sha256:a55d20a0c015414ef85d783b493f83d27b64f1d662887de94330df9d3d4ab64e", size = 304643, upload-time = "2026-08-16T17:33:26.687Z" },
 ]
 
 [[package]]

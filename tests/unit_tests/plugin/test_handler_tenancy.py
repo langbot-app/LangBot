@@ -444,3 +444,23 @@ async def test_host_to_runtime_action_carries_trusted_connector_context():
         'runtime_id': 'runtime-a',
     }
     assert request.get('context') is None
+
+
+@pytest.mark.asyncio
+async def test_get_debug_info_converts_execution_context_to_sdk_action_context():
+    runtime_handler, _app, _installation_context = make_handler()
+    runtime_handler.call_action = AsyncMock(return_value={'plugin_debug_key': 'debug-key'})
+    execution_context = ExecutionContext(
+        instance_uuid='instance-a',
+        workspace_uuid='workspace-a',
+        placement_generation=7,
+    )
+
+    result = await runtime_handler.get_debug_info(execution_context)
+
+    assert result == {'plugin_debug_key': 'debug-key'}
+    assert runtime_handler.call_action.await_args.kwargs['action_context'] == ActionContext(
+        instance_uuid='instance-a',
+        workspace_uuid='workspace-a',
+        placement_generation=7,
+    )

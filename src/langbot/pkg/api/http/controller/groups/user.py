@@ -14,13 +14,6 @@ from ...service.user import ControlPlaneDirectoryRequiredError, PublicRegistrati
 
 @group.group_class('user', '/api/v1/user')
 class UserRouterGroup(group.RouterGroup):
-    @staticmethod
-    def _origin(value: str) -> tuple[str, str, int | None] | None:
-        parsed = urlsplit(value)
-        if parsed.scheme not in {'http', 'https'} or not parsed.hostname:
-            return None
-        return parsed.scheme, parsed.hostname.casefold(), parsed.port
-
     def _validate_space_redirect_uri(self, redirect_uri: str, *, bind: bool) -> str:
         parsed = urlsplit(redirect_uri)
         if (
@@ -38,17 +31,8 @@ class UserRouterGroup(group.RouterGroup):
             if query != {'mode': ['bind']}:
                 raise ValueError('Invalid Space binding redirect_uri')
         elif query:
-            raise ValueError('Invalid Space login redirect_uri')
+            raise ValueError('Invalid LangBot Account login redirect_uri')
 
-        redirect_origin = self._origin(redirect_uri)
-        api_config = self.ap.instance_config.data.get('api', {})
-        trusted_origins = {
-            self._origin(str(api_config.get(config_key, '') or '').strip())
-            for config_key in ('webui_url', 'webhook_prefix')
-        }
-        trusted_origins.discard(None)
-        if redirect_origin not in trusted_origins:
-            raise ValueError('Untrusted redirect_uri origin')
         return redirect_uri
 
     async def initialize(self) -> None:
@@ -338,6 +322,7 @@ class UserRouterGroup(group.RouterGroup):
             if cloud_mode:
                 capabilities['password_login_enabled'] = False
             capabilities['authenticated_invitation_acceptance_enabled'] = cloud_mode
+            capabilities['invitation_registration_enabled'] = not cloud_mode
             return self.success(data={'initialized': True, **capabilities})
 
         @self.route('/set-password', methods=['POST'], auth_type=group.AuthType.USER_TOKEN)
@@ -416,7 +401,7 @@ class UserRouterGroup(group.RouterGroup):
                     'Bind the LangBot Account with the same email as this local Account',
                 )
             except ValueError:
-                return self.http_status(400, -1, 'Space account binding failed')
+                return self.http_status(400, -1, 'LangBot Account binding failed')
             except Exception:
                 raise
 

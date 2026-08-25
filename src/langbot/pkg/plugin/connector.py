@@ -264,6 +264,11 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         if not self._control_token and allow_generate:
             self._control_token = secrets.token_urlsafe(48)
         if not self._control_token:
+            if self.runtime_profile == 'shared':
+                raise PluginRuntimeNotConnectedError(
+                    f'{PLUGIN_RUNTIME_CONTROL_TOKEN_ENV} must be configured with a strong shared secret '
+                    'for a Cloud Plugin Runtime'
+                )
             return {}
         try:
             self._control_token = validate_runtime_secret(
@@ -696,7 +701,13 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             }
             self._known_desired_states.update({state.binding.installation_uuid: state for state in desired_states})
 
-        result = await runtime_handler.reconcile_plugin_installations(tuple(self._known_desired_states.values()))
+        reconcile_timeout_seconds = max(
+            300.0, self._runtime_connect_timeout(self.ap.instance_config.data.get('plugin', {}))
+        )
+        result = await runtime_handler.reconcile_plugin_installations(
+            tuple(self._known_desired_states.values()),
+            timeout=reconcile_timeout_seconds,
+        )
         await self._repair_reconcile_missing_artifacts(self._known_desired_states, result)
         self._record_reconcile_failures(self._known_desired_states, result)
 
@@ -731,7 +742,13 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                     if state.binding.installation_uuid in all_states:
                         raise ValueError('Duplicate plugin installation UUID across projected Workspaces')
                     all_states[state.binding.installation_uuid] = state
-            result = await runtime_handler.reconcile_plugin_installations(tuple(all_states.values()))
+            reconcile_timeout_seconds = max(
+                300.0, self._runtime_connect_timeout(self.ap.instance_config.data.get('plugin', {}))
+            )
+            result = await runtime_handler.reconcile_plugin_installations(
+                tuple(all_states.values()),
+                timeout=reconcile_timeout_seconds,
+            )
             await self._repair_reconcile_missing_artifacts(all_states, result)
             self._record_reconcile_failures(all_states, result)
             for installation_uuid, previous in tuple(self._known_desired_states.items()):

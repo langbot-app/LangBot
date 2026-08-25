@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .. import stage, app
+from .. import stage, app, entities as core_entities
 from ...utils import version, proxy, constants
 from ...pipeline import pool, controller, pipelinemgr
 from ...pipeline import aggregator as message_aggregator
@@ -292,14 +292,17 @@ class BuildAppStage(stage.BootingStage):
         async def runtime_disconnect_callback(connector: plugin_connector.PluginRuntimeConnector) -> None:
             connector.schedule_reconnect()
 
+        if ap.directory_projection_service is not None:
+            # Keep the projection fresh while shared Runtime cold restore runs.
+            # BuildApp initializes the connector before Application.run() starts
+            # its long-lived tasks, so start the single refresh task here.
+            ap.directory_projection_task = ap.task_mgr.create_task(
+                ap.directory_projection_service.run(),
+                name='cloud-directory-projection',
+                scopes=[core_entities.LifecycleControlScope.APPLICATION],
+            )
+
         plugin_connector_inst = plugin_connector.PluginRuntimeConnector(ap, runtime_disconnect_callback)
-        try:
-            await plugin_connector_inst.initialize()
-        except Exception as exc:
-            # Keep the API/UI available while an external or managed runtime is
-            # starting, then recover in the background with bounded backoff.
-            ap.logger.warning(f'Plugin runtime unavailable during startup; reconnecting in background: {exc}')
-            plugin_connector_inst.schedule_reconnect()
         ap.plugin_connector = plugin_connector_inst
         workspace_service_inst.release_startup_execution_bindings()
 

@@ -103,11 +103,11 @@ This log records implementation choices made while delivering the Workspace arch
 - Decision: New Core JWTs require `iss=langbot-core`, an audience derived from the immutable instance UUID, and an expiry. Legacy community tokens are accepted only when they have the historical issuer, carry no audience, and the active policy is the OSS singleton policy.
 - Reason: A token issued by one instance must not authenticate against another instance that happens to share a secret, and a compatibility decoder must not become an alternate path around the SaaS trust boundary.
 
-### Runtime control transports authenticate before protocol dispatch
+### Runtime control transports support opt-in shared-secret authentication
 
-- Decision: External Plugin Runtime and Box WebSocket control channels require independent strong shared secrets in handshake headers. Locally managed child processes receive ephemeral secrets through their environment; secrets are not placed in URLs, process arguments, request payloads, or logs. Box additionally binds the first authenticated control channel to one trusted instance. Plugin Runtime debug and control credentials remain separate.
-- Reason: Workspace context inside an RPC payload is not trustworthy until the transport peer itself is authenticated. Separating control and debug credentials also limits accidental privilege reuse.
-- Deployment consequence: Docker Compose and Kubernetes wire one shared secret to each host/runtime pair. An empty external-runtime secret fails startup instead of silently exposing an unauthenticated socket.
+- Decision: OSS external Plugin Runtime and Box WebSocket control channels preserve tokenless standalone compatibility when the corresponding control token is unset. When a Runtime configures a token, it validates the independent shared secret in the handshake before protocol dispatch. Locally managed child processes still receive ephemeral secrets through their environment; secrets are not placed in URLs, process arguments, request payloads, or logs. Box additionally pins the first control channel to one declared instance identity. Plugin Runtime debug and control credentials remain separate.
+- Reason: Local OSS development must remain backward compatible, while exposed or shared Runtime endpoints can opt into transport authentication. Separating control and debug credentials also limits accidental privilege reuse.
+- Deployment consequence: Docker Compose and Kubernetes should wire one strong shared secret to each host/runtime pair. Both sides must use the same value for protection to be effective; a Runtime configured with a token rejects clients that omit it or send a different value.
 
 ### Dashboard WebSocket sessions are tenant runtime objects
 

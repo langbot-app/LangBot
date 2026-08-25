@@ -11,6 +11,8 @@ import traceback
 from dataclasses import dataclass
 
 import sqlalchemy
+import sqlalchemy.dialects.postgresql
+import sqlalchemy.dialects.sqlite
 
 from langbot_plugin.runtime.io import handler
 from langbot_plugin.runtime.io.connection import Connection
@@ -430,6 +432,19 @@ class RuntimeConnectionHandler(handler.Handler):
         if owner_type == 'plugin':
             return f'{identity.plugin_author}/{identity.plugin_name}'
         raise ValueError(f'Unsupported binary storage owner_type {owner_type!r}')
+
+    @staticmethod
+    def _legacy_binary_storage_key(
+        action_context: ActionContext,
+        *,
+        owner_type: str,
+        owner: str,
+        key: str,
+    ) -> str:
+        """Return the pre-tenancy key shape for a row already scoped to this Workspace."""
+
+        legacy_owner = action_context.workspace_uuid if owner_type == 'workspace' else owner
+        return f'{owner_type}:{legacy_owner}:{key}'
 
     @classmethod
     def _binary_storage_key(
@@ -896,25 +911,82 @@ class RuntimeConnectionHandler(handler.Handler):
                 .where(persistence_bstorage.BinaryStorage.workspace_uuid == action_context.workspace_uuid)
                 .where(persistence_bstorage.BinaryStorage.unique_key == unique_key)
             )
+            storage = result.first()
+            if storage is None:
+                legacy_key = self._legacy_binary_storage_key(
+                    action_context,
+                    owner_type=owner_type,
+                    owner=owner,
+                    key=key,
+                )
+                result = await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.select(persistence_bstorage.BinaryStorage)
+                    .where(persistence_bstorage.BinaryStorage.workspace_uuid == action_context.workspace_uuid)
+                    .where(persistence_bstorage.BinaryStorage.unique_key == legacy_key)
+                    .where(persistence_bstorage.BinaryStorage.key == key)
+                    .where(persistence_bstorage.BinaryStorage.owner_type == owner_type)
+                    .where(persistence_bstorage.BinaryStorage.owner == owner)
+                )
+                storage = result.first()
+                if storage is not None:
+                    update_result = await self.ap.persistence_mgr.execute_async(
+                        sqlalchemy.update(persistence_bstorage.BinaryStorage)
+                        .where(persistence_bstorage.BinaryStorage.workspace_uuid == action_context.workspace_uuid)
+                        .where(persistence_bstorage.BinaryStorage.unique_key == legacy_key)
+                        .where(persistence_bstorage.BinaryStorage.key == key)
+                        .where(persistence_bstorage.BinaryStorage.owner_type == owner_type)
+                        .where(persistence_bstorage.BinaryStorage.owner == owner)
+                        .values(unique_key=unique_key, value=value)
+                    )
+                    if update_result.rowcount:
+                        return handler.ActionResponse.success(data={})
+                    canonical_update = await self.ap.persistence_mgr.execute_async(
+                        sqlalchemy.update(persistence_bstorage.BinaryStorage)
+                        .where(persistence_bstorage.BinaryStorage.workspace_uuid == action_context.workspace_uuid)
+                        .where(persistence_bstorage.BinaryStorage.unique_key == unique_key)
+                        .where(persistence_bstorage.BinaryStorage.key == key)
+                        .where(persistence_bstorage.BinaryStorage.owner_type == owner_type)
+                        .where(persistence_bstorage.BinaryStorage.owner == owner)
+                        .values(value=value)
+                    )
+                    if canonical_update.rowcount:
+                        return handler.ActionResponse.success(data={})
+                    storage = None
 
-            if result.first() is not None:
+            if storage is not None:
                 await self.ap.persistence_mgr.execute_async(
                     sqlalchemy.update(persistence_bstorage.BinaryStorage)
                     .where(persistence_bstorage.BinaryStorage.workspace_uuid == action_context.workspace_uuid)
                     .where(persistence_bstorage.BinaryStorage.unique_key == unique_key)
+                    .where(persistence_bstorage.BinaryStorage.key == key)
+                    .where(persistence_bstorage.BinaryStorage.owner_type == owner_type)
+                    .where(persistence_bstorage.BinaryStorage.owner == owner)
                     .values(value=value)
                 )
-            else:
-                await self.ap.persistence_mgr.execute_async(
-                    sqlalchemy.insert(persistence_bstorage.BinaryStorage).values(
-                        workspace_uuid=action_context.workspace_uuid,
-                        unique_key=unique_key,
-                        key=key,
-                        owner_type=owner_type,
-                        owner=owner,
-                        value=value,
-                    )
+                return handler.ActionResponse.success(data={})
+
+            dialect_name = self.ap.persistence_mgr.get_db_engine().dialect.name
+            insert = {
+                'postgresql': sqlalchemy.dialects.postgresql.insert,
+                'sqlite': sqlalchemy.dialects.sqlite.insert,
+            }.get(dialect_name)
+            if insert is None:
+                return handler.ActionResponse.error(message=f'Unsupported storage database dialect: {dialect_name}')
+            await self.ap.persistence_mgr.execute_async(
+                insert(persistence_bstorage.BinaryStorage)
+                .values(
+                    workspace_uuid=action_context.workspace_uuid,
+                    unique_key=unique_key,
+                    key=key,
+                    owner_type=owner_type,
+                    owner=owner,
+                    value=value,
                 )
+                .on_conflict_do_update(
+                    index_elements=['workspace_uuid', 'unique_key'],
+                    set_={'value': value},
+                )
+            )
 
             return handler.ActionResponse.success(
                 data={},
@@ -946,6 +1018,29 @@ class RuntimeConnectionHandler(handler.Handler):
             )
 
             storage = result.first()
+            if storage is None:
+                legacy_key = self._legacy_binary_storage_key(
+                    action_context,
+                    owner_type=owner_type,
+                    owner=owner,
+                    key=key,
+                )
+                result = await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.select(persistence_bstorage.BinaryStorage)
+                    .where(persistence_bstorage.BinaryStorage.workspace_uuid == action_context.workspace_uuid)
+                    .where(persistence_bstorage.BinaryStorage.unique_key == legacy_key)
+                    .where(persistence_bstorage.BinaryStorage.key == key)
+                    .where(persistence_bstorage.BinaryStorage.owner_type == owner_type)
+                    .where(persistence_bstorage.BinaryStorage.owner == owner)
+                )
+                storage = result.first()
+                if storage is None:
+                    retry_result = await self.ap.persistence_mgr.execute_async(
+                        sqlalchemy.select(persistence_bstorage.BinaryStorage)
+                        .where(persistence_bstorage.BinaryStorage.workspace_uuid == action_context.workspace_uuid)
+                        .where(persistence_bstorage.BinaryStorage.unique_key == unique_key)
+                    )
+                    storage = retry_result.first()
             if storage is None:
                 return handler.ActionResponse.error(
                     message=f'Storage with key {key} not found',
@@ -981,10 +1076,19 @@ class RuntimeConnectionHandler(handler.Handler):
                     message=str(e),
                 )
 
+            legacy_key = self._legacy_binary_storage_key(
+                action_context,
+                owner_type=owner_type,
+                owner=owner,
+                key=key,
+            )
             await self.ap.persistence_mgr.execute_async(
                 sqlalchemy.delete(persistence_bstorage.BinaryStorage)
                 .where(persistence_bstorage.BinaryStorage.workspace_uuid == action_context.workspace_uuid)
-                .where(persistence_bstorage.BinaryStorage.unique_key == unique_key)
+                .where(persistence_bstorage.BinaryStorage.unique_key.in_((unique_key, legacy_key)))
+                .where(persistence_bstorage.BinaryStorage.key == key)
+                .where(persistence_bstorage.BinaryStorage.owner_type == owner_type)
+                .where(persistence_bstorage.BinaryStorage.owner == owner)
             )
 
             return handler.ActionResponse.success(
@@ -1012,7 +1116,7 @@ class RuntimeConnectionHandler(handler.Handler):
 
             return handler.ActionResponse.success(
                 data={
-                    'keys': result.scalars().all(),
+                    'keys': list(dict.fromkeys(result.scalars().all())),
                 },
             )
 
@@ -1573,13 +1677,15 @@ class RuntimeConnectionHandler(handler.Handler):
     async def reconcile_plugin_installations(
         self,
         installations: tuple[PluginInstallationDesiredState, ...],
+        *,
+        timeout: float = 300,
     ) -> dict[str, Any]:
         request = ReconcilePluginInstallationsRequest(installations=installations)
         with self.installation_scope(None):
             return await self.call_action(
                 LangBotToRuntimeAction.RECONCILE_PLUGIN_INSTALLATIONS,
                 request.model_dump(),
-                timeout=120,
+                timeout=timeout,
             )
 
     async def apply_plugin_installation(
@@ -1962,11 +2068,16 @@ class RuntimeConnectionHandler(handler.Handler):
 
     async def get_debug_info(self, execution_context: ExecutionContext) -> dict[str, Any]:
         """Get debug information including debug key and WS URL"""
+        action_context = ActionContext(
+            instance_uuid=execution_context.instance_uuid,
+            workspace_uuid=execution_context.workspace_uuid,
+            placement_generation=execution_context.placement_generation,
+        )
         result = await self.call_action(
             LangBotToRuntimeAction.GET_DEBUG_INFO,
             {},
             timeout=10,
-            action_context=execution_context,
+            action_context=action_context,
         )
         return result
 

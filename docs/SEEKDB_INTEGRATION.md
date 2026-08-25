@@ -16,12 +16,20 @@ This document describes how to use OceanBase SeekDB as the vector database backe
 
 ## Installation
 
-SeekDB support is automatically included when you install LangBot. The required dependency `pyseekdb` is listed in `pyproject.toml`.
+SeekDB is an optional LangBot feature. A normal LangBot installation uses
+Chroma by default and does not install `pyseekdb` or its native bindings.
 
-If you need to install it manually:
+Choose the command that matches how you run LangBot:
 
 ```bash
-pip install pyseekdb
+# PyPI / uvx
+uvx --from 'langbot[seekdb]@latest' langbot
+
+# Installed package
+pip install 'langbot[seekdb]'
+
+# Source checkout
+uv sync --extra seekdb
 ```
 
 ## ⚠️ Platform Compatibility
@@ -30,31 +38,36 @@ pip install pyseekdb
 
 | Platform | Status | Notes |
 |----------|--------|-------|
-| Linux | ✅ Supported | Full embedded mode support via `pylibseekdb` |
-| macOS | ❌ Not Supported | `pylibseekdb` is Linux-only; use server mode instead |
-| Windows | ❌ Not Supported | `pylibseekdb` is Linux-only; use server mode instead |
+| Linux x86_64 / ARM64 | ✅ Supported | Full embedded mode support via `pylibseekdb` |
+| macOS 15+ on Apple Silicon | ✅ Supported | Requires the macOS ARM64 `pylibseekdb` wheel |
+| macOS 14 or earlier on Apple Silicon | ❌ Not currently supported | The published native wheel requires macOS 15+; follow [oceanbase/seekdb#1324](https://github.com/oceanbase/seekdb/issues/1324) |
+| macOS on Intel | ❌ Not currently supported | No embedded binding is selected by `pyseekdb` |
+| Windows | ❌ Not currently supported | No Windows `pylibseekdb` wheel is published |
 
-**Important**: Embedded mode requires the `pylibseekdb` library, which is only available on Linux. If you're on macOS or Windows, you must use server mode.
+**Important**: Embedded mode requires a compatible `pylibseekdb` wheel. Do not
+force-install or retag a wheel built for a newer macOS release: the bundled
+binaries also declare macOS 15 as their minimum deployment target.
 
 ### Server Mode (Docker)
 
 | Platform | Status | Notes |
 |----------|--------|-------|
 | Linux | ✅ Supported | Full Docker support |
-| macOS | ⚠️ Known Issue | Docker container initialization failure - [See Issue #36](https://github.com/oceanbase/seekdb/issues/36) |
-| Windows | ⚠️ Untested | Should work but not yet tested |
-
-**macOS Users**: Currently, SeekDB Docker containers have an initialization issue on macOS ([oceanbase/seekdb#36](https://github.com/oceanbase/seekdb/issues/36)). Until this is resolved, we recommend:
-- Using ChromaDB or Qdrant as alternatives
-- Connecting to a remote SeekDB server on Linux if available
+| macOS | ✅ Supported by Docker Desktop | The previous slow-disk startup issue was fixed upstream in [oceanbase/seekdb#36](https://github.com/oceanbase/seekdb/issues/36) |
+| Windows | ⚠️ Depends on the container runtime | Use a Linux container and follow the upstream image documentation |
 
 ### Server Mode (Remote Connection)
 
 | Platform | Status | Notes |
 |----------|--------|-------|
-| All Platforms | ✅ Supported | Connect to SeekDB running on a remote Linux server |
+| Linux | ✅ Supported | Install the `seekdb` extra and connect to the remote server |
+| macOS 15+ on Apple Silicon | ✅ Supported | Install the `seekdb` extra and connect to the remote server |
+| macOS 14 or earlier on Apple Silicon | ⚠️ Blocked by upstream packaging | `pyseekdb` currently requires the unavailable native wheel even for server-only use; follow [#1324](https://github.com/oceanbase/seekdb/issues/1324) |
+| macOS on Intel / Windows | ✅ Server mode only | Embedded bindings are not available |
 
-**Recommendation for macOS/Windows users**: Deploy SeekDB on a Linux server and connect via server mode configuration.
+Remote server mode does not use embedded storage at runtime. However, whether
+the Python client can be installed still depends on `pyseekdb`'s package
+metadata for the current platform.
 
 ## Configuration
 
@@ -170,22 +183,23 @@ Key methods:
 
 ### Import Error
 
-If you see: `ImportError: pyseekdb is not installed`
+If you see: `SeekDB support is not installed`
 
 Solution:
 ```bash
-pip install pyseekdb
+uv sync --extra seekdb
+# or: uvx --from 'langbot[seekdb]@latest' langbot
 ```
 
-### Embedded Mode Error on macOS/Windows
+### Embedded Mode Is Unavailable on the Current Platform
 
 **Error**:
 ```
 RuntimeError: Embedded Client is not available because pylibseekdb is not available.
-Please install pylibseekdb (Linux only) or use RemoteServerClient (host/port) instead.
 ```
 
-**Cause**: `pylibseekdb` is only available on Linux platforms.
+**Cause**: No compatible `pylibseekdb` wheel is installed for the current OS,
+CPU architecture, Python version, and macOS deployment target.
 
 **Solution**: Use server mode instead:
 1. Deploy SeekDB on a Linux server or VM
@@ -207,29 +221,6 @@ vdb:
 vdb:
   use: chroma  # or qdrant
 ```
-
-### Docker Container Fails on macOS
-
-**Symptoms**:
-```bash
-docker run -d -p 2881:2881 oceanbase/seekdb:latest
-# Container exits immediately with code 30
-```
-
-**Error in logs**:
-```
-[ERROR] Code: Agent.SeekDB.Not.Exists
-Message: initialize failed: init agent failed: SeekDB not exists in current directory.
-```
-
-**Cause**: This is a known issue with SeekDB Docker containers on macOS. See [oceanbase/seekdb#36](https://github.com/oceanbase/seekdb/issues/36).
-
-**Status**: Under investigation by OceanBase team.
-
-**Workaround Options**:
-1. **Use alternatives**: ChromaDB or Qdrant work perfectly on macOS
-2. **Remote server**: Deploy SeekDB on a Linux server and connect remotely
-3. **Wait for fix**: Monitor the GitHub issue for updates
 
 ### Connection Error (Server Mode)
 

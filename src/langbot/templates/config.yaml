@@ -181,6 +181,11 @@ vdb:
         host: localhost
         port: 6333
         api_key: ''
+    # SeekDB is optional. Native/package installs need the `seekdb` extra:
+    # `uv sync --extra seekdb` (source) or
+    # `uvx --from 'langbot[seekdb]@latest' langbot` (PyPI).
+    # The official Docker image already includes it.
+    # Embedded-mode platform support depends on the native pylibseekdb wheels.
     seekdb:
         mode: embedded  # 'embedded' or 'server'
         # Embedded mode options:
@@ -328,8 +333,9 @@ box:
     enabled: true
     backend: 'local'  # 'local' (Docker/nsjail), 'docker', 'nsjail', or 'e2b'. Can be written via BOX__BACKEND.
     runtime:
-        # External WebSocket runtimes also require LANGBOT_BOX_CONTROL_TOKEN in
-        # both LangBot and Box. Keep the shared secret out of this config file.
+        # LANGBOT_BOX_CONTROL_TOKEN is optional for OSS external WebSocket
+        # runtimes. To protect an exposed endpoint, set the same strong secret
+        # in both LangBot and Box. Keep it out of this config file.
         endpoint: ''  # External Box Runtime base URL, e.g. 'ws://127.0.0.1:5410'. Leave empty for local auto-managed runtime.
     limits:
         max_sessions: 64

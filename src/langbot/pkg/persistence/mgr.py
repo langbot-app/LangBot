@@ -177,7 +177,6 @@ class PersistenceManager:
             await self._validate_cloud_runtime()
             return
 
-        self._enable_sqlite_foreign_keys()
         if self.mode == PersistenceMode.RELEASE_MIGRATION:
             async with self._release_migration_lock():
                 await self._initialize_managed_schema()
@@ -185,6 +184,7 @@ class PersistenceManager:
             return
 
         await self._initialize_managed_schema()
+        await self._enable_sqlite_foreign_keys_after_migration()
 
         if self.mode == PersistenceMode.OSS_COMPAT:
             await self.write_space_model_providers()
@@ -372,6 +372,17 @@ class PersistenceManager:
 
         sqlalchemy.event.listen(self.get_db_engine().sync_engine, 'begin', set_oss_tenant_scope)
         self._oss_tenant_scope_listener_installed = True
+
+    async def _enable_sqlite_foreign_keys_after_migration(self) -> None:
+        """Enable SQLite FK enforcement only after table-rebuilding migrations."""
+        engine = self.get_db_engine()
+        if engine.dialect.name != 'sqlite':
+            return
+        await engine.dispose()
+        self._enable_sqlite_foreign_keys()
+        # Dispose again so every runtime connection is opened through the new
+        # listener instead of reusing a pre-migration pooled connection.
+        await engine.dispose()
 
     def _enable_sqlite_foreign_keys(self) -> None:
         """Enable SQLite FK enforcement for every pooled runtime connection."""

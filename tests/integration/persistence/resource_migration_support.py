@@ -81,6 +81,7 @@ async def create_legacy_resource_schema(engine, *, instance_uuid: str) -> None:
         sa.Column('key', sa.String(255), nullable=False),
         sa.Column('owner_type', sa.String(255), nullable=False),
         sa.Column('owner', sa.String(255), nullable=False),
+        sa.Column('value', sa.LargeBinary, nullable=False),
     )
     mcp_servers = _uuid_table(
         metadata,
@@ -210,7 +211,13 @@ async def create_legacy_resource_schema(engine, *, instance_uuid: str) -> None:
         await conn.execute(bots.insert().values(uuid='bot-1', name='bot', updated_at=now))
         await conn.execute(bot_admins.insert().values(bot_uuid='bot-1', launcher_type='person', launcher_id='owner'))
         await conn.execute(
-            binary_storages.insert().values(unique_key='plugin:demo:key', key='key', owner_type='plugin', owner='demo')
+            binary_storages.insert().values(
+                unique_key='plugin:demo:key',
+                key='key',
+                owner_type='plugin',
+                owner='demo',
+                value=b'legacy-plugin-value',
+            )
         )
         await conn.execute(mcp_servers.insert().values(uuid='mcp-1', name='shared-name', enable=True, updated_at=now))
         await conn.execute(model_providers.insert().values(uuid='provider-1', name='provider', requester='openai'))

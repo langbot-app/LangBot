@@ -24,7 +24,7 @@ from langbot.pkg.box.connector import BoxRuntimeConnector
 _CONTROL_TOKEN = 'box-control-token-that-is-longer-than-32-bytes'
 
 
-def make_app(logger: Mock, runtime_endpoint: str = ''):
+def make_app(logger: Mock, runtime_endpoint: str = '', *, cloud: bool = False):
     return SimpleNamespace(
         logger=logger,
         workspace_service=SimpleNamespace(instance_uuid='instance-a'),
@@ -42,6 +42,7 @@ def make_app(logger: Mock, runtime_endpoint: str = ''):
                 }
             }
         ),
+        deployment=SimpleNamespace(mode='cloud' if cloud else 'oss'),
     )
 
 
@@ -306,8 +307,25 @@ def test_box_runtime_connector_rejects_relay_context_from_other_instance(
         )
 
 
-def test_external_box_runtime_fails_closed_without_control_token(monkeypatch: pytest.MonkeyPatch):
+def test_external_box_runtime_control_headers_are_tokenless_when_secret_is_unset(
+    monkeypatch: pytest.MonkeyPatch,
+):
     monkeypatch.delenv(BOX_CONTROL_TOKEN_ENV, raising=False)
+    connector = BoxRuntimeConnector(make_app(Mock(), runtime_endpoint='http://box-runtime:5410'))
+
+    assert connector.get_control_headers() == {BOX_INSTANCE_HEADER: 'instance-a'}
+
+
+def test_cloud_box_runtime_rejects_missing_control_secret(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv(BOX_CONTROL_TOKEN_ENV, raising=False)
+    connector = BoxRuntimeConnector(make_app(Mock(), runtime_endpoint='http://box-runtime:5410', cloud=True))
+
+    with pytest.raises(BoxRuntimeUnavailableError, match=BOX_CONTROL_TOKEN_ENV):
+        connector.get_control_headers()
+
+
+def test_external_box_runtime_rejects_invalid_configured_control_token(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv(BOX_CONTROL_TOKEN_ENV, 'too-short')
     connector = BoxRuntimeConnector(make_app(Mock(), runtime_endpoint='http://box-runtime:5410'))
 
     with pytest.raises(BoxRuntimeUnavailableError, match=BOX_CONTROL_TOKEN_ENV):

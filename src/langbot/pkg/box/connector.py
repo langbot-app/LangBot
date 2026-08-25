@@ -367,6 +367,12 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
     def _ensure_control_token(self, *, allow_generate: bool) -> str:
         if not self._control_token and allow_generate:
             self._control_token = secrets.token_urlsafe(48)
+        if not self._control_token:
+            if getattr(getattr(self.ap, 'deployment', None), 'mode', 'oss') == 'cloud':
+                raise BoxRuntimeUnavailableError(
+                    f'{BOX_CONTROL_TOKEN_ENV} must be configured with a strong shared secret for a Cloud Box runtime'
+                )
+            return ''
         try:
             self._control_token = validate_control_token(self._control_token)
         except ValueError as exc:
@@ -376,19 +382,19 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
         return self._control_token
 
     def get_control_headers(self) -> dict[str, str]:
-        """Headers for the instance-authenticated RPC control handshake."""
+        """Return instance-scoped RPC headers and the optional shared secret."""
 
         self._ensure_control_token(allow_generate=False)
-        return {
-            BOX_CONTROL_TOKEN_HEADER: self._control_token,
-            BOX_INSTANCE_HEADER: self._trusted_instance_uuid,
-        }
+        headers = {BOX_INSTANCE_HEADER: self._trusted_instance_uuid}
+        if self._control_token:
+            headers[BOX_CONTROL_TOKEN_HEADER] = self._control_token
+        return headers
 
     def get_relay_headers(
         self,
         action_context: ActionContext,
     ) -> dict[str, str]:
-        """Return authenticated, placement-scoped relay handshake headers."""
+        """Return instance- and placement-scoped relay handshake headers."""
 
         context = ActionContext.model_validate(action_context).without_installation()
         if context.instance_uuid != self._trusted_instance_uuid:

@@ -179,13 +179,17 @@ async def test_existing_oss_workspace_is_rekeyed_to_instance_identity(tmp_path):
     )
     async with engine.begin() as conn:
         await conn.run_sync(schema.create_all)
-        await conn.execute(sa.text("INSERT INTO metadata (key, value) VALUES ('instance_uuid', :value)"), {'value': instance_id})
         await conn.execute(
-            sa.text("INSERT INTO workspaces (uuid, instance_uuid, slug, source) VALUES (:uuid, :instance, 'default', 'local')"),
+            sa.text("INSERT INTO metadata (key, value) VALUES ('instance_uuid', :value)"), {'value': instance_id}
+        )
+        await conn.execute(
+            sa.text(
+                "INSERT INTO workspaces (uuid, instance_uuid, slug, source) VALUES (:uuid, :instance, 'default', 'local')"
+            ),
             {'uuid': old_workspace_uuid, 'instance': instance_id},
         )
         await conn.execute(
-            sa.text("INSERT INTO tenant_rows (id, workspace_uuid) VALUES (1, :uuid)"),
+            sa.text('INSERT INTO tenant_rows (id, workspace_uuid) VALUES (1, :uuid)'),
             {'uuid': old_workspace_uuid},
         )
     await run_alembic_stamp(engine, '0016_support_admin_sessions')
@@ -193,8 +197,8 @@ async def test_existing_oss_workspace_is_rekeyed_to_instance_identity(tmp_path):
     await run_alembic_upgrade(engine, 'head')
 
     async with engine.connect() as conn:
-        assert (await conn.execute(sa.text("SELECT uuid FROM workspaces"))).scalar_one() == canonical_uuid
-        assert (await conn.execute(sa.text("SELECT workspace_uuid FROM tenant_rows"))).scalar_one() == canonical_uuid
+        assert (await conn.execute(sa.text('SELECT uuid FROM workspaces'))).scalar_one() == canonical_uuid
+        assert (await conn.execute(sa.text('SELECT workspace_uuid FROM tenant_rows'))).scalar_one() == canonical_uuid
     await engine.dispose()
 
 
@@ -411,6 +415,45 @@ async def test_persistence_startup_defers_workspace_tables_until_account_upgrade
         await engine.dispose()
 
 
+async def test_persistence_startup_preserves_legacy_workspace_membership_with_foreign_keys(
+    tmp_path,
+    monkeypatch,
+):
+    database_path = tmp_path / 'startup-foreign-keys.db'
+    engine = create_async_engine(f'sqlite+aiosqlite:///{database_path}')
+    try:
+        await _create_legacy_schema(engine)
+        await run_alembic_stamp(engine, '0008_mcp_resource_prefs')
+    finally:
+        await engine.dispose()
+
+    monkeypatch.setattr(constants, 'instance_id', 'instance_migration_test')
+    application = type('Application', (), {})()
+    application.logger = logging.getLogger('workspace-startup-foreign-keys-test')
+    application.instance_config = type(
+        'InstanceConfig',
+        (),
+        {'data': {'database': {'use': 'sqlite', 'sqlite': {'path': str(database_path)}}}},
+    )()
+    manager = PersistenceManager(application)
+
+    await manager.initialize()
+    try:
+        async with manager.get_db_engine().connect() as conn:
+            workspace = (
+                (await conn.execute(sa.text("SELECT * FROM workspaces WHERE source = 'local'"))).mappings().one()
+            )
+            membership = (await conn.execute(sa.text('SELECT * FROM workspace_memberships'))).mappings().one()
+            foreign_keys = await conn.scalar(sa.text('PRAGMA foreign_keys'))
+
+        assert workspace['created_by_account_uuid'] == membership['account_uuid']
+        assert membership['role'] == 'owner'
+        assert membership['status'] == 'active'
+        assert foreign_keys == 1
+    finally:
+        await manager.shutdown()
+
+
 async def test_oss_workspace_identity_rekeys_fk_graph_and_metadata(tmp_path):
     engine = create_async_engine(f'sqlite+aiosqlite:///{tmp_path / "workspace-rekey.db"}')
     try:
@@ -425,7 +468,7 @@ async def test_oss_workspace_identity_rekeys_fk_graph_and_metadata(tmp_path):
             assert instance_uuid
             await conn.execute(
                 sa.text(
-                    "INSERT INTO workspace_metadata (workspace_uuid, key, value) "
+                    'INSERT INTO workspace_metadata (workspace_uuid, key, value) '
                     "VALUES (:workspace_uuid, 'migration_probe', 'present')"
                 ),
                 {'workspace_uuid': old_uuid},
@@ -433,7 +476,7 @@ async def test_oss_workspace_identity_rekeys_fk_graph_and_metadata(tmp_path):
             await conn.execute(
                 sa.text(
                     "INSERT INTO metadata (key, value) VALUES ('oss_workspace_uuid', :workspace_uuid) "
-                    "ON CONFLICT(key) DO UPDATE SET value = excluded.value"
+                    'ON CONFLICT(key) DO UPDATE SET value = excluded.value'
                 ),
                 {'workspace_uuid': old_uuid},
             )
@@ -442,12 +485,16 @@ async def test_oss_workspace_identity_rekeys_fk_graph_and_metadata(tmp_path):
         expected_uuid = workspace_uuid_from_instance_id(instance_uuid)
         async with engine.connect() as conn:
             assert await conn.scalar(sa.text("SELECT uuid FROM workspaces WHERE source = 'local'")) == expected_uuid
-            assert await conn.scalar(
-                sa.text("SELECT workspace_uuid FROM workspace_metadata WHERE key = 'migration_probe'")
-            ) == expected_uuid
-            assert await conn.scalar(
-                sa.text("SELECT value FROM metadata WHERE key = 'oss_workspace_uuid'")
-            ) == expected_uuid
+            assert (
+                await conn.scalar(
+                    sa.text("SELECT workspace_uuid FROM workspace_metadata WHERE key = 'migration_probe'")
+                )
+                == expected_uuid
+            )
+            assert (
+                await conn.scalar(sa.text("SELECT value FROM metadata WHERE key = 'oss_workspace_uuid'"))
+                == expected_uuid
+            )
     finally:
         await engine.dispose()
 

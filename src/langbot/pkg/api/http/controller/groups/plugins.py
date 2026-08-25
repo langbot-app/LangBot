@@ -398,7 +398,16 @@ class PluginsRouterGroup(group.RouterGroup):
 
             # Get debug URL from config
             plugin_config = self.ap.instance_config.data.get('plugin', {})
-            debug_url = plugin_config.get('display_plugin_debug_url', 'http://localhost:5401')
+            debug_url = plugin_config.get(
+                'display_plugin_debug_url',
+                'ws://localhost:5401/plugin/debug/ws',
+            )
+            parsed_debug_url = urlparse(debug_url)
+            if parsed_debug_url.scheme in {'http', 'https'}:
+                debug_url = parsed_debug_url._replace(
+                    scheme='wss' if parsed_debug_url.scheme == 'https' else 'ws',
+                    path=parsed_debug_url.path or '/plugin/debug/ws',
+                ).geturl()
 
             return self.success(
                 data={
