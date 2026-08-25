@@ -144,7 +144,7 @@ export default function DebugDialog({
     new Set(),
   );
   const [streamOutput, setStreamOutput] = useState(true);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -152,17 +152,14 @@ export default function DebugDialog({
   const isInitializingRef = useRef<boolean>(false);
 
   const scrollToBottom = useCallback(() => {
-    // Use setTimeout to ensure scroll happens after DOM update
     setTimeout(() => {
-      const scrollArea = document.querySelector('.scroll-area') as HTMLElement;
-      if (scrollArea) {
-        scrollArea.scrollTo({
-          top: scrollArea.scrollHeight,
-          behavior: 'smooth',
-        });
-      }
-      // Also ensure messagesEndRef scrolls into view
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      const viewport = scrollAreaRef.current?.querySelector<HTMLElement>(
+        '[data-slot="scroll-area-viewport"]',
+      );
+      viewport?.scrollTo({
+        top: viewport.scrollHeight,
+        behavior: 'smooth',
+      });
     }, 0);
   }, []);
 
@@ -843,6 +840,7 @@ export default function DebugDialog({
 
       <div className="flex-1 flex flex-col w-[10rem] h-full min-h-0">
         <ScrollArea
+          ref={scrollAreaRef}
           className={cn(
             'flex-1 overflow-y-auto min-h-0 scroll-area',
             compact ? 'p-3' : 'p-6',
@@ -934,7 +932,6 @@ export default function DebugDialog({
                 </div>
               ))
             )}
-            <div ref={messagesEndRef} />
           </div>
         </ScrollArea>
 

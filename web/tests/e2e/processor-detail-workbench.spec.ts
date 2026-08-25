@@ -27,6 +27,12 @@ test.describe('processor detail workbench', () => {
     expect(debugBox!.x).toBeLessThan(configBox!.x);
     expect(configBox!.width).toBeGreaterThan(debugBox!.width);
 
+    const appShell = page.locator('[class*="group/sidebar-wrapper"]');
+    await expect
+      .poll(() => appShell.evaluate((element) => element.scrollTop))
+      .toBe(0);
+    expect(debugBox!.y).toBeGreaterThanOrEqual(0);
+
     const flow = configPanel.locator('ol');
     await expect(flow.getByRole('button').nth(0)).toContainText(
       'Bindable Event Range',
@@ -62,6 +68,12 @@ test.describe('processor detail workbench', () => {
     expect(configBox).not.toBeNull();
     expect(debugBox!.x).toBeLessThan(configBox!.x);
     expect(configBox!.width).toBeGreaterThan(debugBox!.width);
+
+    const appShell = page.locator('[class*="group/sidebar-wrapper"]');
+    await expect
+      .poll(() => appShell.evaluate((element) => element.scrollTop))
+      .toBe(0);
+    expect(debugBox!.y).toBeGreaterThanOrEqual(0);
 
     const flow = configPanel.locator('ol');
     await expect(flow.getByRole('button').nth(0)).toContainText(

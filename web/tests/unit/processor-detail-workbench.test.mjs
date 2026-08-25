@@ -22,6 +22,9 @@ test('agent and pipeline details share the split processor workbench', () => {
   const websocketClient = readSource(
     'src/app/infra/websocket/WebSocketClient.ts',
   );
+  const pipelineDebug = readSource(
+    'src/app/home/pipelines/components/debug-dialog/DebugDialog.tsx',
+  );
 
   assert.match(
     workbench,
@@ -42,6 +45,8 @@ test('agent and pipeline details share the split processor workbench', () => {
     websocketClient,
     /data\.type === 'connected'[\s\S]*this\.reconnectAttempts = 0/,
   );
+  assert.match(pipelineDebug, /data-slot="scroll-area-viewport"/);
+  assert.doesNotMatch(pipelineDebug, /scrollIntoView/);
 });
 
 test('processor forms expose their primary orchestration flow horizontally', () => {
