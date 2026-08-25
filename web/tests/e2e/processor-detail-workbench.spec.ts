@@ -45,12 +45,16 @@ test.describe('processor detail workbench', () => {
     expect(debugBox!.y).toBeGreaterThanOrEqual(0);
 
     const flow = configPanel.getByRole('tablist');
-    await expect(flow.getByRole('tab').nth(0)).toContainText('Management');
-    await expect(flow.getByRole('tab').nth(1)).toContainText(
+    await expect(flow.getByRole('tab').nth(0)).toContainText(
       'Bindable Event Range',
     );
-    await expect(flow.getByRole('tab').nth(2)).toContainText('Runner');
-    await expect(flow.getByRole('tab').nth(3)).toContainText('Local Agent');
+    await expect(flow.getByRole('tab').nth(1)).toContainText('Runner');
+    await expect(flow.getByRole('tab').nth(2)).toContainText('Local Agent');
+    const agentManagement = configPanel.getByRole('button', {
+      name: 'Management',
+    });
+    await expect(agentManagement).toBeVisible();
+    await expect(flow.getByText('Management')).toHaveCount(0);
 
     await expect(
       page.getByRole('heading', { name: /agent-workbench/ }),
@@ -73,11 +77,11 @@ test.describe('processor detail workbench', () => {
         .last(),
     ).toBeVisible();
 
-    await flow.getByRole('tab').nth(1).click();
+    await flow.getByRole('tab').nth(0).click();
     await expect(
       configPanel.getByText('Bindable Event Range', { exact: true }).last(),
     ).toBeVisible();
-    await flow.getByRole('tab').nth(3).click();
+    await flow.getByRole('tab').nth(2).click();
     await expect(
       configPanel.getByText('Local Agent', { exact: true }).last(),
     ).toBeVisible();
@@ -216,6 +220,9 @@ test.describe('processor detail workbench', () => {
     await expect(
       page.getByRole('heading', { name: /Renamed Pipeline/ }),
     ).toBeVisible();
+
+    const secondaryNavigation = configPanel.locator('nav').getByRole('button');
+    await expect(secondaryNavigation.last()).toHaveText('Management');
 
     const debugBox = await debugPanel.boundingBox();
     const configBox = await configPanel.boundingBox();

@@ -187,9 +187,13 @@ const PipelineFormComponent = forwardRef<
   const primarySections = primarySectionNames
     .map((name) => formLabelList.find((section) => section.name === name))
     .filter((section): section is SectionItem => Boolean(section));
-  const secondarySections = formLabelList.filter(
-    (section) => !primarySectionNames.includes(section.name),
-  );
+  const secondarySections = formLabelList
+    .filter((section) => !primarySectionNames.includes(section.name))
+    .sort((left, right) => {
+      if (left.name === 'basic') return 1;
+      if (right.name === 'basic') return -1;
+      return 0;
+    });
 
   const [aiConfigTabSchema, setAIConfigTabSchema] =
     useState<PipelineConfigTab>();

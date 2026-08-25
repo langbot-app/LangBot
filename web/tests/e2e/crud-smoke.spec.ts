@@ -244,18 +244,25 @@ test.describe('frontend CRUD smoke flows', () => {
 
     await expect(page).toHaveURL(/\/home\/knowledge\?id=knowledge-1$/);
     await page.reload();
-    await expect(page.locator('input[name="name"]')).toHaveValue(
-      'Support Knowledge',
-    );
-    await page.waitForTimeout(600);
+    await expect(
+      page.getByRole('heading', { name: /Support Knowledge/ }),
+    ).toBeVisible();
+    await expect(page.locator('input[name="name"]')).toHaveCount(0);
+    const engineSettings = page.locator('[data-slot="card"]').filter({
+      has: page.getByText('Engine Settings', { exact: true }),
+    });
+    await expect(engineSettings.getByRole('combobox')).toBeVisible();
 
-    await page
-      .locator('input[name="description"]')
+    await page.getByRole('button', { name: 'Edit basic information' }).click();
+    const kbInfoDialog = page.getByRole('dialog');
+    await kbInfoDialog.getByLabel('Name').fill('Support Knowledge Updated');
+    await kbInfoDialog
+      .getByLabel('Description')
       .fill('Updated source material for support answers.');
-    await save(page);
-    await expect(page.locator('input[name="description"]')).toHaveValue(
-      'Updated source material for support answers.',
-    );
+    await kbInfoDialog.getByRole('button', { name: 'Save' }).click();
+    await expect(
+      page.getByRole('heading', { name: /Support Knowledge Updated/ }),
+    ).toBeVisible();
 
     await page.getByRole('button', { name: /^Delete$/ }).click();
     await confirmDelete(page);

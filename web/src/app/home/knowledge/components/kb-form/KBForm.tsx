@@ -31,6 +31,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Separator } from '@/components/ui/separator';
 import { KnowledgeBase, KnowledgeEngine } from '@/app/infra/entities/api';
 import { CustomApiError } from '@/app/infra/entities/common';
 import { toast } from 'sonner';
@@ -100,7 +101,7 @@ export default function KBForm({
   const [retrievalSettings, setRetrievalSettings] = useState<
     Record<string, unknown>
   >({});
-  const [isEditing, setIsEditing] = useState(false);
+  const [isEditing, setIsEditing] = useState(Boolean(initKbId));
   const [loading, setLoading] = useState(true);
 
   // Dirty tracking: snapshot of saved state for comparison
@@ -341,26 +342,59 @@ export default function KBForm({
         id="kb-form"
         className="space-y-6"
       >
-        {/* Card 1: Basic Information */}
-        <Card>
-          <CardHeader>
-            <CardTitle>{t('knowledge.basicInfo')}</CardTitle>
-            <CardDescription>
-              {t('knowledge.basicInfoDescription')}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Name and Emoji in same row */}
-            <div className="flex gap-4 items-start">
+        {/* Basic information is entered here only during creation. */}
+        {!isEditing && (
+          <Card>
+            <CardHeader>
+              <CardTitle>{t('knowledge.basicInfo')}</CardTitle>
+              <CardDescription>
+                {t('knowledge.basicInfoDescription')}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Name and Emoji in same row */}
+              <div className="flex gap-4 items-start">
+                <FormField
+                  control={form.control}
+                  name="name"
+                  render={({ field }) => (
+                    <FormItem className="flex-1">
+                      <FormLabel>
+                        {t('knowledge.kbName')}
+                        <span className="text-destructive">*</span>
+                      </FormLabel>
+                      <FormControl>
+                        <Input {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="emoji"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('common.icon')}</FormLabel>
+                      <FormControl>
+                        <EmojiPicker
+                          value={field.value}
+                          onChange={field.onChange}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              {/* Description */}
               <FormField
                 control={form.control}
-                name="name"
+                name="description"
                 render={({ field }) => (
-                  <FormItem className="flex-1">
-                    <FormLabel>
-                      {t('knowledge.kbName')}
-                      <span className="text-destructive">*</span>
-                    </FormLabel>
+                  <FormItem>
+                    <FormLabel>{t('knowledge.kbDescription')}</FormLabel>
                     <FormControl>
                       <Input {...field} />
                     </FormControl>
@@ -368,40 +402,19 @@ export default function KBForm({
                   </FormItem>
                 )}
               />
-              <FormField
-                control={form.control}
-                name="emoji"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('common.icon')}</FormLabel>
-                    <FormControl>
-                      <EmojiPicker
-                        value={field.value}
-                        onChange={field.onChange}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
+            </CardContent>
+          </Card>
+        )}
 
-            {/* Description */}
-            <FormField
-              control={form.control}
-              name="description"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t('knowledge.kbDescription')}</FormLabel>
-                  <FormControl>
-                    <Input {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            {/* Knowledge Engine Selector */}
+        {/* Knowledge engine selection and settings stay together. */}
+        <Card>
+          <CardHeader>
+            <CardTitle>{t('knowledge.engineSettings')}</CardTitle>
+            <CardDescription>
+              {t('knowledge.engineSettingsDescription')}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
             <FormField
               control={form.control}
               name="ragEngineId"
@@ -484,36 +497,28 @@ export default function KBForm({
                 </FormItem>
               )}
             />
+
+            {configFormItems.length > 0 && (
+              <>
+                <Separator />
+                <DynamicFormComponent
+                  itemConfigList={configFormItems}
+                  initialValues={configSettings as Record<string, object>}
+                  onSubmit={(val) =>
+                    setConfigSettings(val as Record<string, unknown>)
+                  }
+                  isEditing={isEditing}
+                  externalDependentValues={retrievalSettings}
+                  onValidate={(validateFn) =>
+                    (configValidateRef.current = validateFn)
+                  }
+                />
+              </>
+            )}
           </CardContent>
         </Card>
 
-        {/* Card 2: Engine Settings (dynamic form from creation_schema) */}
-        {configFormItems.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle>{t('knowledge.engineSettings')}</CardTitle>
-              <CardDescription>
-                {t('knowledge.engineSettingsDescription')}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <DynamicFormComponent
-                itemConfigList={configFormItems}
-                initialValues={configSettings as Record<string, object>}
-                onSubmit={(val) =>
-                  setConfigSettings(val as Record<string, unknown>)
-                }
-                isEditing={isEditing}
-                externalDependentValues={retrievalSettings}
-                onValidate={(validateFn) =>
-                  (configValidateRef.current = validateFn)
-                }
-              />
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Card 3: Retrieval Settings (dynamic form from retrieval_schema) */}
+        {/* Retrieval Settings (dynamic form from retrieval_schema) */}
         {retrievalFormItems.length > 0 && (
           <Card>
             <CardHeader>

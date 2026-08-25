@@ -132,7 +132,7 @@ function AgentFormComponent(
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [activeSection, setActiveSection] =
-    useState<AgentConfigSection>('basic');
+    useState<AgentConfigSection>('events');
   const isSavingRef = useRef(false);
   const hasUnsavedChangesRef = useRef(false);
 
@@ -271,11 +271,6 @@ function AgentFormComponent(
     icon: React.ElementType;
   }> = [
     {
-      name: 'basic',
-      label: t('common.management'),
-      icon: Power,
-    },
-    {
       name: 'events',
       label: t('agents.bindableEvents'),
       icon: Zap,
@@ -293,6 +288,11 @@ function AgentFormComponent(
       icon: SlidersHorizontal,
     },
   ];
+  const managementSection = {
+    name: 'basic' as const,
+    label: t('common.management'),
+    icon: Power,
+  };
 
   const runnerStatus = useMemo<AgentRunnerStatus>(() => {
     if (pluginStatusLoading) {
@@ -568,7 +568,7 @@ function AgentFormComponent(
                 }
               >
                 <div className="overflow-x-auto">
-                  <TabsList className="grid min-w-[44rem] w-full grid-cols-4">
+                  <TabsList className="grid min-w-[34rem] w-full grid-cols-3">
                     {primarySections.map((section) => {
                       const Icon = section.icon;
                       return (
@@ -579,6 +579,21 @@ function AgentFormComponent(
                       );
                     })}
                   </TabsList>
+                </div>
+                <div className="flex justify-end pt-2">
+                  <Button
+                    type="button"
+                    variant={
+                      activeSection === managementSection.name
+                        ? 'secondary'
+                        : 'ghost'
+                    }
+                    size="sm"
+                    onClick={() => setActiveSection(managementSection.name)}
+                  >
+                    <Power />
+                    {managementSection.label}
+                  </Button>
                 </div>
               </Tabs>
             </nav>
