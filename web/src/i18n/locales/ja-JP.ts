@@ -483,7 +483,7 @@ const jaJP = {
     routeTestDispatched:
       '保存済みルートを実行しました。{{count}} 件のプラットフォーム操作を抑制しました。',
     routeTestSideEffectWarning:
-      'プラットフォームへの送信は抑制されますが、プロセッサーとツールは実行されます。',
+      'プロセッサーとツールは実行されますが、返信はメッセージプラットフォームへ送信されません。',
     dryRunTitle: 'ルートをテスト',
     dryRunDescription:
       'まず一致結果を確認し、必要な場合のみ保存済み設定を実行します。',

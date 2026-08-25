@@ -451,7 +451,8 @@ const zhHans = {
     routeTestRunning: '运行中…',
     routeTestFailed: '运行已保存路由失败，请稍后重试。',
     routeTestDispatched: '已保存路由运行成功，{{count}} 个平台操作已被阻止。',
-    routeTestSideEffectWarning: '平台消息会被拦截，但处理器和工具仍会运行。',
+    routeTestSideEffectWarning:
+      '测试会运行处理器和工具，但不会把回复发送到微信、QQ 等聊天平台。',
     dryRunTitle: '测试路由',
     dryRunDescription: '先预览匹配结果；需要验证处理器时，再运行已保存配置。',
     dryRunEventType: '事件类型',

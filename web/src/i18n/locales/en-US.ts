@@ -475,7 +475,7 @@ const enUS = {
     routeTestDispatched:
       'The saved route ran successfully. {{count}} platform actions were blocked.',
     routeTestSideEffectWarning:
-      'Platform messaging is blocked, but the processor and tools still run.',
+      'The processor and tools will run, but replies will not be sent to messaging platforms.',
     dryRunTitle: 'Test route',
     dryRunDescription:
       'Preview the match first. Run the saved configuration only when you need to test the processor.',
