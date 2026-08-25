@@ -87,28 +87,27 @@ async def test_invalid_sensitive_word_regex_still_blocks():
 
 
 @pytest.mark.asyncio
-async def test_oversized_word_list_is_truncated_not_blocked():
-    """A huge list must not fail closed; extra patterns are dropped with a warning."""
+async def test_oversized_word_list_is_blocked():
+    """Configured rules must never be silently skipped when the list is oversized."""
     banwords, _, _ = _load_banwords()
     words = [f'word{i}' for i in range(banwords._MAX_SENSITIVE_WORD_PATTERNS + 10)]
-    filt, entities, app = _filter_with_words(words)
+    filt, entities, _ = _filter_with_words(words)
 
-    first = await filt.process(Mock(), 'hello there, nothing banned')
-    second = await filt.process(Mock(), 'still clean')
+    result = await filt.process(Mock(), 'hello there, nothing banned')
 
-    assert first.level == entities.ResultLevel.PASS
-    assert first.replacement == 'hello there, nothing banned'
-    assert second.level == entities.ResultLevel.PASS
-    assert app.logger.warning.call_count == 1
+    assert result.level == entities.ResultLevel.BLOCK
+    assert result.replacement == ''
+    assert result.user_notice == '内容检查规则执行失败，请联系管理员'
+    assert 'at most 256 regex patterns are allowed' in result.console_notice.lower()
 
 
 @pytest.mark.asyncio
-async def test_patterns_beyond_total_cap_are_not_applied():
+async def test_match_beyond_total_cap_cannot_bypass_filter():
     banwords, _, _ = _load_banwords()
     words = [f'word{i}' for i in range(banwords._MAX_SENSITIVE_WORD_PATTERNS)] + ['late-secret']
     filt, entities, _ = _filter_with_words(words, mask_word='[hidden]')
 
     result = await filt.process(Mock(), 'please hide late-secret now')
 
-    assert result.level == entities.ResultLevel.PASS
-    assert result.replacement == 'please hide late-secret now'
+    assert result.level == entities.ResultLevel.BLOCK
+    assert result.replacement == ''

@@ -34,9 +34,9 @@ def _validate_patterns(
 ) -> tuple[str, ...]:
     if max_pattern_count < 1:
         raise ValueError('max_pattern_count must be positive')
-    normalized = tuple(patterns)
-    if len(normalized) > max_pattern_count:
+    if len(patterns) > max_pattern_count:
         raise SafeRegexLimitError(f'At most {max_pattern_count} regex patterns are allowed')
+    normalized = tuple(patterns)
     for pattern in normalized:
         if not isinstance(pattern, str):
             raise SafeRegexError('Regex patterns must be strings')

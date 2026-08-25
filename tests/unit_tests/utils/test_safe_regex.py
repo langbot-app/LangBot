@@ -76,6 +76,23 @@ async def test_mask_patterns_honors_explicit_pattern_count_cap():
 
 
 @pytest.mark.asyncio
+async def test_mask_patterns_rejects_oversized_sequence_before_copying_it():
+    class OversizedPatterns(list):
+        def __iter__(self):
+            raise AssertionError('oversized patterns must not be materialized')
+
+    patterns = OversizedPatterns(['a'] * (safe_regex.MAX_PATTERN_COUNT + 1))
+
+    with pytest.raises(safe_regex.SafeRegexLimitError):
+        await safe_regex.mask_patterns(
+            patterns,
+            'hello',
+            mask='*',
+            mask_word='',
+        )
+
+
+@pytest.mark.asyncio
 async def test_mask_patterns_bounds_replacement_growth_and_masks_matches():
     found, masked = await safe_regex.mask_patterns(
         [r'secret-\d+'],

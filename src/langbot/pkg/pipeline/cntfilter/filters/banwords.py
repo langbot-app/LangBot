@@ -15,27 +15,13 @@ _MAX_SENSITIVE_WORD_PATTERNS = 256
 class BanWordFilter(filter_model.ContentFilter):
     """Filter content"""
 
-    def __init__(self, ap):
-        super().__init__(ap)
-        self._truncated_warning_emitted = False
-
     async def initialize(self):
         pass
 
     async def process(self, query: pipeline_query.Query, message: str) -> entities.FilterResult:
-        words = list(self.ap.sensitive_meta.data.get('words') or [])
+        words = self.ap.sensitive_meta.data.get('words') or []
         mask = self.ap.sensitive_meta.data['mask']
         mask_word = self.ap.sensitive_meta.data['mask_word']
-
-        if len(words) > _MAX_SENSITIVE_WORD_PATTERNS:
-            if not self._truncated_warning_emitted:
-                self.ap.logger.warning(
-                    'Sensitive-word list has %s patterns; only the first %s will be applied',
-                    len(words),
-                    _MAX_SENSITIVE_WORD_PATTERNS,
-                )
-                self._truncated_warning_emitted = True
-            words = words[:_MAX_SENSITIVE_WORD_PATTERNS]
 
         try:
             found, current = await mask_patterns(
