@@ -335,6 +335,37 @@ test.describe('frontend CRUD smoke flows', () => {
 });
 
 test.describe('bot advanced flows', () => {
+  test('keeps event routing compact and hides raw status errors', async ({
+    page,
+  }) => {
+    await installLangBotApiMocks(page, { authenticated: true });
+    await page.route('**/api/v1/platform/bots/*/event-routes/status', (route) =>
+      route.fulfill({
+        status: 500,
+        contentType: 'application/json',
+        body: JSON.stringify({ code: -1, msg: 'Internal server error' }),
+      }),
+    );
+
+    await page.goto('/home/bots?id=new');
+    await selectPlaywrightAdapter(page);
+    await page.locator('input[name="name"]').fill('Route Status Bot');
+    await submit(page);
+
+    await expect(page).toHaveURL(/\/home\/bots\?id=bot-1$/);
+    await expect(page.getByText('Supported events')).toBeVisible();
+    await expect(page.getByText('1 event types')).toBeVisible();
+    await expect(page.getByText('Internal server error')).toHaveCount(0);
+    await expect(
+      page.getByText('Events that match no route are ignored.'),
+    ).toHaveCount(0);
+
+    await page.getByRole('button', { name: 'Refresh status' }).hover();
+    await expect(
+      page.getByText('Failed to refresh route status.'),
+    ).toBeVisible();
+  });
+
   test('toggles bot enable/disable state', async ({ page }) => {
     await installLangBotApiMocks(page, { authenticated: true });
 

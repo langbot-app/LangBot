@@ -390,8 +390,7 @@ const jaJP = {
     routingConnectionDescription:
       'このボットのメッセージを処理するパイプラインを紐付け',
     eventRouting: 'イベントルーティング',
-    eventRoutingDescription:
-      'このボットが受信した各イベントをどのプロセッサーに渡すかを選択します。対応する Agent または Pipeline の設定で処理ロジックを編集します。Pipeline はメッセージイベントのみ対応します。',
+    eventRoutingDescription: 'イベントごとの処理先を設定します。',
     eventBindings: 'イベントルート',
     addEventBinding: 'ルートを追加',
     addBehavior: '動作を追加',
@@ -432,18 +431,16 @@ const jaJP = {
     disable: '無効化',
     enable: '有効化',
     disabledBindings: '無効',
-    adapterEventsTitle: 'このアダプターが受信できるイベント',
-    adapterEventsDescription:
-      '{{count}} 種類のイベントを利用できます。ルートは上から順に照合され、未一致のイベントはプロセッサーへ送られません。',
+    adapterEventsTitle: '対応イベント',
+    adapterEventsDescription: '{{count}} 種類',
     adapterEventsMore: 'ほか {{count}} 件',
-    advancedEventValues: '高度なイベント値',
+    advancedEventValues: 'すべて表示',
     eventGroup: 'グループ',
     routeConflictTitle: '一部のルートが重複しています',
     routeConflictShadowed:
       '{{winner}} が同じイベントを先に処理するため、{{shadowed}} は実行されない可能性があります。',
     routeConflictMore: 'ほか {{count}} 件のルート競合を確認してください。',
-    routeFallbackCatchAll:
-      '{{route}} はすべてのイベントを受けるフォールバックです。優先度の高いルートが先に実行されます。',
+    routeFallbackCatchAll: '{{route}} はフォールバックルートです。',
     routeFallbackIgnored:
       'どのルートにも一致しないイベントは無視されます。すべてのイベントに明示的な結果が必要な場合のみ、フォールバックを追加してください。',
     testRoute: 'ルートをテスト',

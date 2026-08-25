@@ -384,8 +384,7 @@ const enUS = {
     routingConnectionDescription:
       'Bind the pipeline that processes messages for this bot',
     eventRouting: 'Event Routing',
-    eventRoutingDescription:
-      'Choose which processor handles each event received by this bot. Edit the logic in the corresponding Agent or Pipeline configuration. Pipelines only support message events.',
+    eventRoutingDescription: 'Choose which processor handles each event.',
     eventBindings: 'Event Routes',
     addEventBinding: 'Add Route',
     addBehavior: 'Add behavior',
@@ -425,18 +424,16 @@ const enUS = {
     disable: 'Disable',
     enable: 'Enable',
     disabledBindings: 'Disabled',
-    adapterEventsTitle: 'Events this adapter can receive',
-    adapterEventsDescription:
-      '{{count}} event types are available. Routes are matched in order, and unmatched events are not sent to a processor.',
+    adapterEventsTitle: 'Supported events',
+    adapterEventsDescription: '{{count}} event types',
     adapterEventsMore: '{{count}} more',
-    advancedEventValues: 'Advanced event values',
+    advancedEventValues: 'View all',
     eventGroup: 'Group',
     routeConflictTitle: 'Some routes overlap',
     routeConflictShadowed:
       '{{shadowed}} may never run because {{winner}} handles the same events first.',
     routeConflictMore: '{{count}} more route conflicts need attention.',
-    routeFallbackCatchAll:
-      '{{route}} is the catch-all route. Routes with higher priority run first.',
+    routeFallbackCatchAll: '{{route}} is the catch-all route.',
     routeFallbackIgnored:
       'Events that match no route are ignored. Add a catch-all route only when every event needs an explicit outcome.',
     testRoute: 'Test route',

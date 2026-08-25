@@ -62,9 +62,7 @@ def _set_discovered_adapters(ap, *webhook_adapters: str) -> None:
         )
         for adapter_name in webhook_adapters
     ]
-    ap.discover = SimpleNamespace(
-        get_components_by_kind=Mock(return_value=components)
-    )
+    ap.discover = SimpleNamespace(get_components_by_kind=Mock(return_value=components))
 
 
 class TestBotServiceGetBots:
@@ -581,6 +579,56 @@ class TestBotServiceListEventLogs:
         assert len(logs) == 1
         assert logs[0] == {'msg': 'log1'}
         assert total == 5
+
+
+class TestBotServiceListEventRouteStatuses:
+    """Tests for event route status when a persisted Bot is not running."""
+
+    async def test_returns_saved_routes_when_runtime_bot_is_unavailable(self):
+        ap = SimpleNamespace()
+        ap.platform_mgr = SimpleNamespace()
+        ap.platform_mgr.get_bot_by_uuid = AsyncMock(return_value=None)
+
+        service = BotService(ap)
+        service.get_bot = AsyncMock(
+            return_value={
+                'uuid': 'bot-uuid',
+                'event_bindings': [
+                    {
+                        'id': 'binding-1',
+                        'event_pattern': 'message.received',
+                        'target_type': 'agent',
+                        'target_uuid': 'agent-1',
+                        'enabled': True,
+                    }
+                ],
+            }
+        )
+
+        result = await service.list_event_route_statuses(WORKSPACE_UUID, 'bot-uuid')
+
+        assert result['routes'] == [
+            {
+                'binding_id': 'binding-1',
+                'event_pattern': 'message.received',
+                'event_type': None,
+                'target_type': 'agent',
+                'target_uuid': 'agent-1',
+                'last_status': None,
+                'failure_code': None,
+                'reason': None,
+                'run_id': None,
+                'timestamp': None,
+                'seq_id': None,
+                'level': None,
+                'message': '',
+                'order': 0,
+                'enabled': True,
+                'current': True,
+            }
+        ]
+        assert result['unmatched_events'] == []
+        assert result['stale_routes'] == []
 
 
 class TestBotServiceSendMessage:

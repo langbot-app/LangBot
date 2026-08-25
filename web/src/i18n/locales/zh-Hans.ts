@@ -367,8 +367,7 @@ const zhHans = {
     routingConnection: '路由与连接',
     routingConnectionDescription: '绑定处理此机器人消息的流水线',
     eventRouting: '事件路由',
-    eventRoutingDescription:
-      '选择此机器人收到不同事件时交给哪个处理器。在对应的 Agent 或 Pipeline 配置中编辑处理逻辑；Pipeline 仅支持消息事件。',
+    eventRoutingDescription: '设置收到事件后交给哪个处理器。',
     eventBindings: '事件路由',
     addEventBinding: '添加路由',
     addBehavior: '添加行为',
@@ -404,18 +403,16 @@ const zhHans = {
     disable: '禁用',
     enable: '启用',
     disabledBindings: '已禁用',
-    adapterEventsTitle: '此适配器可接收的事件',
-    adapterEventsDescription:
-      '已识别 {{count}} 类事件。路由会按顺序匹配，未命中时不会交给处理器。',
+    adapterEventsTitle: '支持的事件',
+    adapterEventsDescription: '共 {{count}} 类',
     adapterEventsMore: '另有 {{count}} 类',
-    advancedEventValues: '高级事件值',
+    advancedEventValues: '查看全部',
     eventGroup: '事件组',
     routeConflictTitle: '部分路由存在覆盖冲突',
     routeConflictShadowed:
       '{{shadowed}} 可能永远不会运行，因为 {{winner}} 会先处理相同事件。',
     routeConflictMore: '另有 {{count}} 个路由冲突需要处理。',
-    routeFallbackCatchAll:
-      '{{route}} 是全局兜底路由，优先级更高的路由会先运行。',
+    routeFallbackCatchAll: '{{route}} 是兜底路由。',
     routeFallbackIgnored:
       '未命中任何路由的事件会被忽略。只有需要为每个事件指定结果时，才添加全局兜底路由。',
     testRoute: '测试路由',

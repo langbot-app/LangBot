@@ -62,6 +62,11 @@ import {
 } from '@/components/ui/dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -1516,8 +1521,8 @@ export default function EventBindingsEditor({
       const response = await backendClient.getBotEventRouteStatuses(botId);
       setRouteStatuses(response.routes || []);
     } catch (error) {
-      const err = error as { msg?: string };
-      setRouteStatusError(err.msg || t('bots.routeStatusRefreshFailed'));
+      console.error('Failed to refresh Bot event route status', error);
+      setRouteStatusError(t('bots.routeStatusRefreshFailed'));
     } finally {
       setRouteStatusLoading(false);
     }
@@ -1653,18 +1658,18 @@ export default function EventBindingsEditor({
         </Alert>
       )}
 
-      <Alert>
-        <Info className="h-4 w-4" />
-        <AlertDescription>
-          {catchAllRouteIndex >= 0
-            ? t('bots.routeFallbackCatchAll', {
-                route: t('bots.dryRunRuleIndex', {
-                  index: catchAllRouteIndex + 1,
-                }),
-              })
-            : t('bots.routeFallbackIgnored')}
-        </AlertDescription>
-      </Alert>
+      {catchAllRouteIndex >= 0 && (
+        <Alert>
+          <Info className="h-4 w-4" />
+          <AlertDescription>
+            {t('bots.routeFallbackCatchAll', {
+              route: t('bots.dryRunRuleIndex', {
+                index: catchAllRouteIndex + 1,
+              }),
+            })}
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* enabled section */}
       <DndContext
@@ -1778,22 +1783,27 @@ export default function EventBindingsEditor({
           agentOptions={agentOptions}
           onRouteStatusUpdate={setRouteStatuses}
         />
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={refreshRouteStatuses}
-          disabled={!botId || routeStatusLoading}
-        >
-          <RefreshCw
-            className={`h-4 w-4 mr-1 ${routeStatusLoading ? 'animate-spin' : ''}`}
-          />
-          {t('bots.refreshRouteStatus')}
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className={`size-8 ${routeStatusError ? 'text-destructive' : 'text-muted-foreground'}`}
+              aria-label={t('bots.refreshRouteStatus')}
+              onClick={refreshRouteStatuses}
+              disabled={!botId || routeStatusLoading}
+            >
+              <RefreshCw
+                className={`h-4 w-4 ${routeStatusLoading ? 'animate-spin' : ''}`}
+              />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            {routeStatusError || t('bots.refreshRouteStatus')}
+          </TooltipContent>
+        </Tooltip>
       </div>
-      {routeStatusError && (
-        <p className="text-xs text-destructive">{routeStatusError}</p>
-      )}
 
       {/* disabled section */}
       {disabledBindings.length > 0 && (

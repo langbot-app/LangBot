@@ -276,14 +276,10 @@ class BotService:
         )
         return result.first()
 
-    async def _get_agent_entity(
-        self, context: TenantContext, agent_uuid: str
-    ) -> persistence_agent.Agent | None:
+    async def _get_agent_entity(self, context: TenantContext, agent_uuid: str) -> persistence_agent.Agent | None:
         result = await self.ap.persistence_mgr.execute_async(
             scope_statement(
-                sqlalchemy.select(persistence_agent.Agent).where(
-                    persistence_agent.Agent.uuid == agent_uuid
-                ),
+                sqlalchemy.select(persistence_agent.Agent).where(persistence_agent.Agent.uuid == agent_uuid),
                 persistence_agent.Agent,
                 context,
             )
@@ -390,11 +386,7 @@ class BotService:
                         }
                     ],
                 )
-            pipeline = (
-                await self._get_pipeline_entity(tenant_context, target_uuid)
-                if target_uuid
-                else None
-            )
+            pipeline = await self._get_pipeline_entity(tenant_context, target_uuid) if target_uuid else None
             if pipeline is None:
                 return self._diagnostic_result(
                     matched=False,
@@ -509,9 +501,7 @@ class BotService:
             ],
         )
 
-    async def _normalize_event_bindings(
-        self, context: TenantContext, bindings: list[dict] | None
-    ) -> list[dict]:
+    async def _normalize_event_bindings(self, context: TenantContext, bindings: list[dict] | None) -> list[dict]:
         """Validate and normalize Bot event bindings."""
         if not bindings:
             return []
@@ -544,9 +534,7 @@ class BotService:
             elif target_type == 'agent':
                 result = await self.ap.persistence_mgr.execute_async(
                     scope_statement(
-                        sqlalchemy.select(persistence_agent.Agent).where(
-                            persistence_agent.Agent.uuid == target_uuid
-                        ),
+                        sqlalchemy.select(persistence_agent.Agent).where(persistence_agent.Agent.uuid == target_uuid),
                         persistence_agent.Agent,
                         context,
                     )
@@ -577,9 +565,7 @@ class BotService:
 
         return normalized
 
-    async def _prepare_bot_data(
-        self, context: TenantContext, bot_data: dict, *, include_uuid: bool
-    ) -> dict:
+    async def _prepare_bot_data(self, context: TenantContext, bot_data: dict, *, include_uuid: bool) -> dict:
         """Normalize Bot write payloads to the current event-routing model."""
         update_data = bot_data.copy()
         if not include_uuid:
@@ -750,21 +736,19 @@ class BotService:
 
         return [log.to_json() for log in logs], total_count
 
-    async def list_event_route_statuses(
-        self, context: TenantContext, bot_uuid: str
-    ) -> dict[str, typing.Any]:
+    async def list_event_route_statuses(self, context: TenantContext, bot_uuid: str) -> dict[str, typing.Any]:
         """Return recent runtime status for Bot event routes from in-memory Bot logs."""
         from ....platform.botmgr import RuntimeBot
 
-        if await self.get_bot(context, bot_uuid, include_secret=False) is None:
+        bot = await self.get_bot(context, bot_uuid, include_secret=False)
+        if bot is None:
             raise WorkspaceNotFoundError('Bot not found')
         runtime_bot = await self.ap.platform_mgr.get_bot_by_uuid(context, bot_uuid)
-        if runtime_bot is None:
-            raise Exception('Bot not found')
 
         latest_by_binding: dict[str, dict[str, typing.Any]] = {}
         unmatched_events: list[dict[str, typing.Any]] = []
-        for log in getattr(runtime_bot.logger, 'logs', []):
+        runtime_logs = getattr(getattr(runtime_bot, 'logger', None), 'logs', [])
+        for log in runtime_logs:
             status = self._event_route_status_from_log(log)
             if status is None:
                 continue
@@ -774,7 +758,10 @@ class BotService:
             else:
                 unmatched_events.append(status)
 
-        raw_bindings = getattr(getattr(runtime_bot, 'bot_entity', None), 'event_bindings', [])
+        runtime_entity = getattr(runtime_bot, 'bot_entity', None)
+        raw_bindings = getattr(runtime_entity, 'event_bindings', None) if runtime_entity is not None else None
+        if raw_bindings is None:
+            raw_bindings = bot.get('event_bindings') or []
         bindings = RuntimeBot._get_event_bindings_from_value(raw_bindings)
         routes: list[dict[str, typing.Any]] = []
         current_binding_ids: set[str] = set()
