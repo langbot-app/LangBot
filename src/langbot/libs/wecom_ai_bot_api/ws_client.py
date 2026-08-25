@@ -936,6 +936,12 @@ class WecomBotWsClient:
                     'chat_type': message_data.get('type', 'single'),
                 }
                 self._prune_stream_state()
+                # Send an initial empty stream frame so the WeCom client
+                # shows its built-in loading spinner while the pipeline
+                # processes the message (e.g. RAG retrieval).
+                asyncio.create_task(
+                    self.reply_stream(req_id, stream_id, '', finish=False)
+                )
             message_data['stream_id'] = stream_id
             message_data['req_id'] = req_id
 
