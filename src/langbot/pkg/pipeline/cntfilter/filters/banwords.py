@@ -5,21 +5,45 @@ from .. import entities
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 from ....utils.safe_regex import SafeRegexError, mask_patterns
 
+# Legacy sensitive-words.json files shipped ~70 rules, which exceeds the
+# default safe_regex per-call cap of 64 and used to fail-close every message.
+# Keep one 50ms CPU budget for the whole list; only raise the pattern cap.
+_MAX_SENSITIVE_WORD_PATTERNS = 256
+
 
 @filter_model.filter_class('ban-word-filter')
 class BanWordFilter(filter_model.ContentFilter):
     """Filter content"""
 
+    def __init__(self, ap):
+        super().__init__(ap)
+        self._truncated_warning_emitted = False
+
     async def initialize(self):
         pass
 
     async def process(self, query: pipeline_query.Query, message: str) -> entities.FilterResult:
+        words = list(self.ap.sensitive_meta.data.get('words') or [])
+        mask = self.ap.sensitive_meta.data['mask']
+        mask_word = self.ap.sensitive_meta.data['mask_word']
+
+        if len(words) > _MAX_SENSITIVE_WORD_PATTERNS:
+            if not self._truncated_warning_emitted:
+                self.ap.logger.warning(
+                    'Sensitive-word list has %s patterns; only the first %s will be applied',
+                    len(words),
+                    _MAX_SENSITIVE_WORD_PATTERNS,
+                )
+                self._truncated_warning_emitted = True
+            words = words[:_MAX_SENSITIVE_WORD_PATTERNS]
+
         try:
-            found, message = await mask_patterns(
-                self.ap.sensitive_meta.data['words'],
+            found, current = await mask_patterns(
+                words,
                 message,
-                mask=self.ap.sensitive_meta.data['mask'],
-                mask_word=self.ap.sensitive_meta.data['mask_word'],
+                mask=mask,
+                mask_word=mask_word,
+                max_pattern_count=_MAX_SENSITIVE_WORD_PATTERNS,
             )
         except SafeRegexError as exc:
             return entities.FilterResult(
@@ -31,7 +55,7 @@ class BanWordFilter(filter_model.ContentFilter):
 
         return entities.FilterResult(
             level=entities.ResultLevel.MASKED if found else entities.ResultLevel.PASS,
-            replacement=message,
+            replacement=current,
             user_notice='消息中存在不合适的内容, 请修改' if found else '',
             console_notice='',
         )
