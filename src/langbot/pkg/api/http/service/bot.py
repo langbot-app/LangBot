@@ -22,6 +22,7 @@ class BotService:
     FAILURE_PROCESSOR_NOT_FOUND = 'processor_not_found'
     FAILURE_PROCESSOR_INCOMPATIBLE = 'processor_incompatible'
     FAILURE_INVALID_EVENT = 'invalid_event'
+    FAILURE_BOT_RUNTIME_UNAVAILABLE = 'bot_runtime_unavailable'
     ROUTE_TRACE_KIND = 'event_route_trace'
 
     BOT_FIELDS = {
@@ -846,7 +847,14 @@ class BotService:
             raise WorkspaceNotFoundError('Bot not found')
         runtime_bot = await self.ap.platform_mgr.get_bot_by_uuid(context, bot_uuid)
         if runtime_bot is None:
-            raise Exception('Bot not found')
+            return {
+                'dispatched': False,
+                'event_type': event_type,
+                'failure_code': self.FAILURE_BOT_RUNTIME_UNAVAILABLE,
+                'reason': 'Bot runtime is unavailable',
+                'suppressed_outputs': [],
+                'route_status': await self.list_event_route_statuses(context, bot_uuid),
+            }
 
         dispatch_result = await runtime_bot.dispatch_test_event(event_type, payload or {})
         route_status = await self.list_event_route_statuses(context, bot_uuid)

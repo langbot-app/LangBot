@@ -964,6 +964,7 @@ function RouteDryRunDialog({
 
   async function dispatchTestEvent() {
     setRunError(null);
+    setResult(null);
     setDispatchResult(null);
 
     const payload = parsePayload();

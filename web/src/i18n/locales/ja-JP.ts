@@ -473,10 +473,12 @@ const jaJP = {
         '選択したプロセッサーはこのイベントを処理できません。',
       processor_not_found: '選択したプロセッサーを利用できません。',
       processor_disabled: '選択したプロセッサーは無効です。',
+      bot_runtime_unavailable:
+        'ボットが実行されていません。プラットフォーム設定を確認してボットを有効にした後、完全テストを実行してください。',
       runner_failed: 'Agent Runner がイベント処理中に失敗しました。',
       delivery_failed: '処理は完了しましたが、結果の配信に失敗しました。',
     },
-    routeTestAction: '保存済み設定を実行',
+    routeTestAction: '完全テストを実行',
     routeTestRunning: '実行中…',
     routeTestFailed:
       '保存済みルートの実行に失敗しました。後でもう一度お試しください。',

@@ -444,10 +444,12 @@ const zhHans = {
       processor_incompatible: '所选处理器无法处理此事件。',
       processor_not_found: '所选处理器不可用。',
       processor_disabled: '所选处理器已禁用。',
+      bot_runtime_unavailable:
+        '机器人尚未运行。请检查平台配置并启用机器人，再运行完整测试。',
       runner_failed: 'Agent Runner 处理事件时失败。',
       delivery_failed: '处理器已完成，但结果投递失败。',
     },
-    routeTestAction: '运行已保存配置',
+    routeTestAction: '运行完整测试',
     routeTestRunning: '运行中…',
     routeTestFailed: '运行已保存路由失败，请稍后重试。',
     routeTestDispatched: '已保存路由运行成功，{{count}} 个平台操作已被阻止。',

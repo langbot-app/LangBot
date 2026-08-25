@@ -466,10 +466,12 @@ const enUS = {
         'The selected processor cannot handle this event.',
       processor_not_found: 'The selected processor is unavailable.',
       processor_disabled: 'The selected processor is disabled.',
+      bot_runtime_unavailable:
+        'The bot is not running. Check its platform settings and enable it before running a full test.',
       runner_failed: 'The Agent runner failed while processing the event.',
       delivery_failed: 'The processor finished, but delivery failed.',
     },
-    routeTestAction: 'Run saved configuration',
+    routeTestAction: 'Run full test',
     routeTestRunning: 'Running…',
     routeTestFailed: 'Failed to run the saved route. Try again later.',
     routeTestDispatched:
