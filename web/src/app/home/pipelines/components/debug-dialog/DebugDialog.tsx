@@ -879,16 +879,6 @@ export default function DebugDialog({
           <Users className="size-4" />
           {t('pipelines.debugDialog.groupChat')}
         </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="ml-auto text-muted-foreground"
-          onClick={() => void resetConversation()}
-        >
-          <RotateCcw className="size-4" />
-          {t('pipelines.debugDialog.reset')}
-        </Button>
       </div>
 
       <div className="flex-1 flex flex-col w-full h-full min-h-0">
@@ -1087,6 +1077,16 @@ export default function DebugDialog({
               title={t('pipelines.debugDialog.uploadImage')}
             >
               <ImageIcon className="size-5" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="ml-auto text-muted-foreground"
+              onClick={() => void resetConversation()}
+            >
+              <RotateCcw className="size-4" />
+              {t('pipelines.debugDialog.reset')}
             </Button>
           </div>
 

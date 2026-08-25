@@ -272,8 +272,12 @@ test.describe('processor detail workbench', () => {
     const composer = debugPanel.locator('[data-debug-composer="true"]');
     const messageInput = composer.locator('textarea');
     const sendButton = composer.getByRole('button', { name: 'Send' });
+    const resetButton = composer.getByRole('button', {
+      name: 'Reset Conversation',
+    });
     await expect(messageInput).toBeVisible();
     await expect(messageInput).toHaveAttribute('rows', '1');
+    await expect(resetButton).toBeVisible();
     const inputBox = await messageInput.boundingBox();
     const sendBox = await sendButton.boundingBox();
     const toolbarBox = await sessionToolbar.boundingBox();
@@ -289,9 +293,22 @@ test.describe('processor detail workbench', () => {
     expect(Math.abs(sendBox!.y - inputBox!.y)).toBeLessThanOrEqual(1);
     expect(toolbarBox!.y).toBeLessThan(emptyStateBox!.y);
 
-    await debugPanel
-      .getByRole('button', { name: 'Reset Conversation' })
-      .click();
+    const streamSwitchBox = await composer.getByRole('switch').boundingBox();
+    const resetBox = await resetButton.boundingBox();
+    expect(streamSwitchBox).not.toBeNull();
+    expect(resetBox).not.toBeNull();
+    expect(resetBox!.x).toBeGreaterThan(
+      streamSwitchBox!.x + streamSwitchBox!.width,
+    );
+    expect(
+      Math.abs(
+        resetBox!.y +
+          resetBox!.height / 2 -
+          (streamSwitchBox!.y + streamSwitchBox!.height / 2),
+      ),
+    ).toBeLessThanOrEqual(1);
+
+    await resetButton.click();
     await expect(
       page.getByText('Conversation reset successfully'),
     ).toBeVisible();
