@@ -255,7 +255,7 @@ export default function BotDetailContent({ id }: { id: string }) {
             value="config"
             className="mt-4 min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden"
           >
-            <div className="mx-auto w-full min-w-0 max-w-3xl space-y-6 pb-8">
+            <div className="mx-auto flex w-full min-w-0 max-w-3xl flex-col gap-6 pb-8">
               <fieldset className="contents" disabled={!canManage}>
                 <BotForm
                   initBotId={id}

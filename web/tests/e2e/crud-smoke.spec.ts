@@ -360,6 +360,20 @@ test.describe('bot advanced flows', () => {
       page.getByText('Events that match no route are ignored.'),
     ).toHaveCount(0);
 
+    const routingCard = page
+      .locator('[data-slot="card"]')
+      .filter({ has: page.getByText('Event Routing', { exact: true }) });
+    const dangerCard = page
+      .locator('[data-slot="card"]')
+      .filter({ has: page.getByText('Danger Zone', { exact: true }) });
+    const routingBox = await routingCard.boundingBox();
+    const dangerBox = await dangerCard.boundingBox();
+    expect(routingBox).not.toBeNull();
+    expect(dangerBox).not.toBeNull();
+    expect(
+      dangerBox!.y - (routingBox!.y + routingBox!.height),
+    ).toBeGreaterThanOrEqual(20);
+
     await page.getByRole('button', { name: 'Refresh status' }).hover();
     await expect(
       page.getByText('Failed to refresh route status.'),
