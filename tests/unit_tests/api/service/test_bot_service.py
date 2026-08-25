@@ -443,6 +443,7 @@ class TestBotServiceUpdateBot:
         ap.persistence_mgr = SimpleNamespace()
         ap.platform_mgr = SimpleNamespace()
         ap.platform_mgr.remove_bot = AsyncMock()
+        ap.platform_mgr.get_bot_by_uuid = AsyncMock(return_value=None)
 
         # Mock pipeline query - not updating pipeline
         ap.persistence_mgr.execute_async = AsyncMock()
@@ -473,6 +474,7 @@ class TestBotServiceUpdateBot:
 
         ap.persistence_mgr.execute_async = AsyncMock(return_value=Mock())
         ap.platform_mgr = SimpleNamespace(
+            get_bot_by_uuid=AsyncMock(return_value=None),
             remove_bot=AsyncMock(),
             load_bot=AsyncMock(return_value=SimpleNamespace(enable=False)),
         )
@@ -495,6 +497,29 @@ class TestBotServiceUpdateBot:
         assert update_params['name'] == 'Updated'
         assert 'use_pipeline_uuid' not in update_params
         assert 'use_pipeline_name' not in update_params
+
+    async def test_basic_info_update_does_not_restart_platform_adapter(self):
+        ap = SimpleNamespace()
+        ap.persistence_mgr = SimpleNamespace(execute_async=AsyncMock(return_value=SimpleNamespace(rowcount=1)))
+        runtime_entity = SimpleNamespace(name='Old name', description='Old description')
+        runtime_bot = SimpleNamespace(bot_entity=runtime_entity)
+        ap.platform_mgr = SimpleNamespace(
+            get_bot_by_uuid=AsyncMock(return_value=runtime_bot),
+            remove_bot=AsyncMock(),
+            load_bot=AsyncMock(),
+        )
+
+        service = BotService(ap)
+        await service.update_bot(
+            WORKSPACE_UUID,
+            'test-uuid',
+            {'name': 'New name', 'description': 'New description'},
+        )
+
+        assert runtime_entity.name == 'New name'
+        assert runtime_entity.description == 'New description'
+        ap.platform_mgr.remove_bot.assert_not_awaited()
+        ap.platform_mgr.load_bot.assert_not_awaited()
 
 
 class TestBotServiceDeleteBot:

@@ -1,4 +1,11 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import i18n from 'i18next';
 import { IChooseAdapterEntity } from '@/app/home/bots/components/bot-form/ChooseEntity';
 import {
@@ -79,17 +86,21 @@ const getFormSchema = (t: (key: string) => string) =>
       .optional(),
   });
 
-export default function BotForm({
-  initBotId,
-  onFormSubmit,
-  onNewBotCreated,
-  onDirtyChange,
-}: {
+export interface BotFormHandle {
+  syncBasicInfo: (values: { name: string; description: string }) => void;
+}
+
+interface BotFormProps {
   initBotId?: string;
   onFormSubmit: (value: z.infer<ReturnType<typeof getFormSchema>>) => void;
   onNewBotCreated: (botId: string) => void;
   onDirtyChange?: (dirty: boolean) => void;
-}) {
+}
+
+const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
+  { initBotId, onFormSubmit, onNewBotCreated, onDirtyChange },
+  ref,
+) {
   const { t } = useTranslation();
   const formSchema = getFormSchema(t);
 
@@ -173,6 +184,19 @@ export default function BotForm({
   useEffect(() => {
     onDirtyChange?.(isDirty);
   }, [isDirty, onDirtyChange]);
+
+  useImperativeHandle(ref, () => ({
+    syncBasicInfo(values) {
+      form.reset(
+        {
+          ...form.getValues(),
+          name: values.name,
+          description: values.description,
+        },
+        { keepDirtyValues: true },
+      );
+    },
+  }));
 
   useEffect(() => {
     setBotFormValues();
@@ -416,46 +440,47 @@ export default function BotForm({
           className="w-full min-w-0 max-w-full space-y-6"
           disabled={isLoading}
         >
-          {/* Card 1: Basic Information */}
-          <Card>
-            <CardHeader>
-              <CardTitle>{t('bots.basicInfo')}</CardTitle>
-              <CardDescription>
-                {t('bots.basicInfoDescription')}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <FormField
-                control={form.control}
-                name="name"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>
-                      {t('bots.botName')}
-                      <span className="text-destructive">*</span>
-                    </FormLabel>
-                    <FormControl>
-                      <Input {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="description"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('bots.botDescription')}</FormLabel>
-                    <FormControl>
-                      <Input {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </CardContent>
-          </Card>
+          {!initBotId && (
+            <Card>
+              <CardHeader>
+                <CardTitle>{t('bots.basicInfo')}</CardTitle>
+                <CardDescription>
+                  {t('bots.basicInfoDescription')}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <FormField
+                  control={form.control}
+                  name="name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>
+                        {t('bots.botName')}
+                        <span className="text-destructive">*</span>
+                      </FormLabel>
+                      <FormControl>
+                        <Input {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="description"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('bots.botDescription')}</FormLabel>
+                      <FormControl>
+                        <Input {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </CardContent>
+            </Card>
+          )}
 
           {/* Card 2: Adapter Configuration */}
           <Card>
@@ -688,4 +713,6 @@ export default function BotForm({
       </form>
     </Form>
   );
-}
+});
+
+export default BotForm;

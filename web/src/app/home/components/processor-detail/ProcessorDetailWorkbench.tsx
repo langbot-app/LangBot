@@ -22,6 +22,7 @@ export interface ProcessorDetailStatus {
 
 interface ProcessorDetailWorkbenchProps {
   title: string;
+  titleAction?: ReactNode;
   status?: ProcessorDetailStatus | null;
   saveLabel: string;
   saveFormId: string;
@@ -41,6 +42,7 @@ interface ProcessorDetailWorkbenchProps {
 
 export default function ProcessorDetailWorkbench({
   title,
+  titleAction,
   status,
   saveLabel,
   saveFormId,
@@ -67,6 +69,7 @@ export default function ProcessorDetailWorkbench({
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 pb-4">
         <div className="flex min-w-0 items-center gap-2">
           <h1 className="truncate text-xl font-semibold">{title}</h1>
+          {titleAction}
           {status && (
             <Tooltip>
               <TooltipTrigger asChild>
@@ -139,7 +142,10 @@ export default function ProcessorDetailWorkbench({
       </div>
 
       {activeView === 'monitoring' && monitoring ? (
-        <section className="min-h-0 flex-1 overflow-y-auto rounded-xl border bg-card p-4">
+        <section
+          aria-label={monitoring.label}
+          className="min-h-0 flex-1 overflow-y-auto rounded-xl border bg-card p-4"
+        >
           {monitoring.content}
         </section>
       ) : (

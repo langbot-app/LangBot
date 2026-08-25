@@ -116,7 +116,7 @@ test.describe('frontend CRUD smoke flows', () => {
     await expect(page.getByText('No logs yet')).toBeVisible();
 
     await page.goto('/home/agents?id=pipeline-1');
-    await expect(page.getByRole('tab', { name: 'Dashboard' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Dashboard' })).toBeVisible();
     await expect(page.getByRole('tab', { name: 'Debug Chat' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: /^Save$/ })).toHaveCount(0);
 
@@ -144,15 +144,21 @@ test.describe('frontend CRUD smoke flows', () => {
 
     await expect(page).toHaveURL(/\/home\/bots\?id=bot-1$/);
     await page.reload();
-    await expect(page.locator('input[name="name"]')).toHaveValue('Support Bot');
-
-    await page
-      .locator('input[name="description"]')
+    await expect(
+      page.getByRole('heading', { name: 'Support Bot' }),
+    ).toBeVisible();
+    await expect(page.locator('input[name="name"]')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Edit basic information' }).click();
+    const botInfoDialog = page.getByRole('dialog');
+    await expect(botInfoDialog.getByLabel('Icon')).toHaveCount(0);
+    await botInfoDialog.getByLabel('Name').fill('Support Bot Updated');
+    await botInfoDialog
+      .getByLabel('Description')
       .fill('Answers customer support questions with context.');
-    await save(page);
-    await expect(page.locator('input[name="description"]')).toHaveValue(
-      'Answers customer support questions with context.',
-    );
+    await botInfoDialog.getByRole('button', { name: 'Save' }).click();
+    await expect(
+      page.getByRole('heading', { name: 'Support Bot Updated' }),
+    ).toBeVisible();
 
     await page.getByRole('button', { name: /^Delete$/ }).click();
     await confirmDelete(page);
@@ -176,18 +182,18 @@ test.describe('frontend CRUD smoke flows', () => {
 
     await expect(page).toHaveURL(/\/home\/agents\?id=pipeline-1$/);
     await page.reload();
-    await expect(page.locator('input[name="basic.name"]')).toHaveValue(
-      'Escalation Pipeline',
-    );
-
-    await page
-      .locator('input[name="basic.description"]')
+    await expect(
+      page.getByRole('heading', { name: /Escalation Pipeline/ }),
+    ).toBeVisible();
+    await expect(page.locator('input[name="basic.name"]')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Edit basic information' }).click();
+    const pipelineInfoDialog = page.getByRole('dialog');
+    await pipelineInfoDialog
+      .getByLabel('Description')
       .fill('Routes urgent customer issues to operators.');
-    await save(page);
-    await expect(page.locator('input[name="basic.description"]')).toHaveValue(
-      'Routes urgent customer issues to operators.',
-    );
+    await pipelineInfoDialog.getByRole('button', { name: 'Save' }).click();
 
+    await page.getByRole('button', { name: 'Management' }).click();
     await page.getByRole('button', { name: /^Delete$/ }).click();
     await confirmDelete(page);
 
@@ -204,8 +210,10 @@ test.describe('frontend CRUD smoke flows', () => {
 
     await page.goto('/home/agents?id=pipeline-ai');
 
-    await expect(page.locator('input[name="basic.name"]')).toBeVisible();
-    await page.getByRole('button', { name: /^AI$/ }).click();
+    await expect(
+      page.getByRole('heading', { name: /pipeline-ai/ }),
+    ).toBeVisible();
+    await page.getByRole('tab', { name: /^AI$/ }).click();
 
     await expect(page.getByText('Runtime')).toBeVisible();
     await expect(
@@ -512,7 +520,9 @@ test.describe('bot advanced flows', () => {
     await expect(
       page.getByRole('tab', { name: /Configuration/ }),
     ).toHaveAttribute('data-state', 'active');
-    await expect(page.locator('input[name="name"]')).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Edit basic information' }),
+    ).toBeVisible();
 
     // Switch to Logs tab
     await page.getByRole('tab', { name: /Logs/ }).click();
@@ -530,7 +540,9 @@ test.describe('bot advanced flows', () => {
 
     // Switch back to Configuration
     await page.getByRole('tab', { name: /Configuration/ }).click();
-    await expect(page.locator('input[name="name"]')).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Edit basic information' }),
+    ).toBeVisible();
   });
 
   test('save button is disabled when form is clean', async ({ page }) => {
@@ -541,23 +553,22 @@ test.describe('bot advanced flows', () => {
     await selectPlaywrightAdapter(page);
     await page.locator('input[name="name"]').fill('Clean Form Bot');
     await submit(page);
+    await expect(page).toHaveURL(/\/home\/bots\?id=bot-1$/);
 
     // Reload the persisted record so post-create initialization has completed.
     await page.reload();
-    await expect(page.locator('input[name="name"]')).toHaveValue(
-      'Clean Form Bot',
-    );
+    await expect(
+      page.getByRole('heading', { name: 'Clean Form Bot' }),
+    ).toBeVisible();
 
     // After loading, save button should be disabled (form is clean)
     const saveButton = page.getByRole('button', { name: /^Save$/ });
     await expect(saveButton).toBeDisabled();
 
-    // Edit the form
-    await page.locator('input[name="description"]').fill('New description');
-    await expect(saveButton).toBeEnabled();
-
-    // Save
-    await saveButton.click();
+    await page.getByRole('button', { name: 'Edit basic information' }).click();
+    const infoDialog = page.getByRole('dialog');
+    await infoDialog.getByLabel('Description').fill('New description');
+    await infoDialog.getByRole('button', { name: 'Save' }).click();
     await expect(saveButton).toBeDisabled();
   });
 
@@ -593,7 +604,7 @@ test.describe('pipeline advanced flows', () => {
     });
 
     await page.goto('/home/agents?id=pipeline-scope');
-    await page.getByRole('button', { name: /^AI$/ }).click();
+    await page.getByRole('tab', { name: /^AI$/ }).click();
     await expect(
       page.getByRole('button', { name: 'Edit tools' }),
     ).toBeVisible();
@@ -621,22 +632,26 @@ test.describe('pipeline advanced flows', () => {
     await page.locator('input[name="name"]').fill('Tab Test Pipeline');
     await submit(page);
 
-    // Verify we're on the Configuration tab
     await expect(
-      page.getByRole('tab', { name: /Configuration/ }),
-    ).toHaveAttribute('data-state', 'active');
+      page.getByRole('region', { name: 'Configuration' }),
+    ).toBeVisible();
 
     // Switch to Monitoring tab (labeled "Dashboard" in the pipeline context)
     // Skip Debug tab as it requires WebSocket connection
-    await page.getByRole('tab', { name: /Dashboard/ }).click();
-    await expect(page.getByRole('tab', { name: /Dashboard/ })).toHaveAttribute(
-      'data-state',
-      'active',
-    );
+    await page
+      .getByRole('button', { name: 'Dashboard', exact: true })
+      .last()
+      .click();
+    await expect(page.getByRole('region', { name: /Dashboard/ })).toBeVisible();
 
     // Switch back to Configuration
-    await page.getByRole('tab', { name: /Configuration/ }).click();
-    await expect(page.locator('input[name="basic.name"]')).toBeVisible();
+    await page
+      .getByRole('button', { name: 'Dashboard', exact: true })
+      .last()
+      .click();
+    await expect(
+      page.getByRole('region', { name: 'Configuration' }),
+    ).toBeVisible();
   });
 
   test('save button reflects form dirty state', async ({ page }) => {
@@ -648,20 +663,16 @@ test.describe('pipeline advanced flows', () => {
     await page.locator('input[name="name"]').fill('Dirty Form Pipeline');
     await submit(page);
 
-    // Wait for the page to fully load and form to reset
-    await page.waitForTimeout(500);
-
-    // Edit the form - use the name field which definitely triggers dirty state
-    await page
-      .locator('input[name="basic.name"]')
-      .fill('Dirty Form Pipeline Updated');
     const saveButton = page.getByRole('button', { name: /^Save$/ });
-    await expect(saveButton).toBeEnabled();
-
-    // Save
-    await saveButton.click();
-    // Wait for save to complete
-    await page.waitForTimeout(500);
+    await expect(saveButton).toBeDisabled();
+    await page.getByRole('button', { name: 'Edit basic information' }).click();
+    const infoDialog = page.getByRole('dialog');
+    await infoDialog.getByLabel('Name').fill('Dirty Form Pipeline Updated');
+    await infoDialog.getByRole('button', { name: 'Save' }).click();
+    await expect(
+      page.getByRole('heading', { name: /Dirty Form Pipeline Updated/ }),
+    ).toBeVisible();
+    await expect(saveButton).toBeDisabled();
   });
 
   test('shows validation error when pipeline name is empty', async ({
@@ -705,7 +716,8 @@ test.describe('agent runner resource selectors', () => {
     });
 
     await page.goto('/home/agents?id=agent-scope');
-    await page.getByRole('button', { name: /^Runner$/ }).click();
+    await page.getByRole('tab', { name: /^Runner$/ }).click();
+    await page.getByRole('tab', { name: 'Local Agent' }).click();
     await page.getByRole('button', { name: 'Edit tools' }).click();
 
     const dialog = page.getByRole('dialog');
@@ -747,16 +759,16 @@ test.describe('agent and pipeline save concurrency', () => {
 
     await page.goto('/home/agents?id=agent-save-race');
     const saveButton = page.getByRole('button', { name: /^Save$/ });
-    const nameInput = page.locator('input[name="basic.name"]');
-    const descriptionInput = page.locator('input[name="basic.description"]');
-    await expect(nameInput).toBeVisible();
+    await page.getByRole('tab', { name: 'Bindable Event Range' }).click();
+    const eventPatterns = page.getByLabel('Event Range');
+    await expect(eventPatterns).toBeVisible();
 
-    await nameInput.fill('Submitted Agent');
+    await eventPatterns.fill('message.received');
     await saveButton.click();
     await expect.poll(() => delayedSave.payloads.length).toBe(1);
     await expect(saveButton).toBeDisabled();
 
-    await descriptionInput.fill('Edited while the agent save is pending');
+    await eventPatterns.fill('group.*');
     await forceFormSubmit(page, '#agent-form');
     expect(delayedSave.payloads).toHaveLength(1);
     await expect(saveButton).toBeDisabled();
@@ -764,15 +776,13 @@ test.describe('agent and pipeline save concurrency', () => {
     delayedSave.releaseFirstSave();
     await expect(saveButton).toBeEnabled();
     expect(delayedSave.payloads[0]).toMatchObject({
-      name: 'Submitted Agent',
-      description: '',
+      supported_event_patterns: ['message.received'],
     });
 
     await saveButton.click();
     await expect.poll(() => delayedSave.payloads.length).toBe(2);
     expect(delayedSave.payloads[1]).toMatchObject({
-      name: 'Submitted Agent',
-      description: 'Edited while the agent save is pending',
+      supported_event_patterns: ['group.*'],
     });
     await expect(saveButton).toBeDisabled();
   });
@@ -787,35 +797,35 @@ test.describe('agent and pipeline save concurrency', () => {
     );
 
     await page.goto('/home/agents?id=pipeline-save-race');
-    const saveButton = page.getByRole('button', { name: /^Save$/ });
-    const nameInput = page.locator('input[name="basic.name"]');
-    const descriptionInput = page.locator('input[name="basic.description"]');
-    await expect(nameInput).toBeVisible();
-
-    await nameInput.fill('Submitted Pipeline');
-    await saveButton.click();
+    await page.getByRole('button', { name: 'Edit basic information' }).click();
+    let infoDialog = page.getByRole('dialog');
+    await infoDialog.getByLabel('Name').fill('Submitted Pipeline');
+    const dialogSaveButton = infoDialog.getByRole('button', { name: 'Save' });
+    await dialogSaveButton.click();
     await expect.poll(() => delayedSave.payloads.length).toBe(1);
-    await expect(saveButton).toBeDisabled();
-
-    await descriptionInput.fill('Edited while the pipeline save is pending');
-    await forceFormSubmit(page, '#pipeline-form');
-    expect(delayedSave.payloads).toHaveLength(1);
-    await expect(saveButton).toBeDisabled();
+    await expect(
+      infoDialog.getByRole('button', { name: 'Saving...' }),
+    ).toBeDisabled();
 
     delayedSave.releaseFirstSave();
-    await expect(saveButton).toBeEnabled();
+    await expect(infoDialog).toHaveCount(0);
     expect(delayedSave.payloads[0]).toMatchObject({
       name: 'Submitted Pipeline',
       description: '',
     });
 
-    await saveButton.click();
+    await page.getByRole('button', { name: 'Edit basic information' }).click();
+    infoDialog = page.getByRole('dialog');
+    await infoDialog
+      .getByLabel('Description')
+      .fill('Edited in the next basic information save');
+    await infoDialog.getByRole('button', { name: 'Save' }).click();
     await expect.poll(() => delayedSave.payloads.length).toBe(2);
     expect(delayedSave.payloads[1]).toMatchObject({
       name: 'Submitted Pipeline',
-      description: 'Edited while the pipeline save is pending',
+      description: 'Edited in the next basic information save',
     });
-    await expect(saveButton).toBeDisabled();
+    await expect(infoDialog).toHaveCount(0);
   });
 });
 
@@ -838,7 +848,9 @@ test.describe('cross-resource flows', () => {
     await expect(page).toHaveURL(/\/home\/bots\?id=bot-1$/);
 
     // Wait for form to fully load
-    await expect(page.locator('input[name="name"]')).toHaveValue('Bound Bot');
+    await expect(
+      page.getByRole('heading', { name: 'Bound Bot' }),
+    ).toBeVisible();
 
     await page.getByRole('button', { name: 'Add behavior' }).click();
     await page.getByRole('menuitem', { name: /^Reply to messages/ }).click();

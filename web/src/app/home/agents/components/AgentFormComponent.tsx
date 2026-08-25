@@ -13,7 +13,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { Bot, Info, Power, SlidersHorizontal, Trash2, Zap } from 'lucide-react';
+import { Bot, Power, SlidersHorizontal, Trash2, Zap } from 'lucide-react';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { Agent, ApiRespPluginSystemStatus } from '@/app/infra/entities/api';
 import {
@@ -25,9 +25,7 @@ import { extractI18nObject } from '@/i18n/I18nProvider';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
-import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import EmojiPicker from '@/components/ui/emoji-picker';
 import {
   Card,
   CardContent,
@@ -68,11 +66,19 @@ interface AgentFormComponentProps {
 }
 
 export type AgentConfigSection =
-  'events' | 'runner' | 'runner_config' | 'basic';
+  | 'events'
+  | 'runner'
+  | 'runner_config'
+  | 'basic';
 
 export interface AgentFormHandle {
   openSection: (section: AgentConfigSection) => void;
   save: () => Promise<boolean>;
+  syncBasicInfo: (values: {
+    name: string;
+    description: string;
+    emoji?: string;
+  }) => void;
 }
 
 function isRequiredRunnerValueMissing(value: unknown): boolean {
@@ -266,8 +272,8 @@ function AgentFormComponent(
   }> = [
     {
       name: 'basic',
-      label: t('agents.basicInfo'),
-      icon: Info,
+      label: t('common.management'),
+      icon: Power,
     },
     {
       name: 'events',
@@ -503,6 +509,24 @@ function AgentFormComponent(
     ref,
     () => ({
       openSection: setActiveSection,
+      syncBasicInfo(values) {
+        form.setValue('basic', {
+          ...form.getValues('basic'),
+          name: values.name,
+          description: values.description,
+          emoji: values.emoji || '🤖',
+        });
+        if (savedSnapshotRef.current) {
+          const snapshot = JSON.parse(savedSnapshotRef.current) as FormValues;
+          snapshot.basic = {
+            ...snapshot.basic,
+            name: values.name,
+            description: values.description,
+            emoji: values.emoji || '🤖',
+          };
+          savedSnapshotRef.current = JSON.stringify(snapshot);
+        }
+      },
       async save() {
         if (!hasUnsavedChangesRef.current) return true;
         if (isSavingRef.current) return false;
@@ -634,62 +658,12 @@ function AgentFormComponent(
                   <div className="space-y-6">
                     <Card>
                       <CardHeader>
-                        <CardTitle>{t('agents.basicInfo')}</CardTitle>
+                        <CardTitle>{t('agents.availability')}</CardTitle>
                         <CardDescription>
-                          {t('agents.basicInfoDescription')}
+                          {t('agents.availabilityDescription')}
                         </CardDescription>
                       </CardHeader>
-                      <CardContent className="space-y-4">
-                        <div className="flex items-start gap-4">
-                          <FormField
-                            control={form.control}
-                            name="basic.name"
-                            render={({ field }) => (
-                              <FormItem className="flex-1">
-                                <FormLabel>
-                                  {t('common.name')}
-                                  <span className="text-destructive">*</span>
-                                </FormLabel>
-                                <FormControl>
-                                  <Input {...field} value={field.value ?? ''} />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                          <FormField
-                            control={form.control}
-                            name="basic.emoji"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>{t('common.icon')}</FormLabel>
-                                <FormControl>
-                                  <EmojiPicker
-                                    value={field.value}
-                                    onChange={field.onChange}
-                                    ariaLabel={t('common.icon')}
-                                  />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                        </div>
-
-                        <FormField
-                          control={form.control}
-                          name="basic.description"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>{t('common.description')}</FormLabel>
-                              <FormControl>
-                                <Input {...field} value={field.value ?? ''} />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-
+                      <CardContent>
                         <FormField
                           control={form.control}
                           name="basic.enabled"

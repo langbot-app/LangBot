@@ -45,26 +45,32 @@ test.describe('processor detail workbench', () => {
     expect(debugBox!.y).toBeGreaterThanOrEqual(0);
 
     const flow = configPanel.getByRole('tablist');
-    await expect(flow.getByRole('tab').nth(0)).toContainText(
-      'Basic Information',
-    );
+    await expect(flow.getByRole('tab').nth(0)).toContainText('Management');
     await expect(flow.getByRole('tab').nth(1)).toContainText(
       'Bindable Event Range',
     );
     await expect(flow.getByRole('tab').nth(2)).toContainText('Runner');
     await expect(flow.getByRole('tab').nth(3)).toContainText('Local Agent');
 
-    await expect(configPanel.getByLabel('Name')).toBeVisible();
-    await expect(configPanel.getByLabel('Icon')).toBeVisible();
-    await expect(configPanel.getByLabel('Description')).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: /agent-workbench/ }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Edit basic information' }),
+    ).toBeVisible();
+    await expect(configPanel.getByLabel('Name')).toHaveCount(0);
+    await expect(configPanel.getByLabel('Icon')).toHaveCount(0);
+    await expect(configPanel.getByLabel('Description')).toHaveCount(0);
 
     const runnerStatus = page.getByRole('status', { name: 'Runner ready' });
     await expect(runnerStatus).toBeVisible();
     await runnerStatus.hover();
     await expect(
-      page.getByText(
-        'Local Agent is registered and the plugin runtime is connected.',
-      ),
+      page
+        .getByText(
+          'Local Agent is registered and the plugin runtime is connected.',
+        )
+        .last(),
     ).toBeVisible();
 
     await flow.getByRole('tab').nth(1).click();
@@ -99,11 +105,18 @@ test.describe('processor detail workbench', () => {
     });
 
     await page.goto('/home/agents?id=agent-workbench');
-    await page.getByLabel('Description').fill('Updated before debugging');
+    await page.getByRole('button', { name: 'Edit basic information' }).click();
+    const basicInfoDialog = page.getByRole('dialog');
+    await expect(basicInfoDialog.getByLabel('Icon')).toBeVisible();
+    await basicInfoDialog
+      .getByLabel('Description')
+      .fill('Updated before debugging');
+    await basicInfoDialog.getByRole('button', { name: 'Save' }).click();
+    await expect(basicInfoDialog).toHaveCount(0);
     await page
       .getByRole('textbox', { name: 'Conversation input' })
       .fill('Hello');
-    await page.getByRole('button', { name: 'Save and run' }).click();
+    await page.getByRole('button', { name: 'Run test' }).click();
 
     await expect(page.getByText('Mock Agent response')).toBeVisible();
     expect(requests).toEqual(['save', 'debug']);
@@ -184,6 +197,24 @@ test.describe('processor detail workbench', () => {
       .click();
     await expect(
       page.getByText('Conversation reset successfully'),
+    ).toBeVisible();
+
+    await expect(
+      page.getByRole('heading', { name: /pipeline-workbench/ }),
+    ).toBeVisible();
+    await expect(configPanel.locator('input[name="basic.name"]')).toHaveCount(
+      0,
+    );
+    await page.getByRole('button', { name: 'Edit basic information' }).click();
+    const basicInfoDialog = page.getByRole('dialog');
+    await expect(basicInfoDialog.getByLabel('Icon')).toBeVisible();
+    await basicInfoDialog.getByLabel('Name').fill('Renamed Pipeline');
+    await basicInfoDialog
+      .getByLabel('Description')
+      .fill('Updated from the title dialog.');
+    await basicInfoDialog.getByRole('button', { name: 'Save' }).click();
+    await expect(
+      page.getByRole('heading', { name: /Renamed Pipeline/ }),
     ).toBeVisible();
 
     const debugBox = await debugPanel.boundingBox();

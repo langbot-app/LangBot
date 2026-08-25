@@ -647,7 +647,12 @@ async function handleBackendApi(route: Route, state: LangBotApiMockState) {
     const botId = decodeURIComponent(botMatch[1]);
 
     if (method === 'PUT') {
-      const bot = makeBot(state, parseJsonBody(route), botId);
+      const current = state.bots.find((item) => item.uuid === botId);
+      const bot = makeBot(
+        state,
+        { ...(current || {}), ...parseJsonBody(route) },
+        botId,
+      );
       state.bots = [...state.bots.filter((item) => item.uuid !== botId), bot];
       return fulfillJson(route, {});
     }
@@ -729,7 +734,12 @@ async function handleBackendApi(route: Route, state: LangBotApiMockState) {
     const agentId = decodeURIComponent(agentMatch[1]);
 
     if (method === 'PUT') {
-      const agent = makePipeline(state, parseJsonBody(route), agentId);
+      const current = state.pipelines.find((item) => item.uuid === agentId);
+      const agent = makePipeline(
+        state,
+        { ...(current || {}), ...parseJsonBody(route) },
+        agentId,
+      );
       state.pipelines = [
         ...state.pipelines.filter((item) => item.uuid !== agentId),
         agent,
@@ -789,7 +799,12 @@ async function handleBackendApi(route: Route, state: LangBotApiMockState) {
     const pipelineId = decodeURIComponent(pipelineMatch[1]);
 
     if (method === 'PUT') {
-      const pipeline = makePipeline(state, parseJsonBody(route), pipelineId);
+      const current = state.pipelines.find((item) => item.uuid === pipelineId);
+      const pipeline = makePipeline(
+        state,
+        { ...(current || {}), ...parseJsonBody(route) },
+        pipelineId,
+      );
       state.pipelines = [
         ...state.pipelines.filter((item) => item.uuid !== pipelineId),
         pipeline,

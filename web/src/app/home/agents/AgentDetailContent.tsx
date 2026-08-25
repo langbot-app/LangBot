@@ -1,11 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { useCurrentWorkspace } from '@/app/infra/http';
 import { Agent } from '@/app/infra/entities/api';
 import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
 import ProcessorDetailWorkbench from '@/app/home/components/processor-detail/ProcessorDetailWorkbench';
+import EntityBasicInfoDialog, {
+  EntityBasicInfoValues,
+} from '@/app/home/components/entity-basic-info/EntityBasicInfoDialog';
+import EntityTitleEditButton from '@/app/home/components/entity-basic-info/EntityTitleEditButton';
 import PipelineDetailContent from '@/app/home/pipelines/PipelineDetailContent';
 import AgentCreateContent from './components/AgentCreateContent';
 import AgentDebugPanel from './components/AgentDebugPanel';
@@ -28,6 +33,7 @@ export default function AgentDetailContent({ id }: { id: string }) {
   const [loading, setLoading] = useState(!isCreateMode);
   const [formDirty, setFormDirty] = useState(false);
   const [formSaving, setFormSaving] = useState(false);
+  const [basicInfoOpen, setBasicInfoOpen] = useState(false);
   const [runnerStatus, setRunnerStatus] = useState<AgentRunnerStatus | null>(
     null,
   );
@@ -88,58 +94,93 @@ export default function AgentDetailContent({ id }: { id: string }) {
     return <PipelineDetailContent id={id} routeBase="/home/agents" />;
   }
 
+  async function saveBasicInfo(values: EntityBasicInfoValues) {
+    try {
+      await httpClient.updateAgent(id, values);
+      setAgent((current) => (current ? { ...current, ...values } : current));
+      agentFormRef.current?.syncBasicInfo(values);
+      await refreshPipelines();
+      toast.success(t('agents.saveSuccess'));
+    } catch (error) {
+      const message =
+        typeof error === 'object' && error && 'msg' in error
+          ? String((error as { msg?: string }).msg || '')
+          : '';
+      toast.error(t('agents.saveError') + message);
+      throw error;
+    }
+  }
+
   return (
-    <ProcessorDetailWorkbench
-      key={id}
-      title={`${agent.emoji || '🤖'} ${agent.name}`}
-      status={runnerStatus}
-      saveLabel={t('common.save')}
-      saveFormId="agent-form"
-      canSave={canManage}
-      isDirty={formDirty}
-      isSaving={formSaving}
-      configTitle={t('pipelines.configuration')}
-      configContent={
-        <fieldset className="contents" disabled={!canManage}>
-          <AgentFormComponent
-            ref={agentFormRef}
-            agentId={id}
-            onFinish={(updatedAgent) => {
-              if (updatedAgent) {
-                setAgent((current) =>
-                  current ? { ...current, ...updatedAgent } : current,
-                );
+    <>
+      <ProcessorDetailWorkbench
+        key={id}
+        title={`${agent.emoji || '🤖'} ${agent.name}`}
+        titleAction={
+          canManage ? (
+            <EntityTitleEditButton onClick={() => setBasicInfoOpen(true)} />
+          ) : undefined
+        }
+        status={runnerStatus}
+        saveLabel={t('common.save')}
+        saveFormId="agent-form"
+        canSave={canManage}
+        isDirty={formDirty}
+        isSaving={formSaving}
+        configTitle={t('pipelines.configuration')}
+        configContent={
+          <fieldset className="contents" disabled={!canManage}>
+            <AgentFormComponent
+              ref={agentFormRef}
+              agentId={id}
+              onFinish={(updatedAgent) => {
+                if (updatedAgent) {
+                  setAgent((current) =>
+                    current ? { ...current, ...updatedAgent } : current,
+                  );
+                }
+                refreshPipelines();
+              }}
+              onDeleted={() => {
+                refreshPipelines();
+                navigate('/home/agents');
+              }}
+              onDirtyChange={setFormDirty}
+              onSavingChange={setFormSaving}
+              onRunnerStatusChange={setRunnerStatus}
+            />
+          </fieldset>
+        }
+        debugTitle={canOperate ? t('agents.debugTab') : undefined}
+        debugContent={
+          canOperate ? (
+            <AgentDebugPanel
+              agentId={id}
+              hasUnsavedChanges={formDirty}
+              beforeRun={async () => agentFormRef.current?.save() ?? false}
+              onOpenRunnerConfig={() =>
+                agentFormRef.current?.openSection('runner_config')
               }
-              refreshPipelines();
-            }}
-            onDeleted={() => {
-              refreshPipelines();
-              navigate('/home/agents');
-            }}
-            onDirtyChange={setFormDirty}
-            onSavingChange={setFormSaving}
-            onRunnerStatusChange={setRunnerStatus}
-          />
-        </fieldset>
-      }
-      debugTitle={canOperate ? t('agents.debugTab') : undefined}
-      debugContent={
-        canOperate ? (
-          <AgentDebugPanel
-            agentId={id}
-            hasUnsavedChanges={formDirty}
-            beforeRun={async () => agentFormRef.current?.save() ?? false}
-            onOpenRunnerConfig={() =>
-              agentFormRef.current?.openSection('runner_config')
-            }
-            supportedEventPatterns={
-              agent.supported_event_patterns ??
-              agent.capability?.supported_event_patterns ?? ['*']
-            }
-          />
-        ) : undefined
-      }
-      unsavedLabel={t('pipelines.unsavedChanges')}
-    />
+              supportedEventPatterns={
+                agent.supported_event_patterns ??
+                agent.capability?.supported_event_patterns ?? ['*']
+              }
+            />
+          ) : undefined
+        }
+        unsavedLabel={t('pipelines.unsavedChanges')}
+      />
+      <EntityBasicInfoDialog
+        open={basicInfoOpen}
+        onOpenChange={setBasicInfoOpen}
+        values={{
+          name: agent.name,
+          description: agent.description || '',
+          emoji: agent.emoji || '🤖',
+        }}
+        defaultEmoji="🤖"
+        onSave={saveBasicInfo}
+      />
+    </>
   );
 }

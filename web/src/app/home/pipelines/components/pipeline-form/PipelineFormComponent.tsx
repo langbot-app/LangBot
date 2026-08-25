@@ -73,6 +73,11 @@ interface PipelineFormComponentProps {
 
 export interface PipelineFormHandle {
   save: () => Promise<boolean>;
+  syncBasicInfo: (values: {
+    name: string;
+    description: string;
+    emoji?: string;
+  }) => void;
 }
 
 const PipelineFormComponent = forwardRef<
@@ -137,7 +142,7 @@ const PipelineFormComponent = forwardRef<
   const formLabelList: SectionItem[] = isEditMode
     ? [
         {
-          label: t('pipelines.basicInfo'),
+          label: t('common.management'),
           name: 'basic',
           icon: SECTION_ICONS.basic,
         },
@@ -367,6 +372,24 @@ const PipelineFormComponent = forwardRef<
   }
 
   useImperativeHandle(ref, () => ({
+    syncBasicInfo(values) {
+      form.setValue('basic', {
+        ...form.getValues('basic'),
+        name: values.name,
+        description: values.description,
+        emoji: values.emoji || '⚙️',
+      });
+      if (savedSnapshotRef.current) {
+        const snapshot = JSON.parse(savedSnapshotRef.current) as FormValues;
+        snapshot.basic = {
+          ...snapshot.basic,
+          name: values.name,
+          description: values.description,
+          emoji: values.emoji || '⚙️',
+        };
+        savedSnapshotRef.current = JSON.stringify(snapshot);
+      }
+    },
     async save() {
       if (!hasUnsavedChangesRef.current) return true;
       if (isSavingRef.current || !isEditMode) return false;
@@ -656,69 +679,85 @@ const PipelineFormComponent = forwardRef<
 
               {/* Content panel */}
               <div className="flex-1 overflow-y-auto min-h-0">
-                {/* Basic info section */}
                 {activeSection === 'basic' && (
                   <div className="space-y-6">
-                    {/* Basic Information Card */}
                     <Card>
                       <CardHeader>
-                        <CardTitle>{t('pipelines.basicInfo')}</CardTitle>
+                        <CardTitle>
+                          {isEditMode
+                            ? t('common.management')
+                            : t('pipelines.basicInfo')}
+                        </CardTitle>
                         <CardDescription>
-                          {t('pipelines.basicInfoDescription')}
+                          {isEditMode
+                            ? t('pipelines.managementDescription')
+                            : t('pipelines.basicInfoDescription')}
                         </CardDescription>
                       </CardHeader>
                       <CardContent className="space-y-4">
-                        {/* Name and Emoji in same row */}
-                        <div className="flex gap-4 items-start">
-                          <FormField
-                            control={form.control}
-                            name="basic.name"
-                            render={({ field }) => (
-                              <FormItem className="flex-1">
-                                <FormLabel>
-                                  {t('common.name')}
-                                  <span className="text-destructive">*</span>
-                                </FormLabel>
-                                <FormControl>
-                                  <Input {...field} value={field.value ?? ''} />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                          <FormField
-                            control={form.control}
-                            name="basic.emoji"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>{t('common.icon')}</FormLabel>
-                                <FormControl>
-                                  <EmojiPicker
-                                    value={field.value}
-                                    onChange={field.onChange}
-                                  />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                        </div>
+                        {!isEditMode && (
+                          <>
+                            <div className="flex gap-4 items-start">
+                              <FormField
+                                control={form.control}
+                                name="basic.name"
+                                render={({ field }) => (
+                                  <FormItem className="flex-1">
+                                    <FormLabel>
+                                      {t('common.name')}
+                                      <span className="text-destructive">
+                                        *
+                                      </span>
+                                    </FormLabel>
+                                    <FormControl>
+                                      <Input
+                                        {...field}
+                                        value={field.value ?? ''}
+                                      />
+                                    </FormControl>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                              <FormField
+                                control={form.control}
+                                name="basic.emoji"
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel>{t('common.icon')}</FormLabel>
+                                    <FormControl>
+                                      <EmojiPicker
+                                        value={field.value}
+                                        onChange={field.onChange}
+                                      />
+                                    </FormControl>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                            </div>
 
-                        <FormField
-                          control={form.control}
-                          name="basic.description"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>{t('common.description')}</FormLabel>
-                              <FormControl>
-                                <Input {...field} value={field.value ?? ''} />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
+                            <FormField
+                              control={form.control}
+                              name="basic.description"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>
+                                    {t('common.description')}
+                                  </FormLabel>
+                                  <FormControl>
+                                    <Input
+                                      {...field}
+                                      value={field.value ?? ''}
+                                    />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                          </>
+                        )}
 
-                        {/* Copy pipeline (edit mode only) */}
                         {isEditMode && (
                           <div className="flex items-center justify-between rounded-lg border p-4">
                             <div className="space-y-0.5">

@@ -692,6 +692,17 @@ class BotService:
         )
         if getattr(result, 'rowcount', None) == 0:
             raise WorkspaceNotFoundError('Bot not found')
+
+        runtime_fields = {'adapter', 'adapter_config', 'enable', 'event_bindings'}
+        if not runtime_fields.intersection(update_data):
+            runtime_bot = await self.ap.platform_mgr.get_bot_by_uuid(context, bot_uuid)
+            if runtime_bot is not None:
+                if 'name' in update_data:
+                    runtime_bot.bot_entity.name = update_data['name']
+                if 'description' in update_data:
+                    runtime_bot.bot_entity.description = update_data['description']
+            return
+
         await self.ap.platform_mgr.remove_bot(context, bot_uuid)
 
         # select from db

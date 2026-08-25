@@ -329,7 +329,10 @@ export class BackendClient extends BaseHttpClient {
     return this.post('/api/v1/pipelines', pipeline);
   }
 
-  public updatePipeline(uuid: string, pipeline: Pipeline): Promise<object> {
+  public updatePipeline(
+    uuid: string,
+    pipeline: Partial<Pipeline>,
+  ): Promise<object> {
     return this.put(`/api/v1/pipelines/${uuid}`, pipeline);
   }
 
@@ -489,7 +492,7 @@ export class BackendClient extends BaseHttpClient {
     return this.post('/api/v1/platform/bots', bot);
   }
 
-  public updateBot(uuid: string, bot: Bot): Promise<object> {
+  public updateBot(uuid: string, bot: Partial<Bot>): Promise<object> {
     return this.put(`/api/v1/platform/bots/${uuid}`, bot);
   }
 

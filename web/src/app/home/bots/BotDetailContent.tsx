@@ -19,7 +19,9 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
-import BotForm from '@/app/home/bots/components/bot-form/BotForm';
+import BotForm, {
+  BotFormHandle,
+} from '@/app/home/bots/components/bot-form/BotForm';
 import { BotLogListComponent } from '@/app/home/bots/components/bot-log/view/BotLogListComponent';
 import BotSessionMonitor from '@/app/home/bots/components/bot-session/BotSessionMonitor';
 import type { BotSessionMonitorHandle } from '@/app/home/bots/components/bot-session/BotSessionMonitor';
@@ -30,6 +32,11 @@ import { Settings, FileText, Users, RefreshCw, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useCurrentWorkspace } from '@/app/infra/http';
+import { Bot } from '@/app/infra/entities/api';
+import EntityBasicInfoDialog, {
+  EntityBasicInfoValues,
+} from '@/app/home/components/entity-basic-info/EntityBasicInfoDialog';
+import EntityTitleEditButton from '@/app/home/components/entity-basic-info/EntityTitleEditButton';
 
 export default function BotDetailContent({ id }: { id: string }) {
   const isCreateMode = id === 'new';
@@ -55,8 +62,11 @@ export default function BotDetailContent({ id }: { id: string }) {
 
   const [activeTab, setActiveTab] = useState('config');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [basicInfoOpen, setBasicInfoOpen] = useState(false);
+  const [bot, setBot] = useState<Bot | null>(null);
   const [isRefreshingSessions, setIsRefreshingSessions] = useState(false);
   const sessionMonitorRef = useRef<BotSessionMonitorHandle>(null);
+  const botFormRef = useRef<BotFormHandle>(null);
 
   // Track whether the form has unsaved changes
   const [formDirty, setFormDirty] = useState(false);
@@ -69,6 +79,7 @@ export default function BotDetailContent({ id }: { id: string }) {
   useEffect(() => {
     if (!isCreateMode) {
       httpClient.getBot(id).then((res) => {
+        setBot(res.bot);
         setBotEnabled(res.bot.enable ?? true);
         setEnableLoaded(true);
       });
@@ -80,16 +91,10 @@ export default function BotDetailContent({ id }: { id: string }) {
       const prev = botEnabled;
       setBotEnabled(checked);
       try {
-        // Fetch current bot data to send a complete update
-        const res = await httpClient.getBot(id);
-        const bot = res.bot;
-        await httpClient.updateBot(id, {
-          name: bot.name,
-          description: bot.description,
-          adapter: bot.adapter,
-          adapter_config: bot.adapter_config,
-          enable: checked,
-        });
+        await httpClient.updateBot(id, { enable: checked });
+        setBot((current) =>
+          current ? { ...current, enable: checked } : current,
+        );
         refreshBots();
       } catch {
         setBotEnabled(prev);
@@ -102,6 +107,7 @@ export default function BotDetailContent({ id }: { id: string }) {
   function handleFormSubmit() {
     // Re-sync enable state after form save (form may update enable too)
     httpClient.getBot(id).then((res) => {
+      setBot(res.bot);
       setBotEnabled(res.bot.enable ?? true);
     });
     refreshBots();
@@ -115,6 +121,26 @@ export default function BotDetailContent({ id }: { id: string }) {
   function handleNewBotCreated(newBotId: string) {
     refreshBots();
     navigate(`/home/bots?id=${encodeURIComponent(newBotId)}`);
+  }
+
+  async function saveBasicInfo(values: EntityBasicInfoValues) {
+    try {
+      await httpClient.updateBot(id, {
+        name: values.name,
+        description: values.description,
+      });
+      setBot((current) => (current ? { ...current, ...values } : current));
+      botFormRef.current?.syncBasicInfo(values);
+      await refreshBots();
+      toast.success(t('bots.saveSuccess'));
+    } catch (error) {
+      const message =
+        typeof error === 'object' && error && 'msg' in error
+          ? String((error as { msg?: string }).msg || '')
+          : '';
+      toast.error(t('bots.saveError') + message);
+      throw error;
+    }
   }
 
   function confirmDelete() {
@@ -166,8 +192,15 @@ export default function BotDetailContent({ id }: { id: string }) {
       <div className="flex h-full min-w-0 flex-col">
         {/* Sticky Header: title + enable switch + save button */}
         <div className="flex items-center justify-between pb-4 shrink-0">
-          <div className="flex items-center gap-4">
-            <h1 className="text-xl font-semibold">{t('bots.editBot')}</h1>
+          <div className="flex min-w-0 items-center gap-4">
+            <div className="flex min-w-0 items-center gap-1">
+              <h1 className="truncate text-xl font-semibold">
+                {bot?.name || t('bots.editBot')}
+              </h1>
+              {canManage && (
+                <EntityTitleEditButton onClick={() => setBasicInfoOpen(true)} />
+              )}
+            </div>
             {enableLoaded && (
               <div className="flex items-center gap-2">
                 <Switch
@@ -258,6 +291,7 @@ export default function BotDetailContent({ id }: { id: string }) {
             <div className="mx-auto flex w-full min-w-0 max-w-3xl flex-col gap-6 pb-8">
               <fieldset className="contents" disabled={!canManage}>
                 <BotForm
+                  ref={botFormRef}
                   initBotId={id}
                   onFormSubmit={handleFormSubmit}
                   onNewBotCreated={handleNewBotCreated}
@@ -344,6 +378,17 @@ export default function BotDetailContent({ id }: { id: string }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <EntityBasicInfoDialog
+        open={basicInfoOpen}
+        onOpenChange={setBasicInfoOpen}
+        values={{
+          name: bot?.name || '',
+          description: bot?.description || '',
+        }}
+        showEmoji={false}
+        onSave={saveBasicInfo}
+      />
     </>
   );
 }

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import PipelineFormComponent, {
   PipelineFormHandle,
@@ -7,9 +8,15 @@ import PipelineFormComponent, {
 import DebugDialog from '@/app/home/pipelines/components/debug-dialog/DebugDialog';
 import PipelineMonitoringTab from '@/app/home/pipelines/components/monitoring-tab/PipelineMonitoringTab';
 import ProcessorDetailWorkbench from '@/app/home/components/processor-detail/ProcessorDetailWorkbench';
+import EntityBasicInfoDialog, {
+  EntityBasicInfoValues,
+} from '@/app/home/components/entity-basic-info/EntityBasicInfoDialog';
+import EntityTitleEditButton from '@/app/home/components/entity-basic-info/EntityTitleEditButton';
 import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
 import { useTranslation } from 'react-i18next';
 import { useCurrentWorkspace } from '@/app/infra/http';
+import { httpClient } from '@/app/infra/http/HttpClient';
+import { Pipeline } from '@/app/infra/entities/api';
 
 export default function PipelineDetailContent({
   id,
@@ -44,11 +51,45 @@ export default function PipelineDetailContent({
   const [isWebSocketConnected, setIsWebSocketConnected] = useState(false);
   const [formDirty, setFormDirty] = useState(false);
   const [formSaving, setFormSaving] = useState(false);
+  const [basicInfoOpen, setBasicInfoOpen] = useState(false);
+  const [pipelineDetails, setPipelineDetails] = useState<Pipeline | null>(null);
   const pipelineFormRef = useRef<PipelineFormHandle>(null);
-  const pipeline = pipelines.find((item) => item.id === id);
+  const sidebarPipeline = pipelines.find((item) => item.id === id);
+
+  useEffect(() => {
+    if (isCreateMode) return;
+    let cancelled = false;
+    httpClient.getPipeline(id).then((response) => {
+      if (!cancelled) setPipelineDetails(response.pipeline);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [id, isCreateMode]);
 
   function handleFinish() {
     refreshPipelines();
+  }
+
+  async function saveBasicInfo(values: EntityBasicInfoValues) {
+    try {
+      await httpClient.updatePipeline(id, values);
+      setPipelineDetails((current) =>
+        current
+          ? { ...current, ...values }
+          : ({ ...values, config: {} } as Pipeline),
+      );
+      pipelineFormRef.current?.syncBasicInfo(values);
+      await refreshPipelines();
+      toast.success(t('pipelines.saveSuccess'));
+    } catch (error) {
+      const message =
+        typeof error === 'object' && error && 'msg' in error
+          ? String((error as { msg?: string }).msg || '')
+          : '';
+      toast.error(t('pipelines.saveError') + message);
+      throw error;
+    }
   }
 
   function handleNewPipelineCreated(newPipelineId: string) {
@@ -97,66 +138,91 @@ export default function PipelineDetailContent({
   }
 
   // ==================== Edit Mode ====================
+  const pipelineName =
+    pipelineDetails?.name ||
+    sidebarPipeline?.name ||
+    t('pipelines.editPipeline');
+  const pipelineEmoji =
+    pipelineDetails?.emoji || sidebarPipeline?.emoji || '⚙️';
+
   return (
-    <ProcessorDetailWorkbench
-      key={id}
-      title={`${pipeline?.emoji || '⚙️'} ${pipeline?.name || t('pipelines.editPipeline')}`}
-      saveLabel={t('common.save')}
-      saveFormId="pipeline-form"
-      canSave={canManage}
-      isDirty={formDirty}
-      isSaving={formSaving}
-      configTitle={t('pipelines.configuration')}
-      configContent={
-        <fieldset className="contents" disabled={!canManage}>
-          <PipelineFormComponent
-            ref={pipelineFormRef}
-            pipelineId={id}
-            isEditMode={true}
-            disableForm={!canManage}
-            showButtons={false}
-            onFinish={handleFinish}
-            onNewPipelineCreated={handleNewPipelineCreated}
-            onDeletePipeline={handleDeletePipeline}
-            onCancel={() => navigate(routeBase)}
-            onDirtyChange={setFormDirty}
-            onSavingChange={setFormSaving}
-          />
-        </fieldset>
-      }
-      debugTitle={canOperate ? t('pipelines.debugChat') : undefined}
-      debugConnected={canOperate ? isWebSocketConnected : undefined}
-      debugConnectedLabel={t('pipelines.debugDialog.connected')}
-      debugDisconnectedLabel={t('pipelines.debugDialog.disconnected')}
-      debugContent={
-        canOperate ? (
-          <DebugDialog
-            open={true}
-            pipelineId={id}
-            isEmbedded={true}
-            compact={true}
-            hasUnsavedChanges={formDirty}
-            beforeSend={async () => pipelineFormRef.current?.save() ?? false}
-            onConnectionStatusChange={setIsWebSocketConnected}
-          />
-        ) : undefined
-      }
-      unsavedLabel={t('pipelines.unsavedChanges')}
-      monitoring={
-        canViewMonitoring
-          ? {
-              label: t('pipelines.monitoring.title'),
-              content: (
-                <PipelineMonitoringTab
-                  pipelineId={id}
-                  onNavigateToMonitoring={() => {
-                    navigate('/home/monitoring');
-                  }}
-                />
-              ),
-            }
-          : undefined
-      }
-    />
+    <>
+      <ProcessorDetailWorkbench
+        key={id}
+        title={`${pipelineEmoji} ${pipelineName}`}
+        titleAction={
+          canManage ? (
+            <EntityTitleEditButton onClick={() => setBasicInfoOpen(true)} />
+          ) : undefined
+        }
+        saveLabel={t('common.save')}
+        saveFormId="pipeline-form"
+        canSave={canManage}
+        isDirty={formDirty}
+        isSaving={formSaving}
+        configTitle={t('pipelines.configuration')}
+        configContent={
+          <fieldset className="contents" disabled={!canManage}>
+            <PipelineFormComponent
+              ref={pipelineFormRef}
+              pipelineId={id}
+              isEditMode={true}
+              disableForm={!canManage}
+              showButtons={false}
+              onFinish={handleFinish}
+              onNewPipelineCreated={handleNewPipelineCreated}
+              onDeletePipeline={handleDeletePipeline}
+              onCancel={() => navigate(routeBase)}
+              onDirtyChange={setFormDirty}
+              onSavingChange={setFormSaving}
+            />
+          </fieldset>
+        }
+        debugTitle={canOperate ? t('pipelines.debugChat') : undefined}
+        debugConnected={canOperate ? isWebSocketConnected : undefined}
+        debugConnectedLabel={t('pipelines.debugDialog.connected')}
+        debugDisconnectedLabel={t('pipelines.debugDialog.disconnected')}
+        debugContent={
+          canOperate ? (
+            <DebugDialog
+              open={true}
+              pipelineId={id}
+              isEmbedded={true}
+              compact={true}
+              hasUnsavedChanges={formDirty}
+              beforeSend={async () => pipelineFormRef.current?.save() ?? false}
+              onConnectionStatusChange={setIsWebSocketConnected}
+            />
+          ) : undefined
+        }
+        unsavedLabel={t('pipelines.unsavedChanges')}
+        monitoring={
+          canViewMonitoring
+            ? {
+                label: t('pipelines.monitoring.title'),
+                content: (
+                  <PipelineMonitoringTab
+                    pipelineId={id}
+                    onNavigateToMonitoring={() => {
+                      navigate('/home/monitoring');
+                    }}
+                  />
+                ),
+              }
+            : undefined
+        }
+      />
+      <EntityBasicInfoDialog
+        open={basicInfoOpen}
+        onOpenChange={setBasicInfoOpen}
+        values={{
+          name: pipelineName,
+          description: pipelineDetails?.description || '',
+          emoji: pipelineEmoji,
+        }}
+        defaultEmoji="⚙️"
+        onSave={saveBasicInfo}
+      />
+    </>
   );
 }
