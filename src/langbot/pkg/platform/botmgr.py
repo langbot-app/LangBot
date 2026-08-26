@@ -444,6 +444,26 @@ class RuntimeBot:
                     compact[key] = value
         return compact
 
+    async def _record_adapter_event(
+        self,
+        event: platform_events.EBAEvent,
+        adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
+    ) -> dict[str, typing.Any]:
+        """Record a normalized adapter event for the platform debugging surface."""
+        event_type = getattr(event, 'type', None) or event.__class__.__name__
+        metadata = {
+            'kind': 'adapter_event_received',
+            'event_type': event_type,
+            'event_data': self._compact_event_data(event),
+            'adapter': getattr(self.bot_entity, 'adapter', None) or adapter.__class__.__name__,
+            'bot_uuid': self.bot_entity.uuid,
+        }
+        await self.logger.info(
+            f'Platform adapter received {event_type}',
+            metadata=metadata,
+        )
+        return metadata
+
     @staticmethod
     def _get_entity_id(entity: typing.Any) -> str | None:
         entity_id = getattr(entity, 'id', None)
@@ -864,11 +884,13 @@ class RuntimeBot:
         event: platform_events.EBAEvent,
         adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
     ) -> None:
+        event.bot_uuid = self.bot_entity.uuid
+        await self._record_adapter_event(event, adapter)
+
         if isinstance(event, platform_events.PlatformSpecificEvent) and event.action == 'interaction.submitted':
             await self._handle_interaction_submission(event, adapter)
             return
 
-        event.bot_uuid = self.bot_entity.uuid
         plugin_event = self._eba_event_to_plugin_event(event)
 
         if plugin_event is not None:

@@ -96,6 +96,36 @@ class TestEventRouteTrace:
         assert metadata['status'] == 'failed'
 
     @pytest.mark.asyncio
+    async def test_adapter_event_log_exposes_normalized_input_without_platform_object(self):
+        """Adapter debugging records the shared event shape without opaque SDK data."""
+        from langbot_plugin.api.entities.builtin.platform import entities, events, message
+
+        bot = self._make_bot([])
+        bot.bot_entity.adapter = 'test-adapter'
+        event = events.MessageReceivedEvent(
+            message_id='message-1',
+            message_chain=message.MessageChain([message.Plain(text='hello')]),
+            sender=entities.User(id='user-1', nickname='QA User'),
+            chat_type=entities.ChatType.PRIVATE,
+            chat_id='user-1',
+            source_platform_object={'access_token': 'must-not-be-logged'},
+        )
+
+        metadata = await bot._record_adapter_event(event, SimpleNamespace())
+
+        assert metadata['kind'] == 'adapter_event_received'
+        assert metadata['event_type'] == 'message.received'
+        assert metadata['adapter'] == 'test-adapter'
+        assert metadata['bot_uuid'] == 'bot-1'
+        assert metadata['event_data']['message_chain'] == [{'type': 'Plain', 'text': 'hello'}]
+        assert metadata['event_data']['sender']['id'] == 'user-1'
+        assert 'source_platform_object' not in metadata['event_data']
+        bot.logger.info.assert_awaited_once_with(
+            'Platform adapter received message.received',
+            metadata=metadata,
+        )
+
+    @pytest.mark.asyncio
     async def test_dispatch_malformed_agent_config_fails_one_event_and_processes_next(self):
         """Persisted malformed Agent config cannot escape the per-event route boundary."""
         bot = self._make_bot(

@@ -188,11 +188,7 @@ try {
     .getByText(/Event Routing|事件路由|イベントルーティング/)
     .first()
     .waitFor({ timeout: 15_000 });
-  await page
-    .getByText(
-      /Events this adapter can receive|此适配器可接收的事件|このアダプターが受信できるイベント/,
-    )
-    .waitFor();
+  await page.getByText(/Supported events|支持的事件|対応イベント/).waitFor();
   await page
     .getByText(/Message received|收到消息|メッセージを受信/)
     .first()
@@ -236,6 +232,57 @@ try {
     .first()
     .click();
   await page.getByRole("dialog").waitFor({ state: "hidden" });
+
+  await page
+    .getByRole("button", {
+      name: /Listen for platform events|监听平台事件|プラットフォームイベントを監視/,
+    })
+    .click();
+  const adapterDialog = page.getByRole("dialog");
+  await adapterDialog.waitFor();
+  await adapterDialog
+    .getByText(/Listening|正在监听|監視中/, { exact: true })
+    .waitFor({ timeout: 15_000 });
+
+  const inboundText = `adapter event ${paths.runId}`;
+  const inbound = await apiJson(
+    backendUrl,
+    `/bots/${encodeURIComponent(botId)}`,
+    {
+      method: "POST",
+      token,
+      body: {
+        session_id: `adapter-debug-${paths.runId}`,
+        session_type: "person",
+        sender: { id: "adapter-debug-user", name: "Adapter QA" },
+        message: [{ type: "Plain", text: inboundText }],
+      },
+    },
+  );
+  result.api.adapter_event_webhook = {
+    http_status: inbound.status,
+    code: inbound.json.code ?? null,
+  };
+  if (inbound.status >= 400 || inbound.json.code !== 0) {
+    throw new Error(
+      inbound.json.msg || "The HTTP Bot adapter rejected the inbound event.",
+    );
+  }
+
+  await adapterDialog
+    .getByText(/Message received|收到消息|メッセージ受信/, { exact: true })
+    .waitFor({ timeout: 15_000 });
+  await adapterDialog.getByText("message.received", { exact: true }).waitFor();
+  await adapterDialog.getByText(inboundText, { exact: true }).waitFor();
+  result.visible_signals.push(
+    "adapter-event-listening",
+    "adapter-event-received",
+    "adapter-event-raw-code",
+  );
+  await adapterDialog
+    .getByRole("button", { name: /Close|关闭|閉じる/ })
+    .click();
+  await adapterDialog.waitFor({ state: "hidden" });
 
   const text = await bodyText(page);
   if (/\bEBA event\b/.test(text)) {
@@ -291,7 +338,7 @@ try {
   }
   result.status = "pass";
   result.reason =
-    "Bot event routing, dry-run, synthetic dispatch, and visible route status passed in the WebUI.";
+    "Bot event routing, dry-run, real adapter input, and visible route status passed in the WebUI.";
 } catch (error) {
   if (!["blocked", "env_issue"].includes(result.status)) result.status = "fail";
   result.reason = result.reason || error.message;

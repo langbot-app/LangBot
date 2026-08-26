@@ -451,6 +451,26 @@ const enUS = {
     routeFallbackIgnored:
       'Events that match no route are ignored. Add a catch-all route only when every event needs an explicit outcome.',
     testRoute: 'Check route',
+    adapterEventDebugAction: 'Listen for platform events',
+    adapterEventDebugTitle: 'Platform event debugging',
+    adapterEventDebugDescription:
+      'Trigger an event in {{platform}}. It will appear here when the adapter receives it.',
+    adapterEventObserveOnly:
+      'This window only observes events. Incoming events still follow the current routes.',
+    adapterEventPreparing: 'Preparing',
+    adapterEventListening: 'Listening',
+    adapterEventListenerUnavailable: 'Listening interrupted',
+    adapterEventLoadFailed:
+      'Platform events could not be read. Make sure the bot is running, then try again.',
+    adapterEventReceivedCount: '{{count}} events received',
+    adapterEventClear: 'Clear',
+    adapterEventEmptyTitle: 'Waiting for a platform event',
+    adapterEventEmptyDescription:
+      'Send a message or trigger an event in {{platform}}.',
+    adapterEventData: 'View event data',
+    adapterEventNeedsSavedBot:
+      'Save the bot before listening for platform events.',
+    adapterEventCurrentPlatform: 'the current platform',
     refreshRouteStatus: 'Refresh status',
     routeStatusIdle: 'No run yet',
     routeStatusRefreshFailed: 'Failed to refresh route status.',

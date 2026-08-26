@@ -120,6 +120,7 @@ import {
   groupEventPatterns,
 } from '@/app/home/components/event-patterns/event-pattern-groups';
 import EventSelectOptionContent from '@/app/home/components/event-patterns/EventSelectOptionContent';
+import AdapterEventDebugDialog from './AdapterEventDebugDialog';
 
 export const PIPELINE_DISCARD = '__discard__';
 
@@ -128,6 +129,7 @@ export const PIPELINE_DISCARD = '__discard__';
 interface EventBindingsEditorProps {
   form: UseFormReturn<any>;
   botId?: string;
+  adapterLabel: string;
   supportedEvents: string[];
   agentOptions: Agent[];
 }
@@ -1426,6 +1428,7 @@ function SortableBindingCard({
 export default function EventBindingsEditor({
   form,
   botId,
+  adapterLabel,
   supportedEvents,
   agentOptions,
 }: EventBindingsEditorProps) {
@@ -1797,6 +1800,7 @@ export default function EventBindingsEditor({
           eventOptions={dryRunEventOptions}
           agentOptions={agentOptions}
         />
+        <AdapterEventDebugDialog botId={botId} adapterLabel={adapterLabel} />
         <Tooltip>
           <TooltipTrigger asChild>
             <Button

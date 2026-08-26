@@ -430,6 +430,24 @@ const zhHans = {
     routeFallbackIgnored:
       '未命中任何路由的事件会被忽略。只有需要为每个事件指定结果时，才添加全局兜底路由。',
     testRoute: '检查路由',
+    adapterEventDebugAction: '监听平台事件',
+    adapterEventDebugTitle: '平台事件调试',
+    adapterEventDebugDescription:
+      '在 {{platform}} 中触发事件，适配器收到后会显示在这里。',
+    adapterEventObserveOnly:
+      '此窗口只负责观察；收到的事件仍会按当前路由正常处理。',
+    adapterEventPreparing: '准备中',
+    adapterEventListening: '正在监听',
+    adapterEventListenerUnavailable: '监听已中断',
+    adapterEventLoadFailed:
+      '无法读取平台事件。请确认机器人正在运行，然后稍后重试。',
+    adapterEventReceivedCount: '已收到 {{count}} 个事件',
+    adapterEventClear: '清空',
+    adapterEventEmptyTitle: '等待平台事件',
+    adapterEventEmptyDescription: '请在 {{platform}} 中发送消息或触发事件。',
+    adapterEventData: '查看事件数据',
+    adapterEventNeedsSavedBot: '请先保存机器人后再监听平台事件。',
+    adapterEventCurrentPlatform: '当前平台',
     refreshRouteStatus: '刷新状态',
     routeStatusIdle: '暂无运行记录',
     routeStatusRefreshFailed: '刷新路由状态失败。',

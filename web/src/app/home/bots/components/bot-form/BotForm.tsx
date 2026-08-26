@@ -703,6 +703,11 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
                 <EventBindingsEditor
                   form={form}
                   botId={initBotId}
+                  adapterLabel={
+                    adapterNameList.find(
+                      (adapter) => adapter.value === currentAdapter,
+                    )?.label ?? currentAdapter
+                  }
                   supportedEvents={adapterSupportedEvents[currentAdapter] || []}
                   agentOptions={agentNameList}
                 />

@@ -389,6 +389,44 @@ test.describe('bot advanced flows', () => {
           }),
         }),
     );
+    let botLogPollCount = 0;
+    await page.route('**/api/v1/platform/bots/*/logs', (route) => {
+      botLogPollCount += 1;
+      const logs =
+        botLogPollCount === 1
+          ? []
+          : [
+              {
+                seq_id: 7,
+                timestamp: Math.floor(Date.now() / 1000),
+                level: 'info',
+                text: 'Platform adapter received message.received',
+                images: [],
+                message_session_id: '',
+                metadata: {
+                  kind: 'adapter_event_received',
+                  event_type: 'message.received',
+                  adapter: 'playwright-adapter',
+                  bot_uuid: 'bot-1',
+                  event_data: {
+                    type: 'message.received',
+                    chat_type: 'private',
+                    chat_id: 'test-user',
+                    message_chain: [{ type: 'Plain', text: 'adapter hello' }],
+                  },
+                },
+              },
+            ];
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          code: 0,
+          msg: 'ok',
+          data: { logs, total_count: logs.length },
+        }),
+      });
+    });
     await page.goto('/home/bots?id=new');
     await selectPlaywrightAdapter(page);
     await page.locator('input[name="name"]').fill('Route Status Bot');
@@ -492,6 +530,35 @@ test.describe('bot advanced flows', () => {
     const dialogBox = await routeDialog.boundingBox();
     expect(dialogBox).not.toBeNull();
     expect(dialogBox!.height).toBeLessThan(500);
+
+    await routeDialog.getByRole('button', { name: 'Close' }).first().click();
+    await routingCard
+      .getByRole('button', { name: 'Listen for platform events' })
+      .click();
+    const adapterDialog = page.getByRole('dialog');
+    await expect(
+      adapterDialog.getByText('Platform event debugging', { exact: true }),
+    ).toBeVisible();
+    await expect(adapterDialog).toContainText('Playwright Adapter');
+    await expect(adapterDialog).toContainText(
+      'This window only observes events. Incoming events still follow the current routes.',
+    );
+    await expect(
+      adapterDialog.getByText('Message received', { exact: true }),
+    ).toBeVisible({ timeout: 5000 });
+    await expect(adapterDialog.getByText('message.received')).toBeVisible();
+    await expect(adapterDialog.getByText('adapter hello')).toBeVisible();
+    await adapterDialog
+      .getByRole('button', { name: 'View event data' })
+      .click();
+    await expect(
+      adapterDialog.getByText(/"chat_id": "test-user"/),
+    ).toBeVisible();
+    await adapterDialog.getByRole('button', { name: 'Clear' }).click();
+    await expect(adapterDialog.getByText('0 events received')).toBeVisible();
+    await expect(
+      adapterDialog.getByText('Waiting for a platform event'),
+    ).toBeVisible();
   });
 
   test('toggles bot enable/disable state', async ({ page }) => {

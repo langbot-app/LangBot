@@ -458,6 +458,26 @@ const jaJP = {
     routeFallbackIgnored:
       'どのルートにも一致しないイベントは無視されます。すべてのイベントに明示的な結果が必要な場合のみ、フォールバックを追加してください。',
     testRoute: 'ルートを確認',
+    adapterEventDebugAction: 'プラットフォームイベントを監視',
+    adapterEventDebugTitle: 'プラットフォームイベントのデバッグ',
+    adapterEventDebugDescription:
+      '{{platform}} でイベントを発生させると、アダプターの受信後にここへ表示されます。',
+    adapterEventObserveOnly:
+      'この画面はイベントを監視するだけです。受信イベントは現在のルートで通常どおり処理されます。',
+    adapterEventPreparing: '準備中',
+    adapterEventListening: '監視中',
+    adapterEventListenerUnavailable: '監視が中断されました',
+    adapterEventLoadFailed:
+      'プラットフォームイベントを取得できません。ボットが起動していることを確認して、もう一度お試しください。',
+    adapterEventReceivedCount: '{{count}} 件のイベントを受信',
+    adapterEventClear: 'クリア',
+    adapterEventEmptyTitle: 'プラットフォームイベントを待機中',
+    adapterEventEmptyDescription:
+      '{{platform}} でメッセージを送るか、イベントを発生させてください。',
+    adapterEventData: 'イベントデータを表示',
+    adapterEventNeedsSavedBot:
+      'プラットフォームイベントを監視する前にボットを保存してください。',
+    adapterEventCurrentPlatform: '現在のプラットフォーム',
     refreshRouteStatus: '状態を更新',
     routeStatusIdle: '実行記録なし',
     routeStatusRefreshFailed: 'ルート状態の更新に失敗しました。',

@@ -4,9 +4,10 @@ export interface GetBotLogsResponse {
 }
 
 export interface BotLog {
-  images: [];
+  images: string[];
   level: string;
   message_session_id: string;
+  metadata?: Record<string, unknown> | null;
   seq_id: number;
   text: string;
   timestamp: number;
