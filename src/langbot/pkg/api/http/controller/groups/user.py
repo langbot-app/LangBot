@@ -2,6 +2,8 @@ import quart
 import argon2
 import asyncio
 import datetime
+import hmac
+import time
 import uuid
 from urllib.parse import parse_qs, urlsplit
 
@@ -10,6 +12,16 @@ from .....entity.errors import account as account_errors
 from ...context import RequestContext
 from .....cloud.launch import SpaceLaunchError
 from ...service.user import ControlPlaneDirectoryRequiredError, PublicRegistrationClosedError
+
+# Brute-force protection for the unauthenticated reset-password endpoint (#2392).
+# After _MAX_RECOVERY_KEY_FAILURES wrong recovery keys the endpoint rejects every
+# attempt (even with a correct key) for _RECOVERY_KEY_LOCKOUT_SECONDS. The legacy
+# fixed asyncio.sleep(3) did not throttle concurrent requests, allowing the 24-bit
+# legacy keyspace to be exhausted in hours.
+_MAX_RECOVERY_KEY_FAILURES = 5
+_RECOVERY_KEY_LOCKOUT_SECONDS = 15 * 60
+
+_recovery_key_state: dict = {'failures': 0, 'locked_until': 0.0}
 
 
 @group.group_class('user', '/api/v1/user')
@@ -87,6 +99,10 @@ class UserRouterGroup(group.RouterGroup):
             recovery_key = json_data['recovery_key']
             new_password = json_data['new_password']
 
+            # Reject while locked out, before any sleep or service call (#2392)
+            if time.monotonic() < _recovery_key_state['locked_until']:
+                return self.http_status(429, -1, 'Too many failed attempts, try again later')
+
             # hard sleep 3s for security
             await asyncio.sleep(3)
 
@@ -98,9 +114,21 @@ class UserRouterGroup(group.RouterGroup):
             if user_obj is None:
                 return self.http_status(400, -1, 'User not found')
 
-            if recovery_key != self.ap.instance_config.data['system']['recovery_key']:
+            stored_key = self.ap.instance_config.data['system']['recovery_key']
+            key_matches = (
+                isinstance(recovery_key, str)
+                and isinstance(stored_key, str)
+                and hmac.compare_digest(recovery_key.encode(), stored_key.encode())
+            )
+
+            if not key_matches:
+                _recovery_key_state['failures'] += 1
+                if _recovery_key_state['failures'] >= _MAX_RECOVERY_KEY_FAILURES:
+                    _recovery_key_state['locked_until'] = time.monotonic() + _RECOVERY_KEY_LOCKOUT_SECONDS
+                    _recovery_key_state['failures'] = 0
                 return self.http_status(403, -1, 'Invalid recovery key')
 
+            _recovery_key_state['failures'] = 0
             await self.ap.user_service.reset_password(user_email, new_password)
 
             return self.success(data={'user': user_email})
