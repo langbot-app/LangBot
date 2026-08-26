@@ -448,6 +448,9 @@ const zhHans = {
     adapterEventData: '查看事件数据',
     adapterEventNeedsSavedBot: '请先保存机器人后再监听平台事件。',
     adapterEventCurrentPlatform: '当前平台',
+    adapterConfigurationTest: '适配器测试',
+    adapterConfigurationTestDescription:
+      '在当前平台触发事件，确认这组配置是否已经生效。',
     refreshRouteStatus: '刷新状态',
     routeStatusIdle: '暂无运行记录',
     routeStatusRefreshFailed: '刷新路由状态失败。',

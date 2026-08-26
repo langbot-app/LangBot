@@ -445,6 +445,9 @@ test.describe('bot advanced flows', () => {
     const routingCard = page
       .locator('[data-slot="card"]')
       .filter({ has: page.getByText('Event Routing', { exact: true }) });
+    const adapterCard = page.locator('[data-slot="card"]').filter({
+      has: page.getByText('Adapter Configuration', { exact: true }),
+    });
     const dangerCard = page
       .locator('[data-slot="card"]')
       .filter({ has: page.getByText('Danger Zone', { exact: true }) });
@@ -532,7 +535,13 @@ test.describe('bot advanced flows', () => {
     expect(dialogBox!.height).toBeLessThan(500);
 
     await routeDialog.getByRole('button', { name: 'Close' }).first().click();
-    await routingCard
+    await expect(
+      routingCard.getByRole('button', { name: 'Listen for platform events' }),
+    ).toHaveCount(0);
+    await expect(
+      adapterCard.getByText('Test adapter configuration'),
+    ).toBeVisible();
+    await adapterCard
       .getByRole('button', { name: 'Listen for platform events' })
       .click();
     const adapterDialog = page.getByRole('dialog');

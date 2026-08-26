@@ -22,6 +22,7 @@ import { Agent, Bot } from '@/app/infra/entities/api';
 import { getAdapterDocUrl } from '@/app/infra/entities/adapter-docs';
 import { ExternalLink, ChevronDown, ChevronRight } from 'lucide-react';
 import EventBindingsEditor from './EventBindingsEditor';
+import AdapterEventDebugDialog from './AdapterEventDebugDialog';
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
@@ -687,6 +688,27 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
                   }}
                 />
               )}
+
+              {currentAdapter && initBotId && (
+                <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">
+                      {t('bots.adapterConfigurationTest')}
+                    </p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {t('bots.adapterConfigurationTestDescription')}
+                    </p>
+                  </div>
+                  <AdapterEventDebugDialog
+                    botId={initBotId}
+                    adapterLabel={
+                      adapterNameList.find(
+                        (adapter) => adapter.value === currentAdapter,
+                      )?.label ?? currentAdapter
+                    }
+                  />
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -703,11 +725,6 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
                 <EventBindingsEditor
                   form={form}
                   botId={initBotId}
-                  adapterLabel={
-                    adapterNameList.find(
-                      (adapter) => adapter.value === currentAdapter,
-                    )?.label ?? currentAdapter
-                  }
                   supportedEvents={adapterSupportedEvents[currentAdapter] || []}
                   agentOptions={agentNameList}
                 />

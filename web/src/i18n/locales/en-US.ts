@@ -471,6 +471,9 @@ const enUS = {
     adapterEventNeedsSavedBot:
       'Save the bot before listening for platform events.',
     adapterEventCurrentPlatform: 'the current platform',
+    adapterConfigurationTest: 'Test adapter configuration',
+    adapterConfigurationTestDescription:
+      'Trigger an event on the platform to confirm these settings work.',
     refreshRouteStatus: 'Refresh status',
     routeStatusIdle: 'No run yet',
     routeStatusRefreshFailed: 'Failed to refresh route status.',

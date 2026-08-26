@@ -233,7 +233,12 @@ try {
     .click();
   await page.getByRole("dialog").waitFor({ state: "hidden" });
 
-  await page
+  const adapterConfigCard = page.locator('[data-slot="card"]').filter({
+    has: page.getByText(/Adapter Configuration|适配器配置|アダプター設定/, {
+      exact: true,
+    }),
+  });
+  await adapterConfigCard
     .getByRole("button", {
       name: /Listen for platform events|监听平台事件|プラットフォームイベントを監視/,
     })
