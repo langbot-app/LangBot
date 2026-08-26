@@ -27,6 +27,21 @@ test.describe('processor detail workbench', () => {
     expect(debugBox!.x).toBeLessThan(configBox!.x);
     expect(configBox!.width).toBeGreaterThan(debugBox!.width);
 
+    const debugEventPicker = debugPanel.getByRole('combobox', {
+      name: 'Event type',
+    });
+    await debugEventPicker.click();
+    await expect(page.getByRole('group', { name: 'Messages' })).toBeVisible();
+    await expect(page.getByRole('group', { name: 'Groups' })).toBeVisible();
+    await expect(
+      page.getByRole('option').filter({ hasText: 'Member joined group' }),
+    ).toContainText('A member joins a group where the bot is present.');
+    await expect(
+      page.getByRole('option').filter({ hasText: 'Message edited' }),
+    ).toContainText('The platform reports that an existing message changed.');
+    await expect(page.getByRole('option')).toHaveCount(6);
+    await page.keyboard.press('Escape');
+
     const appShell = page.locator('[class*="group/sidebar-wrapper"]');
     const sidebarInset = page.locator('[data-slot="sidebar-inset"]');
     await expect(appShell).toHaveCSS('overflow', 'clip');
@@ -108,6 +123,25 @@ test.describe('processor detail workbench', () => {
     ).toBeVisible();
     await expect(page.getByRole('group', { name: 'Messages' })).toHaveCount(1);
     await expect(page.getByRole('group', { name: 'Groups' })).toHaveCount(1);
+    await page
+      .getByRole('option')
+      .filter({ hasText: 'message.*' })
+      .first()
+      .click();
+    await page.keyboard.press('Escape');
+
+    await debugEventPicker.click();
+    await expect(
+      page.getByRole('option').filter({ hasText: 'Message edited' }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('option').filter({ hasText: 'Member joined group' }),
+    ).toHaveCount(0);
+    await expect(page.getByRole('option')).toHaveCount(3);
+    await page.keyboard.press('Escape');
+
+    await eventPicker.click();
+    await page.getByRole('option').filter({ hasText: 'All events' }).click();
     await page.keyboard.press('Escape');
 
     await flow.getByRole('tab').nth(1).click();

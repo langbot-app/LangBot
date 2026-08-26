@@ -20,6 +20,8 @@ import { cn } from '@/lib/utils';
 import {
   eventGroupLabel,
   eventNamespaces,
+  eventPatternDescription,
+  eventPatternLabel,
   groupEventPatterns,
 } from '@/app/home/components/event-patterns/event-pattern-groups';
 
@@ -60,30 +62,6 @@ export default function AgentEventPatternPicker({
     return ['*', ...namespaces, ...concreteEvents];
   }, [events, selectedPatterns]);
   const optionGroups = useMemo(() => groupEventPatterns(options), [options]);
-
-  function eventLabel(pattern: string) {
-    if (pattern === '*') return t('bots.eventWildcard');
-    if (pattern.endsWith('.*')) {
-      return t('bots.eventNamespaceWildcard', {
-        namespace: pattern.replace('.*', ''),
-      });
-    }
-    const key = `bots.eventNames.${pattern.replace(/\./g, '_')}`;
-    const label = t(key);
-    return label === key ? pattern : label;
-  }
-
-  function eventDescription(pattern: string) {
-    if (pattern === '*') return t('bots.eventDescriptions.all');
-    if (pattern.endsWith('.*')) {
-      return t('bots.eventDescriptions.namespace');
-    }
-    const key = `bots.eventDescriptions.${pattern.replace(/\./g, '_')}`;
-    const description = t(key);
-    return description === key
-      ? t('bots.eventDescriptions.custom')
-      : description;
-  }
 
   function togglePattern(pattern: string) {
     if (pattern === '*') {
@@ -127,7 +105,9 @@ export default function AgentEventPatternPicker({
                 variant="secondary"
                 className="max-w-full rounded-md font-normal"
               >
-                <span className="truncate">{eventLabel(pattern)}</span>
+                <span className="truncate">
+                  {eventPatternLabel(pattern, t)}
+                </span>
               </Badge>
             ))}
             {selectedPatterns.length > 3 && (
@@ -157,7 +137,7 @@ export default function AgentEventPatternPicker({
                   return (
                     <CommandItem
                       key={pattern}
-                      value={`${eventLabel(pattern)} ${pattern}`}
+                      value={`${eventPatternLabel(pattern, t)} ${pattern}`}
                       onSelect={() => togglePattern(pattern)}
                       className="items-start gap-2 py-2"
                     >
@@ -170,14 +150,14 @@ export default function AgentEventPatternPicker({
                       <span className="min-w-0 flex-1">
                         <span className="flex min-w-0 items-center gap-2">
                           <span className="truncate font-medium">
-                            {eventLabel(pattern)}
+                            {eventPatternLabel(pattern, t)}
                           </span>
                           <code className="shrink-0 text-[10px] text-muted-foreground">
                             {pattern}
                           </code>
                         </span>
                         <span className="mt-0.5 block text-xs text-muted-foreground">
-                          {eventDescription(pattern)}
+                          {eventPatternDescription(pattern, t)}
                         </span>
                       </span>
                     </CommandItem>

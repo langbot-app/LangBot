@@ -55,3 +55,25 @@ export function eventGroupLabel(namespace: string, t: TFunction) {
   const label = t(key);
   return label === key ? namespace : label;
 }
+
+export function eventPatternLabel(pattern: string, t: TFunction) {
+  if (pattern === '*') return t('bots.eventWildcard');
+  if (pattern.endsWith('.*')) {
+    return t('bots.eventNamespaceWildcard', {
+      namespace: pattern.replace('.*', ''),
+    });
+  }
+  const key = `bots.eventNames.${pattern.replace(/\./g, '_')}`;
+  const label = t(key);
+  return label === key ? pattern : label;
+}
+
+export function eventPatternDescription(pattern: string, t: TFunction) {
+  if (pattern === '*') return t('bots.eventDescriptions.all');
+  if (pattern.endsWith('.*')) {
+    return t('bots.eventDescriptions.namespace');
+  }
+  const key = `bots.eventDescriptions.${pattern.replace(/\./g, '_')}`;
+  const description = t(key);
+  return description === key ? t('bots.eventDescriptions.custom') : description;
+}

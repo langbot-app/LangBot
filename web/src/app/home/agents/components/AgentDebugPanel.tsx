@@ -17,7 +17,9 @@ import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
@@ -28,9 +30,16 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
+import {
+  eventGroupLabel,
+  eventPatternDescription,
+  eventPatternLabel,
+  groupEventPatterns,
+} from '@/app/home/components/event-patterns/event-pattern-groups';
 
 interface AgentDebugPanelProps {
   agentId: string;
+  availableEventTypes: string[];
   supportedEventPatterns?: string[];
   beforeRun?: () => Promise<boolean>;
   hasUnsavedChanges?: boolean;
@@ -46,16 +55,15 @@ interface DebugEntry {
   detail?: string;
 }
 
-const EVENT_PRESETS = [
-  {
-    value: 'message.received',
-    labelKey: 'agents.debugMessageReceived',
+const EVENT_PRESET_DATA: Record<
+  string,
+  { text: string; data: Record<string, unknown> }
+> = {
+  'message.received': {
     text: '',
     data: {},
   },
-  {
-    value: 'group.member.joined',
-    labelKey: 'agents.debugGroupMemberJoined',
+  'group.member_joined': {
     text: 'A new member joined the group.',
     data: {
       group_id: 'debug-group',
@@ -63,9 +71,7 @@ const EVENT_PRESETS = [
       member_name: 'Debug User',
     },
   },
-  {
-    value: 'group.member.left',
-    labelKey: 'agents.debugGroupMemberLeft',
+  'group.member_left': {
     text: 'A member left the group.',
     data: {
       group_id: 'debug-group',
@@ -73,9 +79,7 @@ const EVENT_PRESETS = [
       member_name: 'Debug User',
     },
   },
-  {
-    value: 'friend.requested',
-    labelKey: 'agents.debugFriendRequested',
+  'friend.request_received': {
     text: 'A user sent a friend request.',
     data: {
       requester_id: 'debug-user',
@@ -83,22 +87,14 @@ const EVENT_PRESETS = [
       message: 'Hello',
     },
   },
-  {
-    value: 'feedback.received',
-    labelKey: 'agents.debugFeedbackReceived',
+  'feedback.received': {
     text: 'The user submitted feedback.',
     data: {
       rating: 5,
       content: 'Debug feedback',
     },
   },
-  {
-    value: 'custom',
-    labelKey: 'agents.debugCustomEvent',
-    text: '',
-    data: {},
-  },
-] as const;
+};
 
 function createDebugSessionId(agentId: string) {
   const nonce = globalThis.crypto?.randomUUID?.() ?? String(Date.now());
@@ -112,6 +108,7 @@ function matchesEventPattern(pattern: string, eventType: string) {
 
 export default function AgentDebugPanel({
   agentId,
+  availableEventTypes,
   supportedEventPatterns = ['*'],
   beforeRun,
   hasUnsavedChanges = false,
@@ -132,27 +129,39 @@ export default function AgentDebugPanel({
     () => supportedEventPatterns.join(', '),
     [supportedEventPatterns],
   );
-  const availablePresets = useMemo(
-    () =>
-      EVENT_PRESETS.filter(
-        (item) =>
-          item.value === 'custom' ||
-          supportedEventPatterns.some((pattern) =>
-            matchesEventPattern(pattern, item.value),
-          ),
-      ),
-    [supportedEventPatterns],
+  const availableEvents = useMemo(() => {
+    const concretePatterns = supportedEventPatterns.filter(
+      (pattern) => pattern !== '*' && !pattern.endsWith('.*'),
+    );
+    return Array.from(new Set([...availableEventTypes, ...concretePatterns]))
+      .filter((candidate) =>
+        supportedEventPatterns.some((pattern) =>
+          matchesEventPattern(pattern, candidate),
+        ),
+      )
+      .sort();
+  }, [availableEventTypes, supportedEventPatterns]);
+  const eventGroups = useMemo(
+    () => groupEventPatterns(availableEvents),
+    [availableEvents],
+  );
+  const supportsCustomEvent = supportedEventPatterns.some(
+    (pattern) => pattern === '*' || pattern.endsWith('.*'),
   );
 
   useEffect(() => {
-    if (availablePresets.some((item) => item.value === preset)) return;
-    selectPreset(availablePresets[0]?.value ?? 'custom');
-  }, [availablePresets, preset]);
+    if (
+      availableEvents.includes(preset) ||
+      (preset === 'custom' && supportsCustomEvent)
+    ) {
+      return;
+    }
+    selectPreset(availableEvents[0] ?? 'custom');
+  }, [availableEvents, preset, supportsCustomEvent]);
 
   function selectPreset(value: string) {
     setPreset(value);
-    const nextPreset = EVENT_PRESETS.find((item) => item.value === value);
-    if (!nextPreset) return;
+    const nextPreset = EVENT_PRESET_DATA[value] ?? { text: '', data: {} };
     setInputText(nextPreset.text);
     setEventDataText(JSON.stringify(nextPreset.data, null, 2));
   }
@@ -275,15 +284,42 @@ export default function AgentDebugPanel({
           <div className="min-w-0 flex-1 space-y-1.5">
             <Label>{t('agents.debugEventType')}</Label>
             <Select value={preset} onValueChange={selectPreset}>
-              <SelectTrigger className="w-full">
+              <SelectTrigger
+                className="w-full"
+                aria-label={t('agents.debugEventType')}
+              >
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent>
-                {availablePresets.map((item) => (
-                  <SelectItem key={item.value} value={item.value}>
-                    {t(item.labelKey)}
-                  </SelectItem>
+              <SelectContent className="w-[var(--radix-select-trigger-width)] max-w-[calc(100vw-2rem)]">
+                {eventGroups.map((group) => (
+                  <SelectGroup key={group.namespace}>
+                    <SelectLabel>
+                      {eventGroupLabel(group.namespace, t)}
+                    </SelectLabel>
+                    {group.patterns.map((event) => (
+                      <SelectItem
+                        key={event}
+                        value={event}
+                        description={eventPatternDescription(event, t)}
+                        className="py-2"
+                      >
+                        {eventPatternLabel(event, t)}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
                 ))}
+                {supportsCustomEvent && (
+                  <SelectGroup>
+                    <SelectLabel>{t('agents.debugCustomEvent')}</SelectLabel>
+                    <SelectItem
+                      value="custom"
+                      description={t('bots.eventDescriptions.custom')}
+                      className="py-2"
+                    >
+                      {t('agents.debugCustomEvent')}
+                    </SelectItem>
+                  </SelectGroup>
+                )}
               </SelectContent>
             </Select>
           </div>

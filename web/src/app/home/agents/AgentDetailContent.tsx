@@ -49,6 +49,12 @@ export default function AgentDetailContent({ id }: { id: string }) {
   const [runnerStatus, setRunnerStatus] = useState<AgentRunnerStatus | null>(
     null,
   );
+  const [availableEventTypes, setAvailableEventTypes] = useState<string[]>([
+    'message.received',
+  ]);
+  const [supportedEventPatterns, setSupportedEventPatterns] = useState<
+    string[]
+  >(['*']);
   const agentFormRef = useRef<AgentFormHandle>(null);
 
   useEffect(() => {
@@ -70,10 +76,25 @@ export default function AgentDetailContent({ id }: { id: string }) {
     if (isCreateMode) return;
     let cancelled = false;
     setLoading(true);
-    httpClient
-      .getAgent(id)
-      .then((resp) => {
-        if (!cancelled) setAgent(resp.agent);
+    Promise.all([
+      httpClient.getAgent(id),
+      httpClient.getAdapters().catch(() => ({ adapters: [] })),
+    ])
+      .then(([resp, adaptersResp]) => {
+        if (cancelled) return;
+        const adapterEvents = adaptersResp.adapters.flatMap(
+          (adapter) => adapter.spec.supported_events ?? [],
+        );
+        setAvailableEventTypes(
+          adapterEvents.length > 0
+            ? Array.from(new Set(adapterEvents)).sort()
+            : ['message.received'],
+        );
+        setSupportedEventPatterns(
+          resp.agent.supported_event_patterns ??
+            resp.agent.capability?.supported_event_patterns ?? ['*'],
+        );
+        setAgent(resp.agent);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -177,6 +198,7 @@ export default function AgentDetailContent({ id }: { id: string }) {
             <AgentFormComponent
               ref={agentFormRef}
               agentId={id}
+              availableEventTypes={availableEventTypes}
               onFinish={(updatedAgent) => {
                 if (updatedAgent) {
                   setAgent((current) =>
@@ -188,6 +210,7 @@ export default function AgentDetailContent({ id }: { id: string }) {
               onDirtyChange={setFormDirty}
               onSavingChange={setFormSaving}
               onRunnerStatusChange={setRunnerStatus}
+              onSupportedEventPatternsChange={setSupportedEventPatterns}
             />
           </fieldset>
         }
@@ -201,10 +224,8 @@ export default function AgentDetailContent({ id }: { id: string }) {
               onOpenRunnerConfig={() =>
                 agentFormRef.current?.openSection('runner_config')
               }
-              supportedEventPatterns={
-                agent.supported_event_patterns ??
-                agent.capability?.supported_event_patterns ?? ['*']
-              }
+              supportedEventPatterns={supportedEventPatterns}
+              availableEventTypes={availableEventTypes}
             />
           ) : undefined
         }

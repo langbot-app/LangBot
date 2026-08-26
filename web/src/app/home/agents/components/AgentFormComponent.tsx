@@ -47,10 +47,12 @@ export interface AgentRunnerStatus {
 
 interface AgentFormComponentProps {
   agentId: string;
+  availableEventTypes: string[];
   onFinish: (agent?: Partial<Agent>) => void;
   onDirtyChange?: (dirty: boolean) => void;
   onSavingChange?: (saving: boolean) => void;
   onRunnerStatusChange?: (status: AgentRunnerStatus) => void;
+  onSupportedEventPatternsChange?: (patterns: string[]) => void;
 }
 
 export type AgentConfigSection = 'events' | 'runner' | 'runner_config';
@@ -98,10 +100,12 @@ function isRunnerFieldVisible(
 function AgentFormComponent(
   {
     agentId,
+    availableEventTypes,
     onFinish,
     onDirtyChange,
     onSavingChange,
     onRunnerStatusChange,
+    onSupportedEventPatternsChange,
   }: AgentFormComponentProps,
   ref: ForwardedRef<AgentFormHandle>,
 ) {
@@ -112,9 +116,6 @@ function AgentFormComponent(
     useState<ApiRespPluginSystemStatus | null>(null);
   const [pluginStatusLoading, setPluginStatusLoading] = useState(true);
   const [pluginStatusError, setPluginStatusError] = useState(false);
-  const [availableEventTypes, setAvailableEventTypes] = useState<string[]>([
-    'message.received',
-  ]);
   const [activeSection, setActiveSection] =
     useState<AgentConfigSection>('runner');
   const isSavingRef = useRef(false);
@@ -159,24 +160,17 @@ function AgentFormComponent(
     onDirtyChange?.(hasUnsavedChanges);
   }, [hasUnsavedChanges, onDirtyChange]);
 
+  const supportedEventPatterns = form.watch('supported_event_patterns');
+  useEffect(() => {
+    onSupportedEventPatternsChange?.(supportedEventPatterns);
+  }, [onSupportedEventPatternsChange, supportedEventPatterns]);
+
   useEffect(() => {
     let cancelled = false;
-    Promise.all([
-      httpClient.getAgentMetadata(),
-      httpClient.getAgent(agentId),
-      httpClient.getAdapters().catch(() => ({ adapters: [] })),
-    ])
-      .then(([metadata, resp, adaptersResp]) => {
+    Promise.all([httpClient.getAgentMetadata(), httpClient.getAgent(agentId)])
+      .then(([metadata, resp]) => {
         if (cancelled) return;
         setRunnerConfigSchema(metadata.runner_config ?? null);
-        const adapterEvents = adaptersResp.adapters.flatMap(
-          (adapter) => adapter.spec.supported_events ?? [],
-        );
-        setAvailableEventTypes(
-          adapterEvents.length > 0
-            ? Array.from(new Set(adapterEvents)).sort()
-            : ['message.received'],
-        );
         const agent = resp.agent;
         const config = (agent.config ?? {}) as Record<string, any>;
         const loadedValues: FormValues = {
