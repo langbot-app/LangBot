@@ -216,11 +216,11 @@ try {
   );
 
   await page
-    .getByRole("button", { name: /Test route|测试路由|ルートをテスト/ })
+    .getByRole("button", { name: /Check route|检查路由|ルートを確認/ })
     .click();
   await page.getByRole("dialog").waitFor();
   await page
-    .getByRole("button", { name: /Preview route|预览路由|ルートをプレビュー/ })
+    .getByRole("button", { name: /View match|查看匹配结果|一致結果を確認/ })
     .click();
   await page
     .getByText(/Route matched|已命中路由|ルートに一致しました/)
@@ -232,27 +232,10 @@ try {
   result.visible_signals.push("dry-run-matched", "discard-target");
 
   await page
-    .getByRole("button", {
-      name: /Run saved route|运行已保存路由|保存済みルートを実行/,
-    })
-    .click();
-  await page
-    .getByText(
-      /saved route ran successfully|已保存路由运行成功|保存済みルートを実行しました/,
-    )
-    .waitFor({ timeout: 20_000 });
-  result.visible_signals.push("test-event-dispatched");
-
-  await page
     .getByRole("button", { name: /Close|关闭|閉じる/ })
     .first()
     .click();
   await page.getByRole("dialog").waitFor({ state: "hidden" });
-  await page
-    .getByText(/Discarded|已丢弃|破棄済み/)
-    .first()
-    .waitFor({ timeout: 10_000 });
-  result.visible_signals.push("route-status-discarded");
 
   const text = await bodyText(page);
   if (/\bEBA event\b/.test(text)) {

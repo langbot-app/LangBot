@@ -132,25 +132,6 @@ class LangBotMCPServer:
         async def list_bot_event_route_statuses(bot_uuid: str) -> str:
             return _dump(await ap.bot_service.list_event_route_statuses(bot_uuid))
 
-        @mcp.tool(
-            description=(
-                'Dispatch a synthetic event through the saved bot event routes. '
-                'This validates routing without sending real outbound platform messages.'
-            )
-        )
-        async def test_bot_event_route(
-            bot_uuid: str,
-            event_type: str,
-            payload: dict | None = None,
-        ) -> str:
-            return _dump(
-                await ap.bot_service.dispatch_test_event_route(
-                    bot_uuid=bot_uuid,
-                    event_type=event_type,
-                    payload=payload,
-                )
-            )
-
         # ----- Pipelines ----------------------------------------------- #
         @mcp.tool(description='List all pipelines.')
         async def list_pipelines() -> str:

@@ -112,7 +112,6 @@ import {
   Agent,
   BotRouteDryRunResult,
   BotEventRouteStatus,
-  BotRouteTestResult,
 } from '@/app/infra/entities/api';
 import { backendClient } from '@/app/infra/http';
 import {
@@ -885,13 +884,11 @@ function RouteDryRunDialog({
   bindings,
   eventOptions,
   agentOptions,
-  onRouteStatusUpdate,
 }: {
   botId?: string;
   bindings: EventBinding[];
   eventOptions: string[];
   agentOptions: Agent[];
-  onRouteStatusUpdate?: (statuses: BotEventRouteStatus[]) => void;
 }) {
   const { t } = useTranslation();
   const firstEvent = eventOptions[0] ?? DEFAULT_EVENTS[0];
@@ -902,12 +899,9 @@ function RouteDryRunDialog({
   );
   const [advancedPayloadOpen, setAdvancedPayloadOpen] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
-  const [isDispatching, setIsDispatching] = useState(false);
   const [payloadError, setPayloadError] = useState<string | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
   const [result, setResult] = useState<BotRouteDryRunResult | null>(null);
-  const [dispatchResult, setDispatchResult] =
-    useState<BotRouteTestResult | null>(null);
 
   useEffect(() => {
     if (!eventOptions.includes(eventType)) {
@@ -919,7 +913,6 @@ function RouteDryRunDialog({
     setPayloadText(JSON.stringify(samplePayloadForEvent(eventType), null, 2));
     setPayloadError(null);
     setResult(null);
-    setDispatchResult(null);
   }, [eventType]);
 
   function resolveTargetName(resultTarget?: BotRouteDryRunResult['target']) {
@@ -956,7 +949,6 @@ function RouteDryRunDialog({
   async function runDryRun() {
     setRunError(null);
     setResult(null);
-    setDispatchResult(null);
 
     const payload = parsePayload();
     if (payload === null) return;
@@ -982,44 +974,6 @@ function RouteDryRunDialog({
       setRunError(err.msg || t('bots.dryRunFailed'));
     } finally {
       setIsRunning(false);
-    }
-  }
-
-  async function dispatchTestEvent() {
-    setRunError(null);
-    setResult(null);
-    setDispatchResult(null);
-
-    const payload = parsePayload();
-    if (payload === null) return;
-
-    if (!botId) {
-      setRunError(t('bots.dryRunNeedsSavedBot'));
-      return;
-    }
-
-    setIsDispatching(true);
-    try {
-      const testResult = await backendClient.testBotEventRoute(botId, {
-        event_type: eventType,
-        payload,
-      });
-      setDispatchResult(testResult);
-      onRouteStatusUpdate?.(testResult.route_status?.routes || []);
-      if (!testResult.dispatched) {
-        setRunError(
-          localizedFailureReason(
-            testResult.failure_code,
-            testResult.reason,
-            t,
-          ) || t('bots.routeTestFailed'),
-        );
-      }
-    } catch (error) {
-      const err = error as { msg?: string };
-      setRunError(err.msg || t('bots.routeTestFailed'));
-    } finally {
-      setIsDispatching(false);
     }
   }
 
@@ -1206,24 +1160,6 @@ function RouteDryRunDialog({
                 )}
               </div>
             )}
-
-            {dispatchResult?.dispatched && (
-              <Alert>
-                <CheckCircle2 className="h-4 w-4" />
-                <AlertDescription>
-                  {t('bots.routeTestDispatched', {
-                    count: dispatchResult.suppressed_outputs?.length || 0,
-                  })}
-                </AlertDescription>
-              </Alert>
-            )}
-
-            <Alert className="border-amber-200 bg-amber-50/60 px-3 py-2 text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-200">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription className="text-xs">
-                {t('bots.routeTestSideEffectWarning')}
-              </AlertDescription>
-            </Alert>
           </div>
 
           <DialogFooter>
@@ -1234,24 +1170,9 @@ function RouteDryRunDialog({
             >
               {t('common.close')}
             </Button>
-            <Button
-              type="button"
-              onClick={runDryRun}
-              disabled={isRunning || isDispatching}
-            >
+            <Button type="button" onClick={runDryRun} disabled={isRunning}>
               <Play className="h-4 w-4 mr-1" />
               {isRunning ? t('bots.dryRunRunning') : t('bots.dryRunAction')}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={dispatchTestEvent}
-              disabled={isRunning || isDispatching}
-            >
-              <Activity className="h-4 w-4 mr-1" />
-              {isDispatching
-                ? t('bots.routeTestRunning')
-                : t('bots.routeTestAction')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1878,7 +1799,6 @@ export default function EventBindingsEditor({
           bindings={bindings}
           eventOptions={dryRunEventOptions}
           agentOptions={agentOptions}
-          onRouteStatusUpdate={setRouteStatuses}
         />
         <Tooltip>
           <TooltipTrigger asChild>

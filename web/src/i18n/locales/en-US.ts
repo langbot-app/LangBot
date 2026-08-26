@@ -450,7 +450,7 @@ const enUS = {
     routeFallbackCatchAll: '{{route}} is the catch-all route.',
     routeFallbackIgnored:
       'Events that match no route are ignored. Add a catch-all route only when every event needs an explicit outcome.',
-    testRoute: 'Test route',
+    testRoute: 'Check route',
     refreshRouteStatus: 'Refresh status',
     routeStatusIdle: 'No run yet',
     routeStatusRefreshFailed: 'Failed to refresh route status.',
@@ -460,7 +460,6 @@ const enUS = {
       discarded: 'Discarded',
       failed: 'Failed',
       not_matched: 'Not matched',
-      test_started: 'Testing',
     },
     routeStatusDetail: {
       matched: 'This route matched the event.',
@@ -468,7 +467,6 @@ const enUS = {
       discarded: 'The event was intentionally discarded.',
       failed: 'The route could not finish.',
       not_matched: 'No configured route matched the event.',
-      test_started: 'The saved route is running.',
     },
     routeFailure: {
       binding_disabled: 'This route is disabled.',
@@ -479,21 +477,12 @@ const enUS = {
       processor_incompatible:
         'The selected processor cannot handle this event.',
       processor_not_found: 'The selected processor is unavailable.',
-      bot_runtime_unavailable:
-        'The bot is not running. Check its platform settings and enable it before running a full test.',
       runner_failed: 'The Agent runner failed while processing the event.',
       delivery_failed: 'The processor finished, but delivery failed.',
     },
-    routeTestAction: 'Run full test',
-    routeTestRunning: 'Running…',
-    routeTestFailed: 'Failed to run the saved route. Try again later.',
-    routeTestDispatched:
-      'The saved route ran successfully. {{count}} platform actions were blocked.',
-    routeTestSideEffectWarning:
-      'The processor and tools will run, but replies will not be sent to messaging platforms.',
-    dryRunTitle: 'Test route',
+    dryRunTitle: 'Check event route',
     dryRunDescription:
-      'Choose an event to see which processor handles it, or run a test.',
+      'Choose an event to see which route and processor it matches.',
     dryRunEventType: 'Event type',
     dryRunSampleReady: 'Sample event is ready',
     dryRunSampleDescription:
@@ -504,10 +493,10 @@ const enUS = {
     dryRunPayloadHint: 'Use this to test message and conversation conditions.',
     dryRunPayloadJsonError: 'Enter valid JSON.',
     dryRunPayloadObjectError: 'Payload must be a JSON object.',
-    dryRunNeedsSavedBot: 'Save the bot before testing routes.',
-    dryRunFailed: 'Route test failed. Try again later.',
-    dryRunAction: 'Preview match',
-    dryRunRunning: 'Testing…',
+    dryRunNeedsSavedBot: 'Save the bot before checking routes.',
+    dryRunFailed: 'Failed to check the route. Try again later.',
+    dryRunAction: 'View match',
+    dryRunRunning: 'Checking…',
     dryRunMatched: 'Route matched',
     dryRunNotMatched: 'No route matched',
     dryRunTarget: 'Target processor',

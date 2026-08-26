@@ -457,7 +457,7 @@ const jaJP = {
     routeFallbackCatchAll: '{{route}} はフォールバックルートです。',
     routeFallbackIgnored:
       'どのルートにも一致しないイベントは無視されます。すべてのイベントに明示的な結果が必要な場合のみ、フォールバックを追加してください。',
-    testRoute: 'ルートをテスト',
+    testRoute: 'ルートを確認',
     refreshRouteStatus: '状態を更新',
     routeStatusIdle: '実行記録なし',
     routeStatusRefreshFailed: 'ルート状態の更新に失敗しました。',
@@ -467,7 +467,6 @@ const jaJP = {
       discarded: '破棄済み',
       failed: '失敗',
       not_matched: '未一致',
-      test_started: 'テスト中',
     },
     routeStatusDetail: {
       matched: 'このルートがイベントに一致しました。',
@@ -475,7 +474,6 @@ const jaJP = {
       discarded: '設定に従ってイベントを破棄しました。',
       failed: 'ルートを完了できませんでした。',
       not_matched: '設定済みルートに一致しませんでした。',
-      test_started: '保存済みルートを実行しています。',
     },
     routeFailure: {
       binding_disabled: 'このルートは無効です。',
@@ -486,22 +484,11 @@ const jaJP = {
       processor_incompatible:
         '選択したプロセッサーはこのイベントを処理できません。',
       processor_not_found: '選択したプロセッサーを利用できません。',
-      bot_runtime_unavailable:
-        'ボットが実行されていません。プラットフォーム設定を確認してボットを有効にした後、完全テストを実行してください。',
       runner_failed: 'Agent Runner がイベント処理中に失敗しました。',
       delivery_failed: '処理は完了しましたが、結果の配信に失敗しました。',
     },
-    routeTestAction: '完全テストを実行',
-    routeTestRunning: '実行中…',
-    routeTestFailed:
-      '保存済みルートの実行に失敗しました。後でもう一度お試しください。',
-    routeTestDispatched:
-      '保存済みルートを実行しました。{{count}} 件のプラットフォーム操作を抑制しました。',
-    routeTestSideEffectWarning:
-      'プロセッサーとツールは実行されますが、返信はメッセージプラットフォームへ送信されません。',
-    dryRunTitle: 'ルートをテスト',
-    dryRunDescription:
-      'イベントを選び、処理先を確認するか、テストを実行します。',
+    dryRunTitle: 'イベントルートを確認',
+    dryRunDescription: 'イベントを選び、一致するルートと処理先を確認します。',
     dryRunEventType: 'イベントタイプ',
     dryRunSampleReady: 'サンプルイベントを準備しました',
     dryRunSampleDescription:
@@ -513,10 +500,10 @@ const jaJP = {
     dryRunPayloadJsonError: '有効な JSON を入力してください。',
     dryRunPayloadObjectError:
       'ペイロードは JSON オブジェクトである必要があります。',
-    dryRunNeedsSavedBot: 'ルートをテストする前にボットを保存してください。',
-    dryRunFailed: 'ルートテストに失敗しました。後でもう一度お試しください。',
-    dryRunAction: '一致を確認',
-    dryRunRunning: 'テスト中…',
+    dryRunNeedsSavedBot: 'ルートを確認する前にボットを保存してください。',
+    dryRunFailed: 'ルートを確認できませんでした。後でもう一度お試しください。',
+    dryRunAction: '一致結果を確認',
+    dryRunRunning: '確認中…',
     dryRunMatched: 'ルートに一致しました',
     dryRunNotMatched: '一致するルートはありません',
     dryRunTarget: '対象プロセッサー',

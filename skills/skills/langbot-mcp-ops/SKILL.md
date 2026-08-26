@@ -64,7 +64,7 @@ The tools wrap the LangBot service layer. Current tools (v1):
 | --- | --- |
 | `get_system_info` | Version, edition, instance id |
 | `list_bots` / `get_bot` / `create_bot` / `update_bot` / `delete_bot` | Manage messaging-platform bots (secrets redacted on read) |
-| `list_bot_event_route_statuses` / `test_bot_event_route` | Inspect bot event-route runtime status and dispatch a synthetic test event through saved routes without sending real outbound platform messages |
+| `list_bot_event_route_statuses` | Inspect bot event-route runtime status |
 | `list_processors` / `get_processor` / `create_processor` / `update_processor` / `delete_processor` | Manage the peer Agent and Pipeline processor types |
 | `list_pipelines` / `get_pipeline` / `create_pipeline` / `update_pipeline` / `delete_pipeline` | Manage pipelines |
 | `list_llm_models` / `get_llm_model` / `list_embedding_models` / `list_model_providers` | Inspect models & providers |
@@ -77,12 +77,6 @@ shape as the corresponding HTTP API request body. Discover resources with the
 `list_*` / `get_*` tools before mutating; identifiers are UUIDs. Reads require
 `resource.view`; mutations require `resource.manage`. All service calls inherit
 the immutable Workspace context authenticated at the MCP transport boundary.
-
-`test_bot_event_route` uses the bot's saved runtime route table, injects a
-synthetic event such as `message.received`, and suppresses platform delivery.
-It still executes the selected processor, so tools and external services may
-have side effects. Use `payload` for sample event fields, for example
-`{"message_text": "hello", "chat_type": "private", "chat_id": "u1"}`.
 
 ## How to use
 

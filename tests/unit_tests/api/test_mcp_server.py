@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -20,18 +19,6 @@ def _make_app() -> SimpleNamespace:
         update_bot=AsyncMock(),
         delete_bot=AsyncMock(),
         list_event_route_statuses=AsyncMock(return_value={'routes': [], 'unmatched_events': [], 'stale_routes': []}),
-        dispatch_test_event_route=AsyncMock(
-            return_value={
-                'dispatched': True,
-                'event_type': 'message.received',
-                'suppressed_outputs': [],
-                'route_status': {
-                    'routes': [],
-                    'unmatched_events': [],
-                    'stale_routes': [],
-                },
-            }
-        ),
     )
     app.pipeline_service = SimpleNamespace(
         get_pipelines=AsyncMock(return_value=[]),
@@ -75,30 +62,6 @@ async def test_mcp_server_exposes_bot_event_route_tools():
     tool_names = {tool.name for tool in tools}
 
     assert 'list_bot_event_route_statuses' in tool_names
-    assert 'test_bot_event_route' in tool_names
+    assert 'test_bot_event_route' not in tool_names
     assert 'list_processors' in tool_names
     assert 'list_agents' not in tool_names
-
-
-@pytest.mark.asyncio
-async def test_mcp_test_bot_event_route_calls_service_layer():
-    app = _make_app()
-    server = LangBotMCPServer(app)
-
-    result_blocks, _ = await server.mcp.call_tool(
-        'test_bot_event_route',
-        {
-            'bot_uuid': 'bot-1',
-            'event_type': 'message.received',
-            'payload': {'message_text': 'hello'},
-        },
-    )
-
-    app.bot_service.dispatch_test_event_route.assert_awaited_once_with(
-        bot_uuid='bot-1',
-        event_type='message.received',
-        payload={'message_text': 'hello'},
-    )
-    data = json.loads(result_blocks[0].text)
-    assert data['dispatched'] is True
-    assert data['event_type'] == 'message.received'

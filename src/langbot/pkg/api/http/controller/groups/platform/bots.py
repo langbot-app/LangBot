@@ -90,15 +90,9 @@ class BotsRouterGroup(group.RouterGroup):
             permission=Permission.RESOURCE_VIEW,
         )
         async def _(bot_uuid: str, request_context: RequestContext) -> str:
-            return self.success(
-                data=await self.ap.bot_service.list_event_route_statuses(
-                    request_context, bot_uuid
-                )
-            )
+            return self.success(data=await self.ap.bot_service.list_event_route_statuses(request_context, bot_uuid))
 
-        async def _dry_run_event_route(
-            bot_uuid: str, request_context: RequestContext
-        ) -> str:
+        async def _dry_run_event_route(bot_uuid: str, request_context: RequestContext) -> str:
             json_data = await quart.request.json
             if not isinstance(json_data, dict):
                 return self.http_status(400, -1, 'invalid request body')
@@ -127,24 +121,6 @@ class BotsRouterGroup(group.RouterGroup):
             auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
             permission=Permission.RESOURCE_VIEW,
         )(_dry_run_event_route)
-
-        @self.route(
-            '/<bot_uuid>/event-routes/test',
-            methods=['POST'],
-            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
-            permission=Permission.RUNTIME_OPERATE,
-        )
-        async def _(bot_uuid: str, request_context: RequestContext) -> str:
-            json_data = await quart.request.json
-            if not isinstance(json_data, dict):
-                return self.http_status(400, -1, 'invalid request body')
-            result = await self.ap.bot_service.dispatch_test_event_route(
-                request_context,
-                bot_uuid=bot_uuid,
-                event_type=json_data.get('event_type'),
-                payload=json_data.get('event_data', json_data.get('payload')),
-            )
-            return self.success(data=result)
 
         @self.route(
             '/<bot_uuid>/send_message',

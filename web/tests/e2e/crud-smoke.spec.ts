@@ -389,29 +389,6 @@ test.describe('bot advanced flows', () => {
           }),
         }),
     );
-    await page.route('**/api/v1/platform/bots/*/event-routes/test', (route) =>
-      route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          code: 0,
-          msg: 'ok',
-          data: {
-            dispatched: false,
-            event_type: 'message.received',
-            failure_code: 'bot_runtime_unavailable',
-            reason: 'Bot runtime is unavailable',
-            suppressed_outputs: [],
-            route_status: {
-              routes: [],
-              unmatched_events: [],
-              stale_routes: [],
-            },
-          },
-        }),
-      }),
-    );
-
     await page.goto('/home/bots?id=new');
     await selectPlaywrightAdapter(page);
     await page.locator('input[name="name"]').fill('Route Status Bot');
@@ -454,14 +431,14 @@ test.describe('bot advanced flows', () => {
       page.getByText('Failed to refresh route status.'),
     ).toBeVisible();
 
-    await page.getByRole('button', { name: 'Test route' }).click();
+    await page.getByRole('button', { name: 'Check route' }).click();
     const routeDialog = page.getByRole('dialog');
     await expect(
-      routeDialog.getByText('Test route', { exact: true }),
+      routeDialog.getByText('Check event route', { exact: true }),
     ).toBeVisible();
     await expect(
       routeDialog.getByText(
-        'Choose an event to see which processor handles it, or run a test.',
+        'Choose an event to see which route and processor it matches.',
       ),
     ).toBeVisible();
     await expect(routeDialog.getByText('Sample event is ready')).toHaveCount(0);
@@ -469,11 +446,11 @@ test.describe('bot advanced flows', () => {
       routeDialog.getByRole('button', { name: 'Test data' }),
     ).toBeVisible();
     await expect(
-      routeDialog.getByRole('button', { name: 'Preview match' }),
+      routeDialog.getByRole('button', { name: 'View match' }),
     ).toBeVisible();
     await expect(
       routeDialog.getByRole('button', { name: 'Run full test' }),
-    ).toBeVisible();
+    ).toHaveCount(0);
     const routeEventPicker = routeDialog.getByRole('combobox', {
       name: 'Event type',
     });
@@ -494,25 +471,9 @@ test.describe('bot advanced flows', () => {
     );
     await page.keyboard.press('Escape');
 
-    await routeDialog.getByRole('button', { name: 'Preview match' }).click();
+    await routeDialog.getByRole('button', { name: 'View match' }).click();
     await expect(routeDialog.getByText('Matched route')).toBeVisible();
-
-    await routeDialog.getByRole('button', { name: 'Run full test' }).click();
-    await expect(routeDialog.getByText('Matched route')).toHaveCount(0);
-    await expect(
-      routeDialog.getByText(
-        'The bot is not running. Check its platform settings and enable it before running a full test.',
-      ),
-    ).toBeVisible();
     await expect(routeDialog.getByText('Internal server error')).toHaveCount(0);
-
-    await routeDialog.getByRole('button', { name: 'Preview match' }).click();
-    await expect(
-      routeDialog.getByText(
-        'The bot is not running. Check its platform settings and enable it before running a full test.',
-      ),
-    ).toHaveCount(0);
-    await expect(routeDialog.getByText('Matched route')).toBeVisible();
     const dialogBox = await routeDialog.boundingBox();
     expect(dialogBox).not.toBeNull();
     expect(dialogBox!.height).toBeLessThan(500);

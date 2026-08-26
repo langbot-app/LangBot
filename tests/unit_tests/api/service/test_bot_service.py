@@ -656,46 +656,6 @@ class TestBotServiceListEventRouteStatuses:
         assert result['stale_routes'] == []
 
 
-class TestBotServiceDispatchTestEventRoute:
-    """Tests for dispatching a synthetic event through a saved route."""
-
-    async def test_returns_actionable_failure_when_runtime_bot_is_unavailable(self):
-        ap = SimpleNamespace()
-        ap.platform_mgr = SimpleNamespace()
-        ap.platform_mgr.get_bot_by_uuid = AsyncMock(return_value=None)
-
-        service = BotService(ap)
-        service.get_bot = AsyncMock(return_value={'uuid': 'bot-uuid'})
-        service.list_event_route_statuses = AsyncMock(
-            return_value={
-                'routes': [],
-                'unmatched_events': [],
-                'stale_routes': [],
-            }
-        )
-
-        result = await service.dispatch_test_event_route(
-            WORKSPACE_UUID,
-            'bot-uuid',
-            'message.received',
-            {'message_text': 'Hello'},
-        )
-
-        assert result == {
-            'dispatched': False,
-            'event_type': 'message.received',
-            'failure_code': 'bot_runtime_unavailable',
-            'reason': 'Bot runtime is unavailable',
-            'suppressed_outputs': [],
-            'route_status': {
-                'routes': [],
-                'unmatched_events': [],
-                'stale_routes': [],
-            },
-        }
-        service.list_event_route_statuses.assert_awaited_once_with(WORKSPACE_UUID, 'bot-uuid')
-
-
 class TestBotServiceSendMessage:
     """Tests for send_message method."""
 
