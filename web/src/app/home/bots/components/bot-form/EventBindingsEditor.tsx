@@ -1265,27 +1265,24 @@ function BindingCardContent({
             onUpdate(globalIndex, patch);
           }}
         >
-          <SelectTrigger className="h-8 min-w-[150px] flex-1 text-sm">
-            {binding.event_pattern ? (
-              <span className="truncate">
-                {eventLabel(binding.event_pattern, t)}
-              </span>
-            ) : (
-              <SelectValue placeholder={t('bots.eventPatternPlaceholder')} />
-            )}
+          <SelectTrigger className="h-auto min-h-9 min-w-[220px] flex-1">
+            <SelectValue placeholder={t('bots.eventPatternPlaceholder')} />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="w-[var(--radix-select-trigger-width)] max-w-[calc(100vw-2rem)]">
             {groupEventPatterns(eventOptions).map((group) => (
               <SelectGroup key={group.namespace}>
                 <SelectLabel>{eventGroupLabel(group.namespace, t)}</SelectLabel>
                 {group.patterns.map((event) => (
-                  <SelectItem key={event} value={event}>
-                    <span className="flex flex-col">
-                      <span>{eventLabel(event, t)}</span>
-                      <span className="text-[11px] text-muted-foreground">
-                        {eventDescription(event, t)}
-                      </span>
-                    </span>
+                  <SelectItem
+                    key={event}
+                    value={event}
+                    description={eventDescription(event, t)}
+                    className="py-2"
+                  >
+                    <EventSelectOptionContent
+                      event={event}
+                      label={eventLabel(event, t)}
+                    />
                   </SelectItem>
                 ))}
               </SelectGroup>

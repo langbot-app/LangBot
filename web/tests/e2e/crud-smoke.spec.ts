@@ -426,6 +426,21 @@ test.describe('bot advanced flows', () => {
       routingCard.getByText('Groups', { exact: true }),
     ).toBeVisible();
 
+    await routingCard.getByRole('button', { name: 'Add behavior' }).click();
+    await page.getByRole('menuitem', { name: /Reply to messages/ }).click();
+    const routeEventSelect = routingCard.getByRole('combobox').first();
+    await expect(routeEventSelect).toContainText('Message received');
+    await expect(routeEventSelect).toContainText('message.received');
+    await routeEventSelect.click();
+    const routeEventOption = page
+      .getByRole('option')
+      .filter({ hasText: 'Message received' });
+    await expect(routeEventOption).toContainText('message.received');
+    await expect(routeEventOption).toContainText(
+      'A user or group sends a new message to the bot.',
+    );
+    await page.keyboard.press('Escape');
+
     await page.getByRole('button', { name: 'Refresh status' }).hover();
     await expect(
       page.getByText('Failed to refresh route status.'),
