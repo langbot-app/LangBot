@@ -30,12 +30,16 @@ test.describe('processor detail workbench', () => {
     const debugEventPicker = debugPanel.getByRole('combobox', {
       name: 'Event type',
     });
+    await expect(debugEventPicker).toContainText('message.received');
     await debugEventPicker.click();
     await expect(page.getByRole('group', { name: 'Messages' })).toBeVisible();
     await expect(page.getByRole('group', { name: 'Groups' })).toBeVisible();
     await expect(
       page.getByRole('option').filter({ hasText: 'Member joined group' }),
     ).toContainText('A member joins a group where the bot is present.');
+    await expect(
+      page.getByRole('option').filter({ hasText: 'Member joined group' }),
+    ).toContainText('group.member_joined');
     await expect(
       page.getByRole('option').filter({ hasText: 'Message edited' }),
     ).toContainText('The platform reports that an existing message changed.');

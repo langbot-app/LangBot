@@ -120,6 +120,7 @@ import {
   eventNamespaces,
   groupEventPatterns,
 } from '@/app/home/components/event-patterns/event-pattern-groups';
+import EventSelectOptionContent from '@/app/home/components/event-patterns/EventSelectOptionContent';
 
 export const PIPELINE_DISCARD = '__discard__';
 
@@ -1050,18 +1051,29 @@ function RouteDryRunDialog({
                     {t('bots.dryRunEventType')}
                   </label>
                   <Select value={eventType} onValueChange={setEventType}>
-                    <SelectTrigger className="h-9">
+                    <SelectTrigger
+                      className="h-auto min-h-9 w-full"
+                      aria-label={t('bots.dryRunEventType')}
+                    >
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="w-[var(--radix-select-trigger-width)] max-w-[calc(100vw-2rem)]">
                       {groupEventPatterns(eventOptions).map((group) => (
                         <SelectGroup key={group.namespace}>
                           <SelectLabel>
                             {eventGroupLabel(group.namespace, t)}
                           </SelectLabel>
                           {group.patterns.map((event) => (
-                            <SelectItem key={event} value={event}>
-                              {eventLabel(event, t)}
+                            <SelectItem
+                              key={event}
+                              value={event}
+                              description={eventDescription(event, t)}
+                              className="py-2"
+                            >
+                              <EventSelectOptionContent
+                                event={event}
+                                label={eventLabel(event, t)}
+                              />
                             </SelectItem>
                           ))}
                         </SelectGroup>

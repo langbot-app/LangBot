@@ -474,13 +474,24 @@ test.describe('bot advanced flows', () => {
     await expect(
       routeDialog.getByRole('button', { name: 'Run full test' }),
     ).toBeVisible();
-    await routeDialog.getByRole('combobox').first().click();
+    const routeEventPicker = routeDialog.getByRole('combobox', {
+      name: 'Event type',
+    });
+    await expect(routeEventPicker).toContainText('message.received');
+    await routeEventPicker.click();
     await expect(
       page.getByText('Messages', { exact: true }).last(),
     ).toBeVisible();
     await expect(
       page.getByText('Groups', { exact: true }).last(),
     ).toBeVisible();
+    const receivedMessageOption = page
+      .getByRole('option')
+      .filter({ hasText: 'Message received' });
+    await expect(receivedMessageOption).toContainText('message.received');
+    await expect(receivedMessageOption).toContainText(
+      'A user or group sends a new message to the bot.',
+    );
     await page.keyboard.press('Escape');
 
     await routeDialog.getByRole('button', { name: 'Preview match' }).click();

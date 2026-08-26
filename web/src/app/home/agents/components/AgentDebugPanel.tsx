@@ -36,6 +36,7 @@ import {
   eventPatternLabel,
   groupEventPatterns,
 } from '@/app/home/components/event-patterns/event-pattern-groups';
+import EventSelectOptionContent from '@/app/home/components/event-patterns/EventSelectOptionContent';
 
 interface AgentDebugPanelProps {
   agentId: string;
@@ -303,7 +304,10 @@ export default function AgentDebugPanel({
                         description={eventPatternDescription(event, t)}
                         className="py-2"
                       >
-                        {eventPatternLabel(event, t)}
+                        <EventSelectOptionContent
+                          event={event}
+                          label={eventPatternLabel(event, t)}
+                        />
                       </SelectItem>
                     ))}
                   </SelectGroup>
@@ -316,7 +320,10 @@ export default function AgentDebugPanel({
                       description={t('bots.eventDescriptions.custom')}
                       className="py-2"
                     >
-                      {t('agents.debugCustomEvent')}
+                      <EventSelectOptionContent
+                        event="custom.event"
+                        label={t('agents.debugCustomEvent')}
+                      />
                     </SelectItem>
                   </SelectGroup>
                 )}
