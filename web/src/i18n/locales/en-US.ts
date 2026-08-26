@@ -473,7 +473,7 @@ const enUS = {
     adapterEventCurrentPlatform: 'the current platform',
     adapterConfigurationTest: 'Test adapter configuration',
     adapterConfigurationTestDescription:
-      'Trigger an event on the platform to confirm these settings work.',
+      'Save and enable the bot first, then trigger a platform event to confirm these settings work.',
     refreshRouteStatus: 'Refresh status',
     routeStatusIdle: 'No run yet',
     routeStatusRefreshFailed: 'Failed to refresh route status.',

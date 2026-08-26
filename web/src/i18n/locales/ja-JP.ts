@@ -480,7 +480,7 @@ const jaJP = {
     adapterEventCurrentPlatform: '現在のプラットフォーム',
     adapterConfigurationTest: 'アダプター設定をテスト',
     adapterConfigurationTestDescription:
-      'プラットフォームでイベントを発生させ、この設定が動作することを確認します。',
+      '先にボットを保存して有効にし、プラットフォームでイベントを発生させて設定を確認します。',
     refreshRouteStatus: '状態を更新',
     routeStatusIdle: '実行記録なし',
     routeStatusRefreshFailed: 'ルート状態の更新に失敗しました。',
