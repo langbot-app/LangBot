@@ -708,7 +708,7 @@ const enUS = {
     groupByKind: 'Group by type',
     groupByKindShort: 'Group',
     pipelineTypeDescription:
-      'Use a visual multi-stage flow to control message preprocessing, AI, postprocessing, extensions, and output. Message events only. Best for fixed workflows that need predictable, step-by-step control.',
+      'Processes message events through a fixed flow. Best for scenarios with clear steps that need predictable execution.',
     allEvents: 'Supports all events',
     messageEventsOnly: 'Message events only',
     chooseType: 'Choose how it works',

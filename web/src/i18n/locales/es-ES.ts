@@ -521,7 +521,7 @@ const esES = {
     groupByKind: 'Agrupar por tipo',
     groupByKindShort: 'Agrupar',
     pipelineTypeDescription:
-      'Usa un flujo visual de varias etapas para controlar el preprocesamiento, la IA, el posprocesamiento, las extensiones y la salida. Solo procesa eventos de mensaje.',
+      'Procesa eventos de mensaje mediante un flujo fijo. Ideal para escenarios con pasos claros que requieren una ejecución predecible.',
     allEvents: 'Compatible con todos los eventos',
     messageEventsOnly: 'Solo eventos de mensaje',
     basicInfo: 'Información básica',

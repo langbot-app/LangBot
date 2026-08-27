@@ -487,7 +487,7 @@ const zhHant = {
     groupByKind: '依類型分組',
     groupByKindShort: '分組',
     pipelineTypeDescription:
-      '透過視覺化多階段流程控制訊息的前處理、AI、後處理、擴充與輸出；僅處理訊息事件。',
+      '依固定流程處理訊息事件。適合步驟明確、需要穩定控制處理過程的場景。',
     allEvents: '支援全部事件',
     messageEventsOnly: '僅支援訊息事件',
     basicInfo: '基本資訊',

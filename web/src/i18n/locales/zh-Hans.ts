@@ -678,7 +678,7 @@ const zhHans = {
     groupByKind: '按类型分组',
     groupByKindShort: '分组',
     pipelineTypeDescription:
-      '通过可视化多阶段流程控制消息的预处理、AI、后处理、扩展和输出；仅处理消息事件。适合流程固定、希望逐步控制消息处理过程的场景。',
+      '按固定流程处理消息事件。适合步骤明确、需要稳定控制处理过程的场景。',
     allEvents: '支持全部事件',
     messageEventsOnly: '仅支持消息事件',
     chooseType: '选择处理方式',

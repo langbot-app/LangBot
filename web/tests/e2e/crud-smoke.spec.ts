@@ -86,6 +86,11 @@ test.describe('frontend CRUD smoke flows', () => {
     await expect(
       page.locator('[data-processor-kind="pipeline"]'),
     ).toContainText('流水线');
+    await expect(
+      page.locator('[data-processor-kind="pipeline"]'),
+    ).toContainText(
+      '按固定流程处理消息事件。适合步骤明确、需要稳定控制处理过程的场景。',
+    );
   });
 
   test('viewer keeps ordinary bot and pipeline monitoring access', async ({

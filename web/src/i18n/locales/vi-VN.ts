@@ -514,7 +514,7 @@ const viVN = {
     groupByKind: 'Nhóm theo loại',
     groupByKindShort: 'Nhóm',
     pipelineTypeDescription:
-      'Dùng luồng trực quan nhiều giai đoạn để kiểm soát tiền xử lý, AI, hậu xử lý, tiện ích mở rộng và đầu ra. Chỉ xử lý sự kiện tin nhắn.',
+      'Xử lý sự kiện tin nhắn theo quy trình cố định. Phù hợp với các tình huống có bước rõ ràng và cần thực thi ổn định.',
     allEvents: 'Hỗ trợ tất cả sự kiện',
     messageEventsOnly: 'Chỉ sự kiện tin nhắn',
     basicInfo: 'Thông tin cơ bản',
