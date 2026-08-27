@@ -15,7 +15,6 @@ import {
   Card,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
@@ -260,33 +259,9 @@ export default function AgentCreateContent({
             </div>
 
             <Card className="min-h-[600px] overflow-hidden py-0 lg:min-h-[680px]">
-              <CardHeader className="border-b bg-muted/20 py-5">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <CardTitle>
-                      {kind === 'agent'
-                        ? t('agents.agentDiagramTitle')
-                        : t('agents.pipelineDiagramTitle')}
-                    </CardTitle>
-                    <CardDescription className="mt-1.5">
-                      {t('agents.diagramHint')}
-                    </CardDescription>
-                  </div>
-                  <Badge variant="outline">
-                    {kind === 'agent'
-                      ? t('agents.kindBadgeAgent')
-                      : t('agents.kindBadgePipeline')}
-                  </Badge>
-                </div>
-              </CardHeader>
-              <CardContent className="flex flex-1 items-center p-3 sm:p-5">
+              <CardContent className="flex h-full items-center p-0">
                 <ProcessorTypeDiagram kind={kind} />
               </CardContent>
-              <CardFooter className="border-t bg-muted/20 px-6 py-4 text-sm leading-relaxed text-muted-foreground">
-                {kind === 'agent'
-                  ? t('agents.agentDiagramDescription')
-                  : t('agents.pipelineDiagramDescription')}
-              </CardFooter>
             </Card>
           </div>
         </div>
