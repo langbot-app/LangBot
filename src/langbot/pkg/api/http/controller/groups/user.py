@@ -13,15 +13,32 @@ from ...context import RequestContext
 from .....cloud.launch import SpaceLaunchError
 from ...service.user import ControlPlaneDirectoryRequiredError, PublicRegistrationClosedError
 
-# Brute-force protection for the unauthenticated reset-password endpoint (#2392).
-# After _MAX_RECOVERY_KEY_FAILURES wrong recovery keys the endpoint rejects every
-# attempt (even with a correct key) for _RECOVERY_KEY_LOCKOUT_SECONDS. The legacy
-# fixed asyncio.sleep(3) did not throttle concurrent requests, allowing the 24-bit
-# legacy keyspace to be exhausted in hours.
-_MAX_RECOVERY_KEY_FAILURES = 5
-_RECOVERY_KEY_LOCKOUT_SECONDS = 15 * 60
+# Fixed-window admission quota for the unauthenticated reset-password endpoint (#2392).
+# The admission check and slot bump share ONE synchronous critical section with no await
+# points, so concurrent bursts within a single event loop cannot slip past accounting.
+# Every admitted attempt consumes quota (regardless of success), which throttles both the
+# legacy 24-bit keyspace exhaustion and brute-force on modern high-entropy keys.
+# NOTE: this state is process-local; multi-worker deployments need a shared limiter upstream.
+_MAX_RESET_ATTEMPTS_PER_WINDOW = 5
+_RESET_WINDOW_SECONDS = 15 * 60
 
-_recovery_key_state: dict = {'failures': 0, 'locked_until': 0.0}
+_reset_password_state: dict = {'window_started_at': 0.0, 'attempts': 0}
+
+
+def _admit_reset_attempt(now: float) -> bool:
+    """Atomically reserve one reset-password admission slot.
+
+    Must stay await-free: running to completion without suspension makes the
+    check-and-increment atomic under the single-threaded event loop.
+    """
+    st = _reset_password_state
+    if now - st['window_started_at'] >= _RESET_WINDOW_SECONDS:
+        st['window_started_at'] = now
+        st['attempts'] = 0
+    if st['attempts'] >= _MAX_RESET_ATTEMPTS_PER_WINDOW:
+        return False
+    st['attempts'] += 1
+    return True
 
 
 @group.group_class('user', '/api/v1/user')
@@ -93,15 +110,17 @@ class UserRouterGroup(group.RouterGroup):
 
         @self.route('/reset-password', methods=['POST'], auth_type=group.AuthType.NONE)
         async def _() -> str:
+            # Admit (or reject) BEFORE touching the body or any service call (#2392):
+            # rejecting requests never reach the slow path, and quota accounting happens
+            # synchronously at entry, closing the post-await race of burst requests.
+            if not _admit_reset_attempt(time.monotonic()):
+                return self.http_status(429, -1, 'Too many attempts, try again later')
+
             json_data = await quart.request.json
 
             user_email = json_data['user']
             recovery_key = json_data['recovery_key']
             new_password = json_data['new_password']
-
-            # Reject while locked out, before any sleep or service call (#2392)
-            if time.monotonic() < _recovery_key_state['locked_until']:
-                return self.http_status(429, -1, 'Too many failed attempts, try again later')
 
             # hard sleep 3s for security
             await asyncio.sleep(3)
@@ -122,13 +141,8 @@ class UserRouterGroup(group.RouterGroup):
             )
 
             if not key_matches:
-                _recovery_key_state['failures'] += 1
-                if _recovery_key_state['failures'] >= _MAX_RECOVERY_KEY_FAILURES:
-                    _recovery_key_state['locked_until'] = time.monotonic() + _RECOVERY_KEY_LOCKOUT_SECONDS
-                    _recovery_key_state['failures'] = 0
                 return self.http_status(403, -1, 'Invalid recovery key')
 
-            _recovery_key_state['failures'] = 0
             await self.ap.user_service.reset_password(user_email, new_password)
 
             return self.success(data={'user': user_email})
