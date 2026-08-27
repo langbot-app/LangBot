@@ -1382,7 +1382,8 @@ const jaJP = {
       uploading: 'アップロード中...',
     },
     monitoring: {
-      title: 'ダッシュボード',
+      title: '実行ログ',
+      workbench: '設定とデバッグ',
       description: 'このパイプラインの実行ログとエラー情報を表示（過去24時間）',
       detailedLogs: '詳細ログ',
     },

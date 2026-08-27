@@ -1359,7 +1359,8 @@ const zhHans = {
       uploading: '上传中...',
     },
     monitoring: {
-      title: '监控日志',
+      title: '运行日志',
+      workbench: '配置与调试',
       description: '查看此流水线的运行记录和错误信息（最近24小时）',
       detailedLogs: '详细日志',
     },

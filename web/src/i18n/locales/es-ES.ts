@@ -1152,7 +1152,8 @@ const esES = {
       uploading: 'Subiendo...',
     },
     monitoring: {
-      title: 'Panel de control',
+      title: 'Registros de ejecución',
+      workbench: 'Configurar y depurar',
       description:
         'Ver registros de ejecución y errores de este Pipeline (últimas 24 horas)',
       detailedLogs: 'Registros detallados',

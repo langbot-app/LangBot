@@ -200,6 +200,7 @@ export default function PipelineDetailContent({
           canViewMonitoring
             ? {
                 label: t('pipelines.monitoring.title'),
+                workbenchLabel: t('pipelines.monitoring.workbench'),
                 content: (
                   <PipelineMonitoringTab
                     pipelineId={id}

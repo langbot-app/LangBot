@@ -1116,7 +1116,8 @@ const thTH = {
       uploading: 'กำลังอัปโหลด...',
     },
     monitoring: {
-      title: 'แดชบอร์ด',
+      title: 'บันทึกการทำงาน',
+      workbench: 'กำหนดค่าและดีบัก',
       description:
         'ดูบันทึกการดำเนินการและข้อผิดพลาดของ Pipeline นี้ (24 ชั่วโมงล่าสุด)',
       detailedLogs: 'บันทึกโดยละเอียด',

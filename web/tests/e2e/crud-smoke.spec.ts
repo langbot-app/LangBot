@@ -116,7 +116,7 @@ test.describe('frontend CRUD smoke flows', () => {
     await expect(page.getByText('No logs yet')).toBeVisible();
 
     await page.goto('/home/agents?id=pipeline-1');
-    await expect(page.getByRole('button', { name: 'Dashboard' })).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'Run logs' })).toBeVisible();
     await expect(page.getByRole('tab', { name: 'Debug Chat' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: /^Save$/ })).toHaveCount(0);
 
@@ -761,19 +761,18 @@ test.describe('pipeline advanced flows', () => {
       page.getByRole('region', { name: 'Configuration' }),
     ).toBeVisible();
 
-    // Switch to Monitoring tab (labeled "Dashboard" in the pipeline context)
-    // Skip Debug tab as it requires WebSocket connection
-    await page
-      .getByRole('button', { name: 'Dashboard', exact: true })
-      .last()
-      .click();
-    await expect(page.getByRole('region', { name: /Dashboard/ })).toBeVisible();
+    const viewSwitcher = page.getByRole('tablist', {
+      name: 'Configure & debug / Run logs',
+    });
+    const switcherPosition = await viewSwitcher.boundingBox();
+    await page.getByRole('tab', { name: 'Run logs' }).click();
+    await expect(page.getByRole('region', { name: 'Run logs' })).toBeVisible();
+    await expect
+      .poll(async () => (await viewSwitcher.boundingBox())?.x)
+      .toBe(switcherPosition?.x);
 
     // Switch back to Configuration
-    await page
-      .getByRole('button', { name: 'Dashboard', exact: true })
-      .last()
-      .click();
+    await page.getByRole('tab', { name: 'Configure & debug' }).click();
     await expect(
       page.getByRole('region', { name: 'Configuration' }),
     ).toBeVisible();

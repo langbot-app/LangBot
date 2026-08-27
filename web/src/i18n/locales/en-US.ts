@@ -1419,7 +1419,8 @@ const enUS = {
       uploading: 'Uploading...',
     },
     monitoring: {
-      title: 'Dashboard',
+      title: 'Run logs',
+      workbench: 'Configure & debug',
       description:
         'View execution logs and errors for this pipeline (last 24 hours)',
       detailedLogs: 'Detailed Logs',

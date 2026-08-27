@@ -163,7 +163,7 @@ test.describe('pipeline monitoring conversation turns', () => {
     });
 
     await page.goto(`/home/agents?id=${pipeline.id}`);
-    await page.getByRole('tab', { name: 'Dashboard' }).click();
+    await page.getByRole('tab', { name: 'Run logs' }).click();
 
     await expect(page.getByText('2 conversation turns')).toBeVisible();
     await expect(

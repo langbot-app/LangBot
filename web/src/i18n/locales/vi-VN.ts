@@ -1133,7 +1133,8 @@ const viVN = {
       uploading: 'Đang tải lên...',
     },
     monitoring: {
-      title: 'Bảng điều khiển',
+      title: 'Nhật ký chạy',
+      workbench: 'Cấu hình và gỡ lỗi',
       description: 'Xem nhật ký thực thi và lỗi của Pipeline này (24 giờ qua)',
       detailedLogs: 'Nhật ký chi tiết',
     },
