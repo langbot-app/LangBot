@@ -91,3 +91,42 @@ def test_convert_messages_plain_string_content_untouched():
     msg = provider_message.Message(role='user', content='just text')
     out = req._convert_messages([msg])
     assert out[0]['content'] == 'just text'
+
+
+def test_convert_messages_replayed_image_without_base64_does_not_crash():
+    """Replayed image parts hollowed out by history trimming must not raise KeyError (#2469).
+
+    SessionManager clears image_base64 on past turns, and URL-less platform
+    images never had a URL, so the replayed part serializes as
+    {'type': 'image_base64'} with no payload keys. The hollow part should be
+    dropped while the sibling text part survives.
+    """
+    req = _make_requester()
+    image = provider_message.ContentElement.from_image_base64('data:image/jpeg;base64,AAAA')
+    # Simulate SessionManager.trim_conversation_messages clearing binary payloads.
+    image.image_base64 = None
+    msg = provider_message.Message(
+        role='user',
+        content=[
+            provider_message.ContentElement.from_text('describe the photo'),
+            image,
+        ],
+    )
+    out = req._convert_messages([msg])
+    assert [p.get('type') for p in out[0]['content']] == ['text']
+
+
+def test_convert_messages_replayed_image_with_url_falls_back_to_url():
+    """When base64 was trimmed but image_url survived, rebuild the OpenAI image_url part from the URL."""
+    req = _make_requester()
+    image = provider_message.ContentElement(
+        type='image_base64',
+        image_base64=None,
+        image_url=provider_message.ImageURLContentObject(url='https://example.com/pic.jpg'),
+    )
+    msg = provider_message.Message(role='user', content=[image])
+    out = req._convert_messages([msg])
+    parts = out[0]['content']
+    assert [p.get('type') for p in parts] == ['image_url']
+    assert parts[0]['image_url'] == {'url': 'https://example.com/pic.jpg'}
+    assert 'image_base64' not in parts[0]

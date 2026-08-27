@@ -619,7 +619,9 @@ class LocalAgentRunner(runner.RequestRunner):
                         and len(func_ret) > 0
                         and isinstance(func_ret[0], provider_message.ContentElement)
                     ):
-                        tool_content = func_ret
+                        # OpenAI-compatible APIs require tool-message content to be a
+                        # string; a raw list of ContentElement causes HTTP 500 (#2457).
+                        tool_content = '\n'.join(str(ce) for ce in func_ret)
                     else:
                         tool_content = json.dumps(func_ret, ensure_ascii=False)
 

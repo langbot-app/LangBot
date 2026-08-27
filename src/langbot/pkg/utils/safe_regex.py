@@ -27,10 +27,16 @@ class SafeRegexTimeoutError(SafeRegexError):
     """Raised when the regex engine exhausts the operation CPU budget."""
 
 
-def _validate_patterns(patterns: Sequence[str]) -> tuple[str, ...]:
+def _validate_patterns(
+    patterns: Sequence[str],
+    *,
+    max_pattern_count: int = MAX_PATTERN_COUNT,
+) -> tuple[str, ...]:
+    if max_pattern_count < 1:
+        raise ValueError('max_pattern_count must be positive')
+    if len(patterns) > max_pattern_count:
+        raise SafeRegexLimitError(f'At most {max_pattern_count} regex patterns are allowed')
     normalized = tuple(patterns)
-    if len(normalized) > MAX_PATTERN_COUNT:
-        raise SafeRegexLimitError(f'At most {MAX_PATTERN_COUNT} regex patterns are allowed')
     for pattern in normalized:
         if not isinstance(pattern, str):
             raise SafeRegexError('Regex patterns must be strings')
@@ -115,8 +121,9 @@ def _mask_patterns_sync(
     mask: str,
     mask_word: str,
     timeout_seconds: float,
+    max_pattern_count: int,
 ) -> tuple[bool, str]:
-    normalized_patterns = _validate_patterns(patterns)
+    normalized_patterns = _validate_patterns(patterns, max_pattern_count=max_pattern_count)
     _validate_input(value)
     if len(mask) > MAX_REPLACEMENT_CHARS or len(mask_word) > MAX_REPLACEMENT_CHARS:
         raise SafeRegexLimitError(f'Regex replacements may contain at most {MAX_REPLACEMENT_CHARS} characters')
@@ -162,6 +169,7 @@ async def mask_patterns(
     mask: str,
     mask_word: str,
     timeout_seconds: float = DEFAULT_OPERATION_TIMEOUT_SECONDS,
+    max_pattern_count: int = MAX_PATTERN_COUNT,
 ) -> tuple[bool, str]:
     """Apply untrusted masking patterns with bounded CPU and output growth."""
 
@@ -174,4 +182,5 @@ async def mask_patterns(
         mask=mask,
         mask_word=mask_word,
         timeout_seconds=timeout_seconds,
+        max_pattern_count=max_pattern_count,
     )

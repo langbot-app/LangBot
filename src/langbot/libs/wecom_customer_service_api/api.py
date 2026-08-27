@@ -295,6 +295,34 @@ class WecomCSClient:
                 raise Exception('Failed to send message')
             return data
 
+    @_bounded_token_retry
+    async def send_image_msg(self, open_kfid: str, external_userid: str, msgid: str, media_id: str):
+        if not await self.check_access_token():
+            self.access_token = await self.get_access_token(self.secret)
+
+        url = f'{self.base_url}/kf/send_msg?access_token={self.access_token}'
+        payload = {
+            'touser': external_userid,
+            'open_kfid': open_kfid,
+            'msgid': msgid,
+            'msgtype': 'image',
+            'image': {
+                'media_id': media_id,
+            },
+        }
+
+        async with self._http_client_context() as client:
+            response = await client.post(url, json=payload)
+
+            data = await httpclient.parse_json_response(response)
+            if data['errcode'] == 40014 or data['errcode'] == 42001:
+                self.access_token = await self.get_access_token(self.secret)
+                return await self.send_image_msg(open_kfid, external_userid, msgid, media_id)
+            if data['errcode'] != 0:
+                await self.logger.error(f'发送图片失败：{data}')
+                raise Exception('Failed to send image message')
+            return data
+
     async def handle_callback_request(self):
         """处理回调请求（独立端口模式，使用全局 request）。"""
         return await self._handle_callback_internal(request)
