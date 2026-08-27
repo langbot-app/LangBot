@@ -692,7 +692,7 @@ const zhHans = {
       'Pipeline 只处理消息事件，并严格按照你编排的固定步骤依次执行。',
     pipelineDiagramFlow: '消息沿固定流程依次处理',
     diagramEvents: '平台事件',
-    diagramAgentInitiated: 'Agent 主动发起',
+    diagramAgentCanUse: 'Agent 可使用',
     diagramMessages: '消息',
     diagramMembers: '群成员',
     diagramFeedback: '反馈',

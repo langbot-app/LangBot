@@ -22,6 +22,40 @@ function ArrowMarker({ id }: { id: string }) {
   );
 }
 
+function CapabilityIcon({
+  kind,
+  x,
+  y,
+}: {
+  kind: 'model' | 'tool' | 'action';
+  x: number;
+  y: number;
+}) {
+  return (
+    <g
+      transform={`translate(${x - 9} ${y - 9})`}
+      fill="none"
+      stroke={LANGBOT_CYAN}
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      {kind === 'model' && (
+        <>
+          <path d="m7 1 1.4 4.1L12.5 6.5 8.4 8 7 12 5.6 8 1.5 6.5l4.1-1.4L7 1Z" />
+          <path d="m14.5 10 .7 2.3 2.3.7-2.3.8-.7 2.2-.8-2.2-2.2-.8 2.2-.7.8-2.3Z" />
+        </>
+      )}
+      {kind === 'tool' && (
+        <path d="M12.8 2.1a4.1 4.1 0 0 0-5.2 5.2L2 12.9a2.1 2.1 0 1 0 3 3l5.6-5.6a4.1 4.1 0 0 0 5.2-5.2l-2.7 2.7-2.8-2.8 2.5-2.9Z" />
+      )}
+      {kind === 'action' && (
+        <path d="M10.5 1 3 10.5h6L8 17l7.5-9.5h-6L10.5 1Z" />
+      )}
+    </g>
+  );
+}
+
 function AgentDiagram() {
   const { t } = useTranslation();
   const arrowId = `agent-arrow-${useId().replace(/:/g, '')}`;
@@ -31,9 +65,9 @@ function AgentDiagram() {
     { label: t('agents.diagramFeedback'), y: 395 },
   ];
   const outputs = [
-    { label: t('agents.diagramModel'), y: 155 },
-    { label: t('agents.diagramTools'), y: 275 },
-    { label: t('agents.diagramActions'), y: 395 },
+    { kind: 'model' as const, label: t('agents.diagramModel'), y: 155 },
+    { kind: 'tool' as const, label: t('agents.diagramTools'), y: 275 },
+    { kind: 'action' as const, label: t('agents.diagramActions'), y: 395 },
   ];
 
   return (
@@ -121,7 +155,7 @@ function AgentDiagram() {
         fontSize="13"
         fontWeight="600"
       >
-        {t('agents.diagramAgentInitiated')}
+        {t('agents.diagramAgentCanUse')}
       </text>
 
       {outputs.map((item) => (
@@ -129,10 +163,10 @@ function AgentDiagram() {
           <path
             d={`M436 310 C468 310 474 ${item.y + 29} 538 ${item.y + 29}`}
             fill="none"
-            stroke={LANGBOT_BLUE}
-            strokeWidth="2"
-            opacity="0.38"
-            markerEnd={`url(#${arrowId})`}
+            stroke={LANGBOT_CYAN}
+            strokeWidth="1.8"
+            strokeDasharray="5 6"
+            opacity="0.48"
           />
           <rect
             x="538"
@@ -153,14 +187,7 @@ function AgentDiagram() {
             stroke={LANGBOT_CYAN}
             strokeOpacity="0.5"
           />
-          <path
-            d={`M559 ${item.y + 29}h12m-4-4 4 4-4 4`}
-            fill="none"
-            stroke={LANGBOT_CYAN}
-            strokeWidth="1.7"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
+          <CapabilityIcon kind={item.kind} x={565} y={item.y + 29} />
           <text
             x="584"
             y={item.y + 34}
