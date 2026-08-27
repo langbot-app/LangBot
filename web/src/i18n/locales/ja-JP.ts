@@ -736,6 +736,7 @@ const jaJP = {
       'Pipeline はメッセージイベントのみを、設定した固定ステップの順番で処理します。',
     pipelineDiagramFlow: 'メッセージを固定フローで順番に処理',
     diagramEvents: 'イベント',
+    diagramAgentInitiated: 'Agent が実行',
     diagramMessages: 'メッセージ',
     diagramMembers: 'メンバー',
     diagramFeedback: 'フィードバック',

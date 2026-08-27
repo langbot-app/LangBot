@@ -66,7 +66,8 @@ function AgentDiagram() {
             fill="none"
             stroke={LANGBOT_BLUE}
             strokeWidth="2"
-            opacity="0.22"
+            opacity="0.32"
+            markerEnd={`url(#${arrowId})`}
           />
           <rect
             x="64"
@@ -113,15 +114,25 @@ function AgentDiagram() {
         {t('agents.agentType')}
       </text>
 
-      {outputs.map((item, index) => (
+      <text
+        x="538"
+        y="112"
+        fill="var(--muted-foreground)"
+        fontSize="13"
+        fontWeight="600"
+      >
+        {t('agents.diagramAgentInitiated')}
+      </text>
+
+      {outputs.map((item) => (
         <g key={item.label}>
           <path
             d={`M436 310 C468 310 474 ${item.y + 29} 538 ${item.y + 29}`}
             fill="none"
             stroke={LANGBOT_BLUE}
             strokeWidth="2"
-            opacity="0.22"
-            markerEnd={index === 2 ? `url(#${arrowId})` : undefined}
+            opacity="0.38"
+            markerEnd={`url(#${arrowId})`}
           />
           <rect
             x="538"
@@ -129,14 +140,26 @@ function AgentDiagram() {
             width="158"
             height="58"
             rx="14"
-            fill={`color-mix(in srgb, ${LANGBOT_CYAN} 7%, var(--card))`}
+            fill="var(--card)"
+            stroke={LANGBOT_CYAN}
+            strokeOpacity="0.45"
+            strokeWidth="1.5"
           />
           <circle
             cx="565"
             cy={item.y + 29}
-            r="5"
-            fill={index === 1 ? LANGBOT_CYAN : LANGBOT_BLUE}
-            opacity={index === 1 ? 1 : 0.48}
+            r="11"
+            fill={`color-mix(in srgb, ${LANGBOT_CYAN} 10%, var(--card))`}
+            stroke={LANGBOT_CYAN}
+            strokeOpacity="0.5"
+          />
+          <path
+            d={`M559 ${item.y + 29}h12m-4-4 4 4-4 4`}
+            fill="none"
+            stroke={LANGBOT_CYAN}
+            strokeWidth="1.7"
+            strokeLinecap="round"
+            strokeLinejoin="round"
           />
           <text
             x="584"

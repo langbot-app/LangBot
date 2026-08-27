@@ -723,6 +723,7 @@ const enUS = {
       'A Pipeline handles message events only and runs each step in the order you configure.',
     pipelineDiagramFlow: 'Messages move through a fixed sequence',
     diagramEvents: 'Platform events',
+    diagramAgentInitiated: 'Initiated by Agent',
     diagramMessages: 'Messages',
     diagramMembers: 'Members',
     diagramFeedback: 'Feedback',
