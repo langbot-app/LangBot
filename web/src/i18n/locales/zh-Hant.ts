@@ -487,7 +487,7 @@ const zhHant = {
     groupByKind: '依類型分組',
     groupByKindShort: '分組',
     pipelineTypeDescription:
-      '依固定流程處理訊息事件。適合步驟明確、需要穩定控制處理過程的場景。',
+      '流程線即為經典的「收到訊息、請求 AI、回覆使用者」流程，並輔以常用的設定功能。僅處理訊息事件，適合步驟明確、需要穩定控制處理過程的場景。',
     allEvents: '支援全部事件',
     messageEventsOnly: '僅支援訊息事件',
     basicInfo: '基本資訊',

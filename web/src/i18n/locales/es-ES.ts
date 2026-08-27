@@ -521,7 +521,7 @@ const esES = {
     groupByKind: 'Agrupar por tipo',
     groupByKindShort: 'Agrupar',
     pipelineTypeDescription:
-      'Procesa eventos de mensaje mediante un flujo fijo. Ideal para escenarios con pasos claros que requieren una ejecución predecible.',
+      'El flujo clásico de «recibir un mensaje, consultar a la IA y responder al usuario», con opciones de configuración habituales. Solo procesa eventos de mensaje y es ideal para procesos claros y predecibles.',
     allEvents: 'Compatible con todos los eventos',
     messageEventsOnly: 'Solo eventos de mensaje',
     basicInfo: 'Información básica',

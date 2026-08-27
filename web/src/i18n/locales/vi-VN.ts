@@ -514,7 +514,7 @@ const viVN = {
     groupByKind: 'Nhóm theo loại',
     groupByKindShort: 'Nhóm',
     pipelineTypeDescription:
-      'Xử lý sự kiện tin nhắn theo quy trình cố định. Phù hợp với các tình huống có bước rõ ràng và cần thực thi ổn định.',
+      'Quy trình quen thuộc “nhận tin nhắn, hỏi AI, trả lời người dùng” cùng các tùy chọn cấu hình thông dụng. Chỉ xử lý sự kiện tin nhắn và phù hợp với các quy trình rõ ràng, dễ dự đoán.',
     allEvents: 'Hỗ trợ tất cả sự kiện',
     messageEventsOnly: 'Chỉ sự kiện tin nhắn',
     basicInfo: 'Thông tin cơ bản',

@@ -678,7 +678,7 @@ const zhHans = {
     groupByKind: '按类型分组',
     groupByKindShort: '分组',
     pipelineTypeDescription:
-      '按固定流程处理消息事件。适合步骤明确、需要稳定控制处理过程的场景。',
+      '流水线即为经典的“收到消息、请求AI、回复用户”流程，并辅以常用的配置功能。仅处理消息事件，适合步骤明确、需要稳定控制处理过程的场景。',
     allEvents: '支持全部事件',
     messageEventsOnly: '仅支持消息事件',
     chooseType: '选择处理方式',

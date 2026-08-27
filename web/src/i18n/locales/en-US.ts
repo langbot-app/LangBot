@@ -708,7 +708,7 @@ const enUS = {
     groupByKind: 'Group by type',
     groupByKindShort: 'Group',
     pipelineTypeDescription:
-      'Processes message events through a fixed flow. Best for scenarios with clear steps that need predictable execution.',
+      'A classic “receive a message, ask AI, reply to the user” flow with common configuration options. Handles message events only and works best for clear, predictable processes.',
     allEvents: 'Supports all events',
     messageEventsOnly: 'Message events only',
     chooseType: 'Choose how it works',
