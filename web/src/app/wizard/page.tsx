@@ -1513,16 +1513,24 @@ function StepAIEngine({
 
   if (choice === 'own-model') {
     return (
-      <OwnModelSetup
-        onBack={() => onChoiceChange('more-features')}
-        onSelectionChange={onOwnModelSelectionChange}
-      />
+      <div
+        key="ai-engine-own-model"
+        className="w-full animate-in fade-in-0 slide-in-from-right-4 duration-300 ease-out motion-reduce:animate-none"
+      >
+        <OwnModelSetup
+          onBack={() => onChoiceChange('more-features')}
+          onSelectionChange={onOwnModelSelectionChange}
+        />
+      </div>
     );
   }
 
   if (choice !== 'external') {
     return (
-      <div className="space-y-6 max-w-4xl mx-auto">
+      <div
+        key="ai-engine-choices"
+        className="mx-auto max-w-4xl space-y-6 animate-in fade-in-0 slide-in-from-left-4 duration-300 ease-out motion-reduce:animate-none"
+      >
         <div className="text-center">
           <h2 className="text-xl font-semibold">
             {t('wizard.aiEngine.title')}
@@ -1559,7 +1567,10 @@ function StepAIEngine({
   // Before any runner is selected: centered grid layout
   if (!selected) {
     return (
-      <div className="space-y-6 max-w-4xl mx-auto">
+      <div
+        key="ai-engine-external-picker"
+        className="mx-auto max-w-4xl space-y-6 animate-in fade-in-0 slide-in-from-right-4 duration-300 ease-out motion-reduce:animate-none"
+      >
         <div className="text-center">
           <h2 className="text-xl font-semibold">
             {t('wizard.aiEngine.title')}
@@ -1604,7 +1615,10 @@ function StepAIEngine({
   // On mobile (< lg): single column, normal scroll from parent
   // On desktop (>= lg): side-by-side with independent scroll per column
   return (
-    <div className="flex flex-col lg:flex-1 lg:min-h-0 max-w-6xl mx-auto w-full">
+    <div
+      key={`ai-engine-external-config-${selected}`}
+      className="mx-auto flex w-full max-w-6xl flex-col animate-in fade-in-0 slide-in-from-right-4 duration-300 ease-out motion-reduce:animate-none lg:min-h-0 lg:flex-1"
+    >
       <div className="text-center shrink-0 mb-4">
         <h2 className="text-xl font-semibold">{t('wizard.aiEngine.title')}</h2>
         <p className="text-sm text-muted-foreground mt-1">
@@ -1622,7 +1636,7 @@ function StepAIEngine({
         {t('wizard.aiEngine.backToChoices')}
       </Button>
 
-      <div className="flex flex-col lg:flex-row lg:justify-center gap-6 lg:flex-1 lg:min-h-0 animate-in fade-in slide-in-from-bottom-2 duration-300">
+      <div className="flex flex-col gap-6 lg:min-h-0 lg:flex-1 lg:flex-row lg:justify-center">
         {/* Left: runner list */}
         <div className="w-full lg:w-[280px] shrink-0 lg:overflow-y-auto lg:pr-3">
           {/* p-1 provides space for ring-2 (4px) to render without clipping */}
@@ -1669,7 +1683,7 @@ function StepAIEngine({
         </div>
 
         {/* Right: runner configuration — fixed width on desktop */}
-        <div className="w-full lg:w-[560px] shrink-0 lg:overflow-y-auto lg:pr-3 animate-in fade-in slide-in-from-right-2 duration-300">
+        <div className="w-full shrink-0 lg:w-[560px] lg:overflow-y-auto lg:pr-3">
           <div className="p-1">
             {runnerConfigItems.length > 0 && (
               <Card>

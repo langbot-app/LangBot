@@ -83,3 +83,19 @@ test('warns local-account users after the bot receives an IM message', () => {
   );
   assert.match(wizardSource, /<AlertTriangle className="size-3 text-white"/);
 });
+
+test('animates AI engine sub-pages and the return to choices', () => {
+  assert.match(
+    wizardSource,
+    /key="ai-engine-own-model"[\s\S]*?slide-in-from-right-4/,
+  );
+  assert.match(
+    wizardSource,
+    /key="ai-engine-external-picker"[\s\S]*?slide-in-from-right-4/,
+  );
+  assert.match(
+    wizardSource,
+    /key="ai-engine-choices"[\s\S]*?slide-in-from-left-4/,
+  );
+  assert.match(wizardSource, /motion-reduce:animate-none/);
+});
