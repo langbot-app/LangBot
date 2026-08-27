@@ -701,14 +701,14 @@ const enUS = {
     selectFromSidebar: 'Select an Agent or Pipeline from the sidebar',
     agentType: 'Agent',
     agentTypeDescription:
-      'Use a runner to handle messages, group members, friends, feedback, and other platform events.',
+      'Use a runner to handle messages, group members, friends, feedback, and other platform events. Best for scenarios that need autonomous decisions, tool use, or non-message events.',
     pipelineType: 'Pipeline',
     kindBadgeAgent: 'Agent',
     kindBadgePipeline: 'Pipeline',
     groupByKind: 'Group by type',
     groupByKindShort: 'Group',
     pipelineTypeDescription:
-      'Use a visual multi-stage flow to control message preprocessing, AI, postprocessing, extensions, and output. Message events only.',
+      'Use a visual multi-stage flow to control message preprocessing, AI, postprocessing, extensions, and output. Message events only. Best for fixed workflows that need predictable, step-by-step control.',
     allEvents: 'Supports all events',
     messageEventsOnly: 'Message events only',
     chooseType: 'Choose how it works',

@@ -714,14 +714,14 @@ const jaJP = {
       'サイドバーから Agent または Pipeline を選択してください',
     agentType: 'Agent',
     agentTypeDescription:
-      'Runner を使ってメッセージ、グループメンバー、友だち、フィードバックなどのプラットフォームイベントを処理します。',
+      'Runner を使ってメッセージ、グループメンバー、友だち、フィードバックなどのプラットフォームイベントを処理します。自律的な判断、ツール利用、メッセージ以外のイベント対応が必要な場合に適しています。',
     pipelineType: 'Pipeline',
     kindBadgeAgent: 'Agent',
     kindBadgePipeline: 'パイプライン',
     groupByKind: 'タイプ別にグループ化',
     groupByKindShort: 'グループ',
     pipelineTypeDescription:
-      'ビジュアルな多段フローで、メッセージの前処理、AI、後処理、拡張、出力を制御します。メッセージイベントのみ処理できます。',
+      'ビジュアルな多段フローで、メッセージの前処理、AI、後処理、拡張、出力を制御します。メッセージイベントのみ処理できます。固定フローを段階ごとに確実に制御したい場合に適しています。',
     allEvents: 'すべてのイベントに対応',
     messageEventsOnly: 'メッセージイベントのみ',
     chooseType: '処理方法を選択',

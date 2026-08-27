@@ -670,14 +670,15 @@ const zhHans = {
     editAgent: '编辑 Agent',
     selectFromSidebar: '从侧边栏选择一个 Agent 或 Pipeline',
     agentType: 'Agent',
-    agentTypeDescription: '通过运行器处理消息、群成员、好友、反馈等平台事件。',
+    agentTypeDescription:
+      '通过运行器处理消息、群成员、好友、反馈等平台事件。适合需要自主判断、调用工具或响应非消息事件的场景。',
     pipelineType: 'Pipeline',
     kindBadgeAgent: 'Agent',
     kindBadgePipeline: '流水线',
     groupByKind: '按类型分组',
     groupByKindShort: '分组',
     pipelineTypeDescription:
-      '通过可视化多阶段流程控制消息的预处理、AI、后处理、扩展和输出；仅处理消息事件。',
+      '通过可视化多阶段流程控制消息的预处理、AI、后处理、扩展和输出；仅处理消息事件。适合流程固定、希望逐步控制消息处理过程的场景。',
     allEvents: '支持全部事件',
     messageEventsOnly: '仅支持消息事件',
     chooseType: '选择处理方式',
