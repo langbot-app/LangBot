@@ -2,6 +2,9 @@ import { useId } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { AgentKind } from '@/app/infra/entities/api';
 
+const LANGBOT_BLUE = '#2288ee';
+const LANGBOT_CYAN = '#19b8c9';
+
 function ArrowMarker({ id }: { id: string }) {
   return (
     <defs>
@@ -13,7 +16,7 @@ function ArrowMarker({ id }: { id: string }) {
         refY="4"
         orient="auto"
       >
-        <path d="M0 0 8 4 0 8Z" fill="var(--muted-foreground)" />
+        <path d="M0 0 8 4 0 8Z" fill={LANGBOT_BLUE} />
       </marker>
     </defs>
   );
@@ -56,13 +59,14 @@ function AgentDiagram() {
         {t('agents.diagramEvents')}
       </text>
 
-      {inputs.map((item) => (
+      {inputs.map((item, index) => (
         <g key={item.label}>
           <path
             d={`M222 ${item.y + 29} C286 ${item.y + 29} 292 310 324 310`}
             fill="none"
-            stroke="var(--border)"
+            stroke={LANGBOT_BLUE}
             strokeWidth="2"
+            opacity="0.22"
           />
           <rect
             x="64"
@@ -70,10 +74,14 @@ function AgentDiagram() {
             width="158"
             height="58"
             rx="14"
-            fill="var(--muted)"
-            fillOpacity="0.55"
+            fill={`color-mix(in srgb, ${LANGBOT_BLUE} 7%, var(--card))`}
           />
-          <circle cx="91" cy={item.y + 29} r="5" fill="var(--primary)" />
+          <circle
+            cx="91"
+            cy={item.y + 29}
+            r="5"
+            fill={index === 1 ? LANGBOT_CYAN : LANGBOT_BLUE}
+          />
           <text
             x="110"
             y={item.y + 34}
@@ -92,7 +100,7 @@ function AgentDiagram() {
         width="112"
         height="64"
         rx="16"
-        fill="var(--primary)"
+        fill={LANGBOT_BLUE}
       />
       <text
         x="380"
@@ -110,8 +118,9 @@ function AgentDiagram() {
           <path
             d={`M436 310 C468 310 474 ${item.y + 29} 538 ${item.y + 29}`}
             fill="none"
-            stroke="var(--border)"
+            stroke={LANGBOT_BLUE}
             strokeWidth="2"
+            opacity="0.22"
             markerEnd={index === 2 ? `url(#${arrowId})` : undefined}
           />
           <rect
@@ -120,14 +129,13 @@ function AgentDiagram() {
             width="158"
             height="58"
             rx="14"
-            fill="var(--muted)"
-            fillOpacity="0.55"
+            fill={`color-mix(in srgb, ${LANGBOT_CYAN} 7%, var(--card))`}
           />
           <circle
             cx="565"
             cy={item.y + 29}
             r="5"
-            fill="var(--primary)"
+            fill={index === 1 ? LANGBOT_CYAN : LANGBOT_BLUE}
             opacity={index === 1 ? 1 : 0.48}
           />
           <text
@@ -170,8 +178,9 @@ function PipelineDiagram() {
       <path
         d="M86 310H718"
         fill="none"
-        stroke="var(--border)"
+        stroke={LANGBOT_BLUE}
         strokeWidth="2"
+        opacity="0.32"
         markerEnd={`url(#${arrowId})`}
       />
 
@@ -180,13 +189,13 @@ function PipelineDiagram() {
           cx="82"
           cy="310"
           r="42"
-          fill="var(--muted)"
-          stroke="var(--border)"
+          fill={`color-mix(in srgb, ${LANGBOT_BLUE} 8%, var(--card))`}
+          stroke={`color-mix(in srgb, ${LANGBOT_BLUE} 28%, var(--border))`}
         />
         <path
           d="M64 299h36v23H77l-9 8v-8h-4z"
           fill="none"
-          stroke="var(--foreground)"
+          stroke={LANGBOT_BLUE}
           strokeWidth="2"
           strokeLinejoin="round"
         />
@@ -213,21 +222,33 @@ function PipelineDiagram() {
               width="110"
               height="100"
               rx="18"
-              fill={active ? 'var(--primary)' : 'var(--card)'}
-              stroke={active ? 'var(--primary)' : 'var(--border)'}
+              fill={
+                active
+                  ? LANGBOT_BLUE
+                  : `color-mix(in srgb, ${LANGBOT_BLUE} 5%, var(--card))`
+              }
+              stroke={
+                active
+                  ? LANGBOT_BLUE
+                  : `color-mix(in srgb, ${LANGBOT_BLUE} 24%, var(--border))`
+              }
               strokeWidth={active ? 2 : 1}
             />
             <circle
               cx={x}
               cy="289"
               r="14"
-              fill={active ? 'var(--primary-foreground)' : 'var(--muted)'}
+              fill={
+                active
+                  ? 'var(--primary-foreground)'
+                  : `color-mix(in srgb, ${LANGBOT_BLUE} 12%, var(--card))`
+              }
             />
             <text
               x={x}
               y="294"
               textAnchor="middle"
-              fill={active ? 'var(--primary)' : 'var(--foreground)'}
+              fill={LANGBOT_BLUE}
               fontSize="12"
               fontWeight="700"
             >
