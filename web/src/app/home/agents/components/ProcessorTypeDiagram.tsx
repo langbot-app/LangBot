@@ -41,7 +41,6 @@ function AgentDiagram() {
       className="h-full w-full"
       data-testid="agent-diagram"
     >
-      <title>{t('agents.agentDiagramTitle')}</title>
       <desc>{t('agents.agentDiagramDescription')}</desc>
       <ArrowMarker id={arrowId} />
 
@@ -60,7 +59,7 @@ function AgentDiagram() {
       {inputs.map((item) => (
         <g key={item.label}>
           <path
-            d={`M222 ${item.y + 29} C286 ${item.y + 29} 282 310 314 310`}
+            d={`M222 ${item.y + 29} C286 ${item.y + 29} 292 310 324 310`}
             fill="none"
             stroke="var(--border)"
             strokeWidth="2"
@@ -87,35 +86,17 @@ function AgentDiagram() {
         </g>
       ))}
 
-      <circle
-        cx="380"
-        cy="310"
-        r="100"
-        fill="none"
-        stroke="var(--border)"
-        strokeDasharray="5 8"
-      />
-      <circle cx="380" cy="310" r="72" fill="var(--primary)" />
       <rect
-        x="351"
-        y="269"
-        width="58"
-        height="43"
-        rx="14"
-        fill="var(--primary-foreground)"
-      />
-      <circle cx="367" cy="290" r="3.5" fill="var(--primary)" />
-      <circle cx="393" cy="290" r="3.5" fill="var(--primary)" />
-      <path
-        d="M367 301c7 6 19 6 26 0M380 269v-10m-6 0h12"
-        fill="none"
-        stroke="var(--primary)"
-        strokeWidth="2"
-        strokeLinecap="round"
+        x="324"
+        y="278"
+        width="112"
+        height="64"
+        rx="16"
+        fill="var(--primary)"
       />
       <text
         x="380"
-        y="340"
+        y="317"
         textAnchor="middle"
         fill="var(--primary-foreground)"
         fontSize="18"
@@ -123,21 +104,11 @@ function AgentDiagram() {
       >
         {t('agents.agentType')}
       </text>
-      <text
-        x="380"
-        y="365"
-        textAnchor="middle"
-        fill="var(--primary-foreground)"
-        fontSize="11"
-        opacity="0.78"
-      >
-        {t('agents.diagramDecide')}
-      </text>
 
       {outputs.map((item, index) => (
         <g key={item.label}>
           <path
-            d={`M446 310 C478 310 474 ${item.y + 29} 538 ${item.y + 29}`}
+            d={`M436 310 C468 310 474 ${item.y + 29} 538 ${item.y + 29}`}
             fill="none"
             stroke="var(--border)"
             strokeWidth="2"
@@ -192,7 +163,6 @@ function PipelineDiagram() {
       className="h-full w-full"
       data-testid="pipeline-diagram"
     >
-      <title>{t('agents.pipelineDiagramTitle')}</title>
       <desc>{t('agents.pipelineDiagramDescription')}</desc>
       <ArrowMarker id={arrowId} />
 
