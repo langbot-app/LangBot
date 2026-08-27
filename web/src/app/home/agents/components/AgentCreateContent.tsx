@@ -5,15 +5,17 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { Bot, Workflow } from 'lucide-react';
+import { Bot, CheckCircle2, Workflow } from 'lucide-react';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { AgentKind } from '@/app/infra/entities/api';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import {
   Card,
   CardContent,
   CardDescription,
+  CardFooter,
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
@@ -27,6 +29,7 @@ import {
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import EmojiPicker from '@/components/ui/emoji-picker';
+import ProcessorTypeDiagram from './ProcessorTypeDiagram';
 
 export default function AgentCreateContent({
   onCreated,
@@ -110,38 +113,112 @@ export default function AgentCreateContent({
       </div>
 
       <div className="flex-1 overflow-y-auto min-h-0">
-        <div className="mx-auto max-w-2xl space-y-6">
-          <div className="grid gap-3 sm:grid-cols-2">
-            {typeOptions.map((option) => {
-              const Icon = option.icon;
-              const selected = kind === option.kind;
-              return (
-                <button
-                  key={option.kind}
-                  type="button"
-                  onClick={() => handleKindChange(option.kind)}
-                  className={cn(
-                    'rounded-lg border bg-card p-4 text-left transition-colors',
-                    selected
-                      ? 'border-primary ring-2 ring-primary/20'
-                      : 'hover:border-primary/60',
-                  )}
+        <div className="mx-auto max-w-5xl space-y-6 pb-6">
+          <div className="grid items-stretch gap-5 lg:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)]">
+            <section
+              aria-labelledby="processor-kind-heading"
+              className="space-y-3"
+            >
+              <div>
+                <h2
+                  id="processor-kind-heading"
+                  className="text-base font-semibold"
                 >
-                  <div className="flex items-start gap-3">
-                    <Icon className="mt-0.5 size-5 text-blue-500" />
-                    <div className="space-y-1">
-                      <div className="font-medium">{option.title}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {option.badge}
-                      </div>
-                      <p className="text-sm text-muted-foreground">
-                        {option.description}
-                      </p>
-                    </div>
+                  {t('agents.chooseType')}
+                </h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {t('agents.chooseTypeDescription')}
+                </p>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+                {typeOptions.map((option) => {
+                  const Icon = option.icon;
+                  const selected = kind === option.kind;
+                  return (
+                    <Card
+                      key={option.kind}
+                      data-processor-kind={option.kind}
+                      className={cn(
+                        'gap-0 py-0 transition-[border-color,box-shadow,background-color]',
+                        selected
+                          ? 'border-primary bg-primary/[0.035] shadow-sm ring-1 ring-primary/20'
+                          : 'hover:border-primary/50',
+                      )}
+                    >
+                      <CardContent className="h-full p-0">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          aria-pressed={selected}
+                          onClick={() => handleKindChange(option.kind)}
+                          className="h-full min-h-36 w-full items-start justify-start whitespace-normal rounded-xl p-4 text-left hover:bg-transparent"
+                        >
+                          <span
+                            className={cn(
+                              'flex size-10 shrink-0 items-center justify-center rounded-lg border bg-background',
+                              selected &&
+                                'border-primary/30 bg-primary/10 text-primary',
+                            )}
+                          >
+                            <Icon className="size-5" />
+                          </span>
+                          <span className="min-w-0 flex-1 space-y-2">
+                            <span className="flex items-center justify-between gap-3">
+                              <span className="font-semibold">
+                                {option.title}
+                              </span>
+                              {selected && (
+                                <CheckCircle2 className="size-4 shrink-0 text-primary" />
+                              )}
+                            </span>
+                            <Badge
+                              variant={selected ? 'default' : 'secondary'}
+                              className="font-normal"
+                            >
+                              {option.badge}
+                            </Badge>
+                            <span className="block text-sm leading-relaxed text-muted-foreground">
+                              {option.description}
+                            </span>
+                          </span>
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            </section>
+
+            <Card className="min-h-[360px] overflow-hidden py-0">
+              <CardHeader className="border-b bg-muted/20 py-5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <CardTitle>
+                      {kind === 'agent'
+                        ? t('agents.agentDiagramTitle')
+                        : t('agents.pipelineDiagramTitle')}
+                    </CardTitle>
+                    <CardDescription className="mt-1.5">
+                      {t('agents.diagramHint')}
+                    </CardDescription>
                   </div>
-                </button>
-              );
-            })}
+                  <Badge variant="outline">
+                    {kind === 'agent'
+                      ? t('agents.kindBadgeAgent')
+                      : t('agents.kindBadgePipeline')}
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="flex flex-1 items-center p-4 sm:p-6">
+                <ProcessorTypeDiagram kind={kind} />
+              </CardContent>
+              <CardFooter className="border-t bg-muted/20 px-6 py-4 text-sm leading-relaxed text-muted-foreground">
+                {kind === 'agent'
+                  ? t('agents.agentDiagramDescription')
+                  : t('agents.pipelineDiagramDescription')}
+              </CardFooter>
+            </Card>
           </div>
 
           <Card>

@@ -171,7 +171,22 @@ test.describe('frontend CRUD smoke flows', () => {
     await installLangBotApiMocks(page, { authenticated: true });
 
     await page.goto('/home/agents?id=new');
+    const agentTypeCard = page.locator('[data-processor-kind="agent"]');
+    const pipelineTypeCard = page.locator('[data-processor-kind="pipeline"]');
+    await expect(agentTypeCard).toHaveAttribute('data-slot', 'card');
+    await expect(pipelineTypeCard).toHaveAttribute('data-slot', 'card');
+    await expect(
+      agentTypeCard.getByRole('button', { name: /^Agent/ }),
+    ).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByTestId('agent-diagram')).toBeVisible();
+    await expect(page.getByTestId('pipeline-diagram')).toHaveCount(0);
+
     await page.getByRole('button', { name: /^Pipeline/ }).click();
+    await expect(
+      pipelineTypeCard.getByRole('button', { name: /^Pipeline/ }),
+    ).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByTestId('pipeline-diagram')).toBeVisible();
+    await expect(page.getByTestId('agent-diagram')).toHaveCount(0);
 
     await expect(page.locator('input[name="name"]')).toBeVisible();
     await page.locator('input[name="name"]').fill('Escalation Pipeline');
