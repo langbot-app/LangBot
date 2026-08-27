@@ -156,7 +156,8 @@ function AgentDiagram() {
 function PipelineDiagram() {
   const { t } = useTranslation();
   const arrowId = `pipeline-arrow-${useId().replace(/:/g, '')}`;
-  const stages = [
+  const steps = [
+    t('agents.diagramMessage'),
     t('agents.diagramPreprocess'),
     t('agents.diagramAI'),
     t('agents.diagramPostprocess'),
@@ -175,8 +176,17 @@ function PipelineDiagram() {
       <ArrowMarker id={arrowId} />
 
       <rect width="760" height="620" fill="var(--card)" />
+      <text
+        x="40"
+        y="238"
+        fill="var(--muted-foreground)"
+        fontSize="13"
+        fontWeight="600"
+      >
+        {t('agents.pipelineDiagramFlow')}
+      </text>
       <path
-        d="M86 310H718"
+        d="M156 310H738"
         fill="none"
         stroke={LANGBOT_BLUE}
         strokeWidth="2"
@@ -184,85 +194,40 @@ function PipelineDiagram() {
         markerEnd={`url(#${arrowId})`}
       />
 
-      <g>
-        <circle
-          cx="82"
-          cy="310"
-          r="42"
-          fill={`color-mix(in srgb, ${LANGBOT_BLUE} 8%, var(--card))`}
-          stroke={`color-mix(in srgb, ${LANGBOT_BLUE} 28%, var(--border))`}
-        />
-        <path
-          d="M64 299h36v23H77l-9 8v-8h-4z"
-          fill="none"
-          stroke={LANGBOT_BLUE}
-          strokeWidth="2"
-          strokeLinejoin="round"
-        />
-        <text
-          x="82"
-          y="382"
-          textAnchor="middle"
-          fill="var(--muted-foreground)"
-          fontSize="13"
-          fontWeight="550"
-        >
-          {t('agents.diagramMessage')}
-        </text>
-      </g>
-
-      {stages.map((stage, index) => {
-        const x = 198 + index * 146;
-        const active = index === 1;
+      {steps.map((step, index) => {
+        const x = 40 + index * 142;
+        const active = index === 2;
         return (
-          <g key={stage}>
+          <g key={step}>
             <rect
-              x={x - 55}
-              y="260"
-              width="110"
-              height="100"
-              rx="18"
+              x={x}
+              y="281"
+              width="116"
+              height="58"
+              rx="14"
               fill={
                 active
                   ? LANGBOT_BLUE
-                  : `color-mix(in srgb, ${LANGBOT_BLUE} 5%, var(--card))`
-              }
-              stroke={
-                active
-                  ? LANGBOT_BLUE
-                  : `color-mix(in srgb, ${LANGBOT_BLUE} 24%, var(--border))`
-              }
-              strokeWidth={active ? 2 : 1}
-            />
-            <circle
-              cx={x}
-              cy="289"
-              r="14"
-              fill={
-                active
-                  ? 'var(--primary-foreground)'
-                  : `color-mix(in srgb, ${LANGBOT_BLUE} 12%, var(--card))`
+                  : `color-mix(in srgb, ${index === 3 ? LANGBOT_CYAN : LANGBOT_BLUE} 7%, var(--card))`
               }
             />
+            {!active && (
+              <circle
+                cx={x + 25}
+                cy="310"
+                r="5"
+                fill={index === 3 ? LANGBOT_CYAN : LANGBOT_BLUE}
+              />
+            )}
             <text
-              x={x}
-              y="294"
-              textAnchor="middle"
-              fill={LANGBOT_BLUE}
-              fontSize="12"
-              fontWeight="700"
-            >
-              {index + 1}
-            </text>
-            <text
-              x={x}
-              y="330"
-              textAnchor="middle"
+              x={active ? x + 58 : x + 44}
+              y="315"
+              textAnchor={active ? 'middle' : 'start'}
               fill={active ? 'var(--primary-foreground)' : 'var(--foreground)'}
               fontSize="13"
               fontWeight="600"
             >
-              {stage}
+              {step}
             </text>
           </g>
         );
