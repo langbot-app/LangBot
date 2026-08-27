@@ -25,6 +25,7 @@ from linebot.v3.webhooks import (
     ImageMessageContent,
     VideoMessageContent,
     AudioMessageContent,
+    UserMentionee,
 )
 
 # from linebot import WebhookParser
@@ -58,15 +59,19 @@ class LINEMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
 
         return content_list
 
-    @staticmethod
-    async def target2yiri(message, bot_client) -> platform_message.MessageChain:
+    def __init__(self, bot_account_id: str = ''):
+        self.bot_account_id = bot_account_id
+
+    async def target2yiri(self, message, bot_client) -> platform_message.MessageChain:
         lb_msg_list = []
         msg_create_time = datetime.datetime.fromtimestamp(int(message.timestamp) / 1000)
 
         lb_msg_list.append(platform_message.Source(id=message.webhook_event_id, time=msg_create_time))
 
         if isinstance(message.message, TextMessageContent):
-            lb_msg_list.append(platform_message.Plain(text=message.message.text))
+            lb_msg_list.extend(
+                self._build_text_components(message.message.text, getattr(message.message, 'mention', None))
+            )
         elif isinstance(message.message, AudioMessageContent):
             pass
         elif isinstance(message.message, VideoMessageContent):
@@ -86,17 +91,55 @@ class LINEMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
             lb_msg_list.append(platform_message.Image(base64=data_uri))
         return platform_message.MessageChain(lb_msg_list)
 
+    def _build_text_components(self, text: str, mention) -> list:
+        """Build message components from text, inserting At components for mentions.
+
+        LINE provides mention positions (index/length) and is_self per mentionee in the
+        webhook payload. Mapping the bot mention to At(target=bot_account_id) makes the
+        'at-bot' group respond rule work for LINE, consistent with other adapters.
+        """
+        components: list = []
+        if not mention or not mention.mentionees:
+            if text:
+                components.append(platform_message.Plain(text=text))
+            return components
+        segments: list[tuple[int, int, object]] = sorted((m.index, m.index + m.length, m) for m in mention.mentionees)
+        cursor = 0
+        for start, end, mentionee in segments:
+            if start < cursor:
+                start, end = cursor, min(end, len(text))
+            if start < cursor or end <= start or end > len(text):
+                continue
+            if start > cursor:
+                components.append(platform_message.Plain(text=text[cursor:start]))
+            if isinstance(mentionee, UserMentionee):
+                target = self.bot_account_id if mentionee.is_self else mentionee.user_id
+                if not target:
+                    target = text[start:end]
+            else:
+                target = text[start:end]
+            # At.__str__ already prepends '@', so strip one from the LINE text token.
+            display = text[start:end].lstrip('@')
+            components.append(platform_message.At(target=str(target), display=display))
+            cursor = end
+        if cursor < len(text):
+            components.append(platform_message.Plain(text=text[cursor:]))
+        return components
+
 
 class LINEEventConverter(abstract_platform_adapter.AbstractEventConverter):
+    def __init__(self, bot_account_id: str = ''):
+        self.bot_account_id = bot_account_id
+        self.message_converter = LINEMessageConverter(bot_account_id)
+
     @staticmethod
     async def yiri2target(
         event: platform_events.MessageEvent,
     ) -> MessageEvent:
         pass
 
-    @staticmethod
-    async def target2yiri(event, bot_client) -> platform_events.Event:
-        message_chain = await LINEMessageConverter.target2yiri(event, bot_client)
+    async def target2yiri(self, event, bot_client) -> platform_events.Event:
+        message_chain = await self.message_converter.target2yiri(event, bot_client)
 
         if event.source.type == 'user':
             return platform_events.FriendMessage(
@@ -169,8 +212,8 @@ class LINEAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             listeners={},
             card_id_dict={},
             seq=1,
-            event_converter=LINEEventConverter(),
-            message_converter=LINEMessageConverter(),
+            event_converter=LINEEventConverter(bot_account_id),
+            message_converter=LINEMessageConverter(bot_account_id),
             line_webhook=line_webhook,
             parser=parser,
             configuration=configuration,
