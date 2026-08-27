@@ -280,82 +280,6 @@ export default function AgentDebugPanel({
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col">
-      <div className="shrink-0 space-y-3 border-b p-3">
-        <div className="flex items-end gap-2">
-          <div className="min-w-0 flex-1 space-y-1.5">
-            <Label>{t('agents.debugEventType')}</Label>
-            <Select value={preset} onValueChange={selectPreset}>
-              <SelectTrigger
-                className="w-full"
-                aria-label={t('agents.debugEventType')}
-              >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="w-[var(--radix-select-trigger-width)] max-w-[calc(100vw-2rem)]">
-                {eventGroups.map((group) => (
-                  <SelectGroup key={group.namespace}>
-                    <SelectLabel>
-                      {eventGroupLabel(group.namespace, t)}
-                    </SelectLabel>
-                    {group.patterns.map((event) => (
-                      <SelectItem
-                        key={event}
-                        value={event}
-                        description={eventPatternDescription(event, t)}
-                        className="py-2"
-                      >
-                        <EventSelectOptionContent
-                          event={event}
-                          label={eventPatternLabel(event, t)}
-                        />
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                ))}
-                {supportsCustomEvent && (
-                  <SelectGroup>
-                    <SelectLabel>{t('agents.debugCustomEvent')}</SelectLabel>
-                    <SelectItem
-                      value="custom"
-                      description={t('bots.eventDescriptions.custom')}
-                      className="py-2"
-                    >
-                      <EventSelectOptionContent
-                        event="custom.event"
-                        label={t('agents.debugCustomEvent')}
-                      />
-                    </SelectItem>
-                  </SelectGroup>
-                )}
-              </SelectContent>
-            </Select>
-          </div>
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            onClick={resetSession}
-            title={t('agents.debugResetSession')}
-          >
-            <RotateCcw className="size-4" />
-          </Button>
-        </div>
-
-        {preset === 'custom' && (
-          <div className="space-y-1.5">
-            <Label htmlFor="agent-debug-custom-event">
-              {t('agents.debugCustomEventType')}
-            </Label>
-            <Input
-              id="agent-debug-custom-event"
-              value={customEventType}
-              onChange={(event) => setCustomEventType(event.target.value)}
-              placeholder="custom.event"
-            />
-          </div>
-        )}
-      </div>
-
       <div className="min-h-0 flex-1 overflow-y-auto p-3">
         <div className="mb-3">
           <p className="text-sm font-medium">{t('agents.debugTranscript')}</p>
@@ -437,6 +361,80 @@ export default function AgentDebugPanel({
       </div>
 
       <div className="shrink-0 space-y-3 border-t p-3">
+        <div className="flex items-end gap-2">
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <Label>{t('agents.debugEventType')}</Label>
+            <Select value={preset} onValueChange={selectPreset}>
+              <SelectTrigger
+                className="w-full"
+                aria-label={t('agents.debugEventType')}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="w-[var(--radix-select-trigger-width)] max-w-[calc(100vw-2rem)]">
+                {eventGroups.map((group) => (
+                  <SelectGroup key={group.namespace}>
+                    <SelectLabel>
+                      {eventGroupLabel(group.namespace, t)}
+                    </SelectLabel>
+                    {group.patterns.map((event) => (
+                      <SelectItem
+                        key={event}
+                        value={event}
+                        description={eventPatternDescription(event, t)}
+                        className="py-2"
+                      >
+                        <EventSelectOptionContent
+                          event={event}
+                          label={eventPatternLabel(event, t)}
+                        />
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                ))}
+                {supportsCustomEvent && (
+                  <SelectGroup>
+                    <SelectLabel>{t('agents.debugCustomEvent')}</SelectLabel>
+                    <SelectItem
+                      value="custom"
+                      description={t('bots.eventDescriptions.custom')}
+                      className="py-2"
+                    >
+                      <EventSelectOptionContent
+                        event="custom.event"
+                        label={t('agents.debugCustomEvent')}
+                      />
+                    </SelectItem>
+                  </SelectGroup>
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            onClick={resetSession}
+            title={t('agents.debugResetSession')}
+          >
+            <RotateCcw className="size-4" />
+          </Button>
+        </div>
+
+        {preset === 'custom' && (
+          <div className="space-y-1.5">
+            <Label htmlFor="agent-debug-custom-event">
+              {t('agents.debugCustomEventType')}
+            </Label>
+            <Input
+              id="agent-debug-custom-event"
+              value={customEventType}
+              onChange={(event) => setCustomEventType(event.target.value)}
+              placeholder="custom.event"
+            />
+          </div>
+        )}
+
         <div className="space-y-1.5">
           <Label htmlFor="agent-debug-input">
             {isMessageEvent

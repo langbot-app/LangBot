@@ -31,6 +31,18 @@ test.describe('processor detail workbench', () => {
       name: 'Event type',
     });
     await expect(debugEventPicker).toContainText('message.received');
+    const transcriptBox = await debugPanel
+      .getByText('Debug transcript', { exact: true })
+      .boundingBox();
+    const eventPickerBox = await debugEventPicker.boundingBox();
+    const conversationInputBox = await debugPanel
+      .getByRole('textbox', { name: 'Conversation input' })
+      .boundingBox();
+    expect(transcriptBox).not.toBeNull();
+    expect(eventPickerBox).not.toBeNull();
+    expect(conversationInputBox).not.toBeNull();
+    expect(eventPickerBox!.y).toBeGreaterThan(transcriptBox!.y);
+    expect(eventPickerBox!.y).toBeLessThan(conversationInputBox!.y);
     await debugEventPicker.click();
     await expect(page.getByRole('group', { name: 'Messages' })).toBeVisible();
     await expect(page.getByRole('group', { name: 'Groups' })).toBeVisible();
