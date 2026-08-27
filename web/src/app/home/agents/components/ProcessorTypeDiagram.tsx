@@ -287,10 +287,11 @@ function PipelineDiagram() {
         fill="none"
         stroke={LANGBOT_BLUE}
         strokeWidth="3"
-        strokeDasharray="4 14"
+        strokeDasharray="4 11"
         strokeLinecap="round"
         className="processor-line-flow"
         data-motion="flow"
+        data-dash-cycle="15"
       />
 
       {steps.map((step, index) => {

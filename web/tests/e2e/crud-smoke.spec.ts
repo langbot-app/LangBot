@@ -196,7 +196,7 @@ test.describe('frontend CRUD smoke flows', () => {
     await expect(page.getByTestId('pipeline-diagram')).toBeVisible();
     await expect(
       page.getByTestId('pipeline-diagram').locator('[data-motion="flow"]'),
-    ).toHaveCount(1);
+    ).toHaveAttribute('data-dash-cycle', '15');
     await expect(page.getByTestId('agent-diagram')).toHaveCount(0);
 
     await expect(page.locator('input[name="name"]')).toBeVisible();
