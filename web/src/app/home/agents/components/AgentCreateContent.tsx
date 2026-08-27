@@ -82,13 +82,13 @@ export default function AgentCreateContent({
       kind: 'agent' as const,
       icon: Bot,
       title: t('agents.agentType'),
-      helper: t('agents.allEvents'),
+      description: t('agents.agentTypeDescription'),
     },
     {
       kind: 'pipeline' as const,
       icon: Workflow,
       title: t('agents.pipelineType'),
-      helper: t('agents.messageEventsOnly'),
+      description: t('agents.pipelineTypeDescription'),
     },
   ];
 
@@ -138,18 +138,18 @@ export default function AgentCreateContent({
                         key={option.kind}
                         value={option.kind}
                         data-processor-kind={option.kind}
-                        aria-label={`${option.title} ${option.helper}`}
-                        className="h-auto min-h-24 w-full justify-start gap-3 rounded-lg border px-4 py-4 text-left shadow-none hover:bg-muted/40 data-[state=on]:border-[#2288ee]/50 data-[state=on]:bg-blue-50/60 data-[state=on]:text-foreground data-[state=on]:shadow-none dark:data-[state=on]:border-blue-500/50 dark:data-[state=on]:bg-blue-500/10"
+                        aria-label={`${option.title} ${option.description}`}
+                        className="h-auto min-h-28 w-full items-start justify-start gap-3 rounded-lg border px-4 py-4 text-left whitespace-normal shadow-none hover:bg-muted/40 data-[state=on]:border-[#2288ee]/50 data-[state=on]:bg-blue-50/60 data-[state=on]:text-foreground data-[state=on]:shadow-none dark:data-[state=on]:border-blue-500/50 dark:data-[state=on]:bg-blue-500/10"
                       >
                         <span className="flex size-9 shrink-0 items-center justify-center rounded-md border bg-background text-[#2288ee] shadow-xs">
                           <Icon className="size-4" />
                         </span>
-                        <span className="min-w-0 space-y-1">
+                        <span className="min-w-0 space-y-1.5">
                           <span className="block text-sm font-medium">
                             {option.title}
                           </span>
-                          <span className="block text-xs font-normal text-muted-foreground">
-                            {option.helper}
+                          <span className="block text-sm font-normal leading-relaxed text-muted-foreground">
+                            {option.description}
                           </span>
                         </span>
                       </ToggleGroupItem>
