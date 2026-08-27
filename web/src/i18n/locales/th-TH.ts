@@ -498,7 +498,7 @@ const thTH = {
     agentType: 'Agent',
     agentTypeDescription:
       'ใช้ runner เพื่อประมวลผลข้อความ สมาชิกกลุ่ม เพื่อน ฟีดแบ็ก และเหตุการณ์แพลตฟอร์มอื่นๆ',
-    pipelineType: 'Pipeline',
+    pipelineType: 'ไปป์ไลน์',
     kindBadgeAgent: 'Agent',
     kindBadgePipeline: 'Pipeline',
     groupByKind: 'จัดกลุ่มตามประเภท',

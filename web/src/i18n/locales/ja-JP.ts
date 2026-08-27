@@ -715,7 +715,7 @@ const jaJP = {
     agentType: 'Agent',
     agentTypeDescription:
       'Runner を使ってメッセージ、グループメンバー、友だち、フィードバックなどのプラットフォームイベントを処理します。自律的な判断、ツール利用、メッセージ以外のイベント対応が必要な場合に適しています。',
-    pipelineType: 'Pipeline',
+    pipelineType: 'パイプライン',
     kindBadgeAgent: 'Agent',
     kindBadgePipeline: 'パイプライン',
     groupByKind: 'タイプ別にグループ化',

@@ -74,6 +74,20 @@ async function forceFormSubmit(page: Page, formSelector: string) {
 }
 
 test.describe('frontend CRUD smoke flows', () => {
+  test('localizes the pipeline processor type in Simplified Chinese', async ({
+    page,
+  }) => {
+    await installLangBotApiMocks(page, {
+      authenticated: true,
+      language: 'zh-Hans',
+    });
+
+    await page.goto('/home/agents?id=new');
+    await expect(
+      page.locator('[data-processor-kind="pipeline"]'),
+    ).toContainText('流水线');
+  });
+
   test('viewer keeps ordinary bot and pipeline monitoring access', async ({
     page,
   }) => {

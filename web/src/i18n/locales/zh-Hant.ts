@@ -481,7 +481,7 @@ const zhHant = {
     selectFromSidebar: '從側邊欄選擇一個 Agent 或 Pipeline',
     agentType: 'Agent',
     agentTypeDescription: '透過執行器處理訊息、群成員、好友、回饋等平台事件。',
-    pipelineType: 'Pipeline',
+    pipelineType: '流程線',
     kindBadgeAgent: 'Agent',
     kindBadgePipeline: '流水線',
     groupByKind: '依類型分組',

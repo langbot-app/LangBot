@@ -672,7 +672,7 @@ const zhHans = {
     agentType: 'Agent',
     agentTypeDescription:
       '通过运行器处理消息、群成员、好友、反馈等平台事件。适合需要自主判断、调用工具或响应非消息事件的场景。',
-    pipelineType: 'Pipeline',
+    pipelineType: '流水线',
     kindBadgeAgent: 'Agent',
     kindBadgePipeline: '流水线',
     groupByKind: '按类型分组',

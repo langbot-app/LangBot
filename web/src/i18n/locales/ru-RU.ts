@@ -512,7 +512,7 @@ const ruRU = {
     agentType: 'Agent',
     agentTypeDescription:
       'Используйте runner для обработки сообщений, участников групп, друзей, обратной связи и других событий платформы.',
-    pipelineType: 'Pipeline',
+    pipelineType: 'Конвейер',
     kindBadgeAgent: 'Agent',
     kindBadgePipeline: 'Pipeline',
     groupByKind: 'Группировать по типу',

@@ -508,7 +508,7 @@ const viVN = {
     agentType: 'Agent',
     agentTypeDescription:
       'Dùng runner để xử lý tin nhắn, thành viên nhóm, bạn bè, phản hồi và các sự kiện nền tảng khác.',
-    pipelineType: 'Pipeline',
+    pipelineType: 'Quy trình',
     kindBadgeAgent: 'Agent',
     kindBadgePipeline: 'Pipeline',
     groupByKind: 'Nhóm theo loại',

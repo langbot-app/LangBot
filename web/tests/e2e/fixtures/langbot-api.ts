@@ -1239,6 +1239,7 @@ export async function installLangBotApiMocks(
   page: Page,
   options: {
     authenticated?: boolean;
+    language?: string;
     monitoringData?: unknown;
     monitoringSessions?: unknown[];
     sessionAnalyses?: Record<string, unknown>;
@@ -1251,6 +1252,7 @@ export async function installLangBotApiMocks(
 ) {
   const {
     authenticated = false,
+    language = 'en-US',
     monitoringData,
     monitoringSessions,
     sessionAnalyses,
@@ -1278,8 +1280,8 @@ export async function installLangBotApiMocks(
   };
 
   await page.addInitScript(
-    ({ authenticated, storage }) => {
-      localStorage.setItem('langbot_language', 'en-US');
+    ({ authenticated, language, storage }) => {
+      localStorage.setItem('langbot_language', language);
       localStorage.setItem('extensions_group_by_type', 'false');
 
       if (authenticated) {
@@ -1294,7 +1296,7 @@ export async function installLangBotApiMocks(
         localStorage.setItem(key, String(value));
       }
     },
-    { authenticated, storage },
+    { authenticated, language, storage },
   );
 
   await page.route('**/api/v1/**', (route) => handleBackendApi(route, state));

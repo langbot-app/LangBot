@@ -515,7 +515,7 @@ const esES = {
     agentType: 'Agent',
     agentTypeDescription:
       'Usa un runner para procesar mensajes, miembros de grupo, amigos, retroalimentación y otros eventos de plataforma.',
-    pipelineType: 'Pipeline',
+    pipelineType: 'Flujo de trabajo',
     kindBadgeAgent: 'Agent',
     kindBadgePipeline: 'Pipeline',
     groupByKind: 'Agrupar por tipo',
