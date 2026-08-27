@@ -145,7 +145,7 @@ export default function AgentCreateContent({
                           <Icon className="size-4" />
                         </span>
                         <span className="min-w-0 space-y-1.5">
-                          <span className="block text-sm font-medium">
+                          <span className="block text-sm font-medium text-foreground">
                             {option.title}
                           </span>
                           <span className="block text-sm font-normal leading-relaxed text-muted-foreground">
@@ -226,7 +226,7 @@ export default function AgentCreateContent({
               </Card>
             </div>
 
-            <Card className="min-h-[600px] overflow-hidden py-0 lg:min-h-[680px]">
+            <Card className="min-h-[600px] overflow-hidden py-0 dark:border-white/16 lg:min-h-[680px]">
               <CardContent className="flex h-full items-center p-0">
                 <ProcessorTypeDiagram kind={kind} />
               </CardContent>

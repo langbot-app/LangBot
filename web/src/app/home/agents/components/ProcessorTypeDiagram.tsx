@@ -13,8 +13,32 @@ function DiagramMotionStyles() {
       }
 
       @keyframes processor-link-breathe {
-        0%, 100% { stroke-opacity: 0.28; }
-        50% { stroke-opacity: 0.72; }
+        0%, 100% { stroke-opacity: var(--processor-relation-opacity-min); }
+        50% { stroke-opacity: var(--processor-relation-opacity-max); }
+      }
+
+      .processor-diagram {
+        --processor-blue-node-fill: color-mix(in srgb, ${LANGBOT_BLUE} 7%, var(--card));
+        --processor-cyan-node-fill: color-mix(in srgb, ${LANGBOT_CYAN} 7%, var(--card));
+        --processor-node-stroke-opacity: 0.18;
+        --processor-flow-opacity: 0.34;
+        --processor-relation-opacity-min: 0.28;
+        --processor-relation-opacity-max: 0.72;
+        --processor-capability-fill: color-mix(in srgb, ${LANGBOT_CYAN} 4%, var(--card));
+        --processor-capability-stroke-opacity: 0.45;
+        --processor-icon-fill: color-mix(in srgb, ${LANGBOT_CYAN} 10%, var(--card));
+      }
+
+      .dark .processor-diagram {
+        --processor-blue-node-fill: color-mix(in srgb, ${LANGBOT_BLUE} 17%, var(--card));
+        --processor-cyan-node-fill: color-mix(in srgb, ${LANGBOT_CYAN} 15%, var(--card));
+        --processor-node-stroke-opacity: 0.5;
+        --processor-flow-opacity: 0.72;
+        --processor-relation-opacity-min: 0.58;
+        --processor-relation-opacity-max: 1;
+        --processor-capability-fill: color-mix(in srgb, ${LANGBOT_CYAN} 10%, var(--card));
+        --processor-capability-stroke-opacity: 0.78;
+        --processor-icon-fill: color-mix(in srgb, ${LANGBOT_CYAN} 20%, var(--card));
       }
 
       .processor-line-flow {
@@ -105,7 +129,7 @@ function AgentDiagram() {
       viewBox="0 0 760 620"
       role="img"
       aria-label={t('agents.agentDiagramTitle')}
-      className="h-full w-full"
+      className="processor-diagram h-full w-full"
       data-testid="agent-diagram"
     >
       <desc>{t('agents.agentDiagramDescription')}</desc>
@@ -132,7 +156,7 @@ function AgentDiagram() {
             stroke={LANGBOT_BLUE}
             strokeWidth="2"
             strokeDasharray="4 11"
-            opacity="0.32"
+            opacity="var(--processor-flow-opacity)"
             markerEnd={`url(#${arrowId})`}
             className="processor-line-flow"
             data-motion="flow"
@@ -144,7 +168,9 @@ function AgentDiagram() {
             width="158"
             height="58"
             rx="14"
-            fill={`color-mix(in srgb, ${LANGBOT_BLUE} 7%, var(--card))`}
+            fill="var(--processor-blue-node-fill)"
+            stroke={LANGBOT_BLUE}
+            strokeOpacity="var(--processor-node-stroke-opacity)"
           />
           <circle
             cx="91"
@@ -201,7 +227,6 @@ function AgentDiagram() {
             stroke={LANGBOT_CYAN}
             strokeWidth="1.8"
             strokeDasharray="5 6"
-            opacity="0.48"
             className="processor-link-breathe"
             data-motion="relation"
             style={{ animationDelay: `${index * -0.45}s` }}
@@ -212,18 +237,18 @@ function AgentDiagram() {
             width="158"
             height="58"
             rx="14"
-            fill="var(--card)"
+            fill="var(--processor-capability-fill)"
             stroke={LANGBOT_CYAN}
-            strokeOpacity="0.45"
+            strokeOpacity="var(--processor-capability-stroke-opacity)"
             strokeWidth="1.5"
           />
           <circle
             cx="565"
             cy={item.y + 29}
             r="11"
-            fill={`color-mix(in srgb, ${LANGBOT_CYAN} 10%, var(--card))`}
+            fill="var(--processor-icon-fill)"
             stroke={LANGBOT_CYAN}
-            strokeOpacity="0.5"
+            strokeOpacity="var(--processor-capability-stroke-opacity)"
           />
           <CapabilityIcon kind={item.kind} x={565} y={item.y + 29} />
           <text
@@ -257,7 +282,7 @@ function PipelineDiagram() {
       viewBox="0 0 760 620"
       role="img"
       aria-label={t('agents.pipelineDiagramTitle')}
-      className="h-full w-full"
+      className="processor-diagram h-full w-full"
       data-testid="pipeline-diagram"
     >
       <desc>{t('agents.pipelineDiagramDescription')}</desc>
@@ -279,7 +304,7 @@ function PipelineDiagram() {
         fill="none"
         stroke={LANGBOT_BLUE}
         strokeWidth="2"
-        opacity="0.32"
+        opacity="var(--processor-flow-opacity)"
         markerEnd={`url(#${arrowId})`}
       />
       <path
@@ -308,7 +333,19 @@ function PipelineDiagram() {
               fill={
                 active
                   ? LANGBOT_BLUE
-                  : `color-mix(in srgb, ${index === 3 ? LANGBOT_CYAN : LANGBOT_BLUE} 7%, var(--card))`
+                  : index === 3
+                    ? 'var(--processor-cyan-node-fill)'
+                    : 'var(--processor-blue-node-fill)'
+              }
+              stroke={
+                active
+                  ? LANGBOT_BLUE
+                  : index === 3
+                    ? LANGBOT_CYAN
+                    : LANGBOT_BLUE
+              }
+              strokeOpacity={
+                active ? 1 : 'var(--processor-node-stroke-opacity)'
               }
             />
             {!active && (

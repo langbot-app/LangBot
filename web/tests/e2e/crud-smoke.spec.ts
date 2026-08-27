@@ -191,6 +191,15 @@ test.describe('frontend CRUD smoke flows', () => {
     ).toHaveCount(3);
     await expect(page.getByTestId('pipeline-diagram')).toHaveCount(0);
 
+    await page.evaluate(() => document.documentElement.classList.add('dark'));
+    await expect(page.getByTestId('agent-diagram')).toHaveCSS(
+      '--processor-flow-opacity',
+      '0.72',
+    );
+    await expect(page.getByTestId('agent-diagram')).toHaveCSS(
+      '--processor-node-stroke-opacity',
+      '0.5',
+    );
     await page.getByRole('radio', { name: /^Pipeline/ }).click();
     await expect(pipelineTypeCard).toHaveAttribute('aria-checked', 'true');
     await expect(page.getByTestId('pipeline-diagram')).toBeVisible();
@@ -198,7 +207,6 @@ test.describe('frontend CRUD smoke flows', () => {
       page.getByTestId('pipeline-diagram').locator('[data-motion="flow"]'),
     ).toHaveAttribute('data-dash-cycle', '15');
     await expect(page.getByTestId('agent-diagram')).toHaveCount(0);
-
     await expect(page.locator('input[name="name"]')).toBeVisible();
     await page.locator('input[name="name"]').fill('Escalation Pipeline');
     await page
