@@ -1,16 +1,14 @@
 import { useState } from 'react';
-import type React from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { Bot, CheckCircle2, Workflow } from 'lucide-react';
+import { Bot, Workflow } from 'lucide-react';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { AgentKind } from '@/app/infra/entities/api';
-import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import {
   Card,
   CardContent,
@@ -79,26 +77,18 @@ export default function AgentCreateContent({
       });
   }
 
-  const typeOptions: Array<{
-    kind: AgentKind;
-    icon: React.ElementType;
-    title: string;
-    description: string;
-    badge: string;
-  }> = [
+  const typeOptions = [
     {
-      kind: 'agent',
+      kind: 'agent' as const,
       icon: Bot,
       title: t('agents.agentType'),
-      description: t('agents.agentTypeDescription'),
-      badge: t('agents.allEvents'),
+      helper: t('agents.allEvents'),
     },
     {
-      kind: 'pipeline',
+      kind: 'pipeline' as const,
       icon: Workflow,
       title: t('agents.pipelineType'),
-      description: t('agents.pipelineTypeDescription'),
-      badge: t('agents.messageEventsOnly'),
+      helper: t('agents.messageEventsOnly'),
     },
   ];
 
@@ -131,63 +121,41 @@ export default function AgentCreateContent({
                   </p>
                 </div>
 
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+                <ToggleGroup
+                  type="single"
+                  value={kind}
+                  onValueChange={(value) => {
+                    if (value) handleKindChange(value as AgentKind);
+                  }}
+                  variant="outline"
+                  spacing={3}
+                  className="grid w-full gap-3 sm:grid-cols-2 lg:grid-cols-1"
+                >
                   {typeOptions.map((option) => {
                     const Icon = option.icon;
-                    const selected = kind === option.kind;
                     return (
-                      <Card
+                      <ToggleGroupItem
                         key={option.kind}
+                        value={option.kind}
                         data-processor-kind={option.kind}
-                        className={cn(
-                          'gap-0 py-0 transition-[border-color,box-shadow,background-color]',
-                          selected
-                            ? 'border-primary bg-primary/[0.035] shadow-sm ring-1 ring-primary/20'
-                            : 'hover:border-primary/50',
-                        )}
+                        aria-label={`${option.title} ${option.helper}`}
+                        className="h-auto min-h-24 w-full justify-start gap-3 rounded-lg border px-4 py-4 text-left shadow-none hover:bg-muted/40 data-[state=on]:border-[#2288ee]/50 data-[state=on]:bg-blue-50/60 data-[state=on]:text-foreground data-[state=on]:shadow-none dark:data-[state=on]:border-blue-500/50 dark:data-[state=on]:bg-blue-500/10"
                       >
-                        <CardContent className="h-full p-0">
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            aria-pressed={selected}
-                            onClick={() => handleKindChange(option.kind)}
-                            className="h-full min-h-32 w-full items-start justify-start whitespace-normal rounded-xl p-4 text-left hover:bg-transparent"
-                          >
-                            <span
-                              className={cn(
-                                'flex size-10 shrink-0 items-center justify-center rounded-lg border bg-background',
-                                selected &&
-                                  'border-primary/30 bg-primary/10 text-primary',
-                              )}
-                            >
-                              <Icon className="size-5" />
-                            </span>
-                            <span className="min-w-0 flex-1 space-y-2">
-                              <span className="flex items-center justify-between gap-3">
-                                <span className="font-semibold">
-                                  {option.title}
-                                </span>
-                                {selected && (
-                                  <CheckCircle2 className="size-4 shrink-0 text-primary" />
-                                )}
-                              </span>
-                              <Badge
-                                variant={selected ? 'default' : 'secondary'}
-                                className="font-normal"
-                              >
-                                {option.badge}
-                              </Badge>
-                              <span className="block text-sm leading-relaxed text-muted-foreground">
-                                {option.description}
-                              </span>
-                            </span>
-                          </Button>
-                        </CardContent>
-                      </Card>
+                        <span className="flex size-9 shrink-0 items-center justify-center rounded-md border bg-background text-[#2288ee] shadow-xs">
+                          <Icon className="size-4" />
+                        </span>
+                        <span className="min-w-0 space-y-1">
+                          <span className="block text-sm font-medium">
+                            {option.title}
+                          </span>
+                          <span className="block text-xs font-normal text-muted-foreground">
+                            {option.helper}
+                          </span>
+                        </span>
+                      </ToggleGroupItem>
                     );
                   })}
-                </div>
+                </ToggleGroup>
               </section>
 
               <Card>

@@ -97,7 +97,7 @@ test.describe('frontend CRUD smoke flows', () => {
     await expect(page).toHaveURL(/\/home\/bots\?id=bot-1$/);
 
     await page.goto('/home/agents?id=new');
-    await page.getByRole('button', { name: /^Pipeline/ }).click();
+    await page.getByRole('radio', { name: /^Pipeline/ }).click();
     await page.locator('input[name="name"]').fill('Viewer Pipeline');
     await page
       .locator('input[name="description"]')
@@ -173,18 +173,20 @@ test.describe('frontend CRUD smoke flows', () => {
     await page.goto('/home/agents?id=new');
     const agentTypeCard = page.locator('[data-processor-kind="agent"]');
     const pipelineTypeCard = page.locator('[data-processor-kind="pipeline"]');
-    await expect(agentTypeCard).toHaveAttribute('data-slot', 'card');
-    await expect(pipelineTypeCard).toHaveAttribute('data-slot', 'card');
-    await expect(
-      agentTypeCard.getByRole('button', { name: /^Agent/ }),
-    ).toHaveAttribute('aria-pressed', 'true');
+    await expect(agentTypeCard).toHaveAttribute(
+      'data-slot',
+      'toggle-group-item',
+    );
+    await expect(pipelineTypeCard).toHaveAttribute(
+      'data-slot',
+      'toggle-group-item',
+    );
+    await expect(agentTypeCard).toHaveAttribute('aria-checked', 'true');
     await expect(page.getByTestId('agent-diagram')).toBeVisible();
     await expect(page.getByTestId('pipeline-diagram')).toHaveCount(0);
 
-    await page.getByRole('button', { name: /^Pipeline/ }).click();
-    await expect(
-      pipelineTypeCard.getByRole('button', { name: /^Pipeline/ }),
-    ).toHaveAttribute('aria-pressed', 'true');
+    await page.getByRole('radio', { name: /^Pipeline/ }).click();
+    await expect(pipelineTypeCard).toHaveAttribute('aria-checked', 'true');
     await expect(page.getByTestId('pipeline-diagram')).toBeVisible();
     await expect(page.getByTestId('agent-diagram')).toHaveCount(0);
 
@@ -734,7 +736,7 @@ test.describe('pipeline advanced flows', () => {
 
     // Create a pipeline
     await page.goto('/home/agents?id=new');
-    await page.getByRole('button', { name: /^Pipeline/ }).click();
+    await page.getByRole('radio', { name: /^Pipeline/ }).click();
     await page.locator('input[name="name"]').fill('Tab Test Pipeline');
     await submit(page);
 
@@ -765,7 +767,7 @@ test.describe('pipeline advanced flows', () => {
 
     // Create a pipeline
     await page.goto('/home/agents?id=new');
-    await page.getByRole('button', { name: /^Pipeline/ }).click();
+    await page.getByRole('radio', { name: /^Pipeline/ }).click();
     await page.locator('input[name="name"]').fill('Dirty Form Pipeline');
     await submit(page);
 
@@ -787,7 +789,7 @@ test.describe('pipeline advanced flows', () => {
     await installLangBotApiMocks(page, { authenticated: true });
 
     await page.goto('/home/agents?id=new');
-    await page.getByRole('button', { name: /^Pipeline/ }).click();
+    await page.getByRole('radio', { name: /^Pipeline/ }).click();
 
     // Submit without filling name
     await submit(page);
@@ -1038,7 +1040,7 @@ test.describe('cross-resource flows', () => {
 
     // Create a pipeline first
     await page.goto('/home/agents?id=new');
-    await page.getByRole('button', { name: /^Pipeline/ }).click();
+    await page.getByRole('radio', { name: /^Pipeline/ }).click();
     await page.locator('input[name="name"]').fill('Production Pipeline');
     await submit(page);
     await expect(page).toHaveURL(/\/home\/agents\?id=pipeline-1$/);
