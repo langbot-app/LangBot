@@ -183,11 +183,20 @@ test.describe('frontend CRUD smoke flows', () => {
     );
     await expect(agentTypeCard).toHaveAttribute('aria-checked', 'true');
     await expect(page.getByTestId('agent-diagram')).toBeVisible();
+    await expect(
+      page.getByTestId('agent-diagram').locator('[data-motion="flow"]'),
+    ).toHaveCount(3);
+    await expect(
+      page.getByTestId('agent-diagram').locator('[data-motion="relation"]'),
+    ).toHaveCount(3);
     await expect(page.getByTestId('pipeline-diagram')).toHaveCount(0);
 
     await page.getByRole('radio', { name: /^Pipeline/ }).click();
     await expect(pipelineTypeCard).toHaveAttribute('aria-checked', 'true');
     await expect(page.getByTestId('pipeline-diagram')).toBeVisible();
+    await expect(
+      page.getByTestId('pipeline-diagram').locator('[data-motion="flow"]'),
+    ).toHaveCount(1);
     await expect(page.getByTestId('agent-diagram')).toHaveCount(0);
 
     await expect(page.locator('input[name="name"]')).toBeVisible();

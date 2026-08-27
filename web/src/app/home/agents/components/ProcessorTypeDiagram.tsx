@@ -5,6 +5,36 @@ import type { AgentKind } from '@/app/infra/entities/api';
 const LANGBOT_BLUE = '#2288ee';
 const LANGBOT_CYAN = '#19b8c9';
 
+function DiagramMotionStyles() {
+  return (
+    <style>{`
+      @keyframes processor-line-flow {
+        to { stroke-dashoffset: -30; }
+      }
+
+      @keyframes processor-link-breathe {
+        0%, 100% { stroke-opacity: 0.28; }
+        50% { stroke-opacity: 0.72; }
+      }
+
+      .processor-line-flow {
+        animation: processor-line-flow 1.8s linear infinite;
+      }
+
+      .processor-link-breathe {
+        animation: processor-link-breathe 2.8s ease-in-out infinite;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .processor-line-flow,
+        .processor-link-breathe {
+          animation: none;
+        }
+      }
+    `}</style>
+  );
+}
+
 function ArrowMarker({ id }: { id: string }) {
   return (
     <defs>
@@ -80,6 +110,7 @@ function AgentDiagram() {
     >
       <desc>{t('agents.agentDiagramDescription')}</desc>
       <ArrowMarker id={arrowId} />
+      <DiagramMotionStyles />
 
       <rect width="760" height="620" fill="var(--card)" />
 
@@ -100,8 +131,12 @@ function AgentDiagram() {
             fill="none"
             stroke={LANGBOT_BLUE}
             strokeWidth="2"
+            strokeDasharray="4 11"
             opacity="0.32"
             markerEnd={`url(#${arrowId})`}
+            className="processor-line-flow"
+            data-motion="flow"
+            style={{ animationDelay: `${index * -0.35}s` }}
           />
           <rect
             x="64"
@@ -158,7 +193,7 @@ function AgentDiagram() {
         {t('agents.diagramAgentCanUse')}
       </text>
 
-      {outputs.map((item) => (
+      {outputs.map((item, index) => (
         <g key={item.label}>
           <path
             d={`M436 310 C468 310 474 ${item.y + 29} 538 ${item.y + 29}`}
@@ -167,6 +202,9 @@ function AgentDiagram() {
             strokeWidth="1.8"
             strokeDasharray="5 6"
             opacity="0.48"
+            className="processor-link-breathe"
+            data-motion="relation"
+            style={{ animationDelay: `${index * -0.45}s` }}
           />
           <rect
             x="538"
@@ -224,6 +262,7 @@ function PipelineDiagram() {
     >
       <desc>{t('agents.pipelineDiagramDescription')}</desc>
       <ArrowMarker id={arrowId} />
+      <DiagramMotionStyles />
 
       <rect width="760" height="620" fill="var(--card)" />
       <text
@@ -242,6 +281,16 @@ function PipelineDiagram() {
         strokeWidth="2"
         opacity="0.32"
         markerEnd={`url(#${arrowId})`}
+      />
+      <path
+        d="M156 310H724"
+        fill="none"
+        stroke={LANGBOT_BLUE}
+        strokeWidth="3"
+        strokeDasharray="4 14"
+        strokeLinecap="round"
+        className="processor-line-flow"
+        data-motion="flow"
       />
 
       {steps.map((step, index) => {
