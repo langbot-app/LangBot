@@ -1851,7 +1851,7 @@ const enUS = {
         'Monitor bot activity to verify the platform connection is working.',
     },
     aiEngine: {
-      title: 'Select an AI Engine',
+      title: 'Configure AI Engine',
       description:
         "Choose the AI engine that will power your bot's intelligence.",
       optionalDescription:
@@ -1892,7 +1892,7 @@ const enUS = {
       rescanModels: 'Scan models again',
       moreFeaturesTitle: 'Add More Agent Features',
       moreFeaturesDescription:
-        'Open the workbench to add tools, knowledge, and other capabilities.',
+        'Open the workbench to add tools, knowledge bases, and other capabilities to the Agent that was just generated automatically.',
       runnerDescription:
         'Select a runner for the external agent and configure its connection.',
       backToChoices: 'Back to options',

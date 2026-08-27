@@ -1766,7 +1766,7 @@ const zhHans = {
       logsDescription: '监控机器人活动，确认平台连接是否正常工作。',
     },
     aiEngine: {
-      title: '选择 AI 引擎',
+      title: '配置 AI 引擎',
       description: '选择驱动机器人智能的 AI 引擎。',
       optionalDescription: '这一步可选。选择接下来要如何完善当前 Agent。',
       externalTitle: '接入外部平台 Agent',
@@ -1799,7 +1799,8 @@ const zhHans = {
       editProvider: '修改供应商',
       rescanModels: '重新扫描模型',
       moreFeaturesTitle: '给现在的 Agent 配置更多功能',
-      moreFeaturesDescription: '进入工作台，为 Agent 添加工具、知识库等能力。',
+      moreFeaturesDescription:
+        '进入工作台，为刚刚自动生成的 Agent 添加工具、知识库等能力',
       runnerDescription: '选择外部 Agent 的 Runner 并完成连接配置。',
       backToChoices: '返回选项',
       createExternal: '创建并绑定',

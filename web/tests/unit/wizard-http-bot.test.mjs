@@ -32,6 +32,7 @@ const {
   ensureHttpBotSigningSecret,
   findDefaultPipeline,
   getErrorMessage,
+  isRequiredRunnerConfigComplete,
   isWebhookModeEnabled,
 } = loadWizardUtils();
 
@@ -118,4 +119,27 @@ test('shows webhook guidance only when the adapter webhook mode is active', () =
   );
   assert.equal(isWebhookModeEnabled([{ name: 'webhook_url' }], {}), true);
   assert.equal(isWebhookModeEnabled([], {}), false);
+});
+
+test('requires real values for required external runner configuration', () => {
+  const fields = [
+    { name: 'base-url', required: true, default: 'https://api.dify.ai/v1' },
+    { name: 'api-key', required: true, default: 'your-api-key' },
+    { name: 'optional', required: false, default: '' },
+  ];
+
+  assert.equal(
+    isRequiredRunnerConfigComplete(fields, {
+      'base-url': 'https://api.dify.ai/v1',
+      'api-key': 'your-api-key',
+    }),
+    false,
+  );
+  assert.equal(
+    isRequiredRunnerConfigComplete(fields, {
+      'base-url': 'https://api.dify.ai/v1',
+      'api-key': 'app-real-key',
+    }),
+    true,
+  );
 });

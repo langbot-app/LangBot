@@ -1588,7 +1588,7 @@ const zhHant = {
       logsDescription: '監控機器人活動，確認平台連接是否正常運作。',
     },
     aiEngine: {
-      title: '選擇 AI 引擎',
+      title: '配置 AI 引擎',
       description: '選擇驅動機器人智慧的 AI 引擎。',
     },
     config: {

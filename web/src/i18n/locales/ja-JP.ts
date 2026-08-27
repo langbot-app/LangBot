@@ -1768,7 +1768,7 @@ const jaJP = {
         'ボットの活動を監視して、プラットフォーム接続が正常に動作していることを確認します。',
     },
     aiEngine: {
-      title: 'AIエンジンを選択',
+      title: 'AIエンジンを設定',
       description:
         'ボットのインテリジェンスを駆動するAIエンジンを選択してください。',
       optionalDescription:
@@ -1809,7 +1809,7 @@ const jaJP = {
       rescanModels: 'モデルを再スキャン',
       moreFeaturesTitle: 'Agent に機能を追加',
       moreFeaturesDescription:
-        'ワークベンチを開き、ツールやナレッジなどの機能を追加します。',
+        'ワークベンチを開き、自動生成されたばかりの Agent にツール、ナレッジベースなどの機能を追加します。',
       runnerDescription: '外部 Agent の Runner を選択し、接続を設定します。',
       backToChoices: '選択肢に戻る',
       createExternal: '作成して関連付ける',

@@ -54,7 +54,7 @@ export function groupByCategory<T extends { categories?: string[] }>(
     }
 
     let placed = false;
-    for (const cat of cats) {
+    for (const cat of new Set(cats)) {
       if (ordered.includes(cat as AdapterCategoryId)) {
         buckets.get(cat as AdapterCategoryId)!.push(item);
         placed = true;

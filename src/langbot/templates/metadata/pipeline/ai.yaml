@@ -325,7 +325,7 @@ stages:
           zh_Hans: API 密钥
         type: string
         required: true
-        default: 'your-api-key'
+        default: ''
   - name: n8n-service-api
     label:
       en_US: n8n Workflow API

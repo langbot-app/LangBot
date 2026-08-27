@@ -55,6 +55,7 @@ import {
   ensureHttpBotSigningSecret,
   findDefaultPipeline,
   getErrorMessage,
+  isRequiredRunnerConfigComplete,
   isWebhookModeEnabled,
 } from '@/app/wizard/utils';
 
@@ -124,7 +125,7 @@ export default function WizardPage() {
   const [messageReceived, setMessageReceived] = useState(false);
   const [aiChoice, setAiChoice] = useState<
     'external' | 'own-model' | 'more-features' | null
-  >(null);
+  >('more-features');
   const [ownModelSelection, setOwnModelSelection] =
     useState<OwnModelSelection | null>(null);
 
@@ -322,13 +323,20 @@ export default function WizardPage() {
     );
   }, [selectedRunnerConfigStage]);
 
+  const isRunnerConfigComplete = useMemo(
+    () =>
+      isRequiredRunnerConfigComplete(selectedRunnerConfigItems, runnerConfig),
+    [selectedRunnerConfigItems, runnerConfig],
+  );
+
   // ---- Runner selection with progress saving ----
   const handleSelectRunner = useCallback(
     (runner: string) => {
+      if (runner !== selectedRunner) setRunnerConfig({});
       setSelectedRunner(runner);
       saveProgress({ step: 2, selected_runner: runner });
     },
-    [saveProgress],
+    [saveProgress, selectedRunner],
   );
 
   // ---- Navigation helpers ----
@@ -599,7 +607,8 @@ export default function WizardPage() {
 
   const handleFinish = useCallback(async () => {
     if (!aiChoice || !createdBotUuid || !createdPipelineUuid) return;
-    if (aiChoice === 'external' && !selectedRunner) return;
+    if (aiChoice === 'external' && (!selectedRunner || !isRunnerConfigComplete))
+      return;
     if (aiChoice === 'own-model' && !ownModelSelection) return;
     setIsSubmitting(true);
     let externalPipelineUuid: string | null = null;
@@ -739,6 +748,7 @@ export default function WizardPage() {
     }
   }, [
     selectedRunner,
+    isRunnerConfigComplete,
     createdBotUuid,
     createdPipelineUuid,
     aiChoice,
@@ -874,7 +884,7 @@ export default function WizardPage() {
       <div
         className={cn(
           'flex-1 min-h-0 px-4 sm:px-6 pb-4 sm:pb-6',
-          currentStep === 2 && selectedRunner
+          currentStep === 2 && aiChoice === 'external' && selectedRunner
             ? 'lg:flex lg:flex-col lg:overflow-hidden overflow-y-auto'
             : 'overflow-y-auto',
         )}
@@ -952,7 +962,8 @@ export default function WizardPage() {
               disabled={
                 !canProceed() ||
                 isSubmitting ||
-                (aiChoice === 'external' && !selectedRunner) ||
+                (aiChoice === 'external' &&
+                  (!selectedRunner || !isRunnerConfigComplete)) ||
                 (aiChoice === 'own-model' && !ownModelSelection)
               }
             >
@@ -1015,7 +1026,10 @@ function StepPlatform({
   const { t } = useTranslation();
 
   const groupedAdapters = useMemo(() => {
-    const withCategories = adapters.map((a) => ({
+    const uniqueAdapters = Array.from(
+      new Map(adapters.map((adapter) => [adapter.name, adapter])).values(),
+    );
+    const withCategories = uniqueAdapters.map((a) => ({
       ...a,
       categories: a.spec.categories,
     }));
@@ -1466,6 +1480,12 @@ function StepAIEngine({
 
   const choices = [
     {
+      id: 'more-features' as const,
+      icon: Blocks,
+      title: t('wizard.aiEngine.moreFeaturesTitle'),
+      description: t('wizard.aiEngine.moreFeaturesDescription'),
+    },
+    {
       id: 'external' as const,
       icon: Cable,
       title: t('wizard.aiEngine.externalTitle'),
@@ -1477,18 +1497,12 @@ function StepAIEngine({
       title: t('wizard.aiEngine.ownModelTitle'),
       description: t('wizard.aiEngine.ownModelDescription'),
     },
-    {
-      id: 'more-features' as const,
-      icon: Blocks,
-      title: t('wizard.aiEngine.moreFeaturesTitle'),
-      description: t('wizard.aiEngine.moreFeaturesDescription'),
-    },
   ];
 
   if (choice === 'own-model') {
     return (
       <OwnModelSetup
-        onBack={() => onChoiceChange(null)}
+        onBack={() => onChoiceChange('more-features')}
         onSelectionChange={onOwnModelSelectionChange}
       />
     );
@@ -1542,7 +1556,11 @@ function StepAIEngine({
             {t('wizard.aiEngine.runnerDescription')}
           </p>
         </div>
-        <Button variant="ghost" size="sm" onClick={() => onChoiceChange(null)}>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => onChoiceChange('more-features')}
+        >
           <ArrowLeft className="size-4 mr-1.5" />
           {t('wizard.aiEngine.backToChoices')}
         </Button>
@@ -1586,7 +1604,7 @@ function StepAIEngine({
         variant="ghost"
         size="sm"
         className="self-start mb-3"
-        onClick={() => onChoiceChange(null)}
+        onClick={() => onChoiceChange('more-features')}
       >
         <ArrowLeft className="size-4 mr-1.5" />
         {t('wizard.aiEngine.backToChoices')}

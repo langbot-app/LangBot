@@ -15,7 +15,10 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import DynamicFormItemComponent from '@/app/home/components/dynamic-form/DynamicFormItemComponent';
-import { normalizeDynamicFormValuesForSave } from '@/app/home/components/dynamic-form/DynamicFormSaveValues';
+import {
+  normalizeDynamicFormFieldValue,
+  normalizeDynamicFormValuesForSave,
+} from '@/app/home/components/dynamic-form/DynamicFormSaveValues';
 import QrCodeLoginDialog, {
   QrLoginPlatform,
 } from '@/app/home/components/qrcode-login/QrCodeLoginDialog';
@@ -464,61 +467,6 @@ export default function DynamicFormComponent({
   const previousInitialValues = useRef(initialValues);
   const { t, i18n } = useTranslation();
 
-  // Normalize a form value according to its field type.
-  // This ensures legacy/malformed data (e.g. a plain string for
-  // model-fallback-selector) is coerced to the expected shape
-  // so that downstream components never crash.
-  const normalizeFieldValue = (
-    item: DynamicFormValueSpec,
-    value: unknown,
-  ): unknown => {
-    if (
-      item.name === 'mcp-resources' ||
-      item.type === DynamicFormItemType.RESOURCES_SELECTOR ||
-      item.type === DynamicFormItemType.RICH_TOOLS_SELECTOR
-    ) {
-      return Array.isArray(value) ? value : [];
-    }
-    if (item.type === 'model-fallback-selector') {
-      if (value != null && typeof value === 'object' && !Array.isArray(value)) {
-        const obj = value as Record<string, unknown>;
-        return {
-          primary: typeof obj.primary === 'string' ? obj.primary : '',
-          fallbacks: Array.isArray(obj.fallbacks)
-            ? (obj.fallbacks as unknown[]).filter(
-                (v): v is string => typeof v === 'string',
-              )
-            : [],
-          reasoning:
-            obj.reasoning != null &&
-            typeof obj.reasoning === 'object' &&
-            !Array.isArray(obj.reasoning)
-              ? Object.fromEntries(
-                  Object.entries(obj.reasoning).filter(
-                    (entry): entry is [string, string] =>
-                      typeof entry[1] === 'string',
-                  ),
-                )
-              : {},
-        };
-      }
-      // Legacy string format or any other unexpected type
-      return {
-        primary: typeof value === 'string' ? value : '',
-        fallbacks: [],
-        reasoning: {},
-      };
-    }
-    if (item.type === 'prompt-editor') {
-      if (Array.isArray(value)) {
-        return value;
-      }
-      // Default to a single empty system prompt entry
-      return [{ role: 'system', content: '' }];
-    }
-    return value;
-  };
-
   // Filter out display-only fields (webhook-url/embed-code/qr-code-login types
   // and `__system.*`-named fields) that should not participate in form state,
   // validation, or value emission.
@@ -574,7 +522,7 @@ export default function DynamicFormComponent({
       const rawValue = initialValues?.[item.name] ?? item.default;
       return {
         ...acc,
-        [item.name]: normalizeFieldValue(item, rawValue),
+        [item.name]: normalizeDynamicFormFieldValue(item, rawValue),
       };
     }, {} as FormValues),
   });
@@ -611,7 +559,10 @@ export default function DynamicFormComponent({
       const mergedValues = editableValueSpecs.reduce(
         (acc, item) => {
           const rawValue = initialValues[item.name] ?? item.default;
-          acc[item.name] = normalizeFieldValue(item, rawValue) as object;
+          acc[item.name] = normalizeDynamicFormFieldValue(
+            item,
+            rawValue,
+          ) as object;
           return acc;
         },
         {} as Record<string, object>,

@@ -72,6 +72,39 @@ export function isWebhookModeEnabled(
   );
 }
 
+interface RequiredConfigItem {
+  name: string;
+  required: boolean;
+  default: unknown;
+}
+
+function isPlaceholderDefault(value: string, defaultValue: unknown): boolean {
+  if (typeof defaultValue !== 'string' || value !== defaultValue.trim()) {
+    return false;
+  }
+  return /(^|:\/\/)your-/i.test(value);
+}
+
+export function isRequiredRunnerConfigComplete(
+  configItems: RequiredConfigItem[],
+  configValues: Record<string, unknown>,
+): boolean {
+  return configItems
+    .filter((item) => item.required)
+    .every((item) => {
+      const value = configValues[item.name];
+      if (typeof value === 'string') {
+        const normalizedValue = value.trim();
+        return (
+          normalizedValue.length > 0 &&
+          !isPlaceholderDefault(normalizedValue, item.default)
+        );
+      }
+      if (Array.isArray(value)) return value.length > 0;
+      return value !== undefined && value !== null;
+    });
+}
+
 export function configureLocalAgentPrimaryModel(
   config: Record<string, unknown>,
   modelUuid: string,
