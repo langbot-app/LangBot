@@ -1573,7 +1573,7 @@ function StepAIEngine({
       >
         <div className="text-center">
           <h2 className="text-xl font-semibold">
-            {t('wizard.aiEngine.title')}
+            {t('wizard.aiEngine.externalTitle')}
           </h2>
           <p className="text-sm text-muted-foreground mt-1">
             {t('wizard.aiEngine.runnerDescription')}
@@ -1620,7 +1620,9 @@ function StepAIEngine({
       className="mx-auto flex w-full max-w-6xl flex-col animate-in fade-in-0 slide-in-from-right-4 duration-300 ease-out motion-reduce:animate-none lg:min-h-0 lg:flex-1"
     >
       <div className="text-center shrink-0 mb-4">
-        <h2 className="text-xl font-semibold">{t('wizard.aiEngine.title')}</h2>
+        <h2 className="text-xl font-semibold">
+          {t('wizard.aiEngine.externalTitle')}
+        </h2>
         <p className="text-sm text-muted-foreground mt-1">
           {t('wizard.aiEngine.description')}
         </p>

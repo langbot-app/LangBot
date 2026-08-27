@@ -9,6 +9,13 @@ const wizardSource = fs.readFileSync(
   path.resolve(currentDirectory, '../../src/app/wizard/page.tsx'),
   'utf8',
 );
+const ownModelSetupSource = fs.readFileSync(
+  path.resolve(
+    currentDirectory,
+    '../../src/app/wizard/components/OwnModelSetup.tsx',
+  ),
+  'utf8',
+);
 const widgetSource = fs.readFileSync(
   path.resolve(
     currentDirectory,
@@ -98,4 +105,24 @@ test('animates AI engine sub-pages and the return to choices', () => {
     /key="ai-engine-choices"[\s\S]*?slide-in-from-left-4/,
   );
   assert.match(wizardSource, /motion-reduce:animate-none/);
+});
+
+test('aligns the own-model title and back button with external Agent setup', () => {
+  const ownModelTitle = ownModelSetupSource.indexOf(
+    "t('wizard.aiEngine.ownModelSetupTitle')",
+  );
+  const ownModelBack = ownModelSetupSource.indexOf(
+    "t('wizard.aiEngine.backToChoices')",
+  );
+
+  assert.ok(ownModelTitle >= 0);
+  assert.ok(ownModelBack > ownModelTitle);
+  assert.match(ownModelSetupSource, /mx-auto w-full max-w-4xl space-y-6/);
+});
+
+test('labels both external Agent setup states with their specific title', () => {
+  assert.equal(
+    wizardSource.match(/t\('wizard\.aiEngine\.externalTitle'\)/g)?.length,
+    3,
+  );
 });

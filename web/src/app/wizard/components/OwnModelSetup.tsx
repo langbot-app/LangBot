@@ -167,14 +167,7 @@ export default function OwnModelSetup({
   }, [onSelectionChange]);
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-5">
-      <div>
-        <Button variant="ghost" size="sm" onClick={handleBack}>
-          <ArrowLeft className="mr-1.5 size-4" />
-          {t('wizard.aiEngine.backToChoices')}
-        </Button>
-      </div>
-
+    <div className="mx-auto w-full max-w-4xl space-y-6">
       <div className="text-center">
         <h2 className="text-xl font-semibold">
           {t('wizard.aiEngine.ownModelSetupTitle')}
@@ -184,8 +177,15 @@ export default function OwnModelSetup({
         </p>
       </div>
 
+      <div>
+        <Button variant="ghost" size="sm" onClick={handleBack}>
+          <ArrowLeft className="mr-1.5 size-4" />
+          {t('wizard.aiEngine.backToChoices')}
+        </Button>
+      </div>
+
       {showProviderForm ? (
-        <Card>
+        <Card className="mx-auto w-full max-w-3xl">
           <CardHeader>
             <CardTitle className="text-base">
               {t('wizard.aiEngine.addProviderTitle')}
@@ -205,7 +205,7 @@ export default function OwnModelSetup({
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-4">
+        <div className="mx-auto w-full max-w-3xl space-y-4">
           <div className="flex flex-wrap items-start justify-between gap-3 border-b pb-3">
             <div>
               <h3 className="text-base font-semibold">
