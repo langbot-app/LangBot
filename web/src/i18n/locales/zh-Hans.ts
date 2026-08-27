@@ -1751,6 +1751,8 @@ const zhHans = {
       botSaved: '机器人配置已保存并启用，请查看日志确认连接正常。',
       waitingForMessage: '机器人已启用。请在 IM 中向机器人发送一条消息以继续。',
       messageReceived: '机器人已成功收到 IM 消息，可以进入下一步。',
+      messageReceivedLocalAccountWarning:
+        '机器人侧已配置正常并成功收到 IM 消息。当前未通过 LangBot Account 登录，模型调用可能报错；可以进入下一步添加自己的模型。',
       pageBotTestPrompt:
         '页面机器人已启用。点击右下角聊天气泡并发送一条消息，验证完整对话链路。',
       pageBotTestNotice: '仅供测试使用，请嵌入代码到真实外部网页。',

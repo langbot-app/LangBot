@@ -71,3 +71,15 @@ test('restores the default workbench choice when leaving a nested AI setup', () 
     3,
   );
 });
+
+test('warns local-account users after the bot receives an IM message', () => {
+  assert.match(
+    wizardSource,
+    /messageReceived && userInfo\?\.account_type !== 'space'/,
+  );
+  assert.match(
+    wizardSource,
+    /wizard\.botConfig\.messageReceivedLocalAccountWarning/,
+  );
+  assert.match(wizardSource, /<AlertTriangle className="size-3 text-white"/);
+});

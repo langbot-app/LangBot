@@ -1748,6 +1748,8 @@ const jaJP = {
         'ボットが有効になりました。続行するには IM からメッセージを送信してください。',
       messageReceived:
         'ボットが IM メッセージを受信しました。次のステップに進めます。',
+      messageReceivedLocalAccountWarning:
+        'ボット側の接続設定は正常で、IM メッセージを受信できています。LangBot Account でログインしていないためモデル呼び出しが失敗する場合がありますが、次のステップで独自のモデルを追加できます。',
       pageBotTestPrompt:
         'ページボットが有効になりました。右下のチャットバブルをクリックしてメッセージを送信し、会話フロー全体を確認してください。',
       pageBotTestNotice:

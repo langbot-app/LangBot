@@ -1831,6 +1831,8 @@ const enUS = {
         'The bot is enabled. Send it a message from your IM platform to continue.',
       messageReceived:
         'The bot received an IM message. You can continue to the next step.',
+      messageReceivedLocalAccountWarning:
+        'The bot-side connection is configured correctly and received an IM message. Because you are not signed in with a LangBot Account, model calls may fail; continue to the next step to add your own model.',
       pageBotTestPrompt:
         'Page Bot is enabled. Click the chat bubble in the lower-right corner and send a message to verify the full conversation flow.',
       pageBotTestNotice:

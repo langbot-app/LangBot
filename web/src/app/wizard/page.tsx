@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import {
   ArrowLeft,
   ArrowRight,
+  AlertTriangle,
   Check,
   Sparkles,
   Loader2,
@@ -25,6 +26,7 @@ import {
   systemInfo,
   bootstrapWorkspaceSession,
   initializeSystemInfo,
+  userInfo,
 } from '@/app/infra/http';
 import { Adapter, Bot, WizardProgress } from '@/app/infra/entities/api';
 import { IDynamicFormItemSchema } from '@/app/infra/entities/form/dynamic';
@@ -1196,6 +1198,10 @@ function StepBotConfig({
       Boolean(webhookUrl),
     [adapterConfigItems, adapterConfigValues, webhookUrl],
   );
+  const receivedMessageWithoutLangBotAccount =
+    messageReceived && userInfo?.account_type !== 'space';
+  const receivedMessageSuccessfully =
+    messageReceived && !receivedMessageWithoutLangBotAccount;
 
   // Stable callback ref
   const onAdapterConfigRef = useRef(onAdapterConfigChange);
@@ -1253,7 +1259,7 @@ function StepBotConfig({
         <div
           className={cn(
             'border px-4 py-3',
-            messageReceived
+            receivedMessageSuccessfully
               ? 'border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950/30'
               : 'border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30',
           )}
@@ -1262,10 +1268,12 @@ function StepBotConfig({
             <div
               className={cn(
                 'mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full',
-                messageReceived ? 'bg-green-500' : 'bg-amber-500',
+                receivedMessageSuccessfully ? 'bg-green-500' : 'bg-amber-500',
               )}
             >
-              {messageReceived ? (
+              {receivedMessageWithoutLangBotAccount ? (
+                <AlertTriangle className="size-3 text-white" />
+              ) : messageReceived ? (
                 <Check className="size-3 text-white" />
               ) : selectedAdapterName === 'web_page_bot' ? (
                 <MessageSquare className="size-3 text-white" />
@@ -1281,13 +1289,17 @@ function StepBotConfig({
               <p
                 className={cn(
                   'text-sm font-medium',
-                  messageReceived
+                  receivedMessageSuccessfully
                     ? 'text-green-800 dark:text-green-200'
                     : 'text-amber-800 dark:text-amber-200',
                 )}
               >
                 {messageReceived
-                  ? t('wizard.botConfig.messageReceived')
+                  ? t(
+                      receivedMessageWithoutLangBotAccount
+                        ? 'wizard.botConfig.messageReceivedLocalAccountWarning'
+                        : 'wizard.botConfig.messageReceived',
+                    )
                   : selectedAdapterName === 'web_page_bot'
                     ? t('wizard.botConfig.pageBotTestPrompt')
                     : selectedAdapterName === 'http_bot'
