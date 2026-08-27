@@ -113,84 +113,153 @@ export default function AgentCreateContent({
       </div>
 
       <div className="flex-1 overflow-y-auto min-h-0">
-        <div className="mx-auto max-w-5xl space-y-6 pb-6">
-          <div className="grid items-stretch gap-5 lg:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)]">
-            <section
-              aria-labelledby="processor-kind-heading"
-              className="space-y-3"
-            >
-              <div>
-                <h2
-                  id="processor-kind-heading"
-                  className="text-base font-semibold"
-                >
-                  {t('agents.chooseType')}
-                </h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {t('agents.chooseTypeDescription')}
-                </p>
-              </div>
+        <div className="mx-auto max-w-6xl pb-6">
+          <div className="grid items-stretch gap-5 lg:grid-cols-[minmax(340px,0.78fr)_minmax(0,1.22fr)]">
+            <div className="space-y-5">
+              <section
+                aria-labelledby="processor-kind-heading"
+                className="space-y-3"
+              >
+                <div>
+                  <h2
+                    id="processor-kind-heading"
+                    className="text-base font-semibold"
+                  >
+                    {t('agents.chooseType')}
+                  </h2>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {t('agents.chooseTypeDescription')}
+                  </p>
+                </div>
 
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
-                {typeOptions.map((option) => {
-                  const Icon = option.icon;
-                  const selected = kind === option.kind;
-                  return (
-                    <Card
-                      key={option.kind}
-                      data-processor-kind={option.kind}
-                      className={cn(
-                        'gap-0 py-0 transition-[border-color,box-shadow,background-color]',
-                        selected
-                          ? 'border-primary bg-primary/[0.035] shadow-sm ring-1 ring-primary/20'
-                          : 'hover:border-primary/50',
-                      )}
-                    >
-                      <CardContent className="h-full p-0">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          aria-pressed={selected}
-                          onClick={() => handleKindChange(option.kind)}
-                          className="h-full min-h-36 w-full items-start justify-start whitespace-normal rounded-xl p-4 text-left hover:bg-transparent"
-                        >
-                          <span
-                            className={cn(
-                              'flex size-10 shrink-0 items-center justify-center rounded-lg border bg-background',
-                              selected &&
-                                'border-primary/30 bg-primary/10 text-primary',
-                            )}
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+                  {typeOptions.map((option) => {
+                    const Icon = option.icon;
+                    const selected = kind === option.kind;
+                    return (
+                      <Card
+                        key={option.kind}
+                        data-processor-kind={option.kind}
+                        className={cn(
+                          'gap-0 py-0 transition-[border-color,box-shadow,background-color]',
+                          selected
+                            ? 'border-primary bg-primary/[0.035] shadow-sm ring-1 ring-primary/20'
+                            : 'hover:border-primary/50',
+                        )}
+                      >
+                        <CardContent className="h-full p-0">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            aria-pressed={selected}
+                            onClick={() => handleKindChange(option.kind)}
+                            className="h-full min-h-32 w-full items-start justify-start whitespace-normal rounded-xl p-4 text-left hover:bg-transparent"
                           >
-                            <Icon className="size-5" />
-                          </span>
-                          <span className="min-w-0 flex-1 space-y-2">
-                            <span className="flex items-center justify-between gap-3">
-                              <span className="font-semibold">
-                                {option.title}
-                              </span>
-                              {selected && (
-                                <CheckCircle2 className="size-4 shrink-0 text-primary" />
+                            <span
+                              className={cn(
+                                'flex size-10 shrink-0 items-center justify-center rounded-lg border bg-background',
+                                selected &&
+                                  'border-primary/30 bg-primary/10 text-primary',
                               )}
-                            </span>
-                            <Badge
-                              variant={selected ? 'default' : 'secondary'}
-                              className="font-normal"
                             >
-                              {option.badge}
-                            </Badge>
-                            <span className="block text-sm leading-relaxed text-muted-foreground">
-                              {option.description}
+                              <Icon className="size-5" />
                             </span>
-                          </span>
-                        </Button>
-                      </CardContent>
-                    </Card>
-                  );
-                })}
-              </div>
-            </section>
+                            <span className="min-w-0 flex-1 space-y-2">
+                              <span className="flex items-center justify-between gap-3">
+                                <span className="font-semibold">
+                                  {option.title}
+                                </span>
+                                {selected && (
+                                  <CheckCircle2 className="size-4 shrink-0 text-primary" />
+                                )}
+                              </span>
+                              <Badge
+                                variant={selected ? 'default' : 'secondary'}
+                                className="font-normal"
+                              >
+                                {option.badge}
+                              </Badge>
+                              <span className="block text-sm leading-relaxed text-muted-foreground">
+                                {option.description}
+                              </span>
+                            </span>
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </section>
 
-            <Card className="min-h-[360px] overflow-hidden py-0">
+              <Card>
+                <CardHeader>
+                  <CardTitle>{t('agents.basicInfo')}</CardTitle>
+                  <CardDescription>
+                    {t('agents.basicInfoDescription')}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Form {...form}>
+                    <form
+                      id="agent-create-form"
+                      onSubmit={form.handleSubmit(handleSubmit)}
+                      className="space-y-4"
+                    >
+                      <div className="flex gap-4 items-start">
+                        <FormField
+                          control={form.control}
+                          name="name"
+                          render={({ field }) => (
+                            <FormItem className="flex-1">
+                              <FormLabel>
+                                {t('common.name')}
+                                <span className="text-destructive">*</span>
+                              </FormLabel>
+                              <FormControl>
+                                <Input {...field} value={field.value ?? ''} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={form.control}
+                          name="emoji"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>{t('common.icon')}</FormLabel>
+                              <FormControl>
+                                <EmojiPicker
+                                  value={field.value}
+                                  onChange={field.onChange}
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+
+                      <FormField
+                        control={form.control}
+                        name="description"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>{t('common.description')}</FormLabel>
+                            <FormControl>
+                              <Input {...field} value={field.value ?? ''} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </form>
+                  </Form>
+                </CardContent>
+              </Card>
+            </div>
+
+            <Card className="min-h-[600px] overflow-hidden py-0 lg:min-h-[680px]">
               <CardHeader className="border-b bg-muted/20 py-5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
@@ -210,7 +279,7 @@ export default function AgentCreateContent({
                   </Badge>
                 </div>
               </CardHeader>
-              <CardContent className="flex flex-1 items-center p-4 sm:p-6">
+              <CardContent className="flex flex-1 items-center p-3 sm:p-5">
                 <ProcessorTypeDiagram kind={kind} />
               </CardContent>
               <CardFooter className="border-t bg-muted/20 px-6 py-4 text-sm leading-relaxed text-muted-foreground">
@@ -220,73 +289,6 @@ export default function AgentCreateContent({
               </CardFooter>
             </Card>
           </div>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>{t('agents.basicInfo')}</CardTitle>
-              <CardDescription>
-                {t('agents.basicInfoDescription')}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Form {...form}>
-                <form
-                  id="agent-create-form"
-                  onSubmit={form.handleSubmit(handleSubmit)}
-                  className="space-y-4"
-                >
-                  <div className="flex gap-4 items-start">
-                    <FormField
-                      control={form.control}
-                      name="name"
-                      render={({ field }) => (
-                        <FormItem className="flex-1">
-                          <FormLabel>
-                            {t('common.name')}
-                            <span className="text-destructive">*</span>
-                          </FormLabel>
-                          <FormControl>
-                            <Input {...field} value={field.value ?? ''} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name="emoji"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>{t('common.icon')}</FormLabel>
-                          <FormControl>
-                            <EmojiPicker
-                              value={field.value}
-                              onChange={field.onChange}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-
-                  <FormField
-                    control={form.control}
-                    name="description"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t('common.description')}</FormLabel>
-                        <FormControl>
-                          <Input {...field} value={field.value ?? ''} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </form>
-              </Form>
-            </CardContent>
-          </Card>
         </div>
       </div>
     </div>
