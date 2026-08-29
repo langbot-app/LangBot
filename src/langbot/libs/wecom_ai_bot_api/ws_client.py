@@ -939,9 +939,10 @@ class WecomBotWsClient:
                 # Send an initial empty stream frame so the WeCom client
                 # shows its built-in loading spinner while the pipeline
                 # processes the message (e.g. RAG retrieval).
-                asyncio.create_task(
-                    self.reply_stream(req_id, stream_id, '', finish=False)
-                )
+                try:
+                    await self.reply_stream(req_id, stream_id, '', finish=False)
+                except Exception:
+                    await self.logger.warning(f'Failed to send initial stream frame: {traceback.format_exc()}')
             message_data['stream_id'] = stream_id
             message_data['req_id'] = req_id
 

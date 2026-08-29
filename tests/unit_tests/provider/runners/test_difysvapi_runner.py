@@ -80,6 +80,32 @@ class TestDifyWorkflowSubmitClient:
             await anext(client._iter_sse_json(FakeResponse()))
 
     @pytest.mark.asyncio
+    async def test_sse_parser_skips_empty_data_and_done_lines(self):
+        from langbot.libs.dify_service_api.v1 import client
+
+        class FakeResponse:
+            async def aiter_bytes(self, chunk_size=None):
+                del chunk_size
+                yield b'data:\n\ndata: {"event":"message",'
+                yield b'"answer":"ok"}\n\ndata: [DONE]\n'
+
+        events = [event async for event in client._iter_sse_json(FakeResponse())]
+
+        assert events == [{'event': 'message', 'answer': 'ok'}]
+
+    @pytest.mark.asyncio
+    async def test_sse_parser_rejects_malformed_nonempty_data(self):
+        from langbot.libs.dify_service_api.v1 import client, errors
+
+        class FakeResponse:
+            async def aiter_bytes(self, chunk_size=None):
+                del chunk_size
+                yield b'data: not-json\n'
+
+        with pytest.raises(errors.DifyAPIError, match='not valid JSON'):
+            await anext(client._iter_sse_json(FakeResponse()))
+
+    @pytest.mark.asyncio
     async def test_upload_rejects_oversized_local_file(self, tmp_path):
         from langbot.libs.dify_service_api.v1 import client
 
@@ -92,6 +118,62 @@ class TestDifyWorkflowSubmitClient:
 
         with pytest.raises(ValueError, match='exceeds the size limit'):
             await dify_client.upload_file(file_path, 'person_user-1')
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ('status_code', 'body', 'expected_id'),
+        [
+            (200, b'{"data":{"id":"wrapped-id"}}', 'wrapped-id'),
+            (201, b'{"id":"flat-id"}', 'flat-id'),
+        ],
+    )
+    async def test_upload_accepts_supported_success_responses(self, status_code, body, expected_id):
+        from langbot.libs.dify_service_api.v1 import client
+
+        class FakeResponse:
+            headers = {}
+
+            def __init__(self):
+                self.status_code = status_code
+
+            async def aiter_bytes(self, chunk_size=None):
+                del chunk_size
+                yield body
+
+        class FakeStreamContext:
+            async def __aenter__(self):
+                return FakeResponse()
+
+            async def __aexit__(self, exc_type, exc, traceback):
+                del exc_type, exc, traceback
+                return False
+
+        class FakeClient:
+            def stream(self, *args, **kwargs):
+                del args, kwargs
+                return FakeStreamContext()
+
+        dify_client = client.AsyncDifyServiceClient('test-key', 'https://dify.example/v1')
+        dify_client._client = FakeClient()
+
+        response = await dify_client.upload_file(('hello.txt', b'hello', 'text/plain'), 'person_user-1')
+
+        assert response['id'] == expected_id
+
+    @pytest.mark.parametrize(
+        'body',
+        [
+            b'not-json',
+            b'[]',
+            b'{"data":null}',
+            b'{"data":{}}',
+        ],
+    )
+    def test_upload_rejects_invalid_success_payload(self, body):
+        from langbot.libs.dify_service_api.v1 import client, errors
+
+        with pytest.raises(errors.DifyAPIError):
+            client._decode_upload_response(body)
 
 
 class TestDifyExtractTextOutput:
