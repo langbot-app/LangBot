@@ -153,6 +153,27 @@ def _fsync_directory(path: pathlib.Path) -> None:
         os.close(descriptor)
 
 
+def _remove_stale_temporary_files(
+    directory: pathlib.Path,
+    *,
+    prefix: str,
+    suffix: str,
+) -> None:
+    """Remove temporary files left by an interrupted backup or restore."""
+
+    for candidate in directory.iterdir():
+        if candidate.is_dir() or not candidate.name.startswith(prefix) or not candidate.name.endswith(suffix):
+            continue
+        try:
+            candidate.unlink()
+        except FileNotFoundError:
+            continue
+        except PermissionError:
+            # Another process may still own this file. Do not turn harmless
+            # cleanup into a migration failure; its unique name cannot collide.
+            continue
+
+
 def _create_backup(
     database_path: pathlib.Path,
     source_revision: str,
@@ -161,6 +182,11 @@ def _create_backup(
     backup_directory = database_path.parent / 'migration-backups'
     backup_directory.mkdir(mode=0o700, parents=True, exist_ok=True)
     os.chmod(backup_directory, 0o700)
+    _remove_stale_temporary_files(
+        backup_directory,
+        prefix=f'.{database_path.stem}-pre-',
+        suffix='.creating',
+    )
     created_at = datetime.datetime.now(datetime.UTC).strftime('%Y-%m-%dT%H-%M-%S.%fZ')
     stem = (
         f'{database_path.stem}-pre-{_safe_label(target_revision)}-'
@@ -226,6 +252,11 @@ async def create_verified_backup(
 
 def _restore_backup(backup: SQLiteMigrationBackup) -> None:
     _verify_file(backup.backup_path, backup.source_revision)
+    _remove_stale_temporary_files(
+        backup.database_path.parent,
+        prefix=f'.{backup.database_path.name}.',
+        suffix='.restoring',
+    )
     descriptor, temporary_name = tempfile.mkstemp(
         prefix=f'.{backup.database_path.name}.',
         suffix='.restoring',
