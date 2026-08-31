@@ -640,6 +640,19 @@ class TestGetPluginInfo:
         connector.handler.get_plugin_info.assert_called_once_with('author', 'plugin')
         assert result == {'manifest': {'metadata': {'name': 'plugin'}}}
 
+    @pytest.mark.asyncio
+    async def test_returns_none_when_plugin_is_not_installed(self):
+        connector = create_mock_connector()
+        configure_handler(connector, AsyncMock())
+        connector._target_binding = AsyncMock(
+            side_effect=ValueError('Plugin author/plugin is not installed in this Workspace')
+        )
+
+        result = await connector.get_plugin_info('author', 'plugin')
+
+        assert result is None
+        connector.handler.get_plugin_info.assert_not_awaited()
+
 
 class TestSetPluginConfig:
     """Tests for set_plugin_config method."""

@@ -1913,9 +1913,14 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
 
         return plugins
 
-    async def get_plugin_info(self, author: str, plugin_name: str) -> dict[str, Any]:
+    async def get_plugin_info(self, author: str, plugin_name: str) -> dict[str, Any] | None:
         runtime_handler = self._runtime_handler()
-        binding = await self._target_binding(author, plugin_name)
+        try:
+            binding = await self._target_binding(author, plugin_name)
+        except ValueError as exc:
+            if str(exc) == f'Plugin {author}/{plugin_name} is not installed in this Workspace':
+                return None
+            raise
         with runtime_handler.installation_scope(binding):
             return await runtime_handler.get_plugin_info(author, plugin_name)
 
