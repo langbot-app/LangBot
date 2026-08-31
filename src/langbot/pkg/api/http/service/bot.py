@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 import typing
+import json
 import sqlalchemy
 
 from ....core import app
@@ -11,6 +12,8 @@ from ....entity.persistence import bot as persistence_bot
 from ....entity.persistence import pipeline as persistence_pipeline
 from ....workspace.errors import WorkspaceNotFoundError
 from .tenant import TenantContext, require_workspace_uuid, scope_statement
+from ....utils import httpclient
+from ....platform.sources import http_bot_signing
 
 
 class BotService:
@@ -796,6 +799,53 @@ class BotService:
             'unmatched_events': unmatched_events[-10:],
             'stale_routes': stale_routes,
         }
+
+    async def send_http_bot_test_message(
+        self,
+        context: TenantContext,
+        bot_uuid: str,
+        message: str,
+    ) -> dict:
+        """Send a signed test message through the HTTP Bot public ingress."""
+        bot = await self.get_bot(context, bot_uuid, include_secret=True)
+        if bot is None:
+            raise WorkspaceNotFoundError('Bot not found')
+        if bot.get('adapter') != 'http_bot':
+            raise ValueError('Inbound test is only available for HTTP Bot')
+        if not bot.get('enable'):
+            raise ValueError('Bot must be enabled before sending a test message')
+
+        text = message.strip()
+        if not text or len(text) > 2000:
+            raise ValueError('Test message must contain 1 to 2000 characters')
+
+        payload = {
+            'session_id': f'wizard-{uuid.uuid4().hex}',
+            'sender': {'id': 'wizard-user', 'name': 'Wizard Test'},
+            'message': [{'type': 'Plain', 'text': text}],
+        }
+        body = json.dumps(payload, ensure_ascii=False, separators=(',', ':')).encode()
+        config = bot.get('adapter_config') or {}
+        headers = {'Content-Type': 'application/json'}
+        if config.get('signature_required', True):
+            secret = str(config.get('inbound_secret') or '')
+            if not secret:
+                raise ValueError('HTTP Bot inbound signing secret is required')
+            timestamp, signature = http_bot_signing.sign(secret, body)
+            headers[http_bot_signing.HEADER_TIMESTAMP] = timestamp
+            headers[http_bot_signing.HEADER_SIGNATURE] = signature
+
+        port = int(self.ap.instance_config.data.get('api', {}).get('port', 5300))
+        session = httpclient.get_session()
+        async with session.post(
+            f'http://127.0.0.1:{port}/bots/{bot_uuid}',
+            data=body,
+            headers=headers,
+        ) as response:
+            result = await httpclient.read_json_limited(response)
+            if response.status not in {200, 202}:
+                raise ValueError(result.get('msg') or f'HTTP Bot test failed with status {response.status}')
+            return result.get('data') or {}
 
     async def send_message(
         self,

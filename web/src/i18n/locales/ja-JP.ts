@@ -2078,6 +2078,27 @@ const jaJP = {
       resaveBot: '設定を再保存',
       botSaved:
         'ボット設定が保存され、有効になりました。ログを確認して接続を検証してください。',
+      waitingForMessage:
+        'ボットが有効になりました。続行するには IM からメッセージを送信してください。',
+      messageReceived:
+        'ボットが IM メッセージを受信しました。次のステップに進めます。',
+      messageReceivedLocalAccountWarning:
+        'ボット側の接続設定は正常で、IM メッセージを受信できています。LangBot Account でログインしていないためモデル呼び出しが失敗する場合がありますが、次のステップで独自のモデルを追加できます。',
+      pageBotTestPrompt:
+        'ページボットが有効になりました。右下のチャットバブルをクリックしてメッセージを送信し、会話フロー全体を確認してください。',
+      pageBotTestNotice:
+        'テスト専用です。実際の外部 Web ページにコードを埋め込んでください。',
+      webhookTestPrompt:
+        'コールバック URL の準備ができました。外部プラットフォームに設定し、ボットへ実際のメッセージを送信してください。',
+      httpTestPrompt:
+        'HTTP Bot が有効になりました。実際の受信メッセージを送信して接続を確認できます。',
+      httpTestDefaultMessage: 'こんにちは。これは接続テストメッセージです。',
+      sendHttpTest: 'テストメッセージを送信',
+      httpTestAccepted:
+        'テストメッセージを受け付けました。まもなくログに表示されます。',
+      httpTestMissingSecret:
+        '受信署名シークレットを入力し、先に設定を保存してください。',
+      httpTestFailed: 'テストメッセージの送信に失敗しました：{{error}}',
       logsTitle: 'ボットログ',
       logsDescription:
         'ボットの活動を監視して、プラットフォーム接続が正常に動作していることを確認します。',
@@ -2086,6 +2107,50 @@ const jaJP = {
       title: 'AIエンジンを選択',
       description:
         'ボットのインテリジェンスを駆動するAIエンジンを選択してください。',
+      optionalDescription:
+        'このステップは任意です。現在の Agent をどのように設定するか選択してください。',
+      externalTitle: '外部プラットフォームの Agent を接続',
+      externalDescription:
+        'Dify、n8n、Coze などを接続し、ボットのパイプラインを置き換えます。',
+      ownModelTitle: '自分のモデルを使用',
+      ownModelDescription:
+        'プロバイダーを追加し、モデルをスキャンまたは手動入力して設定を完了します。',
+      ownModelSetupTitle: '自分のモデルを追加',
+      ownModelSetupDescription:
+        'モデルプロバイダーを追加すると自動スキャンされます。モデル ID の手動入力も可能です。',
+      addProviderTitle: 'プロバイダーを追加',
+      addProviderDescription:
+        '接続とモデルスキャンに使用するプロバイダー情報と API キーを入力します。',
+      selectModelTitle: 'モデルを選択',
+      selectScannedModelTitle: 'モデルを選択',
+      selectScannedModelDescription:
+        '選択したモデルを新しいパイプラインのメインモデルに設定し、ボットをそのパイプラインへ切り替えます。',
+      scanModelMode: 'モデルをスキャン',
+      manualModelMode: '手動で追加',
+      scanningModels: '利用可能なモデルをスキャン中…',
+      noScannedModels:
+        '利用可能なチャットモデルが見つかりません。プロバイダー設定を確認してください。',
+      scanModelsFailed:
+        'モデルのスキャンに失敗しました。URL と API キーを確認して再試行してください。',
+      manualFallbackFailed:
+        '自動スキャンに失敗しました。プロバイダーが対応するモデル ID を直接入力できます。',
+      manualFallbackEmpty:
+        'モデルが見つかりませんでした。プロバイダーが対応するモデル ID を直接入力できます。',
+      manualModelId: 'モデル ID',
+      manualModelIdPlaceholder: '例：gpt-4o',
+      manualModelIdDescription:
+        'モデルリクエストで実際に使用する model パラメーターを入力します。',
+      manualModelOptions: '任意のモデル機能',
+      editProvider: 'プロバイダーを編集',
+      rescanModels: 'モデルを再スキャン',
+      moreFeaturesTitle: 'Agent に機能を追加',
+      moreFeaturesDescription:
+        'ワークベンチを開き、自動生成されたばかりの Agent にツール、ナレッジベースなどの機能を追加します。',
+      runnerDescription: '外部 Agent の Runner を選択し、接続を設定します。',
+      backToChoices: '選択肢に戻る',
+      createExternal: '作成して関連付ける',
+      finishWithModel: '選択したモデルを使用して完了',
+      openWorkbench: 'ワークベンチを開く',
       loadingCatalog: 'AgentRunner 拡張機能を読み込んでいます...',
       catalogUnavailable: 'Runner カタログを読み込めません',
       catalogUnavailableDescription:

@@ -1755,14 +1755,80 @@ const esES = {
       resaveBot: 'Volver a guardar configuración',
       botSaved:
         'Configuración del Bot guardada y activada. Consulta los registros para verificar la conexión.',
+      waitingForMessage:
+        'El Bot está activado. Envíale un mensaje desde tu plataforma de mensajería para continuar.',
+      messageReceived:
+        'El Bot recibió un mensaje. Puedes continuar al siguiente paso.',
+      messageReceivedLocalAccountWarning:
+        'La conexión del Bot está configurada correctamente y recibió un mensaje. Como no has iniciado sesión con una cuenta de LangBot, las llamadas al modelo pueden fallar; continúa al siguiente paso para añadir tu propio modelo.',
+      pageBotTestPrompt:
+        'El Bot de página está activado. Haz clic en la burbuja de chat de la esquina inferior derecha y envía un mensaje para verificar el flujo completo de la conversación.',
+      pageBotTestNotice:
+        'Solo para pruebas. Inserta el código en una página web externa real.',
+      webhookTestPrompt:
+        'La URL de devolución de llamada está lista. Configúrala en la plataforma externa y envía un mensaje real al Bot.',
+      httpTestPrompt:
+        'El Bot HTTP está activado. Envía aquí un mensaje entrante real para verificar la conexión.',
+      httpTestDefaultMessage: 'Hola, este es un mensaje de prueba de conexión.',
+      sendHttpTest: 'Enviar mensaje de prueba',
+      httpTestAccepted:
+        'El mensaje de prueba fue aceptado. Aparecerá en el registro en breve.',
+      httpTestMissingSecret:
+        'Introduce un secreto de firma entrante y guarda primero la configuración.',
+      httpTestFailed: 'No se pudo enviar el mensaje de prueba: {{error}}',
       logsTitle: 'Registros del Bot',
       logsDescription:
         'Monitorea la actividad del Bot para verificar que la conexión con la plataforma funcione.',
     },
     aiEngine: {
-      title: 'Selecciona un motor de IA',
+      title: 'Configura el motor de IA',
       description:
         'Elige el motor de IA que impulsará la inteligencia de tu Bot.',
+      optionalDescription:
+        'Este paso es opcional. Elige cómo quieres continuar con el Agent actual.',
+      externalTitle: 'Conectar un Agent de una plataforma externa',
+      externalDescription:
+        'Conecta Dify, n8n, Coze u otra plataforma y sustituye el Pipeline del Bot.',
+      ownModelTitle: 'Usar mi propio modelo',
+      ownModelDescription:
+        'Añade un proveedor y luego escanea o introduce manualmente un modelo para completar la configuración.',
+      ownModelSetupTitle: 'Añade tu propio modelo',
+      ownModelSetupDescription:
+        'Añade un proveedor de modelos. Los modelos de chat se detectan automáticamente, o puedes introducir un ID de modelo manualmente.',
+      addProviderTitle: 'Añadir proveedor',
+      addProviderDescription:
+        'Introduce los datos del proveedor y la clave de API usados para conectar y detectar modelos.',
+      selectModelTitle: 'Elige un modelo',
+      selectScannedModelTitle: 'Elige un modelo',
+      selectScannedModelDescription:
+        'El modelo seleccionado será el modelo principal de un nuevo Pipeline y el Bot cambiará a él.',
+      scanModelMode: 'Detectar modelos',
+      manualModelMode: 'Añadir manualmente',
+      scanningModels: 'Detectando modelos disponibles…',
+      noScannedModels:
+        'No se encontraron modelos de chat disponibles. Revisa la configuración del proveedor.',
+      scanModelsFailed:
+        'No se pudieron detectar los modelos. Revisa la URL y la clave de API e inténtalo de nuevo.',
+      manualFallbackFailed:
+        'La detección automática falló. Introduce un ID de modelo compatible con el proveedor.',
+      manualFallbackEmpty:
+        'No se encontraron modelos. Introduce un ID de modelo compatible con el proveedor.',
+      manualModelId: 'ID del modelo',
+      manualModelIdPlaceholder: 'Por ejemplo: gpt-4o',
+      manualModelIdDescription:
+        'Introduce el parámetro de modelo utilizado en las solicitudes.',
+      manualModelOptions: 'Capacidades opcionales del modelo',
+      editProvider: 'Editar proveedor',
+      rescanModels: 'Volver a detectar modelos',
+      moreFeaturesTitle: 'Añadir más funciones al Agent',
+      moreFeaturesDescription:
+        'Abre el área de trabajo para añadir herramientas, bases de conocimiento y otras capacidades al Agent que se acaba de generar automáticamente.',
+      runnerDescription:
+        'Selecciona un Runner para el Agent externo y configura su conexión.',
+      backToChoices: 'Volver a las opciones',
+      createExternal: 'Crear y vincular',
+      finishWithModel: 'Usar el modelo seleccionado y finalizar',
+      openWorkbench: 'Abrir área de trabajo',
     },
     config: {
       botInfo: 'Información del Bot',

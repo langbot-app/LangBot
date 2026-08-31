@@ -39,6 +39,35 @@ def _assert_verified_backup(payload: dict) -> None:
         assert connection.execute('SELECT version_num FROM alembic_version').fetchone()[0] == payload['source_revision']
 
 
+def _temporary_sqlite_files(root: pathlib.Path) -> list[pathlib.Path]:
+    return [*root.rglob('*.creating'), *root.rglob('*.restoring')]
+
+
+async def test_backup_removes_stale_temporary_file_from_interrupted_run(tmp_path):
+    database_path = tmp_path / 'legacy-stale-backup.db'
+    engine = create_async_engine(f'sqlite+aiosqlite:///{database_path}')
+    try:
+        await create_legacy_resource_schema(engine, instance_uuid='stale-backup')
+        await alembic_runner.run_alembic_stamp(engine, '0008_mcp_resource_prefs')
+        backup_directory = tmp_path / 'migration-backups'
+        backup_directory.mkdir()
+        stale_path = backup_directory / '.legacy-stale-backup-pre-0009-old.creating'
+        unrelated_path = backup_directory / '.another-database-pre-0009-old.creating'
+        stale_path.write_bytes(b'interrupted backup')
+        unrelated_path.write_bytes(b'unrelated backup')
+
+        await sqlite_migration_backup.create_verified_backup(
+            engine,
+            source_revision='0008_mcp_resource_prefs',
+            target_revision='0009_workspace_tenancy',
+        )
+
+        assert not stale_path.exists()
+        assert unrelated_path.read_bytes() == b'unrelated backup'
+    finally:
+        await engine.dispose()
+
+
 async def test_tenancy_migrations_retain_verified_boundary_backups(tmp_path):
     database_path = tmp_path / 'legacy-with-backups.db'
     engine = create_async_engine(f'sqlite+aiosqlite:///{database_path}')
@@ -59,6 +88,7 @@ async def test_tenancy_migrations_retain_verified_boundary_backups(tmp_path):
         }
         for payload in payloads:
             _assert_verified_backup(payload)
+        assert _temporary_sqlite_files(tmp_path) == []
     finally:
         await engine.dispose()
 
@@ -100,10 +130,46 @@ async def test_failed_tenancy_migration_restores_backup_and_revision(
         assert restored[0]['status'] == 'restored_after_failure'
         assert restored[0]['source_revision'] == '0009_workspace_tenancy'
         _assert_verified_backup(restored[0])
+        assert _temporary_sqlite_files(tmp_path) == []
 
         monkeypatch.setattr(alembic_runner, 'run_alembic_upgrade', real_upgrade)
         await _manager(engine)._run_alembic_migrations()
         assert await alembic_runner.get_alembic_current(engine) == alembic_runner.get_alembic_head()
+    finally:
+        await engine.dispose()
+
+
+async def test_restore_publish_failure_preserves_current_database(tmp_path, monkeypatch):
+    database_path = tmp_path / 'restore-publish-failure.db'
+    engine = create_async_engine(f'sqlite+aiosqlite:///{database_path}')
+    try:
+        await create_legacy_resource_schema(engine, instance_uuid='restore-publish-failure')
+        await alembic_runner.run_alembic_stamp(engine, '0008_mcp_resource_prefs')
+        backup = await sqlite_migration_backup.create_verified_backup(
+            engine,
+            source_revision='0008_mcp_resource_prefs',
+            target_revision='0009_workspace_tenancy',
+        )
+        stale_restore_path = tmp_path / f'.{database_path.name}.interrupted.restoring'
+        stale_restore_path.write_bytes(b'interrupted restore')
+        async with engine.begin() as connection:
+            await connection.execute(sa.text("UPDATE alembic_version SET version_num = 'failed-revision'"))
+        await engine.dispose()
+        database_before_restore = database_path.read_bytes()
+        real_replace = os.replace
+
+        def fail_restore_publish(source, destination):
+            if pathlib.Path(destination) == database_path:
+                raise OSError('simulated atomic publish failure')
+            return real_replace(source, destination)
+
+        monkeypatch.setattr(sqlite_migration_backup.os, 'replace', fail_restore_publish)
+
+        with pytest.raises(OSError, match='atomic publish failure'):
+            await sqlite_migration_backup.restore_verified_backup(engine, backup)
+
+        assert database_path.read_bytes() == database_before_restore
+        assert _temporary_sqlite_files(tmp_path) == []
     finally:
         await engine.dispose()
 

@@ -58,7 +58,7 @@ async def test_matches_any_rejects_pattern_and_input_amplification():
 @pytest.mark.asyncio
 async def test_bundled_sensitive_words_fit_within_pattern_limit():
     config_path = Path(__file__).parents[3] / 'src/langbot/templates/metadata/sensitive-words.json'
-    config = json.loads(config_path.read_text())
+    config = json.loads(config_path.read_text(encoding='utf-8'))
 
     assert len(config['words']) <= safe_regex.MAX_PATTERN_COUNT
     found, masked = await safe_regex.mask_patterns(
@@ -70,6 +70,45 @@ async def test_bundled_sensitive_words_fit_within_pattern_limit():
 
     assert found is False
     assert masked == '普通消息'
+
+
+@pytest.mark.asyncio
+async def test_mask_patterns_honors_explicit_pattern_count_cap():
+    patterns = ['a'] * (safe_regex.MAX_PATTERN_COUNT + 6)
+    found, masked = await safe_regex.mask_patterns(
+        patterns,
+        'hello',
+        mask='*',
+        mask_word='',
+        max_pattern_count=len(patterns),
+    )
+    assert found is False
+    assert masked == 'hello'
+
+    with pytest.raises(safe_regex.SafeRegexLimitError):
+        await safe_regex.mask_patterns(
+            patterns,
+            'hello',
+            mask='*',
+            mask_word='',
+        )
+
+
+@pytest.mark.asyncio
+async def test_mask_patterns_rejects_oversized_sequence_before_copying_it():
+    class OversizedPatterns(list):
+        def __iter__(self):
+            raise AssertionError('oversized patterns must not be materialized')
+
+    patterns = OversizedPatterns(['a'] * (safe_regex.MAX_PATTERN_COUNT + 1))
+
+    with pytest.raises(safe_regex.SafeRegexLimitError):
+        await safe_regex.mask_patterns(
+            patterns,
+            'hello',
+            mask='*',
+            mask_word='',
+        )
 
 
 @pytest.mark.asyncio

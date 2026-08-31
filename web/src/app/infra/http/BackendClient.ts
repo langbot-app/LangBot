@@ -157,7 +157,9 @@ export class BackendClient extends BaseHttpClient {
     return this.get(`/api/v1/provider/models/llm/${uuid}`);
   }
 
-  public createProviderLLMModel(model: LLMModel): Promise<object> {
+  public createProviderLLMModel(
+    model: Omit<LLMModel, 'uuid'>,
+  ): Promise<{ uuid: string }> {
     return this.post('/api/v1/provider/models/llm', model);
   }
 
@@ -542,6 +544,15 @@ export class BackendClient extends BaseHttpClient {
     return this.post(`/api/v1/platform/bots/${botId}/logs`, request);
   }
 
+  public testHttpBotInbound(
+    botId: string,
+    message: string,
+  ): Promise<{ session_id: string; accepted_message_id: string }> {
+    return this.post(`/api/v1/platform/bots/${botId}/test-inbound`, {
+      message,
+    });
+  }
+
   public getBotSessions(
     botId: string,
     limit: number = 100,
@@ -791,11 +802,32 @@ export class BackendClient extends BaseHttpClient {
     );
   }
 
-  private async getAuthenticatedObjectURL(path: string): Promise<string> {
+  private async getAuthenticatedObjectURL(
+    path: string,
+    rewritePluginPageSdk = false,
+  ): Promise<string> {
     const response = await this.instance.get<Blob>(path, {
       responseType: 'blob',
     });
-    return URL.createObjectURL(response.data);
+    let blob = response.data;
+    if (rewritePluginPageSdk && blob.type.startsWith('text/html')) {
+      const apiBase =
+        this.instance.defaults.baseURL === '/'
+          ? window.location.origin
+          : this.instance.defaults.baseURL?.replace(/\/$/, '');
+      const pageSdkUrl = `${apiBase}/api/v1/plugins/_sdk/page-sdk.js`;
+      const html = await blob.text();
+      blob = new Blob(
+        [
+          html.replace(
+            /(<script\b[^>]*\bsrc\s*=\s*)(["'])\/api\/v1\/plugins\/_sdk\/page-sdk\.js\2/gi,
+            `$1$2${pageSdkUrl}$2`,
+          ),
+        ],
+        { type: blob.type },
+      );
+    }
+    return URL.createObjectURL(blob);
   }
 
   public getAuthenticatedPluginAssetURL(
@@ -803,37 +835,9 @@ export class BackendClient extends BaseHttpClient {
     name: string,
     filepath: string,
   ): Promise<string> {
-    return this.getAuthenticatedPluginPageURL(
+    return this.getAuthenticatedObjectURL(
       `/api/v1/plugins/${author}/${name}/authenticated-assets/${filepath}`,
-    );
-  }
-
-  private async getAuthenticatedPluginPageURL(path: string): Promise<string> {
-    const response = await this.instance.get<Blob>(path, {
-      responseType: 'blob',
-    });
-    if (!response.data.type.startsWith('text/html')) {
-      return URL.createObjectURL(response.data);
-    }
-
-    const html = await response.data.text();
-    const pageSdkPattern =
-      /<script\b[^>]*\bsrc=(['"])\/api\/v1\/plugins\/_sdk\/page-sdk\.js\1[^>]*>\s*<\/script>/i;
-    if (!pageSdkPattern.test(html)) {
-      return URL.createObjectURL(response.data);
-    }
-
-    const sdkResponse = await this.instance.get<string>(
-      '/api/v1/plugins/_sdk/page-sdk.js',
-      { responseType: 'text' },
-    );
-    const inlineSdk = sdkResponse.data.replace(/<\/script/gi, '<\\/script');
-    const hydratedHtml = html.replace(
-      pageSdkPattern,
-      `<script>${inlineSdk}</script>`,
-    );
-    return URL.createObjectURL(
-      new Blob([hydratedHtml], { type: response.data.type }),
+      true,
     );
   }
 
@@ -1163,10 +1167,19 @@ export class BackendClient extends BaseHttpClient {
     selected_scenario?: string | null;
     selected_adapter: string | null;
     created_bot_uuid: string | null;
+    created_pipeline_uuid?: string | null;
     bot_saved: boolean;
+    message_received?: boolean;
     selected_runner: string | null;
   }): Promise<void> {
     return this.put('/api/v1/system/wizard/progress', progress);
+  }
+
+  public getWizardRecommendedModel(): Promise<{
+    uuid: string;
+    name: string;
+  }> {
+    return this.get('/api/v1/system/wizard/recommended-model');
   }
 
   public getAsyncTasks(params?: {

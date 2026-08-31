@@ -44,6 +44,86 @@ def test_webhook_dispatch_tasks_are_bounded():
     assert len(client._dispatch_tasks) == 100
 
 
+@pytest.mark.asyncio
+async def test_ws_initial_stream_frame_precedes_pipeline_dispatch(monkeypatch):
+    from langbot.libs.wecom_ai_bot_api import ws_client as ws_client_module
+
+    order = []
+    logger = types.SimpleNamespace(
+        debug=Mock(),
+        error=Mock(),
+        warning=Mock(),
+    )
+    client = WecomBotWsClient('bot-id', 'secret', logger)
+
+    async def parse_message(*args, **kwargs):
+        del args, kwargs
+        return {'msgid': 'msg-1', 'type': 'single', 'userid': 'user-1'}
+
+    async def reply_stream(*args, **kwargs):
+        del args, kwargs
+        order.append('initial-frame')
+        return {}
+
+    async def dispatch_event(event):
+        del event
+        order.append('pipeline-dispatch')
+
+    monkeypatch.setattr(ws_client_module, 'parse_wecom_bot_message', parse_message)
+    monkeypatch.setattr(ws_client_module.wecombotevent, 'WecomBotEvent', lambda data: data)
+    client.reply_stream = reply_stream
+    client._dispatch_event = dispatch_event
+
+    await client._handle_message_callback({'headers': {'req_id': 'req-1'}, 'body': {}})
+
+    assert order == ['initial-frame', 'pipeline-dispatch']
+
+
+@pytest.mark.asyncio
+async def test_ws_initial_stream_failure_still_dispatches_message(monkeypatch):
+    from langbot.libs.wecom_ai_bot_api import ws_client as ws_client_module
+
+    dispatched = []
+
+    class Logger:
+        def __init__(self):
+            self.warnings = []
+
+        async def debug(self, message):
+            del message
+
+        async def error(self, message):
+            raise AssertionError(message)
+
+        async def warning(self, message):
+            self.warnings.append(message)
+
+    logger = Logger()
+    client = WecomBotWsClient('bot-id', 'secret', logger)
+
+    async def parse_message(*args, **kwargs):
+        del args, kwargs
+        return {'msgid': 'msg-1', 'type': 'single', 'userid': 'user-1'}
+
+    async def reply_stream(*args, **kwargs):
+        del args, kwargs
+        raise ConnectionError('simulated reply failure')
+
+    async def dispatch_event(event):
+        dispatched.append(event)
+
+    monkeypatch.setattr(ws_client_module, 'parse_wecom_bot_message', parse_message)
+    monkeypatch.setattr(ws_client_module.wecombotevent, 'WecomBotEvent', lambda data: data)
+    client.reply_stream = reply_stream
+    client._dispatch_event = dispatch_event
+
+    await client._handle_message_callback({'headers': {'req_id': 'req-1'}, 'body': {}})
+
+    assert len(dispatched) == 1
+    assert len(logger.warnings) == 1
+    assert 'simulated reply failure' in logger.warnings[0]
+
+
 def test_extract_template_card_action_supports_nested_button_key():
     task_id, event_key, card_type = extract_template_card_action(
         {

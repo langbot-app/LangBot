@@ -43,10 +43,13 @@ class PipelinesRouterGroup(group.RouterGroup):
             permission=Permission.RESOURCE_MANAGE,
         )
         async def _(request_context: RequestContext) -> str:
+            pipeline_data = await quart.request.json
+            create_as_default = pipeline_data.get('is_default') is True
             try:
                 pipeline_uuid = await self.ap.pipeline_service.create_pipeline(
                     request_context,
-                    await quart.request.json,
+                    pipeline_data,
+                    default=create_as_default,
                 )
             except ValueError as exc:
                 return self.http_status(400, -1, str(exc))
@@ -131,9 +134,7 @@ class PipelinesRouterGroup(group.RouterGroup):
             except Exception as exc:
                 self.ap.logger.warning('Unable to list skills for pipeline extensions: %s', exc)
                 available_skills = []
-            extensions_prefs = normalize_extension_preferences(
-                pipeline.get('extensions_preferences')
-            )
+            extensions_prefs = normalize_extension_preferences(pipeline.get('extensions_preferences'))
             return self.success(
                 data={
                     'enable_all_plugins': extensions_prefs.get('enable_all_plugins', True),
@@ -192,9 +193,7 @@ class PipelinesRouterGroup(group.RouterGroup):
                     bound_skills=json_data.get('bound_skills', []),
                     enable_all_skills=json_data.get('enable_all_skills', True),
                     bound_mcp_resources=json_data.get('bound_mcp_resources'),
-                    mcp_resource_agent_read_enabled=json_data.get(
-                        'mcp_resource_agent_read_enabled'
-                    ),
+                    mcp_resource_agent_read_enabled=json_data.get('mcp_resource_agent_read_enabled'),
                 )
             except ValueError as exc:
                 return self.http_status(400, -1, str(exc))

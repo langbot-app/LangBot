@@ -24,11 +24,11 @@ function loadNormalizer() {
     loadedModule,
     loadedModule.exports,
   );
-  return loadedModule.exports.normalizeDynamicFormValuesForSave;
+  return loadedModule.exports;
 }
 
 test('normalizes only single-line text fields in a dynamic form save snapshot', () => {
-  const normalizeDynamicFormValuesForSave = loadNormalizer();
+  const { normalizeDynamicFormValuesForSave } = loadNormalizer();
   const specs = [
     { name: 'single-line', type: 'string', default: '' },
     { name: 'multiline', type: 'text', default: '' },
@@ -69,4 +69,30 @@ test('normalizes only single-line text fields in a dynamic form save snapshot', 
       },
     },
   });
+});
+
+test('normalizes missing dynamic form defaults into controlled values', () => {
+  const { normalizeDynamicFormFieldValue } = loadNormalizer();
+
+  assert.equal(
+    normalizeDynamicFormFieldValue(
+      { name: 'api-key', type: 'string', default: undefined },
+      undefined,
+    ),
+    '',
+  );
+  assert.equal(
+    normalizeDynamicFormFieldValue(
+      { name: 'enabled', type: 'boolean', default: undefined },
+      undefined,
+    ),
+    false,
+  );
+  assert.deepEqual(
+    normalizeDynamicFormFieldValue(
+      { name: 'items', type: 'array[string]', default: undefined },
+      undefined,
+    ),
+    [],
+  );
 });

@@ -20,6 +20,7 @@ import {
   TrendingUp,
 } from 'lucide-react';
 import { httpClient } from '@/app/infra/http/HttpClient';
+import { getErrorMessage } from '../utils';
 
 interface TokenSummary {
   total_calls: number;
@@ -152,7 +153,7 @@ export default function TokenMonitoring({
       });
       setStats(result);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(getErrorMessage(e));
     } finally {
       setLoading(false);
     }

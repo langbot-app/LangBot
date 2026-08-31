@@ -207,6 +207,20 @@ class SystemRouterGroup(group.RouterGroup):
             return self.success(data={})
 
         @self.route(
+            '/wizard/recommended-model',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN,
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def _(request_context: RequestContext) -> str:
+            """Resolve Space's best available chat model to this Workspace."""
+            try:
+                model = await self.ap.space_service.get_recommended_chat_model(request_context)
+            except ValueError as exc:
+                return self.http_status(503, -1, str(exc))
+            return self.success(data=model)
+
+        @self.route(
             '/tasks',
             methods=['GET'],
             auth_type=group.AuthType.USER_TOKEN,

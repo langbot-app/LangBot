@@ -1715,13 +1715,78 @@ const viVN = {
       resaveBot: 'Lưu lại cấu hình',
       botSaved:
         'Cấu hình Bot đã lưu và bật. Kiểm tra nhật ký để xác minh kết nối.',
+      waitingForMessage:
+        'Bot đã được bật. Hãy gửi cho Bot một tin nhắn từ nền tảng nhắn tin để tiếp tục.',
+      messageReceived:
+        'Bot đã nhận được tin nhắn. Bạn có thể tiếp tục sang bước tiếp theo.',
+      messageReceivedLocalAccountWarning:
+        'Kết nối phía Bot đã được cấu hình đúng và đã nhận được tin nhắn. Vì bạn không đăng nhập bằng tài khoản LangBot, lệnh gọi mô hình có thể thất bại; hãy tiếp tục sang bước tiếp theo để thêm mô hình của riêng bạn.',
+      pageBotTestPrompt:
+        'Page Bot đã được bật. Nhấp vào bong bóng trò chuyện ở góc dưới bên phải và gửi tin nhắn để xác minh toàn bộ luồng hội thoại.',
+      pageBotTestNotice:
+        'Chỉ dùng để kiểm thử. Hãy nhúng mã vào một trang web bên ngoài thực tế.',
+      webhookTestPrompt:
+        'URL callback đã sẵn sàng. Hãy cấu hình URL này trên nền tảng bên ngoài, sau đó gửi một tin nhắn thực cho Bot.',
+      httpTestPrompt:
+        'HTTP Bot đã được bật. Gửi một tin nhắn đến thực tế tại đây để xác minh kết nối.',
+      httpTestDefaultMessage: 'Xin chào, đây là tin nhắn kiểm tra kết nối.',
+      sendHttpTest: 'Gửi tin nhắn kiểm tra',
+      httpTestAccepted:
+        'Tin nhắn kiểm tra đã được chấp nhận và sẽ sớm xuất hiện trong nhật ký.',
+      httpTestMissingSecret:
+        'Hãy nhập khóa bí mật ký yêu cầu đến và lưu cấu hình trước.',
+      httpTestFailed: 'Không thể gửi tin nhắn kiểm tra: {{error}}',
       logsTitle: 'Nhật ký Bot',
       logsDescription:
         'Giám sát hoạt động Bot để xác minh kết nối nền tảng đang hoạt động.',
     },
     aiEngine: {
-      title: 'Chọn công cụ AI',
+      title: 'Cấu hình công cụ AI',
       description: 'Chọn công cụ AI sẽ cung cấp trí tuệ cho Bot của bạn.',
+      optionalDescription:
+        'Bước này không bắt buộc. Hãy chọn cách bạn muốn tiếp tục với Agent hiện tại.',
+      externalTitle: 'Kết nối Agent từ nền tảng bên ngoài',
+      externalDescription:
+        'Kết nối Dify, n8n, Coze hoặc nền tảng khác và thay thế Pipeline của Bot.',
+      ownModelTitle: 'Sử dụng mô hình của riêng tôi',
+      ownModelDescription:
+        'Thêm nhà cung cấp, sau đó quét hoặc nhập mô hình thủ công để hoàn tất thiết lập.',
+      ownModelSetupTitle: 'Thêm mô hình của riêng bạn',
+      ownModelSetupDescription:
+        'Thêm nhà cung cấp mô hình. Các mô hình trò chuyện sẽ được quét tự động, hoặc bạn có thể nhập ID mô hình thủ công.',
+      addProviderTitle: 'Thêm nhà cung cấp',
+      addProviderDescription:
+        'Nhập thông tin nhà cung cấp và API Key dùng để kết nối và quét mô hình.',
+      selectModelTitle: 'Chọn mô hình',
+      selectScannedModelTitle: 'Chọn mô hình',
+      selectScannedModelDescription:
+        'Mô hình đã chọn sẽ là mô hình chính của Pipeline mới và Bot sẽ chuyển sang sử dụng mô hình đó.',
+      scanModelMode: 'Quét mô hình',
+      manualModelMode: 'Thêm thủ công',
+      scanningModels: 'Đang quét các mô hình khả dụng…',
+      noScannedModels:
+        'Không tìm thấy mô hình trò chuyện khả dụng. Hãy kiểm tra cấu hình nhà cung cấp.',
+      scanModelsFailed:
+        'Quét mô hình thất bại. Hãy kiểm tra URL và API Key rồi thử lại.',
+      manualFallbackFailed:
+        'Quét tự động thất bại. Hãy nhập ID mô hình được nhà cung cấp hỗ trợ.',
+      manualFallbackEmpty:
+        'Không tìm thấy mô hình. Hãy nhập ID mô hình được nhà cung cấp hỗ trợ.',
+      manualModelId: 'ID mô hình',
+      manualModelIdPlaceholder: 'Ví dụ: gpt-4o',
+      manualModelIdDescription:
+        'Nhập tham số mô hình được sử dụng trong các yêu cầu mô hình.',
+      manualModelOptions: 'Khả năng mô hình tùy chọn',
+      editProvider: 'Chỉnh sửa nhà cung cấp',
+      rescanModels: 'Quét lại mô hình',
+      moreFeaturesTitle: 'Thêm khả năng cho Agent',
+      moreFeaturesDescription:
+        'Mở bàn làm việc để thêm công cụ, cơ sở tri thức và các khả năng khác cho Agent vừa được tạo tự động.',
+      runnerDescription: 'Chọn Runner cho Agent bên ngoài và cấu hình kết nối.',
+      backToChoices: 'Quay lại các tùy chọn',
+      createExternal: 'Tạo và liên kết',
+      finishWithModel: 'Sử dụng mô hình đã chọn và hoàn tất',
+      openWorkbench: 'Mở bàn làm việc',
     },
     config: {
       botInfo: 'Thông tin Bot',

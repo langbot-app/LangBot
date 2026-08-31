@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import dataclasses
 import datetime
 import json
@@ -82,7 +83,7 @@ def _verify_connection(connection: sqlite3.Connection, expected_revision: str) -
 
 
 def _verify_file(path: pathlib.Path, expected_revision: str) -> None:
-    with _open_read_only(path) as connection:
+    with contextlib.closing(_open_read_only(path)) as connection:
         _verify_connection(connection, expected_revision)
 
 
@@ -119,12 +120,16 @@ def _write_manifest(backup: SQLiteMigrationBackup, status: str, **extra: typing.
 
 
 def _fsync_file(path: pathlib.Path, *, reopen_attempts: int = 20) -> None:
-    """Sync a file, tolerating delayed visibility after replace on bind mounts."""
+    """Sync a file, tolerating delayed visibility after replace on bind mounts.
+
+    Uses O_RDWR so os.fsync works on Windows (where _commit requires write
+    access to the file descriptor).
+    """
 
     descriptor: int | None = None
     for attempt in range(reopen_attempts):
         try:
-            descriptor = os.open(path, os.O_RDONLY)
+            descriptor = os.open(path, os.O_RDWR)
             break
         except FileNotFoundError:
             if attempt + 1 >= reopen_attempts:
@@ -138,11 +143,35 @@ def _fsync_file(path: pathlib.Path, *, reopen_attempts: int = 20) -> None:
 
 
 def _fsync_directory(path: pathlib.Path) -> None:
-    descriptor = os.open(path, os.O_RDONLY)
+    if os.name == 'nt':
+        # Windows cannot fsync directory handles opened through os.open.
+        return
+    descriptor = os.open(path, os.O_RDONLY | getattr(os, 'O_DIRECTORY', 0))
     try:
         os.fsync(descriptor)
     finally:
         os.close(descriptor)
+
+
+def _remove_stale_temporary_files(
+    directory: pathlib.Path,
+    *,
+    prefix: str,
+    suffix: str,
+) -> None:
+    """Remove temporary files left by an interrupted backup or restore."""
+
+    for candidate in directory.iterdir():
+        if candidate.is_dir() or not candidate.name.startswith(prefix) or not candidate.name.endswith(suffix):
+            continue
+        try:
+            candidate.unlink()
+        except FileNotFoundError:
+            continue
+        except PermissionError:
+            # Another process may still own this file. Do not turn harmless
+            # cleanup into a migration failure; its unique name cannot collide.
+            continue
 
 
 def _create_backup(
@@ -153,6 +182,11 @@ def _create_backup(
     backup_directory = database_path.parent / 'migration-backups'
     backup_directory.mkdir(mode=0o700, parents=True, exist_ok=True)
     os.chmod(backup_directory, 0o700)
+    _remove_stale_temporary_files(
+        backup_directory,
+        prefix=f'.{database_path.stem}-pre-',
+        suffix='.creating',
+    )
     created_at = datetime.datetime.now(datetime.UTC).strftime('%Y-%m-%dT%H-%M-%S.%fZ')
     stem = (
         f'{database_path.stem}-pre-{_safe_label(target_revision)}-'
@@ -169,11 +203,8 @@ def _create_backup(
     temporary_path = pathlib.Path(temporary_name)
     try:
         with (
-            _open_read_only(database_path) as source,
-            sqlite3.connect(
-                temporary_path,
-                timeout=30,
-            ) as destination,
+            contextlib.closing(_open_read_only(database_path)) as source,
+            contextlib.closing(sqlite3.connect(temporary_path, timeout=30)) as destination,
         ):
             source.execute('PRAGMA busy_timeout = 30000')
             source.backup(destination)
@@ -221,6 +252,11 @@ async def create_verified_backup(
 
 def _restore_backup(backup: SQLiteMigrationBackup) -> None:
     _verify_file(backup.backup_path, backup.source_revision)
+    _remove_stale_temporary_files(
+        backup.database_path.parent,
+        prefix=f'.{backup.database_path.name}.',
+        suffix='.restoring',
+    )
     descriptor, temporary_name = tempfile.mkstemp(
         prefix=f'.{backup.database_path.name}.',
         suffix='.restoring',
@@ -230,11 +266,8 @@ def _restore_backup(backup: SQLiteMigrationBackup) -> None:
     temporary_path = pathlib.Path(temporary_name)
     try:
         with (
-            _open_read_only(backup.backup_path) as source,
-            sqlite3.connect(
-                temporary_path,
-                timeout=30,
-            ) as destination,
+            contextlib.closing(_open_read_only(backup.backup_path)) as source,
+            contextlib.closing(sqlite3.connect(temporary_path, timeout=30)) as destination,
         ):
             source.backup(destination)
             destination.commit()

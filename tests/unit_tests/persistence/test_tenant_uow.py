@@ -964,6 +964,7 @@ async def test_scoped_session_rejects_raw_or_unapproved_sql(
             sa.func.date_trunc('hour', sa.column('timestamp')),
             sa.func.length(sa.literal('value')),
             sa.func.nullif(sa.literal('value'), sa.literal('')),
+            sa.func.strftime('%Y-%m-%d %H:00', sa.column('timestamp')),
         ),
         sa.select(sa.column('embedding').op('<=>')(sa.literal([0.1]))),
         sa.select(sa.cast(sa.column('embedding'), Vector(384))),
@@ -975,6 +976,19 @@ async def test_scoped_session_rejects_raw_or_unapproved_sql(
 )
 async def test_scoped_sql_structure_allows_only_the_production_vocabulary(statement) -> None:
     _validate_scoped_statement_call((statement,), {})
+
+
+async def test_scoped_session_executes_sqlite_strftime() -> None:
+    engine = create_async_engine('sqlite+aiosqlite:///:memory:')
+    try:
+        async with TenantUnitOfWork(engine, 'workspace-a') as uow:
+            result = await uow.session.execute(
+                sa.select(sa.func.strftime('%Y-%m-%d %H:00', sa.literal('2026-08-28 03:45:00')))
+            )
+
+        assert result.scalar_one() == '2026-08-28 03:00'
+    finally:
+        await engine.dispose()
 
 
 async def test_scoped_sql_rejects_public_execution_options() -> None:

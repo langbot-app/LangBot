@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import {
   ArrowLeft,
   ArrowRight,
+  AlertTriangle,
   Check,
   ChevronDown,
   ChevronRight,
@@ -21,6 +22,9 @@ import {
   Download,
   RefreshCw,
   CircleAlert,
+  Copy,
+  Send,
+  Webhook,
 } from 'lucide-react';
 
 import { httpClient } from '@/app/infra/http/HttpClient';
@@ -30,6 +34,7 @@ import {
   initializeSystemInfo,
   getCloudServiceClient,
   getCloudServiceClientSync,
+  userInfo,
 } from '@/app/infra/http';
 import {
   Adapter,
@@ -60,8 +65,13 @@ import {
 import { getAdapterDocUrl } from '@/app/infra/entities/adapter-docs';
 import i18n from 'i18next';
 import { PluginV4 } from '@/app/infra/entities/plugin';
+import {
+  ensureHttpBotSigningSecret,
+  isWebhookModeEnabled,
+} from '@/app/wizard/utils';
 
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   Card,
   CardContent,
@@ -218,6 +228,7 @@ export default function WizardPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSavingBot, setIsSavingBot] = useState(false);
   const [botSaved, setBotSaved] = useState(false);
+  const [messageReceived, setMessageReceived] = useState(false);
 
   const loadRunnerCatalog = useCallback(async () => {
     setIsRunnerCatalogLoading(true);
@@ -323,6 +334,7 @@ export default function WizardPage() {
             ? overrides.created_bot_uuid
             : createdBotUuid,
         bot_saved: overrides.bot_saved ?? botSaved,
+        message_received: overrides.message_received ?? messageReceived,
         selected_runner:
           overrides.selected_runner !== undefined
             ? overrides.selected_runner
@@ -338,6 +350,7 @@ export default function WizardPage() {
       selectedAdapter,
       createdBotUuid,
       botSaved,
+      messageReceived,
       selectedRunner,
     ],
   );
@@ -375,17 +388,33 @@ export default function WizardPage() {
             const botData = await httpClient.getBot(progress.created_bot_uuid);
             if (cancelled) return;
 
-            setSelectedAdapter(progress.selected_adapter);
+            const restoredAdapter =
+              progress.selected_adapter ?? botData.bot.adapter;
+            const restoredConfig = (botData.bot.adapter_config ?? {}) as Record<
+              string,
+              unknown
+            >;
+            const configToRestore = ensureHttpBotSigningSecret(
+              restoredAdapter,
+              restoredConfig,
+            );
+            const configNeedsSave = configToRestore !== restoredConfig;
+
+            setSelectedAdapter(restoredAdapter);
             setSelectedScenario(
               (progress.selected_scenario as WizardScenarioId | null) ??
                 'message_reply',
             );
             setCreatedBotUuid(progress.created_bot_uuid);
-            setBotSaved(progress.bot_saved ?? false);
+            setBotSaved(
+              configNeedsSave ? false : (progress.bot_saved ?? false),
+            );
+            setMessageReceived(progress.message_received ?? false);
             setSelectedRunner(progress.selected_runner);
 
             // Restore bot name from fetched bot data
             setBotName(botData.bot.name);
+            setAdapterConfig(configToRestore);
 
             // Restore webhook URLs
             const runtimeValues = botData.bot.adapter_runtime_values as
@@ -407,6 +436,7 @@ export default function WizardPage() {
                 selected_adapter: null,
                 created_bot_uuid: null,
                 bot_saved: false,
+                message_received: false,
                 selected_runner: null,
               })
               .catch(() => {});
@@ -609,7 +639,11 @@ export default function WizardPage() {
       case 0:
         return selectedScenario !== null && selectedAdapter !== null;
       case 1:
-        return createdBotUuid !== null && botSaved;
+        return (
+          createdBotUuid !== null &&
+          botSaved &&
+          (selectedScenario !== 'message_reply' || messageReceived)
+        );
       case 2:
         return selectedRunner !== null;
       default:
@@ -621,6 +655,7 @@ export default function WizardPage() {
     selectedAdapter,
     createdBotUuid,
     botSaved,
+    messageReceived,
     selectedRunner,
   ]);
 
@@ -676,12 +711,17 @@ export default function WizardPage() {
       const defaultConfig = adapter
         ? getDefaultValues(adapter.spec.config)
         : {};
+      const initialConfig = ensureHttpBotSigningSecret(
+        selectedAdapter,
+        defaultConfig,
+      );
+      setAdapterConfig(initialConfig);
 
       const bot: Bot = {
         name: defaultName,
         description: '',
         adapter: selectedAdapter,
-        adapter_config: defaultConfig,
+        adapter_config: initialConfig,
         enable: false,
       };
       const resp = await httpClient.createBot(bot);
@@ -711,6 +751,7 @@ export default function WizardPage() {
         selected_adapter: selectedAdapter,
         created_bot_uuid: resp.uuid,
         bot_saved: false,
+        message_received: false,
         selected_runner: null,
       });
     } catch (err) {
@@ -731,14 +772,21 @@ export default function WizardPage() {
     setIsSavingBot(true);
 
     try {
+      const configToSave = ensureHttpBotSigningSecret(
+        selectedAdapter,
+        adapterConfig,
+      );
+      setAdapterConfig(configToSave);
+
       await httpClient.updateBot(createdBotUuid, {
         name: botName,
         description: botDescription || '',
         adapter: selectedAdapter,
-        adapter_config: adapterConfig,
+        adapter_config: configToSave,
         enable: true,
       });
       setBotSaved(true);
+      setMessageReceived(false);
 
       // Re-fetch runtime info to get updated webhook URL(s)
       try {
@@ -755,7 +803,7 @@ export default function WizardPage() {
       }
 
       // Persist progress
-      saveProgress({ step: 1, bot_saved: true });
+      saveProgress({ step: 1, bot_saved: true, message_received: false });
     } catch (err) {
       const apiErr = err as { msg?: string };
       toast.error(
@@ -773,6 +821,12 @@ export default function WizardPage() {
     t,
     saveProgress,
   ]);
+
+  const handleMessageReceived = useCallback(() => {
+    if (messageReceived) return;
+    setMessageReceived(true);
+    saveProgress({ step: 1, message_received: true });
+  }, [messageReceived, saveProgress]);
 
   // ---- Create Pipeline & Link (Step 2 finish) ----
 
@@ -1041,6 +1095,9 @@ export default function WizardPage() {
             createdBotUuid={createdBotUuid}
             isSavingBot={isSavingBot}
             botSaved={botSaved}
+            messageReceived={messageReceived}
+            requiresMessageVerification={selectedScenario === 'message_reply'}
+            onMessageReceived={handleMessageReceived}
             onSaveBot={handleSaveBot}
             webhookUrl={webhookUrl}
             extraWebhookUrl={extraWebhookUrl}
@@ -1408,6 +1465,38 @@ function StepPlatform({
 // Step 1: Bot Configuration + Logs
 // ---------------------------------------------------------------------------
 
+function PageBotFloatingWidget({
+  botUuid,
+  title,
+  testNotice,
+}: {
+  botUuid: string;
+  title?: string;
+  testNotice: string;
+}) {
+  useEffect(() => {
+    const script = document.createElement('script');
+    script.src = `${window.location.origin}/api/v1/embed/${botUuid}/widget.js?preview=wizard&v=${Date.now()}`;
+    script.dataset.title = title || 'LangBot';
+    script.dataset.testNotice = testNotice;
+    document.body.appendChild(script);
+
+    return () => {
+      script.remove();
+      const root = document.getElementById('langbot-widget-root') as
+        | (HTMLElement & { langbotDestroy?: () => void })
+        | null;
+      if (root?.langbotDestroy) {
+        root.langbotDestroy();
+      } else {
+        root?.remove();
+      }
+    };
+  }, [botUuid, testNotice, title]);
+
+  return null;
+}
+
 function StepBotConfig({
   adapterConfigItems,
   adapterConfigValues,
@@ -1417,6 +1506,9 @@ function StepBotConfig({
   createdBotUuid,
   isSavingBot,
   botSaved,
+  messageReceived,
+  requiresMessageVerification,
+  onMessageReceived,
   onSaveBot,
   webhookUrl,
   extraWebhookUrl,
@@ -1429,16 +1521,34 @@ function StepBotConfig({
   createdBotUuid: string | null;
   isSavingBot: boolean;
   botSaved: boolean;
+  messageReceived: boolean;
+  requiresMessageVerification: boolean;
+  onMessageReceived: () => void;
   onSaveBot: () => void;
   webhookUrl: string;
   extraWebhookUrl: string;
 }) {
   const { t } = useTranslation();
+  const [testMessage, setTestMessage] = useState(
+    t('wizard.botConfig.httpTestDefaultMessage'),
+  );
+  const [isSendingTest, setIsSendingTest] = useState(false);
 
   const adapterLabel = useMemo(() => {
     const a = adapters.find((ad) => ad.name === selectedAdapterName);
     return a ? extractI18nObject(a.label) : (selectedAdapterName ?? '');
   }, [adapters, selectedAdapterName]);
+
+  const webhookModeEnabled = useMemo(
+    () =>
+      isWebhookModeEnabled(adapterConfigItems, adapterConfigValues) &&
+      Boolean(webhookUrl),
+    [adapterConfigItems, adapterConfigValues, webhookUrl],
+  );
+  const receivedMessageWithoutLangBotAccount =
+    messageReceived && userInfo?.account_type !== 'space';
+  const receivedMessageSuccessfully =
+    messageReceived && !receivedMessageWithoutLangBotAccount;
 
   // Stable callback ref
   const onAdapterConfigRef = useRef(onAdapterConfigChange);
@@ -1448,14 +1558,153 @@ function StepBotConfig({
     [],
   );
 
+  const copyWebhookUrl = useCallback(async () => {
+    if (!webhookUrl) return;
+    await navigator.clipboard.writeText(webhookUrl);
+    toast.success(t('common.copySuccess'));
+  }, [t, webhookUrl]);
+
+  const sendHttpBotTest = useCallback(async () => {
+    if (!createdBotUuid || !testMessage.trim()) return;
+    setIsSendingTest(true);
+    try {
+      await httpClient.testHttpBotInbound(createdBotUuid, testMessage.trim());
+      toast.success(t('wizard.botConfig.httpTestAccepted'));
+    } catch (error) {
+      toast.error(
+        t('wizard.botConfig.httpTestFailed', {
+          error: getErrorMessage(error),
+        }),
+      );
+    } finally {
+      setIsSendingTest(false);
+    }
+  }, [createdBotUuid, testMessage, t]);
+
   return (
     <div className="max-w-5xl mx-auto space-y-6">
+      {selectedAdapterName === 'web_page_bot' && botSaved && createdBotUuid && (
+        <PageBotFloatingWidget
+          botUuid={createdBotUuid}
+          title={
+            typeof adapterConfigValues.title === 'string'
+              ? adapterConfigValues.title
+              : undefined
+          }
+          testNotice={t('wizard.botConfig.pageBotTestNotice')}
+        />
+      )}
+
       <div className="text-center">
         <h2 className="text-xl font-semibold">{t('wizard.botConfig.title')}</h2>
         <p className="text-sm text-muted-foreground mt-1">
           {t('wizard.botConfig.description')}
         </p>
       </div>
+
+      {botSaved && requiresMessageVerification && (
+        <div
+          className={cn(
+            'border px-4 py-3',
+            receivedMessageSuccessfully
+              ? 'border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950/30'
+              : 'border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30',
+          )}
+        >
+          <div className="flex items-start gap-3">
+            <div
+              className={cn(
+                'mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full',
+                receivedMessageSuccessfully ? 'bg-green-500' : 'bg-amber-500',
+              )}
+            >
+              {receivedMessageWithoutLangBotAccount ? (
+                <AlertTriangle className="size-3 text-white" />
+              ) : messageReceived ? (
+                <Check className="size-3 text-white" />
+              ) : selectedAdapterName === 'web_page_bot' ? (
+                <MessageSquare className="size-3 text-white" />
+              ) : selectedAdapterName === 'http_bot' ? (
+                <Send className="size-3 text-white" />
+              ) : webhookModeEnabled ? (
+                <Webhook className="size-3 text-white" />
+              ) : (
+                <Loader2 className="size-3 animate-spin text-white" />
+              )}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p
+                className={cn(
+                  'text-sm font-medium',
+                  receivedMessageSuccessfully
+                    ? 'text-green-800 dark:text-green-200'
+                    : 'text-amber-800 dark:text-amber-200',
+                )}
+              >
+                {messageReceived
+                  ? t(
+                      receivedMessageWithoutLangBotAccount
+                        ? 'wizard.botConfig.messageReceivedLocalAccountWarning'
+                        : 'wizard.botConfig.messageReceived',
+                    )
+                  : selectedAdapterName === 'web_page_bot'
+                    ? t('wizard.botConfig.pageBotTestPrompt')
+                    : selectedAdapterName === 'http_bot'
+                      ? t('wizard.botConfig.httpTestPrompt')
+                      : webhookModeEnabled
+                        ? t('wizard.botConfig.webhookTestPrompt')
+                        : t('wizard.botConfig.waitingForMessage')}
+              </p>
+
+              {!messageReceived && webhookModeEnabled && (
+                <div className="mt-3 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <code className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap border bg-background px-2.5 py-2 text-xs">
+                      {webhookUrl}
+                    </code>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="size-9 shrink-0"
+                      onClick={copyWebhookUrl}
+                      title={t('common.copy')}
+                    >
+                      <Copy className="size-4" />
+                    </Button>
+                  </div>
+
+                  {selectedAdapterName === 'http_bot' && (
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <Input
+                        value={testMessage}
+                        onChange={(event) => setTestMessage(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') void sendHttpBotTest();
+                        }}
+                        className="bg-background"
+                      />
+                      <Button
+                        type="button"
+                        onClick={() => void sendHttpBotTest()}
+                        disabled={isSendingTest || !testMessage.trim()}
+                        className="shrink-0"
+                      >
+                        {isSendingTest ? (
+                          <Loader2 className="mr-1.5 size-4 animate-spin" />
+                        ) : (
+                          <Send className="mr-1.5 size-4" />
+                        )}
+                        {t('wizard.botConfig.sendHttpTest')}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid gap-6 grid-cols-1 lg:grid-cols-2">
         {/* Left column: Adapter config form */}
@@ -1522,7 +1771,7 @@ function StepBotConfig({
           )}
 
           {/* Bot saved indicator */}
-          {botSaved && (
+          {botSaved && !requiresMessageVerification && (
             <div className="flex items-center gap-2 px-4 py-3 rounded-lg border border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950/30">
               <div className="w-5 h-5 rounded-full bg-green-500 flex items-center justify-center shrink-0">
                 <Check className="w-3 h-3 text-white" />
@@ -1548,6 +1797,7 @@ function StepBotConfig({
                 botId={createdBotUuid}
                 autoExpandImages
                 hideToolbar
+                onMessageReceived={onMessageReceived}
               />
             </CardContent>
           </Card>

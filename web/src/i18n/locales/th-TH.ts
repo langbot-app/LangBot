@@ -1691,13 +1691,75 @@ const thTH = {
       resaveBot: 'บันทึกการกำหนดค่าอีกครั้ง',
       botSaved:
         'บันทึกและเปิดใช้งาน Bot แล้ว ตรวจสอบบันทึกเพื่อยืนยันการเชื่อมต่อ',
+      waitingForMessage:
+        'เปิดใช้งาน Bot แล้ว โปรดส่งข้อความจากแพลตฟอร์มแชตเพื่อดำเนินการต่อ',
+      messageReceived: 'Bot ได้รับข้อความแล้ว คุณสามารถไปยังขั้นตอนถัดไปได้',
+      messageReceivedLocalAccountWarning:
+        'การเชื่อมต่อฝั่ง Bot ได้รับการกำหนดค่าอย่างถูกต้องและได้รับข้อความแล้ว เนื่องจากคุณไม่ได้เข้าสู่ระบบด้วยบัญชี LangBot การเรียกใช้โมเดลอาจล้มเหลว โปรดไปยังขั้นตอนถัดไปเพื่อเพิ่มโมเดลของคุณเอง',
+      pageBotTestPrompt:
+        'เปิดใช้งาน Page Bot แล้ว คลิกฟองแชตที่มุมขวาล่างและส่งข้อความเพื่อตรวจสอบขั้นตอนการสนทนาทั้งหมด',
+      pageBotTestNotice:
+        'สำหรับการทดสอบเท่านั้น โปรดฝังโค้ดในหน้าเว็บภายนอกจริง',
+      webhookTestPrompt:
+        'URL Callback พร้อมแล้ว โปรดกำหนดค่าบนแพลตฟอร์มภายนอก แล้วส่งข้อความจริงถึง Bot',
+      httpTestPrompt:
+        'เปิดใช้งาน HTTP Bot แล้ว ส่งข้อความขาเข้าจริงที่นี่เพื่อตรวจสอบการเชื่อมต่อ',
+      httpTestDefaultMessage: 'สวัสดี นี่คือข้อความทดสอบการเชื่อมต่อ',
+      sendHttpTest: 'ส่งข้อความทดสอบ',
+      httpTestAccepted: 'ระบบรับข้อความทดสอบแล้ว และจะแสดงในบันทึกในอีกสักครู่',
+      httpTestMissingSecret:
+        'โปรดกรอก Secret สำหรับลงนามข้อความขาเข้าและบันทึกการกำหนดค่าก่อน',
+      httpTestFailed: 'ส่งข้อความทดสอบไม่สำเร็จ: {{error}}',
       logsTitle: 'บันทึก Bot',
       logsDescription:
         'ตรวจสอบกิจกรรม Bot เพื่อยืนยันว่าการเชื่อมต่อแพลตฟอร์มทำงานอยู่',
     },
     aiEngine: {
-      title: 'เลือกเครื่องมือ AI',
+      title: 'กำหนดค่าเครื่องมือ AI',
       description: 'เลือกเครื่องมือ AI ที่จะขับเคลื่อนความฉลาดของ Bot',
+      optionalDescription:
+        'ขั้นตอนนี้ไม่บังคับ เลือกวิธีที่คุณต้องการดำเนินการต่อกับ Agent ปัจจุบัน',
+      externalTitle: 'เชื่อมต่อ Agent จากแพลตฟอร์มภายนอก',
+      externalDescription:
+        'เชื่อมต่อ Dify, n8n, Coze หรือแพลตฟอร์มอื่น และแทนที่ Pipeline ของ Bot',
+      ownModelTitle: 'ใช้โมเดลของฉันเอง',
+      ownModelDescription:
+        'เพิ่มผู้ให้บริการ แล้วสแกนหรือกรอกโมเดลด้วยตนเองเพื่อเสร็จสิ้นการตั้งค่า',
+      ownModelSetupTitle: 'เพิ่มโมเดลของคุณเอง',
+      ownModelSetupDescription:
+        'เพิ่มผู้ให้บริการโมเดล ระบบจะสแกนโมเดลแชตโดยอัตโนมัติ หรือคุณสามารถกรอก ID โมเดลด้วยตนเอง',
+      addProviderTitle: 'เพิ่มผู้ให้บริการ',
+      addProviderDescription:
+        'กรอกรายละเอียดผู้ให้บริการและ API Key ที่ใช้เชื่อมต่อและสแกนโมเดล',
+      selectModelTitle: 'เลือกโมเดล',
+      selectScannedModelTitle: 'เลือกโมเดล',
+      selectScannedModelDescription:
+        'โมเดลที่เลือกจะเป็นโมเดลหลักของ Pipeline ใหม่ และ Bot จะเปลี่ยนไปใช้โมเดลนี้',
+      scanModelMode: 'สแกนโมเดล',
+      manualModelMode: 'เพิ่มด้วยตนเอง',
+      scanningModels: 'กำลังสแกนโมเดลที่พร้อมใช้งาน…',
+      noScannedModels:
+        'ไม่พบโมเดลแชตที่พร้อมใช้งาน โปรดตรวจสอบการกำหนดค่าผู้ให้บริการ',
+      scanModelsFailed:
+        'สแกนโมเดลไม่สำเร็จ โปรดตรวจสอบ URL และ API Key แล้วลองอีกครั้ง',
+      manualFallbackFailed:
+        'การสแกนอัตโนมัติไม่สำเร็จ โปรดกรอก ID โมเดลที่ผู้ให้บริการรองรับ',
+      manualFallbackEmpty: 'ไม่พบโมเดล โปรดกรอก ID โมเดลที่ผู้ให้บริการรองรับ',
+      manualModelId: 'ID โมเดล',
+      manualModelIdPlaceholder: 'ตัวอย่าง: gpt-4o',
+      manualModelIdDescription: 'กรอกพารามิเตอร์โมเดลที่ใช้ในคำขอโมเดล',
+      manualModelOptions: 'ความสามารถเพิ่มเติมของโมเดล',
+      editProvider: 'แก้ไขผู้ให้บริการ',
+      rescanModels: 'สแกนโมเดลอีกครั้ง',
+      moreFeaturesTitle: 'เพิ่มความสามารถให้ Agent',
+      moreFeaturesDescription:
+        'เปิดหน้าทำงานเพื่อเพิ่มเครื่องมือ ฐานความรู้ และความสามารถอื่น ๆ ให้ Agent ที่เพิ่งสร้างขึ้นโดยอัตโนมัติ',
+      runnerDescription:
+        'เลือก Runner สำหรับ Agent ภายนอกและกำหนดค่าการเชื่อมต่อ',
+      backToChoices: 'กลับไปยังตัวเลือก',
+      createExternal: 'สร้างและผูก',
+      finishWithModel: 'ใช้โมเดลที่เลือกและเสร็จสิ้น',
+      openWorkbench: 'เปิดหน้าทำงาน',
     },
     config: {
       botInfo: 'ข้อมูล Bot',

@@ -1,3 +1,4 @@
+import uuid
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -49,7 +50,29 @@ async def test_send_message_sends_text_to_customer_service_user():
     assert kwargs['open_kfid'] == 'kf-test'
     assert kwargs['external_userid'] == 'external-user'
     assert kwargs['content'] == 'hello'
-    assert kwargs['msgid'].startswith('langbot_')
+    assert len(kwargs['msgid'].encode()) <= 32
+    assert uuid.UUID(hex=kwargs['msgid']).hex == kwargs['msgid']
+
+
+@pytest.mark.asyncio
+async def test_send_message_sends_image_to_customer_service_user():
+    adapter = make_adapter()
+    adapter.bot_account_id = 'kf-test'
+    adapter.bot = SimpleNamespace(
+        get_media_id=AsyncMock(return_value='media-id'),
+        send_image_msg=AsyncMock(),
+    )
+
+    message = platform_message.MessageChain([platform_message.Image(base64='aW1hZ2U=')])
+
+    await adapter.send_message('person', 'uexternal-user', message)
+
+    adapter.bot.send_image_msg.assert_awaited_once()
+    kwargs = adapter.bot.send_image_msg.await_args.kwargs
+    assert kwargs['open_kfid'] == 'kf-test'
+    assert kwargs['external_userid'] == 'external-user'
+    assert kwargs['media_id'] == 'media-id'
+    assert len(kwargs['msgid'].encode()) <= 32
 
 
 @pytest.mark.asyncio

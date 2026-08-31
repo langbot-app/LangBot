@@ -115,6 +115,7 @@ class _CapacityPluginRuntimeHandler:
     def __init__(self) -> None:
         self.bindings: dict[str, typing.Any] = {}
         self.reconciled: tuple[typing.Any, ...] = ()
+        self.reconcile_timeout: float | None = None
 
     def register_installation_binding(
         self,
@@ -132,8 +133,14 @@ class _CapacityPluginRuntimeHandler:
     def unregister_installation_binding(self, binding) -> None:
         self.bindings.pop(binding.installation_uuid, None)
 
-    async def reconcile_plugin_installations(self, desired_states) -> dict:
+    async def reconcile_plugin_installations(
+        self,
+        desired_states,
+        *,
+        timeout: float | None = None,
+    ) -> dict:
         self.reconciled = tuple(desired_states)
+        self.reconcile_timeout = timeout
         return {
             'applied': [],
             'removed': [],
@@ -1034,6 +1041,7 @@ class TestPostgreSQLTenantRuntime:
             assert not mcp_loader._hosted_mcp_tasks
             assert len(plugin_handler.reconciled) == workspace_count
             assert len(plugin_handler.bindings) == workspace_count
+            assert plugin_handler.reconcile_timeout == 300.0
             assert all(count == workspace_count for count in statement_counts.values()), statement_counts
             if max_elapsed is not None:
                 assert elapsed <= max_elapsed

@@ -11,6 +11,9 @@ import sqlalchemy
 from ....core import app
 from ....entity.persistence import user
 from ....entity.dto.space_model import SpaceModel
+from ....entity.dto.space_model import SpaceModelSelection
+from ....entity.persistence import model as persistence_model
+from ....cloud.model_catalog import LANGBOT_MODELS_PROVIDER_REQUESTER
 
 
 _CREDITS_CACHE_TTL_SECONDS = 60
@@ -238,3 +241,76 @@ class SpaceService:
                 raise ValueError(f'Failed to get models: {data.get("msg")}')
             models_data = data.get('data', {}).get('models', [])
             return [SpaceModel.model_validate(model_dict) for model_dict in models_data]
+
+    async def get_model_selection(self, category: str) -> typing.List[SpaceModelSelection]:
+        """Return Space models in the availability-ranked selection order."""
+        space_url = self._get_space_config()['url']
+        session = httpclient.get_session()
+        async with session.get(
+            f'{space_url}/api/v1/models/selection',
+            params={'category': category},
+        ) as response:
+            if response.status != 200:
+                error = await httpclient.read_text_limited(response)
+                raise ValueError(f'Failed to get model selection: {error}')
+            payload = await httpclient.read_json_limited(response)
+            if payload.get('code') != 0:
+                raise ValueError(f'Failed to get model selection: {payload.get("msg")}')
+
+            data = payload.get('data', [])
+            if isinstance(data, dict):
+                data = data.get('models', data.get('items', []))
+            if not isinstance(data, list):
+                raise ValueError('Failed to get model selection: invalid response')
+
+            models = []
+            for selection in data:
+                if isinstance(selection, dict) and isinstance(selection.get('model'), dict):
+                    models.append(selection['model'])
+                else:
+                    models.append(selection)
+            return [SpaceModelSelection.model_validate(model) for model in models]
+
+    async def get_recommended_chat_model(self, context: typing.Any) -> dict:
+        """Resolve Space's first ranked chat model to a local Workspace model."""
+        selection = await self.get_model_selection('chat')
+        if not selection:
+            raise ValueError('No recommended chat model is available')
+        recommended = selection[0]
+
+        async def find_local_model():
+            result = await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.select(persistence_model.LLMModel)
+                .join(
+                    persistence_model.ModelProvider,
+                    sqlalchemy.and_(
+                        persistence_model.ModelProvider.workspace_uuid == persistence_model.LLMModel.workspace_uuid,
+                        persistence_model.ModelProvider.uuid == persistence_model.LLMModel.provider_uuid,
+                    ),
+                )
+                .where(
+                    persistence_model.LLMModel.workspace_uuid == context.workspace_uuid,
+                    persistence_model.ModelProvider.requester == LANGBOT_MODELS_PROVIDER_REQUESTER,
+                    sqlalchemy.or_(
+                        persistence_model.LLMModel.uuid == recommended.uuid,
+                        persistence_model.LLMModel.name == recommended.model_id,
+                    ),
+                )
+            )
+            return result.first()
+
+        local_model = await find_local_model()
+        if local_model is None:
+            # OSS synchronizes the public catalog locally. Refresh once in case
+            # the recommendation was published after this process started.
+            from ..context import ExecutionContext
+
+            try:
+                await self.ap.model_mgr.sync_new_models_from_space(ExecutionContext.from_request(context))
+            except Exception:
+                pass
+            local_model = await find_local_model()
+
+        if local_model is None:
+            raise ValueError('Recommended chat model is not available in this Workspace')
+        return {'uuid': local_model.uuid, 'name': local_model.name}

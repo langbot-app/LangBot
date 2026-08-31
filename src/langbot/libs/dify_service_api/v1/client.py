@@ -1,18 +1,45 @@
 from __future__ import annotations
 
 import asyncio
-import httpx
-import typing
 import json
+import os
+import typing
+from pathlib import Path
+
+import httpx
 
 from .errors import DifyAPIError
-from pathlib import Path
-import os
 
 _MAX_DIFY_RESPONSE_BYTES = 1024 * 1024
 _MAX_DIFY_SSE_LINE_BYTES = 1024 * 1024
 _MAX_DIFY_STREAM_BYTES = 16 * 1024 * 1024
 _MAX_DIFY_UPLOAD_BYTES = 10 * 1024 * 1024
+
+
+def _decode_sse_data(line: bytes) -> dict[str, typing.Any] | None:
+    data = line[5:].strip()
+    if not data or data == b'[DONE]':
+        return None
+    try:
+        payload = json.loads(data.decode('utf-8'))
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise DifyAPIError('Dify SSE data line is not valid JSON') from exc
+    if not isinstance(payload, dict):
+        raise DifyAPIError('Dify SSE event is not a JSON object')
+    return payload
+
+
+def _decode_upload_response(body: bytes) -> dict[str, typing.Any]:
+    try:
+        response = json.loads(body)
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise DifyAPIError('Dify upload response is not valid JSON') from exc
+    if not isinstance(response, dict):
+        raise DifyAPIError('Dify upload response is not a JSON object')
+    payload = response.get('data', response)
+    if not isinstance(payload, dict) or not isinstance(payload.get('id'), str) or not payload['id']:
+        raise DifyAPIError('Dify upload response does not contain a valid file id')
+    return payload
 
 
 async def _read_limited_response(
@@ -56,16 +83,16 @@ async def _iter_sse_json(
             line = raw_line.rstrip(b'\r').strip()
             if not line or not line.startswith(b'data:'):
                 continue
-            payload = json.loads(line[5:].decode('utf-8', errors='replace'))
-            if isinstance(payload, dict):
+            payload = _decode_sse_data(line)
+            if payload is not None:
                 yield payload
         if len(buffer) > _MAX_DIFY_SSE_LINE_BYTES:
             raise DifyAPIError('Dify SSE event exceeds the runtime limit')
 
     line = bytes(buffer).rstrip(b'\r').strip()
     if line.startswith(b'data:'):
-        payload = json.loads(line[5:].decode('utf-8', errors='replace'))
-        if isinstance(payload, dict):
+        payload = _decode_sse_data(line)
+        if payload is not None:
             yield payload
 
 
@@ -242,7 +269,7 @@ class AsyncDifyServiceClient:
         file: httpx._types.FileTypes,
         user: str,
         timeout: float = 30.0,
-    ) -> str:
+    ) -> dict[str, typing.Any]:
         # 处理 Path 对象
         if isinstance(file, Path):
             if not file.exists():
@@ -271,6 +298,6 @@ class AsyncDifyServiceClient:
             timeout=timeout,
         ) as response:
             body = await _read_limited_response(response)
-            if response.status_code != 201:
+            if response.status_code not in (200, 201):
                 raise DifyAPIError(f'{response.status_code} {body.decode(errors="replace")}')
-        return json.loads(body)
+        return _decode_upload_response(body)

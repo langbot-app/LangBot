@@ -820,6 +820,100 @@ class TestSpaceServiceGetModels:
                 await service.get_models()
 
 
+class TestSpaceServiceGetModelSelection:
+    """Tests for availability-ranked model selection."""
+
+    @pytest.mark.parametrize('response_shape', ['direct', 'models-envelope', 'availability-wrapper'])
+    async def test_preserves_selection_order_and_category_query(self, response_shape):
+        ap = SimpleNamespace(instance_config=SimpleNamespace(data={}))
+        service = SpaceService(ap)
+        models = [
+            {
+                'uuid': 'best-model',
+                'model_id': 'best-chat-model',
+                'provider': 'provider-1',
+                'category': 'chat',
+                'status': 'active',
+            },
+            {
+                'uuid': 'fallback-model',
+                'model_id': 'fallback-chat-model',
+                'provider': 'provider-2',
+                'category': 'chat',
+                'status': 'active',
+            },
+        ]
+        if response_shape == 'models-envelope':
+            data = {'models': models}
+        elif response_shape == 'availability-wrapper':
+            data = [
+                {'model': model, 'latency_ms': index + 10, 'http_code': 200}
+                for index, model in enumerate(models)
+            ]
+        else:
+            data = models
+        payload = {'code': 0, 'data': data}
+        mock_response = MagicMock(status=200)
+
+        with (
+            patch('langbot.pkg.api.http.service.space.httpclient.get_session') as get_session,
+            patch(
+                'langbot.pkg.api.http.service.space.httpclient.read_json_limited',
+                new=AsyncMock(return_value=payload),
+            ),
+        ):
+            session = MagicMock()
+            session.get.return_value.__aenter__ = AsyncMock(return_value=mock_response)
+            session.get.return_value.__aexit__ = AsyncMock(return_value=None)
+            get_session.return_value = session
+
+            result = await service.get_model_selection('chat')
+
+        assert [model.uuid for model in result] == ['best-model', 'fallback-model']
+        session.get.assert_called_once_with(
+            'https://space.langbot.app/api/v1/models/selection',
+            params={'category': 'chat'},
+        )
+
+    async def test_recommended_model_uses_first_selection_and_refreshes_once(self):
+        local_model = SimpleNamespace(uuid='local-model-uuid', name='best-chat-model')
+        persistence = SimpleNamespace(
+            execute_async=AsyncMock(
+                side_effect=[
+                    _create_mock_result(first_item=None),
+                    _create_mock_result(first_item=local_model),
+                ]
+            )
+        )
+        model_mgr = SimpleNamespace(sync_new_models_from_space=AsyncMock())
+        ap = SimpleNamespace(
+            instance_config=SimpleNamespace(data={}),
+            persistence_mgr=persistence,
+            model_mgr=model_mgr,
+        )
+        service = SpaceService(ap)
+        service.get_model_selection = AsyncMock(
+            return_value=[
+                SimpleNamespace(uuid='best-upstream-uuid', model_id='best-chat-model'),
+                SimpleNamespace(uuid='fallback-upstream-uuid', model_id='fallback-chat-model'),
+            ]
+        )
+        context = SimpleNamespace(
+            instance_uuid='instance',
+            workspace_uuid='workspace',
+            placement_generation=1,
+            principal=SimpleNamespace(),
+            entitlement_revision=0,
+        )
+
+        result = await service.get_recommended_chat_model(context)
+
+        assert result == {'uuid': 'local-model-uuid', 'name': 'best-chat-model'}
+        service.get_model_selection.assert_awaited_once_with('chat')
+        model_mgr.sync_new_models_from_space.assert_awaited_once()
+        assert persistence.execute_async.await_count == 2
+
+
 class TestSpaceServiceCreditsCache:
     """Tests for credits cache behavior."""
 

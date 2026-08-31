@@ -456,7 +456,9 @@ export interface WizardProgress {
   selected_scenario?: string | null;
   selected_adapter: string | null;
   created_bot_uuid: string | null;
+  created_pipeline_uuid?: string | null;
   bot_saved: boolean;
+  message_received?: boolean;
   selected_runner: string | null;
 }
 

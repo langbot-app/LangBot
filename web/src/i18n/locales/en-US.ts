@@ -2204,6 +2204,27 @@ const enUS = {
       resaveBot: 'Re-save Configuration',
       botSaved:
         'Bot configuration saved and enabled. Check the logs to verify the connection.',
+      waitingForMessage:
+        'The bot is enabled. Send it a message from your IM platform to continue.',
+      messageReceived:
+        'The bot received an IM message. You can continue to the next step.',
+      messageReceivedLocalAccountWarning:
+        'The bot-side connection is configured correctly and received an IM message. Because you are not signed in with a LangBot Account, model calls may fail; continue to the next step to add your own model.',
+      pageBotTestPrompt:
+        'Page Bot is enabled. Click the chat bubble in the lower-right corner and send a message to verify the full conversation flow.',
+      pageBotTestNotice:
+        'For testing only. Embed the code on a real external webpage.',
+      webhookTestPrompt:
+        'The callback URL is ready. Configure it on the external platform, then send the bot a real message.',
+      httpTestPrompt:
+        'HTTP Bot is enabled. Send a real inbound message here to verify the connection.',
+      httpTestDefaultMessage: 'Hello, this is a connection test message.',
+      sendHttpTest: 'Send Test Message',
+      httpTestAccepted:
+        'The test message was accepted. It will appear in the log shortly.',
+      httpTestMissingSecret:
+        'Enter an inbound signing secret and save the configuration first.',
+      httpTestFailed: 'Failed to send the test message: {{error}}',
       logsTitle: 'Bot Logs',
       logsDescription:
         'Monitor bot activity to verify the platform connection is working.',
@@ -2212,6 +2233,51 @@ const enUS = {
       title: 'Select an AI Engine',
       description:
         "Choose the AI engine that will power your bot's intelligence.",
+      optionalDescription:
+        'This step is optional. Choose how you want to continue with the current agent.',
+      externalTitle: 'Connect an External Agent',
+      externalDescription:
+        'Connect Dify, n8n, Coze, or another platform and replace the bot pipeline.',
+      ownModelTitle: 'Use My Own Model',
+      ownModelDescription:
+        'Add a provider, then scan or manually enter a model to finish setup.',
+      ownModelSetupTitle: 'Add Your Own Model',
+      ownModelSetupDescription:
+        'Add a model provider. Chat models are scanned automatically, or you can enter a model ID manually.',
+      addProviderTitle: 'Add Provider',
+      addProviderDescription:
+        'Enter the provider details and API key used to connect and scan models.',
+      selectModelTitle: 'Choose a Model',
+      selectScannedModelTitle: 'Choose a Model',
+      selectScannedModelDescription:
+        'The selected model will be the primary model of a new pipeline, and the bot will switch to it.',
+      scanModelMode: 'Scan Models',
+      manualModelMode: 'Add Manually',
+      scanningModels: 'Scanning available models…',
+      noScannedModels:
+        'No available chat models were found. Check the provider configuration.',
+      scanModelsFailed:
+        'Model scanning failed. Check the URL and API key, then try again.',
+      manualFallbackFailed:
+        'Automatic scanning failed. Enter a model ID supported by the provider.',
+      manualFallbackEmpty:
+        'No models were found. Enter a model ID supported by the provider.',
+      manualModelId: 'Model ID',
+      manualModelIdPlaceholder: 'For example: gpt-4o',
+      manualModelIdDescription:
+        'Enter the model parameter used in model requests.',
+      manualModelOptions: 'Optional Model Capabilities',
+      editProvider: 'Edit provider',
+      rescanModels: 'Scan models again',
+      moreFeaturesTitle: 'Add More Agent Features',
+      moreFeaturesDescription:
+        'Open the workbench to add tools, knowledge bases, and other capabilities to the Agent that was just generated automatically.',
+      runnerDescription:
+        'Select a runner for the external agent and configure its connection.',
+      backToChoices: 'Back to options',
+      createExternal: 'Create and Bind',
+      finishWithModel: 'Use Selected Model & Finish',
+      openWorkbench: 'Open Workbench',
       loadingCatalog: 'Loading AgentRunner extensions...',
       catalogUnavailable: 'Runner catalog is unavailable',
       catalogUnavailableDescription:

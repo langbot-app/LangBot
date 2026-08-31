@@ -747,9 +747,24 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                 converted_parts = []
                 for part in content:
                     if isinstance(part, dict) and part.get('type') == 'image_base64':
-                        part['image_url'] = {'url': part['image_base64']}
-                        part['type'] = 'image_url'
-                        del part['image_base64']
+                        # History trimming (SessionManager) clears image_base64
+                        # on past turns and exclude_none serialization drops
+                        # the key entirely, so the replayed part may carry no
+                        # payload. Prefer the base64 payload; fall back to an
+                        # image_url that survived on the same element; drop
+                        # hollow parts instead of raising KeyError (#2469).
+                        image_b64 = part.get('image_base64')
+                        fallback_url = None
+                        if not image_b64:
+                            raw_image_url = part.get('image_url')
+                            if isinstance(raw_image_url, dict):
+                                fallback_url = raw_image_url.get('url')
+                        if image_b64 or fallback_url:
+                            part['image_url'] = {'url': image_b64 or fallback_url}
+                            part['type'] = 'image_url'
+                            part.pop('image_base64', None)
+                        else:
+                            continue
                     # OpenAI-compatible chat models reject non-image file parts
                     # (audio/document base64 or url). These originate from Voice /
                     # File attachments — including ones replayed from conversation
