@@ -475,6 +475,25 @@ stages:
         type: string
         required: false
         default: 'response'
+      - name: response-handling
+        label:
+          en_US: Webhook Response Handling
+          zh_Hans: Webhook 响应处理方式
+        description:
+          en_US: Choose whether LangBot forwards the n8n webhook response to the chat user.
+          zh_Hans: 选择是否将 n8n Webhook 响应转发给聊天用户。
+        type: select
+        required: false
+        default: 'reply'
+        options:
+          - name: reply
+            label:
+              en_US: Forward as chat reply
+              zh_Hans: 转发为聊天回复
+          - name: ignore
+            label:
+              en_US: Ignore response body (asynchronous workflow)
+              zh_Hans: 忽略响应正文（异步工作流）
   - name: coze-api
     label:
       en_US: coze API

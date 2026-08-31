@@ -80,7 +80,8 @@
             "header-name": "",
             "header-value": "",
             "timeout": 120,
-            "output-key": "response"
+            "output-key": "response",
+            "response-handling": "reply"
         },
         "langflow-api": {
             "base-url": "http://localhost:7860",

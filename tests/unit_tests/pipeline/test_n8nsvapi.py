@@ -55,7 +55,7 @@ finally:
 # ---------------------------------------------------------------------------
 
 
-def make_runner(output_key: str = 'response') -> N8nServiceAPIRunner:
+def make_runner(output_key: str = 'response', response_handling: str = 'reply') -> N8nServiceAPIRunner:
     ap = Mock()
     ap.logger = Mock()
     pipeline_config = {
@@ -63,6 +63,7 @@ def make_runner(output_key: str = 'response') -> N8nServiceAPIRunner:
             'n8n-service-api': {
                 'webhook-url': 'http://test-n8n/webhook',
                 'output-key': output_key,
+                'response-handling': response_handling,
                 'auth-type': 'none',
             }
         }
@@ -287,6 +288,7 @@ def make_http_session_mock(response_bytes: bytes, status: int = 200):
     """Mock httpclient.get_session() returning a session whose post() yields response_bytes."""
     mock_response = make_mock_response([response_bytes], status=status)
     mock_response.status = status
+    mock_response.headers = {}
 
     mock_cm = AsyncMock()
     mock_cm.__aenter__ = AsyncMock(return_value=mock_response)
@@ -312,6 +314,50 @@ async def test_call_webhook_nonstream_adapter_plain_json():
     assert len(results) == 1
     assert isinstance(results[0], provider_message.Message)
     assert results[0].content == 'result text'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('status', [200, 201, 202, 204])
+@pytest.mark.parametrize(
+    'response_body',
+    [
+        b'{"message":"Workflow was started"}',
+        b'{"response":"must not be forwarded"}',
+        b'plain acknowledgement',
+    ],
+)
+async def test_call_webhook_ignore_response_body(response_body: bytes, status: int):
+    """Ignore mode accepts any HTTP 2xx response without emitting chat output."""
+    runner = make_runner(response_handling='ignore')
+    query = make_query(is_stream=False)
+    http_session = make_http_session_mock(response_body, status=status)
+
+    with patch('langbot.pkg.provider.runners.n8nsvapi.httpclient.get_session', return_value=http_session):
+        results = []
+        async for message in runner._call_webhook(query):
+            results.append(message)
+
+    assert results == []
+
+
+@pytest.mark.asyncio
+async def test_call_webhook_ignore_mode_preserves_http_error():
+    """Ignore mode must not swallow a failed n8n webhook response."""
+    runner = make_runner(response_handling='ignore')
+    query = make_query(is_stream=False)
+    http_session = make_http_session_mock(b'{"error":"unavailable"}', status=500)
+
+    with patch('langbot.pkg.provider.runners.n8nsvapi.httpclient.get_session', return_value=http_session):
+        with pytest.raises(N8nAPIError, match='n8n webhook call exception'):
+            async for _ in runner._call_webhook(query):
+                pass
+
+
+@pytest.mark.asyncio
+async def test_invalid_response_handling_is_rejected():
+    """Configuration errors should fail fast instead of silently changing reply behavior."""
+    with pytest.raises(ValueError, match='Invalid n8n response-handling'):
+        make_runner(response_handling='unexpected')
 
 
 @pytest.mark.asyncio

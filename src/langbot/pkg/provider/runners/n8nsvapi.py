@@ -39,6 +39,9 @@ class N8nServiceAPIRunner(runner.RequestRunner):
 
         # 获取输出键名，默认为response
         self.output_key = self.pipeline_config['ai']['n8n-service-api'].get('output-key', 'response')
+        self.response_handling = self.pipeline_config['ai']['n8n-service-api'].get('response-handling', 'reply')
+        if self.response_handling not in {'reply', 'ignore'}:
+            raise ValueError(f'Invalid n8n response-handling: {self.response_handling}')
 
         # 获取认证类型，默认为none
         self.auth_type = self.pipeline_config['ai']['n8n-service-api'].get('auth-type', 'none')
@@ -262,7 +265,7 @@ class N8nServiceAPIRunner(runner.RequestRunner):
             async with session.post(
                 self.webhook_url, json=payload, headers=headers, auth=auth, timeout=self.timeout
             ) as response:
-                if response.status != 200:
+                if not 200 <= response.status < 300:
                     error_text = (
                         await httpclient.read_limited(
                             response,
@@ -271,6 +274,11 @@ class N8nServiceAPIRunner(runner.RequestRunner):
                     ).decode('utf-8', errors='replace')
                     self.ap.logger.error(f'n8n webhook call failed: {response.status}, {error_text}')
                     raise Exception(f'n8n webhook call failed: {response.status}, {error_text}')
+
+                if self.response_handling == 'ignore':
+                    await httpclient.read_limited(response, max_bytes=_MAX_N8N_RESPONSE_CHARS)
+                    self.ap.logger.debug('n8n async webhook accepted; response body ignored')
+                    return
 
                 async for chunk in self._process_response(response):
                     if is_stream:
