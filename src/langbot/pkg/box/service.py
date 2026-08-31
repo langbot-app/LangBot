@@ -278,7 +278,14 @@ class BoxService:
                     skill_mgr = getattr(self.ap, 'skill_mgr', None)
                     reload_skills = getattr(skill_mgr, 'reload_skills', None)
                     if callable(reload_skills) and not self._cloud_managed:
-                        await reload_skills()
+                        binding = await self.ap.workspace_service.get_execution_binding()
+                        await reload_skills(
+                            ExecutionContext(
+                                instance_uuid=binding.instance_uuid,
+                                workspace_uuid=binding.workspace_uuid,
+                                placement_generation=binding.placement_generation,
+                            )
+                        )
                     self.ap.logger.info('Box runtime reconnected, sandbox features restored.')
                     return
                 except Exception as exc:
