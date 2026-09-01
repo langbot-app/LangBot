@@ -176,7 +176,10 @@ def _lark_final_layout_texts(
     placeholder, as they are distinct segments.
     """
     if resume_from:
-        return pre_pause_cached or text_message, resume_cached
+        # An empty pre-pause cache is valid (Dify paused before emitting any
+        # text); only a missing entry (None) falls back to the full text.
+        main_text = text_message if pre_pause_cached is None else pre_pause_cached
+        return main_text, resume_cached
     return text_message, ''
 
 

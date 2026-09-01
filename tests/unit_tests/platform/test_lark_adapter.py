@@ -1,7 +1,7 @@
 """Tests for Lark adapter helper behavior."""
 
 import threading
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -266,3 +266,77 @@ def test_lark_final_layout_texts_resume_round_without_pre_pause_falls_back():
 
     assert main_text == 'answer'
     assert resume_text == 'answer'
+
+
+def test_lark_final_layout_texts_resume_round_empty_pre_pause_kept_empty():
+    """Dify paused before emitting any text: the pre-pause cache is a valid
+    empty string and must NOT be treated as a cache miss.
+
+    Regression: `pre_pause_cached or text_message` fell back to the full
+    text, so the final card rendered ('resumed answer', 'resumed answer')
+    and duplicated the reply.
+    """
+    main_text, resume_text = _lark_final_layout_texts(
+        resume_from=True,
+        text_message='resumed answer',
+        pre_pause_cached='',
+        resume_cached='resumed answer',
+    )
+
+    assert main_text == ''
+    assert resume_text == 'resumed answer'
+
+
+def _build_resume_final_chunk_adapter(message_text: str):
+    """Build a LarkAdapter whose card state mimics a Dify HITL round that
+    paused before emitting any text, then resumed and completed."""
+    adapter = LarkAdapter.model_construct(
+        api_client=MagicMock(),
+        message_converter=MagicMock(yiri2target=AsyncMock(return_value=([[{'tag': 'text', 'text': message_text}]], []))),
+    )
+    adapter.config = {'app_type': 'self'}
+    LarkAdapter.get_app_access_token = lambda self: None
+    LarkAdapter.get_tenant_access_token = lambda self, tenant_key: None
+    adapter.card_id_dict = {'msg-1': 'card-1'}
+    adapter.card_streaming_text = {'card-1': message_text}
+    adapter.card_pre_pause_text = {'card-1': ''}
+    adapter.card_resume_transitioned = {'card-1'}
+    adapter.card_sequence_dict = {}
+    adapter.card_last_accessed = {}
+    adapter.card_cleanup_at = 0.0
+    adapter.card_id_to_source_ids = {}
+    adapter.reply_message_card_ids = {}
+    adapter.card_form_content = {}
+    adapter.card_form_input_defs = {}
+    adapter.card_form_inputs = {}
+    adapter._update_card_layout = AsyncMock()
+    return adapter
+
+
+@pytest.mark.asyncio
+async def test_reply_message_chunk_resume_final_with_empty_pre_pause_keeps_main_empty():
+    """End-to-end regression via reply_message_chunk: Dify paused before any
+    text, so the pre-pause cache is ''. The final card update must render the
+    resumed answer only once (empty main text + resume placeholder), not
+    twice as ('resumed answer', 'resumed answer')."""
+    adapter = _build_resume_final_chunk_adapter('resumed answer')
+
+    bot_message = MagicMock(
+        resp_message_id='msg-1',
+        msg_sequence=1,
+        spec=['resp_message_id', 'msg_sequence', '_resume_from_form'],
+    )
+    bot_message._resume_from_form = True
+    message_source = MagicMock(source_platform_object=None)
+
+    await adapter.reply_message_chunk(
+        message_source,
+        bot_message,
+        MagicMock(),
+        is_final=True,
+    )
+
+    adapter._update_card_layout.assert_awaited_once()
+    layout_kwargs = adapter._update_card_layout.await_args.kwargs
+    assert layout_kwargs['text_message'] == ''
+    assert layout_kwargs['resume_placeholder_text'] == 'resumed answer'
