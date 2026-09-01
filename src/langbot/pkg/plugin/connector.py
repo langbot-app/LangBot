@@ -789,9 +789,13 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         if not self.is_enable_plugin or not hasattr(self, 'handler'):
             return
         runtime_handler = self._runtime_handler()
-        desired_states = await self._load_workspace_desired_states(execution_context)
-        desired_by_uuid = {state.binding.installation_uuid: state for state in desired_states}
         async with self._state_lock:
+            # Read the durable desired state while holding the same gate used by
+            # install/remove bookkeeping. Otherwise a request can load a stale
+            # pre-install snapshot, wait for the installer to publish its
+            # in-memory state, and then incorrectly remove that new binding.
+            desired_states = await self._load_workspace_desired_states(execution_context)
+            desired_by_uuid = {state.binding.installation_uuid: state for state in desired_states}
             previous_ids = set(self._workspace_installations.get(execution_context.workspace_uuid, set()))
             for installation_uuid in previous_ids - set(desired_by_uuid):
                 previous = self._known_desired_states.get(installation_uuid)
@@ -1751,14 +1755,27 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         artifact_digest = hashlib.sha256(file_bytes).hexdigest()
         await self._store_artifact_package(execution_context, artifact_digest, file_bytes)
         try:
-            binding, previous_digest, previous_was_durable = await self._persist_installation_package(
-                execution_context,
-                plugin_author=plugin_author,
-                plugin_name=plugin_name,
-                install_source=install_source,
-                install_info=install_info,
-                artifact_digest=artifact_digest,
-            )
+            # Persist and publish the new desired generation under the same
+            # gate used by request-time reconciliation. This closes the small
+            # window where another request could observe the durable row first
+            # and perform the same slow Runtime apply while holding the gate.
+            async with self._state_lock:
+                binding, previous_digest, previous_was_durable = await self._persist_installation_package(
+                    execution_context,
+                    plugin_author=plugin_author,
+                    plugin_name=plugin_name,
+                    install_source=install_source,
+                    install_info=install_info,
+                    artifact_digest=artifact_digest,
+                )
+                desired = PluginInstallationDesiredState(binding=binding, enabled=True)
+                runtime_handler.register_installation_binding(
+                    binding,
+                    plugin_author=plugin_author,
+                    plugin_name=plugin_name,
+                )
+                self._known_desired_states[binding.installation_uuid] = desired
+                self._workspace_installations.setdefault(binding.workspace_uuid, set()).add(binding.installation_uuid)
         except Exception:
             await self._delete_artifact_if_unreferenced(execution_context, artifact_digest)
             raise
@@ -1770,18 +1787,10 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                         pass
             except Exception as exc:
                 self.ap.logger.debug(f'Legacy OSS plugin cleanup skipped: {exc}')
-        runtime_handler.register_installation_binding(
-            binding,
-            plugin_author=plugin_author,
-            plugin_name=plugin_name,
-        )
         await self._apply_desired_state(
-            PluginInstallationDesiredState(binding=binding, enabled=True),
+            desired,
             artifact_package=file_bytes,
         )
-        desired = PluginInstallationDesiredState(binding=binding, enabled=True)
-        self._known_desired_states[binding.installation_uuid] = desired
-        self._workspace_installations.setdefault(binding.workspace_uuid, set()).add(binding.installation_uuid)
         if previous_digest is not None and previous_digest != artifact_digest:
             await self._delete_artifact_if_unreferenced(execution_context, previous_digest)
         await self._wait_for_installed_plugin_ready(plugin_author, plugin_name, task_context)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import datetime
 import hashlib
 from contextlib import nullcontext
@@ -13,6 +14,7 @@ from langbot_plugin.runtime.plugin.mgr import PluginInstallSource
 from langbot.pkg.api.http.context import ExecutionContext
 from langbot.pkg.plugin.connector import (
     PluginInstallationFailedError,
+    PluginInstallationDesiredState,
     PluginRuntimeConnector,
 )
 
@@ -77,6 +79,7 @@ def runtime_handler(
         apply_plugin_installation=AsyncMock(return_value={'state': 'starting'}),
         installation_scope=Mock(side_effect=lambda _binding: nullcontext()),
         list_plugins=AsyncMock(return_value=[]),
+        ping=AsyncMock(return_value={'pong': 'pong'}),
     )
 
 
@@ -109,15 +112,15 @@ def shared_connector(
 
 @pytest.mark.asyncio
 async def test_shared_reconcile_uses_configured_cold_start_timeout():
-    binding = execution_binding("workspace-a")
-    setting = plugin_setting("01", "a" * 64)
-    connector = shared_connector([[binding]], {"workspace-a": [setting]})
-    connector.ap.instance_config.data["plugin"]["connect_timeout_seconds"] = 900
+    binding = execution_binding('workspace-a')
+    setting = plugin_setting('01', 'a' * 64)
+    connector = shared_connector([[binding]], {'workspace-a': [setting]})
+    connector.ap.instance_config.data['plugin']['connect_timeout_seconds'] = 900
     connector.handler = runtime_handler()
 
     await connector._prepare_connected_runtime()
 
-    assert connector.handler.reconcile_plugin_installations.await_args.kwargs["timeout"] == 900
+    assert connector.handler.reconcile_plugin_installations.await_args.kwargs['timeout'] == 900
 
 
 @pytest.mark.asyncio
@@ -285,6 +288,70 @@ async def test_local_install_persists_verified_package_before_runtime_apply():
         artifact_package=package,
         enabled=True,
     )
+
+
+@pytest.mark.asyncio
+async def test_workspace_reads_do_not_wait_for_an_installation_apply():
+    package = b'local-lbpkg-bytes'
+    digest = hashlib.sha256(package).hexdigest()
+    execution_context = ExecutionContext(
+        instance_uuid='instance-a',
+        workspace_uuid='workspace-a',
+        placement_generation=1,
+    )
+    binding = InstallationBinding(
+        instance_uuid='instance-a',
+        workspace_uuid='workspace-a',
+        placement_generation=1,
+        installation_uuid='00000000-0000-4000-8000-000000000001',
+        runtime_revision=1,
+        artifact_digest=digest,
+    )
+    app = SimpleNamespace(
+        instance_config=SimpleNamespace(data={'plugin': {'enable': True}}),
+        deployment=SimpleNamespace(mode='cloud'),
+        logger=Mock(),
+    )
+    connector = PluginRuntimeConnector(app, AsyncMock())
+    connector.handler = runtime_handler()
+    connector._current_execution_context = AsyncMock(return_value=execution_context)
+    connector._validate_execution_context = AsyncMock(return_value=execution_context)
+    connector._inspect_plugin_package = Mock(return_value=('author', 'plugin'))
+    connector._store_artifact_package = AsyncMock()
+    connector._persist_installation_package = AsyncMock(return_value=(binding, None, False))
+    connector._wait_for_installed_plugin_ready = AsyncMock()
+    connector._load_workspace_desired_states = AsyncMock(
+        return_value=[PluginInstallationDesiredState(binding=binding, enabled=True)]
+    )
+    apply_started = asyncio.Event()
+    release_apply = asyncio.Event()
+
+    async def slow_apply(*_args, **_kwargs):
+        apply_started.set()
+        await release_apply.wait()
+        return {'state': 'starting'}
+
+    connector.handler.apply_plugin_installation = AsyncMock(side_effect=slow_apply)
+    install_task = asyncio.create_task(
+        connector.install_plugin(
+            PluginInstallSource.LOCAL,
+            {'plugin_file': package},
+        )
+    )
+    try:
+        await asyncio.wait_for(apply_started.wait(), timeout=1)
+
+        async def check_plugin_runtime_status():
+            await connector.require_workspace_context(execution_context)
+            return await connector.ping_plugin_runtime()
+
+        assert await asyncio.wait_for(check_plugin_runtime_status(), timeout=0.1) == {'pong': 'pong'}
+
+        assert connector.handler.apply_plugin_installation.await_count == 1
+        assert connector._known_desired_states[binding.installation_uuid].binding == binding
+    finally:
+        release_apply.set()
+        await install_task
 
 
 @pytest.mark.asyncio
