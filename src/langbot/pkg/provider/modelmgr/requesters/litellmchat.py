@@ -573,7 +573,7 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
             levels = ['provider_default', 'disabled', 'enabled']
         elif family == 'doubao':
             levels = ['provider_default', 'disabled', 'low', 'medium', 'high']
-        elif family == 'ollama':
+        elif family in ('ollama', 'ollama_chat'):
             levels = ['provider_default']
             levels.append('disabled')
             if normalized_name.startswith('gpt-oss') or '/gpt-oss' in normalized_name:
@@ -1345,7 +1345,14 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         extra_args: dict[str, typing.Any] = {},
     ) -> tuple[list[list[float]], dict]:
         """Invoke embedding and return vectors with usage info."""
-        model_name = self._build_litellm_model_name(model.model_entity.name)
+        # litellm's embedding routing has no "ollama_chat" branch (that provider
+        # exists only for /api/chat completions) — embeddings still go through
+        # the plain "ollama" provider. Requesters configured for ollama_chat
+        # (to get native tool-calling on the chat path) must fall back to
+        # "ollama" here specifically, or embedding calls raise "Unmapped LLM
+        # provider for this endpoint".
+        embedding_provider = 'ollama' if self._get_custom_llm_provider() == 'ollama_chat' else None
+        model_name = self._build_litellm_model_name(model.model_entity.name, embedding_provider)
         api_key = model.provider.token_mgr.get_token()
 
         args = {
@@ -1541,6 +1548,12 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                 event_hooks=httpclient.httpx_response_limit_hooks(),
             ) as client:
                 response = await client.get(models_url, headers=headers)
+                if response.status_code == 404 and not base_url.rstrip('/').endswith('/v1'):
+                    # Some OpenAI-compatible servers (notably a bare Ollama host,
+                    # e.g. http://host:11434) expose the model list under /v1/models
+                    # rather than /models. Providers whose configured base_url
+                    # already ends in /v1 keep their original (working) URL.
+                    response = await client.get(f'{base_url}/v1/models', headers=headers)
                 response.raise_for_status()
                 payload = await httpclient.parse_json_response(response)
 
