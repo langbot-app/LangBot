@@ -68,14 +68,20 @@ test('binds every message-reply bot to its provisional pipeline before verificat
 
 test('keeps the 4.11 AgentRunner marketplace installation flow', () => {
   assert.match(wizardSource, /loadAgentRunnerCatalog\(\)/);
-  assert.match(wizardSource, /installMarketplaceAgentRunner\(plugin\)/);
+  assert.match(
+    wizardSource,
+    /installMarketplaceAgentRunner\(plugin, \{[\s\S]*?scope: WIZARD_RUNNER_INSTALL_SCOPE/,
+  );
+  assert.match(wizardSource, /resumePendingAgentRunnerInstall\(/);
   assert.match(
     runnerMarketplaceSource,
     /RUNNER_COMPONENT_FILTER = 'AgentRunner'/,
   );
   assert.match(runnerMarketplaceSource, /installPluginFromMarketplace\(/);
-  assert.match(runnerMarketplaceSource, /runnerPluginPrefix\(plugin\)/);
+  assert.match(runnerMarketplaceSource, /const prefix = runnerPluginPrefix\(\{/);
+  assert.match(runnerMarketplaceSource, /option\.name\.startsWith\(prefix\)/);
   assert.match(runnerMarketplaceSource, /registrationDeadline/);
+  assert.match(runnerMarketplaceSource, /sessionStorage\.setItem\(/);
 });
 
 test('requires the selected AgentRunner mandatory configuration before finishing', () => {

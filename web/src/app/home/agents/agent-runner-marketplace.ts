@@ -1,5 +1,6 @@
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { getCloudServiceClient } from '@/app/infra/http';
+import { getActiveWorkspaceUuid } from '@/app/infra/http/workspaceContext';
 import type { IDynamicFormItemOption } from '@/app/infra/entities/form/dynamic';
 import type { PipelineConfigTab } from '@/app/infra/entities/pipeline';
 import type { PluginV4 } from '@/app/infra/entities/plugin';
@@ -9,6 +10,8 @@ export const RUNNER_COMPONENT_FILTER = 'AgentRunner';
 const RUNNER_CATALOG_PAGE_SIZE = 100;
 const RUNNER_INSTALL_TIMEOUT_MS = 120_000;
 const RUNNER_REGISTRATION_TIMEOUT_MS = 60_000;
+const RUNNER_INSTALL_INTENT_KEY_PREFIX = 'langbot-agent-runner-install';
+const RUNNER_INSTALL_INTENT_EVENT = 'langbot-agent-runner-install-change';
 
 export type AgentRunnerMarketplaceErrorCode =
   | 'version-unavailable'
@@ -32,6 +35,21 @@ export interface InstalledAgentRunner {
   runner: IDynamicFormItemOption;
 }
 
+export interface PendingAgentRunnerInstall {
+  taskId: number;
+  pluginId: string;
+  pluginAuthor: string;
+  pluginName: string;
+  pluginLabel: string;
+  scope: string;
+  startedAt: number;
+}
+
+interface InstallAgentRunnerOptions {
+  scope: string;
+  onTaskCreated?: (taskId: number) => void;
+}
+
 function wait(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -50,6 +68,74 @@ export function marketplacePluginId(plugin: Pick<PluginV4, 'author' | 'name'>) {
 
 export function runnerPluginPrefix(plugin: Pick<PluginV4, 'author' | 'name'>) {
   return `plugin:${plugin.author}/${plugin.name}/`;
+}
+
+function installIntentStorageKey(scope: string) {
+  return `${RUNNER_INSTALL_INTENT_KEY_PREFIX}:${getActiveWorkspaceUuid() || 'default'}:${scope}`;
+}
+
+function emitInstallIntentChange(scope: string) {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(
+    new CustomEvent(RUNNER_INSTALL_INTENT_EVENT, { detail: { scope } }),
+  );
+}
+
+export function readPendingAgentRunnerInstall(
+  scope: string,
+): PendingAgentRunnerInstall | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = sessionStorage.getItem(installIntentStorageKey(scope));
+    if (!raw) return null;
+    const value = JSON.parse(raw) as Partial<PendingAgentRunnerInstall>;
+    if (
+      value.scope !== scope ||
+      typeof value.taskId !== 'number' ||
+      typeof value.pluginId !== 'string' ||
+      typeof value.pluginAuthor !== 'string' ||
+      typeof value.pluginName !== 'string' ||
+      typeof value.pluginLabel !== 'string' ||
+      typeof value.startedAt !== 'number'
+    ) {
+      sessionStorage.removeItem(installIntentStorageKey(scope));
+      return null;
+    }
+    return value as PendingAgentRunnerInstall;
+  } catch {
+    return null;
+  }
+}
+
+function writePendingAgentRunnerInstall(intent: PendingAgentRunnerInstall) {
+  if (typeof window === 'undefined') return;
+  sessionStorage.setItem(
+    installIntentStorageKey(intent.scope),
+    JSON.stringify(intent),
+  );
+  emitInstallIntentChange(intent.scope);
+}
+
+export function clearPendingAgentRunnerInstall(scope: string, taskId?: number) {
+  if (typeof window === 'undefined') return;
+  const current = readPendingAgentRunnerInstall(scope);
+  if (taskId !== undefined && current?.taskId !== taskId) return;
+  sessionStorage.removeItem(installIntentStorageKey(scope));
+  emitInstallIntentChange(scope);
+}
+
+export function subscribePendingAgentRunnerInstall(
+  scope: string,
+  listener: () => void,
+) {
+  if (typeof window === 'undefined') return () => undefined;
+  const handleChange = (event: Event) => {
+    const detail = (event as CustomEvent<{ scope?: string }>).detail;
+    if (detail?.scope === scope) listener();
+  };
+  window.addEventListener(RUNNER_INSTALL_INTENT_EVENT, handleChange);
+  return () =>
+    window.removeEventListener(RUNNER_INSTALL_INTENT_EVENT, handleChange);
 }
 
 export async function loadAgentRunnerCatalog(): Promise<AgentRunnerCatalog> {
@@ -124,6 +210,7 @@ export async function loadAgentRunnerCatalog(): Promise<AgentRunnerCatalog> {
 
 export async function installMarketplaceAgentRunner(
   plugin: PluginV4,
+  options: InstallAgentRunnerOptions,
 ): Promise<InstalledAgentRunner> {
   if (!plugin.latest_version) {
     throw new AgentRunnerMarketplaceError('version-unavailable');
@@ -134,17 +221,51 @@ export async function installMarketplaceAgentRunner(
     plugin.name,
     plugin.latest_version,
   );
+  const pending: PendingAgentRunnerInstall = {
+    taskId,
+    pluginId: marketplacePluginId(plugin),
+    pluginAuthor: plugin.author,
+    pluginName: plugin.name,
+    pluginLabel: extractPluginLabel(plugin),
+    scope: options.scope,
+    startedAt: Date.now(),
+  };
+  writePendingAgentRunnerInstall(pending);
+  options.onTaskCreated?.(taskId);
+  return finishAgentRunnerInstall(pending);
+}
+
+function extractPluginLabel(plugin: PluginV4) {
+  const label = plugin.label;
+  if (typeof label === 'string') return label || plugin.name;
+  if (label && typeof label === 'object') {
+    const localized = Object.values(label).find(
+      (value): value is string => typeof value === 'string' && value.length > 0,
+    );
+    if (localized) return localized;
+  }
+  return plugin.name;
+}
+
+async function finishAgentRunnerInstall(
+  pending: PendingAgentRunnerInstall,
+): Promise<InstalledAgentRunner> {
+  // A refreshed page receives a fresh observation window. The backend task is
+  // authoritative; `startedAt` is display metadata, not a reason to abandon a
+  // still-running installation immediately after recovery.
   const installDeadline = Date.now() + RUNNER_INSTALL_TIMEOUT_MS;
   let installCompleted = false;
-  while (Date.now() < installDeadline) {
-    const task = await httpClient.getAsyncTask(taskId);
+  while (true) {
+    const task = await httpClient.getAsyncTask(pending.taskId);
     if (task.runtime.done) {
       if (task.runtime.exception) {
+        clearPendingAgentRunnerInstall(pending.scope, pending.taskId);
         throw new Error(task.runtime.exception);
       }
       installCompleted = true;
       break;
     }
+    if (Date.now() >= installDeadline) break;
     await wait(1000);
   }
   if (!installCompleted) {
@@ -152,7 +273,10 @@ export async function installMarketplaceAgentRunner(
   }
 
   const registrationDeadline = Date.now() + RUNNER_REGISTRATION_TIMEOUT_MS;
-  const prefix = runnerPluginPrefix(plugin);
+  const prefix = runnerPluginPrefix({
+    author: pending.pluginAuthor,
+    name: pending.pluginName,
+  });
   while (Date.now() < registrationDeadline) {
     const metadata = await httpClient.getGeneralPipelineMetadata();
     const configTab = metadata.configs.find((config) => config.name === 'ai');
@@ -169,10 +293,20 @@ export async function installMarketplaceAgentRunner(
       pluginRunnerOptions[0];
 
     if (configTab && runner) {
+      clearPendingAgentRunnerInstall(pending.scope, pending.taskId);
       return { configTab, runner };
     }
     await wait(1000);
   }
 
+  clearPendingAgentRunnerInstall(pending.scope, pending.taskId);
   throw new AgentRunnerMarketplaceError('registration-timeout');
+}
+
+export async function resumePendingAgentRunnerInstall(
+  scope: string,
+): Promise<InstalledAgentRunner | null> {
+  const pending = readPendingAgentRunnerInstall(scope);
+  if (!pending) return null;
+  return finishAgentRunnerInstall(pending);
 }

@@ -771,7 +771,10 @@ const enUS = {
     noRunnersAvailableDescription:
       'Install and enable an AgentRunner extension before configuring this Agent.',
     installedRunners: 'Installed AgentRunners',
-    marketplaceRunners: 'AgentRunner Marketplace',
+    marketplaceRunners: 'AgentRunner plugins in Marketplace',
+    viewMarketplace: 'View market',
+    restoringRunnerInstall:
+      'Restoring the AgentRunner plugin installation and waiting for the runner…',
     noInstalledRunners: 'No AgentRunner extension is installed yet.',
     installingRunner: 'Installing {{runner}}...',
     selectedRunnerUnavailable: 'Selected runner is unavailable',

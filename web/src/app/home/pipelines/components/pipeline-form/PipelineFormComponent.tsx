@@ -1,5 +1,6 @@
 import {
   forwardRef,
+  useCallback,
   useEffect,
   useImperativeHandle,
   useMemo,
@@ -58,6 +59,12 @@ import {
 } from 'lucide-react';
 import PipelineExtension from '@/app/home/pipelines/components/pipeline-extensions/PipelineExtension';
 import AgentRunnerSelect from '@/app/home/agents/components/AgentRunnerSelect';
+import {
+  getErrorMessage,
+  readPendingAgentRunnerInstall,
+  resumePendingAgentRunnerInstall,
+  type InstalledAgentRunner,
+} from '@/app/home/agents/agent-runner-marketplace';
 
 interface PipelineFormComponentProps {
   pipelineId?: string;
@@ -204,6 +211,8 @@ const PipelineFormComponent = forwardRef<
     useState<PipelineConfigTab>();
   const [outputConfigTabSchema, setOutputConfigTabSchema] =
     useState<PipelineConfigTab>();
+  const [metadataLoaded, setMetadataLoaded] = useState(false);
+  const [pipelineLoaded, setPipelineLoaded] = useState(!isEditMode);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -219,6 +228,36 @@ const PipelineFormComponent = forwardRef<
       output: {},
     },
   });
+  const runnerInstallScope = `pipeline:${pipelineId || 'new'}`;
+  const applyInstalledRunner = useCallback(
+    (installed: InstalledAgentRunner) => {
+      setAIConfigTabSchema(installed.configTab);
+      const currentAI = (form.getValues('ai') || {}) as Record<string, any>;
+      const currentRunner =
+        currentAI.runner && typeof currentAI.runner === 'object'
+          ? currentAI.runner
+          : {};
+      const currentConfigs =
+        currentAI.runner_config && typeof currentAI.runner_config === 'object'
+          ? currentAI.runner_config
+          : {};
+      const runnerName = installed.runner.name;
+      const runnerStage = installed.configTab.stages.find(
+        (stage) => stage.name === runnerName,
+      );
+      form.setValue('ai', {
+        ...currentAI,
+        runner: { ...currentRunner, id: runnerName },
+        runner_config: {
+          ...currentConfigs,
+          ...(runnerStage && !(runnerName in currentConfigs)
+            ? { [runnerName]: getDefaultValues(runnerStage.config) }
+            : {}),
+        },
+      });
+    },
+    [form],
+  );
   const dynamicFormSystemContext = useMemo(
     () => ({ pipeline_id: pipelineId }),
     [pipelineId],
@@ -244,6 +283,8 @@ const PipelineFormComponent = forwardRef<
   }, [hasUnsavedChanges, onDirtyChange]);
 
   useEffect(() => {
+    setMetadataLoaded(false);
+    setPipelineLoaded(!isEditMode);
     // get config schema from metadata
     httpClient.getGeneralPipelineMetadata().then((resp) => {
       for (const config of resp.configs) {
@@ -257,6 +298,7 @@ const PipelineFormComponent = forwardRef<
           setOutputConfigTabSchema(config);
         }
       }
+      setMetadataLoaded(true);
     });
 
     if (isEditMode) {
@@ -279,9 +321,47 @@ const PipelineFormComponent = forwardRef<
           form.reset(loadedValues);
           savedSnapshotRef.current = JSON.stringify(loadedValues);
           initializedStagesRef.current.clear();
+          setPipelineLoaded(true);
         });
     }
   }, [form, isEditMode, pipelineId]);
+
+  useEffect(() => {
+    if (
+      !metadataLoaded ||
+      !pipelineLoaded ||
+      !readPendingAgentRunnerInstall(runnerInstallScope)
+    ) {
+      return;
+    }
+    let cancelled = false;
+    void resumePendingAgentRunnerInstall(runnerInstallScope)
+      .then((installed) => {
+        if (cancelled || !installed) return;
+        applyInstalledRunner(installed);
+        toast.success(
+          t('wizard.aiEngine.installSuccess', {
+            runner: extractI18nObject(installed.runner.label),
+          }),
+        );
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          toast.error(
+            getErrorMessage(error) || t('wizard.aiEngine.installFailed'),
+          );
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    applyInstalledRunner,
+    metadataLoaded,
+    pipelineLoaded,
+    runnerInstallScope,
+    t,
+  ]);
 
   useEffect(() => {
     if (!isEditMode) {
@@ -523,7 +603,8 @@ const PipelineFormComponent = forwardRef<
                       label={extractI18nObject(config.label)}
                       value={String(field.value ?? '')}
                       onValueChange={field.onChange}
-                      onMetadataRefresh={setAIConfigTabSchema}
+                      installScope={runnerInstallScope}
+                      onInstalled={applyInstalledRunner}
                     />
                   ) : undefined
                 }

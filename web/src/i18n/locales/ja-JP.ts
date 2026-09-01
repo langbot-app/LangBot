@@ -783,7 +783,10 @@ const jaJP = {
     noRunnersAvailableDescription:
       'この Agent を設定する前に AgentRunner 拡張機能をインストールして有効にしてください。',
     installedRunners: 'インストール済み AgentRunner',
-    marketplaceRunners: 'AgentRunner マーケットプレイス',
+    marketplaceRunners: 'マーケットプレイスの AgentRunner プラグイン',
+    viewMarketplace: '市場を見る',
+    restoringRunnerInstall:
+      'AgentRunner プラグインのインストールを復元し、ランナーを待機しています…',
     noInstalledRunners:
       'AgentRunner 拡張機能はまだインストールされていません。',
     installingRunner: '{{runner}} をインストールしています...',

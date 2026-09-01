@@ -13,7 +13,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { Bot, SlidersHorizontal, Zap } from 'lucide-react';
+import { Bot, Loader2, SlidersHorizontal, Zap } from 'lucide-react';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { Agent, ApiRespPluginSystemStatus } from '@/app/infra/entities/api';
 import {
@@ -21,6 +21,13 @@ import {
   PipelineConfigTab,
 } from '@/app/infra/entities/pipeline';
 import DynamicFormComponent from '@/app/home/components/dynamic-form/DynamicFormComponent';
+import { getDefaultValues } from '@/app/home/components/dynamic-form/DynamicFormItemConfig';
+import {
+  getErrorMessage,
+  readPendingAgentRunnerInstall,
+  resumePendingAgentRunnerInstall,
+  type InstalledAgentRunner,
+} from '@/app/home/agents/agent-runner-marketplace';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
@@ -117,6 +124,8 @@ function AgentFormComponent(
     useState<ApiRespPluginSystemStatus | null>(null);
   const [pluginStatusLoading, setPluginStatusLoading] = useState(true);
   const [pluginStatusError, setPluginStatusError] = useState(false);
+  const [initialDataLoaded, setInitialDataLoaded] = useState(false);
+  const [runnerInstallRecovering, setRunnerInstallRecovering] = useState(false);
   const [activeSection, setActiveSection] =
     useState<AgentConfigSection>('runner');
   const isSavingRef = useRef(false);
@@ -147,6 +156,35 @@ function AgentFormComponent(
       supported_event_patterns: ['*'],
     },
   });
+  const runnerInstallScope = `agent:${agentId}`;
+
+  const applyInstalledRunner = useCallback(
+    (installed: InstalledAgentRunner) => {
+      setRunnerConfigSchema(installed.configTab);
+      const currentRunner = form.getValues('runner') || {};
+      const currentConfigs = form.getValues('runner_config') || {};
+      const runnerName = installed.runner.name;
+      const runnerStage = installed.configTab.stages.find(
+        (stage) => stage.name === runnerName,
+      );
+      form.setValue(
+        'runner',
+        { ...currentRunner, id: runnerName },
+        { shouldDirty: true },
+      );
+      if (!(runnerName in currentConfigs) && runnerStage) {
+        form.setValue(
+          'runner_config',
+          {
+            ...currentConfigs,
+            [runnerName]: getDefaultValues(runnerStage.config),
+          },
+          { shouldDirty: true },
+        );
+      }
+    },
+    [form],
+  );
 
   const savedSnapshotRef = useRef('');
   const initializedStagesRef = useRef<Set<string>>(new Set());
@@ -189,6 +227,7 @@ function AgentFormComponent(
         form.reset(loadedValues);
         savedSnapshotRef.current = JSON.stringify(loadedValues);
         initializedStagesRef.current.clear();
+        setInitialDataLoaded(true);
       })
       .catch((err) => {
         toast.error(t('agents.loadError') + err.msg);
@@ -197,6 +236,40 @@ function AgentFormComponent(
       cancelled = true;
     };
   }, [agentId, form, t]);
+
+  useEffect(() => {
+    if (
+      !initialDataLoaded ||
+      !readPendingAgentRunnerInstall(runnerInstallScope)
+    ) {
+      return;
+    }
+    let cancelled = false;
+    setRunnerInstallRecovering(true);
+    void resumePendingAgentRunnerInstall(runnerInstallScope)
+      .then((installed) => {
+        if (cancelled || !installed) return;
+        applyInstalledRunner(installed);
+        toast.success(
+          t('wizard.aiEngine.installSuccess', {
+            runner: extractI18nObject(installed.runner.label),
+          }),
+        );
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          toast.error(
+            getErrorMessage(error) || t('wizard.aiEngine.installFailed'),
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setRunnerInstallRecovering(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [applyInstalledRunner, initialDataLoaded, runnerInstallScope, t]);
 
   const loadPluginSystemStatus = useCallback(async () => {
     setPluginStatusLoading(true);
@@ -425,7 +498,8 @@ function AgentFormComponent(
                         label={extractI18nObject(config.label)}
                         value={String(field.value ?? '')}
                         onValueChange={field.onChange}
-                        onMetadataRefresh={setRunnerConfigSchema}
+                        installScope={runnerInstallScope}
+                        onInstalled={applyInstalledRunner}
                       />
                     ) : undefined
                 : undefined
@@ -576,7 +650,17 @@ function AgentFormComponent(
 
               {activeSection === 'runner_config' && (
                 <div className="space-y-6">
-                  {activeRunnerStage ? (
+                  {runnerInstallRecovering ? (
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>{t('agents.runnerSettings')}</CardTitle>
+                        <CardDescription className="flex items-center gap-2">
+                          <Loader2 className="size-4 animate-spin" />
+                          {t('agents.restoringRunnerInstall')}
+                        </CardDescription>
+                      </CardHeader>
+                    </Card>
+                  ) : activeRunnerStage ? (
                     renderDynamicStage(activeRunnerStage)
                   ) : (
                     <Card>

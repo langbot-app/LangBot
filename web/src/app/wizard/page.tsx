@@ -70,6 +70,8 @@ import {
   installMarketplaceAgentRunner,
   loadAgentRunnerCatalog,
   marketplacePluginId,
+  readPendingAgentRunnerInstall,
+  resumePendingAgentRunnerInstall,
   runnerPluginPrefix,
 } from '@/app/home/agents/agent-runner-marketplace';
 import {
@@ -104,6 +106,7 @@ import {
 // ---------------------------------------------------------------------------
 
 const TOTAL_STEPS = 4;
+const WIZARD_RUNNER_INSTALL_SCOPE = 'wizard';
 
 type WizardScenarioId =
   | 'message_reply'
@@ -497,7 +500,9 @@ export default function WizardPage() {
       setRunnerInstallError(null);
 
       try {
-        const installed = await installMarketplaceAgentRunner(plugin);
+        const installed = await installMarketplaceAgentRunner(plugin, {
+          scope: WIZARD_RUNNER_INSTALL_SCOPE,
+        });
         setAiConfigTab(installed.configTab);
         setInstalledPluginIds((current) =>
           current.includes(pluginId) ? current : [...current, pluginId],
@@ -528,6 +533,46 @@ export default function WizardPage() {
     },
     [handleSelectRunner, t],
   );
+
+  useEffect(() => {
+    if (isLoading) return;
+    const pending = readPendingAgentRunnerInstall(WIZARD_RUNNER_INSTALL_SCOPE);
+    if (!pending) return;
+
+    let cancelled = false;
+    setInstallingRunnerPluginId(pending.pluginId);
+    setRunnerInstallError(null);
+    void resumePendingAgentRunnerInstall(WIZARD_RUNNER_INSTALL_SCOPE)
+      .then((installed) => {
+        if (cancelled || !installed) return;
+        setAiConfigTab(installed.configTab);
+        setInstalledPluginIds((current) =>
+          current.includes(pending.pluginId)
+            ? current
+            : [...current, pending.pluginId],
+        );
+        handleSelectRunner(installed.runner.name, installed.configTab);
+        toast.success(
+          t('wizard.aiEngine.installSuccess', {
+            runner: pending.pluginLabel,
+          }),
+        );
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        const message =
+          getErrorMessage(error) || t('wizard.aiEngine.installFailed');
+        setRunnerInstallError(message);
+        toast.error(message);
+      })
+      .finally(() => {
+        if (!cancelled) setInstallingRunnerPluginId(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [handleSelectRunner, isLoading, t]);
 
   // ---- Navigation helpers ----
 

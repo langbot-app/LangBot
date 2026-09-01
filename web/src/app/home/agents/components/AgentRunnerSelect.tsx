@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Bot, Download, Loader2, Store } from 'lucide-react';
+import { Bot, Download, ExternalLink, Loader2, Store } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import { getCloudServiceClientSync, httpClient } from '@/app/infra/http';
 import type { IDynamicFormItemOption } from '@/app/infra/entities/form/dynamic';
-import type { PipelineConfigTab } from '@/app/infra/entities/pipeline';
 import type { PluginV4 } from '@/app/infra/entities/plugin';
 import {
   AgentRunnerMarketplaceError,
@@ -14,7 +13,11 @@ import {
   loadAgentRunnerCatalog,
   marketplacePluginId,
   runnerPluginPrefix,
+  readPendingAgentRunnerInstall,
+  subscribePendingAgentRunnerInstall,
+  type InstalledAgentRunner,
 } from '@/app/home/agents/agent-runner-marketplace';
+import { usePluginInstallTasks } from '@/app/home/plugins/components/plugin-install-task';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import {
   Select,
@@ -109,21 +112,24 @@ export default function AgentRunnerSelect({
   label,
   value,
   onValueChange,
-  onMetadataRefresh,
+  installScope,
+  onInstalled,
 }: {
   options: IDynamicFormItemOption[];
   label: string;
   value: string;
   onValueChange: (value: string) => void;
-  onMetadataRefresh: (configTab: PipelineConfigTab) => void;
+  installScope: string;
+  onInstalled: (installed: InstalledAgentRunner) => void;
 }) {
   const { t } = useTranslation();
+  const { addTask } = usePluginInstallTasks();
   const [marketplaceRunners, setMarketplaceRunners] = useState<PluginV4[]>([]);
   const [installedPluginIds, setInstalledPluginIds] = useState<string[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogError, setCatalogError] = useState(false);
-  const [installingPlugin, setInstallingPlugin] = useState<PluginV4 | null>(
-    null,
+  const [pendingInstall, setPendingInstall] = useState(() =>
+    readPendingAgentRunnerInstall(installScope),
   );
   const [installError, setInstallError] = useState<string | null>(null);
 
@@ -146,6 +152,13 @@ export default function AgentRunnerSelect({
     void loadCatalog();
   }, [loadCatalog]);
 
+  useEffect(() => {
+    const syncPendingInstall = () =>
+      setPendingInstall(readPendingAgentRunnerInstall(installScope));
+    syncPendingInstall();
+    return subscribePendingAgentRunnerInstall(installScope, syncPendingInstall);
+  }, [installScope]);
+
   const marketplaceOptions = useMemo(
     () =>
       marketplaceRunners.filter((plugin) => {
@@ -159,6 +172,11 @@ export default function AgentRunnerSelect({
   );
 
   const selectedOption = options.find((option) => option.name === value);
+  const installingPlugin = pendingInstall
+    ? (marketplaceRunners.find(
+        (plugin) => marketplacePluginId(plugin) === pendingInstall.pluginId,
+      ) ?? null)
+    : null;
 
   const handleValueChange = useCallback(
     async (nextValue: string) => {
@@ -172,14 +190,21 @@ export default function AgentRunnerSelect({
       const plugin = marketplaceRunners.find(
         (candidate) => marketplacePluginId(candidate) === pluginId,
       );
-      if (!plugin || installingPlugin) return;
+      if (!plugin || pendingInstall) return;
 
-      setInstallingPlugin(plugin);
       setInstallError(null);
       try {
-        const installed = await installMarketplaceAgentRunner(plugin);
-        onMetadataRefresh(installed.configTab);
-        onValueChange(installed.runner.name);
+        const installed = await installMarketplaceAgentRunner(plugin, {
+          scope: installScope,
+          onTaskCreated: (taskId) =>
+            addTask({
+              taskId,
+              pluginName: marketplacePluginId(plugin),
+              source: 'marketplace',
+              extensionType: 'plugin',
+            }),
+        });
+        onInstalled(installed);
         await loadCatalog();
         toast.success(
           t('wizard.aiEngine.installSuccess', {
@@ -191,15 +216,17 @@ export default function AgentRunnerSelect({
         setInstallError(message);
         toast.error(message);
       } finally {
-        setInstallingPlugin(null);
+        setPendingInstall(readPendingAgentRunnerInstall(installScope));
       }
     },
     [
-      installingPlugin,
+      addTask,
+      installScope,
       loadCatalog,
       marketplaceRunners,
-      onMetadataRefresh,
+      onInstalled,
       onValueChange,
+      pendingInstall,
       t,
     ],
   );
@@ -208,7 +235,7 @@ export default function AgentRunnerSelect({
     <div className="w-full max-w-[22rem] space-y-2">
       <Select
         value={value}
-        disabled={installingPlugin !== null}
+        disabled={pendingInstall !== null}
         onValueChange={(nextValue) => void handleValueChange(nextValue)}
         onOpenChange={(open) => {
           if (open && catalogError && !catalogLoading) void loadCatalog();
@@ -264,11 +291,22 @@ export default function AgentRunnerSelect({
           <SelectSeparator />
 
           <SelectGroup>
-            <SelectLabel className="px-2 py-1 text-[11px] font-medium">
-              <span className="inline-flex items-center gap-1.5">
+            <SelectLabel className="flex items-center justify-between gap-2 px-2 py-1 text-[11px] font-medium">
+              <span className="inline-flex min-w-0 items-center gap-1.5">
                 <Store className="size-3.5" />
                 {t('agents.marketplaceRunners')}
               </span>
+              <a
+                href="https://space.langbot.app/market?type=plugin&component=AgentRunner"
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex shrink-0 items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-medium text-foreground hover:bg-accent"
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={(event) => event.stopPropagation()}
+              >
+                {t('agents.viewMarketplace')}
+                <ExternalLink className="size-3" />
+              </a>
             </SelectLabel>
             {catalogLoading && marketplaceOptions.length === 0 ? (
               <div className="flex items-center gap-2 px-2 py-1.5 text-xs text-muted-foreground">
