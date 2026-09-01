@@ -777,6 +777,7 @@ const enUS = {
       'Restoring the AgentRunner plugin installation and waiting for the runner…',
     noInstalledRunners: 'No AgentRunner extension is installed yet.',
     installingRunner: 'Installing {{runner}}...',
+    runnerInstallSuccess: '{{runner}} is installed and ready to select',
     selectedRunnerUnavailable: 'Selected runner is unavailable',
     selectedRunnerUnavailableDescription:
       '{{runner}} is not currently registered. Select another runner or restore its extension.',
@@ -1017,13 +1018,18 @@ const enUS = {
     goToMarketplace: 'Go to Extension Market',
     installProgress: {
       title: 'Installing {{name}}',
+      updateTitle: 'Updating {{name}}',
       titleGeneric: 'Extension Installation',
       titlePlugin: 'Installing Plugin {{name}}',
       titleMCP: 'Installing MCP Server {{name}}',
       titleSkill: 'Installing Skill {{name}}',
       overallProgress: 'Overall Progress',
+      checkingUpdate: 'Checking for updates',
       downloading: 'Downloading',
+      validating: 'Validating package',
       installingDeps: 'Installing Dependencies',
+      applyingUpdate: 'Applying update',
+      activating: 'Starting and refreshing components',
       initializing: 'Initializing Settings',
       launching: 'Launching',
       completed: 'Completed',
@@ -1033,14 +1039,15 @@ const enUS = {
       depsProgress:
         '{{installed}}/{{total}} installed · {{remaining}} remaining',
       installComplete: 'Installation successful',
+      updateComplete: 'Plugin updated successfully',
       installCompletePlugin: 'Plugin installed successfully',
       installCompleteMCP: 'MCP Server installed successfully',
       installCompleteSkill: 'Skill installed successfully',
       dismiss: 'Dismiss',
       background: 'Run in Background',
-      taskQueue: 'Install Tasks',
+      taskQueue: 'Plugin Tasks',
       clearCompleted: 'Clear Completed',
-      noTasks: 'No install tasks',
+      noTasks: 'No plugin tasks',
     },
   },
   market: {
@@ -1512,6 +1519,23 @@ const enUS = {
     knowledgeEngine: 'Knowledge Engine',
     knowledgeEngineRequired: 'Knowledge engine is required',
     selectKnowledgeEngine: 'Select Knowledge Engine',
+    installedEngines: 'Installed knowledge engines',
+    noInstalledEngines: 'No knowledge engine plugins are installed yet.',
+    marketplaceEngines: 'Knowledge engine plugins in Marketplace',
+    noMarketplaceEngines: 'No knowledge engine plugins are available.',
+    loadingEngineCatalog: 'Loading Marketplace plugins…',
+    engineCatalogUnavailable:
+      'Marketplace is temporarily unavailable. Reopen the selector to retry.',
+    viewMarketplace: 'View market',
+    installingEngine: 'Installing {{engine}}…',
+    engineInstallSuccess: '{{engine}} is installed and ready to select',
+    engineInstallFailed:
+      'Knowledge engine installation failed. Please try again.',
+    engineVersionUnavailable: 'This plugin has no installable version.',
+    engineInstallTimeout:
+      'Installation is still running. Refresh the page to check again.',
+    engineRegistrationTimeout:
+      'The plugin is installed, but its knowledge engine is not ready yet.',
     builtInEngine: 'Built-in Engine',
     cannotChangeKnowledgeEngine:
       'Knowledge engine cannot be changed after creation',

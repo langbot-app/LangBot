@@ -113,6 +113,10 @@ import {
 } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import { useSidebarData, SidebarEntityItem } from './SidebarDataContext';
+import {
+  pluginTaskKey,
+  usePluginInstallTasks,
+} from '@/app/home/plugins/components/plugin-install-task';
 import { FeedbackPopoverContent } from './FeedbackPopover';
 import {
   type WorkspaceQuotaItem,
@@ -404,6 +408,7 @@ function NavItems({
   const pathname = location.pathname;
   const [searchParams] = useSearchParams();
   const sidebarData = useSidebarData();
+  const refreshSidebarPlugins = sidebarData.refreshPlugins;
   const quotaStatus = useWorkspaceQuotaStatus();
   const { state: sidebarState, isMobile } = useSidebar();
   const { t } = useTranslation();
@@ -452,18 +457,35 @@ function NavItems({
   const [targetPluginItem, setTargetPluginItem] =
     useState<SidebarEntityItem | null>(null);
   const [deleteData, setDeleteData] = useState(false);
+  const {
+    addTask: addPluginTask,
+    setSelectedTaskId: setSelectedPluginTaskId,
+    registerOnTaskComplete,
+    unregisterOnTaskComplete,
+  } = usePluginInstallTasks();
 
   const asyncTask = useAsyncTask({
     onSuccess: () => {
-      const msg =
-        pluginOpType === PluginOperationType.DELETE
-          ? t('plugins.deleteSuccess')
-          : t('plugins.updateSuccess');
-      toast.success(msg);
+      toast.success(t('plugins.deleteSuccess'));
       setShowPluginOpModal(false);
       sidebarData.refreshPlugins();
     },
   });
+
+  useEffect(() => {
+    const onPluginTaskComplete = (
+      _taskId: number,
+      success: boolean,
+      _error?: string,
+      operation?: 'install' | 'upgrade',
+    ) => {
+      if (success && operation === 'upgrade') {
+        refreshSidebarPlugins();
+      }
+    };
+    registerOnTaskComplete(onPluginTaskComplete);
+    return () => unregisterOnTaskComplete(onPluginTaskComplete);
+  }, [refreshSidebarPlugins, registerOnTaskComplete, unregisterOnTaskComplete]);
 
   function handlePluginDelete(item: SidebarEntityItem) {
     setTargetPluginItem(item);
@@ -490,21 +512,37 @@ function NavItems({
         ? targetPluginItem.id.substring(slashIdx + 1)
         : targetPluginItem.id;
 
-    const apiCall =
-      pluginOpType === PluginOperationType.DELETE
-        ? httpClient.removePlugin(author, name, deleteData)
-        : httpClient.upgradePlugin(author, name);
+    if (pluginOpType === PluginOperationType.UPDATE) {
+      httpClient
+        .upgradePlugin(author, name)
+        .then((res) => {
+          addPluginTask({
+            taskId: res.task_id,
+            pluginName: `${author}/${name}`,
+            source: 'marketplace',
+            extensionType: 'plugin',
+            operation: 'upgrade',
+          });
+          setSelectedPluginTaskId(
+            pluginTaskKey(res.task_id, 'marketplace', 'upgrade'),
+          );
+          setShowPluginOpModal(false);
+          setTargetPluginItem(null);
+          asyncTask.reset();
+        })
+        .catch((error) => {
+          toast.error(t('plugins.updateError') + error.message);
+        });
+      return;
+    }
 
-    apiCall
+    httpClient
+      .removePlugin(author, name, deleteData)
       .then((res) => {
         asyncTask.startTask(res.task_id);
       })
       .catch((error) => {
-        const errorMessage =
-          pluginOpType === PluginOperationType.DELETE
-            ? t('plugins.deleteError') + error.message
-            : t('plugins.updateError') + error.message;
-        toast.error(errorMessage);
+        toast.error(t('plugins.deleteError') + error.message);
       });
   }
 

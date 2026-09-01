@@ -22,6 +22,10 @@ import { toast } from 'sonner';
 import { useAsyncTask, AsyncTaskStatus } from '@/hooks/useAsyncTask';
 import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
 import { Loader2, Puzzle, Server, Sparkles } from 'lucide-react';
+import {
+  pluginTaskKey,
+  usePluginInstallTasks,
+} from '@/app/home/plugins/components/plugin-install-task';
 
 export interface PluginInstalledComponentRef {
   refreshPluginList: () => void;
@@ -68,6 +72,7 @@ const PluginInstalledComponent = forwardRef<
 >(({ filterType, groupByType }, ref) => {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const { addTask, setSelectedTaskId } = usePluginInstallTasks();
   const { refreshPlugins, refreshMCPServers, refreshSkills } = useSidebarData();
   const [extensionList, setExtensionList] = useState<ExtensionCardVO[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -81,11 +86,7 @@ const PluginInstalledComponent = forwardRef<
 
   const asyncTask = useAsyncTask({
     onSuccess: () => {
-      const successMessage =
-        operationType === ExtensionOperationType.DELETE
-          ? t('plugins.deleteSuccess')
-          : t('plugins.updateSuccess');
-      toast.success(successMessage);
+      toast.success(t('plugins.deleteSuccess'));
       setShowOperationModal(false);
       getExtensionList();
       refreshPlugins();
@@ -282,28 +283,37 @@ const PluginInstalledComponent = forwardRef<
       return;
     }
 
-    const apiCall =
-      operationType === ExtensionOperationType.DELETE
-        ? httpClient.removePlugin(
-            targetExtension.author,
-            targetExtension.name,
-            deleteData,
-          )
-        : httpClient.upgradePlugin(
-            targetExtension.author,
-            targetExtension.name,
+    if (operationType === ExtensionOperationType.UPDATE) {
+      httpClient
+        .upgradePlugin(targetExtension.author, targetExtension.name)
+        .then((res) => {
+          addTask({
+            taskId: res.task_id,
+            pluginName: `${targetExtension.author}/${targetExtension.name}`,
+            source: 'marketplace',
+            extensionType: 'plugin',
+            operation: 'upgrade',
+          });
+          setSelectedTaskId(
+            pluginTaskKey(res.task_id, 'marketplace', 'upgrade'),
           );
+          setShowOperationModal(false);
+          setTargetExtension(null);
+          asyncTask.reset();
+        })
+        .catch((error) => {
+          toast.error(t('plugins.updateError') + error.message);
+        });
+      return;
+    }
 
-    apiCall
+    httpClient
+      .removePlugin(targetExtension.author, targetExtension.name, deleteData)
       .then((res) => {
         asyncTask.startTask(res.task_id);
       })
       .catch((error) => {
-        const errorMessage =
-          operationType === ExtensionOperationType.DELETE
-            ? t('plugins.deleteError') + error.message
-            : t('plugins.updateError') + error.message;
-        toast.error(errorMessage);
+        toast.error(t('plugins.deleteError') + error.message);
       });
   }
 

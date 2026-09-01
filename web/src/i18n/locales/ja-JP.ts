@@ -790,6 +790,8 @@ const jaJP = {
     noInstalledRunners:
       'AgentRunner 拡張機能はまだインストールされていません。',
     installingRunner: '{{runner}} をインストールしています...',
+    runnerInstallSuccess:
+      '{{runner}} をインストールしました。インストール済み一覧から選択できます',
     selectedRunnerUnavailable: '選択した Runner は利用できません',
     selectedRunnerUnavailableDescription:
       '{{runner}} は現在登録されていません。別の Runner を選択するか、対応する拡張機能を復元してください。',
@@ -982,10 +984,15 @@ const jaJP = {
     goToMarketplace: 'マーケットプレイスへ',
     installProgress: {
       title: '{{name}} をインストール中',
+      updateTitle: '{{name}} を更新中',
       titleGeneric: 'プラグインのインストール',
       overallProgress: '全体の進捗',
+      checkingUpdate: '最新バージョンを確認中',
       downloading: 'プラグインをダウンロード中',
+      validating: 'プラグインパッケージを検証中',
       installingDeps: '依存関係をインストール中',
+      applyingUpdate: 'プラグインの更新を適用中',
+      activating: 'コンポーネントを起動・更新中',
       initializing: '設定を初期化中',
       launching: 'プラグインを起動中',
       completed: '完了',
@@ -995,11 +1002,12 @@ const jaJP = {
       depsProgress:
         '{{installed}}/{{total}} インストール済み · 残り {{remaining}} 個',
       installComplete: 'プラグインのインストール完了',
+      updateComplete: 'プラグインの更新が完了しました',
       dismiss: '閉じる',
       background: 'バックグラウンドで実行',
-      taskQueue: 'インストールタスク',
+      taskQueue: 'プラグインタスク',
       clearCompleted: '完了を消去',
-      noTasks: 'インストールタスクはありません',
+      noTasks: 'プラグインタスクはありません',
       titlePlugin: 'プラグイン {{name}} をインストール中',
       titleMCP: 'MCP サーバー {{name}} をインストール中',
       titleSkill: 'スキル {{name}} をインストール中',
@@ -1495,6 +1503,27 @@ const jaJP = {
     knowledgeEngine: 'ナレッジエンジン',
     knowledgeEngineRequired: 'ナレッジエンジンは必須です',
     selectKnowledgeEngine: 'ナレッジエンジンを選択',
+    installedEngines: 'インストール済みのナレッジエンジン',
+    noInstalledEngines:
+      'ナレッジエンジンプラグインはまだインストールされていません。',
+    marketplaceEngines: 'マーケットプレイスのナレッジエンジンプラグイン',
+    noMarketplaceEngines:
+      'インストール可能なナレッジエンジンプラグインがありません。',
+    loadingEngineCatalog: 'マーケットプレイスを読み込み中…',
+    engineCatalogUnavailable:
+      'マーケットプレイスを利用できません。選択欄を開き直して再試行してください。',
+    viewMarketplace: '市場を見る',
+    installingEngine: '{{engine}} をインストール中…',
+    engineInstallSuccess:
+      '{{engine}} をインストールしました。インストール済み一覧から選択できます',
+    engineInstallFailed:
+      'ナレッジエンジンのインストールに失敗しました。再試行してください。',
+    engineVersionUnavailable:
+      'このプラグインにはインストール可能なバージョンがありません。',
+    engineInstallTimeout:
+      'インストールはまだ実行中です。ページを更新して確認してください。',
+    engineRegistrationTimeout:
+      'プラグインはインストール済みですが、ナレッジエンジンはまだ準備中です。',
     builtInEngine: '組み込みエンジン',
     cannotChangeKnowledgeEngine:
       '作成後にナレッジエンジンを変更することはできません',

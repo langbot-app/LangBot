@@ -232,31 +232,8 @@ const PipelineFormComponent = forwardRef<
   const applyInstalledRunner = useCallback(
     (installed: InstalledAgentRunner) => {
       setAIConfigTabSchema(installed.configTab);
-      const currentAI = (form.getValues('ai') || {}) as Record<string, any>;
-      const currentRunner =
-        currentAI.runner && typeof currentAI.runner === 'object'
-          ? currentAI.runner
-          : {};
-      const currentConfigs =
-        currentAI.runner_config && typeof currentAI.runner_config === 'object'
-          ? currentAI.runner_config
-          : {};
-      const runnerName = installed.runner.name;
-      const runnerStage = installed.configTab.stages.find(
-        (stage) => stage.name === runnerName,
-      );
-      form.setValue('ai', {
-        ...currentAI,
-        runner: { ...currentRunner, id: runnerName },
-        runner_config: {
-          ...currentConfigs,
-          ...(runnerStage && !(runnerName in currentConfigs)
-            ? { [runnerName]: getDefaultValues(runnerStage.config) }
-            : {}),
-        },
-      });
     },
-    [form],
+    [],
   );
   const dynamicFormSystemContext = useMemo(
     () => ({ pipeline_id: pipelineId }),
@@ -340,7 +317,7 @@ const PipelineFormComponent = forwardRef<
         if (cancelled || !installed) return;
         applyInstalledRunner(installed);
         toast.success(
-          t('wizard.aiEngine.installSuccess', {
+          t('agents.runnerInstallSuccess', {
             runner: extractI18nObject(installed.runner.label),
           }),
         );

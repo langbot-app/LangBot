@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Bot, Download, ExternalLink, Loader2, Store } from 'lucide-react';
+import { Bot, ExternalLink, Loader2, Store } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
@@ -15,9 +15,14 @@ import {
   runnerPluginPrefix,
   readPendingAgentRunnerInstall,
   subscribePendingAgentRunnerInstall,
+  type AgentRunnerCatalog,
   type InstalledAgentRunner,
 } from '@/app/home/agents/agent-runner-marketplace';
-import { usePluginInstallTasks } from '@/app/home/plugins/components/plugin-install-task';
+import {
+  InstallStage,
+  usePluginInstallTasks,
+} from '@/app/home/plugins/components/plugin-install-task';
+import MarketplaceInstallButton from '@/app/home/components/MarketplaceInstallButton';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import {
   Select,
@@ -29,8 +34,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-
-const MARKETPLACE_VALUE_PREFIX = '__agent_runner_marketplace__:';
 
 function installErrorMessage(
   error: unknown,
@@ -48,17 +51,21 @@ function installErrorMessage(
   return getErrorMessage(error) || t('wizard.aiEngine.installFailed');
 }
 
-function InstalledRunnerContent({
-  option,
-}: {
-  option: IDynamicFormItemOption;
-}) {
-  const iconURL = option.name.startsWith('plugin:')
+function installedRunnerIconURL(option: IDynamicFormItemOption) {
+  return option.name.startsWith('plugin:')
     ? (() => {
         const match = option.name.match(/^plugin:([^/]+)\/([^/]+)(?:\/|$)/);
         return match ? httpClient.getPluginIconURL(match[1], match[2]) : null;
       })()
     : null;
+}
+
+function InstalledRunnerContent({
+  option,
+}: {
+  option: IDynamicFormItemOption;
+}) {
+  const iconURL = installedRunnerIconURL(option);
 
   return (
     <span className="flex min-w-0 items-center gap-2">
@@ -76,7 +83,79 @@ function InstalledRunnerContent({
   );
 }
 
-function MarketplaceRunnerContent({ plugin }: { plugin: PluginV4 }) {
+function InstalledRunnerOptionContent({
+  option,
+  description,
+}: {
+  option: IDynamicFormItemOption;
+  description: string;
+}) {
+  const iconURL = installedRunnerIconURL(option);
+
+  return (
+    <span className="grid w-full min-w-0 grid-cols-[1.75rem_minmax(0,1fr)] items-center gap-x-2 text-left">
+      {iconURL ? (
+        <img
+          src={iconURL}
+          alt=""
+          className="row-span-2 size-7 shrink-0 rounded-md object-cover"
+        />
+      ) : (
+        <Bot className="row-span-2 size-5 justify-self-center text-muted-foreground" />
+      )}
+      <span className="truncate font-medium leading-5">
+        {extractI18nObject(option.label)}
+      </span>
+      <span
+        className="truncate text-xs leading-4 text-muted-foreground"
+        title={description}
+      >
+        {description}
+      </span>
+    </span>
+  );
+}
+
+function runnerPluginId(optionName: string) {
+  return optionName.match(/^plugin:([^/]+\/[^/]+)(?:\/|$)/)?.[1] ?? null;
+}
+
+function installedRunnerDescription(
+  option: IDynamicFormItemOption,
+  marketplaceRunners: PluginV4[],
+  installedPluginDescriptions: AgentRunnerCatalog['installedPluginDescriptions'],
+) {
+  const pluginId = runnerPluginId(option.name);
+  if (!pluginId) return option.name;
+  const marketplacePlugin = marketplaceRunners.find(
+    (plugin) => marketplacePluginId(plugin) === pluginId,
+  );
+  return (
+    (marketplacePlugin?.description
+      ? extractI18nObject(marketplacePlugin.description)
+      : '') ||
+    (installedPluginDescriptions[pluginId]
+      ? extractI18nObject(installedPluginDescriptions[pluginId])
+      : '') ||
+    option.name
+  );
+}
+
+function MarketplaceRunnerContent({
+  plugin,
+  installing,
+  progress,
+  installDisabled,
+  installLabel,
+  onInstall,
+}: {
+  plugin: PluginV4;
+  installing: boolean;
+  progress: number;
+  installDisabled: boolean;
+  installLabel: string;
+  onInstall: () => void;
+}) {
   const iconURL = getCloudServiceClientSync().resolveMarketplaceIconURL(
     plugin.type,
     plugin.author,
@@ -87,7 +166,7 @@ function MarketplaceRunnerContent({ plugin }: { plugin: PluginV4 }) {
     extractI18nObject(plugin.description) || `${plugin.author}/${plugin.name}`;
 
   return (
-    <span className="grid min-w-0 flex-1 grid-cols-[1.75rem_minmax(0,1fr)_auto] items-center gap-x-2">
+    <div className="grid w-full min-w-0 grid-cols-[1.75rem_minmax(0,1fr)_4rem] items-center gap-x-2 rounded-sm px-2 py-1.5 hover:bg-accent focus-within:bg-accent">
       <img
         src={iconURL}
         alt=""
@@ -96,14 +175,20 @@ function MarketplaceRunnerContent({ plugin }: { plugin: PluginV4 }) {
       <span className="truncate font-medium leading-5">
         {extractI18nObject(plugin.label) || plugin.name}
       </span>
-      <Download className="row-span-2 size-3.5 shrink-0 text-muted-foreground" />
+      <MarketplaceInstallButton
+        installing={installing}
+        progress={progress}
+        disabled={installDisabled}
+        label={installLabel}
+        onInstall={onInstall}
+      />
       <span
         className="truncate text-xs leading-4 text-muted-foreground"
         title={description}
       >
         {description}
       </span>
-    </span>
+    </div>
   );
 }
 
@@ -123,15 +208,20 @@ export default function AgentRunnerSelect({
   onInstalled: (installed: InstalledAgentRunner) => void;
 }) {
   const { t } = useTranslation();
-  const { addTask } = usePluginInstallTasks();
+  const { addTask, tasks } = usePluginInstallTasks();
   const [marketplaceRunners, setMarketplaceRunners] = useState<PluginV4[]>([]);
   const [installedPluginIds, setInstalledPluginIds] = useState<string[]>([]);
+  const [installedPluginDescriptions, setInstalledPluginDescriptions] =
+    useState<AgentRunnerCatalog['installedPluginDescriptions']>({});
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogError, setCatalogError] = useState(false);
   const [pendingInstall, setPendingInstall] = useState(() =>
     readPendingAgentRunnerInstall(installScope),
   );
   const [installError, setInstallError] = useState<string | null>(null);
+  const [installingPluginId, setInstallingPluginId] = useState<string | null>(
+    null,
+  );
 
   const loadCatalog = useCallback(async () => {
     setCatalogLoading(true);
@@ -140,6 +230,7 @@ export default function AgentRunnerSelect({
       const catalog = await loadAgentRunnerCatalog();
       setMarketplaceRunners(catalog.marketplaceRunners);
       setInstalledPluginIds(catalog.installedPluginIds);
+      setInstalledPluginDescriptions(catalog.installedPluginDescriptions);
     } catch (error) {
       console.error('Failed to load AgentRunner catalog', error);
       setCatalogError(true);
@@ -172,26 +263,32 @@ export default function AgentRunnerSelect({
   );
 
   const selectedOption = options.find((option) => option.name === value);
-  const installingPlugin = pendingInstall
-    ? (marketplaceRunners.find(
-        (plugin) => marketplacePluginId(plugin) === pendingInstall.pluginId,
-      ) ?? null)
-    : null;
+  const activePluginId = pendingInstall?.pluginId ?? installingPluginId;
+  const activeTask = pendingInstall
+    ? tasks.find((task) => task.taskId === pendingInstall.taskId)
+    : undefined;
+  const installProgress = activePluginId
+    ? activeTask
+      ? activeTask.stage === InstallStage.DONE
+        ? 95
+        : Math.max(5, activeTask.overallProgress)
+      : 5
+    : 0;
 
   const handleValueChange = useCallback(
-    async (nextValue: string) => {
-      if (!nextValue.startsWith(MARKETPLACE_VALUE_PREFIX)) {
-        setInstallError(null);
-        onValueChange(nextValue);
-        return;
-      }
+    (nextValue: string) => {
+      setInstallError(null);
+      onValueChange(nextValue);
+    },
+    [onValueChange],
+  );
 
-      const pluginId = nextValue.slice(MARKETPLACE_VALUE_PREFIX.length);
-      const plugin = marketplaceRunners.find(
-        (candidate) => marketplacePluginId(candidate) === pluginId,
-      );
-      if (!plugin || pendingInstall) return;
+  const handleInstall = useCallback(
+    async (plugin: PluginV4) => {
+      const pluginId = marketplacePluginId(plugin);
+      if (pendingInstall || installingPluginId) return;
 
+      setInstallingPluginId(pluginId);
       setInstallError(null);
       try {
         const installed = await installMarketplaceAgentRunner(plugin, {
@@ -207,7 +304,7 @@ export default function AgentRunnerSelect({
         onInstalled(installed);
         await loadCatalog();
         toast.success(
-          t('wizard.aiEngine.installSuccess', {
+          t('agents.runnerInstallSuccess', {
             runner: extractI18nObject(plugin.label) || plugin.name,
           }),
         );
@@ -216,16 +313,17 @@ export default function AgentRunnerSelect({
         setInstallError(message);
         toast.error(message);
       } finally {
-        setPendingInstall(readPendingAgentRunnerInstall(installScope));
+        const current = readPendingAgentRunnerInstall(installScope);
+        setPendingInstall(current);
+        if (!current) setInstallingPluginId(null);
       }
     },
     [
       addTask,
       installScope,
+      installingPluginId,
       loadCatalog,
-      marketplaceRunners,
       onInstalled,
-      onValueChange,
       pendingInstall,
       t,
     ],
@@ -235,8 +333,7 @@ export default function AgentRunnerSelect({
     <div className="w-full max-w-[22rem] space-y-2">
       <Select
         value={value}
-        disabled={pendingInstall !== null}
-        onValueChange={(nextValue) => void handleValueChange(nextValue)}
+        onValueChange={handleValueChange}
         onOpenChange={(open) => {
           if (open && catalogError && !catalogLoading) void loadCatalog();
         }}
@@ -245,18 +342,7 @@ export default function AgentRunnerSelect({
           aria-label={label}
           className="w-full bg-[#ffffff] dark:bg-[#2a2a2e]"
         >
-          {installingPlugin ? (
-            <div className="flex min-w-0 items-center gap-2">
-              <Loader2 className="size-4 shrink-0 animate-spin" />
-              <span className="truncate">
-                {t('agents.installingRunner', {
-                  runner:
-                    extractI18nObject(installingPlugin.label) ||
-                    installingPlugin.name,
-                })}
-              </span>
-            </div>
-          ) : selectedOption ? (
+          {selectedOption ? (
             <InstalledRunnerContent option={selectedOption} />
           ) : (
             <SelectValue placeholder={t('common.select')} />
@@ -271,16 +357,25 @@ export default function AgentRunnerSelect({
               </span>
             </SelectLabel>
             {options.length > 0 ? (
-              options.map((option) => (
-                <SelectItem
-                  key={option.name}
-                  value={option.name}
-                  description={option.name}
-                  className="py-1.5"
-                >
-                  <InstalledRunnerContent option={option} />
-                </SelectItem>
-              ))
+              options.map((option) => {
+                const description = installedRunnerDescription(
+                  option,
+                  marketplaceRunners,
+                  installedPluginDescriptions,
+                );
+                return (
+                  <SelectItem
+                    key={option.name}
+                    value={option.name}
+                    className="py-1.5 [&>span:last-child]:min-w-0 [&>span:last-child]:flex-1"
+                  >
+                    <InstalledRunnerOptionContent
+                      option={option}
+                      description={description}
+                    />
+                  </SelectItem>
+                );
+              })
             ) : (
               <div className="px-2 py-1.5 text-xs text-muted-foreground">
                 {t('agents.noInstalledRunners')}
@@ -318,15 +413,24 @@ export default function AgentRunnerSelect({
                 {t('wizard.aiEngine.catalogUnavailable')}
               </div>
             ) : marketplaceOptions.length > 0 ? (
-              marketplaceOptions.map((plugin) => (
-                <SelectItem
-                  key={marketplacePluginId(plugin)}
-                  value={`${MARKETPLACE_VALUE_PREFIX}${marketplacePluginId(plugin)}`}
-                  className="py-1.5 pr-8"
-                >
-                  <MarketplaceRunnerContent plugin={plugin} />
-                </SelectItem>
-              ))
+              marketplaceOptions.map((plugin) => {
+                const pluginId = marketplacePluginId(plugin);
+                const pluginLabel =
+                  extractI18nObject(plugin.label) || plugin.name;
+                return (
+                  <MarketplaceRunnerContent
+                    key={pluginId}
+                    plugin={plugin}
+                    installing={activePluginId === pluginId}
+                    progress={installProgress}
+                    installDisabled={
+                      activePluginId !== null && activePluginId !== pluginId
+                    }
+                    installLabel={`${t('plugins.install')} ${pluginLabel}`}
+                    onInstall={() => void handleInstall(plugin)}
+                  />
+                );
+              })
             ) : (
               <div className="px-2 py-1.5 text-xs text-muted-foreground">
                 {t('wizard.aiEngine.noMarketplaceRunners')}

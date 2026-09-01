@@ -21,7 +21,6 @@ import {
   PipelineConfigTab,
 } from '@/app/infra/entities/pipeline';
 import DynamicFormComponent from '@/app/home/components/dynamic-form/DynamicFormComponent';
-import { getDefaultValues } from '@/app/home/components/dynamic-form/DynamicFormItemConfig';
 import {
   getErrorMessage,
   readPendingAgentRunnerInstall,
@@ -161,29 +160,8 @@ function AgentFormComponent(
   const applyInstalledRunner = useCallback(
     (installed: InstalledAgentRunner) => {
       setRunnerConfigSchema(installed.configTab);
-      const currentRunner = form.getValues('runner') || {};
-      const currentConfigs = form.getValues('runner_config') || {};
-      const runnerName = installed.runner.name;
-      const runnerStage = installed.configTab.stages.find(
-        (stage) => stage.name === runnerName,
-      );
-      form.setValue(
-        'runner',
-        { ...currentRunner, id: runnerName },
-        { shouldDirty: true },
-      );
-      if (!(runnerName in currentConfigs) && runnerStage) {
-        form.setValue(
-          'runner_config',
-          {
-            ...currentConfigs,
-            [runnerName]: getDefaultValues(runnerStage.config),
-          },
-          { shouldDirty: true },
-        );
-      }
     },
-    [form],
+    [],
   );
 
   const savedSnapshotRef = useRef('');
@@ -251,7 +229,7 @@ function AgentFormComponent(
         if (cancelled || !installed) return;
         applyInstalledRunner(installed);
         toast.success(
-          t('wizard.aiEngine.installSuccess', {
+          t('agents.runnerInstallSuccess', {
             runner: extractI18nObject(installed.runner.label),
           }),
         );

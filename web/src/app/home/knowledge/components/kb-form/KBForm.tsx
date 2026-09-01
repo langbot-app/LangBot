@@ -1,10 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useTranslation } from 'react-i18next';
-import { AuthenticatedPluginIcon } from '@/components/AuthenticatedPluginIcon';
 import { Input } from '@/components/ui/input';
 import EmojiPicker from '@/components/ui/emoji-picker';
 import {
@@ -24,13 +22,6 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { httpClient } from '@/app/infra/http/HttpClient';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { KnowledgeBase, KnowledgeEngine } from '@/app/infra/entities/api';
 import { CustomApiError } from '@/app/infra/entities/common';
@@ -44,6 +35,7 @@ import {
   parseDynamicFormItemType,
 } from '@/app/home/components/dynamic-form/DynamicFormItemConfig';
 import { UUID } from 'uuidjs';
+import KnowledgeEngineSelect from './KnowledgeEngineSelect';
 
 const getFormSchema = (t: (key: string) => string) =>
   z.object({
@@ -107,6 +99,7 @@ export default function KBForm({
   // Dirty tracking: snapshot of saved state for comparison
   const savedSnapshotRef = useRef<string>('');
   const isInitializing = useRef(true);
+  const suppressNextAutoSelectRef = useRef(false);
 
   // Refs to store validation functions from dynamic forms
   const configValidateRef = useRef<(() => Promise<boolean>) | null>(null);
@@ -161,6 +154,10 @@ export default function KBForm({
   // Auto-select first engine when engines are loaded and no selection
   useEffect(() => {
     if (ragEngines.length > 0 && !selectedEngineId && !isEditing) {
+      if (suppressNextAutoSelectRef.current) {
+        suppressNextAutoSelectRef.current = false;
+        return;
+      }
       const firstEngine = ragEngines[0];
       setSelectedEngineId(firstEngine.plugin_id);
       form.setValue('ragEngineId', firstEngine.plugin_id);
@@ -219,26 +216,41 @@ export default function KBForm({
     }
   };
 
-  const handleEngineChange = (engineId: string) => {
-    setSelectedEngineId(engineId);
-    form.setValue('ragEngineId', engineId);
+  const handleEngineChange = useCallback(
+    (engineId: string, installedEngine?: KnowledgeEngine) => {
+      setSelectedEngineId(engineId);
+      form.setValue('ragEngineId', engineId, {
+        shouldDirty: true,
+        shouldTouch: true,
+        shouldValidate: true,
+      });
+      form.clearErrors('ragEngineId');
+      void form.trigger('ragEngineId');
 
-    const engine = ragEngines.find((e) => e.plugin_id === engineId);
-    if (engine) {
+      const engine =
+        installedEngine ??
+        ragEngines.find((candidate) => candidate.plugin_id === engineId);
+      if (!engine) return;
+
       const formItems = parseCreationSchema(engine.creation_schema);
-      if (formItems.length > 0) {
-        setConfigSettings(getDefaultValues(formItems));
-      } else {
-        setConfigSettings({});
-      }
+      setConfigSettings(
+        formItems.length > 0 ? getDefaultValues(formItems) : {},
+      );
       const retrievalItems = parseCreationSchema(engine.retrieval_schema);
-      if (retrievalItems.length > 0) {
-        setRetrievalSettings(getDefaultValues(retrievalItems));
-      } else {
-        setRetrievalSettings({});
-      }
-    }
-  };
+      setRetrievalSettings(
+        retrievalItems.length > 0 ? getDefaultValues(retrievalItems) : {},
+      );
+    },
+    [form, ragEngines],
+  );
+
+  const handleEngineInstalled = useCallback((engine: KnowledgeEngine) => {
+    suppressNextAutoSelectRef.current = true;
+    setRagEngines((current) => [
+      ...current.filter((item) => item.plugin_id !== engine.plugin_id),
+      engine,
+    ]);
+  }, []);
 
   const onSubmit = async (data: z.infer<typeof formSchema>) => {
     // Validate dynamic forms before submission
@@ -308,32 +320,6 @@ export default function KBForm({
     () => parseCreationSchema(selectedEngine?.retrieval_schema),
     [selectedEngine?.retrieval_schema],
   );
-
-  // Show loading state
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-8">
-        <p className="text-muted-foreground">{t('common.loading')}</p>
-      </div>
-    );
-  }
-
-  // Show message if no engines available
-  if (ragEngines.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-8 space-y-4">
-        <p className="text-muted-foreground">
-          {t('knowledge.noEnginesAvailable')}
-        </p>
-        <Link
-          to="/home/add-extension"
-          className="text-sm text-primary hover:underline"
-        >
-          {t('knowledge.installEngineHint')}
-        </Link>
-      </div>
-    );
-  }
 
   return (
     <Form {...form}>
@@ -425,66 +411,18 @@ export default function KBForm({
                     <span className="text-destructive">*</span>
                   </FormLabel>
                   <FormControl>
-                    <Select
-                      disabled={isEditing}
-                      onValueChange={(value) => {
-                        field.onChange(value);
-                        handleEngineChange(value);
-                      }}
+                    <KnowledgeEngineSelect
+                      engines={ragEngines}
                       value={field.value}
-                    >
-                      <SelectTrigger className="w-full bg-[#ffffff] dark:bg-[#2a2a2e]">
-                        {field.value ? (
-                          (() => {
-                            const [author, name] = field.value.split('/');
-                            const engine = ragEngines.find(
-                              (e) => e.plugin_id === field.value,
-                            );
-                            return (
-                              <div className="flex items-center gap-2">
-                                <AuthenticatedPluginIcon
-                                  author={author}
-                                  name={name}
-                                  className="h-5 w-5 rounded"
-                                />
-                                <span>
-                                  {engine
-                                    ? extractI18nObject(engine.name)
-                                    : field.value}
-                                </span>
-                              </div>
-                            );
-                          })()
-                        ) : (
-                          <SelectValue
-                            placeholder={t('knowledge.selectKnowledgeEngine')}
-                          />
-                        )}
-                      </SelectTrigger>
-                      <SelectContent className="fixed z-[1000]">
-                        {ragEngines.map((engine) => {
-                          const [author, name] = engine.plugin_id.split('/');
-                          return (
-                            <SelectItem
-                              key={engine.plugin_id}
-                              value={engine.plugin_id}
-                            >
-                              <div className="flex items-center gap-2">
-                                <AuthenticatedPluginIcon
-                                  author={author}
-                                  name={name}
-                                  className="h-5 w-5 rounded"
-                                />
-                                <span>{extractI18nObject(engine.name)}</span>
-                              </div>
-                            </SelectItem>
-                          );
-                        })}
-                      </SelectContent>
-                    </Select>
+                      disabled={isEditing}
+                      loading={loading}
+                      installScope="knowledge-base-create"
+                      onValueChange={handleEngineChange}
+                      onInstalled={handleEngineInstalled}
+                    />
                   </FormControl>
                   {selectedEngine?.description && (
-                    <FormDescription>
+                    <FormDescription className="max-w-[28rem] leading-5">
                       {extractI18nObject(selectedEngine.description)}
                     </FormDescription>
                   )}

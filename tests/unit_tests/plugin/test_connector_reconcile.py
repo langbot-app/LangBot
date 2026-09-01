@@ -291,6 +291,93 @@ async def test_local_install_persists_verified_package_before_runtime_apply():
 
 
 @pytest.mark.asyncio
+async def test_marketplace_upgrade_reports_multistep_progress():
+    package = b'marketplace-lbpkg-bytes'
+    digest = hashlib.sha256(package).hexdigest()
+    execution_context = ExecutionContext(
+        instance_uuid='instance-a',
+        workspace_uuid='workspace-a',
+        placement_generation=1,
+    )
+    binding = InstallationBinding(
+        instance_uuid='instance-a',
+        workspace_uuid='workspace-a',
+        placement_generation=1,
+        installation_uuid='00000000-0000-4000-8000-000000000001',
+        runtime_revision=2,
+        artifact_digest=digest,
+    )
+    app = SimpleNamespace(
+        instance_config=SimpleNamespace(data={'plugin': {'enable': True}}),
+        deployment=SimpleNamespace(mode='cloud'),
+        logger=Mock(),
+    )
+    connector = PluginRuntimeConnector(app, AsyncMock())
+    connector.handler = runtime_handler()
+    connector._current_execution_context = AsyncMock(return_value=execution_context)
+    connector._setting_for_plugin = AsyncMock(
+        return_value=(execution_context, SimpleNamespace(install_source=PluginInstallSource.MARKETPLACE.value))
+    )
+    observed_actions: list[str] = []
+    task_context = SimpleNamespace(current_action='default', metadata={})
+
+    def set_current_action(action: str):
+        task_context.current_action = action
+
+    task_context.set_current_action = set_current_action
+
+    async def download(*_args, **_kwargs):
+        observed_actions.append(task_context.current_action)
+        return package, '2.0.0'
+
+    def inspect(*_args, **_kwargs):
+        observed_actions.append(task_context.current_action)
+        return 'author', 'plugin'
+
+    async def store(*_args, **_kwargs):
+        observed_actions.append(task_context.current_action)
+
+    async def persist(*_args, **_kwargs):
+        return binding, None, False
+
+    async def apply(*_args, **_kwargs):
+        observed_actions.append(task_context.current_action)
+        return {'state': 'starting'}
+
+    async def wait_until_ready(*_args, **_kwargs):
+        observed_actions.append(task_context.current_action)
+
+    async def refresh_registry():
+        observed_actions.append(task_context.current_action)
+
+    connector._download_marketplace_package = AsyncMock(side_effect=download)
+    connector._inspect_plugin_package = Mock(side_effect=inspect)
+    connector._store_artifact_package = AsyncMock(side_effect=store)
+    connector._persist_installation_package = AsyncMock(side_effect=persist)
+    connector.handler.apply_plugin_installation = AsyncMock(side_effect=apply)
+    connector._wait_for_installed_plugin_ready = AsyncMock(side_effect=wait_until_ready)
+    connector._refresh_agent_runner_registry = AsyncMock(side_effect=refresh_registry)
+
+    await connector.upgrade_plugin('author', 'plugin', task_context=task_context)
+
+    assert observed_actions == [
+        'downloading plugin package',
+        'validating plugin package',
+        'preparing plugin installation',
+        'applying plugin update',
+        'waiting for plugin initialization',
+        'refreshing plugin components',
+    ]
+    assert task_context.current_action == 'plugin updated'
+    assert task_context.metadata == {
+        'plugin_name': 'author/plugin',
+        'install_source': 'marketplace',
+        'operation': 'upgrade',
+        'progress_percent': 100,
+    }
+
+
+@pytest.mark.asyncio
 async def test_workspace_reads_do_not_wait_for_an_installation_apply():
     package = b'local-lbpkg-bytes'
     digest = hashlib.sha256(package).hexdigest()

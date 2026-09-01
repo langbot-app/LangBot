@@ -4,6 +4,7 @@ import { getActiveWorkspaceUuid } from '@/app/infra/http/workspaceContext';
 import type { IDynamicFormItemOption } from '@/app/infra/entities/form/dynamic';
 import type { PipelineConfigTab } from '@/app/infra/entities/pipeline';
 import type { PluginV4 } from '@/app/infra/entities/plugin';
+import type { I18nObject } from '@/app/infra/entities/common';
 
 export const RUNNER_COMPONENT_FILTER = 'AgentRunner';
 
@@ -28,6 +29,7 @@ export class AgentRunnerMarketplaceError extends Error {
 export interface AgentRunnerCatalog {
   marketplaceRunners: PluginV4[];
   installedPluginIds: string[];
+  installedPluginDescriptions: Record<string, I18nObject>;
 }
 
 export interface InstalledAgentRunner {
@@ -199,12 +201,20 @@ export async function loadAgentRunnerCatalog(): Promise<AgentRunnerCatalog> {
       return right.install_count - left.install_count;
     });
 
+  const installedPluginDescriptions: Record<string, I18nObject> = {};
+  const installedPluginIds = installedResult.plugins.map((plugin) => {
+    const metadata = plugin.manifest.manifest.metadata;
+    const pluginId = `${metadata.author ?? ''}/${metadata.name}`;
+    if (metadata.description) {
+      installedPluginDescriptions[pluginId] = metadata.description;
+    }
+    return pluginId;
+  });
+
   return {
     marketplaceRunners,
-    installedPluginIds: installedResult.plugins.map((plugin) => {
-      const metadata = plugin.manifest.manifest.metadata;
-      return `${metadata.author ?? ''}/${metadata.name}`;
-    }),
+    installedPluginIds,
+    installedPluginDescriptions,
   };
 }
 

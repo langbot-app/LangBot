@@ -1718,6 +1718,9 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         file_bytes: bytes | None
 
         if install_source == PluginInstallSource.MARKETPLACE:
+            if task_context is not None:
+                task_context.set_current_action('downloading plugin package')
+                task_context.metadata['progress_percent'] = 15
             file_bytes, version = await self._download_marketplace_package(
                 execution_context,
                 plugin_author,
@@ -1741,6 +1744,9 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         else:
             raise ValueError(f'Unsupported plugin install source: {install_source.value}')
 
+        if task_context is not None:
+            task_context.set_current_action('validating plugin package')
+            task_context.metadata['progress_percent'] = 32
         manifest_author, manifest_name = self._inspect_plugin_package(file_bytes, task_context)
         if not manifest_author or not manifest_name:
             raise ValueError('Plugin package manifest identity is missing')
@@ -1751,6 +1757,8 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         plugin_author, plugin_name = manifest_author, manifest_name
         if task_context is not None:
             task_context.metadata['plugin_name'] = f'{plugin_author}/{plugin_name}'
+            task_context.set_current_action('preparing plugin installation')
+            task_context.metadata['progress_percent'] = 45
 
         artifact_digest = hashlib.sha256(file_bytes).hexdigest()
         await self._store_artifact_package(execution_context, artifact_digest, file_bytes)
@@ -1787,14 +1795,30 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                         pass
             except Exception as exc:
                 self.ap.logger.debug(f'Legacy OSS plugin cleanup skipped: {exc}')
+        if task_context is not None:
+            operation = task_context.metadata.get('operation')
+            task_context.set_current_action(
+                'applying plugin update' if operation == 'upgrade' else 'installing plugin dependencies'
+            )
+            task_context.metadata['progress_percent'] = 62
         await self._apply_desired_state(
             desired,
             artifact_package=file_bytes,
         )
         if previous_digest is not None and previous_digest != artifact_digest:
             await self._delete_artifact_if_unreferenced(execution_context, previous_digest)
+        if task_context is not None:
+            task_context.set_current_action('waiting for plugin initialization')
+            task_context.metadata['progress_percent'] = 84
         await self._wait_for_installed_plugin_ready(plugin_author, plugin_name, task_context)
+        if task_context is not None:
+            task_context.set_current_action('refreshing plugin components')
+            task_context.metadata['progress_percent'] = 95
         await self._refresh_agent_runner_registry()
+        if task_context is not None:
+            operation = task_context.metadata.get('operation')
+            task_context.set_current_action('plugin updated' if operation == 'upgrade' else 'plugin installed')
+            task_context.metadata['progress_percent'] = 100
 
     async def upgrade_plugin(
         self,
@@ -1806,13 +1830,20 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         if setting.install_source != PluginInstallSource.MARKETPLACE.value:
             raise ValueError(f'Plugin {plugin_author}/{plugin_name} is not installed from marketplace')
         if task_context is not None:
+            task_context.metadata.update(
+                {
+                    'plugin_name': f'{plugin_author}/{plugin_name}',
+                    'install_source': 'marketplace',
+                    'operation': 'upgrade',
+                    'progress_percent': 3,
+                }
+            )
             task_context.set_current_action('checking for latest version')
         await self.install_plugin(
             PluginInstallSource.MARKETPLACE,
             {'plugin_author': plugin_author, 'plugin_name': plugin_name},
             task_context=task_context,
         )
-        await self._refresh_agent_runner_registry()
         return {}
 
     async def delete_plugin(

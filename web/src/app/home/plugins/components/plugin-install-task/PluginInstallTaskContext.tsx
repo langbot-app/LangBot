@@ -13,20 +13,25 @@ import { AsyncTask } from '@/app/infra/entities/api';
  * Installation stages mapped from backend current_action strings.
  */
 export enum InstallStage {
+  CHECKING = 'checking',
   DOWNLOADING = 'downloading',
+  VALIDATING = 'validating',
   INSTALLING_DEPS = 'installing_deps',
-  INITIALIZING = 'initializing',
-  LAUNCHING = 'launching',
+  ACTIVATING = 'activating',
   DONE = 'done',
   ERROR = 'error',
 }
+
+export type PluginTaskOperation = 'install' | 'upgrade';
 
 export interface PluginInstallTask {
   id: string; // unique key: `${source}-${taskId}`
   taskId: number; // backend async task id
   pluginName: string; // display name
   source: 'github' | 'marketplace' | 'local';
+  operation: PluginTaskOperation;
   stage: InstallStage;
+  failedStage?: InstallStage;
   overallProgress: number; // 0-100
   extensionType: 'plugin' | 'mcp' | 'skill'; // type of extension being installed
   fileSize?: number; // bytes, if known
@@ -50,6 +55,7 @@ type OnTaskCompleteCallback = (
   taskId: number,
   success: boolean,
   error?: string,
+  operation?: PluginTaskOperation,
 ) => void;
 
 interface PluginInstallTaskContextValue {
@@ -60,6 +66,7 @@ interface PluginInstallTaskContextValue {
     source: 'github' | 'marketplace' | 'local';
     extensionType: 'plugin' | 'mcp' | 'skill';
     fileSize?: number;
+    operation?: PluginTaskOperation;
   }) => void;
   removeTask: (id: string) => void;
   clearCompletedTasks: () => void;
@@ -89,13 +96,30 @@ export function usePluginInstallTasks() {
 function mapActionToStage(action: string): InstallStage {
   if (!action) return InstallStage.DOWNLOADING;
   const lower = action.toLowerCase();
+  if (lower.includes('check')) return InstallStage.CHECKING;
   if (lower.includes('download')) return InstallStage.DOWNLOADING;
+  if (lower.includes('validat') || lower.includes('inspect'))
+    return InstallStage.VALIDATING;
   if (lower.includes('dependencies') || lower.includes('requirements'))
     return InstallStage.INSTALLING_DEPS;
-  if (lower.includes('initializ') || lower.includes('setting'))
+  if (
+    lower.includes('preparing') ||
+    lower.includes('applying') ||
+    lower.includes('installing')
+  )
     return InstallStage.INSTALLING_DEPS;
-  if (lower.includes('launch')) return InstallStage.INSTALLING_DEPS;
-  if (lower.includes('installed') || lower.includes('complete'))
+  if (
+    lower.includes('initializ') ||
+    lower.includes('launch') ||
+    lower.includes('refresh') ||
+    lower.includes('waiting')
+  )
+    return InstallStage.ACTIVATING;
+  if (
+    lower.includes('installed') ||
+    lower.includes('updated') ||
+    lower.includes('complete')
+  )
     return InstallStage.DONE;
   return InstallStage.DOWNLOADING;
 }
@@ -105,13 +129,15 @@ function mapActionToStage(action: string): InstallStage {
  */
 function stageToProgress(stage: InstallStage): number {
   switch (stage) {
+    case InstallStage.CHECKING:
+      return 5;
     case InstallStage.DOWNLOADING:
-      return 10;
+      return 18;
+    case InstallStage.VALIDATING:
+      return 35;
     case InstallStage.INSTALLING_DEPS:
-      return 70;
-    case InstallStage.INITIALIZING:
-      return 70;
-    case InstallStage.LAUNCHING:
+      return 60;
+    case InstallStage.ACTIVATING:
       return 85;
     case InstallStage.DONE:
       return 100;
@@ -130,7 +156,18 @@ function extractSourceFromName(
 ): 'github' | 'marketplace' | 'local' {
   if (name.includes('github')) return 'github';
   if (name.includes('marketplace')) return 'marketplace';
+  if (name.startsWith('plugin-upgrade-')) return 'marketplace';
   return 'local';
+}
+
+export function pluginTaskKey(
+  taskId: number,
+  source: 'github' | 'marketplace' | 'local',
+  operation: PluginTaskOperation = 'install',
+) {
+  return operation === 'upgrade'
+    ? `upgrade-${source}-${taskId}`
+    : `${source}-${taskId}`;
 }
 
 /**
@@ -139,6 +176,7 @@ function extractSourceFromName(
 function isPluginInstallTask(name: string): boolean {
   return (
     name.startsWith('plugin-install-') ||
+    name.startsWith('plugin-upgrade-') ||
     name.startsWith('mcp-install-') ||
     name.startsWith('skill-install-')
   );
@@ -151,6 +189,10 @@ function asyncTaskToPluginInstallTask(task: AsyncTask): PluginInstallTask {
   const source = extractSourceFromName(task.name);
   const md = (task.task_context?.metadata ?? {}) as Record<string, unknown>;
   const action = task.task_context?.current_action || '';
+  const operation: PluginTaskOperation =
+    md.operation === 'upgrade' || task.name.startsWith('plugin-upgrade-')
+      ? 'upgrade'
+      : 'install';
   const done = task.runtime.done;
   const exception = task.runtime.exception;
 
@@ -160,11 +202,13 @@ function asyncTaskToPluginInstallTask(task: AsyncTask): PluginInstallTask {
   let stage: InstallStage;
   let overallProgress: number;
   let error: string | undefined;
+  let failedStage: InstallStage | undefined;
 
   if (done) {
     if (exception) {
       stage = InstallStage.ERROR;
-      overallProgress = 0;
+      failedStage = mapActionToStage(action);
+      overallProgress = stageToProgress(failedStage);
       error = exception;
     } else {
       stage = InstallStage.DONE;
@@ -172,7 +216,10 @@ function asyncTaskToPluginInstallTask(task: AsyncTask): PluginInstallTask {
     }
   } else {
     stage = mapActionToStage(action);
-    overallProgress = Math.min(95, stageToProgress(stage));
+    overallProgress = Math.min(
+      95,
+      num(md.progress_percent) ?? stageToProgress(stage),
+    );
   }
 
   const pluginName = str(md.plugin_name) || task.label || `${source} extension`;
@@ -185,12 +232,14 @@ function asyncTaskToPluginInstallTask(task: AsyncTask): PluginInstallTask {
   }
 
   return {
-    id: `${source}-${task.id}`,
+    id: pluginTaskKey(task.id, source, operation),
     taskId: task.id,
     pluginName,
     source,
+    operation,
     extensionType,
     stage,
+    failedStage,
     overallProgress,
     downloadCurrent: num(md.download_current),
     downloadTotal: num(md.download_total),
@@ -202,7 +251,7 @@ function asyncTaskToPluginInstallTask(task: AsyncTask): PluginInstallTask {
     depsDownloadedSize: num(md.deps_downloaded_size),
     depsSpeed: num(md.deps_speed),
     error,
-    startedAt: Date.now(),
+    startedAt: task.created_at ? task.created_at * 1000 : Date.now(),
     currentAction: action,
   };
 }
@@ -244,11 +293,16 @@ export function PluginInstallTaskProvider({
   }, []);
 
   const notifyTaskComplete = useCallback(
-    (taskId: number, success: boolean, error?: string) => {
+    (
+      taskId: number,
+      success: boolean,
+      error?: string,
+      operation?: PluginTaskOperation,
+    ) => {
       if (notifiedTaskIds.current.has(taskId)) return;
       notifiedTaskIds.current.add(taskId);
       onTaskCompleteCallbacks.current.forEach((cb) => {
-        cb(taskId, success, error);
+        cb(taskId, success, error, operation);
       });
     },
     [],
@@ -284,6 +338,7 @@ export function PluginInstallTaskProvider({
             const currentDep = str(md.current_dep);
             const depsDownloadedSize = num(md.deps_downloaded_size);
             const depsSpeed = num(md.deps_speed);
+            const reportedProgress = num(md.progress_percent);
 
             setTasks((prev) =>
               prev.map((t) => {
@@ -311,18 +366,21 @@ export function PluginInstallTaskProvider({
                   }
 
                   if (exception) {
-                    notifyTaskComplete(taskId, false, exception);
+                    notifyTaskComplete(taskId, false, exception, t.operation);
                     return {
                       ...t,
                       stage: InstallStage.ERROR,
+                      failedStage: mapActionToStage(action),
                       error: exception,
-                      overallProgress: 0,
+                      overallProgress: stageToProgress(
+                        mapActionToStage(action),
+                      ),
                       currentAction: action,
                       ...progressFields,
                     };
                   }
 
-                  notifyTaskComplete(taskId, true);
+                  notifyTaskComplete(taskId, true, undefined, t.operation);
                   return {
                     ...t,
                     stage: InstallStage.DONE,
@@ -342,7 +400,7 @@ export function PluginInstallTaskProvider({
                 );
                 const progress = Math.min(
                   95,
-                  baseProgress + withinStageIncrement,
+                  reportedProgress ?? baseProgress + withinStageIncrement,
                 );
 
                 return {
@@ -458,8 +516,10 @@ export function PluginInstallTaskProvider({
       source: 'github' | 'marketplace' | 'local';
       extensionType: 'plugin' | 'mcp' | 'skill';
       fileSize?: number;
+      operation?: PluginTaskOperation;
     }) => {
-      const taskKey = `${params.source}-${params.taskId}`;
+      const operation = params.operation ?? 'install';
+      const taskKey = pluginTaskKey(params.taskId, params.source, operation);
 
       // Remove from dismissed set if re-added
       dismissedTaskIds.current.delete(params.taskId);
@@ -469,9 +529,13 @@ export function PluginInstallTaskProvider({
         taskId: params.taskId,
         pluginName: params.pluginName,
         source: params.source,
+        operation,
         extensionType: params.extensionType,
-        stage: InstallStage.DOWNLOADING,
-        overallProgress: 5,
+        stage:
+          operation === 'upgrade'
+            ? InstallStage.CHECKING
+            : InstallStage.DOWNLOADING,
+        overallProgress: operation === 'upgrade' ? 3 : 5,
         fileSize: params.fileSize,
         startedAt: Date.now(),
         currentAction: '',

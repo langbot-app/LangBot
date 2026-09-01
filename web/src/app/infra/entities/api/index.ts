@@ -549,6 +549,7 @@ export interface AsyncTaskTaskContext {
 
 export interface AsyncTask {
   id: number;
+  created_at?: number;
   kind: string;
   name: string;
   label: string;
