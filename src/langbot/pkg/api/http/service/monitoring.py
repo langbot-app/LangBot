@@ -1374,6 +1374,8 @@ class MonitoringService:
         self,
         context: TenantContext,
         session_id: str,
+        start_time: datetime.datetime | None = None,
+        end_time: datetime.datetime | None = None,
     ) -> dict:
         """Get bounded session details with full statistics computed in SQL."""
         workspace_uuid = require_workspace_uuid(context)
@@ -1487,12 +1489,17 @@ class MonitoringService:
             )
         )
         tool_stats = tool_stats_result.one()
+        tool_conditions = [
+            persistence_monitoring.MonitoringToolCall.workspace_uuid == workspace_uuid,
+            persistence_monitoring.MonitoringToolCall.session_id == session_id,
+        ]
+        if start_time is not None:
+            tool_conditions.append(persistence_monitoring.MonitoringToolCall.timestamp >= start_time)
+        if end_time is not None:
+            tool_conditions.append(persistence_monitoring.MonitoringToolCall.timestamp <= end_time)
         tool_query = (
             sqlalchemy.select(persistence_monitoring.MonitoringToolCall)
-            .where(
-                persistence_monitoring.MonitoringToolCall.workspace_uuid == workspace_uuid,
-                persistence_monitoring.MonitoringToolCall.session_id == session_id,
-            )
+            .where(*tool_conditions)
             .order_by(persistence_monitoring.MonitoringToolCall.timestamp.asc())
             .limit(detail_limit + 1)
         )

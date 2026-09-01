@@ -121,6 +121,22 @@ interface BotSessionMonitorProps {
 const SESSION_PAGE_SIZE = 20;
 const MESSAGE_PAGE_SIZE = 50;
 
+const localDateBoundaryToISOString = (
+  dateValue: string,
+  endOfDay: boolean,
+): string => {
+  const [year, month, day] = dateValue.split('-').map(Number);
+  return new Date(
+    year,
+    month - 1,
+    day,
+    endOfDay ? 23 : 0,
+    endOfDay ? 59 : 0,
+    endOfDay ? 59 : 0,
+    endOfDay ? 999 : 0,
+  ).toISOString();
+};
+
 const BotSessionMonitor = forwardRef<
   BotSessionMonitorHandle,
   BotSessionMonitorProps
@@ -224,8 +240,12 @@ const BotSessionMonitor = forwardRef<
       const response = await httpClient.getBotSessions(botId, {
         limit: SESSION_PAGE_SIZE,
         offset: sessionPage * SESSION_PAGE_SIZE,
-        startTime: startDate ? `${startDate}T00:00:00.000Z` : undefined,
-        endTime: endDate ? `${endDate}T23:59:59.999Z` : undefined,
+        startTime: startDate
+          ? localDateBoundaryToISOString(startDate, false)
+          : undefined,
+        endTime: endDate
+          ? localDateBoundaryToISOString(endDate, true)
+          : undefined,
         userQuery: appliedUserQuery || undefined,
       });
       if (requestId !== sessionRequestIdRef.current) return;
@@ -270,10 +290,15 @@ const BotSessionMonitor = forwardRef<
         setMessageTotal(messagesRes.total ?? 0);
 
         try {
+          const analysisParams = new URLSearchParams();
+          if (sorted.length > 0) {
+            analysisParams.set('startTime', sorted[0].timestamp);
+            analysisParams.set('endTime', sorted[sorted.length - 1].timestamp);
+          }
           const analysisRes = await httpClient.get<{
             tool_calls?: SessionToolCall[];
           }>(
-            `/api/v1/monitoring/sessions/${encodeURIComponent(sessionId)}/analysis`,
+            `/api/v1/monitoring/sessions/${encodeURIComponent(sessionId)}/analysis?${analysisParams.toString()}`,
           );
           if (requestId !== messageRequestIdRef.current) return;
           setToolCalls(analysisRes?.tool_calls ?? []);

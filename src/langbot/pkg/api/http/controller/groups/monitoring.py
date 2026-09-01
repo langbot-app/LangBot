@@ -398,7 +398,14 @@ class MonitoringRouterGroup(group.RouterGroup):
         @self.route('/sessions/<session_id>/analysis', methods=['GET'], permission=Permission.RESOURCE_VIEW)
         async def get_session_analysis(session_id: str, request_context: RequestContext) -> str:
             """Get detailed analysis for a specific session"""
-            analysis = await self.ap.monitoring_service.get_session_analysis(request_context, session_id)
+            start_time = parse_iso_datetime(quart.request.args.get('startTime'))
+            end_time = parse_iso_datetime(quart.request.args.get('endTime'))
+            analysis = await self.ap.monitoring_service.get_session_analysis(
+                request_context,
+                session_id,
+                start_time=start_time,
+                end_time=end_time,
+            )
 
             # Always return success with the analysis data
             # The frontend will handle the 'found: false' case

@@ -294,13 +294,19 @@ class TestMonitoringDetailsEndpoints:
     """Tests for detail endpoints."""
 
     @pytest.mark.asyncio
-    async def test_get_session_analysis(self, quart_test_client):
+    async def test_get_session_analysis(self, quart_test_client, fake_monitoring_app):
         """GET /api/v1/monitoring/sessions/{id}/analysis."""
         response = await quart_test_client.get(
-            '/api/v1/monitoring/sessions/sess-1/analysis', headers={'Authorization': 'Bearer test_token'}
+            '/api/v1/monitoring/sessions/sess-1/analysis'
+            '?startTime=2026-08-31T16%3A00%3A00.000Z'
+            '&endTime=2026-09-01T15%3A59%3A59.999Z',
+            headers={'Authorization': 'Bearer test_token'},
         )
 
         assert response.status_code == 200
+        kwargs = fake_monitoring_app.monitoring_service.get_session_analysis.await_args.kwargs
+        assert kwargs['start_time'].isoformat() == '2026-08-31T16:00:00'
+        assert kwargs['end_time'].isoformat() == '2026-09-01T15:59:59.999000'
 
     @pytest.mark.asyncio
     async def test_get_message_details(self, quart_test_client):

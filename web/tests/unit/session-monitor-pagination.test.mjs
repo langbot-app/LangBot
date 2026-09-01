@@ -113,3 +113,27 @@ test('changing the session page or filters clears the selected detail', () => {
     'page and filters invalidate the selected session',
   );
 });
+
+test('date filters use the operator local calendar day', () => {
+  const monitor = read(
+    'src/app/home/bots/components/bot-session/BotSessionMonitor.tsx',
+  );
+  includes(
+    monitor,
+    'localDateBoundaryToISOString(startDate, false)',
+    'local start-of-day conversion',
+  );
+  includes(
+    monitor,
+    'localDateBoundaryToISOString(endDate, true)',
+    'local end-of-day conversion',
+  );
+});
+
+test('session tool calls are bounded to the visible message page', () => {
+  const monitor = read(
+    'src/app/home/bots/components/bot-session/BotSessionMonitor.tsx',
+  );
+  includes(monitor, "analysisParams.set('startTime'", 'analysis page start');
+  includes(monitor, "analysisParams.set('endTime'", 'analysis page end');
+});
