@@ -109,7 +109,7 @@ export default function PluginReadme({
   }, [pluginAuthor, pluginName]);
 
   return (
-    <div className="w-full h-full overflow-auto">
+    <div className="w-full h-full overflow-auto overscroll-none">
       {isLoadingReadme ? (
         <div className="p-6 text-sm text-gray-500 dark:text-gray-400">
           {t('plugins.loadingReadme')}

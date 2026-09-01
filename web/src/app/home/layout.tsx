@@ -269,7 +269,7 @@ function HomeLayoutInner({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <main className="min-h-0 min-w-0 flex-1 overflow-clip px-4 pb-4 pt-0">
+        <main className="min-h-0 min-w-0 flex-1 overflow-hidden px-4 pb-4 pt-0">
           <div
             className={`mx-auto h-full w-full min-w-0 ${HOME_CONTENT_MAX_WIDTH}`}
           >

@@ -209,8 +209,8 @@ export default function PluginDetailContent({ id }: { id: string }) {
           )}
         </div>
 
-        <div className="flex min-h-0 max-w-full flex-1 flex-col gap-6 overflow-y-auto md:flex-row md:overflow-hidden">
-          <div className="min-w-0 max-w-full space-y-4 pb-6 md:min-h-0 md:w-[380px] md:flex-shrink-0 md:overflow-y-auto md:overflow-x-hidden xl:w-[420px]">
+        <div className="flex min-h-0 max-w-full flex-1 flex-col gap-6 overflow-y-auto overscroll-none md:flex-row md:overflow-hidden">
+          <div className="min-w-0 max-w-full space-y-4 pb-6 md:min-h-0 md:w-[380px] md:flex-shrink-0 md:overflow-y-auto md:overflow-x-hidden md:overscroll-none xl:w-[420px]">
             <PluginForm
               pluginAuthor={pluginAuthor}
               pluginName={pluginName}
@@ -231,7 +231,7 @@ export default function PluginDetailContent({ id }: { id: string }) {
               </TabsList>
               <TabsContent
                 value="docs"
-                className="min-h-0 flex-1 md:overflow-y-auto md:overflow-x-hidden"
+                className="min-h-0 flex-1 md:overflow-y-auto md:overflow-x-hidden md:overscroll-none"
               >
                 <PluginReadme
                   pluginAuthor={pluginAuthor}

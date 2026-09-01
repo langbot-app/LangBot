@@ -607,7 +607,7 @@ function AgentFormComponent(
             </Tabs>
           </nav>
 
-          <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
+          <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-none">
             <div className="mx-auto w-full min-w-0 max-w-5xl space-y-6 pb-8">
               {activeSection === 'runner' && (
                 <div className="space-y-6">

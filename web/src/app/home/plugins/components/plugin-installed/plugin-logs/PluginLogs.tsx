@@ -136,7 +136,7 @@ export default function PluginLogs({
       <div
         ref={scrollRef}
         onScroll={handleScroll}
-        className="min-h-0 flex-1 overflow-auto bg-gray-50 px-3 py-3 font-mono text-xs leading-relaxed dark:bg-gray-900/40 sm:px-6"
+        className="min-h-0 flex-1 overflow-auto overscroll-none bg-gray-50 px-3 py-3 font-mono text-xs leading-relaxed dark:bg-gray-900/40 sm:px-6"
       >
         {logs.length === 0 ? (
           <div className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">

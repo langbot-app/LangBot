@@ -207,7 +207,7 @@ function SidebarProvider({
             } as React.CSSProperties
           }
           className={cn(
-            'group/sidebar-wrapper has-data-[variant=inset]:bg-sidebar flex h-svh min-h-0 w-full overflow-clip',
+            'group/sidebar-wrapper has-data-[variant=inset]:bg-sidebar flex h-svh min-h-0 w-full overflow-hidden overscroll-none',
             className,
           )}
           {...props}
@@ -566,7 +566,7 @@ function SidebarInset({ className, ...props }: React.ComponentProps<'main'>) {
     <main
       data-slot="sidebar-inset"
       className={cn(
-        'bg-background relative flex min-h-0 w-full flex-1 flex-col overflow-clip min-w-0',
+        'bg-background relative flex min-h-0 min-w-0 w-full flex-1 flex-col overflow-hidden overscroll-none',
         'md:peer-data-[variant=inset]:m-2 md:peer-data-[variant=inset]:ml-0 md:peer-data-[variant=inset]:rounded-xl md:peer-data-[variant=inset]:shadow-sm md:peer-data-[variant=inset]:peer-data-[state=collapsed]:ml-2',
         'dark:md:peer-data-[variant=inset]:border dark:md:peer-data-[variant=inset]:border-sidebar-border',
         className,
@@ -636,7 +636,7 @@ const SidebarContent = React.forwardRef<
       data-slot="sidebar-content"
       data-sidebar="content"
       className={cn(
-        'flex min-h-0 flex-1 flex-col gap-2 overflow-auto group-data-[collapsible=icon]:overflow-hidden',
+        'flex min-h-0 flex-1 flex-col gap-2 overflow-auto overscroll-none group-data-[collapsible=icon]:overflow-hidden',
         className,
       )}
       {...props}
