@@ -1257,6 +1257,7 @@ class MonitoringService:
         pipeline_ids: list[str] | None = None,
         start_time: datetime.datetime | None = None,
         end_time: datetime.datetime | None = None,
+        user_query: str | None = None,
         is_active: bool | None = None,
         limit: int = 100,
         offset: int = 0,
@@ -1274,6 +1275,14 @@ class MonitoringService:
             conditions.append(persistence_monitoring.MonitoringSession.start_time >= start_time)
         if end_time:
             conditions.append(persistence_monitoring.MonitoringSession.start_time <= end_time)
+        if user_query and user_query.strip():
+            user_pattern = f'%{user_query.strip()}%'
+            conditions.append(
+                sqlalchemy.or_(
+                    persistence_monitoring.MonitoringSession.user_id.ilike(user_pattern),
+                    persistence_monitoring.MonitoringSession.user_name.ilike(user_pattern),
+                )
+            )
         if is_active is not None:
             conditions.append(persistence_monitoring.MonitoringSession.is_active == is_active)
 

@@ -218,6 +218,7 @@ class MonitoringRouterGroup(group.RouterGroup):
             pipeline_ids = quart.request.args.getlist('pipelineId')
             start_time_str = quart.request.args.get('startTime')
             end_time_str = quart.request.args.get('endTime')
+            user_query = quart.request.args.get('userQuery')
             is_active_str = quart.request.args.get('isActive')
             limit = int(quart.request.args.get('limit', 100))
             offset = int(quart.request.args.get('offset', 0))
@@ -237,6 +238,7 @@ class MonitoringRouterGroup(group.RouterGroup):
                 pipeline_ids=pipeline_ids if pipeline_ids else None,
                 start_time=start_time,
                 end_time=end_time,
+                user_query=user_query,
                 is_active=is_active,
                 limit=limit,
                 offset=offset,

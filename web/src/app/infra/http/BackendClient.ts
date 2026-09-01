@@ -474,8 +474,13 @@ export class BackendClient extends BaseHttpClient {
 
   public getBotSessions(
     botId: string,
-    limit: number = 100,
-    offset: number = 0,
+    options: {
+      limit: number;
+      offset: number;
+      startTime?: string;
+      endTime?: string;
+      userQuery?: string;
+    },
   ): Promise<{
     sessions: Array<{
       session_id: string;
@@ -495,8 +500,17 @@ export class BackendClient extends BaseHttpClient {
   }> {
     const queryParams = new URLSearchParams();
     queryParams.append('botId', botId);
-    queryParams.append('limit', limit.toString());
-    queryParams.append('offset', offset.toString());
+    queryParams.append('limit', options.limit.toString());
+    queryParams.append('offset', options.offset.toString());
+    if (options.startTime) {
+      queryParams.append('startTime', options.startTime);
+    }
+    if (options.endTime) {
+      queryParams.append('endTime', options.endTime);
+    }
+    if (options.userQuery) {
+      queryParams.append('userQuery', options.userQuery);
+    }
     return this.get(`/api/v1/monitoring/sessions?${queryParams.toString()}`);
   }
 

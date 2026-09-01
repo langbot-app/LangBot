@@ -138,6 +138,39 @@ async def test_same_session_and_resource_ids_do_not_collide(service):
     assert (await service.get_message_details(context_a, message_b))['found'] is False
 
 
+async def test_session_search_matches_user_id_or_name_within_workspace(service):
+    context_a = _context(WORKSPACE_A)
+    context_b = _context(WORKSPACE_B)
+    fixtures = [
+        (context_a, 'session-id-match', 'customer-42', 'Alice'),
+        (context_a, 'session-name-match', 'customer-99', 'Bob Alice Cooper'),
+        (context_a, 'session-no-match', 'customer-7', 'Bob'),
+        (context_b, 'session-other-workspace', 'customer-42', 'Alice'),
+    ]
+    for context, session_id, user_id, user_name in fixtures:
+        await service.record_session_start(
+            context,
+            session_id=session_id,
+            bot_id='same-bot',
+            bot_name='Same Bot',
+            pipeline_id='same-pipeline',
+            pipeline_name='Same Pipeline',
+            user_id=user_id,
+            user_name=user_name,
+        )
+
+    by_id, id_total = await service.get_sessions(context_a, user_query='customer-42')
+    by_name, name_total = await service.get_sessions(context_a, user_query='alice')
+
+    assert id_total == 1
+    assert [session['session_id'] for session in by_id] == ['session-id-match']
+    assert name_total == 2
+    assert {session['session_id'] for session in by_name} == {
+        'session-id-match',
+        'session-name-match',
+    }
+
+
 async def test_tool_call_inherits_context_from_connection_message_row(service):
     context = _context(WORKSPACE_A)
     message_id = await _record_message(service, context, 'tool context')

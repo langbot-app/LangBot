@@ -17,6 +17,7 @@ import {
   Copy,
   Check,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   Workflow,
   ThumbsUp,
@@ -117,16 +118,27 @@ interface BotSessionMonitorProps {
   botId: string;
 }
 
+const SESSION_PAGE_SIZE = 20;
+const MESSAGE_PAGE_SIZE = 50;
+
 const BotSessionMonitor = forwardRef<
   BotSessionMonitorHandle,
   BotSessionMonitorProps
 >(function BotSessionMonitor({ botId }, ref) {
   const { t } = useTranslation();
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
+  const [sessionTotal, setSessionTotal] = useState(0);
+  const [sessionPage, setSessionPage] = useState(0);
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [userQuery, setUserQuery] = useState('');
+  const [appliedUserQuery, setAppliedUserQuery] = useState('');
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(
     null,
   );
   const [messages, setMessages] = useState<SessionMessage[]>([]);
+  const [messageTotal, setMessageTotal] = useState(0);
+  const [messagePage, setMessagePage] = useState(0);
   const [loadingSessions, setLoadingSessions] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [copiedUserId, setCopiedUserId] = useState(false);
@@ -138,6 +150,8 @@ const BotSessionMonitor = forwardRef<
     Record<string, boolean>
   >({});
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const sessionRequestIdRef = useRef(0);
+  const messageRequestIdRef = useRef(0);
   const { admins, reload: reloadAdmins } = useBotAdmins(botId);
   const [adminsDialogOpen, setAdminsDialogOpen] = useState(false);
   const [togglingAdmin, setTogglingAdmin] = useState<string | null>(null);
@@ -204,16 +218,29 @@ const BotSessionMonitor = forwardRef<
   };
 
   const loadSessions = useCallback(async () => {
+    const requestId = ++sessionRequestIdRef.current;
     setLoadingSessions(true);
     try {
-      const response = await httpClient.getBotSessions(botId);
+      const response = await httpClient.getBotSessions(botId, {
+        limit: SESSION_PAGE_SIZE,
+        offset: sessionPage * SESSION_PAGE_SIZE,
+        startTime: startDate ? `${startDate}T00:00:00.000Z` : undefined,
+        endTime: endDate ? `${endDate}T23:59:59.999Z` : undefined,
+        userQuery: appliedUserQuery || undefined,
+      });
+      if (requestId !== sessionRequestIdRef.current) return;
       setSessions(response.sessions ?? []);
+      setSessionTotal(response.total ?? 0);
     } catch (error) {
-      console.error('Failed to load sessions:', error);
+      if (requestId === sessionRequestIdRef.current) {
+        console.error('Failed to load sessions:', error);
+      }
     } finally {
-      setLoadingSessions(false);
+      if (requestId === sessionRequestIdRef.current) {
+        setLoadingSessions(false);
+      }
     }
-  }, [botId]);
+  }, [appliedUserQuery, botId, endDate, sessionPage, startDate]);
 
   useImperativeHandle(
     ref,
@@ -224,16 +251,23 @@ const BotSessionMonitor = forwardRef<
   );
 
   const loadMessages = useCallback(
-    async (sessionId: string) => {
+    async (sessionId: string, page: number) => {
+      const requestId = ++messageRequestIdRef.current;
       setLoadingMessages(true);
       setExpandedToolCallIds({});
       try {
-        const messagesRes = await httpClient.getSessionMessages(sessionId);
+        const messagesRes = await httpClient.getSessionMessages(
+          sessionId,
+          MESSAGE_PAGE_SIZE,
+          page * MESSAGE_PAGE_SIZE,
+        );
+        if (requestId !== messageRequestIdRef.current) return;
         const sorted = (messagesRes.messages ?? []).sort(
           (a, b) =>
             new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
         );
         setMessages(sorted);
+        setMessageTotal(messagesRes.total ?? 0);
 
         try {
           const analysisRes = await httpClient.get<{
@@ -241,8 +275,10 @@ const BotSessionMonitor = forwardRef<
           }>(
             `/api/v1/monitoring/sessions/${encodeURIComponent(sessionId)}/analysis`,
           );
+          if (requestId !== messageRequestIdRef.current) return;
           setToolCalls(analysisRes?.tool_calls ?? []);
         } catch (analysisError) {
+          if (requestId !== messageRequestIdRef.current) return;
           console.error('Failed to load session tool calls:', analysisError);
           setToolCalls([]);
         }
@@ -259,6 +295,7 @@ const BotSessionMonitor = forwardRef<
           }>(
             `/api/v1/monitoring/feedback?botId=${encodeURIComponent(botId)}&limit=200`,
           );
+          if (requestId !== messageRequestIdRef.current) return;
 
           const map: Record<string, SessionFeedback> = {};
           if (feedbackRes?.feedback) {
@@ -273,9 +310,13 @@ const BotSessionMonitor = forwardRef<
           setFeedbackMap({});
         }
       } catch (error) {
-        console.error('Failed to load session messages:', error);
+        if (requestId === messageRequestIdRef.current) {
+          console.error('Failed to load session messages:', error);
+        }
       } finally {
-        setLoadingMessages(false);
+        if (requestId === messageRequestIdRef.current) {
+          setLoadingMessages(false);
+        }
       }
     },
     [botId],
@@ -286,15 +327,23 @@ const BotSessionMonitor = forwardRef<
   }, [loadSessions]);
 
   useEffect(() => {
+    setSelectedSessionId(null);
+    setMessagePage(0);
+  }, [appliedUserQuery, botId, endDate, sessionPage, startDate]);
+
+  useEffect(() => {
     if (selectedSessionId) {
-      loadMessages(selectedSessionId);
+      loadMessages(selectedSessionId, messagePage);
     } else {
+      messageRequestIdRef.current += 1;
+      setLoadingMessages(false);
       setMessages([]);
+      setMessageTotal(0);
       setToolCalls([]);
       setExpandedToolCallIds({});
       setFeedbackMap({});
     }
-  }, [selectedSessionId, loadMessages]);
+  }, [selectedSessionId, messagePage, loadMessages]);
 
   useEffect(() => {
     if (messages.length === 0 && toolCalls.length === 0) return;
@@ -552,6 +601,19 @@ const BotSessionMonitor = forwardRef<
   const selectedSession = sessions.find(
     (s) => s.session_id === selectedSessionId,
   );
+  const sessionPageCount = Math.max(
+    1,
+    Math.ceil(sessionTotal / SESSION_PAGE_SIZE),
+  );
+  const messagePageCount = Math.max(
+    1,
+    Math.ceil(messageTotal / MESSAGE_PAGE_SIZE),
+  );
+
+  const applyUserSearch = () => {
+    setSessionPage(0);
+    setAppliedUserQuery(userQuery.trim());
+  };
 
   return (
     <>
@@ -575,6 +637,65 @@ const BotSessionMonitor = forwardRef<
                 )}
               </span>
             </button>
+            <span className="text-[11px] text-muted-foreground tabular-nums">
+              {t('bots.sessionMonitor.totalSessions', {
+                defaultValue: '{{count}} sessions',
+                count: sessionTotal,
+              })}
+            </span>
+          </div>
+          <div className="p-1.5 border-b shrink-0 space-y-1.5">
+            <div className="flex gap-1">
+              <input
+                value={userQuery}
+                onChange={(event) => setUserQuery(event.target.value)}
+                onKeyDown={(event) =>
+                  event.key === 'Enter' && applyUserSearch()
+                }
+                aria-label={t('bots.sessionMonitor.userSearch', {
+                  defaultValue: 'User ID or name',
+                })}
+                placeholder={t('bots.sessionMonitor.userSearch', {
+                  defaultValue: 'User ID or name',
+                })}
+                className="h-7 min-w-0 flex-1 rounded border bg-background px-2 text-xs"
+              />
+              <button
+                type="button"
+                onClick={applyUserSearch}
+                className="h-7 rounded border px-2 text-[11px] hover:bg-accent"
+              >
+                {t('common.search', { defaultValue: 'Search' })}
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-1">
+              <input
+                type="date"
+                value={startDate}
+                max={endDate || undefined}
+                onChange={(event) => {
+                  setSessionPage(0);
+                  setStartDate(event.target.value);
+                }}
+                aria-label={t('bots.sessionMonitor.startDate', {
+                  defaultValue: 'Start date',
+                })}
+                className="h-7 min-w-0 rounded border bg-background px-1 text-[10px]"
+              />
+              <input
+                type="date"
+                value={endDate}
+                min={startDate || undefined}
+                onChange={(event) => {
+                  setSessionPage(0);
+                  setEndDate(event.target.value);
+                }}
+                aria-label={t('bots.sessionMonitor.endDate', {
+                  defaultValue: 'End date',
+                })}
+                className="h-7 min-w-0 rounded border bg-background px-1 text-[10px]"
+              />
+            </div>
           </div>
           {/* Session List */}
           <ScrollArea className="flex-1 min-h-0">
@@ -601,7 +722,10 @@ const BotSessionMonitor = forwardRef<
                         'w-full text-left px-2.5 py-2 rounded-md transition-colors cursor-pointer',
                         isSelected ? 'bg-accent' : 'hover:bg-accent/50',
                       )}
-                      onClick={() => setSelectedSessionId(session.session_id)}
+                      onClick={() => {
+                        setSelectedSessionId(session.session_id);
+                        setMessagePage(0);
+                      }}
                     >
                       <div className="flex items-center justify-between mb-0.5">
                         <span className="text-sm font-medium truncate mr-2">
@@ -637,6 +761,29 @@ const BotSessionMonitor = forwardRef<
               </div>
             )}
           </ScrollArea>
+          <div className="h-8 border-t px-1.5 flex items-center justify-between shrink-0 text-[11px]">
+            <button
+              type="button"
+              aria-label={t('common.previous', { defaultValue: 'Previous' })}
+              disabled={sessionPage === 0 || loadingSessions}
+              onClick={() => setSessionPage((page) => Math.max(0, page - 1))}
+              className="p-1 rounded hover:bg-accent disabled:opacity-40"
+            >
+              <ChevronLeft className="size-3.5" />
+            </button>
+            <span className="tabular-nums text-muted-foreground">
+              {sessionPage + 1} / {sessionPageCount}
+            </span>
+            <button
+              type="button"
+              aria-label={t('common.next', { defaultValue: 'Next' })}
+              disabled={sessionPage + 1 >= sessionPageCount || loadingSessions}
+              onClick={() => setSessionPage((page) => page + 1)}
+              className="p-1 rounded hover:bg-accent disabled:opacity-40"
+            >
+              <ChevronRight className="size-3.5" />
+            </button>
+          </div>
         </div>
 
         {/* Right Panel: Messages */}
@@ -975,6 +1122,33 @@ const BotSessionMonitor = forwardRef<
                   )}
                 </div>
               </ScrollArea>
+              <div className="h-9 border-t px-3 flex items-center justify-center gap-3 shrink-0 text-xs">
+                <button
+                  type="button"
+                  disabled={messagePage === 0 || loadingMessages}
+                  onClick={() =>
+                    setMessagePage((page) => Math.max(0, page - 1))
+                  }
+                  className="inline-flex items-center gap-1 rounded px-2 py-1 hover:bg-accent disabled:opacity-40"
+                >
+                  <ChevronLeft className="size-3.5" />
+                  {t('common.previous', { defaultValue: 'Previous' })}
+                </button>
+                <span className="tabular-nums text-muted-foreground">
+                  {messagePage + 1} / {messagePageCount} · {messageTotal}
+                </span>
+                <button
+                  type="button"
+                  disabled={
+                    messagePage + 1 >= messagePageCount || loadingMessages
+                  }
+                  onClick={() => setMessagePage((page) => page + 1)}
+                  className="inline-flex items-center gap-1 rounded px-2 py-1 hover:bg-accent disabled:opacity-40"
+                >
+                  {t('common.next', { defaultValue: 'Next' })}
+                  <ChevronRight className="size-3.5" />
+                </button>
+              </div>
             </>
           )}
         </div>

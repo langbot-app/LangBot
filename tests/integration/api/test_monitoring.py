@@ -242,6 +242,22 @@ class TestMonitoringSessionsEndpoint:
 
         assert response.status_code == 200
 
+    @pytest.mark.asyncio
+    async def test_get_sessions_forwards_user_search_and_page_window(self, quart_test_client, fake_monitoring_app):
+        fake_monitoring_app.monitoring_service.get_sessions.reset_mock()
+
+        response = await quart_test_client.get(
+            '/api/v1/monitoring/sessions?botId=bot-1&userQuery=alice&limit=20&offset=40',
+            headers={'Authorization': 'Bearer test_token'},
+        )
+
+        assert response.status_code == 200
+        kwargs = fake_monitoring_app.monitoring_service.get_sessions.await_args.kwargs
+        assert kwargs['bot_ids'] == ['bot-1']
+        assert kwargs['user_query'] == 'alice'
+        assert kwargs['limit'] == 20
+        assert kwargs['offset'] == 40
+
 
 @pytest.mark.usefixtures('mock_circular_import_chain')
 class TestMonitoringErrorsEndpoint:
