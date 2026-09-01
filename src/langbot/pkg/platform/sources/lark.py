@@ -160,6 +160,26 @@ def _lark_should_update_stream_element(
     return not resume_from and not form_data and (msg_seq % 8 == 0 or is_final)
 
 
+def _lark_final_layout_texts(
+    *,
+    resume_from: bool,
+    text_message: str,
+    pre_pause_cached: str | None,
+    resume_cached: str,
+) -> tuple[str, str]:
+    """Return (main_text, resume_placeholder_text) for the final card update.
+
+    Non-resume round: the full reply belongs in the main streaming element
+    only — also rendering the resume placeholder duplicates the reply, since
+    both hold the same accumulated text. Resume round (Dify HITL): keep the
+    pre-pause text in the main element and the resumed text in the
+    placeholder, as they are distinct segments.
+    """
+    if resume_from:
+        return pre_pause_cached or text_message, resume_cached
+    return text_message, ''
+
+
 def _lark_display_input_value(field: dict, value: typing.Any) -> str:
     field_type = _dify_field_type(field)
     if field_type == 'file':
@@ -2358,16 +2378,21 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                     self.card_form_input_defs[card_id] = _lark_form_input_defs(form_data)
                     self.card_form_inputs[card_id] = dict(form_data.get('inputs') or {})
             else:
-                # Normal finish: keep pre-pause + resume content visible,
-                # remove buttons/notice, drop the resume placeholder.
+                # Normal finish: remove buttons/notice and finalize the card.
+                main_text, resume_text = _lark_final_layout_texts(
+                    resume_from=resume_from,
+                    text_message=text_message,
+                    pre_pause_cached=self.card_pre_pause_text.get(card_id),
+                    resume_cached=resume_cached,
+                )
                 await self._update_card_layout(
                     card_id=card_id,
                     message_source=message_source,
-                    text_message=pre_pause,
+                    text_message=main_text,
                     sequence=final_seq,
                     form_data=None,
                     notice_text=selected_notice if resume_from else '',
-                    resume_placeholder_text=resume_cached,
+                    resume_placeholder_text=resume_text,
                 )
                 self._drop_card_state(card_id)
             self.card_id_dict.pop(message_id, None)

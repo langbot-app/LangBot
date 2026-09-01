@@ -12,6 +12,7 @@ from langbot.pkg.platform.sources.lark import (
     _lark_completed_input_lines,
     _lark_current_input_defs,
     _lark_extract_action_form_inputs,
+    _lark_final_layout_texts,
     _lark_should_update_stream_element,
     _lark_visible_form_content,
 )
@@ -221,3 +222,47 @@ def test_lark_completed_input_lines_display_select_value_from_object():
     )
 
     assert lines == ['✅ xiala：B']
+
+
+def test_lark_final_layout_texts_normal_round_drops_resume_placeholder():
+    """Non-resume final chunk: the reply must land in the main element only.
+
+    Regression: rendering the resume placeholder too duplicated the reply,
+    because the accumulated streaming text equals the final text on a normal
+    round (e.g. 'It is Sep 1, 2026.\nIt is Sep 1, 2026.' in the card).
+    """
+    main_text, resume_text = _lark_final_layout_texts(
+        resume_from=False,
+        text_message='It is Sep 1, 2026, 15:09:15.',
+        pre_pause_cached=None,
+        resume_cached='It is Sep 1, 2026, 15:09:15.',
+    )
+
+    assert main_text == 'It is Sep 1, 2026, 15:09:15.'
+    assert resume_text == ''
+
+
+def test_lark_final_layout_texts_resume_round_keeps_both_segments():
+    """Dify HITL resume final chunk: pre-pause text and resumed text differ,
+    both segments stay visible."""
+    main_text, resume_text = _lark_final_layout_texts(
+        resume_from=True,
+        text_message='resumed answer',
+        pre_pause_cached='partial answer before pause',
+        resume_cached='resumed answer',
+    )
+
+    assert main_text == 'partial answer before pause'
+    assert resume_text == 'resumed answer'
+
+
+def test_lark_final_layout_texts_resume_round_without_pre_pause_falls_back():
+    main_text, resume_text = _lark_final_layout_texts(
+        resume_from=True,
+        text_message='answer',
+        pre_pause_cached=None,
+        resume_cached='answer',
+    )
+
+    assert main_text == 'answer'
+    assert resume_text == 'answer'
