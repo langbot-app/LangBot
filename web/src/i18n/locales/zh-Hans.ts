@@ -738,6 +738,10 @@ const zhHans = {
     noRunnersAvailable: '没有可用的运行器',
     noRunnersAvailableDescription:
       '请先安装并启用 AgentRunner 扩展，再配置此 Agent。',
+    installedRunners: '已安装的 AgentRunner',
+    marketplaceRunners: 'AgentRunner 插件市场',
+    noInstalledRunners: '尚未安装任何 AgentRunner 扩展。',
+    installingRunner: '正在安装 {{runner}}...',
     selectedRunnerUnavailable: '所选运行器不可用',
     selectedRunnerUnavailableDescription:
       '{{runner}} 当前未注册。请选择其他运行器，或恢复对应扩展。',

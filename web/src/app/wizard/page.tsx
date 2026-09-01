@@ -32,7 +32,6 @@ import {
   systemInfo,
   bootstrapWorkspaceSession,
   initializeSystemInfo,
-  getCloudServiceClient,
   getCloudServiceClientSync,
   userInfo,
 } from '@/app/infra/http';
@@ -66,7 +65,16 @@ import { getAdapterDocUrl } from '@/app/infra/entities/adapter-docs';
 import i18n from 'i18next';
 import { PluginV4 } from '@/app/infra/entities/plugin';
 import {
+  AgentRunnerMarketplaceError,
+  getErrorMessage,
+  installMarketplaceAgentRunner,
+  loadAgentRunnerCatalog,
+  marketplacePluginId,
+  runnerPluginPrefix,
+} from '@/app/home/agents/agent-runner-marketplace';
+import {
   ensureHttpBotSigningSecret,
+  isRequiredRunnerConfigComplete,
   isWebhookModeEnabled,
 } from '@/app/wizard/utils';
 
@@ -96,30 +104,6 @@ import {
 // ---------------------------------------------------------------------------
 
 const TOTAL_STEPS = 4;
-const RUNNER_COMPONENT_FILTER = 'AgentRunner';
-const RUNNER_CATALOG_PAGE_SIZE = 100;
-const RUNNER_INSTALL_TIMEOUT_MS = 120_000;
-const RUNNER_REGISTRATION_TIMEOUT_MS = 60_000;
-
-function wait(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function getErrorMessage(error: unknown): string {
-  if (error && typeof error === 'object') {
-    const value = error as { msg?: string; message?: string };
-    return value.msg || value.message || '';
-  }
-  return typeof error === 'string' ? error : '';
-}
-
-function marketplacePluginId(plugin: Pick<PluginV4, 'author' | 'name'>) {
-  return `${plugin.author}/${plugin.name}`;
-}
-
-function runnerPluginPrefix(plugin: Pick<PluginV4, 'author' | 'name'>) {
-  return `plugin:${plugin.author}/${plugin.name}/`;
-}
 
 type WizardScenarioId =
   | 'message_reply'
@@ -205,6 +189,9 @@ export default function WizardPage() {
   );
   const [runnerConfig, setRunnerConfig] = useState<Record<string, unknown>>({});
   const [createdBotUuid, setCreatedBotUuid] = useState<string | null>(null);
+  const [createdPipelineUuid, setCreatedPipelineUuid] = useState<string | null>(
+    null,
+  );
   const [webhookUrl, setWebhookUrl] = useState<string>('');
   const [extraWebhookUrl, setExtraWebhookUrl] = useState<string>('');
 
@@ -228,82 +215,16 @@ export default function WizardPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSavingBot, setIsSavingBot] = useState(false);
   const [botSaved, setBotSaved] = useState(false);
+  const [pageBotPreviewRequest, setPageBotPreviewRequest] = useState(0);
   const [messageReceived, setMessageReceived] = useState(false);
 
   const loadRunnerCatalog = useCallback(async () => {
     setIsRunnerCatalogLoading(true);
     setRunnerCatalogError(false);
     try {
-      const cloudClient = await getCloudServiceClient();
-      const [firstSearchResult, recommendationResult, installedResult] =
-        await Promise.all([
-          cloudClient.searchMarketplaceExtensions({
-            query: '',
-            page: 1,
-            page_size: RUNNER_CATALOG_PAGE_SIZE,
-            type_filter: 'plugin',
-            component_filter: RUNNER_COMPONENT_FILTER,
-          }),
-          cloudClient.getRecommendationLists().catch(() => ({ lists: [] })),
-          httpClient.getPlugins().catch(() => ({ plugins: [] })),
-        ]);
-
-      const remainingPageCount = Math.max(
-        0,
-        Math.ceil((firstSearchResult.total || 0) / RUNNER_CATALOG_PAGE_SIZE) -
-          1,
-      );
-      const remainingResults = await Promise.all(
-        Array.from({ length: remainingPageCount }, (_, index) =>
-          cloudClient.searchMarketplaceExtensions({
-            query: '',
-            page: index + 2,
-            page_size: RUNNER_CATALOG_PAGE_SIZE,
-            type_filter: 'plugin',
-            component_filter: RUNNER_COMPONENT_FILTER,
-          }),
-        ),
-      );
-      const catalogPlugins = [
-        ...(firstSearchResult.plugins || []),
-        ...remainingResults.flatMap((result) => result.plugins || []),
-      ];
-
-      const recommendationOrder = new Map<string, number>();
-      let nextOrder = 0;
-      for (const list of recommendationResult.lists || []) {
-        for (const plugin of list.plugins || []) {
-          if (!plugin.components?.[RUNNER_COMPONENT_FILTER]) continue;
-          const id = marketplacePluginId(plugin);
-          if (!recommendationOrder.has(id)) {
-            recommendationOrder.set(id, nextOrder);
-            nextOrder += 1;
-          }
-        }
-      }
-
-      const runners = catalogPlugins
-        .filter((plugin) => plugin.components?.[RUNNER_COMPONENT_FILTER])
-        .sort((left, right) => {
-          const leftOrder = recommendationOrder.get(marketplacePluginId(left));
-          const rightOrder = recommendationOrder.get(
-            marketplacePluginId(right),
-          );
-          if (leftOrder !== undefined && rightOrder !== undefined) {
-            return leftOrder - rightOrder;
-          }
-          if (leftOrder !== undefined) return -1;
-          if (rightOrder !== undefined) return 1;
-          return right.install_count - left.install_count;
-        });
-
-      setMarketplaceRunners(runners);
-      setInstalledPluginIds(
-        installedResult.plugins.map((plugin) => {
-          const metadata = plugin.manifest.manifest.metadata;
-          return `${metadata.author ?? ''}/${metadata.name}`;
-        }),
-      );
+      const catalog = await loadAgentRunnerCatalog();
+      setMarketplaceRunners(catalog.marketplaceRunners);
+      setInstalledPluginIds(catalog.installedPluginIds);
     } catch (error) {
       console.error('Failed to load AgentRunner catalog', error);
       setRunnerCatalogError(true);
@@ -333,6 +254,10 @@ export default function WizardPage() {
           overrides.created_bot_uuid !== undefined
             ? overrides.created_bot_uuid
             : createdBotUuid,
+        created_pipeline_uuid:
+          overrides.created_pipeline_uuid !== undefined
+            ? overrides.created_pipeline_uuid
+            : createdPipelineUuid,
         bot_saved: overrides.bot_saved ?? botSaved,
         message_received: overrides.message_received ?? messageReceived,
         selected_runner:
@@ -349,6 +274,7 @@ export default function WizardPage() {
       selectedScenario,
       selectedAdapter,
       createdBotUuid,
+      createdPipelineUuid,
       botSaved,
       messageReceived,
       selectedRunner,
@@ -406,6 +332,15 @@ export default function WizardPage() {
                 'message_reply',
             );
             setCreatedBotUuid(progress.created_bot_uuid);
+            setCreatedPipelineUuid(
+              progress.created_pipeline_uuid ??
+                botData.bot.event_bindings?.find(
+                  (binding) =>
+                    binding.event_pattern === 'message.received' &&
+                    binding.target_type === 'pipeline',
+                )?.target_uuid ??
+                null,
+            );
             setBotSaved(
               configNeedsSave ? false : (progress.bot_saved ?? false),
             );
@@ -435,6 +370,7 @@ export default function WizardPage() {
                 selected_scenario: null,
                 selected_adapter: null,
                 created_bot_uuid: null,
+                created_pipeline_uuid: null,
                 bot_saved: false,
                 message_received: false,
                 selected_runner: null,
@@ -527,6 +463,12 @@ export default function WizardPage() {
     );
   }, [selectedRunnerConfigStage]);
 
+  const isRunnerConfigComplete = useMemo(
+    () =>
+      isRequiredRunnerConfigComplete(selectedRunnerConfigItems, runnerConfig),
+    [selectedRunnerConfigItems, runnerConfig],
+  );
+
   // ---- Runner selection with progress saving ----
   const handleSelectRunner = useCallback(
     (runner: string, configTab: PipelineConfigTab | null = aiConfigTab) => {
@@ -555,74 +497,29 @@ export default function WizardPage() {
       setRunnerInstallError(null);
 
       try {
-        if (!plugin.latest_version) {
-          throw new Error(t('wizard.aiEngine.versionUnavailable'));
-        }
-
-        const { task_id: taskId } =
-          await httpClient.installPluginFromMarketplace(
-            plugin.author,
-            plugin.name,
-            plugin.latest_version,
-          );
-        const installDeadline = Date.now() + RUNNER_INSTALL_TIMEOUT_MS;
-        let installCompleted = false;
-        while (Date.now() < installDeadline) {
-          const task = await httpClient.getAsyncTask(taskId);
-          if (task.runtime.done) {
-            if (task.runtime.exception) {
-              throw new Error(task.runtime.exception);
-            }
-            installCompleted = true;
-            break;
-          }
-          await wait(1000);
-        }
-        if (!installCompleted) {
-          throw new Error(t('wizard.aiEngine.installTimeout'));
-        }
-
-        const registrationDeadline =
-          Date.now() + RUNNER_REGISTRATION_TIMEOUT_MS;
-        const prefix = runnerPluginPrefix(plugin);
-        while (Date.now() < registrationDeadline) {
-          const metadata = await httpClient.getGeneralPipelineMetadata();
-          const nextAiTab =
-            metadata.configs.find((config) => config.name === 'ai') ?? null;
-          const nextRunnerStage = nextAiTab?.stages.find(
-            (stage) => stage.name === 'runner',
-          );
-          const nextRunnerOptions =
-            nextRunnerStage?.config.find((item) => item.name === 'id')
-              ?.options ?? [];
-          const pluginRunnerOptions = nextRunnerOptions.filter((option) =>
-            option.name.startsWith(prefix),
-          );
-          const preferredRunner =
-            pluginRunnerOptions.find((option) =>
-              option.name.endsWith('/default'),
-            ) ?? pluginRunnerOptions[0];
-
-          if (nextAiTab && preferredRunner) {
-            setAiConfigTab(nextAiTab);
-            setInstalledPluginIds((current) =>
-              current.includes(pluginId) ? current : [...current, pluginId],
-            );
-            handleSelectRunner(preferredRunner.name, nextAiTab);
-            toast.success(
-              t('wizard.aiEngine.installSuccess', {
-                runner: extractI18nObject(plugin.label),
-              }),
-            );
-            return;
-          }
-          await wait(1000);
-        }
-
-        throw new Error(t('wizard.aiEngine.registrationTimeout'));
+        const installed = await installMarketplaceAgentRunner(plugin);
+        setAiConfigTab(installed.configTab);
+        setInstalledPluginIds((current) =>
+          current.includes(pluginId) ? current : [...current, pluginId],
+        );
+        handleSelectRunner(installed.runner.name, installed.configTab);
+        toast.success(
+          t('wizard.aiEngine.installSuccess', {
+            runner: extractI18nObject(plugin.label),
+          }),
+        );
       } catch (error) {
-        const message =
-          getErrorMessage(error) || t('wizard.aiEngine.installFailed');
+        let message = getErrorMessage(error);
+        if (error instanceof AgentRunnerMarketplaceError) {
+          const key =
+            error.code === 'version-unavailable'
+              ? 'wizard.aiEngine.versionUnavailable'
+              : error.code === 'install-timeout'
+                ? 'wizard.aiEngine.installTimeout'
+                : 'wizard.aiEngine.registrationTimeout';
+          message = t(key);
+        }
+        message ||= t('wizard.aiEngine.installFailed');
         setRunnerInstallError(message);
         toast.error(message);
       } finally {
@@ -645,7 +542,7 @@ export default function WizardPage() {
           (selectedScenario !== 'message_reply' || messageReceived)
         );
       case 2:
-        return selectedRunner !== null;
+        return selectedRunner !== null && isRunnerConfigComplete;
       default:
         return false;
     }
@@ -657,6 +554,7 @@ export default function WizardPage() {
     botSaved,
     messageReceived,
     selectedRunner,
+    isRunnerConfigComplete,
   ]);
 
   const handleSelectScenario = useCallback(
@@ -726,6 +624,7 @@ export default function WizardPage() {
       };
       const resp = await httpClient.createBot(bot);
       setCreatedBotUuid(resp.uuid);
+      setCreatedPipelineUuid(null);
 
       // Fetch runtime info to get webhook URL(s)
       try {
@@ -750,6 +649,7 @@ export default function WizardPage() {
         selected_scenario: selectedScenario,
         selected_adapter: selectedAdapter,
         created_bot_uuid: resp.uuid,
+        created_pipeline_uuid: null,
         bot_saved: false,
         message_received: false,
         selected_runner: null,
@@ -770,6 +670,8 @@ export default function WizardPage() {
   const handleSaveBot = useCallback(async () => {
     if (!createdBotUuid || !selectedAdapter) return;
     setIsSavingBot(true);
+    let previewPipelineUuid = createdPipelineUuid;
+    let createdPreviewPipelineUuid: string | null = null;
 
     try {
       const configToSave = ensureHttpBotSigningSecret(
@@ -778,14 +680,51 @@ export default function WizardPage() {
       );
       setAdapterConfig(configToSave);
 
-      await httpClient.updateBot(createdBotUuid, {
+      if (
+        selectedScenarioDefinition?.processorKind === 'pipeline' &&
+        !previewPipelineUuid
+      ) {
+        const pipelineResp = await httpClient.createPipeline({
+          name: `${botName} Pipeline`,
+          description: botDescription || '',
+          config: {},
+        });
+        previewPipelineUuid = pipelineResp.uuid;
+        createdPreviewPipelineUuid = pipelineResp.uuid;
+      }
+
+      const botUpdate: Partial<Bot> = {
         name: botName,
         description: botDescription || '',
         adapter: selectedAdapter,
         adapter_config: configToSave,
         enable: true,
-      });
+      };
+      if (
+        selectedScenarioDefinition?.processorKind === 'pipeline' &&
+        previewPipelineUuid
+      ) {
+        botUpdate.event_bindings = [
+          {
+            event_pattern: selectedScenarioDefinition.eventType,
+            target_type: 'pipeline',
+            target_uuid: previewPipelineUuid,
+            filters: [],
+            priority: 0,
+            enabled: true,
+            description: '',
+          },
+        ];
+      }
+
+      await httpClient.updateBot(createdBotUuid, botUpdate);
+      if (previewPipelineUuid !== createdPipelineUuid) {
+        setCreatedPipelineUuid(previewPipelineUuid);
+      }
       setBotSaved(true);
+      if (selectedAdapter === 'web_page_bot') {
+        setPageBotPreviewRequest((request) => request + 1);
+      }
       setMessageReceived(false);
 
       // Re-fetch runtime info to get updated webhook URL(s)
@@ -803,8 +742,23 @@ export default function WizardPage() {
       }
 
       // Persist progress
-      saveProgress({ step: 1, bot_saved: true, message_received: false });
+      saveProgress({
+        step: 1,
+        created_pipeline_uuid: previewPipelineUuid,
+        bot_saved: true,
+        message_received: false,
+      });
     } catch (err) {
+      if (createdPreviewPipelineUuid) {
+        try {
+          await httpClient.deletePipeline(createdPreviewPipelineUuid);
+        } catch (rollbackError) {
+          console.warn(
+            'Failed to roll back wizard preview pipeline',
+            rollbackError,
+          );
+        }
+      }
       const apiErr = err as { msg?: string };
       toast.error(
         t('wizard.createError') + (apiErr?.msg ? `: ${apiErr.msg}` : ''),
@@ -818,6 +772,8 @@ export default function WizardPage() {
     botName,
     botDescription,
     adapterConfig,
+    createdPipelineUuid,
+    selectedScenarioDefinition,
     t,
     saveProgress,
   ]);
@@ -831,23 +787,33 @@ export default function WizardPage() {
   // ---- Create Pipeline & Link (Step 2 finish) ----
 
   const handleFinish = useCallback(async () => {
-    if (!selectedRunner || !createdBotUuid || !selectedScenarioDefinition)
+    if (
+      !selectedRunner ||
+      !isRunnerConfigComplete ||
+      !createdBotUuid ||
+      !selectedScenarioDefinition
+    )
       return;
     setIsSubmitting(true);
     let processorUuid = '';
+    let processorCreatedThisAttempt = false;
+    let targetType: 'agent' | 'pipeline' | null = null;
 
     try {
-      let targetType: 'agent' | 'pipeline';
-
       if (selectedScenarioDefinition.processorKind === 'pipeline') {
-        const pipeline: Pipeline = {
-          name: `${botName} Pipeline`,
-          description: botDescription || '',
-          config: {},
-        };
-        const pipelineResp = await httpClient.createPipeline(pipeline);
-        processorUuid = pipelineResp.uuid;
-        const createdPipeline = await httpClient.getPipeline(pipelineResp.uuid);
+        targetType = 'pipeline';
+        processorUuid = createdPipelineUuid ?? '';
+        if (!processorUuid) {
+          const pipeline: Pipeline = {
+            name: `${botName} Pipeline`,
+            description: botDescription || '',
+            config: {},
+          };
+          const pipelineResp = await httpClient.createPipeline(pipeline);
+          processorUuid = pipelineResp.uuid;
+          processorCreatedThisAttempt = true;
+        }
+        const createdPipeline = await httpClient.getPipeline(processorUuid);
         const fullConfig = createdPipeline.pipeline.config as unknown as Record<
           string,
           unknown
@@ -866,7 +832,7 @@ export default function WizardPage() {
             ? (fullAiConfig.runner_config as Record<string, unknown>)
             : {};
 
-        await httpClient.updatePipeline(pipelineResp.uuid, {
+        await httpClient.updatePipeline(processorUuid, {
           name: `${botName} Pipeline`,
           description: botDescription || '',
           config: {
@@ -881,8 +847,8 @@ export default function WizardPage() {
             },
           },
         });
-        targetType = 'pipeline';
       } else {
+        targetType = 'agent';
         const agentResp = await httpClient.createAgent({
           kind: 'agent',
           name: `${botName} - ${t(selectedScenarioDefinition.labelKey)}`,
@@ -896,7 +862,7 @@ export default function WizardPage() {
           supported_event_patterns: [selectedScenarioDefinition.eventType],
         });
         processorUuid = agentResp.uuid;
-        targetType = 'agent';
+        processorCreatedThisAttempt = true;
       }
 
       const botData = await httpClient.getBot(createdBotUuid);
@@ -921,11 +887,21 @@ export default function WizardPage() {
       });
 
       setCurrentStep(3);
-      saveProgress({ step: 3 });
+      if (targetType === 'pipeline') {
+        setCreatedPipelineUuid(processorUuid);
+      }
+      saveProgress({
+        step: 3,
+        created_pipeline_uuid: targetType === 'pipeline' ? processorUuid : null,
+      });
     } catch (err) {
-      if (processorUuid) {
+      if (processorCreatedThisAttempt && processorUuid) {
         try {
-          await httpClient.deleteAgent(processorUuid);
+          if (targetType === 'pipeline') {
+            await httpClient.deletePipeline(processorUuid);
+          } else {
+            await httpClient.deleteAgent(processorUuid);
+          }
         } catch (rollbackError) {
           console.warn('Failed to roll back wizard processor', rollbackError);
         }
@@ -939,7 +915,9 @@ export default function WizardPage() {
     }
   }, [
     selectedRunner,
+    isRunnerConfigComplete,
     createdBotUuid,
+    createdPipelineUuid,
     selectedScenarioDefinition,
     botName,
     botDescription,
@@ -965,6 +943,7 @@ export default function WizardPage() {
         selected_scenario: null,
         selected_adapter: null,
         created_bot_uuid: null,
+        created_pipeline_uuid: null,
         bot_saved: false,
         selected_runner: null,
       });
@@ -1095,6 +1074,7 @@ export default function WizardPage() {
             createdBotUuid={createdBotUuid}
             isSavingBot={isSavingBot}
             botSaved={botSaved}
+            pageBotPreviewRequest={pageBotPreviewRequest}
             messageReceived={messageReceived}
             requiresMessageVerification={selectedScenario === 'message_reply'}
             onMessageReceived={handleMessageReceived}
@@ -1469,22 +1449,28 @@ function PageBotFloatingWidget({
   botUuid,
   title,
   testNotice,
+  openRequest,
 }: {
   botUuid: string;
   title?: string;
   testNotice: string;
+  openRequest: number;
 }) {
   useEffect(() => {
     const script = document.createElement('script');
     script.src = `${window.location.origin}/api/v1/embed/${botUuid}/widget.js?preview=wizard&v=${Date.now()}`;
     script.dataset.title = title || 'LangBot';
     script.dataset.testNotice = testNotice;
+    script.dataset.autoOpen = 'true';
     document.body.appendChild(script);
 
     return () => {
       script.remove();
       const root = document.getElementById('langbot-widget-root') as
-        | (HTMLElement & { langbotDestroy?: () => void })
+        | (HTMLElement & {
+            langbotDestroy?: () => void;
+            langbotOpen?: () => void;
+          })
         | null;
       if (root?.langbotDestroy) {
         root.langbotDestroy();
@@ -1493,6 +1479,14 @@ function PageBotFloatingWidget({
       }
     };
   }, [botUuid, testNotice, title]);
+
+  useEffect(() => {
+    if (openRequest <= 0) return;
+    const root = document.getElementById('langbot-widget-root') as
+      | (HTMLElement & { langbotOpen?: () => void })
+      | null;
+    root?.langbotOpen?.();
+  }, [openRequest]);
 
   return null;
 }
@@ -1506,6 +1500,7 @@ function StepBotConfig({
   createdBotUuid,
   isSavingBot,
   botSaved,
+  pageBotPreviewRequest,
   messageReceived,
   requiresMessageVerification,
   onMessageReceived,
@@ -1521,6 +1516,7 @@ function StepBotConfig({
   createdBotUuid: string | null;
   isSavingBot: boolean;
   botSaved: boolean;
+  pageBotPreviewRequest: number;
   messageReceived: boolean;
   requiresMessageVerification: boolean;
   onMessageReceived: () => void;
@@ -1592,6 +1588,7 @@ function StepBotConfig({
               : undefined
           }
           testNotice={t('wizard.botConfig.pageBotTestNotice')}
+          openRequest={pageBotPreviewRequest}
         />
       )}
 
@@ -1709,51 +1706,51 @@ function StepBotConfig({
       <div className="grid gap-6 grid-cols-1 lg:grid-cols-2">
         {/* Left column: Adapter config form */}
         <div className="space-y-4">
-          {adapterConfigItems.length > 0 && (
-            <Card>
-              <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <CardTitle className="text-base">
-                    {t('wizard.config.platformConfig', {
-                      platform: adapterLabel,
-                    })}
-                  </CardTitle>
-                  {selectedAdapterName &&
-                    (() => {
-                      const selectedAdapter = adapters.find(
-                        (a) => a.name === selectedAdapterName,
-                      );
-                      const docUrl = getAdapterDocUrl(
-                        selectedAdapter?.spec.help_links,
-                        i18n.language,
-                      );
-                      return docUrl ? (
-                        <a
-                          href={docUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center text-xs text-primary hover:underline"
-                        >
-                          <ExternalLink className="mr-1 h-3 w-3" />
-                          {t('bots.viewAdapterDocs')}
-                        </a>
-                      ) : null;
-                    })()}
-                </div>
-                <Button
-                  size="sm"
-                  onClick={onSaveBot}
-                  disabled={isSavingBot}
-                  className="w-full sm:w-auto shrink-0"
-                >
-                  {isSavingBot && (
-                    <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
-                  )}
-                  {botSaved
-                    ? t('wizard.botConfig.resaveBot')
-                    : t('wizard.botConfig.saveBot')}
-                </Button>
-              </CardHeader>
+          <Card>
+            <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <CardTitle className="text-base">
+                  {t('wizard.config.platformConfig', {
+                    platform: adapterLabel,
+                  })}
+                </CardTitle>
+                {selectedAdapterName &&
+                  (() => {
+                    const selectedAdapter = adapters.find(
+                      (a) => a.name === selectedAdapterName,
+                    );
+                    const docUrl = getAdapterDocUrl(
+                      selectedAdapter?.spec.help_links,
+                      i18n.language,
+                    );
+                    return docUrl ? (
+                      <a
+                        href={docUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center text-xs text-primary hover:underline"
+                      >
+                        <ExternalLink className="mr-1 h-3 w-3" />
+                        {t('bots.viewAdapterDocs')}
+                      </a>
+                    ) : null;
+                  })()}
+              </div>
+              <Button
+                size="sm"
+                onClick={onSaveBot}
+                disabled={isSavingBot}
+                className="w-full sm:w-auto shrink-0"
+              >
+                {isSavingBot && (
+                  <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+                )}
+                {botSaved
+                  ? t('wizard.botConfig.resaveBot')
+                  : t('wizard.botConfig.saveBot')}
+              </Button>
+            </CardHeader>
+            {adapterConfigItems.length > 0 && (
               <CardContent>
                 <DynamicFormComponent
                   itemConfigList={adapterConfigItems}
@@ -1767,8 +1764,8 @@ function StepBotConfig({
                   }}
                 />
               </CardContent>
-            </Card>
-          )}
+            )}
+          </Card>
 
           {/* Bot saved indicator */}
           {botSaved && !requiresMessageVerification && (
@@ -2182,6 +2179,7 @@ function StepDone() {
         selected_scenario: null,
         selected_adapter: null,
         created_bot_uuid: null,
+        created_pipeline_uuid: null,
         bot_saved: false,
         selected_runner: null,
       });

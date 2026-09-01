@@ -57,6 +57,7 @@ import {
   Copy,
 } from 'lucide-react';
 import PipelineExtension from '@/app/home/pipelines/components/pipeline-extensions/PipelineExtension';
+import AgentRunnerSelect from '@/app/home/agents/components/AgentRunnerSelect';
 
 interface PipelineFormComponentProps {
   pipelineId?: string;
@@ -515,6 +516,17 @@ const PipelineFormComponent = forwardRef<
                   ] || {}
                 }
                 systemContext={dynamicFormSystemContext}
+                renderItem={({ config, field }) =>
+                  config.name === 'id' ? (
+                    <AgentRunnerSelect
+                      options={config.options ?? []}
+                      label={extractI18nObject(config.label)}
+                      value={String(field.value ?? '')}
+                      onValueChange={field.onChange}
+                      onMetadataRefresh={setAIConfigTabSchema}
+                    />
+                  ) : undefined
+                }
                 onSubmit={(values) => {
                   handleDynamicFormEmit(formName, stage.name, values);
                 }}

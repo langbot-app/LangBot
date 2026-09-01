@@ -9,8 +9,20 @@ const dialogPath = path.join(
   'src/app/home/components/qrcode-login/QrCodeLoginDialog.tsx',
 );
 const localeDir = path.join(root, 'src/i18n/locales');
+const backendUrlPath = path.join(root, 'src/app/infra/http/backendUrl.ts');
 
 const dialogSource = fs.readFileSync(dialogPath, 'utf8');
+const backendUrlSource = fs.readFileSync(backendUrlPath, 'utf8');
+
+test('QR login resolves a proxy-root API base against the current origin', () => {
+  assert.match(dialogSource, /const baseUrl = getBackendBaseUrl\(\)/);
+  assert.match(backendUrlSource, /!configured \|\| configured === '\/'/);
+  assert.match(backendUrlSource, /return normalizedOrigin/);
+  assert.doesNotMatch(
+    dialogSource,
+    /import\.meta\.env\.VITE_API_BASE_URL \|\| window\.location\.origin/,
+  );
+});
 
 test('QR credential exchanges preserve the active Workspace scope', () => {
   assert.match(dialogSource, /getActiveWorkspaceUuid/);

@@ -13,6 +13,7 @@ import logging
 import uuid
 import hmac
 import hashlib
+import os
 import time
 import re
 import httpx
@@ -29,6 +30,7 @@ _AUTH_TIMEOUT_SECONDS = 10.0
 
 # Cache the widget template content
 _widget_template_cache: str | None = None
+_widget_template_cache_mtime_ns: int | None = None
 _logo_bytes_cache: bytes | None = None
 
 
@@ -37,12 +39,14 @@ def _is_valid_uuid(s: str) -> bool:
 
 
 def _get_widget_template() -> str:
-    """Load and cache the widget JS template."""
-    global _widget_template_cache
-    if _widget_template_cache is None:
-        template_path = paths.get_resource_path('templates/embed/widget.js')
+    """Load the widget template and refresh the cache when the file changes."""
+    global _widget_template_cache, _widget_template_cache_mtime_ns
+    template_path = paths.get_resource_path('templates/embed/widget.js')
+    template_mtime_ns = os.stat(template_path).st_mtime_ns
+    if _widget_template_cache is None or _widget_template_cache_mtime_ns != template_mtime_ns:
         with open(template_path, 'r', encoding='utf-8') as f:
             _widget_template_cache = f.read()
+        _widget_template_cache_mtime_ns = template_mtime_ns
     return _widget_template_cache
 
 

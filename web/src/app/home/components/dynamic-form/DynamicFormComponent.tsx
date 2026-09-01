@@ -4,6 +4,7 @@ import {
   DynamicFormItemType,
 } from '@/app/infra/entities/form/dynamic';
 import { useForm } from 'react-hook-form';
+import type { ControllerRenderProps } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import {
@@ -22,7 +23,8 @@ import {
 import QrCodeLoginDialog, {
   QrLoginPlatform,
 } from '@/app/home/components/qrcode-login/QrCodeLoginDialog';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
@@ -460,6 +462,7 @@ export default function DynamicFormComponent({
   externalDependentValues,
   systemContext,
   onValidate,
+  renderItem,
 }: {
   itemConfigList: IDynamicFormItemSchema[];
   onSubmit?: (val: object) => unknown;
@@ -473,6 +476,15 @@ export default function DynamicFormComponent({
   /** Callback to expose validation function to parent component.
    *  Parent can call this function to trigger validation and get validity state. */
   onValidate?: (validateFn: () => Promise<boolean>) => void;
+  /** Override a field control while retaining the DynamicForm label,
+   *  description, validation, and value emission behavior. Return undefined
+   *  to use the standard control for that item. */
+  renderItem?: (args: {
+    config: IDynamicFormItemSchema;
+    field: ControllerRenderProps<any, any>;
+    formValues: Record<string, unknown>;
+    setFormValue: (name: string, value: unknown) => void;
+  }) => ReactNode | undefined;
 }) {
   const isInitialMount = useRef(true);
   const previousInitialValues = useRef(initialValues);
@@ -539,15 +551,15 @@ export default function DynamicFormComponent({
   });
 
   // Expose validation function to parent component
-  const validate = async (): Promise<boolean> => {
+  const validate = useCallback(async (): Promise<boolean> => {
     // Trigger validation for all fields
     const result = await form.trigger();
     return result;
-  };
+  }, [form]);
 
   useEffect(() => {
     onValidate?.(validate);
-  }, [onValidate]);
+  }, [onValidate, validate]);
 
   // 当 initialValues 变化时更新表单值
   // 但要避免因为内部表单更新触发的 onSubmit 导致的 initialValues 变化而重新设置表单
@@ -978,42 +990,56 @@ export default function DynamicFormComponent({
               key={fieldKey}
               control={form.control}
               name={config.name as keyof FormValues}
-              render={({ field }) => (
-                <FormItem className="min-w-0">
-                  <FormLabel className="flex min-w-0 items-center gap-1.5">
-                    <span className="min-w-0 break-words">
-                      {extractI18nObject(config.label)}{' '}
-                      {config.required && (
-                        <span className="text-red-500">*</span>
-                      )}
-                    </span>
-                    {renderDisabledTooltipIcon()}
-                  </FormLabel>
-                  <FormControl>
-                    <div
-                      className={cn(
-                        'min-w-0 max-w-full overflow-x-hidden',
-                        isFieldDisabled && 'pointer-events-none opacity-60',
-                      )}
-                    >
-                      <DynamicFormItemComponent
-                        config={normalizedConfig}
-                        field={field}
-                        formValues={watchedValues as Record<string, unknown>}
-                        onFileUploaded={onFileUploaded}
-                        setFormValue={setFormValue}
-                        systemContext={systemContext}
-                      />
-                    </div>
-                  </FormControl>
-                  {config.description && (
-                    <p className="text-sm break-words text-muted-foreground">
-                      {extractI18nObject(config.description)}
-                    </p>
-                  )}
-                  <FormMessage />
-                </FormItem>
-              )}
+              render={({ field }) => {
+                const customItem = renderItem?.({
+                  config: normalizedConfig,
+                  field,
+                  formValues: watchedValues as Record<string, unknown>,
+                  setFormValue,
+                });
+                return (
+                  <FormItem className="min-w-0">
+                    <FormLabel className="flex min-w-0 items-center gap-1.5">
+                      <span className="min-w-0 break-words">
+                        {extractI18nObject(config.label)}{' '}
+                        {config.required && (
+                          <span className="text-red-500">*</span>
+                        )}
+                      </span>
+                      {renderDisabledTooltipIcon()}
+                    </FormLabel>
+                    <FormControl>
+                      <div
+                        className={cn(
+                          'min-w-0 max-w-full overflow-x-hidden',
+                          isFieldDisabled && 'pointer-events-none opacity-60',
+                        )}
+                      >
+                        {customItem !== undefined ? (
+                          customItem
+                        ) : (
+                          <DynamicFormItemComponent
+                            config={normalizedConfig}
+                            field={field}
+                            formValues={
+                              watchedValues as Record<string, unknown>
+                            }
+                            onFileUploaded={onFileUploaded}
+                            setFormValue={setFormValue}
+                            systemContext={systemContext}
+                          />
+                        )}
+                      </div>
+                    </FormControl>
+                    {config.description && (
+                      <p className="text-sm break-words text-muted-foreground">
+                        {extractI18nObject(config.description)}
+                      </p>
+                    )}
+                    <FormMessage />
+                  </FormItem>
+                );
+              }}
             />
           );
         })}

@@ -10,6 +10,9 @@
   var scriptTestNotice = scriptEl
     ? scriptEl.getAttribute("data-test-notice")
     : null;
+  var scriptAutoOpen = scriptEl
+    ? scriptEl.getAttribute("data-auto-open") === "true"
+    : false;
 
   // ========== i18n ==========
   var I18N = {
@@ -1252,6 +1255,9 @@
       }
       root.remove();
     };
+    root.langbotOpen = function () {
+      if (!state.isOpen) togglePanel();
+    };
     document.body.appendChild(root);
 
     var shadow = root.attachShadow({ mode: "open" });
@@ -1406,6 +1412,8 @@
     panel.appendChild(inputArea);
 
     shadow.appendChild(panel);
+
+    if (scriptAutoOpen) root.langbotOpen();
   }
 
   // ========== Initialize ==========

@@ -782,6 +782,11 @@ const jaJP = {
     noRunnersAvailable: '利用可能な Runner がありません',
     noRunnersAvailableDescription:
       'この Agent を設定する前に AgentRunner 拡張機能をインストールして有効にしてください。',
+    installedRunners: 'インストール済み AgentRunner',
+    marketplaceRunners: 'AgentRunner マーケットプレイス',
+    noInstalledRunners:
+      'AgentRunner 拡張機能はまだインストールされていません。',
+    installingRunner: '{{runner}} をインストールしています...',
     selectedRunnerUnavailable: '選択した Runner は利用できません',
     selectedRunnerUnavailableDescription:
       '{{runner}} は現在登録されていません。別の Runner を選択するか、対応する拡張機能を復元してください。',

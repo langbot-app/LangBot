@@ -9,6 +9,7 @@ Run: uv run pytest tests/integration/api/test_embed.py -q
 from __future__ import annotations
 
 import json
+import os
 
 import pytest
 from unittest.mock import MagicMock, AsyncMock, Mock
@@ -146,6 +147,24 @@ class TestEmbedWidgetEndpoint:
         assert response.status_code == 200
         assert 'javascript' in response.content_type
         fake_embed_app.platform_mgr.resolve_public_bot.assert_any_await('a1b2c3d4-5678-90ab-cdef-123456789abc')
+
+    def test_widget_template_cache_reloads_after_file_change(self, monkeypatch, tmp_path):
+        """Development edits to widget.js take effect without restarting the backend."""
+        import langbot.pkg.api.http.controller.groups.pipelines.embed as embed
+
+        template_path = tmp_path / 'widget.js'
+        template_path.write_text('first version', encoding='utf-8')
+        monkeypatch.setattr(embed.paths, 'get_resource_path', lambda _: str(template_path))
+        embed._widget_template_cache = None
+        embed._widget_template_cache_mtime_ns = None
+
+        assert embed._get_widget_template() == 'first version'
+
+        previous_mtime_ns = template_path.stat().st_mtime_ns
+        template_path.write_text('second version', encoding='utf-8')
+        os.utime(template_path, ns=(previous_mtime_ns + 1_000_000, previous_mtime_ns + 1_000_000))
+
+        assert embed._get_widget_template() == 'second version'
 
     @pytest.mark.asyncio
     async def test_get_widget_js_invalid_uuid(self, quart_test_client):

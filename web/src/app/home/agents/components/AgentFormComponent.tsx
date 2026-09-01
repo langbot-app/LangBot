@@ -38,6 +38,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import AgentEventPatternPicker from './AgentEventPatternPicker';
+import AgentRunnerSelect from './AgentRunnerSelect';
 
 export interface AgentRunnerStatus {
   label: string;
@@ -415,6 +416,20 @@ function AgentFormComponent(
           <DynamicFormComponent
             itemConfigList={stage.config}
             initialValues={initialValues}
+            renderItem={
+              isRunnerSelector
+                ? ({ config, field }) =>
+                    config.name === 'id' ? (
+                      <AgentRunnerSelect
+                        options={config.options ?? []}
+                        label={extractI18nObject(config.label)}
+                        value={String(field.value ?? '')}
+                        onValueChange={field.onChange}
+                        onMetadataRefresh={setRunnerConfigSchema}
+                      />
+                    ) : undefined
+                : undefined
+            }
             onSubmit={(values) =>
               handleDynamicFormEmit(
                 isRunnerSelector ? 'runner' : 'runner_config',
