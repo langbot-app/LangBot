@@ -697,9 +697,10 @@ class DingTalkClient:
         if not await self.check_access_token():
             await self.get_access_token()
 
-        cardData: dict = {'cardParamMap': _stringify_card_param_map(card_param_map)}
+        template_params = dict(card_param_map or {})
         if card_data_config is not None:
-            cardData['config'] = json.dumps(card_data_config)
+            template_params['config'] = card_data_config
+        cardData: dict = {'cardParamMap': _stringify_card_param_map(template_params)}
 
         body: dict = {
             'cardTemplateId': card_template_id,
