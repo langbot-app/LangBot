@@ -9,6 +9,7 @@ from .. import group
 from .....entity.errors import account as account_errors
 from ...context import RequestContext
 from .....cloud.launch import SpaceLaunchError
+from .....workspace.errors import WorkspaceNotFoundError
 from ...service.user import ControlPlaneDirectoryRequiredError, PublicRegistrationClosedError
 
 
@@ -437,22 +438,32 @@ class UserRouterGroup(group.RouterGroup):
 
             account = await self.ap.user_service.get_user_by_uuid(launch['account_uuid'])
             projection_service = self.ap.directory_projection_service
-            if account is None and projection_service is not None:
-                # A first Cloud launch creates the personal Workspace immediately
-                # before redirecting here. Pull a bounded number of signed event
-                # pages now instead of rejecting during the background-sync window.
-                for _ in range(3):
-                    await projection_service.sync_once()
-                    account = await self.ap.user_service.get_user_by_uuid(launch['account_uuid'])
-                    if account is not None:
+            access = None
+            # A first Cloud launch creates the personal Workspace immediately
+            # before redirecting here. Pull a bounded number of signed event
+            # pages until both the Account and its target Workspace membership
+            # are visible instead of rejecting during the background-sync window.
+            for attempt in range(4):
+                if account is not None:
+                    self.ap.user_service._require_active_account(account)
+                    try:
+                        access = await self.ap.workspace_collaboration_service.resolve_account_workspace(
+                            account.uuid,
+                            launch['workspace_uuid'],
+                        )
                         break
+                    except WorkspaceNotFoundError:
+                        if projection_service is None or attempt == 3:
+                            raise
+                elif projection_service is None or attempt == 3:
+                    break
+
+                await projection_service.sync_once()
+                account = await self.ap.user_service.get_user_by_uuid(launch['account_uuid'])
             if account is None:
                 raise SpaceLaunchError('Launch Account is not projected into Core')
-            self.ap.user_service._require_active_account(account)
-            access = await self.ap.workspace_collaboration_service.resolve_account_workspace(
-                account.uuid,
-                launch['workspace_uuid'],
-            )
+            if access is None:  # pragma: no cover - bounded loop resolves or raises.
+                raise SpaceLaunchError('Launch Workspace is not projected into Core')
             token = await self.ap.user_service.generate_jwt_token(account)
             return self.success(
                 data={
