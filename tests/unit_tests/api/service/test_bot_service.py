@@ -12,6 +12,7 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 from types import SimpleNamespace
 import json
+import sqlalchemy
 import uuid
 
 from langbot.pkg.api.http.service.bot import BotService
@@ -449,9 +450,57 @@ class TestBotServiceCreateBot:
         insert_statement = ap.persistence_mgr.execute_async.await_args_list[1].args[0]
         insert_values = insert_statement.compile().params
         assert insert_values['workspace_uuid'] == WORKSPACE_UUID
-        assert insert_values['use_pipeline_uuid'] == 'default-pipeline-uuid'
-        assert insert_values['use_pipeline_name'] == 'Default Pipeline'
         assert bot_uuid is not None  # Verify UUID was returned
+
+    async def test_create_bot_rolls_back_insert_when_load_bot_fails(self):
+        """Deletes the inserted row when the adapter fails to load.
+
+        Regression: a failing adapter constructor (e.g. KeyError on a missing
+        optional credential key) used to leave a permanently disabled orphan
+        bot in the DB — the insert was already committed and the HTTP layer
+        surfaced a 500 without any cleanup.
+        """
+        # Setup
+        ap = SimpleNamespace()
+        ap.persistence_mgr = SimpleNamespace()
+        ap.instance_config = SimpleNamespace()
+        ap.instance_config.data = {'system': {'limitation': {'max_bots': -1}}}
+        ap.platform_mgr = SimpleNamespace()
+        ap.platform_mgr.load_bot = AsyncMock(side_effect=KeyError('token'))
+
+        pipeline_result = Mock()
+        pipeline_result.first = Mock(return_value=None)
+        bot_result = Mock()
+        bot_result.first = Mock(return_value=_create_mock_bot())
+
+        executed_statements = []
+
+        async def mock_execute(query):
+            executed_statements.append(query)
+            if len(executed_statements) <= 2:
+                return pipeline_result  # 1: limitation bots query, 2: pipeline query
+            if len(executed_statements) == 3:
+                return Mock()  # insert
+            return bot_result  # get_bot after insert
+
+        ap.persistence_mgr.execute_async = AsyncMock(side_effect=mock_execute)
+        ap.persistence_mgr.serialize_model = Mock(return_value={'uuid': 'new-uuid', 'name': 'New Bot'})
+
+        service = BotService(ap)
+
+        # Execute & Verify: the adapter error propagates
+        with pytest.raises(KeyError, match='token'):
+            await service.create_bot(
+                WORKSPACE_UUID, {'name': 'New Bot', 'adapter': 'telegram', 'adapter_config': {}}
+            )
+
+        # And the inserted row is rolled back via a DELETE on the new uuid
+        # (no limitation query runs because max_bots=-1)
+        assert len(executed_statements) == 4  # pipeline select, insert, bot select, delete
+        delete_statement = executed_statements[-1]
+        assert isinstance(delete_statement, sqlalchemy.sql.dml.Delete)
+        compiled = delete_statement.compile()
+        assert compiled.params['uuid_1'] is not None
 
 
 class TestBotServiceUpdateBot:

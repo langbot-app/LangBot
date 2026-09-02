@@ -137,7 +137,16 @@ class BotService:
 
         bot = await self.get_bot(context, bot_data['uuid'], include_secret=True)
 
-        await self.ap.platform_mgr.load_bot(context, bot)
+        try:
+            await self.ap.platform_mgr.load_bot(context, bot)
+        except Exception:
+            # The bot row was already inserted above; without this rollback a
+            # failing adapter constructor (e.g. a missing optional credential
+            # key) would leave a permanently disabled orphan bot in the DB.
+            await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.delete(persistence_bot.Bot).where(persistence_bot.Bot.uuid == bot_data['uuid'])
+            )
+            raise
 
         return bot_data['uuid']
 
