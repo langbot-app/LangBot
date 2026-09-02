@@ -486,3 +486,36 @@ async def test_direct_launch_refreshes_projection_when_account_exists_before_wor
     assert (await response.get_json())['data']['workspace_uuid'] == WORKSPACE_UUID
     application.directory_projection_service.sync_once.assert_awaited_once_with()
     assert application.workspace_collaboration_service.resolve_account_workspace.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_direct_launch_falls_back_to_snapshot_when_event_backlog_exceeds_page_budget(space_oauth_api):
+    application, client = space_oauth_api
+    projected_access = application.workspace_collaboration_service.resolve_account_workspace.return_value
+    application.workspace_collaboration_service.resolve_account_workspace = AsyncMock(
+        side_effect=[
+            WorkspaceNotFoundError('Workspace not found'),
+            WorkspaceNotFoundError('Workspace not found'),
+            WorkspaceNotFoundError('Workspace not found'),
+            WorkspaceNotFoundError('Workspace not found'),
+            projected_access,
+        ]
+    )
+    application.directory_projection_service = SimpleNamespace(
+        sync_once=AsyncMock(),
+        refresh_snapshot=AsyncMock(),
+    )
+
+    response = await client.post(
+        '/api/v1/user/space/callback',
+        json={
+            'workspace_uuid': WORKSPACE_UUID,
+            'launch_assertion': 'signed-launch-token',
+        },
+    )
+
+    assert response.status_code == 200
+    assert (await response.get_json())['data']['workspace_uuid'] == WORKSPACE_UUID
+    assert application.directory_projection_service.sync_once.await_count == 3
+    application.directory_projection_service.refresh_snapshot.assert_awaited_once_with()
+    assert application.workspace_collaboration_service.resolve_account_workspace.await_count == 5

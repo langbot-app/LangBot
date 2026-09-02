@@ -453,13 +453,28 @@ class UserRouterGroup(group.RouterGroup):
                         )
                         break
                     except WorkspaceNotFoundError:
-                        if projection_service is None or attempt == 3:
+                        if projection_service is None:
                             raise
-                elif projection_service is None or attempt == 3:
+                elif projection_service is None:
                     break
 
+                if attempt == 3:
+                    break
                 await projection_service.sync_once()
                 account = await self.ap.user_service.get_user_by_uuid(launch['account_uuid'])
+
+            if access is None and projection_service is not None:
+                # The target event may be deeper than the bounded incremental
+                # page budget. One authoritative signed snapshot catches this
+                # process up without turning the callback into unbounded polling.
+                await projection_service.refresh_snapshot()
+                account = await self.ap.user_service.get_user_by_uuid(launch['account_uuid'])
+                if account is not None:
+                    self.ap.user_service._require_active_account(account)
+                    access = await self.ap.workspace_collaboration_service.resolve_account_workspace(
+                        account.uuid,
+                        launch['workspace_uuid'],
+                    )
             if account is None:
                 raise SpaceLaunchError('Launch Account is not projected into Core')
             if access is None:  # pragma: no cover - bounded loop resolves or raises.

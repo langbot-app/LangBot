@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import datetime
 import logging
 from types import SimpleNamespace
@@ -733,6 +734,72 @@ async def test_each_replica_consumes_events_with_its_own_cursor(projection_conte
     assert len(inbox_rows) == 1
     assert first_provider.after_cursors == [1]
     assert second_provider.after_cursors == [1, 2]
+
+
+async def test_concurrent_sync_once_calls_are_serialized_per_service(projection_context):
+    application, _session_factory = projection_context
+
+    class _ConcurrentProvider(_Provider):
+        def __init__(self) -> None:
+            super().__init__([_snapshot(1)])
+            self.first_fetch_started = asyncio.Event()
+            self.release_first_fetch = asyncio.Event()
+            self.active_fetches = 0
+            self.max_active_fetches = 0
+
+        async def fetch_events(
+            self,
+            instance_uuid: str,
+            after_cursor: int,
+            limit: int,
+        ) -> DirectoryEventBatch:
+            assert instance_uuid == INSTANCE_UUID
+            assert limit == 100
+            self.after_cursors.append(after_cursor)
+            self.active_fetches += 1
+            self.max_active_fetches = max(self.max_active_fetches, self.active_fetches)
+            try:
+                if len(self.after_cursors) == 1:
+                    self.first_fetch_started.set()
+                    await self.release_first_fetch.wait()
+                cursor = after_cursor + 1
+                return DirectoryEventBatch(
+                    instance_uuid=instance_uuid,
+                    after_cursor=after_cursor,
+                    cursor=cursor,
+                    high_water_cursor=cursor,
+                    events=(
+                        DirectoryEvent(
+                            cursor=cursor,
+                            uuid=f'40000000-0000-4000-8000-{cursor:012d}',
+                            aggregate_uuid=WORKSPACE_UUID,
+                            event_type='entitlement.changed',
+                            revision=cursor,
+                            payload={
+                                'workspace_uuid': WORKSPACE_UUID,
+                                'entitlement_revision': cursor,
+                            },
+                            created_at=datetime.datetime(2026, 7, 24, 12, cursor, tzinfo=datetime.UTC),
+                        ),
+                    ),
+                )
+            finally:
+                self.active_fetches -= 1
+
+    provider = _ConcurrentProvider()
+    service = DirectoryProjectionService(application, provider, INSTANCE_UUID)
+    await service.initialize()
+
+    first = asyncio.create_task(service.sync_once())
+    await provider.first_fetch_started.wait()
+    second = asyncio.create_task(service.sync_once())
+    await asyncio.sleep(0)
+    provider.release_first_fetch.set()
+    await asyncio.gather(first, second)
+
+    assert provider.max_active_fetches == 1
+    assert provider.after_cursors == [1, 2]
+    assert service._consumer_cursor == 3
 
 
 async def test_snapshot_coverage_allows_lagging_replica_to_replay_receipts(projection_context):

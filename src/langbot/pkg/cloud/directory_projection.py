@@ -125,10 +125,21 @@ class DirectoryProjectionService:
         # The database cursor remains the shared projection high-water mark,
         # while this cursor tracks what this process has actually observed.
         self._consumer_cursor: int | None = None
+        self._sync_lock = asyncio.Lock()
 
     async def initialize(self) -> None:
         """Block Cloud startup until one full signed snapshot is committed."""
 
+        async with self._sync_lock:
+            await self._refresh_snapshot()
+
+    async def refresh_snapshot(self) -> None:
+        """Refresh from one full signed snapshot within the sync single-flight."""
+
+        async with self._sync_lock:
+            await self._refresh_snapshot()
+
+    async def _refresh_snapshot(self) -> None:
         last_superseded: _DirectorySnapshotSuperseded | None = None
         for _attempt in range(5):
             snapshot = await self.provider.fetch_snapshot(self.instance_uuid)
@@ -159,9 +170,13 @@ class DirectoryProjectionService:
                 delay = min(max(delay * 2, self.sync_interval_seconds), self.max_staleness_seconds / 2)
 
     async def sync_once(self) -> None:
+        async with self._sync_lock:
+            await self._sync_once()
+
+    async def _sync_once(self) -> None:
         cursor = self._consumer_cursor
         if cursor is None:
-            await self.initialize()
+            await self._refresh_snapshot()
             return
         batch = await self.provider.fetch_events(
             self.instance_uuid,
