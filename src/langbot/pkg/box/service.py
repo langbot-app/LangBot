@@ -455,7 +455,9 @@ class BoxService:
 
     async def _require_validated_workspace_sandbox(self, execution_context: ExecutionContext) -> None:
         if not self._available:
-            raise BoxError('Box runtime is not available. Install and start Docker to use sandbox features.')
+            raise BoxError(
+                'Box runtime is not available. Configure an available Box backend before using Box features.'
+            )
         if self._cloud_managed:
             if self._admission is None:
                 raise BoxAdmissionError('Cloud Box sandbox admission is unavailable')
@@ -565,7 +567,9 @@ class BoxService:
         skip_host_mount_validation: bool = False,
     ) -> dict:
         if not self._available:
-            raise BoxError('Box runtime is not available. Install and start Docker to use sandbox features.')
+            raise BoxError(
+                'Box runtime is not available. Configure an available Box backend before using Box features.'
+            )
         execution_context = await self._validated_execution_context(self._query_execution_context(query))
         spec_payload = self._managed_policy_payload(execution_context, spec_payload)
         await self._require_validated_workspace_sandbox(execution_context)
@@ -2142,5 +2146,8 @@ class BoxService:
             if backend_name:
                 payload['connector_error'] = f'Configured sandbox backend "{backend_name}" is unavailable'
             else:
-                payload['connector_error'] = 'No supported sandbox backend (Docker / nsjail / E2B) is available'
+                payload['connector_error'] = (
+                    'No supported sandbox backend (Docker / nsjail / E2B) is available. '
+                    'Trusted local development may explicitly select the unsafe host backend.'
+                )
         return payload

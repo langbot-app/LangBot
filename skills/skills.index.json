@@ -1349,7 +1349,8 @@
             "local-agent",
             "tools",
             "e2b",
-            "nsjail"
+            "nsjail",
+            "host"
           ],
           "automation": "",
           "setup_automation": [],

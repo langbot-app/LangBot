@@ -63,7 +63,7 @@ Key settings:
 | `api.global_api_key` | **Global API key** for the HTTP API + MCP server. Non-empty = accepted with no login/DB record; no `lbk_` prefix required. Empty = disabled. Plaintext — trusted/internal only, serve over HTTPS. |
 | `plugin.runtime_ws_url` | Standalone plugin runtime WS URL (e.g. `ws://langbot_plugin_runtime:5400/control/ws`) |
 | `box.enabled` | Master switch for the Box sandbox runtime |
-| `box.backend` | `local` (Docker/nsjail autopick) / `docker` / `nsjail` / `e2b`; env override `BOX__BACKEND` |
+| `box.backend` | `local` (Docker/nsjail autopick) / `docker` / `nsjail` / `e2b` / explicit unsafe `host`; env override `BOX__BACKEND` |
 | `box.runtime.endpoint` | External Box runtime URL (e.g. `ws://127.0.0.1:5410`); empty = local auto-managed |
 
 Many keys have `ENV__SUBKEY` overrides (e.g. `BOX__BACKEND`, `BOX__ENABLED`).
@@ -75,6 +75,10 @@ Many keys have `ENV__SUBKEY` overrides (e.g. `BOX__BACKEND`, `BOX__ENABLED`).
   with `--standalone-runtime`.
 - Box has a parallel `--standalone-box` flag; the Docker box host is
   `langbot_box:5410`.
+- `box.backend: host` runs commands directly as the Box Runtime system user.
+  It is never auto-selected, provides no sandbox isolation, and is only for
+  trusted local development. A WebSocket-controlled host backend requires
+  `LANGBOT_BOX_CONTROL_TOKEN`; local stdio control is allowed.
 
 ## Global API key — enabling for agents/automation
 
@@ -93,5 +97,7 @@ login session. See `langbot-mcp-ops` for using it, and `docs/API_KEY_AUTH.md`.
 - "No supported sandbox backend (Docker / nsjail / E2B)" with Docker running
   usually means the user isn't in the `docker` group →
   `sudo usermod -aG docker <user>` and restart in a new shell.
+- Do not use `box.backend: host` as a production fallback. It cannot enforce
+  image, filesystem, network, PID, CPU, memory, or storage isolation.
 - Box root host/container path mismatch breaks sandbox container creation.
 - Don't commit a non-empty `api.global_api_key` to version control.

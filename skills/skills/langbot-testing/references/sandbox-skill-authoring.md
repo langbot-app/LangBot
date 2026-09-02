@@ -4,7 +4,7 @@
 
 Verify that Local Agent can use sandbox tools to create, register, activate, and use a LangBot skill package through the same path a user would exercise in Debug Chat.
 
-This flow applies to Docker, nsjail, and E2B backends. API calls are useful diagnostics, but the primary pass/fail signal is the model-driven Debug Chat tool sequence.
+This flow applies to Docker, nsjail, E2B, and the explicit host development backend. Host runs commands directly as the Box Runtime user and must never be treated as sandbox-isolation coverage. API calls are useful diagnostics, but the primary pass/fail signal is the model-driven Debug Chat tool sequence.
 
 ## Preconditions
 
@@ -13,6 +13,7 @@ This flow applies to Docker, nsjail, and E2B backends. API calls are useful diag
    - `BOX_BACKEND=e2b` when validating E2B.
    - `BOX_BACKEND=nsjail` when validating nsjail.
    - `BOX_BACKEND=local` or `docker` when validating local container fallback.
+   - `BOX_BACKEND=host` only when validating explicit, trusted local direct execution.
 3. Confirm `/api/v1/box/status` reports `available: true` and the expected backend name.
 4. Confirm Debug Chat uses a model with function-calling ability.
 5. Confirm backend logs say native sandbox tools are available.
@@ -71,7 +72,7 @@ Backend logs should show:
 - `register_skill`
 - `activate`
 - a second `exec` whose workdir is `/workspace/.skills/<skill-name>`
-- `backend=e2b`, `backend=nsjail`, or the expected local backend
+- `backend=e2b`, `backend=nsjail`, `backend=host`, or the expected local backend
 
 After the run, verify the skill store through the UI or API:
 
@@ -125,6 +126,8 @@ For E2B raw HTTP diagnostics, include a valid template id such as `base`; a miss
 - Session metadata should keep LangBot logical paths such as `/workspace`; storing provider-internal paths can make later requests look incompatible.
 - nsjail versions differ. Some expose only `--disable_clone_new*` flags and use `--bindmount` instead of `--rw_bind`.
 - On WSL, cgroup v2 may exist but not be writable. The backend should warn and fall back to rlimits rather than fail the sandbox.
+- The host backend does not honor sandbox image, network, rootfs, process, or
+  resource isolation. Use a disposable workspace and low-privilege account.
 - If `ALL_PROXY` uses a SOCKS URL and `socksio` is not installed, some Python HTTP clients can fail during startup. Prefer consistent HTTP proxy variables unless SOCKS support is installed.
 
 ## Related Troubleshooting

@@ -331,7 +331,10 @@ box:
     # skill tool, skill add/edit, and stdio-mode MCP servers. Skills can still
     # be listed read-only and http/sse MCP servers continue to work.
     enabled: true
-    backend: 'local'  # 'local' (Docker/nsjail), 'docker', 'nsjail', or 'e2b'. Can be written via BOX__BACKEND.
+    # 'host' runs commands directly as the Box Runtime user without sandbox
+    # isolation. It is never auto-selected and is only for trusted local
+    # development. Can be written via BOX__BACKEND.
+    backend: 'local'  # 'local' (Docker/nsjail), 'docker', 'nsjail', 'e2b', or explicit unsafe 'host'.
     runtime:
         # LANGBOT_BOX_CONTROL_TOKEN is optional for OSS external WebSocket
         # runtimes. To protect an exposed endpoint, set the same strong secret

@@ -42,7 +42,8 @@ class SkillToolLoader(loader.ToolLoader):
         else:
             self.ap.logger.info(
                 'Skill tools (activate/register_skill) are NOT available. '
-                'No sandbox backend (Docker/nsjail/E2B) is ready.'
+                'No sandbox backend (Docker/nsjail/E2B) is ready. '
+                'Trusted local development may explicitly select box.backend=host.'
             )
 
     async def _check_sandbox_available(self) -> bool:

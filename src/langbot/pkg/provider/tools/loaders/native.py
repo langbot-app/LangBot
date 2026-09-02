@@ -222,6 +222,7 @@ class NativeToolLoader(loader.ToolLoader):
             self.ap.logger.warning(
                 'Native sandbox tools (exec/read/write/edit/glob/grep) are NOT available. '
                 'No sandbox backend (Docker/nsjail/E2B) is ready. '
+                'Trusted local development may explicitly select box.backend=host. '
                 'The LLM will not have access to code execution or file operation tools.'
             )
 

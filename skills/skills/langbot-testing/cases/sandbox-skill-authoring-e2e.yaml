@@ -13,6 +13,7 @@ tags:
   - tools
   - e2b
   - nsjail
+  - host
 skills:
   - langbot-env-setup
   - langbot-testing
@@ -23,7 +24,7 @@ env:
   - LANGBOT_LOCAL_AGENT_PIPELINE_NAME
 preconditions:
   - "LANGBOT_LOCAL_AGENT_PIPELINE_URL or LANGBOT_LOCAL_AGENT_PIPELINE_NAME points to the local-agent pipeline under test."
-  - "LangBot is started with the sandbox backend intended for this run, such as e2b or nsjail."
+  - "LangBot is started with the Box backend intended for this run, such as e2b, nsjail, or explicit host development mode."
   - "The selected model route supports tool/function calling strongly enough to invoke sandbox tools."
 steps:
   - "Start LangBot with the target sandbox backend and confirm the Box status UI or LANGBOT_BACKEND_URL /api/v1/box/status reports the expected backend."
@@ -33,7 +34,7 @@ steps:
 checks:
   - "UI: Debug Chat final assistant response contains E2E_OK:<skill-name>."
   - "Logs: The model called exec, register_skill, activate, then exec again from the activated skill path."
-  - "Logs: The selected backend name is the expected one, such as e2b or nsjail."
+  - "Logs: The selected backend name is the expected one, such as e2b, nsjail, or host."
   - "Skill store: The registered package and activated writeback match references/sandbox-skill-authoring.md."
   - "Box status: recent_error_count is 0 after the run."
 evidence_required:
