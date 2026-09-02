@@ -205,7 +205,7 @@ class QQOfficialAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
         bot = QQOfficialClient(
             app_id=config['appid'],
             secret=config['secret'],
-            token=config['token'],
+            token=config.get('token', ''),
             logger=logger,
             unified_mode=enable_webhook,
         )
