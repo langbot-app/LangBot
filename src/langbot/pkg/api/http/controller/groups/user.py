@@ -143,6 +143,13 @@ class UserRouterGroup(group.RouterGroup):
             try:
                 redirect_uri = self._validate_space_redirect_uri(redirect_uri, bind=False)
                 launch_workspace_uuid = quart.request.args.get('launch_workspace_uuid')
+                cloud_entry = quart.request.args.get('cloud_entry') == '1'
+                if (
+                    cloud_entry
+                    and not launch_workspace_uuid
+                    and getattr(getattr(self.ap, 'deployment', None), 'mode', 'oss') == 'cloud'
+                ):
+                    return self.success(data={'authorize_url': self.ap.space_service.get_cloud_entry_url()})
                 if launch_workspace_uuid:
                     if not getattr(getattr(self.ap, 'deployment', None), 'multi_workspace_enabled', False):
                         return self.fail(1, 'Space launch requires Cloud mode')
@@ -429,6 +436,16 @@ class UserRouterGroup(group.RouterGroup):
                 )
 
             account = await self.ap.user_service.get_user_by_uuid(launch['account_uuid'])
+            projection_service = self.ap.directory_projection_service
+            if account is None and projection_service is not None:
+                # A first Cloud launch creates the personal Workspace immediately
+                # before redirecting here. Pull a bounded number of signed event
+                # pages now instead of rejecting during the background-sync window.
+                for _ in range(3):
+                    await projection_service.sync_once()
+                    account = await self.ap.user_service.get_user_by_uuid(launch['account_uuid'])
+                    if account is not None:
+                        break
             if account is None:
                 raise SpaceLaunchError('Launch Account is not projected into Core')
             self.ap.user_service._require_active_account(account)
