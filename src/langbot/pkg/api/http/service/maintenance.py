@@ -117,8 +117,6 @@ class MaintenanceService:
                 ('logs', Path('data/logs')),
                 ('storage', Path('data/storage')),
                 ('vector_store', Path('data/chroma')),
-                ('plugins', Path('data/plugins')),
-                ('mcp', Path('data/mcp')),
                 ('temp', Path('data/temp')),
             ]
         else:
@@ -126,6 +124,11 @@ class MaintenanceService:
             roots = [('storage', scoped_storage_path)]
 
         sections = await asyncio.to_thread(self._collect_sections, roots)
+        runtime_processes = await self._runtime_storage_processes(
+            context,
+            core_sections=sections,
+            include_instance_storage=is_oss_singleton,
+        )
 
         monitoring_counts = await self._monitoring_counts(context)
         binary_storage = await self._binary_storage_stats(context)
@@ -146,6 +149,12 @@ class MaintenanceService:
                 'log_retention_days': log_retention_days,
             },
             'sections': sections,
+            'processes': runtime_processes,
+            'total_size_bytes': sum(
+                int(process.get('size_bytes') or 0)
+                for process in runtime_processes
+                if process.get('status') == 'available'
+            ),
             'database': {
                 'type': database_type,
                 'monitoring_counts': monitoring_counts,
@@ -156,6 +165,104 @@ class MaintenanceService:
                 'log_files': log_candidates,
             },
             'tasks': self.ap.task_mgr.get_stats() if is_oss_singleton and self.ap.task_mgr else {},
+        }
+
+    async def _runtime_storage_processes(
+        self,
+        context: TenantContext,
+        *,
+        core_sections: list[dict[str, Any]],
+        include_instance_storage: bool,
+    ) -> list[dict[str, Any]]:
+        core_process = {
+            'key': 'langbot',
+            'status': 'available',
+            'source': 'local_process',
+            'size_bytes': sum(int(item.get('size_bytes') or 0) for item in core_sections),
+            'directories': [
+                {
+                    **item,
+                    'kind': 'root',
+                    'error_count': 0,
+                }
+                for item in core_sections
+            ],
+        }
+
+        plugin_task = self._plugin_runtime_storage_process(include_instance_storage)
+        box_task = self._box_runtime_storage_process(context)
+        plugin_process, box_process = await asyncio.gather(plugin_task, box_task)
+        return [core_process, plugin_process, box_process]
+
+    async def _plugin_runtime_storage_process(self, include_instance_storage: bool) -> dict[str, Any]:
+        if not include_instance_storage:
+            return self._unavailable_process(
+                'plugin_runtime',
+                'not_applicable',
+                'Instance-wide Plugin Runtime storage is hidden in multi-Workspace deployments',
+            )
+
+        connector = getattr(self.ap, 'plugin_connector', None)
+        if connector is None or not getattr(connector, 'is_enable_plugin', True):
+            return self._unavailable_process('plugin_runtime', 'disabled', 'Plugin Runtime is disabled')
+        runtime_handler = getattr(connector, 'handler', None)
+        get_analysis = getattr(runtime_handler, 'get_storage_analysis', None)
+        if not callable(get_analysis):
+            return self._unavailable_process(
+                'plugin_runtime',
+                'unavailable',
+                'Plugin Runtime does not support storage analysis',
+            )
+        try:
+            result = await get_analysis()
+        except Exception as exc:
+            self.ap.logger.warning(f'Failed to collect Plugin Runtime storage analysis: {exc}')
+            return self._unavailable_process('plugin_runtime', 'unavailable', str(exc))
+        return self._available_process('plugin_runtime', result, source='runtime_rpc')
+
+    async def _box_runtime_storage_process(self, context: TenantContext) -> dict[str, Any]:
+        box_service = getattr(self.ap, 'box_service', None)
+        if box_service is None or not getattr(box_service, 'enabled', True):
+            return self._unavailable_process('box_runtime', 'disabled', 'Box Runtime is disabled')
+        get_analysis = getattr(box_service, 'get_storage_analysis', None)
+        if not callable(get_analysis):
+            return self._unavailable_process(
+                'box_runtime',
+                'unavailable',
+                'Box Runtime does not support storage analysis',
+            )
+        try:
+            result = await get_analysis(context)
+        except Exception as exc:
+            self.ap.logger.warning(f'Failed to collect Box Runtime storage analysis: {exc}')
+            return self._unavailable_process('box_runtime', 'unavailable', str(exc))
+        return self._available_process('box_runtime', result, source='runtime_rpc')
+
+    @staticmethod
+    def _available_process(key: str, result: Any, *, source: str) -> dict[str, Any]:
+        payload = result if isinstance(result, dict) else {}
+        directories = payload.get('directories')
+        if not isinstance(directories, list):
+            directories = []
+        return {
+            'key': key,
+            'status': 'available',
+            'source': source,
+            'size_bytes': int(payload.get('size_bytes') or 0),
+            'directories': directories,
+            'active_sessions': payload.get('active_sessions'),
+            'managed_processes': payload.get('managed_processes'),
+        }
+
+    @staticmethod
+    def _unavailable_process(key: str, status: str, error: str) -> dict[str, Any]:
+        return {
+            'key': key,
+            'status': status,
+            'source': 'runtime_rpc',
+            'size_bytes': None,
+            'directories': [],
+            'error': error,
         }
 
     def _collect_sections(

@@ -2578,6 +2578,16 @@ class RuntimeConnectionHandler(handler.Handler):
                 timeout=10,
             )
 
+    async def get_storage_analysis(self) -> dict[str, Any]:
+        """Return instance-scoped filesystem usage measured by Plugin Runtime."""
+
+        with self.installation_scope(None):
+            return await self.call_action(
+                LangBotToRuntimeAction.GET_STORAGE_ANALYSIS,
+                {},
+                timeout=60,
+            )
+
     async def reconcile_plugin_installations(
         self,
         installations: tuple[PluginInstallationDesiredState, ...],

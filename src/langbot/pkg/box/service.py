@@ -1409,6 +1409,16 @@ class BoxService:
         except Exception:
             return []
 
+    async def get_storage_analysis(self, context: TenantContext) -> dict:
+        """Return Workspace-scoped storage measured by the Box Runtime."""
+
+        if not self._enabled:
+            raise BoxError('Box runtime is disabled')
+        if not self._available:
+            raise BoxError(self._connector_error or 'Box runtime is not available')
+        execution_context = await self._validated_execution_context(context)
+        return await self.client.get_storage_analysis(action_context=self._action_context(execution_context))
+
     def build_spec(self, spec_payload: dict, skip_host_mount_validation: bool = False) -> BoxSpec:
         spec_payload = dict(spec_payload)
         spec_payload.setdefault('env', {})

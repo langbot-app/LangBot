@@ -431,6 +431,20 @@ async def test_box_service_get_sessions_delegates_to_client():
 
 
 @pytest.mark.asyncio
+async def test_box_service_get_storage_analysis_is_binding_checked_and_scoped():
+    client = Mock()
+    client.get_storage_analysis = AsyncMock(return_value={'total_size_bytes': 42, 'directories': []})
+
+    service = BoxService(make_app(Mock()), client=client)
+    service._available = True
+
+    result = await service.get_storage_analysis(_CONTEXT)
+
+    assert result == {'total_size_bytes': 42, 'directories': []}
+    client.get_storage_analysis.assert_awaited_once_with(action_context=_ACTION_CONTEXT)
+
+
+@pytest.mark.asyncio
 async def test_box_service_relay_connection_is_binding_checked_and_scoped():
     app = make_app(Mock())
     client = Mock()

@@ -308,15 +308,98 @@ class TestMaintenanceServiceGetStorageAnalysis:
         # Execute
         result = await service.get_storage_analysis(TEST_CONTEXT)
 
-        # Verify - all sections present
+        # Verify - only LangBot-owned sections are scanned by this process.
         sections = {s['key'] for s in result['sections']}
         assert 'database' in sections
         assert 'logs' in sections
         assert 'storage' in sections
         assert 'vector_store' in sections
-        assert 'plugins' in sections
-        assert 'mcp' in sections
         assert 'temp' in sections
+        assert 'plugins' not in sections
+        assert 'mcp' not in sections
+        assert [process['key'] for process in result['processes']] == [
+            'langbot',
+            'plugin_runtime',
+            'box_runtime',
+        ]
+
+    async def test_get_storage_analysis_aggregates_runtime_owned_directories(self):
+        plugin_handler = SimpleNamespace(
+            get_storage_analysis=AsyncMock(
+                return_value={
+                    'size_bytes': 25,
+                    'directories': [
+                        {
+                            'key': 'artifacts',
+                            'path': 'runtime/data/plugin-runtime/artifacts',
+                            'kind': 'root',
+                            'exists': True,
+                            'size_bytes': 25,
+                            'file_count': 2,
+                            'error_count': 0,
+                        }
+                    ],
+                }
+            )
+        )
+        box_service = SimpleNamespace(
+            enabled=True,
+            get_storage_analysis=AsyncMock(
+                return_value={
+                    'size_bytes': 40,
+                    'directories': [
+                        {
+                            'key': 'workspace',
+                            'path': 'box/data/box/default/tenants/test',
+                            'kind': 'root',
+                            'exists': True,
+                            'size_bytes': 40,
+                            'file_count': 3,
+                            'error_count': 0,
+                        },
+                        {
+                            'key': 'mcp',
+                            'path': 'box/data/box/default/tenants/test/.mcp',
+                            'kind': 'detail',
+                            'parent_key': 'workspace',
+                            'exists': True,
+                            'size_bytes': 30,
+                            'file_count': 2,
+                            'error_count': 0,
+                        },
+                    ],
+                    'active_sessions': 1,
+                    'managed_processes': 2,
+                }
+            ),
+        )
+        ap = SimpleNamespace(
+            instance_config=SimpleNamespace(data={}),
+            persistence_mgr=SimpleNamespace(execute_async=AsyncMock(return_value=_create_mock_result(scalar_value=0))),
+            logger=SimpleNamespace(warning=Mock()),
+            task_mgr=None,
+            plugin_connector=SimpleNamespace(
+                is_enable_plugin=True,
+                handler=plugin_handler,
+            ),
+            box_service=box_service,
+        )
+        service = MaintenanceService(ap)
+        service._path_size = Mock(return_value=10)
+        service._file_count = Mock(return_value=1)
+        service._monitoring_counts = AsyncMock(return_value={})
+        service._binary_storage_stats = AsyncMock(return_value={'count': 0, 'size_bytes': 0})
+        service._expired_uploaded_candidates = AsyncMock(return_value=[])
+        service._expired_log_candidates = Mock(return_value=[])
+
+        result = await service.get_storage_analysis(TEST_CONTEXT)
+
+        assert result['total_size_bytes'] == 115
+        assert result['processes'][1]['directories'][0]['key'] == 'artifacts'
+        assert result['processes'][2]['directories'][1]['key'] == 'mcp'
+        assert result['processes'][2]['managed_processes'] == 2
+        plugin_handler.get_storage_analysis.assert_awaited_once_with()
+        box_service.get_storage_analysis.assert_awaited_once_with(TEST_CONTEXT)
 
     async def test_get_storage_analysis_postgresql(self):
         """Handles PostgreSQL database type."""
