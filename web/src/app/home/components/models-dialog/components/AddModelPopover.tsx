@@ -437,6 +437,14 @@ export default function AddModelPopover({
                       )}
                     </Button>
                   </div>
+                  {testResult?.success === false && (
+                    <p
+                      role="alert"
+                      className="rounded-md border border-destructive/30 bg-destructive/5 p-2 text-xs text-destructive [overflow-wrap:anywhere]"
+                    >
+                      {testResult.message}
+                    </p>
+                  )}
                 </div>
               </div>
             ) : (

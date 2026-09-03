@@ -522,8 +522,9 @@ export default function ModelsPanel({
       setTestResult({ success: true, duration });
     } catch (err) {
       console.error('Failed to test model', err);
-      toast.error(t('models.testError') + ': ' + (err as CustomApiError).msg);
-      setTestResult(null);
+      const message = (err as CustomApiError).msg || t('models.testError');
+      toast.error(t('models.testError') + ': ' + message);
+      setTestResult({ success: false, message });
     } finally {
       setIsTesting(false);
     }

@@ -312,48 +312,55 @@ export default function AgentDebugPanel({
                 }
               >
                 {entry.direction === 'error' && <AlertCircle />}
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <Badge variant="outline">{entry.eventType}</Badge>
-                  <span className="text-xs text-muted-foreground">
-                    {entry.direction === 'output'
-                      ? t('agents.debugAgentOutput')
-                      : entry.direction === 'error'
-                        ? t('common.error')
-                        : t('agents.debugTestInput')}
-                  </span>
-                </div>
-                <pre className="min-w-0 whitespace-pre-wrap break-words font-sans text-sm leading-relaxed">
-                  {entry.text}
-                </pre>
-                {entry.detail && (
-                  <Collapsible className="mt-3">
-                    <CollapsibleTrigger asChild>
-                      <Button type="button" variant="ghost" size="sm">
-                        {t('agents.debugErrorDetails')}
-                        <ChevronDown className="size-3.5" />
-                      </Button>
-                    </CollapsibleTrigger>
-                    <CollapsibleContent>
-                      <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted p-2 font-mono text-xs text-muted-foreground">
-                        {entry.detail}
-                      </pre>
-                    </CollapsibleContent>
-                  </Collapsible>
-                )}
-                {(entry.errorCode?.endsWith('.config_invalid') ||
-                  entry.errorCode === 'runner_execution_failed' ||
-                  entry.errorCode === 'runner.timeout') &&
-                  onOpenRunnerConfig && (
-                    <Button
-                      type="button"
+                <div className="col-start-2 min-w-0">
+                  <div className="mb-2 flex min-w-0 flex-wrap items-center justify-between gap-2">
+                    <Badge
                       variant="outline"
-                      size="sm"
-                      className="mt-3"
-                      onClick={onOpenRunnerConfig}
+                      className="max-w-full overflow-hidden text-ellipsis"
                     >
-                      {t('agents.debugReviewRunnerConfig')}
-                    </Button>
+                      {entry.eventType}
+                    </Badge>
+                    <span className="shrink-0 text-xs text-muted-foreground">
+                      {entry.direction === 'output'
+                        ? t('agents.debugAgentOutput')
+                        : entry.direction === 'error'
+                          ? t('common.error')
+                          : t('agents.debugTestInput')}
+                    </span>
+                  </div>
+                  <pre className="min-w-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere] font-sans text-sm leading-relaxed">
+                    {entry.text}
+                  </pre>
+                  {entry.detail && (
+                    <Collapsible className="mt-3">
+                      <CollapsibleTrigger asChild>
+                        <Button type="button" variant="ghost" size="sm">
+                          {t('agents.debugErrorDetails')}
+                          <ChevronDown className="size-3.5" />
+                        </Button>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap break-words [overflow-wrap:anywhere] rounded-md bg-muted p-2 font-mono text-xs text-muted-foreground">
+                          {entry.detail}
+                        </pre>
+                      </CollapsibleContent>
+                    </Collapsible>
                   )}
+                  {(entry.errorCode?.endsWith('.config_invalid') ||
+                    entry.errorCode === 'runner_execution_failed' ||
+                    entry.errorCode === 'runner.timeout') &&
+                    onOpenRunnerConfig && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="mt-3"
+                        onClick={onOpenRunnerConfig}
+                      >
+                        {t('agents.debugReviewRunnerConfig')}
+                      </Button>
+                    )}
+                </div>
               </Alert>
             ))}
           </div>

@@ -27,10 +27,9 @@ export interface ProviderModels {
   rerank: RerankModel[];
 }
 
-export interface TestResult {
-  success: boolean;
-  duration: number;
-}
+export type TestResult =
+  | { success: true; duration: number }
+  | { success: false; message: string };
 
 export type SelectedScannedModel = {
   model: ScannedProviderModel;
