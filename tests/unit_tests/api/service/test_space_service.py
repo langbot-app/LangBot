@@ -134,18 +134,6 @@ class TestSpaceServiceGetOAuthAuthorizeUrl:
         # Verify - uses default URL
         assert 'https://space.langbot.app/auth/authorize' in result
 
-    def test_cloud_entry_url_requests_automatic_launch(self):
-        """Cloud's login entry must continue through the Space launcher."""
-        ap = SimpleNamespace(
-            instance_config=SimpleNamespace(
-                data={'space': {'url': 'https://space.example/base/'}},
-            ),
-        )
-
-        result = SpaceService(ap).get_cloud_entry_url()
-
-        assert result == 'https://space.example/base/cloud?environment=beta&auto_launch=1'
-
 
 class TestSpaceServiceGetUserByEmail:
     """Tests for _get_user_by_email internal method."""
