@@ -173,6 +173,77 @@ class DirectoryProjectionService:
         async with self._sync_lock:
             await self._sync_once()
 
+    async def reconcile_workspaces(self, workspace_uuids: Iterable[str]) -> None:
+        """Synchronously project an exact Workspace set without moving the event cursor."""
+
+        requested = tuple(sorted({str(value).strip() for value in workspace_uuids if str(value).strip()}))
+        if not requested:
+            raise DirectoryProjectionUnavailableError('Targeted directory reconciliation requires a Workspace')
+        if len(requested) > self.event_limit:
+            raise DirectoryProjectionUnavailableError('Targeted directory reconciliation exceeds the batch limit')
+        async with self._sync_lock:
+            delta = await self.provider.fetch_workspaces(self.instance_uuid, requested)
+            await self._apply_targeted_delta(delta, requested)
+
+    async def _apply_targeted_delta(
+        self,
+        delta: DirectoryDelta,
+        requested_workspace_uuids: tuple[str, ...],
+    ) -> None:
+        if not isinstance(delta, DirectoryDelta):
+            raise DirectoryProjectionUnavailableError('Directory provider returned an invalid delta')
+        workspace_count, membership_count = self._validate_batch_capacity(
+            delta.workspaces,
+            full_snapshot=False,
+        )
+        delta = DirectoryDelta.model_validate(delta.model_dump())
+        if delta.instance_uuid != self.instance_uuid:
+            raise DirectoryProjectionUnavailableError('Directory delta targets another LangBot instance')
+        requested = set(requested_workspace_uuids)
+        if set(delta.requested_workspace_uuids) != requested:
+            raise DirectoryProjectionUnavailableError('Directory delta does not match the requested Workspaces')
+        if {workspace.uuid for workspace in delta.workspaces} != requested:
+            raise DirectoryProjectionUnavailableError('Directory delta omitted a requested Workspace')
+
+        directory_uow = getattr(self.ap.persistence_mgr, 'directory_projection_uow', None)
+        if not callable(directory_uow):
+            raise DirectoryProjectionUnavailableError('Directory projection persistence scope is unavailable')
+
+        async with directory_uow(self.instance_uuid) as uow:
+            session = uow.session
+            state = await session.scalar(
+                sqlalchemy.select(DirectoryProjectionState)
+                .where(DirectoryProjectionState.instance_uuid == self.instance_uuid)
+                .with_for_update()
+            )
+            if state is None:
+                raise DirectoryProjectionUnavailableError('Directory projection is not initialized')
+            snapshot = DirectorySnapshot(
+                instance_uuid=self.instance_uuid,
+                cursor=state.cursor,
+                generated_at=delta.generated_at,
+                workspaces=delta.workspaces,
+            )
+            accounts_by_uuid = await self._apply_accounts(session, snapshot, preserve_existing=True)
+            await self._apply_workspaces(session, snapshot, accounts_by_uuid=accounts_by_uuid)
+            active_workspace_count = await self._enforce_active_workspace_capacity(session)
+            await session.flush()
+
+        await self._update_entitlement_workspace_activity(
+            snapshot.workspaces,
+            requested_workspace_uuids=requested,
+        )
+        self._publish_runtime_execution_projection(
+            snapshot.workspaces,
+            affected_workspace_uuids=requested,
+        )
+        self._request_model_catalog_sync()
+        self._record_batch_cardinality(
+            active_workspaces=active_workspace_count,
+            workspaces=workspace_count,
+            memberships=membership_count,
+        )
+
     async def _sync_once(self) -> None:
         cursor = self._consumer_cursor
         if cursor is None:
@@ -723,7 +794,13 @@ class DirectoryProjectionService:
         for row in inbox_rows:
             row.applied_at = now
 
-    async def _apply_accounts(self, session: Any, snapshot: DirectorySnapshot) -> dict[str, User]:
+    async def _apply_accounts(
+        self,
+        session: Any,
+        snapshot: DirectorySnapshot,
+        *,
+        preserve_existing: bool = False,
+    ) -> dict[str, User]:
         selected: dict[str, DirectoryMember] = {}
         emails: dict[str, str] = {}
         for workspace in snapshot.workspaces:
@@ -788,6 +865,12 @@ class DirectoryProjectionService:
                 continue
             if account.source != AccountSource.CLOUD_PROJECTION.value:
                 raise DirectoryProjectionUnavailableError('Directory account UUID collides with a local Core account')
+            if preserve_existing:
+                # A targeted Workspace fetch has no independently monotonic
+                # Account revision. It may create a missing runtime shadow, but
+                # ordered event/snapshot projection remains the only updater of
+                # existing Account identity and status fields.
+                continue
             if account.projection_revision > snapshot.cursor:
                 raise DirectoryProjectionUnavailableError('Directory account revision rolled back')
             projected_account = self._account_projection(member)

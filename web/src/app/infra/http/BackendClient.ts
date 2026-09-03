@@ -1385,18 +1385,12 @@ export class BackendClient extends BaseHttpClient {
   }
 
   // ============ Space OAuth API (Redirect Flow) ============
-  public getSpaceAuthorizeUrl(
-    redirectUri: string,
-    options?: { cloudEntry?: boolean },
-  ): Promise<{
+  public getSpaceAuthorizeUrl(redirectUri: string): Promise<{
     authorize_url: string;
   }> {
     return this.get(
       '/api/v1/user/space/authorize-url',
-      {
-        redirect_uri: redirectUri,
-        ...(options?.cloudEntry ? { cloud_entry: '1' } : {}),
-      },
+      { redirect_uri: redirectUri },
       { skipWorkspace: true },
     );
   }

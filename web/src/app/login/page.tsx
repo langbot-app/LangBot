@@ -202,13 +202,7 @@ export default function Login() {
     try {
       const currentOrigin = window.location.origin;
       const redirectUri = `${currentOrigin}/auth/space/callback`;
-      const response = await httpClient.getSpaceAuthorizeUrl(redirectUri, {
-        // Cloud Accounts must be launched from Space so a first visit can
-        // lazily create and project the personal Workspace. Invitation login
-        // remains on the OAuth callback path because it targets the invited
-        // Workspace instead.
-        cloudEntry: !getPendingInvitationToken(),
-      });
+      const response = await httpClient.getSpaceAuthorizeUrl(redirectUri);
       window.location.href = response.authorize_url;
     } catch {
       toast.error(t('common.spaceLoginFailed'));

@@ -9,7 +9,6 @@ from .. import group
 from .....entity.errors import account as account_errors
 from ...context import RequestContext
 from .....cloud.launch import SpaceLaunchError
-from .....workspace.errors import WorkspaceNotFoundError
 from ...service.user import ControlPlaneDirectoryRequiredError, PublicRegistrationClosedError
 
 
@@ -144,13 +143,6 @@ class UserRouterGroup(group.RouterGroup):
             try:
                 redirect_uri = self._validate_space_redirect_uri(redirect_uri, bind=False)
                 launch_workspace_uuid = quart.request.args.get('launch_workspace_uuid')
-                cloud_entry = quart.request.args.get('cloud_entry') == '1'
-                if (
-                    cloud_entry
-                    and not launch_workspace_uuid
-                    and getattr(getattr(self.ap, 'deployment', None), 'mode', 'oss') == 'cloud'
-                ):
-                    return self.success(data={'authorize_url': self.ap.space_service.get_cloud_entry_url()})
                 if launch_workspace_uuid:
                     if not getattr(getattr(self.ap, 'deployment', None), 'multi_workspace_enabled', False):
                         return self.fail(1, 'Space launch requires Cloud mode')
@@ -230,20 +222,31 @@ class UserRouterGroup(group.RouterGroup):
                 access_token = token_data.get('access_token')
                 refresh_token = token_data.get('refresh_token')
                 expires_in = token_data.get('expires_in', 0)
+                cloud_workspace_uuid = token_data.get('cloud_workspace_uuid')
 
                 if not access_token:
                     return self.fail(1, 'Failed to get access token from Space')
 
-                # Authenticate and create/update local user
+                cloud_mode = getattr(getattr(self.ap, 'deployment', None), 'mode', 'oss') == 'cloud'
+                if cloud_mode and launch_workspace_uuid and launch_workspace_uuid != cloud_workspace_uuid:
+                    return self.fail(1, 'Space OAuth Workspace binding mismatch')
+                target_workspace_uuid = launch_workspace_uuid or cloud_workspace_uuid
+                if cloud_mode:
+                    if not target_workspace_uuid:
+                        return self.fail(1, 'Space OAuth response is missing the Cloud Workspace binding')
+                    await self.ap.directory_projection_service.reconcile_workspaces((target_workspace_uuid,))
+
+                # Authenticate only after the signed, exact Workspace delta has
+                # established the Account and membership runtime shadow rows.
                 jwt_token, user_obj = await self.ap.user_service.authenticate_space_user(
                     access_token, refresh_token, expires_in
                 )
 
-                if launch_workspace_uuid:
+                if target_workspace_uuid:
                     try:
                         access = await self.ap.workspace_collaboration_service.resolve_account_workspace(
                             user_obj.uuid,
-                            launch_workspace_uuid,
+                            target_workspace_uuid,
                         )
                     except Exception:
                         self.ap.logger.warning('Rejected Space OAuth launch for unauthorized Workspace')
@@ -436,49 +439,18 @@ class UserRouterGroup(group.RouterGroup):
                     }
                 )
 
-            account = await self.ap.user_service.get_user_by_uuid(launch['account_uuid'])
             projection_service = self.ap.directory_projection_service
-            access = None
-            # A first Cloud launch creates the personal Workspace immediately
-            # before redirecting here. Pull a bounded number of signed event
-            # pages until both the Account and its target Workspace membership
-            # are visible instead of rejecting during the background-sync window.
-            for attempt in range(4):
-                if account is not None:
-                    self.ap.user_service._require_active_account(account)
-                    try:
-                        access = await self.ap.workspace_collaboration_service.resolve_account_workspace(
-                            account.uuid,
-                            launch['workspace_uuid'],
-                        )
-                        break
-                    except WorkspaceNotFoundError:
-                        if projection_service is None:
-                            raise
-                elif projection_service is None:
-                    break
-
-                if attempt == 3:
-                    break
-                await projection_service.sync_once()
-                account = await self.ap.user_service.get_user_by_uuid(launch['account_uuid'])
-
-            if access is None and projection_service is not None:
-                # The target event may be deeper than the bounded incremental
-                # page budget. One authoritative signed snapshot catches this
-                # process up without turning the callback into unbounded polling.
-                await projection_service.refresh_snapshot()
-                account = await self.ap.user_service.get_user_by_uuid(launch['account_uuid'])
-                if account is not None:
-                    self.ap.user_service._require_active_account(account)
-                    access = await self.ap.workspace_collaboration_service.resolve_account_workspace(
-                        account.uuid,
-                        launch['workspace_uuid'],
-                    )
+            if projection_service is None:
+                raise SpaceLaunchError('Cloud directory projection is unavailable')
+            await projection_service.reconcile_workspaces((launch['workspace_uuid'],))
+            account = await self.ap.user_service.get_user_by_uuid(launch['account_uuid'])
             if account is None:
                 raise SpaceLaunchError('Launch Account is not projected into Core')
-            if access is None:  # pragma: no cover - bounded loop resolves or raises.
-                raise SpaceLaunchError('Launch Workspace is not projected into Core')
+            self.ap.user_service._require_active_account(account)
+            access = await self.ap.workspace_collaboration_service.resolve_account_workspace(
+                account.uuid,
+                launch['workspace_uuid'],
+            )
             token = await self.ap.user_service.generate_jwt_token(account)
             return self.success(
                 data={

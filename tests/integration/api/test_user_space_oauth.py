@@ -11,7 +11,6 @@ import pytest
 import quart
 
 from langbot.pkg.api.http.controller.groups.user import UserRouterGroup
-from langbot.pkg.workspace.errors import WorkspaceNotFoundError
 
 
 pytestmark = pytest.mark.integration
@@ -71,7 +70,6 @@ async def space_oauth_api():
     application.space_service.get_oauth_authorize_url = Mock(
         side_effect=lambda redirect_uri, state: f'https://space.example/authorize?state={state}'
     )
-    application.space_service.get_cloud_entry_url = Mock(return_value='https://space.example/cloud?environment=beta')
     application.space_service.exchange_oauth_code = AsyncMock(
         return_value={
             'access_token': 'space-access-token',
@@ -129,7 +127,7 @@ async def test_cloud_launch_state_is_server_issued_and_workspace_bound(space_oau
 
 
 @pytest.mark.asyncio
-async def test_cloud_login_entry_redirects_to_space_workspace_launcher(space_oauth_api):
+async def test_cloud_login_entry_uses_normal_stateful_oauth(space_oauth_api):
     application, client = space_oauth_api
     application.deployment.mode = 'cloud'
 
@@ -143,9 +141,9 @@ async def test_cloud_login_entry_redirects_to_space_workspace_launcher(space_oau
     )
 
     assert response.status_code == 200
-    assert (await response.get_json())['data']['authorize_url'] == ('https://space.example/cloud?environment=beta')
-    application.space_service.get_cloud_entry_url.assert_called_once_with()
-    application.user_service.issue_space_oauth_state.assert_not_awaited()
+    authorize_url = (await response.get_json())['data']['authorize_url']
+    assert authorize_url.startswith('https://space.example/authorize?state=')
+    application.user_service.issue_space_oauth_state.assert_awaited_once_with('login')
 
 
 @pytest.mark.asyncio
@@ -290,6 +288,123 @@ async def test_login_callback_requires_and_consumes_server_state(space_oauth_api
 
 
 @pytest.mark.asyncio
+async def test_cloud_login_callback_reconciles_authorized_workspace_before_local_authentication(space_oauth_api):
+    application, client = space_oauth_api
+    application.deployment.mode = 'cloud'
+    calls: list[str] = []
+    application.directory_projection_service = SimpleNamespace(
+        reconcile_workspaces=AsyncMock(side_effect=lambda _workspace_uuids: calls.append('reconcile'))
+    )
+    application.space_service.exchange_oauth_code.return_value = {
+        'access_token': 'space-access-token',
+        'refresh_token': 'space-refresh-token',
+        'expires_in': 3600,
+        'cloud_workspace_uuid': WORKSPACE_UUID,
+    }
+
+    authenticated_account = application.user_service.authenticate_space_user.return_value[1]
+
+    async def authenticate(*_args):
+        calls.append('authenticate')
+        return 'space-login-token', authenticated_account
+
+    application.user_service.authenticate_space_user.side_effect = authenticate
+
+    response = await client.post(
+        '/api/v1/user/space/callback',
+        json={'code': 'oauth-code', 'state': 'opaque-login-state'},
+    )
+
+    assert response.status_code == 200
+    assert (await response.get_json())['data']['workspace_uuid'] == WORKSPACE_UUID
+    assert calls == ['reconcile', 'authenticate']
+    application.directory_projection_service.reconcile_workspaces.assert_awaited_once_with((WORKSPACE_UUID,))
+
+
+@pytest.mark.asyncio
+async def test_cloud_login_callback_fails_closed_without_workspace_binding(space_oauth_api):
+    application, client = space_oauth_api
+    application.deployment.mode = 'cloud'
+    application.directory_projection_service = SimpleNamespace(reconcile_workspaces=AsyncMock())
+
+    response = await client.post(
+        '/api/v1/user/space/callback',
+        json={'code': 'oauth-code', 'state': 'opaque-login-state'},
+    )
+
+    payload = await response.get_json()
+    assert response.status_code == 200
+    assert payload['code'] == 1
+    assert 'Cloud Workspace binding' in payload['msg']
+    application.directory_projection_service.reconcile_workspaces.assert_not_awaited()
+    application.user_service.authenticate_space_user.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_cloud_login_callback_requires_code_binding_for_launch_state(space_oauth_api):
+    application, client = space_oauth_api
+    application.deployment.mode = 'cloud'
+    application.directory_projection_service = SimpleNamespace(reconcile_workspaces=AsyncMock())
+    application.user_service.consume_space_oauth_state_details.return_value = SimpleNamespace(
+        launch_workspace_uuid=WORKSPACE_UUID
+    )
+
+    response = await client.post(
+        '/api/v1/user/space/callback',
+        json={'code': 'oauth-code', 'state': 'opaque-login-state'},
+    )
+
+    payload = await response.get_json()
+    assert response.status_code == 200
+    assert payload['code'] == 1
+    assert 'Workspace binding' in payload['msg']
+    application.directory_projection_service.reconcile_workspaces.assert_not_awaited()
+    application.user_service.authenticate_space_user.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_cloud_login_callback_rejects_conflicting_state_and_code_workspace_bindings(space_oauth_api):
+    application, client = space_oauth_api
+    application.deployment.mode = 'cloud'
+    application.directory_projection_service = SimpleNamespace(reconcile_workspaces=AsyncMock())
+    application.user_service.consume_space_oauth_state_details.return_value = SimpleNamespace(
+        launch_workspace_uuid=WORKSPACE_UUID
+    )
+    application.space_service.exchange_oauth_code.return_value = {
+        'access_token': 'space-access-token',
+        'refresh_token': 'space-refresh-token',
+        'expires_in': 3600,
+        'cloud_workspace_uuid': 'workspace-from-another-flow',
+    }
+
+    response = await client.post(
+        '/api/v1/user/space/callback',
+        json={'code': 'oauth-code', 'state': 'opaque-login-state'},
+    )
+
+    payload = await response.get_json()
+    assert response.status_code == 200
+    assert payload['code'] == 1
+    assert 'Workspace binding' in payload['msg']
+    application.directory_projection_service.reconcile_workspaces.assert_not_awaited()
+    application.user_service.authenticate_space_user.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_oss_login_callback_does_not_request_cloud_reconciliation(space_oauth_api):
+    application, client = space_oauth_api
+    application.directory_projection_service = SimpleNamespace(reconcile_workspaces=AsyncMock())
+
+    response = await client.post(
+        '/api/v1/user/space/callback',
+        json={'code': 'oauth-code', 'state': 'opaque-login-state'},
+    )
+
+    assert response.status_code == 200
+    application.directory_projection_service.reconcile_workspaces.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_login_callback_launch_state_selects_asserted_workspace(space_oauth_api):
     application, client = space_oauth_api
     application.user_service.consume_space_oauth_state_details.reset_mock()
@@ -417,6 +532,7 @@ async def test_direct_launch_assertion_does_not_consume_normal_oauth_state(space
     application, client = space_oauth_api
     application.user_service.consume_space_oauth_state.reset_mock()
     application.space_service.exchange_oauth_code.reset_mock()
+    application.directory_projection_service = SimpleNamespace(reconcile_workspaces=AsyncMock())
 
     response = await client.post(
         '/api/v1/user/space/callback',
@@ -440,7 +556,7 @@ async def test_direct_launch_assertion_does_not_consume_normal_oauth_state(space
 
 
 @pytest.mark.asyncio
-async def test_direct_launch_refreshes_new_workspace_projection_before_rejecting_account(space_oauth_api):
+async def test_direct_launch_reconciles_exact_workspace_before_resolving_access(space_oauth_api):
     application, client = space_oauth_api
     projected_account = SimpleNamespace(
         uuid='account-a',
@@ -448,8 +564,8 @@ async def test_direct_launch_refreshes_new_workspace_projection_before_rejecting
         account_type='space',
         status='active',
     )
-    application.user_service.get_user_by_uuid = AsyncMock(side_effect=[None, None, projected_account])
-    application.directory_projection_service = SimpleNamespace(sync_once=AsyncMock())
+    application.user_service.get_user_by_uuid = AsyncMock(return_value=projected_account)
+    application.directory_projection_service = SimpleNamespace(reconcile_workspaces=AsyncMock())
 
     response = await client.post(
         '/api/v1/user/space/callback',
@@ -461,61 +577,5 @@ async def test_direct_launch_refreshes_new_workspace_projection_before_rejecting
 
     assert response.status_code == 200
     assert (await response.get_json())['data']['workspace_uuid'] == WORKSPACE_UUID
-    assert application.directory_projection_service.sync_once.await_count == 2
-    assert application.user_service.get_user_by_uuid.await_count == 3
-
-
-@pytest.mark.asyncio
-async def test_direct_launch_refreshes_projection_when_account_exists_before_workspace(space_oauth_api):
-    application, client = space_oauth_api
-    projected_access = application.workspace_collaboration_service.resolve_account_workspace.return_value
-    application.workspace_collaboration_service.resolve_account_workspace = AsyncMock(
-        side_effect=[WorkspaceNotFoundError('Workspace not found'), projected_access]
-    )
-    application.directory_projection_service = SimpleNamespace(sync_once=AsyncMock())
-
-    response = await client.post(
-        '/api/v1/user/space/callback',
-        json={
-            'workspace_uuid': WORKSPACE_UUID,
-            'launch_assertion': 'signed-launch-token',
-        },
-    )
-
-    assert response.status_code == 200
-    assert (await response.get_json())['data']['workspace_uuid'] == WORKSPACE_UUID
-    application.directory_projection_service.sync_once.assert_awaited_once_with()
-    assert application.workspace_collaboration_service.resolve_account_workspace.await_count == 2
-
-
-@pytest.mark.asyncio
-async def test_direct_launch_falls_back_to_snapshot_when_event_backlog_exceeds_page_budget(space_oauth_api):
-    application, client = space_oauth_api
-    projected_access = application.workspace_collaboration_service.resolve_account_workspace.return_value
-    application.workspace_collaboration_service.resolve_account_workspace = AsyncMock(
-        side_effect=[
-            WorkspaceNotFoundError('Workspace not found'),
-            WorkspaceNotFoundError('Workspace not found'),
-            WorkspaceNotFoundError('Workspace not found'),
-            WorkspaceNotFoundError('Workspace not found'),
-            projected_access,
-        ]
-    )
-    application.directory_projection_service = SimpleNamespace(
-        sync_once=AsyncMock(),
-        refresh_snapshot=AsyncMock(),
-    )
-
-    response = await client.post(
-        '/api/v1/user/space/callback',
-        json={
-            'workspace_uuid': WORKSPACE_UUID,
-            'launch_assertion': 'signed-launch-token',
-        },
-    )
-
-    assert response.status_code == 200
-    assert (await response.get_json())['data']['workspace_uuid'] == WORKSPACE_UUID
-    assert application.directory_projection_service.sync_once.await_count == 3
-    application.directory_projection_service.refresh_snapshot.assert_awaited_once_with()
-    assert application.workspace_collaboration_service.resolve_account_workspace.await_count == 5
+    application.directory_projection_service.reconcile_workspaces.assert_awaited_once_with((WORKSPACE_UUID,))
+    application.user_service.get_user_by_uuid.assert_awaited_once_with('account-a')
