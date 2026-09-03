@@ -7,11 +7,12 @@ const source = fs.readFileSync(
   'utf8',
 );
 
-test('normal Cloud login enters through the Space Workspace launcher', () => {
-  assert.match(source, /cloudEntry:\s*!getPendingInvitationToken\(\)/);
-  assert.match(source, /getSpaceAuthorizeUrl\(redirectUri,\s*\{/);
+test('normal Cloud login starts stateful Space OAuth', () => {
+  assert.match(source, /getSpaceAuthorizeUrl\(redirectUri\)/);
+  assert.doesNotMatch(source, /cloudEntry/);
 });
 
 test('invitation login remains on the OAuth callback path', () => {
-  assert.match(source, /cloudEntry:\s*!getPendingInvitationToken\(\)/);
+  assert.match(source, /getPendingInvitationToken\(\)/);
+  assert.match(source, /getSpaceAuthorizeUrl\(redirectUri\)/);
 });

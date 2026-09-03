@@ -71,7 +71,7 @@ async def space_oauth_api():
     application.space_service.get_oauth_authorize_url = Mock(
         side_effect=lambda redirect_uri, state: f'https://space.example/authorize?state={state}'
     )
-    application.space_service.get_cloud_entry_url = Mock(return_value='https://space.example/cloud?environment=beta')
+
     application.space_service.exchange_oauth_code = AsyncMock(
         return_value={
             'access_token': 'space-access-token',
@@ -129,7 +129,7 @@ async def test_cloud_launch_state_is_server_issued_and_workspace_bound(space_oau
 
 
 @pytest.mark.asyncio
-async def test_cloud_login_entry_redirects_to_space_workspace_launcher(space_oauth_api):
+async def test_cloud_login_entry_starts_stateful_space_oauth(space_oauth_api):
     application, client = space_oauth_api
     application.deployment.mode = 'cloud'
 
@@ -143,9 +143,9 @@ async def test_cloud_login_entry_redirects_to_space_workspace_launcher(space_oau
     )
 
     assert response.status_code == 200
-    assert (await response.get_json())['data']['authorize_url'] == ('https://space.example/cloud?environment=beta')
-    application.space_service.get_cloud_entry_url.assert_called_once_with()
-    application.user_service.issue_space_oauth_state.assert_not_awaited()
+    authorize_url = (await response.get_json())['data']['authorize_url']
+    assert authorize_url.startswith('https://space.example/authorize?state=')
+    application.user_service.issue_space_oauth_state.assert_awaited_once_with('login')
 
 
 @pytest.mark.asyncio

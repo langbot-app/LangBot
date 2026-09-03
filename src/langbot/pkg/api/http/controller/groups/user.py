@@ -144,13 +144,6 @@ class UserRouterGroup(group.RouterGroup):
             try:
                 redirect_uri = self._validate_space_redirect_uri(redirect_uri, bind=False)
                 launch_workspace_uuid = quart.request.args.get('launch_workspace_uuid')
-                cloud_entry = quart.request.args.get('cloud_entry') == '1'
-                if (
-                    cloud_entry
-                    and not launch_workspace_uuid
-                    and getattr(getattr(self.ap, 'deployment', None), 'mode', 'oss') == 'cloud'
-                ):
-                    return self.success(data={'authorize_url': self.ap.space_service.get_cloud_entry_url()})
                 if launch_workspace_uuid:
                     if not getattr(getattr(self.ap, 'deployment', None), 'multi_workspace_enabled', False):
                         return self.fail(1, 'Space launch requires Cloud mode')
