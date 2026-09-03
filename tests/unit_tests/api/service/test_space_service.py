@@ -95,7 +95,9 @@ class TestSpaceServiceGetOAuthAuthorizeUrl:
         result = service.get_oauth_authorize_url('http://localhost/callback')
 
         # Verify
-        assert parse_qs(urlsplit(result).query)['redirect_uri'] == ['http://localhost/callback']
+        query = parse_qs(urlsplit(result).query)
+        assert query['redirect_uri'] == ['http://localhost/callback']
+        assert query['code_contract'] == ['redirect-v1']
         assert 'https://space.langbot.app/auth/authorize' in result
 
     def test_get_oauth_authorize_url_with_state(self):

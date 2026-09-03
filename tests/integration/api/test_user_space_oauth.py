@@ -270,11 +270,11 @@ async def test_server_side_webhook_origin_supports_bundled_ui(space_oauth_api):
 async def test_login_callback_requires_and_consumes_server_state(space_oauth_api):
     application, client = space_oauth_api
 
-    missing = await client.post('/api/v1/user/space/callback', json={'code': 'oauth-code'})
+    missing = await client.post('/api/v1/user/space/callback', json={'code': 'v4_oauth-code'})
     response = await client.post(
         '/api/v1/user/space/callback',
         json={
-            'code': 'oauth-code',
+            'code': 'v4_oauth-code',
             'state': 'opaque-login-state',
             'redirect_uri': 'https://oss.example/auth/space/callback',
         },
@@ -285,11 +285,27 @@ async def test_login_callback_requires_and_consumes_server_state(space_oauth_api
     assert (await response.get_json())['data']['token'] == 'space-login-token'
     application.user_service.consume_space_oauth_state_details.assert_awaited_once_with('opaque-login-state', 'login')
     application.space_service.exchange_oauth_code.assert_awaited_once_with(
-        'oauth-code',
+        'v4_oauth-code',
         [WORKSPACE_UUID],
         {WORKSPACE_UUID: int(WORKSPACE_CREATED_AT.timestamp())},
         redirect_uri='https://oss.example/auth/space/callback',
     )
+
+
+@pytest.mark.asyncio
+async def test_login_callback_rejects_downgraded_legacy_code(space_oauth_api):
+    application, client = space_oauth_api
+
+    response = await client.post(
+        '/api/v1/user/space/callback',
+        json={'code': 'v2_legacy-code', 'state': 'opaque-login-state'},
+    )
+
+    payload = await response.get_json()
+    assert response.status_code == 200
+    assert payload['code'] == 1
+    assert 'code contract' in payload['msg']
+    application.space_service.exchange_oauth_code.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -317,7 +333,7 @@ async def test_cloud_login_callback_reconciles_authorized_workspace_before_local
 
     response = await client.post(
         '/api/v1/user/space/callback',
-        json={'code': 'oauth-code', 'state': 'opaque-login-state'},
+        json={'code': 'v4_oauth-code', 'state': 'opaque-login-state'},
     )
 
     assert response.status_code == 200
@@ -334,7 +350,7 @@ async def test_cloud_login_callback_fails_closed_without_workspace_binding(space
 
     response = await client.post(
         '/api/v1/user/space/callback',
-        json={'code': 'oauth-code', 'state': 'opaque-login-state'},
+        json={'code': 'v4_oauth-code', 'state': 'opaque-login-state'},
     )
 
     payload = await response.get_json()
@@ -356,7 +372,7 @@ async def test_cloud_login_callback_requires_code_binding_for_launch_state(space
 
     response = await client.post(
         '/api/v1/user/space/callback',
-        json={'code': 'oauth-code', 'state': 'opaque-login-state'},
+        json={'code': 'v4_oauth-code', 'state': 'opaque-login-state'},
     )
 
     payload = await response.get_json()
@@ -384,7 +400,7 @@ async def test_cloud_login_callback_rejects_conflicting_state_and_code_workspace
 
     response = await client.post(
         '/api/v1/user/space/callback',
-        json={'code': 'oauth-code', 'state': 'opaque-login-state'},
+        json={'code': 'v4_oauth-code', 'state': 'opaque-login-state'},
     )
 
     payload = await response.get_json()
@@ -402,7 +418,7 @@ async def test_oss_login_callback_does_not_request_cloud_reconciliation(space_oa
 
     response = await client.post(
         '/api/v1/user/space/callback',
-        json={'code': 'oauth-code', 'state': 'opaque-login-state'},
+        json={'code': 'v4_oauth-code', 'state': 'opaque-login-state'},
     )
 
     assert response.status_code == 200
@@ -419,7 +435,7 @@ async def test_login_callback_launch_state_selects_asserted_workspace(space_oaut
 
     response = await client.post(
         '/api/v1/user/space/callback',
-        json={'code': 'oauth-code', 'state': 'opaque-login-state'},
+        json={'code': 'v4_oauth-code', 'state': 'opaque-login-state'},
     )
 
     assert response.status_code == 200
@@ -518,11 +534,11 @@ async def test_bind_callback_uses_opaque_state_and_never_treats_it_as_jwt(space_
 
     rejected = await client.post(
         '/api/v1/user/bind-space',
-        json={'code': 'attacker-code', 'state': 'jwt.must-not-be-used'},
+        json={'code': 'v4_attacker-code', 'state': 'jwt.must-not-be-used'},
     )
     response = await client.post(
         '/api/v1/user/bind-space',
-        json={'code': 'oauth-code', 'state': 'opaque-bind-state'},
+        json={'code': 'v4_oauth-code', 'state': 'opaque-bind-state'},
     )
 
     assert rejected.status_code == 401
@@ -531,7 +547,7 @@ async def test_bind_callback_uses_opaque_state_and_never_treats_it_as_jwt(space_
     application.user_service.verify_jwt_token.assert_not_awaited()
     application.user_service.bind_space_account.assert_awaited_once_with(
         'owner@example.com',
-        'oauth-code',
+        'v4_oauth-code',
         redirect_uri='http://localhost/auth/space/callback?mode=bind',
     )
 

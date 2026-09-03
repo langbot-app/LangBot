@@ -202,6 +202,8 @@ class UserRouterGroup(group.RouterGroup):
                 return self.fail(1, 'Missing authorization code')
             if not state:
                 return self.fail(1, 'Missing state parameter')
+            if not str(code).startswith('v4_'):
+                return self.fail(1, 'Unsupported Space OAuth code contract')
 
             try:
                 redirect_uri = self._validate_space_redirect_uri(str(redirect_uri), bind=False)
@@ -392,6 +394,8 @@ class UserRouterGroup(group.RouterGroup):
 
             if not state:
                 return self.http_status(400, -1, 'Missing state parameter')
+            if not str(code).startswith('v4_'):
+                return self.http_status(400, -1, 'Unsupported Space OAuth code contract')
 
             try:
                 user_obj = await self.ap.user_service.consume_space_oauth_state(state, 'bind')

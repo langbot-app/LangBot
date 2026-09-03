@@ -119,7 +119,7 @@ class SpaceService:
 
         space_config = self._get_space_config()
         authorize_url = space_config['oauth_authorize_url']
-        params = {'redirect_uri': redirect_uri}
+        params = {'redirect_uri': redirect_uri, 'code_contract': 'redirect-v1'}
         if state:
             params['state'] = state
         return f'{authorize_url}?{urlencode(params)}'
