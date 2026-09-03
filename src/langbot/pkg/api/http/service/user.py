@@ -774,7 +774,7 @@ class UserService:
             f'email:{normalized_email}',
         )
 
-    async def bind_space_account(self, user_email: str, code: str) -> user.User:
+    async def bind_space_account(self, user_email: str, code: str, *, redirect_uri: str = '') -> user.User:
         """Bind Space account to existing local account"""
         local_account = await self.get_user_by_email(user_email)
         if local_account is None:
@@ -794,12 +794,13 @@ class UserService:
                 code,
                 [binding.workspace_uuid],
                 {binding.workspace_uuid: created_ts},
+                redirect_uri=redirect_uri,
             )
         else:
             # Compatibility for early/bootstrap call sites that have not wired
             # WorkspaceService yet; old Space servers still derive the legacy
             # Workspace identity from instance_id when the field is omitted.
-            token_data = await self.ap.space_service.exchange_oauth_code(code)
+            token_data = await self.ap.space_service.exchange_oauth_code(code, redirect_uri=redirect_uri)
         access_token = token_data.get('access_token')
         refresh_token = token_data.get('refresh_token')
         expires_in = token_data.get('expires_in', 0)

@@ -273,7 +273,11 @@ async def test_login_callback_requires_and_consumes_server_state(space_oauth_api
     missing = await client.post('/api/v1/user/space/callback', json={'code': 'oauth-code'})
     response = await client.post(
         '/api/v1/user/space/callback',
-        json={'code': 'oauth-code', 'state': 'opaque-login-state'},
+        json={
+            'code': 'oauth-code',
+            'state': 'opaque-login-state',
+            'redirect_uri': 'https://oss.example/auth/space/callback',
+        },
     )
 
     assert (await missing.get_json())['code'] == 1
@@ -284,6 +288,7 @@ async def test_login_callback_requires_and_consumes_server_state(space_oauth_api
         'oauth-code',
         [WORKSPACE_UUID],
         {WORKSPACE_UUID: int(WORKSPACE_CREATED_AT.timestamp())},
+        redirect_uri='https://oss.example/auth/space/callback',
     )
 
 
@@ -524,7 +529,11 @@ async def test_bind_callback_uses_opaque_state_and_never_treats_it_as_jwt(space_
     assert response.status_code == 200
     assert (await response.get_json())['data']['token'] == 'rotated-account-token'
     application.user_service.verify_jwt_token.assert_not_awaited()
-    application.user_service.bind_space_account.assert_awaited_once_with('owner@example.com', 'oauth-code')
+    application.user_service.bind_space_account.assert_awaited_once_with(
+        'owner@example.com',
+        'oauth-code',
+        redirect_uri='http://localhost/auth/space/callback?mode=bind',
+    )
 
 
 @pytest.mark.asyncio

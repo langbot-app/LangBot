@@ -186,6 +186,9 @@ class UserRouterGroup(group.RouterGroup):
             json_data = await quart.request.json
             code = json_data.get('code')
             state = json_data.get('state')
+            redirect_uri = json_data.get('redirect_uri') or (
+                quart.request.url_root.rstrip('/') + '/auth/space/callback'
+            )
             launch_assertion = json_data.get('launch_assertion')
             workspace_uuid = json_data.get('workspace_uuid')
 
@@ -201,6 +204,7 @@ class UserRouterGroup(group.RouterGroup):
                 return self.fail(1, 'Missing state parameter')
 
             try:
+                redirect_uri = self._validate_space_redirect_uri(str(redirect_uri), bind=False)
                 consumed_state = await self.ap.user_service.consume_space_oauth_state_details(state, 'login')
                 # Exchange code for tokens
                 launch_workspace_uuid = consumed_state.launch_workspace_uuid
@@ -218,6 +222,7 @@ class UserRouterGroup(group.RouterGroup):
                     code,
                     workspace_uuids,
                     workspace_created_ats,
+                    redirect_uri=redirect_uri,
                 )
                 access_token = token_data.get('access_token')
                 refresh_token = token_data.get('refresh_token')
@@ -378,6 +383,9 @@ class UserRouterGroup(group.RouterGroup):
             json_data = await quart.request.json
             code = json_data.get('code')
             state = json_data.get('state')
+            redirect_uri = json_data.get('redirect_uri') or (
+                quart.request.url_root.rstrip('/') + '/auth/space/callback?mode=bind'
+            )
 
             if not code:
                 return self.http_status(400, -1, 'Missing authorization code')
@@ -396,7 +404,10 @@ class UserRouterGroup(group.RouterGroup):
                 return self.http_status(400, -1, 'Only local accounts can bind to Space')
 
             try:
-                updated_user = await self.ap.user_service.bind_space_account(user_obj.user, code)
+                redirect_uri = self._validate_space_redirect_uri(str(redirect_uri), bind=True)
+                updated_user = await self.ap.user_service.bind_space_account(
+                    user_obj.user, code, redirect_uri=redirect_uri
+                )
                 jwt_token = await self.ap.user_service.generate_jwt_token(updated_user)
                 return self.success(
                     data={
