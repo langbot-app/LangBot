@@ -43,17 +43,24 @@ const pendingSpaceOAuthLogins = new Map<
 function getOrCreateSpaceOAuthLoginPromise(
   authCode: string,
   state: string,
+  redirectUri: string,
   workspaceUuid?: string,
   launchAssertion?: string,
 ): Promise<SpaceOAuthLoginResult> {
-  const requestKey = `${authCode}:${state}:${workspaceUuid ?? ''}:${launchAssertion ?? ''}`;
+  const requestKey = `${authCode}:${state}:${redirectUri}:${workspaceUuid ?? ''}:${launchAssertion ?? ''}`;
   const pendingRequest = pendingSpaceOAuthLogins.get(requestKey);
   if (pendingRequest) {
     return pendingRequest;
   }
 
   const requestPromise = httpClient
-    .exchangeSpaceOAuthCode(authCode, state, workspaceUuid, launchAssertion)
+    .exchangeSpaceOAuthCode(
+      authCode,
+      state,
+      redirectUri,
+      workspaceUuid,
+      launchAssertion,
+    )
     .finally(() => {
       pendingSpaceOAuthLogins.delete(requestKey);
     });
@@ -95,6 +102,7 @@ function SpaceOAuthCallbackContent() {
         const response = await getOrCreateSpaceOAuthLoginPromise(
           authCode,
           state,
+          `${window.location.origin}/auth/space/callback`,
           workspaceUuid,
           launchAssertion,
         );
@@ -195,7 +203,11 @@ function SpaceOAuthCallbackContent() {
     async (authCode: string, state: string) => {
       setIsProcessing(true);
       try {
-        const response = await httpClient.bindSpaceAccount(authCode, state);
+        const response = await httpClient.bindSpaceAccount(
+          authCode,
+          state,
+          `${window.location.origin}/auth/space/callback?mode=bind`,
+        );
         if (!isMountedRef.current) {
           return;
         }
