@@ -127,7 +127,7 @@ class SpaceService:
     def get_cloud_entry_url(self) -> str:
         """Return the Space-owned Cloud selector for a Cloud Account login."""
 
-        return f'{self._get_space_config()["url"].rstrip("/")}/cloud?environment=beta'
+        return f'{self._get_space_config()["url"].rstrip("/")}/cloud?environment=beta&auto_launch=1'
 
     async def exchange_oauth_code(
         self,
