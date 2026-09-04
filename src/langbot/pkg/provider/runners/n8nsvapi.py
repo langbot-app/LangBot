@@ -265,7 +265,11 @@ class N8nServiceAPIRunner(runner.RequestRunner):
             async with session.post(
                 self.webhook_url, json=payload, headers=headers, auth=auth, timeout=self.timeout
             ) as response:
-                if not 200 <= response.status < 300:
+                if self.response_handling == 'ignore':
+                    status_ok = 200 <= response.status < 300
+                else:
+                    status_ok = response.status == 200
+                if not status_ok:
                     error_text = (
                         await httpclient.read_limited(
                             response,
@@ -276,7 +280,7 @@ class N8nServiceAPIRunner(runner.RequestRunner):
                     raise Exception(f'n8n webhook call failed: {response.status}, {error_text}')
 
                 if self.response_handling == 'ignore':
-                    await httpclient.read_limited(response, max_bytes=_MAX_N8N_RESPONSE_CHARS)
+                    response.release()
                     self.ap.logger.debug('n8n async webhook accepted; response body ignored')
                     return
 

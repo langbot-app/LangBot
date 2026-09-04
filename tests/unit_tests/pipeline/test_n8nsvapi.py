@@ -341,6 +341,47 @@ async def test_call_webhook_ignore_response_body(response_body: bytes, status: i
 
 
 @pytest.mark.asyncio
+async def test_call_webhook_ignore_releases_without_reading_response_body():
+    """Ignore mode returns after the success status without waiting for the body."""
+    runner = make_runner(response_handling='ignore')
+    query = make_query(is_stream=False)
+    mock_response = make_mock_response([], status=202)
+    mock_response.headers = {}
+    mock_response.release = Mock()
+
+    async def fail_if_read(_size):
+        raise AssertionError('ignore mode must not read the response body')
+        yield b''
+
+    mock_response.content.iter_chunked = fail_if_read
+    mock_cm = AsyncMock()
+    mock_cm.__aenter__ = AsyncMock(return_value=mock_response)
+    mock_cm.__aexit__ = AsyncMock(return_value=False)
+    mock_session = Mock()
+    mock_session.post = Mock(return_value=mock_cm)
+
+    with patch('langbot.pkg.provider.runners.n8nsvapi.httpclient.get_session', return_value=mock_session):
+        results = [message async for message in runner._call_webhook(query)]
+
+    assert results == []
+    mock_response.release.assert_called_once_with()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('status', [201, 202, 204])
+async def test_call_webhook_reply_mode_preserves_http_200_contract(status: int):
+    """Reply mode remains backward compatible and rejects non-200 statuses."""
+    runner = make_runner(response_handling='reply')
+    query = make_query(is_stream=False)
+    http_session = make_http_session_mock(b'', status=status)
+
+    with patch('langbot.pkg.provider.runners.n8nsvapi.httpclient.get_session', return_value=http_session):
+        with pytest.raises(N8nAPIError, match=f'n8n webhook call failed: {status}'):
+            async for _ in runner._call_webhook(query):
+                pass
+
+
+@pytest.mark.asyncio
 async def test_call_webhook_ignore_mode_preserves_http_error():
     """Ignore mode must not swallow a failed n8n webhook response."""
     runner = make_runner(response_handling='ignore')

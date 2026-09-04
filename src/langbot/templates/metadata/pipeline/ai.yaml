@@ -480,8 +480,8 @@ stages:
           en_US: Webhook Response Handling
           zh_Hans: Webhook 响应处理方式
         description:
-          en_US: Choose whether LangBot forwards the n8n webhook response to the chat user.
-          zh_Hans: 选择是否将 n8n Webhook 响应转发给聊天用户。
+          en_US: Choose whether LangBot forwards the n8n webhook response to the chat user. Ignore mode requires the n8n Webhook node to use Respond Immediately.
+          zh_Hans: 选择是否将 n8n Webhook 响应转发给聊天用户。忽略模式要求 n8n Webhook 节点使用“立即响应”。
         type: select
         required: false
         default: 'reply'
