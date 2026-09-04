@@ -2195,12 +2195,12 @@ export default function HomeSidebar({
                           localStorage.getItem('langbot_language');
                         if (language === 'zh-Hans' || language === 'zh-Hant') {
                           window.open(
-                            'https://link.langbot.app/zh/docs/guide',
+                            'https://langbot.app/docs/zh/insight/guide',
                             '_blank',
                           );
                         } else {
                           window.open(
-                            'https://link.langbot.app/en/docs/guide',
+                            'https://langbot.app/docs/en/insight/guide',
                             '_blank',
                           );
                         }

@@ -21,9 +21,9 @@
 [![star](https://gitcode.com/RockChinQ/LangBot/star/badge.svg)](https://gitcode.com/RockChinQ/LangBot)
 
 <a href="https://langbot.app">官网</a> ｜
-<a href="https://link.langbot.app/zh/docs/features">特性</a> ｜
-<a href="https://link.langbot.app/zh/docs/guide">文档</a> ｜
-<a href="https://link.langbot.app/zh/docs/api">API</a> ｜
+<a href="https://langbot.app/docs/zh/insight/features">特性</a> ｜
+<a href="https://langbot.app/docs/zh/insight/guide">文档</a> ｜
+<a href="https://langbot.app/docs/zh/tags/readme">API</a> ｜
 <a href="https://space.langbot.app/cloud">Cloud</a> ｜
 <a href="https://space.langbot.app">扩展市场</a> ｜
 <a href="https://langbot.featurebase.app/roadmap">路线图</a>
@@ -49,7 +49,7 @@ LangBot 是一个**开源的生产级平台**，用于构建 AI 驱动的即时�
 - **Web 管理面板** — 通过浏览器直观地配置、管理和监控机器人，无需手动编辑配置文件。
 - **多流水线架构** — 不同机器人用于不同场景，具备全面的监控和异常处理能力。
 
-[→ 了解更多功能特性](https://link.langbot.app/zh/docs/features)
+[→ 了解更多功能特性](https://langbot.app/docs/zh/insight/features)
 
 📍 实践指南：[5 分钟部署多平台 AI 机器人](https://langbot.app/zh/blog/deploy-ai-bot-in-5-minutes/)、[将 DeepSeek 接入微信、企业微信与 Discord](https://langbot.app/zh/blog/connect-deepseek-to-wechat/)、[让 Dify Agent 跑在 Discord、Telegram 和 Slack 上](https://langbot.app/zh/blog/dify-agent-discord-telegram-slack/)，以及[用 n8n 构建多平台 AI 聊天机器人](https://langbot.app/zh/blog/n8n-multi-platform-ai-chatbot/)。
 
@@ -89,7 +89,7 @@ docker compose --profile all up -d
 [![Deploy on Zeabur](https://zeabur.com/button.svg)](https://zeabur.com/zh-CN/templates/ZKTBDH)
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.app/template/yRrAyL?referralCode=vogKPF)
 
-**更多方式：** [Docker](https://link.langbot.app/zh/docs/docker) · [手动部署](https://link.langbot.app/zh/docs/manual-deploy) · [宝塔面板](https://link.langbot.app/zh/docs/bt-panel) · [Kubernetes](https://langbot.app/docs/zh/deploy/langbot/kubernetes)
+**更多方式：** [Docker](https://langbot.app/docs/zh/deploy/langbot/docker) · [手动部署](https://langbot.app/docs/zh/deploy/langbot/manual) · [宝塔面板](https://langbot.app/docs/zh/deploy/langbot/one-click/bt) · [Kubernetes](https://langbot.app/docs/zh/deploy/langbot/kubernetes)
 
 ---
 
@@ -152,7 +152,7 @@ docker compose --profile all up -d
 | [百宝箱Tbox](https://www.tbox.cn/open) | 智能体平台 | ✅ |
 | [七牛云Qiniu](https://www.qiniu.com/ai/agent) | 聚合平台 | ✅ |
 
-[→ 查看完整集成列表](https://link.langbot.app/zh/docs/features)
+[→ 查看完整集成列表](https://langbot.app/docs/zh/insight/features)
 
 ### TTS（语音合成）
 

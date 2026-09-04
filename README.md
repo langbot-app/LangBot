@@ -19,9 +19,9 @@ English / [简体中文](README_CN.md) / [繁體中文](README_TW.md) / [日本�
 [![GitHub stars](https://img.shields.io/github/stars/langbot-app/LangBot?style=social)](https://github.com/langbot-app/LangBot/stargazers)
 
 <a href="https://langbot.app">Website</a> ｜
-<a href="https://link.langbot.app/en/docs/features">Features</a> ｜
-<a href="https://link.langbot.app/en/docs/guide">Docs</a> ｜
-<a href="https://link.langbot.app/en/docs/api">API</a> ｜
+<a href="https://langbot.app/docs/en/insight/features">Features</a> ｜
+<a href="https://langbot.app/docs/en/insight/guide">Docs</a> ｜
+<a href="https://langbot.app/docs/en/tags/readme">API</a> ｜
 <a href="https://space.langbot.app/cloud">Cloud</a> ｜
 <a href="https://space.langbot.app">Plugin Market</a> ｜
 <a href="https://langbot.featurebase.app/roadmap">Roadmap</a>
@@ -49,7 +49,7 @@ LangBot is an **open-source, production-grade platform** for building AI-powered
 - **Web Management Panel** — Configure, manage, and monitor your bots through an intuitive browser interface. No YAML editing required.
 - **Multi-Pipeline Architecture** — Different bots for different scenarios, with comprehensive monitoring and exception handling.
 
-[→ Learn more about all features](https://link.langbot.app/en/docs/features)
+[→ Learn more about all features](https://langbot.app/docs/en/insight/features)
 
 📍 Practical guides: [deploy a multi-platform AI bot in 5 minutes](https://langbot.app/en/blog/deploy-ai-bot-in-5-minutes/), [connect DeepSeek to WeChat, Discord, and Telegram](https://langbot.app/en/blog/connect-deepseek-to-wechat/), [run a Dify Agent in Discord, Telegram, and Slack](https://langbot.app/en/blog/dify-agent-discord-telegram-slack/), and [build an n8n-powered chatbot](https://langbot.app/en/blog/n8n-multi-platform-ai-chatbot/).
 
@@ -89,7 +89,7 @@ docker compose --profile all up -d
 [![Deploy on Zeabur](https://zeabur.com/button.svg)](https://zeabur.com/en-US/templates/ZKTBDH)
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.app/template/yRrAyL?referralCode=vogKPF)
 
-**More options:** [Docker](https://link.langbot.app/en/docs/docker) · [Manual](https://link.langbot.app/en/docs/manual-deploy) · [BTPanel](https://link.langbot.app/en/docs/bt-panel) · [Kubernetes](https://langbot.app/docs/en/deploy/langbot/kubernetes)
+**More options:** [Docker](https://langbot.app/docs/en/deploy/langbot/docker) · [Manual](https://langbot.app/docs/en/deploy/langbot/manual) · [BTPanel](https://langbot.app/docs/en/deploy/langbot/one-click/bt) · [Kubernetes](https://langbot.app/docs/en/deploy/langbot/kubernetes)
 
 ---
 
@@ -151,7 +151,7 @@ _Note: Public demo environment. Do not enter sensitive information._
 | [302.AI](https://share.302ai.cn/SuTG99)                                                                             | Gateway      | ✅     |
 | [Qiniu](https://www.qiniu.com/ai/agent)                                                                           | Gateway      | ✅     |
 
-[→ View all integrations](https://link.langbot.app/en/docs/features)
+[→ View all integrations](https://langbot.app/docs/en/insight/features)
 
 ---
 

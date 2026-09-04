@@ -15,9 +15,9 @@ spec:
   categories:
     - china
   help_links:
-    zh: https://link.langbot.app/zh/platforms/wecombot
-    en: https://link.langbot.app/en/platforms/wecombot
-    ja: https://link.langbot.app/ja/platforms/wecombot
+    zh: https://langbot.app/docs/zh/usage/platforms/wecom/wecombot
+    en: https://langbot.app/docs/en/usage/platforms/wecom/wecombot
+    ja: https://langbot.app/docs/ja/usage/platforms/wecom/wecombot
   config:
     - name: one-click-create
       label:

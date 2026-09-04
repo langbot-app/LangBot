@@ -15,9 +15,9 @@ spec:
   categories:
     - china
   help_links:
-    zh: https://link.langbot.app/zh/platforms/qqofficial
-    en: https://link.langbot.app/en/platforms/qqofficial
-    ja: https://link.langbot.app/ja/platforms/qqofficial
+    zh: https://langbot.app/docs/zh/usage/platforms/qq/official_webhook
+    en: https://langbot.app/docs/en/usage/platforms/qq/official_webhook
+    ja: https://langbot.app/docs/ja/usage/platforms/qq/official_webhook
   config:
     - name: __system.outbound_ips
       label:

@@ -19,9 +19,9 @@
 [![GitHub stars](https://img.shields.io/github/stars/langbot-app/LangBot?style=social)](https://github.com/langbot-app/LangBot/stargazers)
 
 <a href="https://langbot.app">Accueil</a> ｜
-<a href="https://link.langbot.app/en/docs/features">Fonctionnalités</a> ｜
-<a href="https://link.langbot.app/en/docs/guide">Documentation</a> ｜
-<a href="https://link.langbot.app/en/docs/api">API</a> ｜
+<a href="https://langbot.app/docs/en/insight/features">Fonctionnalités</a> ｜
+<a href="https://langbot.app/docs/en/insight/guide">Documentation</a> ｜
+<a href="https://langbot.app/docs/en/tags/readme">API</a> ｜
 <a href="https://space.langbot.app">Marché des Plugins</a> ｜
 <a href="https://langbot.featurebase.app/roadmap">Feuille de Route</a>
 
@@ -48,7 +48,7 @@ LangBot est une **plateforme open-source de niveau production** pour créer des 
 - **Panneau de Gestion Web** — Configurez, gérez et surveillez vos bots via une interface navigateur intuitive. Aucune édition de YAML requise.
 - **Architecture Multi-Pipeline** — Différents bots pour différents scénarios, avec surveillance complète et gestion des exceptions.
 
-[→ En savoir plus sur toutes les fonctionnalités](https://link.langbot.app/en/docs/features)
+[→ En savoir plus sur toutes les fonctionnalités](https://langbot.app/docs/en/insight/features)
 
 📍 Guides pratiques : [déployer un bot IA multiplateforme en 5 minutes](https://langbot.app/en/blog/deploy-ai-bot-in-5-minutes/), [connecter DeepSeek à WeChat, Discord et Telegram](https://langbot.app/en/blog/connect-deepseek-to-wechat/), [exécuter un Dify Agent dans Discord, Telegram et Slack](https://langbot.app/en/blog/dify-agent-discord-telegram-slack/) et [créer un chatbot avec n8n](https://langbot.app/en/blog/n8n-multi-platform-ai-chatbot/).
 
@@ -88,7 +88,7 @@ docker compose --profile all up -d
 [![Deploy on Zeabur](https://zeabur.com/button.svg)](https://zeabur.com/en-US/templates/ZKTBDH)
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.app/template/yRrAyL?referralCode=vogKPF)
 
-**Plus d'options :** [Docker](https://link.langbot.app/en/docs/docker) · [Manuel](https://link.langbot.app/en/docs/manual-deploy) · [BTPanel](https://link.langbot.app/en/docs/bt-panel) · [Kubernetes](https://langbot.app/docs/en/deploy/langbot/kubernetes)
+**Plus d'options :** [Docker](https://langbot.app/docs/en/deploy/langbot/docker) · [Manuel](https://langbot.app/docs/en/deploy/langbot/manual) · [BTPanel](https://langbot.app/docs/en/deploy/langbot/one-click/bt) · [Kubernetes](https://langbot.app/docs/en/deploy/langbot/kubernetes)
 
 ---
 
@@ -149,7 +149,7 @@ docker compose --profile all up -d
 | [ShengSuanYun](https://www.shengsuanyun.com/?from=CH_KYIPP758) | Plateforme GPU | ✅ |
 | [Qiniu](https://www.qiniu.com/ai/agent) | Passerelle | ✅ |
 
-[→ Voir toutes les intégrations](https://link.langbot.app/en/docs/features)
+[→ Voir toutes les intégrations](https://langbot.app/docs/en/insight/features)
 
 ---
 

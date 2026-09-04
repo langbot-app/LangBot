@@ -21,9 +21,9 @@
 [![star](https://gitcode.com/RockChinQ/LangBot/star/badge.svg)](https://gitcode.com/RockChinQ/LangBot)
 
 <a href="https://langbot.app">官網</a> ｜
-<a href="https://link.langbot.app/zh/docs/features">特性</a> ｜
-<a href="https://link.langbot.app/zh/docs/guide">文件</a> ｜
-<a href="https://link.langbot.app/zh/docs/api">API</a> ｜
+<a href="https://langbot.app/docs/zh/insight/features">特性</a> ｜
+<a href="https://langbot.app/docs/zh/insight/guide">文件</a> ｜
+<a href="https://langbot.app/docs/zh/tags/readme">API</a> ｜
 <a href="https://space.langbot.app">外掛市場</a> ｜
 <a href="https://langbot.featurebase.app/roadmap">路線圖</a>
 
@@ -50,7 +50,7 @@ LangBot 是一個**開源的生產級平台**，用於建構 AI 驅動的即時�
 - **Web 管理面板** — 透過瀏覽器直觀地配置、管理和監控機器人，無需手動編輯設定檔。
 - **多流水線架構** — 不同機器人用於不同場景，具備全面的監控和異常處理能力。
 
-[→ 了解更多功能特性](https://link.langbot.app/zh/docs/features)
+[→ 了解更多功能特性](https://langbot.app/docs/zh/insight/features)
 
 📍 實踐指南：[5 分鐘部署多平台 AI 機器人](https://langbot.app/zh/blog/deploy-ai-bot-in-5-minutes/)、[將 DeepSeek 接入微信、企業微信與 Discord](https://langbot.app/zh/blog/connect-deepseek-to-wechat/)、[讓 Dify Agent 跑在 Discord、Telegram 和 Slack 上](https://langbot.app/zh/blog/dify-agent-discord-telegram-slack/)，以及[用 n8n 建構多平台 AI 聊天機器人](https://langbot.app/zh/blog/n8n-multi-platform-ai-chatbot/)。
 
@@ -90,7 +90,7 @@ docker compose --profile all up -d
 [![Deploy on Zeabur](https://zeabur.com/button.svg)](https://zeabur.com/zh-CN/templates/ZKTBDH)
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.app/template/yRrAyL?referralCode=vogKPF)
 
-**更多方式：** [Docker](https://link.langbot.app/zh/docs/docker) · [手動部署](https://link.langbot.app/zh/docs/manual-deploy) · [寶塔面板](https://link.langbot.app/zh/docs/bt-panel) · [Kubernetes](https://langbot.app/docs/zh/deploy/langbot/kubernetes)
+**更多方式：** [Docker](https://langbot.app/docs/zh/deploy/langbot/docker) · [手動部署](https://langbot.app/docs/zh/deploy/langbot/manual) · [寶塔面板](https://langbot.app/docs/zh/deploy/langbot/one-click/bt) · [Kubernetes](https://langbot.app/docs/zh/deploy/langbot/kubernetes)
 
 ---
 
@@ -165,7 +165,7 @@ docker compose --profile all up -d
 |-----------|------|
 | 阿里雲百煉 | [外掛](https://github.com/Thetail001/LangBot_BailianTextToImagePlugin) |
 
-[→ 查看完整整合列表](https://link.langbot.app/zh/docs/features)
+[→ 查看完整整合列表](https://langbot.app/docs/zh/insight/features)
 
 ---
 

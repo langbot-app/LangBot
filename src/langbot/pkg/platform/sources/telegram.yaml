@@ -24,9 +24,9 @@ spec:
     - popular
     - global
   help_links:
-    zh: https://link.langbot.app/zh/platforms/telegram
-    en: https://link.langbot.app/en/platforms/telegram
-    ja: https://link.langbot.app/ja/platforms/telegram
+    zh: https://langbot.app/docs/zh/usage/platforms/telegram
+    en: https://langbot.app/docs/en/usage/platforms/telegram
+    ja: https://langbot.app/docs/ja/usage/platforms/telegram
   config:
     - name: token
       label:

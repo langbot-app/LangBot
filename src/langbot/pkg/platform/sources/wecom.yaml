@@ -16,9 +16,9 @@ spec:
     - popular
     - china
   help_links:
-    zh: https://link.langbot.app/zh/platforms/wecom
-    en: https://link.langbot.app/en/platforms/wecom
-    ja: https://link.langbot.app/ja/platforms/wecom
+    zh: https://langbot.app/docs/zh/usage/platforms/wecom/wecom
+    en: https://langbot.app/docs/en/usage/platforms/wecom/wecom
+    ja: https://langbot.app/docs/ja/usage/platforms/wecom/wecom
   config:
     - name: webhook_url
       label:

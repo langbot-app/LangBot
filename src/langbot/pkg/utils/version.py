@@ -83,7 +83,7 @@ class VersionManager:
         try:
             if await self.is_new_version_available():
                 return (
-                    'New version available. Update guide: https://link.langbot.app/en/docs/update',
+                    'New version available. Update guide: https://langbot.app/docs/en/deploy/update',
                     logging.INFO,
                 )
         except Exception as e:

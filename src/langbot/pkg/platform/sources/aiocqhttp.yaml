@@ -15,9 +15,9 @@ spec:
   categories:
     - protocol
   help_links:
-    zh: https://link.langbot.app/zh/platforms/aiocqhttp
-    en: https://link.langbot.app/en/platforms/aiocqhttp
-    ja: https://link.langbot.app/ja/platforms/aiocqhttp
+    zh: https://langbot.app/docs/zh/usage/platforms/qq/aiocqhttp/napcat
+    en: https://langbot.app/docs/en/usage/platforms/qq/aiocqhttp/napcat
+    ja: https://langbot.app/docs/ja/usage/platforms/qq/aiocqhttp/napcat
   config:
     - name: host
       label:

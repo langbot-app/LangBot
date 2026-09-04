@@ -75,7 +75,7 @@ const zhHans = {
     privacyPolicy: '隐私政策',
     and: '和',
     dataCollectionPolicy: '数据收集政策',
-    dataCollectionPolicyUrl: 'https://link.langbot.app/zh/docs/data-policy',
+    dataCollectionPolicyUrl: 'https://langbot.app/docs/zh/insight/data-collection-policy',
     loading: '加载中...',
     fieldRequired: '此字段为必填项',
     or: '或',

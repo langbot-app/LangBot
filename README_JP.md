@@ -19,9 +19,9 @@
 [![GitHub stars](https://img.shields.io/github/stars/langbot-app/LangBot?style=social)](https://github.com/langbot-app/LangBot/stargazers)
 
 <a href="https://langbot.app">ホーム</a> ｜
-<a href="https://link.langbot.app/ja/docs/features">機能</a> ｜
-<a href="https://link.langbot.app/ja/docs/guide">ドキュメント</a> ｜
-<a href="https://link.langbot.app/ja/docs/api">API</a> ｜
+<a href="https://langbot.app/docs/ja/insight/features">機能</a> ｜
+<a href="https://langbot.app/docs/ja/insight/guide">ドキュメント</a> ｜
+<a href="https://langbot.app/docs/ja/tags/readme">API</a> ｜
 <a href="https://space.langbot.app">プラグインマーケット</a> ｜
 <a href="https://langbot.featurebase.app/roadmap">ロードマップ</a>
 
@@ -48,7 +48,7 @@ LangBot は、AI搭載のインスタントメッセージングボットを構�
 - **Web管理パネル** — 直感的なブラウザインターフェースからボットの設定、管理、監視が可能。YAML編集は不要。
 - **マルチパイプラインアーキテクチャ** — 異なるシナリオに異なるボットを配置し、包括的な監視と例外処理を実現。
 
-[→ すべての機能について詳しく見る](https://link.langbot.app/ja/docs/features)
+[→ すべての機能について詳しく見る](https://langbot.app/docs/ja/insight/features)
 
 📍 実践ガイド: [5分でマルチプラットフォームAIボットをデプロイ](https://langbot.app/en/blog/deploy-ai-bot-in-5-minutes/)、[DeepSeekをWeChat・Discord・Telegramに接続](https://langbot.app/en/blog/connect-deepseek-to-wechat/)、[Dify AgentをDiscord・Telegram・Slackで動かす](https://langbot.app/en/blog/dify-agent-discord-telegram-slack/)、[n8n連携チャットボットを構築](https://langbot.app/en/blog/n8n-multi-platform-ai-chatbot/)。
 
@@ -88,7 +88,7 @@ docker compose --profile all up -d
 [![Deploy on Zeabur](https://zeabur.com/button.svg)](https://zeabur.com/en-US/templates/ZKTBDH)
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.app/template/yRrAyL?referralCode=vogKPF)
 
-**その他:** [Docker](https://link.langbot.app/en/docs/docker) · [手動デプロイ](https://link.langbot.app/en/docs/manual-deploy) · [BTPanel](https://link.langbot.app/en/docs/bt-panel) · [Kubernetes](https://langbot.app/docs/en/deploy/langbot/kubernetes)
+**その他:** [Docker](https://langbot.app/docs/en/deploy/langbot/docker) · [手動デプロイ](https://langbot.app/docs/en/deploy/langbot/manual) · [BTPanel](https://langbot.app/docs/en/deploy/langbot/one-click/bt) · [Kubernetes](https://langbot.app/docs/en/deploy/langbot/kubernetes)
 
 ---
 
@@ -149,7 +149,7 @@ docker compose --profile all up -d
 | [302.AI](https://share.302ai.cn/SuTG99) | ゲートウェイ | ✅ |
 | [Qiniu](https://www.qiniu.com/ai/agent) | ゲートウェイ | ✅ |
 
-[→ すべての統合を表示](https://link.langbot.app/en/docs/features)
+[→ すべての統合を表示](https://langbot.app/docs/en/insight/features)
 
 ---
 

@@ -24,9 +24,9 @@ spec:
     - popular
     - global
   help_links:
-    zh: https://link.langbot.app/zh/platforms/discord
-    en: https://link.langbot.app/en/platforms/discord
-    ja: https://link.langbot.app/ja/platforms/discord
+    zh: https://langbot.app/docs/zh/usage/platforms/discord
+    en: https://langbot.app/docs/en/usage/platforms/discord
+    ja: https://langbot.app/docs/ja/usage/platforms/discord
   config:
     - name: client_id
       label:
