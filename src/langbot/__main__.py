@@ -16,7 +16,7 @@ asciiart = r"""
                |___/              
 
 ⭐️ Open Source 开源地址: https://github.com/langbot-app/LangBot
-📖 Documentation 文档地址: https://docs.langbot.app
+📖 Documentation 文档地址: https://langbot.app/docs
 """
 
 

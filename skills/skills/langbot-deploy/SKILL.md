@@ -48,7 +48,7 @@ tools, skill add/edit, and stdio MCP are disabled. Set `box.enabled: false`
 ## Kubernetes
 
 See `docker/kubernetes.yaml` and the deployment guide at
-https://docs.langbot.app. `docker/deploy-k8s-test.sh` is a test helper.
+https://langbot.app/docs. `docker/deploy-k8s-test.sh` is a test helper.
 
 ## config.yaml (generated at `data/config.yaml` on first run)
 

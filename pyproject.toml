@@ -114,7 +114,7 @@ seekdb = [
 
 [project.urls]
 Homepage = "https://langbot.app"
-Documentation = "https://docs.langbot.app"
+Documentation = "https://langbot.app/docs"
 Repository = "https://github.com/langbot-app/LangBot"
 
 [project.scripts]

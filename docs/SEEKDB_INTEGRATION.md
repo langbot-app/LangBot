@@ -243,7 +243,7 @@ For large datasets:
 - SeekDB GitHub: https://github.com/oceanbase/seekdb
 - pyseekdb SDK: https://github.com/oceanbase/pyseekdb
 - OceanBase Documentation: https://oceanbase.ai
-- LangBot Documentation: https://docs.langbot.app
+- LangBot Documentation: https://langbot.app/docs
 
 ## License
 

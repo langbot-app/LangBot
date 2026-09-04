@@ -90,7 +90,7 @@ docker compose --profile all up -d
 [![Deploy on Zeabur](https://zeabur.com/button.svg)](https://zeabur.com/zh-CN/templates/ZKTBDH)
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.app/template/yRrAyL?referralCode=vogKPF)
 
-**更多方式：** [Docker](https://link.langbot.app/zh/docs/docker) · [手動部署](https://link.langbot.app/zh/docs/manual-deploy) · [寶塔面板](https://link.langbot.app/zh/docs/bt-panel) · [Kubernetes](https://docs.langbot.app/zh/deploy/langbot/kubernetes)
+**更多方式：** [Docker](https://link.langbot.app/zh/docs/docker) · [手動部署](https://link.langbot.app/zh/docs/manual-deploy) · [寶塔面板](https://link.langbot.app/zh/docs/bt-panel) · [Kubernetes](https://langbot.app/docs/zh/deploy/langbot/kubernetes)
 
 ---
 

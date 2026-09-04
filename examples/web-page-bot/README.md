@@ -6,7 +6,7 @@ A single self-contained HTML page that demos the LangBot **Page Bot**
 (`web_page_bot`) embeddable chat widget — the one you drop onto any website with
 a single `<script>` tag.
 
-Full guide: [docs.langbot.app — Page Bot](https://docs.langbot.app/en/usage/platforms/webpage).
+Full guide: [docs.langbot.app — Page Bot](https://langbot.app/docs/en/usage/platforms/webpage).
 
 ## Files
 

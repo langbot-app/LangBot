@@ -113,7 +113,7 @@ async def test_invitation_email_uses_quiet_brand_lockup_and_compact_fallback_lin
 
     html = service._html("RockChinQ's Workspace", link)
 
-    assert 'https://docs.langbot.app/langbot-logo.png' in html
+    assert 'https://langbot.app/docs/langbot-logo.png' in html
     assert '>LangBot<' in html
     assert 'Workspace invitation' in html
     assert 'Open invitation link' in html

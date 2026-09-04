@@ -1,7 +1,7 @@
 # Kubernetes Deployment for LangBot
 # This file provides Kubernetes deployment manifests for LangBot based on docker-compose.yaml
 #
-# Full deployment guide (zh/en/ja): https://docs.langbot.app -> Installation -> Kubernetes
+# Full deployment guide (zh/en/ja): https://langbot.app/docs -> Installation -> Kubernetes
 #
 # Usage:
 #   kubectl -n langbot create secret generic langbot-plugin-runtime-control \

@@ -6,7 +6,7 @@
 (`web_page_bot`) 的可嵌入聊天组件 —— 也就是你用一行 `<script>` 标签就能放到任意
 网站上的那个组件。
 
-完整指南：[docs.langbot.app —— 页面机器人](https://docs.langbot.app/zh/usage/platforms/webpage)。
+完整指南：[docs.langbot.app —— 页面机器人](https://langbot.app/docs/zh/usage/platforms/webpage)。
 
 ## 文件清单
 

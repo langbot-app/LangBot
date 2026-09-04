@@ -43,8 +43,8 @@ Run the narrowest useful test first, then broader checks when confidence is need
 ## Where to Look
 
 - Architecture map: `ARCHITECTURE.md`.
-- Dev environment guide: https://docs.langbot.app/zh/develop/dev-config.
-- Plugin runtime / CLI / SDK debugging: https://docs.langbot.app/zh/develop/plugin-runtime.
+- Dev environment guide: https://langbot.app/docs/zh/develop/dev-config.
+- Plugin runtime / CLI / SDK debugging: https://langbot.app/docs/zh/develop/plugin-runtime.
 - API-key auth: `docs/API_KEY_AUTH.md`.
 - Box deep-dive notes: `docs/review/box-architecture.md` and related files.
 - In-repo skills: `skills/` is the single source of truth for LangBot agent skills.

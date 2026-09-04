@@ -218,8 +218,8 @@ metadata:
 spec:
   categories: [popular, global]
   help_links:
-    zh: https://docs.langbot.app/zh/platforms/http-bot
-    en: https://docs.langbot.app/en/platforms/http-bot
+    zh: https://langbot.app/docs/zh/platforms/http-bot
+    en: https://langbot.app/docs/en/platforms/http-bot
   config:
     - { name: inbound_secret,       type: string, required: true,  default: "" }
     - { name: callback_url,         type: string, required: false, default: "" }

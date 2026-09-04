@@ -635,9 +635,9 @@ class Application:
         frontend_path = paths.get_frontend_path()
 
         if not os.path.exists(frontend_path):
-            self.logger.warning('WebUI 文件缺失，请根据文档部署：https://docs.langbot.app/zh')
+            self.logger.warning('WebUI 文件缺失，请根据文档部署：https://langbot.app/docs/zh')
             self.logger.warning(
-                'WebUI files are missing, please deploy according to the documentation: https://docs.langbot.app/en'
+                'WebUI files are missing, please deploy according to the documentation: https://langbot.app/docs/en'
             )
             return
 
