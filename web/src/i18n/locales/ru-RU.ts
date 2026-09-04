@@ -76,7 +76,8 @@ const ruRU = {
     privacyPolicy: 'Политикой конфиденциальности',
     and: 'и',
     dataCollectionPolicy: 'Политикой сбора данных',
-    dataCollectionPolicyUrl: 'https://langbot.app/docs/en/insight/data-collection-policy',
+    dataCollectionPolicyUrl:
+      'https://langbot.app/docs/en/insight/data-collection-policy',
     loading: 'Загрузка...',
     fieldRequired: 'Это поле обязательно для заполнения',
     or: 'или',

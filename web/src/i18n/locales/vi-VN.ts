@@ -77,7 +77,8 @@ const viVN = {
     privacyPolicy: 'Chính sách bảo mật',
     and: 'và',
     dataCollectionPolicy: 'Chính sách thu thập dữ liệu',
-    dataCollectionPolicyUrl: 'https://langbot.app/docs/en/insight/data-collection-policy',
+    dataCollectionPolicyUrl:
+      'https://langbot.app/docs/en/insight/data-collection-policy',
     loading: 'Đang tải...',
     fieldRequired: 'Trường này là bắt buộc',
     or: 'hoặc',

@@ -77,7 +77,8 @@ const jaJP = {
     privacyPolicy: 'プライバシーポリシー',
     and: 'および',
     dataCollectionPolicy: 'データ収集ポリシー',
-    dataCollectionPolicyUrl: 'https://langbot.app/docs/ja/insight/data-collection-policy',
+    dataCollectionPolicyUrl:
+      'https://langbot.app/docs/ja/insight/data-collection-policy',
     loading: '読み込み中...',
     fieldRequired: 'この項目は必須です',
     or: 'または',
