@@ -20,6 +20,7 @@ from .host_models import AgentEventEnvelope, AgentBinding
 from .resource_policy import ResourcePolicyProjector
 from ...provider.tools.loaders.mcp import MCP_TOOL_LIST_RESOURCES, MCP_TOOL_READ_RESOURCE
 from ...provider.tools.toolmgr import ToolSourceRef
+from .platform_tools import build_platform_tool_resources
 
 
 class AgentResourceBuilder:
@@ -86,6 +87,18 @@ class AgentResourceBuilder:
             descriptor,
             runner_config,
         )
+        runner_uses_host_tools = config_schema.uses_host_tools(descriptor)
+        platform_tools, platform_capabilities = build_platform_tool_resources(
+            event,
+            resource_policy.allowed_platform_tool_names,
+            (
+                [operation for operation in ('detail', 'call') if operation in set(manifest_perms.tools)]
+                if runner_uses_host_tools
+                else []
+            ),
+        )
+        if runner_uses_host_tools:
+            tools.extend(platform_tools)
         knowledge_bases = await self._build_knowledge_bases_from_binding(
             execution_context,
             manifest_perms,
@@ -106,7 +119,7 @@ class AgentResourceBuilder:
             'knowledge_bases': knowledge_bases,
             'skills': skills,
             'storage': storage,
-            'platform_capabilities': {},  # Reserved for EBA
+            'platform_capabilities': platform_capabilities,
         }
 
     async def _build_models_from_binding(

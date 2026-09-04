@@ -71,7 +71,14 @@ export function eventPatternLabel(pattern: string, t: TFunction) {
 export function eventPatternDescription(pattern: string, t: TFunction) {
   if (pattern === '*') return t('bots.eventDescriptions.all');
   if (pattern.endsWith('.*')) {
-    return t('bots.eventDescriptions.namespace');
+    const namespace = pattern.slice(0, -2);
+    const key = `bots.eventDescriptions.namespace_${namespace}`;
+    const description = t(key);
+    return description === key
+      ? t('bots.eventDescriptions.namespace', {
+          group: eventGroupLabel(namespace, t),
+        })
+      : description;
   }
   const key = `bots.eventDescriptions.${pattern.replace(/\./g, '_')}`;
   const description = t(key);

@@ -64,6 +64,11 @@ class LangBotProcess:
             env.pop(proxy_key, None)
         env['NO_PROXY'] = '127.0.0.1,localhost'
         env['no_proxy'] = '127.0.0.1,localhost'
+        # The startup banner contains Unicode symbols.  Force deterministic
+        # UTF-8 subprocess streams so Windows locales such as GBK do not crash
+        # before the application can bind its HTTP port.
+        env['PYTHONUTF8'] = '1'
+        env['PYTHONIOENCODING'] = 'utf-8'
 
         # Set API port via environment variable
         env['API__PORT'] = str(self.port)

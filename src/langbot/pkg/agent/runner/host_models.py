@@ -96,6 +96,9 @@ class ResourcePolicy(pydantic.BaseModel):
     allowed_tool_sources: dict[str, dict[str, str | None]] | None = None
     """Host-resolved implementation identity for each allowed tool name."""
 
+    allowed_platform_tool_names: list[str] = pydantic.Field(default_factory=list)
+    """Platform and event action tools explicitly granted by the Agent owner."""
+
     allow_all_tools: bool = False
     """Whether all tools visible to the current Host scope are granted."""
 

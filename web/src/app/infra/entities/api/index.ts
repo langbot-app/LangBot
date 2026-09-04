@@ -193,11 +193,25 @@ export interface ApiRespAgent {
 
 export interface GetAgentMetadataResponseData {
   runner_config?: PipelineConfigTab;
+  platform_tools: AgentPlatformTool[];
+  host_tools?: PluginTool[] | null;
   kinds: Array<{
     name: AgentKind;
     supported_event_patterns: string[];
     message_only: boolean;
   }>;
+}
+
+export interface AgentPlatformTool {
+  name: string;
+  api: string;
+  scope: 'event' | 'platform';
+  category: string;
+  risk: 'read' | 'write' | 'dangerous';
+  label: I18nObject;
+  description: I18nObject;
+  event_patterns: string[];
+  parameters: Record<string, unknown>;
 }
 
 export interface Pipeline {

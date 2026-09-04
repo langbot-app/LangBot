@@ -14,6 +14,7 @@ import shutil
 import socket
 import sqlite3
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -30,7 +31,6 @@ pytestmark = pytest.mark.e2e
 LOCAL_AGENT_RUNNER_ID = 'plugin:langbot-team/LocalAgent/default'
 FAKE_PROVIDER_UUID = 'e2e-fake-provider'
 FAKE_MODEL_UUID = 'e2e-fake-local-agent-model'
-LOCAL_AGENT_PLUGIN_DIRNAME = 'langbot__local-agent'
 E2E_TOOL_NAME = 'e2e_lookup'
 E2E_KB_UUID = 'e2e-kb-local-agent'
 
@@ -48,13 +48,13 @@ def _local_agent_repo() -> Path:
     return project_root.parent / 'langbot-local-agent'
 
 
-def _copy_local_agent_plugin(tmpdir: Path) -> None:
-    """Copy the sibling Local Agent plugin into the temporary LangBot data dir."""
+def _package_local_agent_plugin(tmpdir: Path) -> Path:
+    """Package the sibling Local Agent plugin for the real local-install flow."""
     local_agent_src = _local_agent_repo()
     if not (local_agent_src / 'manifest.yaml').exists():
         pytest.skip(f'local-agent repository not found at {local_agent_src}')
 
-    plugin_dst = tmpdir / 'data' / 'plugins' / LOCAL_AGENT_PLUGIN_DIRNAME
+    package_source = tmpdir / 'local-agent-package'
     ignore = shutil.ignore_patterns(
         '.git',
         '.venv',
@@ -64,7 +64,16 @@ def _copy_local_agent_plugin(tmpdir: Path) -> None:
         'build',
         'dist',
     )
-    shutil.copytree(local_agent_src, plugin_dst, ignore=ignore)
+    shutil.copytree(local_agent_src, package_source, ignore=ignore)
+    archive_path = Path(
+        shutil.make_archive(
+            str(tmpdir / 'langbot-local-agent'),
+            'zip',
+            root_dir=package_source,
+        )
+    )
+    shutil.rmtree(package_source)
+    return archive_path
 
 
 def _content_text(content: Any) -> str:
@@ -289,7 +298,7 @@ def local_agent_e2e_config_path(local_agent_e2e_tmpdir, local_agent_e2e_port, lo
     with open(config_path, 'w', encoding='utf-8') as f:
         yaml.safe_dump(config, f, default_flow_style=False)
 
-    _copy_local_agent_plugin(local_agent_e2e_tmpdir)
+    _package_local_agent_plugin(local_agent_e2e_tmpdir)
     return config_path
 
 
@@ -304,7 +313,7 @@ def local_agent_runtime_process(local_agent_e2e_tmpdir, local_agent_runtime_port
     stderr_file = open(stderr_path, 'wb')
     proc = subprocess.Popen(
         [
-            str(find_project_root() / '.venv' / 'bin' / 'python'),
+            sys.executable,
             '-m',
             'langbot_plugin.cli.__init__',
             'rt',
@@ -329,14 +338,18 @@ def local_agent_runtime_process(local_agent_e2e_tmpdir, local_agent_runtime_port
     stderr_file.close()
 
 
-def _inject_fake_llm_model(ap) -> Any:
+async def _inject_fake_llm_model(ap) -> Any:
     """Register a runtime-only fake model that supports count_tokens/invoke."""
+    import sqlalchemy
+
     from langbot.pkg.entity.persistence import model as persistence_model
     from langbot.pkg.provider.modelmgr import requester, token
     from tests.unit_tests.provider.conftest import FakeProviderAPIRequester
 
+    execution_context = await ap.plugin_connector._current_execution_context()
     provider_entity = persistence_model.ModelProvider(
         uuid=FAKE_PROVIDER_UUID,
+        workspace_uuid=execution_context.workspace_uuid,
         name='E2E Fake Provider',
         requester='fake-requester',
         base_url='https://fake.invalid',
@@ -344,24 +357,62 @@ def _inject_fake_llm_model(ap) -> Any:
     )
     fake_requester = FakeProviderAPIRequester(ap, {'base_url': provider_entity.base_url})
     runtime_provider = requester.RuntimeProvider(
+        execution_context=execution_context,
         provider_entity=provider_entity,
         token_mgr=token.TokenManager(name=provider_entity.uuid, tokens=provider_entity.api_keys),
         requester=fake_requester,
     )
+    model_entity = persistence_model.LLMModel(
+        uuid=FAKE_MODEL_UUID,
+        workspace_uuid=execution_context.workspace_uuid,
+        name=FAKE_MODEL_UUID,
+        provider_uuid=provider_entity.uuid,
+        abilities=['func_call'],
+        context_length=8192,
+        extra_args={},
+    )
     runtime_model = requester.RuntimeLLMModel(
-        model_entity=persistence_model.LLMModel(
-            uuid=FAKE_MODEL_UUID,
-            name=FAKE_MODEL_UUID,
-            provider_uuid=provider_entity.uuid,
-            abilities=['func_call'],
-            context_length=8192,
-            extra_args={},
-        ),
+        model_entity=model_entity,
+        execution_context=execution_context,
         provider=runtime_provider,
     )
-    ap.model_mgr.provider_dict[provider_entity.uuid] = runtime_provider
-    ap.model_mgr.llm_models.append(runtime_model)
+    await ap.persistence_mgr.execute_async(
+        sqlalchemy.insert(persistence_model.ModelProvider).values(
+            uuid=provider_entity.uuid,
+            workspace_uuid=provider_entity.workspace_uuid,
+            name=provider_entity.name,
+            requester=provider_entity.requester,
+            base_url=provider_entity.base_url,
+            api_keys=provider_entity.api_keys,
+        )
+    )
+    await ap.persistence_mgr.execute_async(
+        sqlalchemy.insert(persistence_model.LLMModel).values(
+            uuid=model_entity.uuid,
+            workspace_uuid=model_entity.workspace_uuid,
+            name=model_entity.name,
+            provider_uuid=model_entity.provider_uuid,
+            abilities=model_entity.abilities,
+            context_length=model_entity.context_length,
+            extra_args=model_entity.extra_args,
+        )
+    )
+    await ap.model_mgr.cache_provider(execution_context, runtime_provider)
+    await ap.model_mgr.cache_llm_model(execution_context, runtime_model)
     return fake_requester
+
+
+async def _run_agent(ap, event, binding) -> list[Any]:
+    """Execute through the trusted Workspace context used by the real Host."""
+    execution_context = await ap.plugin_connector._current_execution_context()
+    return [
+        message
+        async for message in ap.agent_run_orchestrator.run(
+            event,
+            binding,
+            adapter_context={'_execution_context': execution_context},
+        )
+    ]
 
 
 def _scripted_tool_call(
@@ -392,8 +443,10 @@ def _scripted_tool_call(
 async def _boot_local_agent_app(tmpdir: Path):
     """Boot LangBot and wait until the Local Agent runner is discoverable."""
     from langbot.pkg.core import boot
+    from langbot_plugin.runtime.plugin.mgr import PluginInstallSource
 
     ap = await boot.make_app(asyncio.get_running_loop())
+    run_task = asyncio.create_task(ap.run(), name='local-agent-e2e-app')
     for _ in range(60):
         handler = getattr(ap.plugin_connector, 'handler', None)
         if handler is not None:
@@ -401,17 +454,31 @@ async def _boot_local_agent_app(tmpdir: Path):
             break
         await asyncio.sleep(1)
     else:
-        raise AssertionError(f'Plugin runtime did not connect; tmpdir={tmpdir}')
+        runtime_stdout = (tmpdir / 'plugin-runtime.stdout.log').read_text(encoding='utf-8', errors='replace')
+        runtime_stderr = (tmpdir / 'plugin-runtime.stderr.log').read_text(encoding='utf-8', errors='replace')
+        raise AssertionError(
+            f'Plugin runtime did not connect; tmpdir={tmpdir}\n'
+            f'Runtime stdout:\n{runtime_stdout[-20_000:]}\n'
+            f'Runtime stderr:\n{runtime_stderr[-20_000:]}'
+        )
 
-    for _ in range(60):
-        runners = await ap.agent_runner_registry.list_runners(use_cache=False)
-        if any(runner.id == LOCAL_AGENT_RUNNER_ID for runner in runners):
-            break
-        await asyncio.sleep(1)
-    else:
-        raise AssertionError(f'{LOCAL_AGENT_RUNNER_ID} was not discovered')
+    execution_context = await ap.plugin_connector._current_execution_context()
+    runners = await ap.agent_runner_registry.list_runners(execution_context, use_cache=False)
+    if not any(runner.id == LOCAL_AGENT_RUNNER_ID for runner in runners):
+        await ap.plugin_connector.install_plugin(
+            PluginInstallSource.LOCAL,
+            {'plugin_file': (tmpdir / 'langbot-local-agent.zip').read_bytes()},
+        )
 
-    return ap
+        for _ in range(60):
+            runners = await ap.agent_runner_registry.list_runners(execution_context, use_cache=False)
+            if any(runner.id == LOCAL_AGENT_RUNNER_ID for runner in runners):
+                break
+            await asyncio.sleep(1)
+        else:
+            raise AssertionError(f'{LOCAL_AGENT_RUNNER_ID} was not discovered after installation')
+
+    return ap, run_task
 
 
 def _run_local_agent_probe(tmpdir: Path, probe):
@@ -424,12 +491,30 @@ def _run_local_agent_probe(tmpdir: Path, probe):
         os.chdir(tmpdir)
         platform_utils.standalone_runtime = True
         ap = None
+        run_task = None
         try:
-            ap = await _boot_local_agent_app(tmpdir)
+            ap, run_task = await _boot_local_agent_app(tmpdir)
             return await probe(ap)
         finally:
             if ap is not None:
-                ap.dispose()
+                import sqlalchemy
+
+                from langbot.pkg.entity.persistence import model as persistence_model
+
+                await ap.persistence_mgr.execute_async(
+                    sqlalchemy.delete(persistence_model.LLMModel).where(
+                        persistence_model.LLMModel.uuid == FAKE_MODEL_UUID
+                    )
+                )
+                await ap.persistence_mgr.execute_async(
+                    sqlalchemy.delete(persistence_model.ModelProvider).where(
+                        persistence_model.ModelProvider.uuid == FAKE_PROVIDER_UUID
+                    )
+                )
+                await ap.shutdown()
+            if run_task is not None:
+                run_task.cancel()
+                await asyncio.gather(run_task, return_exceptions=True)
             platform_utils.standalone_runtime = previous_standalone_runtime
             os.chdir(previous_cwd)
 
@@ -445,13 +530,13 @@ def test_local_agent_runner_uses_host_fake_provider_and_persists_ledger(
     del local_agent_e2e_config_path, local_agent_runtime_process
 
     async def _run_probe(ap):
-        fake_requester = _inject_fake_llm_model(ap)
+        fake_requester = await _inject_fake_llm_model(ap)
         event = _event(
             event_id='e2e-local-agent-event-001',
             conversation_id='e2e-local-agent-conversation',
             text='Say pong through the fake provider.',
         )
-        messages = [message async for message in ap.agent_run_orchestrator.run(event, _binding())]
+        messages = await _run_agent(ap, event, _binding())
         return messages, list(fake_requester._count_tokens_payloads)
 
     messages, token_payloads = _run_local_agent_probe(local_agent_e2e_tmpdir, _run_probe)
@@ -507,7 +592,7 @@ def test_local_agent_runner_executes_authorized_tool_loop_through_host_action(
     del local_agent_e2e_config_path, local_agent_runtime_process
 
     async def _run_probe(ap):
-        fake_requester = _inject_fake_llm_model(ap)
+        fake_requester = await _inject_fake_llm_model(ap)
         fake_requester.queue_llm_responses(
             _scripted_tool_call(),
             'Tool loop final answer after tool-result:alpha',
@@ -528,7 +613,7 @@ def test_local_agent_runner_executes_authorized_tool_loop_through_host_action(
                 'tool-execution-mode': 'serial',
             },
         )
-        messages = [message async for message in ap.agent_run_orchestrator.run(event, binding)]
+        messages = await _run_agent(ap, event, binding)
         return messages, tool_mgr.calls, _invoke_payload_texts(fake_requester)
 
     messages, tool_calls, invoke_payload_texts = _run_local_agent_probe(local_agent_e2e_tmpdir, _run_probe)
@@ -576,7 +661,7 @@ def test_local_agent_runner_retrieves_authorized_rag_context_through_host_action
     del local_agent_e2e_config_path, local_agent_runtime_process
 
     async def _run_probe(ap):
-        fake_requester = _inject_fake_llm_model(ap)
+        fake_requester = await _inject_fake_llm_model(ap)
         fake_requester.queue_llm_responses('RAG final answer with RAG_SENTINEL')
         fake_kb = _FakeKnowledgeBase()
         ap.rag_mgr = _FakeRagManager(fake_kb)
@@ -594,7 +679,7 @@ def test_local_agent_runner_retrieves_authorized_rag_context_through_host_action
                 'retrieval-top-k': 1,
             },
         )
-        messages = [message async for message in ap.agent_run_orchestrator.run(event, binding)]
+        messages = await _run_agent(ap, event, binding)
         return messages, fake_kb.retrieve_calls, _invoke_payload_texts(fake_requester)
 
     messages, retrieve_calls, invoke_payload_texts = _run_local_agent_probe(local_agent_e2e_tmpdir, _run_probe)
@@ -646,7 +731,7 @@ def test_local_agent_runner_compacts_history_and_persists_checkpoint(
     async def _run_probe(ap):
         from langbot.pkg.agent.runner.transcript_store import TranscriptStore
 
-        fake_requester = _inject_fake_llm_model(ap)
+        fake_requester = await _inject_fake_llm_model(ap)
         fake_requester.queue_llm_responses(
             'SUMMARY_SENTINEL compacted older history including HIST_SENTINEL',
             'Compaction final answer',
@@ -682,7 +767,7 @@ def test_local_agent_runner_compacts_history_and_persists_checkpoint(
                 'context-history-fetch-limit': 20,
             },
         )
-        messages = [message async for message in ap.agent_run_orchestrator.run(event, binding)]
+        messages = await _run_agent(ap, event, binding)
         return messages, _invoke_payload_texts(fake_requester), fake_requester._invoke_count
 
     messages, invoke_payload_texts, invoke_count = _run_local_agent_probe(local_agent_e2e_tmpdir, _run_probe)
@@ -738,7 +823,7 @@ def test_local_agent_runner_combines_rag_compaction_and_multi_turn_tool_loop(
     async def _run_probe(ap):
         from langbot.pkg.agent.runner.transcript_store import TranscriptStore
 
-        fake_requester = _inject_fake_llm_model(ap)
+        fake_requester = await _inject_fake_llm_model(ap)
 
         async def scripted_response(**kwargs):
             messages = kwargs['messages']
@@ -798,7 +883,7 @@ def test_local_agent_runner_combines_rag_compaction_and_multi_turn_tool_loop(
                 'context-history-fetch-limit': 25,
             },
         )
-        messages = [message async for message in ap.agent_run_orchestrator.run(event, binding)]
+        messages = await _run_agent(ap, event, binding)
         return (
             messages,
             tool_mgr.calls,

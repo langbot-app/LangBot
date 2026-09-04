@@ -13,9 +13,14 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { Bot, Loader2, SlidersHorizontal, Zap } from 'lucide-react';
+import { Bot, Loader2, SlidersHorizontal, Wrench } from 'lucide-react';
 import { httpClient } from '@/app/infra/http/HttpClient';
-import { Agent, ApiRespPluginSystemStatus } from '@/app/infra/entities/api';
+import {
+  Agent,
+  AgentPlatformTool,
+  ApiRespPluginSystemStatus,
+  PluginTool,
+} from '@/app/infra/entities/api';
 import {
   PipelineConfigStage,
   PipelineConfigTab,
@@ -36,15 +41,18 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import {
-  Form,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormMessage,
-} from '@/components/ui/form';
+import { Form, FormField, FormItem, FormMessage } from '@/components/ui/form';
 import AgentEventPatternPicker from './AgentEventPatternPicker';
 import AgentRunnerSelect from './AgentRunnerSelect';
+import AgentApiToolPicker from './AgentApiToolPicker';
+
+const OTHER_TOOL_SCOPES = [
+  'platform',
+  'builtin',
+  'mcp',
+  'plugin',
+  'skill',
+] as const;
 
 export interface AgentRunnerStatus {
   label: string;
@@ -62,7 +70,10 @@ interface AgentFormComponentProps {
   onSupportedEventPatternsChange?: (patterns: string[]) => void;
 }
 
-export type AgentConfigSection = 'events' | 'runner' | 'runner_config';
+export type AgentConfigSection =
+  | 'runner'
+  | 'runner_config'
+  | 'events_and_tools';
 
 export interface AgentFormHandle {
   openSection: (section: AgentConfigSection) => void;
@@ -119,6 +130,12 @@ function AgentFormComponent(
   const { t } = useTranslation();
   const [runnerConfigSchema, setRunnerConfigSchema] =
     useState<PipelineConfigTab | null>(null);
+  const [platformTools, setPlatformTools] = useState<AgentPlatformTool[]>([]);
+  const [platformToolCatalogAvailable, setPlatformToolCatalogAvailable] =
+    useState(true);
+  const [hostTools, setHostTools] = useState<PluginTool[]>([]);
+  const [hostToolCatalogAvailable, setHostToolCatalogAvailable] =
+    useState(true);
   const [pluginSystemStatus, setPluginSystemStatus] =
     useState<ApiRespPluginSystemStatus | null>(null);
   const [pluginStatusLoading, setPluginStatusLoading] = useState(true);
@@ -129,6 +146,7 @@ function AgentFormComponent(
     useState<AgentConfigSection>('runner');
   const isSavingRef = useRef(false);
   const hasUnsavedChangesRef = useRef(false);
+  const loadedHostToolPolicyRef = useRef<string[] | undefined>(undefined);
 
   const formSchema = z.object({
     basic: z.object({
@@ -138,7 +156,9 @@ function AgentFormComponent(
     }),
     runner: z.record(z.string(), z.any()),
     runner_config: z.record(z.string(), z.any()),
-    supported_event_patterns: z.array(z.string()).min(1),
+    supported_event_patterns: z.array(z.string()),
+    allowed_platform_tools: z.array(z.string()),
+    allowed_tools: z.array(z.string()),
   });
   type FormValues = z.infer<typeof formSchema>;
 
@@ -153,6 +173,8 @@ function AgentFormComponent(
       runner: {},
       runner_config: {},
       supported_event_patterns: ['*'],
+      allowed_platform_tools: [],
+      allowed_tools: [],
     },
   });
   const runnerInstallScope = `agent:${agentId}`;
@@ -188,8 +210,43 @@ function AgentFormComponent(
       .then(([metadata, resp]) => {
         if (cancelled) return;
         setRunnerConfigSchema(metadata.runner_config ?? null);
+        const hasPlatformToolCatalog = Array.isArray(metadata.platform_tools);
+        setPlatformToolCatalogAvailable(hasPlatformToolCatalog);
+        const availablePlatformTools = hasPlatformToolCatalog
+          ? metadata.platform_tools
+          : [];
+        setPlatformTools(availablePlatformTools);
+        const hasHostToolCatalog = Array.isArray(metadata.host_tools);
+        const availableHostTools: PluginTool[] = Array.isArray(
+          metadata.host_tools,
+        )
+          ? metadata.host_tools
+          : [];
+        setHostToolCatalogAvailable(hasHostToolCatalog);
+        setHostTools(availableHostTools);
         const agent = resp.agent;
         const config = (agent.config ?? {}) as Record<string, any>;
+        const configuredHostTools = Array.isArray(config.allowed_tools)
+          ? config.allowed_tools.filter(
+              (name): name is string => typeof name === 'string',
+            )
+          : undefined;
+        const configuredPlatformTools = Array.isArray(
+          config.allowed_platform_tools,
+        )
+          ? config.allowed_platform_tools.filter(
+              (name): name is string => typeof name === 'string',
+            )
+          : [];
+        const configuredEventPatterns =
+          agent.supported_event_patterns ??
+          agent.capability?.supported_event_patterns;
+        const normalizedEventPatterns = Array.isArray(configuredEventPatterns)
+          ? configuredEventPatterns.filter(
+              (pattern): pattern is string => typeof pattern === 'string',
+            )
+          : ['*'];
+        loadedHostToolPolicyRef.current = configuredHostTools;
         const loadedValues: FormValues = {
           basic: {
             name: agent.name ?? '',
@@ -199,8 +256,15 @@ function AgentFormComponent(
           runner: (config.runner as Record<string, unknown>) ?? {},
           runner_config:
             (config.runner_config as Record<string, unknown>) ?? {},
-          supported_event_patterns: agent.supported_event_patterns ??
-            agent.capability?.supported_event_patterns ?? ['*'],
+          supported_event_patterns: normalizedEventPatterns,
+          allowed_platform_tools: configuredPlatformTools.filter((name) => {
+            const tool = availablePlatformTools.find(
+              (candidate) => candidate.name === name,
+            );
+            return !tool || tool.scope === 'platform';
+          }),
+          allowed_tools:
+            configuredHostTools ?? availableHostTools.map((tool) => tool.name),
         };
         form.reset(loadedValues);
         savedSnapshotRef.current = JSON.stringify(loadedValues);
@@ -320,9 +384,9 @@ function AgentFormComponent(
       icon: SlidersHorizontal,
     },
     {
-      name: 'events',
-      label: t('agents.bindableEvents'),
-      icon: Zap,
+      name: 'events_and_tools',
+      label: t('agents.eventsAndTools'),
+      icon: Wrench,
     },
   ];
 
@@ -500,22 +564,32 @@ function AgentFormComponent(
       if (isSavingRef.current) return false;
       const submittedSnapshot = JSON.stringify(values);
       const runner = values.runner || {};
+      const config: Record<string, unknown> = {
+        runner,
+        runner_config: values.runner_config ?? {},
+        allowed_platform_tools: values.allowed_platform_tools,
+      };
+      if (hostToolCatalogAvailable) {
+        config.allowed_tools = values.allowed_tools;
+      } else if (loadedHostToolPolicyRef.current !== undefined) {
+        config.allowed_tools = loadedHostToolPolicyRef.current;
+      }
       const agent: Partial<Agent> = {
         name: values.basic.name,
         description: values.basic.description ?? '',
         emoji: values.basic.emoji,
         component_ref: (runner.id as string) || null,
         supported_event_patterns: values.supported_event_patterns,
-        config: {
-          runner,
-          runner_config: values.runner_config ?? {},
-        },
+        config,
       };
 
       isSavingRef.current = true;
       onSavingChange?.(true);
       try {
         await httpClient.updateAgent(agentId, agent);
+        if (hostToolCatalogAvailable) {
+          loadedHostToolPolicyRef.current = [...values.allowed_tools];
+        }
         savedSnapshotRef.current = submittedSnapshot;
         onFinish(agent);
         toast.success(t('agents.saveSuccess'));
@@ -532,7 +606,7 @@ function AgentFormComponent(
         onSavingChange?.(false);
       }
     },
-    [agentId, onFinish, onSavingChange, t],
+    [agentId, hostToolCatalogAvailable, onFinish, onSavingChange, t],
   );
 
   function handleSubmit(values: FormValues) {
@@ -653,32 +727,79 @@ function AgentFormComponent(
                 </div>
               )}
 
-              {activeSection === 'events' && (
+              {activeSection === 'events_and_tools' && (
                 <Card>
-                  <CardHeader>
-                    <CardTitle>{t('agents.bindableEvents')}</CardTitle>
+                  <CardHeader className="pb-4">
+                    <CardTitle>{t('agents.eventsAndTools')}</CardTitle>
                     <CardDescription>
-                      {t('agents.bindableEventsDescription')}
+                      {t('agents.eventsAndToolsDescription')}
                     </CardDescription>
                   </CardHeader>
-                  <CardContent>
-                    <FormField
-                      control={form.control}
-                      name="supported_event_patterns"
-                      render={({ field }) => (
-                        <FormItem>
-                          <AgentEventPatternPicker
-                            events={availableEventTypes}
-                            value={field.value}
-                            onChange={field.onChange}
-                          />
-                          <FormDescription>
-                            {t('agents.supportedEventsDescription')}
-                          </FormDescription>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
+                  <CardContent className="space-y-6">
+                    <section className="space-y-3">
+                      <div className="space-y-1">
+                        <h3 className="text-sm font-medium">
+                          {t('agents.bindableEvents')}
+                        </h3>
+                        <p className="text-xs text-muted-foreground">
+                          {t('agents.bindableEventsDescription')}
+                        </p>
+                      </div>
+                      <FormField
+                        control={form.control}
+                        name="supported_event_patterns"
+                        render={({ field }) => (
+                          <FormItem>
+                            <AgentEventPatternPicker
+                              events={availableEventTypes}
+                              value={field.value}
+                              onChange={field.onChange}
+                              tools={platformTools}
+                              catalogAvailable={platformToolCatalogAvailable}
+                            />
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </section>
+
+                    <section className="space-y-3 border-t pt-6">
+                      <div className="space-y-1">
+                        <h3 className="text-sm font-medium">
+                          {t('agents.otherTools')}
+                        </h3>
+                        <p className="text-xs text-muted-foreground">
+                          {t('agents.otherToolsDescription')}
+                        </p>
+                      </div>
+                      <FormField
+                        control={form.control}
+                        name="allowed_platform_tools"
+                        render={({ field }) => (
+                          <FormItem>
+                            <AgentApiToolPicker
+                              platformTools={platformTools}
+                              platformValue={field.value}
+                              onPlatformChange={field.onChange}
+                              hostTools={hostTools}
+                              hostValue={form.watch('allowed_tools')}
+                              onHostChange={(value) =>
+                                form.setValue('allowed_tools', value, {
+                                  shouldDirty: true,
+                                  shouldValidate: true,
+                                })
+                              }
+                              platformCatalogAvailable={
+                                platformToolCatalogAvailable
+                              }
+                              hostCatalogAvailable={hostToolCatalogAvailable}
+                              scopes={OTHER_TOOL_SCOPES}
+                            />
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </section>
                   </CardContent>
                 </Card>
               )}

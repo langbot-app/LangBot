@@ -46,7 +46,7 @@ def _agent_row(
             'runner': {'id': 'plugin:test/runner/default', 'expire-time': 0},
             'runner_config': {'plugin:test/runner/default': {'temperature': 0.2}},
         },
-        supported_event_patterns=supported_event_patterns or ['*'],
+        supported_event_patterns=(supported_event_patterns if supported_event_patterns is not None else ['*']),
         created_at=dt.datetime(2026, 1, 1, 9, 0, 0),
         updated_at=updated_at or dt.datetime(2026, 1, 1, 10, 0, 0),
     )
@@ -96,6 +96,7 @@ def _make_app():
         _get_default_values_from_schema=Mock(return_value={}),
     )
     app.agent_runner_registry = None
+    app.tool_mgr = None
     app.logger = Mock()
     return app
 
@@ -107,11 +108,32 @@ class TestAgentServiceMetadata:
         app.pipeline_service.get_pipeline_metadata = AsyncMock(
             return_value=[{'name': 'trigger'}, ai_metadata, {'name': 'output'}]
         )
+        host_tools = [
+            {
+                'name': 'exec',
+                'source': 'builtin',
+                'source_name': 'LangBot',
+            },
+            {
+                'name': 'weather',
+                'source': 'mcp',
+                'source_name': 'weather-server',
+            },
+        ]
+        app.tool_mgr = SimpleNamespace(get_resolved_tool_catalog=AsyncMock(return_value=host_tools))
 
         metadata = await AgentService(app).get_agent_metadata(WORKSPACE_UUID)
         app.pipeline_service.get_pipeline_metadata.assert_awaited_once_with(WORKSPACE_UUID)
 
         assert metadata['runner_config'] == ai_metadata
+        assert any(tool['name'] == 'event_reply' for tool in metadata['platform_tools'])
+        assert all(tool['name'] != 'call_platform_api' for tool in metadata['platform_tools'])
+        assert metadata['host_tools'] == host_tools
+        app.tool_mgr.get_resolved_tool_catalog.assert_awaited_once_with(
+            WORKSPACE_UUID,
+            include_skill_authoring=True,
+            include_mcp_resource_tools=True,
+        )
         assert metadata['kinds'] == [
             {
                 'name': AGENT_KIND_AGENT,
@@ -129,6 +151,13 @@ class TestAgentServiceMetadata:
 class TestAgentServiceDebug:
     async def test_debug_agent_runs_configured_runner_with_synthetic_event(self):
         app = _make_app()
+        agent_config = _agent_row().config
+        agent_config['allowed_platform_tools'] = ['platform_get_user_info']
+        agent_config['event_tool_permissions'] = {
+            'message.*': ['event_reply'],
+            'group.member.joined': ['event_get_actor'],
+        }
+        agent_config['allowed_tools'] = ['exec', 'weather']
 
         async def run_agent(event, binding, adapter_context):
             yield SimpleNamespace(
@@ -144,7 +173,7 @@ class TestAgentServiceDebug:
                 'uuid': 'agent-1',
                 'kind': AGENT_KIND_AGENT,
                 'supported_event_patterns': ['*'],
-                'config': _agent_row().config,
+                'config': agent_config,
             }
         )
         context = SimpleNamespace(
@@ -181,6 +210,15 @@ class TestAgentServiceDebug:
         assert event.data == {'member_id': 'user-1'}
         assert binding.agent_id == 'agent-1'
         assert binding.runner_id == 'plugin:test/runner/default'
+        assert binding.resource_policy.allowed_platform_tool_names == [
+            'platform_get_user_info',
+            'event_reply',
+            'event_get_actor',
+            'event_get_group',
+            'event_get_group_member',
+        ]
+        assert binding.resource_policy.allow_all_tools is False
+        assert binding.resource_policy.allowed_tool_names == ['exec', 'weather']
         assert (
             app.agent_run_orchestrator.run.call_args.kwargs['adapter_context']['_execution_context'].workspace_uuid
             == WORKSPACE_UUID
@@ -435,6 +473,25 @@ class TestAgentServiceCreateUpdateDelete:
         insert_values = _compiled_params(app.persistence_mgr.execute_async.await_args.args[0])
         assert insert_values['component_ref'] is None
 
+    async def test_create_agent_preserves_explicit_empty_event_scope(self):
+        app = _make_app()
+        app.persistence_mgr.execute_async = AsyncMock(return_value=Mock())
+
+        await AgentService(app).create_agent(
+            WORKSPACE_UUID,
+            {
+                'name': 'Dormant Agent',
+                'supported_event_patterns': [],
+                'config': {
+                    'runner': {'id': ''},
+                    'runner_config': {},
+                },
+            },
+        )
+
+        insert_values = _compiled_params(app.persistence_mgr.execute_async.await_args.args[0])
+        assert insert_values['supported_event_patterns'] == []
+
     async def test_update_agent_rejects_malformed_4x_runner_config_before_write(self):
         app = _make_app()
         app.persistence_mgr.execute_async = AsyncMock(return_value=_result(first_item=_agent_row(agent_uuid='agent-1')))
@@ -486,7 +543,7 @@ class TestAgentServiceCreateUpdateDelete:
         assert update_values == {
             'name': 'Updated Agent',
             'config': new_config,
-            'supported_event_patterns': AGENT_DEFAULT_EVENT_PATTERNS,
+            'supported_event_patterns': [],
             'component_ref': 'plugin:test/new-runner/default',
         }
 

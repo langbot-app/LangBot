@@ -52,6 +52,7 @@ from ..utils import constants
 from ..agent.runner.session_registry import get_session_registry
 from ..agent.runner.config_resolver import RunnerConfigResolver
 from ..agent.runner import config_schema
+from ..agent.runner.platform_tools import execute_platform_tool, get_platform_tool_detail
 from ..pipeline.pool import get_query_execution_context
 
 
@@ -302,6 +303,8 @@ def _validate_frozen_tool_source_identity(
                     MCP_TOOL_READ_RESOURCE,
                 }:
                     source_ref = {'source': source, 'source_id': source_id}
+            elif source == 'platform' and source_id == tool_name:
+                source_ref = {'source': source, 'source_id': source_id}
 
     if source_ref is not None:
         return source_ref, None
@@ -1547,6 +1550,15 @@ class RuntimeConnectionHandler(handler.Handler):
             # In real implementation, you would reconstruct the full session
             # For now, we'll call the tool manager's execute method
             try:
+                if source_ref is not None and source_ref['source'] == 'platform':
+                    result = await execute_platform_tool(
+                        self.ap,
+                        self._execution_context(action_context),
+                        session,
+                        tool_name,
+                        parameters,
+                    )
+                    return handler.ActionResponse.success(data={'result': _serialize_plugin_api_result(result)})
                 query = _resolve_action_query(
                     data,
                     session,
@@ -1602,6 +1614,13 @@ class RuntimeConnectionHandler(handler.Handler):
                     return error
 
             try:
+                if source_ref is not None and source_ref['source'] == 'platform':
+                    tool_detail = get_platform_tool_detail(session, tool_name)
+                    if tool_detail is None:
+                        return handler.ActionResponse.error(
+                            message=f'Tool {tool_name} not found',
+                        )
+                    return handler.ActionResponse.success(data={'tool': tool_detail})
                 detail_kwargs: dict[str, Any] = {}
                 if source_ref is not None:
                     detail_kwargs['source_ref'] = source_ref

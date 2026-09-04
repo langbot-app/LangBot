@@ -6,12 +6,13 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+from langbot_plugin.api.entities.builtin.agent_runner import AgentInput, DeliveryContext
 
 from langbot.pkg.agent.runner.descriptor import AgentRunnerDescriptor
 from langbot.pkg.agent.runner.binding_resolver import AgentBindingResolver
 from langbot.pkg.agent.runner.query_entry_adapter import QueryEntryAdapter
 from langbot.pkg.agent.runner.resource_builder import AgentResourceBuilder
-from langbot.pkg.agent.runner.host_models import AgentBinding, BindingScope, ResourcePolicy
+from langbot.pkg.agent.runner.host_models import AgentBinding, AgentEventEnvelope, BindingScope, ResourcePolicy
 from langbot.pkg.api.http.context import ExecutionContext
 
 
@@ -199,6 +200,41 @@ async def test_build_models_from_config_without_manifest_acl(app):
     resources = await build_resources(app, query, descriptor)
 
     assert resources['models'] == []
+
+
+@pytest.mark.asyncio
+async def test_platform_tools_are_not_claimed_when_runner_disables_tool_calling(app):
+    event = AgentEventEnvelope(
+        event_id='event-platform-disabled',
+        event_type='message.received',
+        source='platform',
+        bot_id='bot-1',
+        input=AgentInput(text='hello'),
+        delivery=DeliveryContext(
+            surface='platform',
+            reply_target={'target_type': 'person', 'target_id': 'user-1'},
+            platform_capabilities={'supported_apis': ['send_message']},
+        ),
+    )
+    binding = AgentBinding(
+        binding_id='binding-platform-disabled',
+        scope=BindingScope(scope_type='global'),
+        runner_id=RUNNER_ID,
+        resource_policy=ResourcePolicy(allowed_platform_tool_names=['event_reply']),
+    )
+
+    resources = await AgentResourceBuilder(app).build_resources_from_binding(
+        execution_context=TEST_CONTEXT,
+        event=event,
+        binding=binding,
+        descriptor=make_descriptor(capabilities={'tool_calling': False}),
+    )
+
+    assert resources['tools'] == []
+    assert resources['platform_capabilities']['authorized_tools'] == []
+    assert resources['platform_capabilities']['unavailable_tools'] == [
+        {'name': 'event_reply', 'reason': 'runner_call_permission_missing'}
+    ]
 
 
 @pytest.mark.asyncio

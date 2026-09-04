@@ -47,6 +47,7 @@ class RunAuthorizationSnapshot(typing.TypedDict):
     thread_id: str | None
     state_policy: dict[str, typing.Any]
     state_context: dict[str, typing.Any]
+    platform_context: dict[str, typing.Any]
     authorized_ids: dict[str, set[str]]
     authorized_operations: dict[str, dict[str, set[str]]]
 
@@ -113,6 +114,7 @@ class AgentRunSessionRegistry:
         state_policy: dict[str, typing.Any] | None = None,
         state_context: dict[str, typing.Any] | None = None,
         execution_query: pipeline_query.Query | None = None,
+        platform_context: dict[str, typing.Any] | None = None,
     ) -> None:
         """Register a new agent run session.
 
@@ -155,6 +157,7 @@ class AgentRunSessionRegistry:
             'thread_id': thread_id,
             'state_policy': copy.deepcopy(state_policy),
             'state_context': copy.deepcopy(state_context),
+            'platform_context': copy.deepcopy(platform_context or {}),
             'authorized_ids': self._build_authorized_ids(resources_snapshot),
             'authorized_operations': self._build_authorized_operations(resources_snapshot),
         }

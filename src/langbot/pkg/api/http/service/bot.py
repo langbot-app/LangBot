@@ -76,7 +76,7 @@ class BotService:
 
     @classmethod
     def _agent_supports_event_pattern(cls, supported_patterns: list[str] | None, event_pattern: str) -> bool:
-        patterns = supported_patterns or ['*']
+        patterns = supported_patterns if isinstance(supported_patterns, list) else ['*']
         return any(cls._event_pattern_covers(pattern, event_pattern) for pattern in patterns)
 
     @staticmethod

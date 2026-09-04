@@ -27,6 +27,7 @@ from ..agent.runner.host_models import (
     StatePolicy,
 )
 from ..agent.runner.resource_policy import ResourcePolicyProjector
+from ..agent.runner.platform_tools import resolve_agent_platform_tool_names
 from ..entity.persistence import workspace as persistence_workspace
 
 from ..api.http.context import ExecutionContext, PrincipalContext, PrincipalType, RequestContext
@@ -165,7 +166,8 @@ class RuntimeBot:
         supported_patterns: list[str] | None,
         event_type: str,
     ) -> bool:
-        return any(cls._match_event_pattern(event_type, pattern) for pattern in (supported_patterns or ['*']))
+        patterns = supported_patterns if isinstance(supported_patterns, list) else ['*']
+        return any(cls._match_event_pattern(event_type, pattern) for pattern in patterns)
 
     @staticmethod
     def _get_nested_value(data: dict[str, typing.Any], path: str) -> typing.Any:
@@ -808,7 +810,12 @@ class RuntimeBot:
             event_types=[event_type],
             runner_id=runner_id,
             runner_config=runner_config,
-            resource_policy=ResourcePolicyProjector.from_runner_config(runner_config),
+            resource_policy=ResourcePolicyProjector.from_runner_config(
+                runner_config,
+                allowed_platform_tool_names=resolve_agent_platform_tool_names(config, event_type),
+                allowed_host_tool_names=config.get('allowed_tools'),
+                override_runner_tools='allowed_tools' in config,
+            ),
             state_policy=StatePolicy(state_scopes=['conversation', 'actor', 'subject', 'runner']),
             delivery_policy=DeliveryPolicy(
                 enable_streaming=False,

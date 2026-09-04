@@ -3,11 +3,11 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import {
   AlertCircle,
+  AlertTriangle,
   ChevronDown,
   CircleHelp,
   LoaderCircle,
   Play,
-  RotateCcw,
 } from 'lucide-react';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { Badge } from '@/components/ui/badge';
@@ -165,11 +165,6 @@ export default function AgentDebugPanel({
     const nextPreset = EVENT_PRESET_DATA[value] ?? { text: '', data: {} };
     setInputText(nextPreset.text);
     setEventDataText(JSON.stringify(nextPreset.data, null, 2));
-  }
-
-  function resetSession() {
-    sessionIdRef.current = createDebugSessionId(agentId);
-    setEntries([]);
   }
 
   async function runDebugEvent() {
@@ -368,130 +363,131 @@ export default function AgentDebugPanel({
       </div>
 
       <div className="shrink-0 space-y-3 border-t p-3">
-        <div className="flex items-end gap-2">
-          <div className="min-w-0 flex-1 space-y-1.5">
-            <Label>{t('agents.debugEventType')}</Label>
-            <Select value={preset} onValueChange={selectPreset}>
-              <SelectTrigger
-                className="w-full"
-                aria-label={t('agents.debugEventType')}
-              >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="w-[var(--radix-select-trigger-width)] max-w-[calc(100vw-2rem)]">
-                {eventGroups.map((group) => (
-                  <SelectGroup key={group.namespace}>
-                    <SelectLabel>
-                      {eventGroupLabel(group.namespace, t)}
-                    </SelectLabel>
-                    {group.patterns.map((event) => (
+        {supportedEventPatterns.length === 0 ? (
+          <Alert className="bg-amber-500/5 text-amber-800 dark:text-amber-200">
+            <AlertTriangle className="size-4" />
+            <AlertTitle>{t('agents.debugNoEventsTitle')}</AlertTitle>
+            <AlertDescription>
+              {t('agents.debugNoEventsDescription')}
+            </AlertDescription>
+          </Alert>
+        ) : (
+          <>
+            <div className="space-y-1.5">
+              <Label>{t('agents.debugEventType')}</Label>
+              <Select value={preset} onValueChange={selectPreset}>
+                <SelectTrigger
+                  className="w-full"
+                  aria-label={t('agents.debugEventType')}
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="w-[var(--radix-select-trigger-width)] max-w-[calc(100vw-2rem)]">
+                  {eventGroups.map((group) => (
+                    <SelectGroup key={group.namespace}>
+                      <SelectLabel>
+                        {eventGroupLabel(group.namespace, t)}
+                      </SelectLabel>
+                      {group.patterns.map((event) => (
+                        <SelectItem
+                          key={event}
+                          value={event}
+                          description={eventPatternDescription(event, t)}
+                          className="py-2"
+                        >
+                          <EventSelectOptionContent
+                            event={event}
+                            label={eventPatternLabel(event, t)}
+                          />
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  ))}
+                  {supportsCustomEvent && (
+                    <SelectGroup>
+                      <SelectLabel>{t('agents.debugCustomEvent')}</SelectLabel>
                       <SelectItem
-                        key={event}
-                        value={event}
-                        description={eventPatternDescription(event, t)}
+                        value="custom"
+                        description={t('bots.eventDescriptions.custom')}
                         className="py-2"
                       >
                         <EventSelectOptionContent
-                          event={event}
-                          label={eventPatternLabel(event, t)}
+                          event="custom.event"
+                          label={t('agents.debugCustomEvent')}
                         />
                       </SelectItem>
-                    ))}
-                  </SelectGroup>
-                ))}
-                {supportsCustomEvent && (
-                  <SelectGroup>
-                    <SelectLabel>{t('agents.debugCustomEvent')}</SelectLabel>
-                    <SelectItem
-                      value="custom"
-                      description={t('bots.eventDescriptions.custom')}
-                      className="py-2"
-                    >
-                      <EventSelectOptionContent
-                        event="custom.event"
-                        label={t('agents.debugCustomEvent')}
-                      />
-                    </SelectItem>
-                  </SelectGroup>
-                )}
-              </SelectContent>
-            </Select>
-          </div>
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            onClick={resetSession}
-            title={t('agents.debugResetSession')}
-          >
-            <RotateCcw className="size-4" />
-          </Button>
-        </div>
+                    </SelectGroup>
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
 
-        {preset === 'custom' && (
-          <div className="space-y-1.5">
-            <Label htmlFor="agent-debug-custom-event">
-              {t('agents.debugCustomEventType')}
-            </Label>
-            <Input
-              id="agent-debug-custom-event"
-              value={customEventType}
-              onChange={(event) => setCustomEventType(event.target.value)}
-              placeholder="custom.event"
-            />
-          </div>
+            {preset === 'custom' && (
+              <div className="space-y-1.5">
+                <Label htmlFor="agent-debug-custom-event">
+                  {t('agents.debugCustomEventType')}
+                </Label>
+                <Input
+                  id="agent-debug-custom-event"
+                  value={customEventType}
+                  onChange={(event) => setCustomEventType(event.target.value)}
+                  placeholder="custom.event"
+                />
+              </div>
+            )}
+
+            <div className="space-y-1.5">
+              <Label htmlFor="agent-debug-input">
+                {isMessageEvent
+                  ? t('agents.debugMessageInput')
+                  : t('agents.debugEventSummary')}
+              </Label>
+              <Textarea
+                id="agent-debug-input"
+                value={inputText}
+                onChange={(event) => setInputText(event.target.value)}
+                className="min-h-20 resize-y"
+                placeholder={t('agents.debugInputPlaceholder')}
+              />
+            </div>
+
+            <details className="rounded-md border bg-muted/20 px-3 py-2">
+              <summary className="cursor-pointer text-xs font-medium">
+                {t('agents.debugEventPayload')}
+              </summary>
+              <div className="mt-2 space-y-2">
+                <p className="text-xs text-muted-foreground">
+                  {t('agents.debugSupportedEvents')}: {supportedLabel}
+                </p>
+                <Textarea
+                  id="agent-debug-payload"
+                  value={eventDataText}
+                  onChange={(event) => setEventDataText(event.target.value)}
+                  className="min-h-28 resize-y font-mono text-xs"
+                  spellCheck={false}
+                />
+              </div>
+            </details>
+
+            <Button
+              type="button"
+              className="w-full"
+              disabled={running}
+              onClick={runDebugEvent}
+            >
+              {running ? (
+                <LoaderCircle className="size-4 animate-spin" />
+              ) : (
+                <Play className="size-4" />
+              )}
+              {running
+                ? t('agents.debugRunning')
+                : hasUnsavedChanges
+                  ? t('agents.debugSaveAndRun')
+                  : t('agents.debugRun')}
+            </Button>
+          </>
         )}
-
-        <div className="space-y-1.5">
-          <Label htmlFor="agent-debug-input">
-            {isMessageEvent
-              ? t('agents.debugMessageInput')
-              : t('agents.debugEventSummary')}
-          </Label>
-          <Textarea
-            id="agent-debug-input"
-            value={inputText}
-            onChange={(event) => setInputText(event.target.value)}
-            className="min-h-20 resize-y"
-            placeholder={t('agents.debugInputPlaceholder')}
-          />
-        </div>
-
-        <details className="rounded-md border bg-muted/20 px-3 py-2">
-          <summary className="cursor-pointer text-xs font-medium">
-            {t('agents.debugEventPayload')}
-          </summary>
-          <div className="mt-2 space-y-2">
-            <p className="text-xs text-muted-foreground">
-              {t('agents.debugSupportedEvents')}: {supportedLabel}
-            </p>
-            <Textarea
-              id="agent-debug-payload"
-              value={eventDataText}
-              onChange={(event) => setEventDataText(event.target.value)}
-              className="min-h-28 resize-y font-mono text-xs"
-              spellCheck={false}
-            />
-          </div>
-        </details>
-
-        <Button
-          type="button"
-          className="w-full"
-          disabled={running}
-          onClick={runDebugEvent}
-        >
-          {running ? (
-            <LoaderCircle className="size-4 animate-spin" />
-          ) : (
-            <Play className="size-4" />
-          )}
-          {running
-            ? t('agents.debugRunning')
-            : hasUnsavedChanges
-              ? t('agents.debugSaveAndRun')
-              : t('agents.debugRun')}
-        </Button>
       </div>
     </div>
   );

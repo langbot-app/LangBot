@@ -10,6 +10,7 @@ import shutil
 import socket
 import sqlite3
 import subprocess
+import sys
 import tempfile
 import textwrap
 import time
@@ -25,7 +26,6 @@ pytestmark = pytest.mark.e2e
 
 
 QA_RUNNER_ID = 'plugin:e2e/agent-runner-qa/default'
-QA_PLUGIN_DIRNAME = 'e2e__agent-runner-qa'
 
 
 @pytest.fixture(scope='session')
@@ -198,7 +198,13 @@ def agent_runner_e2e_config_path(agent_runner_e2e_tmpdir, agent_runner_e2e_port,
     with open(config_path, 'w', encoding='utf-8') as f:
         yaml.safe_dump(config, f, default_flow_style=False)
 
-    _write_qa_agent_runner_plugin(agent_runner_e2e_tmpdir / 'data' / 'plugins' / QA_PLUGIN_DIRNAME)
+    plugin_source = agent_runner_e2e_tmpdir / 'agent-runner-qa-package'
+    _write_qa_agent_runner_plugin(plugin_source)
+    shutil.make_archive(
+        str(agent_runner_e2e_tmpdir / 'agent-runner-qa'),
+        'zip',
+        root_dir=plugin_source,
+    )
     return config_path
 
 
@@ -212,7 +218,7 @@ def agent_runner_runtime_process(agent_runner_e2e_tmpdir, agent_runner_runtime_p
     stderr_file = open(stderr_path, 'wb')
     proc = subprocess.Popen(
         [
-            str(find_project_root() / '.venv' / 'bin' / 'python'),
+            sys.executable,
             '-m',
             'langbot_plugin.cli.__init__',
             'rt',
@@ -278,132 +284,180 @@ def agent_runner_client(agent_runner_e2e_port, agent_runner_langbot_process):
 
 def _init_and_auth(client: httpx.Client) -> str:
     """Initialize the test admin user and return a bearer token."""
-    init_resp = client.post('/api/v1/user/init', json={'user': 'admin', 'password': 'admin'})
+    credentials = {'user': 'admin@langbot.test', 'password': 'admin'}
+    init_resp = client.post('/api/v1/user/init', json=credentials)
     assert init_resp.status_code == 200
     assert init_resp.json()['code'] in [0, 1]
 
-    auth_resp = client.post('/api/v1/user/auth', json={'user': 'admin', 'password': 'admin'})
+    auth_resp = client.post('/api/v1/user/auth', json=credentials)
     assert auth_resp.status_code == 200
     payload = auth_resp.json()
     assert payload['code'] == 0
     return payload['data']['token']
 
 
-def test_plugin_runtime_discovers_agent_runner(agent_runner_client, agent_runner_langbot_process):
-    """Pipeline metadata should include the real runtime-discovered QA runner."""
-    token = _init_and_auth(agent_runner_client)
-    start = time.time()
-    while time.time() - start < 60:
-        response = agent_runner_client.get(
+def _install_qa_plugin(client: httpx.Client, token: str, package_path: Path) -> None:
+    """Install the QA Runner through the same asynchronous local-upload API as the UI."""
+    headers = {'Authorization': f'Bearer {token}'}
+    with package_path.open('rb') as package_file:
+        response = client.post(
+            '/api/v1/plugins/install/local',
+            headers=headers,
+            files={'file': ('agent-runner-qa.zip', package_file, 'application/zip')},
+        )
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload['code'] == 0, payload
+    task_id = payload['data']['task_id']
+
+    deadline = time.time() + 90
+    while time.time() < deadline:
+        task_response = client.get(f'/api/v1/system/tasks/{task_id}', headers=headers)
+        assert task_response.status_code == 200, task_response.text
+        task_payload = task_response.json()
+        assert task_payload['code'] == 0, task_payload
+        task = task_payload['data']
+        if task['runtime']['done']:
+            assert task['runtime']['exception'] is None, task
+            assert task['task_context']['metadata']['progress_percent'] == 100
+            return
+        time.sleep(1)
+    raise AssertionError(f'Plugin installation task {task_id} did not complete')
+
+
+def _wait_for_qa_runner(client: httpx.Client, token: str, timeout: float = 60) -> set[str]:
+    """Return the latest Runner option set, waiting for the QA Runner when needed."""
+    deadline = time.time() + timeout
+    option_names: set[str] = set()
+    while time.time() < deadline:
+        response = client.get(
             '/api/v1/pipelines/_/metadata',
             headers={'Authorization': f'Bearer {token}'},
         )
-
-        assert response.status_code == 200
+        assert response.status_code == 200, response.text
         data = response.json()
-        assert data['code'] == 0
+        assert data['code'] == 0, data
         metadata_groups = data['data']['configs']
         ai_metadata = next(group for group in metadata_groups if group.get('name') == 'ai')
-
         runner_stage = next(stage for stage in ai_metadata['stages'] if stage['name'] == 'runner')
         runner_select = next(item for item in runner_stage['config'] if item['name'] == 'id')
         option_names = {option['name'] for option in runner_select['options']}
         if QA_RUNNER_ID in option_names:
-            return
-        time.sleep(2)
+            break
+        time.sleep(1)
+    return option_names
 
-    assert QA_RUNNER_ID in option_names
+
+def _ensure_qa_plugin(client: httpx.Client, token: str, package_path: Path) -> None:
+    if QA_RUNNER_ID in _wait_for_qa_runner(client, token, timeout=2):
+        return
+    _install_qa_plugin(client, token, package_path)
+
+
+def test_plugin_runtime_discovers_agent_runner(
+    agent_runner_client,
+    agent_runner_langbot_process,
+    agent_runner_e2e_tmpdir,
+):
+    """Pipeline metadata should include the real runtime-discovered QA runner."""
+    token = _init_and_auth(agent_runner_client)
+    _ensure_qa_plugin(
+        agent_runner_client,
+        token,
+        agent_runner_e2e_tmpdir / 'agent-runner-qa.zip',
+    )
+    option_names = _wait_for_qa_runner(agent_runner_client, token)
+    if QA_RUNNER_ID in option_names:
+        return
+
+    host_stdout, host_stderr = agent_runner_langbot_process.get_logs()
+    runtime_stdout = (agent_runner_e2e_tmpdir / 'plugin-runtime.stdout.log').read_text(
+        encoding='utf-8', errors='replace'
+    )
+    runtime_stderr = (agent_runner_e2e_tmpdir / 'plugin-runtime.stderr.log').read_text(
+        encoding='utf-8', errors='replace'
+    )
+    assert QA_RUNNER_ID in option_names, (
+        f'{QA_RUNNER_ID} was not discovered\n'
+        f'Host stdout (tail):\n{host_stdout[-20_000:]}\nHost stderr (tail):\n{host_stderr[-20_000:]}\n'
+        f'Runtime stdout (tail):\n{runtime_stdout[-20_000:]}\n'
+        f'Runtime stderr (tail):\n{runtime_stderr[-20_000:]}'
+    )
 
 def test_host_orchestrator_runs_agent_runner_and_records_ledger(
-    agent_runner_e2e_config_path,
+    agent_runner_client,
+    agent_runner_langbot_process,
     agent_runner_e2e_tmpdir,
-    agent_runner_runtime_process,
 ):
-    """The Host orchestrator should run the pluginized runner and persist run side effects."""
-    import asyncio
-    import os
-
-    from langbot.pkg.agent.runner.host_models import (
-        AgentBinding,
-        AgentEventEnvelope,
-        BindingScope,
-        DeliveryPolicy,
-        StatePolicy,
+    """Create/configure/debug an Agent through HTTP and persist Runner side effects."""
+    del agent_runner_langbot_process
+    token = _init_and_auth(agent_runner_client)
+    _ensure_qa_plugin(
+        agent_runner_client,
+        token,
+        agent_runner_e2e_tmpdir / 'agent-runner-qa.zip',
     )
-    from langbot.pkg.core import boot
-    from langbot.pkg.utils import platform as platform_utils
-    from langbot_plugin.api.entities.builtin.agent_runner.delivery import DeliveryContext
-    from langbot_plugin.api.entities.builtin.agent_runner.event import ActorContext, SubjectContext
-    from langbot_plugin.api.entities.builtin.agent_runner.input import AgentInput
+    headers = {'Authorization': f'Bearer {token}'}
+    create_response = agent_runner_client.post(
+        '/api/v1/agents',
+        headers=headers,
+        json={
+            'kind': 'agent',
+            'name': 'AgentRunner E2E Agent',
+            'description': 'Exercises the installed QA Runner.',
+            'emoji': 'QA',
+            'supported_event_patterns': ['message.*'],
+            'config': {
+                'runner': {'id': QA_RUNNER_ID},
+                'runner_config': {QA_RUNNER_ID: {}},
+                'allowed_platform_tools': ['event_reply', 'platform_get_user_info'],
+            },
+        },
+    )
+    assert create_response.status_code == 200, create_response.text
+    create_payload = create_response.json()
+    assert create_payload['code'] == 0, create_payload
+    agent_uuid = create_payload['data']['uuid']
 
-    async def _run_probe():
-        previous_cwd = Path.cwd()
-        previous_standalone_runtime = platform_utils.standalone_runtime
-        os.chdir(agent_runner_e2e_tmpdir)
-        platform_utils.standalone_runtime = True
-        ap = None
-        try:
-            ap = await boot.make_app(asyncio.get_running_loop())
-            for _ in range(60):
-                handler = getattr(ap.plugin_connector, 'handler', None)
-                if handler is not None:
-                    await handler.ping()
-                    break
-                await asyncio.sleep(1)
-            else:
-                raise AssertionError('Plugin runtime did not connect')
+    get_response = agent_runner_client.get(f'/api/v1/agents/{agent_uuid}', headers=headers)
+    assert get_response.status_code == 200, get_response.text
+    stored_agent = get_response.json()['data']['agent']
+    assert stored_agent['config']['allowed_platform_tools'] == [
+        'event_reply',
+        'platform_get_user_info',
+    ]
 
-            for _ in range(60):
-                runners = await ap.agent_runner_registry.list_runners(use_cache=False)
-                if any(runner.id == QA_RUNNER_ID for runner in runners):
-                    break
-                await asyncio.sleep(1)
-            else:
-                raise AssertionError(f'{QA_RUNNER_ID} was not discovered')
-
-            event = AgentEventEnvelope(
-                event_id='e2e-orchestrator-event-001',
-                event_type='message.received',
-                source='api',
-                conversation_id='e2e-conversation',
-                thread_id='e2e-thread',
-                actor=ActorContext(actor_type='user', actor_id='user-001', actor_name='E2E User'),
-                subject=SubjectContext(subject_type='chat', subject_id='chat-001'),
-                input=AgentInput(text='hello from orchestrator e2e'),
-                delivery=DeliveryContext(surface='e2e'),
-            )
-            binding = AgentBinding(
-                binding_id='e2e-binding',
-                scope=BindingScope(scope_type='global'),
-                runner_id=QA_RUNNER_ID,
-                state_policy=StatePolicy(enable_state=True, state_scopes=['conversation']),
-                delivery_policy=DeliveryPolicy(enable_streaming=False, enable_reply=True),
-            )
-            return [message async for message in ap.agent_run_orchestrator.run(event, binding)]
-        finally:
-            if ap is not None:
-                ap.dispose()
-            platform_utils.standalone_runtime = previous_standalone_runtime
-            os.chdir(previous_cwd)
-
-    messages = asyncio.run(_run_probe())
-
-    assert len(messages) == 1
-    assert messages[0].role == 'assistant'
-    assert messages[0].content == 'e2e echo: hello from orchestrator e2e'
+    debug_response = agent_runner_client.post(
+        f'/api/v1/agents/{agent_uuid}/debug',
+        headers=headers,
+        json={
+            'event_type': 'message.received',
+            'text': 'hello from orchestrator e2e',
+            'conversation_id': 'e2e-conversation',
+        },
+    )
+    assert debug_response.status_code == 200, debug_response.text
+    debug_payload = debug_response.json()
+    assert debug_payload['code'] == 0, debug_payload
+    result = debug_payload['data']
+    assert result['final_text'] == 'e2e echo: hello from orchestrator e2e'
+    assert result['outputs'][0]['role'] == 'assistant'
 
     db_path = agent_runner_e2e_tmpdir / 'data' / 'langbot.db'
     conn = sqlite3.connect(str(db_path))
     try:
         run_row = conn.execute(
-            "SELECT status, runner_id FROM agent_run WHERE event_id = 'e2e-orchestrator-event-001'"
+            'SELECT status, runner_id FROM agent_run WHERE event_id = ?',
+            (result['event_id'],),
         ).fetchone()
         assert run_row == ('completed', QA_RUNNER_ID)
 
         event_types = {
             row[0]
             for row in conn.execute(
-                "SELECT type FROM agent_run_event WHERE run_id = (SELECT run_id FROM agent_run WHERE event_id = 'e2e-orchestrator-event-001')"
+                'SELECT type FROM agent_run_event WHERE run_id = '
+                '(SELECT run_id FROM agent_run WHERE event_id = ?)',
+                (result['event_id'],),
             ).fetchall()
         }
         assert {'state.updated', 'message.completed', 'run.completed'}.issubset(event_types)
@@ -415,59 +469,3 @@ def test_host_orchestrator_runs_agent_runner_and_records_ledger(
         assert '"count": 1' in state_row[0]
     finally:
         conn.close()
-
-
-def test_pluginized_agent_runner_executes_through_runtime(agent_runner_client, agent_runner_langbot_process):
-    """The Host debug surface should invoke the QA runner through the real Plugin Runtime."""
-    token = _init_and_auth(agent_runner_client)
-    start = time.time()
-    while time.time() - start < 60:
-        metadata_response = agent_runner_client.get(
-            '/api/v1/pipelines/_/metadata',
-            headers={'Authorization': f'Bearer {token}'},
-        )
-        assert metadata_response.status_code == 200
-        metadata = metadata_response.json()['data']['configs']
-        ai_metadata = next(group for group in metadata if group.get('name') == 'ai')
-        runner_stage = next(stage for stage in ai_metadata['stages'] if stage['name'] == 'runner')
-        runner_select = next(item for item in runner_stage['config'] if item['name'] == 'id')
-        if QA_RUNNER_ID in {option['name'] for option in runner_select['options']}:
-            break
-        time.sleep(2)
-    else:
-        pytest.fail(f'{QA_RUNNER_ID} was not discovered before run_agent')
-
-    response = agent_runner_client.post(
-        '/api/v1/system/debug/plugin/action',
-        headers={'Authorization': f'Bearer {token}'},
-        json={
-            'action': 'run_agent',
-            'timeout': 60,
-            'data': {
-                'plugin_author': 'e2e',
-                'plugin_name': 'agent-runner-qa',
-                'runner_name': 'default',
-                'context': {
-                    'run_id': 'e2e-run-001',
-                    'trigger': {'type': 'message.received'},
-                    'event': {
-                        'event_id': 'e2e-event-001',
-                        'event_type': 'message.received',
-                        'source': 'api',
-                    },
-                    'input': {'text': 'hello from real e2e'},
-                    'delivery': {'surface': 'e2e'},
-                    'resources': {},
-                    'runtime': {},
-                },
-            },
-        },
-    )
-
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload['code'] == 0
-    result = payload['data']
-    assert result['type'] == 'message.completed', result
-    assert result['data']['message']['role'] == 'assistant'
-    assert result['data']['message']['content'] == 'e2e echo: hello from real e2e'

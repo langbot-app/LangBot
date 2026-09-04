@@ -24,6 +24,7 @@ export interface ProcessorDetailStatus {
 
 interface ProcessorDetailWorkbenchProps {
   title: string;
+  titleBadge?: ReactNode;
   titleAction?: ReactNode;
   headerActions?: ReactNode;
   status?: ProcessorDetailStatus | null;
@@ -45,6 +46,7 @@ interface ProcessorDetailWorkbenchProps {
 
 export default function ProcessorDetailWorkbench({
   title,
+  titleBadge,
   titleAction,
   headerActions,
   status,
@@ -79,6 +81,7 @@ export default function ProcessorDetailWorkbench({
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 pb-4">
         <div className="flex min-w-0 items-center gap-2">
           <h1 className="truncate text-xl font-semibold">{title}</h1>
+          {titleBadge}
           {titleAction}
           {monitoring && (
             <TabsList

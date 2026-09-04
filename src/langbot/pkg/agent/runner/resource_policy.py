@@ -21,6 +21,9 @@ class ResourcePolicyProjector:
         resolved_tool_sources: typing.Mapping[str, typing.Any] | None = None,
         resolved_kb_uuids: collections.abc.Iterable[typing.Any] | None = None,
         resolved_skill_names: collections.abc.Iterable[typing.Any] | None = None,
+        allowed_platform_tool_names: collections.abc.Iterable[typing.Any] | None = None,
+        allowed_host_tool_names: collections.abc.Iterable[typing.Any] | None = None,
+        override_runner_tools: bool = False,
     ) -> ResourcePolicy:
         """Project standard resource fields without depending on a runner ID.
 
@@ -33,7 +36,10 @@ class ResourcePolicyProjector:
         selected_tool_names = cls.normalize_names(config.get('tools'))
         enable_all_tools = config.get('enable-all-tools', True) is True
 
-        if resolved_tool_names is not None:
+        if override_runner_tools:
+            allowed_tool_names = cls.normalize_names(allowed_host_tool_names)
+            allow_all_tools = False
+        elif resolved_tool_names is not None:
             available_tool_names = cls.normalize_names(resolved_tool_names)
             if enable_all_tools:
                 allowed_tool_names = available_tool_names
@@ -64,6 +70,7 @@ class ResourcePolicyProjector:
             allowed_model_uuids=cls.normalize_optional_names(resolved_model_uuids),
             allowed_tool_names=allowed_tool_names,
             allowed_tool_sources=allowed_tool_sources,
+            allowed_platform_tool_names=cls.normalize_names(allowed_platform_tool_names),
             allow_all_tools=allow_all_tools,
             allowed_kb_uuids=allowed_kb_uuids,
             allowed_skill_names=cls.normalize_optional_names(resolved_skill_names),

@@ -340,6 +340,12 @@ class TestEBAEventBindings:
         bot.bot_entity = SimpleNamespace(event_bindings=bindings)
         return bot
 
+    def test_empty_agent_event_scope_matches_nothing(self):
+        from langbot.pkg.platform.botmgr import RuntimeBot
+
+        assert RuntimeBot._agent_supports_event_type([], 'message.received') is False
+        assert RuntimeBot._agent_supports_event_type(None, 'message.received') is True
+
     def test_resolve_eba_event_binding_uses_enabled_pattern_filters_priority_and_order(self):
         """The selected binding is the first matching highest-priority binding."""
         bot = self._make_bot(
@@ -408,6 +414,12 @@ class TestEBAEventBindings:
                 'component_ref': 'plugin:test/fallback/default',
                 'config': {
                     'runner': {'id': 'plugin:test/runner/default'},
+                    'allowed_platform_tools': ['platform_get_user_info'],
+                    'event_tool_permissions': {
+                        'message.*': ['event_reply'],
+                        'platform.member.joined': ['event_get_actor'],
+                    },
+                    'allowed_tools': ['exec', 'mcp_tool'],
                     'runner_config': {
                         'plugin:test/runner/default': {
                             'temperature': 0.2,
@@ -428,8 +440,12 @@ class TestEBAEventBindings:
         assert binding.event_types == ['platform.member.joined']
         assert binding.runner_id == 'plugin:test/runner/default'
         assert binding.runner_config == {'temperature': 0.2, 'max_tokens': 1000}
-        assert binding.resource_policy.allow_all_tools is True
-        assert binding.resource_policy.allowed_tool_names is None
+        assert binding.resource_policy.allow_all_tools is False
+        assert binding.resource_policy.allowed_tool_names == ['exec', 'mcp_tool']
+        assert binding.resource_policy.allowed_platform_tool_names == [
+            'platform_get_user_info',
+            'event_get_actor',
+        ]
         assert binding.delivery_policy.enable_streaming is False
         assert binding.delivery_policy.enable_reply is True
         assert binding.delivery_policy.enable_interactions is True

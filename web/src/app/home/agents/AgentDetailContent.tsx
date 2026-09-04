@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { Trash2 } from 'lucide-react';
+import { AlertTriangle, Trash2 } from 'lucide-react';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { useCurrentWorkspace } from '@/app/infra/http';
 import { Agent } from '@/app/infra/entities/api';
@@ -13,6 +13,7 @@ import EntityBasicInfoDialog, {
 } from '@/app/home/components/entity-basic-info/EntityBasicInfoDialog';
 import EntityTitleEditButton from '@/app/home/components/entity-basic-info/EntityTitleEditButton';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import {
   Dialog,
   DialogContent,
@@ -168,6 +169,18 @@ export default function AgentDetailContent({ id }: { id: string }) {
       <ProcessorDetailWorkbench
         key={id}
         title={`${agent.emoji || '🤖'} ${agent.name}`}
+        titleBadge={
+          supportedEventPatterns.length === 0 ? (
+            <Badge
+              variant="outline"
+              role="status"
+              className="shrink-0 gap-1 rounded-full border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+            >
+              <AlertTriangle className="size-3" />
+              {t('agents.noEventsConfiguredBadge')}
+            </Badge>
+          ) : undefined
+        }
         titleAction={
           canManage ? (
             <EntityTitleEditButton onClick={() => setBasicInfoOpen(true)} />

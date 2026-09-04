@@ -25,6 +25,10 @@ from ....agent.runner.host_models import (
     StatePolicy,
 )
 from ....agent.runner.resource_policy import ResourcePolicyProjector
+from ....agent.runner.platform_tools import (
+    platform_tool_catalog,
+    resolve_agent_platform_tool_names,
+)
 from ....entity.persistence import agent as persistence_agent
 from ....workspace.errors import WorkspaceNotFoundError
 from ..context import ExecutionContext, RequestContext
@@ -49,8 +53,21 @@ class AgentService:
         """Return metadata needed by Agent forms."""
         pipeline_metadata = await self.ap.pipeline_service.get_pipeline_metadata(context)
         ai_metadata = next((item for item in pipeline_metadata if item.get('name') == 'ai'), None)
+        host_tools: list[dict[str, typing.Any]] | None = None
+        get_tool_catalog = getattr(getattr(self.ap, 'tool_mgr', None), 'get_resolved_tool_catalog', None)
+        if get_tool_catalog is not None:
+            try:
+                host_tools = await get_tool_catalog(
+                    context,
+                    include_skill_authoring=True,
+                    include_mcp_resource_tools=True,
+                )
+            except Exception as exc:
+                self.ap.logger.warning(f'Failed to load Agent Host tool catalog: {exc}')
         return {
             'runner_config': ai_metadata,
+            'platform_tools': platform_tool_catalog(),
+            'host_tools': host_tools,
             'kinds': [
                 {
                     'name': AGENT_KIND_AGENT,
@@ -192,7 +209,12 @@ class AgentService:
             event_types=[event_type],
             runner_id=runner_id,
             runner_config=runner_config,
-            resource_policy=ResourcePolicyProjector.from_runner_config(runner_config),
+            resource_policy=ResourcePolicyProjector.from_runner_config(
+                runner_config,
+                allowed_platform_tool_names=resolve_agent_platform_tool_names(config, event_type),
+                allowed_host_tool_names=config.get('allowed_tools'),
+                override_runner_tools='allowed_tools' in config,
+            ),
             state_policy=StatePolicy(
                 state_scopes=['conversation', 'actor', 'subject', 'runner'],
             ),
@@ -292,7 +314,11 @@ class AgentService:
             'kind': AGENT_KIND_AGENT,
             'component_ref': runner_id,
             'config': config,
-            'supported_event_patterns': agent_data.get('supported_event_patterns') or AGENT_DEFAULT_EVENT_PATTERNS,
+            'supported_event_patterns': (
+                agent_data['supported_event_patterns']
+                if 'supported_event_patterns' in agent_data
+                else AGENT_DEFAULT_EVENT_PATTERNS
+            ),
         }
         await self.ap.persistence_mgr.execute_async(sqlalchemy.insert(persistence_agent.Agent).values(**values))
         return {'uuid': new_uuid, 'kind': AGENT_KIND_AGENT}
@@ -317,9 +343,6 @@ class AgentService:
         else:
             _, runner_id, _ = RunnerConfigResolver.resolve_agent_runner_config(existing_agent.config)
         update_data['component_ref'] = runner_id
-        if 'supported_event_patterns' in update_data and not update_data['supported_event_patterns']:
-            update_data['supported_event_patterns'] = AGENT_DEFAULT_EVENT_PATTERNS
-
         result = await self.ap.persistence_mgr.execute_async(
             scope_statement(
                 sqlalchemy.update(persistence_agent.Agent)
@@ -404,8 +427,11 @@ class AgentService:
     ) -> dict[str, typing.Any]:
         item = self.ap.persistence_mgr.serialize_model(persistence_agent.Agent, agent)
         item['kind'] = AGENT_KIND_AGENT
+        supported_event_patterns = item.get('supported_event_patterns')
         item['capability'] = {
-            'supported_event_patterns': item.get('supported_event_patterns') or AGENT_DEFAULT_EVENT_PATTERNS,
+            'supported_event_patterns': (
+                supported_event_patterns if isinstance(supported_event_patterns, list) else AGENT_DEFAULT_EVENT_PATTERNS
+            ),
             'message_only': False,
         }
         if not include_config:

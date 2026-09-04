@@ -28,6 +28,7 @@ from .interaction_manager import InteractionManager
 from .query_bridge import QueryRunBridge
 from .registry import AgentRunnerRegistry
 from .resource_builder import AgentResourceBuilder
+from .platform_tools import freeze_platform_context
 from .result_normalizer import AgentResultNormalizer
 from .run_journal import AgentRunJournal
 from .session_registry import AgentRunSessionRegistry, get_session_registry
@@ -201,6 +202,7 @@ class AgentRunOrchestrator:
                 },
                 state_context=state_context,
                 execution_query=execution_query,
+                platform_context=freeze_platform_context(event),
             )
 
             event_log_id = await self.journal.write_event_log(

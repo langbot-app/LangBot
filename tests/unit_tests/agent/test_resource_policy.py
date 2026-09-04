@@ -53,10 +53,24 @@ def test_pipeline_projection_keeps_sources_only_for_authorized_tools():
 
 
 def test_independent_agent_projection_preserves_all_tools_intent():
-    policy = ResourcePolicyProjector.from_runner_config({})
+    policy = ResourcePolicyProjector.from_runner_config(
+        {}, allowed_platform_tool_names=['event_reply', '', 'event_reply']
+    )
 
     assert policy.allow_all_tools is True
     assert policy.allowed_tool_names is None
+    assert policy.allowed_platform_tool_names == ['event_reply']
+
+
+def test_runner_config_cannot_self_grant_platform_tools():
+    policy = ResourcePolicyProjector.from_runner_config(
+        {
+            'platform-tools': ['platform_send_message'],
+            'allowed_platform_tools': ['platform_delete_message'],
+        }
+    )
+
+    assert policy.allowed_platform_tool_names == []
 
 
 @pytest.mark.parametrize('invalid_value', [0, None, 'false', [], {}])
@@ -76,6 +90,28 @@ def test_independent_agent_projection_preserves_selected_tools():
 
     assert policy.allow_all_tools is False
     assert policy.allowed_tool_names == ['exec']
+
+
+def test_agent_level_host_tool_policy_overrides_runner_tool_defaults():
+    policy = ResourcePolicyProjector.from_runner_config(
+        {'enable-all-tools': True, 'tools': ['runner-tool']},
+        allowed_host_tool_names=['exec', 'mcp_tool', 'exec'],
+        override_runner_tools=True,
+    )
+
+    assert policy.allow_all_tools is False
+    assert policy.allowed_tool_names == ['exec', 'mcp_tool']
+
+
+def test_agent_level_empty_host_tool_policy_fails_closed():
+    policy = ResourcePolicyProjector.from_runner_config(
+        {'enable-all-tools': True},
+        allowed_host_tool_names=[],
+        override_runner_tools=True,
+    )
+
+    assert policy.allow_all_tools is False
+    assert policy.allowed_tool_names == []
 
 
 def test_filter_tools_supports_sdk_objects_and_dictionary_tools():
