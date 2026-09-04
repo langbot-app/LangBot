@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: LLMAPIRequester
+metadata:
+  name: llmman-chat
+  label:
+    en_US: llmman
+    zh_Hans: llmman
+  icon: llmman.svg
+spec:
+  # llmman (https://github.com/llmmanorg/llmman) serves the Ollama API on port 17434,
+  # so it reuses litellm's ollama_chat provider with a different default base URL.
+  litellm_provider: ollama_chat
+  config:
+  - name: base_url
+    label:
+      en_US: Base URL
+      zh_Hans: 基础 URL
+    type: string
+    required: true
+    default: http://127.0.0.1:17434
+  - name: timeout
+    label:
+      en_US: Timeout
+      zh_Hans: 超时时间
+    type: integer
+    required: true
+    default: 120
+  alias: "llmman 本地 local 本地部署 self-hosted llama.cpp vllm mlx gguf 私有化"
+  support_type:
+  - llm
+  - text-embedding
+  provider_category: self-hosted
+execution:
+  python:
+    path: ./llmmanchat.py
+    attr: LlmmanChatCompletions
