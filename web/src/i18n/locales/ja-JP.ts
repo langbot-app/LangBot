@@ -846,6 +846,9 @@ const jaJP = {
     connectionSuccess: '接続に成功しました',
     connectionFailed: '接続に失敗しました，URLを確認してください',
     connectionFailedStatus: '接続失敗',
+    oauthAuthorizationRequired: 'OAuth 認可が必要です',
+    oauthAuthorizationRequiredSuggestion:
+      'この MCP サーバーには OAuth ログインが必要です。現在は OAuth ログインに対応していません。サーバーが許可している場合は、Authorization ヘッダーを手動で追加してください。',
     boxDisabledStdioRefused:
       'Stdio モードの MCP サーバーは Box サンドボックスを必要としますが、設定で無効化されています（box.enabled = false）。',
     boxUnavailableStdioRefused:

@@ -804,6 +804,9 @@ const zhHans = {
     connectionSuccess: '连接成功',
     connectionFailed: '连接失败，请检查URL',
     connectionFailedStatus: '连接失败',
+    oauthAuthorizationRequired: '需要 OAuth 授权',
+    oauthAuthorizationRequiredSuggestion:
+      '此 MCP 服务器需要 OAuth 登录。当前尚不支持 OAuth 登录；如果服务器允许，可以手动添加 Authorization 请求头。',
     boxDisabledStdioRefused:
       'Stdio 模式的 MCP 服务器依赖 Box 沙箱，目前已在配置中禁用（box.enabled = false）。',
     boxUnavailableStdioRefused:

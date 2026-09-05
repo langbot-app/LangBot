@@ -8,7 +8,14 @@ import React, {
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
-import { Braces, Loader2, Trash2, Wrench, XCircle } from 'lucide-react';
+import {
+  Braces,
+  Loader2,
+  ShieldAlert,
+  Trash2,
+  Wrench,
+  XCircle,
+} from 'lucide-react';
 import { Resolver, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -112,6 +119,22 @@ function StatusDisplay({
           <div className="text-muted-foreground">
             {t('mcp.boxStdioRefusedSuggestion')}
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (runtimeInfo.error_phase === 'oauth_required') {
+    return (
+      <div className="space-y-1">
+        <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
+          <ShieldAlert className="size-5" />
+          <span className="font-medium">
+            {t('mcp.oauthAuthorizationRequired')}
+          </span>
+        </div>
+        <div className="pl-7 text-sm text-muted-foreground">
+          {t('mcp.oauthAuthorizationRequiredSuggestion')}
         </div>
       </div>
     );
@@ -915,14 +938,18 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
               const errorMsg =
                 taskResp.runtime.exception || t('mcp.unknownError');
               toast.error(`${t('mcp.testError')}: ${errorMsg}`);
-              setRuntimeInfo({
-                status: MCPSessionStatus.ERROR,
-                error_message: errorMsg,
-                tool_count: 0,
-                tools: [],
-                resource_count: 0,
-                resources: [],
-              });
+              const runtimeInfoFromTest = taskResp.task_context?.metadata
+                ?.runtime_info as MCPServerRuntimeInfo | undefined;
+              setRuntimeInfo(
+                runtimeInfoFromTest ?? {
+                  status: MCPSessionStatus.ERROR,
+                  error_message: errorMsg,
+                  tool_count: 0,
+                  tools: [],
+                  resource_count: 0,
+                  resources: [],
+                },
+              );
               if (shouldTestPersistedServer) {
                 await onPersistedTestComplete?.(serverName);
               }
