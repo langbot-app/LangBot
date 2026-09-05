@@ -28,17 +28,43 @@ def _repository(tmp_path) -> SkillRepository:
         ),
         instance_config=SimpleNamespace(
             data={
+                'skills': {'root': str(tmp_path / 'skill-store')},
                 'box': {
                     'enabled': False,
                     'local': {
                         'host_root': str(tmp_path / 'box'),
-                        'skills_root': 'skills',
                     },
                 }
             }
         ),
     )
     return SkillRepository(app)
+
+
+def test_repository_prefers_standalone_skill_root(tmp_path):
+    repository = _repository(tmp_path)
+
+    assert repository._store.root == str((tmp_path / 'skill-store').resolve())
+
+
+def test_repository_keeps_old_box_root_only_for_online_upgrade(tmp_path):
+    app = SimpleNamespace(
+        workspace_service=SimpleNamespace(get_execution_binding=_binding),
+        instance_config=SimpleNamespace(
+            data={
+                'box': {
+                    'local': {
+                        'host_root': str(tmp_path / 'box'),
+                        'skills_root': 'legacy-skills',
+                    }
+                }
+            }
+        ),
+    )
+
+    repository = SkillRepository(app)
+
+    assert repository._store.root == str((tmp_path / 'box' / 'legacy-skills').resolve())
 
 
 @pytest.mark.asyncio

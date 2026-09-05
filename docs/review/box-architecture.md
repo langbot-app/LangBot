@@ -24,6 +24,7 @@
 │       │                    │       (shared 容器, 多 process)       │
 │       │                    │                                      │
 │       │                    ├──> SkillToolLoader (activate 工具)    │
+│       │                    │       └─ build_execution_mounts()    │
 │       │                    │                                      │
 │       │                    ├──> SkillAuthoringToolLoader          │
 │       │                    │                                      │
@@ -35,7 +36,7 @@
 │    ├─ Workspace quota 检查                                         │
 │    ├─ 输出截断 (head+tail)                                         │
 │    ├─ Host scope 哈希 (resolve_box_session_id)                     │
-│    ├─ 技能挂载组装 (build_skill_extra_mounts)                      │
+│    ├─ 通用只读挂载接收 (read_only_mounts)                          │
 │    ├─ 重连循环 (_reconnect_loop, 指数退避)                          │
 │    └─ BoxRuntimeConnector                                          │
 │         ├─ 心跳 loop (20s ping)                                    │
@@ -61,10 +62,8 @@
 │    NsjailBackend ──┘  (本地 CLI 或 fallback 到容器内 CLI)            │
 │    E2BBackend         (云沙箱, 需要 E2B_API_KEY)                    │
 │                                                                   │
-│  BoxSkillStore                                                    │
-│    ├─ list / get / create / update / delete                       │
-│    ├─ scan_skill_directory / read_skill_file / write_skill_file   │
-│    └─ preview_skill_zip / install_skill_zip (zip 或 GitHub)        │
+│  Generic mount admission                                         │
+│    └─ allow-list + read-only + normalized target validation       │
 │                                                                   │
 │  aiohttp 单端口服务 (默认 :5410):                                    │
 │    /rpc/ws                                       — Action RPC      │
@@ -89,6 +88,7 @@
 - 一个 session_id 对应一个容器/沙箱实例。同一 session 内可并存多条 mount 与多个 managed process
 - Runner 无权指定 session scope。SDK/Python `call_tool` 与 scoped MCP bridge 都发出同一个 `PluginToRuntimeAction.CALL_TOOL`，最终由 Host 的 ToolManager 执行，并使用当前 run 保存的同一个 execution Query
 - Box 内托管的 stdio MCP server 使用独立的长期 `mcp-shared` session；它不是 Runner 本次事件的 sandbox session（详见 [box-session-scope.md](./box-session-scope.md)）
+- Skill 仅是 Core 组装 mount 的业务来源；Box 与默认 exec / MCP Server 只共享通用 session 和 mount 机制（详见 [box-session-scope.md](./box-session-scope.md)）
 
 ---
 
@@ -96,7 +96,7 @@
 
 ### 2.1 BoxService (`pkg/box/service.py`, 722 行)
 
-应用层门面，协调 Profile、安全校验、配额、连接、Skill 挂载与 Host scope 哈希：
+应用层门面，协调 Profile、安全校验、配额、连接、Host scope 哈希与 Core 生成的只读挂载：
 
 主要公开方法（按定义顺序）：
 
@@ -108,7 +108,7 @@ BoxService
   ├─ available (property)                      连接状态
   │
   ├─ resolve_box_session_id(query)             哈希 Host 私有 scope，生成固定长度 session_id
-  ├─ build_skill_extra_mounts(query)           组装 pipeline-bound skill 的挂载列表
+  ├─ execute_tool(..., read_only_mounts=...)   接收 Core 组装的通用只读挂载
   │
   ├─ execute_tool(parameters, query)           Agent 调用 exec 时的入口
   │    ├─ _apply_profile / build_spec
@@ -125,12 +125,6 @@ BoxService
   ├─ stop_managed_process(session_id, pid)     单独停止某个 managed process
   ├─ get_managed_process_websocket_url(...)    返回 WS attach URL
   │
-  ├─ list_skills() / get_skill(name)           Skill 元数据
-  ├─ create_skill / update_skill / delete_skill  Skill CRUD
-  ├─ scan_skill_directory(path)                扫描目录
-  ├─ list_skill_files / read_skill_file / write_skill_file
-  ├─ preview_skill_zip / install_skill_zip     zip / GitHub 安装
-  │
   ├─ shutdown() / dispose()                    清理：RPC SHUTDOWN + 进程终止
   ├─ get_status() / get_sessions() / get_recent_errors()
   └─ get_system_guidance()                     LLM 系统提示
@@ -142,7 +136,7 @@ BoxService
 
 **Session 所有权**: `resolve_box_session_id(query)` 只接受 Host 已确定的私有 scope 或 Query launcher/session identity，并输出 `lb-box-` + 64 位小写 SHA-256 十六进制摘要（固定 71 个 ASCII 字符）。哈希输入是 canonical JSON，包含 instance、workspace、bot、platform adapter、target type/id 与 thread；原始用户、群组、conversation 或 event id 不会出现在 Box session id 中。相同 Host scope 稳定复用，不同 target/thread/workspace/bot/adapter/instance 相互隔离；缺少可用 identity 时 fail closed。Pipeline、Agent 或 Runner 配置都不能覆盖该规则。
 
-**Skill 挂载合并**: `execute_tool()` 调用时，`build_skill_extra_mounts(query)` 会把当前 pipeline-bound 的所有 skill 的 `package_root` 作为 `extra_mounts` 加入 BoxSpec，挂在 `/workspace/.skills/<name>`。LLM 通过 `activate` 工具显式激活某个 skill 后，工具调用才允许引用这个 skill 的虚拟路径。
+**Skill 挂载合并**: native loader 调用 `skill.build_execution_mounts()`，把当前 pipeline-bound 的所有 skill 的 `package_root` 转成普通只读 mount，再通过 `BoxService.execute_tool(..., read_only_mounts=...)` 交给 Box，挂在 `/workspace/.skills/<name>`。LLM 通过 `activate` 工具显式激活某个 skill 后，工具调用才允许引用这个 skill 的虚拟路径；BoxService 和 Box Runtime 都不知道这些 mount 来自 Skill。
 
 ### 2.2 BoxRuntimeConnector (`pkg/box/connector.py`, 357 行)
 
@@ -299,7 +293,7 @@ start_managed_process(session, spec):
 
 单端口 aiohttp 服务（默认 5410），通过路径区分（commit `8c71ec5` 合并端口）：
 
-1. **Action RPC** (`/rpc/ws`): `BoxServerHandler` 处理所有 action，包括 `INIT` 配置注入、skill store 操作等
+1. **Action RPC** (`/rpc/ws`): `BoxServerHandler` 处理 `INIT`、exec、session、managed-process 与状态等通用 action
 2. **WS Relay** (`/v1/sessions/{id}/managed-process/ws` 与 `/v1/sessions/{id}/managed-process/{pid}/ws`): 双向桥接 WebSocket ↔ 指定 managed process stdin/stdout
 
 stdio 模式同样会在 5410 启动 aiohttp，专门承担 managed process attach；Action RPC 走 stdin/stdout。
@@ -308,7 +302,7 @@ stdio 模式同样会在 5410 启动 aiohttp，专门承担 managed process atta
 
 `ActionRPCBoxClient` 封装 `Handler.call_action()` 调用：
 
-- 25+ 方法对应 25+ 个 RPC action（exec / session / managed-process / skill / status / shutdown）
+- 方法对应 exec / session / managed-process / status / shutdown 等通用 RPC action，不暴露 Skill CRUD
 - 错误还原: `_translate_action_error()` 通过字符串前缀匹配还原 SDK 侧异常类型
 - `execute()` timeout = 300s，其他默认 15s
 - `BoxRuntimeClient` 是 ABC，供后续可能的非 RPC 实现复用
@@ -349,7 +343,7 @@ stdio 模式同样会在 5410 启动 aiohttp，专门承担 managed process atta
 
 ### 3.7 SkillStore (`langbot_plugin.skill_store`)
 
-Skill 包存储最初位于 Box Runtime；issue #2410 将通用实现抽到 Plugin SDK 顶层，Core 与 Box 使用同一套存储和 revision 语义：
+Skill 包存储最初位于 Box Runtime；issue #2410 将通用实现抽到 Plugin SDK 顶层，由 Core 独占存储和 revision 语义：
 
 ```
 SkillStore
@@ -364,7 +358,15 @@ SkillStore
      └─ 支持 source_subdir / target_suffix（commit 1aa043f）
 ```
 
-`langbot_plugin.box.skill_store.BoxSkillStore` 仅保留为旧 Box 配置到通用 `SkillStore` 的兼容适配器，不再拥有存储实现。GitHub 安装路径由 Core HTTP 层下载归档，再交给 SkillRepository。Skill 文件继续存放于 `box.local.skills_root`（默认 `skills`，相对 `host_root`），执行时只读挂载到 `/workspace/.skills/`。
+GitHub 安装路径由 Core HTTP 层下载归档，再交给 SkillRepository。Skill 文件位于独立的 `skills.root`，执行时由 Core 组装成通用只读 `BoxMountSpec` 并挂载到 `/workspace/.skills/`。Box 的正常模型、客户端和 Runtime 不包含 `skill_name`、Skill CRUD、revision 或 `SKILL.md` 语义。
+
+滚动升级只保留一个隔离桥：`box/legacy_skill_compat.py` 让旧 Core 暂时调用新 Box，并把旧 `skill_name` 转为普通只读 mount。部署顺序必须先升级 Box、再升级 Core。该模块有 `TODO(next-major)`，下一大版本删除；正常架构不依赖它。
+
+下一大版本的删除清单（当前均有 `TODO(next-major)`）：
+
+1. 删除 SDK `box/legacy_skill_compat.py` 及 Server 中唯一的注册/转换钩子。
+2. 删除 Core 对 `box.local.skills_root` 的配置 fallback。
+3. 新安装默认从历史 `./data/box/skills` 切到 `./data/skills`；届时 Box 部署只需只读访问 Core 明确下发的通用 artifact root。
 
 ### 3.8 Security (`box/security.py`, 52 行)
 
@@ -513,6 +515,9 @@ Box 额外做了 RPC SHUTDOWN 通知 Runtime 主动清理容器，比 Plugin 的
 ### config.yaml (重构后)
 
 ```yaml
+skills:
+    root: './data/box/skills'  # Core-owned；Box 关闭时仍可管理/读取
+
 box:
     enabled: true         # 整个 Box 子系统的总开关。设为 false 时：
                           #  - 不连接远程 Box runtime，不 fork 本地 stdio 子进程
@@ -531,7 +536,6 @@ box:
         image: ''                       # 覆盖 profile 默认 image
         host_root: './data/box'         # 工作区挂载根，Docker 部署需绝对路径
         default_workspace: ''           # 默认 '<host_root>/default'
-        skills_root: 'skills'           # Core 管理且与 Box 共享的 skill 包目录
         allowed_mount_roots:            # 默认 ['<host_root>']
             - './data/box'
             - '/tmp'
@@ -576,11 +580,10 @@ volumes:
 | http/sse MCP server | 正常 | 正常(不依赖 Box) |
 | Skill 列表/读取 (`list_skills`/`get_skill`/`read_skill_file`) | 走 Core SkillRepository | 走 Core SkillRepository |
 | Skill 创建/编辑/安装/写文件 | 走 Core SkillRepository | 走 Core SkillRepository |
-| Pipeline AI 配置中 `box-session-id-template` | 正常生效 | **前端 banner** 提示字段无效 |
 | Pipeline 扩展页 `enable_all_skills` / 绑定 skill | 可编辑 | 可编辑 |
 | 仪表盘 Box 状态卡片 | 绿点 / "已连接" | 灰点 / "已禁用"(disabled) 或 红点 / "已断开"(failed) |
 
-> Core 的 SkillRepository 是 `langbot_plugin.skill_store.SkillStore` 的异步 Workspace 适配层，保持原 `data/box/skills/tenants/...` 布局，升级时无需移动已安装 Skill。Box 只在执行发生时消费同一份只读 package revision。
+> Core 的 SkillRepository 是 `langbot_plugin.skill_store.SkillStore` 的异步 Workspace 适配层。默认 `skills.root` 保持原 `data/box/skills/tenants/...` 布局，升级时无需移动已安装 Skill；旧 `box.local.skills_root` 仅作为在线升级 fallback，并将在下一大版本删除。Box 只消费 Core 下发的通用只读 mount。
 
 ### Session scope
 
