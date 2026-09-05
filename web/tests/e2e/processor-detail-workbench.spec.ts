@@ -36,7 +36,7 @@ test.describe('processor detail workbench', () => {
       .boundingBox();
     const eventPickerBox = await debugEventPicker.boundingBox();
     const conversationInputBox = await debugPanel
-      .getByRole('textbox', { name: 'Conversation input' })
+      .getByRole('textbox', { name: 'Message content' })
       .boundingBox();
     expect(transcriptBox).not.toBeNull();
     expect(eventPickerBox).not.toBeNull();
@@ -204,9 +204,7 @@ test.describe('processor detail workbench', () => {
       .fill('Updated before debugging');
     await basicInfoDialog.getByRole('button', { name: 'Save' }).click();
     await expect(basicInfoDialog).toHaveCount(0);
-    await page
-      .getByRole('textbox', { name: 'Conversation input' })
-      .fill('Hello');
+    await page.getByRole('textbox', { name: 'Message content' }).fill('Hello');
     await page.getByRole('button', { name: 'Run test' }).click();
 
     await expect(page.getByText('Mock Agent response')).toBeVisible();
@@ -253,9 +251,7 @@ test.describe('processor detail workbench', () => {
     );
 
     await page.goto('/home/agents?id=agent-workbench');
-    await page
-      .getByRole('textbox', { name: 'Conversation input' })
-      .fill('Hello');
+    await page.getByRole('textbox', { name: 'Message content' }).fill('Hello');
     await page.getByRole('button', { name: 'Run test' }).click();
 
     await expect(

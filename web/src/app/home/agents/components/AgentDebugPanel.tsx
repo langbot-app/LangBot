@@ -1,4 +1,11 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import {
@@ -40,6 +47,13 @@ import {
 } from '@/app/home/components/event-patterns/event-pattern-groups';
 import EventSelectOptionContent from '@/app/home/components/event-patterns/EventSelectOptionContent';
 import AgentExecutionTrace from './AgentExecutionTrace';
+import AgentEventDataEditor from './AgentEventDataEditor';
+import {
+  createDebugEventData,
+  debugEventInputText,
+  invalidDebugEventField,
+  parseDebugEventData,
+} from './debug-event-data';
 import { executionSteps, type DebugExecutionEvent } from './debug-execution';
 
 interface AgentDebugPanelProps {
@@ -62,104 +76,6 @@ interface DebugEntry {
   events?: DebugExecutionEvent[];
   finished?: boolean;
 }
-
-const EVENT_PRESET_DATA: Record<
-  string,
-  { text: string; data: Record<string, unknown> }
-> = {
-  'message.received': {
-    text: '',
-    data: {},
-  },
-  'group.member_joined': {
-    text: 'A new member joined the group.',
-    data: {
-      group_id: 'debug-group',
-      member_id: 'debug-user',
-      member_name: 'Debug User',
-    },
-  },
-  'group.member_left': {
-    text: 'A member left the group.',
-    data: {
-      group_id: 'debug-group',
-      member_id: 'debug-user',
-      member_name: 'Debug User',
-    },
-  },
-  'friend.request_received': {
-    text: 'A user sent a friend request.',
-    data: {
-      requester_id: 'debug-user',
-      requester_name: 'Debug User',
-      request_id: 'debug-friend-request',
-      message: 'Hello',
-    },
-  },
-  'feedback.received': {
-    text: 'The user submitted feedback.',
-    data: {
-      rating: 5,
-      content: 'Debug feedback',
-    },
-  },
-  'friend.added': {
-    text: 'A friend was added.',
-    data: { user_id: 'debug-user', user_name: 'Debug User' },
-  },
-  'group.member_banned': {
-    text: 'A member was banned.',
-    data: {
-      group_id: 'debug-group',
-      member_id: 'debug-user',
-      member_name: 'Debug User',
-    },
-  },
-  'bot.invited_to_group': {
-    text: 'The bot was invited to a group.',
-    data: {
-      group_id: 'debug-group',
-      request_id: 'debug-group-request',
-      requester_id: 'debug-user',
-    },
-  },
-  'bot.muted': {
-    text: 'The bot was muted.',
-    data: { group_id: 'debug-group', duration: 60 },
-  },
-  'bot.unmuted': {
-    text: 'The bot was unmuted.',
-    data: { group_id: 'debug-group' },
-  },
-  'bot.removed_from_group': {
-    text: 'The bot was removed from the group.',
-    data: { group_id: 'debug-group' },
-  },
-  'message.edited': {
-    text: 'A message was edited.',
-    data: {
-      group_id: 'debug-group',
-      message_id: 'debug-message',
-      text: 'Edited message',
-    },
-  },
-  'message.deleted': {
-    text: 'A message was deleted.',
-    data: { group_id: 'debug-group', message_id: 'debug-message' },
-  },
-  'message.reaction': {
-    text: 'A reaction was added.',
-    data: {
-      group_id: 'debug-group',
-      message_id: 'debug-message',
-      reaction: '👍',
-    },
-  },
-  'platform.specific': {
-    text: 'A platform-specific event occurred.',
-    data: { event_name: 'debug-platform-event' },
-  },
-};
 
 function createDebugSessionId(agentId: string) {
   const nonce = globalThis.crypto?.randomUUID?.() ?? String(Date.now());
@@ -186,8 +102,22 @@ export default function AgentDebugPanel({
   );
   const [preset, setPreset] = useState('message.received');
   const [customEventType, setCustomEventType] = useState('custom.event');
-  const [inputText, setInputText] = useState('');
-  const [eventDataText, setEventDataText] = useState('{}');
+  const newEventData = useCallback(
+    (type: string) =>
+      JSON.stringify(
+        createDebugEventData(type, {
+          user: t('agents.debugData.sampleUser'),
+          message: t('agents.debugData.sampleMessage'),
+          feedback: t('agents.debugData.sampleFeedback'),
+        }),
+        null,
+        2,
+      ),
+    [t],
+  );
+  const [eventDataText, setEventDataText] = useState(() =>
+    newEventData('message.received'),
+  );
   const [mockOptionsText, setMockOptionsText] = useState('{}');
   const [running, setRunning] = useState(false);
   const [entries, setEntries] = useState<DebugEntry[]>([]);
@@ -205,11 +135,7 @@ export default function AgentDebugPanel({
   }, [entries]);
 
   const eventType = preset === 'custom' ? customEventType.trim() : preset;
-  const isMessageEvent = eventType.startsWith('message.');
-  const supportedLabel = useMemo(
-    () => supportedEventPatterns.join(', '),
-    [supportedEventPatterns],
-  );
+  const eventDataValid = parseDebugEventData(eventDataText) !== null;
   const availableEvents = useMemo(() => {
     const concretePatterns = supportedEventPatterns.filter(
       (pattern) => pattern !== '*' && !pattern.endsWith('.*'),
@@ -230,6 +156,14 @@ export default function AgentDebugPanel({
     (pattern) => pattern === '*' || pattern.endsWith('.*'),
   );
 
+  const selectPreset = useCallback(
+    (value: string) => {
+      setPreset(value);
+      setEventDataText(newEventData(value));
+    },
+    [newEventData],
+  );
+
   useEffect(() => {
     if (
       availableEvents.includes(preset) ||
@@ -238,22 +172,11 @@ export default function AgentDebugPanel({
       return;
     }
     selectPreset(availableEvents[0] ?? 'custom');
-  }, [availableEvents, preset, supportsCustomEvent]);
-
-  function selectPreset(value: string) {
-    setPreset(value);
-    const nextPreset = EVENT_PRESET_DATA[value] ?? { text: '', data: {} };
-    setInputText(nextPreset.text);
-    setEventDataText(JSON.stringify(nextPreset.data, null, 2));
-  }
+  }, [availableEvents, preset, supportsCustomEvent, selectPreset]);
 
   async function runDebugEvent() {
     if (!eventType) {
       toast.error(t('agents.debugEventTypeRequired'));
-      return;
-    }
-    if (isMessageEvent && !inputText.trim()) {
-      toast.error(t('agents.debugInputRequired'));
       return;
     }
     if (
@@ -265,18 +188,22 @@ export default function AgentDebugPanel({
       return;
     }
 
-    let eventData: Record<string, unknown>;
-    let mockOptions: Record<string, unknown>;
-    try {
-      const parsed = JSON.parse(eventDataText || '{}');
-      if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') {
-        throw new Error('payload must be an object');
-      }
-      eventData = parsed as Record<string, unknown>;
-    } catch {
+    const eventData = parseDebugEventData(eventDataText);
+    if (!eventData) {
       toast.error(t('agents.debugInvalidPayload'));
       return;
     }
+    const invalidField = invalidDebugEventField(eventType, eventData);
+    if (invalidField) {
+      toast.error(
+        t('agents.debugData.invalidField', {
+          field: t(`agents.debugData.${invalidField.label}`),
+        }),
+      );
+      return;
+    }
+    const inputText = debugEventInputText(eventType, eventData);
+    let mockOptions: Record<string, unknown>;
     try {
       const parsed = JSON.parse(mockOptionsText || '{}');
       if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object')
@@ -367,8 +294,6 @@ export default function AgentDebugPanel({
               },
             ],
       );
-      if (isMessageEvent)
-        setInputText((current) => (current === inputText ? '' : current));
     } catch (error) {
       if (controller.signal.aborted) {
         if (controller.signal.reason === 'user') {
@@ -541,131 +466,115 @@ export default function AgentDebugPanel({
         )}
       </div>
 
-      <div className="shrink-0 space-y-3 border-t p-3">
-        {supportedEventPatterns.length === 0 ? (
-          <Alert className="bg-amber-500/5 text-amber-800 dark:text-amber-200">
-            <AlertTriangle className="size-4" />
-            <AlertTitle>{t('agents.debugNoEventsTitle')}</AlertTitle>
-            <AlertDescription>
-              {t('agents.debugNoEventsDescription')}
-            </AlertDescription>
-          </Alert>
-        ) : (
-          <>
-            <div className="space-y-1.5">
-              <Label>{t('agents.debugEventType')}</Label>
-              <Select value={preset} onValueChange={selectPreset}>
-                <SelectTrigger
-                  className="w-full"
-                  aria-label={t('agents.debugEventType')}
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="w-[var(--radix-select-trigger-width)] max-w-[calc(100vw-2rem)]">
-                  {eventGroups.map((group) => (
-                    <SelectGroup key={group.namespace}>
-                      <SelectLabel>
-                        {eventGroupLabel(group.namespace, t)}
-                      </SelectLabel>
-                      {group.patterns.map((event) => (
+      <div className="flex max-h-[60%] min-h-0 shrink-0 flex-col border-t">
+        <div className="min-h-0 space-y-3 overflow-y-auto p-3">
+          {supportedEventPatterns.length === 0 ? (
+            <Alert className="bg-amber-500/5 text-amber-800 dark:text-amber-200">
+              <AlertTriangle className="size-4" />
+              <AlertTitle>{t('agents.debugNoEventsTitle')}</AlertTitle>
+              <AlertDescription>
+                {t('agents.debugNoEventsDescription')}
+              </AlertDescription>
+            </Alert>
+          ) : (
+            <>
+              <div className="space-y-1.5">
+                <Label>{t('agents.debugEventType')}</Label>
+                <Select value={preset} onValueChange={selectPreset}>
+                  <SelectTrigger
+                    className="w-full"
+                    aria-label={t('agents.debugEventType')}
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="w-[var(--radix-select-trigger-width)] max-w-[calc(100vw-2rem)]">
+                    {eventGroups.map((group) => (
+                      <SelectGroup key={group.namespace}>
+                        <SelectLabel>
+                          {eventGroupLabel(group.namespace, t)}
+                        </SelectLabel>
+                        {group.patterns.map((event) => (
+                          <SelectItem
+                            key={event}
+                            value={event}
+                            description={eventPatternDescription(event, t)}
+                            className="py-2"
+                          >
+                            <EventSelectOptionContent
+                              event={event}
+                              label={eventPatternLabel(event, t)}
+                            />
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    ))}
+                    {supportsCustomEvent && (
+                      <SelectGroup>
+                        <SelectLabel>
+                          {t('agents.debugCustomEvent')}
+                        </SelectLabel>
                         <SelectItem
-                          key={event}
-                          value={event}
-                          description={eventPatternDescription(event, t)}
+                          value="custom"
+                          description={t('bots.eventDescriptions.custom')}
                           className="py-2"
                         >
                           <EventSelectOptionContent
-                            event={event}
-                            label={eventPatternLabel(event, t)}
+                            event="custom.event"
+                            label={t('agents.debugCustomEvent')}
                           />
                         </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  ))}
-                  {supportsCustomEvent && (
-                    <SelectGroup>
-                      <SelectLabel>{t('agents.debugCustomEvent')}</SelectLabel>
-                      <SelectItem
-                        value="custom"
-                        description={t('bots.eventDescriptions.custom')}
-                        className="py-2"
-                      >
-                        <EventSelectOptionContent
-                          event="custom.event"
-                          label={t('agents.debugCustomEvent')}
-                        />
-                      </SelectItem>
-                    </SelectGroup>
-                  )}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {preset === 'custom' && (
-              <div className="space-y-1.5">
-                <Label htmlFor="agent-debug-custom-event">
-                  {t('agents.debugCustomEventType')}
-                </Label>
-                <Input
-                  id="agent-debug-custom-event"
-                  value={customEventType}
-                  onChange={(event) => setCustomEventType(event.target.value)}
-                  placeholder="custom.event"
-                />
+                      </SelectGroup>
+                    )}
+                  </SelectContent>
+                </Select>
               </div>
-            )}
 
-            <div className="space-y-1.5">
-              <Label htmlFor="agent-debug-input">
-                {isMessageEvent
-                  ? t('agents.debugMessageInput')
-                  : t('agents.debugEventSummary')}
-              </Label>
-              <Textarea
-                id="agent-debug-input"
-                value={inputText}
-                onChange={(event) => setInputText(event.target.value)}
-                className="min-h-20 resize-y"
-                placeholder={t('agents.debugInputPlaceholder')}
+              {preset === 'custom' && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="agent-debug-custom-event">
+                    {t('agents.debugCustomEventType')}
+                  </Label>
+                  <Input
+                    id="agent-debug-custom-event"
+                    value={customEventType}
+                    onChange={(event) => setCustomEventType(event.target.value)}
+                    placeholder="custom.event"
+                  />
+                </div>
+              )}
+
+              <AgentEventDataEditor
+                key={eventType}
+                eventType={eventType}
+                custom={preset === 'custom'}
+                value={eventDataText}
+                onChange={setEventDataText}
               />
-            </div>
 
-            <details className="rounded-md border bg-muted/20 px-3 py-2">
-              <summary className="cursor-pointer text-xs font-medium">
-                {t('agents.debugEventPayload')}
-              </summary>
-              <div className="mt-2 space-y-2">
-                <p className="text-xs text-muted-foreground">
-                  {t('agents.debugSupportedEvents')}: {supportedLabel}
+              <details className="text-muted-foreground">
+                <summary className="cursor-pointer text-xs font-medium">
+                  {t('agents.debugMockOptions')}
+                </summary>
+                <p className="my-2 text-xs text-muted-foreground">
+                  {t('agents.debugMockOptionsHelp')}
                 </p>
                 <Textarea
-                  id="agent-debug-payload"
-                  value={eventDataText}
-                  onChange={(event) => setEventDataText(event.target.value)}
-                  className="min-h-28 resize-y font-mono text-xs"
+                  aria-label={t('agents.debugMockOptions')}
+                  value={mockOptionsText}
+                  onChange={(event) => setMockOptionsText(event.target.value)}
+                  className="min-h-24 font-mono text-xs"
                   spellCheck={false}
                 />
-              </div>
-            </details>
-
-            <details className="rounded-md border bg-muted/20 px-3 py-2">
-              <summary className="cursor-pointer text-xs font-medium">
-                {t('agents.debugMockOptions')}
-              </summary>
-              <p className="my-2 text-xs text-muted-foreground">
-                {t('agents.debugMockOptionsHelp')}
-              </p>
-              <Textarea
-                aria-label={t('agents.debugMockOptions')}
-                value={mockOptionsText}
-                onChange={(event) => setMockOptionsText(event.target.value)}
-                className="min-h-24 font-mono text-xs"
-                spellCheck={false}
-              />
-            </details>
+              </details>
+            </>
+          )}
+        </div>
+        {supportedEventPatterns.length > 0 && (
+          <div className="shrink-0 px-3 pb-3">
             <Button
               type="button"
               className="w-full"
+              disabled={!running && !eventDataValid}
               onClick={() =>
                 running ? requestRef.current?.abort('user') : runDebugEvent()
               }
@@ -681,7 +590,7 @@ export default function AgentDebugPanel({
                   ? t('agents.debugSaveAndRun')
                   : t('agents.debugRun')}
             </Button>
-          </>
+          </div>
         )}
       </div>
     </div>
