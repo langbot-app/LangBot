@@ -28,17 +28,17 @@
 - Sandbox/workspace read/write/exec 文件能力，用于当前 run 的上传文件、工具大结果和临时产物
 - SDK runtime forwarding pull APIs + `caller_plugin_identity` 验证路径
 
-## 本分支不实现
+## 当前已集成与后续扩展
 
-以下能力由其他分支负责，本分支只保留 integration point。EBA 完整事件网关与事件路由当前由外部 EBA 分支联调：
+截至 2026-09-05，`dev/4.11.x` 已合并 EBA 与 AgentRunner 插件化。下面按当前代码划分实现边界：
 
-- **EventGateway / EventRouter**：完整事件网关实现、事件路由、事件持久化管理
-- **Event subscription / Event notification**：事件订阅、推送通知
-- **BindingResolver persistence UI**：绑定配置的持久化 UI 和 event router 集成（如由其他模块负责）
-- **Scheduler / Background event source**：定时任务、后台事件源
+- **已实现的平台事件路由**：`RuntimeBot` 负责事件转换后的 observer 广播、`event_bindings` 匹配和 Pipeline / Agent / discard 单目标分派；EventRouter 是逻辑职责，不是另一个独立服务。
+- **已实现的持久化与 UI**：独立 Agent、Bot 事件绑定、处理器工作台、Runner 市场安装、事件范围与工具权限、路由诊断和调试入口。
+- **后续的通用事件订阅与通知**：不把当前适配器回调和 Bot 路由理解成通用订阅产品。
+- **后续的 Scheduler / Background event source**：用户可配置的定时自动化和后台任务入口。
 - **完整 Agent Platform / daemon control plane**：Host-owned `AgentRun` / `AgentRunEvent`、run control primitives、最小 runtime heartbeat/claim lease 已作为 v2 foundation 落地；业务队列、Platform UI、daemon supervisor、runtime wakeup channel 和分布式 runtime 管控仍不属于 Protocol v1 主线。
 
-EventGateway / EventRouter 在本文档中描述为 **external EBA branch integration point**，由外部 EBA 分支提供并联调。本分支只定义 host-side envelope/binding models 和 `run(event, binding)` orchestrator 入口。
+平台事件、Agent 配置及 Pipeline AI Stage 已共同使用 host-side envelope/binding models 和 `run(event, binding)`。后续入口应复用这条链路。当前实现与发布验收分别见 [STATUS.md](./STATUS.md)，平台动作授权见 [PLATFORM_ACTION_TOOLS.md](./PLATFORM_ACTION_TOOLS.md)。
 
 本分支与外部 EBA / Agent Platform / Runtime Control Plane 的扩展边界见 [EXTENSION_SCOPE_MATRIX.md](./EXTENSION_SCOPE_MATRIX.md)。
 
@@ -67,7 +67,7 @@ EBA 先根据 `target_type` 选择 Pipeline 或 Agent。Pipeline 目标执行完
 | AgentBinding / binding | Host 在一次事件运行前解析出的有效绑定，决定调用哪个 runner 以及带什么策略。 |
 | envelope | Host 内部事件封装，即 `AgentEventEnvelope`；runner 看到的是由它投影出的 `ctx.event`。 |
 | descriptor / manifest | runner discovery 的能力和配置描述；manifest 来自插件，descriptor 是 Host 校验后的注册表视图。 |
-| EBA | Event Based Agent，把消息、撤回、入群、定时任务等都统一成 host event 的接入方向；完整网关和路由在外部 EBA 分支联调。 |
+| EBA | Event Based Agent；平台事件路由已集成，定时任务等通用事件源仍是后续扩展。 |
 | harness runner | ACP、Claude Code、Codex 等已有自身 session / tool loop / MCP / 压缩机制的外部 runtime adapter。 |
 | projection | Host 把内部事实源、授权资源或配置裁剪成 runner / harness 可消费视图的过程。 |
 | Runtime Control Plane | v2 Host 能力层，当前已落地 Host-owned run/result ledger、run control primitives、最小 runtime heartbeat/claim lease；完整 daemon worker 管控、task wakeup 和 Agent Platform 产品形态不是 Protocol v1 主线。 |
@@ -80,12 +80,13 @@ EBA 先根据 `target_type` 选择 Pipeline 或 Agent。Pipeline 目标执行完
 | [HOST_SDK_INFRASTRUCTURE.md](./HOST_SDK_INFRASTRUCTURE.md) | LangBot 宿主能力与分层架构、Host 内部模型（`AgentEventEnvelope` / `AgentBinding` / Descriptor / 各 Store）、runner 发现、绑定、资源授权、状态、存储、生命周期和调用链。 |
 | [AGENT_CONTEXT_PROTOCOL.md](./AGENT_CONTEXT_PROTOCOL.md) | Agent-owned context 方向：事件到来时 LangBot 传什么，agent 如何按需拉取更多历史 / state、如何访问 sandbox/workspace 文件，以及如何支持 KV cache 友好的上下文管理。 |
 | [EXTENSION_SCOPE_MATRIX.md](./EXTENSION_SCOPE_MATRIX.md) | AgentRunner 外化与外部 EBA / Agent Platform / Runtime Control Plane 的扩展边界矩阵，说明哪些是本分支底座、哪些由外部分支接入。 |
-| [EVENT_BASED_AGENT.md](./EVENT_BASED_AGENT.md) | EBA 接入边界：事件模型、事件来源、触发绑定、非消息事件如何复用 AgentRunner 调度；完整 EventGateway / EventRouter 由外部 EBA 分支联调。 |
+| [EVENT_BASED_AGENT.md](./EVENT_BASED_AGENT.md) | 已集成的事件路由、处理器分派、平台工具和结构化交互边界。 |
 | [eba-productization-release.md](./eba-productization-release.md) | EBA 适配器与 AgentRunner 插件化合并后的产品化 / 发布计划，说明非技术用户快速上手差距、Bot 与处理器边界、未来 Solution 分发标的，以及多 namespace SaaS 支持要求。 |
 | [RUNTIME_CONTROL_PLANE_V2.md](./RUNTIME_CONTROL_PLANE_V2.md) | Agent Platform v2 / runtime 管控面决策：`AgentRun` / `AgentRunEvent` / run control 已作为 Host 事实源落地，最小 runtime heartbeat/claim lease 已落地；完整 runtime registry / daemon 管控仍是后续可选阶段。 |
 | [OFFICIAL_RUNNER_PLUGINS.md](./OFFICIAL_RUNNER_PLUGINS.md) | 官方 runner 插件迁移，包括 local-agent 和外部 runner。它是下游落地计划，不是 LangBot 基础能力设计的前置约束。 |
 | [RUN_STEERING_AND_CHECKPOINT.md](./RUN_STEERING_AND_CHECKPOINT.md) | 运行中消息注入（steering / follow-up）与压缩摘要持久化（compaction checkpoint）的设计与落地状态记录；schema 仍以 PROTOCOL_V1 为准。 |
 | [STATUS.md](./STATUS.md) | 当前实现状态、spec 与实现已知差距、runner 验收状态和历史高价值记录。 |
+| [PLATFORM_ACTION_TOOLS.md](./PLATFORM_ACTION_TOOLS.md) | 当前事件工具、平台动作和普通工具的配置、投射及执行授权。 |
 | [AGENT_RUNNER_QA_GUIDE.md](./AGENT_RUNNER_QA_GUIDE.md) | Agent Runner QA 指南：保留最高价值测试路径，指导 agent 开展下一轮 WebUI / runner smoke 验证。 |
 | [SECURITY_HARDENING.md](./SECURITY_HARDENING.md) | 安全发布级 hardening 的后续发布门槛：路径隔离、权限边界、secret、资源配额、MCP / skill 投影和审计。 |
 
@@ -116,13 +117,13 @@ Host 不定义通用历史窗口字段或策略；runner 通过 Host pull API �
 
 详见 [AGENT_CONTEXT_PROTOCOL.md](./AGENT_CONTEXT_PROTOCOL.md)。
 
-### 3. Event Based Agent（External Branch）
+### 3. Event Based Agent（已集成）
 
-消息只是事件的一种。外部 EBA 分支中的 `message.received`、`message.recalled`、`group.member_joined`、`friend.request_received` 等事件都应能通过统一事件 envelope 触发 AgentRunner。
+消息只是事件的一种。当前平台适配器中的 `message.received`、`message.deleted`、`group.member_joined`、`friend.request_received` 等事件通过统一事件 envelope 进入处理器路由，具体支持范围以适配器能力声明为准。
 
-EBA dispatch 的基数和 fan-out 边界仍以 PROTOCOL_V1 §13 为准；本文档只列出本分支提供给外部 EBA 分支复用的入口点。
+EBA dispatch 的基数和 fan-out 边界仍以 PROTOCOL_V1 §13 为准；新增事件源复用以下入口点。
 
-**本分支不实现 EBA 完整能力，只提供：**
+**当前共同使用的执行底座：**
 - event-first envelope (`AgentEventEnvelope`)
 - AgentBinding model
 - `run(event, binding)` 入口

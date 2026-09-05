@@ -49,7 +49,16 @@ import {
 import { commandTroubleSearch } from "../src/commands/trouble.ts";
 import { commandValidate } from "../src/commands/validate.ts";
 import { commandIndex } from "../src/commands/skill.ts";
-import { loadEnv } from "../src/fs.ts";
+import { loadEnv, parseFrontmatter } from "../src/fs.ts";
+
+test('frontmatter preserves metadata and body with LF and CRLF checkouts', () => {
+  for (const newline of ['\n', '\r\n']) {
+    const source = ['---', 'name: example', 'description: "Example skill"', '---', '# Body', ''].join(newline);
+    const parsed = parseFrontmatter(source);
+    assert.deepEqual(parsed.meta, { name: 'example', description: 'Example skill' });
+    assert.equal(parsed.body, '# Body' + newline);
+  }
+});
 import { repoRoot } from "../src/cli.ts";
 import {
   classifyDebugChatResult,
@@ -2779,11 +2788,11 @@ test("test start creates a run handoff with a bounded report command", () => {
   assert.match(result.output, /bin\/lbs test plan pipeline-debug-chat/);
   assert.match(
     result.output,
-    /bin\/lbs test run pipeline-debug-chat --run-id .+ --output reports\/evidence\/.+pipeline-debug-chat/,
+    /bin\/lbs test run pipeline-debug-chat --run-id .+ --output reports[\\/]evidence[\\/].+pipeline-debug-chat/,
   );
   assert.match(
     result.output,
-    /bin\/lbs test report pipeline-debug-chat --since ".+" --console-log reports\/evidence\/.+\/console\.log --evidence-dir reports\/evidence\/.+ --output reports\/.+pipeline-debug-chat\.md/,
+    /bin\/lbs test report pipeline-debug-chat --since ".+" --console-log reports[\\/]evidence[\\/].+[\\/]console\.log --evidence-dir reports[\\/]evidence[\\/].+ --output reports[\\/].+pipeline-debug-chat\.md/,
   );
   assert.match(result.output, /Streaming completed/);
 });
@@ -2891,15 +2900,15 @@ test("test run dry-run exposes case automation script and evidence paths", () =>
   assert.match(result.output, /scripts\/e2e\/pipeline-debug-chat\.mjs/);
   assert.match(
     result.output,
-    /console_log: reports\/evidence\/run-123\/console\.log/,
+    /console_log: reports[\\/]evidence[\\/]run-123[\\/]console\.log/,
   );
   assert.match(
     result.output,
-    /automation_result_json: reports\/evidence\/run-123\/automation-result\.json/,
+    /automation_result_json: reports[\\/]evidence[\\/]run-123[\\/]automation-result\.json/,
   );
   assert.match(
     result.output,
-    /result_json: reports\/evidence\/run-123\/result\.json/,
+    /result_json: reports[\\/]evidence[\\/]run-123[\\/]result\.json/,
   );
   assert.match(result.output, /LANGBOT_PIPELINE_URL/);
 });
@@ -3260,7 +3269,7 @@ test("test run setup automation isolates evidence and reloads env", () => {
     assert.equal(plan.setup_automation.length, 1);
     assert.match(
       plan.setup_automation[0].evidence_dir,
-      /setup\/01-write-setup-env$/,
+      /setup[\\/]01-write-setup-env$/,
     );
     assert.match(
       plan.setup_automation[0].command,

@@ -239,7 +239,7 @@ export default function KBDetailContent({ id }: { id: string }) {
             className="flex-1 min-h-0 overflow-y-auto mt-4"
           >
             <div className="mx-auto max-w-3xl space-y-6 pb-8">
-              <fieldset className="contents" disabled={!canManage}>
+              <fieldset className="min-w-0" disabled={!canManage}>
                 <KBForm
                   key={`${id}-${formVersion}`}
                   initKbId={id}

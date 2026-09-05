@@ -10,7 +10,7 @@
 
 LangBot 要转为 agent host，而不是内置 runner 容器：
 
-- 接收 IM、WebUI、API 和外部 EBA 分支 EventRouter 产生的事件。
+- 接收 IM、WebUI、API 和当前 RuntimeBot 事件路由产生的事件。
 - 接收 EBA 选中的 Agent 处理器，并根据事件、bot、workspace、scope 解析 AgentRunner binding。
 - 发现、校验和调用插件提供的 AgentRunner。
 - 为每次 run 提供受限资源、状态、存储、上下文引用和生命周期控制。
@@ -23,18 +23,18 @@ LangBot 要转为 agent host，而不是内置 runner 容器：
 - 不要求官方 local-agent 的旧行为反向塑造 host 协议。
 - 不在 host 中实现通用 agentic prompt assembler。
 - 不强制 runner 使用 LangBot state / storage；只提供可选、受控的寄宿能力。
-- 不实现 EventGateway / EventRouter：它们由外部 EBA 分支提供并联调。本分支只定义 host-side envelope/binding models 和 `run(event, binding)` 入口。
+- 不在 runner 底座重复实现平台路由；当前分支的 RuntimeBot 已承担 observer 广播和 Bot event_bindings 匹配，runner 层消费其 envelope/binding 投影。
 
 ## 3. 分层架构
 
 ```text
-IM / WebUI / API / EventRouter (external EBA branch)
+IM platform event
         |
         v
-Event Gateway (external EBA branch)
+RuntimeBot event normalization / observer broadcast
         |
         v
-EventRouter -> one Processor target
+RuntimeBot event_bindings -> one Processor target
         |-- target_type=pipeline -> Pipeline Stage chain
         |
         `-- target_type=agent -> AgentBindingResolver
@@ -57,15 +57,15 @@ EventRouter -> one Processor target
 Delivery / Renderer / Platform API
 ```
 
-Pipeline 与 Agent 是 EventRouter 的平级处理器目标。本文只定义 AgentRunner Host 边界：Agent 目标直接解析 `AgentBinding`；Pipeline 目标执行自己的完整 Stage 链，仅在 AI Stage 调用 runner 时通过 Query entry adapter 构造一次性 `AgentConfig` / `AgentBinding`。该 runner 调用投影不改变 Pipeline 的一等处理器地位，也不会把 Pipeline 持久化为 Agent。AgentRunner 的单绑定调度、Agent 复用、插件实例无状态和 fan-out 边界以 [PROTOCOL_V1.md](./PROTOCOL_V1.md) §13 为准。EventGateway / EventRouter 由外部 EBA 分支实现并联调。
+Pipeline 与 Agent 是事件路由的平级目标。Agent 直接解析 `AgentBinding`；Pipeline 执行完整 Stage 链，仅在 AI Stage 调用 runner 时通过 QueryEntryAdapter 构造一次性运行投影，不会持久化成 Agent。WebUI/API 调试按服务入口构造调试事件或 Query，再使用同一编排器；不要求绕行真实 Bot 回调。调度基数、Agent 复用和 fan-out 边界以 [PROTOCOL_V1.md](./PROTOCOL_V1.md) §13 为准。
 
 ## 4. LangBot 侧能力
 
-### 4.1 Event Gateway / EventRouter（External EBA Branch Integration Point）
+### 4.1 事件入口与路由（已集成）
 
-> EventGateway / EventRouter 由外部 EBA 分支实现并联调，不在本分支范围。本分支只保留 event-first 入口和 envelope/binding models。
+> 2026-09-05：平台转换、Bot event_bindings、独立 Agent 和配置 UI 已集成。源码入口为 `pkg/platform/botmgr.py`、`pkg/api/http/service/agent.py` 和 `pkg/agent/runner/`。通用订阅与定时自动化仍是后续能力。
 
-Event Gateway 将把入口统一成 host event（IM 平台消息、WebUI debug chat、API 触发、后续非消息事件），输出稳定的 `AgentEventEnvelope`（Host 内部模型）：
+各入口将消息或非消息输入投影为 `AgentEventEnvelope`。以下为概念字段摘要，精确字段及默认值以 `pkg/agent/runner/host_models.py` 为准：
 
 ```python
 class AgentEventEnvelope(BaseModel):
@@ -221,7 +221,7 @@ SDK 侧本地校验只用于开发体验，host 侧 run authorization snapshot �
 
 资源裁剪应通用，不写死 local-agent。selector 与资源的映射示例：`model-fallback-selector` → primary/fallback LLM、`llm-model-selector` → LLM、`rerank-model-selector` → rerank 模型、`knowledge-base-multi-selector` → 知识库；新增 selector 时在 resource builder 中统一扩展。
 
-构造 `ctx.resources.tools` 时，Host 一次塞齐每个工具的完整 schema（`ToolResource.parameters`），runner 不需再逐个 `get_tool_detail` 拉取，减少 N 次往返。
+构造 `ctx.resources.tools` 时，Host 尽可能一次提供完整 schema（`ToolResource.parameters`），减少逐个 detail 查询。Runner 仍需兼容 `parameters=None` 并按需调用 `get_tool_detail`。平台动作以 `tool_type=platform` 使用同一资源面，授权与冻结目标见 [PLATFORM_ACTION_TOOLS.md](./PLATFORM_ACTION_TOOLS.md)。
 
 执行/文件/skill/MCP 等能力的接入方向：先由 Host / sandbox 封装成普通 scoped tool，再通过 `ctx.resources.tools` 和 SDK runtime 转发进入 runner；runner 不应识别或硬编码执行环境 provider。外部 harness 的 native tools 不能直接访问 LangBot 资源。skill 的整个生命周期都走统一 tool：发现走 `list_skills` / `langbot_list_assets`，激活/注册走 `activate` / `register_skill`，包内操作走 native exec/read/write——runner 不需要独立的 skill 渲染或门控。
 

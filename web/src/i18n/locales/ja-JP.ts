@@ -716,6 +716,30 @@ const jaJP = {
     },
   },
   agents: {
+    debugReasoning: '思考内容',
+    debugTextOutput: 'テキスト出力',
+    debugPlatformNotice:
+      'プラットフォームツールは Mock を使用します。Agent は実際にツールを呼び出し、返信・送信などは模擬実行されます。他のツールは設定どおりに実行されます。',
+    debugToolSimulated: '模擬実行成功 · Mock',
+    debugStop: 'デバッグを停止',
+    debugMockOptions: 'Mock シナリオ（JSON）',
+    debugInvalidMock:
+      'Mock シナリオは有効な JSON オブジェクトで指定してください。',
+    debugToolMockFailed: '模擬実行失敗 · Mock',
+    debugMockOptionsHelp:
+      '既定は成功です。errors にツール別エラー、results に結果、unsupported_apis に未対応 API を指定します。例：{"errors":{"event_reply":"送信失敗"}}',
+    debugCancelled:
+      'デバッグを停止しました。それまでの実行記録は保持されます。',
+    debugNoToolCalls:
+      'ツール呼び出しの記録はありません。テキストの生成は送信完了を意味しません。',
+    debugToolCount:
+      '{{count}} 件のツール呼び出しを記録しました。実行状態と結果は以下をご確認ください。',
+    debugToolRunning: '実行中',
+    debugToolCompleted: '完了',
+    debugToolFailed: '失敗',
+    debugToolInterrupted: '結果なし',
+    debugToolArguments: '引数',
+    debugToolResult: '実行結果',
     title: 'プロセッサー',
     description:
       '再利用可能なプロセッサーを作成し、ボットのイベントルーティングで使用します',

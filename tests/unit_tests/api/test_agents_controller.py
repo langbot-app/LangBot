@@ -169,3 +169,44 @@ async def test_debug_agent_returns_actionable_runner_error():
         'code': 'dify.config_invalid',
         'msg': 'api-key is required',
     }
+
+
+async def test_debug_stream_preserves_events_before_error():
+    import json
+
+    async def debug_agent(context, agent_uuid, payload, *, on_result):
+        await on_result({'type': 'tool.call.started', 'data': {'tool_name': 'exec'}})
+        raise RunnerExecutionError('test/runner', 'partial failure', error_code='runner.timeout')
+
+    client = await _create_test_client(SimpleNamespace(debug_agent=debug_agent))
+    response = await client.post(
+        '/api/v1/agents/agent-1/debug/stream',
+        headers={'Authorization': 'Bearer test-token'},
+        json={'event_type': 'message.received', 'text': 'hello'},
+    )
+    assert response.status_code == 200
+    frames = [json.loads(line) for line in (await response.get_data()).splitlines() if line]
+    assert frames[0]['kind'] == 'result'
+    assert frames[1]['kind'] == 'error'
+    assert frames[1]['code'] == 'runner.timeout'
+
+
+async def test_debug_stream_cancels_execution_when_closed():
+    import asyncio
+    from langbot.pkg.api.http.controller.groups.agent_debug_stream import debug_stream_response
+
+    cancelled = asyncio.Event()
+
+    async def debug_agent(context, agent_uuid, payload, *, on_result):
+        try:
+            await on_result({'type': 'message.delta', 'data': {}})
+            await asyncio.Event().wait()
+        finally:
+            cancelled.set()
+
+    response = debug_stream_response(SimpleNamespace(debug_agent=debug_agent), None, 'agent-1', {})
+    iterator = response.response.__aiter__()
+    first = await anext(iterator)
+    assert 'message.delta' in first
+    await iterator.aclose()
+    await asyncio.wait_for(cancelled.wait(), timeout=1)

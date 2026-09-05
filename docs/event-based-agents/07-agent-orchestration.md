@@ -1,6 +1,6 @@
 # Agent 与 Pipeline 统一编排（产品最终形态）
 
-> **状态**：方向修订稿（2026-06-12），供「适配器改造 / Agent 插件化 / 工作流引擎」三条工作线评审。
+> **状态**：历史方向稿（2026-06-12）；2026-09-05 标记归档用途。本文的示意 schema、5.0 发布火车、SDK 0.5.0aX 配套与多租户“预留”描述不再作为实施合同。当前 4.11 产品形态见 [08-agent-page-and-event-orchestration.md](./08-agent-page-and-event-orchestration.md)，协议见 [PROTOCOL_V1.md](../agent-runner-pluginization/PROTOCOL_V1.md)，已完成与剩余事项见 [STATUS.md](../agent-runner-pluginization/STATUS.md)。保留正文仅用于解释早期设计取舍。
 >
 > 本文档修订 [00-overview.md](./00-overview.md) §3.4 与 [04-event-routing.md](./04-event-routing.md) 中"四种 Handler"的编排模型：**所有编排目标统一进入处理器选择与事件绑定界面，但独立 Agent 与现有 Pipeline 保持不同类型**。事件路由的匹配机制、数据迁移策略、WebUI 交互骨架等内容仍以 04 为准，仅 handler 分类法被本文档取代。
 

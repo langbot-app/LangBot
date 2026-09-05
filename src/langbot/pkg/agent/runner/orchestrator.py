@@ -95,9 +95,7 @@ class AgentRunOrchestrator:
         if event_workspace_id and event_workspace_id != execution_context.workspace_uuid:
             raise ValueError('Agent event Workspace does not match its trusted ExecutionContext')
         if not event_workspace_id:
-            event = event.model_copy(
-                update={'workspace_id': execution_context.workspace_uuid}
-            )
+            event = event.model_copy(update={'workspace_id': execution_context.workspace_uuid})
         descriptor = await self.registry.get(
             execution_context,
             runner_id,
@@ -106,6 +104,9 @@ class AgentRunOrchestrator:
 
         if execution_query is None:
             execution_query = build_execution_query(event, [])
+            # Synthetic events must expose the same trusted scope as pipeline queries.
+            for field_name in ('instance_uuid', 'workspace_uuid', 'placement_generation', 'query_uuid'):
+                object.__setattr__(execution_query, field_name, getattr(execution_context, field_name))
             project_mcp_resource_config(execution_query, binding.runner_config)
         object.__setattr__(execution_query, '_execution_context', execution_context)
 
@@ -267,6 +268,11 @@ class AgentRunOrchestrator:
                     run_id=run_id,
                     sequence=sequence_int,
                 )
+
+                # Trusted Host observers receive validated events before message-only normalization.
+                result_observer = (adapter_context or {}).get('_result_observer')
+                if result_observer is not None:
+                    await result_observer(result_dict)
 
                 if result_type == 'state.updated':
                     await self.journal.handle_state_updated_event(

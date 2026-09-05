@@ -27,7 +27,7 @@ const refRe = /(?:\]\(|`)(references\/[A-Za-z0-9_.\-/]+\.md)(?:\)|`)/g;
 
 function validateStructuredItem(item: StructuredItem, requiredStrings: string[], requiredLists: string[]): string[] {
   const errors: string[] = [];
-  const listKeys = item.path.includes("/cases/") && scalar(item.fields, "mode") === "probe"
+  const listKeys = /[\\/]cases[\\/]/.test(item.path) && scalar(item.fields, "mode") === "probe"
     ? requiredLists.filter((key) => key !== "env")
     : requiredLists;
   for (const key of requiredStrings) {

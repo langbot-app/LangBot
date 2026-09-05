@@ -1445,3 +1445,30 @@ class TestQueryEntryAdapterHostCapabilities:
         assert user_item['attachment_refs'][0]['content'] is None
         assert 'aGVsbG8=' not in str(user_item)
         assert 'Pinned documentation' not in str(user_item)
+
+
+@pytest.mark.asyncio
+async def test_synthetic_event_query_exposes_trusted_workspace_to_tools(clean_agent_state):
+    from langbot.pkg.provider.tools.loaders.skill import get_visible_skills
+    from langbot.pkg.pipeline.pool import get_query_execution_context
+
+    plugin = FakePluginConnector(results=[{'type': 'run.completed', 'data': {'finish_reason': 'stop'}}])
+    app = FakeApplication(plugin, clean_agent_state)
+    orchestrator = AgentRunOrchestrator(app, FakeRegistry(make_descriptor()))
+    query = make_query()
+    plan = orchestrator.query_bridge.build_plan(query)
+    context = get_query_execution_context(query)
+    outputs = [
+        item
+        async for item in orchestrator.run(plan.event, plan.binding, adapter_context={'_execution_context': context})
+    ]
+    assert outputs == []
+    synthetic = plugin.sessions_during_run[0]['execution_query']
+    assert synthetic.workspace_uuid == context.workspace_uuid
+    assert synthetic.instance_uuid == context.instance_uuid
+    assert synthetic.placement_generation == context.placement_generation
+    assert synthetic.query_uuid == context.query_uuid
+    received = []
+    app.skill_mgr.get_skills = lambda scope: received.append(scope) or {}
+    get_visible_skills(app, synthetic)
+    assert received[0].workspace_uuid == context.workspace_uuid

@@ -549,7 +549,7 @@
         },
         {
           "id": "bot-event-routing-product-flow",
-          "title": "Bot event routing can be configured and tested from the WebUI",
+          "title": "Bot event routing and adapter input can be inspected from the WebUI",
           "mode": "agent-browser",
           "area": "bot",
           "type": "feature",

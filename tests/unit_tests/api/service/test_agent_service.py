@@ -149,7 +149,8 @@ class TestAgentServiceMetadata:
 
 
 class TestAgentServiceDebug:
-    async def test_debug_agent_runs_configured_runner_with_synthetic_event(self):
+    @pytest.mark.parametrize('streaming', [False, True])
+    async def test_debug_agent_runs_configured_runner_with_synthetic_event(self, streaming):
         app = _make_app()
         agent_config = _agent_row().config
         agent_config['allowed_platform_tools'] = ['platform_get_user_info']
@@ -159,7 +160,16 @@ class TestAgentServiceDebug:
         }
         agent_config['allowed_tools'] = ['exec', 'weather']
 
+        visible_event = {
+            'type': 'tool.call.started',
+            'data': {'tool_name': 'exec', 'parameters': {'command': 'echo hi'}},
+        }
+        observer = AsyncMock() if streaming else None
+
         async def run_agent(event, binding, adapter_context):
+            assert binding.delivery_policy.enable_streaming is streaming
+            await adapter_context['_result_observer']({**visible_event, 'private_context': 'must not leak'})
+            await adapter_context['_result_observer']({'type': 'state.updated', 'data': {'private': True}})
             yield SimpleNamespace(
                 role='assistant',
                 content='debug result',
@@ -193,8 +203,14 @@ class TestAgentServiceDebug:
                 'data': {'member_id': 'user-1'},
                 'conversation_id': 'debug-session',
             },
+            on_result=observer,
         )
 
+        if streaming:
+            observer.assert_awaited_once_with(visible_event)
+            assert result['execution_events'] == []
+        else:
+            assert result['execution_events'] == [visible_event]
         assert result['event_type'] == 'group.member.joined'
         assert result['conversation_id'] == 'debug-session'
         assert result['final_text'] == 'debug result'
@@ -207,6 +223,10 @@ class TestAgentServiceDebug:
         ]
         event, binding = app.agent_run_orchestrator.run.call_args.args
         assert event.workspace_id == WORKSPACE_UUID
+        assert event.delivery.platform_capabilities['debug_mock'] is True
+        assert 'send_message' in event.delivery.platform_capabilities['supported_apis']
+        assert event.delivery.reply_target['target_id'] == 'debug-group'
+        assert binding.delivery_policy.enable_reply is False
         assert event.data == {'member_id': 'user-1'}
         assert binding.agent_id == 'agent-1'
         assert binding.runner_id == 'plugin:test/runner/default'
@@ -243,6 +263,100 @@ class TestAgentServiceDebug:
                 'agent-1',
                 {'event_type': 'group.member.joined'},
             )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    'event_type',
+    [
+        'message.received',
+        'message.edited',
+        'message.deleted',
+        'message.reaction',
+        'group.member_joined',
+        'group.member_left',
+        'group.member_banned',
+        'friend.request_received',
+        'friend.added',
+        'feedback.received',
+        'bot.invited_to_group',
+        'bot.muted',
+        'bot.unmuted',
+        'bot.removed_from_group',
+        'platform.specific',
+        'custom.probe',
+    ],
+)
+async def test_debug_event_matrix_preserves_scope_targets_and_mock_options(event_type):
+    app = _make_app()
+    captured = []
+
+    async def run(event, binding, adapter_context):
+        captured.append((event, binding))
+        if False:
+            yield
+
+    app.agent_run_orchestrator = SimpleNamespace(run=run)
+    service = AgentService(app)
+    service.get_agent = AsyncMock(
+        return_value={'kind': AGENT_KIND_AGENT, 'supported_event_patterns': ['*'], 'config': _agent_row().config}
+    )
+    context = SimpleNamespace(
+        instance_uuid='instance-test',
+        workspace_uuid=WORKSPACE_UUID,
+        placement_generation=1,
+        principal=SimpleNamespace(account_uuid='account-test'),
+        entitlement_revision=0,
+    )
+    data = {
+        'group_id': '群组-42',
+        'member_id': 'user-42',
+        'member_name': '测试用户🙂',
+        'request_id': 'request-42',
+        'nested': {'value': [1, 2]},
+    }
+    await service.debug_agent(
+        context,
+        'agent-1',
+        {
+            'event_type': event_type,
+            'text': 'probe',
+            'data': data,
+            'mock': {'errors': {'event_reply': 'denied'}, 'unsupported_apis': ['delete_message']},
+        },
+    )
+    event, binding = captured[0]
+    assert event.data == data
+    assert event.actor.actor_name == '测试用户🙂'
+    assert event.delivery.reply_target['target_id'] == '群组-42'
+    assert 'delete_message' not in event.delivery.platform_capabilities['supported_apis']
+    assert event.delivery.platform_capabilities['mock_options']['errors'] == {'event_reply': 'denied'}
+    assert event.bot_id is None
+    assert binding.delivery_policy.enable_reply is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    'payload',
+    [
+        {'event_type': ''},
+        {'data': []},
+        {'data': None},
+        {'data': False},
+        {'mock': []},
+        {'mock': {'errors': {'event_reply': None}}},
+        {'actor': []},
+    ],
+)
+async def test_debug_rejects_invalid_envelope_before_execution(payload):
+    app = _make_app()
+    app.agent_run_orchestrator = SimpleNamespace(run=Mock(side_effect=AssertionError('invalid request executed')))
+    service = AgentService(app)
+    service.get_agent = AsyncMock(
+        return_value={'kind': AGENT_KIND_AGENT, 'supported_event_patterns': ['*'], 'config': _agent_row().config}
+    )
+    with pytest.raises(ValueError):
+        await service.debug_agent(SimpleNamespace(workspace_uuid=WORKSPACE_UUID), 'agent-1', payload)
 
 
 class TestAgentServiceListAndLookup:

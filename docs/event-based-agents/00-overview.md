@@ -1,5 +1,7 @@
 # Event Based Agents 架构设计总览
 
+> 当前状态（2026-09-05）：平台事件、Bot `event_bindings`、独立 Agent、Pipeline / Agent 平级路由及 WebUI 已集成到 `dev/4.11.x`。实现入口为 `pkg/platform/botmgr.py::RuntimeBot` 与 `pkg/agent/runner/`。下文“当前架构的局限性”“现有架构”描述改造前背景；EventBus / EventRouter 图表示职责划分，不表示存在同名独立服务。当前实现和验收以 [STATUS.md](../agent-runner-pluginization/STATUS.md) 为准，平台动作使用[授权工具](../agent-runner-pluginization/PLATFORM_ACTION_TOOLS.md)。
+
 ## 1. 背景与动机
 
 ### 当前架构的局限性

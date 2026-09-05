@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import {
@@ -37,6 +37,8 @@ import {
   groupEventPatterns,
 } from '@/app/home/components/event-patterns/event-pattern-groups';
 import EventSelectOptionContent from '@/app/home/components/event-patterns/EventSelectOptionContent';
+import AgentExecutionTrace from './AgentExecutionTrace';
+import { executionSteps, type DebugExecutionEvent } from './debug-execution';
 
 interface AgentDebugPanelProps {
   agentId: string;
@@ -54,6 +56,8 @@ interface DebugEntry {
   text: string;
   errorCode?: string;
   detail?: string;
+  events?: DebugExecutionEvent[];
+  finished?: boolean;
 }
 
 const EVENT_PRESET_DATA: Record<
@@ -85,6 +89,7 @@ const EVENT_PRESET_DATA: Record<
     data: {
       requester_id: 'debug-user',
       requester_name: 'Debug User',
+      request_id: 'debug-friend-request',
       message: 'Hello',
     },
   },
@@ -94,6 +99,62 @@ const EVENT_PRESET_DATA: Record<
       rating: 5,
       content: 'Debug feedback',
     },
+  },
+  'friend.added': {
+    text: 'A friend was added.',
+    data: { user_id: 'debug-user', user_name: 'Debug User' },
+  },
+  'group.member_banned': {
+    text: 'A member was banned.',
+    data: {
+      group_id: 'debug-group',
+      member_id: 'debug-user',
+      member_name: 'Debug User',
+    },
+  },
+  'bot.invited_to_group': {
+    text: 'The bot was invited to a group.',
+    data: {
+      group_id: 'debug-group',
+      request_id: 'debug-group-request',
+      requester_id: 'debug-user',
+    },
+  },
+  'bot.muted': {
+    text: 'The bot was muted.',
+    data: { group_id: 'debug-group', duration: 60 },
+  },
+  'bot.unmuted': {
+    text: 'The bot was unmuted.',
+    data: { group_id: 'debug-group' },
+  },
+  'bot.removed_from_group': {
+    text: 'The bot was removed from the group.',
+    data: { group_id: 'debug-group' },
+  },
+  'message.edited': {
+    text: 'A message was edited.',
+    data: {
+      group_id: 'debug-group',
+      message_id: 'debug-message',
+      text: 'Edited message',
+    },
+  },
+  'message.deleted': {
+    text: 'A message was deleted.',
+    data: { group_id: 'debug-group', message_id: 'debug-message' },
+  },
+  'message.reaction': {
+    text: 'A reaction was added.',
+    data: {
+      group_id: 'debug-group',
+      message_id: 'debug-message',
+      reaction: '👍',
+    },
+  },
+  'platform.specific': {
+    text: 'A platform-specific event occurred.',
+    data: { event_name: 'debug-platform-event' },
   },
 };
 
@@ -120,9 +181,21 @@ export default function AgentDebugPanel({
   const [customEventType, setCustomEventType] = useState('custom.event');
   const [inputText, setInputText] = useState('');
   const [eventDataText, setEventDataText] = useState('{}');
+  const [mockOptionsText, setMockOptionsText] = useState('{}');
   const [running, setRunning] = useState(false);
   const [entries, setEntries] = useState<DebugEntry[]>([]);
+  const transcriptRef = useRef<HTMLDivElement>(null);
   const sessionIdRef = useRef(createDebugSessionId(agentId));
+  const requestRef = useRef<AbortController | null>(null);
+
+  useEffect(() => () => requestRef.current?.abort(), [agentId]);
+
+  useLayoutEffect(() => {
+    const transcript = transcriptRef.current;
+    if (transcript) {
+      transcript.scrollTop = transcript.scrollHeight;
+    }
+  }, [entries]);
 
   const eventType = preset === 'custom' ? customEventType.trim() : preset;
   const isMessageEvent = eventType.startsWith('message.');
@@ -186,6 +259,7 @@ export default function AgentDebugPanel({
     }
 
     let eventData: Record<string, unknown>;
+    let mockOptions: Record<string, unknown>;
     try {
       const parsed = JSON.parse(eventDataText || '{}');
       if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') {
@@ -196,6 +270,15 @@ export default function AgentDebugPanel({
       toast.error(t('agents.debugInvalidPayload'));
       return;
     }
+    try {
+      const parsed = JSON.parse(mockOptionsText || '{}');
+      if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object')
+        throw new Error('Mock options must be an object');
+      mockOptions = parsed;
+    } catch {
+      toast.error(t('agents.debugInvalidMock'));
+      return;
+    }
 
     setRunning(true);
     if (hasUnsavedChanges && beforeRun && !(await beforeRun())) {
@@ -204,6 +287,9 @@ export default function AgentDebugPanel({
     }
 
     const requestId = globalThis.crypto?.randomUUID?.() ?? String(Date.now());
+    const controller = new AbortController();
+    requestRef.current = controller;
+    const outputId = `execution:${requestId}`;
     setEntries((current) => [
       ...current,
       {
@@ -214,23 +300,85 @@ export default function AgentDebugPanel({
       },
     ]);
     try {
-      const result = await httpClient.debugAgent(agentId, {
-        event_type: eventType,
-        text: inputText.trim(),
-        data: eventData,
-        conversation_id: sessionIdRef.current,
-      });
-      setEntries((current) => [
-        ...current,
+      const result = await httpClient.streamDebugAgent(
+        agentId,
         {
-          id: `output:${result.event_id}`,
-          direction: 'output',
-          eventType,
-          text: result.final_text || t('agents.debugNoTextOutput'),
+          event_type: eventType,
+          text: inputText.trim(),
+          data: eventData,
+          mock: mockOptions,
+          conversation_id: sessionIdRef.current,
         },
-      ]);
-      if (isMessageEvent) setInputText('');
+        (event) => {
+          if (controller.signal.aborted) return;
+          setEntries((current) => {
+            const existing = current.find((entry) => entry.id === outputId);
+            if (existing)
+              return current.map((entry) =>
+                entry.id === outputId
+                  ? { ...entry, events: [...(entry.events ?? []), event] }
+                  : entry,
+              );
+            return [
+              ...current,
+              {
+                id: outputId,
+                direction: 'output',
+                eventType,
+                text: '',
+                events: [event],
+              },
+            ];
+          });
+        },
+        controller.signal,
+      );
+      if (controller.signal.aborted) return;
+      setEntries((current) =>
+        current.some((entry) => entry.id === outputId)
+          ? current.map((entry) =>
+              entry.id === outputId
+                ? {
+                    ...entry,
+                    finished: true,
+                    text: executionSteps(entry.events ?? []).some(
+                      (step) =>
+                        step.kind === 'tool' || step.text || step.reasoning,
+                    )
+                      ? ''
+                      : result.final_text || t('agents.debugNoTextOutput'),
+                  }
+                : entry,
+            )
+          : [
+              ...current,
+              {
+                id: outputId,
+                direction: 'output',
+                eventType,
+                text: result.final_text || t('agents.debugNoTextOutput'),
+              },
+            ],
+      );
+      if (isMessageEvent)
+        setInputText((current) => (current === inputText ? '' : current));
     } catch (error) {
+      if (controller.signal.aborted) {
+        if (controller.signal.reason === 'user') {
+          setEntries((current) => [
+            ...current.map((entry) =>
+              entry.id === outputId ? { ...entry, finished: true } : entry,
+            ),
+            {
+              id: `cancel:${requestId}`,
+              direction: 'error',
+              eventType,
+              text: t('agents.debugCancelled'),
+            },
+          ]);
+        }
+        return;
+      }
       const errorCode =
         typeof error === 'object' && error && 'code' in error
           ? String((error as { code?: string }).code || '')
@@ -255,7 +403,9 @@ export default function AgentDebugPanel({
             ? t('agents.debugRunnerTimeoutDescription')
             : message || t('agents.debugRunFailed');
       setEntries((current) => [
-        ...current,
+        ...current.map((entry) =>
+          entry.id === outputId ? { ...entry, finished: true } : entry,
+        ),
         {
           id: `error:${requestId}`,
           direction: 'error',
@@ -269,13 +419,19 @@ export default function AgentDebugPanel({
         },
       ]);
     } finally {
-      setRunning(false);
+      if (requestRef.current === controller) {
+        requestRef.current = null;
+        setRunning(false);
+      }
     }
   }
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col">
-      <div className="min-h-0 flex-1 overflow-y-auto p-3">
+      <p className="shrink-0 border-b bg-muted/20 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
+        {t('agents.debugPlatformNotice')}
+      </p>
+      <div ref={transcriptRef} className="min-h-0 flex-1 overflow-y-auto p-3">
         <div className="mb-3">
           <p className="text-sm font-medium">{t('agents.debugTranscript')}</p>
           <p className="text-xs text-muted-foreground">
@@ -292,72 +448,90 @@ export default function AgentDebugPanel({
           </Alert>
         ) : (
           <div className="space-y-3">
-            {entries.map((entry) => (
-              <Alert
-                key={entry.id}
-                variant={
-                  entry.direction === 'error' ? 'destructive' : 'default'
-                }
-                className={
-                  entry.direction === 'output'
-                    ? 'border-primary/20 bg-primary/5'
-                    : entry.direction === 'input'
-                      ? 'bg-muted/40'
-                      : undefined
-                }
-              >
-                {entry.direction === 'error' && <AlertCircle />}
-                <div className="col-start-2 min-w-0">
-                  <div className="mb-2 flex min-w-0 flex-wrap items-center justify-between gap-2">
-                    <Badge
-                      variant="outline"
-                      className="max-w-full overflow-hidden text-ellipsis"
-                    >
-                      {entry.eventType}
-                    </Badge>
-                    <span className="shrink-0 text-xs text-muted-foreground">
-                      {entry.direction === 'output'
-                        ? t('agents.debugAgentOutput')
-                        : entry.direction === 'error'
-                          ? t('common.error')
-                          : t('agents.debugTestInput')}
-                    </span>
-                  </div>
-                  <pre className="min-w-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere] font-sans text-sm leading-relaxed">
-                    {entry.text}
-                  </pre>
-                  {entry.detail && (
-                    <Collapsible className="mt-3">
-                      <CollapsibleTrigger asChild>
-                        <Button type="button" variant="ghost" size="sm">
-                          {t('agents.debugErrorDetails')}
-                          <ChevronDown className="size-3.5" />
-                        </Button>
-                      </CollapsibleTrigger>
-                      <CollapsibleContent>
-                        <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap break-words [overflow-wrap:anywhere] rounded-md bg-muted p-2 font-mono text-xs text-muted-foreground">
-                          {entry.detail}
-                        </pre>
-                      </CollapsibleContent>
-                    </Collapsible>
-                  )}
-                  {(entry.errorCode?.endsWith('.config_invalid') ||
-                    entry.errorCode === 'runner_execution_failed' ||
-                    entry.errorCode === 'runner.timeout') &&
-                    onOpenRunnerConfig && (
-                      <Button
-                        type="button"
+            {entries
+              .filter(
+                (entry) =>
+                  entry.direction !== 'output' ||
+                  entry.text ||
+                  executionSteps(entry.events ?? []).some(
+                    (step) =>
+                      step.kind === 'tool' || step.text || step.reasoning,
+                  ),
+              )
+              .map((entry) => (
+                <Alert
+                  key={entry.id}
+                  variant={
+                    entry.direction === 'error' ? 'destructive' : 'default'
+                  }
+                  className={
+                    entry.direction === 'output'
+                      ? 'border-primary/20 bg-primary/5'
+                      : entry.direction === 'input'
+                        ? 'bg-muted/40'
+                        : undefined
+                  }
+                >
+                  {entry.direction === 'error' && <AlertCircle />}
+                  <div className="col-start-2 min-w-0">
+                    <div className="mb-2 flex min-w-0 flex-wrap items-center justify-between gap-2">
+                      <Badge
                         variant="outline"
-                        size="sm"
-                        className="mt-3"
-                        onClick={onOpenRunnerConfig}
+                        className="max-w-full overflow-hidden text-ellipsis"
                       >
-                        {t('agents.debugReviewRunnerConfig')}
-                      </Button>
+                        {entry.eventType}
+                      </Badge>
+                      <span className="shrink-0 text-xs text-muted-foreground">
+                        {entry.direction === 'output'
+                          ? t('agents.debugAgentOutput')
+                          : entry.direction === 'error'
+                            ? t('common.error')
+                            : t('agents.debugTestInput')}
+                      </span>
+                    </div>
+                    {entry.events && (
+                      <AgentExecutionTrace
+                        events={entry.events}
+                        finished={entry.finished}
+                      />
                     )}
-                </div>
-              </Alert>
-            ))}
+                    {entry.text && (
+                      <pre className="min-w-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere] font-sans text-sm leading-relaxed">
+                        {entry.text}
+                      </pre>
+                    )}
+                    {entry.detail && (
+                      <Collapsible className="mt-3">
+                        <CollapsibleTrigger asChild>
+                          <Button type="button" variant="ghost" size="sm">
+                            {t('agents.debugErrorDetails')}
+                            <ChevronDown className="size-3.5" />
+                          </Button>
+                        </CollapsibleTrigger>
+                        <CollapsibleContent>
+                          <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap break-words [overflow-wrap:anywhere] rounded-md bg-muted p-2 font-mono text-xs text-muted-foreground">
+                            {entry.detail}
+                          </pre>
+                        </CollapsibleContent>
+                      </Collapsible>
+                    )}
+                    {(entry.errorCode?.endsWith('.config_invalid') ||
+                      entry.errorCode === 'runner_execution_failed' ||
+                      entry.errorCode === 'runner.timeout') &&
+                      onOpenRunnerConfig && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="mt-3"
+                          onClick={onOpenRunnerConfig}
+                        >
+                          {t('agents.debugReviewRunnerConfig')}
+                        </Button>
+                      )}
+                  </div>
+                </Alert>
+              ))}
           </div>
         )}
       </div>
@@ -469,11 +643,27 @@ export default function AgentDebugPanel({
               </div>
             </details>
 
+            <details className="rounded-md border bg-muted/20 px-3 py-2">
+              <summary className="cursor-pointer text-xs font-medium">
+                {t('agents.debugMockOptions')}
+              </summary>
+              <p className="my-2 text-xs text-muted-foreground">
+                {t('agents.debugMockOptionsHelp')}
+              </p>
+              <Textarea
+                aria-label={t('agents.debugMockOptions')}
+                value={mockOptionsText}
+                onChange={(event) => setMockOptionsText(event.target.value)}
+                className="min-h-24 font-mono text-xs"
+                spellCheck={false}
+              />
+            </details>
             <Button
               type="button"
               className="w-full"
-              disabled={running}
-              onClick={runDebugEvent}
+              onClick={() =>
+                running ? requestRef.current?.abort('user') : runDebugEvent()
+              }
             >
               {running ? (
                 <LoaderCircle className="size-4 animate-spin" />
@@ -481,7 +671,7 @@ export default function AgentDebugPanel({
                 <Play className="size-4" />
               )}
               {running
-                ? t('agents.debugRunning')
+                ? t('agents.debugStop')
                 : hasUnsavedChanges
                   ? t('agents.debugSaveAndRun')
                   : t('agents.debugRun')}

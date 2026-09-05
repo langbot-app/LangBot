@@ -1,6 +1,6 @@
 # 处理器页面与事件编排产品设计
 
-> 状态：实施稿（2026-06-23）
+> 状态：当前实现说明（2026-09-05），对应 `dev/4.11.x`。P0–P3 已集成；发布验收见 [STATUS.md](../agent-runner-pluginization/STATUS.md)。
 >
 > 本文档修订 [07-agent-orchestration.md](./07-agent-orchestration.md) 中“Agent 替代 Pipeline”的表述。当前产品形态保留两种长期并存的同级处理器：**Agent** 与 **Pipeline**。处理器页面只是共享入口，不改变二者各自的持久化模型和执行语义。
 
@@ -34,7 +34,9 @@ LangBot 的处理逻辑分成两种同级形态：
    - Pipeline：创建一条独立 Pipeline，执行完整消息 Stage 链。
 3. 编辑时按类型进入不同表单：
    - Pipeline：沿用原 Pipeline 配置页，包括 AI、触发、安全、输出、扩展、Debug、Monitoring；
-   - Agent：配置基础信息、runner、runner config 和事件能力。
+   - Agent：基础信息由详情入口编辑，主配置分为运行器、运行器配置、事件与工具；事件范围、自动事件工具、平台级动作和普通工具白名单在同一配置流程内维护。
+
+处理器详情复用 `ProcessorDetailWorkbench`；Agent 与 Pipeline 保留各自的配置、调试和日志语义。`AgentRunnerSelect` 提供已安装 Runner 和市场安装入口，安装状态可恢复；Runner 配置来自动态 metadata，不按 LocalAgent id 定制 Host 表单。调试事件选择位于输入区域；Bot 的平台事件调试位于机器人配置中，路由 dry-run 只解释匹配结果。
 
 `/home/pipelines` 继续提供 Pipeline 直接编辑路径；共享处理器入口当前使用 `/home/agents`。URL 是实现路径，不代表 Agent 包含 Pipeline。
 
@@ -63,13 +65,14 @@ Pipeline 只能被绑定到 `message.*`。如果用户选择非消息事件，�
 
 ```python
 class Agent(Base):
+    workspace_uuid: str     # workspace-scoped persistence
     uuid: str
     name: str
     description: str
     emoji: str
     kind: str               # 首版固定为 "agent"
-    component_ref: str      # runner id / workflow id / future external ref
-    config: dict            # runner 与 runner_config
+    component_ref: str      # runner reference; execution config uses runner.id
+    config: dict            # runner, runner_config, allowed_tools, allowed_platform_tools
     supported_event_patterns: list[str]
     created_at: datetime
     updated_at: datetime
@@ -103,7 +106,7 @@ Pipeline 投影时固定：
 
 ### 3.2 Bot 事件绑定
 
-Bot 新增 `event_bindings` JSON 字段，首版作为轻量配置面。后续当 EventRouter 查询、审计和多作用域规则稳定后，再拆成独立表。
+Bot 使用 `event_bindings` JSON 字段持久化路由。当前未引入独立路由表；是否拆表应由查询、审计和多作用域需求决定。
 
 ```json
 [
@@ -139,12 +142,12 @@ Bot 新增 `event_bindings` JSON 字段，首版作为轻量配置面。后续�
 ## 5. 并存策略
 
 1. Pipeline 与 Agent 长期并存，各自保存配置并执行自己的运行链路。
-2. 现有 Bot 的 `use_pipeline_uuid` 转换为仍指向原 Pipeline 的消息事件绑定。
-3. 现有 `pipeline_routing_rules` 仍只作用于消息事件。
+2. 数据库升级中的旧路由转换由 Alembic 负责；当前运行时只读取 `event_bindings`，不再读取 `use_pipeline_uuid`。
+3. 旧 `pipeline_routing_rules` 不再作为第二个运行时路由来源；LangBot 4.x 不支持 3.x 数据库或配置升级。
 4. `event_bindings` 允许 `target_type=pipeline|agent|discard`；Pipeline 目标只限 `message.*`。
 5. Pipeline 与 Agent 保留各自的持久化和编辑语义；处理器聚合入口只负责统一展示和选择。
 
-## 6. 分阶段落地
+## 6. 已集成阶段与维护范围
 
 ### P0：处理器入口统一
 

@@ -3,7 +3,7 @@ import { join } from "node:path";
 import type { ParsedYaml, Skill, StructuredItem, StructuredItemKind } from "./types.ts";
 import { fail } from "./cli.ts";
 
-const frontmatterRe = /^---\n([\s\S]*?)\n---\n/;
+const frontmatterRe = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/;
 
 export function statIsDirectory(path: string): boolean {
   try {
@@ -107,7 +107,7 @@ export function globMarkdownRefs(skillPath: string): string[] {
   return readdirSync(refsDir)
     .filter((name) => name.endsWith(".md"))
     .sort()
-    .map((name) => join("references", name));
+    .map((name) => `references/${name}`);
 }
 
 export function globYamlFiles(dir: string): string[] {

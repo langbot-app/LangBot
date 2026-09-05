@@ -66,6 +66,7 @@ The tools wrap the LangBot service layer. Current tools (v1):
 | `list_bots` / `get_bot` / `create_bot` / `update_bot` / `delete_bot` | Manage messaging-platform bots (secrets redacted on read) |
 | `list_bot_event_route_statuses` | Inspect bot event-route runtime status |
 | `list_processors` / `get_processor` / `create_processor` / `update_processor` / `delete_processor` | Manage the peer Agent and Pipeline processor types |
+| `debug_agent` | Execute a synthetic Agent event (`processor_uuid`, `payload`); requires `runtime.operate`. Returns final text and up to 1000 execution events (thinking, text, tool arguments/results). Platform tools use Mock; other configured tools execute normally. Optional `payload.mock`: `errors`/`results` keyed by platform tool name, `unsupported_apis` lists unavailable platform APIs. |
 | `list_pipelines` / `get_pipeline` / `create_pipeline` / `update_pipeline` / `delete_pipeline` | Manage pipelines |
 | `list_llm_models` / `get_llm_model` / `list_embedding_models` / `list_model_providers` | Inspect models & providers |
 | `list_knowledge_bases` / `get_knowledge_base` / `retrieve_knowledge_base` | RAG knowledge bases (incl. semantic search) |

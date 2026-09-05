@@ -8,6 +8,8 @@ import typing
 from dataclasses import dataclass
 
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
+from langbot_plugin.api.entities.builtin.platform import entities as platform_entities
+from langbot_plugin.api.entities.builtin.platform import events as platform_events
 
 from .host_models import AgentEventEnvelope
 
@@ -388,6 +390,25 @@ def platform_tool_catalog() -> list[dict[str, typing.Any]]:
     ]
 
 
+def validate_debug_mock_options(value: typing.Any) -> dict[str, typing.Any]:
+    if not isinstance(value, dict) or set(value) - {'errors', 'results', 'unsupported_apis'}:
+        raise ValueError('Mock options must contain only errors, results and unsupported_apis')
+    for field in ('errors', 'results'):
+        entries = value.get(field, {})
+        if not isinstance(entries, dict) or set(entries) - set(PLATFORM_TOOLS_BY_NAME):
+            raise ValueError(f'Mock {field} must map platform tool names to outcomes')
+    if any(not isinstance(error, str) or not error.strip() for error in value.get('errors', {}).values()):
+        raise ValueError('Mock errors must be non-empty strings')
+    if set(value.get('errors', {})) & set(value.get('results', {})):
+        raise ValueError('A mock tool cannot have both an error and a result')
+    unsupported = value.get('unsupported_apis', [])
+    if not isinstance(unsupported, list) or any(
+        not isinstance(api, str) or api not in {tool.api for tool in PLATFORM_TOOL_DEFINITIONS} for api in unsupported
+    ):
+        raise ValueError('Mock unsupported_apis must be an array of platform API names')
+    return copy.deepcopy(value)
+
+
 def _event_matches(event_type: str, patterns: tuple[str, ...]) -> bool:
     return any(fnmatch.fnmatchcase(event_type, pattern) for pattern in patterns)
 
@@ -587,6 +608,14 @@ async def execute_platform_tool(
     if definition is None:
         raise ValueError(f'Unknown platform tool: {tool_name}')
     authorization = session.get('authorization', {})
+    context = authorization.get('platform_context') or {}
+    delivery = context.get('delivery') or {}
+    normalized = _normalize_platform_params(definition, parameters)
+    if definition.scope == 'event':
+        normalized = _event_params(definition, context, normalized)
+    # This flag is frozen by the Host from the synthetic debug envelope, not tool arguments.
+    if delivery.get('surface') == 'webui' and (delivery.get('platform_capabilities') or {}).get('debug_mock') is True:
+        return _execute_mock_platform_tool(definition, context, normalized)
     bot_id = authorization.get('bot_id')
     if not bot_id:
         raise ValueError('This run is not associated with a platform bot')
@@ -598,9 +627,6 @@ async def execute_platform_tool(
     api_func = getattr(bot.adapter, definition.api, None)
     if not callable(api_func):
         raise ValueError(f'Platform API {definition.api} is declared but not implemented')
-    normalized = _normalize_platform_params(definition, parameters)
-    if definition.scope == 'event':
-        normalized = _event_params(definition, authorization.get('platform_context') or {}, normalized)
     if definition.api == 'send_message':
         normalized = {
             'target_type': _require_string(normalized, 'target_type'),
@@ -610,6 +636,66 @@ async def execute_platform_tool(
             ),
         }
     return await api_func(**normalized)
+
+
+def _execute_mock_platform_tool(
+    definition: PlatformToolDefinition, context: dict[str, typing.Any], parameters: dict[str, typing.Any]
+) -> dict[str, typing.Any]:
+    """Simulate the adapter boundary while preserving real model calls and validated targets."""
+    data = context.get('data') or {}
+    actor = context.get('actor') or {}
+    options = ((context.get('delivery') or {}).get('platform_capabilities') or {}).get('mock_options') or {}
+    result: typing.Any = None
+    user_id = parameters.get('user_id') or actor.get('actor_id') or 'debug-user'
+    user = platform_entities.User(
+        id=user_id,
+        nickname=(actor.get('actor_name') or 'Debug User')
+        if user_id == actor.get('actor_id')
+        else f'Mock user {user_id}',
+    )
+    group_id = parameters.get('group_id') or data.get('group_id') or 'debug-group'
+    group = platform_entities.UserGroup(id=group_id, name=data.get('group_name') or 'Mock group')
+    member = platform_entities.UserGroupMember(user=user, group_id=group_id)
+    if definition.api == 'send_message':
+        for field in ('target_type', 'target_id', 'text'):
+            _require_string(parameters, field)
+        result = {'message_id': 'mock-message'}
+    elif definition.api == 'get_user_info':
+        result = user.model_dump(mode='json')
+    elif definition.api == 'get_group_member_info':
+        result = member.model_dump(mode='json')
+    elif definition.api == 'get_group_info':
+        result = group.model_dump(mode='json')
+    elif definition.api == 'get_group_list':
+        result = [group.model_dump(mode='json')]
+    elif definition.api == 'get_group_member_list':
+        result = [member.model_dump(mode='json')]
+    elif definition.api == 'get_friend_list':
+        result = [user.model_dump(mode='json')]
+    elif definition.api == 'get_message':
+        result = platform_events.MessageReceivedEvent(
+            message_id=parameters['message_id'],
+            chat_id=parameters['chat_id'],
+            chat_type='group' if parameters['chat_type'] == 'group' else 'private',
+            sender=user,
+            message_chain=platform_message.MessageChain(
+                [platform_message.Plain(text=str(data.get('text') or 'Mock message'))]
+            ),
+        ).model_dump(mode='json')
+    error = options.get('errors', {}).get(definition.name)
+    if definition.name in options.get('results', {}):
+        result = copy.deepcopy(options['results'][definition.name])
+    return {
+        'ok': error is None,
+        'mock': True,
+        'delivery': 'simulated',
+        'tool': definition.name,
+        'api': definition.api,
+        'parameters': parameters,
+        'result': None if error else result,
+        **({'error': error} if error else {}),
+        'notice': 'Simulated platform operation. No real platform API was called.',
+    }
 
 
 __all__ = [

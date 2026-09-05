@@ -73,13 +73,13 @@ test('processor forms expose their primary orchestration flow horizontally', () 
 
   assert.match(
     agentForm,
-    /name: 'basic'[\s\S]*name: 'events'[\s\S]*name: 'runner'[\s\S]*name: 'runner_config'/,
+    /name: 'runner'[\s\S]*name: 'runner_config'[\s\S]*name: 'events_and_tools'/,
   );
   assert.match(
     pipelineForm,
     /const primarySectionNames = \['trigger', 'ai', 'output'\]/,
   );
-  assert.match(agentForm, /<TabsList[^>]*grid-cols-4/);
+  assert.match(agentForm, /<TabsList[^>]*grid-cols-3/);
   assert.match(pipelineForm, /<TabsList[^>]*grid-cols-3/);
   assert.doesNotMatch(agentForm, /<ol className=/);
   assert.doesNotMatch(pipelineForm, /<ol className=/);

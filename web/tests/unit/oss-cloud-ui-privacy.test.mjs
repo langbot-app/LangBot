@@ -43,7 +43,7 @@ test('hides the entire workspace switcher slot for a singleton local workspace',
 test('keeps bot cards at the same vertical spacing as knowledge-base cards', () => {
   assert.match(
     botFormSource,
-    /<fieldset className="space-y-6" disabled=\{isLoading\}>/,
+    /<fieldset\s+className="[^"]*\bspace-y-6\b[^"]*"\s+disabled=\{isLoading\}/,
   );
   assert.match(kbFormSource, /<form[\s\S]*?className="space-y-6"/);
 });

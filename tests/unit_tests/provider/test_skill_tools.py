@@ -540,6 +540,16 @@ class TestNativeToolLoaderSkillPaths:
             ap.skill_mgr = _make_skill_manager({'demo': _make_skill_data(name='demo', package_root=tmpdir)})
             loader = NativeToolLoader(ap)
 
+            if not loader._can_interpret_skill_host_paths():
+                # Windows lacks the secure descriptor-relative host file operations.
+                with pytest.raises(ValueError, match='owned by the Box Runtime'):
+                    await loader.invoke_tool(
+                        'read',
+                        {'path': '/workspace/.skills/demo/SKILL.md'},
+                        _make_query(query_id='q1', variables={PIPELINE_BOUND_SKILLS_KEY: ['demo']}),
+                    )
+                return
+
             result = await loader.invoke_tool(
                 'read',
                 {'path': '/workspace/.skills/demo/SKILL.md'},

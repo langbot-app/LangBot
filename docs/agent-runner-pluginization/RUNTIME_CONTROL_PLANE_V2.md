@@ -23,7 +23,8 @@ LangBot 后续定位应更像 **Agent Host / infrastructure provider / transfer 
 LangBot Host
   Current base: EventLog / runtime AgentBinding / State / Transcript / sandbox files / active run authorization
   Current v2 foundation: Run / RunEvent / audit / result persistence / control primitives / minimal runtime heartbeat and claim lease
-  Planned: Agent / Binding persistence / daemon supervisor / wakeup channel / distributed runtime operations
+  Current product: persisted Agent / Bot event_bindings / processor UI / event routing
+  Planned: external harness daemon supervisor / wakeup channel / distributed runtime operations
 
 Agent Platform plugin
   Agent management UI / project-task model / event routing policy
@@ -73,7 +74,9 @@ Host 负责这些能力的通用事实源和安全边界；Platform 插件负责
 - `AgentRunEvent` 保存 runner/result/admin event stream，按 `run_id + sequence` 做可回放分页。
 - `AgentRuntime` 保存最小 runtime registry / heartbeat 事实，用于 runtime list、stale mark 和 claim lease reconcile。
 
-因此本文后续提到的 `AgentRun` / `AgentRunEvent`、`run_append_result`、`run_finalize`、`run_cancel`、`runtime_register`、`runtime_heartbeat`、`run_claim` 等基础原语已经存在。仍未完成的是独立 platform `run_create` action、Host-owned Agent / Binding 持久模型、业务队列产品形态、daemon supervisor、runtime wakeup channel、跨 Host 分布式锁和 provider/runtime 诊断面。
+因此本文后续提到的 `AgentRun` / `AgentRunEvent`、`run_append_result`、`run_finalize`、`run_cancel`、`runtime_register`、`runtime_heartbeat`、`run_claim` 等基础原语已经存在。2026-09-05 核对：独立 Agent 持久模型、Bot `event_bindings` 和处理器 UI 也已实现；`AgentBinding` 仍是单次运行投影，不是独立配置表。仍未完成的是独立 platform `run_create` action、业务队列产品形态、外部 harness daemon supervisor、runtime wakeup channel、跨 Host 分布式锁和 provider/runtime 诊断面。
+
+SDK Plugin Runtime 已有 installation worker 的 supervisor、重启退避和 Runtime 重启协调器；这与这里规划的外部 Agent harness 进程托管不同。当前模型和状态以 [STATUS.md](./STATUS.md) 为准，本文后续阶段是能力拆分，不能作为尚未实现功能的清单。
 
 ## 3. 基础概念
 

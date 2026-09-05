@@ -208,6 +208,19 @@ class LangBotMCPServer:
             return _dump({'ok': True})
 
         # ----- Models -------------------------------------------------- #
+        @mcp.tool(
+            description=(
+                'Run a synthetic event against an Agent processor without platform delivery. '
+                'Returns final text and execution_events containing reported messages/thinking and tool calls. '
+                'Platform tools use mock adapters; other tools execute normally. '
+                'Requires runtime.operate; payload accepts event_type, text, data, conversation_id, actor, subject and '
+                'mock (errors/results keyed by platform tool name; unsupported_apis lists unavailable platform APIs).'
+            )
+        )
+        async def debug_agent(processor_uuid: str, payload: dict) -> str:
+            context = _authorized(Permission.RUNTIME_OPERATE)
+            return _dump(await ap.agent_service.debug_agent(context, processor_uuid, payload))
+
         @mcp.tool(description='List all configured LLM models. Secrets are redacted.')
         async def list_llm_models() -> str:
             context = _authorized(Permission.RESOURCE_VIEW)

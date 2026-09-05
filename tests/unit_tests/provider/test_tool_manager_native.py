@@ -246,6 +246,8 @@ async def test_native_tool_loader_rechecks_admission_at_the_final_invoke_boundar
 
 
 def _make_loader_with_workspace(tmpdir: str) -> tuple[NativeToolLoader, Mock]:
+    if not native_loader._SECURE_HOST_FILE_OPS_AVAILABLE:
+        pytest.skip('Host file operations require POSIX descriptor-relative APIs; remote Box is tested separately')
     logger = Mock()
     box_service = SimpleNamespace(
         available=True,
@@ -508,6 +510,7 @@ async def test_path_escape_blocked():
     ],
 )
 @pytest.mark.asyncio
+@pytest.mark.skipif(not native_loader._SECURE_HOST_FILE_OPS_AVAILABLE, reason='Requires POSIX descriptor-relative host APIs')
 async def test_host_workspace_operations_do_not_follow_a_swapped_ancestor(
     monkeypatch,
     tool_name: str,
@@ -794,3 +797,52 @@ async def test_grep_interrupts_catastrophic_regex(monkeypatch):
         )
 
         assert result == {'ok': False, 'error': 'Regex search timed out'}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    'tool,parameters',
+    [
+        ('read', {'path': '/workspace/probe.txt'}),
+        ('write', {'path': '/workspace/probe.txt', 'content': 'ok'}),
+        ('edit', {'path': '/workspace/probe.txt', 'old_string': 'ok', 'new_string': 'done'}),
+        ('glob', {'path': '/workspace', 'pattern': '*.txt'}),
+        ('grep', {'path': '/workspace', 'pattern': 'ok'}),
+    ],
+)
+@pytest.mark.parametrize('secure_host_apis', [False, True])
+async def test_standalone_box_files_do_not_require_core_host_workspace(monkeypatch, tool, parameters, secure_host_apis):
+    monkeypatch.setattr(native_loader, '_SECURE_HOST_FILE_OPS_AVAILABLE', secure_host_apis)
+    box = SimpleNamespace(
+        available=True,
+        default_workspace=None,
+        shares_filesystem_with_box=False,
+        execute_tool=AsyncMock(),
+        _tenant_workspace=Mock(side_effect=AssertionError('must not resolve Core path')),
+    )
+    loader = NativeToolLoader(SimpleNamespace(box_service=box, logger=Mock()))
+    remote = AsyncMock(return_value={'ok': True, 'sentinel': tool})
+    monkeypatch.setattr(loader, f'_{tool}_workspace_via_box', remote)
+    assert await loader.invoke_tool(tool, parameters, _make_query()) == {'ok': True, 'sentinel': tool}
+    remote.assert_awaited_once()
+    with pytest.raises(ValueError, match='workspace boundary'):
+        await loader.invoke_tool(tool, {**parameters, 'path': '/workspace/../outside'}, _make_query())
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('include', [None, '*.txt', 'quote"\n*.md'])
+async def test_box_grep_script_serializes_optional_include_as_python(monkeypatch, include):
+    import ast
+
+    loader = NativeToolLoader(SimpleNamespace(logger=Mock()))
+    captured = AsyncMock(return_value={'ok': True})
+    monkeypatch.setattr(loader, '_run_workspace_file_script', captured)
+    await loader._grep_workspace_via_box('/workspace', 'probe', include, _make_query())
+    script = captured.call_args.args[0]
+    tree = ast.parse(script)
+    values = {}
+    for statement in tree.body:
+        if isinstance(statement, ast.Assign) and isinstance(statement.targets[0], ast.Name):
+            values[statement.targets[0].id] = ast.literal_eval(statement.value)
+    assert values['include'] == include
+    assert values['path'] == '/workspace'

@@ -12,11 +12,24 @@ from .....agent.runner.errors import (
 from ...authz import Permission, require_permission
 from ...context import RequestContext
 from .. import group
+from .agent_debug_stream import debug_stream_response
 
 
 @group.group_class('agents', '/api/v1/agents')
 class AgentsRouterGroup(group.RouterGroup):
     async def initialize(self) -> None:
+        @self.route(
+            '/<agent_uuid>/debug/stream',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RUNTIME_OPERATE,
+        )
+        async def stream_debug(agent_uuid: str, request_context: RequestContext):
+            payload = await quart.request.get_json()
+            if not isinstance(payload, dict):
+                return self.http_status(400, -1, 'Debug payload must be an object')
+            return debug_stream_response(self.ap.agent_service, request_context, agent_uuid, payload)
+
         @self.route(
             '',
             methods=['GET', 'POST'],

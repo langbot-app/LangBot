@@ -875,6 +875,29 @@ const enUS = {
     debugEmptyTranscript:
       'Choose an event, enter test content, then select “Run test”. Results stay on this page.',
     debugAgentOutput: 'Agent output',
+    debugReasoning: 'Thinking',
+    debugTextOutput: 'Text output',
+    debugPlatformNotice:
+      'Platform tools use Mock: the Agent makes real tool calls, while platform actions are simulated without sending real messages. Other tools execute as configured.',
+    debugToolSimulated: 'Simulated successfully · Mock',
+    debugStop: 'Stop debugging',
+    debugMockOptions: 'Mock scenario (JSON)',
+    debugInvalidMock: 'Mock scenario must be a valid JSON object.',
+    debugToolMockFailed: 'Simulated failure · Mock',
+    debugMockOptionsHelp:
+      'Defaults to success. Map tool names to failures in errors or query fixtures in results; list unsupported APIs in unsupported_apis. Example: {"errors":{"event_reply":"Simulated send failure"}}',
+    debugCancelled:
+      'Debugging stopped. Earlier execution records are retained.',
+    debugNoToolCalls:
+      'No tool calls recorded. Generated text does not mean a message was sent.',
+    debugToolCount:
+      '{{count}} tool calls recorded. See their execution status and results below.',
+    debugToolRunning: 'Running',
+    debugToolCompleted: 'Completed',
+    debugToolFailed: 'Failed',
+    debugToolInterrupted: 'No result returned',
+    debugToolArguments: 'Arguments',
+    debugToolResult: 'Result',
     debugTestInput: 'Test input',
     debugNoTextOutput: 'The run completed without textual output.',
     debugEventTypeRequired: 'Enter an event type',

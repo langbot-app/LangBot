@@ -1,5 +1,7 @@
 # Multi-tenant implementation checklist
 
+> Status interpretation, 2026-09-05: this checklist retains the original multi-tenant implementation and activation evidence. The kernel is now also present on `dev/4.11.x`; the branch names below are historical workstream labels. SDK installation-worker restart coordination is implemented in `runtime/plugin/restart_coordinator.py`, with focused tests passing on the inspected workspace. An unchecked production gate does not necessarily mean its code is absent. Production fault injection, egress, hard storage quotas, and generation-aware business transaction/outbox gates remain separate. See [current 4.11 status](../agent-runner-pluginization/STATUS.md) and [Cloud activation gates](./cloud-v2-pending-verification.md).
+
 This checklist turns the Workspace architecture into implementation and
 verification gates. Exact commands and observed results are recorded in the
 [verification report](./verification-report.md).

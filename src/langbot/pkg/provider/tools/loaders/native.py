@@ -369,7 +369,7 @@ class NativeToolLoader(loader.ToolLoader):
         *,
         include_visible: bool,
         include_activated: bool,
-    ) -> _HostLocation:
+    ) -> _HostLocation | None:
         selected_skill, rewritten_path = skill_loader.resolve_virtual_skill_path(
             self.ap,
             query,
@@ -378,6 +378,10 @@ class NativeToolLoader(loader.ToolLoader):
             include_activated=include_activated,
         )
 
+        # Validate the virtual path before choosing remote or local file operations.
+        relative_parts = _relative_workspace_parts(rewritten_path)
+        if self._should_use_box_workspace_files(selected_skill):
+            return None
         box_service = self.ap.box_service
         if selected_skill is not None:
             if not self._can_interpret_skill_host_paths():
@@ -395,7 +399,7 @@ class NativeToolLoader(loader.ToolLoader):
 
         return _HostLocation(
             root=str(host_root),
-            relative_parts=_relative_workspace_parts(rewritten_path),
+            relative_parts=relative_parts,
             selected_skill=selected_skill,
             workspace_anchor=str(workspace_anchor) if workspace_anchor else None,
         )
@@ -440,7 +444,11 @@ class NativeToolLoader(loader.ToolLoader):
             # host-path fallback.
             return True
         default_workspace = getattr(box_service, 'default_workspace', None)
-        return bool(default_workspace and not os.path.isdir(os.path.realpath(default_workspace)))
+        return (
+            not default_workspace
+            or getattr(box_service, 'shares_filesystem_with_box', True) is False
+            or not os.path.isdir(os.path.realpath(default_workspace))
+        )
 
     def _read_host_location(self, location: _HostLocation, parameters: dict) -> dict:
         with _open_host_root(location, create=False) as root_fd:
@@ -1004,7 +1012,7 @@ import json, os, re, signal, time
 from pathlib import Path
 path = {json.dumps(path)}
 pattern = {json.dumps(pattern)}
-include = {json.dumps(include)}
+include = {include!r}
 skip_dirs = {json.dumps(sorted(_SKIP_DIRS))}
 def regex_timeout(_signum, _frame):
     raise TimeoutError
@@ -1160,7 +1168,7 @@ else:
             include_visible=True,
             include_activated=True,
         )
-        if self._should_use_box_workspace_files(host_location.selected_skill):
+        if host_location is None:
             return await self._read_workspace_via_box(path, parameters, query)
         try:
             return await asyncio.to_thread(self._read_host_location, host_location, parameters)
@@ -1193,7 +1201,7 @@ else:
             include_visible=False,
             include_activated=True,
         )
-        if self._should_use_box_workspace_files(host_location.selected_skill):
+        if host_location is None:
             return await self._write_workspace_via_box(path, content, parameters, query)
         try:
             await run_blocking_atomic(self._write_host_location, host_location, content, parameters)
@@ -1253,7 +1261,7 @@ else:
             include_visible=False,
             include_activated=True,
         )
-        if self._should_use_box_workspace_files(host_location.selected_skill):
+        if host_location is None:
             return await self._edit_workspace_via_box(path, old_string, new_string, query)
         try:
             changed, error = await run_blocking_atomic(
@@ -1548,7 +1556,7 @@ else:
             include_visible=True,
             include_activated=True,
         )
-        if self._should_use_box_workspace_files(host_location.selected_skill):
+        if host_location is None:
             return await self._glob_workspace_via_box(path, pattern, query)
         try:
             return await asyncio.to_thread(self._glob_host_location, host_location, pattern, path)
@@ -1570,7 +1578,7 @@ else:
             include_visible=True,
             include_activated=True,
         )
-        if self._should_use_box_workspace_files(host_location.selected_skill):
+        if host_location is None:
             return await self._grep_workspace_via_box(path, pattern, include, query)
         try:
             return await asyncio.to_thread(

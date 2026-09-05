@@ -2,7 +2,30 @@
 
 本文档是 `docs/agent-runner-pluginization/` 的状态事实源。协议 schema 仍以 [PROTOCOL_V1.md](./PROTOCOL_V1.md) 为准；测试步骤以 [AGENT_RUNNER_QA_GUIDE.md](./AGENT_RUNNER_QA_GUIDE.md) 为准；安全发布门槛以 [SECURITY_HARDENING.md](./SECURITY_HARDENING.md) 为准。
 
-状态快照日期：2026-07-15。
+状态快照日期：2026-09-05。代码基线为 LangBot `dev/4.11.x` / `a4d36aa2d` 和 SDK `dev/4.11.x` / `f1da058`；本文是本地检视快照，不代表远端最新状态或正式发布批准。
+
+## 当前版本与验收边界
+
+- Core 声明版本 `4.11.0`，`pyproject.toml` / `uv.lock` 仍依赖 `langbot-plugin==0.5.3`；SDK 源码声明版本 `0.5.5`。本机 Core 实际导入旁边 SDK 的可编辑源码，不能用这个组合的测试通过证明 registry 安装可复现。
+- 检视时 SDK 有四个未提交文件：`api/agent_tools/asset_gateway.py`、`api/agent_tools/external_tools.py`、`api/entities/builtin/agent_runner/resources.py`（均位于 `src/langbot_plugin/`），以及 `tests/api/test_agent_tools_mcp_bridge.py`。这些改动增加 `platform_tools` 分类发现、可选 schema 和 gateway 引导。下面的 SDK 测试包含这些工作区改动；正式配套版本尚需冻结。
+- 本轮仅重新执行下列定向测试与 TypeScript 检查，没有重跑全量 backend、真实平台、provider、浏览器 E2E 或 Cloud 部署门禁。后文旧日期的成功记录仍是历史证据。
+
+| 2026-09-05 验证 | 结果 |
+| --- | --- |
+| Core：`tests/unit_tests/agent`、`tests/unit_tests/api/service/test_agent_service.py`、`tests/unit_tests/platform/test_routing_rules.py`、`tests/unit_tests/api/service/test_maintenance_service.py` | 561 passed，74 warnings |
+| SDK：`tests/api/entities/builtin/agent_runner`、`tests/api/proxies`、`tests/api/test_agent_tools_mcp_bridge.py`、`tests/runtime/plugin/test_mgr_agent_runner.py`、`tests/runtime/plugin/test_dependency_environment.py`、`tests/runtime/plugin/test_restart_coordinator.py` | 362 passed，10 warnings |
+| Web：`pnpm exec tsc --noEmit` | pass |
+| Web：`pnpm test:unit` | 62 passed，2 failed |
+
+前端失败为源码形状断言：`oss-cloud-ui-privacy.test.mjs` 仍要求 fieldset 的精确旧 class；`processor-detail-workbench.test.mjs` 仍要求 Agent 的旧四分区。当前表单已增加布局 class，并使用运行器、运行器配置、事件与工具分区。发布前需按当前设计更新断言或修正实现，不能记为全绿。
+
+## 近期已集成内容
+
+- **EBA 与独立 Agent**：Bot 事件绑定、observer 广播、Pipeline / Agent / discard 单目标分派、Agent CRUD、处理器工作台与路由诊断已在同一分支。逻辑路由器实现在 `pkg/platform/botmgr.py::RuntimeBot`，不是外部独立 EventRouter 服务。
+- **事件感知工具权限**：Core 9 月 4 日提交已实现 `event_*` 自动事件工具、`allowed_platform_tools` 和 `allowed_tools`。Host 冻结事件目标，结合 Runner 权限、适配器能力和运行快照授权，执行时再次检查。详见 [PLATFORM_ACTION_TOOLS.md](./PLATFORM_ACTION_TOOLS.md)。SDK 分类发现的提交状态见上文。
+- **产品流程**：Runner 市场内联安装、安装恢复和健康状态、事件范围选择、统一详情工作台、Agent 调试及 Bot 平台事件调试已实装。Agent 自身已无 enabled 开关；Bot 路由仍有 enabled。具体页面形态见 [处理器页面](../event-based-agents/08-agent-page-and-event-orchestration.md)。
+- **Runtime 与存储**：SDK 已加入 artifact 对应的独立依赖环境、Windows worker 连接路径、安装期间响应性测试；Core/Plugin Runtime/Box 分别报告拥有的存储目录。存储分析是观测，不提供硬配额。
+- **工作空间**：OSS 单工作空间多人协作和资源作用域已合入。Cloud 隔离基础与生产激活分开验收，见 [Cloud 剩余事项](../multi-tenant/cloud-v2-pending-verification.md)。
 
 ## 实现状态
 
@@ -25,16 +48,16 @@
 
 ## Spec 与实现已知差距
 
-- `action.requested` 是严格白名单协议面：当前只执行 `interaction.requested`；其它 action 仍只记录 telemetry，不提供通用 platform action executor。
+- `action.requested` 是严格白名单协议面：当前只执行 `interaction.requested`；其它 action 仍只记录 telemetry。平台语义动作通过已授权的 `event_*` / `platform_*` 工具执行，不通过任意 result action 或原始 `call_platform_api`。
 - 结构化交互 SDK typed contract 与 DifyAgent continuation 已实现；SDK 正式发布、真实 Dify 凭据 E2E，以及需要长驻双向进程的 Claude Code 权限确认仍是后续验收项。Host 不持有 provider 私有 token。
 - State 与 storage 的长期类型边界仍可继续收窄；当前合同只要求 JSON-safe state 与受控 storage API。
 - `ToolResource.parameters` 已作为 best-effort full schema 由 Host 在构造 `ctx.resources` 时一次塞齐；无 schema 时 runner 仍需兼容 `parameters=None` 或按需调用 detail API。
 - EventLog / Transcript 已提供显式 cleanup primitive；长期 retention 默认值、TTL 调度接入和 sandbox/workspace 文件清理仍是运维收尾项，应在 Runtime Control Plane 产品化前补齐。
 - External harness 的 native shell / filesystem / CLI / MCP 权限不受 manifest permissions 约束；manifest permissions 只约束 LangBot 持有的资源访问。
 - LangBot 当前不承诺 managed sandbox；external harness 的 OS/process/network quota、workspace GC、provider-native tool 权限由用户或部署环境承担。
-- Runtime Control Plane v2 当前只落地 Host 事实源和控制原语；还没有内置 Agent Platform UI、业务队列、daemon 进程托管、runtime wakeup channel、跨 Host 分布式锁或 provider 登录态诊断。
+- Runtime Control Plane v2 已有 Host 事实源和控制原语，独立 Agent 与处理器 UI 也已存在；仍缺业务任务队列、外部 harness daemon 托管、wakeup channel、跨 Host 分布式锁及 provider 登录态诊断。SDK installation worker 的 supervisor/重启协调已实现，不能与外部 harness 管控混淆。
 
-## Runner 验收状态
+## Runner 历史验收记录（未在本轮重跑）
 
 | Runner | 状态 | 最近证据 |
 | --- | --- | --- |
@@ -44,7 +67,7 @@
 | Dify | Human-input unit-pass; credential E2E pending | `langbot-agent-runner/dify-agent` 已实现 `workflow_paused`、原子字段/确认交互、plugin-storage continuation、Dify submit/events 恢复与再次暂停；真实 Dify 凭据 E2E 待执行。 |
 | n8n / Coze / DashScope / Langflow / Tbox / DeerFlow / WeKnora | Unit-pass; credential smoke optional | 2026-06-13 plugin layout / parser tests 通过；真实服务凭据 smoke 非每轮必跑。 |
 
-## Host / SDK 验收状态
+## Host / SDK 历史验收记录
 
 | 范围 | 状态 | 最近证据 |
 | --- | --- | --- |

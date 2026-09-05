@@ -22,8 +22,8 @@ event -> binding -> runner.run(ctx) -> result stream
 
 本指南不验证：
 
-- Runtime Control Plane v2。
-- EventGateway / EventRouter 完整落地由外部 EBA 分支联调；本指南只验证本分支 Host 底座。
+- 完整外部 harness daemon 管控和分布式业务队列；已实现的 run ledger / heartbeat / claim 原语仍应执行定向回归。
+- 尚未实现的通用事件订阅和定时自动化；已集成的 Bot 路由、独立 Agent 和 Pipeline 必须纳入当前产品验收。
 - 发布级 path isolation、secret filtering、MCP allowlist、资源配额和 workspace cleanup。
 - 所有外部服务 runner 的真实凭据联调。
 
@@ -43,6 +43,16 @@ event -> binding -> runner.run(ctx) -> result stream
 不能使用“看起来正常”“大概通过”“基本没问题”等模糊状态。
 
 ## 3. 执行顺序
+
+2026-09-05 更新：先记录 Core/SDK/Runner 提交、发行版元数据与实际 import 路径，区分 editable 工作区和正式包安装。当前定向测试及前端未通过断言见 [STATUS.md](./STATUS.md)。本指南的步骤不是已执行记录。
+
+本轮发布验收至少覆盖：
+
+- 空白实例从市场安装 Runner，创建 Agent 与 Pipeline，并绑定到 Bot。
+- 同一 Bot 的消息事件走 Pipeline，非消息事件走独立 Agent；dry-run 与保存后的路由结果一致。
+- `event_*` 使用冻结目标；未授权 `platform_*`、额外参数和失效机器人调用被拒绝；SDK/Python 与 MCP gateway 均走 Host 工具授权。
+- `interaction.requested` 回调恢复原处理器，重复/过期/跨作用域提交被拒绝。
+- 分别记录合成事件、mock provider、真实平台和真实 provider 的结果，不能相互替代。
 
 推荐按以下顺序执行，前一层失败时不要继续扩大测试面：
 
@@ -225,3 +235,25 @@ Dify、n8n、Coze、DashScope、Langflow、Tbox 等外部服务 runner 不作为
 ## 10. 历史高价值记录
 
 历史高价值记录与当前 runner 验收状态见 [STATUS.md](./STATUS.md)。本指南只保留可重复执行的测试步骤和证据要求。
+
+### Event debug execution trace
+
+The Agent workbench uses `POST /api/v1/agents/{uuid}/debug/stream` (NDJSON, `runtime.operate`). Verify incremental text and provider-returned reasoning, tool call arguments/results in execution order, automatic scrolling, and preservation of partial output on errors. Thinking is only shown when returned by the runner. Disconnecting cancels the debug task. The existing `/debug` endpoint and MCP `debug_agent` return final text and a bounded `execution_events` snapshot; they are not live transports.
+
+Platform tools now use Host-owned mock adapters in synthetic debug runs. The model really invokes the authorized tool, validates its parameters, and receives a result; the Host does not call a live platform adapter. Event tools retain their frozen targets and platform tools retain explicit targets. Native, plugin and MCP tools continue to execute normally. A successful mock platform result is completion of that action in the debug run; runners must communicate that context to the model to avoid repeated attempts at real delivery.
+
+The optional `mock` payload field (also editable under **Mock 场景（JSON）**) supports:
+
+```json
+{
+  "errors": {"event_reply": "Simulated permission denied"},
+  "results": {"event_get_actor": {"id": "user-42", "nickname": "Fixture User"}},
+  "unsupported_apis": ["delete_message"]
+}
+```
+
+`errors` and `results` cannot both override the same tool. Unknown tools/APIs and malformed options are rejected before model execution. Default read fixtures follow SDK `User`, `UserGroup`, `UserGroupMember` and `MessageReceivedEvent` structures; list reads return a synthetic fixture list (override with `[]` to test emptiness). `unsupported_apis` participates in the normal capability intersection, so unsupported tools are not offered to the model. Event payloads should include the intended group/member/request IDs; the built-in presets supply examples.
+
+Verify a welcome event shows `event_reply`, the expected text and frozen target, and **模拟执行成功 · Mock**. Plain text alone must not count as a successful platform action. A simulated failure must show **模拟执行失败 · Mock**. Also verify **停止调试** retains the partial trace and allows the next run, and that entering a new draft while streaming does not erase it on completion.
+
+Full event/Mock regression evidence: [2026-09-05 follow-up](./EVENT_DEBUG_FULL_QA_2026-09-05.md).

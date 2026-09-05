@@ -138,7 +138,7 @@ class AgentRunnerPermissions(BaseModel):
 通用交互投递是当前唯一允许执行的 `action.requested` 白名单动作。Runner 必须同时声明
 `capabilities.interactions=true` 和 `permissions.interactions=["request"]`，Host 还必须将其与
 当前 binding delivery policy、run authorization snapshot 和 adapter delivery capability 求交。
-其它平台动作仍不属于当前 permissions，Host 收到后只记录 telemetry，不得执行。
+其它 `action.requested` 动作仍只记录 telemetry，不得作为任意平台动作执行器。平台语义动作已经通过 `ctx.resources.tools` 中 `tool_type="platform"` 的工具提供：Runner 需具备 `tool_calling` capability 和 `permissions.tools` 的 `call` 操作，Host 再与 Agent 工具策略、适配器能力和当前事件目标求交。`event_*` 的目标由 Host 冻结，`platform_*` 需显式选择；调用仍走统一 `call_tool`。这不新增 manifest permission 字段，规则见 [PLATFORM_ACTION_TOOLS.md](./PLATFORM_ACTION_TOOLS.md)。
 
 Runner 实际可用 LangBot 资源来自 Host 在 run 前冻结的授权快照：
 

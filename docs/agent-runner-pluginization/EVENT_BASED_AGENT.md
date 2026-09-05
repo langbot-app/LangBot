@@ -1,11 +1,11 @@
 # Event Based Agent 接入设计
 
-> 本文记录 EBA 如何接入当前 AgentRunner Protocol v1 / Host 底座。EventGateway、EventRouter、Event subscription/notification 由外部 EBA 分支实现并联调；本分支只保留 event-first 入口和 envelope/binding models。
+> 更新：2026-09-05。EBA 平台事件、Bot 路由和独立 Agent 已集成到 `dev/4.11.x`。通用事件订阅、通知与定时自动化仍是后续扩展。
 >
 > 数据结构唯一定义在 [PROTOCOL_V1.md](./PROTOCOL_V1.md)（runner 可见）与 [HOST_SDK_INFRASTRUCTURE.md](./HOST_SDK_INFRASTRUCTURE.md)（Host 内部模型）；本文只讲 EBA 语义，不重抄 schema。
 > 与当前 runner 外化分支、后续 Agent Platform / Runtime Control Plane 的边界见 [EXTENSION_SCOPE_MATRIX.md](./EXTENSION_SCOPE_MATRIX.md)。
 
-本文描述 EBA 接入时，事件如何进入 LangBot、如何在平级的 Pipeline / Agent 处理器之间路由，以及 Agent 分支如何复用插件化 AgentRunner 基础设施。本分支不实现完整 EventBus / EventRouter / Platform API；这些能力正在外部 EBA 分支联调。这里的目标是把处理器路由与 runner 协议边界说清楚。
+本文描述当前事件如何进入 LangBot、如何在平级的 Pipeline / Agent 之间路由，以及 Agent 如何复用插件化 AgentRunner。路由逻辑由 `pkg/platform/botmgr.py::RuntimeBot` 承担；文中的 EventRouter 表示职责，不代表独立进程或同名类。
 
 ## 1. 设计目标
 
@@ -13,7 +13,7 @@
 - EventRouter 可以根据 event type、bot、workspace、conversation、actor、subject 选择一个 Pipeline 或 Agent 处理器。
 - Pipeline 目标执行完整消息 Stage 链；Agent 目标通过统一 orchestrator 调用 AgentRunner。
 - 非消息事件不伪造成用户文本消息。
-- 平台动作执行通过显式 capability / permission / result type 预留，不混入普通文本回复。
+- 平台动作通过已授权的语义工具执行；结构化交互通过 `action.requested` 中的 `interaction.requested` 白名单执行。
 
 ## 2. 事件不是消息
 
@@ -22,7 +22,7 @@
 | event_type | actor | subject | input |
 | --- | --- | --- | --- |
 | `message.received` | 发消息的人 | 当前消息 | 文本、图片、文件等 |
-| `message.recalled` | 撤回操作者，未知时为系统 | 被撤回消息 | 通常为空 |
+| `message.deleted` | 撤回操作者，未知时为系统 | 被删除消息 | 通常为空 |
 | `group.member_joined` | 新成员或邀请人 | 群/成员关系 | 通常为空 |
 | `friend.request_received` | 申请人 | 好友申请 | 验证消息或申请理由 |
 | `schedule.triggered` | 系统 | 定时任务 | 任务 payload |
@@ -30,10 +30,10 @@
 
 ## 3. 稳定事件名
 
-先保留的稳定事件名（作为插件协议的一部分保持稳定）：
+当前平台事件名示例（定时任务与 API 事件示例仅表示未来入口；实际能力以 SDK 实体和适配器声明为准）：
 
 - `message.received`
-- `message.recalled`
+- `message.deleted`
 - `group.member_joined`
 - `friend.request_received`
 
@@ -53,33 +53,30 @@ Event Source 可包括：`platform_adapter`（飞书、QQ、微信、Telegram �
 ## 5. EventRouter 调用链
 
 ```text
-Platform Adapter / WebUI / API
-  -> Event Gateway normalize payload
-  -> EventLog append raw event
-  -> EventRouter resolve one Processor target
+Platform Adapter canonical event
+  -> RuntimeBot record adapter event
+  -> Plugin EventListener observer broadcast
+  -> RuntimeBot match saved event_bindings and resolve one Processor target
      -> target_type=pipeline: MessageAggregator -> QueryPool -> Pipeline stages
      -> target_type=agent: resolve AgentBinding -> AgentRunOrchestrator
         -> AgentRunContextBuilder -> PluginRuntimeConnector.run_agent()
         -> AgentRunResult stream
-  -> DeliveryController render / platform action
+  -> Host result delivery / authorized platform tool
 ```
 
 约束：Pipeline 和 Agent 是 EventRouter 的平级目标；Pipeline 仅接受消息事件，Agent 受其事件能力声明约束。任何 AgentRunner 调用都必须复用现有 orchestrator，不能为 EBA 单独实现另一套 plugin runner 协议；非消息事件不能绕过 resource authorization；delivery 和 platform action 走统一权限模型；外部 harness runner 也通过同一套 envelope/binding/context/result 协议接入。observer / fan-out / parallel arbitration 的额外语义仍按 PROTOCOL_V1 §13 处理。
 
 ## 6. 平台动作执行
 
-EBA 后 `action.requested`（PROTOCOL_V1 §7.3，当前仅 telemetry 不执行）将用于请求 host 执行平台动作：
+平台动作走统一工具入口，详见 [PLATFORM_ACTION_TOOLS.md](./PLATFORM_ACTION_TOOLS.md)：
 
-```json
-{ "type": "action.requested",
-  "data": { "action": "friend.request.accept",
-            "target": {"platform": "wechat", "request_id": "..."},
-            "payload": {"reason": "policy matched"} } }
-```
+- `event_*` 的目标由 Host 从当前事件冻结；Agent 只填写动作参数。
+- `platform_*` 允许填写目标，必须在 `allowed_platform_tools` 中显式选择。
+- 最终资源与 Runner 权限、适配器能力及事件目标求交，执行时再校验运行身份和当前机器人。
+- SDK/Python `call_tool` 和 scoped MCP gateway 使用同一 Host 授权；原始 `call_platform_api` 不作为 Agent 工具开放。
+- `action.requested` 只执行白名单 `interaction.requested`，用于持久化交互和回调恢复；其它 action 仍是 telemetry，不能用于执行好友审核等平台动作。
 
-Host 必须校验：binding / platform action policy 是否授权该 action、actor / bot / workspace 是否允许、是否需要人工审批，以及当前 run session / caller identity 是否匹配。EBA 还可能预留 `delivery.requested`（请求投递到某 surface）。
-
-Delivery 方面，event 不一定回复到当前聊天窗口：消息事件通常带 reply target；系统事件可能没有默认 reply target，需要 runner 返回 `action.requested` 或由 binding 的 delivery policy 决定投递位置（`DeliveryContext` 见 PROTOCOL_V1 §5.7）。
+事件可能没有默认 reply target；Host 不为缺少目标的事件猜测投递对象。Runner 只能使用当前授权允许的工具和投递能力（`DeliveryContext` 见 PROTOCOL_V1 §5.7）。
 当前 Host 会把 adapter 声明的通用 API 投影到
 `DeliveryContext.platform_capabilities.supported_apis`，并据此设置
 `supports_edit` / `supports_reaction`。该投影只供 runner 选择输出形态，不构成
@@ -96,6 +93,4 @@ EBA 事件进入 AgentRunner 时仍遵循 [AGENT_CONTEXT_PROTOCOL.md](./AGENT_CO
 运行状态和真实 OneBot 非消息事件到 Agent 的闭环。Pipeline 消息链和独立 Agent
 均复用同一个 AgentRunner orchestrator / context / result 协议。
 
-尚未落地的是 platform action permission model 和 `action.requested` 执行器；在显式
-action allowlist、binding policy、adapter capability 和审批模型完成前，该 result 仍只
-记录 telemetry，不执行平台副作用。
+平台动作授权和结构化交互已实现，但真实平台/provider 验收不等同于单测通过。SDK 的 `platform_tools` 分类发现于 2026-09-05 检视时仍是未提交工作区改动。剩余发布工作和历史验证边界见 [STATUS.md](./STATUS.md)。通用订阅、Scheduler、Workflow 和多 Agent 串并联仍未作为产品交付。

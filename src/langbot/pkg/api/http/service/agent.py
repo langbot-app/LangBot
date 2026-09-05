@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime
+import copy
 import fnmatch
 import time
 import uuid
@@ -26,8 +27,10 @@ from ....agent.runner.host_models import (
 )
 from ....agent.runner.resource_policy import ResourcePolicyProjector
 from ....agent.runner.platform_tools import (
+    PLATFORM_TOOL_DEFINITIONS,
     platform_tool_catalog,
     resolve_agent_platform_tool_names,
+    validate_debug_mock_options,
 )
 from ....entity.persistence import agent as persistence_agent
 from ....workspace.errors import WorkspaceNotFoundError
@@ -118,6 +121,8 @@ class AgentService:
         context: RequestContext,
         agent_uuid: str,
         payload: dict[str, typing.Any],
+        *,
+        on_result: typing.Callable[[dict[str, typing.Any]], typing.Awaitable[None]] | None = None,
     ) -> dict[str, typing.Any]:
         """Execute one synthetic event against a configured Agent.
 
@@ -129,7 +134,7 @@ class AgentService:
         if agent is None or agent.get('kind') != AGENT_KIND_AGENT:
             raise ValueError('Agent not found')
 
-        event_type = str(payload.get('event_type') or 'message.received').strip()
+        event_type = str(payload.get('event_type', 'message.received')).strip()
         if not event_type or len(event_type) > 128:
             raise ValueError('Invalid event_type')
         if not self._supports_event_type(
@@ -141,9 +146,10 @@ class AgentService:
         text = str(payload.get('text') or '').strip()
         if len(text) > 20_000:
             raise ValueError('Debug input is too long')
-        event_data = payload.get('data') or {}
+        event_data = payload.get('data', {})
         if not isinstance(event_data, dict):
             raise ValueError('Debug event data must be an object')
+        mock_options = validate_debug_mock_options(payload.get('mock', {}))
 
         config = agent.get('config')
         if not isinstance(config, dict):
@@ -156,20 +162,39 @@ class AgentService:
         if not conversation_id or len(conversation_id) > 256:
             raise ValueError('Invalid debug conversation_id')
 
-        actor_payload = payload.get('actor') or {
-            'actor_type': 'user',
-            'actor_id': 'debug-user',
-            'actor_name': 'Debug User',
-        }
-        subject_payload = payload.get('subject') or {
-            'subject_type': 'message' if event_type.startswith('message.') else event_type.split('.', 1)[0],
-            'subject_id': 'debug-subject',
-            'data': event_data,
-        }
+        actor_payload = payload.get(
+            'actor',
+            {
+                'actor_type': 'user',
+                'actor_id': str(
+                    event_data.get('member_id')
+                    or event_data.get('requester_id')
+                    or event_data.get('user_id')
+                    or 'debug-user'
+                ),
+                'actor_name': str(
+                    event_data.get('member_name')
+                    or event_data.get('requester_name')
+                    or event_data.get('user_name')
+                    or 'Debug User'
+                ),
+            },
+        )
+        subject_payload = payload.get(
+            'subject',
+            {
+                'subject_type': 'message' if event_type.startswith('message.') else event_type.split('.', 1)[0],
+                'subject_id': 'debug-subject',
+                'data': event_data,
+            },
+        )
         if not isinstance(actor_payload, dict) or not isinstance(subject_payload, dict):
             raise ValueError('Debug actor and subject must be objects')
 
         event_id = f'debug:{agent_uuid}:{uuid.uuid4()}'
+        is_group = event_type.startswith(('group.', 'bot.')) or bool(event_data.get('group_id'))
+        actor = ActorContext.model_validate(actor_payload)
+        target_id = str(event_data.get('group_id') or 'debug-group') if is_group else actor.actor_id
         event = AgentEventEnvelope(
             event_id=event_id,
             event_type=event_type,
@@ -178,7 +203,7 @@ class AgentService:
             source_event_type=event_type,
             workspace_id=context.workspace_uuid,
             conversation_id=conversation_id,
-            actor=ActorContext.model_validate(actor_payload),
+            actor=actor,
             subject=SubjectContext.model_validate(subject_payload),
             input=AgentInput.model_validate(
                 {
@@ -191,13 +216,27 @@ class AgentService:
             ),
             delivery=DeliveryContext(
                 surface='webui',
-                reply_target=None,
-                supports_streaming=False,
+                reply_target={
+                    'target_type': 'group' if is_group else 'person',
+                    'target_id': target_id,
+                    **({'group_id': target_id} if is_group else {}),
+                    **(
+                        {'message_id': str(event_data.get('message_id') or 'debug-message')}
+                        if event_type.startswith('message.')
+                        else {}
+                    ),
+                },
+                supports_streaming=on_result is not None,
                 supports_edit=False,
                 supports_reaction=False,
                 platform_capabilities={
                     'event_type': event_type,
                     'debug': True,
+                    'debug_mock': True,
+                    'supported_apis': sorted(
+                        {tool.api for tool in PLATFORM_TOOL_DEFINITIONS} - set(mock_options.get('unsupported_apis', []))
+                    ),
+                    'mock_options': mock_options,
                 },
             ),
             raw_ref=RawEventRef(ref_id=event_id, storage_key=None),
@@ -219,7 +258,7 @@ class AgentService:
                 state_scopes=['conversation', 'actor', 'subject', 'runner'],
             ),
             delivery_policy=DeliveryPolicy(
-                enable_streaming=False,
+                enable_streaming=on_result is not None,
                 enable_reply=False,
                 enable_interactions=False,
             ),
@@ -233,11 +272,35 @@ class AgentService:
         )
 
         output_items: list[dict[str, typing.Any]] = []
+        execution_events: list[dict[str, typing.Any]] = []
+
+        async def observe_result(result: dict[str, typing.Any]) -> None:
+            if result.get('type') not in {
+                'message.delta',
+                'message.completed',
+                'tool.call.started',
+                'tool.call.completed',
+                'run.completed',
+                'run.failed',
+            }:
+                return
+            visible_result = copy.deepcopy(
+                {
+                    key: result[key]
+                    for key in ('type', 'data', 'sequence', 'timestamp', 'run_id', 'usage')
+                    if key in result
+                }
+            )
+            if on_result is not None:
+                await on_result(visible_result)
+            elif len(execution_events) < 1000:
+                execution_events.append(visible_result)
+
         final_text = ''
         async for output in self.ap.agent_run_orchestrator.run(
             event,
             binding,
-            adapter_context={'_execution_context': execution_context},
+            adapter_context={'_execution_context': execution_context, '_result_observer': observe_result},
         ):
             output_text = self._provider_output_to_text(output)
             if output_text:
@@ -256,6 +319,7 @@ class AgentService:
             'conversation_id': conversation_id,
             'final_text': final_text,
             'outputs': output_items,
+            'execution_events': execution_events,
         }
 
     @staticmethod
