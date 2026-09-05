@@ -1278,6 +1278,9 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                 delta_content = delta.get('content') or ''
                 reasoning_content = delta.get('reasoning_content') or ''
                 provider_fields = dict(delta.get('provider_specific_fields') or {})
+                if finish_reason:
+                    # Preserve an explicit provider stop even when the final delta is empty.
+                    provider_fields['finish_reason'] = finish_reason
                 raw_thinking_blocks = delta.get('thinking_blocks')
                 if raw_thinking_blocks:
                     thinking_blocks_state = self._merge_thinking_blocks(thinking_blocks_state, raw_thinking_blocks)

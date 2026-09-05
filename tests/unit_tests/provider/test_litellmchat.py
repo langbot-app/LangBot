@@ -200,6 +200,34 @@ class TestInvokeLLMStreamUsage:
         return chunk
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize('finish_reason', ['stop', 'length', 'content_filter', 'tool_calls'])
+    async def test_empty_final_delta_preserves_provider_finish_reason(self, finish_reason):
+        import langbot_plugin.api.entities.builtin.provider.message as provider_message
+
+        mock_ap = Mock()
+        mock_ap.tool_mgr.generate_tools_for_openai = AsyncMock(return_value=None)
+        requester = litellmchat.LiteLLMRequester(ap=mock_ap, config={})
+        model = MockRuntimeModel('gpt-4o', 'test-api-key')
+
+        async def stream():
+            yield self._make_chunk(finish_reason=finish_reason)
+
+        with patch.object(litellmchat, 'acompletion', new=AsyncMock(side_effect=lambda **kw: stream())):
+            chunks = [
+                chunk
+                async for chunk in requester.invoke_llm_stream(
+                    query=None,
+                    model=model,
+                    messages=[provider_message.Message(role='user', content='Hi')],
+                )
+            ]
+
+        assert len(chunks) == 1
+        assert chunks[0].is_final
+        assert not chunks[0].content
+        assert chunks[0].provider_specific_fields['finish_reason'] == finish_reason
+
+    @pytest.mark.asyncio
     async def test_stream_usage_with_nonempty_choices(self):
         """Usage chunk that still has a choice must populate _stream_usage."""
         import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
