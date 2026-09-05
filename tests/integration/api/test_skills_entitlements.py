@@ -1,4 +1,4 @@
-"""Skills API behavior when a workspace plan has no managed sandbox."""
+"""Skills API behavior is independent from managed sandbox entitlement."""
 
 from __future__ import annotations
 
@@ -9,10 +9,7 @@ import pytest
 import quart
 
 from langbot.pkg.api.http.controller.groups.skills import SkillsRouterGroup
-from langbot.pkg.cloud.entitlements import (
-    EntitlementFeatureUnavailableError,
-    EntitlementUnavailableError,
-)
+from langbot.pkg.cloud.entitlements import EntitlementUnavailableError
 
 pytestmark = pytest.mark.integration
 WORKSPACE_UUID = '11111111-1111-4111-8111-111111111111'
@@ -32,10 +29,7 @@ async def skills_api():
     application.user_service.get_authenticated_account = AsyncMock(return_value=account)
     application.workspace_collaboration_service.resolve_account_workspace = AsyncMock(return_value=access)
     application.skill_service.list_skills = AsyncMock(
-        side_effect=EntitlementFeatureUnavailableError(
-            'managed_sandbox',
-            entitlement_revision=1,
-        )
+        return_value=[{'name': 'docs-only', 'description': 'No execution required'}]
     )
 
     quart_app = quart.Quart(__name__)
@@ -45,7 +39,7 @@ async def skills_api():
 
 
 @pytest.mark.asyncio
-async def test_list_skills_is_empty_when_plan_has_no_managed_sandbox(skills_api):
+async def test_list_skills_remains_available_without_managed_sandbox(skills_api):
     application, client = skills_api
     response = await client.get(
         '/api/v1/skills',
@@ -57,7 +51,7 @@ async def test_list_skills_is_empty_when_plan_has_no_managed_sandbox(skills_api)
 
     assert response.status_code == 200
     payload = await response.get_json()
-    assert payload['data'] == {'skills': []}
+    assert payload['data'] == {'skills': [{'name': 'docs-only', 'description': 'No execution required'}]}
     application.skill_service.list_skills.assert_awaited_once()
 
 

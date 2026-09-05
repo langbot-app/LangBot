@@ -711,7 +711,7 @@ class BoxService:
                 {
                     'host_path': package_root,
                     'mount_path': f'/workspace/.skills/{skill_name}',
-                    'mode': 'rw',
+                    'mode': 'ro',
                 }
             )
         return mounts

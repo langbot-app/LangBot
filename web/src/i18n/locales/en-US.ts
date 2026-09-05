@@ -1021,7 +1021,7 @@ const enUS = {
       mcpToolsScopeTooltip:
         'Only tools from MCP servers currently allowed in Extensions are shown here.',
       skillToolsScopeTooltip:
-        'Skill tools are available when LangBot skill service and the Box sandbox backend are ready. They let the agent activate or register skills.',
+        'Skill activation and read-only resources work without Box. Registering a skill from the agent workspace still requires the Box sandbox.',
       selectTools: 'Select tools',
       resourcesTitle: 'Resources',
       resourcesDescription:
@@ -1630,9 +1630,9 @@ const enUS = {
     statusDetail: 'Status',
     pluginDisabled: 'Plugin system is disabled',
     boxDisabled:
-      'Box sandbox is disabled in config — sandbox tools, skill add/edit, and stdio MCP are unavailable',
+      'Box sandbox is disabled in config — execution tools and stdio MCP are unavailable',
     boxUnavailable:
-      'Box sandbox is unavailable — sandbox tools, skill add/edit, and stdio MCP are unavailable',
+      'Box sandbox is unavailable — execution tools and stdio MCP are unavailable',
     boxRequiredHint:
       'This feature requires the Box runtime. Enable it in config (box.enabled = true) and ensure the runtime is healthy.',
     boxBackend: 'Backend',

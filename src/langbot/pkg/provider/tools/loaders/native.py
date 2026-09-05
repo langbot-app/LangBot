@@ -32,7 +32,7 @@ EDIT_TOOL_NAME = 'edit'
 GLOB_TOOL_NAME = 'glob'
 GREP_TOOL_NAME = 'grep'
 
-_ALL_TOOL_NAMES = {EXEC_TOOL_NAME, READ_TOOL_NAME, WRITE_TOOL_NAME, EDIT_TOOL_NAME, GLOB_TOOL_NAME, GREP_TOOL_NAME}
+SANDBOX_TOOL_NAMES = {EXEC_TOOL_NAME, READ_TOOL_NAME, WRITE_TOOL_NAME, EDIT_TOOL_NAME, GLOB_TOOL_NAME, GREP_TOOL_NAME}
 
 # Skip these dirs during grep walk to avoid noise
 _SKIP_DIRS = {'.git', 'node_modules', '__pycache__', '.venv', 'venv', '.tox', 'dist', 'build'}
@@ -260,7 +260,11 @@ class NativeToolLoader(loader.ToolLoader):
         return list(self._tools)
 
     async def has_tool(self, name: str) -> bool:
-        return name in _ALL_TOOL_NAMES and await self._is_sandbox_available()
+        return name in SANDBOX_TOOL_NAMES and await self._is_sandbox_available()
+
+    @staticmethod
+    def recognizes_tool(name: str) -> bool:
+        return name in SANDBOX_TOOL_NAMES
 
     async def invoke_tool(self, name: str, parameters: dict, query: pipeline_query.Query):
         require_sandbox = getattr(
@@ -1123,7 +1127,8 @@ else:
             include_visible=True,
             include_activated=True,
         )
-        if skill_request is not None and hasattr(self.ap.box_service, 'read_skill_file'):
+        skill_repository = getattr(self.ap, 'skill_repository', None)
+        if skill_request is not None and skill_repository is not None:
             selected_skill, relative = skill_request
             if self._can_interpret_skill_host_paths():
                 host_location = self._resolve_skill_host_location(selected_skill, relative)
@@ -1136,7 +1141,7 @@ else:
                     pass
 
             try:
-                result = await self.ap.box_service.read_skill_file(
+                result = await skill_repository.read_skill_file(
                     self._execution_context(query),
                     selected_skill['name'],
                     relative,
@@ -1144,7 +1149,7 @@ else:
                 return self._build_read_result_from_text(str(result.get('content', '')), parameters)
             except Exception:
                 try:
-                    result = await self.ap.box_service.list_skill_files(
+                    result = await skill_repository.list_skill_files(
                         self._execution_context(query),
                         selected_skill['name'],
                         relative,
@@ -1178,12 +1183,13 @@ else:
             include_visible=False,
             include_activated=True,
         )
-        if skill_request is not None and hasattr(self.ap.box_service, 'write_skill_file'):
+        skill_repository = getattr(self.ap, 'skill_repository', None)
+        if skill_request is not None and skill_repository is not None:
             if encoding != 'text':
                 return {'ok': False, 'error': 'base64 writes to skill packages are not supported.'}
             selected_skill, relative = skill_request
             execution_context = self._execution_context(query)
-            await self.ap.box_service.write_skill_file(execution_context, selected_skill['name'], relative, content)
+            await skill_repository.write_skill_file(execution_context, selected_skill['name'], relative, content)
             await self.ap.skill_mgr.reload_skills(execution_context)
             return {'ok': True, 'path': path}
 
@@ -1216,14 +1222,10 @@ else:
             include_visible=False,
             include_activated=True,
         )
-        if (
-            skill_request is not None
-            and hasattr(self.ap.box_service, 'read_skill_file')
-            and hasattr(self.ap.box_service, 'write_skill_file')
-        ):
+        if skill_request is not None and getattr(self.ap, 'skill_repository', None) is not None:
             selected_skill, relative = skill_request
             try:
-                result = await self.ap.box_service.read_skill_file(
+                result = await self.ap.skill_repository.read_skill_file(
                     self._execution_context(query),
                     selected_skill['name'],
                     relative,
@@ -1238,7 +1240,7 @@ else:
                 return {'ok': False, 'error': f'old_string matches {count} locations; provide a more unique string.'}
             new_content = content.replace(old_string, new_string, 1)
             execution_context = self._execution_context(query)
-            await self.ap.box_service.write_skill_file(
+            await self.ap.skill_repository.write_skill_file(
                 execution_context,
                 selected_skill['name'],
                 relative,

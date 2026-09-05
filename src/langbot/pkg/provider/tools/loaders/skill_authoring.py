@@ -6,7 +6,6 @@ import typing
 import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 
 from .. import loader
-from .availability import is_box_backend_available
 from ....api.http.context import ExecutionContext
 
 # Align with Claude Code's Skill tool design:
@@ -15,12 +14,23 @@ from ....api.http.context import ExecutionContext
 # - This protects KV Cache and follows industry standard
 
 ACTIVATE_SKILL_TOOL_NAME = 'activate'
+LIST_SKILL_RESOURCES_TOOL_NAME = 'list_skill_resources'
+READ_SKILL_RESOURCE_TOOL_NAME = 'read_skill_resource'
 REGISTER_SKILL_TOOL_NAME = 'register_skill'
 
-SKILL_TOOL_NAMES = {
+READ_ONLY_SKILL_TOOL_NAMES = {
     ACTIVATE_SKILL_TOOL_NAME,
+    LIST_SKILL_RESOURCES_TOOL_NAME,
+    READ_SKILL_RESOURCE_TOOL_NAME,
+}
+SANDBOX_SKILL_TOOL_NAMES = {
     REGISTER_SKILL_TOOL_NAME,
 }
+SKILL_TOOL_NAMES = READ_ONLY_SKILL_TOOL_NAMES | SANDBOX_SKILL_TOOL_NAMES
+_SKILL_EXECUTION_AVAILABLE_KEY = '_skill_execution_available'
+_SKILL_RESOURCE_BYTES_READ_KEY = '_skill_resource_bytes_read'
+_MAX_SKILL_RESOURCE_FILE_BYTES = 256 * 1024
+_MAX_SKILL_RESOURCE_RUN_BYTES = 1024 * 1024
 
 
 class SkillToolLoader(loader.ToolLoader):
@@ -28,62 +38,73 @@ class SkillToolLoader(loader.ToolLoader):
 
     def __init__(self, ap):
         super().__init__(ap)
-        self._tools: list[resource_tool.LLMTool] = []
-        self._sandbox_available: bool = False
+        self._read_only_tools: list[resource_tool.LLMTool] = []
+        self._sandbox_tools: list[resource_tool.LLMTool] = []
 
     async def initialize(self):
-        # Check if sandbox backend is available (same check as native tools)
-        self._sandbox_available = await self._check_sandbox_available()
-        if self._sandbox_available:
-            self._tools = [
+        if self._is_available():
+            self._read_only_tools = [
                 self._build_activate_skill_tool(),
-                self._build_register_skill_tool(),
+                self._build_list_skill_resources_tool(),
+                self._build_read_skill_resource_tool(),
             ]
+            self._sandbox_tools = [self._build_register_skill_tool()]
         else:
-            self.ap.logger.info(
-                'Skill tools (activate/register_skill) are NOT available. '
-                'No sandbox backend (Docker/nsjail/E2B) is ready. '
-                'Trusted local development may explicitly select box.backend=host.'
-            )
+            self.ap.logger.info('Skill tools are unavailable because the Core SkillRepository is not initialized.')
 
-    async def _check_sandbox_available(self) -> bool:
-        """Check if the box backend is truly available (not just the runtime)."""
-        return await is_box_backend_available(self.ap)
-
-    async def get_tools(self, bound_plugins: list[str] | None = None) -> list[resource_tool.LLMTool]:
-        if not await self._is_available():
+    async def get_tools(
+        self,
+        bound_plugins: list[str] | None = None,
+        *,
+        sandbox_available: bool | None = None,
+    ) -> list[resource_tool.LLMTool]:
+        if not self._is_available():
             return []
-        if not self._tools:
-            self._tools = [
-                self._build_activate_skill_tool(),
-                self._build_register_skill_tool(),
-            ]
-        return list(self._tools)
+        if not self._read_only_tools:
+            await self.initialize()
+        tools = list(self._read_only_tools)
+        if sandbox_available:
+            tools.extend(self._sandbox_tools)
+        return tools
 
-    async def has_tool(self, name: str) -> bool:
-        return await self._is_available() and name in SKILL_TOOL_NAMES
+    async def get_tool(self, name: str, *, sandbox_available: bool | None = None):
+        for tool in await self.get_tools(sandbox_available=sandbox_available):
+            if tool.name == name:
+                return tool
+        return None
 
-    async def _is_available(self) -> bool:
-        """Check if skill tools should be available.
-
-        Skill tools require both a skill manager and a sandbox backend.
-        """
-        if not self._has_skill_manager():
+    async def has_tool(self, name: str, *, sandbox_available: bool | None = None) -> bool:
+        if not self._is_available() or name not in SKILL_TOOL_NAMES:
             return False
-        self._sandbox_available = await self._check_sandbox_available()
-        return self._sandbox_available
+        return name in READ_ONLY_SKILL_TOOL_NAMES or bool(sandbox_available)
+
+    @staticmethod
+    def is_sandbox_tool(name: str) -> bool:
+        return name in SANDBOX_SKILL_TOOL_NAMES
+
+    @staticmethod
+    def recognizes_tool(name: str) -> bool:
+        return name in SKILL_TOOL_NAMES
+
+    def _is_available(self) -> bool:
+        return self._has_skill_manager() and getattr(self.ap, 'skill_repository', None) is not None
 
     async def invoke_tool(self, name: str, parameters: dict, query) -> typing.Any:
-        require_sandbox = getattr(
-            getattr(self.ap, 'box_service', None),
-            'require_workspace_sandbox',
-            None,
-        )
-        if callable(require_sandbox):
-            await require_sandbox(self._execution_context(query))
         if name == ACTIVATE_SKILL_TOOL_NAME:
             return await self._invoke_activate_skill(parameters, query)
+        if name == LIST_SKILL_RESOURCES_TOOL_NAME:
+            return await self._invoke_list_skill_resources(parameters, query)
+        if name == READ_SKILL_RESOURCE_TOOL_NAME:
+            return await self._invoke_read_skill_resource(parameters, query)
         if name == REGISTER_SKILL_TOOL_NAME:
+            require_sandbox = getattr(
+                getattr(self.ap, 'box_service', None),
+                'require_workspace_sandbox',
+                None,
+            )
+            if not callable(require_sandbox):
+                return self._sandbox_unavailable_result(name)
+            await require_sandbox(self._execution_context(query))
             return await self._invoke_register_skill(parameters, query)
         raise ValueError(f'Unknown skill tool: {name}')
 
@@ -108,6 +129,27 @@ class SkillToolLoader(loader.ToolLoader):
     def _has_skill_manager(self) -> bool:
         return getattr(self.ap, 'skill_mgr', None) is not None
 
+    @staticmethod
+    def _sandbox_unavailable_result(name: str) -> dict:
+        return {
+            'ok': False,
+            'code': 'sandbox_unavailable',
+            'tool': name,
+            'message': 'This operation requires Box execution, but Box is not configured or available.',
+        }
+
+    async def _execution_available(self, query) -> bool:
+        variables = getattr(query, 'variables', None)
+        if isinstance(variables, dict) and _SKILL_EXECUTION_AVAILABLE_KEY in variables:
+            return bool(variables[_SKILL_EXECUTION_AVAILABLE_KEY])
+        checker = getattr(getattr(self.ap, 'box_service', None), 'is_workspace_sandbox_available', None)
+        if not callable(checker):
+            return False
+        try:
+            return bool(await checker(self._execution_context(query)))
+        except Exception:
+            return False
+
     async def _invoke_activate_skill(self, parameters: dict, query) -> typing.Any:
         """Activate a skill and return SKILL.md content via Tool Result."""
         skill_name = str(parameters.get('skill_name', '') or '').strip()
@@ -116,41 +158,110 @@ class SkillToolLoader(loader.ToolLoader):
 
         from . import skill as skill_loader
 
-        skill_data = skill_loader.get_visible_skill(self.ap, query, skill_name)
-        if skill_data is None:
+        visible_skill = skill_loader.get_visible_skill(self.ap, query, skill_name)
+        if visible_skill is None:
             visible_skills = skill_loader.get_visible_skills(self.ap, query)
             available_names = ', '.join(sorted(visible_skills.keys())) or 'none'
             raise ValueError(f'Skill "{skill_name}" not found. Available skills: {available_names}')
 
-        # Register activated skill for sandbox mount path resolution
+        skill_data = await self.ap.skill_repository.get_skill(
+            self._execution_context(query),
+            skill_name,
+            snapshot=True,
+        )
+        if skill_data is None:
+            raise ValueError(f'Skill "{skill_name}" is no longer available; reload the skill catalog.')
+
         skill_loader.register_activated_skill(query, skill_data)
 
-        # Return SKILL.md content as Tool Result (injects into context)
         instructions = skill_data.get('instructions', '')
-        package_root = skill_data.get('package_root', '')
-        mount_path = skill_loader.get_virtual_skill_mount_path(skill_name)
+        revision = str(skill_data.get('revision', '') or '')
+        execution_available = await self._execution_available(query)
+        mount_path = skill_loader.get_virtual_skill_mount_path(skill_name) if execution_available else None
 
-        # Build Tool Result content
         result_content = f'<command-message>The "{skill_name}" skill is activated</command-message>\n'
         result_content += '<skill-activation>\n'
         result_content += f'<skill-name>{skill_name}</skill-name>\n'
-        result_content += f'<mount-path>{mount_path}</mount-path>\n'
-        result_content += f'<package-root>{package_root}</package-root>\n'
+        result_content += f'<revision>{revision}</revision>\n'
+        result_content += '<resources-readable>true</resources-readable>\n'
+        result_content += f'<execution-available>{str(execution_available).lower()}</execution-available>\n'
         result_content += f'\n## Instructions\n{instructions}\n'
         result_content += '\n## Runtime Context\n'
-        result_content += f'The skill package is mounted at {mount_path}. Use the standard tools to interact with it:\n'
-        result_content += f'- Use `read` to inspect files under {mount_path}\n'
-        result_content += f'- Use `exec` with workdir set to {mount_path} to run commands in that package\n'
-        result_content += '- Use `write` and `edit` on that path when the instructions require updating files\n'
+        result_content += '- Use `list_skill_resources` and `read_skill_resource` for read-only package resources.\n'
+        if execution_available:
+            result_content += (
+                f'- Box execution is available; executable package files will be mounted at {mount_path}.\n'
+            )
+        else:
+            result_content += (
+                '- Box execution is unavailable. Do not attempt to run scripts or modify Workspace files.\n'
+            )
         result_content += '</skill-activation>\n'
 
         return {
             'activated': True,
             'skill_name': skill_name,
             'mount_path': mount_path,
+            'revision': revision,
+            'capabilities': {
+                'instructions_readable': True,
+                'resources_readable': True,
+                'execution_available': execution_available,
+            },
             'activated_skill_names': skill_loader.get_activated_skill_names(query),
             'content': result_content,
         }
+
+    @staticmethod
+    def _activated_skill(parameters: dict, query) -> dict:
+        from . import skill as skill_loader
+
+        skill_name = str(parameters.get('skill_name', '') or '').strip()
+        if not skill_name:
+            raise ValueError('skill_name is required')
+        skill_data = skill_loader.get_activated_skill(query, skill_name)
+        if skill_data is None:
+            raise ValueError(f'Skill "{skill_name}" must be activated before its resources can be read.')
+        requested_revision = str(parameters.get('revision', '') or '').strip()
+        activated_revision = str(skill_data.get('revision', '') or '').strip()
+        if requested_revision and requested_revision != activated_revision:
+            raise ValueError('revision must match the activated skill revision')
+        return skill_data
+
+    async def _invoke_list_skill_resources(self, parameters: dict, query) -> dict:
+        skill_data = self._activated_skill(parameters, query)
+        return await self.ap.skill_repository.list_skill_resources(
+            self._execution_context(query),
+            skill_data['name'],
+            str(parameters.get('path', '.') or '.'),
+            expected_revision=skill_data.get('revision'),
+        )
+
+    async def _invoke_read_skill_resource(self, parameters: dict, query) -> dict:
+        skill_data = self._activated_skill(parameters, query)
+        path = str(parameters.get('path', '') or '').strip()
+        if not path:
+            raise ValueError('path is required')
+        result = await self.ap.skill_repository.read_skill_resource(
+            self._execution_context(query),
+            skill_data['name'],
+            path,
+            expected_revision=skill_data.get('revision'),
+        )
+        content = str(result.get('content', ''))
+        size = len(content.encode('utf-8'))
+        if size > _MAX_SKILL_RESOURCE_FILE_BYTES:
+            raise ValueError('Skill resource exceeds the per-file read limit')
+        variables = getattr(query, 'variables', None)
+        if not isinstance(variables, dict):
+            variables = {}
+            query.variables = variables
+        total = int(variables.get(_SKILL_RESOURCE_BYTES_READ_KEY, 0) or 0) + size
+        if total > _MAX_SKILL_RESOURCE_RUN_BYTES:
+            raise ValueError('Skill resource reads exceed the per-run limit')
+        variables[_SKILL_RESOURCE_BYTES_READ_KEY] = total
+        result['size'] = size
+        return result
 
     async def _invoke_register_skill(self, parameters: dict, query) -> typing.Any:
         """Register a skill from sandbox directory to data/skills/."""
@@ -176,14 +287,14 @@ class SkillToolLoader(loader.ToolLoader):
             raise ValueError('skill name is required')
 
         # Create the skill
-        created = await skill_service.create_skill(
+        created = await skill_service.import_skill_directory(
             execution_context,
+            host_path,
             {
                 'name': skill_name,
                 'display_name': str(parameters.get('display_name') or scanned.get('display_name', '')).strip(),
                 'description': str(parameters.get('description') or scanned.get('description', '')).strip(),
                 'instructions': str(parameters.get('instructions') or scanned.get('instructions', '')),
-                'package_root': host_path,
             },
         )
 
@@ -244,6 +355,42 @@ class SkillToolLoader(loader.ToolLoader):
                     },
                 },
                 'required': ['skill_name'],
+                'additionalProperties': False,
+            },
+            func=lambda parameters: parameters,
+        )
+
+    def _build_list_skill_resources_tool(self) -> resource_tool.LLMTool:
+        return resource_tool.LLMTool(
+            name=LIST_SKILL_RESOURCES_TOOL_NAME,
+            human_desc='List activated skill resources',
+            description='List read-only files in an activated skill package without starting a sandbox.',
+            parameters={
+                'type': 'object',
+                'properties': {
+                    'skill_name': {'type': 'string', 'description': 'The activated skill name.'},
+                    'path': {'type': 'string', 'description': 'Relative directory path. Defaults to the package root.'},
+                    'revision': {'type': 'string', 'description': 'Optional revision returned by activate.'},
+                },
+                'required': ['skill_name'],
+                'additionalProperties': False,
+            },
+            func=lambda parameters: parameters,
+        )
+
+    def _build_read_skill_resource_tool(self) -> resource_tool.LLMTool:
+        return resource_tool.LLMTool(
+            name=READ_SKILL_RESOURCE_TOOL_NAME,
+            human_desc='Read an activated skill resource',
+            description='Read a UTF-8 text resource from an activated skill package without starting a sandbox.',
+            parameters={
+                'type': 'object',
+                'properties': {
+                    'skill_name': {'type': 'string', 'description': 'The activated skill name.'},
+                    'path': {'type': 'string', 'description': 'File path relative to the skill package root.'},
+                    'revision': {'type': 'string', 'description': 'Optional revision returned by activate.'},
+                },
+                'required': ['skill_name', 'path'],
                 'additionalProperties': False,
             },
             func=lambda parameters: parameters,

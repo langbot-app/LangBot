@@ -26,6 +26,7 @@ from ...api.http.service import knowledge as knowledge_service
 from ...api.http.service import mcp as mcp_service
 from ...api.http.service import apikey as apikey_service
 from ...api.http.service import webhook as webhook_service
+from ...skill import repository as skill_repository
 from ...api.http.service import monitoring as monitoring_service
 from ...api.http.service import skill as skill_service
 from ...skill import manager as skill_mgr
@@ -127,6 +128,7 @@ class BuildAppStage(stage.BootingStage):
         webhook_service_inst = webhook_service.WebhookService(ap)
         ap.webhook_service = webhook_service_inst
 
+        ap.skill_repository = skill_repository.SkillRepository(ap)
         skill_service_inst = skill_service.SkillService(ap)
         ap.skill_service = skill_service_inst
 

@@ -169,14 +169,15 @@ The Plugin Runtime supports stdio and WebSocket control transports. Direct local
 
 ## Box Runtime and Skills
 
-Box is the sandbox subsystem used by native agent tools, stdio MCP servers, skill authoring, and managed processes.
+Box is the optional sandbox subsystem used by native execution tools, stdio MCP servers, agent-side skill authoring, and managed processes. Skill storage and read-only access are Core responsibilities and remain available without Box.
 
 In this repo:
 
 - `pkg/box/service.py` is the application-facing facade for exec, sessions, managed processes, skill CRUD, status, reconnects, quotas, mounts, and sandbox profiles.
 - `pkg/box/connector.py` connects to the Box Runtime over stdio, Windows subprocess+WebSocket, or remote WebSocket.
 - `pkg/provider/tools/loaders/native.py`, `mcp_stdio.py`, and skill loaders depend on Box availability.
-- `pkg/skill/manager.py` loads skills from the Box runtime, falling back to local `data/skills` when needed.
+- `pkg/skill/repository.py` is the thin async/Workspace adapter over the Plugin SDK's execution-independent `SkillStore`; it preserves the existing `data/box/skills` layout shared with Box for optional execution mounts.
+- `pkg/skill/manager.py` caches the Core repository catalog for progressive disclosure. Activation and read-only resource tools do not require Box; script execution and Workspace mutation still do.
 
 Durable Box Workspace storage is shared across placement generations, but
 sandbox sessions and managed processes are generation-scoped. LangBot validates

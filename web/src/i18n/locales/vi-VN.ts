@@ -1026,7 +1026,7 @@ const viVN = {
       mcpToolsScopeTooltip:
         'Tại đây chỉ hiển thị công cụ từ máy chủ MCP hiện được cho phép trong Tiện ích mở rộng.',
       skillToolsScopeTooltip:
-        'Công cụ kỹ năng khả dụng khi dịch vụ kỹ năng LangBot và backend sandbox Box đã sẵn sàng. Chúng cho phép Agent kích hoạt hoặc đăng ký kỹ năng.',
+        'Kích hoạt kỹ năng và tài nguyên chỉ đọc hoạt động không cần Box. Đăng ký từ workspace của Agent vẫn cần sandbox Box.',
       selectTools: 'Chọn công cụ',
       resourcesTitle: 'Tài nguyên',
       resourcesDescription:
@@ -1553,9 +1553,9 @@ const viVN = {
     statusDetail: 'Trạng thái',
     pluginDisabled: 'Hệ thống plugin đã tắt',
     boxDisabled:
-      'Sandbox Box đã tắt trong cấu hình — công cụ sandbox, thêm/chỉnh sửa skill và stdio MCP đều không khả dụng',
+      'Sandbox Box đã tắt trong cấu hình — công cụ thực thi và stdio MCP không khả dụng',
     boxUnavailable:
-      'Sandbox Box không khả dụng — công cụ sandbox, thêm/chỉnh sửa skill và stdio MCP đều không khả dụng',
+      'Sandbox Box không khả dụng — công cụ thực thi và stdio MCP không khả dụng',
     boxRequiredHint:
       'Tính năng này cần Box runtime. Hãy bật trong cấu hình (box.enabled = true) và đảm bảo runtime đang hoạt động.',
     boxBackend: 'Backend',

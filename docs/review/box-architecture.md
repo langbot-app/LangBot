@@ -41,7 +41,7 @@
 │              │  Action RPC (stdio 或 WebSocket)                    │
 │                                                                    │
 │  SkillManager (skill_mgr)                                          │
-│    └─ 从 Box runtime 拉取 skills, 不可用时回落 data/skills          │
+│    └─ 从 Core SkillRepository 加载 Workspace-scoped skills          │
 └──────────────────────────────────────────────────────────────────┘
                │
                ▼
@@ -171,11 +171,10 @@ BoxService
 ```
 SkillManager
   ├─ initialize()                  调用 reload_skills()
-  ├─ reload_skills()               先从 Box runtime list_skills()，
-  │                                 不可用则回落 data/skills/ 扫描
-  ├─ refresh_skill_from_disk()     单 skill 重新加载
+  ├─ reload_skills()               从 Core SkillRepository 加载
+  ├─ refresh_skill_from_disk()     检查单 skill 的缓存状态
   ├─ get_skill_by_name(name)
-  └─ get_managed_skills_root()     返回 Box 视角的 skills_root 路径
+  └─ build_skill_aware_prompt_addition() 生成渐进披露索引
 ```
 
 skill 元数据通过 `parse_frontmatter` 解析 `SKILL.md` 头部（`name` / `description` / `instructions`），不再做整体扫描的代价（典型 < 50 个）。
@@ -343,23 +342,24 @@ stdio 模式同样会在 5410 启动 aiohttp，专门承担 managed process atta
 
 `BoxSpec` 校验器: `workdir` 默认继承 `mount_path`；`host_path` 支持 POSIX 和 Windows 路径；设置 `host_path` 时 `workdir` 必须在 `mount_path` 下。
 
-### 3.7 BoxSkillStore (`box/skill_store.py`, 647 行)
+### 3.7 SkillStore (`langbot_plugin.skill_store`)
 
-新增模块（commit `4ab3502`），把 skill 持久化收归 Box runtime：
+Skill 包存储最初位于 Box Runtime；issue #2410 将通用实现抽到 Plugin SDK 顶层，Core 与 Box 使用同一套存储和 revision 语义：
 
 ```
-BoxSkillStore
+SkillStore
   ├─ list_skills() / get_skill(name)
   ├─ create_skill(data) / update_skill(name, data) / delete_skill(name)
   ├─ scan_skill_directory(path)            扫描目录返回候选 skill 包列表
-  ├─ list_skill_files(name, path)          浏览 skill 内文件树
-  ├─ read_skill_file(name, path) / write_skill_file(name, path, content)
+  ├─ list_skill_resources(name, path, revision)  按 revision 浏览只读资源
+  ├─ read_skill_resource(name, path, revision)   按 revision 读取 UTF-8 资源
+  ├─ read_skill_file(...) / write_skill_file(...) 管理侧文件接口
   ├─ preview_skill_zip(zip_bytes, ...)     不落盘预览 zip 内容
   └─ install_skill_zip(zip_bytes, ...)     解压、校验、复制到 skills_root
      └─ 支持 source_subdir / target_suffix（commit 1aa043f）
 ```
 
-GitHub 安装路径：HTTP 层（`api/http/service/skill.py`）先 `git clone` 拉取，再走 `install_skill_zip` 或 directory 路径。Skill 文件存放于 `box.local.skills_root`（默认 `skills`，相对 `host_root`），容器内对应 `/workspace/.skills/`。
+`langbot_plugin.box.skill_store.BoxSkillStore` 仅保留为旧 Box 配置到通用 `SkillStore` 的兼容适配器，不再拥有存储实现。GitHub 安装路径由 Core HTTP 层下载归档，再交给 SkillRepository。Skill 文件继续存放于 `box.local.skills_root`（默认 `skills`，相对 `host_root`），执行时只读挂载到 `/workspace/.skills/`。
 
 ### 3.8 Security (`box/security.py`, 52 行)
 
@@ -463,7 +463,7 @@ BuildAppStage.run(ap)
   ├─ ap.tool_mgr = tool_mgr
   │
   ├─ ... (platform, pipeline) ...
-  ├─ SkillManager.initialize()    (从 Box runtime 加载 skill 列表)
+  ├─ SkillManager.initialize()    (从 Core SkillRepository 加载 skill 列表)
   └─ ... (RAG, HTTP, plugins) ...
 ```
 
@@ -480,7 +480,7 @@ except Exception as e:
     logger.warning(f"Box runtime unavailable: {e}")
 ```
 
-**静默降级**: Box 初始化失败不会阻止应用启动，仅导致 6 个 native tool、所有 Skill 工具和 MCP-in-Box 工具不暴露给 LLM。与 Plugin 的行为不同（Plugin 失败会抛异常）。
+**静默降级**: Box 初始化失败不会阻止应用启动。6 个 native tool、`register_skill` 和 MCP-in-Box 工具不暴露给 LLM；`activate` 与 Skill 只读资源工具继续由 Core 提供。与 Plugin 的行为不同（Plugin 失败会抛异常）。
 
 ### 5.3 销毁流程
 
@@ -508,9 +508,9 @@ box:
     enabled: true         # 整个 Box 子系统的总开关。设为 false 时：
                           #  - 不连接远程 Box runtime，不 fork 本地 stdio 子进程
                           #  - sandbox 工具 (exec/read/write/edit/glob/grep) 不暴露给 LLM
-                          #  - skill 添加/编辑 / GitHub 安装 / 文件写入全部拒绝
+                          #  - Agent 从 sandbox 注册 skill 的能力不可用
                           #  - stdio 模式的 MCP server 启动时报错（http/sse 模式不受影响）
-                          #  - skill 列表/读取保持只读可用
+                          #  - skill 管理、激活和只读资源保持可用
                           # BOX__ENABLED 环境变量可覆盖（统一约定）
     backend: 'local'      # 'local' (探测) / 'docker' / 'nsjail' / 'e2b'
                           # 由 box.backend / BOX__BACKEND 选择后端
@@ -522,7 +522,7 @@ box:
         image: ''                       # 覆盖 profile 默认 image
         host_root: './data/box'         # 工作区挂载根，Docker 部署需绝对路径
         default_workspace: ''           # 默认 '<host_root>/default'
-        skills_root: 'skills'           # Box 管理的 skill 包目录（相对 host_root）
+        skills_root: 'skills'           # Core 管理且与 Box 共享的 skill 包目录
         allowed_mount_roots:            # 默认 ['<host_root>']
             - './data/box'
             - '/tmp'
@@ -561,16 +561,17 @@ volumes:
 | 消费方 | Box 可用 | Box 不可用(disabled 或 failed) |
 |---|---|---|
 | native exec/read/write/edit/glob/grep 工具 | 暴露给 LLM | **不暴露** |
-| `activate` / `register_skill` 工具 | 暴露给 LLM | **不暴露** |
+| `activate` / Skill resource 工具 | 暴露给 LLM | 暴露给 LLM |
+| `register_skill` 工具 | 暴露给 LLM | **不暴露**；直接调用返回 `sandbox_unavailable` |
 | stdio MCP server | 在 Box 内启动 | **`_init_stdio_python_server` 抛 RuntimeError** 拒绝;不退化到宿主 stdio |
 | http/sse MCP server | 正常 | 正常(不依赖 Box) |
-| Skill 列表/读取 (`list_skills`/`get_skill`/`read_skill_file`) | 走 Box runtime | 走 LangBot 本地 `data/skills/` 只读 fallback |
-| Skill 创建/编辑/安装/写文件 | 走 Box runtime | **HTTP 400** + 明确错误信息(`_require_box_for_write`) |
+| Skill 列表/读取 (`list_skills`/`get_skill`/`read_skill_file`) | 走 Core SkillRepository | 走 Core SkillRepository |
+| Skill 创建/编辑/安装/写文件 | 走 Core SkillRepository | 走 Core SkillRepository |
 | Pipeline AI 配置中 `box-session-id-template` | 正常生效 | **前端 banner** 提示字段无效 |
-| Pipeline 扩展页 `enable_all_skills` / 绑定 skill | 可编辑 | **前端禁用** + banner |
+| Pipeline 扩展页 `enable_all_skills` / 绑定 skill | 可编辑 | 可编辑 |
 | 仪表盘 Box 状态卡片 | 绿点 / "已连接" | 灰点 / "已禁用"(disabled) 或 红点 / "已断开"(failed) |
 
-> 后端拒写的边界条件:如果 `ap.box_service` **完全没装**(老式 dev mode,没经过 BuildAppStage),`_require_box_for_write` 视作 no-op,保留 `data/skills/` 本地路径——以兼容历史测试与最小化设置。生产环境总会装 `ap.box_service`,因此该 fallback 不会被触发。
+> Core 的 SkillRepository 是 `langbot_plugin.skill_store.SkillStore` 的异步 Workspace 适配层，保持原 `data/box/skills/tenants/...` 布局，升级时无需移动已安装 Skill。Box 只在执行发生时消费同一份只读 package revision。
 
 ### Pipeline 配置 (templates/metadata/pipeline/ai.yaml)
 

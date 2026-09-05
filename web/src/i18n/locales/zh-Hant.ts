@@ -979,7 +979,7 @@ const zhHant = {
       mcpToolsScopeTooltip:
         '這裡僅展示擴展集成目前允許的 MCP 伺服器提供的工具。',
       skillToolsScopeTooltip:
-        '技能工具會在 LangBot 技能服務和 Box 沙箱後端可用時出現，用於讓 Agent 啟用或註冊技能。',
+        '技能啟用和唯讀資源不需要 Box；Agent 從工作區註冊技能仍需要 Box 沙箱。',
       selectTools: '選擇工具',
       resourcesTitle: '資源',
       resourcesDescription: '選擇此內建 Agent 可以讀取的 MCP 資源和知識庫。',
@@ -1481,10 +1481,8 @@ const zhHant = {
     disabled: '已停用',
     statusDetail: '狀態',
     pluginDisabled: '外掛系統已停用',
-    boxDisabled:
-      'Box 沙箱已在設定中停用——沙箱工具、技能新增/編輯與 stdio MCP 均無法使用',
-    boxUnavailable:
-      'Box 沙箱無法使用——沙箱工具、技能新增/編輯與 stdio MCP 均無法使用',
+    boxDisabled: 'Box 沙箱已在設定中停用——執行工具與 stdio MCP 無法使用',
+    boxUnavailable: 'Box 沙箱無法使用——執行工具與 stdio MCP 無法使用',
     boxRequiredHint:
       '此功能需要 Box 執行時。請在設定中啟用（box.enabled = true）並確認執行時連線正常。',
     boxBackend: '後端',

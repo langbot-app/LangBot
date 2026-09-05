@@ -326,10 +326,10 @@ monitoring:
 box:
     # Master switch for the Box sandbox runtime. When false, LangBot does NOT
     # attempt to connect to a remote Box runtime nor start a local stdio Box
-    # subprocess. Disabling Box also disables every feature that depends on it:
-    # the native sandbox tools (exec/read/write/edit/glob/grep), the activate
-    # skill tool, skill add/edit, and stdio-mode MCP servers. Skills can still
-    # be listed read-only and http/sse MCP servers continue to work.
+    # subprocess. Disabling Box disables execution-backed features: native
+    # sandbox tools (exec/read/write/edit/glob/grep), agent-side skill
+    # registration, and stdio-mode MCP servers. Skill management, activation,
+    # and read-only package resources remain available without Box.
     enabled: true
     # 'host' runs commands directly as the Box Runtime user without sandbox
     # isolation. It is never auto-selected and is only for trusted local
@@ -378,7 +378,7 @@ box:
         image: ''  # Custom local sandbox image. Leave empty to use the profile default.
         host_root: './data/box'  # Base host directory for local workspace mounts. Docker deployments should override this with an absolute host path.
         default_workspace: ''  # Defaults to '<host_root>/default'. Relative paths are resolved under host_root.
-        skills_root: 'skills'  # Box-owned skill package directory. Relative paths are resolved under host_root.
+        skills_root: 'skills'  # Core-owned skill repository shared with Box for optional execution mounts.
         allowed_mount_roots:  # Defaults to ['<host_root>'] when left empty.
             - './data/box'
             - '/tmp'

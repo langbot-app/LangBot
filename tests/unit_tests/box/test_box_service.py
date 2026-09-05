@@ -1978,7 +1978,7 @@ class TestBuildSkillExtraMounts:
                 {
                     'host_path': live_dir,
                     'mount_path': '/workspace/.skills/alive',
-                    'mode': 'rw',
+                    'mode': 'ro',
                 }
             ]
             # Warning logged so operators can see what was dropped
@@ -2003,8 +2003,8 @@ class TestBuildSkillExtraMounts:
         mounts = service.build_skill_extra_mounts(make_query())
 
         assert mounts == [
-            {'host_path': '/box/skills/a', 'mount_path': '/workspace/.skills/a', 'mode': 'rw'},
-            {'host_path': '/box/skills/b', 'mount_path': '/workspace/.skills/b', 'mode': 'rw'},
+            {'host_path': '/box/skills/a', 'mount_path': '/workspace/.skills/a', 'mode': 'ro'},
+            {'host_path': '/box/skills/b', 'mount_path': '/workspace/.skills/b', 'mode': 'ro'},
         ]
         # No skill is dropped, so no "missing" warning should be logged.
         assert not any('package_root missing' in str(call.args[0]) for call in logger.warning.call_args_list)
