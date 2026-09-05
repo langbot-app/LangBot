@@ -2,6 +2,8 @@ import quart
 import argon2
 import asyncio
 import datetime
+import hmac
+import time
 import uuid
 from urllib.parse import parse_qs, urlsplit
 
@@ -10,6 +12,33 @@ from .....entity.errors import account as account_errors
 from ...context import RequestContext
 from .....cloud.launch import SpaceLaunchError
 from ...service.user import ControlPlaneDirectoryRequiredError, PublicRegistrationClosedError
+
+# Fixed-window admission quota for the unauthenticated reset-password endpoint (#2392).
+# The admission check and slot bump share ONE synchronous critical section with no await
+# points, so concurrent bursts within a single event loop cannot slip past accounting.
+# Every admitted attempt consumes quota (regardless of success), which throttles both the
+# legacy 24-bit keyspace exhaustion and brute-force on modern high-entropy keys.
+# NOTE: this state is process-local; multi-worker deployments need a shared limiter upstream.
+_MAX_RESET_ATTEMPTS_PER_WINDOW = 5
+_RESET_WINDOW_SECONDS = 15 * 60
+
+_reset_password_state: dict = {'window_started_at': 0.0, 'attempts': 0}
+
+
+def _admit_reset_attempt(now: float) -> bool:
+    """Atomically reserve one reset-password admission slot.
+
+    Must stay await-free: running to completion without suspension makes the
+    check-and-increment atomic under the single-threaded event loop.
+    """
+    st = _reset_password_state
+    if now - st['window_started_at'] >= _RESET_WINDOW_SECONDS:
+        st['window_started_at'] = now
+        st['attempts'] = 0
+    if st['attempts'] >= _MAX_RESET_ATTEMPTS_PER_WINDOW:
+        return False
+    st['attempts'] += 1
+    return True
 
 
 @group.group_class('user', '/api/v1/user')
@@ -81,6 +110,12 @@ class UserRouterGroup(group.RouterGroup):
 
         @self.route('/reset-password', methods=['POST'], auth_type=group.AuthType.NONE)
         async def _() -> str:
+            # Admit (or reject) BEFORE touching the body or any service call (#2392):
+            # rejecting requests never reach the slow path, and quota accounting happens
+            # synchronously at entry, closing the post-await race of burst requests.
+            if not _admit_reset_attempt(time.monotonic()):
+                return self.http_status(429, -1, 'Too many attempts, try again later')
+
             json_data = await quart.request.json
 
             user_email = json_data['user']
@@ -98,7 +133,14 @@ class UserRouterGroup(group.RouterGroup):
             if user_obj is None:
                 return self.http_status(400, -1, 'User not found')
 
-            if recovery_key != self.ap.instance_config.data['system']['recovery_key']:
+            stored_key = self.ap.instance_config.data['system']['recovery_key']
+            key_matches = (
+                isinstance(recovery_key, str)
+                and isinstance(stored_key, str)
+                and hmac.compare_digest(recovery_key.encode(), stored_key.encode())
+            )
+
+            if not key_matches:
                 return self.http_status(403, -1, 'Invalid recovery key')
 
             await self.ap.user_service.reset_password(user_email, new_password)
