@@ -485,15 +485,11 @@ class BoxService:
         """Reject tenant-owned policy fields and apply the Cloud hard policy."""
 
         payload = dict(spec_payload)
-        trusted_mounts = self._normalize_trusted_read_only_mounts(
-            trusted_read_only_mounts or []
-        )
+        trusted_mounts = self._normalize_trusted_read_only_mounts(trusted_read_only_mounts or [])
         if not self._cloud_managed:
             if trusted_mounts:
                 if payload.get('extra_mounts'):
-                    raise BoxValidationError(
-                        'extra_mounts and trusted_read_only_mounts cannot both be supplied'
-                    )
+                    raise BoxValidationError('extra_mounts and trusted_read_only_mounts cannot both be supplied')
                 payload['extra_mounts'] = trusted_mounts
             return payload
         policy = self._admission_policy
@@ -568,12 +564,8 @@ class BoxService:
             if not os.path.isdir(host_path):
                 raise BoxAdmissionError('Core-composed read-only mount source is unavailable')
             if not any(_is_path_under(host_path, root) for root in self.allowed_mount_roots):
-                raise BoxAdmissionError(
-                    'Core-composed read-only mount source is outside allowed_mount_roots'
-                )
-            normalized.append(
-                mount.model_copy(update={'host_path': host_path}).model_dump(mode='json')
-            )
+                raise BoxAdmissionError('Core-composed read-only mount source is outside allowed_mount_roots')
+            normalized.append(mount.model_copy(update={'host_path': host_path}).model_dump(mode='json'))
         return normalized
 
     def _reject_cloud_managed_process(self) -> None:

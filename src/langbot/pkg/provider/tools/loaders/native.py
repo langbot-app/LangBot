@@ -373,9 +373,7 @@ class NativeToolLoader(loader.ToolLoader):
         box_service = self.ap.box_service
         if selected_skill is not None:
             if not self._can_interpret_skill_host_paths():
-                raise ValueError(
-                    'Secure Core host file operations are unavailable on this platform.'
-                )
+                raise ValueError('Secure Core host file operations are unavailable on this platform.')
             host_root = selected_skill.get('package_root')
             workspace_anchor = None
         else:
