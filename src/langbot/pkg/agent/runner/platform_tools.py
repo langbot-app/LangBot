@@ -573,6 +573,10 @@ def _normalize_platform_params(
     if not isinstance(parameters, dict):
         raise ValueError('parameters must be an object')
     allowed = set((definition.parameters.get('properties') or {}).keys())
+    # Some model responses annotate no-argument calls with a textual intent.
+    # Keep the original trace, but never pass this annotation to the adapter.
+    if not allowed and isinstance(parameters.get('_call'), str):
+        parameters = {key: value for key, value in parameters.items() if key != '_call'}
     extra = set(parameters) - allowed
     if extra:
         raise ValueError(f'Unexpected parameters: {", ".join(sorted(extra))}')

@@ -111,6 +111,34 @@ async def test_mock_fixture_does_not_mutate_options():
     assert fixture['nested']['value'] == 42
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize('mock', [False, True])
+async def test_event_actor_accepts_textual_call_annotation_without_changing_target(mock):
+    event = _event('group.member_joined')
+    if mock:
+        event.delivery.surface = 'webui'
+        event.delivery.platform_capabilities = {'debug_mock': True}
+    adapter = SimpleNamespace(
+        get_supported_apis=lambda: ['get_user_info'],
+        get_user_info=AsyncMock(return_value={'name': 'Test User'}),
+    )
+    ap = SimpleNamespace(
+        platform_mgr=SimpleNamespace(get_bot_by_uuid=AsyncMock(return_value=SimpleNamespace(adapter=adapter)))
+    )
+    session = {'authorization': {'bot_id': 'bot-1', 'platform_context': freeze_platform_context(event)}}
+    parameters = {'_call': 'Get the new member profile'}
+    await execute_platform_tool(ap, object(), session, 'event_get_actor', parameters)
+    assert parameters == {'_call': 'Get the new member profile'}
+    if mock:
+        ap.platform_mgr.get_bot_by_uuid.assert_not_awaited()
+    else:
+        adapter.get_user_info.assert_awaited_once_with(user_id='user-1')
+
+    for invalid in ({'_call': {}}, {'_call': 'intent', 'user_id': 'forged'}):
+        with pytest.raises(ValueError, match='Unexpected parameters'):
+            await execute_platform_tool(ap, object(), session, 'event_get_actor', invalid)
+
+
 def _event(event_type: str = 'friend.request_received') -> AgentEventEnvelope:
     return AgentEventEnvelope(
         event_id='event-1',
