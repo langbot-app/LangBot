@@ -198,7 +198,7 @@ async def build_heartbeat_payload(
     except Exception:
         features['plugin_count'] = -1
 
-    # Skill count (from Box runtime via skill manager)
+    # Skill count (from the Core SkillRepository cache)
     try:
         skill_mgr = getattr(ap, 'skill_mgr', None)
         if skill_mgr is not None:

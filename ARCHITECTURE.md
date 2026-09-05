@@ -173,10 +173,12 @@ Box is the optional sandbox subsystem used by native execution tools, stdio MCP 
 
 In this repo:
 
-- `pkg/box/service.py` is the application-facing facade for exec, sessions, managed processes, skill CRUD, status, reconnects, quotas, mounts, and sandbox profiles.
+- `pkg/box/service.py` is the application-facing facade for exec, sessions, managed processes, status, reconnects, quotas, generic mounts, and sandbox profiles.
 - `pkg/box/connector.py` connects to the Box Runtime over stdio, Windows subprocess+WebSocket, or remote WebSocket.
-- `pkg/provider/tools/loaders/native.py`, `mcp_stdio.py`, and skill loaders depend on Box availability.
-- `pkg/skill/repository.py` is the thin async/Workspace adapter over the Plugin SDK's execution-independent `SkillStore`; it preserves the existing `data/box/skills` layout shared with Box for optional execution mounts.
+- `pkg/provider/tools/loaders/native.py` is the Core orchestration seam: the
+  Skill loader supplies generic read-only mounts to Box execution. `mcp_stdio.py`
+  and execution-backed tools depend on Box availability.
+- `pkg/skill/repository.py` is the thin async/Workspace adapter over the Plugin SDK's execution-independent `SkillStore`; `skills.root` owns its location independently of Box.
 - `pkg/skill/manager.py` caches the Core repository catalog for progressive disclosure. Activation and read-only resource tools do not require Box; script execution and Workspace mutation still do.
 
 Durable Box Workspace storage is shared across placement generations, but
@@ -188,11 +190,17 @@ retires stale processes and closes already-attached relays.
 In `langbot-plugin-sdk`:
 
 - `src/langbot_plugin/box/server.py` implements `lbp box` and the WebSocket endpoints on `:5410`.
-- `src/langbot_plugin/box/runtime.py` owns sandbox sessions and managed processes.
+- `src/langbot_plugin/box/runtime.py` owns sandbox sessions, generic read-only mounts, and managed processes.
 - `backend.py`, `nsjail_backend.py`, and `e2b_backend.py` implement sandbox backends.
-- `skill_store.py` manages skill packages from the Box side.
+- `src/langbot_plugin/skill_store.py` is consumed by Core, not Box. Core turns
+  selected package roots into generic read-only mounts; Box does not understand
+  Skill names, metadata, revisions, files, or CRUD.
 
-Important config keys live under `box:` in `src/langbot/templates/config.yaml`: `box.enabled`, `box.backend`, `box.runtime.endpoint`, and `box.local.*`. Start LangBot with `--standalone-box` when connecting to an externally launched Box runtime.
+Skill storage uses `skills.root`. Box execution config lives under `box:`:
+`box.enabled`, `box.backend`, `box.runtime.endpoint`, and `box.local.*`. The old
+`box.local.skills_root` key is read only as an online-upgrade fallback and is
+marked for removal in the next major version. Start LangBot with
+`--standalone-box` when connecting to an externally launched Box runtime.
 
 ## HTTP API, Web UI, and MCP Server
 

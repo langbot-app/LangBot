@@ -329,20 +329,11 @@ class NativeToolLoader(loader.ToolLoader):
             if not package_root:
                 raise ValueError(f'Activated skill "{selected_skill_name}" has no package_root.')
 
-            # Pass only the logical name across the authenticated Core→Runtime
-            # boundary. In Cloud mode the shared Box Runtime resolves the
-            # Workspace-scoped package root and constructs the read-only mount;
-            # Core host paths are never accepted as mount authority.
             # Wrap command with Python venv bootstrap if the skill has a Python project.
             # The venv is created inside the skill's mount path.
             skill_mount = f'/workspace/.skills/{selected_skill_name}'
             python_project = selected_skill.get('python_project') is True
-            if 'python_project' not in selected_skill and bool(
-                getattr(self.ap.box_service, 'shares_filesystem_with_box', False)
-            ):
-                # Backward compatibility for a same-process OSS Runtime that
-                # predates trusted Box metadata. Never probe a path reported by
-                # an external Runtime from the Core filesystem.
+            if 'python_project' not in selected_skill:
                 python_project = skill_loader.should_prepare_skill_python_env(package_root)
             if python_project:
                 parameters = dict(parameters)
@@ -358,12 +349,9 @@ class NativeToolLoader(loader.ToolLoader):
         result = await self.ap.box_service.execute_tool(
             parameters,
             query,
-            skill_name=selected_skill_name,
+            read_only_mounts=skill_loader.build_execution_mounts(self.ap, query),
         )
         result = self._normalize_exec_result(result)
-
-        if selected_skill is not None:
-            self._refresh_skill_from_disk(query, selected_skill)
         return result
 
     def _resolve_host_location(
@@ -386,8 +374,7 @@ class NativeToolLoader(loader.ToolLoader):
         if selected_skill is not None:
             if not self._can_interpret_skill_host_paths():
                 raise ValueError(
-                    'Skill package paths are owned by the Box Runtime; '
-                    'this operation requires a Runtime skill-file API.'
+                    'Secure Core host file operations are unavailable on this platform.'
                 )
             host_root = selected_skill.get('package_root')
             workspace_anchor = None
@@ -426,11 +413,9 @@ class NativeToolLoader(loader.ToolLoader):
         return selected_skill, relative
 
     def _can_interpret_skill_host_paths(self) -> bool:
-        """Require an explicitly proven shared Core/Runtime filesystem view."""
+        """Return whether Core can use its no-follow host file primitives."""
 
-        return _SECURE_HOST_FILE_OPS_AVAILABLE and bool(
-            getattr(self.ap.box_service, 'shares_filesystem_with_box', False)
-        )
+        return _SECURE_HOST_FILE_OPS_AVAILABLE
 
     def _should_use_box_workspace_files(self, selected_skill: dict | None) -> bool:
         if selected_skill is not None:
@@ -1130,16 +1115,6 @@ else:
         skill_repository = getattr(self.ap, 'skill_repository', None)
         if skill_request is not None and skill_repository is not None:
             selected_skill, relative = skill_request
-            if self._can_interpret_skill_host_paths():
-                host_location = self._resolve_skill_host_location(selected_skill, relative)
-            else:
-                host_location = None
-            if host_location is not None:
-                try:
-                    return await asyncio.to_thread(self._read_host_location, host_location, parameters)
-                except FileNotFoundError:
-                    pass
-
             try:
                 result = await skill_repository.read_skill_file(
                     self._execution_context(query),

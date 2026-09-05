@@ -323,6 +323,13 @@ monitoring:
         # Prevent one large Workspace backlog from monopolizing PostgreSQL.
         # Supports MONITORING__AUTO_CLEANUP__MAX_BATCHES_PER_TABLE_PER_RUN.
         max_batches_per_table_per_run: 4
+skills:
+    # Core-owned SkillStore. Skill discovery, activation, resources, CRUD and
+    # revisions remain available when Box is disabled.
+    # TODO(next-major): change the fresh-install default to './data/skills'
+    # after the online-upgrade window for the historical Box path closes.
+    root: './data/box/skills'
+
 box:
     # Master switch for the Box sandbox runtime. When false, LangBot does NOT
     # attempt to connect to a remote Box runtime nor start a local stdio Box
@@ -378,7 +385,6 @@ box:
         image: ''  # Custom local sandbox image. Leave empty to use the profile default.
         host_root: './data/box'  # Base host directory for local workspace mounts. Docker deployments should override this with an absolute host path.
         default_workspace: ''  # Defaults to '<host_root>/default'. Relative paths are resolved under host_root.
-        skills_root: 'skills'  # Core-owned skill repository shared with Box for optional execution mounts.
         allowed_mount_roots:  # Defaults to ['<host_root>'] when left empty.
             - './data/box'
             - '/tmp'

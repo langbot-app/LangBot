@@ -18,12 +18,11 @@ from ....box.workspace import (
     BoxWorkspaceSession,
     classify_python_workspace,
     infer_workspace_host_path,
-    normalize_host_path,
     rewrite_mounted_path,
     rewrite_venv_command,
     unwrap_venv_path,
-    wrap_python_command_with_env,
 )
+from ....utils.python_workspace import normalize_host_path, wrap_python_command_with_env
 
 if TYPE_CHECKING:
     from .mcp import RuntimeMCPSession

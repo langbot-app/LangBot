@@ -147,10 +147,9 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
           - An explicit ``runtime.endpoint`` was configured
 
         When this is True the Box runtime lives in a separate process with its
-        own filesystem view (container, pod sidecar, or remote host), so paths
-        it reports (e.g. skill ``package_root``) are NOT resolvable on the
-        LangBot side. When False, Box runs as a stdio child process that shares
-        LangBot's filesystem.
+        own filesystem view (container, pod sidecar, or remote host), so only
+        explicitly shared paths are usable on both sides. When False, Box runs
+        as a stdio child process that shares LangBot's filesystem.
         """
         return bool(
             self.configured_runtime_endpoint

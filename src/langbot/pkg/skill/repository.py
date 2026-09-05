@@ -21,6 +21,7 @@ class SkillRepository:
         self.ap = ap
         config = getattr(getattr(ap, 'instance_config', None), 'data', {}) or {}
         self._local_config = (config.get('box') or {}).get('local') or {}
+        self._skills_config = config.get('skills') or {}
         self._store = SkillStore(self._skills_root())
         self._lock = asyncio.Lock()
 
@@ -29,9 +30,15 @@ class SkillRepository:
         return os.path.realpath(os.path.abspath(os.path.expanduser(configured)))
 
     def _skills_root(self) -> str:
-        configured = str(self._local_config.get('skills_root') or 'skills').strip()
-        if not os.path.isabs(configured):
-            configured = os.path.join(self._host_root(), configured)
+        configured = str(self._skills_config.get('root') or '').strip()
+        if not configured:
+            # Online-upgrade bridge for installations whose persisted config
+            # predates the standalone Skill domain.
+            # TODO(next-major): remove box.local.skills_root fallback.
+            legacy = str(self._local_config.get('skills_root') or '').strip()
+            configured = legacy or 'skills'
+            if not os.path.isabs(configured):
+                configured = os.path.join(self._host_root(), configured)
         return os.path.realpath(os.path.abspath(os.path.expanduser(configured)))
 
     def _default_workspace(self) -> str:

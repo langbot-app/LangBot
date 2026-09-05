@@ -96,7 +96,9 @@ services:
       # box.* and are forwarded to the Box runtime via INIT RPC.
       - BOX__LOCAL__HOST_ROOT=${LANGBOT_BOX_ROOT:-${PWD}/data/box}
       - BOX__LOCAL__DEFAULT_WORKSPACE=default
-      - BOX__LOCAL__SKILLS_ROOT=skills
+      # TODO(next-major): default LANGBOT_SKILLS_ROOT to ${PWD}/data/skills
+      # after the historical Box storage path no longer needs zero-copy upgrades.
+      - SKILLS__ROOT=${LANGBOT_SKILLS_ROOT:-${LANGBOT_BOX_ROOT:-${PWD}/data/box}/skills}
       - BOX__LOCAL__ALLOWED_MOUNT_ROOTS=${LANGBOT_BOX_ROOT:-${PWD}/data/box}
       - BOX__DOCKER__CPU_LIMIT_ENABLED=${LANGBOT_BOX_DOCKER_CPU_LIMIT_ENABLED:-true}
     ports:

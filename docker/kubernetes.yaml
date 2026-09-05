@@ -214,8 +214,9 @@ spec:
 # Deployment for LangBot Box (sandbox) runtime
 #
 # The Box runtime backs LangBot's sandbox tools (exec / read / write / edit /
-# glob / grep), the `activate` skill tool, skill add/edit, and stdio-mode MCP
-# servers. It is OPTIONAL: if you do not deploy it, set `BOX__ENABLED=false` on
+# glob / grep), Skill script execution, and stdio-mode MCP servers. Skill
+# activation, resources, and management remain Core-owned without Box. Box is
+# OPTIONAL: if you do not deploy it, set `BOX__ENABLED=false` on
 # the langbot Deployment (or `box.enabled: false` in config.yaml) so the
 # dashboard renders cleanly with sandbox features disabled.
 #
@@ -448,14 +449,15 @@ spec:
               key: token
         # box.local.* config — forwarded to the Box runtime via INIT RPC. The
         # host_root MUST match the box-root hostPath mountPath below AND the box
-        # Deployment's box-root mountPath, so that skill package paths resolve
-        # identically on both sides and on the node's Docker daemon.
+        # Deployment's box-root mountPath, so generic package mount paths
+        # resolve identically on both sides and on the node's Docker daemon.
         - name: BOX__LOCAL__HOST_ROOT
           value: "/app/data/box"
         - name: BOX__LOCAL__DEFAULT_WORKSPACE
           value: "default"
-        - name: BOX__LOCAL__SKILLS_ROOT
-          value: "skills"
+        - name: SKILLS__ROOT
+          # TODO(next-major): use /app/data/skills after the legacy path window.
+          value: "/app/data/box/skills"
         - name: BOX__LOCAL__ALLOWED_MOUNT_ROOTS
           value: "/app/data/box"
         volumeMounts:
