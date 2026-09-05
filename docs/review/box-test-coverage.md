@@ -51,7 +51,7 @@
 | BoxService workspace quota | 优秀 | 前置/后置配额检查、超额清理 |
 | BoxService 输出截断 | 优秀 | 短/精确边界/长输出、独立 stderr |
 | BoxService 可观测性 | 优秀 | 状态报告、error ring buffer、buffer 上限 |
-| BoxService session 模板 | 良好 | `resolve_box_session_id` + `build_skill_extra_mounts` 在 service / native / mcp 三处都有覆盖 |
+| BoxService session / mount contract | 良好 | `resolve_box_session_id` + generic `read_only_mounts`; Skill mount composition is covered in the Core loader |
 | RPC client/server 协议 | 优秀 | execute/get_sessions/delete/create/conflict error |
 | BoxRuntimeConnector | 良好 | local/remote 模式、Docker 平台、relay URL、心跳与重连回调 |
 | BoxWorkspaceSession | 良好 | payload 构建、managed process 路径重写、stage host file |

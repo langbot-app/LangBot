@@ -27,8 +27,8 @@ services:
 
   # The Box sandbox runtime is optional. It is only started when you run
   # ``docker compose --profile box up`` (or ``docker compose --profile all
-  # up``). With Box off, LangBot keeps the dashboard / skills list visible
-  # (read-only) but disables sandbox tools, skill add/edit and stdio MCP —
+  # up``). With Box off, LangBot keeps skill management, activation, and
+  # read-only resources available but disables execution tools and stdio MCP —
   # set ``box.enabled: false`` in ``data/config.yaml`` (or
   # ``BOX__ENABLED=false`` in the langbot service env below) to match.
   langbot_box:
@@ -73,6 +73,10 @@ services:
     container_name: langbot
     volumes:
       - ./data:/app/data
+      # Core owns the SkillRepository even when the Box profile is disabled.
+      # Keep this path identical to langbot_box so optional execution can
+      # consume the same Workspace-scoped package revisions.
+      - ${LANGBOT_BOX_ROOT:-${PWD}/data/box}:${LANGBOT_BOX_ROOT:-${PWD}/data/box}
     restart: on-failure
     environment:
       - TZ=Asia/Shanghai
@@ -92,7 +96,9 @@ services:
       # box.* and are forwarded to the Box runtime via INIT RPC.
       - BOX__LOCAL__HOST_ROOT=${LANGBOT_BOX_ROOT:-${PWD}/data/box}
       - BOX__LOCAL__DEFAULT_WORKSPACE=default
-      - BOX__LOCAL__SKILLS_ROOT=skills
+      # TODO(next-major): default LANGBOT_SKILLS_ROOT to ${PWD}/data/skills
+      # after the historical Box storage path no longer needs zero-copy upgrades.
+      - SKILLS__ROOT=${LANGBOT_SKILLS_ROOT:-${LANGBOT_BOX_ROOT:-${PWD}/data/box}/skills}
       - BOX__LOCAL__ALLOWED_MOUNT_ROOTS=${LANGBOT_BOX_ROOT:-${PWD}/data/box}
       - BOX__DOCKER__CPU_LIMIT_ENABLED=${LANGBOT_BOX_DOCKER_CPU_LIMIT_ENABLED:-true}
     ports:

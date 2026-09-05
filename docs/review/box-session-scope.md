@@ -18,7 +18,7 @@ has shipped the design largely as written:
 | Docker / nsjail / E2B backends apply extra mounts | ✅ Shipped | Last gap closed by SDK commit `0fea9b1` (E2B) |
 | `box-session-id-template` in `local-agent` pipeline config | ✅ Shipped | `templates/metadata/pipeline/ai.yaml`, default `{launcher_type}_{launcher_id}` |
 | `BoxService.resolve_box_session_id(query)` | ✅ Shipped | `pkg/box/service.py:166` |
-| `BoxService.build_skill_extra_mounts(query)` | ✅ Shipped | `pkg/box/service.py:189` |
+| `skill.build_execution_mounts(ap, query)` | ✅ Shipped | Core composes read-only packages; Box receives generic mounts |
 | Skill exec uses unified container + extra mounts | ✅ Shipped | `pkg/provider/tools/loaders/native.py` skill branch |
 | MCP-in-Box uses shared persistent session, multi-process | ✅ Shipped (earlier than originally scoped) | SDK commit `529088e`, LangBot `mcp_stdio.py:_build_box_session_id` |
 | `BoxManagedProcessSpec.process_id` + multi-process per session | ✅ Shipped | `BoxRuntime` keeps `managed_processes: dict[pid, _ManagedProcess]` |

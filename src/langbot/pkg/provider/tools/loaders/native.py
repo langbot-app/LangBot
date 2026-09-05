@@ -32,7 +32,7 @@ EDIT_TOOL_NAME = 'edit'
 GLOB_TOOL_NAME = 'glob'
 GREP_TOOL_NAME = 'grep'
 
-_ALL_TOOL_NAMES = {EXEC_TOOL_NAME, READ_TOOL_NAME, WRITE_TOOL_NAME, EDIT_TOOL_NAME, GLOB_TOOL_NAME, GREP_TOOL_NAME}
+SANDBOX_TOOL_NAMES = {EXEC_TOOL_NAME, READ_TOOL_NAME, WRITE_TOOL_NAME, EDIT_TOOL_NAME, GLOB_TOOL_NAME, GREP_TOOL_NAME}
 
 # Skip these dirs during grep walk to avoid noise
 _SKIP_DIRS = {'.git', 'node_modules', '__pycache__', '.venv', 'venv', '.tox', 'dist', 'build'}
@@ -260,7 +260,11 @@ class NativeToolLoader(loader.ToolLoader):
         return list(self._tools)
 
     async def has_tool(self, name: str) -> bool:
-        return name in _ALL_TOOL_NAMES and await self._is_sandbox_available()
+        return name in SANDBOX_TOOL_NAMES and await self._is_sandbox_available()
+
+    @staticmethod
+    def recognizes_tool(name: str) -> bool:
+        return name in SANDBOX_TOOL_NAMES
 
     async def invoke_tool(self, name: str, parameters: dict, query: pipeline_query.Query):
         require_sandbox = getattr(
@@ -325,20 +329,11 @@ class NativeToolLoader(loader.ToolLoader):
             if not package_root:
                 raise ValueError(f'Activated skill "{selected_skill_name}" has no package_root.')
 
-            # Pass only the logical name across the authenticated Core→Runtime
-            # boundary. In Cloud mode the shared Box Runtime resolves the
-            # Workspace-scoped package root and constructs the read-only mount;
-            # Core host paths are never accepted as mount authority.
             # Wrap command with Python venv bootstrap if the skill has a Python project.
             # The venv is created inside the skill's mount path.
             skill_mount = f'/workspace/.skills/{selected_skill_name}'
             python_project = selected_skill.get('python_project') is True
-            if 'python_project' not in selected_skill and bool(
-                getattr(self.ap.box_service, 'shares_filesystem_with_box', False)
-            ):
-                # Backward compatibility for a same-process OSS Runtime that
-                # predates trusted Box metadata. Never probe a path reported by
-                # an external Runtime from the Core filesystem.
+            if 'python_project' not in selected_skill:
                 python_project = skill_loader.should_prepare_skill_python_env(package_root)
             if python_project:
                 parameters = dict(parameters)
@@ -354,12 +349,9 @@ class NativeToolLoader(loader.ToolLoader):
         result = await self.ap.box_service.execute_tool(
             parameters,
             query,
-            skill_name=selected_skill_name,
+            read_only_mounts=skill_loader.build_execution_mounts(self.ap, query),
         )
         result = self._normalize_exec_result(result)
-
-        if selected_skill is not None:
-            self._refresh_skill_from_disk(query, selected_skill)
         return result
 
     def _resolve_host_location(
@@ -381,10 +373,7 @@ class NativeToolLoader(loader.ToolLoader):
         box_service = self.ap.box_service
         if selected_skill is not None:
             if not self._can_interpret_skill_host_paths():
-                raise ValueError(
-                    'Skill package paths are owned by the Box Runtime; '
-                    'this operation requires a Runtime skill-file API.'
-                )
+                raise ValueError('Secure Core host file operations are unavailable on this platform.')
             host_root = selected_skill.get('package_root')
             workspace_anchor = None
         else:
@@ -422,11 +411,9 @@ class NativeToolLoader(loader.ToolLoader):
         return selected_skill, relative
 
     def _can_interpret_skill_host_paths(self) -> bool:
-        """Require an explicitly proven shared Core/Runtime filesystem view."""
+        """Return whether Core can use its no-follow host file primitives."""
 
-        return _SECURE_HOST_FILE_OPS_AVAILABLE and bool(
-            getattr(self.ap.box_service, 'shares_filesystem_with_box', False)
-        )
+        return _SECURE_HOST_FILE_OPS_AVAILABLE
 
     def _should_use_box_workspace_files(self, selected_skill: dict | None) -> bool:
         if selected_skill is not None:
@@ -1123,20 +1110,11 @@ else:
             include_visible=True,
             include_activated=True,
         )
-        if skill_request is not None and hasattr(self.ap.box_service, 'read_skill_file'):
+        skill_repository = getattr(self.ap, 'skill_repository', None)
+        if skill_request is not None and skill_repository is not None:
             selected_skill, relative = skill_request
-            if self._can_interpret_skill_host_paths():
-                host_location = self._resolve_skill_host_location(selected_skill, relative)
-            else:
-                host_location = None
-            if host_location is not None:
-                try:
-                    return await asyncio.to_thread(self._read_host_location, host_location, parameters)
-                except FileNotFoundError:
-                    pass
-
             try:
-                result = await self.ap.box_service.read_skill_file(
+                result = await skill_repository.read_skill_file(
                     self._execution_context(query),
                     selected_skill['name'],
                     relative,
@@ -1144,7 +1122,7 @@ else:
                 return self._build_read_result_from_text(str(result.get('content', '')), parameters)
             except Exception:
                 try:
-                    result = await self.ap.box_service.list_skill_files(
+                    result = await skill_repository.list_skill_files(
                         self._execution_context(query),
                         selected_skill['name'],
                         relative,
@@ -1178,12 +1156,13 @@ else:
             include_visible=False,
             include_activated=True,
         )
-        if skill_request is not None and hasattr(self.ap.box_service, 'write_skill_file'):
+        skill_repository = getattr(self.ap, 'skill_repository', None)
+        if skill_request is not None and skill_repository is not None:
             if encoding != 'text':
                 return {'ok': False, 'error': 'base64 writes to skill packages are not supported.'}
             selected_skill, relative = skill_request
             execution_context = self._execution_context(query)
-            await self.ap.box_service.write_skill_file(execution_context, selected_skill['name'], relative, content)
+            await skill_repository.write_skill_file(execution_context, selected_skill['name'], relative, content)
             await self.ap.skill_mgr.reload_skills(execution_context)
             return {'ok': True, 'path': path}
 
@@ -1216,14 +1195,10 @@ else:
             include_visible=False,
             include_activated=True,
         )
-        if (
-            skill_request is not None
-            and hasattr(self.ap.box_service, 'read_skill_file')
-            and hasattr(self.ap.box_service, 'write_skill_file')
-        ):
+        if skill_request is not None and getattr(self.ap, 'skill_repository', None) is not None:
             selected_skill, relative = skill_request
             try:
-                result = await self.ap.box_service.read_skill_file(
+                result = await self.ap.skill_repository.read_skill_file(
                     self._execution_context(query),
                     selected_skill['name'],
                     relative,
@@ -1238,7 +1213,7 @@ else:
                 return {'ok': False, 'error': f'old_string matches {count} locations; provide a more unique string.'}
             new_content = content.replace(old_string, new_string, 1)
             execution_context = self._execution_context(query)
-            await self.ap.box_service.write_skill_file(
+            await self.ap.skill_repository.write_skill_file(
                 execution_context,
                 selected_skill['name'],
                 relative,

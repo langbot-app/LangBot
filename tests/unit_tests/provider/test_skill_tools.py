@@ -67,15 +67,10 @@ def _make_skill_data(
 
 
 class TestSkillManagerCache:
-    """The Box runtime is the only source of truth — SkillManager just holds
-    an in-memory cache populated by ``reload_skills``. There is no local
-    filesystem reader anymore."""
+    """SkillManager caches the Core-owned SkillRepository catalog."""
 
     def test_refresh_skill_from_disk_reports_cache_presence(self):
-        """Box is the only source of truth for skill content. refresh_skill_from_disk
-        now just reports whether the skill is still in the in-memory cache —
-        the actual content refresh is driven by SkillService awaiting
-        ``reload_skills`` after every Box mutation."""
+        """Disk mutations are reflected by an explicit repository reload."""
         from langbot.pkg.skill.manager import SkillManager
 
         ap = _make_ap()
@@ -92,67 +87,26 @@ class TestSkillManagerCache:
         assert mgr.refresh_skill_from_disk(_CONTEXT, '') is False
 
     @pytest.mark.asyncio
-    async def test_reload_skills_drops_box_skills_with_missing_package_root(self):
-        """When LangBot shares a filesystem with Box (local stdio mode) and Box
-        reports a skill whose package_root is gone from that shared filesystem,
-        the cache must drop it instead of keeping a stale entry that would later
-        produce a bad mount."""
+    async def test_reload_skills_uses_repository_when_box_is_disabled(self):
         from langbot.pkg.skill.manager import SkillManager
 
-        with tempfile.TemporaryDirectory() as live_dir:
-            ghost_dir = os.path.join(live_dir, '_does_not_exist')
-            box_service = SimpleNamespace(
-                available=True,
-                shares_filesystem_with_box=True,
-                list_skills=AsyncMock(
-                    return_value=[
-                        _make_skill_data(name='alive', package_root=live_dir),
-                        _make_skill_data(name='ghost', package_root=ghost_dir),
-                    ]
-                ),
-            )
-
-            ap = _make_ap()
-            ap.box_service = box_service
-            mgr = SkillManager(ap)
-
-            await mgr.reload_skills(_CONTEXT)
-
-        assert list(mgr.get_skills(_CONTEXT)) == ['alive']
-        # Warning fired with the dropped skill name so operators can see it.
-        warning_messages = [str(call.args[0]) for call in ap.logger.warning.call_args_list]
-        assert any('ghost' in msg and 'package_root missing' in msg for msg in warning_messages)
-
-    @pytest.mark.asyncio
-    async def test_reload_skills_trusts_box_paths_when_filesystem_not_shared(self):
-        """In separated deployments (Docker Compose, k8s sidecar,
-        --standalone-box, remote endpoint) the package_root reported by Box
-        lives on the Box runtime's filesystem and is not resolvable on the
-        LangBot side. The cache must keep every Box-reported skill rather than
-        dropping them all via a local isdir() check."""
-        from langbot.pkg.skill.manager import SkillManager
-
-        box_service = SimpleNamespace(
-            available=True,
-            shares_filesystem_with_box=False,
+        repository = SimpleNamespace(
             list_skills=AsyncMock(
                 return_value=[
-                    _make_skill_data(name='alpha', package_root='/box/skills/alpha'),
-                    _make_skill_data(name='beta', package_root='/box/skills/beta'),
+                    _make_skill_data(name='alpha', package_root='/skills/alpha'),
+                    _make_skill_data(name='beta', package_root='/skills/beta'),
                 ]
             ),
         )
-
         ap = _make_ap()
-        ap.box_service = box_service
+        ap.box_service = SimpleNamespace(available=False, enabled=False)
+        ap.skill_repository = repository
         mgr = SkillManager(ap)
 
         await mgr.reload_skills(_CONTEXT)
 
         assert sorted(mgr.get_skills(_CONTEXT)) == ['alpha', 'beta']
-        # No skill dropped → no "package_root missing" warning.
-        warning_messages = [str(call.args[0]) for call in ap.logger.warning.call_args_list]
-        assert not any('package_root missing' in msg for msg in warning_messages)
+        repository.list_skills.assert_awaited_once_with(_CONTEXT)
 
 
 class TestSkillActivationHelper:
@@ -322,7 +276,7 @@ class TestSkillPathHelpers:
 
 
 class TestSkillToolLoader:
-    """The skill tool surface is now just ``activate`` + ``register_skill``.
+    """Skill activation and resources are independent from sandbox execution.
 
     The legacy CRUD authoring tools (create/list/get/update/delete/
     import_skill_from_directory/reload_skills) were removed; skill CRUD is
@@ -338,8 +292,11 @@ class TestSkillToolLoader:
         from langbot.pkg.provider.tools.loaders.skill import ACTIVATED_SKILLS_KEY
 
         skill = _make_skill_data(name='demo', package_root='/data/skills/demo', instructions='Step 1')
+        skill['revision'] = 'sha256:demo'
         ap = _make_ap()
         ap.skill_mgr = _make_skill_manager({'demo': skill})
+        ap.skill_repository = SimpleNamespace(get_skill=AsyncMock(return_value=skill))
+        ap.box_service = SimpleNamespace(is_workspace_sandbox_available=AsyncMock(return_value=False))
 
         loader = SkillToolLoader(ap)
         query = _make_query()
@@ -348,9 +305,13 @@ class TestSkillToolLoader:
 
         assert result['activated'] is True
         assert result['skill_name'] == 'demo'
-        assert result['mount_path'] == '/workspace/.skills/demo'
+        assert result['mount_path'] is None
+        assert result['revision'] == 'sha256:demo'
+        assert result['capabilities']['resources_readable'] is True
+        assert result['capabilities']['execution_available'] is False
         assert result['activated_skill_names'] == ['demo']
         assert 'Step 1' in result['content']
+        assert '<package-root>' not in result['content']
         assert set(query.variables[ACTIVATED_SKILLS_KEY].keys()) == {'demo'}
 
     @pytest.mark.asyncio
@@ -384,7 +345,11 @@ class TestSkillToolLoader:
             os.makedirs(repo_dir)
 
             ap = _make_ap()
-            ap.box_service = SimpleNamespace(default_workspace=tmpdir, available=True)
+            ap.box_service = SimpleNamespace(
+                default_workspace=tmpdir,
+                available=True,
+                require_workspace_sandbox=AsyncMock(return_value=_CONTEXT),
+            )
             ap.skill_service = SimpleNamespace(
                 scan_directory_async=AsyncMock(
                     return_value={
@@ -394,7 +359,7 @@ class TestSkillToolLoader:
                         'instructions': 'Do work',
                     }
                 ),
-                create_skill=AsyncMock(
+                import_skill_directory=AsyncMock(
                     return_value=_make_skill_data(name='cloned-skill', package_root=os.path.realpath(repo_dir))
                 ),
             )
@@ -407,14 +372,14 @@ class TestSkillToolLoader:
             )
 
         ap.skill_service.scan_directory_async.assert_awaited_once_with(_CONTEXT, os.path.realpath(repo_dir))
-        ap.skill_service.create_skill.assert_awaited_once_with(
+        ap.skill_service.import_skill_directory.assert_awaited_once_with(
             _CONTEXT,
+            os.path.realpath(repo_dir),
             {
                 'name': 'cloned-skill',
                 'display_name': 'Cloned Skill',
                 'description': 'Imported from clone',
                 'instructions': 'Do work',
-                'package_root': os.path.realpath(repo_dir),
             },
         )
         assert result['registered'] is True
@@ -430,8 +395,15 @@ class TestSkillToolLoader:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             ap = _make_ap()
-            ap.box_service = SimpleNamespace(default_workspace=tmpdir, available=True)
-            ap.skill_service = SimpleNamespace(scan_directory_async=AsyncMock(), create_skill=AsyncMock())
+            ap.box_service = SimpleNamespace(
+                default_workspace=tmpdir,
+                available=True,
+                require_workspace_sandbox=AsyncMock(return_value=_CONTEXT),
+            )
+            ap.skill_service = SimpleNamespace(
+                scan_directory_async=AsyncMock(),
+                import_skill_directory=AsyncMock(),
+            )
 
             loader = SkillToolLoader(ap)
 
@@ -451,7 +423,11 @@ class TestSkillToolLoader:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             ap = _make_ap()  # no skill_service attribute
-            ap.box_service = SimpleNamespace(default_workspace=tmpdir, available=True)
+            ap.box_service = SimpleNamespace(
+                default_workspace=tmpdir,
+                available=True,
+                require_workspace_sandbox=AsyncMock(return_value=_CONTEXT),
+            )
 
             loader = SkillToolLoader(ap)
 
@@ -463,21 +439,22 @@ class TestSkillToolLoader:
                 )
 
     @pytest.mark.asyncio
-    async def test_tools_hidden_when_sandbox_backend_unavailable(self):
+    async def test_read_only_tools_remain_when_sandbox_unavailable(self):
         from langbot.pkg.provider.tools.loaders.skill_authoring import SkillToolLoader
 
         ap = _make_ap()
         ap.skill_mgr = SimpleNamespace(skills={})
-        ap.box_service = SimpleNamespace(
-            available=True,
-            get_backend_status=AsyncMock(return_value={'backend': {'available': False}}),
-        )
+        ap.skill_repository = SimpleNamespace()
 
         loader = SkillToolLoader(ap)
         await loader.initialize()
 
-        assert await loader.get_tools() == []
-        assert await loader.has_tool('activate') is False
+        assert sorted(tool.name for tool in await loader.get_tools(sandbox_available=False)) == [
+            'activate',
+            'list_skill_resources',
+            'read_skill_resource',
+        ]
+        assert await loader.has_tool('activate') is True
         assert await loader.has_tool('register_skill') is False
 
     @pytest.mark.asyncio
@@ -486,38 +463,89 @@ class TestSkillToolLoader:
 
         ap = _make_ap()
         ap.skill_mgr = _make_skill_manager({'demo': _make_skill_data(name='demo')})
-        ap.box_service = SimpleNamespace(
-            available=True,
-            get_backend_status=AsyncMock(return_value={'backend': {'available': True}}),
-        )
+        ap.skill_repository = SimpleNamespace()
 
         loader = SkillToolLoader(ap)
         await loader.initialize()
 
-        tools = await loader.get_tools()
+        tools = await loader.get_tools(sandbox_available=True)
 
-        assert sorted(tool.name for tool in tools) == ['activate', 'register_skill']
+        assert sorted(tool.name for tool in tools) == [
+            'activate',
+            'list_skill_resources',
+            'read_skill_resource',
+            'register_skill',
+        ]
         assert await loader.has_tool('activate') is True
-        assert await loader.has_tool('register_skill') is True
+        assert await loader.has_tool('register_skill', sandbox_available=True) is True
 
     @pytest.mark.asyncio
-    async def test_tools_reappear_after_box_backend_recovers(self):
+    async def test_register_skill_appears_after_sandbox_recovers(self):
         from langbot.pkg.provider.tools.loaders.skill_authoring import SkillToolLoader
 
         ap = _make_ap()
         ap.skill_mgr = SimpleNamespace(skills={'demo': _make_skill_data(name='demo')})
-        ap.box_service = SimpleNamespace(
-            available=False,
-            get_backend_status=AsyncMock(return_value={'backend': {'available': True}}),
-        )
+        ap.skill_repository = SimpleNamespace()
 
         loader = SkillToolLoader(ap)
         await loader.initialize()
-        assert await loader.get_tools() == []
+        assert 'register_skill' not in {tool.name for tool in await loader.get_tools(sandbox_available=False)}
+        assert 'register_skill' in {tool.name for tool in await loader.get_tools(sandbox_available=True)}
 
-        ap.box_service.available = True
+    @pytest.mark.asyncio
+    async def test_resources_require_activation_and_use_pinned_revision(self):
+        from langbot.pkg.provider.tools.loaders.skill import register_activated_skill
+        from langbot.pkg.provider.tools.loaders.skill_authoring import SkillToolLoader
 
-        assert sorted(tool.name for tool in await loader.get_tools()) == ['activate', 'register_skill']
+        skill = _make_skill_data(name='demo', instructions='Read references')
+        skill['revision'] = 'sha256:demo'
+        ap = _make_ap()
+        ap.skill_mgr = _make_skill_manager({'demo': skill})
+        ap.skill_repository = SimpleNamespace(
+            list_skill_resources=AsyncMock(
+                return_value={'entries': [{'path': 'references/a.md'}], 'revision': 'sha256:demo'}
+            ),
+            read_skill_resource=AsyncMock(
+                return_value={
+                    'path': 'references/a.md',
+                    'content': 'reference text',
+                    'revision': 'sha256:demo',
+                    'mime_type': 'text/markdown',
+                }
+            ),
+        )
+        loader = SkillToolLoader(ap)
+        query = _make_query()
+
+        with pytest.raises(ValueError, match='must be activated'):
+            await loader.invoke_tool(
+                'read_skill_resource',
+                {'skill_name': 'demo', 'path': 'references/a.md'},
+                query,
+            )
+
+        register_activated_skill(query, skill)
+        listed = await loader.invoke_tool('list_skill_resources', {'skill_name': 'demo'}, query)
+        read = await loader.invoke_tool(
+            'read_skill_resource',
+            {'skill_name': 'demo', 'path': 'references/a.md', 'revision': 'sha256:demo'},
+            query,
+        )
+
+        assert listed['entries'][0]['path'] == 'references/a.md'
+        assert read['content'] == 'reference text'
+        ap.skill_repository.list_skill_resources.assert_awaited_once_with(
+            _CONTEXT,
+            'demo',
+            '.',
+            expected_revision='sha256:demo',
+        )
+        ap.skill_repository.read_skill_resource.assert_awaited_once_with(
+            _CONTEXT,
+            'demo',
+            'references/a.md',
+            expected_revision='sha256:demo',
+        )
 
 
 class TestNativeToolLoaderSkillPaths:
@@ -551,7 +579,7 @@ class TestNativeToolLoaderSkillPaths:
             assert result['truncated'] is False
 
     @pytest.mark.asyncio
-    async def test_external_runtime_read_never_interprets_package_root_on_core_host(self):
+    async def test_external_runtime_read_uses_core_skill_repository(self):
         from langbot.pkg.provider.tools.loaders.native import NativeToolLoader
         from langbot.pkg.provider.tools.loaders.skill import PIPELINE_BOUND_SKILLS_KEY
 
@@ -563,7 +591,9 @@ class TestNativeToolLoaderSkillPaths:
             ap.box_service = SimpleNamespace(
                 available=True,
                 shares_filesystem_with_box=False,
-                read_skill_file=AsyncMock(return_value={'content': 'runtime-owned-content'}),
+            )
+            ap.skill_repository = SimpleNamespace(
+                read_skill_file=AsyncMock(return_value={'content': 'repository-content'})
             )
             ap.skill_mgr = _make_skill_manager({'demo': _make_skill_data(name='demo', package_root=tmpdir)})
             loader = NativeToolLoader(ap)
@@ -579,12 +609,12 @@ class TestNativeToolLoaderSkillPaths:
             )
 
             assert result['ok'] is True
-            assert result['content'] == 'runtime-owned-content'
+            assert result['content'] == 'repository-content'
             assert 'core-host-secret' not in repr(result)
-            ap.box_service.read_skill_file.assert_awaited_once_with(_CONTEXT, 'demo', 'SKILL.md')
+            ap.skill_repository.read_skill_file.assert_awaited_once_with(_CONTEXT, 'demo', 'SKILL.md')
 
     @pytest.mark.asyncio
-    async def test_external_runtime_rejects_skill_host_fallback_without_protocol_capability(self):
+    async def test_core_owned_skill_path_does_not_depend_on_runtime_topology(self):
         from langbot.pkg.provider.tools.loaders.native import NativeToolLoader
         from langbot.pkg.provider.tools.loaders.skill import PIPELINE_BOUND_SKILLS_KEY
 
@@ -604,18 +634,20 @@ class TestNativeToolLoaderSkillPaths:
                 variables={PIPELINE_BOUND_SKILLS_KEY: ['demo']},
             )
 
-            with pytest.raises(ValueError, match='owned by the Box Runtime'):
-                await loader.invoke_tool(
-                    'grep',
-                    {
-                        'path': '/workspace/.skills/demo',
-                        'pattern': 'core-host-secret',
-                    },
-                    query,
-                )
+            result = await loader.invoke_tool(
+                'grep',
+                {
+                    'path': '/workspace/.skills/demo',
+                    'pattern': 'core-host-secret',
+                },
+                query,
+            )
+
+            assert result['ok'] is True
+            assert result['total'] == 1
 
     @pytest.mark.asyncio
-    async def test_exec_in_activated_skill_mount_rewrites_command_and_refreshes(self):
+    async def test_exec_in_activated_skill_mount_rewrites_command_without_mutating_skill(self):
         from langbot.pkg.provider.tools.loaders.native import NativeToolLoader
         from langbot.pkg.provider.tools.loaders.skill import register_activated_skill
 
@@ -626,11 +658,15 @@ class TestNativeToolLoaderSkillPaths:
                 default_workspace=tmpdir,
                 execute_tool=AsyncMock(return_value={'ok': True}),
             )
-            ap.skill_mgr = SimpleNamespace(refresh_skill_from_disk=Mock())
+            skill_data = _make_skill_data(name='demo', package_root=tmpdir)
+            ap.skill_mgr = _make_skill_manager(
+                {'demo': skill_data},
+                refresh_skill_from_disk=Mock(),
+            )
             loader = NativeToolLoader(ap)
 
             query = _make_query(query_id='q1', launcher_type='person', launcher_id='123')
-            register_activated_skill(query, _make_skill_data(name='demo', package_root=tmpdir))
+            register_activated_skill(query, skill_data)
 
             result = await loader.invoke_tool(
                 'exec',
@@ -645,8 +681,8 @@ class TestNativeToolLoaderSkillPaths:
             tool_parameters = ap.box_service.execute_tool.await_args.args[0]
             assert tool_parameters['command'] == 'python /workspace/.skills/demo/scripts/run.py'
             assert tool_parameters['workdir'] == '/workspace/.skills/demo'
-            assert ap.box_service.execute_tool.await_args.kwargs['skill_name'] == 'demo'
-            ap.skill_mgr.refresh_skill_from_disk.assert_called_once_with(_CONTEXT, 'demo')
+            assert 'skill_name' not in ap.box_service.execute_tool.await_args.kwargs
+            ap.skill_mgr.refresh_skill_from_disk.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_external_runtime_python_skill_uses_trusted_metadata_and_writable_env(self):
@@ -659,17 +695,18 @@ class TestNativeToolLoaderSkillPaths:
             shares_filesystem_with_box=False,
             execute_tool=AsyncMock(return_value={'ok': True}),
         )
-        ap.skill_mgr = SimpleNamespace(refresh_skill_from_disk=Mock())
+        skill_data = _make_skill_data(
+            name='demo',
+            package_root='/box-runtime/skills/tenants/workspace/demo',
+            python_project=True,
+        )
+        ap.skill_mgr = _make_skill_manager(
+            {'demo': skill_data},
+            refresh_skill_from_disk=Mock(),
+        )
         loader = NativeToolLoader(ap)
         query = _make_query(query_id='q-external', launcher_type='person', launcher_id='123')
-        register_activated_skill(
-            query,
-            _make_skill_data(
-                name='demo',
-                package_root='/box-runtime/skills/tenants/workspace/demo',
-                python_project=True,
-            ),
-        )
+        register_activated_skill(query, skill_data)
 
         result = await loader.invoke_tool(
             'exec',
@@ -686,7 +723,7 @@ class TestNativeToolLoaderSkillPaths:
         assert '_LB_VENV_DIR="/workspace/.skill-envs/demo/.venv"' in wrapped
         assert 'root = "/workspace/.skills/demo"' in wrapped
         assert '/box-runtime/skills/tenants/workspace/demo' not in wrapped
-        assert ap.box_service.execute_tool.await_args.kwargs['skill_name'] == 'demo'
+        assert 'skill_name' not in ap.box_service.execute_tool.await_args.kwargs
 
     @pytest.mark.asyncio
     async def test_write_requires_skill_activation(self):

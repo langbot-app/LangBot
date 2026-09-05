@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import os
 import re
 import typing
 
-from ....box import workspace as box_workspace
 from ....api.http.context import ExecutionContext
+from ....utils.python_workspace import (
+    should_prepare_python_env,
+    wrap_python_command_with_env,
+)
 
 if typing.TYPE_CHECKING:
     from ....core import app
@@ -55,6 +59,30 @@ def get_visible_skills(ap: app.Application, query: pipeline_query.Query) -> dict
 
 def get_visible_skill(ap: app.Application, query: pipeline_query.Query, skill_name: str) -> dict | None:
     return get_visible_skills(ap, query).get(skill_name)
+
+
+def build_execution_mounts(ap: app.Application, query: pipeline_query.Query) -> list[dict]:
+    """Translate visible Core-owned packages into generic read-only mounts."""
+
+    mounts: list[dict] = []
+    for skill_name, skill_data in get_visible_skills(ap, query).items():
+        package_root = str(skill_data.get('package_root', '') or '').strip()
+        if not package_root:
+            continue
+        if not os.path.isdir(package_root):
+            ap.logger.warning(
+                f'Skill "{skill_name}" package_root missing on the Core filesystem '
+                f'({package_root}); skipping its execution mount. Reload the skill catalog.'
+            )
+            continue
+        mounts.append(
+            {
+                'host_path': package_root,
+                'mount_path': get_virtual_skill_mount_path(skill_name),
+                'mode': 'ro',
+            }
+        )
+    return mounts
 
 
 def get_activated_skills(query: pipeline_query.Query) -> dict[str, dict]:
@@ -198,7 +226,7 @@ def build_skill_session_id(skill_data: dict, query: pipeline_query.Query) -> str
 
 
 def should_prepare_skill_python_env(package_root: str | None) -> bool:
-    return box_workspace.should_prepare_python_env(package_root)
+    return should_prepare_python_env(package_root)
 
 
 def wrap_skill_command_with_python_env(
@@ -207,7 +235,7 @@ def wrap_skill_command_with_python_env(
     mount_path: str = '/workspace',
     state_path: str | None = None,
 ) -> str:
-    return box_workspace.wrap_python_command_with_env(
+    return wrap_python_command_with_env(
         command,
         mount_path=mount_path,
         state_path=state_path,

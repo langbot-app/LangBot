@@ -29,6 +29,9 @@ from langbot.pkg.cloud.entitlements import (
     EntitlementSnapshot,
     EntitlementUnavailableError,
 )
+from langbot.pkg.skill.manager import SkillManager
+from langbot.pkg.skill.repository import SkillRepository
+from langbot.pkg.provider.tools.loaders import skill as skill_loader
 
 
 pytestmark = pytest.mark.integration
@@ -54,7 +57,7 @@ class _AdmissionBackend(BaseSandboxBackend):
             'mount_isolation': True,
             'network_isolation': True,
             'hard_workspace_quota': True,
-            'hard_skill_storage_quota': True,
+            'hard_read_only_mount_quota': True,
             'bounded_ephemeral_storage': True,
             'inode_quota': True,
         }
@@ -230,9 +233,18 @@ async def _stack(tmp_path):
         deployment=SimpleNamespace(multi_workspace_enabled=True),
         entitlement_resolver=EntitlementResolver('instance-a', entitlements),
         workspace_service=workspace_service,
-        instance_config=SimpleNamespace(data={'box': box_config, 'system': {'limitation': {}}}),
+        instance_config=SimpleNamespace(
+            data={
+                'skills': {'root': str(shared_root / 'skills')},
+                'box': box_config,
+                'system': {'limitation': {}},
+            }
+        ),
     )
+    app.skill_repository = SkillRepository(app)
+    app.skill_mgr = SkillManager(app)
     service = BoxService(app, client=client)
+    app.box_service = service
     await service.initialize()
     return service, runtime, backend, entitlements, server_task, client_task
 
@@ -312,7 +324,7 @@ async def test_two_workspaces_get_isolated_physical_sessions_and_paths(tmp_path)
 
 
 @pytest.mark.asyncio
-async def test_cloud_skills_reject_host_paths_and_require_managed_entitlement(tmp_path):
+async def test_cloud_core_skills_mount_generically_and_do_not_require_box_entitlement(tmp_path):
     service, runtime, backend, entitlements, server_task, client_task = await _stack(tmp_path)
     first = _context('workspace-a')
     second = _context('workspace-b')
@@ -324,32 +336,35 @@ async def test_cloud_skills_reject_host_paths_and_require_managed_entitlement(tm
         managed=False,
     )
     try:
-        private = await service.create_skill(
+        repository = service.ap.skill_repository
+        await repository.create_skill(
             second,
             {
                 'name': 'private',
                 'instructions': 'workspace-b secret',
             },
         )
-        own_skill = await service.create_skill(
+        own_skill = await repository.create_skill(
             first,
             {
                 'name': 'runner',
                 'instructions': 'Run scripts/main.py',
             },
         )
-        await service.write_skill_file(first, 'runner', 'scripts/main.py', "print('ok')")
-        await service.write_skill_file(first, 'runner', 'requirements.txt', 'requests==2.32.0\n')
-        refreshed_skill = await service.get_skill(first, 'runner')
+        await repository.write_skill_file(first, 'runner', 'scripts/main.py', "print('ok')")
+        await repository.write_skill_file(first, 'runner', 'requirements.txt', 'requests==2.32.0\n')
+        refreshed_skill = await repository.get_skill(first, 'runner')
         assert refreshed_skill is not None
         assert refreshed_skill['python_project'] is True
+        await service.ap.skill_mgr.reload_skills(first)
+        query = _query(first, 91)
         await service.execute_tool(
             {
                 'command': 'python /workspace/.skills/runner/scripts/main.py',
                 'workdir': '/workspace/.skills/runner',
             },
-            _query(first, 91),
-            skill_name='runner',
+            query,
+            read_only_mounts=skill_loader.build_execution_mounts(service.ap, query),
         )
 
         mounted_spec = backend.started_specs[-1]
@@ -358,20 +373,14 @@ async def test_cloud_skills_reject_host_paths_and_require_managed_entitlement(tm
         assert mounted_spec.extra_mounts[0].mount_path == '/workspace/.skills/runner'
         assert mounted_spec.extra_mounts[0].mode.value == 'ro'
 
-        with pytest.raises(BoxAdmissionError, match='Scanning arbitrary host'):
-            await service.scan_skill_directory(first, private['package_root'])
-        with pytest.raises(BoxAdmissionError, match='package_root is runtime-owned'):
-            await service.create_skill(
-                first,
-                {
-                    'name': 'stolen',
-                    'package_root': private['package_root'],
-                },
-            )
-
-        assert await service.get_skill(first, 'private') is None
+        assert await repository.get_skill(first, 'private') is None
+        await repository.create_skill(
+            ineligible,
+            {'name': 'docs-only', 'instructions': 'Read this without Box.'},
+        )
+        assert [skill['name'] for skill in await repository.list_skills(ineligible)] == ['docs-only']
         with pytest.raises(EntitlementUnavailableError):
-            await service.list_skills(ineligible)
+            await service.execute_tool({'command': 'true'}, _query(ineligible, 92))
     finally:
         server_task.cancel()
         client_task.cancel()
