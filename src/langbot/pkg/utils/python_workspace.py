@@ -27,11 +27,7 @@ def list_python_manifest_files(host_path: str | None) -> list[str]:
     normalized_root = normalize_host_path(host_path)
     if not normalized_root:
         return []
-    return [
-        filename
-        for filename in PYTHON_MANIFEST_FILES
-        if os.path.isfile(os.path.join(normalized_root, filename))
-    ]
+    return [filename for filename in PYTHON_MANIFEST_FILES if os.path.isfile(os.path.join(normalized_root, filename))]
 
 
 def should_prepare_python_env(host_path: str | None) -> bool:

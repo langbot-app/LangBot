@@ -18,6 +18,7 @@ import os
 from typing import Any
 
 from ..utils.python_workspace import list_python_manifest_files
+
 _VENV_DIRS = frozenset({'.venv', 'venv', 'env', '.env'})
 _VENV_BIN_DIRS = frozenset({'bin', 'Scripts'})
 
@@ -92,8 +93,6 @@ def classify_python_workspace(host_path: str | None) -> str | None:
     if 'requirements.txt' in manifest_files:
         return 'requirements'
     return None
-
-
 
 
 class BoxWorkspaceSession:
