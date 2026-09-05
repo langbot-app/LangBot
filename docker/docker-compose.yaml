@@ -27,8 +27,8 @@ services:
 
   # The Box sandbox runtime is optional. It is only started when you run
   # ``docker compose --profile box up`` (or ``docker compose --profile all
-  # up``). With Box off, LangBot keeps the dashboard / skills list visible
-  # (read-only) but disables sandbox tools, skill add/edit and stdio MCP —
+  # up``). With Box off, LangBot keeps skill management, activation, and
+  # read-only resources available but disables execution tools and stdio MCP —
   # set ``box.enabled: false`` in ``data/config.yaml`` (or
   # ``BOX__ENABLED=false`` in the langbot service env below) to match.
   langbot_box:
@@ -73,6 +73,10 @@ services:
     container_name: langbot
     volumes:
       - ./data:/app/data
+      # Core owns the SkillRepository even when the Box profile is disabled.
+      # Keep this path identical to langbot_box so optional execution can
+      # consume the same Workspace-scoped package revisions.
+      - ${LANGBOT_BOX_ROOT:-${PWD}/data/box}:${LANGBOT_BOX_ROOT:-${PWD}/data/box}
     restart: on-failure
     environment:
       - TZ=Asia/Shanghai
