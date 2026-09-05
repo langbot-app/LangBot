@@ -68,6 +68,7 @@ interface AgentFormComponentProps {
   onSavingChange?: (saving: boolean) => void;
   onRunnerStatusChange?: (status: AgentRunnerStatus) => void;
   onSupportedEventPatternsChange?: (patterns: string[]) => void;
+  onPlatformToolsChange?: (tools: AgentPlatformTool[]) => void;
 }
 
 export type AgentConfigSection =
@@ -124,6 +125,7 @@ function AgentFormComponent(
     onSavingChange,
     onRunnerStatusChange,
     onSupportedEventPatternsChange,
+    onPlatformToolsChange,
   }: AgentFormComponentProps,
   ref: ForwardedRef<AgentFormHandle>,
 ) {
@@ -131,6 +133,9 @@ function AgentFormComponent(
   const [runnerConfigSchema, setRunnerConfigSchema] =
     useState<PipelineConfigTab | null>(null);
   const [platformTools, setPlatformTools] = useState<AgentPlatformTool[]>([]);
+  useEffect(() => {
+    onPlatformToolsChange?.(platformTools);
+  }, [onPlatformToolsChange, platformTools]);
   const [platformToolCatalogAvailable, setPlatformToolCatalogAvailable] =
     useState(true);
   const [hostTools, setHostTools] = useState<PluginTool[]>([]);

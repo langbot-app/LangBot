@@ -10,6 +10,8 @@ import {
   Play,
 } from 'lucide-react';
 import { httpClient } from '@/app/infra/http/HttpClient';
+import type { AgentPlatformTool } from '@/app/infra/entities/api';
+import { extractI18nObject } from '@/i18n/I18nProvider';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -43,6 +45,7 @@ import { executionSteps, type DebugExecutionEvent } from './debug-execution';
 interface AgentDebugPanelProps {
   agentId: string;
   availableEventTypes: string[];
+  platformTools?: AgentPlatformTool[];
   supportedEventPatterns?: string[];
   beforeRun?: () => Promise<boolean>;
   hasUnsavedChanges?: boolean;
@@ -171,12 +174,16 @@ function matchesEventPattern(pattern: string, eventType: string) {
 export default function AgentDebugPanel({
   agentId,
   availableEventTypes,
+  platformTools = [],
   supportedEventPatterns = ['*'],
   beforeRun,
   hasUnsavedChanges = false,
   onOpenRunnerConfig,
 }: AgentDebugPanelProps) {
   const { t } = useTranslation();
+  const toolLabels = Object.fromEntries(
+    platformTools.map((tool) => [tool.name, extractI18nObject(tool.label)]),
+  );
   const [preset, setPreset] = useState('message.received');
   const [customEventType, setCustomEventType] = useState('custom.event');
   const [inputText, setInputText] = useState('');
@@ -428,9 +435,6 @@ export default function AgentDebugPanel({
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col">
-      <p className="shrink-0 border-b bg-muted/20 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
-        {t('agents.debugPlatformNotice')}
-      </p>
       <div ref={transcriptRef} className="min-h-0 flex-1 overflow-y-auto p-3">
         <div className="mb-3">
           <p className="text-sm font-medium">{t('agents.debugTranscript')}</p>
@@ -493,6 +497,7 @@ export default function AgentDebugPanel({
                       <AgentExecutionTrace
                         events={entry.events}
                         finished={entry.finished}
+                        toolLabels={toolLabels}
                       />
                     )}
                     {entry.text && (

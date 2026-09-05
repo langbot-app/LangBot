@@ -22,9 +22,11 @@ const textClass =
 export default function AgentExecutionTrace({
   events,
   finished = false,
+  toolLabels = {},
 }: {
   events: DebugExecutionEvent[];
   finished?: boolean;
+  toolLabels?: Record<string, string>;
 }) {
   const { t } = useTranslation();
   const steps = useMemo(() => executionSteps(events), [events]);
@@ -36,9 +38,9 @@ export default function AgentExecutionTrace({
     );
   return (
     <div className="min-w-0 space-y-3">
-      {ended && (
+      {ended && toolCount > 0 && (
         <p className="text-xs text-muted-foreground">
-          {t(toolCount ? 'agents.debugToolCount' : 'agents.debugNoToolCalls', {
+          {t('agents.debugToolCount', {
             count: toolCount,
           })}
         </p>
@@ -68,15 +70,22 @@ export default function AgentExecutionTrace({
             )}
           </div>
         ) : (
-          <section
+          <details
             key={index}
-            className="min-w-0 space-y-2 rounded-md border bg-background p-3"
+            className="min-w-0 rounded-md border bg-background p-3"
           >
-            <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+            <summary className="cursor-pointer text-xs">
               <span className="min-w-0 break-all font-medium">
                 <Wrench className="mr-1.5 inline size-3.5" />
-                {step.name}
+                {toolLabels[step.name] || step.name}
               </span>
+              {toolLabels[step.name] && toolLabels[step.name] !== step.name && (
+                <code className="ml-2 break-all font-mono text-xs text-muted-foreground">
+                  {step.name}
+                </code>
+              )}
+            </summary>
+            <div className="mt-2 space-y-2">
               <span
                 className={
                   step.status === 'failed'
@@ -100,33 +109,33 @@ export default function AgentExecutionTrace({
                           : 'agents.debugToolCompleted',
                     )}
               </span>
+              {step.parameters !== undefined && (
+                <div>
+                  <p className="text-xs text-muted-foreground">
+                    {t('agents.debugToolArguments')}
+                  </p>
+                  <pre className="mt-1 whitespace-pre-wrap break-all rounded bg-muted/40 p-2 font-mono text-xs">
+                    {formatValue(step.parameters)}
+                  </pre>
+                </div>
+              )}
+              {step.result !== undefined && step.result !== null && (
+                <div>
+                  <p className="text-xs text-muted-foreground">
+                    {t('agents.debugToolResult')}
+                  </p>
+                  <pre className="mt-1 whitespace-pre-wrap break-all rounded bg-muted/40 p-2 font-mono text-xs">
+                    {formatValue(step.result)}
+                  </pre>
+                </div>
+              )}
+              {step.error && (
+                <pre className={`${textClass} text-destructive`}>
+                  {step.error}
+                </pre>
+              )}
             </div>
-            {step.parameters !== undefined && (
-              <div>
-                <p className="text-xs text-muted-foreground">
-                  {t('agents.debugToolArguments')}
-                </p>
-                <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-all rounded bg-muted/40 p-2 font-mono text-xs">
-                  {formatValue(step.parameters)}
-                </pre>
-              </div>
-            )}
-            {step.result !== undefined && step.result !== null && (
-              <div>
-                <p className="text-xs text-muted-foreground">
-                  {t('agents.debugToolResult')}
-                </p>
-                <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-all rounded bg-muted/40 p-2 font-mono text-xs">
-                  {formatValue(step.result)}
-                </pre>
-              </div>
-            )}
-            {step.error && (
-              <pre className={`${textClass} text-destructive`}>
-                {step.error}
-              </pre>
-            )}
-          </section>
+          </details>
         ),
       )}
     </div>

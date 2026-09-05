@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 import { AlertTriangle, Trash2 } from 'lucide-react';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { useCurrentWorkspace } from '@/app/infra/http';
-import { Agent } from '@/app/infra/entities/api';
+import { Agent, AgentPlatformTool } from '@/app/infra/entities/api';
 import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
 import ProcessorDetailWorkbench from '@/app/home/components/processor-detail/ProcessorDetailWorkbench';
 import EntityBasicInfoDialog, {
@@ -41,6 +41,7 @@ export default function AgentDetailContent({ id }: { id: string }) {
     currentWorkspace?.permissions.includes('runtime.operate') ?? false;
   const { refreshPipelines, pipelines, setDetailEntityName } = useSidebarData();
   const [agent, setAgent] = useState<Agent | null>(null);
+  const [platformTools, setPlatformTools] = useState<AgentPlatformTool[]>([]);
   const [loading, setLoading] = useState(!isCreateMode);
   const [formDirty, setFormDirty] = useState(false);
   const [formSaving, setFormSaving] = useState(false);
@@ -224,14 +225,17 @@ export default function AgentDetailContent({ id }: { id: string }) {
               onSavingChange={setFormSaving}
               onRunnerStatusChange={setRunnerStatus}
               onSupportedEventPatternsChange={setSupportedEventPatterns}
+              onPlatformToolsChange={setPlatformTools}
             />
           </fieldset>
         }
         debugTitle={canOperate ? t('agents.debugTab') : undefined}
+        debugDescription={t('agents.debugPlatformNotice')}
         debugContent={
           canOperate ? (
             <AgentDebugPanel
               agentId={id}
+              platformTools={platformTools}
               hasUnsavedChanges={formDirty}
               beforeRun={async () => agentFormRef.current?.save() ?? false}
               onOpenRunnerConfig={() =>

@@ -1,5 +1,5 @@
 import { ReactNode, useState } from 'react';
-import { BarChart3, Bug, Settings } from 'lucide-react';
+import { BarChart3, Bug, Info, Settings } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -36,6 +36,7 @@ interface ProcessorDetailWorkbenchProps {
   configTitle: string;
   configContent: ReactNode;
   debugTitle?: string;
+  debugDescription?: string;
   debugContent?: ReactNode;
   debugConnected?: boolean;
   debugConnectedLabel?: string;
@@ -58,6 +59,7 @@ export default function ProcessorDetailWorkbench({
   configTitle,
   configContent,
   debugTitle,
+  debugDescription,
   debugContent,
   debugConnected,
   debugConnectedLabel,
@@ -196,6 +198,22 @@ export default function ProcessorDetailWorkbench({
                 <div className="flex min-w-0 items-center gap-2 font-medium">
                   <Bug className="size-4 shrink-0" />
                   <span className="truncate">{debugTitle}</span>
+                  {debugDescription && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          aria-label={debugDescription}
+                          className="inline-flex shrink-0 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+                        >
+                          <Info className="size-4" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-xs whitespace-normal leading-relaxed">
+                        {debugDescription}
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
                 </div>
                 {debugConnected !== undefined && (
                   <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
