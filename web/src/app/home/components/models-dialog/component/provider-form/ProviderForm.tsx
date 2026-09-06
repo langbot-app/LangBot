@@ -305,7 +305,13 @@ export default function ProviderForm({
                       </div>
 
                       {/* Options list */}
-                      <div className="min-h-0 max-h-[300px] overflow-y-auto overscroll-contain p-1">
+                      <div
+                        className="min-h-0 max-h-[300px] overflow-y-auto overscroll-contain p-1"
+                        // The dialog's document-level scroll lock treats this portal as outside.
+                        // Keep native list scrolling without forwarding gestures to that lock.
+                        onWheel={(event) => event.stopPropagation()}
+                        onTouchMove={(event) => event.stopPropagation()}
+                      >
                         {Object.entries(groupedRequesters).map(
                           ([category, items]) => {
                             if (items.length === 0) return null;

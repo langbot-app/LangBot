@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 import { installLangBotApiMocks } from './fixtures/langbot-api';
 
 // UI fixtures only: never authenticate or write a real provider.
+test.use({ hasTouch: true });
 for (const width of [1280, 390, 320]) {
   test(`provider dropdown bounded without dialog growth (${width}px)`, async ({
     page,
@@ -60,6 +61,38 @@ for (const width of [1280, 390, 320]) {
     await menu.evaluate(async (el) => {
       await Promise.all(el.getAnimations().map((a) => a.finished));
     });
+    const options = menu.locator(':scope > div').last();
+    await options.hover();
+    await page.mouse.wheel(0, 1200);
+    await expect
+      .poll(() => options.evaluate((el) => el.scrollTop))
+      .toBeGreaterThan(0);
+    if (width < 1280) {
+      await page.mouse.wheel(0, -1200);
+      await expect.poll(() => options.evaluate((el) => el.scrollTop)).toBe(0);
+      const box = (await options.boundingBox())!;
+      const session = await page.context().newCDPSession(page);
+      const x = box.x + box.width / 2;
+      const y = box.y + box.height - 30;
+      await session.send('Input.dispatchTouchEvent', {
+        type: 'touchStart',
+        touchPoints: [{ x, y }],
+      });
+      for (let step = 1; step <= 10; step++) {
+        await session.send('Input.dispatchTouchEvent', {
+          type: 'touchMove',
+          touchPoints: [{ x, y: y - step * 18 }],
+        });
+      }
+      await session.send('Input.dispatchTouchEvent', {
+        type: 'touchEnd',
+        touchPoints: [],
+      });
+      await session.detach();
+      await expect
+        .poll(() => options.evaluate((el) => el.scrollTop))
+        .toBeGreaterThan(0);
+    }
     const geometry = await menu.evaluate((el) => {
       const rect = el.getBoundingClientRect();
       const list = el.lastElementChild as HTMLElement;
@@ -78,7 +111,6 @@ for (const width of [1280, 390, 320]) {
         )
           clipped.push(parent.tagName);
       }
-      list.scrollTop = list.scrollHeight;
       return {
         left: rect.left,
         right: rect.right,
