@@ -283,6 +283,30 @@ test('expiration permits retry without duplicate provider and closing cancels pe
   await expect.poll(() => state.cancels).toBe(3);
 });
 
+test('model test retains the connected provider identity', async ({ page }) => {
+  const state = await fixture(page);
+  state.connected = true;
+  state.providers.push({
+    uuid: 'provider-1',
+    name: 'Connected Codex',
+    requester: 'openai-codex',
+    base_url: 'https://chatgpt.com/backend-api/codex',
+    api_keys: [],
+  });
+  await page.goto('/home/bots');
+  await page.getByRole('button', { name: 'Models', exact: true }).click();
+  await page.getByRole('button', { name: 'Add Model', exact: true }).click();
+  await page
+    .getByPlaceholder('Model Name', { exact: true })
+    .fill('fixture-codex-model');
+  const requestPromise = page.waitForRequest('**/models/llm/_/test');
+  await page.getByRole('button', { name: 'Test', exact: true }).click();
+  const payload = (await requestPromise).postDataJSON();
+  expect(payload.provider_uuid).toBe('provider-1');
+  expect(payload.provider.uuid).toBe('provider-1');
+  expect(payload.provider.api_keys).toEqual([]);
+});
+
 test('ordinary API-key provider still saves and closes', async ({ page }) => {
   const state = await fixture(page);
   await openModels(page);

@@ -486,6 +486,7 @@ export default function ModelsPanel({
       // Get the provider info
       const provider = providers.find((p) => p.uuid === providerUuid);
       const providerData = {
+        uuid: providerUuid,
         requester: provider?.requester || '',
         base_url: provider?.base_url || '',
         api_keys: provider?.api_keys || [],
@@ -495,7 +496,7 @@ export default function ModelsPanel({
         await httpClient.testLLMModel('_', {
           uuid: '',
           name,
-          provider_uuid: '',
+          provider_uuid: providerUuid,
           provider: providerData,
           abilities,
           reasoning_config: reasoningConfig,
@@ -505,7 +506,7 @@ export default function ModelsPanel({
         await httpClient.testEmbeddingModel('_', {
           uuid: '',
           name,
-          provider_uuid: '',
+          provider_uuid: providerUuid,
           provider: providerData,
           extra_args: extraArgsObj,
         } as never);
@@ -513,7 +514,7 @@ export default function ModelsPanel({
         await httpClient.testRerankModel('_', {
           uuid: '',
           name,
-          provider_uuid: '',
+          provider_uuid: providerUuid,
           provider: providerData,
           extra_args: extraArgsObj,
         } as never);

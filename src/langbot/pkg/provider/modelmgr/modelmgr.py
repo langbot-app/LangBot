@@ -18,7 +18,7 @@ from ...discover import engine
 from ...entity.errors import provider as provider_errors
 from ...entity.persistence import model as persistence_model
 from ...workspace.entities import WorkspaceExecutionBinding
-from ...workspace.errors import WorkspaceError, WorkspaceInvariantError
+from ...workspace.errors import WorkspaceError, WorkspaceInvariantError, WorkspaceNotFoundError
 from . import requester, token
 
 
@@ -638,10 +638,32 @@ class ModelManager:
     ) -> requester.RuntimeLLMModel:
         execution_context = await self.resolve_execution_context(context)
         provider_info = {**model_info.get('provider', {}), 'workspace_uuid': execution_context.workspace_uuid}
-        runtime_provider = await self._build_provider(
-            execution_context,
-            persistence_model.ModelProvider(**provider_info),
-        )
+        provider_uuid = model_info.get('provider_uuid') or provider_info.get('uuid')
+        inline_codex = provider_info.get('requester') == 'openai-codex'
+        provider_entity = persistence_model.ModelProvider(**provider_info)
+        if provider_uuid:
+            if provider_info.get('uuid') and provider_info['uuid'] != provider_uuid:
+                raise ValueError('Conflicting provider identities')
+            result = await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.select(persistence_model.ModelProvider).where(
+                    persistence_model.ModelProvider.workspace_uuid == execution_context.workspace_uuid,
+                    persistence_model.ModelProvider.uuid == provider_uuid,
+                )
+            )
+            saved_provider = result.first()
+            if saved_provider is None:
+                if inline_codex or model_info.get('provider_uuid'):
+                    raise WorkspaceNotFoundError('Provider not found')
+            else:
+                saved_provider = self._coerce_provider(saved_provider, execution_context)
+                if saved_provider.requester == 'openai-codex':
+                    # OAuth identity and transport configuration are server-owned.
+                    provider_entity = saved_provider
+                elif inline_codex:
+                    raise ValueError('This provider does not use ChatGPT sign-in')
+        elif inline_codex:
+            raise WorkspaceNotFoundError('Provider not found')
+        runtime_provider = await self._build_provider(execution_context, provider_entity)
         model_entity = persistence_model.LLMModel(
             workspace_uuid=execution_context.workspace_uuid,
             uuid=model_info.get('uuid', ''),
