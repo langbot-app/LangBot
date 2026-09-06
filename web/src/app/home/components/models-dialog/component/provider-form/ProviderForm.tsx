@@ -17,6 +17,11 @@ import {
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { DialogFooter } from '@/components/ui/dialog';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 import { toast } from 'sonner';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import { CustomApiError } from '@/app/infra/entities/common';
@@ -86,7 +91,6 @@ export default function ProviderForm({
   >([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isOpen, setIsOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const loadRequesters = useCallback(async () => {
@@ -130,28 +134,6 @@ export default function ProviderForm({
     }
     init();
   }, [providerId, loadProvider, loadRequesters]);
-
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (
-        dropdownRef.current &&
-        !dropdownRef.current.contains(event.target as Node)
-      ) {
-        setIsOpen(false);
-        setSearchQuery('');
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  // Focus search input when dropdown opens
-  useEffect(() => {
-    if (isOpen && searchInputRef.current) {
-      searchInputRef.current.focus();
-    }
-  }, [isOpen]);
 
   // Filter requesters based on search query
   const filteredRequesters = requesterList.filter(
@@ -250,50 +232,65 @@ export default function ProviderForm({
                   {t('models.requester')}
                   <span className="text-red-500">*</span>
                 </FormLabel>
-                <div ref={dropdownRef} className="relative">
+                <Popover
+                  open={isOpen}
+                  onOpenChange={(open) => {
+                    setIsOpen(open);
+                    if (!open) setSearchQuery('');
+                  }}
+                >
                   {/* Trigger button */}
-                  <button
-                    type="button"
-                    disabled={
-                      form.formState.isSubmitting ||
-                      (isCodex && (!!savedProviderId || loginActive))
-                    }
-                    aria-expanded={isOpen}
-                    onClick={() => setIsOpen(!isOpen)}
-                    className={cn(
-                      'flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50',
-                      isOpen && 'ring-2 ring-ring ring-offset-2',
-                    )}
-                  >
-                    {selectedRequester ? (
-                      <div className="flex items-center gap-2">
-                        <img
-                          src={httpClient.getProviderRequesterIconURL(
-                            selectedRequester.value,
-                          )}
-                          alt={selectedRequester.label}
-                          className="h-5 w-5 rounded"
-                        />
-                        <span>{selectedRequester.label}</span>
-                      </div>
-                    ) : (
-                      <span className="text-muted-foreground">
-                        {t('models.selectRequester')}
-                      </span>
-                    )}
-                    <ChevronDown
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      disabled={
+                        form.formState.isSubmitting ||
+                        (isCodex && (!!savedProviderId || loginActive))
+                      }
+                      aria-expanded={isOpen}
                       className={cn(
-                        'h-4 w-4 opacity-50 transition-transform',
-                        isOpen && 'rotate-180',
+                        'flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50',
+                        isOpen && 'ring-2 ring-ring ring-offset-2',
                       )}
-                    />
-                  </button>
+                    >
+                      {selectedRequester ? (
+                        <div className="flex items-center gap-2">
+                          <img
+                            src={httpClient.getProviderRequesterIconURL(
+                              selectedRequester.value,
+                            )}
+                            alt={selectedRequester.label}
+                            className="h-5 w-5 rounded"
+                          />
+                          <span>{selectedRequester.label}</span>
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground">
+                          {t('models.selectRequester')}
+                        </span>
+                      )}
+                      <ChevronDown
+                        className={cn(
+                          'h-4 w-4 opacity-50 transition-transform',
+                          isOpen && 'rotate-180',
+                        )}
+                      />
+                    </button>
+                  </PopoverTrigger>
 
-                  {/* Dropdown */}
+                  {/* Unmount on close so an exiting layer cannot eat Dialog Escape. */}
                   {isOpen && (
-                    <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover text-popover-foreground shadow-md animate-in fade-in-0 zoom-in-95">
+                    <PopoverContent
+                      align="start"
+                      collisionPadding={8}
+                      className="flex max-h-[var(--radix-popover-content-available-height)] w-[var(--radix-popover-trigger-width)] max-w-[calc(100vw-16px)] flex-col overflow-hidden p-0"
+                      onOpenAutoFocus={(event) => {
+                        event.preventDefault();
+                        searchInputRef.current?.focus();
+                      }}
+                    >
                       {/* Search input */}
-                      <div className="flex items-center border-b px-3">
+                      <div className="flex shrink-0 items-center border-b px-3">
                         <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
                         <input
                           ref={searchInputRef}
@@ -308,7 +305,7 @@ export default function ProviderForm({
                       </div>
 
                       {/* Options list */}
-                      <div className="max-h-[300px] overflow-y-auto p-1">
+                      <div className="min-h-0 max-h-[300px] overflow-y-auto overscroll-contain p-1">
                         {Object.entries(groupedRequesters).map(
                           ([category, items]) => {
                             if (items.length === 0) return null;
@@ -375,9 +372,9 @@ export default function ProviderForm({
                           </div>
                         )}
                       </div>
-                    </div>
+                    </PopoverContent>
                   )}
-                </div>
+                </Popover>
                 <FormMessage />
                 {selectedRequester?.description && (
                   <p className="text-sm text-muted-foreground">
