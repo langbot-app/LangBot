@@ -1,4 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { Check, Copy } from 'lucide-react';
+import { toast } from 'sonner';
+import { copyToClipboard } from '@/app/utils/clipboard';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import type { useCodexLogin } from './useCodexLogin';
@@ -15,6 +18,37 @@ export default function CodexAccountSection({
   const [copied, setCopied] = useState(false);
   const [copyFailed, setCopyFailed] = useState(false);
   const { phase, device } = login;
+  const copyGeneration = useRef(0);
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    const generation = copyGeneration;
+    setCopied(false);
+    setCopyFailed(false);
+    return () => {
+      generation.current++;
+      if (copyTimer.current) clearTimeout(copyTimer.current);
+    };
+  }, [providerId, device?.authorization_id, device?.user_code, phase]);
+  const handleCopy = async () => {
+    if (!device) return;
+    const generation = ++copyGeneration.current;
+    if (copyTimer.current) clearTimeout(copyTimer.current);
+    let ok = false;
+    try {
+      ok = await copyToClipboard(device.user_code);
+    } catch {
+      // Clipboard failures are recoverable; never log device codes.
+    }
+    if (generation !== copyGeneration.current) return;
+    setCopied(ok);
+    setCopyFailed(!ok);
+    if (ok) {
+      toast.success(t('common.copySuccess'));
+      copyTimer.current = setTimeout(() => setCopied(false), 2000);
+    } else {
+      toast.error(t('common.copyFailed'));
+    }
+  };
   const waiting = ['starting', 'loading', 'canceling'].includes(phase);
   return (
     <section
@@ -50,16 +84,13 @@ export default function CodexAccountSection({
               type="button"
               variant="outline"
               size="sm"
-              onClick={async () => {
-                try {
-                  await navigator.clipboard.writeText(device.user_code);
-                  setCopied(true);
-                  setCopyFailed(false);
-                } catch {
-                  setCopyFailed(true);
-                }
-              }}
+              onClick={handleCopy}
             >
+              {copied ? (
+                <Check className="h-4 w-4" aria-hidden="true" />
+              ) : (
+                <Copy className="h-4 w-4" aria-hidden="true" />
+              )}
               {t(copied ? 'models.codex.copied' : 'models.codex.copyCode')}
             </Button>
           </div>

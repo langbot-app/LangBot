@@ -139,6 +139,13 @@ for (const width of [1280, 390, 320]) {
       .getByRole('button', { name: 'Save and sign in', exact: true })
       .click();
     await expect(page.getByText('TEST-1234')).toBeVisible();
+    await page.getByRole('button', { name: 'Copy code', exact: true }).click();
+    await expect(
+      page.getByRole('button', { name: 'Copied', exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByText('Copy Successfully', { exact: true }),
+    ).toBeInViewport({ ratio: 1 });
     expect(state.creates).toBe(1);
     expect(state.providers[0]).toMatchObject({
       requester: 'openai-codex',
@@ -161,6 +168,13 @@ for (const width of [1280, 390, 320]) {
     expect(geometry.right).toBeLessThanOrEqual(width);
     expect(geometry.documentWidth).toBeLessThanOrEqual(width);
     if (process.env.CODEX_EVIDENCE_DIR) {
+      await page.locator('[data-sonner-toast]').evaluate(async (el) => {
+        await Promise.all(
+          el
+            .getAnimations({ subtree: true })
+            .map((animation) => animation.finished.catch(() => undefined)),
+        );
+      });
       const screenshot = `${process.env.CODEX_EVIDENCE_DIR}/codex-${width}.png`;
       await page.screenshot({ path: screenshot, fullPage: true });
       writeFileSync(
