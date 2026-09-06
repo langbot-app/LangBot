@@ -352,15 +352,12 @@ SkillStore
      └─ 支持 source_subdir / target_suffix（commit 1aa043f）
 ```
 
-GitHub 安装路径由 Core HTTP 层下载归档，再交给 SkillRepository。Skill 文件位于独立的 `skills.root`，执行时由 Core 组装成通用只读 `BoxMountSpec` 并挂载到 `/workspace/.skills/`。Box 的正常模型、客户端和 Runtime 不包含 `skill_name`、Skill CRUD、revision 或 `SKILL.md` 语义。
+GitHub 安装路径由 Core HTTP 层下载归档，再交给 SkillRepository。Skill 文件位于独立的 `skills.root`，执行时由 Core 组装成通用只读 `BoxMountSpec` 并挂载到 `/workspace/.skills/`。Box 的模型、客户端和 Runtime 不包含 `skill_name`、Skill CRUD、revision 或 `SKILL.md` 语义。Core 与 Box Runtime SDK 按同一发布单元同步升级；Box 不保留旧 Skill RPC，也会拒绝旧的 Skill-aware payload 字段。
 
-滚动升级只保留一个隔离桥：`box/legacy_skill_compat.py` 让旧 Core 暂时调用新 Box，并把旧 `skill_name` 转为普通只读 mount。部署顺序必须先升级 Box、再升级 Core。该模块有 `TODO(next-major)`，下一大版本删除；正常架构不依赖它。
+仍保留的兼容仅用于已有数据的在线升级，不用于混版本协议：
 
-下一大版本的删除清单（当前均有 `TODO(next-major)`）：
-
-1. 删除 SDK `box/legacy_skill_compat.py` 及 Server 中唯一的注册/转换钩子。
-2. 删除 Core 对 `box.local.skills_root` 的配置 fallback。
-3. 新安装默认从历史 `./data/box/skills` 切到 `./data/skills`；届时 Box 部署只需只读访问 Core 明确下发的通用 artifact root。
+1. Core 暂时读取 `box.local.skills_root`，兼容尚未生成 `skills.root` 的持久化配置。
+2. 新安装默认暂时沿用历史 `./data/box/skills`，避免升级时搬迁已安装 Skill；下一大版本切换到 `./data/skills`。
 
 ### 3.8 Security (`box/security.py`, 52 行)
 

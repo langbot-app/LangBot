@@ -34,7 +34,7 @@ def _repository(tmp_path) -> SkillRepository:
                     'local': {
                         'host_root': str(tmp_path / 'box'),
                     },
-                }
+                },
             }
         ),
     )
@@ -45,6 +45,14 @@ def test_repository_prefers_standalone_skill_root(tmp_path):
     repository = _repository(tmp_path)
 
     assert repository._store.root == str((tmp_path / 'skill-store').resolve())
+
+
+def test_repository_locks_are_workspace_scoped(tmp_path):
+    repository = _repository(tmp_path)
+
+    first = repository._workspace_lock('workspace-a')
+    assert repository._workspace_lock('workspace-a') is first
+    assert repository._workspace_lock('workspace-b') is not first
 
 
 def test_repository_keeps_old_box_root_only_for_online_upgrade(tmp_path):
@@ -89,7 +97,7 @@ async def test_repository_crud_and_reads_do_not_require_box(tmp_path):
 
     skill = await repository.get_skill(_CONTEXT, 'docs-only', snapshot=True)
     assert skill is not None
-    assert skill['revision'].startswith('sha256:')
+    assert skill['revision'].startswith('stat-v1:')
     assert [item['name'] for item in await repository.list_skills(_CONTEXT)] == ['docs-only']
 
     listed = await repository.list_skill_resources(
