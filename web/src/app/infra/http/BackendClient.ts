@@ -131,8 +131,10 @@ export class BackendClient extends BaseHttpClient {
     return this.put(`/api/v1/provider/providers/${uuid}`, provider);
   }
 
-  public deleteModelProvider(uuid: string): Promise<object> {
-    return this.delete(`/api/v1/provider/providers/${uuid}`);
+  public deleteModelProvider(uuid: string, cascade = false): Promise<object> {
+    return this.delete(
+      `/api/v1/provider/providers/${uuid}${cascade ? '?cascade=true' : ''}`,
+    );
   }
 
   public getCodexAuthStatus(

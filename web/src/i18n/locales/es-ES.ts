@@ -356,6 +356,8 @@ const esES = {
     providerSaveError: 'Error al guardar el proveedor: ',
     providerDeleted: 'Proveedor eliminado',
     providerDeleteError: 'Error al eliminar el proveedor: ',
+    deleteProviderCascadeConfirmation:
+      '¿Eliminar este proveedor y TODOS los modelos que contiene? Esta acción es irreversible y no se puede deshacer.',
     deleteProviderConfirmation:
       '¿Estás seguro de que deseas eliminar este proveedor?',
     loadError: 'Error al cargar datos',

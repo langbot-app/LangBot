@@ -347,6 +347,8 @@ const enUS = {
     providerSaveError: 'Failed to save provider: ',
     providerDeleted: 'Provider deleted',
     providerDeleteError: 'Failed to delete provider: ',
+    deleteProviderCascadeConfirmation:
+      'Delete this provider and ALL models it contains? This action is irreversible and cannot be undone.',
     deleteProviderConfirmation:
       'Are you sure you want to delete this provider?',
     loadError: 'Failed to load data',

@@ -20,6 +20,7 @@ from langbot.pkg.entity.persistence.model import LLMModel, ModelProvider
 from langbot.pkg.entity.persistence.pipeline import LegacyPipeline
 from langbot.pkg.entity.persistence.workspace import Workspace
 from langbot.pkg.workspace.errors import WorkspaceNotFoundError
+from langbot.pkg.persistence.mgr import PersistenceManager
 
 
 pytestmark = pytest.mark.asyncio
@@ -28,15 +29,10 @@ WORKSPACE_A = '00000000-0000-0000-0000-00000000000a'
 WORKSPACE_B = '00000000-0000-0000-0000-00000000000b'
 
 
-class _PersistenceManager:
+class _PersistenceManager(PersistenceManager):
     def __init__(self, engine):
-        self.engine = engine
-
-    async def execute_async(self, *args, **kwargs):
-        async with self.engine.connect() as connection:
-            result = await connection.execute(*args, **kwargs)
-            await connection.commit()
-            return result
+        super().__init__(SimpleNamespace())
+        self.db = SimpleNamespace(get_engine=lambda: engine)
 
     @staticmethod
     def serialize_model(model, data, masked_columns=None):

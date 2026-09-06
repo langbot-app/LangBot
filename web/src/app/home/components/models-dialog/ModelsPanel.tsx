@@ -537,6 +537,29 @@ export default function ModelsPanel({
     expandedProviders.forEach((uuid) => loadProviderModels(uuid));
   }
 
+  async function handleProviderDeleted(providerUuid: string) {
+    setProviders((prev) =>
+      prev.filter((provider) => provider.uuid !== providerUuid),
+    );
+    setProviderModels((prev) => {
+      const next = { ...prev };
+      delete next[providerUuid];
+      return next;
+    });
+    setExpandedProviders((prev) => {
+      const next = new Set(prev);
+      next.delete(providerUuid);
+      return next;
+    });
+    await Promise.all([
+      loadProviders(),
+      ...Array.from(expandedProviders)
+        .filter((uuid) => uuid !== providerUuid)
+        .map((uuid) => loadProviderModels(uuid)),
+    ]);
+    setProviderFormOpen(false);
+  }
+
   function renderProviderCard(
     provider: ModelProvider,
     isLangBotModels: boolean = false,
@@ -687,6 +710,7 @@ export default function ModelsPanel({
             providerId={editingProviderId || undefined}
             onFormSubmit={handleFormClose}
             onFormCancel={handleFormClose}
+            onProviderDeleted={canManage ? handleProviderDeleted : undefined}
           />
         </DialogContent>
       </Dialog>

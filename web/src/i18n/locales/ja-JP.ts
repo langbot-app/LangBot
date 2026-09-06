@@ -354,6 +354,8 @@ const jaJP = {
     providerSaveError: 'プロバイダーの保存に失敗しました：',
     providerDeleted: 'プロバイダーを削除しました',
     providerDeleteError: 'プロバイダーの削除に失敗しました：',
+    deleteProviderCascadeConfirmation:
+      'このプロバイダーと、その中のすべてのモデルを削除しますか？この操作は取り消せず、元に戻せません。',
     deleteProviderConfirmation: 'このプロバイダーを削除してもよろしいですか？',
     loadError: 'データの読み込みに失敗しました',
     chat: 'チャット',

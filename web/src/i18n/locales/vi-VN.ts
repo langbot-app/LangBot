@@ -349,6 +349,8 @@ const viVN = {
     providerSaveError: 'Lưu nhà cung cấp thất bại: ',
     providerDeleted: 'Đã xóa nhà cung cấp',
     providerDeleteError: 'Xóa nhà cung cấp thất bại: ',
+    deleteProviderCascadeConfirmation:
+      'Xóa nhà cung cấp này và TẤT CẢ mô hình bên trong? Hành động này không thể đảo ngược hoặc hoàn tác.',
     deleteProviderConfirmation:
       'Bạn có chắc chắn muốn xóa nhà cung cấp này không?',
     loadError: 'Tải dữ liệu thất bại',

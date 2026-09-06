@@ -156,7 +156,15 @@ class ModelProvidersRouterGroup(group.RouterGroup):
         )
         async def _(provider_uuid: str, request_context: RequestContext) -> str:
             try:
-                await self.ap.provider_service.delete_provider(request_context, provider_uuid)
+                cascade_values = quart.request.args.getlist('cascade')
+                if cascade_values:
+                    if len(cascade_values) != 1 or cascade_values[0] not in ('true', 'false'):
+                        return self.http_status(400, -1, 'cascade must be a single true or false value')
+                    await self.ap.provider_service.delete_provider(
+                        request_context, provider_uuid, cascade=cascade_values[0] == 'true'
+                    )
+                else:
+                    await self.ap.provider_service.delete_provider(request_context, provider_uuid)
                 return self.success()
             except ValueError as e:
                 return self.http_status(400, -1, str(e))

@@ -333,6 +333,8 @@ const zhHans = {
     providerSaveError: '保存供应商失败：',
     providerDeleted: '供应商已删除',
     providerDeleteError: '删除供应商失败：',
+    deleteProviderCascadeConfirmation:
+      '确定删除此供应商及其包含的所有模型吗？此操作不可逆，无法撤销。',
     deleteProviderConfirmation: '你确定要删除这个供应商吗？',
     loadError: '加载数据失败',
     chat: '对话',

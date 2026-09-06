@@ -18,6 +18,16 @@ import {
 import { Input } from '@/components/ui/input';
 import { DialogFooter } from '@/components/ui/dialog';
 import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { LANGBOT_MODELS_PROVIDER_REQUESTER } from '../../types';
+import {
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -43,12 +53,14 @@ interface ProviderFormProps {
   providerId?: string;
   onFormSubmit: (providerUuid: string) => void | Promise<void>;
   onFormCancel: () => void;
+  onProviderDeleted?: (providerUuid: string) => void | Promise<void>;
 }
 
 export default function ProviderForm({
   providerId,
   onFormSubmit,
   onFormCancel,
+  onProviderDeleted,
 }: ProviderFormProps) {
   const { t } = useTranslation();
   const formSchema = getFormSchema(t);
@@ -67,6 +79,11 @@ export default function ProviderForm({
   const [savedProviderId, setSavedProviderId] = useState(providerId);
   const savedId = useRef(providerId);
   const submitting = useRef(false);
+  const deleting = useRef(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+  const [mutableProviderLoaded, setMutableProviderLoaded] = useState(false);
   const mounted = useRef(true);
   const login = useCodexLogin(isCodex, providerId);
   const loginActive = ['starting', 'pending', 'canceling', 'loading'].includes(
@@ -116,6 +133,10 @@ export default function ProviderForm({
     async (id: string) => {
       const resp = await httpClient.getModelProvider(id);
       const provider = resp.provider;
+      setMutableProviderLoaded(
+        provider.uuid === id &&
+          provider.requester !== LANGBOT_MODELS_PROVIDER_REQUESTER,
+      );
 
       setValue('name', provider.name);
       setValue('requester', provider.requester);
@@ -163,7 +184,8 @@ export default function ProviderForm({
   };
 
   async function handleFormSubmit(values: z.infer<typeof formSchema>) {
-    if (submitting.current || (isCodex && loginActive)) return;
+    if (submitting.current || deleting.current || (isCodex && loginActive))
+      return;
     submitting.current = true;
     const data = providerPayload(values);
     try {
@@ -189,6 +211,34 @@ export default function ProviderForm({
     } finally {
       submitting.current = false;
     }
+  }
+
+  async function handleDelete() {
+    if (
+      !providerId ||
+      !mutableProviderLoaded ||
+      !onProviderDeleted ||
+      deleting.current ||
+      submitting.current ||
+      (isCodex && loginActive)
+    )
+      return;
+    deleting.current = true;
+    setIsDeleting(true);
+    setDeleteError('');
+    try {
+      await httpClient.deleteModelProvider(providerId, true);
+    } catch (err) {
+      const detail =
+        (err as CustomApiError | null)?.msg ||
+        (err instanceof Error ? err.message : '');
+      setDeleteError(t('models.providerDeleteError') + detail);
+      deleting.current = false;
+      setIsDeleting(false);
+      return;
+    }
+    toast.success(t('models.providerDeleted'));
+    await onProviderDeleted(providerId);
   }
 
   return (
@@ -431,25 +481,92 @@ export default function ProviderForm({
           </>
         )}
 
-        <DialogFooter>
-          {(!isCodex || !savedProviderId || login.phase === 'connected') && (
+        <DialogFooter className="flex-row flex-wrap items-start justify-between sm:justify-between">
+          {providerId && mutableProviderLoaded && onProviderDeleted && (
             <Button
-              type="submit"
-              disabled={form.formState.isSubmitting || (isCodex && loginActive)}
+              type="button"
+              variant="destructive"
+              disabled={
+                isDeleting ||
+                form.formState.isSubmitting ||
+                (isCodex && loginActive)
+              }
+              onClick={() => {
+                setDeleteError('');
+                setDeleteConfirmOpen(true);
+              }}
             >
-              {isCodex
-                ? t(
-                    login.phase === 'connected'
-                      ? 'models.codex.done'
-                      : 'models.codex.saveAndSignIn',
-                  )
-                : t('common.save')}
+              {t('common.delete')}
             </Button>
           )}
-          <Button type="button" variant="outline" onClick={onFormCancel}>
-            {t('common.cancel')}
-          </Button>
+          <div className="ml-auto flex flex-col gap-2 sm:flex-row">
+            {(!isCodex || !savedProviderId || login.phase === 'connected') && (
+              <Button
+                type="submit"
+                disabled={
+                  isDeleting ||
+                  form.formState.isSubmitting ||
+                  (isCodex && loginActive)
+                }
+              >
+                {isCodex
+                  ? t(
+                      login.phase === 'connected'
+                        ? 'models.codex.done'
+                        : 'models.codex.saveAndSignIn',
+                    )
+                  : t('common.save')}
+              </Button>
+            )}
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isDeleting}
+              onClick={onFormCancel}
+            >
+              {t('common.cancel')}
+            </Button>
+          </div>
         </DialogFooter>
+        <AlertDialog
+          open={deleteConfirmOpen}
+          onOpenChange={(open) => {
+            if (!deleting.current) setDeleteConfirmOpen(open);
+          }}
+        >
+          {deleteConfirmOpen && (
+            <AlertDialogContent className="max-w-[calc(100%-2rem)] max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg">
+              <AlertDialogHeader>
+                <AlertDialogTitle>{t('common.delete')}</AlertDialogTitle>
+                <AlertDialogDescription>
+                  {t('models.deleteProviderCascadeConfirmation')}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              {deleteError && (
+                <p
+                  role="alert"
+                  className="text-sm text-destructive break-words"
+                >
+                  {deleteError}
+                </p>
+              )}
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={isDeleting}>
+                  {t('common.cancel')}
+                </AlertDialogCancel>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  disabled={isDeleting}
+                  aria-busy={isDeleting}
+                  onClick={handleDelete}
+                >
+                  {t('common.delete')}
+                </Button>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          )}
+        </AlertDialog>
       </form>
     </Form>
   );

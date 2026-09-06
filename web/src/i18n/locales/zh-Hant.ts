@@ -330,6 +330,8 @@ const zhHant = {
     providerSaveError: '儲存供應商失敗：',
     providerDeleted: '供應商已刪除',
     providerDeleteError: '刪除供應商失敗：',
+    deleteProviderCascadeConfirmation:
+      '確定刪除此供應商及其包含的所有模型嗎？此操作不可逆，無法復原。',
     deleteProviderConfirmation: '您確定要刪除這個供應商嗎？',
     loadError: '載入資料失敗',
     chat: '對話',

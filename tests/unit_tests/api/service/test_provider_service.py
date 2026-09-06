@@ -14,11 +14,12 @@ Source: src/langbot/pkg/api/http/service/provider.py
 from __future__ import annotations
 
 import pytest
+from contextlib import nullcontext
 from unittest.mock import AsyncMock, Mock
 from types import SimpleNamespace
 
 from langbot.pkg.api.http.service.provider import ModelProviderService
-from langbot.pkg.entity.persistence.model import ModelProvider, LLMModel, EmbeddingModel, RerankModel
+from langbot.pkg.entity.persistence.model import ModelProvider, LLMModel
 from langbot.pkg.workspace.errors import WorkspaceNotFoundError
 
 
@@ -383,112 +384,35 @@ class TestModelProviderServiceUpdateProvider:
 
 
 class TestModelProviderServiceDeleteProvider:
-    """Tests for delete_provider method."""
+    """Fast guard coverage; real transaction/cache behavior is in test_provider_cascade."""
 
-    async def test_delete_provider_with_llm_models_raises_error(self):
-        """Raises ValueError when LLM models reference provider."""
-        # Setup
-        ap = SimpleNamespace()
-        ap.persistence_mgr = SimpleNamespace()
-
-        # Mock LLM model exists - only return LLM result since that's first check
-        llm_result = _create_mock_result([], first_item=_create_mock_llm_model())
-
-        ap.persistence_mgr.execute_async = AsyncMock(return_value=llm_result)
-
+    @pytest.mark.parametrize('label', ['LLM', 'Embedding', 'Rerank', None])
+    async def test_delete_provider_requires_no_references(self, label):
+        provider_result = Mock()
+        provider_result.first.return_value = SimpleNamespace(requester='openai')
+        results = [provider_result]
+        for model_label in ('LLM', 'Embedding', 'Rerank'):
+            result = Mock()
+            result.scalars.return_value = ['model'] if label == model_label else []
+            results.append(result)
+        results.extend([Mock(rowcount=1), Mock(rowcount=1)])
+        ap = SimpleNamespace(
+            persistence_mgr=SimpleNamespace(
+                execute_async=AsyncMock(side_effect=results),
+                tenant_uow=lambda _: nullcontext(),
+                tenant_scope=lambda _: nullcontext(),
+                current_session=lambda: None,
+            ),
+            model_mgr=SimpleNamespace(remove_provider=AsyncMock()),
+        )
         service = ModelProviderService(ap)
-
-        # Execute & Verify
-        with pytest.raises(ValueError, match='Cannot delete provider: LLM models'):
-            await service.delete_provider(WORKSPACE_UUID, 'provider-with-llm')
-
-    async def test_delete_provider_with_embedding_models_raises_error(self):
-        """Raises ValueError when Embedding models reference provider."""
-        # Setup
-        ap = SimpleNamespace()
-        ap.persistence_mgr = SimpleNamespace()
-
-        # Create results for each check type
-        llm_result = Mock()
-        llm_result.first = Mock(return_value=None)  # No LLM models
-        embedding_result = Mock()
-        embedding_result.first = Mock(return_value=Mock(spec=EmbeddingModel))  # Has embedding model
-        rerank_result = Mock()
-        rerank_result.first = Mock(return_value=None)
-
-        call_count = 0
-
-        async def mock_execute(query):
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                return llm_result
-            elif call_count == 2:
-                return embedding_result
-            return rerank_result
-
-        ap.persistence_mgr.execute_async = AsyncMock(side_effect=mock_execute)
-
-        service = ModelProviderService(ap)
-
-        # Execute & Verify - should raise embedding error (LLM check passes, embedding check fails)
-        with pytest.raises(ValueError, match='Cannot delete provider: Embedding models'):
-            await service.delete_provider(WORKSPACE_UUID, 'provider-with-embedding')
-
-    async def test_delete_provider_with_rerank_models_raises_error(self):
-        """Raises ValueError when Rerank models reference provider."""
-        # Setup
-        ap = SimpleNamespace()
-        ap.persistence_mgr = SimpleNamespace()
-
-        # Create results for each check type
-        llm_result = Mock()
-        llm_result.first = Mock(return_value=None)  # No LLM models
-        embedding_result = Mock()
-        embedding_result.first = Mock(return_value=None)  # No embedding models
-        rerank_result = Mock()
-        rerank_result.first = Mock(return_value=Mock(spec=RerankModel))  # Has rerank model
-
-        call_count = 0
-
-        async def mock_execute(query):
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                return llm_result
-            elif call_count == 2:
-                return embedding_result
-            return rerank_result
-
-        ap.persistence_mgr.execute_async = AsyncMock(side_effect=mock_execute)
-
-        service = ModelProviderService(ap)
-
-        # Execute & Verify - should raise rerank error (LLM and embedding checks pass, rerank check fails)
-        with pytest.raises(ValueError, match='Cannot delete provider: Rerank models'):
-            await service.delete_provider(WORKSPACE_UUID, 'provider-with-rerank')
-
-    async def test_delete_provider_no_models_success(self):
-        """Deletes provider when no models reference it."""
-        # Setup
-        ap = SimpleNamespace()
-        ap.persistence_mgr = SimpleNamespace()
-        ap.model_mgr = SimpleNamespace()
-        ap.model_mgr.remove_provider = AsyncMock()
-
-        # Mock no models reference provider
-        empty_result = Mock()
-        empty_result.first = Mock(return_value=None)
-
-        ap.persistence_mgr.execute_async = AsyncMock(return_value=empty_result)
-
-        service = ModelProviderService(ap)
-
-        # Execute
-        await service.delete_provider(WORKSPACE_UUID, 'provider-no-models')
-
-        # Verify - delete and remove called
-        ap.model_mgr.remove_provider.assert_called_once_with(WORKSPACE_UUID, 'provider-no-models')
+        if label is not None:
+            with pytest.raises(ValueError, match=f'Cannot delete provider: {label} models'):
+                await service.delete_provider(WORKSPACE_UUID, 'provider')
+            ap.model_mgr.remove_provider.assert_not_awaited()
+        else:
+            await service.delete_provider(WORKSPACE_UUID, 'provider')
+            ap.model_mgr.remove_provider.assert_awaited_once_with(WORKSPACE_UUID, 'provider')
 
 
 class TestModelProviderServiceGetProviderModelCounts:
@@ -1045,15 +969,18 @@ class TestCloudManagedProviderProtection:
 
     async def test_cloud_rejects_update_and_delete_of_managed_provider(self):
         service = self._service()
-        service.get_provider = AsyncMock(
-            return_value={'uuid': 'system-provider', 'requester': SYSTEM_REQUESTER}
-        )
+        service.get_provider = AsyncMock(return_value={'uuid': 'system-provider', 'requester': SYSTEM_REQUESTER})
 
         with pytest.raises(ValueError, match='managed by Cloud'):
             await service.update_provider(WORKSPACE_UUID, 'system-provider', {'name': 'Renamed'})
+        service.ap.persistence_mgr.execute_async.assert_not_awaited()
+        service.ap.persistence_mgr.tenant_uow = lambda _: nullcontext()
+        result = Mock()
+        result.first.return_value = SimpleNamespace(requester=SYSTEM_REQUESTER)
+        service.ap.persistence_mgr.execute_async.return_value = result
         with pytest.raises(ValueError, match='managed by Cloud'):
             await service.delete_provider(WORKSPACE_UUID, 'system-provider')
-        service.ap.persistence_mgr.execute_async.assert_not_awaited()
+        assert service.ap.persistence_mgr.execute_async.await_count == 1
 
     async def test_oss_does_not_reserve_space_requester(self):
         ap = SimpleNamespace(persistence_mgr=SimpleNamespace(mode=SimpleNamespace(value='oss_compat')))

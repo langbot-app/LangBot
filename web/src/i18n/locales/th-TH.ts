@@ -341,6 +341,8 @@ const thTH = {
     providerSaveError: 'บันทึกผู้ให้บริการล้มเหลว: ',
     providerDeleted: 'ลบผู้ให้บริการแล้ว',
     providerDeleteError: 'ลบผู้ให้บริการล้มเหลว: ',
+    deleteProviderCascadeConfirmation:
+      'ลบผู้ให้บริการนี้และโมเดลทั้งหมดที่อยู่ภายในหรือไม่? การดำเนินการนี้ไม่สามารถย้อนกลับหรือยกเลิกได้',
     deleteProviderConfirmation: 'คุณแน่ใจหรือไม่ว่าต้องการลบผู้ให้บริการนี้?',
     loadError: 'โหลดข้อมูลล้มเหลว',
     chat: 'แชท',
