@@ -1,0 +1,75 @@
+apiVersion: v1
+kind: MessagePlatformAdapter
+metadata:
+  name: mattermost
+  label:
+    en_US: Mattermost
+    zh_Hans: Mattermost
+    zh_Hant: Mattermost
+    ja_JP: Mattermost
+    th_TH: Mattermost
+    vi_VN: Mattermost
+    es_ES: Mattermost
+  icon: mattermost.svg
+  description:
+    en_US: Mattermost Bot Account adapter using the v4 REST and WebSocket APIs. Add me to the teams and channels where you want me to interact. Please use a browser or desktop application to do this.
+    zh_Hans: 使用 Mattermost v4 REST API 与 WebSocket 的 Bot Account 适配器。请将我添加到您想要我互动的团队与频道。请使用浏览器或桌面应用进行操作。
+    zh_Hant: 使用 Mattermost v4 REST API 與 WebSocket 的 Bot Account 介面卡。請將我加入您希望我互動的團隊與頻道。請使用瀏覽器或桌面應用程式操作。
+    ja_JP: Mattermost v4 REST API と WebSocket を使用する Bot Account アダプター。利用させたいチームとチャンネルに私を追加してください。ブラウザまたはデスクトップアプリで操作してください。
+    th_TH: อะแดปเตอร์ Bot Account ของ Mattermost ผ่าน v4 REST API และ WebSocket โปรดเพิ่มฉันไปยังทีมและช่องที่คุณต้องการให้ฉันโต้ตอบ โปรดดำเนินการผ่านเบราว์เซอร์หรือแอปเดสก์ท็อป
+    vi_VN: Bộ điều hợp Bot Account Mattermost sử dụng REST API v4 và WebSocket. Hãy thêm tôi vào các nhóm và kênh mà bạn muốn tôi tương tác. Vui lòng thao tác bằng trình duyệt hoặc ứng dụng máy tính để bàn.
+    es_ES: Adaptador de Bot Account de Mattermost mediante REST API v4 y WebSocket. Añádeme a los equipos y canales en los que quieras que interactúe. Hazlo desde un navegador o la aplicación de escritorio.
+spec:
+  categories:
+    - global
+    - popular
+  config:
+    - name: server_url
+      label:
+        en_US: Mattermost Server URL
+        zh_Hans: Mattermost 服务器地址
+        zh_Hant: 位址伺服器 Mattermost
+        ja_JP: Mattermost サーバー URL
+        th_TH: URL เซิร์ฟเวอร์ Mattermost
+        vi_VN: URL máy chủ Mattermost
+        es_ES: URL del servidor Mattermost
+      description:
+        en_US: The base URL of the Mattermost server, for example https://mattermost.example.com
+        zh_Hans: Mattermost 服务器基础地址，例如 https://mattermost.example.com
+      type: string
+      required: true
+      default: ""
+    - name: access_token
+      label:
+        en_US: Bot Access Token
+        zh_Hans: Bot 访问令牌
+        zh_Hant: Bot 存取權杖
+        ja_JP: Bot アクセストークン
+        th_TH: โทเค็นการเข้าถึงของบอต
+        vi_VN: Mã truy cập Bot
+        es_ES: Token de acceso del bot
+      description:
+        en_US: The personal access token generated for the Mattermost Bot Account
+        zh_Hans: 为 Mattermost Bot Account 生成的个人访问令牌
+      type: string
+      required: true
+      default: ""
+    - name: enable_stream_reply
+      label:
+        en_US: Enable Stream Reply
+        zh_Hans: 启用流式回复
+        zh_Hant: 啟用串流回覆
+        ja_JP: ストリーミング返信を有効化
+        th_TH: เปิดใช้งานการตอบกลับแบบสตรีม
+        vi_VN: Bật phản hồi luồng
+        es_ES: Activar respuesta en streaming
+      description:
+        en_US: Update a Mattermost post while LangBot generates a response
+        zh_Hans: 在 LangBot 生成回复时持续更新同一条 Mattermost 消息
+      type: boolean
+      required: false
+      default: true
+execution:
+  python:
+    path: ./mattermost.py
+    attr: MattermostAdapter
