@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import weakref
 
 from langbot_plugin.skill_store import (
     SkillRevisionMismatchError,
@@ -23,7 +24,14 @@ class SkillRepository:
         self._local_config = (config.get('box') or {}).get('local') or {}
         self._skills_config = config.get('skills') or {}
         self._store = SkillStore(self._skills_root())
-        self._lock = asyncio.Lock()
+        self._locks: weakref.WeakValueDictionary[str, asyncio.Lock] = weakref.WeakValueDictionary()
+
+    def _workspace_lock(self, namespace: str) -> asyncio.Lock:
+        lock = self._locks.get(namespace)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._locks[namespace] = lock
+        return lock
 
     def _host_root(self) -> str:
         configured = str(self._local_config.get('host_root') or './data/box').strip()
@@ -101,7 +109,7 @@ class SkillRepository:
             method = getattr(self._store.scoped(namespace), method_name)
             return method(*args, **kwargs)
 
-        async with self._lock:
+        async with self._workspace_lock(namespace):
             with blocking_work_scope(f'skill:{namespace}'):
                 return await run_blocking_atomic(invoke)
 
