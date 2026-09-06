@@ -92,9 +92,7 @@ def test_codex_provider_disconnected_journey(e2e_client):
             )
             assert pending.status_code == 200
             assert pending.json()['data']['status'] == 'pending'
-            canceled = e2e_client.delete(
-                f'{provider_path}/codex/device/{attempt["authorization_id"]}', headers=headers
-            )
+            canceled = e2e_client.delete(f'{provider_path}/codex/device/{attempt["authorization_id"]}', headers=headers)
             assert canceled.status_code == 200
             expired = e2e_client.post(
                 f'{provider_path}/codex/device/poll',
