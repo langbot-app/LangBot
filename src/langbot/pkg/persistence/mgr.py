@@ -62,6 +62,7 @@ _ALEMBIC_TENANT_TABLES = {
     'binary_storages',
     'mcp_servers',
     'model_providers',
+    'codex_credentials',
     'llm_models',
     'embedding_models',
     'rerank_models',

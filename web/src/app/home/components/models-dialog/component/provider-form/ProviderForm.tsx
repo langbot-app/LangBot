@@ -22,6 +22,9 @@ import { extractI18nObject } from '@/i18n/I18nProvider';
 import { CustomApiError } from '@/app/infra/entities/common';
 import { cn } from '@/lib/utils';
 import { Check, ChevronDown, Search } from 'lucide-react';
+import { providerPayload } from './codexPolicy';
+import { useCodexLogin } from './useCodexLogin';
+import CodexAccountSection from './CodexAccountSection';
 
 const getFormSchema = (t: (key: string) => string) =>
   z.object({
@@ -55,6 +58,21 @@ export default function ProviderForm({
     },
   });
   const { setValue } = form;
+  const isCodex = form.watch('requester') === 'openai-codex';
+  const [savedProviderId, setSavedProviderId] = useState(providerId);
+  const savedId = useRef(providerId);
+  const submitting = useRef(false);
+  const mounted = useRef(true);
+  const login = useCodexLogin(isCodex, providerId);
+  const loginActive = ['starting', 'pending', 'canceling', 'loading'].includes(
+    login.phase,
+  );
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   const [requesterList, setRequesterList] = useState<
     {
@@ -163,26 +181,31 @@ export default function ProviderForm({
   };
 
   async function handleFormSubmit(values: z.infer<typeof formSchema>) {
-    const data = {
-      name: values.name,
-      requester: values.requester,
-      base_url: values.base_url,
-      api_keys: values.api_key ? [values.api_key] : [],
-    };
-
+    if (submitting.current || (isCodex && loginActive)) return;
+    submitting.current = true;
+    const data = providerPayload(values);
     try {
-      let savedProviderUuid = providerId;
-      if (providerId) {
-        await httpClient.updateModelProvider(providerId, data);
-        toast.success(t('models.providerSaved'));
+      if (savedId.current) {
+        await httpClient.updateModelProvider(savedId.current, data);
       } else {
         const response = await httpClient.createModelProvider(data);
-        savedProviderUuid = response.uuid;
-        toast.success(t('models.providerCreated'));
+        savedId.current = response.uuid;
+        if (mounted.current) setSavedProviderId(response.uuid);
       }
-      await onFormSubmit(savedProviderUuid as string);
+      if (!mounted.current) return;
+      if (isCodex && login.phase !== 'connected') {
+        await login.start(savedId.current);
+      } else {
+        toast.success(t('models.providerSaved'));
+        await onFormSubmit(savedId.current);
+      }
     } catch (err) {
-      toast.error(t('models.providerSaveError') + (err as CustomApiError).msg);
+      if (mounted.current)
+        toast.error(
+          t('models.providerSaveError') + (err as CustomApiError).msg,
+        );
+    } finally {
+      submitting.current = false;
     }
   }
 
@@ -202,7 +225,12 @@ export default function ProviderForm({
                 <span className="text-red-500">*</span>
               </FormLabel>
               <FormControl>
-                <Input {...field} />
+                <Input
+                  {...field}
+                  disabled={
+                    form.formState.isSubmitting || (isCodex && loginActive)
+                  }
+                />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -226,6 +254,11 @@ export default function ProviderForm({
                   {/* Trigger button */}
                   <button
                     type="button"
+                    disabled={
+                      form.formState.isSubmitting ||
+                      (isCodex && (!!savedProviderId || loginActive))
+                    }
+                    aria-expanded={isOpen}
                     onClick={() => setIsOpen(!isOpen)}
                     className={cn(
                       'flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50',
@@ -288,6 +321,11 @@ export default function ProviderForm({
                                   <button
                                     key={r.value}
                                     type="button"
+                                    disabled={
+                                      !!providerId &&
+                                      r.value === 'openai-codex' &&
+                                      !isCodex
+                                    }
                                     onClick={() => {
                                       field.onChange(r.value);
                                       const req = requesterList.find(
@@ -351,36 +389,60 @@ export default function ProviderForm({
           }}
         />
 
-        <FormField
-          control={form.control}
-          name="base_url"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>{t('models.requestURL')}</FormLabel>
-              <FormControl>
-                <Input {...field} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+        {isCodex ? (
+          <CodexAccountSection login={login} providerId={savedProviderId} />
+        ) : (
+          <>
+            <FormField
+              control={form.control}
+              name="base_url"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('models.requestURL')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      disabled={
+                        form.formState.isSubmitting || (isCodex && loginActive)
+                      }
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
-        <FormField
-          control={form.control}
-          name="api_key"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>{t('models.apiKey')}</FormLabel>
-              <FormControl>
-                <Input {...field} type="password" />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+            <FormField
+              control={form.control}
+              name="api_key"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('models.apiKey')}</FormLabel>
+                  <FormControl>
+                    <Input {...field} type="password" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </>
+        )}
 
         <DialogFooter>
-          <Button type="submit">{t('common.save')}</Button>
+          {(!isCodex || !savedProviderId || login.phase === 'connected') && (
+            <Button
+              type="submit"
+              disabled={form.formState.isSubmitting || (isCodex && loginActive)}
+            >
+              {isCodex
+                ? t(
+                    login.phase === 'connected'
+                      ? 'models.codex.done'
+                      : 'models.codex.saveAndSignIn',
+                  )
+                : t('common.save')}
+            </Button>
+          )}
           <Button type="button" variant="outline" onClick={onFormCancel}>
             {t('common.cancel')}
           </Button>

@@ -69,7 +69,7 @@ class LangBotProcess:
             # Use coverage.py to collect coverage data
             # Set COVERAGE_PROCESS_START to enable coverage in subprocess
             self._coverage_file = self.work_dir / '.coverage.e2e'
-            env['COVERAGE_PROCESS_START'] = str(self.project_root / '.coveragerc')
+            env['COVERAGE_PROCESS_START'] = str(self.work_dir / '.coveragerc')
             env['COVERAGE_FILE'] = str(self._coverage_file)
 
             # Create .coveragerc for subprocess

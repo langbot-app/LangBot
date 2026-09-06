@@ -185,6 +185,38 @@ const jaJP = {
     help: 'ヘルプドキュメントを見る',
   },
   models: {
+    codex: {
+      account: 'ChatGPT サブスクリプション',
+      description:
+        'ChatGPT アカウントでログインします。サブスクリプションと OpenAI API の課金は別です。利用可能なモデルと使用制限はプランによって異なります。',
+      disconnected: '未接続',
+      loading: '接続を確認中…',
+      starting: 'ログインを開始中…',
+      pending: '認証を待機中',
+      connected: '接続済み',
+      expired:
+        'ログインの有効期限が切れました。新しいコードを取得してください。',
+      error: 'ログインできません。接続を確認して再試行してください。',
+      canceling: 'ログインをキャンセル中…',
+      saveAndSignIn: '保存してログイン',
+      done: '完了',
+      instructions:
+        'OpenAI のページでこのコードを入力してください。ログインが完了するまでこの画面を開いたままにしてください。',
+      copyCode: 'コードをコピー',
+      copied: 'コピー済み',
+      copyManually: 'コードを選択して手動でコピーしてください。',
+      continueAtOpenAI: 'OpenAI で続行',
+      expiresAt: 'コードの有効期限: {{time}}',
+      retrying: '接続が切れました。自動的に再試行しています…',
+      cancelSignIn: 'ログインをキャンセル',
+      tryAgain: '再試行',
+      signIn: 'ログイン',
+      reconnect: '再接続',
+      disconnect: '切断',
+      disconnectConfirm:
+        'このプロバイダーを切断しますか？再ログインするまでモデルは使用できません。ChatGPT のサブスクリプションは解約されません。',
+      confirmDisconnect: '切断を確認',
+    },
     title: 'モデル設定',
     description: 'パイプラインで使用できるモデルを設定・管理',
     createModel: 'モデルを作成',

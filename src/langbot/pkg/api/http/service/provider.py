@@ -9,6 +9,7 @@ from ....cloud.model_catalog import LANGBOT_MODELS_PROVIDER_REQUESTER
 from ....core import app
 from ....entity.persistence import model as persistence_model
 from ....workspace.errors import WorkspaceNotFoundError
+from ....provider.modelmgr.codex_auth import CodexAuth, REQUESTER as CODEX_REQUESTER, validate_config
 from .secrets import contains_secret_placeholder, redact_secrets, restore_secret_placeholders
 from .tenant import TenantContext, require_workspace_uuid, scope_statement
 
@@ -20,6 +21,7 @@ class ModelProviderService:
 
     def __init__(self, ap: app.Application) -> None:
         self.ap = ap
+        self.codex_auth = CodexAuth(ap)
 
     def _is_cloud_runtime(self) -> bool:
         mode = getattr(self.ap.persistence_mgr, 'mode', None)
@@ -116,14 +118,30 @@ class ModelProviderService:
         provider_data = provider_data.copy()
         if self._system_requester_is_reserved(provider_data.get('requester')):
             raise ValueError('space-chat-completions is reserved for the Cloud-managed LangBot Models provider')
+        validate_config(provider_data)
         provider_data['uuid'] = str(uuid.uuid4())
         provider_data['workspace_uuid'] = require_workspace_uuid(context)
         provider_data['api_keys'] = self._normalize_api_keys(
             restore_secret_placeholders(provider_data.get('api_keys'), sensitive=True)
         )
-        await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.insert(persistence_model.ModelProvider).values(**provider_data)
-        )
+        if provider_data.get('requester') == CODEX_REQUESTER:
+            async with self.ap.persistence_mgr.tenant_uow(provider_data['workspace_uuid']):
+                await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.insert(persistence_model.ModelProvider).values(**provider_data)
+                )
+                await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.insert(persistence_model.CodexCredential).values(
+                        workspace_uuid=provider_data['workspace_uuid'],
+                        provider_uuid=provider_data['uuid'],
+                        payload={},
+                        version=0,
+                        lease_until=0,
+                    )
+                )
+        else:
+            await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.insert(persistence_model.ModelProvider).values(**provider_data)
+            )
 
         # load to runtime
         runtime_provider = await self.ap.model_mgr.load_provider(context, provider_data)
@@ -138,6 +156,17 @@ class ModelProviderService:
             raise ValueError('space-chat-completions is reserved for the Cloud-managed LangBot Models provider')
         provider_data.pop('uuid', None)
         provider_data.pop('workspace_uuid', None)
+        if {'requester', 'base_url', 'api_keys'} & provider_data.keys():
+            current = await self.get_provider(context, provider_uuid, include_secret=True)
+            if current is None:
+                raise WorkspaceNotFoundError('Provider not found')
+            if CODEX_REQUESTER in (current.get('requester'), provider_data.get('requester')):
+                if provider_data.get('requester', current.get('requester')) != current.get('requester'):
+                    raise ValueError('Create a separate provider to change the ChatGPT authentication type')
+                merged = {**current, **provider_data}
+                validate_config(merged)
+                provider_data['base_url'] = merged['base_url']
+                provider_data['api_keys'] = []
         if 'api_keys' in provider_data:
             submitted_keys = provider_data.get('api_keys')
             if contains_secret_placeholder(submitted_keys, sensitive=True):

@@ -108,7 +108,7 @@ class TestSQLiteMigrationUpgrade:
         await run_alembic_upgrade(sqlite_engine, 'head')
 
         assert await get_alembic_current(sqlite_engine) == _get_script_head()
-        assert _get_script_head() == '0021_merge_reasoning_config'
+        assert _get_script_head() == '0022_codex_credentials'
 
     @pytest.mark.asyncio
     async def test_upgrade_from_reasoning_config_head_to_merged_head(self, sqlite_engine):
@@ -119,7 +119,7 @@ class TestSQLiteMigrationUpgrade:
         await run_alembic_stamp(sqlite_engine, '0018_llm_reasoning_config')
         await run_alembic_upgrade(sqlite_engine, 'head')
 
-        assert await get_alembic_current(sqlite_engine) == '0021_merge_reasoning_config'
+        assert await get_alembic_current(sqlite_engine) == '0022_codex_credentials'
 
     @pytest.mark.asyncio
     async def test_upgrade_from_baseline_to_head(self, sqlite_engine):

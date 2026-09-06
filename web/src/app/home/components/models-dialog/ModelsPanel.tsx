@@ -666,8 +666,14 @@ export default function ModelsPanel({
         )}
       </PanelBody>
 
-      <Dialog open={providerFormOpen} onOpenChange={setProviderFormOpen}>
-        <DialogContent className="w-full max-w-[calc(100%-2rem)] p-4 sm:max-w-[600px] sm:p-6">
+      <Dialog
+        open={providerFormOpen}
+        onOpenChange={(open) => {
+          if (!open) handleFormClose();
+          else setProviderFormOpen(true);
+        }}
+      >
+        <DialogContent className="w-full max-w-[calc(100%-2rem)] max-h-[calc(100dvh-2rem)] overflow-y-auto p-4 sm:max-w-[600px] sm:p-6">
           <DialogHeader>
             <DialogTitle>
               {editingProviderId
@@ -676,9 +682,10 @@ export default function ModelsPanel({
             </DialogTitle>
           </DialogHeader>
           <ProviderForm
+            key={editingProviderId || 'new'}
             providerId={editingProviderId || undefined}
             onFormSubmit={handleFormClose}
-            onFormCancel={() => setProviderFormOpen(false)}
+            onFormCancel={handleFormClose}
           />
         </DialogContent>
       </Dialog>

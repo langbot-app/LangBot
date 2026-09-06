@@ -86,6 +86,23 @@ already have a default pipeline.
 4. Use `list_*` tools to discover, then `get_*` / `create_*` / `update_*` /
    `delete_*` as needed.
 
+## ChatGPT / Codex subscription providers
+
+`list_model_providers` can return the `openai-codex` requester. Its OAuth
+credentials are server-only and are not provider API keys. Never ask a user
+to paste ChatGPT access tokens, refresh tokens, or a Codex auth cache into an
+MCP tool or model configuration.
+
+A human connects or disconnects the subscription through **Models → provider
+settings** in the LangBot web UI. The provider-scoped `/codex/*` authentication
+routes deliberately require a browser-user session and are not exposed as MCP
+tools or authorized by a LangBot API key. Once connected, models are managed
+and selected through the normal provider/model workflow. A disconnected
+provider must be reauthorized; do not silently replace it with API-key billing.
+
+See [ChatGPT / Codex subscription](../../../docs/CODEX_SUBSCRIPTION.md) for setup,
+usage limits, and the personal-account versus shared-service boundary.
+
 ## Implementation & maintenance (for LangBot developers)
 
 - Server: `src/langbot/pkg/api/mcp/server.py` (FastMCP). Tools call the service

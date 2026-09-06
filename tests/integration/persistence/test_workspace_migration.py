@@ -403,10 +403,12 @@ async def test_persistence_startup_defers_workspace_tables_until_account_upgrade
                 await conn.run_sync(lambda sync_conn: sa.inspect(sync_conn).get_table_names())
             )
         assert 'workspaces' not in tables_before_migration
+        assert 'codex_credentials' not in tables_before_migration
 
         await manager._run_alembic_migrations()
 
         async with engine.connect() as conn:
+            assert 'codex_credentials' in await conn.run_sync(lambda sync: sa.inspect(sync).get_table_names())
             workspace = (
                 (await conn.execute(sa.text("SELECT * FROM workspaces WHERE source = 'local'"))).mappings().one()
             )

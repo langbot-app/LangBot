@@ -33,6 +33,28 @@ class ModelProvider(Base):
     )
 
 
+class CodexCredential(Base):
+    """Server-only OAuth state. Never joined into provider/model serialization."""
+
+    __tablename__ = 'codex_credentials'
+
+    provider_uuid = sqlalchemy.Column(sqlalchemy.String(255), primary_key=True)
+    workspace_uuid = sqlalchemy.Column(sqlalchemy.String(36), nullable=False)
+    payload = sqlalchemy.Column(sqlalchemy.JSON, nullable=False, default=dict)
+    version = sqlalchemy.Column(sqlalchemy.Integer, nullable=False, default=0)
+    lease_owner = sqlalchemy.Column(sqlalchemy.String(64), nullable=True)
+    lease_until = sqlalchemy.Column(sqlalchemy.Float, nullable=False, default=0)
+    __table_args__ = (
+        sqlalchemy.ForeignKeyConstraint(
+            ['workspace_uuid', 'provider_uuid'],
+            ['model_providers.workspace_uuid', 'model_providers.uuid'],
+            name='fk_codex_credentials_workspace_provider',
+            ondelete='CASCADE',
+        ),
+        sqlalchemy.Index('ix_codex_credentials_workspace', 'workspace_uuid'),
+    )
+
+
 class LLMModel(Base):
     """LLM model"""
 

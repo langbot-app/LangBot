@@ -549,10 +549,12 @@ class TestPostgreSQLWorkspaceMigration:
                 await conn.run_sync(lambda sync_conn: sa.inspect(sync_conn).get_table_names())
             )
         assert 'workspaces' not in tables_before_migration
+        assert 'codex_credentials' not in tables_before_migration
 
         await manager._initialize_managed_schema()
 
         async with postgres_engine.connect() as conn:
+            assert 'codex_credentials' in await conn.run_sync(lambda sync: sa.inspect(sync).get_table_names())
             account = (await conn.execute(text('SELECT uuid, status, source FROM users'))).mappings().one()
             workspace = (
                 (await conn.execute(text('SELECT * FROM workspaces WHERE source = :source'), {'source': 'local'}))

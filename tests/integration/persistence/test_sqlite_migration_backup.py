@@ -5,6 +5,7 @@ import logging
 import os
 import pathlib
 import sqlite3
+from contextlib import closing
 
 import pytest
 import sqlalchemy as sa
@@ -34,7 +35,7 @@ def _manifest_payloads(backup_directory) -> list[dict]:
 
 def _assert_verified_backup(payload: dict) -> None:
     backup_path = pathlib.Path(payload['backup_path'])
-    with sqlite3.connect(f'{backup_path.as_uri()}?mode=ro', uri=True) as connection:
+    with closing(sqlite3.connect(f'{backup_path.as_uri()}?mode=ro', uri=True)) as connection:
         assert connection.execute('PRAGMA quick_check').fetchall() == [('ok',)]
         assert connection.execute('SELECT version_num FROM alembic_version').fetchone()[0] == payload['source_revision']
 

@@ -723,6 +723,10 @@ class ModelManager:
             'requester_name': provider_entity.requester,
         }
 
+        if provider_entity.requester == 'openai-codex':
+            config['provider_uuid'] = provider_entity.uuid
+            config['workspace_uuid'] = context.workspace_uuid
+
         if litellm_provider:
             from .requesters import litellmchat
 

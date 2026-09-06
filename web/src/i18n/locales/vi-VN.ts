@@ -184,6 +184,37 @@ const viVN = {
     help: 'Trợ giúp',
   },
   models: {
+    codex: {
+      account: 'Gói đăng ký ChatGPT',
+      description:
+        'Đăng nhập bằng tài khoản ChatGPT. Gói đăng ký độc lập với thanh toán API OpenAI; mô hình và giới hạn sử dụng tùy thuộc vào gói của bạn.',
+      disconnected: 'Chưa kết nối',
+      loading: 'Đang kiểm tra kết nối…',
+      starting: 'Đang bắt đầu đăng nhập…',
+      pending: 'Đang chờ cấp quyền',
+      connected: 'Đã kết nối',
+      expired: 'Phiên đăng nhập đã hết hạn. Hãy lấy mã mới.',
+      error: 'Không thể đăng nhập. Kiểm tra kết nối và thử lại.',
+      canceling: 'Đang hủy đăng nhập…',
+      saveAndSignIn: 'Lưu và đăng nhập',
+      done: 'Xong',
+      instructions:
+        'Nhập mã này trên trang OpenAI. Giữ hộp thoại này mở cho đến khi đăng nhập hoàn tất.',
+      copyCode: 'Sao chép mã',
+      copied: 'Đã sao chép',
+      copyManually: 'Chọn và sao chép mã thủ công.',
+      continueAtOpenAI: 'Tiếp tục tại OpenAI',
+      expiresAt: 'Mã hết hạn lúc {{time}}.',
+      retrying: 'Kết nối bị gián đoạn. Đang tự động thử lại…',
+      cancelSignIn: 'Hủy đăng nhập',
+      tryAgain: 'Thử lại',
+      signIn: 'Đăng nhập',
+      reconnect: 'Kết nối lại',
+      disconnect: 'Ngắt kết nối',
+      disconnectConfirm:
+        'Ngắt kết nối nhà cung cấp này? Các mô hình sẽ ngừng hoạt động cho đến khi bạn đăng nhập lại. Thao tác này không hủy gói ChatGPT của bạn.',
+      confirmDisconnect: 'Xác nhận ngắt kết nối',
+    },
     title: 'Mô hình',
     description:
       'Cấu hình và quản lý các mô hình có thể sử dụng trong Pipeline',

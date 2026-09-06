@@ -187,6 +187,38 @@ const esES = {
     help: 'Obtener ayuda',
   },
   models: {
+    codex: {
+      account: 'Suscripción de ChatGPT',
+      description:
+        'Inicia sesión con tu cuenta de ChatGPT. La suscripción es independiente de la facturación de la API de OpenAI; los modelos y límites dependen de tu plan.',
+      disconnected: 'Sin conexión',
+      loading: 'Comprobando conexión…',
+      starting: 'Iniciando sesión…',
+      pending: 'Esperando autorización',
+      connected: 'Conectado',
+      expired: 'El inicio de sesión ha caducado. Solicita un nuevo código.',
+      error:
+        'No se pudo iniciar sesión. Comprueba la conexión e inténtalo de nuevo.',
+      canceling: 'Cancelando inicio de sesión…',
+      saveAndSignIn: 'Guardar e iniciar sesión',
+      done: 'Listo',
+      instructions:
+        'Introduce este código en la página de OpenAI. Mantén este diálogo abierto hasta completar el inicio de sesión.',
+      copyCode: 'Copiar código',
+      copied: 'Copiado',
+      copyManually: 'Selecciona y copia el código manualmente.',
+      continueAtOpenAI: 'Continuar en OpenAI',
+      expiresAt: 'El código caduca a las {{time}}.',
+      retrying: 'Conexión interrumpida. Reintentando automáticamente…',
+      cancelSignIn: 'Cancelar inicio de sesión',
+      tryAgain: 'Reintentar',
+      signIn: 'Iniciar sesión',
+      reconnect: 'Reconectar',
+      disconnect: 'Desconectar',
+      disconnectConfirm:
+        '¿Desconectar este proveedor? Sus modelos dejarán de funcionar hasta que vuelvas a iniciar sesión. Esto no cancela tu suscripción de ChatGPT.',
+      confirmDisconnect: 'Confirmar desconexión',
+    },
     title: 'Modelos',
     description:
       'Configura y gestiona los modelos que se pueden usar en los Pipelines',
