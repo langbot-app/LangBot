@@ -116,6 +116,62 @@ async function edit(page: Page) {
   );
 }
 
+for (const width of [1280, 320]) {
+  test(`confirmation stays centered throughout entry (${width}px)`, async ({
+    page,
+  }) => {
+    const state = await fixture(page);
+    await edit(page);
+    await page.setViewportSize({ width, height: 900 });
+    // Trigger without Playwright's post-click wait so the browser animation is
+    // still live. Sample its actual keyframes, not only the final screenshot.
+    await editDialog(page)
+      .getByRole('button', { name: 'Delete', exact: true })
+      .evaluate((el) => (el as HTMLButtonElement).click());
+    const confirmation = page.getByRole('alertdialog');
+    for (const phase of ['entry']) {
+      const samples = await confirmation.evaluate(async (el) => {
+        const animations = el.getAnimations();
+        if (!animations.length)
+          throw new Error('Expected the real dialog animation');
+        await Promise.all(animations.map((a) => a.ready));
+        animations.forEach((a) => a.pause());
+        const samples = [0, 0.25, 0.5, 0.75, 0.99].map((fraction) => {
+          animations.forEach((a) => {
+            a.currentTime = Number(a.effect!.getTiming().duration) * fraction;
+          });
+          const r = el.getBoundingClientRect();
+          return {
+            x: r.x + r.width / 2,
+            y: r.y + r.height / 2,
+            left: r.left,
+            right: r.right,
+          };
+        });
+        animations.forEach((a) => a.finish());
+        return samples;
+      });
+      for (const sample of samples) {
+        expect(
+          Math.abs(sample.x - width / 2),
+          `${phase} horizontal center`,
+        ).toBeLessThan(1);
+        expect(
+          Math.abs(sample.y - 450),
+          `${phase} vertical center`,
+        ).toBeLessThan(1);
+        expect(sample.left).toBeGreaterThanOrEqual(0);
+        expect(sample.right).toBeLessThanOrEqual(width);
+      }
+    }
+    await confirmation
+      .getByRole('button', { name: 'Cancel', exact: true })
+      .click();
+    await expect(confirmation).toHaveCount(0);
+    expect(state.deletes).toEqual([]);
+  });
+}
+
 for (const requester of ['openai', 'openai-codex']) {
   for (const width of [1280, 320]) {
     test(`footer deletion confirmation cancellation and geometry (${requester}, ${width}px)`, async ({

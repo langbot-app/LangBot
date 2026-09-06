@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { httpClient } from '@/app/infra/http/HttpClient';
 
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -16,6 +16,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
+import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { DialogFooter } from '@/components/ui/dialog';
 import {
   AlertDialog,
@@ -74,7 +75,7 @@ export default function ProviderForm({
       api_key: '',
     },
   });
-  const { setValue } = form;
+  const { reset } = form;
   const isCodex = form.watch('requester') === 'openai-codex';
   const [savedProviderId, setSavedProviderId] = useState(providerId);
   const savedId = useRef(providerId);
@@ -84,6 +85,10 @@ export default function ProviderForm({
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleteError, setDeleteError] = useState('');
   const [mutableProviderLoaded, setMutableProviderLoaded] = useState(false);
+  const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>(
+    'loading',
+  );
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const mounted = useRef(true);
   const login = useCodexLogin(isCodex, providerId);
   const loginActive = ['starting', 'pending', 'canceling', 'loading'].includes(
@@ -110,51 +115,57 @@ export default function ProviderForm({
   const [isOpen, setIsOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  const loadRequesters = useCallback(async () => {
-    const resp = await httpClient.getProviderRequesters();
-    setRequesterList(
-      resp.requesters
-        .filter((item) => item.name !== 'space-chat-completions')
-        .map((item) => ({
-          label: extractI18nObject(item.label),
-          value: item.name,
-          category: item.spec.provider_category || 'manufacturer',
-          defaultUrl:
-            item.spec.config
-              .find((c) => c.name === 'base_url')
-              ?.default?.toString() || '',
-          description: extractI18nObject(item.description),
-          alias: item.spec.alias || '',
-        })),
-    );
-  }, []);
-
-  const loadProvider = useCallback(
-    async (id: string) => {
-      const resp = await httpClient.getModelProvider(id);
-      const provider = resp.provider;
-      setMutableProviderLoaded(
-        provider.uuid === id &&
-          provider.requester !== LANGBOT_MODELS_PROVIDER_REQUESTER,
-      );
-
-      setValue('name', provider.name);
-      setValue('requester', provider.requester);
-      setValue('base_url', provider.base_url);
-      setValue('api_key', provider.api_keys?.[0] || '');
-    },
-    [setValue],
-  );
-
   useEffect(() => {
+    // Ignore both success and failure from a closed form or superseded attempt.
+    let canceled = false;
+    setLoadState('loading');
+    setMutableProviderLoaded(false);
+
     async function init() {
-      await loadRequesters();
-      if (providerId) {
-        await loadProvider(providerId);
+      try {
+        const [requesters, detail] = await Promise.all([
+          httpClient.getProviderRequesters(),
+          providerId ? httpClient.getModelProvider(providerId) : null,
+        ]);
+        if (canceled) return;
+        setRequesterList(
+          requesters.requesters
+            .filter((item) => item.name !== LANGBOT_MODELS_PROVIDER_REQUESTER)
+            .map((item) => ({
+              label: extractI18nObject(item.label),
+              value: item.name,
+              category: item.spec.provider_category || 'manufacturer',
+              defaultUrl:
+                item.spec.config
+                  .find((c) => c.name === 'base_url')
+                  ?.default?.toString() || '',
+              description: extractI18nObject(item.description),
+              alias: item.spec.alias || '',
+            })),
+        );
+        if (detail) {
+          const provider = detail.provider;
+          reset({
+            name: provider.name,
+            requester: provider.requester,
+            base_url: provider.base_url,
+            api_key: provider.api_keys?.[0] || '',
+          });
+          setMutableProviderLoaded(
+            provider.uuid === providerId &&
+              provider.requester !== LANGBOT_MODELS_PROVIDER_REQUESTER,
+          );
+        }
+        setLoadState('ready');
+      } catch {
+        if (!canceled) setLoadState('error');
       }
     }
-    init();
-  }, [providerId, loadProvider, loadRequesters]);
+    void init();
+    return () => {
+      canceled = true;
+    };
+  }, [providerId, reset, loadAttempt]);
 
   // Filter requesters based on search query
   const filteredRequesters = requesterList.filter(
@@ -184,7 +195,12 @@ export default function ProviderForm({
   };
 
   async function handleFormSubmit(values: z.infer<typeof formSchema>) {
-    if (submitting.current || deleting.current || (isCodex && loginActive))
+    if (
+      loadState !== 'ready' ||
+      submitting.current ||
+      deleting.current ||
+      (isCodex && loginActive)
+    )
       return;
     submitting.current = true;
     const data = providerPayload(values);
@@ -215,6 +231,7 @@ export default function ProviderForm({
 
   async function handleDelete() {
     if (
+      loadState !== 'ready' ||
       !providerId ||
       !mutableProviderLoaded ||
       !onProviderDeleted ||
@@ -239,6 +256,42 @@ export default function ProviderForm({
     }
     toast.success(t('models.providerDeleted'));
     await onProviderDeleted(providerId);
+  }
+
+  if (loadState !== 'ready') {
+    return (
+      <>
+        {loadState === 'loading' ? (
+          <div
+            role="status"
+            aria-label={t('common.loading')}
+            className="flex justify-center py-8"
+          >
+            <LoadingSpinner text={t('common.loading')} />
+          </div>
+        ) : (
+          <p role="alert" className="py-8 text-sm text-destructive">
+            {t('models.loadError')}
+          </p>
+        )}
+        <DialogFooter>
+          {loadState === 'error' && (
+            <Button
+              type="button"
+              onClick={() => {
+                setLoadState('loading');
+                setLoadAttempt((attempt) => attempt + 1);
+              }}
+            >
+              {t('common.retry')}
+            </Button>
+          )}
+          <Button type="button" variant="outline" onClick={onFormCancel}>
+            {t('common.cancel')}
+          </Button>
+        </DialogFooter>
+      </>
+    );
   }
 
   return (

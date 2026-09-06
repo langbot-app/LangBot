@@ -705,13 +705,15 @@ export default function ModelsPanel({
                 : t('models.addProvider')}
             </DialogTitle>
           </DialogHeader>
-          <ProviderForm
-            key={editingProviderId || 'new'}
-            providerId={editingProviderId || undefined}
-            onFormSubmit={handleFormClose}
-            onFormCancel={handleFormClose}
-            onProviderDeleted={canManage ? handleProviderDeleted : undefined}
-          />
+          {providerFormOpen && (
+            <ProviderForm
+              key={editingProviderId || 'new'}
+              providerId={editingProviderId || undefined}
+              onFormSubmit={handleFormClose}
+              onFormCancel={handleFormClose}
+              onProviderDeleted={canManage ? handleProviderDeleted : undefined}
+            />
+          )}
         </DialogContent>
       </Dialog>
     </>
