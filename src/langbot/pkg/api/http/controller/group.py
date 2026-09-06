@@ -15,6 +15,7 @@ from ....workspace.collaboration import MembershipPermissionError, WorkspaceColl
 from ....workspace.errors import WorkspaceNotFoundError
 from ....cloud.entitlements import EntitlementUnavailableError
 from ....core.errors import TaskCapacityError
+from ....provider.modelmgr.codex_errors import CodexProviderError
 from ..authz import (
     AuthenticationDeniedError,
     AuthorizationError,
@@ -247,6 +248,8 @@ class RouterGroup(abc.ABC):
                     return await f(*args, **kwargs)
 
                 except Exception as e:  # 自动 500
+                    if isinstance(e, CodexProviderError):
+                        return self.http_status(e.status_code, e.error_code, str(e))
                     if isinstance(e, AuthorizationError):
                         return self.http_status(e.status_code, e.error_code, str(e))
                     if isinstance(e, WorkspaceNotFoundError):

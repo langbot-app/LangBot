@@ -14,6 +14,7 @@ import langbot_plugin.api.entities.builtin.provider.message as pm
 
 from .. import requester, reasoning
 from ..codex_auth import BASE_URL, CodexAuth, LOGIN_REQUIRED
+from ..codex_errors import CodexProviderError
 
 
 async def sse_events(response):
@@ -125,12 +126,52 @@ class CodexRequester(requester.ProviderAPIRequester):
     @staticmethod
     def _http_error(status):
         if status == 401:
-            return ValueError(LOGIN_REQUIRED)
+            # Upstream authentication is not LangBot authentication: HTTP401 would
+            # make the browser discard its own valid user session.
+            return CodexProviderError(LOGIN_REQUIRED, 400, 'codex_reauthentication_required')
         if status == 429:
-            return ValueError('ChatGPT subscription usage limit reached. Please retry later or check your plan.')
+            return CodexProviderError(
+                'ChatGPT request was limited (rate limit or usage restriction). Please retry later or check your plan.',
+                429,
+                'codex_rate_limited',
+            )
         if status == 403:
-            return ValueError('ChatGPT denied this request. Check subscription and workspace permissions.')
-        return ValueError(f'ChatGPT Codex request failed (HTTP {status})')
+            return CodexProviderError(
+                'ChatGPT denied this request. Check subscription and workspace permissions.',
+                403,
+                'codex_access_denied',
+            )
+        if status == 400:
+            return CodexProviderError(
+                'ChatGPT rejected the model or request. Check the selected model and request settings.',
+                400,
+                'codex_invalid_request',
+            )
+        return CodexProviderError('ChatGPT Codex upstream request failed. Please retry later.')
+
+    async def _response_error(self, response):
+        # Inspect only a bounded 429 error record and an allowlisted machine code.
+        # Never expose upstream prose, reset metadata, headers or credentials.
+        if response.status_code == 429:
+            payload = bytearray()
+            async for chunk in response.aiter_bytes():
+                if len(payload) + len(chunk) > 8192:
+                    return self._http_error(429)
+                payload.extend(chunk)
+            try:
+                data = json.loads(payload)
+                error = data.get('error') if isinstance(data, dict) else None
+                if isinstance(error, dict) and (
+                    error.get('type') == 'usage_limit_reached' or error.get('code') == 'usage_limit_reached'
+                ):
+                    return CodexProviderError(
+                        'ChatGPT subscription usage limit reached. Please retry later or check your plan.',
+                        429,
+                        'codex_usage_limit_reached',
+                    )
+            except (ValueError, UnicodeError):
+                pass
+        return self._http_error(response.status_code)
 
     def _scope(self, query, model, tokens):
         return (
@@ -228,7 +269,7 @@ class CodexRequester(requester.ProviderAPIRequester):
                             )
                             continue
                         if response.status_code != 200:
-                            raise self._http_error(response.status_code)
+                            raise await self._response_error(response)
                         async for event in sse_events(response):
                             yield event, tokens
                         return
@@ -245,7 +286,7 @@ class CodexRequester(requester.ProviderAPIRequester):
             response = event.get('response') or {}
             response_id = response.get('id') or response_id
             if kind in ('error', 'response.failed', 'response.incomplete'):
-                raise ValueError('ChatGPT Codex response failed or was incomplete. Please retry.')
+                raise CodexProviderError('ChatGPT Codex response failed or was incomplete. Please retry.')
             if kind == 'response.output_text.delta':
                 delta = event.get('delta', '')
                 text += delta
@@ -265,7 +306,7 @@ class CodexRequester(requester.ProviderAPIRequester):
                     yield pm.MessageChunk(role='assistant', content='', tool_calls=[_tool(item)])
             elif kind in ('response.completed', 'response.done'):
                 if response.get('status') not in (None, 'completed'):
-                    raise ValueError('ChatGPT Codex response was not completed')
+                    raise CodexProviderError('ChatGPT Codex response was not completed')
                 output = response.get('output') or [output_items[k] for k in sorted(output_items)]
                 for item in output:
                     if item.get('type') == 'function_call' and item.get('call_id') not in seen_calls:
@@ -303,7 +344,7 @@ class CodexRequester(requester.ProviderAPIRequester):
                     provider_specific_fields=fields,
                 )
                 return
-        raise ValueError('ChatGPT Codex stream ended before completion. Please retry.')
+        raise CodexProviderError('ChatGPT Codex stream ended before completion. Please retry.')
 
     async def invoke_llm_stream(self, query, model, messages, funcs=None, extra_args=None, remove_think=False):
         async for chunk in self._chunks(query, model, messages, funcs, extra_args, remove_think, {}):
@@ -345,7 +386,7 @@ class CodexRequester(requester.ProviderAPIRequester):
                         )
                         continue
                     if response.status_code != 200:
-                        raise self._http_error(response.status_code)
+                        raise await self._response_error(response)
                     data = response.json()
                     if not isinstance(data, dict) or not isinstance(data.get('models'), list):
                         raise ValueError('ChatGPT returned an invalid model catalog')
