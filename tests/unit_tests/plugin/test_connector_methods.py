@@ -240,6 +240,43 @@ class TestListPlugins:
 
 class TestPluginDiagnostics:
     @pytest.mark.asyncio
+    async def test_prevent_postorder_stops_later_installations_and_restores_query(self):
+        from langbot_plugin.api.entities.events import PersonMessageReceived
+
+        connector = create_mock_connector()
+        query = text_query('hello')
+        event = PersonMessageReceived(
+            query=query,
+            launcher_type=query.launcher_type.value,
+            launcher_id=query.launcher_id,
+            sender_id=query.sender_id,
+            message_event=query.message_event,
+            message_chain=query.message_chain,
+        )
+        second_binding = TEST_INSTALLATION_BINDING.model_copy(
+            update={
+                'installation_uuid': '00000000-0000-4000-8000-000000000002',
+            }
+        )
+        connector._operation_bindings = AsyncMock(return_value=[TEST_INSTALLATION_BINDING, second_binding])
+
+        async def stop_following_plugins(event_context, include_plugins=None):
+            event_context['is_prevent_postorder'] = True
+            return {'event_context': event_context, 'emitted_plugins': ['first']}
+
+        runtime_handler = configure_handler(connector, Mock())
+        runtime_handler.emit_event = AsyncMock(side_effect=stop_following_plugins)
+
+        returned = await connector.emit_event(event)
+
+        runtime_handler.emit_event.assert_awaited_once()
+        assert returned.is_prevented_postorder()
+        assert not returned.is_prevented_default()
+        assert returned.event.query is query
+        assert 'query' not in returned.event.model_dump()
+        assert returned._emitted_plugins == ['first']
+
+    @pytest.mark.asyncio
     async def test_emit_event_preserves_response_sources(self):
         connector = create_mock_connector()
         query = text_query('hello')

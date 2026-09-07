@@ -229,6 +229,49 @@ class TestResponseWrapperAssistant:
     """Tests for assistant response wrapping."""
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize('streaming', [False, True])
+    @pytest.mark.parametrize('prevent_default', [False, True])
+    async def test_returned_response_context_controls_delivery(self, streaming, prevent_default):
+        """Legacy response hooks can replace or block the actual outgoing chain."""
+        from langbot_plugin.api.entities.context import EventContext
+        from langbot_plugin.api.entities.builtin.provider.message import Message, MessageChunk
+
+        app = FakeApp()
+        app.sess_mgr.get_session = AsyncMock(return_value=make_session())
+        observed_hooks = []
+
+        async def edit_response(event, bound_plugins):
+            observed_hooks.append(event.event_name)
+            ctx = EventContext.model_validate(EventContext.from_event(event).model_dump())
+            ctx.event.reply_message_chain = platform_message.MessageChain(
+                [
+                    platform_message.Plain(text='plugin reply'),
+                ]
+            )
+            if prevent_default:
+                ctx.prevent_default()
+            return ctx
+
+        app.plugin_connector.emit_event = AsyncMock(side_effect=edit_response)
+        stage = get_wrapper_module().ResponseWrapper(app)
+        query = text_query('hello')
+        query.pipeline_config = make_wrapper_config()
+        message_class = MessageChunk if streaming else Message
+        query.resp_messages = [message_class(role='assistant', content='model reply')]
+        query.resp_message_chain = []
+        await stage.initialize(query.pipeline_config)
+
+        results = [result async for result in stage.process(query, 'ResponseWrapper')]
+
+        assert observed_hooks == ['NormalMessageResponded']
+        if prevent_default:
+            assert results[0].result_type == get_entities_module().ResultType.INTERRUPT
+            assert query.resp_message_chain == []
+        else:
+            assert results[0].result_type == get_entities_module().ResultType.CONTINUE
+            assert [str(chain) for chain in query.resp_message_chain] == ['plugin reply']
+
+    @pytest.mark.asyncio
     async def test_assistant_content_response(self):
         """Assistant with content should emit event and wrap."""
         wrapper = get_wrapper_module()

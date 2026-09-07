@@ -122,20 +122,14 @@ class RuntimePipeline:
         self.placement_generation = self.execution_context.placement_generation
 
         # Extract bound plugins and MCP servers from extensions_preferences
-        extensions_prefs = normalize_extension_preferences(
-            pipeline_entity.extensions_preferences
-        )
+        extensions_prefs = normalize_extension_preferences(pipeline_entity.extensions_preferences)
         self.enable_all_plugins = extensions_prefs['enable_all_plugins'] is True
-        self.enable_all_mcp_servers = (
-            extensions_prefs['enable_all_mcp_servers'] is True
-        )
+        self.enable_all_mcp_servers = extensions_prefs['enable_all_mcp_servers'] is True
         pipeline_config = pipeline_entity.config or {}
         runner_config: dict[str, typing.Any] = {}
         runner_id = RunnerConfigResolver.resolve_runner_id(pipeline_config)
         if runner_id:
-            resolved = RunnerConfigResolver.resolve_runner_config(
-                pipeline_config, runner_id
-            )
+            resolved = RunnerConfigResolver.resolve_runner_config(pipeline_config, runner_id)
             if isinstance(resolved, dict):
                 runner_config = resolved
         self.mcp_resource_attachments = runner_config.get(
@@ -154,10 +148,7 @@ class RuntimePipeline:
             # None indicates to use all available plugins
             self.bound_plugins = None
         else:
-            self.bound_plugins = [
-                f'{plugin["author"]}/{plugin["name"]}'
-                for plugin in extensions_prefs['plugins']
-            ]
+            self.bound_plugins = [f'{plugin["author"]}/{plugin["name"]}' for plugin in extensions_prefs['plugins']]
 
         if self.enable_all_mcp_servers:
             # None indicates to use all available MCP servers
@@ -385,9 +376,7 @@ class RuntimePipeline:
         # Get runner name from pipeline config
         runner_name = None
         if query.pipeline_config:
-            runner_name = RunnerConfigResolver.resolve_runner_id(
-                query.pipeline_config
-            )
+            runner_name = RunnerConfigResolver.resolve_runner_id(query.pipeline_config)
 
         # Record query start and store message_id
         message_id = ''
@@ -441,6 +430,11 @@ class RuntimePipeline:
                     f'MessageReceived event prevented default for query {query.query_id}, pipeline={pipeline_name}'
                 )
                 return
+
+            # The Runtime returns a deserialized event, not the original Query.
+            # Carry plugin message edits into the following Pipeline stages.
+            query.message_chain = event_ctx.event.message_chain
+            query.message_event.message_chain = query.message_chain
 
             self.ap.logger.debug(f'Processing query {query.query_id}')
 
@@ -669,9 +663,7 @@ class PipelineManager:
         stage_containers: list[StageInstContainer] = []
         for stage_name in pipeline_entity.stages:
             if stage_name not in self.stage_dict:
-                self.ap.logger.warning(
-                    f'Pipeline stage {stage_name} is not registered; skipping'
-                )
+                self.ap.logger.warning(f'Pipeline stage {stage_name} is not registered; skipping')
                 continue
             stage_containers.append(StageInstContainer(inst_name=stage_name, inst=self.stage_dict[stage_name](self.ap)))
 

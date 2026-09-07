@@ -77,6 +77,41 @@ class TestPreProcessorNormalText:
     """Tests for normal text message preprocessing."""
 
     @pytest.mark.asyncio
+    async def test_returned_plugin_prompt_edits_are_applied(self):
+        """Prompt hooks retain both edits across the serialized Runtime boundary."""
+        from langbot_plugin.api.entities.context import EventContext
+        from langbot_plugin.api.entities.builtin.provider.message import Message
+
+        app = FakeApp()
+        app.sess_mgr.get_session = AsyncMock(return_value=make_session())
+        conversation = Mock()
+        conversation.prompt = Mock(messages=[])
+        conversation.prompt.copy = Mock(return_value=Mock(messages=[]))
+        conversation.messages = []
+        conversation.uuid = None
+        app.sess_mgr.get_conversation = AsyncMock(return_value=conversation)
+        model = Mock()
+        model.model_entity = Mock(uuid='test-model', abilities=['func_call'])
+        app.model_mgr.get_model_by_uuid = AsyncMock(return_value=model)
+        observed_hooks = []
+
+        async def edit_prompts(event, bound_plugins):
+            observed_hooks.append(event.event_name)
+            ctx = EventContext.model_validate(EventContext.from_event(event).model_dump())
+            ctx.event.default_prompt = [Message(role='system', content='plugin system prompt')]
+            ctx.event.prompt = [Message(role='assistant', content='plugin history')]
+            return ctx
+
+        app.plugin_connector.emit_event = AsyncMock(side_effect=edit_prompts)
+        query = text_query('hello')
+
+        await get_preproc_module().PreProcessor(app).process(query, 'PreProcessor')
+
+        assert observed_hooks == ['PromptPreProcessing']
+        assert query.prompt.messages[0].content == 'plugin system prompt'
+        assert query.messages[0].content == 'plugin history'
+
+    @pytest.mark.asyncio
     async def test_normal_text_continues(self):
         """Normal text message should continue pipeline."""
         preproc = get_preproc_module()

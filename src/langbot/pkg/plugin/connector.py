@@ -2114,6 +2114,10 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             event_ctx = context.EventContext.model_validate(result['event_context'])
             emitted_plugins.extend(result.get('emitted_plugins', []))
             response_sources.extend(result.get('response_sources', []))
+            if event_ctx.is_prevented_postorder():
+                break
+        if query is not None:
+            event_ctx.event.query = query
         event_ctx._emitted_plugins = emitted_plugins
         event_ctx._response_sources = response_sources
 

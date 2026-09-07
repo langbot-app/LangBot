@@ -229,6 +229,7 @@ async def test_remove_pipeline(mock_app):
 @pytest.mark.asyncio
 async def test_runtime_pipeline_execute(mock_app, sample_query):
     """Test runtime pipeline execution with real Pydantic models."""
+    sample_query.query_id = 1
     pipelinemgr = get_pipelinemgr_module()
     stage = get_stage_module()
     persistence_pipeline = get_persistence_pipeline_module()
@@ -266,16 +267,57 @@ async def test_runtime_pipeline_execute(mock_app, sample_query):
     )
 
     # Mock plugin connector
-    event_ctx = Mock()
-    event_ctx.is_prevented_default = Mock(return_value=False)
-    mock_app.plugin_connector.emit_event = AsyncMock(return_value=event_ctx)
+    from langbot_plugin.api.entities.context import EventContext
+
+    async def return_event_context(event, bound_plugins):
+        return EventContext.model_validate(EventContext.from_event(event).model_dump())
+
+    mock_app.plugin_connector.emit_event = AsyncMock(side_effect=return_event_context)
 
     # Execute pipeline
     await runtime_pipeline.run(sample_query)
 
     # Verify stage was called
-    mock_stage.process.assert_called_once()
+    assert mock_stage.process.call_count == 1, mock_app.logger.error.call_args_list
     mock_app.query_pool.remove_query.assert_awaited_once_with(sample_query)
+
+
+@pytest.mark.asyncio
+async def test_received_event_edits_reach_pipeline_stages(mock_app, sample_query):
+    """Read edits from the returned RPC context before running message stages."""
+    from langbot_plugin.api.entities.context import EventContext
+    from langbot_plugin.api.entities.builtin.platform.message import MessageChain, Plain
+
+    sample_query.query_id = 1
+    pipeline_entity = SimpleNamespace(
+        name='Compatibility test',
+        uuid='test-pipeline-uuid',
+        workspace_uuid='test-workspace',
+        config=sample_query.pipeline_config,
+        extensions_preferences={'plugins': []},
+    )
+    runtime_pipeline = get_pipelinemgr_module().RuntimePipeline(
+        mock_app,
+        pipeline_entity,
+        [],
+        _context('test-pipeline-uuid'),
+    )
+    observed = []
+
+    async def plugin_edit(event, bound_plugins):
+        ctx = EventContext.model_validate(EventContext.from_event(event).model_dump())
+        ctx.event.message_chain = MessageChain([Plain(text='edited by plugin')])
+        return ctx
+
+    async def capture_stage(index, query):
+        observed.append((str(query.message_chain), str(query.message_event.message_chain)))
+
+    mock_app.plugin_connector.emit_event = AsyncMock(side_effect=plugin_edit)
+    runtime_pipeline._execute_from_stage = AsyncMock(side_effect=capture_stage)
+
+    await runtime_pipeline.run(sample_query)
+
+    assert observed == [('edited by plugin', 'edited by plugin')], mock_app.logger.error.call_args_list
 
 
 @pytest.mark.asyncio
