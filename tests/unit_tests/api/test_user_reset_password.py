@@ -27,7 +27,7 @@ from langbot.pkg.core.stages.genkeys import GenKeysStage
 
 pytestmark = pytest.mark.asyncio
 
-STORED_KEY = 'Rk9SX1RFU1RfUkVDT1ZFUllfS0VZXzEyMzQ1Njc4OTA='
+STORED_KEY = 'ABCD2345'
 
 
 @pytest.fixture(autouse=True)
@@ -47,7 +47,7 @@ def _fast_sleep(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# genkeys.py: recovery-key entropy
+# genkeys.py: recovery-key generation and compatibility
 # ---------------------------------------------------------------------------
 
 
@@ -65,18 +65,15 @@ def _make_genkeys_ap(existing_key: str) -> SimpleNamespace:
     )
 
 
-async def test_recovery_key_generation_uses_high_entropy():
-    """Newly generated recovery keys must carry at least 256 bits (#2392).
-
-    The legacy generator produced 6 hex chars (24 bits); the keyspace was
-    exhaustible within hours. The replacement must be at least 32 chars.
-    """
+async def test_recovery_key_generation_is_short_and_unambiguous():
+    """Eight random base32 characters balance manual entry and online throttling."""
     ap = _make_genkeys_ap(existing_key='')
 
     await GenKeysStage().run(ap)
 
     key = ap.instance_config.data['system']['recovery_key']
-    assert len(key) >= 32, f'recovery key has only {len(key)} chars'
+    assert len(key) == 8
+    assert set(key) <= set('23456789ABCDEFGHJKLMNPQRSTUVWXYZ')
     assert ap.instance_config.dump_config.called
 
 
@@ -92,14 +89,36 @@ async def test_legacy_low_entropy_key_preserved_with_warning(caplog):
     assert not ap.instance_config.dump_config.called
 
 
-async def test_recovery_key_generation_preserves_existing_key():
+@pytest.mark.parametrize('existing_key', ['ABC123', 'ABCD2345', 'aB-_' * 10 + 'xYz', '自定义恢复密钥'])
+async def test_recovery_key_generation_preserves_existing_key(existing_key):
     """An explicitly configured recovery key must not be regenerated on boot."""
-    ap = _make_genkeys_ap(existing_key='my-own-strong-recovery-key-0123456789')
+    ap = _make_genkeys_ap(existing_key=existing_key)
 
     await GenKeysStage().run(ap)
 
-    assert ap.instance_config.data['system']['recovery_key'] == 'my-own-strong-recovery-key-0123456789'
+    assert ap.instance_config.data['system']['recovery_key'] == existing_key
     assert not ap.instance_config.dump_config.called
+
+
+async def test_generated_key_is_preserved_without_legacy_warning(caplog):
+    """A restart must not warn about or replace the new eight-character key."""
+    ap = _make_genkeys_ap(existing_key='')
+    await GenKeysStage().run(ap)
+    key = ap.instance_config.data['system']['recovery_key']
+    assert len(key) == 8
+    ap.instance_config.dump_config.reset_mock()
+    with caplog.at_level(logging.WARNING, logger='langbot.pkg.core.stages.genkeys'):
+        await GenKeysStage().run(ap)
+    assert ap.instance_config.data['system']['recovery_key'] == key
+    assert not caplog.records
+    ap.instance_config.dump_config.assert_not_awaited()
+
+
+async def test_eight_character_key_does_not_trigger_legacy_warning(caplog):
+    ap = _make_genkeys_ap(existing_key='ABCD2345')
+    with caplog.at_level(logging.WARNING, logger='langbot.pkg.core.stages.genkeys'):
+        await GenKeysStage().run(ap)
+    assert not caplog.records
 
 
 # ---------------------------------------------------------------------------
@@ -107,7 +126,7 @@ async def test_recovery_key_generation_preserves_existing_key():
 # ---------------------------------------------------------------------------
 
 
-async def _create_client():
+async def _create_client(stored_key: str = STORED_KEY):
     """Create a Quart test client with a mocked Application."""
     quart_app = quart.Quart(__name__)
 
@@ -122,7 +141,7 @@ async def _create_client():
             reset_password=reset_password,
         ),
         instance_config=SimpleNamespace(
-            data={'system': {'recovery_key': STORED_KEY}},
+            data={'system': {'recovery_key': stored_key}},
         ),
     )
 
@@ -137,11 +156,12 @@ def _payload(key: str = STORED_KEY) -> dict:
     return {'user': 'admin@example.com', 'recovery_key': key, 'new_password': 'NewPass1!'}
 
 
-async def test_correct_key_resets_password():
-    """A correct recovery key resets the password and returns success."""
-    client, reset_password, _ = await _create_client()
+@pytest.mark.parametrize('key', [STORED_KEY, 'ABC123', 'aB-_' * 10 + 'xYz', '自定义恢复密钥'])
+async def test_correct_key_resets_password(key):
+    """New, legacy and explicitly configured keys all remain usable verbatim."""
+    client, reset_password, _ = await _create_client(stored_key=key)
 
-    resp = await client.post('/api/v1/user/reset-password', json=_payload())
+    resp = await client.post('/api/v1/user/reset-password', json=_payload(key))
 
     assert resp.status_code == 200
     assert (await resp.get_json())['code'] == 0
@@ -175,13 +195,14 @@ async def test_non_string_recovery_key_does_not_crash():
     reset_password.assert_not_awaited()
 
 
-async def test_non_ascii_recovery_key_does_not_crash():
+@pytest.mark.parametrize('key', ['奇数密钥不是ASCII', '\ud800', '\udfff'])
+async def test_non_ascii_recovery_key_does_not_crash(key):
     """Non-ASCII keys must compare safely (encode-based constant-time compare)."""
     client, _, _ = await _create_client()
 
     resp = await client.post(
         '/api/v1/user/reset-password',
-        json={'user': 'admin@example.com', 'recovery_key': '奇数密钥不是ASCII', 'new_password': 'NewPass1!'},
+        json={'user': 'admin@example.com', 'recovery_key': key, 'new_password': 'NewPass1!'},
     )
 
     assert resp.status_code == 403

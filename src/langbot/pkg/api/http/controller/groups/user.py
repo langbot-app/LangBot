@@ -134,11 +134,15 @@ class UserRouterGroup(group.RouterGroup):
                 return self.http_status(400, -1, 'User not found')
 
             stored_key = self.ap.instance_config.data['system']['recovery_key']
-            key_matches = (
-                isinstance(recovery_key, str)
-                and isinstance(stored_key, str)
-                and hmac.compare_digest(recovery_key.encode(), stored_key.encode())
-            )
+            try:
+                key_matches = (
+                    isinstance(recovery_key, str)
+                    and isinstance(stored_key, str)
+                    and hmac.compare_digest(recovery_key.encode(), stored_key.encode())
+                )
+            except UnicodeEncodeError:
+                # JSON can contain lone surrogates, which are not valid UTF-8.
+                key_matches = False
 
             if not key_matches:
                 return self.http_status(403, -1, 'Invalid recovery key')
