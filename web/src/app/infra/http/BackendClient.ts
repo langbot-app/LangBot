@@ -268,6 +268,25 @@ export class BackendClient extends BaseHttpClient {
     return this.get('/api/v1/agents/_/metadata');
   }
 
+  public getProcessorRuns(
+    uuid: string,
+    beforeId?: number,
+  ): Promise<import('../entities/api').ProcessorRunPage> {
+    return this.get(
+      `/api/v1/agents/${encodeURIComponent(uuid)}/runs${beforeId === undefined ? '' : `?before_id=${beforeId}`}`,
+    );
+  }
+
+  public getProcessorRunEvents(
+    uuid: string,
+    runId: string,
+    afterSequence?: number,
+  ): Promise<import('../entities/api').ProcessorRunEventPage> {
+    return this.get(
+      `/api/v1/agents/${encodeURIComponent(uuid)}/runs/${encodeURIComponent(runId)}/events${afterSequence === undefined ? '' : `?after_sequence=${afterSequence}`}`,
+    );
+  }
+
   public createAgent(agent: Agent): Promise<{ uuid: string; kind: string }> {
     return this.post('/api/v1/agents', agent);
   }

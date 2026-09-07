@@ -74,6 +74,9 @@ def _write_qa_agent_runner_plugin(plugin_root: Path) -> None:
                 AgentRunner:
                   fromDirs:
                     - path: components/agent_runner/
+                EventProcessor:
+                  fromDirs:
+                    - path: components/event_processor/
               pages: []
             execution:
               python:
@@ -158,6 +161,45 @@ def _write_qa_agent_runner_plugin(plugin_root: Path) -> None:
         ).strip()
         + '\n',
         encoding='utf-8',
+    )
+
+    processor_dir = plugin_root / 'components' / 'event_processor'
+    processor_dir.mkdir(parents=True)
+    (processor_dir / 'default.yaml').write_text(
+        textwrap.dedent("""
+        apiVersion: langbot/v1
+        kind: EventProcessor
+        metadata:
+          name: default
+          label: {en_US: Welcome processor, zh_Hans: Welcome processor}
+        spec:
+          events: [group.member_joined]
+          config:
+            - name: greeting
+              type: string
+              required: true
+              label: {en_US: Greeting, zh_Hans: Greeting}
+              default: Hello
+          capabilities: {tool_calling: true}
+          permissions:
+            tools: [detail, call]
+        execution:
+          python: {path: default.py, attr: WelcomeProcessor}
+    """)
+    )
+    (processor_dir / 'default.py').write_text(
+        textwrap.dedent("""
+        from langbot_plugin.api.definition.components.event_processor import EventProcessor, EventProcessorContext
+        from langbot_plugin.api.entities.builtin.platform.events import MemberJoinedEvent
+
+        class WelcomeProcessor(EventProcessor):
+            async def initialize(self):
+                @self.handler(MemberJoinedEvent)
+                async def handle(ctx: EventProcessorContext):
+                    await ctx.log('Handling ' + str(ctx.event.member.id))
+                    result = await ctx.reply(ctx.config['greeting'] + ', ' + (ctx.event.member.nickname or str(ctx.event.member.id)))
+                    await ctx.log('Reply simulated: ' + str(result.get('mock')))
+    """)
     )
 
 
@@ -384,6 +426,7 @@ def test_plugin_runtime_discovers_agent_runner(
         f'Runtime stderr (tail):\n{runtime_stderr[-20_000:]}'
     )
 
+
 def test_host_orchestrator_runs_agent_runner_and_records_ledger(
     agent_runner_client,
     agent_runner_langbot_process,
@@ -455,8 +498,7 @@ def test_host_orchestrator_runs_agent_runner_and_records_ledger(
         event_types = {
             row[0]
             for row in conn.execute(
-                'SELECT type FROM agent_run_event WHERE run_id = '
-                '(SELECT run_id FROM agent_run WHERE event_id = ?)',
+                'SELECT type FROM agent_run_event WHERE run_id = (SELECT run_id FROM agent_run WHERE event_id = ?)',
                 (result['event_id'],),
             ).fetchall()
         }
@@ -469,3 +511,63 @@ def test_host_orchestrator_runs_agent_runner_and_records_ledger(
         assert '"count": 1' in state_row[0]
     finally:
         conn.close()
+
+
+def test_event_processor_real_runtime_logs_actions_and_instance_isolation(
+    agent_runner_client,
+    agent_runner_e2e_tmpdir,
+):
+    client = agent_runner_client
+    token = _init_and_auth(client)
+    _ensure_qa_plugin(client, token, agent_runner_e2e_tmpdir / 'agent-runner-qa.zip')
+    headers = {'Authorization': f'Bearer {token}'}
+    metadata_response = client.get('/api/v1/agents/_/metadata', headers=headers).json()
+    assert metadata_response['code'] == 0, metadata_response
+    metadata = metadata_response['data']
+    ref = 'event_processor:e2e/agent-runner-qa/default'
+    assert any(item['id'] == ref for item in metadata['event_processors']), metadata
+    assert ref not in _wait_for_qa_runner(client, token)
+    created = []
+    for name in ('First', 'Second'):
+        response = client.post(
+            '/api/v1/agents',
+            headers=headers,
+            json={
+                'kind': 'event_processor',
+                'name': name,
+                'component_ref': ref,
+                'parameters': {'greeting': name},
+            },
+        ).json()
+        assert response['code'] == 0, response
+        created.append(response['data']['uuid'])
+    for processor_id in created:
+        page = client.get(f'/api/v1/agents/{processor_id}/runs', headers=headers).json()
+        assert page['data']['items'] == [], page
+    result = client.post(
+        f'/api/v1/agents/{created[0]}/debug',
+        headers=headers,
+        json={
+            'event_type': 'group.member_joined',
+            'data': {'member': {'id': 'member-1', 'nickname': 'Tester'}, 'group': {'id': 'group-1'}},
+        },
+    ).json()
+    assert result['code'] == 0, result
+    logs = [event['data']['text'] for event in result['data']['execution_events'] if event['type'] == 'processor.log']
+    assert logs == ['Handling member-1', 'Reply simulated: True'], result
+    actions = [event for event in result['data']['execution_events'] if event['type'] == 'tool.call.completed']
+    assert len(actions) == 1, result
+    assert actions[0]['data']['tool_name'] == 'event_reply'
+    assert actions[0]['data']['result']['mock'] is True
+    assert result['data']['final_text'] == '', result
+    page = client.get(f'/api/v1/agents/{created[0]}/runs', headers=headers).json()['data']
+    assert len(page['items']) == 1, page
+    run = page['items'][0]
+    assert run['status'] == 'completed', run
+    assert run['metadata']['input_event']['member']['id'] == 'member-1'
+    trace = client.get(f'/api/v1/agents/{created[0]}/runs/{run["run_id"]}/events', headers=headers).json()
+    assert trace['code'] == 0, trace
+    assert any(item['type'] == 'processor.log' for item in trace['data']['items']), trace
+    foreign = client.get(f'/api/v1/agents/{created[1]}/runs/{run["run_id"]}/events', headers=headers)
+    assert foreign.status_code == 400
+    assert client.get(f'/api/v1/agents/{created[1]}/runs', headers=headers).json()['data']['items'] == []

@@ -23,6 +23,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import PipelineDetailContent from '@/app/home/pipelines/PipelineDetailContent';
+import EventProcessorDetailContent from './EventProcessorDetailContent';
 import AgentCreateContent from './components/AgentCreateContent';
 import AgentDebugPanel from './components/AgentDebugPanel';
 import AgentFormComponent, {
@@ -167,87 +168,104 @@ export default function AgentDetailContent({ id }: { id: string }) {
 
   return (
     <>
-      <ProcessorDetailWorkbench
-        key={id}
-        title={`${agent.emoji || '🤖'} ${agent.name}`}
-        titleBadge={
-          supportedEventPatterns.length === 0 ? (
-            <Badge
-              variant="outline"
-              role="status"
-              className="shrink-0 gap-1 rounded-full border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300"
-            >
-              <AlertTriangle className="size-3" />
-              {t('agents.noEventsConfiguredBadge')}
-            </Badge>
-          ) : undefined
-        }
-        titleAction={
-          canManage ? (
-            <EntityTitleEditButton onClick={() => setBasicInfoOpen(true)} />
-          ) : undefined
-        }
-        status={runnerStatus}
-        saveLabel={t('common.save')}
-        saveFormId="agent-form"
-        canSave={canManage}
-        isDirty={formDirty}
-        isSaving={formSaving}
-        headerActions={
-          canManage ? (
-            <Button
-              type="button"
-              variant="destructive"
-              disabled={formSaving || deleting}
-              onClick={() => setDeleteConfirmOpen(true)}
-            >
-              <Trash2 className="size-4" />
-              {t('common.delete')}
-            </Button>
-          ) : undefined
-        }
-        configTitle={t('pipelines.configuration')}
-        configContent={
-          <fieldset className="contents" disabled={!canManage}>
-            <AgentFormComponent
-              ref={agentFormRef}
-              agentId={id}
-              availableEventTypes={availableEventTypes}
-              onFinish={(updatedAgent) => {
-                if (updatedAgent) {
-                  setAgent((current) =>
-                    current ? { ...current, ...updatedAgent } : current,
-                  );
+      {agent.kind === 'event_processor' ? (
+        <EventProcessorDetailContent
+          key={id}
+          id={id}
+          agent={agent}
+          canManage={canManage}
+          onDelete={() => setDeleteConfirmOpen(true)}
+          onEdit={() => setBasicInfoOpen(true)}
+          onSaved={() => {
+            void httpClient
+              .getAgent(id)
+              .then((response) => setAgent(response.agent));
+            void refreshPipelines();
+          }}
+        />
+      ) : (
+        <ProcessorDetailWorkbench
+          key={id}
+          title={`${agent.emoji || '🤖'} ${agent.name}`}
+          titleBadge={
+            supportedEventPatterns.length === 0 ? (
+              <Badge
+                variant="outline"
+                role="status"
+                className="shrink-0 gap-1 rounded-full border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+              >
+                <AlertTriangle className="size-3" />
+                {t('agents.noEventsConfiguredBadge')}
+              </Badge>
+            ) : undefined
+          }
+          titleAction={
+            canManage ? (
+              <EntityTitleEditButton onClick={() => setBasicInfoOpen(true)} />
+            ) : undefined
+          }
+          status={runnerStatus}
+          saveLabel={t('common.save')}
+          saveFormId="agent-form"
+          canSave={canManage}
+          isDirty={formDirty}
+          isSaving={formSaving}
+          headerActions={
+            canManage ? (
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={formSaving || deleting}
+                onClick={() => setDeleteConfirmOpen(true)}
+              >
+                <Trash2 className="size-4" />
+                {t('common.delete')}
+              </Button>
+            ) : undefined
+          }
+          configTitle={t('pipelines.configuration')}
+          configContent={
+            <fieldset className="contents" disabled={!canManage}>
+              <AgentFormComponent
+                ref={agentFormRef}
+                agentId={id}
+                availableEventTypes={availableEventTypes}
+                onFinish={(updatedAgent) => {
+                  if (updatedAgent) {
+                    setAgent((current) =>
+                      current ? { ...current, ...updatedAgent } : current,
+                    );
+                  }
+                  refreshPipelines();
+                }}
+                onDirtyChange={setFormDirty}
+                onSavingChange={setFormSaving}
+                onRunnerStatusChange={setRunnerStatus}
+                onSupportedEventPatternsChange={setSupportedEventPatterns}
+                onPlatformToolsChange={setPlatformTools}
+              />
+            </fieldset>
+          }
+          debugTitle={canOperate ? t('agents.debugTab') : undefined}
+          debugDescription={t('agents.debugPlatformNotice')}
+          debugContent={
+            canOperate ? (
+              <AgentDebugPanel
+                agentId={id}
+                platformTools={platformTools}
+                hasUnsavedChanges={formDirty}
+                beforeRun={async () => agentFormRef.current?.save() ?? false}
+                onOpenRunnerConfig={() =>
+                  agentFormRef.current?.openSection('runner_config')
                 }
-                refreshPipelines();
-              }}
-              onDirtyChange={setFormDirty}
-              onSavingChange={setFormSaving}
-              onRunnerStatusChange={setRunnerStatus}
-              onSupportedEventPatternsChange={setSupportedEventPatterns}
-              onPlatformToolsChange={setPlatformTools}
-            />
-          </fieldset>
-        }
-        debugTitle={canOperate ? t('agents.debugTab') : undefined}
-        debugDescription={t('agents.debugPlatformNotice')}
-        debugContent={
-          canOperate ? (
-            <AgentDebugPanel
-              agentId={id}
-              platformTools={platformTools}
-              hasUnsavedChanges={formDirty}
-              beforeRun={async () => agentFormRef.current?.save() ?? false}
-              onOpenRunnerConfig={() =>
-                agentFormRef.current?.openSection('runner_config')
-              }
-              supportedEventPatterns={supportedEventPatterns}
-              availableEventTypes={availableEventTypes}
-            />
-          ) : undefined
-        }
-        unsavedLabel={t('pipelines.unsavedChanges')}
-      />
+                supportedEventPatterns={supportedEventPatterns}
+                availableEventTypes={availableEventTypes}
+              />
+            ) : undefined
+          }
+          unsavedLabel={t('pipelines.unsavedChanges')}
+        />
+      )}
       <EntityBasicInfoDialog
         open={basicInfoOpen}
         onOpenChange={setBasicInfoOpen}

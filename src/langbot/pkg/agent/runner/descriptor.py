@@ -1,4 +1,5 @@
 """Agent runner descriptor."""
+
 from __future__ import annotations
 
 import typing
@@ -44,18 +45,17 @@ class AgentRunnerDescriptor(pydantic.BaseModel):
     config_schema: list[dict[str, typing.Any]] = pydantic.Field(default_factory=list)
     """Configuration schema using DynamicForm format"""
 
-    capabilities: AgentRunnerCapabilities = pydantic.Field(
-        default_factory=AgentRunnerCapabilities
-    )
+    capabilities: AgentRunnerCapabilities = pydantic.Field(default_factory=AgentRunnerCapabilities)
     """Runner capabilities: streaming, tool_calling, knowledge_retrieval, etc."""
 
-    permissions: AgentRunnerPermissions = pydantic.Field(
-        default_factory=AgentRunnerPermissions
-    )
+    permissions: AgentRunnerPermissions = pydantic.Field(default_factory=AgentRunnerPermissions)
     """Requested LangBot resource permissions."""
 
     raw_manifest: dict[str, typing.Any] = pydantic.Field(default_factory=dict)
     """Original manifest for reference"""
+
+    component_kind: typing.Literal['AgentRunner', 'EventProcessor'] = 'AgentRunner'
+    supported_event_patterns: list[str] = pydantic.Field(default_factory=lambda: ['*'])
 
     model_config = pydantic.ConfigDict(
         extra='allow',

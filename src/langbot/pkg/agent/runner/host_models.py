@@ -160,7 +160,7 @@ class AgentConfig(pydantic.BaseModel):
     agent_id: str | None = None
     """Host-side Agent/config identifier."""
 
-    processor_type: typing.Literal['agent', 'pipeline'] = 'agent'
+    processor_type: typing.Literal['agent', 'pipeline', 'event_processor'] = 'agent'
     """Product processor kind represented by this runtime config."""
 
     processor_id: str | None = None
@@ -222,7 +222,7 @@ class AgentBinding(pydantic.BaseModel):
     agent_id: str | None = None
     """Host-side Agent/config identifier for this binding."""
 
-    processor_type: typing.Literal['agent', 'pipeline'] = 'agent'
+    processor_type: typing.Literal['agent', 'pipeline', 'event_processor'] = 'agent'
     """Product processor kind selected for this binding."""
 
     processor_id: str | None = None

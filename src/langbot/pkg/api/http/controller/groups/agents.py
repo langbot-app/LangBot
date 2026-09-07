@@ -19,6 +19,43 @@ from .agent_debug_stream import debug_stream_response
 class AgentsRouterGroup(group.RouterGroup):
     async def initialize(self) -> None:
         @self.route(
+            '/<agent_uuid>/runs',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_VIEW,
+        )
+        async def processor_runs(agent_uuid: str, request_context: RequestContext):
+            try:
+                cursor = quart.request.args.get('before_id')
+                result = await self.ap.agent_service.get_processor_runs(
+                    request_context,
+                    agent_uuid,
+                    before_id=int(cursor) if cursor else None,
+                )
+                return self.success(data=result)
+            except ValueError as exc:
+                return self.http_status(400, -1, str(exc))
+
+        @self.route(
+            '/<agent_uuid>/runs/<run_id>/events',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_VIEW,
+        )
+        async def processor_run_events(agent_uuid: str, run_id: str, request_context: RequestContext):
+            try:
+                cursor = quart.request.args.get('after_sequence')
+                result = await self.ap.agent_service.get_processor_run_events(
+                    request_context,
+                    agent_uuid,
+                    run_id,
+                    after_sequence=int(cursor) if cursor else None,
+                )
+                return self.success(data=result)
+            except ValueError as exc:
+                return self.http_status(400, -1, str(exc))
+
+        @self.route(
             '/<agent_uuid>/debug/stream',
             methods=['POST'],
             auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,

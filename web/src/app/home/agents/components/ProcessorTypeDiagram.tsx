@@ -374,5 +374,29 @@ function PipelineDiagram() {
 }
 
 export default function ProcessorTypeDiagram({ kind }: { kind: AgentKind }) {
+  const { t } = useTranslation();
+  if (kind === 'event_processor')
+    return (
+      <div className="flex h-full flex-col justify-center gap-6 rounded-xl border bg-muted/20 p-8">
+        <h3 className="text-lg font-semibold">
+          {t('agents.eventProcessor.type')}
+        </h3>
+        <p className="text-sm text-muted-foreground">
+          {t('agents.eventProcessor.description')}
+        </p>
+        {['input', 'component', 'trace'].map((step, index) => (
+          <div
+            key={step}
+            className="flex items-center gap-3 rounded-lg border bg-background p-4"
+          >
+            <span className="text-primary">{index + 1}</span>
+            <span>{t(`agents.eventProcessor.${step}`)}</span>
+          </div>
+        ))}
+        <p className="text-sm text-muted-foreground">
+          {t('agents.eventProcessor.activation')}
+        </p>
+      </div>
+    );
   return kind === 'agent' ? <AgentDiagram /> : <PipelineDiagram />;
 }

@@ -335,3 +335,31 @@ class TestDescriptorValidation:
         assert descriptor.supports_streaming() is True
         assert descriptor.supports_tool_calling() is False
         assert descriptor.supports_knowledge_retrieval() is False
+
+
+@pytest.mark.asyncio
+async def test_registry_separates_processor_kinds_with_same_plugin_component_name():
+    ap = FakeApplication()
+    entries = []
+    for kind, prefix in [('AgentRunner', 'plugin'), ('EventProcessor', 'event_processor')]:
+        entries.append(
+            {
+                'plugin_author': 'test',
+                'plugin_name': 'both',
+                'runner_name': 'default',
+                'manifest': {
+                    'id': f'{prefix}:test/both/default',
+                    'name': 'default',
+                    'component_kind': kind,
+                    'label': {'en_US': kind},
+                    'supported_event_patterns': ['group.member_joined'],
+                },
+            }
+        )
+    ap.plugin_connector.list_agent_runners = AsyncMock(return_value=entries)
+    registry = AgentRunnerRegistry(ap)
+    agents = await registry.list_runners(TEST_CONTEXT)
+    processors = await registry.list_runners(TEST_CONTEXT, component_kind='EventProcessor')
+    assert [item.id for item in agents] == ['plugin:test/both/default']
+    assert [item.id for item in processors] == ['event_processor:test/both/default']
+    assert (await registry.get(TEST_CONTEXT, processors[0].id)).component_kind == 'EventProcessor'

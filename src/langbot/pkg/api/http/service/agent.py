@@ -40,6 +40,7 @@ from .tenant import TenantContext, require_workspace_uuid, scope_statement
 
 AGENT_KIND_AGENT = 'agent'
 AGENT_KIND_PIPELINE = 'pipeline'
+AGENT_KIND_EVENT_PROCESSOR = 'event_processor'
 PIPELINE_EVENT_PATTERNS = ['message.*']
 AGENT_DEFAULT_EVENT_PATTERNS = ['*']
 
@@ -67,7 +68,19 @@ class AgentService:
                 )
             except Exception as exc:
                 self.ap.logger.warning(f'Failed to load Agent Host tool catalog: {exc}')
+        event_processors = []
+        registry = getattr(self.ap, 'agent_runner_registry', None)
+        if registry is not None:
+            event_processors = [
+                item.model_dump(mode='json')
+                for item in await registry.list_runners(
+                    context,
+                    component_kind='EventProcessor',
+                    use_cache=False,
+                )
+            ]
         return {
+            'event_processors': event_processors,
             'runner_config': ai_metadata,
             'platform_tools': platform_tool_catalog(),
             'host_tools': host_tools,
@@ -82,6 +95,7 @@ class AgentService:
                     'supported_event_patterns': PIPELINE_EVENT_PATTERNS,
                     'message_only': True,
                 },
+                {'name': AGENT_KIND_EVENT_PROCESSOR, 'supported_event_patterns': ['*'], 'message_only': False},
             ],
         }
 
@@ -131,7 +145,7 @@ class AgentService:
         non-message event envelopes.
         """
         agent = await self.get_agent(context, agent_uuid)
-        if agent is None or agent.get('kind') != AGENT_KIND_AGENT:
+        if agent is None or agent.get('kind') not in {AGENT_KIND_AGENT, AGENT_KIND_EVENT_PROCESSOR}:
             raise ValueError('Agent not found')
 
         event_type = str(payload.get('event_type', 'message.received')).strip()
@@ -242,8 +256,28 @@ class AgentService:
             raw_ref=RawEventRef(ref_id=event_id, storage_key=None),
             data=event_data,
         )
+        if agent.get('kind') == AGENT_KIND_EVENT_PROCESSOR:
+            from langbot_plugin.api.entities.builtin.platform.events import parse_eba_event
+
+            typed_event = parse_eba_event({**event_data, 'type': event_type})
+            from ....platform.botmgr import RuntimeBot
+
+            event.actor = RuntimeBot._infer_actor_context(typed_event)
+            event.subject = RuntimeBot._infer_subject_context(typed_event)
+            target_type, target_id, target_metadata = RuntimeBot._infer_reply_target(typed_event)
+            if target_id is not None:
+                event.delivery.reply_target = {
+                    'target_type': target_type,
+                    'target_id': str(target_id),
+                    **target_metadata,
+                }
+            event.data = typed_event.model_dump(mode='json', exclude={'source_platform_object', 'legacy_event'})
         binding = AgentBinding(
-            binding_id=f'debug:{agent_uuid}:{runner_id}',
+            binding_id=(
+                f'event_processor:{agent_uuid}'
+                if agent.get('kind') == AGENT_KIND_EVENT_PROCESSOR
+                else f'debug:{agent_uuid}:{runner_id}'
+            ),
             scope=BindingScope(scope_type='agent', scope_id=agent_uuid),
             event_types=[event_type],
             runner_id=runner_id,
@@ -263,7 +297,7 @@ class AgentService:
                 enable_interactions=False,
             ),
             agent_id=agent_uuid,
-            processor_type='agent',
+            processor_type=agent.get('kind', 'agent'),
             processor_id=agent_uuid,
         )
         execution_context = ExecutionContext.from_request(
@@ -282,6 +316,7 @@ class AgentService:
                 'tool.call.completed',
                 'run.completed',
                 'run.failed',
+                'processor.log',
             }:
                 return
             visible_result = copy.deepcopy(
@@ -363,11 +398,17 @@ class AgentService:
             )
             return {'uuid': pipeline_uuid, 'kind': AGENT_KIND_PIPELINE}
 
-        if kind != AGENT_KIND_AGENT:
+        if kind not in {AGENT_KIND_AGENT, AGENT_KIND_EVENT_PROCESSOR}:
             raise ValueError(f'Unsupported agent kind: {kind}')
 
-        config = agent_data['config'] if 'config' in agent_data else await self._get_default_agent_config(context)
-        config, runner_id, _ = RunnerConfigResolver.resolve_agent_runner_config(config)
+        if kind == AGENT_KIND_EVENT_PROCESSOR:
+            config, runner_id, patterns = await self._prepare_event_processor(context, agent_data)
+        else:
+            config = agent_data['config'] if 'config' in agent_data else await self._get_default_agent_config(context)
+            config, runner_id, _ = RunnerConfigResolver.resolve_agent_runner_config(config)
+            if (runner_id or '').startswith('event_processor:'):
+                raise ValueError('EventProcessor components require an event processor instance')
+            patterns = agent_data.get('supported_event_patterns', AGENT_DEFAULT_EVENT_PATTERNS)
         new_uuid = str(uuid.uuid4())
         values = {
             'workspace_uuid': workspace_uuid,
@@ -375,17 +416,13 @@ class AgentService:
             'name': agent_data.get('name') or 'New Agent',
             'description': agent_data.get('description') or '',
             'emoji': agent_data.get('emoji') or '🤖',
-            'kind': AGENT_KIND_AGENT,
+            'kind': kind,
             'component_ref': runner_id,
             'config': config,
-            'supported_event_patterns': (
-                agent_data['supported_event_patterns']
-                if 'supported_event_patterns' in agent_data
-                else AGENT_DEFAULT_EVENT_PATTERNS
-            ),
+            'supported_event_patterns': patterns,
         }
         await self.ap.persistence_mgr.execute_async(sqlalchemy.insert(persistence_agent.Agent).values(**values))
-        return {'uuid': new_uuid, 'kind': AGENT_KIND_AGENT}
+        return {'uuid': new_uuid, 'kind': kind}
 
     async def update_agent(self, context: TenantContext, agent_uuid: str, agent_data: dict) -> None:
         existing_agent = await self._get_agent_row(context, agent_uuid)
@@ -401,12 +438,19 @@ class AgentService:
             for field in ('name', 'description', 'emoji', 'config', 'supported_event_patterns')
             if field in agent_data
         }
+        if existing_agent.kind == AGENT_KIND_EVENT_PROCESSOR and any(
+            field in agent_data for field in ('config', 'component_ref', 'parameters', 'supported_event_patterns')
+        ):
+            config, runner_id, patterns = await self._prepare_event_processor(context, agent_data, existing_agent)
+            update_data.update(config=config, component_ref=runner_id, supported_event_patterns=patterns)
         if 'config' in update_data:
             config, runner_id, _ = RunnerConfigResolver.resolve_agent_runner_config(update_data['config'])
             update_data['config'] = config
         else:
             _, runner_id, _ = RunnerConfigResolver.resolve_agent_runner_config(existing_agent.config)
         update_data['component_ref'] = runner_id
+        if existing_agent.kind == AGENT_KIND_AGENT and (runner_id or '').startswith('event_processor:'):
+            raise ValueError('EventProcessor components require an event processor instance')
         result = await self.ap.persistence_mgr.execute_async(
             scope_statement(
                 sqlalchemy.update(persistence_agent.Agent)
@@ -437,6 +481,78 @@ class AgentService:
         if pipeline is None:
             raise ValueError(f'Agent {agent_uuid} not found')
         await self.ap.pipeline_service.delete_pipeline(context, agent_uuid)
+
+    async def _prepare_event_processor(self, context, data, existing=None):
+        """Resolve an installed component and keep its capability declaration authoritative."""
+        config = copy.deepcopy(data.get('config', existing.config if existing is not None else {}))
+        if not isinstance(config, dict):
+            raise ValueError('Processor configuration must be an object')
+        component_ref = data.get('component_ref') or (existing.component_ref if existing is not None else None)
+        if not isinstance(component_ref, str) or not component_ref.startswith('event_processor:'):
+            raise ValueError('Select an installed EventProcessor component')
+        try:
+            descriptor = await self.ap.agent_runner_registry.get(context, component_ref)
+        except Exception as exc:
+            from ....agent.runner.errors import RunnerNotFoundError
+
+            if isinstance(exc, RunnerNotFoundError):
+                raise ValueError('EventProcessor component is unavailable') from exc
+            raise
+        if descriptor.component_kind != 'EventProcessor' or not descriptor.supported_event_patterns:
+            raise ValueError('The component does not declare supported EBA events')
+        config['runner'] = {'id': component_ref}
+        parameters = data.get('parameters')
+        if parameters is None:
+            runner_config = config.get('runner_config', {})
+            if not isinstance(runner_config, dict):
+                raise ValueError('Runner configuration must be an object')
+            parameters = runner_config.get(component_ref)
+        if parameters is None:
+            parameters = self.ap.pipeline_service._get_default_values_from_schema(descriptor.config_schema)
+        if not isinstance(parameters, dict):
+            raise ValueError('Processor parameters must be an object')
+        for field in descriptor.config_schema:
+            if field.get('required') and parameters.get(field['name']) in (None, ''):
+                raise ValueError(f'Required processor parameter: {field["name"]}')
+        config['runner_config'] = {component_ref: parameters}
+        return config, component_ref, descriptor.supported_event_patterns
+
+    async def get_processor_runs(self, context, processor_id, *, before_id=None):
+        """Read only this Workspace's explicitly created processor instance."""
+        from ....agent.runner.run_ledger_store import RunLedgerStore
+
+        processor = await self.get_agent(context, processor_id)
+        if processor is None or processor.get('kind') != AGENT_KIND_EVENT_PROCESSOR:
+            raise ValueError('Event processor not found')
+        store = RunLedgerStore(self.ap.persistence_mgr.get_db_engine())
+        items, cursor, has_more, total = await store.list_runs(
+            workspace_id=require_workspace_uuid(context),
+            binding_id=f'event_processor:{processor_id}',
+            before_id=before_id,
+        )
+        return {'items': items, 'next_cursor': cursor, 'has_more': has_more, 'total': total}
+
+    async def get_processor_run_events(self, context, processor_id, run_id, *, after_sequence=None):
+        """Authorize the parent run before exposing any trace events."""
+        from ....agent.runner.run_ledger_store import RunLedgerStore
+
+        processor = await self.get_agent(context, processor_id)
+        if processor is None or processor.get('kind') != AGENT_KIND_EVENT_PROCESSOR:
+            raise ValueError('Event processor not found')
+        store = RunLedgerStore(self.ap.persistence_mgr.get_db_engine())
+        run = await store.get_run(run_id)
+        if (
+            run is None
+            or run.get('workspace_id') != require_workspace_uuid(context)
+            or run.get('binding_id') != f'event_processor:{processor_id}'
+        ):
+            raise ValueError('Processor run not found')
+        items, next_cursor, _, has_more = await store.page_run_events(
+            run_id=run_id,
+            after_sequence=after_sequence,
+            limit=100,
+        )
+        return {'run': run, 'items': items, 'next_cursor': next_cursor, 'has_more': has_more}
 
     async def _get_agent_rows(self, context: TenantContext) -> list[persistence_agent.Agent]:
         result = await self.ap.persistence_mgr.execute_async(
@@ -490,7 +606,7 @@ class AgentService:
         include_config: bool = False,
     ) -> dict[str, typing.Any]:
         item = self.ap.persistence_mgr.serialize_model(persistence_agent.Agent, agent)
-        item['kind'] = AGENT_KIND_AGENT
+        item['kind'] = item.get('kind') or AGENT_KIND_AGENT
         supported_event_patterns = item.get('supported_event_patterns')
         item['capability'] = {
             'supported_event_patterns': (

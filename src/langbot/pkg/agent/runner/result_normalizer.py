@@ -10,6 +10,7 @@ from langbot_plugin.api.entities.builtin.agent_runner.result import (
     MessageCompletedPayload,
     MessageDeltaPayload,
     RunCompletedPayload,
+    ProcessorLogPayload,
     RunFailedPayload,
     StateUpdatedPayload,
     ToolCallCompletedPayload,
@@ -34,6 +35,7 @@ STRICT_RESULT_PAYLOADS: dict[str, type[pydantic.BaseModel]] = {
     'action.requested': ActionRequestedPayload,
     'run.completed': RunCompletedPayload,
     'run.failed': RunFailedPayload,
+    'processor.log': ProcessorLogPayload,
 }
 
 
@@ -112,6 +114,9 @@ class AgentResultNormalizer:
         data = result_dict.get('data', {})
 
         if not self.validate_payload(result_type, data, descriptor):
+            return None
+
+        if result_type == 'processor.log':
             return None
 
         if result_type == 'message.delta':

@@ -93,6 +93,13 @@ class AgentRunJournal:
             metadata={
                 'event_type': event.event_type,
                 'source': event.source,
+                'processor_id': binding.processor_id,
+                'processor_type': binding.processor_type,
+                **(
+                    {'input_event': event.data, 'delivery': event.delivery.model_dump(mode='json')}
+                    if binding.processor_type == 'event_processor'
+                    else {}
+                ),
             },
         )
 

@@ -428,3 +428,30 @@ async def test_runner_stats_reports_zero_success_rate_for_failed_only_runner(sto
     assert stats[0]['runner_id'] == 'runner-a'
     assert stats[0]['failed_runs'] == 1
     assert stats[0]['success_rate'] == 0.0
+
+
+@pytest.mark.asyncio
+async def test_processor_instance_history_filters_count_and_pages(store):
+    for index, (workspace, binding) in enumerate(
+        [
+            ('one', 'processor-a'),
+            ('one', 'processor-b'),
+            ('two', 'processor-a'),
+            ('one', 'processor-a'),
+        ]
+    ):
+        await store.create_run(
+            run_id=f'run-{index}',
+            event_id=f'event-{index}',
+            binding_id=binding,
+            runner_id='same-component',
+            workspace_id=workspace,
+        )
+    first, cursor, more, total = await store.list_runs(workspace_id='one', binding_id='processor-a', limit=1)
+    assert (total, more) == (2, True)
+    assert first[0]['run_id'] == 'run-3'
+    second, _, more, total = await store.list_runs(
+        workspace_id='one', binding_id='processor-a', limit=1, before_id=cursor
+    )
+    assert (total, more) == (2, False)
+    assert second[0]['run_id'] == 'run-0'

@@ -35,6 +35,7 @@ import {
   UserMinus,
   UserPlus,
   Workflow,
+  FileCode2,
   XCircle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -518,6 +519,11 @@ function TargetCombobox({
   const pipelines = pipelineAllowed
     ? agentOptions.filter((a) => a.kind === 'pipeline')
     : [];
+  const eventProcessors = agentOptions.filter(
+    (item) =>
+      item.kind === 'event_processor' &&
+      agentSupportsEventPattern(item, binding.event_pattern),
+  );
 
   function currentLabel() {
     if (targetType === 'discard')
@@ -531,7 +537,9 @@ function TargetCombobox({
     if (agent)
       return (
         <span className="flex items-center gap-1.5">
-          {agent.kind === 'pipeline' ? (
+          {agent.kind === 'event_processor' ? (
+            <FileCode2 className="size-3.5" />
+          ) : agent.kind === 'pipeline' ? (
             <Workflow className="size-3.5" />
           ) : (
             <Bot className="size-3.5" />
@@ -579,6 +587,26 @@ function TargetCombobox({
                     <Bot className="mr-2 size-3.5 shrink-0" />
                     <span className="truncate">{targetLabel(a)}</span>
                     {current === encodeTarget('agent', a.uuid || '') && (
+                      <Check className="ml-auto size-3.5 shrink-0" />
+                    )}
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            )}
+            {eventProcessors.length > 0 && (
+              <CommandGroup heading={t('agents.eventProcessor.type')}>
+                {eventProcessors.map((item) => (
+                  <CommandItem
+                    key={item.uuid}
+                    value={`event_processor:${item.uuid}:${item.name}`}
+                    onSelect={() =>
+                      select(encodeTarget('event_processor', item.uuid || ''))
+                    }
+                  >
+                    <FileCode2 className="mr-2 size-3.5 shrink-0" />
+                    <span className="truncate">{targetLabel(item)}</span>
+                    {current ===
+                      encodeTarget('event_processor', item.uuid || '') && (
                       <Check className="ml-auto size-3.5 shrink-0" />
                     )}
                   </CommandItem>

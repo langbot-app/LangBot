@@ -1,5 +1,7 @@
 # 事件路由与编排
 
+> Implementation update (2026-09-08): the EventListener observer-broadcast proposal below is superseded by [Event processors](09-event-processors.md). Legacy EventListener hooks run only inside Pipeline. New EBA handlers use explicitly created and bound EventProcessor instances, a third peer processor type alongside Agent and Pipeline.
+
 > 状态：当前实施模型（2026-07-12）。本文以 Pipeline / Agent 平级并存为准，不再保留早期 `pipeline / agent / webhook / plugin` 四种 Handler 草案。
 
 ## 1. 路由边界

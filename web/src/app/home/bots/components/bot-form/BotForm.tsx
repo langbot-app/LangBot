@@ -75,7 +75,12 @@ const getFormSchema = (t: (key: string) => string) =>
         z.object({
           id: z.string().optional(),
           event_pattern: z.string(),
-          target_type: z.enum(['agent', 'pipeline', 'discard']),
+          target_type: z.enum([
+            'agent',
+            'pipeline',
+            'event_processor',
+            'discard',
+          ]),
           target_uuid: z.string(),
           filters: z.array(z.record(z.string(), z.any())).optional(),
           priority: z.number(),

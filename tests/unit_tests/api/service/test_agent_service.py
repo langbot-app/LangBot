@@ -145,6 +145,7 @@ class TestAgentServiceMetadata:
                 'supported_event_patterns': PIPELINE_EVENT_PATTERNS,
                 'message_only': True,
             },
+            {'name': 'event_processor', 'supported_event_patterns': ['*'], 'message_only': False},
         ]
 
 
@@ -767,3 +768,77 @@ class TestAgentServiceCreateUpdateDelete:
             WORKSPACE_UUID,
             'pipeline-1',
         )
+
+
+async def test_event_processor_creation_uses_installed_component_scope():
+    app = _make_app()
+    ref = 'event_processor:test/welcome/default'
+    descriptor = SimpleNamespace(
+        component_kind='EventProcessor',
+        supported_event_patterns=['group.member_joined'],
+        config_schema=[{'name': 'greeting', 'required': True}],
+    )
+    app.agent_runner_registry = SimpleNamespace(get=AsyncMock(return_value=descriptor))
+    service = AgentService(app)
+    result = await service.create_agent(
+        WORKSPACE_UUID,
+        {
+            'kind': 'event_processor',
+            'name': 'Welcome',
+            'component_ref': ref,
+            'parameters': {'greeting': 'Hi'},
+            'supported_event_patterns': ['*'],
+        },
+    )
+    values = _compiled_params(app.persistence_mgr.execute_async.call_args.args[0])
+    assert result['kind'] == 'event_processor'
+    assert values['component_ref'] == ref
+    assert values['supported_event_patterns'] == ['group.member_joined']
+    assert values['config']['runner_config'][ref] == {'greeting': 'Hi'}
+
+
+async def test_event_processor_rejects_invalid_component_and_missing_parameters():
+    app = _make_app()
+    service = AgentService(app)
+    with pytest.raises(ValueError, match='Select an installed'):
+        await service.create_agent(WORKSPACE_UUID, {'kind': 'event_processor', 'component_ref': 'plugin:a/b/c'})
+    app.agent_runner_registry = SimpleNamespace(
+        get=AsyncMock(
+            return_value=SimpleNamespace(
+                component_kind='EventProcessor',
+                supported_event_patterns=['*'],
+                config_schema=[{'name': 'greeting', 'required': True}],
+            )
+        )
+    )
+    with pytest.raises(ValueError, match='Required processor parameter'):
+        await service.create_agent(
+            WORKSPACE_UUID, {'kind': 'event_processor', 'component_ref': 'event_processor:a/b/c'}
+        )
+
+
+async def test_unavailable_event_processor_can_still_be_renamed():
+    app = _make_app()
+    row = _agent_row(config={'runner': {'id': 'event_processor:a/b/c'}, 'runner_config': {'event_processor:a/b/c': {}}})
+    row.kind = 'event_processor'
+    row.component_ref = 'event_processor:a/b/c'
+    service = AgentService(app)
+    service._get_agent_row = AsyncMock(return_value=row)
+    await service.update_agent(WORKSPACE_UUID, row.uuid, {'name': 'Renamed'})
+    assert _compiled_update_values(app.persistence_mgr.execute_async.call_args.args[0])['name'] == 'Renamed'
+
+
+@pytest.mark.parametrize(
+    'workspace,binding', [('other-workspace', 'event_processor:one'), (WORKSPACE_UUID, 'event_processor:two')]
+)
+async def test_processor_trace_rejects_other_workspace_or_instance(monkeypatch, workspace, binding):
+    service = AgentService(_make_app())
+    service.get_agent = AsyncMock(return_value={'kind': 'event_processor'})
+    service.ap.persistence_mgr.get_db_engine = Mock()
+    store = SimpleNamespace(
+        get_run=AsyncMock(return_value={'workspace_id': workspace, 'binding_id': binding}), page_run_events=AsyncMock()
+    )
+    monkeypatch.setattr('langbot.pkg.agent.runner.run_ledger_store.RunLedgerStore', Mock(return_value=store))
+    with pytest.raises(ValueError, match='Processor run not found'):
+        await service.get_processor_run_events(WORKSPACE_UUID, 'one', 'run')
+    store.page_run_events.assert_not_called()

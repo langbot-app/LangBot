@@ -162,7 +162,43 @@ export interface ApiRespPipelines {
   pipelines: Pipeline[];
 }
 
-export type AgentKind = 'agent' | 'pipeline';
+export type AgentKind = 'agent' | 'pipeline' | 'event_processor';
+
+export interface EventProcessorDescriptor {
+  id: string;
+  label: Record<string, string>;
+  plugin_author: string;
+  plugin_name: string;
+  config_schema: import('../form/dynamic').IDynamicFormItemSchema[];
+  supported_event_patterns: string[];
+}
+
+export interface ProcessorRun {
+  run_id: string;
+  status: string;
+  status_reason?: string;
+  created_at: number;
+  metadata: { event_type?: string; input_event?: unknown; delivery?: unknown };
+}
+
+export interface ProcessorRunEvent {
+  sequence: number;
+  type: string;
+  data: Record<string, unknown>;
+}
+
+export interface ProcessorRunPage {
+  items: ProcessorRun[];
+  next_cursor: number | null;
+  has_more: boolean;
+}
+
+export interface ProcessorRunEventPage {
+  run: ProcessorRun;
+  items: ProcessorRunEvent[];
+  next_cursor: number | null;
+  has_more: boolean;
+}
 
 export interface AgentCapability {
   supported_event_patterns: string[];
@@ -192,6 +228,7 @@ export interface ApiRespAgent {
 }
 
 export interface GetAgentMetadataResponseData {
+  event_processors?: EventProcessorDescriptor[];
   runner_config?: PipelineConfigTab;
   platform_tools: AgentPlatformTool[];
   host_tools?: PluginTool[] | null;
@@ -274,7 +311,7 @@ export interface Bot {
 export interface EventBinding {
   id?: string;
   event_pattern: string;
-  target_type: 'agent' | 'pipeline' | 'discard';
+  target_type: AgentKind | 'discard';
   target_uuid: string;
   filters?: Array<Record<string, unknown>>;
   priority: number;

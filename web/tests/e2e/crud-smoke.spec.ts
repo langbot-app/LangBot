@@ -252,7 +252,7 @@ test.describe('frontend CRUD smoke flows', () => {
 
     await expect(page).toHaveURL(/\/home\/agents$/);
     await expect(
-      page.getByText('Select an Agent or Pipeline from the sidebar'),
+      page.getByText('Select a processor from the sidebar'),
     ).toBeVisible();
   });
 
@@ -1430,7 +1430,7 @@ test.describe('empty states', () => {
 
     await page.goto('/home/agents');
     await expect(
-      page.getByText('Select an Agent or Pipeline from the sidebar'),
+      page.getByText('Select a processor from the sidebar'),
     ).toBeVisible();
   });
 

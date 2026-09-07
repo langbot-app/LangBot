@@ -630,6 +630,7 @@ class RuntimeBot:
                 name=event.group.name,
             )
             return platform_events.MessageReceivedEvent(
+                legacy_event=event,
                 message_id=self._extract_message_id(event.message_chain),
                 message_chain=event.message_chain,
                 sender=platform_entities.User(
@@ -646,6 +647,7 @@ class RuntimeBot:
             )
 
         return platform_events.MessageReceivedEvent(
+            legacy_event=event,
             message_id=self._extract_message_id(event.message_chain),
             message_chain=event.message_chain,
             sender=platform_entities.User(
@@ -805,7 +807,11 @@ class RuntimeBot:
             return None
 
         return AgentBinding(
-            binding_id=f'bot:{bot_uuid}:{event_binding.get("id") or uuid.uuid4()}',
+            binding_id=(
+                f'event_processor:{agent["uuid"]}'
+                if agent.get('kind') == 'event_processor'
+                else f'bot:{bot_uuid}:{event_binding.get("id") or uuid.uuid4()}'
+            ),
             scope=BindingScope(scope_type='bot', scope_id=bot_uuid),
             event_types=[event_type],
             runner_id=runner_id,
@@ -820,10 +826,10 @@ class RuntimeBot:
             delivery_policy=DeliveryPolicy(
                 enable_streaming=False,
                 enable_reply=True,
-                enable_interactions=True,
+                enable_interactions=agent.get('kind') != 'event_processor',
             ),
             agent_id=agent.get('uuid'),
-            processor_type='agent',
+            processor_type=agent.get('kind', 'agent'),
             processor_id=agent.get('uuid'),
         )
 
@@ -898,14 +904,8 @@ class RuntimeBot:
             await self._handle_interaction_submission(event, adapter)
             return
 
-        plugin_event = self._eba_event_to_plugin_event(event)
-
-        if plugin_event is not None:
-            try:
-                await self.ap.plugin_connector.emit_event(plugin_event)
-            except Exception:
-                await self.logger.error(f'Failed to dispatch platform event to plugins: {traceback.format_exc()}')
-
+        # Legacy listeners run inside Pipeline stages. EBA handlers require an
+        # explicitly created and routed EventProcessor instance.
         await self._dispatch_eba_event_to_processor(event, adapter)
 
     async def _dispatch_eba_event_to_processor(
@@ -983,7 +983,7 @@ class RuntimeBot:
                 target_uuid=event_binding.get('target_uuid'),
                 text=f'EBA event {event_type} delivered to Pipeline {event_binding.get("target_uuid") or ""}'.strip(),
             )
-        if target_type != 'agent':
+        if target_type not in {'agent', 'event_processor'}:
             return await self._record_event_route_trace(
                 event_type=event_type,
                 status='failed',
@@ -998,7 +998,7 @@ class RuntimeBot:
 
         target_uuid = event_binding.get('target_uuid')
         agent = await self.ap.agent_service.get_agent(self.execution_context, target_uuid)
-        if not agent or agent.get('kind') != 'agent':
+        if not agent or agent.get('kind') != target_type:
             return await self._record_event_route_trace(
                 event_type=event_type,
                 status='failed',
@@ -1050,6 +1050,8 @@ class RuntimeBot:
             )
 
         envelope = self._eba_event_to_agent_envelope(event, adapter)
+        if target_type == 'event_processor':
+            envelope.data = event.model_dump(mode='json', exclude={'source_platform_object', 'legacy_event'})
         outputs: list[provider_message.Message | provider_message.MessageChunk] = []
         try:
             async for output in self.ap.agent_run_orchestrator.run(

@@ -110,19 +110,19 @@ class AgentRunnerRegistry:
 
         manifest = runner_data.get('manifest', {})
         runner_id = format_runner_id(
-            source='plugin',
+            source='event_processor' if manifest.get('component_kind') == 'EventProcessor' else 'plugin',
             plugin_author=plugin_author,
             plugin_name=plugin_name,
             runner_name=runner_name,
         )
 
         typed_manifest = AgentRunnerManifest.model_validate(manifest)
-        config_schema = [
-            item.model_dump(mode='json') for item in typed_manifest.config_schema
-        ]
+        config_schema = [item.model_dump(mode='json') for item in typed_manifest.config_schema]
 
         return AgentRunnerDescriptor(
             id=runner_id,
+            component_kind=typed_manifest.component_kind,
+            supported_event_patterns=typed_manifest.supported_event_patterns,
             source='plugin',
             label=typed_manifest.label,
             description=typed_manifest.description,
@@ -152,6 +152,7 @@ class AgentRunnerRegistry:
         context: TenantContext,
         bound_plugins: list[str] | None = None,
         use_cache: bool = True,
+        component_kind: str = 'AgentRunner',
     ) -> list[AgentRunnerDescriptor]:
         """List available runners.
 
@@ -169,7 +170,11 @@ class AgentRunnerRegistry:
             # Filter from cache. Do not treat an empty cache as final because the
             # plugin runtime may still be launching installed plugins when the
             # first metadata request arrives.
-            return self._filter_runners_by_bound_plugins(cached, bound_plugins)
+            return [
+                r
+                for r in self._filter_runners_by_bound_plugins(cached, bound_plugins)
+                if r.component_kind == component_kind
+            ]
 
         # Discover fresh (always full list)
         runners = await self._discover_runners()
@@ -179,7 +184,11 @@ class AgentRunnerRegistry:
             self._cache[cache_key] = runners
 
         # Filter locally
-        return self._filter_runners_by_bound_plugins(runners, bound_plugins)
+        return [
+            r
+            for r in self._filter_runners_by_bound_plugins(runners, bound_plugins)
+            if r.component_kind == component_kind
+        ]
 
     def _filter_runners_by_bound_plugins(
         self,
@@ -233,7 +242,8 @@ class AgentRunnerRegistry:
         except ValueError as e:
             raise RunnerNotFoundError(runner_id) from e
 
-        runners = await self.list_runners(context, bound_plugins=None)
+        component_kind = 'EventProcessor' if runner_id.startswith('event_processor:') else 'AgentRunner'
+        runners = await self.list_runners(context, bound_plugins=None, component_kind=component_kind)
         descriptor = next((item for item in runners if item.id == runner_id), None)
         if descriptor is None:
             # The runtime launches installed plugins asynchronously, so an
@@ -242,6 +252,7 @@ class AgentRunnerRegistry:
                 context,
                 bound_plugins=None,
                 use_cache=False,
+                component_kind=component_kind,
             )
             descriptor = next((item for item in runners if item.id == runner_id), None)
         if descriptor is None:

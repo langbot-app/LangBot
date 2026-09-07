@@ -402,19 +402,19 @@ const jaJP = {
     dragEventRoute: 'ルート {{index}} をドラッグ',
     behaviorReplyMessages: '受信メッセージに返信',
     behaviorReplyMessagesDescription:
-      '受信メッセージを Agent または Pipeline で処理します。',
+      '受信メッセージをプロセッサーに渡します。',
     behaviorWelcomeMembers: '新しいメンバーを歓迎',
     behaviorWelcomeMembersDescription:
-      'メンバーがグループに参加したときに Agent を実行します。',
+      'グループへの参加時にプロセッサーを実行します。',
     behaviorHandleDepartures: 'メンバーの退出を処理',
     behaviorHandleDeparturesDescription:
-      'メンバーが退出または削除されたときに Agent を実行します。',
+      'グループからの退出時にプロセッサーを実行します。',
     behaviorReviewFriendRequests: '友だち申請を確認',
     behaviorReviewFriendRequestsDescription:
-      '新しい申請の処理方法を Agent に判断させます。',
+      '新しい友達リクエストをプロセッサーに渡します。',
     behaviorHandleModeration: 'モデレーションイベントを処理',
     behaviorHandleModerationDescription:
-      'グループメンバーが制限されたときに Agent を実行します。',
+      'グループメンバーの制限時にプロセッサーを実行します。',
     behaviorCustom: '別のイベントを設定',
     behaviorCustomDescription:
       'ルートを追加し、このアダプターが対応する全イベントから選択します。',
@@ -716,6 +716,37 @@ const jaJP = {
     },
   },
   agents: {
+    eventProcessor: {
+      type: 'イベントプロセッサー',
+      description: 'プラグインのコードでイベントを処理します。',
+      component: 'プラグインコンポーネント',
+      selectComponent: 'イベントプロセッサーを選択',
+      unavailable: 'コンポーネントを利用できません',
+      noComponents: 'イベントプロセッサーがインストールされていません。',
+      installPlugin: 'プラグインをインストール',
+      loadError: '詳細を読み込めません。',
+      refresh: '更新',
+      runs: '実行履歴',
+      noRuns: '実行履歴はありません。Bot イベントを紐付けて開始します。',
+      bindBot: 'Bot イベントを紐付ける',
+      trace: 'ログとメッセージの流れ',
+      selectRun: '実行履歴を選択して詳細を表示します。',
+      input: '受信イベント',
+      destination: '送信先',
+      loadMore: 'さらに読み込む',
+      activation:
+        'プラグインをインストールし、インスタンスを作成して Bot イベントを紐付けます。',
+      status_pending: '待機中',
+      status_running: '実行中',
+      status_completed: '完了',
+      status_failed: '失敗',
+      status_cancelled: 'キャンセル済み',
+      status_queued: 'キュー待ち',
+      trace_run_completed: '実行完了',
+      trace_run_failed: '実行失敗',
+      trace_tool_call_started: 'アクション開始',
+      trace_tool_call_completed: 'アクション結果',
+    },
     debugData: {
       title: 'イベントデータ',
       form: '基本項目',
@@ -772,8 +803,7 @@ const jaJP = {
       '再利用可能なプロセッサーを作成し、ボットのイベントルーティングで使用します',
     create: 'プロセッサーを作成',
     editAgent: 'Agent を編集',
-    selectFromSidebar:
-      'サイドバーから Agent または Pipeline を選択してください',
+    selectFromSidebar: 'サイドバーからプロセッサーを選択',
     agentType: 'Agent',
     agentTypeDescription:
       'Runner を使ってメッセージ、グループメンバー、友だち、フィードバックなどのプラットフォームイベントを処理します。自律的な判断、ツール利用、メッセージ以外のイベント対応が必要な場合に適しています。',

@@ -149,7 +149,7 @@ class BotService:
             return target_kind
         if target_type == 'discard':
             return 'discard'
-        if target_type in {'agent', 'pipeline'}:
+        if target_type in {'agent', 'pipeline', 'event_processor'}:
             return str(target_type)
         return None
 
@@ -416,9 +416,9 @@ class BotService:
                 diagnostic_steps=diagnostic_steps,
             )
 
-        if target_type == 'agent':
+        if target_type in {'agent', 'event_processor'}:
             agent = await self._get_agent_entity(tenant_context, target_uuid)
-            if agent is None or getattr(agent, 'kind', 'agent') != 'agent':
+            if agent is None or getattr(agent, 'kind', 'agent') != target_type:
                 return self._diagnostic_result(
                     matched=False,
                     binding=selected_binding,
@@ -514,7 +514,7 @@ class BotService:
                 )
                 if result.first() is None:
                     raise ValueError('Pipeline not found')
-            elif target_type == 'agent':
+            elif target_type in {'agent', 'event_processor'}:
                 result = await self.ap.persistence_mgr.execute_async(
                     scope_statement(
                         sqlalchemy.select(persistence_agent.Agent).where(persistence_agent.Agent.uuid == target_uuid),
@@ -523,8 +523,8 @@ class BotService:
                     )
                 )
                 agent = result.first()
-                if agent is None:
-                    raise ValueError('Agent not found')
+                if agent is None or agent.kind != target_type:
+                    raise ValueError('Processor not found')
                 if not self._agent_supports_event_pattern(agent.supported_event_patterns, event_pattern):
                     raise ValueError('Agent does not support this event pattern')
             elif target_type == 'discard':

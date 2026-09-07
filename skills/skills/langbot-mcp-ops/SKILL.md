@@ -65,7 +65,9 @@ The tools wrap the LangBot service layer. Current tools (v1):
 | `get_system_info` | Version, edition, instance id |
 | `list_bots` / `get_bot` / `create_bot` / `update_bot` / `delete_bot` | Manage messaging-platform bots (secrets redacted on read) |
 | `list_bot_event_route_statuses` | Inspect bot event-route runtime status |
-| `list_processors` / `get_processor` / `create_processor` / `update_processor` / `delete_processor` | Manage the peer Agent and Pipeline processor types |
+| `list_processors` / `get_processor` / `create_processor` / `update_processor` / `delete_processor` | Manage the peer Agent, Pipeline and Event processor types |
+| `get_processor_metadata` | Discover installed EventProcessor components, schemas and supported event patterns. |
+| `list_processor_runs` / `get_processor_run_events` | Read one Event processor instance run history and logs; paginate with `before_id` / `after_sequence`. |
 | `debug_agent` | Execute a synthetic Agent event (`processor_uuid`, `payload`); requires `runtime.operate`. Returns final text and up to 1000 execution events (thinking, text, tool arguments/results). Platform tools use Mock; other configured tools execute normally. Optional `payload.mock`: `errors`/`results` keyed by platform tool name, `unsupported_apis` lists unavailable platform APIs. |
 | `list_pipelines` / `get_pipeline` / `create_pipeline` / `update_pipeline` / `delete_pipeline` | Manage pipelines |
 | `list_llm_models` / `get_llm_model` / `list_embedding_models` / `list_model_providers` | Inspect models & providers |
@@ -111,3 +113,12 @@ already have a default pipeline.
 - A `403` means the key is valid but lacks the permission required by the tool.
 - The global key is plaintext in config.yaml — only enable it on trusted/internal
   deployments and serve over HTTPS.
+
+## Event processors
+
+Install the plugin, discover its component with `get_processor_metadata`, then
+create a processor with `kind: "event_processor"`, `component_ref` and optional
+`parameters`. Bind bot events to this instance with `target_type: "event_processor"`
+and `target_id` equal to its UUID. Installation alone never activates a handler.
+`debug_agent` accepts the complete typed EBA event in `payload.data` for this kind.
+Legacy EventListener plugins remain in the Pipeline lifecycle.

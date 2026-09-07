@@ -188,8 +188,8 @@ class RunLedgerStore:
                 query = query.where(AgentRun.conversation_id == conversation_id)
             query = self._apply_scope_filters(query, bot_id, workspace_id, thread_id, strict_thread)
 
-            query = query.order_by(AgentRun.priority.desc(), AgentRun.id.asc()).limit(1).with_for_update(
-                skip_locked=True
+            query = (
+                query.order_by(AgentRun.priority.desc(), AgentRun.id.asc()).limit(1).with_for_update(skip_locked=True)
             )
             result = await session.execute(query)
             run = result.scalars().first()
@@ -571,8 +571,7 @@ class RunLedgerStore:
 
                 # Filter by labels
                 runtimes = [
-                    rt for rt in all_runtimes
-                    if all(rt.get('labels', {}).get(k) == v for k, v in labels.items())
+                    rt for rt in all_runtimes if all(rt.get('labels', {}).get(k) == v for k, v in labels.items())
                 ]
                 total_count = len(runtimes)
 
@@ -636,6 +635,7 @@ class RunLedgerStore:
         thread_id: str | None = None,
         strict_thread: bool = False,
         runner_id: str | None = None,
+        binding_id: str | None = None,
     ) -> tuple[list[dict[str, typing.Any]], int | None, bool, int]:
         """Page runs by scope.
 
@@ -652,6 +652,8 @@ class RunLedgerStore:
                 count_query = count_query.where(AgentRun.status.in_(statuses))
             if runner_id is not None:
                 count_query = count_query.where(AgentRun.runner_id == runner_id)
+            if binding_id is not None:
+                count_query = count_query.where(AgentRun.binding_id == binding_id)
             count_query = self._apply_scope_filters(count_query, bot_id, workspace_id, thread_id, strict_thread)
             count_result = await session.execute(count_query)
             total_count = count_result.scalar() or 0
@@ -664,6 +666,8 @@ class RunLedgerStore:
                 query = query.where(AgentRun.status.in_(statuses))
             if runner_id is not None:
                 query = query.where(AgentRun.runner_id == runner_id)
+            if binding_id is not None:
+                query = query.where(AgentRun.binding_id == binding_id)
             if before_id is not None:
                 query = query.where(AgentRun.id < before_id)
             query = self._apply_scope_filters(query, bot_id, workspace_id, thread_id, strict_thread)
@@ -848,10 +852,7 @@ class RunLedgerStore:
 
             # Count by status
             status_query = (
-                sqlalchemy.select(
-                    AgentRun.status,
-                    func.count(AgentRun.id).label('count')
-                )
+                sqlalchemy.select(AgentRun.status, func.count(AgentRun.id).label('count'))
                 .where(*base_filter)
                 .group_by(AgentRun.status)
             )
@@ -873,18 +874,15 @@ class RunLedgerStore:
             avg_queue_wait_seconds = None
 
             # Fetch completed runs with timing data
-            timing_query = (
-                sqlalchemy.select(
-                    AgentRun.started_at,
-                    AgentRun.finished_at,
-                    AgentRun.created_at,
-                )
-                .where(
-                    AgentRun.status == 'completed',
-                    AgentRun.started_at.is_not(None),
-                    AgentRun.finished_at.is_not(None),
-                    *base_filter
-                )
+            timing_query = sqlalchemy.select(
+                AgentRun.started_at,
+                AgentRun.finished_at,
+                AgentRun.created_at,
+            ).where(
+                AgentRun.status == 'completed',
+                AgentRun.started_at.is_not(None),
+                AgentRun.finished_at.is_not(None),
+                *base_filter,
             )
             timing_result = await session.execute(timing_query)
             timing_rows = timing_result.all()
@@ -899,16 +897,10 @@ class RunLedgerStore:
                     avg_duration_seconds = round(sum(durations) / len(durations), 2)
 
             # Queue wait time - compute in Python
-            queue_query = (
-                sqlalchemy.select(
-                    AgentRun.created_at,
-                    AgentRun.started_at,
-                )
-                .where(
-                    AgentRun.started_at.is_not(None),
-                    *base_filter
-                )
-            )
+            queue_query = sqlalchemy.select(
+                AgentRun.created_at,
+                AgentRun.started_at,
+            ).where(AgentRun.started_at.is_not(None), *base_filter)
             queue_result = await session.execute(queue_query)
             queue_rows = queue_result.all()
 
@@ -957,12 +949,8 @@ class RunLedgerStore:
 
         async with self._session_factory() as session:
             # Count by status
-            status_query = (
-                sqlalchemy.select(
-                    AgentRuntime.status,
-                    func.count(AgentRuntime.id).label('count')
-                )
-                .group_by(AgentRuntime.status)
+            status_query = sqlalchemy.select(AgentRuntime.status, func.count(AgentRuntime.id).label('count')).group_by(
+                AgentRuntime.status
             )
             status_result = await session.execute(status_query)
             status_counts = {row.status: row.count for row in status_result}
@@ -975,9 +963,8 @@ class RunLedgerStore:
             avg_heartbeat_age = None
             max_heartbeat_age = None
 
-            heartbeat_query = (
-                sqlalchemy.select(AgentRuntime.last_heartbeat_at)
-                .where(AgentRuntime.last_heartbeat_at.is_not(None))
+            heartbeat_query = sqlalchemy.select(AgentRuntime.last_heartbeat_at).where(
+                AgentRuntime.last_heartbeat_at.is_not(None)
             )
             heartbeat_result = await session.execute(heartbeat_query)
             heartbeat_rows = heartbeat_result.all()
@@ -995,16 +982,12 @@ class RunLedgerStore:
                     avg_heartbeat_age = round(sum(ages) / len(ages), 2)
                     max_heartbeat_age = round(max(ages), 2)
 
-            active_runs_query = (
-                sqlalchemy.select(func.count(AgentRun.id))
-                .where(AgentRun.status.in_(['running', 'claimed']))
+            active_runs_query = sqlalchemy.select(func.count(AgentRun.id)).where(
+                AgentRun.status.in_(['running', 'claimed'])
             )
             active_runs_result = await session.execute(active_runs_query)
             active_runs = active_runs_result.scalar() or 0
-            claimed_runs_query = (
-                sqlalchemy.select(func.count(AgentRun.id))
-                .where(AgentRun.status == 'claimed')
-            )
+            claimed_runs_query = sqlalchemy.select(func.count(AgentRun.id)).where(AgentRun.status == 'claimed')
             claimed_runs_result = await session.execute(claimed_runs_query)
             claimed_runs = claimed_runs_result.scalar() or 0
 
@@ -1048,23 +1031,10 @@ class RunLedgerStore:
                     AgentRun.runner_id,
                     func.count(AgentRun.id).label('total'),
                     func.sum(
-                        sqlalchemy.case(
-                            (AgentRun.status.in_(['queued', 'claimed', 'running']), 1),
-                            else_=0
-                        )
+                        sqlalchemy.case((AgentRun.status.in_(['queued', 'claimed', 'running']), 1), else_=0)
                     ).label('active'),
-                    func.sum(
-                        sqlalchemy.case(
-                            (AgentRun.status == 'completed', 1),
-                            else_=0
-                        )
-                    ).label('completed'),
-                    func.sum(
-                        sqlalchemy.case(
-                            (AgentRun.status.in_(['failed', 'timeout']), 1),
-                            else_=0
-                        )
-                    ).label('failed'),
+                    func.sum(sqlalchemy.case((AgentRun.status == 'completed', 1), else_=0)).label('completed'),
+                    func.sum(sqlalchemy.case((AgentRun.status.in_(['failed', 'timeout']), 1), else_=0)).label('failed'),
                 )
                 .where(
                     AgentRun.created_at >= start_dt,
@@ -1087,16 +1057,18 @@ class RunLedgerStore:
                 failed = row.failed or 0
                 success_rate = completed / total if total > 0 else None
 
-                stats.append({
-                    'runner_id': runner_id,
-                    'runner_label': None,  # Would need to join with runner descriptors
-                    'plugin_identity': None,
-                    'total_runs': total,
-                    'active_runs': row.active or 0,
-                    'completed_runs': completed,
-                    'failed_runs': failed,
-                    'success_rate': round(success_rate, 4) if success_rate is not None else None,
-                    'avg_duration_seconds': None,  # Would need more complex query
-                })
+                stats.append(
+                    {
+                        'runner_id': runner_id,
+                        'runner_label': None,  # Would need to join with runner descriptors
+                        'plugin_identity': None,
+                        'total_runs': total,
+                        'active_runs': row.active or 0,
+                        'completed_runs': completed,
+                        'failed_runs': failed,
+                        'success_rate': round(success_rate, 4) if success_rate is not None else None,
+                        'avg_duration_seconds': None,  # Would need more complex query
+                    }
+                )
 
             return stats

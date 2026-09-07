@@ -730,13 +730,16 @@ function NavItems({
           const showAgentGroupHeaders =
             isAgents && !inPopover && sidebarData.agentsGroupByKind;
 
-          const agentGroupOrder: Array<'agent' | 'pipeline'> = [
-            'agent',
-            'pipeline',
-          ];
-          const agentGroupLabelKey: Record<'agent' | 'pipeline', string> = {
+          const agentGroupOrder: Array<
+            'agent' | 'pipeline' | 'event_processor'
+          > = ['agent', 'pipeline', 'event_processor'];
+          const agentGroupLabelKey: Record<
+            'agent' | 'pipeline' | 'event_processor',
+            string
+          > = {
             agent: 'agents.kindBadgeAgent',
             pipeline: 'agents.kindBadgePipeline',
+            event_processor: 'agents.eventProcessor.type',
           };
 
           const groupOrder: Array<'plugin' | 'mcp' | 'skill'> = [
@@ -889,12 +892,16 @@ function NavItems({
                           <span
                             className="ml-auto flex shrink-0 items-center text-muted-foreground"
                             title={
-                              item.kind === 'pipeline'
-                                ? t('agents.kindBadgePipeline')
-                                : t('agents.kindBadgeAgent')
+                              item.kind === 'event_processor'
+                                ? t('agents.eventProcessor.type')
+                                : item.kind === 'pipeline'
+                                  ? t('agents.kindBadgePipeline')
+                                  : t('agents.kindBadgeAgent')
                             }
                           >
-                            {item.kind === 'pipeline' ? (
+                            {item.kind === 'event_processor' ? (
+                              <span className="text-xs">⚡</span>
+                            ) : item.kind === 'pipeline' ? (
                               <Workflow className="size-3.5" />
                             ) : (
                               <Bot className="size-3.5" />

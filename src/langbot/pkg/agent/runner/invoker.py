@@ -41,6 +41,17 @@ class AgentRunnerInvoker:
             )
 
         try:
+            if descriptor.component_kind == 'EventProcessor':
+                context = {
+                    **context,
+                    'runtime': {
+                        **context['runtime'],
+                        'metadata': {
+                            **context['runtime'].get('metadata', {}),
+                            'component_kind': 'EventProcessor',
+                        },
+                    },
+                }
             gen = self.ap.plugin_connector.run_agent(
                 plugin_author=descriptor.plugin_author,
                 plugin_name=descriptor.plugin_name,

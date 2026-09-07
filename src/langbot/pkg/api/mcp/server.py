@@ -175,44 +175,72 @@ class LangBotMCPServer:
             return _dump({'ok': True})
 
         # ----- Processors ---------------------------------------------- #
-        @mcp.tool(description='List product-level processors, including Agents and Pipelines.')
+        @mcp.tool(description='List product-level processors, including Agents, Pipelines and Event processors.')
         async def list_processors() -> str:
             context = _authorized(Permission.RESOURCE_VIEW)
             return _dump(await ap.agent_service.get_agents(context))
 
-        @mcp.tool(description='Get an Agent or Pipeline processor by UUID.')
+        @mcp.tool(description='Get an Agent, Pipeline or Event processor by UUID.')
         async def get_processor(processor_uuid: str) -> str:
             context = _authorized(Permission.RESOURCE_VIEW)
             return _dump(await ap.agent_service.get_agent(context, processor_uuid))
 
         @mcp.tool(
             description=(
-                'Create an Agent or Pipeline processor. Set `processor_data.kind` to '
-                '`agent` or `pipeline`. Returns the new UUID and kind.'
+                'Create an Agent, Pipeline or Event processor. Set `processor_data.kind` to '
+                '`agent`, `pipeline` or `event_processor`. Event processors require an installed component_ref '
+                'from get_processor_metadata; optional parameters configure the instance. Returns UUID and kind.'
             )
         )
         async def create_processor(processor_data: dict) -> str:
             context = _authorized(Permission.RESOURCE_MANAGE)
             return _dump(await ap.agent_service.create_agent(context, processor_data))
 
-        @mcp.tool(description='Update an Agent or Pipeline processor by UUID.')
+        @mcp.tool(description='Update an Agent, Pipeline or Event processor by UUID.')
         async def update_processor(processor_uuid: str, processor_data: dict) -> str:
             context = _authorized(Permission.RESOURCE_MANAGE)
             await ap.agent_service.update_agent(context, processor_uuid, processor_data)
             return _dump({'ok': True})
 
-        @mcp.tool(description='Delete an Agent or Pipeline processor by UUID.')
+        @mcp.tool(description='Delete an Agent, Pipeline or Event processor by UUID.')
         async def delete_processor(processor_uuid: str) -> str:
             context = _authorized(Permission.RESOURCE_MANAGE)
             await ap.agent_service.delete_agent(context, processor_uuid)
             return _dump({'ok': True})
 
+        @mcp.tool(description='Get processor kinds and installed EventProcessor components with configuration schemas.')
+        async def get_processor_metadata() -> str:
+            context = _authorized(Permission.RESOURCE_VIEW)
+            return _dump(await ap.agent_service.get_agent_metadata(context))
+
+        @mcp.tool(description='List one Event processor instance run history; use before_id to page older runs.')
+        async def list_processor_runs(processor_uuid: str, before_id: int | None = None) -> str:
+            context = _authorized(Permission.RESOURCE_VIEW)
+            return _dump(await ap.agent_service.get_processor_runs(context, processor_uuid, before_id=before_id))
+
+        @mcp.tool(description='Read logs and action results for an Event processor run; page using after_sequence.')
+        async def get_processor_run_events(
+            processor_uuid: str,
+            run_id: str,
+            after_sequence: int | None = None,
+        ) -> str:
+            context = _authorized(Permission.RESOURCE_VIEW)
+            return _dump(
+                await ap.agent_service.get_processor_run_events(
+                    context,
+                    processor_uuid,
+                    run_id,
+                    after_sequence=after_sequence,
+                )
+            )
+
         # ----- Models -------------------------------------------------- #
         @mcp.tool(
             description=(
-                'Run a synthetic event against an Agent processor without platform delivery. '
+                'Run a synthetic event against an Agent or Event processor without platform delivery. '
                 'Returns final text and execution_events containing reported messages/thinking and tool calls. '
                 'Platform tools use mock adapters; other tools execute normally. '
+                'For Event processors, data contains the complete typed EBA event fields. '
                 'Requires runtime.operate; payload accepts event_type, text, data, conversation_id, actor, subject and '
                 'mock (errors/results keyed by platform tool name; unsupported_apis lists unavailable platform APIs).'
             )

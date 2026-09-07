@@ -692,3 +692,73 @@ def test_websocket_task_override_does_not_mutate_bot_default():
     assert pipeline_uuid == 'connection-pipeline'
     assert routed is False
     assert bot.bot_entity.use_pipeline_uuid == 'default-uuid'
+
+
+@pytest.mark.asyncio
+async def test_installed_event_processor_never_receives_unbound_events():
+    from langbot_plugin.api.entities.builtin.platform.events import MemberJoinedEvent
+
+    bot = TestEventRouteTrace._make_bot([])
+    bot.ap = SimpleNamespace(plugin_connector=SimpleNamespace(emit_event=AsyncMock()))
+    bot._record_adapter_event = AsyncMock()
+    await bot._handle_platform_event(MemberJoinedEvent(), Mock())
+    bot.ap.plugin_connector.emit_event.assert_not_called()
+    assert bot.logger.info.await_args.kwargs['metadata']['status'] == 'not_matched'
+
+
+@pytest.mark.asyncio
+async def test_bound_event_processor_receives_one_complete_typed_event():
+    from langbot_plugin.api.entities.builtin.platform.events import MemberJoinedEvent
+
+    bot = TestEventRouteTrace._make_bot(
+        [
+            {
+                'id': 'binding',
+                'enabled': True,
+                'event_pattern': 'group.member_joined',
+                'target_type': 'event_processor',
+                'target_uuid': 'processor-1',
+                'priority': 0,
+                'order': 0,
+            }
+        ]
+    )
+    calls = []
+
+    async def run(envelope, binding, adapter_context=None):
+        calls.append((envelope, binding))
+        if False:
+            yield None
+
+    ref = 'event_processor:test/welcome/default'
+    bot.ap = SimpleNamespace(
+        workspace_service=active_workspace_service(),
+        agent_service=SimpleNamespace(
+            get_agent=AsyncMock(
+                return_value={
+                    'uuid': 'processor-1',
+                    'kind': 'event_processor',
+                    'supported_event_patterns': ['group.member_joined'],
+                    'config': {'runner': {'id': ref}, 'runner_config': {ref: {'greeting': 'Hi'}}},
+                }
+            )
+        ),
+        agent_run_orchestrator=SimpleNamespace(run=run),
+        plugin_connector=SimpleNamespace(emit_event=AsyncMock()),
+    )
+    bot._record_adapter_event = AsyncMock()
+    await bot._handle_platform_event(
+        MemberJoinedEvent(
+            member={'id': 'member-1'}, group={'id': 'group-1'}, source_platform_object={'private': 'opaque'}
+        ),
+        Mock(),
+    )
+    assert len(calls) == 1
+    envelope, binding = calls[0]
+    assert binding.binding_id == 'event_processor:processor-1'
+    assert binding.processor_type == 'event_processor'
+    assert binding.runner_config == {'greeting': 'Hi'}
+    assert envelope.data['member']['id'] == 'member-1'
+    assert envelope.data['type'] == 'group.member_joined'
+    assert 'source_platform_object' not in envelope.data
+    bot.ap.plugin_connector.emit_event.assert_not_called()

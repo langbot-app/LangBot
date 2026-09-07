@@ -1,5 +1,7 @@
 # 处理器页面与事件编排产品设计
 
+> Implementation update (2026-09-08): the EventListener observer-broadcast proposal below is superseded by [Event processors](09-event-processors.md). Legacy EventListener hooks run only inside Pipeline. New EBA handlers use explicitly created and bound EventProcessor instances, a third peer processor type alongside Agent and Pipeline.
+
 > 状态：当前实现说明（2026-09-05），对应 `dev/4.11.x`。P0–P3 已集成；发布验收见 [STATUS.md](../agent-runner-pluginization/STATUS.md)。
 >
 > 本文档修订 [07-agent-orchestration.md](./07-agent-orchestration.md) 中“Agent 替代 Pipeline”的表述。当前产品形态保留两种长期并存的同级处理器：**Agent** 与 **Pipeline**。处理器页面只是共享入口，不改变二者各自的持久化模型和执行语义。

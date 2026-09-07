@@ -62,12 +62,25 @@ class AiocqhttpEventConverter(abstract_platform_adapter.AbstractEventConverter):
             chat_id = getattr(event, 'group_id', '')
             group = AiocqhttpEventConverter.group_from_event(event)
 
+        sender = AiocqhttpEventConverter.user_from_sender(event)
+        sender_data = getattr(event, 'sender', {}) or {}
+        role = sender_data.get('role', 'member')
+        membership = None
+        if group is not None:
+            membership = platform_entities.UserGroupMember(
+                user=sender,
+                group_id=group.id,
+                role=role if role in {'owner', 'admin', 'member'} else 'member',
+                display_name=sender_data.get('card') or sender.nickname,
+                title=sender_data.get('title'),
+            )
         return platform_events.MessageReceivedEvent(
             type='message.received',
             adapter_name='aiocqhttp',
             message_id=getattr(event, 'message_id', ''),
             message_chain=message_chain,
-            sender=AiocqhttpEventConverter.user_from_sender(event),
+            sender=sender,
+            sender_member=membership,
             chat_type=chat_type,
             chat_id=chat_id,
             group=group,

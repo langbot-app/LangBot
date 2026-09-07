@@ -102,6 +102,10 @@ class AgentRunOrchestrator:
             bound_plugins,
         )
 
+        expected_kind = 'EventProcessor' if binding.processor_type == 'event_processor' else 'AgentRunner'
+        if descriptor.component_kind != expected_kind:
+            raise ValueError('Processor kind does not match the selected plugin component')
+
         if execution_query is None:
             execution_query = build_execution_query(event, [])
             # Synthetic events must expose the same trusted scope as pipeline queries.

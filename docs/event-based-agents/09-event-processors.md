@@ -1,7 +1,9 @@
 # Event processors and Pipeline plugin compatibility
 
-Status: product and implementation design, 2026-09-07. The EventProcessor
-component, routing target, and UI described below are not implemented yet.
+Status: implemented in the 4.11 development branches of LangBot and the Plugin SDK,
+2026-09-08. The Host uv configuration pins the matching SDK commit. Deploy both
+revisions together; older SDK releases do not contain this component. Switch the
+development source pin to a published SDK release before a stable PyPI release.
 This design supersedes the automatic EBA EventListener observer broadcast in
 the earlier EBA documents. Existing Pipeline plugin behavior remains supported.
 
@@ -64,7 +66,8 @@ EventListener participates in Pipeline hook dispatch.
 Retain the familiar authoring shape:
 
 ```python
-# Illustrative API contract; these classes are not available yet.
+from langbot_plugin.api.definition.components.event_processor import EventProcessor, EventProcessorContext
+from langbot_plugin.api.entities.builtin.platform.events import MemberJoinedEvent
 class WelcomeProcessor(EventProcessor):
     async def initialize(self):
         await super().initialize()
@@ -105,8 +108,7 @@ of supported events to deliver. One package may supply multiple components, and
 multiple instances may use the same component with independent configuration.
 
 Extend the existing single-target route arbitration with `event_processor`.
-Remove automatic EBA broadcasts to installed EventListeners when this route is
-ready. Keep Pipeline hook dispatch inside the Pipeline path. Existing observer
+There is no automatic EBA broadcast to installed EventListeners. Keep Pipeline hook dispatch inside the Pipeline path. Existing observer
 plugins must explicitly adopt the new component and be bound by the user; do not
 create subscriptions during migration.
 
@@ -149,3 +151,66 @@ history remain separate; all declared EBA events retain their fields; unavailabl
 components fail visibly; and legacy plugins keep the documented Pipeline hook
 order and behavior. Unit tests alone do not establish a successful live plugin
 installation or platform delivery.
+
+
+## Implemented transport and APIs
+
+`lbp comp EventProcessor` scaffolds a component in `components/event_processor`.
+Its manifest uses `kind: EventProcessor` and `spec.events`, for example
+`[group.member_joined]`. `spec.config` defines instance parameters. A component
+that calls `ctx.reply()` declares `spec.permissions.tools: [detail, call]`.
+
+References use `event_processor:author/plugin/component`, separate from
+`plugin:author/plugin/runner`. Both kinds share the existing run transport,
+installation authorization, deadlines and run ledger. The trusted Host selects
+the component kind; the worker invokes only that exact kind and name.
+There is no model invocation in the EventProcessor base class.
+
+`EventProcessorContext` provides `event`, `run_id`, `config`, `api`, `log()` and
+`reply()`. `api` is the existing run-scoped Host proxy. Use `ctx.config` for instance
+parameters; plugin installation configuration remains separate. Handlers may
+register the `EBAEvent` base class as a catch-all. An exact typed handler takes
+precedence over that fallback. Multiple handlers for the same type run in their
+registration order, within one invocation.
+
+HTTP instance management uses `/api/v1/agents` with `kind: event_processor`.
+Metadata at `/api/v1/agents/_/metadata` lists installed `event_processors`.
+Creation accepts `component_ref` and `parameters`; the Host derives the supported
+event patterns from the component. Bot bindings use `target_type: event_processor`
+and the created instance UUID as `target_id`.
+
+- `GET /api/v1/agents/{id}/runs?before_id=...` lists this instance's runs.
+- `GET /api/v1/agents/{id}/runs/{run_id}/events?after_sequence=...` pages its logs
+  and action results. A run from another instance or Workspace is rejected.
+- The corresponding MCP tools are `get_processor_metadata`, `list_processor_runs`
+  and `get_processor_run_events`, alongside processor CRUD.
+- `/api/v1/agents/{id}/debug` accepts a full typed EBA event in `data`. Platform
+  actions use Mock; other authorized tools retain their configured behavior.
+
+The detail page polls run updates, keeps payload details collapsed and separates
+logs from platform delivery. Completed handlers produce no synthetic reply text.
+
+
+## Verification (2026-09-08)
+
+- SDK API, scaffolding and Plugin Runtime suites: 684 passed.
+- Host runner, service, controller, MCP and adapter regression suites: 971 passed.
+- Pipeline and registry regression suites: 243 passed, one environment-dependent skip.
+- Frontend unit suite: 74 passed; TypeScript and changed-file lint checks passed.
+- Real packaged-plugin tests cover installation, component-kind separation,
+  invocation, mock platform delivery, instance isolation and persisted logs.
+- Authenticated Edge testing created an instance and a loopback OneBot bot, saved
+  a member-join binding, injected one native notice and received exactly one
+  `send_group_msg` response. The detail page displayed the completed run,
+  localized action name, destination and returned message ID. No external IM
+  account or live model was involved.
+- Browser regression covers expanding long payloads, reaching the last log and
+  pagination without duplication. Eight unrelated existing browser failures were
+  reproduced against the pre-change commit; the full suite is not green.
+- Repository-wide lint also retains the pre-existing duplicate `send_image_msg`
+  in the WeCom customer-service library and existing formatting failures outside
+  this change. The i18n check has the same pre-existing diagnostics as its baseline.
+
+Native Agent interaction-resumption is not enabled for EventProcessor bindings;
+its input contract is the platform EBA event collection, not a synthetic Agent
+continuation. Plugins should handle platform events through their typed handlers.

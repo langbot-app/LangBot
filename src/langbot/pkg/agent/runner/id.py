@@ -1,4 +1,5 @@
 """Agent runner ID parsing and formatting."""
+
 from __future__ import annotations
 
 import dataclasses
@@ -7,6 +8,7 @@ import dataclasses
 @dataclasses.dataclass(frozen=True)
 class RunnerIdParts:
     """Parsed runner ID components."""
+
     source: str  # 'plugin' (future: 'builtin')
     plugin_author: str
     plugin_name: str
@@ -29,31 +31,27 @@ def parse_runner_id(runner_id: str) -> RunnerIdParts:
     Raises:
         ValueError: If runner_id format is invalid
     """
-    if runner_id.startswith('plugin:'):
-        parts = runner_id[7:].split('/')
+    if runner_id.startswith(('plugin:', 'event_processor:')):
+        source, value = runner_id.split(':', 1)
+        parts = value.split('/')
         if len(parts) != 3:
             raise ValueError(
-                f'Invalid plugin runner ID format: {runner_id}. '
-                f'Expected: plugin:author/plugin_name/runner_name'
+                f'Invalid plugin runner ID format: {runner_id}. Expected: plugin:author/plugin_name/runner_name'
             )
         plugin_author, plugin_name, runner_name = parts
         if not plugin_author or not plugin_name or not runner_name:
             raise ValueError(
-                f'Invalid plugin runner ID: {runner_id}. '
-                f'author, plugin_name, and runner_name must be non-empty'
+                f'Invalid plugin runner ID: {runner_id}. author, plugin_name, and runner_name must be non-empty'
             )
         return RunnerIdParts(
-            source='plugin',
+            source=source,
             plugin_author=plugin_author,
             plugin_name=plugin_name,
             runner_name=runner_name,
         )
     else:
         # Only plugin runner IDs are valid at the protocol boundary.
-        raise ValueError(
-            f'Invalid runner ID format: {runner_id}. '
-            f'Expected: plugin:author/plugin_name/runner_name'
-        )
+        raise ValueError(f'Invalid runner ID format: {runner_id}. Expected: plugin:author/plugin_name/runner_name')
 
 
 def format_runner_id(
@@ -73,8 +71,8 @@ def format_runner_id(
     Returns:
         Runner ID string
     """
-    if source == 'plugin':
-        return f'plugin:{plugin_author}/{plugin_name}/{runner_name}'
+    if source in {'plugin', 'event_processor'}:
+        return f'{source}:{plugin_author}/{plugin_name}/{runner_name}'
     else:
         raise ValueError(f'Invalid runner source: {source}')
 
@@ -88,4 +86,4 @@ def is_plugin_runner_id(runner_id: str) -> bool:
     Returns:
         True if runner ID starts with 'plugin:'
     """
-    return runner_id.startswith('plugin:')
+    return runner_id.startswith(('plugin:', 'event_processor:'))
