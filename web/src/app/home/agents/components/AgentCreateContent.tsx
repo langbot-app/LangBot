@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -6,8 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { Bot, Workflow, FileCode2 } from 'lucide-react';
 import { httpClient } from '@/app/infra/http/HttpClient';
-import { AgentKind, EventProcessorDescriptor } from '@/app/infra/entities/api';
-import EventProcessorSettings from './EventProcessorSettings';
+import { AgentKind } from '@/app/infra/entities/api';
 import { Button } from '@/components/ui/button';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import {
@@ -36,23 +35,6 @@ export default function AgentCreateContent({
 }) {
   const { t } = useTranslation();
   const [kind, setKind] = useState<AgentKind>('agent');
-  const [components, setComponents] = useState<EventProcessorDescriptor[]>([]);
-  const [componentRef, setComponentRef] = useState('');
-  const [parameters, setParameters] = useState<Record<string, unknown>>({});
-  const validateParameters = useRef<(() => Promise<boolean>) | null>(null);
-  useEffect(() => {
-    if (kind !== 'event_processor') return;
-    let cancelled = false;
-    httpClient
-      .getAgentMetadata()
-      .then((metadata) => {
-        if (!cancelled) setComponents(metadata.event_processors ?? []);
-      })
-      .catch(() => toast.error(t('agents.eventProcessor.loadError')));
-    return () => {
-      cancelled = true;
-    };
-  }, [kind, t]);
   const formSchema = z.object({
     name: z.string().min(1, { message: t('agents.nameRequired') }),
     description: z.string().optional(),
@@ -85,23 +67,9 @@ export default function AgentCreateContent({
   }
 
   async function handleSubmit(values: FormValues) {
-    if (
-      kind === 'event_processor' &&
-      (!componentRef || !((await validateParameters.current?.()) ?? true))
-    )
-      return;
-    httpClient
+    return httpClient
       .createAgent({
         kind,
-        ...(kind === 'event_processor'
-          ? {
-              component_ref: componentRef,
-              config: {
-                runner: { id: componentRef },
-                runner_config: { [componentRef]: parameters },
-              },
-            }
-          : {}),
         name: values.name,
         description: values.description ?? '',
         emoji: values.emoji || (kind === 'pipeline' ? '⚙️' : '🤖'),
@@ -143,10 +111,7 @@ export default function AgentCreateContent({
         <Button
           type="submit"
           form="agent-create-form"
-          disabled={
-            form.formState.isSubmitting ||
-            (kind === 'event_processor' && !componentRef)
-          }
+          disabled={form.formState.isSubmitting}
         >
           {t('common.submit')}
         </Button>
@@ -209,22 +174,6 @@ export default function AgentCreateContent({
                 </ToggleGroup>
               </section>
 
-              {kind === 'event_processor' && (
-                <EventProcessorSettings
-                  components={components}
-                  value={componentRef}
-                  parameters={parameters}
-                  onChange={(value) => {
-                    setComponentRef(value);
-                    setParameters({});
-                    validateParameters.current = null;
-                  }}
-                  onParametersChange={setParameters}
-                  onValidate={(validate) => {
-                    validateParameters.current = validate;
-                  }}
-                />
-              )}
               <Card>
                 <CardHeader>
                   <CardTitle>{t('agents.basicInfo')}</CardTitle>

@@ -8,6 +8,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 
 interface ProcessorMonitoringView {
@@ -26,6 +27,7 @@ interface ProcessorDetailWorkbenchProps {
   title: string;
   titleBadge?: ReactNode;
   titleAction?: ReactNode;
+  titleControls?: ReactNode;
   headerActions?: ReactNode;
   status?: ProcessorDetailStatus | null;
   saveLabel: string;
@@ -34,6 +36,7 @@ interface ProcessorDetailWorkbenchProps {
   isDirty: boolean;
   isSaving: boolean;
   configTitle: string;
+  configIcon?: ReactNode;
   configContent: ReactNode;
   debugTitle?: string;
   debugDescription?: string;
@@ -49,6 +52,7 @@ export default function ProcessorDetailWorkbench({
   title,
   titleBadge,
   titleAction,
+  titleControls,
   headerActions,
   status,
   saveLabel,
@@ -57,6 +61,7 @@ export default function ProcessorDetailWorkbench({
   isDirty,
   isSaving,
   configTitle,
+  configIcon,
   configContent,
   debugTitle,
   debugDescription,
@@ -81,10 +86,11 @@ export default function ProcessorDetailWorkbench({
       className="flex h-full min-h-0 min-w-0 flex-col gap-0"
     >
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 pb-4">
-        <div className="flex min-w-0 items-center gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
           <h1 className="truncate text-xl font-semibold">{title}</h1>
           {titleBadge}
           {titleAction}
+          {titleControls}
           {monitoring && (
             <TabsList
               aria-label={`${monitoring.workbenchLabel} / ${monitoring.label}`}
@@ -168,18 +174,20 @@ export default function ProcessorDetailWorkbench({
           value="monitoring"
           className="mt-0 min-h-0 flex-1 overflow-hidden"
         >
-          <section
+          <Card
+            role="region"
             aria-label={monitoring.label}
-            className="h-full min-h-0 overflow-y-auto rounded-xl border bg-card p-4"
+            className="h-full min-h-0 overflow-y-auto gap-0 p-4"
           >
             {monitoring.content}
-          </section>
+          </Card>
         </TabsContent>
       )}
 
       <TabsContent
         value="workbench"
-        className="mt-0 min-h-0 flex-1 overflow-y-auto lg:overflow-hidden"
+        forceMount
+        className="mt-0 min-h-0 flex-1 overflow-y-auto lg:overflow-hidden data-[state=inactive]:hidden"
       >
         <div
           className={cn(
@@ -190,24 +198,27 @@ export default function ProcessorDetailWorkbench({
           )}
         >
           {hasDebug && (
-            <section
+            <Card
+              role="region"
               aria-label={debugTitle}
-              className="flex min-h-[32rem] min-w-0 flex-col overflow-hidden rounded-xl border bg-card lg:min-h-0"
+              className="min-h-[32rem] min-w-0 gap-0 overflow-hidden py-0 lg:min-h-0"
             >
-              <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-b px-4">
+              <CardHeader className="flex h-12 shrink-0 items-center justify-between gap-3 border-b px-4 [.border-b]:pb-0">
                 <div className="flex min-w-0 items-center gap-2 font-medium">
                   <Bug className="size-4 shrink-0" />
                   <span className="truncate">{debugTitle}</span>
                   {debugDescription && (
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <button
+                        <Button
                           type="button"
+                          variant="ghost"
+                          size="icon"
                           aria-label={debugDescription}
-                          className="inline-flex shrink-0 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+                          className="size-6 shrink-0 text-muted-foreground"
                         >
                           <Info className="size-4" />
-                        </button>
+                        </Button>
                       </TooltipTrigger>
                       <TooltipContent className="max-w-xs whitespace-normal leading-relaxed">
                         {debugDescription}
@@ -228,19 +239,20 @@ export default function ProcessorDetailWorkbench({
                       : debugDisconnectedLabel}
                   </span>
                 )}
-              </div>
-              <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
+              </CardHeader>
+              <CardContent className="min-h-0 min-w-0 flex-1 overflow-hidden px-0">
                 {debugContent}
-              </div>
-            </section>
+              </CardContent>
+            </Card>
           )}
 
-          <section
+          <Card
+            role="region"
             aria-label={configTitle}
-            className="flex min-h-[36rem] min-w-0 flex-col overflow-hidden rounded-xl border bg-card lg:min-h-0"
+            className="min-h-[36rem] min-w-0 gap-0 overflow-hidden py-0 lg:min-h-0"
           >
-            <div className="flex h-12 shrink-0 items-center gap-2 border-b px-4 font-medium">
-              <Settings className="size-4" />
+            <CardHeader className="flex h-12 shrink-0 flex-row items-center gap-2 border-b px-4 font-medium [.border-b]:pb-0">
+              {configIcon ?? <Settings className="size-4" />}
               <span className="truncate">{configTitle}</span>
               {isDirty && (
                 <span className="ml-auto flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
@@ -248,11 +260,11 @@ export default function ProcessorDetailWorkbench({
                   {unsavedLabel}
                 </span>
               )}
-            </div>
-            <div className="min-h-0 min-w-0 flex-1 overflow-hidden p-4">
+            </CardHeader>
+            <CardContent className="min-h-0 min-w-0 flex-1 overflow-hidden p-4">
               {configContent}
-            </div>
-          </section>
+            </CardContent>
+          </Card>
         </div>
       </TabsContent>
     </Tabs>

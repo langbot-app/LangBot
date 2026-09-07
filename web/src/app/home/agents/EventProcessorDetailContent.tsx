@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
-import { FileCode2, RefreshCw, Settings2, Trash2, Pencil } from 'lucide-react';
+import { eventPatternLabel } from '@/app/home/components/event-patterns/event-pattern-groups';
+import { RefreshCw, Trash2, ScrollText } from 'lucide-react';
+import isEqual from 'lodash/isEqual';
 import { toast } from 'sonner';
 import type {
   Agent,
@@ -14,12 +16,23 @@ import { httpClient } from '@/app/infra/http/HttpClient';
 import { Button } from '@/components/ui/button';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import { Badge } from '@/components/ui/badge';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import ProcessorDetailWorkbench from '@/app/home/components/processor-detail/ProcessorDetailWorkbench';
+import EntityTitleEditButton from '@/app/home/components/entity-basic-info/EntityTitleEditButton';
+import AgentDebugPanel from './components/AgentDebugPanel';
+import EventProcessorTrace, {
+  ProcessorPayload,
+} from './components/EventProcessorTrace';
+import ProcessorRunList from './components/ProcessorRunList';
 import EventProcessorSettings from './components/EventProcessorSettings';
 
 export default function EventProcessorDetailContent({
   agent,
   id,
   canManage,
+  canOperate,
+  availableEventTypes,
   onDelete,
   onEdit,
   onSaved,
@@ -27,6 +40,8 @@ export default function EventProcessorDetailContent({
   agent: Agent;
   id: string;
   canManage: boolean;
+  canOperate: boolean;
+  availableEventTypes: string[];
   onDelete: () => void;
   onEdit: () => void;
   onSaved: () => void;
@@ -46,6 +61,13 @@ export default function EventProcessorDetailContent({
       >
     )[agent.component_ref ?? ''] ?? {};
   const [parameters, setParameters] = useState(initialParameters);
+  const [savedConfig, setSavedConfig] = useState({
+    componentRef,
+    parameters: initialParameters,
+  });
+  const dirty =
+    componentRef !== savedConfig.componentRef ||
+    !isEqual(parameters, savedConfig.parameters);
   const [runs, setRuns] = useState<ProcessorRun[]>([]);
   const [cursor, setCursor] = useState<number | null>(null);
   const [selected, setSelected] = useState<ProcessorRun | null>(null);
@@ -55,11 +77,11 @@ export default function EventProcessorDetailContent({
   const [saving, setSaving] = useState(false);
   const [pagingRuns, setPagingRuns] = useState(false);
   const [pagingEvents, setPagingEvents] = useState(false);
-  const [configOpen, setConfigOpen] = useState(false);
   const [failed, setFailed] = useState(false);
   const validate = useRef<(() => Promise<boolean>) | null>(null);
   const requestVersion = useRef(0);
-  const available = components.some((item) => item.id === agent.component_ref);
+  const component = components.find((item) => item.id === componentRef);
+  const available = Boolean(component);
 
   const load = useCallback(async () => {
     setFailed(false);
@@ -88,20 +110,38 @@ export default function EventProcessorDetailContent({
     [id],
   );
 
-  async function openRun(run: ProcessorRun) {
-    const version = ++requestVersion.current;
-    setSelected(run);
-    setEvents([]);
-    setEventCursor(null);
+  const openRun = useCallback(
+    async (run: ProcessorRun) => {
+      const version = ++requestVersion.current;
+      setSelected(run);
+      setEvents([]);
+      setEventCursor(null);
+      try {
+        const page = await httpClient.getProcessorRunEvents(id, run.run_id);
+        if (version !== requestVersion.current) return;
+        setSelected(page.run);
+        setEvents(page.items);
+        setEventCursor(page.has_more ? page.next_cursor : null);
+      } catch {
+        if (version === requestVersion.current)
+          toast.error(t('agents.eventProcessor.loadError'));
+      }
+    },
+    [id, t],
+  );
+
+  useEffect(() => {
+    if (!selected && runs.length > 0) void openRun(runs[0]);
+  }, [selected, runs, openRun]);
+
+  async function refreshLatestRun() {
     try {
-      const page = await httpClient.getProcessorRunEvents(id, run.run_id);
-      if (version !== requestVersion.current) return;
-      setSelected(page.run);
-      setEvents(page.items);
-      setEventCursor(page.has_more ? page.next_cursor : null);
+      const page = await httpClient.getProcessorRuns(id);
+      setRuns(page.items);
+      setCursor(page.has_more ? page.next_cursor : null);
+      if (page.items[0]) await openRun(page.items[0]);
     } catch {
-      if (version === requestVersion.current)
-        toast.error(t('agents.eventProcessor.loadError'));
+      toast.error(t('agents.eventProcessor.loadError'));
     }
   }
 
@@ -195,7 +235,13 @@ export default function EventProcessorDetailContent({
   }, [id, selected, eventCursor, events]);
 
   async function save() {
-    if (!componentRef || !((await validate.current?.()) ?? true)) return;
+    if (
+      !canManage ||
+      saving ||
+      !component ||
+      !((await validate.current?.()) ?? true)
+    )
+      return false;
     setSaving(true);
     try {
       await httpClient.updateAgent(id, {
@@ -208,230 +254,213 @@ export default function EventProcessorDetailContent({
       });
       toast.success(t('agents.saveSuccess'));
       onSaved();
-      setConfigOpen(false);
+      setSavedConfig({ componentRef, parameters });
       await load();
+      return true;
     } catch {
       toast.error(t('agents.saveError'));
+      return false;
     } finally {
       setSaving(false);
     }
   }
 
-  function payload(value: unknown) {
-    return (
-      <pre className="mt-2 whitespace-pre-wrap break-all rounded-md bg-muted/50 p-3 text-xs">
-        {JSON.stringify(value, null, 2)}
-      </pre>
-    );
-  }
-
   return (
-    <div className="flex h-full min-h-0 flex-col gap-4">
-      <header className="flex flex-wrap items-center gap-3">
-        <FileCode2 className="size-6" />
-        <h1 className="text-2xl font-semibold">{agent.name}</h1>
-        {canManage && (
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onEdit}
-            aria-label={t('common.edit')}
-          >
-            <Pencil className="size-4" />
+    <ProcessorDetailWorkbench
+      title={`${agent.emoji || '⚡'} ${agent.name}`}
+      titleAction={
+        canManage ? <EntityTitleEditButton onClick={onEdit} /> : undefined
+      }
+      titleControls={
+        <EventProcessorSettings
+          components={components}
+          value={componentRef}
+          parameters={parameters}
+          disabled={!canManage || saving || loading}
+          onChange={(value) => {
+            setComponentRef(value);
+            const descriptor = components.find((item) => item.id === value);
+            setParameters(
+              Object.fromEntries(
+                (descriptor?.config_schema ?? [])
+                  .filter((field) => field.default !== undefined)
+                  .map((field) => [field.name, field.default]),
+              ),
+            );
+            validate.current = null;
+          }}
+          onParametersChange={setParameters}
+          onValidate={(fn) => {
+            validate.current = fn;
+          }}
+        />
+      }
+      status={
+        !loading && componentRef && !available
+          ? { label: t('agents.eventProcessor.unavailable'), tone: 'error' }
+          : undefined
+      }
+      saveLabel={t('common.save')}
+      saveFormId="event-processor-form"
+      canSave={canManage && available}
+      isDirty={dirty}
+      isSaving={saving}
+      headerActions={
+        canManage ? (
+          <Button variant="destructive" disabled={saving} onClick={onDelete}>
+            <Trash2 className="size-4" />
+            {t('common.delete')}
           </Button>
-        )}
-        <Badge variant="outline">{t('agents.eventProcessor.type')}</Badge>
-        {!loading && !failed && !available && (
-          <Badge variant="destructive">
-            {t('agents.eventProcessor.unavailable')}
-          </Badge>
-        )}
-        <div className="ml-auto flex gap-2">
-          <Button
-            variant="outline"
-            onClick={() => {
-              void load();
-              if (selected) void openRun(selected);
-            }}
-            aria-label={t('agents.eventProcessor.refresh')}
-          >
-            <RefreshCw className="size-4" />
-          </Button>
-          {canManage && (
-            <>
-              <Button
-                variant="outline"
-                onClick={() => setConfigOpen(!configOpen)}
-              >
-                <Settings2 className="size-4" />
-                {t('pipelines.configuration')}
-              </Button>
-              <Button variant="destructive" onClick={onDelete}>
-                <Trash2 className="size-4" />
-                {t('common.delete')}
-              </Button>
-            </>
-          )}
-        </div>
-      </header>
-      <p className="shrink-0 break-all text-xs text-muted-foreground">
-        {agent.component_ref}
-      </p>
-      {configOpen && (
-        <div className="max-h-[45vh] shrink-0 overflow-y-auto rounded-xl border p-4">
-          <EventProcessorSettings
-            components={components}
-            value={componentRef}
-            parameters={parameters}
-            onChange={(value) => {
-              setComponentRef(value);
-              setParameters({});
-              validate.current = null;
-            }}
-            onParametersChange={setParameters}
-            onValidate={(fn) => {
-              validate.current = fn;
+        ) : undefined
+      }
+      configTitle={t('agents.eventProcessor.trace')}
+      configIcon={<ScrollText className="size-4" />}
+      configContent={
+        <div className="flex h-full min-h-0 flex-col gap-3">
+          <form
+            id="event-processor-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void save();
             }}
           />
-          <Button
-            className="mt-4"
-            disabled={
-              saving || !components.some((item) => item.id === componentRef)
-            }
-            onClick={() => void save()}
-          >
-            {t('common.save')}
-          </Button>
-        </div>
-      )}
-      {failed && (
-        <p role="alert" className="text-destructive">
-          {t('agents.eventProcessor.loadError')}
-        </p>
-      )}
-      <div className="grid min-h-0 flex-1 gap-4 md:grid-cols-[minmax(240px,0.7fr)_minmax(0,1.3fr)]">
-        <section className="min-h-0 overflow-y-auto rounded-xl border p-4">
-          <h2 className="mb-3 font-semibold">
-            {t('agents.eventProcessor.runs')}
-          </h2>
-          {loading ? (
-            <p>{t('common.loading')}</p>
-          ) : runs.length === 0 && !failed ? (
-            <div className="space-y-3 text-sm text-muted-foreground">
-              <p>{t('agents.eventProcessor.noRuns')}</p>
-              <Link className="text-primary underline" to="/home/bots">
-                {t('agents.eventProcessor.bindBot')}
-              </Link>
-            </div>
-          ) : (
-            runs.map((run) => (
-              <button
-                key={run.run_id}
-                onClick={() => void openRun(run)}
-                className={`mb-2 block w-full rounded-lg border p-3 text-left text-sm ${selected?.run_id === run.run_id ? 'border-primary bg-primary/5' : 'hover:bg-muted/50'}`}
-              >
-                <span className="block break-all font-medium">
-                  {run.metadata.event_type}
-                </span>
-                <span className="mt-1 flex flex-wrap justify-between gap-1 text-xs text-muted-foreground">
-                  <span>
-                    {new Date(run.created_at * 1000).toLocaleString()}
-                  </span>
-                  <span>
-                    {t(`agents.eventProcessor.status_${run.status}`, {
-                      defaultValue: run.status,
-                    })}
-                  </span>
-                </span>
-              </button>
-            ))
+          {failed && (
+            <Alert variant="destructive">
+              <AlertDescription>
+                {t('agents.eventProcessor.loadError')}
+              </AlertDescription>
+            </Alert>
           )}
-          {cursor !== null && (
+          <div className="flex shrink-0 items-center justify-between gap-2">
+            <span className="text-sm font-medium">
+              {t('agents.eventProcessor.runs')}{' '}
+              <span className="text-muted-foreground">({runs.length})</span>
+            </span>
             <Button
               variant="ghost"
-              disabled={pagingRuns}
-              onClick={() => void loadMoreRuns()}
+              size="icon"
+              aria-label={t('agents.eventProcessor.refresh')}
+              onClick={() => void refreshLatestRun()}
             >
-              {t('agents.eventProcessor.loadMore')}
+              <RefreshCw className="size-4" />
             </Button>
+          </div>
+          {runs.length > 0 && (
+            <ProcessorRunList
+              runs={runs}
+              selectedId={selected?.run_id}
+              onSelect={(run) => void openRun(run)}
+              footer={
+                cursor !== null ? (
+                  <Button
+                    className="w-full"
+                    variant="ghost"
+                    disabled={pagingRuns}
+                    onClick={() => void loadMoreRuns()}
+                  >
+                    {t('agents.eventProcessor.loadMore')}
+                  </Button>
+                ) : undefined
+              }
+            />
           )}
-        </section>
-        <section className="min-h-0 overflow-y-auto rounded-xl border p-4">
-          <h2 className="mb-3 font-semibold">
-            {t('agents.eventProcessor.trace')}
-          </h2>
-          {!selected ? (
-            <p className="text-sm text-muted-foreground">
-              {t('agents.eventProcessor.selectRun')}
-            </p>
-          ) : (
-            <div className="space-y-3">
-              <details className="rounded-lg border p-3">
-                <summary className="cursor-pointer text-sm font-medium">
-                  {t('agents.eventProcessor.input')}
-                </summary>
-                {payload(selected.metadata.input_event)}
-              </details>
-              {selected.metadata.delivery != null && (
-                <details className="rounded-lg border p-3">
-                  <summary className="cursor-pointer text-sm font-medium">
-                    {t('agents.eventProcessor.destination')}
-                  </summary>
-                  {payload(selected.metadata.delivery)}
-                </details>
-              )}
-              {events.map((event) =>
-                event.type === 'processor.log' ? (
-                  <div
-                    key={event.sequence}
-                    className="rounded-lg bg-muted/40 p-3 text-sm"
-                  >
-                    <span className="mr-2 text-xs text-muted-foreground">
-                      {String(event.data.level)}
-                    </span>
-                    <span className="whitespace-pre-wrap break-words">
-                      {String(event.data.text)}
-                    </span>
+          <ScrollArea className="min-h-0 flex-1">
+            <div className="space-y-2 pr-3">
+              {!selected ? (
+                <Alert>
+                  <AlertDescription>
+                    {loading
+                      ? t('common.loading')
+                      : t('agents.eventProcessor.noRuns')}
+                    <Button asChild variant="link" className="h-auto px-0">
+                      <Link to="/home/bots">
+                        {t('agents.eventProcessor.bindBot')}
+                      </Link>
+                    </Button>
+                  </AlertDescription>
+                </Alert>
+              ) : (
+                <>
+                  <div className="border-b pb-2">
+                    <p className="text-sm font-medium">
+                      {eventPatternLabel(selected.metadata.event_type ?? '', t)}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {new Date(selected.created_at * 1000).toLocaleString()}
+                    </p>
                   </div>
-                ) : (
-                  <details
-                    key={event.sequence}
-                    className="rounded-lg border p-3"
+                  <Badge
+                    variant={
+                      selected.status === 'failed' ? 'destructive' : 'outline'
+                    }
                   >
-                    <summary className="cursor-pointer break-all text-sm font-medium">
-                      {t(
-                        `agents.eventProcessor.trace_${event.type.replaceAll('.', '_')}`,
-                        { defaultValue: event.type },
-                      )}
-                      {typeof event.data.tool_name === 'string' && (
-                        <span className="ml-2 text-muted-foreground">
-                          {toolLabels[event.data.tool_name] ||
-                            event.data.tool_name}
-                        </span>
-                      )}
-                    </summary>
-                    {payload(event.data)}
-                  </details>
-                ),
-              )}
-              {selected.status === 'failed' && selected.status_reason && (
-                <p className="break-words text-sm text-destructive">
-                  {selected.status_reason}
-                </p>
-              )}
-              {eventCursor !== null && (
-                <Button
-                  variant="ghost"
-                  disabled={pagingEvents}
-                  onClick={() => void loadMoreEvents()}
-                >
-                  {t('agents.eventProcessor.loadMore')}
-                </Button>
+                    {t(`agents.eventProcessor.status_${selected.status}`, {
+                      defaultValue: selected.status,
+                    })}
+                  </Badge>
+                  <ProcessorPayload
+                    title={t('agents.eventProcessor.input')}
+                    value={selected.metadata.input_event}
+                  />
+                  {selected.metadata.delivery != null && (
+                    <ProcessorPayload
+                      title={t('agents.eventProcessor.destination')}
+                      value={selected.metadata.delivery}
+                    />
+                  )}
+                  <EventProcessorTrace
+                    events={events}
+                    toolLabels={toolLabels}
+                  />
+                  {selected.status === 'failed' && selected.status_reason && (
+                    <Alert variant="destructive">
+                      <AlertDescription className="break-words">
+                        {selected.status_reason}
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                  {eventCursor !== null && (
+                    <Button
+                      variant="ghost"
+                      disabled={pagingEvents}
+                      onClick={() => void loadMoreEvents()}
+                    >
+                      {t('agents.eventProcessor.loadMore')}
+                    </Button>
+                  )}
+                </>
               )}
             </div>
-          )}
-        </section>
-      </div>
-    </div>
+          </ScrollArea>
+        </div>
+      }
+      debugTitle={canOperate ? t('agents.debugTab') : undefined}
+      debugDescription={t('agents.eventProcessor.debugNotice')}
+      debugContent={
+        canOperate ? (
+          !component ? (
+            <Alert className="m-3 w-auto">
+              <AlertDescription>
+                {t('agents.eventProcessor.selectToDebug')}
+              </AlertDescription>
+            </Alert>
+          ) : (
+            <AgentDebugPanel
+              agentId={id}
+              processor
+              platformTools={platformTools}
+              hasUnsavedChanges={dirty}
+              beforeRun={save}
+              onRunFinished={() => {
+                void refreshLatestRun();
+              }}
+              supportedEventPatterns={component.supported_event_patterns}
+              availableEventTypes={availableEventTypes}
+            />
+          )
+        ) : undefined
+      }
+      unsavedLabel={t('pipelines.unsavedChanges')}
+    />
   );
 }

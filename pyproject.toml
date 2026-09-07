@@ -232,4 +232,4 @@ line-ending = "auto"
 
 [tool.uv.sources]
 # Development contract: update to the matching SDK release before publishing.
-langbot-plugin = { git = "https://github.com/langbot-app/langbot-plugin-sdk", rev = "23011398160cedcd4ef090054692bc2a4b34ee9f" }
+langbot-plugin = { git = "https://github.com/langbot-app/langbot-plugin-sdk", rev = "f82b3ce935f9a33afee389fb39fe8dc29a45b615" }

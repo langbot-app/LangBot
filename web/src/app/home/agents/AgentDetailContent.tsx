@@ -174,6 +174,8 @@ export default function AgentDetailContent({ id }: { id: string }) {
           id={id}
           agent={agent}
           canManage={canManage}
+          canOperate={canOperate}
+          availableEventTypes={availableEventTypes}
           onDelete={() => setDeleteConfirmOpen(true)}
           onEdit={() => setBasicInfoOpen(true)}
           onSaved={() => {

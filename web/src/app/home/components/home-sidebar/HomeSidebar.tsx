@@ -900,7 +900,7 @@ function NavItems({
                             }
                           >
                             {item.kind === 'event_processor' ? (
-                              <span className="text-xs">⚡</span>
+                              <Puzzle className="size-3.5" />
                             ) : item.kind === 'pipeline' ? (
                               <Workflow className="size-3.5" />
                             ) : (

@@ -78,7 +78,7 @@ test('event data stays in sync across the compact form, JSON and the request', a
   await expect(panel.getByText('Done', { exact: true })).toBeVisible();
   await page.setViewportSize({ width: 1280, height: 650 });
   await panel.getByRole('button', { name: 'Full JSON' }).click();
-  await panel.locator('summary').filter({ hasText: 'Mock scenario' }).click();
+  await panel.getByRole('button', { name: 'Mock scenario' }).click();
   await expect(
     panel.getByRole('button', { name: 'Run test' }),
   ).toBeInViewport();

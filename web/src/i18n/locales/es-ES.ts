@@ -507,6 +507,16 @@ const esES = {
   },
   agents: {
     eventProcessor: {
+      pluginSettings: 'Ajustes del plugin',
+      pluginSettingsDescription: 'Parámetros definidos por este plugin.',
+      selectToDebug: 'Selecciona un plugin arriba para iniciar la depuración.',
+
+      debugOutput: 'Salida del procesador',
+      debugDescription:
+        'Eventos de entrada, registros del plugin y resultados de acciones de esta prueba.',
+      debugNotice:
+        'El plugin procesa un evento de prueba. Las acciones de plataforma usan Mock y no envían mensajes reales; las demás herramientas se ejecutan según su configuración.',
+
       type: 'Procesador de eventos',
       description: 'Procesa eventos con código del plugin.',
       component: 'Componente del plugin',
@@ -538,6 +548,10 @@ const esES = {
       trace_tool_call_completed: 'Resultado de la acción',
     },
     debugData: {
+      chatId: 'ID del chat',
+      feedbackType:
+        'Tipo de valoración (1: positiva, 2: negativa, 3: cancelar)',
+
       title: 'Datos del evento',
       form: 'Campos comunes',
       json: 'JSON completo',

@@ -669,6 +669,15 @@ const zhHans = {
   },
   agents: {
     eventProcessor: {
+      pluginSettings: '插件设置',
+      pluginSettingsDescription: '由当前插件声明的参数。',
+      selectToDebug: '请先在上方选择插件，再开始调试。',
+
+      debugOutput: '处理器输出',
+      debugDescription: '当前测试的输入事件、插件日志和动作结果。',
+      debugNotice:
+        '插件真实处理测试事件；回复、发送等平台动作使用 Mock，不发送真实消息。其他工具仍按实际配置执行。',
+
       type: '事件处理器',
       description: '通过插件代码处理平台事件。',
       component: '插件组件',
@@ -699,6 +708,9 @@ const zhHans = {
       trace_tool_call_completed: '动作结果',
     },
     debugData: {
+      chatId: '会话 ID',
+      feedbackType: '反馈类型（1：赞，2：踩，3：取消）',
+
       title: '事件数据',
       form: '常用字段',
       json: '完整 JSON',

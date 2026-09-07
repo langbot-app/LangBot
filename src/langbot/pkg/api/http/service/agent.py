@@ -488,6 +488,9 @@ class AgentService:
         if not isinstance(config, dict):
             raise ValueError('Processor configuration must be an object')
         component_ref = data.get('component_ref') or (existing.component_ref if existing is not None else None)
+        if component_ref is None and not config and not data.get('parameters'):
+            # An unconfigured instance cannot subscribe to or execute any events.
+            return {}, None, []
         if not isinstance(component_ref, str) or not component_ref.startswith('event_processor:'):
             raise ValueError('Select an installed EventProcessor component')
         try:

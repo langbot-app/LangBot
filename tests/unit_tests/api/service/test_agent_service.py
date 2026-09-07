@@ -770,6 +770,20 @@ class TestAgentServiceCreateUpdateDelete:
         )
 
 
+async def test_event_processor_can_be_created_before_selecting_a_plugin():
+    app = _make_app()
+    service = AgentService(app)
+    result = await service.create_agent(
+        WORKSPACE_UUID,
+        {'kind': 'event_processor', 'name': 'Unconfigured', 'supported_event_patterns': ['*']},
+    )
+    values = _compiled_params(app.persistence_mgr.execute_async.call_args.args[0])
+    assert result['kind'] == 'event_processor'
+    assert values['component_ref'] is None
+    assert values['supported_event_patterns'] == []
+    assert values['config'] == {}
+
+
 async def test_event_processor_creation_uses_installed_component_scope():
     app = _make_app()
     ref = 'event_processor:test/welcome/default'
@@ -792,6 +806,34 @@ async def test_event_processor_creation_uses_installed_component_scope():
     )
     values = _compiled_params(app.persistence_mgr.execute_async.call_args.args[0])
     assert result['kind'] == 'event_processor'
+    assert values['component_ref'] == ref
+    assert values['supported_event_patterns'] == ['group.member_joined']
+    assert values['config']['runner_config'][ref] == {'greeting': 'Hi'}
+
+
+async def test_unconfigured_event_processor_can_select_a_plugin_after_creation():
+    app = _make_app()
+    row = _agent_row(config={})
+    row.kind = 'event_processor'
+    row.component_ref = None
+    ref = 'event_processor:test/welcome/default'
+    app.agent_runner_registry = SimpleNamespace(
+        get=AsyncMock(
+            return_value=SimpleNamespace(
+                component_kind='EventProcessor',
+                supported_event_patterns=['group.member_joined'],
+                config_schema=[{'name': 'greeting', 'required': True}],
+            )
+        )
+    )
+    service = AgentService(app)
+    service._get_agent_row = AsyncMock(return_value=row)
+    await service.update_agent(
+        WORKSPACE_UUID,
+        row.uuid,
+        {'component_ref': ref, 'parameters': {'greeting': 'Hi'}, 'supported_event_patterns': ['*']},
+    )
+    values = _compiled_update_values(app.persistence_mgr.execute_async.call_args.args[0])
     assert values['component_ref'] == ref
     assert values['supported_event_patterns'] == ['group.member_joined']
     assert values['config']['runner_config'][ref] == {'greeting': 'Hi'}

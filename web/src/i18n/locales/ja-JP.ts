@@ -717,6 +717,16 @@ const jaJP = {
   },
   agents: {
     eventProcessor: {
+      pluginSettings: 'プラグイン設定',
+      pluginSettingsDescription: 'このプラグインが定義するパラメーターです。',
+      selectToDebug: '上でプラグインを選択してデバッグを開始してください。',
+
+      debugOutput: 'プロセッサー出力',
+      debugDescription:
+        'このテストの入力イベント、プラグインログ、アクション結果。',
+      debugNotice:
+        'プラグインはテストイベントを実際に処理します。返信や送信などは Mock を使用し、実際のメッセージは送信しません。他のツールは設定どおりに実行されます。',
+
       type: 'イベントプロセッサー',
       description: 'プラグインのコードでイベントを処理します。',
       component: 'プラグインコンポーネント',
@@ -748,6 +758,9 @@ const jaJP = {
       trace_tool_call_completed: 'アクション結果',
     },
     debugData: {
+      chatId: 'チャット ID',
+      feedbackType: 'フィードバック種別（1: 高評価、2: 低評価、3: 取消）',
+
       title: 'イベントデータ',
       form: '基本項目',
       json: '完全な JSON',

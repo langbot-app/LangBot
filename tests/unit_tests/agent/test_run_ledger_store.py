@@ -455,3 +455,20 @@ async def test_processor_instance_history_filters_count_and_pages(store):
     )
     assert (total, more) == (2, False)
     assert second[0]['run_id'] == 'run-0'
+
+
+@pytest.mark.asyncio
+async def test_run_lifecycle_retains_milliseconds(store, monkeypatch):
+    started = datetime.datetime(2026, 9, 8, 0, 0, 0, 123000, tzinfo=UTC)
+    monkeypatch.setattr('langbot.pkg.agent.runner.run_ledger_store._utc_now', lambda: started)
+    run = await store.create_run(
+        run_id='run-ms', event_id='evt-ms', binding_id='binding-ms', runner_id='runner-ms', status='running'
+    )
+    assert run['created_at_ms'] == round(started.timestamp() * 1000)
+    assert run['started_at_ms'] == run['created_at_ms']
+    assert run['finished_at_ms'] is None
+    finished = started + datetime.timedelta(milliseconds=275)
+    monkeypatch.setattr('langbot.pkg.agent.runner.run_ledger_store._utc_now', lambda: finished)
+    await store.finalize_run(run_id='run-ms', status='completed')
+    saved = await store.get_run('run-ms')
+    assert saved['finished_at_ms'] - saved['started_at_ms'] == 275

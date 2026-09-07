@@ -475,6 +475,15 @@ const zhHant = {
   },
   agents: {
     eventProcessor: {
+      pluginSettings: '外掛設定',
+      pluginSettingsDescription: '由目前外掛宣告的參數。',
+      selectToDebug: '請先在上方選擇外掛，再開始除錯。',
+
+      debugOutput: '處理器輸出',
+      debugDescription: '目前測試的輸入事件、外掛日誌和動作結果。',
+      debugNotice:
+        '外掛實際處理測試事件；回覆、傳送等平台動作使用 Mock，不傳送真實訊息。其他工具仍依實際設定執行。',
+
       type: '事件處理器',
       description: '透過外掛程式碼處理平台事件。',
       component: '外掛元件',
@@ -505,6 +514,9 @@ const zhHant = {
       trace_tool_call_completed: '動作結果',
     },
     debugData: {
+      chatId: '會話 ID',
+      feedbackType: '回饋類型（1：讚，2：踩，3：取消）',
+
       title: '事件資料',
       form: '常用欄位',
       json: '完整 JSON',

@@ -704,6 +704,16 @@ const enUS = {
   },
   agents: {
     eventProcessor: {
+      pluginSettings: 'Plugin settings',
+      pluginSettingsDescription: 'Parameters declared by this plugin.',
+      selectToDebug: 'Select a plugin above to start debugging.',
+
+      debugOutput: 'Processor output',
+      debugDescription:
+        'Input events, plugin logs and action results for this test session.',
+      debugNotice:
+        'The plugin processes a test event. Platform actions use Mock and do not send real messages; other tools run as configured.',
+
       type: 'Event processor',
       description: 'Process platform events using plugin code.',
       component: 'Plugin component',
@@ -734,6 +744,9 @@ const enUS = {
       trace_tool_call_completed: 'Action result',
     },
     debugData: {
+      chatId: 'Chat ID',
+      feedbackType: 'Feedback type (1: like, 2: dislike, 3: cancel)',
+
       title: 'Event data',
       form: 'Common fields',
       json: 'Full JSON',

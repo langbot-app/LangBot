@@ -5,27 +5,48 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { debugEventDefinition, parseDebugEventData } from './debug-event-data';
+import {
+  debugEventDefinition,
+  parseDebugEventData,
+  getDebugEventField,
+  setDebugEventField,
+} from './debug-event-data';
 
 export default function AgentEventDataEditor({
   eventType,
   value,
   onChange,
   custom = false,
+  processor = false,
 }: {
   eventType: string;
   custom?: boolean;
+  processor?: boolean;
   value: string;
   onChange: (value: string) => void;
 }) {
   const { t } = useTranslation();
   const [showJson, setShowJson] = useState(false);
-  const fields = custom ? [] : (debugEventDefinition(eventType)?.fields ?? []);
+  const fields = custom
+    ? []
+    : (debugEventDefinition(eventType, processor)?.fields ?? []);
   const data = parseDebugEventData(value);
-  const jsonMode = showJson || !fields.length;
+  const chainKey =
+    processor &&
+    (eventType === 'message.received'
+      ? 'message_chain'
+      : eventType === 'message.edited'
+        ? 'new_content'
+        : undefined);
+  const chain = chainKey && data?.[chainKey];
+  const richMessage =
+    chainKey &&
+    (!Array.isArray(chain) || chain.length !== 1 || chain[0]?.type !== 'Plain');
+  const jsonMode = showJson || !fields.length || !!richMessage;
 
   function updateField(key: string, next: string | number | undefined) {
-    if (data) onChange(JSON.stringify({ ...data, [key]: next }, null, 2));
+    if (data)
+      onChange(JSON.stringify(setDebugEventField(data, key, next), null, 2));
   }
 
   return (
@@ -34,7 +55,7 @@ export default function AgentEventDataEditor({
         <span className="text-xs font-medium">
           {t('agents.debugData.title')}
         </span>
-        {fields.length > 0 && (
+        {fields.length > 0 && !richMessage && (
           <Button
             type="button"
             variant="ghost"
@@ -69,7 +90,7 @@ export default function AgentEventDataEditor({
         <div className="grid grid-cols-2 gap-x-3 gap-y-2">
           {fields.map((field) => {
             const id = `agent-debug-data-${field.key}`;
-            const current = data?.[field.key];
+            const current = getDebugEventField(data, field.key);
             const text =
               typeof current === 'string' || typeof current === 'number'
                 ? current

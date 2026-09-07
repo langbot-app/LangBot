@@ -46,6 +46,7 @@ import {
   groupEventPatterns,
 } from '@/app/home/components/event-patterns/event-pattern-groups';
 import EventSelectOptionContent from '@/app/home/components/event-patterns/EventSelectOptionContent';
+import EventProcessorTrace from './EventProcessorTrace';
 import AgentExecutionTrace from './AgentExecutionTrace';
 import AgentEventDataEditor from './AgentEventDataEditor';
 import {
@@ -53,15 +54,18 @@ import {
   debugEventInputText,
   invalidDebugEventField,
   parseDebugEventData,
+  processorDebugEventTypes,
 } from './debug-event-data';
 import { executionSteps, type DebugExecutionEvent } from './debug-execution';
 
 interface AgentDebugPanelProps {
   agentId: string;
+  processor?: boolean;
   availableEventTypes: string[];
   platformTools?: AgentPlatformTool[];
   supportedEventPatterns?: string[];
   beforeRun?: () => Promise<boolean>;
+  onRunFinished?: () => void;
   hasUnsavedChanges?: boolean;
   onOpenRunnerConfig?: () => void;
 }
@@ -89,10 +93,12 @@ function matchesEventPattern(pattern: string, eventType: string) {
 
 export default function AgentDebugPanel({
   agentId,
+  processor = false,
   availableEventTypes,
   platformTools = [],
   supportedEventPatterns = ['*'],
   beforeRun,
+  onRunFinished,
   hasUnsavedChanges = false,
   onOpenRunnerConfig,
 }: AgentDebugPanelProps) {
@@ -105,15 +111,19 @@ export default function AgentDebugPanel({
   const newEventData = useCallback(
     (type: string) =>
       JSON.stringify(
-        createDebugEventData(type, {
-          user: t('agents.debugData.sampleUser'),
-          message: t('agents.debugData.sampleMessage'),
-          feedback: t('agents.debugData.sampleFeedback'),
-        }),
+        createDebugEventData(
+          type,
+          {
+            user: t('agents.debugData.sampleUser'),
+            message: t('agents.debugData.sampleMessage'),
+            feedback: t('agents.debugData.sampleFeedback'),
+          },
+          processor,
+        ),
         null,
         2,
       ),
-    [t],
+    [t, processor],
   );
   const [eventDataText, setEventDataText] = useState(() =>
     newEventData('message.received'),
@@ -140,21 +150,28 @@ export default function AgentDebugPanel({
     const concretePatterns = supportedEventPatterns.filter(
       (pattern) => pattern !== '*' && !pattern.endsWith('.*'),
     );
-    return Array.from(new Set([...availableEventTypes, ...concretePatterns]))
+    return Array.from(
+      new Set([
+        ...(processor ? processorDebugEventTypes : availableEventTypes),
+        ...concretePatterns,
+      ]),
+    )
       .filter((candidate) =>
         supportedEventPatterns.some((pattern) =>
           matchesEventPattern(pattern, candidate),
         ),
       )
       .sort();
-  }, [availableEventTypes, supportedEventPatterns]);
+  }, [availableEventTypes, supportedEventPatterns, processor]);
   const eventGroups = useMemo(
     () => groupEventPatterns(availableEvents),
     [availableEvents],
   );
-  const supportsCustomEvent = supportedEventPatterns.some(
-    (pattern) => pattern === '*' || pattern.endsWith('.*'),
-  );
+  const supportsCustomEvent =
+    !processor &&
+    supportedEventPatterns.some(
+      (pattern) => pattern === '*' || pattern.endsWith('.*'),
+    );
 
   const selectPreset = useCallback(
     (value: string) => {
@@ -193,7 +210,11 @@ export default function AgentDebugPanel({
       toast.error(t('agents.debugInvalidPayload'));
       return;
     }
-    const invalidField = invalidDebugEventField(eventType, eventData);
+    const invalidField = invalidDebugEventField(
+      eventType,
+      eventData,
+      processor,
+    );
     if (invalidField) {
       toast.error(
         t('agents.debugData.invalidField', {
@@ -202,7 +223,7 @@ export default function AgentDebugPanel({
       );
       return;
     }
-    const inputText = debugEventInputText(eventType, eventData);
+    const inputText = debugEventInputText(eventType, eventData, processor);
     let mockOptions: Record<string, unknown>;
     try {
       const parsed = JSON.parse(mockOptionsText || '{}');
@@ -275,12 +296,14 @@ export default function AgentDebugPanel({
                 ? {
                     ...entry,
                     finished: true,
-                    text: executionSteps(entry.events ?? []).some(
-                      (step) =>
-                        step.kind === 'tool' || step.text || step.reasoning,
-                    )
-                      ? ''
-                      : result.final_text || t('agents.debugNoTextOutput'),
+                    text:
+                      processor ||
+                      executionSteps(entry.events ?? []).some(
+                        (step) =>
+                          step.kind === 'tool' || step.text || step.reasoning,
+                      )
+                        ? ''
+                        : result.final_text || t('agents.debugNoTextOutput'),
                   }
                 : entry,
             )
@@ -354,6 +377,7 @@ export default function AgentDebugPanel({
       if (requestRef.current === controller) {
         requestRef.current = null;
         setRunning(false);
+        onRunFinished?.();
       }
     }
   }
@@ -364,15 +388,25 @@ export default function AgentDebugPanel({
         <div className="mb-3">
           <p className="text-sm font-medium">{t('agents.debugTranscript')}</p>
           <p className="text-xs text-muted-foreground">
-            {t('agents.debugTranscriptDescription')}
+            {t(
+              processor
+                ? 'agents.eventProcessor.debugDescription'
+                : 'agents.debugTranscriptDescription',
+            )}
           </p>
         </div>
         {entries.length === 0 ? (
           <Alert className="my-4 bg-muted/20">
             <CircleHelp className="size-4" />
-            <AlertTitle>{t('agents.debugEmptyTitle')}</AlertTitle>
+            <AlertTitle>
+              {t(processor ? 'agents.debugTab' : 'agents.debugEmptyTitle')}
+            </AlertTitle>
             <AlertDescription>
-              {t('agents.debugEmptyTranscript')}
+              {t(
+                processor
+                  ? 'agents.eventProcessor.debugDescription'
+                  : 'agents.debugEmptyTranscript',
+              )}
             </AlertDescription>
           </Alert>
         ) : (
@@ -382,6 +416,7 @@ export default function AgentDebugPanel({
                 (entry) =>
                   entry.direction !== 'output' ||
                   entry.text ||
+                  processor ||
                   executionSteps(entry.events ?? []).some(
                     (step) =>
                       step.kind === 'tool' || step.text || step.reasoning,
@@ -412,19 +447,29 @@ export default function AgentDebugPanel({
                       </Badge>
                       <span className="shrink-0 text-xs text-muted-foreground">
                         {entry.direction === 'output'
-                          ? t('agents.debugAgentOutput')
+                          ? t(
+                              processor
+                                ? 'agents.eventProcessor.debugOutput'
+                                : 'agents.debugAgentOutput',
+                            )
                           : entry.direction === 'error'
                             ? t('common.error')
                             : t('agents.debugTestInput')}
                       </span>
                     </div>
-                    {entry.events && (
-                      <AgentExecutionTrace
-                        events={entry.events}
-                        finished={entry.finished}
-                        toolLabels={toolLabels}
-                      />
-                    )}
+                    {entry.events &&
+                      (processor ? (
+                        <EventProcessorTrace
+                          events={entry.events}
+                          toolLabels={toolLabels}
+                        />
+                      ) : (
+                        <AgentExecutionTrace
+                          events={entry.events}
+                          finished={entry.finished}
+                          toolLabels={toolLabels}
+                        />
+                      ))}
                     {entry.text && (
                       <pre className="min-w-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere] font-sans text-sm leading-relaxed">
                         {entry.text}
@@ -546,26 +591,37 @@ export default function AgentDebugPanel({
               <AgentEventDataEditor
                 key={eventType}
                 eventType={eventType}
+                processor={processor}
                 custom={preset === 'custom'}
                 value={eventDataText}
                 onChange={setEventDataText}
               />
 
-              <details className="text-muted-foreground">
-                <summary className="cursor-pointer text-xs font-medium">
-                  {t('agents.debugMockOptions')}
-                </summary>
-                <p className="my-2 text-xs text-muted-foreground">
-                  {t('agents.debugMockOptionsHelp')}
-                </p>
-                <Textarea
-                  aria-label={t('agents.debugMockOptions')}
-                  value={mockOptionsText}
-                  onChange={(event) => setMockOptionsText(event.target.value)}
-                  className="min-h-24 font-mono text-xs"
-                  spellCheck={false}
-                />
-              </details>
+              <Collapsible>
+                <CollapsibleTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="group"
+                  >
+                    <ChevronDown className="size-3.5 transition-transform group-data-[state=open]:rotate-180" />
+                    {t('agents.debugMockOptions')}
+                  </Button>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <p className="my-2 text-xs text-muted-foreground">
+                    {t('agents.debugMockOptionsHelp')}
+                  </p>
+                  <Textarea
+                    aria-label={t('agents.debugMockOptions')}
+                    value={mockOptionsText}
+                    onChange={(event) => setMockOptionsText(event.target.value)}
+                    className="min-h-24 font-mono text-xs"
+                    spellCheck={false}
+                  />
+                </CollapsibleContent>
+              </Collapsible>
             </>
           )}
         </div>

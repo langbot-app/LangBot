@@ -178,6 +178,11 @@ export interface ProcessorRun {
   status: string;
   status_reason?: string;
   created_at: number;
+  started_at?: number | null;
+  finished_at?: number | null;
+  created_at_ms?: number | null;
+  started_at_ms?: number | null;
+  finished_at_ms?: number | null;
   metadata: { event_type?: string; input_event?: unknown; delivery?: unknown };
 }
 

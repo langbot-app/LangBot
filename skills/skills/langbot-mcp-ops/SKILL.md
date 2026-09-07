@@ -116,9 +116,14 @@ already have a default pipeline.
 
 ## Event processors
 
-Install the plugin, discover its component with `get_processor_metadata`, then
-create a processor with `kind: "event_processor"`, `component_ref` and optional
-`parameters`. Bind bot events to this instance with `target_type: "event_processor"`
+Create a processor with `kind: "event_processor"` and basic information. Without
+a component it supports no events. Discover installed components with
+`get_processor_metadata`, then use `update_processor` with `component_ref` and
+optional `parameters`. API callers may also supply these when creating an instance. Bind bot events to this instance with `target_type: "event_processor"`
 and `target_id` equal to its UUID. Installation alone never activates a handler.
 `debug_agent` accepts the complete typed EBA event in `payload.data` for this kind.
 Legacy EventListener plugins remain in the Pipeline lifecycle.
+
+`list_processor_runs` includes `created_at_ms`, `started_at_ms`, and
+`finished_at_ms`: Host lifecycle times in epoch milliseconds. Use the start and finish times for elapsed processing time; select a run and call `get_processor_run_events` for its
+logs and action results. These times are not internal plugin profiling data.

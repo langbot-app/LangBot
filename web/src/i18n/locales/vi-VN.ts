@@ -500,6 +500,16 @@ const viVN = {
   },
   agents: {
     eventProcessor: {
+      pluginSettings: 'Cài đặt plugin',
+      pluginSettingsDescription: 'Tham số do plugin này khai báo.',
+      selectToDebug: 'Chọn plugin ở trên để bắt đầu gỡ lỗi.',
+
+      debugOutput: 'Đầu ra bộ xử lý',
+      debugDescription:
+        'Sự kiện đầu vào, nhật ký plugin và kết quả hành động của lần kiểm thử này.',
+      debugNotice:
+        'Plugin xử lý sự kiện kiểm thử. Hành động nền tảng dùng Mock và không gửi tin nhắn thật; các công cụ khác chạy theo cấu hình.',
+
       type: 'Bộ xử lý sự kiện',
       description: 'Xử lý sự kiện bằng mã plugin.',
       component: 'Thành phần plugin',
@@ -530,6 +540,9 @@ const viVN = {
       trace_tool_call_completed: 'Kết quả hành động',
     },
     debugData: {
+      chatId: 'ID cuộc trò chuyện',
+      feedbackType: 'Loại phản hồi (1: thích, 2: không thích, 3: hủy)',
+
       title: 'Dữ liệu sự kiện',
       form: 'Trường thường dùng',
       json: 'JSON đầy đủ',

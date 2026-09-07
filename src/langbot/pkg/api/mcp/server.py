@@ -188,8 +188,9 @@ class LangBotMCPServer:
         @mcp.tool(
             description=(
                 'Create an Agent, Pipeline or Event processor. Set `processor_data.kind` to '
-                '`agent`, `pipeline` or `event_processor`. Event processors require an installed component_ref '
-                'from get_processor_metadata; optional parameters configure the instance. Returns UUID and kind.'
+                '`agent`, `pipeline` or `event_processor`. Event processors may be created without a component; '
+                'then use update_processor with an installed component_ref from get_processor_metadata and optional '
+                'parameters. Unconfigured instances support no events. Returns UUID and kind.'
             )
         )
         async def create_processor(processor_data: dict) -> str:
@@ -213,7 +214,10 @@ class LangBotMCPServer:
             context = _authorized(Permission.RESOURCE_VIEW)
             return _dump(await ap.agent_service.get_agent_metadata(context))
 
-        @mcp.tool(description='List one Event processor instance run history; use before_id to page older runs.')
+        @mcp.tool(
+            description='List one Event processor instance run history; use before_id to page older runs. '
+            'created_at_ms, started_at_ms and finished_at_ms are Host lifecycle times in epoch milliseconds.'
+        )
         async def list_processor_runs(processor_uuid: str, before_id: int | None = None) -> str:
             context = _authorized(Permission.RESOURCE_VIEW)
             return _dump(await ap.agent_service.get_processor_runs(context, processor_uuid, before_id=before_id))

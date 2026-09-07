@@ -155,28 +155,155 @@ const DEBUG_EVENT_DEFINITIONS: Record<string, DebugEventDefinition> = {
   },
 };
 
+// Event processors receive the SDK's typed EBA payload, rather than Agent debug aliases.
+const PROCESSOR_EVENT_DEFINITIONS: Record<string, DebugEventDefinition> =
+  Object.fromEntries(
+    Object.entries(DEBUG_EVENT_DEFINITIONS)
+      .filter(([type]) => type !== 'message.recalled')
+      .map(([type, definition]) => {
+        const paths: Record<string, string> = {
+          group_id: 'group.id',
+          group_name: 'group.name',
+          member_id: 'member.id',
+          member_name: 'member.nickname',
+          user_id: 'user.id',
+          user_name: 'user.nickname',
+          requester_id:
+            type === 'bot.invited_to_group' ? 'inviter.id' : 'user.id',
+          requester_name: 'user.nickname',
+          event_name: 'action',
+        };
+        return [
+          type,
+          {
+            ...definition,
+            fields: definition.fields.map((field) => ({
+              ...field,
+              key: paths[field.key] ?? field.key,
+            })),
+          },
+        ];
+      }),
+  );
+for (const [type, chain, sender] of [
+  ['message.received', 'message_chain', 'sender'],
+  ['message.edited', 'new_content', 'editor'],
+]) {
+  PROCESSOR_EVENT_DEFINITIONS[type] = {
+    fields: [
+      { ...message, key: `${chain}.0.text` },
+      { ...userName, key: `${sender}.nickname` },
+      { ...user, key: `${sender}.id` },
+      { key: 'chat_id', label: 'chatId', value: 'debug-user' },
+    ],
+    defaults: {
+      [chain]: [{ type: 'Plain', text: '' }],
+      chat_type: 'private',
+      message_id: 'debug-message',
+    },
+    messageField: `${chain}.0.text`,
+  };
+}
+for (const type of ['message.deleted', 'message.reaction']) {
+  const definition = PROCESSOR_EVENT_DEFINITIONS[type];
+  definition.fields = definition.fields.filter(
+    (field) => field.key !== 'group.id',
+  );
+  definition.fields.push({
+    key: 'chat_id',
+    label: 'chatId',
+    value: 'debug-user',
+  });
+  definition.defaults = { ...definition.defaults, chat_type: 'private' };
+}
+PROCESSOR_EVENT_DEFINITIONS['feedback.received'] = {
+  fields: [
+    {
+      key: 'feedback_content',
+      label: 'feedback',
+      value: '',
+      sample: 'feedback',
+      multiline: true,
+    },
+    {
+      key: 'feedback_type',
+      label: 'feedbackType',
+      value: 1,
+      min: 1,
+      max: 3,
+      required: true,
+    },
+    user,
+    messageId,
+  ],
+  defaults: { feedback_id: 'debug-feedback' },
+};
+
+export const processorDebugEventTypes = Object.keys(
+  PROCESSOR_EVENT_DEFINITIONS,
+);
+
+export function getDebugEventField(data: unknown, path: string): unknown {
+  return path
+    .split('.')
+    .reduce<unknown>(
+      (value, key) =>
+        value && typeof value === 'object' && Object.hasOwn(value, key)
+          ? (value as Record<string, unknown>)[key]
+          : undefined,
+      data,
+    );
+}
+
+export function setDebugEventField(
+  data: Record<string, unknown>,
+  path: string,
+  value: unknown,
+): Record<string, unknown> {
+  const [key, ...rest] = path.split('.');
+  if (['__proto__', 'constructor', 'prototype'].includes(key)) return data;
+  const current = data[key];
+  const next = rest.length
+    ? setDebugEventField(
+        current && typeof current === 'object'
+          ? (current as Record<string, unknown>)
+          : {},
+        rest.join('.'),
+        value,
+      )
+    : value;
+  return Array.isArray(data)
+    ? Object.assign([...data], { [key]: next })
+    : { ...data, [key]: next };
+}
+
 export function debugEventDefinition(
   eventType: string,
+  processor = false,
 ): DebugEventDefinition | undefined {
-  return Object.hasOwn(DEBUG_EVENT_DEFINITIONS, eventType)
-    ? DEBUG_EVENT_DEFINITIONS[eventType]
+  const definitions = processor
+    ? PROCESSOR_EVENT_DEFINITIONS
+    : DEBUG_EVENT_DEFINITIONS;
+  return Object.hasOwn(definitions, eventType)
+    ? definitions[eventType]
     : undefined;
 }
 
 export function createDebugEventData(
   eventType: string,
   samples: Record<'user' | 'message' | 'feedback', string>,
+  processor = false,
 ) {
-  const definition = debugEventDefinition(eventType);
-  return {
-    ...definition?.defaults,
-    ...Object.fromEntries(
-      (definition?.fields ?? []).map((field) => [
+  const definition = debugEventDefinition(eventType, processor);
+  return (definition?.fields ?? []).reduce<Record<string, unknown>>(
+    (data, field) =>
+      setDebugEventField(
+        data,
         field.key,
         field.sample ? samples[field.sample] : field.value,
-      ]),
-    ),
-  };
+      ),
+    { ...definition?.defaults },
+  );
 }
 
 export function parseDebugEventData(
@@ -195,9 +322,20 @@ export function parseDebugEventData(
 export function invalidDebugEventField(
   eventType: string,
   data: Record<string, unknown>,
+  processor = false,
 ) {
-  return debugEventDefinition(eventType)?.fields.find((field) => {
-    const value = data[field.key];
+  return debugEventDefinition(eventType, processor)?.fields.find((field) => {
+    const value = getDebugEventField(data, field.key);
+    // Rich messages are edited as full JSON; a first Plain component is not required.
+    if (processor && field.key.endsWith('.0.text')) {
+      const chain = data[field.key.split('.')[0]];
+      if (
+        Array.isArray(chain) &&
+        chain.length > 0 &&
+        (chain.length > 1 || chain[0]?.type !== 'Plain')
+      )
+        return false;
+    }
     if (
       value === undefined ||
       value === null ||
@@ -215,7 +353,10 @@ export function invalidDebugEventField(
     }
     return (
       typeof value !== 'string' &&
-      !(field.key.endsWith('_id') && typeof value === 'number')
+      !(
+        (field.key.endsWith('_id') || field.key.endsWith('.id')) &&
+        typeof value === 'number'
+      )
     );
   });
 }
@@ -223,7 +364,9 @@ export function invalidDebugEventField(
 export function debugEventInputText(
   eventType: string,
   data: Record<string, unknown>,
+  processor = false,
 ) {
-  const key = debugEventDefinition(eventType)?.messageField;
-  return key && typeof data[key] === 'string' ? data[key].trim() : '';
+  const key = debugEventDefinition(eventType, processor)?.messageField;
+  const value = key ? getDebugEventField(data, key) : undefined;
+  return typeof value === 'string' ? value.trim() : '';
 }

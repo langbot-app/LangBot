@@ -99,7 +99,7 @@ The activation sequence is explicit:
 
 1. Install a plugin containing an EventProcessor component.
 2. Create an Event processor in the Processors area.
-3. Select its plugin component and enter any component-defined configuration.
+3. Open its detail page, select a plugin component, and save its configuration.
 4. Bind a Bot event to that processor instance in the existing event routing UI.
 
 Installation and processor creation alone do not subscribe to Bot events.
@@ -112,20 +112,26 @@ There is no automatic EBA broadcast to installed EventListeners. Keep Pipeline h
 plugins must explicitly adopt the new component and be bound by the user; do not
 create subscriptions during migration.
 
-Validate component availability, event compatibility, Workspace ownership, and
-instance identity at creation/update and again at invocation. A disabled or
+An unconfigured instance has no supported events and cannot execute. Validate
+component availability, event compatibility, Workspace ownership, and instance
+identity when configuring the instance and again at invocation. A disabled or
 unavailable plugin leaves the instance visible with an actionable unavailable
 status. It must not silently fall back to Agent or Pipeline.
 
 ## Compact UI
 
-Creation adds a third type next to Agent and Pipeline, followed by a component
-selector and basic instance information. Show configuration fields only when the
-component declares them. If no component is installed, show a relevant plugin
-installation entry point; installing still does not create a binding.
+Creation adds a third type next to Agent and Pipeline and asks only for basic
+instance information. Select the plugin component in the detail-page header.
+Keep component-defined configuration in the adjacent Plugin settings popover.
+If no component is installed, show a relevant plugin installation entry point;
+installing still does not create a binding.
 
-The detail page prioritizes a single run list. Selecting a run shows a chronological
-trace of the incoming event, handler logs, outgoing actions/messages, and outcome.
+The detail page shows event debugging on the left and logs on the right without
+view-switching tabs. A compact run list shows event type, time, status and known
+processing duration. Selecting a row shows that run's identity, input, logs,
+actions and outcome below. There is no shared timeline between unrelated runs.
+The additive `created_at_ms`, `started_at_ms`, and `finished_at_ms` fields retain
+Host lifecycle precision for elapsed-time display.
 Keep payloads and error details collapsed until expanded. Distinguish attempted
 delivery from confirmed delivery and display the actual destination.
 

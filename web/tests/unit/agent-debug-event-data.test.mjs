@@ -98,3 +98,64 @@ test('duration and rating remain numbers and reject invalid values', () => {
     'rating',
   );
 });
+
+test('processor common fields edit nested SDK data without losing JSON-only fields', () => {
+  const { setDebugEventField, getDebugEventField } = module.exports;
+  const data = createDebugEventData('group.member_joined', samples, true);
+  assert.deepEqual(data, {
+    member: { nickname: '测试用户', id: 'debug-user' },
+    group: { id: 'debug-group' },
+  });
+  data.member.username = 'alice';
+  data.inviter = { id: 'inviter-1' };
+  const edited = setDebugEventField(data, 'member.id', 'member-42');
+  assert.equal(edited.member.id, 'member-42');
+  assert.equal(edited.member.username, 'alice');
+  assert.deepEqual(edited.inviter, data.inviter);
+  assert.equal(data.member.id, 'debug-user');
+  assert.equal(getDebugEventField(edited, 'member.id'), 'member-42');
+  assert.equal(
+    invalidDebugEventField('group.member_joined', edited, true),
+    undefined,
+  );
+});
+
+test('processor message content uses SDK message chains and feedback uses SDK fields', () => {
+  const { setDebugEventField, processorDebugEventTypes } = module.exports;
+  for (const [type, field] of [
+    ['message.received', 'message_chain'],
+    ['message.edited', 'new_content'],
+  ]) {
+    const data = createDebugEventData(type, samples, true);
+    const edited = setDebugEventField(data, `${field}.0.text`, 'Changed');
+    assert.deepEqual(edited[field], [{ type: 'Plain', text: 'Changed' }]);
+    assert.equal(debugEventInputText(type, edited, true), 'Changed');
+    assert.equal(data[field][0].text, '你好');
+  }
+  const feedback = createDebugEventData('feedback.received', samples, true);
+  assert.equal(feedback.feedback_type, 1);
+  assert.equal(feedback.feedback_content, '很有帮助');
+  assert.ok(feedback.feedback_id);
+  for (const type of processorDebugEventTypes) {
+    assert.equal(
+      invalidDebugEventField(
+        type,
+        createDebugEventData(type, samples, true),
+        true,
+      ),
+      undefined,
+      type,
+    );
+  }
+});
+
+test('processor full JSON accepts rich messages without requiring a first text component', () => {
+  const data = createDebugEventData('message.received', samples, true);
+  data.message_chain = [
+    { type: 'Image', url: 'https://example.com/image.png' },
+  ];
+  assert.equal(
+    invalidDebugEventField('message.received', data, true),
+    undefined,
+  );
+});
