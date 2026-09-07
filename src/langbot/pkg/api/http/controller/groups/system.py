@@ -15,6 +15,17 @@ from .....workspace.invitation_delivery import InvitationDeliveryService
 @group.group_class('system', '/api/v1/system')
 class SystemRouterGroup(group.RouterGroup):
     async def initialize(self) -> None:
+        @self.route('/context', methods=['GET'], auth_type=group.AuthType.API_KEY)
+        async def _(request_context: RequestContext) -> str:
+            return self.success(
+                data={
+                    'instance_uuid': request_context.instance_uuid,
+                    'workspace_uuid': request_context.workspace_uuid,
+                    'api_key_id': request_context.principal.api_key_uuid,
+                    'permissions': sorted(request_context.workspace.permissions),
+                }
+            )
+
         @self.route('/info', methods=['GET'], auth_type=group.AuthType.NONE)
         async def _() -> str:
             # Read wizard_status and wizard_progress from metadata table

@@ -440,6 +440,70 @@ async def test_api_key_secret_is_one_time_and_viewer_cannot_manage_keys(workspac
     assert (await forbidden.get_json())['code'] == 'permission_denied'
 
 
+async def test_api_key_context_returns_bound_identity_without_workspace_permission(workspace_api):
+    application, client, _, owner_token = workspace_api
+    current_response = await client.get('/api/v1/workspaces/current', headers=_auth(owner_token))
+    workspace_uuid = (await current_response.get_json())['data']['workspace']['uuid']
+
+    create_response = await client.post(
+        '/api/v1/apikeys',
+        headers=_auth(owner_token, workspace_uuid),
+        json={'name': 'Context probe', 'scopes': []},
+    )
+    assert create_response.status_code == 200
+    created = (await create_response.get_json())['data']['key']
+
+    missing_auth = await client.get('/api/v1/system/context')
+    assert missing_auth.status_code == 401
+
+    invalid_auth = await client.get(
+        '/api/v1/system/context',
+        headers={'X-API-Key': 'lbk_invalid'},
+    )
+    assert invalid_auth.status_code == 401
+
+    response = await client.get(
+        '/api/v1/system/context',
+        headers={
+            'X-API-Key': created['key'],
+            'X-Workspace-Id': 'caller-selected-workspace-must-be-ignored',
+        },
+    )
+
+    assert response.status_code == 200
+    assert (await response.get_json())['data'] == {
+        'instance_uuid': application.workspace_service.instance_uuid,
+        'workspace_uuid': workspace_uuid,
+        'api_key_id': created['uuid'],
+        'permissions': [],
+    }
+
+    bearer_response = await client.get(
+        '/api/v1/system/context',
+        headers={'Authorization': f'Bearer {created["key"]}'},
+    )
+    assert bearer_response.status_code == 200
+    assert (await bearer_response.get_json())['data']['api_key_id'] == created['uuid']
+
+    jwt_response = await client.get(
+        '/api/v1/system/context',
+        headers={'Authorization': f'Bearer {owner_token}'},
+    )
+    assert jwt_response.status_code == 401
+
+    revoke_response = await client.delete(
+        f'/api/v1/apikeys/{created["id"]}',
+        headers=_auth(owner_token, workspace_uuid),
+    )
+    assert revoke_response.status_code == 200
+
+    revoked_response = await client.get(
+        '/api/v1/system/context',
+        headers={'X-API-Key': created['key']},
+    )
+    assert revoked_response.status_code == 401
+
+
 async def test_cloud_projection_is_selected_explicitly_and_collaboration_runs_in_core(
     workspace_api,
 ):
