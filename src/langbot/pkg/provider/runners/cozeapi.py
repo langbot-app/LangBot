@@ -234,6 +234,7 @@ class CozeAPIRunner(runner.RequestRunner):
         message_idx = 1
         is_final = False
         full_content = ''
+        flushed_content_len = 0
         remove_think = self.pipeline_config.get('output', {}).get('misc', {}).get('remove-think', False)
 
         try:
@@ -287,6 +288,15 @@ class CozeAPIRunner(runner.RequestRunner):
                 if message_idx % 8 == 0 or is_final:
                     if full_content:
                         yield provider_message.MessageChunk(role='assistant', content=full_content, is_final=is_final)
+                        flushed_content_len = len(full_content)
+
+            # Self-hosted Coze does not emit a terminating 'done' event, so
+            # is_final can stay False for the whole stream. Flush any tail that
+            # did not land on a message_idx % 8 boundary so it is not lost.
+            # Guard on length so a stream that already ended exactly on a flush
+            # boundary (or delivered is_final) is not re-sent.
+            if full_content and not is_final and len(full_content) != flushed_content_len:
+                yield provider_message.MessageChunk(role='assistant', content=full_content, is_final=True)
 
         except Exception as e:
             self.ap.logger.error(f'Coze API流式调用错误: {str(e)}')
