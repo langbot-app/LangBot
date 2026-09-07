@@ -7,12 +7,6 @@ import {
   CardTitle,
   CardDescription,
 } from '@/components/ui/card';
-import {
-  InputOTP,
-  InputOTPGroup,
-  InputOTPSlot,
-  InputOTPSeparator,
-} from '@/components/ui/input-otp';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -28,13 +22,11 @@ import {
 import { useState } from 'react';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { useNavigate } from 'react-router-dom';
-import { Mail, Lock, ArrowLeft } from 'lucide-react';
+import { Mail, Lock, ArrowLeft, KeyRound } from 'lucide-react';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
-
-const REGEXP_ONLY_DIGITS_AND_CHARS = /^[0-9a-zA-Z]+$/;
 
 const formSchema = (t: (key: string) => string) =>
   z.object({
@@ -136,28 +128,17 @@ export default function ResetPassword() {
                       {t('resetPassword.recoveryKeyDescription')}
                     </FormDescription>
                     <FormControl>
-                      <InputOTP
-                        maxLength={6}
-                        value={field.value}
-                        pattern={REGEXP_ONLY_DIGITS_AND_CHARS.source}
-                        onChange={(value) => {
-                          // 将输入的值转换为大写
-                          const upperValue = value.toUpperCase();
-                          field.onChange(upperValue);
-                        }}
-                      >
-                        <InputOTPGroup>
-                          <InputOTPSlot index={0} />
-                          <InputOTPSlot index={1} />
-                          <InputOTPSlot index={2} />
-                        </InputOTPGroup>
-                        <InputOTPSeparator />
-                        <InputOTPGroup>
-                          <InputOTPSlot index={3} />
-                          <InputOTPSlot index={4} />
-                          <InputOTPSlot index={5} />
-                        </InputOTPGroup>
-                      </InputOTP>
+                      {/* Recovery keys are case-sensitive base64url strings; send them verbatim */}
+                      <div className="relative">
+                        <KeyRound className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                        <Input
+                          placeholder={t('resetPassword.enterRecoveryKey')}
+                          className="pl-10 font-mono"
+                          autoComplete="off"
+                          spellCheck={false}
+                          {...field}
+                        />
+                      </div>
                     </FormControl>
                     <FormMessage />
                   </FormItem>
