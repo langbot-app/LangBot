@@ -43,6 +43,8 @@ Two kinds of key are accepted:
 Invalid, revoked, or expired keys get `401 Unauthorized`. A valid key whose
 scopes do not authorize a tool gets `403 Forbidden`.
 
+To inspect key identity and permissions, call `GET /api/v1/system/context` with the API key.
+
 ## Client configuration
 
 ```json

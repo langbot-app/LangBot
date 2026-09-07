@@ -88,6 +88,23 @@ Each endpoint accepts **either**:
 1. **User Token** (via `Authorization: Bearer <user_jwt_token>`) - for web UI and authenticated users
 2. **API Key** (via `X-API-Key` or `Authorization: Bearer <api_key>`) - for external services
 
+### Inspecting API Key Identity
+
+`GET /api/v1/system/context` validates an API key (user JWT not accepted) and returns its bound identity without requiring resource permissions:
+
+```json
+{
+  "code": 0,
+  "msg": "ok",
+  "data": {
+    "instance_uuid": "...",
+    "workspace_uuid": "...",
+    "api_key_id": "...",
+    "permissions": ["..."]
+  }
+}
+```
+
 ## Example: Model Management
 
 ### List All LLM Models
