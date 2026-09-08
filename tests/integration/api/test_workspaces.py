@@ -509,6 +509,11 @@ async def test_api_key_context_returns_bound_identity_without_workspace_permissi
             'pipeline.update',
             'pipeline.delete',
             'pipeline.copy',
+            'task.list',
+            'task.get',
+            'knowledge_base.get',
+            'knowledge_base.file.store',
+            'file.document.upload',
         ]
     )
     assert all(item == {'supported': True} for item in capabilities['operations'].values())
@@ -554,6 +559,83 @@ async def test_api_key_context_returns_bound_identity_without_workspace_permissi
         headers={'X-API-Key': created['key']},
     )
     assert revoked_capabilities.status_code == 401
+
+
+async def test_api_key_can_query_tasks_with_public_contract_and_resource_permission(workspace_api):
+    application, client, _, owner_token = workspace_api
+    task_query = {}
+    task_lookup = {}
+    fake_task = SimpleNamespace(
+        to_public_dict=lambda: {'id': 7, 'status': 'running', 'error': None, 'result': None},
+        to_dict=lambda: {'id': 7, 'runtime': {'state': 'PENDING'}},
+    )
+
+    def get_tasks_dict(*args, **kwargs):
+        task_query.update(kwargs)
+        if kwargs.get('public'):
+            return {'tasks': []}
+        return {'tasks': [], 'id_index': 1}
+
+    def get_task_by_id(*args, **kwargs):
+        task_lookup.update(kwargs)
+        return fake_task if args and args[0] == 7 else None
+
+    application.task_mgr = SimpleNamespace(
+        get_tasks_dict=get_tasks_dict,
+        get_task_by_id=get_task_by_id,
+    )
+    current_response = await client.get('/api/v1/workspaces/current', headers=_auth(owner_token))
+    workspace_uuid = (await current_response.get_json())['data']['workspace']['uuid']
+    create_response = await client.post(
+        '/api/v1/apikeys',
+        headers=_auth(owner_token, workspace_uuid),
+        json={'name': 'Task reader', 'scopes': ['resource.view']},
+    )
+    assert create_response.status_code == 200
+    key = (await create_response.get_json())['data']['key']['key']
+
+    listing = await client.get('/api/v1/system/tasks', headers={'X-API-Key': key})
+    assert listing.status_code == 200
+    assert (await listing.get_json())['data'] == {'tasks': []}
+    assert task_query['instance_uuid'] == application.workspace_service.instance_uuid
+    assert task_query['workspace_uuid'] == workspace_uuid
+    assert task_query['placement_generation'] == 1
+    assert task_query['public'] is True
+
+    bearer_listing = await client.get('/api/v1/system/tasks', headers=_auth(owner_token, workspace_uuid))
+    assert bearer_listing.status_code == 200
+    assert (await bearer_listing.get_json())['data'] == {'tasks': [], 'id_index': 1}
+
+    public_task = await client.get('/api/v1/system/tasks/7', headers={'X-API-Key': key})
+    assert public_task.status_code == 200
+    assert (await public_task.get_json())['data'] == {
+        'id': 7,
+        'status': 'running',
+        'error': None,
+        'result': None,
+    }
+    assert task_lookup == {
+        'instance_uuid': application.workspace_service.instance_uuid,
+        'workspace_uuid': workspace_uuid,
+        'placement_generation': 1,
+    }
+
+    legacy_task = await client.get('/api/v1/system/tasks/7', headers=_auth(owner_token, workspace_uuid))
+    assert legacy_task.status_code == 200
+    assert (await legacy_task.get_json())['data'] == {'id': 7, 'runtime': {'state': 'PENDING'}}
+
+    missing = await client.get('/api/v1/system/tasks/not-an-id', headers={'X-API-Key': key})
+    assert missing.status_code == 404
+
+    no_permission_response = await client.post(
+        '/api/v1/apikeys',
+        headers=_auth(owner_token, workspace_uuid),
+        json={'name': 'Task denied', 'scopes': []},
+    )
+    assert no_permission_response.status_code == 200
+    no_permission_key = (await no_permission_response.get_json())['data']['key']['key']
+    denied = await client.get('/api/v1/system/tasks', headers={'X-API-Key': no_permission_key})
+    assert denied.status_code == 403
 
 
 async def test_cloud_projection_is_selected_explicitly_and_collaboration_runs_in_core(

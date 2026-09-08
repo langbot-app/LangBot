@@ -7,7 +7,7 @@ from .. import group
 from .....utils import constants
 from .....entity.persistence.metadata import WorkspaceMetadata
 from ...authz import Permission
-from ...context import RequestContext
+from ...context import PrincipalType, RequestContext
 from .....provider.tools.loaders.mcp_policy import stdio_mcp_enabled
 from .....workspace.invitation_delivery import InvitationDeliveryService
 
@@ -24,6 +24,11 @@ SYSTEM_CAPABILITY_OPERATIONS = (
     'pipeline.update',
     'pipeline.delete',
     'pipeline.copy',
+    'task.list',
+    'task.get',
+    'knowledge_base.get',
+    'knowledge_base.file.store',
+    'file.document.upload',
 )
 
 
@@ -258,7 +263,7 @@ class SystemRouterGroup(group.RouterGroup):
         @self.route(
             '/tasks',
             methods=['GET'],
-            auth_type=group.AuthType.USER_TOKEN,
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
             permission=Permission.RESOURCE_VIEW,
         )
         async def _(request_context: RequestContext) -> str:
@@ -277,18 +282,23 @@ class SystemRouterGroup(group.RouterGroup):
                     instance_uuid=request_context.instance_uuid,
                     workspace_uuid=request_context.workspace_uuid,
                     placement_generation=request_context.placement_generation,
+                    public=request_context.principal.principal_type == PrincipalType.API_KEY,
                 )
             )
 
         @self.route(
             '/tasks/<task_id>',
             methods=['GET'],
-            auth_type=group.AuthType.USER_TOKEN,
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
             permission=Permission.RESOURCE_VIEW,
         )
         async def _(task_id: str, request_context: RequestContext) -> str:
+            try:
+                task_index = int(task_id)
+            except (TypeError, ValueError):
+                return self.http_status(404, 404, 'Task not found')
             task = self.ap.task_mgr.get_task_by_id(
-                int(task_id),
+                task_index,
                 instance_uuid=request_context.instance_uuid,
                 workspace_uuid=request_context.workspace_uuid,
                 placement_generation=request_context.placement_generation,
@@ -297,6 +307,8 @@ class SystemRouterGroup(group.RouterGroup):
             if task is None:
                 return self.http_status(404, 404, 'Task not found')
 
+            if request_context.principal.principal_type == PrincipalType.API_KEY:
+                return self.success(data=task.to_public_dict())
             return self.success(data=task.to_dict())
 
         @self.route(
