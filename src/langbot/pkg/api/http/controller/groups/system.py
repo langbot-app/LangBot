@@ -29,6 +29,15 @@ SYSTEM_CAPABILITY_OPERATIONS = (
     'knowledge_base.get',
     'knowledge_base.file.store',
     'file.document.upload',
+    'plugin.install.github',
+    'plugin.install.marketplace',
+    'plugin.install.local',
+    'plugin.upgrade',
+    'plugin.get',
+    'skill.install.github',
+    'skill.install.upload',
+    'mcp_server.get',
+    'mcp_server.test',
 )
 
 
