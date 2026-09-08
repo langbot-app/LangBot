@@ -12,6 +12,21 @@ from .....provider.tools.loaders.mcp_policy import stdio_mcp_enabled
 from .....workspace.invitation_delivery import InvitationDeliveryService
 
 
+SYSTEM_CAPABILITY_OPERATIONS = (
+    'bot.list',
+    'bot.get',
+    'bot.create',
+    'bot.update',
+    'bot.delete',
+    'pipeline.list',
+    'pipeline.get',
+    'pipeline.create',
+    'pipeline.update',
+    'pipeline.delete',
+    'pipeline.copy',
+)
+
+
 @group.group_class('system', '/api/v1/system')
 class SystemRouterGroup(group.RouterGroup):
     async def initialize(self) -> None:
@@ -23,6 +38,15 @@ class SystemRouterGroup(group.RouterGroup):
                     'workspace_uuid': request_context.workspace_uuid,
                     'api_key_id': request_context.principal.api_key_uuid,
                     'permissions': sorted(request_context.workspace.permissions),
+                }
+            )
+
+        @self.route('/capabilities', methods=['GET'], auth_type=group.AuthType.API_KEY)
+        async def _() -> str:
+            return self.success(
+                data={
+                    'schema_version': 1,
+                    'operations': {operation: {'supported': True} for operation in SYSTEM_CAPABILITY_OPERATIONS},
                 }
             )
 

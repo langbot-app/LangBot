@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime
 import json
 import logging
 from types import SimpleNamespace
@@ -22,6 +23,7 @@ from langbot.pkg.api.http.service.apikey import ApiKeyService
 from langbot.pkg.api.http.service.user import ControlPlaneDirectoryRequiredError, UserService
 from langbot.pkg.entity.persistence.base import Base
 from langbot.pkg.entity.persistence.metadata import WorkspaceMetadata
+from langbot.pkg.entity.persistence import apikey
 from langbot.pkg.entity.persistence.user import User
 from langbot.pkg.entity.persistence.workspace import (
     Workspace,
@@ -462,6 +464,12 @@ async def test_api_key_context_returns_bound_identity_without_workspace_permissi
     )
     assert invalid_auth.status_code == 401
 
+    invalid_capabilities = await client.get(
+        '/api/v1/system/capabilities',
+        headers={'X-API-Key': 'lbk_invalid'},
+    )
+    assert invalid_capabilities.status_code == 401
+
     response = await client.get(
         '/api/v1/system/context',
         headers={
@@ -478,6 +486,34 @@ async def test_api_key_context_returns_bound_identity_without_workspace_permissi
         'permissions': [],
     }
 
+    capabilities_response = await client.get(
+        '/api/v1/system/capabilities',
+        headers={
+            'X-API-Key': created['key'],
+            'X-Workspace-Id': 'caller-selected-workspace-must-be-ignored',
+        },
+    )
+    assert capabilities_response.status_code == 200
+    capabilities = (await capabilities_response.get_json())['data']
+    assert capabilities['schema_version'] == 1
+    assert sorted(capabilities['operations']) == sorted(
+        [
+            'bot.list',
+            'bot.get',
+            'bot.create',
+            'bot.update',
+            'bot.delete',
+            'pipeline.list',
+            'pipeline.get',
+            'pipeline.create',
+            'pipeline.update',
+            'pipeline.delete',
+            'pipeline.copy',
+        ]
+    )
+    assert all(item == {'supported': True} for item in capabilities['operations'].values())
+    assert created['key'] not in await capabilities_response.get_data(as_text=True)
+
     bearer_response = await client.get(
         '/api/v1/system/context',
         headers={'Authorization': f'Bearer {created["key"]}'},
@@ -491,6 +527,17 @@ async def test_api_key_context_returns_bound_identity_without_workspace_permissi
     )
     assert jwt_response.status_code == 401
 
+    await application.persistence_mgr.execute_async(
+        sqlalchemy.update(apikey.ApiKey)
+        .where(apikey.ApiKey.uuid == created['uuid'])
+        .values(expires_at=datetime.datetime.now(datetime.UTC).replace(tzinfo=None) - datetime.timedelta(seconds=1))
+    )
+    expired_capabilities = await client.get(
+        '/api/v1/system/capabilities',
+        headers={'X-API-Key': created['key']},
+    )
+    assert expired_capabilities.status_code == 401
+
     revoke_response = await client.delete(
         f'/api/v1/apikeys/{created["id"]}',
         headers=_auth(owner_token, workspace_uuid),
@@ -502,6 +549,11 @@ async def test_api_key_context_returns_bound_identity_without_workspace_permissi
         headers={'X-API-Key': created['key']},
     )
     assert revoked_response.status_code == 401
+    revoked_capabilities = await client.get(
+        '/api/v1/system/capabilities',
+        headers={'X-API-Key': created['key']},
+    )
+    assert revoked_capabilities.status_code == 401
 
 
 async def test_cloud_projection_is_selected_explicitly_and_collaboration_runs_in_core(
