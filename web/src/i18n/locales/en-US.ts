@@ -704,6 +704,11 @@ const enUS = {
   },
   agents: {
     eventProcessor: {
+      configTab: 'Configuration',
+      logsTab: 'Logs',
+      noSettings: 'This plugin processor requires no configuration.',
+      createPageTitle: 'Create event processor',
+      processWithPlugin: 'Process with plugin code',
       pluginSettings: 'Plugin settings',
       pluginSettingsDescription: 'Parameters declared by this plugin.',
       selectToDebug: 'Select a plugin above to start debugging.',
@@ -714,12 +719,14 @@ const enUS = {
       debugNotice:
         'The plugin processes a test event. Platform actions use Mock and do not send real messages; other tools run as configured.',
 
-      type: 'Event processor',
-      description: 'Process platform events using plugin code.',
-      component: 'Plugin component',
-      selectComponent: 'Select an event processor',
+      create: 'Create plugin processor',
+      type: 'Plugin processor',
+      description:
+        'Handle events with code and processing logic provided by a plugin.',
+      component: 'Plugin processor',
+      selectComponent: 'Select a plugin processor',
       unavailable: 'Component unavailable',
-      noComponents: 'No event processor components installed.',
+      noComponents: 'No plugins providing processors are installed.',
       installPlugin: 'Install a plugin',
       loadError: 'Unable to load processor details.',
       refresh: 'Refresh',
@@ -787,7 +794,7 @@ const enUS = {
     groupByKind: 'Group by type',
     groupByKindShort: 'Group',
     pipelineTypeDescription:
-      'A classic “receive a message, ask AI, reply to the user” flow with common configuration options. Handles message events only and works best for clear, predictable processes.',
+      'Follow a fixed flow: receive a message, call AI, and reply to the user, with configurable knowledge bases and plugins. Handles message events only, for tasks with clear steps and control over processing.',
     allEvents: 'Supports all events',
     messageEventsOnly: 'Message events only',
     chooseType: 'Choose how it works',

@@ -396,19 +396,15 @@ export default function AgentDebugPanel({
           </p>
         </div>
         {entries.length === 0 ? (
-          <Alert className="my-4 bg-muted/20">
-            <CircleHelp className="size-4" />
-            <AlertTitle>
-              {t(processor ? 'agents.debugTab' : 'agents.debugEmptyTitle')}
-            </AlertTitle>
-            <AlertDescription>
-              {t(
-                processor
-                  ? 'agents.eventProcessor.debugDescription'
-                  : 'agents.debugEmptyTranscript',
-              )}
-            </AlertDescription>
-          </Alert>
+          !processor && (
+            <Alert className="my-4 bg-muted/20">
+              <CircleHelp className="size-4" />
+              <AlertTitle>{t('agents.debugEmptyTitle')}</AlertTitle>
+              <AlertDescription>
+                {t('agents.debugEmptyTranscript')}
+              </AlertDescription>
+            </Alert>
+          )
         ) : (
           <div className="space-y-3">
             {entries

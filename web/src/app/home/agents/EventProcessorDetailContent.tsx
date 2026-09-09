@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { eventPatternLabel } from '@/app/home/components/event-patterns/event-pattern-groups';
-import { RefreshCw, Trash2, ScrollText } from 'lucide-react';
+import { RefreshCw, Trash2, ScrollText, Settings2 } from 'lucide-react';
 import isEqual from 'lodash/isEqual';
 import { toast } from 'sonner';
 import type {
@@ -26,6 +26,7 @@ import EventProcessorTrace, {
 } from './components/EventProcessorTrace';
 import ProcessorRunList from './components/ProcessorRunList';
 import EventProcessorSettings from './components/EventProcessorSettings';
+import DynamicFormComponent from '@/app/home/components/dynamic-form/DynamicFormComponent';
 
 export default function EventProcessorDetailContent({
   agent,
@@ -47,6 +48,7 @@ export default function EventProcessorDetailContent({
   onSaved: () => void;
 }) {
   const { t } = useTranslation();
+  const [activeTab, setActiveTab] = useState('config');
   const [platformTools, setPlatformTools] = useState<AgentPlatformTool[]>([]);
   const toolLabels = Object.fromEntries(
     platformTools.map((tool) => [tool.name, extractI18nObject(tool.label)]),
@@ -235,13 +237,11 @@ export default function EventProcessorDetailContent({
   }, [id, selected, eventCursor, events]);
 
   async function save() {
-    if (
-      !canManage ||
-      saving ||
-      !component ||
-      !((await validate.current?.()) ?? true)
-    )
+    if (!canManage || saving || !component) return false;
+    if (!((await validate.current?.()) ?? true)) {
+      setActiveTab('config');
       return false;
+    }
     setSaving(true);
     try {
       await httpClient.updateAgent(id, {
@@ -265,9 +265,126 @@ export default function EventProcessorDetailContent({
     }
   }
 
+  const logsContent = (
+    <div className="flex h-full min-h-0 flex-col gap-3">
+      <form
+        id="event-processor-form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void save();
+        }}
+      />
+      {failed && (
+        <Alert variant="destructive">
+          <AlertDescription>
+            {t('agents.eventProcessor.loadError')}
+          </AlertDescription>
+        </Alert>
+      )}
+      <div className="flex shrink-0 items-center justify-between gap-2">
+        <span className="text-sm font-medium">
+          {t('agents.eventProcessor.runs')}{' '}
+          <span className="text-muted-foreground">({runs.length})</span>
+        </span>
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label={t('agents.eventProcessor.refresh')}
+          onClick={() => void refreshLatestRun()}
+        >
+          <RefreshCw className="size-4" />
+        </Button>
+      </div>
+      {runs.length > 0 && (
+        <ProcessorRunList
+          runs={runs}
+          selectedId={selected?.run_id}
+          onSelect={(run) => void openRun(run)}
+          footer={
+            cursor !== null ? (
+              <Button
+                className="w-full"
+                variant="ghost"
+                disabled={pagingRuns}
+                onClick={() => void loadMoreRuns()}
+              >
+                {t('agents.eventProcessor.loadMore')}
+              </Button>
+            ) : undefined
+          }
+        />
+      )}
+      <ScrollArea className="min-h-0 flex-1">
+        <div className="space-y-2 pr-3">
+          {!selected ? (
+            <Alert>
+              <AlertDescription>
+                {loading
+                  ? t('common.loading')
+                  : t('agents.eventProcessor.noRuns')}
+                <Button asChild variant="link" className="h-auto px-0">
+                  <Link to="/home/bots">
+                    {t('agents.eventProcessor.bindBot')}
+                  </Link>
+                </Button>
+              </AlertDescription>
+            </Alert>
+          ) : (
+            <>
+              <div className="border-b pb-2">
+                <p className="text-sm font-medium">
+                  {eventPatternLabel(selected.metadata.event_type ?? '', t)}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {new Date(selected.created_at * 1000).toLocaleString()}
+                </p>
+              </div>
+              <Badge
+                variant={
+                  selected.status === 'failed' ? 'destructive' : 'outline'
+                }
+              >
+                {t(`agents.eventProcessor.status_${selected.status}`, {
+                  defaultValue: selected.status,
+                })}
+              </Badge>
+              <ProcessorPayload
+                title={t('agents.eventProcessor.input')}
+                value={selected.metadata.input_event}
+              />
+              {selected.metadata.delivery != null && (
+                <ProcessorPayload
+                  title={t('agents.eventProcessor.destination')}
+                  value={selected.metadata.delivery}
+                />
+              )}
+              <EventProcessorTrace events={events} toolLabels={toolLabels} />
+              {selected.status === 'failed' && selected.status_reason && (
+                <Alert variant="destructive">
+                  <AlertDescription className="break-words">
+                    {selected.status_reason}
+                  </AlertDescription>
+                </Alert>
+              )}
+              {eventCursor !== null && (
+                <Button
+                  variant="ghost"
+                  disabled={pagingEvents}
+                  onClick={() => void loadMoreEvents()}
+                >
+                  {t('agents.eventProcessor.loadMore')}
+                </Button>
+              )}
+            </>
+          )}
+        </div>
+      </ScrollArea>
+    </div>
+  );
+
   return (
     <ProcessorDetailWorkbench
-      title={`${agent.emoji || '⚡'} ${agent.name}`}
+      title={`${agent.emoji || '🧩'} ${agent.name}`}
       titleAction={
         canManage ? <EntityTitleEditButton onClick={onEdit} /> : undefined
       }
@@ -275,10 +392,10 @@ export default function EventProcessorDetailContent({
         <EventProcessorSettings
           components={components}
           value={componentRef}
-          parameters={parameters}
           disabled={!canManage || saving || loading}
           onChange={(value) => {
             setComponentRef(value);
+            setActiveTab('config');
             const descriptor = components.find((item) => item.id === value);
             setParameters(
               Object.fromEntries(
@@ -288,10 +405,6 @@ export default function EventProcessorDetailContent({
               ),
             );
             validate.current = null;
-          }}
-          onParametersChange={setParameters}
-          onValidate={(fn) => {
-            validate.current = fn;
           }}
         />
       }
@@ -313,127 +426,51 @@ export default function EventProcessorDetailContent({
           </Button>
         ) : undefined
       }
-      configTitle={t('agents.eventProcessor.trace')}
-      configIcon={<ScrollText className="size-4" />}
-      configContent={
-        <div className="flex h-full min-h-0 flex-col gap-3">
-          <form
-            id="event-processor-form"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void save();
-            }}
-          />
-          {failed && (
-            <Alert variant="destructive">
-              <AlertDescription>
-                {t('agents.eventProcessor.loadError')}
-              </AlertDescription>
-            </Alert>
-          )}
-          <div className="flex shrink-0 items-center justify-between gap-2">
-            <span className="text-sm font-medium">
-              {t('agents.eventProcessor.runs')}{' '}
-              <span className="text-muted-foreground">({runs.length})</span>
-            </span>
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label={t('agents.eventProcessor.refresh')}
-              onClick={() => void refreshLatestRun()}
-            >
-              <RefreshCw className="size-4" />
-            </Button>
-          </div>
-          {runs.length > 0 && (
-            <ProcessorRunList
-              runs={runs}
-              selectedId={selected?.run_id}
-              onSelect={(run) => void openRun(run)}
-              footer={
-                cursor !== null ? (
-                  <Button
-                    className="w-full"
-                    variant="ghost"
-                    disabled={pagingRuns}
-                    onClick={() => void loadMoreRuns()}
-                  >
-                    {t('agents.eventProcessor.loadMore')}
-                  </Button>
-                ) : undefined
-              }
-            />
-          )}
-          <ScrollArea className="min-h-0 flex-1">
-            <div className="space-y-2 pr-3">
-              {!selected ? (
-                <Alert>
-                  <AlertDescription>
-                    {loading
-                      ? t('common.loading')
-                      : t('agents.eventProcessor.noRuns')}
-                    <Button asChild variant="link" className="h-auto px-0">
-                      <Link to="/home/bots">
-                        {t('agents.eventProcessor.bindBot')}
-                      </Link>
-                    </Button>
-                  </AlertDescription>
-                </Alert>
-              ) : (
-                <>
-                  <div className="border-b pb-2">
-                    <p className="text-sm font-medium">
-                      {eventPatternLabel(selected.metadata.event_type ?? '', t)}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {new Date(selected.created_at * 1000).toLocaleString()}
-                    </p>
-                  </div>
-                  <Badge
-                    variant={
-                      selected.status === 'failed' ? 'destructive' : 'outline'
-                    }
-                  >
-                    {t(`agents.eventProcessor.status_${selected.status}`, {
-                      defaultValue: selected.status,
-                    })}
-                  </Badge>
-                  <ProcessorPayload
-                    title={t('agents.eventProcessor.input')}
-                    value={selected.metadata.input_event}
-                  />
-                  {selected.metadata.delivery != null && (
-                    <ProcessorPayload
-                      title={t('agents.eventProcessor.destination')}
-                      value={selected.metadata.delivery}
+      configTitle={t('agents.eventProcessor.type')}
+      configTabs={{
+        value: activeTab,
+        onValueChange: setActiveTab,
+        items: [
+          {
+            value: 'config',
+            label: t('agents.eventProcessor.configTab'),
+            icon: <Settings2 className="size-4" />,
+            content: (
+              <div className="h-full overflow-y-auto">
+                {!component ? (
+                  <p className="text-sm text-muted-foreground">
+                    {t('agents.eventProcessor.selectComponent')}
+                  </p>
+                ) : component.config_schema.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    {t('agents.eventProcessor.noSettings')}
+                  </p>
+                ) : (
+                  <fieldset disabled={!canManage || saving}>
+                    <DynamicFormComponent
+                      key={componentRef}
+                      itemConfigList={component.config_schema}
+                      initialValues={parameters}
+                      onSubmit={(values) =>
+                        setParameters(values as Record<string, unknown>)
+                      }
+                      onValidate={(fn) => {
+                        validate.current = fn;
+                      }}
                     />
-                  )}
-                  <EventProcessorTrace
-                    events={events}
-                    toolLabels={toolLabels}
-                  />
-                  {selected.status === 'failed' && selected.status_reason && (
-                    <Alert variant="destructive">
-                      <AlertDescription className="break-words">
-                        {selected.status_reason}
-                      </AlertDescription>
-                    </Alert>
-                  )}
-                  {eventCursor !== null && (
-                    <Button
-                      variant="ghost"
-                      disabled={pagingEvents}
-                      onClick={() => void loadMoreEvents()}
-                    >
-                      {t('agents.eventProcessor.loadMore')}
-                    </Button>
-                  )}
-                </>
-              )}
-            </div>
-          </ScrollArea>
-        </div>
-      }
+                  </fieldset>
+                )}
+              </div>
+            ),
+          },
+          {
+            value: 'logs',
+            label: t('agents.eventProcessor.logsTab'),
+            icon: <ScrollText className="size-4" />,
+            content: logsContent,
+          },
+        ],
+      }}
       debugTitle={canOperate ? t('agents.debugTab') : undefined}
       debugDescription={t('agents.eventProcessor.debugNotice')}
       debugContent={
@@ -452,6 +489,7 @@ export default function EventProcessorDetailContent({
               hasUnsavedChanges={dirty}
               beforeRun={save}
               onRunFinished={() => {
+                setActiveTab('logs');
                 void refreshLatestRun();
               }}
               supportedEventPatterns={component.supported_event_patterns}

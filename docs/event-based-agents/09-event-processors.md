@@ -122,12 +122,14 @@ status. It must not silently fall back to Agent or Pipeline.
 
 Creation adds a third type next to Agent and Pipeline and asks only for basic
 instance information. Select the plugin component in the detail-page header.
-Keep component-defined configuration in the adjacent Plugin settings popover.
+Show component-defined configuration in the right pane, with Configuration and
+Logs tabs. Keep unsaved values when switching tabs, and open Logs after a debug
+run finishes. The component selector remains in the page header.
 If no component is installed, show a relevant plugin installation entry point;
 installing still does not create a binding.
 
-The detail page shows event debugging on the left and logs on the right without
-view-switching tabs. A compact run list shows event type, time, status and known
+The detail page keeps event debugging on the left while the right pane switches
+between configuration and logs. A compact run list shows event type, time, status and known
 processing duration. Selecting a row shows that run's identity, input, logs,
 actions and outcome below. There is no shared timeline between unrelated runs.
 The additive `created_at_ms`, `started_at_ms`, and `finished_at_ms` fields retain

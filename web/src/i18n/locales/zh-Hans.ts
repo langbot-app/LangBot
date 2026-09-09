@@ -669,6 +669,11 @@ const zhHans = {
   },
   agents: {
     eventProcessor: {
+      configTab: '配置',
+      logsTab: '日志',
+      noSettings: '此插件处理器无需配置。',
+      createPageTitle: '创建事件处理器',
+      processWithPlugin: '插件代码处理',
       pluginSettings: '插件设置',
       pluginSettingsDescription: '由当前插件声明的参数。',
       selectToDebug: '请先在上方选择插件，再开始调试。',
@@ -678,12 +683,13 @@ const zhHans = {
       debugNotice:
         '插件真实处理测试事件；回复、发送等平台动作使用 Mock，不发送真实消息。其他工具仍按实际配置执行。',
 
-      type: '事件处理器',
-      description: '通过插件代码处理平台事件。',
-      component: '插件组件',
-      selectComponent: '选择事件处理器组件',
+      create: '创建插件处理器',
+      type: '插件处理器',
+      description: '由插件中的代码处理事件，处理逻辑由插件实现。',
+      component: '插件处理器',
+      selectComponent: '选择插件处理器',
       unavailable: '组件不可用',
-      noComponents: '尚未安装事件处理器组件。',
+      noComponents: '尚未安装提供插件处理器的插件。',
       installPlugin: '安装插件',
       loadError: '无法加载处理器详情。',
       refresh: '刷新',
@@ -751,7 +757,7 @@ const zhHans = {
     groupByKind: '按类型分组',
     groupByKindShort: '分组',
     pipelineTypeDescription:
-      '流水线即为经典的“收到消息、请求AI、回复用户”流程，并辅以常用的配置功能。仅处理消息事件，适合步骤明确、需要稳定控制处理过程的场景。',
+      '按“接收消息、调用 AI、回复用户”的固定流程运行，可配置知识库和插件扩展。仅处理消息事件，适合步骤明确、需要控制处理过程的场景。',
     allEvents: '支持全部事件',
     messageEventsOnly: '仅支持消息事件',
     chooseType: '选择处理方式',

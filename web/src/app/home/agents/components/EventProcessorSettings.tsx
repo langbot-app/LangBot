@@ -1,10 +1,4 @@
-import { useState } from 'react';
-import { Settings2, Puzzle } from 'lucide-react';
-import {
-  Popover,
-  PopoverTrigger,
-  PopoverContent,
-} from '@/components/ui/popover';
+import { Puzzle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import type { EventProcessorDescriptor } from '@/app/infra/entities/api';
@@ -19,7 +13,6 @@ import {
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import DynamicFormComponent from '@/app/home/components/dynamic-form/DynamicFormComponent';
 
 function ProcessorComponentContent({
   component,
@@ -72,48 +65,25 @@ function ProcessorComponentContent({
 export default function EventProcessorSettings({
   components,
   value,
-  parameters,
   onChange,
-  onParametersChange,
-  onValidate,
   disabled = false,
 }: {
   components: EventProcessorDescriptor[];
   value: string;
-  parameters: Record<string, unknown>;
   onChange: (value: string) => void;
-  onParametersChange: (value: Record<string, unknown>) => void;
-  onValidate?: (validate: () => Promise<boolean>) => void;
   disabled?: boolean;
 }) {
   const { t } = useTranslation();
   const selected = components.find((item) => item.id === value);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   return (
     <div className="flex min-w-0 items-center gap-2">
       <Label className="sr-only" htmlFor="event-processor-component">
         {t('agents.eventProcessor.component')}
       </Label>
-      <Select
-        value={value}
-        disabled={disabled}
-        onValueChange={(next) => {
-          onChange(next);
-          const component = components.find((item) => item.id === next);
-          setSettingsOpen(
-            Boolean(
-              component?.config_schema.some(
-                (field) =>
-                  field.required &&
-                  (field.default == null || field.default === ''),
-              ),
-            ),
-          );
-        }}
-      >
+      <Select value={value} disabled={disabled} onValueChange={onChange}>
         <SelectTrigger
           id="event-processor-component"
-          className="w-[22rem] max-w-[calc(100vw-8rem)] bg-[#ffffff] dark:bg-[#2a2a2e]"
+          className="w-[13.2rem] max-w-[calc(100vw-8rem)] bg-[#ffffff] dark:bg-[#2a2a2e]"
         >
           {selected ? (
             <ProcessorComponentContent component={selected} />
@@ -153,44 +123,6 @@ export default function EventProcessorSettings({
           )}
         </SelectContent>
       </Select>
-      {selected && selected.config_schema.length > 0 && (
-        <Popover open={settingsOpen} onOpenChange={setSettingsOpen}>
-          <PopoverTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              disabled={disabled}
-              aria-label={t('agents.eventProcessor.pluginSettings')}
-              title={t('agents.eventProcessor.pluginSettings')}
-            >
-              <Settings2 className="size-4" />
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent
-            align="start"
-            className="max-h-[70vh] overflow-y-auto space-y-3"
-          >
-            <p className="text-sm font-medium">
-              {t('agents.eventProcessor.pluginSettings')}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              {t('agents.eventProcessor.pluginSettingsDescription')}
-            </p>
-            <fieldset disabled={disabled}>
-              <DynamicFormComponent
-                key={value}
-                itemConfigList={selected.config_schema}
-                initialValues={parameters}
-                onSubmit={(values) =>
-                  onParametersChange(values as Record<string, unknown>)
-                }
-                onValidate={onValidate}
-              />
-            </fieldset>
-          </PopoverContent>
-        </Popover>
-      )}
     </div>
   );
 }

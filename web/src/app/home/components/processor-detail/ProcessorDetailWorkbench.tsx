@@ -37,7 +37,17 @@ interface ProcessorDetailWorkbenchProps {
   isSaving: boolean;
   configTitle: string;
   configIcon?: ReactNode;
-  configContent: ReactNode;
+  configContent?: ReactNode;
+  configTabs?: {
+    value: string;
+    onValueChange: (value: string) => void;
+    items: {
+      value: string;
+      label: string;
+      icon?: ReactNode;
+      content: ReactNode;
+    }[];
+  };
   debugTitle?: string;
   debugDescription?: string;
   debugContent?: ReactNode;
@@ -63,6 +73,7 @@ export default function ProcessorDetailWorkbench({
   configTitle,
   configIcon,
   configContent,
+  configTabs,
   debugTitle,
   debugDescription,
   debugContent,
@@ -76,6 +87,52 @@ export default function ProcessorDetailWorkbench({
     'workbench',
   );
   const hasDebug = Boolean(debugTitle && debugContent);
+
+  const configPanel = (
+    <Card
+      role="region"
+      aria-label={configTitle}
+      className="h-full min-h-[36rem] min-w-0 gap-0 overflow-hidden py-0 lg:min-h-0"
+    >
+      <CardHeader className="flex h-12 shrink-0 flex-row items-center gap-2 border-b px-4 font-medium [.border-b]:pb-0">
+        {configTabs ? (
+          <TabsList aria-label={configTitle}>
+            {configTabs.items.map((tab) => (
+              <TabsTrigger key={tab.value} value={tab.value}>
+                {tab.icon}
+                {tab.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        ) : (
+          <>
+            {configIcon ?? <Settings className="size-4" />}
+            <span className="truncate">{configTitle}</span>
+          </>
+        )}
+        {isDirty && (
+          <span className="ml-auto flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+            <span className="size-1.5 rounded-full bg-amber-500" />
+            {unsavedLabel}
+          </span>
+        )}
+      </CardHeader>
+      <CardContent className="min-h-0 min-w-0 flex-1 overflow-hidden p-4">
+        {configTabs
+          ? configTabs.items.map((tab) => (
+              <TabsContent
+                key={tab.value}
+                value={tab.value}
+                forceMount
+                className="m-0 h-full min-h-0 data-[state=inactive]:hidden"
+              >
+                {tab.content}
+              </TabsContent>
+            ))
+          : configContent}
+      </CardContent>
+    </Card>
+  );
 
   return (
     <Tabs
@@ -246,25 +303,17 @@ export default function ProcessorDetailWorkbench({
             </Card>
           )}
 
-          <Card
-            role="region"
-            aria-label={configTitle}
-            className="min-h-[36rem] min-w-0 gap-0 overflow-hidden py-0 lg:min-h-0"
-          >
-            <CardHeader className="flex h-12 shrink-0 flex-row items-center gap-2 border-b px-4 font-medium [.border-b]:pb-0">
-              {configIcon ?? <Settings className="size-4" />}
-              <span className="truncate">{configTitle}</span>
-              {isDirty && (
-                <span className="ml-auto flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
-                  <span className="size-1.5 rounded-full bg-amber-500" />
-                  {unsavedLabel}
-                </span>
-              )}
-            </CardHeader>
-            <CardContent className="min-h-0 min-w-0 flex-1 overflow-hidden p-4">
-              {configContent}
-            </CardContent>
-          </Card>
+          {configTabs ? (
+            <Tabs
+              value={configTabs.value}
+              onValueChange={configTabs.onValueChange}
+              className="min-h-0 min-w-0"
+            >
+              {configPanel}
+            </Tabs>
+          ) : (
+            configPanel
+          )}
         </div>
       </TabsContent>
     </Tabs>

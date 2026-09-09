@@ -475,6 +475,11 @@ const zhHant = {
   },
   agents: {
     eventProcessor: {
+      configTab: '設定',
+      logsTab: '日誌',
+      noSettings: '此外掛處理器無需設定。',
+      createPageTitle: '建立事件處理器',
+      processWithPlugin: '外掛程式碼處理',
       pluginSettings: '外掛設定',
       pluginSettingsDescription: '由目前外掛宣告的參數。',
       selectToDebug: '請先在上方選擇外掛，再開始除錯。',
@@ -484,12 +489,13 @@ const zhHant = {
       debugNotice:
         '外掛實際處理測試事件；回覆、傳送等平台動作使用 Mock，不傳送真實訊息。其他工具仍依實際設定執行。',
 
-      type: '事件處理器',
-      description: '透過外掛程式碼處理平台事件。',
-      component: '外掛元件',
-      selectComponent: '選擇事件處理器元件',
+      create: '建立外掛處理器',
+      type: '外掛處理器',
+      description: '由外掛中的程式碼處理事件，處理邏輯由外掛實作。',
+      component: '外掛處理器',
+      selectComponent: '選擇外掛處理器',
       unavailable: '元件無法使用',
-      noComponents: '尚未安裝事件處理器元件。',
+      noComponents: '尚未安裝提供外掛處理器的外掛。',
       installPlugin: '安裝外掛',
       loadError: '無法載入處理器詳情。',
       refresh: '重新整理',
@@ -556,7 +562,7 @@ const zhHant = {
     groupByKind: '依類型分組',
     groupByKindShort: '分組',
     pipelineTypeDescription:
-      '流程線即為經典的「收到訊息、請求 AI、回覆使用者」流程，並輔以常用的設定功能。僅處理訊息事件，適合步驟明確、需要穩定控制處理過程的場景。',
+      '依「接收訊息、呼叫 AI、回覆使用者」的固定流程執行，可設定知識庫與外掛擴充。僅處理訊息事件，適合步驟明確、需要控制處理過程的場景。',
     allEvents: '支援全部事件',
     messageEventsOnly: '僅支援訊息事件',
     basicInfo: '基本資訊',

@@ -4,7 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { Bot, Workflow, FileCode2 } from 'lucide-react';
+import { Bot, Workflow, Puzzle } from 'lucide-react';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { AgentKind } from '@/app/infra/entities/api';
 import { Button } from '@/components/ui/button';
@@ -52,12 +52,12 @@ export default function AgentCreateContent({
 
   function handleKindChange(nextKind: AgentKind) {
     const previousDefaultEmoji =
-      kind === 'pipeline' ? '⚙️' : kind === 'event_processor' ? '⚡' : '🤖';
+      kind === 'pipeline' ? '⚙️' : kind === 'event_processor' ? '🧩' : '🤖';
     const nextDefaultEmoji =
       nextKind === 'pipeline'
         ? '⚙️'
         : nextKind === 'event_processor'
-          ? '⚡'
+          ? '🧩'
           : '🤖';
     setKind(nextKind);
     const currentEmoji = form.getValues('emoji');
@@ -72,7 +72,13 @@ export default function AgentCreateContent({
         kind,
         name: values.name,
         description: values.description ?? '',
-        emoji: values.emoji || (kind === 'pipeline' ? '⚙️' : '🤖'),
+        emoji:
+          values.emoji ||
+          (kind === 'pipeline'
+            ? '⚙️'
+            : kind === 'event_processor'
+              ? '🧩'
+              : '🤖'),
       })
       .then((resp) => {
         toast.success(t('agents.createSuccess'));
@@ -98,7 +104,7 @@ export default function AgentCreateContent({
     },
     {
       kind: 'event_processor' as const,
-      icon: FileCode2,
+      icon: Puzzle,
       title: t('agents.eventProcessor.type'),
       description: t('agents.eventProcessor.description'),
     },
@@ -107,13 +113,19 @@ export default function AgentCreateContent({
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between pb-4 shrink-0">
-        <h1 className="text-xl font-semibold">{t('agents.create')}</h1>
+        <h1 className="text-xl font-semibold">
+          {t('agents.eventProcessor.createPageTitle')}
+        </h1>
         <Button
           type="submit"
           form="agent-create-form"
           disabled={form.formState.isSubmitting}
         >
-          {t('common.submit')}
+          {t(
+            kind === 'event_processor'
+              ? 'agents.eventProcessor.create'
+              : 'common.submit',
+          )}
         </Button>
       </div>
 

@@ -415,7 +415,7 @@ class AgentService:
             'uuid': new_uuid,
             'name': agent_data.get('name') or 'New Agent',
             'description': agent_data.get('description') or '',
-            'emoji': agent_data.get('emoji') or '🤖',
+            'emoji': agent_data.get('emoji') or ('🧩' if kind == AGENT_KIND_EVENT_PROCESSOR else '🤖'),
             'kind': kind,
             'component_ref': runner_id,
             'config': config,

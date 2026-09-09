@@ -507,6 +507,11 @@ const esES = {
   },
   agents: {
     eventProcessor: {
+      configTab: 'Configuración',
+      logsTab: 'Registros',
+      noSettings: 'Este procesador de plugin no requiere configuración.',
+      createPageTitle: 'Crear procesador de eventos',
+      processWithPlugin: 'Procesar con código del plugin',
       pluginSettings: 'Ajustes del plugin',
       pluginSettingsDescription: 'Parámetros definidos por este plugin.',
       selectToDebug: 'Selecciona un plugin arriba para iniciar la depuración.',
@@ -517,12 +522,14 @@ const esES = {
       debugNotice:
         'El plugin procesa un evento de prueba. Las acciones de plataforma usan Mock y no envían mensajes reales; las demás herramientas se ejecutan según su configuración.',
 
-      type: 'Procesador de eventos',
-      description: 'Procesa eventos con código del plugin.',
-      component: 'Componente del plugin',
-      selectComponent: 'Seleccionar un procesador',
+      create: 'Crear procesador de plugin',
+      type: 'Procesador de plugin',
+      description:
+        'Procesa eventos con código y lógica definidos por un plugin.',
+      component: 'Procesador de plugin',
+      selectComponent: 'Seleccionar un procesador de plugin',
       unavailable: 'Componente no disponible',
-      noComponents: 'No hay componentes de eventos instalados.',
+      noComponents: 'No hay plugins instalados que proporcionen procesadores.',
       installPlugin: 'Instalar un plugin',
       loadError: 'No se pudieron cargar los detalles.',
       refresh: 'Actualizar',
@@ -593,7 +600,7 @@ const esES = {
     groupByKind: 'Agrupar por tipo',
     groupByKindShort: 'Agrupar',
     pipelineTypeDescription:
-      'El flujo clásico de «recibir un mensaje, consultar a la IA y responder al usuario», con opciones de configuración habituales. Solo procesa eventos de mensaje y es ideal para procesos claros y predecibles.',
+      'Sigue un flujo fijo: recibir un mensaje, consultar a la IA y responder al usuario, con bases de conocimiento y plugins configurables. Solo procesa eventos de mensaje, para tareas con pasos claros y control del proceso.',
     allEvents: 'Compatible con todos los eventos',
     messageEventsOnly: 'Solo eventos de mensaje',
     basicInfo: 'Información básica',

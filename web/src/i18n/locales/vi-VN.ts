@@ -500,6 +500,11 @@ const viVN = {
   },
   agents: {
     eventProcessor: {
+      configTab: 'Cấu hình',
+      logsTab: 'Nhật ký',
+      noSettings: 'Bộ xử lý plugin này không cần cấu hình.',
+      createPageTitle: 'Tạo bộ xử lý sự kiện',
+      processWithPlugin: 'Xử lý bằng mã plugin',
       pluginSettings: 'Cài đặt plugin',
       pluginSettingsDescription: 'Tham số do plugin này khai báo.',
       selectToDebug: 'Chọn plugin ở trên để bắt đầu gỡ lỗi.',
@@ -510,12 +515,13 @@ const viVN = {
       debugNotice:
         'Plugin xử lý sự kiện kiểm thử. Hành động nền tảng dùng Mock và không gửi tin nhắn thật; các công cụ khác chạy theo cấu hình.',
 
-      type: 'Bộ xử lý sự kiện',
-      description: 'Xử lý sự kiện bằng mã plugin.',
-      component: 'Thành phần plugin',
-      selectComponent: 'Chọn bộ xử lý sự kiện',
+      create: 'Tạo bộ xử lý plugin',
+      type: 'Bộ xử lý plugin',
+      description: 'Xử lý sự kiện bằng mã và logic do plugin cung cấp.',
+      component: 'Bộ xử lý plugin',
+      selectComponent: 'Chọn bộ xử lý plugin',
       unavailable: 'Thành phần không khả dụng',
-      noComponents: 'Chưa cài thành phần xử lý sự kiện.',
+      noComponents: 'Chưa cài plugin cung cấp bộ xử lý.',
       installPlugin: 'Cài plugin',
       loadError: 'Không thể tải chi tiết.',
       refresh: 'Làm mới',
@@ -584,7 +590,7 @@ const viVN = {
     groupByKind: 'Nhóm theo loại',
     groupByKindShort: 'Nhóm',
     pipelineTypeDescription:
-      'Quy trình quen thuộc “nhận tin nhắn, hỏi AI, trả lời người dùng” cùng các tùy chọn cấu hình thông dụng. Chỉ xử lý sự kiện tin nhắn và phù hợp với các quy trình rõ ràng, dễ dự đoán.',
+      'Chạy theo quy trình cố định: nhận tin nhắn, gọi AI và trả lời người dùng, với cơ sở tri thức và plugin có thể cấu hình. Chỉ xử lý sự kiện tin nhắn, phù hợp với tác vụ có các bước rõ ràng và cần kiểm soát quá trình xử lý.',
     allEvents: 'Hỗ trợ tất cả sự kiện',
     messageEventsOnly: 'Chỉ sự kiện tin nhắn',
     basicInfo: 'Thông tin cơ bản',

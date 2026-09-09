@@ -717,6 +717,11 @@ const jaJP = {
   },
   agents: {
     eventProcessor: {
+      configTab: '設定',
+      logsTab: 'ログ',
+      noSettings: 'このプラグインプロセッサーに設定項目はありません。',
+      createPageTitle: 'イベントプロセッサーを作成',
+      processWithPlugin: 'プラグインコードで処理',
       pluginSettings: 'プラグイン設定',
       pluginSettingsDescription: 'このプラグインが定義するパラメーターです。',
       selectToDebug: '上でプラグインを選択してデバッグを開始してください。',
@@ -727,12 +732,15 @@ const jaJP = {
       debugNotice:
         'プラグインはテストイベントを実際に処理します。返信や送信などは Mock を使用し、実際のメッセージは送信しません。他のツールは設定どおりに実行されます。',
 
-      type: 'イベントプロセッサー',
-      description: 'プラグインのコードでイベントを処理します。',
-      component: 'プラグインコンポーネント',
-      selectComponent: 'イベントプロセッサーを選択',
+      create: 'プラグインプロセッサーを作成',
+      type: 'プラグインプロセッサー',
+      description:
+        'プラグインが提供するコードと処理ロジックでイベントを処理します。',
+      component: 'プラグインプロセッサー',
+      selectComponent: 'プラグインプロセッサーを選択',
       unavailable: 'コンポーネントを利用できません',
-      noComponents: 'イベントプロセッサーがインストールされていません。',
+      noComponents:
+        'プロセッサーを提供するプラグインがインストールされていません。',
       installPlugin: 'プラグインをインストール',
       loadError: '詳細を読み込めません。',
       refresh: '更新',
@@ -826,7 +834,7 @@ const jaJP = {
     groupByKind: 'タイプ別にグループ化',
     groupByKindShort: 'グループ',
     pipelineTypeDescription:
-      '「メッセージを受信し、AIに問い合わせ、ユーザーへ返信する」という定番のフローに、よく使う設定機能を加えたものです。メッセージイベントのみを処理し、手順が明確で安定した実行が必要な場合に適しています。',
+      '「メッセージ受信、AI呼び出し、ユーザーへの返信」の固定フローで動作し、ナレッジベースやプラグインを設定できます。メッセージイベントのみを処理し、手順が明確で処理の制御が必要な用途に適しています。',
     allEvents: 'すべてのイベントに対応',
     messageEventsOnly: 'メッセージイベントのみ',
     chooseType: '処理方法を選択',

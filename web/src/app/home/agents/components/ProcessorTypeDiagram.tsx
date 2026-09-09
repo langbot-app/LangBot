@@ -373,18 +373,38 @@ function PipelineDiagram() {
   );
 }
 
-export default function ProcessorTypeDiagram({ kind }: { kind: AgentKind }) {
+function EventProcessorDiagram() {
   const { t } = useTranslation();
-  if (kind === 'event_processor')
-    return (
-      <div className="flex h-full flex-col justify-center gap-6 rounded-xl border bg-muted/20 p-8">
+  const codeLines = [
+    <>
+      <span className="text-[#8b5cf6]">@handler</span>
+    </>,
+    <>
+      <span className="text-[#2288ee]">async def</span>{' '}
+      <span className="text-[#19b8c9]">on_event</span>(event):
+    </>,
+    <>
+      <span className="text-[#2288ee]">if</span> event.type =={' '}
+      <span className="text-amber-500">&quot;message&quot;</span>:
+    </>,
+    <>
+      <span className="text-[#2288ee]">await</span> event.process()
+    </>,
+    <>
+      <span className="text-muted-foreground"># output → trace</span>
+    </>,
+  ];
+
+  return (
+    <div
+      className="processor-diagram grid h-full w-full overflow-hidden bg-muted/20 lg:grid-cols-[minmax(0,1.05fr)_minmax(280px,0.95fr)]"
+      data-testid="event-processor-diagram"
+    >
+      <div className="flex min-w-0 flex-col justify-center gap-5 p-8 lg:p-10">
         <h3 className="text-lg font-semibold">
           {t('agents.eventProcessor.type')}
         </h3>
-        <p className="text-sm text-muted-foreground">
-          {t('agents.eventProcessor.description')}
-        </p>
-        {['input', 'component', 'trace'].map((step, index) => (
+        {['input', 'processWithPlugin', 'trace'].map((step, index) => (
           <div
             key={step}
             className="flex items-center gap-3 rounded-lg border bg-background p-4"
@@ -393,10 +413,52 @@ export default function ProcessorTypeDiagram({ kind }: { kind: AgentKind }) {
             <span>{t(`agents.eventProcessor.${step}`)}</span>
           </div>
         ))}
-        <p className="text-sm text-muted-foreground">
-          {t('agents.eventProcessor.activation')}
-        </p>
       </div>
-    );
+
+      <div
+        className="relative hidden min-w-0 items-center border-l bg-background/45 p-8 lg:flex"
+        aria-hidden="true"
+      >
+        <div className="absolute left-0 top-1/2 w-8 -translate-y-1/2 border-t border-dashed border-[#2288ee]/25" />
+
+        <div className="relative w-full rounded-xl border bg-card">
+          <div className="flex h-11 items-center gap-2 border-b px-4">
+            <span className="font-mono text-[11px] text-muted-foreground">
+              processor.py
+            </span>
+          </div>
+
+          <div className="space-y-3 px-4 py-5 font-mono text-[12px] leading-5">
+            {codeLines.map((line, index) => (
+              <div key={index} className="flex min-w-0 gap-3">
+                <span className="w-4 shrink-0 select-none text-right text-muted-foreground/45">
+                  {index + 1}
+                </span>
+                <code
+                  className={
+                    index === 2 || index === 3
+                      ? 'min-w-0 pl-3 text-foreground/80'
+                      : 'min-w-0 text-foreground/80'
+                  }
+                >
+                  {line}
+                </code>
+              </div>
+            ))}
+          </div>
+
+          <div className="mx-4 mb-4 border-t pt-3">
+            <span className="font-mono text-[11px] text-muted-foreground">
+              event → plugin → log
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function ProcessorTypeDiagram({ kind }: { kind: AgentKind }) {
+  if (kind === 'event_processor') return <EventProcessorDiagram />;
   return kind === 'agent' ? <AgentDiagram /> : <PipelineDiagram />;
 }

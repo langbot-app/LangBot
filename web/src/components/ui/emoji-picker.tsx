@@ -17,6 +17,7 @@ interface EmojiPickerProps {
 const EMOJI_CATEGORIES = {
   common: [
     '⚙️',
+    '🧩',
     '📚',
     '🔗',
     '📁',

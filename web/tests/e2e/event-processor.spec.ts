@@ -217,12 +217,14 @@ test('create first, select a plugin in the header, debug beside scrollable logs'
   await page.goto('/home/agents?id=new');
   await page.locator('[data-processor-kind="event_processor"]').click();
   await expect(
-    page.getByRole('combobox', { name: 'Plugin component' }),
+    page.getByRole('combobox', { name: 'Plugin processor' }),
   ).toHaveCount(0);
   await page
     .getByRole('textbox', { name: 'Name', exact: false })
     .fill('Welcome processor');
-  await page.getByRole('button', { name: 'Submit', exact: true }).click();
+  await page
+    .getByRole('button', { name: 'Create plugin processor', exact: true })
+    .click();
   await expect(page).toHaveURL(/id=processor-qa/);
   expect(creations).toHaveLength(1);
   expect(creations[0]).toMatchObject({
@@ -232,30 +234,42 @@ test('create first, select a plugin in the header, debug beside scrollable logs'
   expect(creations[0]).not.toHaveProperty('component_ref');
   expect(creations[0]).not.toHaveProperty('config');
   const panel = page.getByRole('region', { name: 'Event Debug' });
-  const logs = page.getByRole('region', { name: 'Logs and message flow' });
+  const logs = page.getByRole('region', { name: 'Plugin processor' });
   await expect(panel).toBeVisible();
   await expect(logs).toBeVisible();
-  await expect(page.getByRole('tab')).toHaveCount(0);
+  await expect(logs.getByRole('tab')).toHaveCount(2);
+  await expect(
+    logs.getByRole('tab', { name: 'Configuration', exact: true }),
+  ).toHaveAttribute('data-state', 'active');
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(panel.getByRole('button', { name: 'Run test' })).toHaveCount(0);
-  await page.getByRole('combobox', { name: 'Plugin component' }).click();
+  await page.getByRole('combobox', { name: 'Plugin processor' }).click();
   await page.getByRole('option').filter({ hasText: 'Welcome' }).click();
   await expect(
     panel.getByRole('combobox', { name: 'Event type' }),
   ).toContainText('group.member_joined');
-  await expect(page.getByText('Greeting', { exact: true })).toHaveCount(0);
-  await page
-    .getByRole('button', { name: 'Plugin settings', exact: true })
-    .click();
-  const settings = page.locator('[data-slot="popover-content"]');
+  const settings = logs.getByRole('tabpanel', {
+    name: 'Configuration',
+    exact: true,
+  });
+  await expect(settings.getByText('Greeting *', { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Plugin settings', exact: true }),
+  ).toHaveCount(0);
   await settings.getByRole('textbox').fill('Welcome');
-  await page.keyboard.press('Escape');
+  await logs.getByRole('tab', { name: 'Logs', exact: true }).click();
+  await expect(settings).toBeHidden();
+  await logs.getByRole('tab', { name: 'Configuration', exact: true }).click();
+  await expect(settings.getByRole('textbox')).toHaveValue('Welcome');
   await panel
     .getByRole('textbox', { name: 'Member ID' })
     .fill('debug-member-42');
   await panel.getByRole('button', { name: 'Save and run' }).click();
   await expect(panel.getByText('Debug handler invoked once')).toBeVisible();
   expect(operations).toEqual(['save', 'debug']);
+  await expect(
+    logs.getByRole('tab', { name: 'Logs', exact: true }),
+  ).toHaveAttribute('data-state', 'active');
   expect(debugRequests).toHaveLength(1);
   expect(debugRequests[0]).toMatchObject({
     event_type: 'group.member_joined',
