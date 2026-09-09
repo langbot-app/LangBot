@@ -90,7 +90,7 @@ class LangflowAPIRunner(runner.RequestRunner):
         }
 
         # 如果配置中有tweaks，则添加到负载中
-        tweaks = json.loads(self.pipeline_config['ai']['langflow-api'].get('tweaks'))
+        tweaks = json.loads(self.pipeline_config['ai']['langflow-api'].get('tweaks') or '{}')
         if tweaks:
             payload['tweaks'] = tweaks
 
