@@ -108,7 +108,7 @@ function StatusDisplay({
       <div className="space-y-1">
         <div className="flex items-center gap-2 text-red-600">
           <XCircle className="size-5" />
-          <span className="font-medium">{t('mcp.connectionFailed')}</span>
+          <span className="font-medium">{t('mcp.connectionFailedStatus')}</span>
         </div>
         <div className="pl-7 text-sm text-red-500 space-y-0.5">
           <div>
@@ -140,15 +140,25 @@ function StatusDisplay({
     );
   }
 
+  const httpStatus = runtimeInfo.error_code?.match(/^http_(\d{3})$/)?.[1];
+  const errorDetail =
+    runtimeInfo.error_code === 'connection_unreachable'
+      ? t('mcp.connectionUnreachable')
+      : runtimeInfo.error_code === 'connection_timeout'
+        ? t('mcp.connectionTimeout')
+        : httpStatus
+          ? t('mcp.connectionHttpError', { status: httpStatus })
+          : runtimeInfo.error_message || t('mcp.unknownError');
+
   return (
     <div className="space-y-1">
       <div className="flex items-center gap-2 text-red-600">
         <XCircle className="size-5" />
-        <span className="font-medium">{t('mcp.connectionFailed')}</span>
+        <span className="font-medium">{t('mcp.connectionFailedStatus')}</span>
       </div>
-      {runtimeInfo.error_message && (
-        <div className="pl-7 text-sm text-red-500">
-          {runtimeInfo.error_message}
+      {errorDetail && (
+        <div className="pl-7 whitespace-pre-wrap break-words text-sm text-muted-foreground">
+          {errorDetail}
         </div>
       )}
     </div>
@@ -858,15 +868,31 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
   async function testMcp() {
     setMcpTesting(true);
 
+    const showConnectionFailure = (
+      message: string,
+      info?: MCPServerRuntimeInfo,
+    ) => {
+      toast.error(t('mcp.connectionFailedStatus'));
+      setRuntimeInfo({
+        tool_count: 0,
+        tools: [],
+        resource_count: 0,
+        resources: [],
+        ...info,
+        status: MCPSessionStatus.ERROR,
+        error_message: info?.error_message || message,
+      });
+    };
+
     try {
       const mode = form.getValues('mode');
       if (mode === 'stdio' && !mcpStdioEnabled) {
-        toast.error(t('mcp.stdioDisabledByPolicy'));
+        showConnectionFailure(t('mcp.stdioDisabledByPolicy'));
         setMcpTesting(false);
         return;
       }
       if (mode === 'stdio' && !boxAvailable) {
-        toast.error(t('mcp.stdioBlockedByBoxToast'));
+        showConnectionFailure(t('mcp.stdioBlockedByBoxToast'));
         setMcpTesting(false);
         return;
       }
@@ -937,19 +963,9 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
             if (taskResp.runtime.exception) {
               const errorMsg =
                 taskResp.runtime.exception || t('mcp.unknownError');
-              toast.error(`${t('mcp.testError')}: ${errorMsg}`);
               const runtimeInfoFromTest = taskResp.task_context?.metadata
                 ?.runtime_info as MCPServerRuntimeInfo | undefined;
-              setRuntimeInfo(
-                runtimeInfoFromTest ?? {
-                  status: MCPSessionStatus.ERROR,
-                  error_message: errorMsg,
-                  tool_count: 0,
-                  tools: [],
-                  resource_count: 0,
-                  resources: [],
-                },
-              );
+              showConnectionFailure(errorMsg, runtimeInfoFromTest);
               if (shouldTestPersistedServer) {
                 await onPersistedTestComplete?.(serverName);
               }
@@ -976,14 +992,19 @@ const MCPForm = forwardRef<MCPFormHandle, MCPFormProps>(function MCPForm(
           clearInterval(interval);
           setMcpTesting(false);
           const errorMsg =
-            (err as CustomApiError).msg || t('mcp.getTaskFailed');
-          toast.error(`${t('mcp.testError')}: ${errorMsg}`);
+            (err as CustomApiError).msg ||
+            (err as Error).message ||
+            t('mcp.getTaskFailed');
+          showConnectionFailure(errorMsg);
         }
       }, 1000);
     } catch (err) {
       setMcpTesting(false);
-      const errorMsg = (err as Error).message || t('mcp.unknownError');
-      toast.error(`${t('mcp.testError')}: ${errorMsg}`);
+      const errorMsg =
+        (err as CustomApiError).msg ||
+        (err as Error).message ||
+        t('mcp.unknownError');
+      showConnectionFailure(errorMsg);
     }
   }
 

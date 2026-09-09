@@ -830,6 +830,12 @@ const jaJP = {
     connectionSuccess: '接続に成功しました',
     connectionFailed: '接続に失敗しました，URLを確認してください',
     connectionFailedStatus: '接続失敗',
+    connectionUnreachable:
+      'MCP サーバーに接続できません。起動状態とネットワークを確認してください。',
+    connectionTimeout:
+      'MCP サーバーの応答がタイムアウトしました。サービスを確認するか、待機時間を延長してください。',
+    connectionHttpError:
+      'MCP サーバーが HTTP {{status}} を返しました。アクセス要件とサーバーログを確認してください。',
     oauthAuthorizationRequired: 'OAuth 認可が必要です',
     oauthAuthorizationRequiredSuggestion:
       'この MCP サーバーには OAuth ログインが必要です。現在は OAuth ログインに対応していません。サーバーが許可している場合は、Authorization ヘッダーを手動で追加してください。',

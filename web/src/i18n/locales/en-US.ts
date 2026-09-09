@@ -824,6 +824,12 @@ const enUS = {
     connectionSuccess: 'Connection successful',
     connectionFailed: 'Connection failed, please check URL',
     connectionFailedStatus: 'Connection Failed',
+    connectionUnreachable:
+      'Cannot reach the MCP server. Check that it is running and accessible.',
+    connectionTimeout:
+      'The MCP server did not respond in time. Check the service or increase the timeout.',
+    connectionHttpError:
+      'The MCP server returned HTTP {{status}}. Check its access requirements and server logs.',
     oauthAuthorizationRequired: 'OAuth authorization required',
     oauthAuthorizationRequiredSuggestion:
       'This MCP server requires OAuth sign-in. OAuth sign-in is not available yet; add an Authorization header manually if the server supports it.',

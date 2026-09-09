@@ -273,6 +273,7 @@ class RuntimeMCPSession:
     _ready_event: asyncio.Event
 
     error_message: str | None = None
+    _public_error_code: str = 'runtime_error'
 
     error_phase: MCPSessionErrorPhase | None = None
 
@@ -645,6 +646,7 @@ class RuntimeMCPSession:
         except Exception as e:
             self.status = MCPSessionStatus.ERROR
             self.error_message = str(e)
+            self._public_error_code = self._classify_public_error(e)
             self.ap.logger.error(f'Error in MCP session lifecycle {self.server_name}: {e}\n{traceback.format_exc()}')
             # Do NOT set _ready_event here — let _lifecycle_loop_with_retry
             # handle retries first. It will set the event when all retries
@@ -851,6 +853,18 @@ class RuntimeMCPSession:
                 yield from RuntimeMCPSession._iter_exception_leaves(child)
         else:
             yield exc
+
+    @staticmethod
+    def _classify_public_error(exc: BaseException) -> str:
+        """Expose a safe category without transport URLs, headers, or arguments."""
+        for leaf in RuntimeMCPSession._iter_exception_leaves(exc):
+            if isinstance(leaf, httpx.HTTPStatusError):
+                return f'http_{leaf.response.status_code}'
+            if isinstance(leaf, (httpx.TimeoutException, TimeoutError)):
+                return 'connection_timeout'
+            if isinstance(leaf, httpx.ConnectError):
+                return 'connection_unreachable'
+        return 'runtime_error'
 
     @staticmethod
     def _extract_oauth_challenge(exc: BaseException) -> MCPOAuthChallenge | None:
@@ -1415,7 +1429,7 @@ class RuntimeMCPSession:
             # environment values. Detailed diagnostics belong in AUDIT_VIEW
             # logs; resource-list responses expose only a stable status.
             'error_message': 'MCP runtime failed' if self.error_message else None,
-            'error_code': 'runtime_error' if self.error_message else None,
+            'error_code': self._public_error_code if self.error_message else None,
             'error_phase': self.error_phase.value if self.error_phase else None,
             'retry_count': self.retry_count,
             'tool_count': len(self.get_tools()),

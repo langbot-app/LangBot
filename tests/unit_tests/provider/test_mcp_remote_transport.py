@@ -361,3 +361,25 @@ async def test_remote_transport_external_cancellation_is_not_converted_to_sse_fa
         finally:
             probe.release_streamable_request.set()
             await _close_session(session)
+
+
+@pytest.mark.parametrize(
+    ('error', 'expected'),
+    [
+        (httpx.ConnectError('secret host'), 'connection_unreachable'),
+        (httpx.ReadTimeout('secret URL'), 'connection_timeout'),
+        (TimeoutError('secret command'), 'connection_timeout'),
+        (RuntimeError('secret environment'), 'runtime_error'),
+        (
+            httpx.HTTPStatusError(
+                'secret response',
+                request=httpx.Request('POST', 'https://example.test/?token=secret'),
+                response=httpx.Response(403),
+            ),
+            'http_403',
+        ),
+    ],
+)
+def test_public_error_category_does_not_expose_exception_details(error, expected):
+    grouped = ExceptionGroup('secret outer exception', [error])
+    assert RuntimeMCPSession._classify_public_error(grouped) == expected
