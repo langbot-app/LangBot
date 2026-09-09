@@ -682,8 +682,8 @@ class MatrixAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 lines.append(f'[{bridge.user_id}] 跳过（未配置登录命令或无DM房间）')
                 continue
 
-                # Use configured logout command, fallback to deriving from login command
-                logout_cmd = bridge.logout_command or bridge.login_command.replace('login', 'logout')
+            # Use configured logout command, fallback to deriving from login command
+            logout_cmd = bridge.logout_command or bridge.login_command.replace('login', 'logout')
             lines.append(f'[{bridge.user_id}] 发送 "{logout_cmd}"...')
 
             # Cancel existing tasks
