@@ -3,6 +3,7 @@ import quart
 from ....authz import Permission, has_permission
 from ....context import RequestContext
 from ... import group
+from .query import resolve_include_secret
 
 
 @group.group_class('models/providers', '/api/v1/provider/providers')
@@ -15,9 +16,15 @@ class ModelProvidersRouterGroup(group.RouterGroup):
             permission=Permission.RESOURCE_VIEW,
         )
         async def _(request_context: RequestContext) -> str:
+            include_secret, error = resolve_include_secret(
+                quart.request.args.get('include_secret'),
+                permitted=has_permission(request_context, Permission.PROVIDER_SECRET_MANAGE),
+            )
+            if error:
+                return self.http_status(400, -1, error)
             providers = await self.ap.provider_service.get_providers(
                 request_context,
-                include_secret=has_permission(request_context, Permission.PROVIDER_SECRET_MANAGE),
+                include_secret=include_secret,
             )
             for provider in providers:
                 counts = await self.ap.provider_service.get_provider_model_counts(request_context, provider['uuid'])
@@ -47,10 +54,16 @@ class ModelProvidersRouterGroup(group.RouterGroup):
             permission=Permission.RESOURCE_VIEW,
         )
         async def _(provider_uuid: str, request_context: RequestContext) -> str:
+            include_secret, error = resolve_include_secret(
+                quart.request.args.get('include_secret'),
+                permitted=has_permission(request_context, Permission.PROVIDER_SECRET_MANAGE),
+            )
+            if error:
+                return self.http_status(400, -1, error)
             provider = await self.ap.provider_service.get_provider(
                 request_context,
                 provider_uuid,
-                include_secret=has_permission(request_context, Permission.PROVIDER_SECRET_MANAGE),
+                include_secret=include_secret,
             )
             if provider is None:
                 return self.http_status(404, -1, 'provider not found')
