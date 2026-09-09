@@ -375,6 +375,7 @@ class TestTaskWrapper:
         try:
             await wrapper.task
         except ValueError:
+            # Expected failure: task must complete in failed state for public serialization checks.
             pass
 
         result = wrapper.to_public_dict()
