@@ -7,9 +7,91 @@ from .. import group
 from .....utils import constants
 from .....entity.persistence.metadata import WorkspaceMetadata
 from ...authz import Permission
-from ...context import RequestContext
+from ...context import PrincipalType, RequestContext
 from .....provider.tools.loaders.mcp_policy import stdio_mcp_enabled
 from .....workspace.invitation_delivery import InvitationDeliveryService
+
+
+SYSTEM_CAPABILITY_OPERATIONS = (
+    'bot.list',
+    'bot.get',
+    'bot.create',
+    'bot.update',
+    'bot.delete',
+    'pipeline.list',
+    'pipeline.get',
+    'pipeline.create',
+    'pipeline.update',
+    'pipeline.delete',
+    'pipeline.copy',
+    'task.list',
+    'task.get',
+    'knowledge_base.list',
+    'knowledge_base.get',
+    'knowledge_base.create',
+    'knowledge_base.update',
+    'knowledge_base.delete',
+    'knowledge_base.file.list',
+    'knowledge_base.file.store',
+    'knowledge_base.file.delete',
+    'knowledge_base.retrieve',
+    'file.document.upload',
+    'plugin.install.github',
+    'plugin.install.marketplace',
+    'plugin.install.local',
+    'plugin.upgrade',
+    'plugin.get',
+    'plugin.list',
+    'plugin.config.get',
+    'plugin.config.update',
+    'plugin.logs',
+    'plugin.delete',
+    'provider.list',
+    'provider.get',
+    'provider.create',
+    'provider.update',
+    'provider.delete',
+    'provider.scan_models',
+    'model.llm.list',
+    'model.llm.get',
+    'model.llm.create',
+    'model.llm.update',
+    'model.llm.delete',
+    'model.llm.test',
+    'model.embedding.list',
+    'model.embedding.get',
+    'model.embedding.create',
+    'model.embedding.update',
+    'model.embedding.delete',
+    'model.embedding.test',
+    'model.rerank.list',
+    'model.rerank.get',
+    'model.rerank.create',
+    'model.rerank.update',
+    'model.rerank.delete',
+    'model.rerank.test',
+    'skill.list',
+    'skill.get',
+    'skill.create',
+    'skill.update',
+    'skill.delete',
+    'skill.files.list',
+    'skill.files.read',
+    'skill.files.write',
+    'skill.preview',
+    'skill.install.github',
+    'skill.install.upload',
+    'mcp_server.list',
+    'mcp_server.get',
+    'mcp_server.create',
+    'mcp_server.update',
+    'mcp_server.delete',
+    'mcp_server.resources',
+    'mcp_server.resource_templates',
+    'mcp_server.resource_read',
+    'mcp_server.logs',
+    'mcp_server.test',
+)
 
 
 @group.group_class('system', '/api/v1/system')
@@ -23,6 +105,15 @@ class SystemRouterGroup(group.RouterGroup):
                     'workspace_uuid': request_context.workspace_uuid,
                     'api_key_id': request_context.principal.api_key_uuid,
                     'permissions': sorted(request_context.workspace.permissions),
+                }
+            )
+
+        @self.route('/capabilities', methods=['GET'], auth_type=group.AuthType.API_KEY)
+        async def _() -> str:
+            return self.success(
+                data={
+                    'schema_version': 1,
+                    'operations': {operation: {'supported': True} for operation in SYSTEM_CAPABILITY_OPERATIONS},
                 }
             )
 
@@ -234,7 +325,7 @@ class SystemRouterGroup(group.RouterGroup):
         @self.route(
             '/tasks',
             methods=['GET'],
-            auth_type=group.AuthType.USER_TOKEN,
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
             permission=Permission.RESOURCE_VIEW,
         )
         async def _(request_context: RequestContext) -> str:
@@ -253,18 +344,23 @@ class SystemRouterGroup(group.RouterGroup):
                     instance_uuid=request_context.instance_uuid,
                     workspace_uuid=request_context.workspace_uuid,
                     placement_generation=request_context.placement_generation,
+                    public=request_context.principal.principal_type == PrincipalType.API_KEY,
                 )
             )
 
         @self.route(
             '/tasks/<task_id>',
             methods=['GET'],
-            auth_type=group.AuthType.USER_TOKEN,
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
             permission=Permission.RESOURCE_VIEW,
         )
         async def _(task_id: str, request_context: RequestContext) -> str:
+            try:
+                task_index = int(task_id)
+            except (TypeError, ValueError):
+                return self.http_status(404, 404, 'Task not found')
             task = self.ap.task_mgr.get_task_by_id(
-                int(task_id),
+                task_index,
                 instance_uuid=request_context.instance_uuid,
                 workspace_uuid=request_context.workspace_uuid,
                 placement_generation=request_context.placement_generation,
@@ -273,6 +369,8 @@ class SystemRouterGroup(group.RouterGroup):
             if task is None:
                 return self.http_status(404, 404, 'Task not found')
 
+            if request_context.principal.principal_type == PrincipalType.API_KEY:
+                return self.success(data=task.to_public_dict())
             return self.success(data=task.to_dict())
 
         @self.route(

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import typing
 import datetime
 import time
@@ -197,6 +198,41 @@ class TaskWrapper:
             },
         }
 
+    def to_public_dict(self) -> dict:
+        """Return the stable task projection exposed to API-key callers."""
+        if self.task.cancelled():
+            status = 'cancelled'
+            error = {'type': 'task_cancelled', 'message': 'Task was cancelled'}
+            result = None
+        elif not self.task.done():
+            status = 'running'
+            error = None
+            result = None
+        else:
+            exception = self.assume_exception()
+            if exception is not None:
+                status = 'failed'
+                error = {'type': 'task_failed', 'message': 'Task execution failed'}
+                result = None
+            else:
+                status = 'succeeded'
+                error = None
+                result = self.assume_result()
+                try:
+                    json.dumps(result)
+                except (TypeError, ValueError):
+                    result = None
+
+        return {
+            'id': self.id,
+            'task_type': self.task_type,
+            'kind': self.kind,
+            'status': status,
+            'error': error,
+            'result': result,
+            'created_at': self.created_at,
+        }
+
     def cancel(self):
         self.task.cancel()
 
@@ -325,19 +361,20 @@ class AsyncTaskManager:
         instance_uuid: str | None = None,
         workspace_uuid: str | None = None,
         placement_generation: int | None = None,
+        public: bool = False,
     ) -> dict:
-        return {
-            'tasks': [
-                t.to_dict()
-                for t in self.tasks
-                if (type is None or t.task_type == type)
-                and (kind is None or t.kind == kind)
-                and (instance_uuid is None or t.instance_uuid == instance_uuid)
-                and (workspace_uuid is None or t.workspace_uuid == workspace_uuid)
-                and (placement_generation is None or t.placement_generation == placement_generation)
-            ],
-            'id_index': TaskWrapper._id_index,
-        }
+        tasks = [
+            t.to_public_dict() if public else t.to_dict()
+            for t in self.tasks
+            if (type is None or t.task_type == type)
+            and (kind is None or t.kind == kind)
+            and (instance_uuid is None or t.instance_uuid == instance_uuid)
+            and (workspace_uuid is None or t.workspace_uuid == workspace_uuid)
+            and (placement_generation is None or t.placement_generation == placement_generation)
+        ]
+        if public:
+            return {'tasks': tasks}
+        return {'tasks': tasks, 'id_index': TaskWrapper._id_index}
 
     def get_stats(self) -> dict:
         completed = sum(1 for t in self.tasks if t.task.done())

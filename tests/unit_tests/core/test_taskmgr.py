@@ -339,6 +339,70 @@ class TestTaskWrapper:
         assert 'exception_traceback' in result['runtime']
 
     @pytest.mark.asyncio
+    async def test_public_dict_has_stable_success_projection(self):
+        _, TaskWrapper, _ = get_taskmgr_classes()
+        mock_app = create_mock_app()
+
+        async def successful_coro():
+            return {'file_id': 'file-a'}
+
+        wrapper = TaskWrapper(mock_app, successful_coro(), kind='knowledge_base.store')
+        await wrapper.task
+
+        result = wrapper.to_public_dict()
+
+        assert result == {
+            'id': wrapper.id,
+            'task_type': 'system',
+            'kind': 'knowledge_base.store',
+            'status': 'succeeded',
+            'error': None,
+            'result': {'file_id': 'file-a'},
+            'created_at': result['created_at'],
+        }
+        assert 'runtime' not in result
+        assert 'traceback' not in str(result).lower()
+
+    @pytest.mark.asyncio
+    async def test_public_dict_hides_exception_traceback(self):
+        _, TaskWrapper, _ = get_taskmgr_classes()
+        mock_app = create_mock_app()
+
+        async def failing_coro():
+            raise ValueError('private failure')
+
+        wrapper = TaskWrapper(mock_app, failing_coro())
+        try:
+            await wrapper.task
+        except ValueError:
+            # Expected failure: task must complete in failed state for public serialization checks.
+            pass
+
+        result = wrapper.to_public_dict()
+
+        assert result['status'] == 'failed'
+        assert result['error'] == {'type': 'task_failed', 'message': 'Task execution failed'}
+        assert 'runtime' not in result
+        assert 'traceback' not in str(result).lower()
+
+    @pytest.mark.asyncio
+    async def test_public_dict_does_not_change_success_when_result_is_not_json_serializable(self):
+        _, TaskWrapper, _ = get_taskmgr_classes()
+        mock_app = create_mock_app()
+
+        async def successful_coro():
+            return object()
+
+        wrapper = TaskWrapper(mock_app, successful_coro())
+        await wrapper.task
+
+        result = wrapper.to_public_dict()
+
+        assert result['status'] == 'succeeded'
+        assert result['error'] is None
+        assert result['result'] is None
+
+    @pytest.mark.asyncio
     async def test_cancel_task(self):
         """Test cancel method cancels the asyncio task."""
         _, TaskWrapper, _ = get_taskmgr_classes()
@@ -486,6 +550,66 @@ class TestAsyncTaskManager:
         w1.cancel()
         w2.cancel()
         w3.cancel()
+
+    @pytest.mark.asyncio
+    async def test_public_task_queries_keep_workspace_and_generation_isolation(self):
+        _, _, AsyncTaskManager = get_taskmgr_classes()
+        mock_app = create_mock_app()
+        manager = AsyncTaskManager(mock_app)
+
+        async def dummy_coro():
+            await asyncio.sleep(10)
+
+        current = manager.create_user_task(
+            dummy_coro(),
+            instance_uuid='instance-a',
+            workspace_uuid='workspace-a',
+            placement_generation=2,
+        )
+        other_workspace = manager.create_user_task(
+            dummy_coro(),
+            instance_uuid='instance-a',
+            workspace_uuid='workspace-b',
+            placement_generation=2,
+        )
+        stale_generation = manager.create_user_task(
+            dummy_coro(),
+            instance_uuid='instance-a',
+            workspace_uuid='workspace-a',
+            placement_generation=1,
+        )
+
+        result = manager.get_tasks_dict(
+            instance_uuid='instance-a',
+            workspace_uuid='workspace-a',
+            placement_generation=2,
+            public=True,
+        )
+
+        assert [task['id'] for task in result['tasks']] == [current.id]
+        assert 'id_index' not in result
+        assert (
+            manager.get_task_by_id(
+                other_workspace.id,
+                instance_uuid='instance-a',
+                workspace_uuid='workspace-a',
+                placement_generation=2,
+            )
+            is None
+        )
+        assert (
+            manager.get_task_by_id(
+                stale_generation.id,
+                instance_uuid='instance-a',
+                workspace_uuid='workspace-a',
+                placement_generation=2,
+            )
+            is None
+        )
+
+        current.cancel()
+        other_workspace.cancel()
+        stale_generation.cancel()
 
     @pytest.mark.asyncio
     async def test_cancel_by_scope(self):
