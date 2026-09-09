@@ -837,6 +837,14 @@ const zhHans = {
     connectionSuccess: '连接成功',
     connectionFailed: '连接失败，请检查URL',
     connectionFailedStatus: '连接失败',
+    connectionUnreachable:
+      '无法连接到 MCP 服务器，请确认服务已启动且网络可达。',
+    connectionTimeout: 'MCP 服务器响应超时，请检查服务状态或增加超时时间。',
+    connectionHttpError:
+      'MCP 服务器返回 HTTP {{status}}，请检查访问要求和服务器日志。',
+    oauthAuthorizationRequired: '需要 OAuth 授权',
+    oauthAuthorizationRequiredSuggestion:
+      '此 MCP 服务器需要 OAuth 登录。当前尚不支持 OAuth 登录；如果服务器允许，可以手动添加 Authorization 请求头。',
     boxDisabledStdioRefused:
       'Stdio 模式的 MCP 服务器依赖 Box 沙箱，目前已在配置中禁用（box.enabled = false）。',
     boxUnavailableStdioRefused:

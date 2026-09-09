@@ -446,15 +446,19 @@ class MCPService:
             persisted_session = runtime_mcp_session
 
             async def _refresh_and_report() -> None:
-                needs_start = persisted_session.status == MCPSessionStatus.ERROR or persisted_session.session is None
-                if needs_start:
-                    await persisted_session.start()
-                else:
-                    try:
-                        await persisted_session.refresh()
-                    except Exception:
+                try:
+                    needs_start = (
+                        persisted_session.status == MCPSessionStatus.ERROR or persisted_session.session is None
+                    )
+                    if needs_start:
                         await persisted_session.start()
-                ctx.metadata['runtime_info'] = persisted_session.get_runtime_info_dict()
+                    else:
+                        try:
+                            await persisted_session.refresh()
+                        except Exception:
+                            await persisted_session.start()
+                finally:
+                    ctx.metadata['runtime_info'] = persisted_session.get_runtime_info_dict()
 
             coroutine = _refresh_and_report()
         else:
@@ -471,8 +475,11 @@ class MCPService:
             async def _run_and_cleanup() -> None:
                 try:
                     await test_session.start()
-                    ctx.metadata['runtime_info'] = test_session.get_runtime_info_dict()
                 finally:
+                    # start() raises for a failed connection. Preserve the
+                    # terminal runtime state so the UI can render actionable
+                    # failure phases such as OAuth-required.
+                    ctx.metadata['runtime_info'] = test_session.get_runtime_info_dict()
                     try:
                         await test_session.shutdown()
                     except Exception as exc:

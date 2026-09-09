@@ -892,6 +892,15 @@ const esES = {
     connectionSuccess: 'Conexión exitosa',
     connectionFailed: 'Error de conexión, por favor verifica la URL',
     connectionFailedStatus: 'Conexión fallida',
+    connectionUnreachable:
+      'No se puede acceder al servidor MCP. Compruebe que esté iniciado y accesible.',
+    connectionTimeout:
+      'El servidor MCP no respondió a tiempo. Compruebe el servicio o aumente el tiempo de espera.',
+    connectionHttpError:
+      'El servidor MCP devolvió HTTP {{status}}. Compruebe los requisitos de acceso y los registros del servidor.',
+    oauthAuthorizationRequired: 'Se requiere autorización OAuth',
+    oauthAuthorizationRequiredSuggestion:
+      'Este servidor MCP requiere inicio de sesión con OAuth. Aún no está disponible; agregue manualmente un encabezado Authorization si el servidor lo permite.',
     boxDisabledStdioRefused:
       'Los servidores MCP en modo stdio requieren el sandbox de Box, desactivado en la configuración (box.enabled = false).',
     boxUnavailableStdioRefused:

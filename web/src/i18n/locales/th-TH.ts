@@ -863,6 +863,15 @@ const thTH = {
     connectionSuccess: 'เชื่อมต่อสำเร็จ',
     connectionFailed: 'เชื่อมต่อล้มเหลว กรุณาตรวจสอบ URL',
     connectionFailedStatus: 'เชื่อมต่อล้มเหลว',
+    connectionUnreachable:
+      'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ MCP ได้ โปรดตรวจสอบว่าบริการทำงานและเข้าถึงได้',
+    connectionTimeout:
+      'เซิร์ฟเวอร์ MCP ไม่ตอบกลับภายในเวลาที่กำหนด โปรดตรวจสอบบริการหรือเพิ่มเวลารอ',
+    connectionHttpError:
+      'เซิร์ฟเวอร์ MCP ส่งคืน HTTP {{status}} โปรดตรวจสอบข้อกำหนดการเข้าถึงและบันทึกของเซิร์ฟเวอร์',
+    oauthAuthorizationRequired: 'ต้องมีการอนุญาต OAuth',
+    oauthAuthorizationRequiredSuggestion:
+      'MCP server นี้ต้องเข้าสู่ระบบด้วย OAuth ซึ่งยังไม่รองรับในขณะนี้ หาก server อนุญาต คุณสามารถเพิ่ม Authorization header ด้วยตนเองได้',
     boxDisabledStdioRefused:
       'MCP server แบบ stdio ต้องใช้ Sandbox Box ซึ่งถูกปิดใช้งานในการตั้งค่า (box.enabled = false)',
     boxUnavailableStdioRefused:

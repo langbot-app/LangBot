@@ -1009,6 +1009,37 @@ class TestMCPServiceTestMCPServer:
         # Verify - returns task ID
         assert task_id == 123
 
+    @pytest.mark.parametrize('refresh_first', [False, True])
+    async def test_persisted_test_preserves_failure_details(self, refresh_first):
+        from langbot.pkg.provider.tools.loaders.mcp import MCPSessionStatus
+
+        runtime_info = {'status': 'error', 'error_message': 'HTTP 403: access denied'}
+        session = SimpleNamespace(
+            status=MCPSessionStatus.CONNECTED if refresh_first else MCPSessionStatus.ERROR,
+            session=object(),
+            refresh=AsyncMock(side_effect=RuntimeError('refresh failed')),
+            start=AsyncMock(side_effect=RuntimeError('Connection failed, please check URL')),
+            get_runtime_info_dict=Mock(return_value=runtime_info),
+        )
+        captured = {}
+
+        def create_user_task(coroutine, **kwargs):
+            captured.update(coroutine=coroutine, context=kwargs['context'])
+            return SimpleNamespace(id=123)
+
+        ap = SimpleNamespace(
+            tool_mgr=SimpleNamespace(mcp_tool_loader=SimpleNamespace(get_session=Mock(return_value=session))),
+            task_mgr=SimpleNamespace(create_user_task=Mock(side_effect=create_user_task)),
+        )
+        service = _service(ap)
+        service._require_server = AsyncMock(return_value=(_CONTEXT, {'name': 'existing-server'}))
+        await service.test_mcp_server(_CONTEXT, 'existing-server', {})
+        with pytest.raises(RuntimeError, match='Connection failed'):
+            await captured['coroutine']
+        assert captured['context'].metadata['runtime_info'] == runtime_info
+        session.start.assert_awaited_once()
+        assert session.refresh.await_count == int(refresh_first)
+
     async def test_test_mcp_server_not_found_raises(self):
         """Raises ValueError when server not found."""
         # Setup
@@ -1051,6 +1082,45 @@ class TestMCPServiceTestMCPServer:
         # Verify - load_mcp_server called
         ap.tool_mgr.mcp_tool_loader.load_mcp_server.assert_called_once()
         assert task_id == 456
+
+    async def test_transient_test_preserves_runtime_info_after_connection_failure(self):
+        runtime_info = {
+            'status': 'error',
+            'error_phase': 'oauth_required',
+            'retry_count': 1,
+        }
+        mock_session = SimpleNamespace(
+            server_name='oauth-server',
+            start=AsyncMock(side_effect=RuntimeError('connection failed')),
+            get_runtime_info_dict=Mock(return_value=runtime_info),
+            shutdown=AsyncMock(),
+        )
+        ap = SimpleNamespace(
+            tool_mgr=SimpleNamespace(
+                mcp_tool_loader=SimpleNamespace(load_mcp_server=AsyncMock(return_value=mock_session))
+            )
+        )
+        captured: dict = {}
+
+        def create_user_task(coroutine, **kwargs):
+            captured['coroutine'] = coroutine
+            captured['context'] = kwargs['context']
+            return SimpleNamespace(id=457)
+
+        ap.task_mgr = SimpleNamespace(create_user_task=Mock(side_effect=create_user_task))
+        service = _service(ap)
+
+        task_id = await service.test_mcp_server(
+            _CONTEXT,
+            '_',
+            {'name': 'OAuth server', 'mode': 'remote', 'enable': True, 'extra_args': {}},
+        )
+
+        assert task_id == 457
+        with pytest.raises(RuntimeError, match='connection failed'):
+            await captured['coroutine']
+        assert captured['context'].metadata['runtime_info'] == runtime_info
+        mock_session.shutdown.assert_awaited_once_with()
 
     async def test_rejected_transient_test_session_is_shut_down(self):
         ap = SimpleNamespace()

@@ -878,6 +878,15 @@ const viVN = {
     connectionSuccess: 'Kết nối thành công',
     connectionFailed: 'Kết nối thất bại, vui lòng kiểm tra URL',
     connectionFailedStatus: 'Kết nối thất bại',
+    connectionUnreachable:
+      'Không thể kết nối tới máy chủ MCP. Hãy kiểm tra dịch vụ và kết nối mạng.',
+    connectionTimeout:
+      'Máy chủ MCP không phản hồi kịp thời. Hãy kiểm tra dịch vụ hoặc tăng thời gian chờ.',
+    connectionHttpError:
+      'Máy chủ MCP trả về HTTP {{status}}. Hãy kiểm tra yêu cầu truy cập và nhật ký máy chủ.',
+    oauthAuthorizationRequired: 'Yêu cầu ủy quyền OAuth',
+    oauthAuthorizationRequiredSuggestion:
+      'MCP server này yêu cầu đăng nhập OAuth. Hiện chưa hỗ trợ đăng nhập OAuth; hãy thêm thủ công tiêu đề Authorization nếu server cho phép.',
     boxDisabledStdioRefused:
       'MCP server ở chế độ stdio cần Sandbox Box, hiện đã bị tắt trong cấu hình (box.enabled = false).',
     boxUnavailableStdioRefused:

@@ -885,6 +885,15 @@ const ruRU = {
     connectionSuccess: 'Подключение успешно',
     connectionFailed: 'Не удалось подключиться, проверьте URL',
     connectionFailedStatus: 'Ошибка подключения',
+    connectionUnreachable:
+      'Сервер MCP недоступен. Проверьте, запущен ли он и доступен ли по сети.',
+    connectionTimeout:
+      'Время ожидания ответа MCP истекло. Проверьте сервис или увеличьте тайм-аут.',
+    connectionHttpError:
+      'Сервер MCP вернул HTTP {{status}}. Проверьте требования доступа и журналы сервера.',
+    oauthAuthorizationRequired: 'Требуется авторизация OAuth',
+    oauthAuthorizationRequiredSuggestion:
+      'Для этого MCP-сервера требуется вход через OAuth. OAuth-вход пока не поддерживается; если сервер это позволяет, добавьте заголовок Authorization вручную.',
     boxDisabledStdioRefused:
       'MCP-серверы в режиме stdio требуют песочницу Box, которая отключена в конфигурации (box.enabled = false).',
     boxUnavailableStdioRefused:

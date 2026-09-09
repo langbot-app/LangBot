@@ -13,7 +13,15 @@ from aiohttp import web
 from mcp import types as mcp_types
 
 from langbot.pkg.api.http.context import ExecutionContext
-from langbot.pkg.provider.tools.loaders.mcp import MCPToolCallTimeoutError, RuntimeMCPSession
+from langbot.pkg.provider.tools.loaders.mcp import MCPSessionStatus, MCPToolCallTimeoutError, RuntimeMCPSession
+from langbot.pkg.provider.tools.loaders.mcp_stdio import MCPSessionErrorPhase
+
+
+TEST_EXECUTION_CONTEXT = ExecutionContext(
+    instance_uuid='instance-a',
+    workspace_uuid='workspace-a',
+    placement_generation=1,
+)
 
 
 TEST_EXECUTION_CONTEXT = ExecutionContext(
@@ -24,8 +32,9 @@ TEST_EXECUTION_CONTEXT = ExecutionContext(
 
 
 class _TransportProbe:
-    def __init__(self, streamable_status: int | None) -> None:
+    def __init__(self, streamable_status: int | None, streamable_headers: dict[str, str] | None = None) -> None:
         self.streamable_status = streamable_status
+        self.streamable_headers = streamable_headers or {}
         self.streamable_posts = 0
         self.streamable_messages: list[str] = []
         self.sse_gets = 0
@@ -93,7 +102,7 @@ class _TransportProbe:
                         }
                     )
                 return web.Response(status=202)
-            return web.Response(status=self.streamable_status)
+            return web.Response(status=self.streamable_status, headers=self.streamable_headers)
 
         self.sse_gets += 1
         response = web.StreamResponse(
@@ -136,8 +145,8 @@ class _TransportProbe:
 
 
 @asynccontextmanager
-async def _transport_server(streamable_status: int | None):
-    probe = _TransportProbe(streamable_status)
+async def _transport_server(streamable_status: int | None, streamable_headers: dict[str, str] | None = None):
+    probe = _TransportProbe(streamable_status, streamable_headers)
     application = web.Application()
     application.router.add_route('*', '/mcp', probe.handle_mcp_endpoint)
     application.router.add_post('/messages', probe.handle_sse_message)
@@ -265,6 +274,45 @@ async def test_remote_transport_real_non_compatibility_error_does_not_fallback(s
             await _close_session(session)
 
 
+def test_remote_transport_extracts_oauth_resource_metadata_from_bearer_challenge():
+    request = httpx.Request('POST', 'https://mcp.example/mcp')
+    response = httpx.Response(
+        401,
+        headers={
+            'WWW-Authenticate': (
+                'Basic realm="MCP", Bearer resource_metadata="https://mcp.example/.well-known/oauth-protected-resource"'
+            )
+        },
+        request=request,
+    )
+
+    with pytest.raises(httpx.HTTPStatusError) as exc_info:
+        response.raise_for_status()
+
+    challenge = RuntimeMCPSession._extract_oauth_challenge(exc_info.value)
+
+    assert challenge is not None
+    assert challenge.resource_metadata_url == 'https://mcp.example/.well-known/oauth-protected-resource'
+
+
+@pytest.mark.asyncio
+async def test_remote_transport_oauth_challenge_sets_non_retryable_authorization_state():
+    headers = {
+        'WWW-Authenticate': 'Bearer resource_metadata="https://mcp.example/.well-known/oauth-protected-resource"'
+    }
+    async with _transport_server(401, headers) as (probe, url):
+        session = _session(url)
+
+        await session._lifecycle_loop_with_retry()
+
+        assert session.status == MCPSessionStatus.ERROR
+        assert session.error_phase == MCPSessionErrorPhase.OAUTH_REQUIRED
+        assert session.retry_count == 1
+        assert session._ready_event.is_set()
+        assert probe.streamable_posts == 1
+        assert probe.sse_gets == 0
+
+
 @pytest.mark.asyncio
 async def test_remote_transport_real_timeout_does_not_fallback():
     async with _transport_server(None) as (probe, url):
@@ -313,3 +361,25 @@ async def test_remote_transport_external_cancellation_is_not_converted_to_sse_fa
         finally:
             probe.release_streamable_request.set()
             await _close_session(session)
+
+
+@pytest.mark.parametrize(
+    ('error', 'expected'),
+    [
+        (httpx.ConnectError('secret host'), 'connection_unreachable'),
+        (httpx.ReadTimeout('secret URL'), 'connection_timeout'),
+        (TimeoutError('secret command'), 'connection_timeout'),
+        (RuntimeError('secret environment'), 'runtime_error'),
+        (
+            httpx.HTTPStatusError(
+                'secret response',
+                request=httpx.Request('POST', 'https://example.test/?token=secret'),
+                response=httpx.Response(403),
+            ),
+            'http_403',
+        ),
+    ],
+)
+def test_public_error_category_does_not_expose_exception_details(error, expected):
+    grouped = ExceptionGroup('secret outer exception', [error])
+    assert RuntimeMCPSession._classify_public_error(grouped) == expected
