@@ -1,0 +1,21 @@
+#!/bin/bash
+# cmd/uninstall_callback - post-uninstall hook
+# The system preserves var/ and shares/ by default. Honor the user's
+# wizard_keep_data choice: delete data only when explicitly requested.
+
+if [ "${wizard_keep_data:-yes}" = "no" ]; then
+    # 应用运行数据（pid、日志等）
+    if [ -n "${TRIM_PKGVAR}" ]; then
+        rm -rf "${TRIM_PKGVAR:?}"/langbot.pid \
+               "${TRIM_PKGVAR:?}"/langbot.log \
+               "${TRIM_PKGVAR:?}"/bin 2>/dev/null || true
+    fi
+
+    # 共享数据目录（ai.langbot/data）
+    DATA_DIR="${TRIM_DATA_SHARE_PATHS%%:*}"
+    if [ -n "${DATA_DIR}" ]; then
+        rm -rf "${DATA_DIR:?}" 2>/dev/null || true
+    fi
+fi
+
+exit 0

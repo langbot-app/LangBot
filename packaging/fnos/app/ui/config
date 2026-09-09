@@ -1,0 +1,13 @@
+{
+    ".url": {
+        "ai.langbot.main": {
+            "title": "LangBot",
+            "icon": "images/icon-{0}.png",
+            "type": "url",
+            "protocol": "http",
+            "port": "${wizard_port}",
+            "url": "/",
+            "allUsers": true
+        }
+    }
+}

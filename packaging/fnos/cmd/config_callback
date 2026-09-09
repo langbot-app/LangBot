@@ -1,0 +1,6 @@
+#!/bin/bash
+# cmd/config_callback - post-config hook
+# Applies wizard-provided settings (e.g. Node.js version) that cmd/main reads.
+# Nothing to persist currently; cmd/main reads wizard_node_version at runtime.
+
+exit 0
