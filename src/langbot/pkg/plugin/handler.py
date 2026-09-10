@@ -52,7 +52,7 @@ from ..utils import constants
 from ..agent.runner.session_registry import get_session_registry
 from ..agent.runner.config_resolver import RunnerConfigResolver
 from ..agent.runner import config_schema
-from ..agent.runner.platform_tools import execute_platform_tool, get_platform_tool_detail
+from ..agent.runner.platform_tools import execute_platform_tool, get_platform_tool_detail, resolve_platform_api_call
 from ..pipeline.pool import get_query_execution_context
 
 
@@ -1168,9 +1168,52 @@ class RuntimeConnectionHandler(handler.Handler):
                 },
             )
 
+        async def call_run_platform_api(data):
+            action_context, _ = await self._require_plugin_action_context()
+            session, error = await _validate_agent_run_session(
+                data['run_id'], data.get('caller_plugin_identity'), self.ap, 'call_platform_api'
+            )
+            if error:
+                return error
+            try:
+                tool_name, parameters, message = resolve_platform_api_call(
+                    session, data.get('bot_uuid'), data['action'], data.get('params') or {}, data.get('context_tool')
+                )
+                session, error = await _validate_run_authorization(
+                    data['run_id'], 'tool', tool_name, self.ap, data.get('caller_plugin_identity'), operation='call'
+                )
+                if error:
+                    return error
+                _, error = _validate_frozen_tool_source_identity(session, tool_name, self.ap)
+                if error:
+                    return error
+                result = await execute_platform_tool(
+                    self.ap,
+                    self._execution_context(action_context),
+                    session,
+                    tool_name,
+                    parameters,
+                    message_chain=message,
+                )
+                return handler.ActionResponse.success(data={'result': _serialize_plugin_api_result(result)})
+            except (ValueError, KeyError, TypeError) as exc:
+                return handler.ActionResponse.error(message=str(exc))
+
         @self.action(PluginToRuntimeAction.SEND_MESSAGE)
         async def send_message(data: dict[str, Any]) -> handler.ActionResponse:
             """Send message"""
+            if data.get('run_id') is not None:
+                return await call_run_platform_api(
+                    {
+                        **data,
+                        'action': 'send_message',
+                        'params': {
+                            'target_type': data['target_type'],
+                            'target_id': data['target_id'],
+                            'message': data['message_chain'],
+                        },
+                    }
+                )
             action_context, _ = await self._require_plugin_action_context()
             execution_context = self._execution_context(action_context)
             bot_uuid = data['bot_uuid']
@@ -1215,11 +1258,14 @@ class RuntimeConnectionHandler(handler.Handler):
         @self.action(PluginToRuntimeAction.CALL_PLATFORM_API)
         async def call_platform_api(data: dict[str, Any]) -> handler.ActionResponse:
             """Call a platform adapter API"""
+            if data.get('run_id') is not None:
+                return await call_run_platform_api(data)
+            action_context, _ = await self._require_plugin_action_context()
             bot_uuid = data['bot_uuid']
             action = data['action']
             params = data.get('params') or {}
 
-            bot = await self.ap.platform_mgr.get_bot_by_uuid(bot_uuid)
+            bot = await self.ap.platform_mgr.get_bot_by_uuid(self._execution_context(action_context), bot_uuid)
             if bot is None:
                 return handler.ActionResponse.error(
                     message=f'Bot with bot_uuid {bot_uuid} not found',
@@ -2024,6 +2070,17 @@ class RuntimeConnectionHandler(handler.Handler):
             action_context, _ = await self._require_plugin_action_context()
             embedding_model_uuid = data['embedding_model_uuid']
             texts = data['texts']
+            if data.get('run_id') is not None:
+                _, error = await _validate_run_authorization(
+                    data['run_id'],
+                    'model',
+                    embedding_model_uuid,
+                    self.ap,
+                    data.get('caller_plugin_identity'),
+                    operation='invoke',
+                )
+                if error:
+                    return error
 
             if not await self._resource_exists(
                 persistence_model.EmbeddingModel,

@@ -194,7 +194,9 @@ def _write_qa_runner_plugin(plugin_root: Path) -> None:
                 @self.handler(MemberJoinedEvent)
                 async def handle(ctx: RunnerContext):
                     await ctx.log('Handling ' + str(ctx.platform_event.member.id))
-                    result = await ctx.reply(ctx.config['greeting'] + ', ' + (ctx.platform_event.member.nickname or str(ctx.platform_event.member.id)))
+                    tools = await ctx.get_available_tools()
+                    assert any(tool['name'] == 'event_reply' for tool in tools)
+                    result = await self.plugin.call_tool('event_reply', {'text': ctx.config['greeting'] + ', ' + (ctx.platform_event.member.nickname or str(ctx.platform_event.member.id))})
                     await ctx.log('Reply simulated: ' + str(result.get('mock')))
     """)
     )

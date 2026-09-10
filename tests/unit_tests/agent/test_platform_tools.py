@@ -370,3 +370,79 @@ async def test_platform_action_rejects_parameters_outside_the_declared_schema() 
         )
 
     adapter.get_group_info.assert_not_awaited()
+
+
+def api_session(names):
+    event = _event('message.received')
+    event.delivery.surface = 'webui'
+    event.delivery.platform_capabilities['debug_mock'] = True
+    resources, _ = build_platform_tool_resources(event, names, ['call'])
+    return {
+        'authorization': {
+            'bot_id': 'bot-1',
+            'platform_context': freeze_platform_context(event),
+            'resources': {'tools': resources},
+        }
+    }
+
+
+@pytest.mark.parametrize(
+    'bot,params',
+    [
+        ('other-bot', {'group_id': 'group-1'}),
+        ('bot-1', {'group_id': 'other-group'}),
+        ('bot-1', {'group_id': 'group-1', 'unknown': 'field'}),
+    ],
+)
+def test_common_platform_api_cannot_expand_event_grant(bot, params):
+    from langbot.pkg.agent.runner.platform_tools import resolve_platform_api_call
+
+    with pytest.raises(ValueError, match='not authorized'):
+        resolve_platform_api_call(api_session(['event_get_group']), bot, 'get_group_info', params)
+
+
+def test_common_platform_api_resolves_only_granted_call_operations():
+    from langbot.pkg.agent.runner.platform_tools import resolve_platform_api_call
+
+    session = api_session(['event_get_group'])
+    assert resolve_platform_api_call(session, 'bot-1', 'get_group_info', {'group_id': 'group-1'})[:2] == (
+        'event_get_group',
+        {},
+    )
+    session['authorization']['resources']['tools'][0]['operations'] = ['detail']
+    with pytest.raises(ValueError, match='not authorized'):
+        resolve_platform_api_call(session, 'bot-1', 'get_group_info', {'group_id': 'group-1'})
+    session = api_session(['platform_get_group_info'])
+    assert (
+        resolve_platform_api_call(session, 'bot-1', 'get_group_info', {'group_id': 'other'})[0]
+        == 'platform_get_group_info'
+    )
+
+
+@pytest.mark.asyncio
+async def test_rich_context_reply_preserves_chain_quote_and_mock():
+    from langbot.pkg.agent.runner.platform_tools import resolve_platform_api_call
+
+    chain = platform_message.MessageChain(
+        [platform_message.At(target='user-1'), platform_message.Plain(text='welcome')]
+    )
+    session = api_session(['event_reply'])
+    name, params, rich = resolve_platform_api_call(
+        session, None, 'send_message', {'message': chain.model_dump(), 'quote_origin': True}, 'event_reply'
+    )
+    assert rich.root[0].id == 'message-1'
+    assert rich.root[1:] == chain.root
+    ap = SimpleNamespace(
+        platform_mgr=SimpleNamespace(get_bot_by_uuid=AsyncMock(side_effect=AssertionError('real send')))
+    )
+    result = await execute_platform_tool(ap, object(), session, name, params, message_chain=rich)
+    assert result['mock'] is True
+    assert result['parameters']['target_id'] == 'group-1'
+    assert result['parameters']['message'][1]['type'] == 'At'
+    with pytest.raises(ValueError, match='Unexpected'):
+        resolve_platform_api_call(
+            session, None, 'send_message', {'message': chain.model_dump(), 'target_id': 'other'}, 'event_reply'
+        )
+    session['authorization']['resources']['tools'] = []
+    with pytest.raises(ValueError, match='not authorized'):
+        resolve_platform_api_call(session, None, 'send_message', {'message': chain.model_dump()}, 'event_reply')

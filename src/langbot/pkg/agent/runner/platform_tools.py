@@ -604,12 +604,76 @@ def _normalize_platform_params(
     return dict(parameters)
 
 
+def resolve_platform_api_call(session, bot_uuid, action, params, context_tool=None):
+    """Resolve an adapter call against Host-frozen tool grants and event targets."""
+    authorization = session.get('authorization') or {}
+    context = authorization.get('platform_context') or {}
+    if context_tool is None and (not bot_uuid or bot_uuid != authorization.get('bot_id')):
+        raise ValueError('Platform API bot is not authorized for this run')
+    if context_tool is not None and context_tool != 'event_reply':
+        raise ValueError('Unknown context platform API')
+    params = dict(params)
+    message = None
+    quote_origin = False
+    if action == 'send_message':
+        message = platform_message.MessageChain.model_validate(params.pop('message'))
+        if not message.root:
+            raise ValueError('Message must not be empty')
+        quote_origin = params.pop('quote_origin', False)
+        if not isinstance(quote_origin, bool):
+            raise ValueError('quote_origin must be a boolean')
+        if quote_origin and context_tool != 'event_reply':
+            raise ValueError('quote_origin requires the current event context')
+        # Only text is used for tool-schema validation. The original chain is delivered intact.
+        params['text'] = ''.join(c.text for c in message.root if isinstance(c, platform_message.Plain)) or '[message]'
+    granted = {
+        tool['tool_name']
+        for tool in authorization.get('resources', {}).get('tools', [])
+        if tool.get('source') == 'platform' and (not tool.get('operations') or 'call' in tool['operations'])
+    }
+    for definition in PLATFORM_TOOL_DEFINITIONS:
+        if definition.name not in granted or definition.api != action:
+            continue
+        if context_tool is not None and definition.name != context_tool:
+            continue
+        properties = definition.parameters.get('properties') or {}
+        tool_params = {key: value for key, value in params.items() if key in properties}
+        try:
+            normalized = _normalize_platform_params(definition, tool_params)
+            bound = _event_params(definition, context, normalized) if definition.scope == 'event' else normalized
+        except ValueError:
+            continue
+        if context_tool is None and bound != params:
+            continue
+        if context_tool is not None and set(params) - set(properties):
+            raise ValueError('Unexpected context API parameters')
+        if message is not None and quote_origin:
+            target = (context.get('delivery') or {}).get('reply_target') or {}
+            if not target.get('message_id'):
+                raise ValueError('The current event has no message to quote')
+            message = platform_message.MessageChain(
+                [
+                    platform_message.Quote(
+                        id=target['message_id'],
+                        group_id=target.get('group_id'),
+                        sender_id=(context.get('actor') or {}).get('actor_id'),
+                        target_id=target.get('target_id'),
+                        origin=platform_message.MessageChain([]),
+                    ),
+                    *message.root,
+                ]
+            )
+        return definition.name, tool_params, message
+    raise ValueError(f'Platform API {action} or its target is not authorized for this run')
+
+
 async def execute_platform_tool(
     ap: typing.Any,
     execution_context: typing.Any,
     session: typing.Mapping[str, typing.Any],
     tool_name: str,
     parameters: dict[str, typing.Any],
+    message_chain: platform_message.MessageChain | None = None,
 ) -> typing.Any:
     definition = PLATFORM_TOOLS_BY_NAME.get(tool_name)
     if definition is None:
@@ -622,7 +686,10 @@ async def execute_platform_tool(
         normalized = _event_params(definition, context, normalized)
     # This flag is frozen by the Host from the synthetic debug envelope, not tool arguments.
     if delivery.get('surface') == 'webui' and (delivery.get('platform_capabilities') or {}).get('debug_mock') is True:
-        return _execute_mock_platform_tool(definition, context, normalized)
+        result = _execute_mock_platform_tool(definition, context, normalized)
+        if message_chain is not None:
+            result['parameters']['message'] = message_chain.model_dump(mode='json')
+        return result
     bot_id = authorization.get('bot_id')
     if not bot_id:
         raise ValueError('This run is not associated with a platform bot')
@@ -638,9 +705,9 @@ async def execute_platform_tool(
         normalized = {
             'target_type': _require_string(normalized, 'target_type'),
             'target_id': _require_string(normalized, 'target_id'),
-            'message': platform_message.MessageChain(
-                [platform_message.Plain(text=_require_string(normalized, 'text'))]
-            ),
+            'message': message_chain
+            if message_chain is not None
+            else platform_message.MessageChain([platform_message.Plain(text=_require_string(normalized, 'text'))]),
         }
     return await api_func(**normalized)
 

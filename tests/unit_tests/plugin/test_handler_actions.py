@@ -1766,3 +1766,101 @@ async def test_reply_stream_authorization_is_run_and_workspace_scoped(case):
             streams.apply.assert_not_awaited()
     finally:
         await registry.unregister(run_id)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('mode', ['allowed', 'disabled', 'wrong-target', 'wrong-plugin', 'expired', 'raw-send'])
+async def test_public_platform_api_preserves_runner_authorization_and_mock(mode):
+    app = Mock()
+    app.logger = Mock()
+    from langbot.pkg.agent.runner.session_registry import get_session_registry
+    from langbot.pkg.agent.runner.platform_tools import freeze_platform_context, build_platform_tool_resources
+    from langbot.pkg.agent.runner.host_models import AgentEventEnvelope
+    from langbot_plugin.api.entities.builtin.runner import AgentInput, DeliveryContext
+
+    event = AgentEventEnvelope(
+        event_id='api-event',
+        event_type='message.received',
+        source='webui',
+        bot_id='bot',
+        input=AgentInput(text='hello'),
+        delivery=DeliveryContext(
+            surface='webui',
+            reply_target={'target_type': 'group', 'target_id': 'group'},
+            platform_capabilities={'debug_mock': True, 'supported_apis': ['send_message']},
+        ),
+    )
+    tools, _ = build_platform_tool_resources(event, [] if mode == 'disabled' else ['event_reply'], ['call'])
+    registry = get_session_registry()
+    run_id = 'public-platform-' + mode
+    await registry.register(
+        run_id=run_id,
+        runner_id='plugin:test-author/test-plugin/runner',
+        query_id=None,
+        plugin_identity='other/plugin' if mode == 'wrong-plugin' else 'test-author/test-plugin',
+        resources=make_agent_resources(tools=tools),
+        bot_id='bot',
+        platform_context=freeze_platform_context(event),
+    )
+    runtime_handler = make_handler(app)
+    app.platform_mgr.get_bot_by_uuid = AsyncMock(side_effect=AssertionError('Mock must not send'))
+    data = {
+        'run_id': run_id,
+        'bot_uuid': 'bot',
+        'action': 'send_message',
+        'params': {
+            'target_type': 'group',
+            'target_id': 'other' if mode == 'wrong-target' else 'group',
+            'message': [{'type': 'Plain', 'text': 'hello'}],
+        },
+    }
+    action = PluginToRuntimeAction.CALL_PLATFORM_API
+    if mode == 'raw-send':
+        action = PluginToRuntimeAction.SEND_MESSAGE
+        data = {
+            'run_id': run_id,
+            'bot_uuid': 'bot',
+            'target_type': 'group',
+            'target_id': 'group',
+            'message_chain': data['params']['message'],
+        }
+    if mode == 'expired':
+        await registry.unregister(run_id)
+    try:
+        result = await runtime_handler.actions[action.value](data)
+    finally:
+        await registry.unregister(run_id)
+    if mode in ('allowed', 'raw-send'):
+        assert result.code == 0, result.message
+        assert result.data['result']['mock'] is True
+    else:
+        assert result.code != 0
+    app.platform_mgr.get_bot_by_uuid.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_embedding_api_rejects_model_outside_runner_grants():
+    from langbot.pkg.agent.runner.session_registry import get_session_registry
+
+    app = Mock()
+    app.logger = Mock()
+    app.model_mgr.get_embedding_model_by_uuid = AsyncMock()
+    runtime_handler = make_handler(app)
+    registry = get_session_registry()
+    run_id = 'embedding-ungranted'
+    await registry.register(
+        run_id=run_id,
+        runner_id='plugin:test-author/test-plugin/runner',
+        query_id=None,
+        plugin_identity='test-author/test-plugin',
+        resources=make_agent_resources(),
+    )
+    try:
+        response = await runtime_handler.actions[PluginToRuntimeAction.INVOKE_EMBEDDING.value](
+            {'run_id': run_id, 'embedding_model_uuid': 'outside-grants', 'texts': ['hello']}
+        )
+    finally:
+        await registry.unregister(run_id)
+    assert response.code != 0
+    assert 'not authorized' in response.message
+    app.model_mgr.get_embedding_model_by_uuid.assert_not_awaited()
