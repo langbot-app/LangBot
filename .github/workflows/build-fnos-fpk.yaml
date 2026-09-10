@@ -70,5 +70,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          cp packaging/fnos/ai.langbot.fpk langbot-${{ steps.check_version.outputs.version }}-fnos.fpk
-          gh release upload ${{ github.event.release.tag_name }} langbot-${{ steps.check_version.outputs.version }}-fnos.fpk
+          # tag 可能已带 -fnos 后缀（如 v4.10.9-fnos），产物名统一为
+          # langbot-<基础版本>-fnos.fpk，避免出现 -fnos-fnos
+          VER="${{ steps.check_version.outputs.version }}"
+          BASE="${VER#v}"; BASE="${BASE%-fnos}"
+          cp packaging/fnos/ai.langbot.fpk "langbot-${BASE}-fnos.fpk"
+          gh release upload ${{ github.event.release.tag_name }} "langbot-${BASE}-fnos.fpk"
