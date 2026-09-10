@@ -450,7 +450,7 @@ const enUS = {
     routeFallbackIgnored:
       'Events that match no route are ignored. Add a catch-all route only when every event needs an explicit outcome.',
     testRoute: 'Check route',
-    adapterEventDebugAction: 'Listen for platform events',
+    adapterEventDebugAction: 'Test listener',
     adapterEventDebugTitle: 'Platform event debugging',
     adapterEventDebugDescription:
       'Trigger an event in {{platform}}. It will appear here when the adapter receives it.',

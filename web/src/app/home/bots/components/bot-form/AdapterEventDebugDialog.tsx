@@ -192,12 +192,11 @@ export default function AdapterEventDebugDialog({
       <Button
         type="button"
         variant="outline"
-        size="sm"
         disabled={!botId}
         onClick={() => setOpen(true)}
         title={!botId ? t('bots.adapterEventNeedsSavedBot') : undefined}
       >
-        <RadioTower className="mr-1 h-4 w-4" />
+        <RadioTower className="size-4" />
         {t('bots.adapterEventDebugAction')}
       </Button>
 

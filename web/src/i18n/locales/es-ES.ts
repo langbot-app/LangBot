@@ -348,6 +348,7 @@ const esES = {
       "Uses the Workspace owner's LangBot Account billing and credits.",
   },
   bots: {
+    adapterEventDebugAction: 'Probar escucha',
     title: 'Bots',
     description:
       'Crea y gestiona Bots, que son los puntos de entrada para que LangBot se conecte con diversas plataformas',

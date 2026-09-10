@@ -11,7 +11,7 @@ metadata:
     en_US: OneBot v11 adapter for QQ-compatible protocol endpoints with event-driven orchestration support
     zh_Hans: OneBot v11 适配器，用于接入 QQ 兼容协议端，支持事件驱动编排
     zh_Hant: OneBot v11 適配器，用於接入 QQ 相容協定端，支援事件驅動編排
-  icon: onebot.svg
+  icon: onebot.png
 
 spec:
   categories:

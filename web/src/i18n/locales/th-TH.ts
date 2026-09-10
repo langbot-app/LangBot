@@ -333,6 +333,7 @@ const thTH = {
       "Uses the Workspace owner's LangBot Account billing and credits.",
   },
   bots: {
+    adapterEventDebugAction: 'ทดสอบการรับเหตุการณ์',
     title: 'บอท',
     description:
       'สร้างและจัดการ Bot ซึ่งเป็นจุดเชื่อมต่อของ LangBot กับแพลตฟอร์มต่างๆ',

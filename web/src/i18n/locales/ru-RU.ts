@@ -346,6 +346,7 @@ const ruRU = {
       "Uses the Workspace owner's LangBot Account billing and credits.",
   },
   bots: {
+    adapterEventDebugAction: 'Тест прослушивания',
     title: 'Боты',
     description:
       'Создание и управление ботами — точками входа LangBot для подключения к различным платформам',

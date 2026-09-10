@@ -428,7 +428,7 @@ const zhHans = {
     routeFallbackIgnored:
       '未命中任何路由的事件会被忽略。只有需要为每个事件指定结果时，才添加全局兜底路由。',
     testRoute: '检查路由',
-    adapterEventDebugAction: '监听平台事件',
+    adapterEventDebugAction: '测试监听',
     adapterEventDebugTitle: '平台事件调试',
     adapterEventDebugDescription:
       '在 {{platform}} 中触发事件，适配器收到后会显示在这里。',

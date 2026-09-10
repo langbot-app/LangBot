@@ -501,16 +501,15 @@ test.describe('bot advanced flows', () => {
     const adapterCard = page.locator('[data-slot="card"]').filter({
       has: page.getByText('Adapter Configuration', { exact: true }),
     });
-    const dangerCard = page
-      .locator('[data-slot="card"]')
-      .filter({ has: page.getByText('Danger Zone', { exact: true }) });
     const routingBox = await routingCard.boundingBox();
-    const dangerBox = await dangerCard.boundingBox();
+    const adapterBox = await adapterCard.boundingBox();
     expect(routingBox).not.toBeNull();
-    expect(dangerBox).not.toBeNull();
-    expect(
-      dangerBox!.y - (routingBox!.y + routingBox!.height),
-    ).toBeGreaterThanOrEqual(20);
+    expect(adapterBox).not.toBeNull();
+    expect(routingBox!.x).toBeGreaterThan(adapterBox!.x + adapterBox!.width);
+    expect(Math.abs(routingBox!.y - adapterBox!.y)).toBeLessThan(2);
+    await expect(
+      page.getByRole('button', { name: /^Delete$/ }),
+    ).toBeInViewport();
 
     await routingCard.getByRole('button', { name: 'View all' }).click();
     await expect(
@@ -589,14 +588,21 @@ test.describe('bot advanced flows', () => {
 
     await routeDialog.getByRole('button', { name: 'Close' }).first().click();
     await expect(
-      routingCard.getByRole('button', { name: 'Listen for platform events' }),
-    ).toHaveCount(0);
-    await expect(
       adapterCard.getByText('Test adapter configuration'),
-    ).toBeVisible();
-    await adapterCard
-      .getByRole('button', { name: 'Listen for platform events' })
-      .click();
+    ).toHaveCount(0);
+    const listenButton = page.getByRole('button', {
+      name: 'Test listener',
+      exact: true,
+    });
+    const listenBox = await listenButton.boundingBox();
+    const saveBox = await page
+      .getByRole('button', { name: /^Save$/ })
+      .boundingBox();
+    expect(listenBox).not.toBeNull();
+    expect(saveBox).not.toBeNull();
+    expect(listenBox!.x + listenBox!.width).toBeLessThan(saveBox!.x);
+    expect(Math.abs(listenBox!.y - saveBox!.y)).toBeLessThan(2);
+    await listenButton.click();
     const adapterDialog = page.getByRole('dialog');
     await expect(
       adapterDialog.getByText('Platform event debugging', { exact: true }),
@@ -1338,6 +1344,7 @@ test.describe('cross-resource flows', () => {
 
     const firstHandle = page.getByRole('button', { name: 'Drag route 1' });
     const secondCard = routeCards.nth(1);
+    await firstHandle.scrollIntoViewIfNeeded();
     const handleBox = await firstHandle.boundingBox();
     const targetBox = await secondCard.boundingBox();
     expect(handleBox).not.toBeNull();

@@ -342,6 +342,7 @@ const viVN = {
       "Uses the Workspace owner's LangBot Account billing and credits.",
   },
   bots: {
+    adapterEventDebugAction: 'Kiểm tra lắng nghe',
     title: 'Bot',
     description:
       'Tạo và quản lý Bot, là điểm kết nối của LangBot với các nền tảng khác nhau',

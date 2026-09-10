@@ -21,8 +21,8 @@ import { systemInfo } from '@/app/infra/http';
 import { Agent, Bot } from '@/app/infra/entities/api';
 import { getAdapterDocUrl } from '@/app/infra/entities/adapter-docs';
 import { ExternalLink, ChevronDown, ChevronRight } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import EventBindingsEditor from './EventBindingsEditor';
-import AdapterEventDebugDialog from './AdapterEventDebugDialog';
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
@@ -101,10 +101,17 @@ interface BotFormProps {
   onFormSubmit: (value: z.infer<ReturnType<typeof getFormSchema>>) => void;
   onNewBotCreated: (botId: string) => void;
   onDirtyChange?: (dirty: boolean) => void;
+  onAdapterLabelChange?: (label: string) => void;
 }
 
 const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
-  { initBotId, onFormSubmit, onNewBotCreated, onDirtyChange },
+  {
+    initBotId,
+    onFormSubmit,
+    onNewBotCreated,
+    onDirtyChange,
+    onAdapterLabelChange,
+  },
   ref,
 ) {
   const { t } = useTranslation();
@@ -153,6 +160,12 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
 
   // Watch adapter and adapter_config for filtering
   const currentAdapter = form.watch('adapter');
+  const adapterLabel =
+    adapterNameList.find((adapter) => adapter.value === currentAdapter)
+      ?.label ?? '';
+  useEffect(() => {
+    onAdapterLabelChange?.(adapterLabel);
+  }, [adapterLabel, onAdapterLabelChange]);
   const currentAdapterConfig = form.watch('adapter_config');
 
   // Group adapters by category for the Select dropdown. Legacy adapters are
@@ -440,10 +453,15 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
         id="bot-form"
         onSubmit={form.handleSubmit(onDynamicFormSubmit)}
         aria-busy={isLoading}
-        className="w-full min-w-0 max-w-full"
+        className={cn('w-full min-w-0 max-w-full', initBotId && 'lg:h-full')}
       >
         <fieldset
-          className="w-full min-w-0 max-w-full space-y-6"
+          className={cn(
+            'w-full min-w-0 max-w-full',
+            initBotId
+              ? 'grid gap-4 lg:h-full lg:min-h-0 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:grid-rows-[minmax(0,1fr)]'
+              : 'space-y-6',
+          )}
           disabled={isLoading}
         >
           {!initBotId && (
@@ -489,14 +507,24 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
           )}
 
           {/* Card 2: Adapter Configuration */}
-          <Card>
+          <Card
+            className={cn(
+              'min-w-0',
+              initBotId && 'lg:min-h-0 lg:overflow-hidden',
+            )}
+          >
             <CardHeader>
               <CardTitle>{t('bots.adapterConfig')}</CardTitle>
               <CardDescription>
                 {t('bots.adapterConfigDescription')}
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent
+              className={cn(
+                'min-w-0 space-y-4',
+                initBotId && 'lg:min-h-0 lg:flex-1 lg:overflow-y-auto',
+              )}
+            >
               <FormField
                 control={form.control}
                 name="adapter"
@@ -507,7 +535,7 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
                       <span className="text-destructive">*</span>
                     </FormLabel>
                     <FormControl>
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <Select
                           onValueChange={(value) => {
                             field.onChange(value);
@@ -515,7 +543,7 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
                           }}
                           value={field.value}
                         >
-                          <SelectTrigger className="w-[240px] overflow-hidden">
+                          <SelectTrigger className="w-full min-w-0 overflow-hidden sm:w-[240px]">
                             {field.value ? (
                               <div className="flex min-w-0 items-center gap-2">
                                 <img
@@ -693,40 +721,29 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
                   }}
                 />
               )}
-
-              {currentAdapter && initBotId && (
-                <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium">
-                      {t('bots.adapterConfigurationTest')}
-                    </p>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      {t('bots.adapterConfigurationTestDescription')}
-                    </p>
-                  </div>
-                  <AdapterEventDebugDialog
-                    botId={initBotId}
-                    adapterLabel={
-                      adapterNameList.find(
-                        (adapter) => adapter.value === currentAdapter,
-                      )?.label ?? currentAdapter
-                    }
-                  />
-                </div>
-              )}
             </CardContent>
           </Card>
 
           {/* Card 3: Event Routing */}
           {currentAdapter && (
-            <Card>
+            <Card
+              className={cn(
+                'min-w-0',
+                initBotId && 'lg:min-h-0 lg:overflow-hidden',
+              )}
+            >
               <CardHeader>
                 <CardTitle>{t('bots.eventRouting')}</CardTitle>
                 <CardDescription>
                   {t('bots.eventRoutingDescription')}
                 </CardDescription>
               </CardHeader>
-              <CardContent>
+              <CardContent
+                className={cn(
+                  'min-w-0',
+                  initBotId && 'lg:min-h-0 lg:flex-1 lg:overflow-y-auto',
+                )}
+              >
                 <EventBindingsEditor
                   form={form}
                   botId={initBotId}

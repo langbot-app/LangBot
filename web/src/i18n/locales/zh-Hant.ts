@@ -322,6 +322,7 @@ const zhHant = {
       "Uses the Workspace owner's LangBot Account billing and credits.",
   },
   bots: {
+    adapterEventDebugAction: '測試監聽',
     title: '機器人',
     description: '建立和管理機器人，這是 LangBot 與各個平台連接的入口',
     createBot: '建立機器人',

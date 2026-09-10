@@ -458,7 +458,7 @@ const jaJP = {
     routeFallbackIgnored:
       'どのルートにも一致しないイベントは無視されます。すべてのイベントに明示的な結果が必要な場合のみ、フォールバックを追加してください。',
     testRoute: 'ルートを確認',
-    adapterEventDebugAction: 'プラットフォームイベントを監視',
+    adapterEventDebugAction: 'イベント監視テスト',
     adapterEventDebugTitle: 'プラットフォームイベントのデバッグ',
     adapterEventDebugDescription:
       '{{platform}} でイベントを発生させると、アダプターの受信後にここへ表示されます。',

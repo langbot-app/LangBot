@@ -5,13 +5,6 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
-import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -36,6 +29,7 @@ import { Bot } from '@/app/infra/entities/api';
 import EntityBasicInfoDialog, {
   EntityBasicInfoValues,
 } from '@/app/home/components/entity-basic-info/EntityBasicInfoDialog';
+import AdapterEventDebugDialog from './components/bot-form/AdapterEventDebugDialog';
 import EntityTitleEditButton from '@/app/home/components/entity-basic-info/EntityTitleEditButton';
 
 export default function BotDetailContent({ id }: { id: string }) {
@@ -61,6 +55,7 @@ export default function BotDetailContent({ id }: { id: string }) {
   }, [id, isCreateMode, bots, setDetailEntityName, t]);
 
   const [activeTab, setActiveTab] = useState('config');
+  const [adapterLabel, setAdapterLabel] = useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [basicInfoOpen, setBasicInfoOpen] = useState(false);
   const [bot, setBot] = useState<Bot | null>(null);
@@ -191,7 +186,7 @@ export default function BotDetailContent({ id }: { id: string }) {
     <>
       <div className="flex h-full min-w-0 flex-col">
         {/* Sticky Header: title + enable switch + save button */}
-        <div className="flex items-center justify-between pb-4 shrink-0">
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 pb-4">
           <div className="flex min-w-0 items-center gap-4">
             <div className="flex min-w-0 items-center gap-1">
               <h1 className="truncate text-xl font-semibold">
@@ -219,14 +214,29 @@ export default function BotDetailContent({ id }: { id: string }) {
             )}
           </div>
           {canManage && (
-            <Button
-              type="submit"
-              form="bot-form"
-              disabled={!formDirty}
-              className={activeTab !== 'config' ? 'invisible' : ''}
-            >
-              {t('common.save')}
-            </Button>
+            <div className="flex shrink-0 items-center gap-2">
+              <AdapterEventDebugDialog
+                key={id}
+                botId={id}
+                adapterLabel={adapterLabel}
+              />
+              <Button
+                type="submit"
+                form="bot-form"
+                disabled={!formDirty}
+                className={activeTab !== 'config' ? 'invisible' : ''}
+              >
+                {t('common.save')}
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={() => setShowDeleteConfirm(true)}
+              >
+                <Trash2 className="size-4" />
+                {t('common.delete')}
+              </Button>
+            </div>
           )}
         </div>
 
@@ -286,9 +296,9 @@ export default function BotDetailContent({ id }: { id: string }) {
           {/* Tab: Configuration */}
           <TabsContent
             value="config"
-            className="mt-4 min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden"
+            className="mt-4 min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden lg:overflow-hidden"
           >
-            <div className="mx-auto flex w-full min-w-0 max-w-3xl flex-col gap-6 pb-8">
+            <div className="min-h-0 min-w-0 pb-4 lg:h-full lg:pb-0">
               <fieldset className="contents" disabled={!canManage}>
                 <BotForm
                   ref={botFormRef}
@@ -296,43 +306,9 @@ export default function BotDetailContent({ id }: { id: string }) {
                   onFormSubmit={handleFormSubmit}
                   onNewBotCreated={handleNewBotCreated}
                   onDirtyChange={setFormDirty}
+                  onAdapterLabelChange={setAdapterLabel}
                 />
               </fieldset>
-
-              {/* Card: Danger Zone */}
-              {canManage && (
-                <Card className="border-destructive/50">
-                  <CardHeader>
-                    <CardTitle className="text-destructive">
-                      {t('bots.dangerZone')}
-                    </CardTitle>
-                    <CardDescription>
-                      {t('bots.dangerZoneDescription')}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex items-center justify-between">
-                      <div className="space-y-1">
-                        <p className="text-sm font-medium">
-                          {t('bots.deleteBotAction')}
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                          {t('bots.deleteBotHint')}
-                        </p>
-                      </div>
-                      <Button
-                        type="button"
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => setShowDeleteConfirm(true)}
-                      >
-                        <Trash2 className="size-4 mr-1.5" />
-                        {t('common.delete')}
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
             </div>
           </TabsContent>
 
