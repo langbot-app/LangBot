@@ -18,6 +18,12 @@ echo "    FPK dir:     ${FPK_DIR}"
 # --- 0. Inject version (release tag) ---
 if [ -n "${FPK_VERSION:-}" ]; then
     sed -i "s/^version=.*/version=${FPK_VERSION#v}/" "${FPK_DIR}/manifest"
+else
+    # 无注入版本时自动跟进仓库主版本（pyproject.toml）
+    PY_VER=$(grep -m1 '^version = ' "${SRC_ROOT}/pyproject.toml" | cut -d'"' -f2)
+    if [ -n "${PY_VER}" ]; then
+        sed -i "s/^version=.*/version=${PY_VER}/" "${FPK_DIR}/manifest"
+    fi
 fi
 MANIFEST_VER=$(grep '^version=' "${FPK_DIR}/manifest" | cut -d= -f2)
 echo "    FPK version: ${MANIFEST_VER}"

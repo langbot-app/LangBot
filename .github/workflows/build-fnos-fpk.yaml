@@ -22,13 +22,13 @@ jobs:
         id: check_version
         run: |
           echo $GITHUB_REF
-          # 如果是tag，则去掉refs/tags/前缀
+          # 如果是tag，则去掉refs/tags/前缀（与其他 release workflow 一致，版本号取 tag 名）
           if [[ $GITHUB_REF == refs/tags/* ]]; then
             echo "It's a tag"
             echo "version=$(echo $GITHUB_REF | awk -F '/' '{print $3}')" >> $GITHUB_OUTPUT
           else
+            # 手动触发（workflow_dispatch）：读不到 tag，使用 manifest 内维护的版本
             echo "It's not a tag"
-            # 非tag触发（手动/分支）时回退读取 manifest 版本
             echo "version=$(grep '^version=' packaging/fnos/manifest | cut -d= -f2)" >> $GITHUB_OUTPUT
           fi
 

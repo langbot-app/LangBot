@@ -1,5 +1,5 @@
 appname=ai.langbot
-version=4.10.9
+version=4.10.10
 display_name=LangBot
 desc=基于 LLM 的多平台智能对话机器人，支持 QQ、微信、飞书、钉钉、Telegram 等十余种即时通讯平台，内置 Web 管理界面和 AI Agent 能力。
 platform=all
