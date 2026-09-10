@@ -64,6 +64,9 @@ jobs:
           path: packaging/fnos/ai.langbot.fpk
 
       - name: Upload To Release
+        # 仅 release 触发时执行；手动/workflow_dispatch 触发时没有 release，
+        # 且 github.event.release.tag_name 为空（否则 gh release upload 缺参数报错）
+        if: github.event_name == 'release'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
