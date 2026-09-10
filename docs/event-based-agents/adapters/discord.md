@@ -23,7 +23,7 @@ src/langbot/pkg/platform/adapters/discord/
 └── voice.py
 ```
 
-The adapter is registered as `discord-eba`.
+The adapter is registered as `discord-omni`.
 
 ## Configuration
 

@@ -35,6 +35,7 @@ from ..api.http.authz import WorkspaceRequiredError
 from ..workspace.errors import WorkspaceInvariantError
 
 from .logger import EventLogger
+from .adapter_names import canonical_adapter_name
 
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
@@ -932,7 +933,7 @@ class RuntimeBot:
             binding=event_binding,
             target_type=target_type,
             target_uuid=event_binding.get('target_uuid'),
-            text=f'EBA event {event_type} matched route {event_binding.get("id") or ""}'.strip(),
+            text=f'Event {event_type} matched route {event_binding.get("id") or ""}'.strip(),
         )
         if target_type == 'discard':
             if isinstance(event, platform_events.MessageReceivedEvent):
@@ -947,14 +948,14 @@ class RuntimeBot:
                     status='discarded',
                     binding=event_binding,
                     target_type=target_type,
-                    text=f'EBA event {event_type} discarded by event binding',
+                    text=f'Event {event_type} discarded by event binding',
                 )
             return await self._record_event_route_trace(
                 event_type=event_type,
                 status='discarded',
                 binding=event_binding,
                 target_type=target_type,
-                text=f'EBA event {event_type} discarded by event binding',
+                text=f'Event {event_type} discarded by event binding',
             )
         if target_type == 'pipeline':
             if not self._is_message_event_type(event_type):
@@ -967,7 +968,7 @@ class RuntimeBot:
                     target_uuid=event_binding.get('target_uuid'),
                     failure_code='processor_incompatible',
                     reason='Pipeline targets only support message events',
-                    text=f'EBA event {event_type} ignored Pipeline target for non-message event',
+                    text=f'Event {event_type} ignored Pipeline target for non-message event',
                 )
             await self._dispatch_eba_message_to_pipeline(
                 event,
@@ -981,7 +982,7 @@ class RuntimeBot:
                 binding=event_binding,
                 target_type=target_type,
                 target_uuid=event_binding.get('target_uuid'),
-                text=f'EBA event {event_type} delivered to Pipeline {event_binding.get("target_uuid") or ""}'.strip(),
+                text=f'Event {event_type} delivered to Pipeline {event_binding.get("target_uuid") or ""}'.strip(),
             )
         if target_type not in {'agent', 'event_processor'}:
             return await self._record_event_route_trace(
@@ -993,7 +994,7 @@ class RuntimeBot:
                 target_uuid=event_binding.get('target_uuid'),
                 failure_code='processor_incompatible',
                 reason=f'Unsupported event binding target type: {target_type}',
-                text=f'EBA event {event_type} ignored unsupported target type {target_type}',
+                text=f'Event {event_type} ignored unsupported target type {target_type}',
             )
 
         target_uuid = event_binding.get('target_uuid')
@@ -1008,7 +1009,7 @@ class RuntimeBot:
                 target_uuid=target_uuid,
                 failure_code='processor_not_found',
                 reason='Agent target not found',
-                text=f'EBA event {event_type} target agent not found: {target_uuid}',
+                text=f'Event {event_type} target agent not found: {target_uuid}',
             )
         if not self._agent_supports_event_type(agent.get('supported_event_patterns'), event_type):
             return await self._record_event_route_trace(
@@ -1019,7 +1020,7 @@ class RuntimeBot:
                 target_uuid=target_uuid,
                 failure_code='processor_incompatible',
                 reason='Agent target does not support this event type',
-                text=f'EBA event {event_type} target agent does not support this event: {target_uuid}',
+                text=f'Event {event_type} target agent does not support this event: {target_uuid}',
             )
 
         try:
@@ -1046,7 +1047,7 @@ class RuntimeBot:
                 target_uuid=target_uuid,
                 failure_code='processor_not_found',
                 reason='Agent target has no runner',
-                text=f'EBA event {event_type} target agent has no runner: {target_uuid}',
+                text=f'Event {event_type} target agent has no runner: {target_uuid}',
             )
 
         envelope = self._eba_event_to_agent_envelope(event, adapter)
@@ -1096,7 +1097,7 @@ class RuntimeBot:
             binding=event_binding,
             target_type=target_type,
             target_uuid=target_uuid,
-            text=f'EBA event {event_type} delivered to Agent {target_uuid}',
+            text=f'Event {event_type} delivered to Agent {target_uuid}',
         )
 
     def resolve_event_pipeline_uuid(
@@ -1475,7 +1476,7 @@ class RuntimeBot:
     ) -> None:
         if not isinstance(event, platform_events.MessageReceivedEvent):
             event_type = getattr(event, 'type', None) or event.__class__.__name__
-            await self.logger.warning(f'EBA event {event_type} cannot be dispatched to legacy Pipeline')
+            await self.logger.warning(f'Event {event_type} cannot be dispatched to legacy Pipeline')
             return
 
         await self._handle_legacy_message_event(
@@ -1806,7 +1807,10 @@ class PlatformManager:
         # delete all bot log images
         await self.ap.storage_mgr.storage_provider.delete_dir_recursive('bot_log_images')
 
-        disabled_adapters = self.ap.instance_config.data.get('system', {}).get('disabled_adapters', []) or []
+        disabled_adapters = {
+            canonical_adapter_name(name)
+            for name in (self.ap.instance_config.data.get('system', {}).get('disabled_adapters', []) or [])
+        }
 
         self.adapter_components = self.ap.discover.get_components_by_kind('MessagePlatformAdapter')
         adapter_dict: dict[str, type[abstract_platform_adapter.AbstractMessagePlatformAdapter]] = {}
@@ -2103,6 +2107,7 @@ class PlatformManager:
                 owner=bot_entity.uuid,
             )
 
+            bot_entity.adapter = canonical_adapter_name(bot_entity.adapter)
             if bot_entity.adapter not in self.adapter_dict:
                 raise platform_errors.AdapterNotFoundError(bot_entity.adapter)
 
@@ -2226,12 +2231,14 @@ class PlatformManager:
         ]
 
     def get_available_adapter_info_by_name(self, name: str) -> dict | None:
+        name = canonical_adapter_name(name)
         for component in self.adapter_components:
             if component.metadata.name == name:
                 return component.to_plain_dict()
         return None
 
     def get_available_adapter_manifest_by_name(self, name: str) -> engine.Component | None:
+        name = canonical_adapter_name(name)
         for component in self.adapter_components:
             if component.metadata.name == name:
                 return component

@@ -6,7 +6,6 @@ Preserves all existing functionality (messaging, streaming output, markdown card
 
 from __future__ import annotations
 
-import time
 import typing
 import traceback
 
@@ -302,23 +301,33 @@ class TelegramAdapter(TelegramAPIMixin, abstract_platform_adapter.AbstractPlatfo
             args['parse_mode'] = 'MarkdownV2'
         return args
 
+    _MAX_STREAM_STATES: typing.ClassVar[int] = 1000
+
+    def _cap_stream_states(self) -> None:
+        while len(self.msg_stream_id) > self._MAX_STREAM_STATES:
+            self.msg_stream_id.pop(next(iter(self.msg_stream_id)), None)
+
+    @staticmethod
+    def _is_form_placeholder_chunk(text: str) -> bool:
+        """Return True for invisible placeholder chunks used to carry forms."""
+
+        if not text:
+            return True
+
+        cleaned = text.replace('\u200b', '').replace('\u200c', '').replace('\u200d', '').replace('\ufeff', '').strip()
+        return cleaned == ''
+
     async def create_message_card(self, message_id, event):
         assert isinstance(event.source_platform_object, Update)
         update = event.source_platform_object
         chat_id = update.effective_chat.id
-        chat_type = update.effective_chat.type
-        message_thread_id = update.message.message_thread_id
+        effective_message = update.effective_message
+        message_thread_id = getattr(effective_message, 'message_thread_id', None) if effective_message else None
 
-        if chat_type == 'private':
-            draft_id = int(time.time() * 1000)
-            self.msg_stream_id[message_id] = ('private', draft_id)
-
-            args = self._build_message_args(chat_id, 'Thinking...', message_thread_id, draft_id=draft_id)
-            await self.bot.send_message_draft(**args)
-        else:
-            args = self._build_message_args(chat_id, 'Thinking...', message_thread_id)
-            send_msg = await self.bot.send_message(**args)
-            self.msg_stream_id[message_id] = ('group', send_msg.message_id)
+        args = self._build_message_args(chat_id, 'Thinking...', message_thread_id)
+        send_msg = await self.bot.send_message(**args)
+        self.msg_stream_id[message_id] = ('message', send_msg.message_id, False)
+        self._cap_stream_states()
 
         return True
 
@@ -335,12 +344,15 @@ class TelegramAdapter(TelegramAPIMixin, abstract_platform_adapter.AbstractPlatfo
         assert isinstance(message_source.source_platform_object, Update)
         update = message_source.source_platform_object
         chat_id = update.effective_chat.id
-        message_thread_id = update.message.message_thread_id
+        effective_message = update.effective_message
+        message_thread_id = getattr(effective_message, 'message_thread_id', None) if effective_message else None
 
         if message_id not in self.msg_stream_id:
             return
 
-        chat_mode, draft_id = self.msg_stream_id[message_id]
+        stream_state = self.msg_stream_id[message_id]
+        chat_mode, stream_id = stream_state[:2]
+        has_visible_content = len(stream_state) > 2 and stream_state[2]
         components = await TelegramMessageConverter.yiri2target(message, self.bot)
 
         if not components or components[0]['type'] != 'text':
@@ -349,17 +361,58 @@ class TelegramAdapter(TelegramAPIMixin, abstract_platform_adapter.AbstractPlatfo
             return
 
         content = components[0]['text']
+        if self._is_form_placeholder_chunk(content):
+            if is_final and bot_message.tool_calls is None and not has_visible_content:
+                await self._delete_group_stream_message(chat_mode, chat_id, stream_id)
+                self.msg_stream_id.pop(message_id, None)
+            return
 
         if chat_mode == 'private':
-            args = self._build_message_args(chat_id, content, message_thread_id, draft_id=draft_id)
-            await self.bot.send_message_draft(**args)
+            # Streaming via draft (ephemeral preview in the chat input area)
+            if (msg_seq - 1) % 8 == 0 or is_final:
+                args = self._build_message_args(chat_id, content, message_thread_id, draft_id=stream_id)
+                try:
+                    await self.bot.send_message_draft(**args)
+                except telegram.error.BadRequest as exc:
+                    if 'Message_too_long' in str(exc):
+                        args['text'] = content[:4000] + '\n\n… (truncated)'
+                        try:
+                            await self.bot.send_message_draft(**args)
+                        except telegram.error.RetryAfter:
+                            pass
+                    else:
+                        pass  # Ignore other draft errors (cosmetic)
+                self.msg_stream_id[message_id] = (chat_mode, stream_id, True)
             if is_final and bot_message.tool_calls is None:
-                del args['draft_id']
-                await self.bot.send_message(**args)
+                # Finalise: send the real message, discard the draft
+                args = self._build_message_args(chat_id, content, message_thread_id)
+                try:
+                    await self.bot.send_message(**args)
+                except telegram.error.BadRequest as exc:
+                    if 'Message_too_long' in str(exc):
+                        args['text'] = content[:4000] + '\n\n… (truncated)'
+                        await self.bot.send_message(**args)
+                    else:
+                        raise
                 self.msg_stream_id.pop(message_id)
         else:
-            stream_id = draft_id
-            if (msg_seq - 1) % 8 == 0 or is_final:
+            # Streaming via edit_message_text (persistent message)
+            if stream_id is None:
+                args = self._build_message_args(chat_id, content, message_thread_id)
+                try:
+                    send_msg = await self.bot.send_message(**args)
+                except telegram.error.BadRequest as exc:
+                    if 'Message_too_long' in str(exc):
+                        args['text'] = self._process_markdown(content[:4000] + '\n\n… (truncated)')
+                        send_msg = await self.bot.send_message(**args)
+                    else:
+                        raise
+                self.msg_stream_id[message_id] = (chat_mode, send_msg.message_id, True)
+                if is_final and bot_message.tool_calls is None:
+                    self.msg_stream_id.pop(message_id, None)
+                return
+
+            if not has_visible_content or (msg_seq - 1) % 8 == 0 or is_final:
                 args = {
                     'message_id': stream_id,
                     'chat_id': chat_id,
@@ -367,7 +420,15 @@ class TelegramAdapter(TelegramAPIMixin, abstract_platform_adapter.AbstractPlatfo
                 }
                 if self.config.get('markdown_card', False):
                     args['parse_mode'] = 'MarkdownV2'
-                await self.bot.edit_message_text(**args)
+                try:
+                    await self.bot.edit_message_text(**args)
+                except telegram.error.BadRequest as exc:
+                    if 'Message_too_long' in str(exc):
+                        args['text'] = self._process_markdown(content[:4000] + '\n\n… (truncated)')
+                        await self.bot.edit_message_text(**args)
+                    else:
+                        raise
+                self.msg_stream_id[message_id] = (chat_mode, stream_id, True)
 
             if is_final and bot_message.tool_calls is None:
                 self.msg_stream_id.pop(message_id)
@@ -461,4 +522,6 @@ class TelegramAdapter(TelegramAPIMixin, abstract_platform_adapter.AbstractPlatfo
             if self.application.updater:
                 await self.application.updater.stop()
             await self.logger.info('Telegram adapter stopped')
+        await self.application.shutdown()
+        self.msg_stream_id.clear()
         return True

@@ -2,7 +2,7 @@ apiVersion: v1
 kind: MessagePlatformAdapter
 
 metadata:
-  name: kook-eba
+  name: kook-omni
   label:
     en_US: KOOK
     zh_Hans: KOOK
@@ -20,6 +20,10 @@ metadata:
 spec:
   categories:
     - global
+  help_links:
+    zh: https://langbot.app/docs/zh/usage/platforms/kook
+    en: https://langbot.app/docs/en/usage/platforms/kook
+    ja: https://langbot.app/docs/ja/usage/platforms/kook
   config:
     - name: token
       label:

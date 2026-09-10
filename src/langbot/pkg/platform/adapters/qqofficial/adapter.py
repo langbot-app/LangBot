@@ -64,16 +64,16 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
         arbitrary_types_allowed = True
 
     def __init__(self, config: dict, logger: abstract_platform_logger.AbstractEventLogger):
-        required_keys = ['appid', 'secret', 'token']
+        required_keys = ['appid', 'secret']
         missing_keys = [key for key in required_keys if not config.get(key)]
         if missing_keys:
-            raise Exception(f'QQOfficial EBA adapter missing config: {missing_keys}')
+            raise Exception(f'QQOfficial Omni adapter missing config: {missing_keys}')
 
         enable_webhook = config.get('enable-webhook', config.get('enable_webhook', False))
         bot = QQOfficialClient(
             app_id=config['appid'],
             secret=config['secret'],
-            token=config['token'],
+            token=config.get('token', ''),
             logger=logger,
             unified_mode=enable_webhook,
         )
@@ -169,6 +169,39 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
             raise NotSupportedError(f'call_platform_api:{action}')
         return await handler(self, dict(params or {}))
 
+    async def _send_c2c_or_group_text_reply(
+        self,
+        target_type: str,
+        target_id: str,
+        content: str,
+        *,
+        msg_id: typing.Optional[str] = None,
+        event_id: typing.Optional[str] = None,
+        msg_seq: int = 1,
+    ) -> typing.Any:
+        """Send a text reply using the configured C2C/group render mode."""
+        use_markdown = self.config.get('enable-markdown-rendering', False)
+        if target_type == 'c2c':
+            send = self.bot.send_private_markdown_msg if use_markdown else self.bot.send_private_text_msg
+            return await send(
+                user_openid=target_id,
+                content=content,
+                msg_id=msg_id,
+                event_id=event_id,
+                msg_seq=msg_seq,
+            )
+        elif target_type == 'group':
+            send = self.bot.send_group_markdown_msg if use_markdown else self.bot.send_group_text_msg
+            return await send(
+                group_openid=target_id,
+                content=content,
+                msg_id=msg_id,
+                event_id=event_id,
+                msg_seq=msg_seq,
+            )
+        else:
+            raise ValueError(f'Unsupported QQ Official text reply target: {target_type}')
+
     def register_listener(
         self,
         event_type: typing.Type[platform_events.Event],
@@ -194,7 +227,7 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
 
     async def run_async(self):
         if self.enable_webhook:
-            await self.logger.info('QQ Official EBA adapter running in unified webhook mode')
+            await self.logger.info('QQ Official Omni adapter running in unified webhook mode')
             while True:
                 await asyncio.sleep(1)
         else:
@@ -208,6 +241,15 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
             except asyncio.CancelledError:
                 pass
             self._ws_task = None
+        await self.bot.close()
+        self._stream_ctx.clear()
+        self._stream_ctx_ts.clear()
+        self._fallback_text.clear()
+        self._fallback_text_ts.clear()
+        self._message_cache.clear()
+        self._user_cache.clear()
+        self._group_cache.clear()
+        self._member_cache.clear()
         return True
 
     async def is_muted(self, group_id: int | None = None) -> bool:
@@ -220,6 +262,7 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
         source = event.source_platform_object
         if not isinstance(source, QQOfficialEvent) or source.t != 'C2C_MESSAGE_CREATE':
             return False
+        await self._cleanup_stale_streams()
         self._stream_ctx[message_id] = {
             'user_openid': source.user_openid,
             'msg_id': source.d_id,
@@ -253,10 +296,11 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
         )
         if not message_id or message_id not in self._stream_ctx:
             if chunk_text:
-                self._fallback_text[message_id] = self._fallback_text.get(message_id, '') + chunk_text
+                self._fallback_text[message_id] = chunk_text[:200000]
                 self._fallback_text_ts[message_id] = time.time()
             if is_final:
                 full_text = self._fallback_text.pop(message_id, '')
+                self._fallback_text_ts.pop(message_id, None)
                 if full_text:
                     await self.reply_message(
                         message_source,
@@ -267,14 +311,14 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
 
         ctx = self._stream_ctx[message_id]
         if chunk_text:
-            ctx['accumulated_text'] += chunk_text
+            ctx['accumulated_text'] = chunk_text[:200000]
         if not ctx['session_started']:
             if not ctx['accumulated_text']:
                 return
             ctx['session_started'] = True
 
-        content_to_send = ctx['accumulated_text'][ctx['sent_length'] :]
-        if not content_to_send and not is_final:
+        content_to_send = ctx['accumulated_text']
+        if len(content_to_send) <= ctx['sent_length'] and not is_final:
             return
         now = time.time()
         if not is_final and (now - ctx['last_update_ts']) < 0.5:
@@ -355,9 +399,17 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
                 role=platform_entities.MemberRole.MEMBER,
                 display_name=event.sender.nickname,
             )
+        for cache in (
+            self._message_cache,
+            self._user_cache,
+            self._group_cache,
+            self._member_cache,
+        ):
+            while len(cache) > 4096:
+                cache.pop(next(iter(cache)), None)
 
     async def _run_websocket(self):
-        await self.logger.info('QQ Official EBA adapter starting in WebSocket mode')
+        await self.logger.info('QQ Official Omni adapter starting in WebSocket mode')
 
         async def on_ready():
             await self.logger.info('QQ Official WebSocket connected and ready')
@@ -413,12 +465,9 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
                     results.append({'type': content_type, 'raw': raw})
                 continue
             if content_type == 'text':
-                if target_type == 'c2c':
-                    raw = await self.bot.send_private_text_msg(target_id, content.get('content', ''), msg_id)
-                elif target_type == 'group':
-                    raw = await self.bot.send_group_text_msg(target_id, content.get('content', ''), msg_id)
-                else:
-                    raise NotSupportedError(f'send_message:{target_type}')
+                raw = await self._send_c2c_or_group_text_reply(
+                    target_type, target_id, content.get('content', ''), msg_id=msg_id
+                )
                 results.append({'type': content_type, 'raw': raw})
             elif content_type == 'image':
                 raw = await self.bot.send_image_msg(
@@ -462,3 +511,12 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
         for message_id in [key for key, ts in self._fallback_text_ts.items() if now - ts > self._STREAM_CTX_TTL]:
             self._fallback_text.pop(message_id, None)
             self._fallback_text_ts.pop(message_id, None)
+
+        for values, timestamps in (
+            (self._stream_ctx, self._stream_ctx_ts),
+            (self._fallback_text, self._fallback_text_ts),
+        ):
+            while len(values) > 1000:
+                oldest = next(iter(values))
+                values.pop(oldest, None)
+                timestamps.pop(oldest, None)

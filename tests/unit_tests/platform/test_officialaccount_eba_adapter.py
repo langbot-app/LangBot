@@ -151,7 +151,7 @@ async def test_officialaccount_event_converter_maps_text_image_voice_and_platfor
     subscribe_event = await OfficialAccountEventConverter().target2yiri(oa_event(msgtype='event', event='subscribe'))
 
     assert isinstance(text_event, platform_events.MessageReceivedEvent)
-    assert text_event.adapter_name == 'officialaccount-eba'
+    assert text_event.adapter_name == 'officialaccount-omni'
     assert text_event.chat_type == platform_entities.ChatType.PRIVATE
     assert text_event.chat_id == 'openid-1'
     assert str(text_event.message_chain) == 'hello'

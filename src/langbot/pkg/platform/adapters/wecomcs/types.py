@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-ADAPTER_NAME = 'wecomcs-eba'
+ADAPTER_NAME = 'wecomcs-omni'
 
 
 def make_private_chat_id(user_id: str | int | None, open_kfid: str | int | None) -> str:
-    """Build the routable private chat id used by the WeCom CS EBA adapter."""
+    """Build the routable private chat id used by the WeCom CS Omni adapter."""
     user = str(user_id or '')
     kfid = str(open_kfid or '')
     if not user or not kfid:

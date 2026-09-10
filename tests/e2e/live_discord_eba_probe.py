@@ -149,9 +149,9 @@ async def run_probe(
                         platform_message.Plain(text='Discord EBA live reply: text'),
                         platform_message.Image(base64=base64.b64encode(PNG_1X1).decode()),
                         platform_message.File(
-                            name='discord-eba-live.txt',
+                            name='discord-omni-live.txt',
                             size=16,
-                            base64='data:text/plain;base64,' + base64.b64encode(b'discord-eba-live').decode(),
+                            base64='data:text/plain;base64,' + base64.b64encode(b'discord-omni-live').decode(),
                         ),
                     ]
                 ),
@@ -252,7 +252,7 @@ async def run_probe(
         await run_expected_error(
             api_results,
             'upload_file:not_supported',
-            lambda: adapter.upload_file(b'discord-eba-upload', 'discord-eba-upload.txt'),
+            lambda: adapter.upload_file(b'discord-omni-upload', 'discord-omni-upload.txt'),
             platform_errors.NotSupportedError,
         )
         await run_api(api_results, 'get_file_url', lambda: adapter.get_file_url('https://cdn.discordapp.com/file.txt'))

@@ -2,7 +2,7 @@ apiVersion: v1
 kind: MessagePlatformAdapter
 
 metadata:
-  name: wecom-eba
+  name: wecom-omni
   label:
     en_US: WeCom
     zh_Hans: 企业微信
@@ -18,10 +18,22 @@ spec:
     - popular
     - china
   help_links:
-    zh: https://link.langbot.app/zh/platforms/wecom
-    en: https://link.langbot.app/en/platforms/wecom
-    ja: https://link.langbot.app/ja/platforms/wecom
+    zh: https://langbot.app/docs/zh/usage/platforms/wecom/wecom
+    en: https://langbot.app/docs/en/usage/platforms/wecom/wecom
+    ja: https://langbot.app/docs/ja/usage/platforms/wecom/wecom
   config:
+    - name: __system.outbound_ips
+      label:
+        en_US: Trusted IPs
+        zh_Hans: 企业可信 IP
+        zh_Hant: 企業可信 IP
+      description:
+        en_US: Add these outbound IPs of the LangBot server to the "Trusted Enterprise IPs" of your app in the WeCom admin console
+        zh_Hans: 请将这些 LangBot 服务器的出网 IP 添加到企业微信管理后台应用详情页的「企业可信 IP」中
+        zh_Hant: 請將這些 LangBot 伺服器的出網 IP 加入企業微信管理後台應用詳情頁的「企業可信 IP」中
+      type: array[string]
+      required: false
+      default: []
     - name: webhook_url
       label:
         en_US: Webhook Callback URL

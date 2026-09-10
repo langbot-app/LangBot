@@ -42,7 +42,7 @@ class OfficialAccountAdapter(OfficialAccountAPIMixin, abstract_platform_adapter.
         required_keys = ['token', 'EncodingAESKey', 'AppSecret', 'AppID', 'Mode']
         missing_keys = [key for key in required_keys if not config.get(key)]
         if missing_keys:
-            raise Exception(f'OfficialAccount EBA adapter missing config: {missing_keys}')
+            raise Exception(f'OfficialAccount Omni adapter missing config: {missing_keys}')
 
         mode = config['Mode']
         common_kwargs = {
@@ -154,10 +154,13 @@ class OfficialAccountAdapter(OfficialAccountAPIMixin, abstract_platform_adapter.
             while True:
                 await asyncio.sleep(1)
 
-        await self.logger.info('OfficialAccount EBA adapter running in unified webhook mode')
+        await self.logger.info('OfficialAccount Omni adapter running in unified webhook mode')
         await keep_alive()
 
     async def kill(self) -> bool:
+        self.bot.clear()
+        self._message_cache.clear()
+        self._user_cache.clear()
         return True
 
     async def is_muted(self, group_id: int | None = None) -> bool:
@@ -193,3 +196,9 @@ class OfficialAccountAdapter(OfficialAccountAPIMixin, abstract_platform_adapter.
         if isinstance(event, platform_events.MessageReceivedEvent):
             self._message_cache[str(event.message_id)] = event
             self._user_cache[str(event.sender.id)] = event.sender
+        for cache in (
+            self._message_cache,
+            self._user_cache,
+        ):
+            while len(cache) > 4096:
+                cache.pop(next(iter(cache)), None)

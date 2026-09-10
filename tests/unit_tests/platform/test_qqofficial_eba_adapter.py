@@ -81,11 +81,11 @@ class DummyQQOfficialClient:
     async def get_gateway_url(self):
         return 'wss://gateway.example.test'
 
-    async def send_private_text_msg(self, user_openid, content, msg_id=None):
+    async def send_private_text_msg(self, user_openid, content, msg_id=None, event_id=None, msg_seq=1):
         self.sent.append(('private_text', user_openid, content, msg_id))
         return {'id': 'sent-private'}
 
-    async def send_group_text_msg(self, group_openid, content, msg_id=None):
+    async def send_group_text_msg(self, group_openid, content, msg_id=None, event_id=None, msg_seq=1):
         self.sent.append(('group_text', group_openid, content, msg_id))
         return {'id': 'sent-group'}
 
@@ -260,7 +260,7 @@ async def test_qqofficial_event_converter_maps_private_group_and_platform_specif
     platform_event = await QQOfficialEventConverter().target2yiri(qq_event('UNKNOWN_EVENT'))
 
     assert isinstance(private_event, platform_events.MessageReceivedEvent)
-    assert private_event.adapter_name == 'qqofficial-eba'
+    assert private_event.adapter_name == 'qqofficial-omni'
     assert private_event.chat_type == platform_entities.ChatType.PRIVATE
     assert private_event.chat_id == 'user-openid'
     assert str(private_event.message_chain) == 'hello'

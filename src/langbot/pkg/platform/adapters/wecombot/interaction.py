@@ -154,7 +154,7 @@ def interaction_event_from_native(
     target_id = str(event.chatid or event.userid or '')
     return platform_events.PlatformSpecificEvent(
         type='platform.specific',
-        adapter_name='wecombot-eba',
+        adapter_name='wecombot-omni',
         action='interaction.submitted',
         data={
             **parsed,

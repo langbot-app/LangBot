@@ -44,7 +44,7 @@ class SlackAdapter(SlackAPIMixin, abstract_platform_adapter.AbstractPlatformAdap
         required_keys = ['bot_token', 'signing_secret']
         missing_keys = [key for key in required_keys if not config.get(key)]
         if missing_keys:
-            raise Exception(f'Slack EBA adapter missing config: {missing_keys}')
+            raise Exception(f'Slack Omni adapter missing config: {missing_keys}')
 
         bot = SlackClient(
             bot_token=config['bot_token'],
@@ -144,11 +144,15 @@ class SlackAdapter(SlackAPIMixin, abstract_platform_adapter.AbstractPlatformAdap
         return await self.bot.handle_unified_webhook(request)
 
     async def run_async(self):
-        await self.logger.info('Slack EBA adapter running in unified webhook mode')
+        await self.logger.info('Slack Omni adapter running in unified webhook mode')
         while True:
             await asyncio.sleep(1)
 
     async def kill(self) -> bool:
+        self._message_cache.clear()
+        self._user_cache.clear()
+        self._group_cache.clear()
+        self._member_cache.clear()
         return True
 
     async def is_muted(self, group_id: int | None = None) -> bool:
@@ -192,6 +196,14 @@ class SlackAdapter(SlackAPIMixin, abstract_platform_adapter.AbstractPlatformAdap
                 role=platform_entities.MemberRole.MEMBER,
                 display_name=event.sender.nickname,
             )
+        for cache in (
+            self._message_cache,
+            self._user_cache,
+            self._group_cache,
+            self._member_cache,
+        ):
+            while len(cache) > 4096:
+                cache.pop(next(iter(cache)), None)
 
     async def _send_text(self, target_type: str, target_id: str, content: str) -> dict:
         target_type = self._normalize_target_type(target_type)

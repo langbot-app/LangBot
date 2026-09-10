@@ -163,7 +163,7 @@ def interaction_event_from_payload(
     )
     return platform_events.PlatformSpecificEvent(
         type='platform.specific',
-        adapter_name='qqofficial-eba',
+        adapter_name='qqofficial-omni',
         action='interaction.submitted',
         data={
             **parsed,

@@ -533,7 +533,7 @@ def _event_from_parts(
         data['values'] = _form_submission_values(action, payload)
     return platform_events.PlatformSpecificEvent(
         type='platform.specific',
-        adapter_name='lark-eba',
+        adapter_name='lark-omni',
         action='interaction.submitted',
         data=data,
         timestamp=time.time(),

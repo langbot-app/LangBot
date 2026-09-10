@@ -162,7 +162,7 @@ async def test_wecom_event_converter_maps_text_message_to_eba_and_legacy():
     event = await WecomEventConverter.target2yiri(wecom_event(), adapter.bot)
 
     assert isinstance(event, platform_events.MessageReceivedEvent)
-    assert event.adapter_name == 'wecom-eba'
+    assert event.adapter_name == 'wecom-omni'
     assert event.chat_type == platform_entities.ChatType.PRIVATE
     assert event.chat_id == 'user-1|1000002'
     assert event.sender.nickname == 'Alice'
@@ -188,7 +188,7 @@ async def test_wecom_event_converter_maps_image_message_to_eba():
         )
 
     assert isinstance(event, platform_events.MessageReceivedEvent)
-    assert event.adapter_name == 'wecom-eba'
+    assert event.adapter_name == 'wecom-omni'
     assert event.message_id == 12345
     assert isinstance(event.message_chain[1], platform_message.Image)
     assert event.message_chain[1].base64 == 'data:image/png;base64,AAAA'

@@ -332,7 +332,7 @@ def interaction_event_from_native(
         raise ValueError('DingTalk interaction callback has no delivery space')
     return platform_events.PlatformSpecificEvent(
         type='platform.specific',
-        adapter_name='dingtalk-eba',
+        adapter_name='dingtalk-omni',
         action='interaction.submitted',
         data={
             **parsed,

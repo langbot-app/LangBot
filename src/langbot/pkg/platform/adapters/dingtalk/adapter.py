@@ -189,6 +189,8 @@ class DingTalkAdapter(DingTalkAPIMixin, abstract_platform_adapter.AbstractPlatfo
             self.card_instance_id_dict.pop(message_id)
 
     async def create_message_card(self, message_id, event):
+        while len(self.card_instance_id_dict) >= 1000:
+            self.card_instance_id_dict.pop(next(iter(self.card_instance_id_dict)), None)
         card_template_id = self.config['card_template_id']
         incoming_message = event.source_platform_object.incoming_message
         card_auto_layout = self.config.get('card_auto_layout', False)
@@ -232,11 +234,16 @@ class DingTalkAdapter(DingTalkAPIMixin, abstract_platform_adapter.AbstractPlatfo
             self.listeners.pop(event_type, None)
 
     async def run_async(self):
-        await self.logger.info('DingTalk EBA adapter starting')
+        await self.logger.info('DingTalk Omni adapter starting')
         await self.bot.start()
 
     async def kill(self) -> bool:
+        self.card_instance_id_dict.clear()
+        self.interaction_callback_contexts.clear()
         await self.bot.stop()
+        self._message_cache.clear()
+        self._user_cache.clear()
+        self._group_cache.clear()
         return True
 
     async def is_muted(self, group_id: int | None = None) -> bool:
@@ -260,7 +267,7 @@ class DingTalkAdapter(DingTalkAPIMixin, abstract_platform_adapter.AbstractPlatfo
                 await self._dispatch_eba_event(interaction_event)
                 return
             await self.logger.debug(
-                'DingTalk EBA event received: '
+                'DingTalk event received: '
                 f'conversation={event.conversation}, message_id={getattr(event.incoming_message, "message_id", None)}'
             )
             if platform_events.FriendMessage in self.listeners or platform_events.GroupMessage in self.listeners:
@@ -291,3 +298,10 @@ class DingTalkAdapter(DingTalkAPIMixin, abstract_platform_adapter.AbstractPlatfo
         self._user_cache[str(event.sender.id)] = event.sender
         if event.group:
             self._group_cache[str(event.group.id)] = event.group
+        for cache in (
+            self._message_cache,
+            self._user_cache,
+            self._group_cache,
+        ):
+            while len(cache) > 4096:
+                cache.pop(next(iter(cache)), None)

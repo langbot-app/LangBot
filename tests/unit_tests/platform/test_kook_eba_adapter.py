@@ -173,7 +173,7 @@ async def test_kook_event_converter_maps_group_private_and_platform_specific_eve
     group_event = await KookEventConverter.target2yiri(fake_kook_message(), bot_account_id='bot')
     assert isinstance(group_event, platform_events.MessageReceivedEvent)
     assert group_event.type == 'message.received'
-    assert group_event.adapter_name == 'kook'
+    assert group_event.adapter_name == 'kook-omni'
     assert group_event.chat_type == platform_entities.ChatType.GROUP
     assert group_event.chat_id == 'c1'
     assert group_event.group.id == 'c1'

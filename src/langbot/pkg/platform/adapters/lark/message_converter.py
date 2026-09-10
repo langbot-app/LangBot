@@ -1,20 +1,24 @@
 from __future__ import annotations
 
 import base64
+import asyncio
+
+from langbot.pkg.platform.sources.lark import (
+    LarkMessageConverter as LegacyLarkMessageConverter,
+    _decode_lark_base64_limited,
+    _read_lark_path_limited,
+    _read_lark_response_file_limited,
+    _MAX_LARK_MEDIA_BYTES,
+)
 import datetime
 import json
 import mimetypes
 import os
 import re
 import tempfile
-import traceback
 
 import lark_oapi
 from lark_oapi.api.im.v1 import (
-    CreateFileRequest,
-    CreateFileRequestBody,
-    CreateImageRequest,
-    CreateImageRequestBody,
     EventMessage,
     GetMessageResourceRequest,
     GetMessageResourceResponse,
@@ -26,78 +30,9 @@ from langbot_plugin.api.entities.builtin.platform import message as platform_mes
 
 
 class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
-    @staticmethod
-    async def upload_image_to_lark(msg: platform_message.Image, api_client: lark_oapi.Client) -> str | None:
-        image_bytes = await LarkMessageConverter._get_component_bytes(msg)
-        if image_bytes is None:
-            return None
+    upload_image_to_lark = staticmethod(LegacyLarkMessageConverter.upload_image_to_lark)
 
-        temp_file_path = ''
-        try:
-            with tempfile.NamedTemporaryFile(delete=False) as temp_file:
-                temp_file.write(image_bytes)
-                temp_file.flush()
-                temp_file_path = temp_file.name
-
-            request = (
-                CreateImageRequest.builder()
-                .request_body(
-                    CreateImageRequestBody.builder().image_type('message').image(open(temp_file_path, 'rb')).build()
-                )
-                .build()
-            )
-            response = await api_client.im.v1.image.acreate(request)
-            if not response.success():
-                return None
-            return response.data.image_key
-        except Exception:
-            traceback.print_exc()
-            return None
-        finally:
-            if temp_file_path:
-                try:
-                    os.unlink(temp_file_path)
-                except FileNotFoundError:
-                    pass
-
-    @staticmethod
-    async def upload_file_to_lark(
-        file_bytes: bytes,
-        api_client: lark_oapi.Client,
-        file_type: str,
-        file_name: str = 'file',
-        duration: int | None = None,
-    ) -> str | None:
-        temp_file_path = ''
-        try:
-            with tempfile.NamedTemporaryFile(delete=False) as temp_file:
-                temp_file.write(file_bytes)
-                temp_file.flush()
-                temp_file_path = temp_file.name
-
-            body_builder = (
-                CreateFileRequestBody.builder()
-                .file_type(file_type)
-                .file_name(file_name)
-                .file(open(temp_file_path, 'rb'))
-            )
-            if duration is not None:
-                body_builder = body_builder.duration(duration)
-
-            request = CreateFileRequest.builder().request_body(body_builder.build()).build()
-            response = await api_client.im.v1.file.acreate(request)
-            if not response.success():
-                return None
-            return response.data.file_key
-        except Exception:
-            traceback.print_exc()
-            return None
-        finally:
-            if temp_file_path:
-                try:
-                    os.unlink(temp_file_path)
-                except FileNotFoundError:
-                    pass
+    upload_file_to_lark = staticmethod(LegacyLarkMessageConverter.upload_file_to_lark)
 
     @staticmethod
     async def _get_component_bytes(
@@ -108,24 +43,22 @@ class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
                 base64_data = msg.base64
                 if ',' in base64_data:
                     base64_data = base64_data.split(',', 1)[1]
-                return base64.b64decode(base64_data)
+                return await asyncio.to_thread(_decode_lark_base64_limited, base64_data)
             except Exception:
                 return None
         if getattr(msg, 'url', None):
             try:
                 if str(msg.url).startswith('file://'):
-                    with open(str(msg.url)[7:], 'rb') as f:
-                        return f.read()
+                    return await asyncio.to_thread(_read_lark_path_limited, str(msg.url)[7:])
                 session = httpclient.get_session()
                 async with session.get(msg.url) as response:
                     if response.status == 200:
-                        return await response.read()
+                        return await httpclient.read_limited(response, max_bytes=_MAX_LARK_MEDIA_BYTES)
             except Exception:
                 return None
         if getattr(msg, 'path', None):
             try:
-                with open(msg.path, 'rb') as f:
-                    return f.read()
+                return await asyncio.to_thread(_read_lark_path_limited, str(msg.path))
             except Exception:
                 return None
         return None
@@ -375,9 +308,9 @@ class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
         response: GetMessageResourceResponse = await api_client.im.v1.message_resource.aget(request)
         if not response.success():
             return {}
-        data = response.file.read()
+        data = await asyncio.to_thread(_read_lark_response_file_limited, response)
         content_type = response.raw.headers.get('content-type', 'application/octet-stream')
-        base64_data = base64.b64encode(data).decode()
+        base64_data = (await asyncio.to_thread(base64.b64encode, data)).decode()
         ext = mimetypes.guess_extension(content_type.split(';')[0].strip()) or '.bin'
         temp_path = os.path.join(tempfile.gettempdir(), f'lark_{file_key}{ext}')
         with open(temp_path, 'wb') as f:

@@ -105,7 +105,9 @@ class WecomCSAdapter(WecomCSAPIMixin, abstract_platform_adapter.AbstractPlatform
         content_list = await WecomCSMessageConverter.yiri2target(message, self.bot)
         raw_results = []
         for content in content_list:
-            raw_results.append(await self._send_content(open_kfid, external_userid, self._make_outbound_msgid(), content))
+            raw_results.append(
+                await self._send_content(open_kfid, external_userid, self._make_outbound_msgid(), content)
+            )
         return platform_events.MessageResult(raw={'results': raw_results})
 
     async def reply_message(
@@ -164,10 +166,14 @@ class WecomCSAdapter(WecomCSAPIMixin, abstract_platform_adapter.AbstractPlatform
             while True:
                 await asyncio.sleep(1)
 
-        await self.logger.info('WeComCS EBA adapter running in unified webhook mode')
+        await self.logger.info('WeComCS Omni adapter running in unified webhook mode')
         await keep_alive()
 
     async def kill(self) -> bool:
+        self.bot.clear()
+        await self.bot.close()
+        self._message_cache.clear()
+        self._user_cache.clear()
         return True
 
     async def is_muted(self, group_id: int | None = None) -> bool:
@@ -213,6 +219,12 @@ class WecomCSAdapter(WecomCSAPIMixin, abstract_platform_adapter.AbstractPlatform
             return
         self._message_cache[str(event.message_id)] = event
         self._user_cache[str(event.sender.id)] = event.sender
+        for cache in (
+            self._message_cache,
+            self._user_cache,
+        ):
+            while len(cache) > 4096:
+                cache.pop(next(iter(cache)), None)
 
     async def _send_content(self, open_kfid: str, external_userid: str, msgid: str, content: dict):
         content_type = content.get('type')

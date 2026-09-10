@@ -2,7 +2,7 @@ apiVersion: v1
 kind: MessagePlatformAdapter
 
 metadata:
-  name: qqofficial-eba
+  name: qqofficial-omni
   label:
     en_US: QQ Official API
     zh_Hans: QQ 官方 API
@@ -17,10 +17,47 @@ spec:
   categories:
     - china
   help_links:
-    zh: https://link.langbot.app/zh/platforms/qqofficial
-    en: https://link.langbot.app/en/platforms/qqofficial
-    ja: https://link.langbot.app/ja/platforms/qqofficial
+    zh: https://langbot.app/docs/zh/usage/platforms/qq/official_webhook
+    en: https://langbot.app/docs/en/usage/platforms/qq/official_webhook
+    ja: https://langbot.app/docs/ja/usage/platforms/qq/official_webhook
   config:
+    - name: __system.outbound_ips
+      label:
+        en_US: IP Whitelist
+        zh_Hans: IP 白名单
+        zh_Hant: IP 白名單
+      description:
+        en_US: Add these outbound IPs of the LangBot server to the IP whitelist in the development settings of the QQ Open Platform
+        zh_Hans: 请将这些 LangBot 服务器的出网 IP 添加到 QQ 开放平台开发设置中的 IP 白名单
+        zh_Hant: 請將這些 LangBot 伺服器的出網 IP 加入 QQ 開放平台開發設定中的 IP 白名單
+      type: array[string]
+      required: false
+      default: []
+    - name: one-click-bind
+      label:
+        en_US: One-Click QR Binding
+        zh_Hans: 一键扫码绑定
+        zh_Hant: 一鍵掃碼綁定
+      description:
+        en_US: Scan QR code with mobile QQ to auto-fill AppID and Secret (Token is not used and can be left blank)
+        zh_Hans: 使用手机 QQ 扫码绑定，自动填写 AppID 和密钥（当前未使用 Token，可留空）
+        zh_Hant: 使用手機 QQ 掃碼綁定，自動填寫 AppID 和密鑰（目前未使用 Token，可留空）
+      type: qr-code-login
+      login_platform: qqofficial
+      required: false
+    - name: enable-markdown-rendering
+      label:
+        en_US: Enable Markdown Rendering
+        zh_Hans: 启用 Markdown 渲染
+        zh_Hant: 啟用 Markdown 渲染
+      description:
+        en_US: Render non-stream C2C and QQ group text replies as Markdown. Channel messages always use plain text and are not
+          affected by this setting.
+        zh_Hans: 将非流式 C2C 私聊和 QQ 群聊文本回复渲染为 Markdown。频道消息始终以纯文本发送，不受此设置影响。
+        zh_Hant: 將非串流 C2C 私聊與 QQ 群聊文字回覆渲染為 Markdown。頻道訊息一律以純文字傳送，不受此設定影響。
+      type: boolean
+      required: true
+      default: false
     - name: appid
       label:
         en_US: App ID
@@ -43,7 +80,7 @@ spec:
         zh_Hans: 令牌
         zh_Hant: 令牌
       type: string
-      required: true
+      required: false
       default: ""
     - name: enable-webhook
       label:

@@ -11,7 +11,7 @@ import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platf
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
-from ..logger import EventLogger
+from langbot_plugin.api.definition.abstract.platform.event_logger import AbstractEventLogger as EventLogger
 from langbot.libs.wecom_ai_bot_api.wecombotevent import WecomBotEvent
 from langbot.libs.wecom_ai_bot_api.api import (
     WecomBotClient,

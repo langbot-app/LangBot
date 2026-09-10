@@ -611,7 +611,7 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
                                 </div>
                                 {showLegacyAdapters && (
                                   <>
-                                    <p className="px-2 pb-1 text-[11px] leading-snug text-muted-foreground">
+                                    <p className="whitespace-pre-line px-2 pb-1 text-[11px] leading-snug text-muted-foreground">
                                       {t('bots.legacyAdaptersHint')}
                                     </p>
                                     <SelectGroup>

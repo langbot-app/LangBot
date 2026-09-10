@@ -201,7 +201,7 @@ async def test_wecombot_interaction_delivery_and_callback_event():
 
 
 @pytest.mark.asyncio
-async def test_wecombot_message_converter_maps_outbound_components_to_markdown_text():
+async def test_wecombot_message_converter_preserves_outbound_media():
     content = await WecomBotMessageConverter.yiri2target(
         platform_message.MessageChain(
             [
@@ -217,12 +217,15 @@ async def test_wecombot_message_converter_maps_outbound_components_to_markdown_t
         )
     )
 
-    assert 'hi' in content
-    assert '@Alice' in content
-    assert '[Image]' in content
-    assert '[File: a.txt]' in content
-    assert '[Quote origin]' in content
-    assert 'quoted' in content
+    assert [item['text'] for item in content if item['type'] == 'text'] == [
+        'hi',
+        '@Alice',
+        '[Quote origin]',
+        'quoted',
+    ]
+    assert content[2] == {'type': 'image', 'base64': 'data:image/png;base64,AAAA', 'name': ''}
+    assert content[3]['type'] == 'file'
+    assert content[3]['name'] == 'a.txt'
 
 
 @pytest.mark.asyncio
@@ -235,7 +238,7 @@ async def test_wecombot_event_converter_maps_private_and_group_messages_to_eba()
     )
 
     assert isinstance(private_event, platform_events.MessageReceivedEvent)
-    assert private_event.adapter_name == 'wecombot-eba'
+    assert private_event.adapter_name == 'wecombot-omni'
     assert private_event.chat_type == platform_entities.ChatType.PRIVATE
     assert private_event.chat_id == 'user-1'
     assert str(private_event.message_chain) == 'hello'

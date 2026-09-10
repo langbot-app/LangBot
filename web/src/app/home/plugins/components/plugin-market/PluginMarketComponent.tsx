@@ -72,6 +72,7 @@ const MARKET_COMPONENT_VALUES = [
   'Parser',
   'Page',
   'AgentRunner',
+  'EventProcessor',
 ];
 
 function getComponentFilterFromQuery(
@@ -243,6 +244,11 @@ function MarketPageContent({
       value: 'AgentRunner',
       label: t('market.componentName.AgentRunner'),
       icon: Bot,
+    },
+    {
+      value: 'EventProcessor',
+      label: t('market.componentName.EventProcessor'),
+      icon: Puzzle,
     },
   ];
 

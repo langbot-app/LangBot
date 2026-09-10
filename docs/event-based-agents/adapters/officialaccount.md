@@ -2,7 +2,7 @@
 
 Adapter directory: `src/langbot/pkg/platform/adapters/officialaccount/`
 
-Manifest name: `officialaccount-eba`
+Manifest name: `officialaccount-omni`
 
 Status: partial migration. Unit/API-shape coverage is present, and private text `plugin-e2e-ui` plus safe API evidence has been verified against the `dev.rockchin.top` Official Account fixture. Proactive outbound `send_message` remains not supported by this adapter because WeChat Official Account replies must be tied to inbound webhook windows.
 
@@ -70,7 +70,7 @@ Verified UI message: `EBA officialaccount single probe 2026-05-28 16:53`
 
 Observed event/API evidence:
 
-- `MessageReceived`: `bot_uuid=d7c46880-a9f8-431a-9172-5d3e0d663dbc`, `adapter_name=officialaccount-eba`, `chat_type=private`, `chat_id=ovH9L7OW6hNpWZWvp_NMmypVh26w`, `message_chain=[Source, Plain]`.
+- `MessageReceived`: `bot_uuid=d7c46880-a9f8-431a-9172-5d3e0d663dbc`, `adapter_name=officialaccount-omni`, `chat_type=private`, `chat_id=ovH9L7OW6hNpWZWvp_NMmypVh26w`, `message_chain=[Source, Plain]`.
 - Common safe APIs through probe platform sweep: `get_message`, `get_user_info`, `get_friend_list`.
 - Platform APIs through `call_platform_api`: `get_mode`, `get_cached_response_status`.
 - `send_message` and outbound component sweep returned explicit `NotSupportedError: send_message:official_account_requires_inbound_webhook_reply`, as expected for this adapter.

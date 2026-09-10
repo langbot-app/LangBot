@@ -156,7 +156,7 @@ def interaction_event_from_update(
     return platform_events.PlatformSpecificEvent(
         type='platform.specific',
         timestamp=time.time(),
-        adapter_name='telegram',
+        adapter_name='telegram-omni',
         action='interaction.submitted',
         data=data,
         source_platform_object=update,

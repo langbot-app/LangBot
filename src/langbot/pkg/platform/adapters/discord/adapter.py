@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import time
 import traceback
 import typing
 
@@ -29,6 +30,8 @@ class DiscordAdapter(DiscordAPIMixin, abstract_platform_adapter.AbstractPlatform
     message_converter: DiscordMessageConverter = DiscordMessageConverter()
     event_converter: DiscordEventConverter = DiscordEventConverter()
 
+    _stream_buffer: dict = pydantic.PrivateAttr(default_factory=dict)
+    _STREAM_EDIT_INTERVAL: typing.ClassVar[int] = 8
     config: dict
     listeners: dict[
         typing.Type[platform_events.Event],
@@ -276,9 +279,107 @@ class DiscordAdapter(DiscordAPIMixin, abstract_platform_adapter.AbstractPlatform
             raise NotSupportedError(f'call_platform_api:{action}')
         return await handler(self.bot, params)
 
+    def _prune_streams(self):
+        now = time.time()
+        for key, state in tuple(self._stream_buffer.items()):
+            if now - state['updated_at'] > 1800:
+                self._stream_buffer.pop(key, None)
+        while len(self._stream_buffer) >= 100:
+            self._stream_buffer.pop(next(iter(self._stream_buffer)), None)
+
+    async def is_stream_output_supported(self) -> bool:
+        return True
+
+    async def create_message_card(self, message_id: str, event: platform_events.MessageEvent) -> bool:
+        """Set up a stream context for progressive editing.
+
+        The first non-empty reply_message_chunk will send the initial
+        message; subsequent chunks edit it in place.
+        """
+        source = event.source_platform_object
+        if not isinstance(source, discord.Message):
+            return False
+        self._prune_streams()
+        self._stream_buffer[message_id] = {
+            'channel': source.channel,
+            'sent_message': None,  # discord.Message set on first send
+            'last_content': '',
+            'chunk_count': 0,
+            'updated_at': time.time(),
+        }
+        return True
+
+    async def reply_message_chunk(
+        self,
+        message_source: platform_events.MessageEvent,
+        bot_message: typing.Any,
+        message: platform_message.MessageChain,
+        quote_origin: bool = False,
+        is_final: bool = False,
+    ):
+        msg_id = (
+            bot_message.get('resp_message_id')
+            if isinstance(bot_message, dict)
+            else getattr(bot_message, 'resp_message_id', None)
+        )
+
+        text_parts = [m.text for m in message if isinstance(m, platform_message.Plain)]
+        chunk_text = '\n\n'.join(t for t in text_parts if t)
+
+        ctx = self._stream_buffer.get(msg_id) if msg_id else None
+        if ctx is not None:
+            ctx['updated_at'] = time.time()
+
+        if ctx is None:
+            try:
+                if is_final and chunk_text:
+                    await self.reply_message(message_source, message, quote_origin)
+            finally:
+                self._stream_buffer.pop(msg_id, None)
+            return
+
+        # Progressive streaming path: send first chunk, edit subsequent.
+        ctx['chunk_count'] += 1
+
+        # Runner yields the full accumulated text on each chunk, so we
+        # always replace (not append).
+        if chunk_text:
+            ctx['last_content'] = chunk_text[:2000]
+
+        sent = ctx['sent_message']
+
+        if sent is None:
+            # First non-empty chunk — send the initial message.
+            if not ctx['last_content']:
+                return  # No content yet, wait for next chunk.
+            try:
+                sent = await ctx['channel'].send(ctx['last_content'])
+                ctx['sent_message'] = sent
+            except Exception:
+                await self.logger.error(f'Discord stream send failed: {traceback.format_exc()}')
+                self._stream_buffer.pop(msg_id, None)
+                return
+
+        if is_final:
+            # Final chunk — edit to the full content, then clean up.
+            if ctx['last_content'] and ctx['last_content'] != sent.content:
+                try:
+                    await sent.edit(content=ctx['last_content'][:2000])
+                except Exception:
+                    pass  # Best-effort
+            self._stream_buffer.pop(msg_id, None)
+        elif (ctx['chunk_count'] % self._STREAM_EDIT_INTERVAL) == 0:
+            # Intermediate edit — throttle to avoid rate limits.
+            if ctx['last_content'] and ctx['last_content'] != sent.content:
+                try:
+                    await sent.edit(content=ctx['last_content'][:2000])
+                except Exception:
+                    pass  # Rate-limited or deleted — ignore.
+
     async def run_async(self):
         await self.bot.start(self.config['token'], reconnect=True)
 
     async def kill(self) -> bool:
+        self._stream_buffer.clear()
         await self.bot.close()
         return True

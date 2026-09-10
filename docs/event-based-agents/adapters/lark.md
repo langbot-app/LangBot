@@ -15,7 +15,7 @@ The Lark/Feishu adapter now has an Event-Based Agents adapter package with:
 - `api_impl.py` for common EBA API implementations.
 - `platform_api.py` for Feishu-specific `call_platform_api` actions.
 
-The legacy `lark` adapter remains available while the EBA adapter is registered separately as `lark-eba`.
+The legacy `lark` adapter remains available while the EBA adapter is registered separately as `lark-omni`.
 
 ## Configuration
 

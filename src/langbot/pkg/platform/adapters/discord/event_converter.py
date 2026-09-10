@@ -54,7 +54,7 @@ class DiscordEventConverter(abstract_platform_adapter.AbstractEventConverter):
         group = DiscordEventConverter.group_from_message(message)
         return platform_events.MessageReceivedEvent(
             type='message.received',
-            adapter_name='discord',
+            adapter_name='discord-omni',
             message_id=message.id,
             message_chain=message_chain,
             sender=DiscordEventConverter.user_from_author(message.author),
@@ -73,7 +73,7 @@ class DiscordEventConverter(abstract_platform_adapter.AbstractEventConverter):
     ) -> platform_events.MessageEditedEvent:
         return platform_events.MessageEditedEvent(
             type='message.edited',
-            adapter_name='discord',
+            adapter_name='discord-omni',
             message_id=after.id,
             new_content=await DiscordMessageConverter.target2yiri(after),
             editor=DiscordEventConverter.user_from_author(after.author),
@@ -90,7 +90,7 @@ class DiscordEventConverter(abstract_platform_adapter.AbstractEventConverter):
     async def message_delete_to_eba(message: discord.Message) -> platform_events.MessageDeletedEvent:
         return platform_events.MessageDeletedEvent(
             type='message.deleted',
-            adapter_name='discord',
+            adapter_name='discord-omni',
             message_id=message.id,
             operator=None,
             chat_type=platform_entities.ChatType.PRIVATE
@@ -106,7 +106,7 @@ class DiscordEventConverter(abstract_platform_adapter.AbstractEventConverter):
     def raw_message_delete_to_eba(payload: discord.RawMessageDeleteEvent) -> platform_events.MessageDeletedEvent:
         return platform_events.MessageDeletedEvent(
             type='message.deleted',
-            adapter_name='discord',
+            adapter_name='discord-omni',
             message_id=payload.message_id,
             operator=None,
             chat_type=platform_entities.ChatType.PRIVATE
@@ -126,7 +126,7 @@ class DiscordEventConverter(abstract_platform_adapter.AbstractEventConverter):
         message = reaction.message
         return platform_events.MessageReactionEvent(
             type='message.reaction',
-            adapter_name='discord',
+            adapter_name='discord-omni',
             message_id=message.id,
             user=DiscordEventConverter.user_from_author(user),
             reaction=str(reaction.emoji),
@@ -152,7 +152,7 @@ class DiscordEventConverter(abstract_platform_adapter.AbstractEventConverter):
             user = DiscordEventConverter.user_from_author(user)
         return platform_events.MessageReactionEvent(
             type='message.reaction',
-            adapter_name='discord',
+            adapter_name='discord-omni',
             message_id=payload.message_id,
             user=user,
             reaction=str(payload.emoji),
@@ -175,7 +175,7 @@ class DiscordEventConverter(abstract_platform_adapter.AbstractEventConverter):
         if bot_user_id is not None and member.id == bot_user_id:
             return platform_events.BotInvitedToGroupEvent(
                 type='bot.invited_to_group',
-                adapter_name='discord',
+                adapter_name='discord-omni',
                 group=group,
                 inviter=None,
                 timestamp=member.joined_at.timestamp() if member.joined_at else 0.0,
@@ -183,7 +183,7 @@ class DiscordEventConverter(abstract_platform_adapter.AbstractEventConverter):
             )
         return platform_events.MemberJoinedEvent(
             type='group.member_joined',
-            adapter_name='discord',
+            adapter_name='discord-omni',
             group=group,
             member=user,
             inviter=None,
@@ -202,14 +202,14 @@ class DiscordEventConverter(abstract_platform_adapter.AbstractEventConverter):
         if bot_user_id is not None and member.id == bot_user_id:
             return platform_events.BotRemovedFromGroupEvent(
                 type='bot.removed_from_group',
-                adapter_name='discord',
+                adapter_name='discord-omni',
                 group=group,
                 operator=None,
                 source_platform_object=member,
             )
         return platform_events.MemberLeftEvent(
             type='group.member_left',
-            adapter_name='discord',
+            adapter_name='discord-omni',
             group=group,
             member=user,
             is_kicked=False,
@@ -221,7 +221,7 @@ class DiscordEventConverter(abstract_platform_adapter.AbstractEventConverter):
     def guild_join_to_eba(guild: discord.Guild) -> platform_events.BotInvitedToGroupEvent:
         return platform_events.BotInvitedToGroupEvent(
             type='bot.invited_to_group',
-            adapter_name='discord',
+            adapter_name='discord-omni',
             group=DiscordEventConverter.group_from_guild(guild),
             inviter=None,
             source_platform_object=guild,
@@ -231,7 +231,7 @@ class DiscordEventConverter(abstract_platform_adapter.AbstractEventConverter):
     def guild_remove_to_eba(guild: discord.Guild) -> platform_events.BotRemovedFromGroupEvent:
         return platform_events.BotRemovedFromGroupEvent(
             type='bot.removed_from_group',
-            adapter_name='discord',
+            adapter_name='discord-omni',
             group=DiscordEventConverter.group_from_guild(guild),
             operator=None,
             source_platform_object=guild,

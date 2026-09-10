@@ -79,16 +79,14 @@ class QQOfficialMessageConverter(abstract_platform_adapter.AbstractMessageConver
                     pic_url=event.attachments,
                     content_type=event.content_type,
                 )
-                components.append(platform_message.Image(base64=base64_url))
+                components.append(platform_message.Image(url=event.attachments, base64=base64_url))
             except Exception:
                 components.append(platform_message.Image(url=event.attachments))
 
         if event.content:
             components.append(platform_message.Plain(text=event.content))
 
-        if len(components) == 1 or (
-            len(components) == 2 and isinstance(components[1], platform_message.At)
-        ):
+        if len(components) == 1 or (len(components) == 2 and isinstance(components[1], platform_message.At)):
             components.append(platform_message.Unknown(text=f'[unsupported qqofficial event: {event.t or "unknown"}]'))
 
         return platform_message.MessageChain(components)
@@ -101,4 +99,3 @@ def _parse_timestamp(value: str) -> datetime.datetime:
         return datetime.datetime.strptime(value, '%Y-%m-%dT%H:%M:%S%z')
     except (TypeError, ValueError):
         return datetime.datetime.now()
-

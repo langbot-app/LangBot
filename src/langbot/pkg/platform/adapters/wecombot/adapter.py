@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from langbot.pkg.platform.sources.wecombot import WecomBotAdapter as LegacyWecomBotAdapter
+
 import asyncio
 import time
 import traceback
@@ -127,6 +129,10 @@ class WecomBotAdapter(WecomBotAPIMixin, abstract_platform_adapter.AbstractPlatfo
     def _plain_message(text: str) -> platform_message.MessageChain:
         return platform_message.MessageChain([platform_message.Plain(text=text)])
 
+    _join_text_components = staticmethod(LegacyWecomBotAdapter._join_text_components)
+    _iter_media_components = staticmethod(LegacyWecomBotAdapter._iter_media_components)
+    _send_media = staticmethod(LegacyWecomBotAdapter._send_media)
+
     async def send_message(
         self,
         target_type: str,
@@ -137,7 +143,8 @@ class WecomBotAdapter(WecomBotAPIMixin, abstract_platform_adapter.AbstractPlatfo
             raise NotSupportedError('send_message:webhook_mode')
         if target_type not in ('person', 'private', 'group'):
             raise NotSupportedError(f'send_message:{target_type}')
-        content = await WecomBotMessageConverter.yiri2target(message)
+        items = await WecomBotMessageConverter.yiri2target(message)
+        content = self._join_text_components(items)
         raw = await self.bot.send_message(str(target_id), content)
         return platform_events.MessageResult(raw={'result': raw})
 
@@ -150,9 +157,14 @@ class WecomBotAdapter(WecomBotAPIMixin, abstract_platform_adapter.AbstractPlatfo
         event = await WecomBotEventConverter.yiri2target(message_source)
         if not isinstance(event, WecomBotEvent):
             raise ValueError('WeComBot reply_message requires a WecomBotEvent source object')
-        content = await WecomBotMessageConverter.yiri2target(message)
+        items = await WecomBotMessageConverter.yiri2target(message)
+        content = self._join_text_components(items)
+        raw = None
         if not self.config.get('enable-webhook', False) and event.get('req_id'):
-            raw = await self.bot.reply_text(event.get('req_id'), content)
+            if content:
+                raw = await self.bot.reply_text(event.get('req_id'), content)
+            for item in self._iter_media_components(items):
+                await self._send_media(self.bot, event.get('req_id'), item)
         else:
             raw = await self.bot.set_message(event.message_id, content)
         return platform_events.MessageResult(message_id=event.message_id, raw={'result': raw})
@@ -168,10 +180,17 @@ class WecomBotAdapter(WecomBotAPIMixin, abstract_platform_adapter.AbstractPlatfo
         event = await WecomBotEventConverter.yiri2target(message_source)
         if not isinstance(event, WecomBotEvent):
             raise ValueError('WeComBot reply_message_chunk requires a WecomBotEvent source object')
-        content = await WecomBotMessageConverter.yiri2target(message)
+        items = await WecomBotMessageConverter.yiri2target(message)
+        content = self._join_text_components(items)
         success = await self.bot.push_stream_chunk(event.message_id, content, is_final=is_final)
         if not success and is_final and not self.config.get('enable-webhook', False) and event.get('req_id'):
             await self.bot.reply_text(event.get('req_id'), content)
+        if is_final:
+            if not self.config.get('enable-webhook', False) and event.get('req_id'):
+                for item in self._iter_media_components(items):
+                    await self._send_media(self.bot, event.get('req_id'), item)
+            elif not success:
+                await self.bot.set_message(event.message_id, content)
         return {'stream': success}
 
     async def is_stream_output_supported(self) -> bool:
@@ -219,12 +238,16 @@ class WecomBotAdapter(WecomBotAPIMixin, abstract_platform_adapter.AbstractPlatfo
             while True:
                 await asyncio.sleep(1)
 
-        await self.logger.info('WeComBot EBA adapter running in unified webhook mode')
+        await self.logger.info('WeComBot Omni adapter running in unified webhook mode')
         await keep_alive()
 
     async def kill(self) -> bool:
         if not self.config.get('enable-webhook', False):
             await self.bot.disconnect()
+        self._message_cache.clear()
+        self._user_cache.clear()
+        self._group_cache.clear()
+        self._member_cache.clear()
         return True
 
     async def is_muted(self, group_id: int | None = None) -> bool:
@@ -300,6 +323,14 @@ class WecomBotAdapter(WecomBotAPIMixin, abstract_platform_adapter.AbstractPlatfo
                 role=platform_entities.MemberRole.MEMBER,
                 display_name=event.sender.nickname,
             )
+        for cache in (
+            self._message_cache,
+            self._user_cache,
+            self._group_cache,
+            self._member_cache,
+        ):
+            while len(cache) > 4096:
+                cache.pop(next(iter(cache)), None)
 
     def _cleanup_stream_mapping(self):
         now = time.time()

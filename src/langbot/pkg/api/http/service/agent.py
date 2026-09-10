@@ -502,7 +502,7 @@ class AgentService:
                 raise ValueError('EventProcessor component is unavailable') from exc
             raise
         if descriptor.component_kind != 'EventProcessor' or not descriptor.supported_event_patterns:
-            raise ValueError('The component does not declare supported EBA events')
+            raise ValueError('The component does not declare supported events')
         config['runner'] = {'id': component_ref}
         parameters = data.get('parameters')
         if parameters is None:

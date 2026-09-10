@@ -32,7 +32,9 @@ class ProbeLogger(AbstractEventLogger):
 def redact(value: Any) -> Any:
     if isinstance(value, dict):
         return {
-            key: '<redacted>' if key.lower() in {'secret', 'token', 'encodingaeskey', 'encrypt', 'aeskey'} else redact(item)
+            key: '<redacted>'
+            if key.lower() in {'secret', 'token', 'encodingaeskey', 'encrypt', 'aeskey'}
+            else redact(item)
             for key, item in value.items()
         }
     if isinstance(value, list):
@@ -157,12 +159,22 @@ async def run_probe(args: argparse.Namespace):
                         platform_message.MessageChain([platform_message.Plain(text='WeComBot EBA probe send')]),
                     ),
                 )
-            await run_api(api_results, 'get_message', lambda: adapter.get_message(source.chat_type.value, source.chat_id, source.message_id))
+            await run_api(
+                api_results,
+                'get_message',
+                lambda: adapter.get_message(source.chat_type.value, source.chat_id, source.message_id),
+            )
             await run_api(api_results, 'get_user_info', lambda: adapter.get_user_info(source.sender.id))
             if source.group:
                 await run_api(api_results, 'get_group_info', lambda: adapter.get_group_info(source.group.id))
-                await run_api(api_results, 'get_group_member_list', lambda: adapter.get_group_member_list(source.group.id))
-            await run_api(api_results, 'call_platform_api:is_websocket_mode', lambda: adapter.call_platform_api('is_websocket_mode', {}))
+                await run_api(
+                    api_results, 'get_group_member_list', lambda: adapter.get_group_member_list(source.group.id)
+                )
+            await run_api(
+                api_results,
+                'call_platform_api:is_websocket_mode',
+                lambda: adapter.call_platform_api('is_websocket_mode', {}),
+            )
             await run_api(
                 api_results,
                 'call_platform_api:get_stream_session_status',
@@ -187,12 +199,14 @@ async def run_probe(args: argparse.Namespace):
 
 def main():
     parser = argparse.ArgumentParser(description='Live WeComBot EBA adapter probe.')
-    parser.add_argument('--webhook', action='store_true', help='Use webhook mode. Default is WebSocket long connection mode.')
+    parser.add_argument(
+        '--webhook', action='store_true', help='Use webhook mode. Default is WebSocket long connection mode.'
+    )
     parser.add_argument('--host', default='0.0.0.0')
     parser.add_argument('--port', type=int, default=5313)
     parser.add_argument('--path', default='/wecombot/callback')
     parser.add_argument('--timeout', type=int, default=180)
-    parser.add_argument('--bot-uuid', default='wecombot-eba-live-probe')
+    parser.add_argument('--bot-uuid', default='wecombot-omni-live-probe')
     parser.add_argument('--log', default='data/temp/wecombot_eba_live_probe.jsonl')
     parser.add_argument('--skip-api', action='store_true')
     args = parser.parse_args()

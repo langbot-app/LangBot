@@ -254,7 +254,7 @@ async def test_dingtalk_event_converter_maps_group_and_private_message():
     group_event = await DingTalkEventConverter.target2yiri(dingtalk_event(), 'LangBot')
 
     assert isinstance(group_event, platform_events.MessageReceivedEvent)
-    assert group_event.adapter_name == 'dingtalk-eba'
+    assert group_event.adapter_name == 'dingtalk-omni'
     assert group_event.chat_type == platform_entities.ChatType.GROUP
     assert group_event.chat_id == 'group-1'
     assert group_event.group.name == 'LangBot Team'
@@ -280,7 +280,7 @@ async def test_dingtalk_event_converter_maps_card_feedback():
     )
 
     assert isinstance(feedback, platform_events.FeedbackReceivedEvent)
-    assert feedback.adapter_name == 'dingtalk-eba'
+    assert feedback.adapter_name == 'dingtalk-omni'
     assert feedback.feedback_id == 'feedback-1'
     assert feedback.feedback_type == 1
     assert feedback.user_id == 'user-1'

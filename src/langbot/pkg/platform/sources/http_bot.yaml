@@ -18,9 +18,9 @@ spec:
     - popular
     - global
   help_links:
-    zh: https://docs.langbot.app/zh/platforms/http-bot
-    en: https://docs.langbot.app/en/platforms/http-bot
-    ja: https://docs.langbot.app/ja/platforms/http-bot
+    zh: https://langbot.app/docs/zh/platforms/http-bot
+    en: https://langbot.app/docs/en/platforms/http-bot
+    ja: https://langbot.app/docs/ja/platforms/http-bot
   config:
     - name: webhook_url
       label:

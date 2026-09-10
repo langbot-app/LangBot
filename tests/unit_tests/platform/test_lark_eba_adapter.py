@@ -102,7 +102,7 @@ class DummyAPIClient:
                     acreate=AsyncMock(return_value=DummyResponse(SimpleNamespace(card_id='card-id'))),
                     aupdate=AsyncMock(return_value=DummyResponse()),
                 ),
-                card_element=SimpleNamespace(content=MagicMock(return_value=DummyResponse())),
+                card_element=SimpleNamespace(acontent=AsyncMock(return_value=DummyResponse())),
             )
         )
 
@@ -283,7 +283,7 @@ async def test_lark_event_converter_maps_group_and_private_message():
     group_event = await LarkEventConverter.target2yiri(lark_event('group'), DummyAPIClient())
 
     assert isinstance(group_event, platform_events.MessageReceivedEvent)
-    assert group_event.adapter_name == 'lark-eba'
+    assert group_event.adapter_name == 'lark-omni'
     assert group_event.chat_type == platform_entities.ChatType.GROUP
     assert group_event.chat_id == 'chat-1'
     assert group_event.group.id == 'chat-1'
@@ -326,7 +326,7 @@ async def test_lark_get_message_fetches_uncached_message():
 
     event = await adapter.get_message('group', 'chat-1', 'msg-remote')
 
-    assert event.adapter_name == 'lark-eba'
+    assert event.adapter_name == 'lark-omni'
     assert event.message_id == 'msg-remote'
     assert event.chat_type == platform_entities.ChatType.GROUP
     assert isinstance(event.message_chain[1], platform_message.Plain)
@@ -687,22 +687,25 @@ async def test_lark_streaming_card_uses_strictly_increasing_sequences():
     message = platform_message.MessageChain([platform_message.Plain(text='answer')])
 
     await adapter.reply_message_chunk(source, bot_message, message)
-    first_request = adapter.api_client.cardkit.v1.card_element.content.call_args.args[0]
+    first_request = adapter.api_client.cardkit.v1.card_element.acontent.call_args.args[0]
     assert first_request.request_body.sequence == 1
 
     bot_message.msg_sequence = 2
     await adapter.reply_message_chunk(source, bot_message, message)
-    assert adapter.api_client.cardkit.v1.card_element.content.call_count == 1
+    assert adapter.api_client.cardkit.v1.card_element.acontent.call_count == 1
 
     bot_message.msg_sequence = 8
     await adapter.reply_message_chunk(source, bot_message, message)
-    second_request = adapter.api_client.cardkit.v1.card_element.content.call_args.args[0]
+    second_request = adapter.api_client.cardkit.v1.card_element.acontent.call_args.args[0]
     assert second_request.request_body.sequence == 2
 
     bot_message.msg_sequence = 9
     await adapter.reply_message_chunk(source, bot_message, message, is_final=True)
-    final_request = adapter.api_client.cardkit.v1.card_element.content.call_args.args[0]
+    final_request = adapter.api_client.cardkit.v1.card.aupdate.call_args.args[0]
     assert final_request.request_body.sequence == 3
+    final_card = json.loads(final_request.request_body.card.data)
+    assert final_card['body']['elements'] == [{'tag': 'markdown', 'content': 'answer'}]
+    assert not final_card['config'].get('streaming_mode', False)
     assert 'response-1' not in adapter.card_id_dict
     assert 'stream-card-1' not in adapter.card_sequence_dict
     assert 'stream-card-1' not in adapter.card_last_update_dict
@@ -721,7 +724,7 @@ async def test_lark_streaming_card_updates_sparse_chunks_without_waiting_for_eig
 
     await adapter.reply_message_chunk(source, bot_message, message)
 
-    request = adapter.api_client.cardkit.v1.card_element.content.call_args.args[0]
+    request = adapter.api_client.cardkit.v1.card_element.acontent.call_args.args[0]
     assert request.request_body.sequence == 2
 
 
@@ -744,7 +747,7 @@ async def test_lark_streaming_card_uses_cumulative_runner_content():
 
     await adapter.reply_message_chunk(source, bot_message, message)
 
-    request = adapter.api_client.cardkit.v1.card_element.content.call_args.args[0]
+    request = adapter.api_client.cardkit.v1.card_element.acontent.call_args.args[0]
     assert request.request_body.content == 'first chunk\n\nlatest chunk only'
     adapter.message_converter.yiri2target.assert_not_awaited()
 
@@ -761,7 +764,7 @@ async def test_lark_streaming_card_first_real_runner_chunk_uses_sequence_one():
 
     await adapter.reply_message_chunk(source, bot_message, message, is_final=True)
 
-    request = adapter.api_client.cardkit.v1.card_element.content.call_args.args[0]
+    request = adapter.api_client.cardkit.v1.card.aupdate.call_args.args[0]
     assert request.request_body.sequence == 1
 
 
@@ -774,7 +777,7 @@ async def test_lark_streaming_card_falls_back_to_full_card_update_when_stream_cl
     closed_response = DummyResponse(ok=False)
     closed_response.code = 300309
     closed_response.msg = 'streaming mode is closed'
-    adapter.api_client.cardkit.v1.card_element.content.return_value = closed_response
+    adapter.api_client.cardkit.v1.card_element.acontent.return_value = closed_response
     adapter.message_converter.yiri2target = AsyncMock(
         return_value=([[{'tag': 'text', 'text': 'continued progress'}]], [])
     )
@@ -795,7 +798,7 @@ async def test_lark_streaming_card_falls_back_to_full_card_update_when_stream_cl
     adapter.card_last_update_dict['stream-card-1'] = time.monotonic() - 2
     await adapter.reply_message_chunk(source, bot_message, message, is_final=True)
 
-    assert adapter.api_client.cardkit.v1.card_element.content.call_count == 1
+    assert adapter.api_client.cardkit.v1.card_element.acontent.call_count == 1
     assert adapter.api_client.cardkit.v1.card.aupdate.await_count == 2
     assert 'stream-card-1' not in adapter.closed_streaming_cards
 

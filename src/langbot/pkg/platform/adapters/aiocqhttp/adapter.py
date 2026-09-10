@@ -5,6 +5,8 @@ import traceback
 import typing
 
 import aiocqhttp
+
+from langbot.pkg.platform.sources.aiocqhttp import AiocqhttpEventConverter as LegacyAiocqhttpEventConverter
 import pydantic
 
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
@@ -23,6 +25,7 @@ class AiocqhttpAdapter(AiocqhttpAPIMixin, abstract_platform_adapter.AbstractPlat
     message_converter: AiocqhttpMessageConverter = AiocqhttpMessageConverter()
     event_converter: AiocqhttpEventConverter = AiocqhttpEventConverter()
 
+    _lookup: typing.Any = pydantic.PrivateAttr(default_factory=LegacyAiocqhttpEventConverter)
     config: dict
     listeners: dict[
         typing.Type[platform_events.Event],
@@ -121,6 +124,7 @@ class AiocqhttpAdapter(AiocqhttpAPIMixin, abstract_platform_adapter.AbstractPlat
         await self.bot._server_app.run_task(**self.config)
 
     async def kill(self) -> bool:
+        self._lookup.clear()
         return False
 
     def _register_native_handlers(self):
@@ -150,7 +154,7 @@ class AiocqhttpAdapter(AiocqhttpAPIMixin, abstract_platform_adapter.AbstractPlat
             if getattr(event, 'type', None) == 'message' and (
                 platform_events.FriendMessage in self.listeners or platform_events.GroupMessage in self.listeners
             ):
-                legacy_event = await self.event_converter.target2legacy(event, self.bot)
+                legacy_event = await self.event_converter.target2legacy(event, self.bot, self._lookup)
                 if legacy_event:
                     callback = self.listeners.get(type(legacy_event))
                     if callback:
@@ -160,7 +164,7 @@ class AiocqhttpAdapter(AiocqhttpAPIMixin, abstract_platform_adapter.AbstractPlat
             await self.logger.error(f'Error in aiocqhttp native event: {traceback.format_exc()}')
 
     async def _dispatch_native_event(self, event: aiocqhttp.Event):
-        eba_event = await self.event_converter.target2yiri(event, self.bot, self.bot_account_id)
+        eba_event = await self.event_converter.target2yiri(event, self.bot, self.bot_account_id, self._lookup)
         if eba_event:
             await self._dispatch_eba_event(eba_event)
 

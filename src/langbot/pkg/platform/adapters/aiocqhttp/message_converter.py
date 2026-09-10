@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import datetime
+import json
+
+from langbot.pkg.platform.sources.aiocqhttp import _normalize_base64_payload
 import typing
 
 import aiocqhttp
@@ -100,7 +103,7 @@ class AiocqhttpMessageConverter(abstract_platform_adapter.AbstractMessageConvert
                 if file_arg:
                     target.append(aiocqhttp.MessageSegment.record(file_arg))
             elif isinstance(component, platform_message.File):
-                file_arg = component.url or component.path or component.base64 or component.id
+                file_arg = AiocqhttpMessageConverter._file_arg(component) or component.id
                 target.append(
                     aiocqhttp.MessageSegment(
                         type_='file',
@@ -210,6 +213,30 @@ class AiocqhttpMessageConverter(abstract_platform_adapter.AbstractMessageConvert
                         face_name='骰子',
                     )
                 )
+            elif segment.type == 'json':
+                try:
+                    raw = segment.data.get('data', {})
+                    if isinstance(raw, str):
+                        raw = json.loads(raw)
+                    if isinstance(raw, dict):
+                        _meta = raw.get('meta', {}) or {}
+                        if isinstance(_meta, dict):
+                            _detail = _meta.get('detail_1') or _meta.get('music') or _meta.get('news') or {}
+                        else:
+                            _detail = {}
+                        if isinstance(_detail, dict):
+                            preview = _detail.get('preview', '')
+                            title = _detail.get('desc', '') or _detail.get('title', '')
+                            url = _detail.get('qqdocurl', '') or _detail.get('jumpUrl', '')
+                        else:
+                            preview = title = url = ''
+                        text = ' '.join([f'[{raw.get("app", "")}]', preview, title, url]).strip()
+                        components.append(platform_message.Plain(text=text or '[收到一张JSON卡片]'))
+                    else:
+                        components.append(platform_message.Plain(text=str(raw)))
+                except Exception:
+                    components.append(platform_message.Plain(text='[收到一张JSON卡片]'))
+
             else:
                 components.append(platform_message.Unknown(text=f'{segment.type}:{segment.data}'))
 
@@ -218,8 +245,7 @@ class AiocqhttpMessageConverter(abstract_platform_adapter.AbstractMessageConvert
     @staticmethod
     def _file_arg(component: platform_message.Image | platform_message.Voice) -> str:
         if component.base64:
-            _, _, payload = component.base64.partition(',')
-            return f'base64://{payload or component.base64}'
+            return f'base64://{_normalize_base64_payload(component.base64)}'
         if component.url:
             return component.url
         if component.path:

@@ -176,7 +176,7 @@ async def test_wecomcs_event_converter_maps_text_message_to_eba_and_legacy():
     event = await WecomCSEventConverter.target2yiri(wecomcs_event(), adapter.bot)
 
     assert isinstance(event, platform_events.MessageReceivedEvent)
-    assert event.adapter_name == 'wecomcs-eba'
+    assert event.adapter_name == 'wecomcs-omni'
     assert event.chat_type == platform_entities.ChatType.PRIVATE
     assert event.chat_id == 'external-1|kf-1'
     assert event.sender.nickname == 'Alice'

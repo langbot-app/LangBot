@@ -15,7 +15,7 @@ src/langbot/pkg/platform/adapters/wecomcs/
 └── types.py
 ```
 
-The adapter is registered as `wecomcs-eba`. It is separate from regular WeCom application messages (`wecom-eba`) and WeCom AI Bot (`wecombot-eba`).
+The adapter is registered as `wecomcs-omni`. It is separate from regular WeCom application messages (`wecom-omni`) and WeCom AI Bot (`wecombot-omni`).
 
 ## Configuration
 
@@ -120,7 +120,7 @@ Evidence:
 - Server JSONL: `/home/wgc/LangBotxg/LangBotEbaTest/data/temp/wecomcs_eba_plugin_probe.jsonl`
 - Trigger text: `EBA wecomcs dedupe probe 2026-05-27`
 - `bot_uuid`: `cc810d2c-91f3-4f92-8f27-e1bf9f7b6cb4`
-- `adapter_name`: `wecomcs-eba`
+- `adapter_name`: `wecomcs-omni`
 - Observed common event: `MessageReceived`, `event.type=message.received`
 - Observed message chain: `Source + Plain`
 - Observed chat: `chat_type=private`, `chat_id=external_userid|open_kfid`

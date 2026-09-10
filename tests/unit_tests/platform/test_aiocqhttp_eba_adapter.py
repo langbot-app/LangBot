@@ -207,7 +207,8 @@ async def test_aiocqhttp_message_converter_maps_onebot_segments_to_chain():
     assert chain[10].face_type == 'rps'
     assert isinstance(chain[11], platform_message.Face)
     assert chain[11].face_type == 'dice'
-    assert isinstance(chain[12], platform_message.Unknown)
+    assert isinstance(chain[12], platform_message.Plain)
+    assert chain[12].text == '[]'
 
 
 @pytest.mark.asyncio
@@ -254,7 +255,7 @@ async def test_aiocqhttp_event_converter_maps_private_and_group_messages():
 
     assert isinstance(private_event, platform_events.MessageReceivedEvent)
     assert private_event.type == 'message.received'
-    assert private_event.adapter_name == 'aiocqhttp'
+    assert private_event.adapter_name == 'aiocqhttp-omni'
     assert private_event.chat_type == platform_entities.ChatType.PRIVATE
     assert private_event.chat_id == 10001
     assert private_event.sender.nickname == 'Alice'

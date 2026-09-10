@@ -2,7 +2,7 @@ apiVersion: v1
 kind: MessagePlatformAdapter
 
 metadata:
-  name: telegram-eba
+  name: telegram-omni
   label:
     en_US: Telegram
     zh_Hans: 电报
@@ -15,6 +15,10 @@ spec:
   categories:
     - popular
     - global
+  help_links:
+    zh: https://langbot.app/docs/zh/usage/platforms/telegram
+    en: https://langbot.app/docs/en/usage/platforms/telegram
+    ja: https://langbot.app/docs/ja/usage/platforms/telegram
   config:
     - name: token
       label:

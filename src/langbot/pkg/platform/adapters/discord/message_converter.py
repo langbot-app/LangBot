@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-import base64
+import asyncio
+
+from langbot.pkg.platform.sources.discord import _MAX_DISCORD_MEDIA_BYTES, _decode_discord_base64_limited
 import datetime
 import io
 import os
@@ -11,6 +13,14 @@ import discord
 
 from langbot.pkg.utils import httpclient
 from langbot_plugin.api.entities.builtin.platform import message as platform_message
+
+
+def _read_file_limited(path: str) -> bytes:
+    with open(path, 'rb') as stream:
+        data = stream.read(_MAX_DISCORD_MEDIA_BYTES + 1)
+    if len(data) > _MAX_DISCORD_MEDIA_BYTES:
+        raise ValueError('Discord media exceeds the size limit')
+    return data
 
 
 class DiscordMessageConverter:
@@ -101,7 +111,7 @@ class DiscordMessageConverter:
                 filename = f'{uuid.uuid4()}.gif'
             elif 'webp' in header:
                 filename = f'{uuid.uuid4()}.webp'
-            return base64.b64decode(data), filename
+            return await asyncio.to_thread(_decode_discord_base64_limited, data), filename
         if element.url:
             data, content_type = await DiscordMessageConverter._download(element.url)
             if 'jpeg' in content_type or 'jpg' in content_type:
@@ -115,8 +125,7 @@ class DiscordMessageConverter:
             path = os.path.abspath(element.path.replace('\x00', ''))
             if not os.path.exists(path):
                 return None, filename
-            with open(path, 'rb') as fp:
-                data = fp.read()
+            data = await asyncio.to_thread(_read_file_limited, path)
             ext = os.path.splitext(path)[1]
             if ext:
                 filename = f'{uuid.uuid4()}{ext}'
@@ -133,7 +142,7 @@ class DiscordMessageConverter:
                 if ext in header:
                     filename = f'{uuid.uuid4()}.{ext}'
                     break
-            return base64.b64decode(data), filename
+            return await asyncio.to_thread(_decode_discord_base64_limited, data), filename
         if element.url:
             data, _ = await DiscordMessageConverter._download(element.url)
             return data, filename
@@ -142,17 +151,21 @@ class DiscordMessageConverter:
     @staticmethod
     async def _load_file(element: platform_message.File) -> bytes | None:
         if element.base64:
-            return base64.b64decode(element.base64.split(',')[-1])
+            return await asyncio.to_thread(_decode_discord_base64_limited, element.base64)
         if element.url:
             data, _ = await DiscordMessageConverter._download(element.url)
             return data
+        if element.path:
+            return await asyncio.to_thread(_read_file_limited, element.path)
         return None
 
     @staticmethod
     async def _download(url: str) -> tuple[bytes, str]:
         session = httpclient.get_session(trust_env=True)
         async with session.get(url) as response:
-            return await response.read(), response.headers.get('Content-Type', '')
+            return await httpclient.read_limited(response, max_bytes=_MAX_DISCORD_MEDIA_BYTES), response.headers.get(
+                'Content-Type', ''
+            )
 
     @staticmethod
     def _is_image_attachment(attachment: discord.Attachment) -> bool:

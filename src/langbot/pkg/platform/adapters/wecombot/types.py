@@ -1,3 +1,3 @@
 from __future__ import annotations
 
-ADAPTER_NAME = 'wecombot-eba'
+ADAPTER_NAME = 'wecombot-omni'

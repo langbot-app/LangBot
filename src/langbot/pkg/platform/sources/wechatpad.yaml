@@ -15,9 +15,9 @@ spec:
   categories:
     - china
   help_links:
-    zh: https://link.langbot.app/zh/platforms/wechatpad
-    en: https://link.langbot.app/en/platforms/wechatpad
-    ja: https://link.langbot.app/ja/platforms/wechatpad
+    zh: https://langbot.app/docs/zh/usage/platforms/wechat/wechatpad
+    en: https://langbot.app/docs/en/usage/platforms/readme
+    ja: https://langbot.app/docs/ja/usage/platforms/readme
   config:
     - name: wechatpad_url
       label:

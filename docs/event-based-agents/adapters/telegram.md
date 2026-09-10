@@ -15,7 +15,7 @@ src/langbot/pkg/platform/adapters/telegram/
 └── types.py
 ```
 
-The adapter is registered as `telegram-eba`.
+The adapter is registered as `telegram-omni`.
 
 ## Configuration
 

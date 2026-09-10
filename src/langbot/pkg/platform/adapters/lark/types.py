@@ -1,3 +1,3 @@
 from __future__ import annotations
 
-ADAPTER_NAME = 'lark-eba'
+ADAPTER_NAME = 'lark-omni'

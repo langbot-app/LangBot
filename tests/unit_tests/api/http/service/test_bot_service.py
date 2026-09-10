@@ -35,8 +35,9 @@ class _PersistenceManager:
 
 async def test_update_bot_copies_input_before_filtering_legacy_routing_fields():
     persistence_mgr = _PersistenceManager()
-    runtime_bot = SimpleNamespace(enable=False)
+    runtime_bot = SimpleNamespace(enable=False, bot_entity=SimpleNamespace(name='Test Bot'))
     platform_mgr = SimpleNamespace(
+        get_bot_by_uuid=AsyncMock(return_value=runtime_bot),
         remove_bot=AsyncMock(),
         load_bot=AsyncMock(return_value=runtime_bot),
     )

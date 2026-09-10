@@ -14,6 +14,7 @@ from ....workspace.errors import WorkspaceNotFoundError
 from .tenant import TenantContext, require_workspace_uuid, scope_statement
 from ....utils import httpclient
 from ....platform.sources import http_bot_signing
+from ....platform.adapter_names import canonical_adapter_name
 
 
 class BotService:
@@ -41,6 +42,7 @@ class BotService:
 
     def _get_adapter_component(self, adapter_name: str) -> engine.Component | None:
         """Return the discovered platform adapter component for an adapter name."""
+        adapter_name = canonical_adapter_name(adapter_name)
         for component in self.ap.discover.get_components_by_kind('MessagePlatformAdapter'):
             if component.metadata.name == adapter_name:
                 return component
@@ -555,6 +557,8 @@ class BotService:
             update_data.pop('uuid', None)
 
         update_data = {key: value for key, value in update_data.items() if key in self.BOT_FIELDS}
+        if 'adapter' in update_data:
+            update_data['adapter'] = canonical_adapter_name(update_data['adapter'])
         if 'event_bindings' in update_data:
             update_data['event_bindings'] = await self._normalize_event_bindings(
                 context, update_data.get('event_bindings')
@@ -573,7 +577,10 @@ class BotService:
         if not include_secret:
             masked_columns = ['adapter_config']
 
-        return [self.ap.persistence_mgr.serialize_model(persistence_bot.Bot, bot, masked_columns) for bot in bots]
+        serialized = [self.ap.persistence_mgr.serialize_model(persistence_bot.Bot, bot, masked_columns) for bot in bots]
+        for bot in serialized:
+            bot['adapter'] = canonical_adapter_name(bot['adapter'])
+        return serialized
 
     async def get_bot(self, context: TenantContext, bot_uuid: str, include_secret: bool = False) -> dict | None:
         """获取机器人"""
@@ -594,7 +601,9 @@ class BotService:
         if not include_secret:
             masked_columns = ['adapter_config']
 
-        return self.ap.persistence_mgr.serialize_model(persistence_bot.Bot, bot, masked_columns)
+        serialized = self.ap.persistence_mgr.serialize_model(persistence_bot.Bot, bot, masked_columns)
+        serialized['adapter'] = canonical_adapter_name(serialized['adapter'])
+        return serialized
 
     async def get_runtime_bot_info(
         self,

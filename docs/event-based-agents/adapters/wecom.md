@@ -15,9 +15,9 @@ src/langbot/pkg/platform/adapters/wecom/
 └── types.py
 ```
 
-The adapter is registered as `wecom-eba`.
+The adapter is registered as `wecom-omni`.
 
-This record covers the regular WeCom application-message adapter. WeCom AI Bot (`wecombot-eba`) uses a different protocol flow and is documented separately in `wecombot.md`. WeCom Customer Service (`wecomcs`) remains a separate follow-up migration.
+This record covers the regular WeCom application-message adapter. WeCom AI Bot (`wecombot-omni`) uses a different protocol flow and is documented separately in `wecombot.md`. WeCom Customer Service (`wecomcs`) remains a separate follow-up migration.
 
 ## Configuration
 
@@ -102,13 +102,13 @@ uv --project /absolute/path/to/langbot-plugin-sdk run python -m langbot_plugin.c
 Evidence:
 
 - JSONL: `data/temp/wecom_eba_plugin_probe.jsonl`
-- Bot: `wecom-eba`
+- Bot: `wecom-omni`
 - Client: real WeCom desktop client
 - Environment: `dev.rockchin.top` test server
 
 Observed and verified:
 
-- A real private WeCom user message reached the plugin as `MessageReceived` with `adapter_name=wecom-eba`, common sender/chat fields, and `Source + Plain`.
+- A real private WeCom user message reached the plugin as `MessageReceived` with `adapter_name=wecom-omni`, common sender/chat fields, and `Source + Plain`.
 - SDK API calls succeeded through the standalone runtime, including `get_langbot_version`, `get_bots`, `get_bot_info`, `send_message`, plugin/workspace storage, and manifest/list APIs.
 - Safe adapter API checks succeeded through the plugin path for cached message/user data and declared safe platform API actions.
 

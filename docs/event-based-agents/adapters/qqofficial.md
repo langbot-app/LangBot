@@ -2,7 +2,7 @@
 
 Adapter directory: `src/langbot/pkg/platform/adapters/qqofficial/`
 
-Manifest name: `qqofficial-eba`
+Manifest name: `qqofficial-omni`
 
 Status: partial migration. The EBA adapter structure, manifest, converters, cache-backed safe APIs, platform API map, unit tests, and direct live probe scaffold are in place. A real QQ Official WebSocket bot on `dev.rockchin.top` received an inbound user message and drove LangBot into the normal pipeline path; the response path was blocked by the test environment model service returning `model_not_found` for `deepseek-v3`.
 
@@ -77,7 +77,7 @@ Status: partial migration. The EBA adapter structure, manifest, converters, cach
 
 Test date: 2026-06-02
 
-Endpoint/simulator: `dev.rockchin.top` with a real QQ Official WebSocket bot (`qqofficial-eba`, bot UUID `80a5560b-52b1-40e7-b7d6-4a2341eb4780`) and LangBot running from `/home/wgc/LangBotxg/LangBotEbaTest`.
+Endpoint/simulator: `dev.rockchin.top` with a real QQ Official WebSocket bot (`qqofficial-omni`, bot UUID `80a5560b-52b1-40e7-b7d6-4a2341eb4780`) and LangBot running from `/home/wgc/LangBotxg/LangBotEbaTest`.
 
 Observed evidence:
 

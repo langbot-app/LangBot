@@ -100,7 +100,7 @@ class DiscordAPIMixin:
         until = None
         if duration > 0:
             until = datetime.datetime.now(datetime.UTC) + datetime.timedelta(seconds=duration)
-        await member.timeout(until, reason='LangBot EBA mute_member')
+        await member.timeout(until, reason='LangBot Omni mute_member')
 
     async def unmute_member(
         self,
@@ -109,7 +109,7 @@ class DiscordAPIMixin:
     ) -> None:
         guild = await self._get_guild(group_id)
         member = guild.get_member(int(user_id)) or await guild.fetch_member(int(user_id))
-        await member.timeout(None, reason='LangBot EBA unmute_member')
+        await member.timeout(None, reason='LangBot Omni unmute_member')
 
     async def kick_member(
         self,
@@ -118,7 +118,7 @@ class DiscordAPIMixin:
     ) -> None:
         guild = await self._get_guild(group_id)
         member = guild.get_member(int(user_id)) or await guild.fetch_member(int(user_id))
-        await member.kick(reason='LangBot EBA kick_member')
+        await member.kick(reason='LangBot Omni kick_member')
 
     async def leave_group(self, group_id: typing.Union[int, str]) -> None:
         guild = await self._get_guild(group_id)

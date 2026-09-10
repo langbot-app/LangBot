@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+from langbot.pkg.platform.sources.lark import (
+    LarkAdapter as LegacyLarkAdapter,
+    NonBlockingLarkWSClient,
+)
+
+import threading
 import asyncio
 import base64
 import hashlib
@@ -106,6 +112,10 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
     quart_app: quart.Quart = pydantic.Field(exclude=True)
     cipher: AESCipher = pydantic.Field(exclude=True)
 
+    inbound_event_tasks: set[asyncio.Task] = pydantic.Field(default_factory=set, exclude=True)
+    threadsafe_event_futures: set[typing.Any] = pydantic.Field(default_factory=set, exclude=True)
+    threadsafe_event_lock: typing.Any = pydantic.Field(default_factory=threading.Lock, exclude=True)
+    _MAX_INBOUND_EVENTS: typing.ClassVar[int] = 100
     config: dict
     lark_tenant_key: str = pydantic.Field(exclude=True, default='')
     app_ticket: str | None = None
@@ -143,7 +153,12 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
 
         api_client = self.build_api_client(config)
         event_handler = self._build_event_handler()
-        bot = lark_oapi.ws.Client(config['app_id'], config['app_secret'], event_handler=event_handler)
+        bot = NonBlockingLarkWSClient(
+            config['app_id'],
+            config['app_secret'],
+            event_handler=event_handler,
+            domain=LegacyLarkAdapter._resolve_domain(config),
+        )
         cipher = AESCipher(config.get('encrypt-key', ''))
 
         super().__init__(
@@ -216,7 +231,12 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
         return platform_message.MessageChain([platform_message.Plain(text=text)])
 
     def build_api_client(self, config: dict) -> lark_oapi.Client:
-        builder = lark_oapi.Client.builder().app_id(config['app_id']).app_secret(config['app_secret'])
+        builder = (
+            lark_oapi.Client.builder()
+            .app_id(config['app_id'])
+            .app_secret(config['app_secret'])
+            .domain(LegacyLarkAdapter._resolve_domain(config))
+        )
         if config.get('app_type', 'self') == 'isv':
             builder = builder.app_type(lark_oapi.AppType.ISV)
         return builder.build()
@@ -291,6 +311,12 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
             'token': content['tenant_access_token'],
             'expire_at': int(time.time()) + content['expire'] - 300,
         }
+        now = int(time.time())
+        for key, token in tuple(self.tenant_access_tokens.items()):
+            if int(token.get('expire_at', 0)) <= now:
+                self.tenant_access_tokens.pop(key, None)
+        while len(self.tenant_access_tokens) > 1024:
+            self.tenant_access_tokens.pop(next(iter(self.tenant_access_tokens)), None)
 
     def get_tenant_access_token(self, tenant_key: str | None):
         if self.config.get('app_type', 'self') != 'isv' or not tenant_key:
@@ -372,7 +398,19 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
         payloads: list[tuple[str, dict]] = []
         if text_elements:
             needs_post = any(ele.get('tag') == 'at' for paragraph in text_elements for ele in paragraph)
-            if needs_post:
+            if LegacyLarkAdapter._has_markdown_table(text_elements):
+                text = '\n\n'.join(''.join(ele.get('text', '') for ele in row) for row in text_elements)
+                payloads.append(
+                    (
+                        'interactive',
+                        {
+                            'schema': '2.0',
+                            'config': {'wide_screen_mode': True},
+                            'body': {'elements': [{'tag': 'markdown', 'content': text}]},
+                        },
+                    )
+                )
+            elif needs_post:
                 payloads.append(('post', {'zh_Hans': {'title': '', 'content': text_elements}}))
             else:
                 parts = []
@@ -390,8 +428,12 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
 
     async def on_monitoring_message_created(self, query, monitoring_message_id: str):
         user_msg_id = getattr(query.message_event, 'message_id', None)
+        if not user_msg_id:
+            user_msg_id = getattr(getattr(query.message_event, 'message_chain', None), 'message_id', None)
         if user_msg_id:
             self.pending_monitoring_msg[str(user_msg_id)] = monitoring_message_id
+            while len(self.pending_monitoring_msg) > 1000:
+                self.pending_monitoring_msg.pop(next(iter(self.pending_monitoring_msg)), None)
 
     async def create_message_card(self, message_id, event) -> bool:
         card_id = await self.create_card_id(message_id)
@@ -409,9 +451,26 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
         )
         if not response.success():
             raise RuntimeError(f'Lark create_message_card failed: {response.code} {response.msg}')
+        user_msg_id = self._message_id_from_source(event)
+        reply_msg_id = getattr(response.data, 'message_id', None)
+        monitoring_msg_id = self.pending_monitoring_msg.pop(str(user_msg_id), None)
+        if reply_msg_id and monitoring_msg_id:
+            self.reply_to_monitoring_msg[reply_msg_id] = (monitoring_msg_id, time.time())
+        now = time.time()
+        for key, (_, timestamp) in tuple(self.reply_to_monitoring_msg.items()):
+            if now - timestamp > self._monitoring_mapping_ttl:
+                self.reply_to_monitoring_msg.pop(key, None)
+        while len(self.reply_to_monitoring_msg) > 1000:
+            self.reply_to_monitoring_msg.pop(next(iter(self.reply_to_monitoring_msg)), None)
         return True
 
     async def create_card_id(self, message_id) -> str:
+        while len(self.card_id_dict) >= 1000:
+            old_key = next(iter(self.card_id_dict))
+            old_card = self.card_id_dict.pop(old_key)
+            self.card_sequence_dict.pop(old_card, None)
+            self.card_last_update_dict.pop(old_card, None)
+            self.closed_streaming_cards.discard(old_card)
         card_data = {
             'schema': '2.0',
             'config': {
@@ -504,7 +563,7 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
                 ''.join(ele.get('text', '') for ele in paragraph if ele.get('tag') in {'text', 'md'})
                 for paragraph in text_elements
             )
-        if card_id in self.closed_streaming_cards:
+        if (is_final and not bot_message.tool_calls) or card_id in self.closed_streaming_cards:
             await self._replace_streaming_card(card_id, content)
         else:
             sequence = self._next_card_sequence(card_id)
@@ -515,7 +574,7 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
                 .request_body(ContentCardElementRequestBody.builder().content(content).sequence(sequence).build())
                 .build()
             )
-            response: ContentCardElementResponse = self.api_client.cardkit.v1.card_element.content(
+            response: ContentCardElementResponse = await self.api_client.cardkit.v1.card_element.acontent(
                 request, self.request_option(self._tenant_key_from_source(message_source))
             )
             if not response.success():
@@ -646,9 +705,29 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
                 await asyncio.sleep(1)
 
     async def kill(self) -> bool:
+        with self.threadsafe_event_lock:
+            futures = list(self.threadsafe_event_futures)
+        for future in futures:
+            future.cancel()
+        tasks = list(self.inbound_event_tasks)
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        self.inbound_event_tasks.clear()
+        self.pending_monitoring_msg.clear()
+        self.reply_to_monitoring_msg.clear()
+        self.tenant_access_tokens.clear()
+        self.card_id_dict.clear()
+        self.card_sequence_dict.clear()
+        self.card_last_update_dict.clear()
+        self.closed_streaming_cards.clear()
         self.bot._auto_reconnect = False
         await self.bot._disconnect()
         await _cancel_ws_cache_task(self.bot)
+        self._message_cache.clear()
+        self._user_cache.clear()
+        self._group_cache.clear()
         return True
 
     async def is_muted(self, group_id: int | None = None) -> bool:
@@ -681,6 +760,13 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
         self._user_cache[str(event.sender.id)] = event.sender
         if event.group:
             self._group_cache[str(event.group.id)] = event.group
+        for cache in (
+            self._message_cache,
+            self._user_cache,
+            self._group_cache,
+        ):
+            while len(cache) > 4096:
+                cache.pop(next(iter(cache)), None)
 
     def _handle_card_action_sync(self, event):
         interaction_event = interaction_event_from_callback(event)
@@ -716,18 +802,57 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
             }
         return response
 
+    def _schedule_inbound_event(self, coro) -> None:
+        for task in tuple(self.inbound_event_tasks):
+            if task.done():
+                self.inbound_event_tasks.discard(task)
+        if len(self.inbound_event_tasks) >= self._MAX_INBOUND_EVENTS:
+            coro.close()
+            return
+        task = asyncio.create_task(coro)
+        self.inbound_event_tasks.add(task)
+
+        def done(done_task: asyncio.Task) -> None:
+            self.inbound_event_tasks.discard(done_task)
+            if not done_task.cancelled():
+                done_task.exception()
+
+        task.add_done_callback(done)
+
+    def _schedule_threadsafe_event(self, coro):
+        """Submit one bounded callback from the Lark SDK's sync boundary."""
+
+        with self.threadsafe_event_lock:
+            for future in tuple(self.threadsafe_event_futures):
+                if future.done():
+                    self.threadsafe_event_futures.discard(future)
+            if len(self.threadsafe_event_futures) >= self._MAX_INBOUND_EVENTS:
+                coro.close()
+                return None
+            future = asyncio.run_coroutine_threadsafe(coro, self.event_loop)
+            self.threadsafe_event_futures.add(future)
+
+        def done(done_future) -> None:
+            with self.threadsafe_event_lock:
+                self.threadsafe_event_futures.discard(done_future)
+            if not done_future.cancelled():
+                done_future.exception()
+
+        future.add_done_callback(done)
+        return future
+
     def _submit_coro(self, coro):
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
             loop = self.event_loop
             if loop and loop.is_running():
-                asyncio.run_coroutine_threadsafe(coro, loop)
+                self._schedule_threadsafe_event(coro)
                 return
             coro.close()
             raise
         else:
-            loop.create_task(coro)
+            self._schedule_inbound_event(coro)
 
     def _feedback_event_from_callback(self, event) -> platform_events.FeedbackEvent | None:
         value = getattr(getattr(event.event, 'action', None), 'value', {}) or {}

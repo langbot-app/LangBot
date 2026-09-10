@@ -16,7 +16,7 @@ src/langbot/pkg/platform/adapters/aiocqhttp/
 └── onebot.svg
 ```
 
-The EBA adapter is registered as `aiocqhttp-eba`. The legacy adapter remains at `src/langbot/pkg/platform/sources/aiocqhttp.py`.
+The EBA adapter is registered as `aiocqhttp-omni`. The legacy adapter remains at `src/langbot/pkg/platform/sources/aiocqhttp.py`.
 
 ## Configuration
 

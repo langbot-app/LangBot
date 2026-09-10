@@ -77,6 +77,6 @@ class WecomMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
         return platform_message.MessageChain(
             [
                 platform_message.Source(id=message_id, time=datetime.datetime.now()),
-                platform_message.Image(base64=f'data:image/{image_format};base64,{image_base64}'),
+                platform_message.Image(url=picurl, base64=f'data:image/{image_format};base64,{image_base64}'),
             ]
         )

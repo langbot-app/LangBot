@@ -118,7 +118,7 @@ def interaction_event_from_component(
         raise ValueError('Discord interaction has no actor or channel')
     return platform_events.PlatformSpecificEvent(
         type='platform.specific',
-        adapter_name='discord',
+        adapter_name='discord-omni',
         action='interaction.submitted',
         data={
             **parsed,

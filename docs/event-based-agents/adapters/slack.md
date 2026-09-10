@@ -9,7 +9,7 @@ Slack is migrated into `src/langbot/pkg/platform/adapters/slack/` with the stand
 - `message_converter.py` maps common `MessageChain` components to Slack text fallback and maps inbound Slack text/image payloads back to EBA components.
 - `api_impl.py` provides cache-backed common read APIs.
 - `platform_api.py` declares safe Slack-specific API actions.
-- `manifest.yaml` declares `slack-eba`.
+- `manifest.yaml` declares `slack-omni`.
 
 The legacy `src/langbot/pkg/platform/sources/slack.py` adapter is kept unchanged.
 
@@ -71,7 +71,7 @@ Evidence file: `/home/wgc/LangBotxg/LangBotEbaTest/data/temp/slack_eba_plugin_pr
 
 Observed:
 
-- Real Slack private text produced `MessageReceived` with `adapter_name=slack-eba`, `Source + Plain`, private chat type, and filled `bot_uuid`.
+- Real Slack private text produced `MessageReceived` with `adapter_name=slack-omni`, `Source + Plain`, private chat type, and filled `bot_uuid`.
 - Safe common APIs passed: `get_message`, `get_user_info`, `get_friend_list`.
 - Outbound component fallback sweep passed through `send_message`: plain/at/face, image, quote, file, and forward.
 - Declared Slack platform APIs passed: `get_mode`, `auth_test`.

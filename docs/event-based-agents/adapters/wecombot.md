@@ -15,9 +15,9 @@ src/langbot/pkg/platform/adapters/wecombot/
 └── types.py
 ```
 
-The adapter is registered as `wecombot-eba`.
+The adapter is registered as `wecombot-omni`.
 
-This is separate from regular WeCom internal applications (`wecom-eba`). WeComBot supports WebSocket long connection mode, which does not require a webhook URL. Webhook mode remains available when `enable-webhook=true`.
+This is separate from regular WeCom internal applications (`wecom-omni`). WeComBot supports WebSocket long connection mode, which does not require a webhook URL. Webhook mode remains available when `enable-webhook=true`.
 
 ## Configuration
 
@@ -118,13 +118,13 @@ Evidence:
 
 - JSONL: `data/temp/wecombot_eba_plugin_probe.jsonl`
 - Bot UUID: `9f5d4125-7b6d-4c98-8ca2-111111111111`
-- Adapter: `wecombot-eba`
+- Adapter: `wecombot-omni`
 - Client: real WeCom desktop client, private `LangBot` BOT chat
 - Mode: WebSocket long connection (`enable-webhook=false`)
 
 Observed and verified:
 
-- A real user-side message reached the plugin as `MessageReceived` with `adapter_name=wecombot-eba`, common sender/chat fields, and `Source + Plain`.
+- A real user-side message reached the plugin as `MessageReceived` with `adapter_name=wecombot-omni`, common sender/chat fields, and `Source + Plain`.
 - SDK API calls succeeded through the standalone runtime: `get_langbot_version`, `get_bots`, `get_bot_info`, `send_message`, plugin/workspace storage, manifest/list APIs, and safe cached common platform APIs.
 - Outbound component sweep was visible in the WeCom client and returned `errcode=0`: plain/mention/face fallback, base64 image marker, quote fallback, file marker, and flattened forward fallback.
 - Declared WeComBot platform APIs succeeded through `plugin.call_platform_api`: `is_websocket_mode`, `get_stream_session_status`, and `send_markdown`.

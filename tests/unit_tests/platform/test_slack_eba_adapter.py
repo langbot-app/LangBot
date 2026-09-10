@@ -179,7 +179,7 @@ async def test_slack_event_converter_maps_private_group_and_platform_specific():
     platform_event = await SlackEventConverter().target2yiri(slack_event('file_share'))
 
     assert isinstance(private_event, platform_events.MessageReceivedEvent)
-    assert private_event.adapter_name == 'slack-eba'
+    assert private_event.adapter_name == 'slack-omni'
     assert private_event.chat_type == platform_entities.ChatType.PRIVATE
     assert private_event.chat_id == 'U-1'
     assert str(private_event.message_chain) == 'hello'
@@ -222,11 +222,15 @@ async def test_slack_send_reply_platform_api_and_unsupported():
     adapter = make_adapter()
     source_event = await SlackEventConverter().target2yiri(slack_event('im'))
 
-    reply_result = await adapter.reply_message(source_event, platform_message.MessageChain([platform_message.Plain(text='reply')]))
+    reply_result = await adapter.reply_message(
+        source_event, platform_message.MessageChain([platform_message.Plain(text='reply')])
+    )
     assert reply_result.message_id == 'evt-1'
     assert ('person', 'U-1', 'reply') in adapter.bot.sent
 
-    await adapter.send_message('group', 'C-1', platform_message.MessageChain([platform_message.Plain(text='hello channel')]))
+    await adapter.send_message(
+        'group', 'C-1', platform_message.MessageChain([platform_message.Plain(text='hello channel')])
+    )
     assert ('channel', 'C-1', 'hello channel') in adapter.bot.sent
 
     assert await adapter.call_platform_api('get_mode', {}) == {

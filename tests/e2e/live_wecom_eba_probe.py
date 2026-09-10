@@ -16,8 +16,7 @@ from langbot_plugin.api.entities.builtin.platform import message as platform_mes
 
 
 TINY_PNG = (
-    'data:image/png;base64,'
-    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII='
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII='
 )
 
 
@@ -178,7 +177,11 @@ async def run_probe(args: argparse.Namespace):
             )
             await run_api(api_results, 'get_user_info', lambda: adapter.get_user_info(source.sender.id))
             await run_api(api_results, 'get_friend_list', lambda: adapter.get_friend_list())
-            await run_api(api_results, 'call_platform_api:check_access_token', lambda: adapter.call_platform_api('check_access_token', {}))
+            await run_api(
+                api_results,
+                'call_platform_api:check_access_token',
+                lambda: adapter.call_platform_api('check_access_token', {}),
+            )
             await run_api(
                 api_results,
                 'call_platform_api:get_user_info',
@@ -203,7 +206,7 @@ def main():
     parser.add_argument('--port', type=int, default=5312)
     parser.add_argument('--path', default='/wecom/callback')
     parser.add_argument('--timeout', type=int, default=180)
-    parser.add_argument('--bot-uuid', default='wecom-eba-live-probe')
+    parser.add_argument('--bot-uuid', default='wecom-omni-live-probe')
     parser.add_argument('--log', default='data/temp/wecom_eba_live_probe.jsonl')
     parser.add_argument('--skip-api', action='store_true')
     args = parser.parse_args()

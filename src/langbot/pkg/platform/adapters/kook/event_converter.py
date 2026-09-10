@@ -24,7 +24,7 @@ class KookEventConverter(abstract_platform_adapter.AbstractEventConverter):
 
         return platform_events.PlatformSpecificEvent(
             type='platform.specific',
-            adapter_name='kook',
+            adapter_name='kook-omni',
             action=str(kook_event.get('type') or 'gateway_event'),
             data=KookEventConverter._compact_data(kook_event),
             timestamp=KookEventConverter._timestamp(kook_event),
@@ -43,7 +43,7 @@ class KookEventConverter(abstract_platform_adapter.AbstractEventConverter):
 
         return platform_events.MessageReceivedEvent(
             type='message.received',
-            adapter_name='kook',
+            adapter_name='kook-omni',
             message_id=str(kook_event.get('msg_id') or ''),
             message_chain=await KookMessageConverter.target2yiri(kook_event, bot_account_id),
             sender=author,

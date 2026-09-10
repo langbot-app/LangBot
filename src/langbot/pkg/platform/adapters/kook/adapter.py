@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+from langbot.pkg.platform.sources.kook import _decode_gateway_message
+
 import asyncio
 import json
 import traceback
 import typing
-import zlib
 
 import aiohttp
 import pydantic
@@ -129,7 +130,7 @@ class KookAdapter(KookAPIMixin, BasePlatformAdapter):
     async def run_async(self):
         self.running = True
         self.http_session = httpclient.get_session()
-        await self.logger.info('KOOK EBA adapter starting')
+        await self.logger.info('KOOK Omni adapter starting')
 
         try:
             bot_info = await self._get_bot_user_info()
@@ -154,7 +155,10 @@ class KookAdapter(KookAPIMixin, BasePlatformAdapter):
                     pass
         if self.ws:
             await self.ws.close()
-        await self.logger.info('KOOK EBA adapter stopped')
+        await self.logger.info('KOOK Omni adapter stopped')
+        self._message_cache.clear()
+        self._user_cache.clear()
+        self._group_cache.clear()
         return True
 
     async def is_muted(self, group_id: int | None = None) -> bool:
@@ -205,6 +209,13 @@ class KookAdapter(KookAPIMixin, BasePlatformAdapter):
         self._user_cache[str(event.sender.id)] = event.sender
         if event.group:
             self._group_cache[str(event.group.id)] = event.group
+        for cache in (
+            self._message_cache,
+            self._user_cache,
+            self._group_cache,
+        ):
+            while len(cache) > 4096:
+                cache.pop(next(iter(cache)), None)
 
     async def _websocket_loop(self):
         retry_count = 0
@@ -221,14 +232,14 @@ class KookAdapter(KookAPIMixin, BasePlatformAdapter):
                     self.heartbeat_task = asyncio.create_task(self._heartbeat_loop())
 
                     hello_msg = await asyncio.wait_for(ws.recv(), timeout=6.0)
-                    hello_data = json.loads(self._decode_ws_message(hello_msg))
+                    hello_data = await asyncio.to_thread(_decode_gateway_message, hello_msg)
                     if hello_data.get('s') != 1:
                         raise Exception(f'Expected KOOK HELLO signal, got {hello_data.get("s")}')
                     await self._handle_hello(hello_data.get('d') or {})
                     retry_count = 0
 
                     async for message in ws:
-                        msg_data = json.loads(self._decode_ws_message(message))
+                        msg_data = await asyncio.to_thread(_decode_gateway_message, message)
                         signal = msg_data.get('s')
                         if signal == 0:
                             await self._handle_event(msg_data.get('d') or {}, int(msg_data.get('sn') or 0))
@@ -301,7 +312,7 @@ class KookAdapter(KookAPIMixin, BasePlatformAdapter):
             request_kwargs['data'] = data
 
         async with session.request(method, url, **request_kwargs) as response:
-            payload = await response.json(content_type=None)
+            payload = await httpclient.read_json_limited(response)
             if response.status != 200:
                 raise Exception(f'KOOK API HTTP {response.status}: {payload}')
             if payload.get('code') != 0:
@@ -310,9 +321,4 @@ class KookAdapter(KookAPIMixin, BasePlatformAdapter):
 
     @staticmethod
     def _decode_ws_message(message) -> str:
-        if isinstance(message, bytes):
-            try:
-                return zlib.decompress(message).decode('utf-8')
-            except Exception:
-                return message.decode('utf-8')
-        return str(message)
+        return json.dumps(_decode_gateway_message(message))

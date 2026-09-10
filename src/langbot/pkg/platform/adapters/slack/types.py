@@ -1,3 +1,3 @@
 from __future__ import annotations
 
-ADAPTER_NAME = 'slack-eba'
+ADAPTER_NAME = 'slack-omni'

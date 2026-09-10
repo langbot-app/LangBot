@@ -39,7 +39,7 @@ class LarkAPIMixin:
         message_chain = await LarkMessageConverter.target2yiri(event_message, self.api_client)
         event = platform_events.MessageReceivedEvent(
             type='message.received',
-            adapter_name='lark-eba',
+            adapter_name='lark-omni',
             message_id=str(message_id),
             message_chain=message_chain,
             sender=platform_entities.User(id=''),

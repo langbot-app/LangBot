@@ -155,10 +155,13 @@ class WecomAdapter(WecomAPIMixin, abstract_platform_adapter.AbstractPlatformAdap
             while True:
                 await asyncio.sleep(1)
 
-        await self.logger.info('WeCom EBA adapter running in unified webhook mode')
+        await self.logger.info('WeCom Omni adapter running in unified webhook mode')
         await keep_alive()
 
     async def kill(self) -> bool:
+        await self.bot.close()
+        self._message_cache.clear()
+        self._user_cache.clear()
         return True
 
     async def is_muted(self, group_id: int | None = None) -> bool:
@@ -200,6 +203,12 @@ class WecomAdapter(WecomAPIMixin, abstract_platform_adapter.AbstractPlatformAdap
             return
         self._message_cache[str(event.message_id)] = event
         self._user_cache[str(event.sender.id)] = event.sender
+        for cache in (
+            self._message_cache,
+            self._user_cache,
+        ):
+            while len(cache) > 4096:
+                cache.pop(next(iter(cache)), None)
 
     async def _send_content(self, user_id: str, agent_id: int, content: dict):
         content_type = content.get('type')

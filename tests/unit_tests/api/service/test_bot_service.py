@@ -351,7 +351,9 @@ class TestBotServiceCreateBot:
         bot2 = _create_mock_bot(bot_uuid='uuid-2')
         mock_result = _create_mock_result([bot1, bot2])
         ap.persistence_mgr.execute_async = AsyncMock(return_value=mock_result)
-        ap.persistence_mgr.serialize_model = Mock(return_value={'uuid': 'uuid-1', 'name': 'Bot 1'})
+        ap.persistence_mgr.serialize_model = Mock(
+            return_value={'uuid': 'uuid-1', 'name': 'Bot 1', 'adapter': 'telegram'}
+        )
 
         service = BotService(ap)
 
@@ -435,6 +437,7 @@ class TestBotServiceCreateBot:
             return_value={
                 'uuid': 'new-uuid',
                 'name': 'New Bot',
+                'adapter': 'telegram',
             }
         )
 

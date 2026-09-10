@@ -15,7 +15,7 @@ src/langbot/pkg/platform/adapters/kook/
 └── types.py
 ```
 
-The adapter is registered as `kook-eba`.
+The adapter is registered as `kook-omni`.
 
 ## Configuration
 

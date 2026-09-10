@@ -121,7 +121,7 @@ a component it supports no events. Discover installed components with
 `get_processor_metadata`, then use `update_processor` with `component_ref` and
 optional `parameters`. API callers may also supply these when creating an instance. Bind bot events to this instance with `target_type: "event_processor"`
 and `target_id` equal to its UUID. Installation alone never activates a handler.
-`debug_agent` accepts the complete typed EBA event in `payload.data` for this kind.
+`debug_agent` accepts the complete typed event in `payload.data` for this kind.
 Legacy EventListener plugins remain in the Pipeline lifecycle.
 
 `list_processor_runs` includes `created_at_ms`, `started_at_ms`, and

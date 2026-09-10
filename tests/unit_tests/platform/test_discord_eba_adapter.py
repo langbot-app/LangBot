@@ -242,7 +242,7 @@ async def test_discord_converter_maps_message_edit_delete_and_reaction_events():
 
     assert isinstance(received, platform_events.MessageReceivedEvent)
     assert received.type == 'message.received'
-    assert received.adapter_name == 'discord'
+    assert received.adapter_name == 'discord-omni'
     assert received.chat_type == platform_entities.ChatType.GROUP
     assert received.chat_id == 789
     assert received.group.id == 456

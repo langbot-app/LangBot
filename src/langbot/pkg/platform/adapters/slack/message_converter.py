@@ -57,16 +57,18 @@ class SlackMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
 
         if event.pic_url:
             try:
-                components.append(platform_message.Image(base64=await image.get_slack_image_to_base64(event.pic_url, bot_token)))
+                components.append(
+                    platform_message.Image(
+                        url=event.pic_url, base64=await image.get_slack_image_to_base64(event.pic_url, bot_token)
+                    )
+                )
             except Exception:
                 components.append(platform_message.Image(url=event.pic_url))
 
         if event.text:
             components.append(platform_message.Plain(text=event.text))
 
-        if len(components) == 1 or (
-            len(components) == 2 and isinstance(components[1], platform_message.At)
-        ):
+        if len(components) == 1 or (len(components) == 2 and isinstance(components[1], platform_message.At)):
             components.append(platform_message.Unknown(text=f'[unsupported slack event: {event.type or "unknown"}]'))
 
         return platform_message.MessageChain(components)

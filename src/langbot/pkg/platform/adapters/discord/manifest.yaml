@@ -2,7 +2,7 @@ apiVersion: v1
 kind: MessagePlatformAdapter
 
 metadata:
-  name: discord-eba
+  name: discord-omni
   label:
     en_US: Discord
     zh_Hans: Discord
@@ -15,6 +15,10 @@ spec:
   categories:
     - popular
     - global
+  help_links:
+    zh: https://langbot.app/docs/zh/usage/platforms/discord
+    en: https://langbot.app/docs/en/usage/platforms/discord
+    ja: https://langbot.app/docs/ja/usage/platforms/discord
   config:
     - name: client_id
       label:

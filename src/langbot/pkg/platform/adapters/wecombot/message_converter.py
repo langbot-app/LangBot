@@ -9,35 +9,36 @@ from langbot_plugin.api.entities.builtin.platform import message as platform_mes
 
 class WecomBotMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
     @staticmethod
-    async def yiri2target(message_chain: platform_message.MessageChain) -> str:
-        content_parts: list[str] = []
+    async def yiri2target(message_chain: platform_message.MessageChain) -> list[dict]:
+        items: list[dict] = []
         for msg in message_chain:
             if isinstance(msg, platform_message.Source):
                 continue
             if isinstance(msg, platform_message.Plain):
-                content_parts.append(msg.text)
+                items.append({'type': 'text', 'text': msg.text})
+            elif isinstance(msg, (platform_message.Image, platform_message.Voice, platform_message.File)):
+                kind = (
+                    'image'
+                    if isinstance(msg, platform_message.Image)
+                    else ('voice' if isinstance(msg, platform_message.Voice) else 'file')
+                )
+                items.append({'type': kind, 'base64': msg.base64 or '', 'name': getattr(msg, 'name', '') or ''})
             elif isinstance(msg, platform_message.At):
-                content_parts.append(f'@{msg.display or msg.target}')
+                items.append({'type': 'text', 'text': f'@{msg.display or msg.target}'})
             elif isinstance(msg, platform_message.AtAll):
-                content_parts.append('@all')
-            elif isinstance(msg, platform_message.Image):
-                content_parts.append('[Image]')
-            elif isinstance(msg, platform_message.Voice):
-                content_parts.append('[Voice]')
-            elif isinstance(msg, platform_message.File):
-                content_parts.append(f'[File: {msg.name or msg.file_id or msg.url or "file"}]')
+                items.append({'type': 'text', 'text': '@all'})
             elif isinstance(msg, platform_message.Quote):
                 if msg.id is not None:
-                    content_parts.append(f'[Quote {msg.id}]')
+                    items.append({'type': 'text', 'text': f'[Quote {msg.id}]'})
                 if msg.origin:
-                    content_parts.append(await WecomBotMessageConverter.yiri2target(msg.origin))
+                    items.extend(await WecomBotMessageConverter.yiri2target(msg.origin))
             elif isinstance(msg, platform_message.Forward):
                 for node in msg.node_list:
                     if node.message_chain:
-                        content_parts.append(await WecomBotMessageConverter.yiri2target(node.message_chain))
+                        items.extend(await WecomBotMessageConverter.yiri2target(node.message_chain))
             else:
-                content_parts.append(str(msg))
-        return '\n'.join(part for part in content_parts if part)
+                items.append({'type': 'text', 'text': str(msg)})
+        return items
 
     @staticmethod
     async def target2yiri(event: WecomBotEvent, bot_name: str = '') -> platform_message.MessageChain:
@@ -61,8 +62,12 @@ class WecomBotMessageConverter(abstract_platform_adapter.AbstractMessageConverte
         WecomBotMessageConverter._append_link(components, event.link)
         WecomBotMessageConverter._append_quote(components, event.quote)
 
-        if not any(not isinstance(component, (platform_message.Source, platform_message.At)) for component in components):
-            components.append(platform_message.Unknown(text=f'[unsupported wecombot msgtype: {event.msgtype or "unknown"}]'))
+        if not any(
+            not isinstance(component, (platform_message.Source, platform_message.At)) for component in components
+        ):
+            components.append(
+                platform_message.Unknown(text=f'[unsupported wecombot msgtype: {event.msgtype or "unknown"}]')
+            )
 
         return platform_message.MessageChain(components)
 
@@ -76,7 +81,9 @@ class WecomBotMessageConverter(abstract_platform_adapter.AbstractMessageConverte
     def _append_file(components: list[platform_message.MessageComponent], file_info: dict | None):
         if not file_info:
             return
-        file_url = file_info.get('download_url') or file_info.get('url') or file_info.get('fileurl') or file_info.get('path')
+        file_url = (
+            file_info.get('download_url') or file_info.get('url') or file_info.get('fileurl') or file_info.get('path')
+        )
         file_base64 = file_info.get('base64')
         file_name = file_info.get('filename') or file_info.get('name')
         file_size = file_info.get('filesize') or file_info.get('size')
@@ -140,7 +147,9 @@ class WecomBotMessageConverter(abstract_platform_adapter.AbstractMessageConverte
         if not link:
             return
         summary = '\n'.join(
-            filter(None, [link.get('title', ''), link.get('description') or link.get('digest', ''), link.get('url', '')])
+            filter(
+                None, [link.get('title', ''), link.get('description') or link.get('digest', ''), link.get('url', '')]
+            )
         )
         if summary:
             components.append(platform_message.Plain(text=f'{prefix}{summary}'))
@@ -152,7 +161,9 @@ class WecomBotMessageConverter(abstract_platform_adapter.AbstractMessageConverte
         origin: list[platform_message.MessageComponent] = []
         if quote_info.get('content'):
             origin.append(platform_message.Plain(text=quote_info.get('content')))
-        WecomBotMessageConverter._append_images(origin, quote_info.get('images') or ([quote_info.get('picurl')] if quote_info.get('picurl') else []))
+        WecomBotMessageConverter._append_images(
+            origin, quote_info.get('images') or ([quote_info.get('picurl')] if quote_info.get('picurl') else [])
+        )
         WecomBotMessageConverter._append_file(origin, quote_info.get('file'))
         WecomBotMessageConverter._append_voice(origin, quote_info.get('voice'))
         WecomBotMessageConverter._append_video(origin, quote_info.get('video'))

@@ -92,7 +92,7 @@ class TelegramEventConverter(abstract_platform_adapter.AbstractEventConverter):
             return platform_events.PlatformSpecificEvent(
                 type='platform.specific',
                 timestamp=time.time(),
-                adapter_name='telegram',
+                adapter_name='telegram-omni',
                 action='callback_query',
                 data={
                     'callback_query_id': update.callback_query.id,
@@ -111,7 +111,7 @@ class TelegramEventConverter(abstract_platform_adapter.AbstractEventConverter):
         return platform_events.PlatformSpecificEvent(
             type='platform.specific',
             timestamp=time.time(),
-            adapter_name='telegram',
+            adapter_name='telegram-omni',
             action='unknown_update',
             data={'update_id': update.update_id},
             source_platform_object=update,
@@ -138,7 +138,7 @@ class TelegramEventConverter(abstract_platform_adapter.AbstractEventConverter):
         return platform_events.MessageReceivedEvent(
             type='message.received',
             timestamp=message.date.timestamp() if message.date else 0.0,
-            adapter_name='telegram',
+            adapter_name='telegram-omni',
             message_id=message.message_id,
             message_chain=lb_message,
             sender=sender,
@@ -169,7 +169,7 @@ class TelegramEventConverter(abstract_platform_adapter.AbstractEventConverter):
         return platform_events.MessageEditedEvent(
             type='message.edited',
             timestamp=message.edit_date.timestamp() if message.edit_date else 0.0,
-            adapter_name='telegram',
+            adapter_name='telegram-omni',
             message_id=message.message_id,
             new_content=lb_message,
             editor=editor,
@@ -203,7 +203,7 @@ class TelegramEventConverter(abstract_platform_adapter.AbstractEventConverter):
             return platform_events.MemberJoinedEvent(
                 type='group.member_joined',
                 timestamp=cm.date.timestamp() if cm.date else time.time(),
-                adapter_name='telegram',
+                adapter_name='telegram-omni',
                 group=group,
                 member=member,
                 inviter=inviter,
@@ -217,7 +217,7 @@ class TelegramEventConverter(abstract_platform_adapter.AbstractEventConverter):
             return platform_events.MemberLeftEvent(
                 type='group.member_left',
                 timestamp=cm.date.timestamp() if cm.date else time.time(),
-                adapter_name='telegram',
+                adapter_name='telegram-omni',
                 group=group,
                 member=member,
                 is_kicked=is_kicked,
@@ -235,7 +235,7 @@ class TelegramEventConverter(abstract_platform_adapter.AbstractEventConverter):
                 return platform_events.MemberBannedEvent(
                     type='group.member_banned',
                     timestamp=cm.date.timestamp() if cm.date else time.time(),
-                    adapter_name='telegram',
+                    adapter_name='telegram-omni',
                     group=group,
                     member=member,
                     operator=inviter,
@@ -247,7 +247,7 @@ class TelegramEventConverter(abstract_platform_adapter.AbstractEventConverter):
         return platform_events.PlatformSpecificEvent(
             type='platform.specific',
             timestamp=cm.date.timestamp() if cm.date else time.time(),
-            adapter_name='telegram',
+            adapter_name='telegram-omni',
             action='chat_member_updated',
             data={
                 'old_status': old_status,
@@ -276,7 +276,7 @@ class TelegramEventConverter(abstract_platform_adapter.AbstractEventConverter):
             return platform_events.BotInvitedToGroupEvent(
                 type='bot.invited_to_group',
                 timestamp=mcm.date.timestamp() if mcm.date else time.time(),
-                adapter_name='telegram',
+                adapter_name='telegram-omni',
                 group=group,
                 inviter=inviter,
                 source_platform_object=update,
@@ -287,7 +287,7 @@ class TelegramEventConverter(abstract_platform_adapter.AbstractEventConverter):
             return platform_events.BotRemovedFromGroupEvent(
                 type='bot.removed_from_group',
                 timestamp=mcm.date.timestamp() if mcm.date else time.time(),
-                adapter_name='telegram',
+                adapter_name='telegram-omni',
                 group=group,
                 operator=inviter,
                 source_platform_object=update,
@@ -303,7 +303,7 @@ class TelegramEventConverter(abstract_platform_adapter.AbstractEventConverter):
                 return platform_events.BotMutedEvent(
                     type='bot.muted',
                     timestamp=mcm.date.timestamp() if mcm.date else time.time(),
-                    adapter_name='telegram',
+                    adapter_name='telegram-omni',
                     group=group,
                     operator=inviter,
                     duration=duration,
@@ -314,7 +314,7 @@ class TelegramEventConverter(abstract_platform_adapter.AbstractEventConverter):
             return platform_events.BotUnmutedEvent(
                 type='bot.unmuted',
                 timestamp=mcm.date.timestamp() if mcm.date else time.time(),
-                adapter_name='telegram',
+                adapter_name='telegram-omni',
                 group=group,
                 operator=inviter,
                 source_platform_object=update,
@@ -323,7 +323,7 @@ class TelegramEventConverter(abstract_platform_adapter.AbstractEventConverter):
         return platform_events.PlatformSpecificEvent(
             type='platform.specific',
             timestamp=mcm.date.timestamp() if mcm.date else time.time(),
-            adapter_name='telegram',
+            adapter_name='telegram-omni',
             action='my_chat_member_updated',
             data={
                 'old_status': old_status,
@@ -360,7 +360,7 @@ class TelegramEventConverter(abstract_platform_adapter.AbstractEventConverter):
         return platform_events.MessageReactionEvent(
             type='message.reaction',
             timestamp=reaction.date.timestamp() if reaction.date else time.time(),
-            adapter_name='telegram',
+            adapter_name='telegram-omni',
             message_id=reaction.message_id,
             user=user,
             reaction=new_emojis[0] if new_emojis else '',

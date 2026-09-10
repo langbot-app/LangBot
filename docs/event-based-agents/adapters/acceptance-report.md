@@ -4,17 +4,17 @@ Date: May 10, 2026
 
 Scope:
 
-- `telegram-eba`
-- `discord-eba`
-- `aiocqhttp-eba`
-- `dingtalk-eba`
-- `lark-eba`
-- `wecom-eba`
-- `wecombot-eba`
-- `wecomcs-eba`
-- `officialaccount-eba`
-- `qqofficial-eba`
-- `slack-eba`
+- `telegram-omni`
+- `discord-omni`
+- `aiocqhttp-omni`
+- `dingtalk-omni`
+- `lark-omni`
+- `wecom-omni`
+- `wecombot-omni`
+- `wecomcs-omni`
+- `officialaccount-omni`
+- `qqofficial-omni`
+- `slack-omni`
 
 This report follows `acceptance-checklist.md`. Evidence levels are intentionally strict:
 
@@ -72,7 +72,7 @@ All four adapters deliver common SDK entities to plugins before LangBot core/plu
 | Requirement | Telegram | Discord | aiocqhttp | DingTalk | Lark / Feishu |
 |-------------|----------|---------|-----------|----------|---------------|
 | `bot_uuid` filled | plugin-e2e | plugin-e2e | plugin-e2e | plugin-e2e | live plugin-e2e pending |
-| `adapter_name` filled | `telegram` | `discord` | `aiocqhttp` | `dingtalk` | `lark-eba` in current unit/code; older live text evidence recorded `lark` before the naming fix |
+| `adapter_name` filled | `telegram` | `discord` | `aiocqhttp` | `dingtalk` | `lark-omni` in current unit/code; older live text evidence recorded `lark` before the naming fix |
 | common `MessageChain` delivered | `Plain`, group `At + Plain`, private `Image`, private `File` | `Source + Plain` | UI `Source + Plain`; protocol `Source + Plain + At + Face + Image + Voice + File + Quote + Plain` | `Source + Plain`, private `Source + Image`, private `Source + File` | live private `Source + Plain`; unit `Source + Plain + At/Image/File`; latest live image/file blocked |
 | common user/group entities | plugin-e2e | plugin-e2e | plugin-e2e | plugin-e2e private user; group not completed | live private user; unit private/group |
 | raw native object isolation | raw data stays in `source_platform_object` | raw data stays in `source_platform_object` | raw data stays in `source_platform_object` | raw data stays in `source_platform_object` | raw data stays in `source_platform_object` |

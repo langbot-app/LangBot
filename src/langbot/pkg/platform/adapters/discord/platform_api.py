@@ -37,7 +37,7 @@ async def create_invite(bot: discord.Client, params: dict) -> dict:
         max_age=params.get('max_age', 0),
         max_uses=params.get('max_uses', 0),
         unique=params.get('unique', True),
-        reason=params.get('reason', 'LangBot EBA create_invite'),
+        reason=params.get('reason', 'LangBot Omni create_invite'),
     )
     return {'url': invite.url, 'code': invite.code}
 
@@ -45,14 +45,14 @@ async def create_invite(bot: discord.Client, params: dict) -> dict:
 async def pin_message(bot: discord.Client, params: dict) -> dict:
     channel = bot.get_channel(int(params['channel_id'])) or await bot.fetch_channel(int(params['channel_id']))
     message = await channel.fetch_message(int(params['message_id']))
-    await message.pin(reason=params.get('reason', 'LangBot EBA pin_message'))
+    await message.pin(reason=params.get('reason', 'LangBot Omni pin_message'))
     return {'ok': True}
 
 
 async def unpin_message(bot: discord.Client, params: dict) -> dict:
     channel = bot.get_channel(int(params['channel_id'])) or await bot.fetch_channel(int(params['channel_id']))
     message = await channel.fetch_message(int(params['message_id']))
-    await message.unpin(reason=params.get('reason', 'LangBot EBA unpin_message'))
+    await message.unpin(reason=params.get('reason', 'LangBot Omni unpin_message'))
     return {'ok': True}
 
 

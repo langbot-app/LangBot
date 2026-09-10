@@ -11,6 +11,7 @@ from langbot.pkg.api.http.authz import WorkspaceRequiredError
 from langbot.pkg.api.http.context import ExecutionContext
 from langbot.pkg.entity.persistence.bot import Bot
 from langbot.pkg.platform.botmgr import PlatformManager, RuntimeBot
+from langbot.pkg.platform.adapter_names import OMNI_ADAPTER_NAMES
 from langbot.pkg.workspace.entities import WorkspaceExecutionBinding
 from langbot.pkg.workspace.errors import WorkspaceInvariantError
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
@@ -240,7 +241,11 @@ async def test_reload_stops_and_drops_existing_platform_runtimes():
 
 
 @pytest.mark.asyncio
-async def test_cloud_startup_reuses_validated_platform_binding():
+@pytest.mark.parametrize(
+    ('saved_adapter', 'registered_adapter'),
+    [('probe', 'probe')] + [(f'{name}-eba', f'{name}-omni') for name in sorted(OMNI_ADAPTER_NAMES)],
+)
+async def test_cloud_startup_reuses_validated_platform_binding(saved_adapter, registered_adapter):
     class TenantUow:
         async def __aenter__(self):
             return self
@@ -270,7 +275,7 @@ async def test_cloud_startup_reuses_validated_platform_binding():
         workspace_uuid=WORKSPACE_A,
         name='Probe',
         description='',
-        adapter='probe',
+        adapter=saved_adapter,
         adapter_config={},
         enable=False,
         event_bindings=[],
@@ -295,11 +300,12 @@ async def test_cloud_startup_reuses_validated_platform_binding():
         workspace_service=workspace_service,
     )
     manager = PlatformManager(application)
-    manager.adapter_dict = {'probe': ProbeAdapter}
+    manager.adapter_dict = {registered_adapter: ProbeAdapter}
 
     await manager.load_bots_from_db()
 
     assert len(manager.bots) == 1
+    assert manager.bots[0].bot_entity.adapter == registered_adapter
     workspace_service.get_execution_binding.assert_not_awaited()
 
 

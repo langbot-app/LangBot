@@ -244,7 +244,7 @@ class LangBotMCPServer:
                 'Run a synthetic event against an Agent or Event processor without platform delivery. '
                 'Returns final text and execution_events containing reported messages/thinking and tool calls. '
                 'Platform tools use mock adapters; other tools execute normally. '
-                'For Event processors, data contains the complete typed EBA event fields. '
+                'For Event processors, data contains the complete typed event fields. '
                 'Requires runtime.operate; payload accepts event_type, text, data, conversation_id, actor, subject and '
                 'mock (errors/results keyed by platform tool name; unsupported_apis lists unavailable platform APIs).'
             )

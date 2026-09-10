@@ -4,6 +4,11 @@ import typing
 
 import aiocqhttp
 
+from langbot.pkg.platform.sources.aiocqhttp import (
+    AiocqhttpEventConverter as LegacyAiocqhttpEventConverter,
+    _get_group_name_placeholder,
+)
+
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
 from langbot.pkg.platform.adapters.aiocqhttp.message_converter import AiocqhttpMessageConverter
 from langbot_plugin.api.entities.builtin.platform import entities as platform_entities
@@ -20,10 +25,11 @@ class AiocqhttpEventConverter(abstract_platform_adapter.AbstractEventConverter):
         event: aiocqhttp.Event,
         bot: aiocqhttp.CQHttp | None = None,
         bot_user_id: int | str | None = None,
+        lookup: LegacyAiocqhttpEventConverter | None = None,
     ) -> platform_events.Event | None:
         event_type = getattr(event, 'type', None)
         if event_type == 'message':
-            return await AiocqhttpEventConverter.message_to_eba(event, bot)
+            return await AiocqhttpEventConverter.message_to_eba(event, bot, lookup)
         if event_type == 'notice':
             return AiocqhttpEventConverter.notice_to_eba(event, bot_user_id)
         if event_type == 'request':
@@ -36,8 +42,9 @@ class AiocqhttpEventConverter(abstract_platform_adapter.AbstractEventConverter):
     async def target2legacy(
         event: aiocqhttp.Event,
         bot: aiocqhttp.CQHttp | None = None,
+        lookup: LegacyAiocqhttpEventConverter | None = None,
     ) -> platform_events.FriendMessage | platform_events.GroupMessage | None:
-        eba_event = await AiocqhttpEventConverter.message_to_eba(event, bot)
+        eba_event = await AiocqhttpEventConverter.message_to_eba(event, bot, lookup)
         if eba_event:
             return eba_event.to_legacy_event()
         return None
@@ -46,6 +53,7 @@ class AiocqhttpEventConverter(abstract_platform_adapter.AbstractEventConverter):
     async def message_to_eba(
         event: aiocqhttp.Event,
         bot: aiocqhttp.CQHttp | None = None,
+        lookup: LegacyAiocqhttpEventConverter | None = None,
     ) -> platform_events.MessageReceivedEvent:
         message_chain = await AiocqhttpMessageConverter.target2yiri(
             getattr(event, 'message', []),
@@ -64,6 +72,12 @@ class AiocqhttpEventConverter(abstract_platform_adapter.AbstractEventConverter):
 
         sender = AiocqhttpEventConverter.user_from_sender(event)
         sender_data = getattr(event, 'sender', {}) or {}
+        if group is not None:
+            lookup = lookup if lookup is not None else LegacyAiocqhttpEventConverter()
+            group.name = await lookup._get_group_name(group.id, bot) or _get_group_name_placeholder(group.id)
+            if not sender_data.get('title'):
+                info = await lookup._get_group_member_info(group.id, sender.id, bot)
+                sender_data = {**sender_data, 'title': info.get('title', '')}
         role = sender_data.get('role', 'member')
         membership = None
         if group is not None:
@@ -76,7 +90,7 @@ class AiocqhttpEventConverter(abstract_platform_adapter.AbstractEventConverter):
             )
         return platform_events.MessageReceivedEvent(
             type='message.received',
-            adapter_name='aiocqhttp',
+            adapter_name='aiocqhttp-omni',
             message_id=getattr(event, 'message_id', ''),
             message_chain=message_chain,
             sender=sender,
@@ -97,7 +111,7 @@ class AiocqhttpEventConverter(abstract_platform_adapter.AbstractEventConverter):
         if notice_type in ('group_recall', 'friend_recall'):
             return platform_events.MessageDeletedEvent(
                 type='message.deleted',
-                adapter_name='aiocqhttp',
+                adapter_name='aiocqhttp-omni',
                 message_id=getattr(event, 'message_id', ''),
                 operator=AiocqhttpEventConverter.user(getattr(event, 'operator_id', None)),
                 chat_type=platform_entities.ChatType.GROUP
@@ -115,7 +129,7 @@ class AiocqhttpEventConverter(abstract_platform_adapter.AbstractEventConverter):
             if AiocqhttpEventConverter._is_bot_user(getattr(event, 'user_id', None), bot_user_id, event):
                 return platform_events.BotInvitedToGroupEvent(
                     type='bot.invited_to_group',
-                    adapter_name='aiocqhttp',
+                    adapter_name='aiocqhttp-omni',
                     group=group,
                     inviter=AiocqhttpEventConverter.user(inviter_id) if inviter_id else None,
                     timestamp=float(getattr(event, 'time', 0) or 0),
@@ -123,7 +137,7 @@ class AiocqhttpEventConverter(abstract_platform_adapter.AbstractEventConverter):
                 )
             return platform_events.MemberJoinedEvent(
                 type='group.member_joined',
-                adapter_name='aiocqhttp',
+                adapter_name='aiocqhttp-omni',
                 group=group,
                 member=user,
                 inviter=AiocqhttpEventConverter.user(inviter_id) if inviter_id else None,
@@ -137,7 +151,7 @@ class AiocqhttpEventConverter(abstract_platform_adapter.AbstractEventConverter):
             if AiocqhttpEventConverter._is_bot_user(getattr(event, 'user_id', None), bot_user_id, event):
                 return platform_events.BotRemovedFromGroupEvent(
                     type='bot.removed_from_group',
-                    adapter_name='aiocqhttp',
+                    adapter_name='aiocqhttp-omni',
                     group=group,
                     operator=operator,
                     timestamp=float(getattr(event, 'time', 0) or 0),
@@ -145,7 +159,7 @@ class AiocqhttpEventConverter(abstract_platform_adapter.AbstractEventConverter):
                 )
             return platform_events.MemberLeftEvent(
                 type='group.member_left',
-                adapter_name='aiocqhttp',
+                adapter_name='aiocqhttp-omni',
                 group=group,
                 member=AiocqhttpEventConverter.user(getattr(event, 'user_id', '')),
                 is_kicked=getattr(event, 'sub_type', '') in ('kick', 'kick_me'),
@@ -161,7 +175,7 @@ class AiocqhttpEventConverter(abstract_platform_adapter.AbstractEventConverter):
                 event_cls = platform_events.BotMutedEvent if duration > 0 else platform_events.BotUnmutedEvent
                 kwargs: dict[str, typing.Any] = {
                     'type': 'bot.muted' if duration > 0 else 'bot.unmuted',
-                    'adapter_name': 'aiocqhttp',
+                    'adapter_name': 'aiocqhttp-omni',
                     'group': group,
                     'operator': operator,
                     'timestamp': float(getattr(event, 'time', 0) or 0),
@@ -173,7 +187,7 @@ class AiocqhttpEventConverter(abstract_platform_adapter.AbstractEventConverter):
             if duration > 0:
                 return platform_events.MemberBannedEvent(
                     type='group.member_banned',
-                    adapter_name='aiocqhttp',
+                    adapter_name='aiocqhttp-omni',
                     group=group,
                     member=AiocqhttpEventConverter.user(getattr(event, 'user_id', '')),
                     operator=operator,
@@ -184,7 +198,7 @@ class AiocqhttpEventConverter(abstract_platform_adapter.AbstractEventConverter):
         if notice_type == 'friend_add':
             return platform_events.FriendAddedEvent(
                 type='friend.added',
-                adapter_name='aiocqhttp',
+                adapter_name='aiocqhttp-omni',
                 user=AiocqhttpEventConverter.user(getattr(event, 'user_id', '')),
                 timestamp=float(getattr(event, 'time', 0) or 0),
                 source_platform_object=event,
@@ -197,7 +211,7 @@ class AiocqhttpEventConverter(abstract_platform_adapter.AbstractEventConverter):
         if request_type == 'friend':
             return platform_events.FriendRequestReceivedEvent(
                 type='friend.request_received',
-                adapter_name='aiocqhttp',
+                adapter_name='aiocqhttp-omni',
                 request_id=getattr(event, 'flag', ''),
                 user=AiocqhttpEventConverter.user(getattr(event, 'user_id', '')),
                 message=getattr(event, 'comment', None),
@@ -207,7 +221,7 @@ class AiocqhttpEventConverter(abstract_platform_adapter.AbstractEventConverter):
         if request_type == 'group' and getattr(event, 'sub_type', '') == 'invite':
             return platform_events.BotInvitedToGroupEvent(
                 type='bot.invited_to_group',
-                adapter_name='aiocqhttp',
+                adapter_name='aiocqhttp-omni',
                 group=AiocqhttpEventConverter.group_from_event(event),
                 inviter=AiocqhttpEventConverter.user(getattr(event, 'user_id', '')),
                 request_id=getattr(event, 'flag', ''),
@@ -244,7 +258,7 @@ class AiocqhttpEventConverter(abstract_platform_adapter.AbstractEventConverter):
     def platform_specific(event: aiocqhttp.Event, action: str) -> platform_events.PlatformSpecificEvent:
         return platform_events.PlatformSpecificEvent(
             type='platform.specific',
-            adapter_name='aiocqhttp',
+            adapter_name='aiocqhttp-omni',
             action=action,
             data={key: value for key, value in dict(event).items() if key not in {'message'}},
             timestamp=float(getattr(event, 'time', 0) or 0),
