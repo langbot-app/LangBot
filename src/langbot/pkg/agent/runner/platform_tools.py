@@ -54,8 +54,10 @@ PLATFORM_TOOL_DEFINITIONS: tuple[PlatformToolDefinition, ...] = (
         'write',
         {'zh_Hans': '回复当前会话', 'en_US': 'Reply to current conversation'},
         {
-            'zh_Hans': '向触发当前事件的会话发送文本消息。目标由 LangBot 固定，Agent 无法改写。',
-            'en_US': 'Send text to the conversation that triggered this run. LangBot fixes the target.',
+            'zh_Hans': '向触发当前事件的会话发送回复或任务进度。目标由 LangBot 固定，Agent 无法改写。'
+            '需要发送消息时请调用此工具，Agent 的输出文本不会自动发送。',
+            'en_US': 'Send a reply or task progress to the conversation that triggered this run. LangBot fixes the target. '
+            'Call this tool to send a message; Agent output text is not sent automatically.',
         },
         _object_schema({'text': {**_TEXT, 'description': 'Reply text'}}, ['text']),
         ('message.*', 'friend.*', 'group.*', 'feedback.*'),
@@ -209,8 +211,9 @@ PLATFORM_TOOL_DEFINITIONS: tuple[PlatformToolDefinition, ...] = (
         'write',
         {'zh_Hans': '发送消息', 'en_US': 'Send message'},
         {
-            'zh_Hans': '使用当前机器人向指定用户或群组发送文本消息。',
-            'en_US': 'Send text to a specified person or group using the current bot.',
+            'zh_Hans': '使用当前机器人向指定用户或群组发送回复或任务进度。Agent 的输出文本不会自动发送。',
+            'en_US': 'Send a reply or task progress to a specified person or group using the current bot. '
+            'Agent output text is not sent automatically.',
         },
         _object_schema(
             {'target_type': _TARGET_TYPE, 'target_id': _ID, 'text': _TEXT}, ['target_type', 'target_id', 'text']

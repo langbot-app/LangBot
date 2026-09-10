@@ -3,11 +3,20 @@ from sqlalchemy.exc import IntegrityError
 
 from ....authz import Permission, has_permission
 from ....context import RequestContext
+from ....service.bot_errors import BotApplyError, bot_error_message
 from ... import group
 
 
 @group.group_class('bots', '/api/v1/platform/bots')
 class BotsRouterGroup(group.RouterGroup):
+    def _apply_error_response(self, exc: BotApplyError):
+        request_id = self.request_id()
+        logger = getattr(self.ap, 'logger', self.quart_app.logger)
+        logger.error(f'Bot configuration apply failed request_id={request_id} bot_uuid={exc.bot_uuid}', exc_info=True)
+        return quart.jsonify(
+            code='bot_apply_failed', msg=str(exc), data={'uuid': exc.bot_uuid}, request_id=request_id
+        ), 400
+
     async def initialize(self) -> None:
         @self.route(
             '',
@@ -34,7 +43,14 @@ class BotsRouterGroup(group.RouterGroup):
         )
         async def _(request_context: RequestContext) -> str:
             json_data = await quart.request.json
-            bot_uuid = await self.ap.bot_service.create_bot(request_context, json_data)
+            if not isinstance(json_data, dict):
+                return self.http_status(400, 'invalid_bot_config', 'Bot configuration must be an object')
+            try:
+                bot_uuid = await self.ap.bot_service.create_bot(request_context, json_data)
+            except BotApplyError as exc:
+                return self._apply_error_response(exc)
+            except ValueError as exc:
+                return self.http_status(400, 'invalid_bot_config', bot_error_message(exc, json_data))
             return self.success(data={'uuid': bot_uuid})
 
         @self.route(
@@ -63,7 +79,14 @@ class BotsRouterGroup(group.RouterGroup):
         async def _(bot_uuid: str, request_context: RequestContext) -> str:
             if quart.request.method == 'PUT':
                 json_data = await quart.request.json
-                await self.ap.bot_service.update_bot(request_context, bot_uuid, json_data)
+                if not isinstance(json_data, dict):
+                    return self.http_status(400, 'invalid_bot_config', 'Bot configuration must be an object')
+                try:
+                    await self.ap.bot_service.update_bot(request_context, bot_uuid, json_data)
+                except BotApplyError as exc:
+                    return self._apply_error_response(exc)
+                except ValueError as exc:
+                    return self.http_status(400, 'invalid_bot_config', bot_error_message(exc, json_data))
             else:
                 await self.ap.bot_service.delete_bot(request_context, bot_uuid)
             return self.success()

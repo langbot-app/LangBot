@@ -342,6 +342,11 @@ const viVN = {
       "Uses the Workspace owner's LangBot Account billing and credits.",
   },
   bots: {
+    applyFailed: 'Đã lưu cấu hình nhưng không thể áp dụng',
+    internalErrorHint:
+      'Đã xảy ra lỗi nội bộ. Hãy kiểm tra nhật ký máy chủ bằng mã lỗi.',
+    errorReference: 'Mã lỗi: {{id}}',
+
     adapterEventDebugAction: 'Kiểm tra lắng nghe',
     title: 'Bot',
     description:

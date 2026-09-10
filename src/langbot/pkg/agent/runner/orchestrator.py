@@ -8,6 +8,9 @@ import typing
 from langbot_plugin.api.entities.builtin.provider import message as provider_message
 from langbot_plugin.api.entities.builtin.pipeline import query as pipeline_query
 
+from langbot_plugin.entities.io.actions.enums import PluginToRuntimeAction
+
+from .reply_stream import ReplyStreamSession
 from ...core import app
 from ...api.http.context import ExecutionContext
 from ...pipeline.pool import get_query_execution_context
@@ -155,6 +158,16 @@ class AgentRunOrchestrator:
 
         state_context = build_state_context(event, binding, descriptor)
         run_id = context['run_id']
+        context['context']['available_apis']['reply_stream'] = hasattr(PluginToRuntimeAction, 'REPLY_STREAM') and any(
+            tool.get('tool_name') == 'event_reply' and tool.get('tool_type') == 'platform'
+            for tool in resources.get('tools', [])
+        )
+        reply_streams = ReplyStreamSession(
+            event,
+            adapter=(adapter_context or {}).get('_delivery_adapter') or getattr(execution_query, 'adapter', None),
+            source=(adapter_context or {}).get('_platform_event')
+            or getattr((adapter_context or {}).get('_query'), 'message_event', None),
+        )
         available_apis = context.get('context', {}).get('available_apis')
         run_authorization = {
             'runner_id': descriptor.id,
@@ -208,6 +221,7 @@ class AgentRunOrchestrator:
                 state_context=state_context,
                 execution_query=execution_query,
                 platform_context=freeze_platform_context(event),
+                reply_streams=reply_streams,
             )
 
             event_log_id = await self.journal.write_event_log(
@@ -358,6 +372,7 @@ class AgentRunOrchestrator:
             raise
         finally:
             session = await self._session_registry.unregister(run_id)
+            await reply_streams.close()
             pending_steering = session.get('steering_queue', []) if session else []
             if pending_steering:
                 try:

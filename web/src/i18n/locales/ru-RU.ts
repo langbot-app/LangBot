@@ -346,6 +346,11 @@ const ruRU = {
       "Uses the Workspace owner's LangBot Account billing and credits.",
   },
   bots: {
+    applyFailed: 'Настройки сохранены, но не применены',
+    internalErrorHint:
+      'Внутренняя ошибка. Проверьте журналы сервера по указанному идентификатору.',
+    errorReference: 'Идентификатор ошибки: {{id}}',
+
     adapterEventDebugAction: 'Тест прослушивания',
     title: 'Боты',
     description:

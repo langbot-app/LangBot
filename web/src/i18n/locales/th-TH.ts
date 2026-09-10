@@ -333,6 +333,11 @@ const thTH = {
       "Uses the Workspace owner's LangBot Account billing and credits.",
   },
   bots: {
+    applyFailed: 'บันทึกการตั้งค่าแล้ว แต่ไม่สามารถนำไปใช้ได้',
+    internalErrorHint:
+      'เกิดข้อผิดพลาดภายใน โปรดตรวจสอบบันทึกของเซิร์ฟเวอร์ด้วยหมายเลขอ้างอิง',
+    errorReference: 'หมายเลขข้อผิดพลาด: {{id}}',
+
     adapterEventDebugAction: 'ทดสอบการรับเหตุการณ์',
     title: 'บอท',
     description:

@@ -63,13 +63,13 @@ spec:
         vi_VN: Bật chế độ trả lời trực tuyến
         es_ES: Habilitar modo de respuesta en streaming
       description:
-        en_US: If enabled, the bot will use the stream of telegram reply mode
-        zh_Hans: 如果启用，将使用电报流式方式来回复内容
-        zh_Hant: 如果啟用，將使用 Telegram 串流方式來回覆內容
-        ja_JP: 有効にすると、ボットはストリーミングモードでメッセージに返信します
-        th_TH: หากเปิดใช้งาน บอทจะใช้โหมดสตรีมของ Telegram ในการตอบกลับ
-        vi_VN: Nếu bật, bot sẽ sử dụng chế độ trả lời trực tuyến của Telegram
-        es_ES: Si está habilitado, el bot usará el modo de respuesta en streaming de Telegram
+        en_US: Used for streaming replies from pipelines or plugins. If enabled, the bot will use the stream of telegram reply mode
+        zh_Hans: 用于流水线和插件主动发起的流式回复。如果启用，将使用电报流式方式来回复内容
+        zh_Hant: 用於流水線和插件主動發起的串流回覆。如果啟用，將使用 Telegram 串流方式來回覆內容
+        ja_JP: パイプラインやプラグインのストリーミング返信に適用されます。有効にすると、ボットはストリーミングモードでメッセージに返信します
+        th_TH: ใช้กับการตอบกลับแบบสตรีมจากไปป์ไลน์หรือปลั๊กอิน หากเปิดใช้งาน บอทจะใช้โหมดสตรีมของ Telegram ในการตอบกลับ
+        vi_VN: Áp dụng cho phản hồi streaming từ pipeline hoặc plugin. Nếu bật, bot sẽ sử dụng chế độ trả lời trực tuyến của Telegram
+        es_ES: Se aplica a respuestas en streaming de pipelines o plugins. Si está habilitado, el bot usará el modo de respuesta en streaming de Telegram
       type: boolean
       required: true
       default: false

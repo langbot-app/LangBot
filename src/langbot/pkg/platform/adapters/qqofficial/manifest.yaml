@@ -100,9 +100,9 @@ spec:
         zh_Hans: 启用流式回复模式
         zh_Hant: 啟用串流回覆模式
       description:
-        en_US: If enabled, the adapter uses QQ Official streaming replies for C2C private messages.
-        zh_Hans: 启用后，适配器会对 C2C 私聊使用 QQ 官方流式回复。
-        zh_Hant: 啟用後，適配器會對 C2C 私聊使用 QQ 官方串流回覆。
+        en_US: Used for streaming replies from pipelines or plugins. If enabled, the adapter uses QQ Official streaming replies for C2C private messages.
+        zh_Hans: 用于流水线和插件主动发起的流式回复。启用后，适配器会对 C2C 私聊使用 QQ 官方流式回复。
+        zh_Hant: 用於流水線和插件主動發起的串流回覆。啟用後，適配器會對 C2C 私聊使用 QQ 官方串流回覆。
       type: boolean
       required: true
       default: false

@@ -151,7 +151,18 @@ class TestAgentServiceMetadata:
 
 class TestAgentServiceDebug:
     @pytest.mark.parametrize('streaming', [False, True])
-    async def test_debug_agent_runs_configured_runner_with_synthetic_event(self, streaming):
+    @pytest.mark.parametrize(
+        'result_type',
+        [
+            'tool.call.started',
+            'tool.call.completed',
+            'message.delta',
+            'message.completed',
+            'processor.log',
+            'run.completed',
+        ],
+    )
+    async def test_debug_agent_runs_configured_runner_with_synthetic_event(self, streaming, result_type):
         app = _make_app()
         agent_config = _agent_row().config
         agent_config['allowed_platform_tools'] = ['platform_get_user_info']
@@ -162,7 +173,7 @@ class TestAgentServiceDebug:
         agent_config['allowed_tools'] = ['exec', 'weather']
 
         visible_event = {
-            'type': 'tool.call.started',
+            'type': result_type,
             'data': {'tool_name': 'exec', 'parameters': {'command': 'echo hi'}},
         }
         observer = AsyncMock() if streaming else None
@@ -171,6 +182,9 @@ class TestAgentServiceDebug:
             assert binding.delivery_policy.enable_streaming is streaming
             await adapter_context['_result_observer']({**visible_event, 'private_context': 'must not leak'})
             await adapter_context['_result_observer']({'type': 'state.updated', 'data': {'private': True}})
+            if streaming:
+                # Debug events reach the client before the runner returns its final output.
+                observer.assert_awaited_once_with(visible_event)
             yield SimpleNamespace(
                 role='assistant',
                 content='debug result',

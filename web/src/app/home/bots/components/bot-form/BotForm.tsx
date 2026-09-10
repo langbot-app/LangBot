@@ -1,3 +1,4 @@
+import { showBotError } from '../../bot-error';
 import React, {
   forwardRef,
   useEffect,
@@ -413,7 +414,7 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
           toast.success(t('bots.saveSuccess'));
         })
         .catch((err) => {
-          toast.error(t('bots.saveError') + err.msg);
+          showBotError(err, t('bots.saveError'), t);
         })
         .finally(() => {
           setIsLoading(false);
@@ -438,7 +439,10 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
           onNewBotCreated(res.uuid);
         })
         .catch((err) => {
-          toast.error(t('bots.createError') + err.msg);
+          showBotError(err, t('bots.createError'), t);
+          if (err.code === 'bot_apply_failed' && err.data?.uuid) {
+            onNewBotCreated(err.data.uuid);
+          }
         })
         .finally(() => {
           setIsLoading(false);

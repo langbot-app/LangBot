@@ -325,6 +325,10 @@ const zhHans = {
     },
   },
   bots: {
+    applyFailed: '配置已保存，但应用失败',
+    internalErrorHint: '发生内部错误，请通过错误编号查看后端日志。',
+    errorReference: '错误编号：{{id}}',
+
     title: '机器人',
     description: '创建和管理机器人，这是 LangBot 与各个平台连接的入口',
     createBot: '创建机器人',

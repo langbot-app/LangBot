@@ -82,9 +82,9 @@ spec:
         zh_Hans: 启用钉钉卡片流式回复模式
         zh_Hant: 啟用釘釘卡片串流回覆模式
       description:
-        en_US: If enabled, the bot will use the stream of lark reply mode
-        zh_Hans: 如果启用，将使用钉钉卡片流式方式来回复内容
-        zh_Hant: 如果啟用，將使用釘釘卡片串流方式來回覆內容
+        en_US: Used for streaming replies from pipelines or plugins. If enabled, the bot will use the stream of lark reply mode
+        zh_Hans: 用于流水线和插件主动发起的流式回复。如果启用，将使用钉钉卡片流式方式来回复内容
+        zh_Hant: 用於流水線和插件主動發起的串流回覆。如果啟用，將使用釘釘卡片串流方式來回覆內容
       type: boolean
       required: true
       default: false

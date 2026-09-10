@@ -38,7 +38,6 @@ from .logger import EventLogger
 from .adapter_names import canonical_adapter_name
 
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
-import langbot_plugin.api.entities.builtin.provider.message as provider_message
 import langbot_plugin.api.entities.events as plugin_events
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
@@ -826,71 +825,12 @@ class RuntimeBot:
             state_policy=StatePolicy(state_scopes=['conversation', 'actor', 'subject', 'runner']),
             delivery_policy=DeliveryPolicy(
                 enable_streaming=False,
-                enable_reply=True,
+                enable_reply=False,
                 enable_interactions=agent.get('kind') != 'event_processor',
             ),
             agent_id=agent.get('uuid'),
             processor_type=agent.get('kind', 'agent'),
             processor_id=agent.get('uuid'),
-        )
-
-    @staticmethod
-    def _provider_content_to_text(content: typing.Any) -> str:
-        if content is None:
-            return ''
-        if isinstance(content, str):
-            return content
-        if isinstance(content, list):
-            parts: list[str] = []
-            for item in content:
-                item_data = item.model_dump(mode='json') if hasattr(item, 'model_dump') else item
-                if isinstance(item_data, dict):
-                    if item_data.get('type') == 'text' and item_data.get('text') is not None:
-                        parts.append(str(item_data.get('text')))
-                    elif item_data.get('text') is not None:
-                        parts.append(str(item_data.get('text')))
-                elif item_data is not None:
-                    parts.append(str(item_data))
-            return ''.join(parts)
-        return str(content)
-
-    @classmethod
-    def _provider_output_to_text(cls, result: provider_message.Message | provider_message.MessageChunk) -> str:
-        if getattr(result, 'all_content', None):
-            return str(getattr(result, 'all_content'))
-        return cls._provider_content_to_text(getattr(result, 'content', None))
-
-    async def _deliver_agent_outputs(
-        self,
-        envelope: AgentEventEnvelope,
-        outputs: list[provider_message.Message | provider_message.MessageChunk],
-        adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter | None = None,
-    ) -> None:
-        if not outputs or not envelope.delivery.reply_target:
-            return
-
-        reply_target = envelope.delivery.reply_target
-        target_type = reply_target.get('target_type')
-        target_id = reply_target.get('target_id')
-        if not target_type or not target_id:
-            return
-
-        final_text = ''
-        for output in outputs:
-            output_text = self._provider_output_to_text(output)
-            if isinstance(output, provider_message.Message):
-                final_text = output_text or final_text
-            elif output_text:
-                final_text = output_text
-
-        if not final_text:
-            return
-
-        delivery_adapter = adapter or self.adapter
-        await delivery_adapter.send_message(
-            str(target_type),
-            str(target_id),
-            platform_message.MessageChain([platform_message.Plain(text=final_text)]),
         )
 
     async def _handle_platform_event(
@@ -1053,17 +993,18 @@ class RuntimeBot:
         envelope = self._eba_event_to_agent_envelope(event, adapter)
         if target_type == 'event_processor':
             envelope.data = event.model_dump(mode='json', exclude={'source_platform_object', 'legacy_event'})
-        outputs: list[provider_message.Message | provider_message.MessageChunk] = []
         try:
-            async for output in self.ap.agent_run_orchestrator.run(
+            async for _ in self.ap.agent_run_orchestrator.run(
                 envelope,
                 binding,
                 adapter_context={
                     '_delivery_adapter': adapter,
+                    '_platform_event': event,
                     '_execution_context': self.execution_context,
                 },
             ):
-                outputs.append(output)
+                # Results are journaled by the orchestrator; platform sends require explicit actions.
+                pass
         except Exception:
             return await self._record_event_route_trace(
                 event_type=event_type,
@@ -1075,21 +1016,6 @@ class RuntimeBot:
                 failure_code='runner_failed',
                 reason='Agent runner failed',
                 text=f'Failed to run Agent for EBA event {event_type}: {traceback.format_exc()}',
-            )
-
-        try:
-            await self._deliver_agent_outputs(envelope, outputs, adapter=adapter)
-        except Exception:
-            return await self._record_event_route_trace(
-                event_type=event_type,
-                status='failed',
-                level='error',
-                binding=event_binding,
-                target_type=target_type,
-                target_uuid=target_uuid,
-                failure_code='delivery_failed',
-                reason='Agent output delivery failed',
-                text=f'Failed to deliver Agent output for EBA event {event_type}: {traceback.format_exc()}',
             )
         return await self._record_event_route_trace(
             event_type=event_type,
@@ -1458,14 +1384,13 @@ class RuntimeBot:
             data={'interaction': submission},
         )
 
-        outputs: list[provider_message.Message | provider_message.MessageChunk] = []
-        async for output in self.ap.agent_run_orchestrator.run(
+        async for _ in self.ap.agent_run_orchestrator.run(
             envelope,
             binding,
             adapter_context={'_delivery_adapter': adapter},
         ):
-            outputs.append(output)
-        await self._deliver_agent_outputs(envelope, outputs, adapter=adapter)
+            # Resuming an interaction follows the same explicit-action delivery policy.
+            pass
 
     async def _dispatch_eba_message_to_pipeline(
         self,

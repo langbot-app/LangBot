@@ -348,6 +348,11 @@ const esES = {
       "Uses the Workspace owner's LangBot Account billing and credits.",
   },
   bots: {
+    applyFailed: 'Configuración guardada, pero no se pudo aplicar',
+    internalErrorHint:
+      'Se produjo un error interno. Consulta los registros del servidor con esta referencia.',
+    errorReference: 'Referencia del error: {{id}}',
+
     adapterEventDebugAction: 'Probar escucha',
     title: 'Bots',
     description:

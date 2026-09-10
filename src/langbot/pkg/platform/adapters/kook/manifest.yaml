@@ -38,6 +38,10 @@ spec:
         en_US: Enable stream reply
         zh_Hans: 启用流式回复
         zh_Hant: 啟用串流回覆
+      description:
+        en_US: Used for streaming replies from pipelines or plugins.
+        zh_Hans: 用于流水线和插件主动发起的流式回复。
+        zh_Hant: 用於流水線和插件主動發起的串流回覆。
       type: boolean
       required: true
       default: false

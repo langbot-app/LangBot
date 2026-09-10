@@ -77,6 +77,7 @@ class AgentRunSession(typing.TypedDict):
     plugin_identity: str  # author/name
     authorization: RunAuthorizationSnapshot
     status: AgentRunSessionStatus
+    reply_streams: typing.Any
     steering_queue: list[SteeringQueueItem]
 
 
@@ -115,6 +116,7 @@ class AgentRunSessionRegistry:
         state_context: dict[str, typing.Any] | None = None,
         execution_query: pipeline_query.Query | None = None,
         platform_context: dict[str, typing.Any] | None = None,
+        reply_streams: typing.Any = None,
     ) -> None:
         """Register a new agent run session.
 
@@ -167,6 +169,7 @@ class AgentRunSessionRegistry:
             'runner_id': runner_id,
             'query_id': query_id,
             'execution_query': execution_query,
+            'reply_streams': reply_streams,
             'plugin_identity': plugin_identity,
             'authorization': authorization,
             'status': {

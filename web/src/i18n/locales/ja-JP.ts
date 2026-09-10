@@ -346,6 +346,11 @@ const jaJP = {
     },
   },
   bots: {
+    applyFailed: '設定を保存しましたが、適用に失敗しました',
+    internalErrorHint:
+      '内部エラーが発生しました。エラー番号でバックエンドのログを確認してください。',
+    errorReference: 'エラー番号: {{id}}',
+
     title: 'ボット',
     description:
       'ボットの作成と管理を行います。LangBotと各プラットフォームを接続するためのエントリーポイントです',

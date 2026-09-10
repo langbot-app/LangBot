@@ -11,6 +11,7 @@ from ....entity.persistence import agent as persistence_agent
 from ....entity.persistence import bot as persistence_bot
 from ....entity.persistence import pipeline as persistence_pipeline
 from ....workspace.errors import WorkspaceNotFoundError
+from .bot_errors import BotApplyError, bot_error_message
 from .tenant import TenantContext, require_workspace_uuid, scope_statement
 from ....utils import httpclient
 from ....platform.sources import http_bot_signing
@@ -664,7 +665,10 @@ class BotService:
 
         bot = await self.get_bot(context, bot_data['uuid'], include_secret=True)
 
-        await self.ap.platform_mgr.load_bot(context, bot)
+        try:
+            await self.ap.platform_mgr.load_bot(context, bot)
+        except Exception as exc:
+            raise BotApplyError(bot_error_message(exc, bot), bot['uuid']) from exc
 
         return bot_data['uuid']
 
@@ -694,17 +698,17 @@ class BotService:
                     runtime_bot.bot_entity.description = update_data['description']
             return
 
-        await self.ap.platform_mgr.remove_bot(context, bot_uuid)
-
-        # select from db
+        # Persisted configuration is distinct from applying it to the running adapter.
         bot = await self.get_bot(context, bot_uuid, include_secret=True)
+        try:
+            await self.ap.platform_mgr.remove_bot(context, bot_uuid)
+            runtime_bot = await self.ap.platform_mgr.load_bot(context, bot)
+            if runtime_bot.enable:
+                await runtime_bot.run()
+        except Exception as exc:
+            raise BotApplyError(bot_error_message(exc, bot), bot['uuid']) from exc
 
-        runtime_bot = await self.ap.platform_mgr.load_bot(context, bot)
-
-        if runtime_bot.enable:
-            await runtime_bot.run()
-
-        # update all conversation that use this bot
+        # Reset conversations using this bot after its configuration is applied.
         for session in self.ap.sess_mgr.session_list:
             if (
                 session.using_conversation is not None

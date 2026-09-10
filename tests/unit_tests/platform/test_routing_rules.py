@@ -447,7 +447,7 @@ class TestEBAEventBindings:
             'event_get_actor',
         ]
         assert binding.delivery_policy.enable_streaming is False
-        assert binding.delivery_policy.enable_reply is True
+        assert binding.delivery_policy.enable_reply is False
         assert binding.delivery_policy.enable_interactions is True
         assert binding.state_policy.state_scopes == ['conversation', 'actor', 'subject', 'runner']
         assert binding.agent_id == 'agent-1'
@@ -651,7 +651,9 @@ class TestInteractionResumeRouting:
         assert binding.processor_type == 'agent'
         assert binding.processor_id == 'agent-1'
         assert adapter_context == {'_delivery_adapter': adapter}
-        adapter.send_message.assert_awaited_once()
+        assert envelope.delivery.supports_streaming is False
+        assert binding.delivery_policy.enable_reply is False
+        adapter.send_message.assert_not_awaited()
 
     def test_agent_product_to_binding_does_not_fallback_to_component_ref(self):
         """An empty config runner stays unconfigured even if component_ref is stale."""
@@ -762,3 +764,89 @@ async def test_bound_event_processor_receives_one_complete_typed_event():
     assert envelope.data['type'] == 'group.member_joined'
     assert 'source_platform_object' not in envelope.data
     bot.ap.plugin_connector.emit_event.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('kind', ['agent', 'event_processor'])
+@pytest.mark.parametrize('output_kind', ['message', 'chunks', 'tool_rounds'])
+@pytest.mark.parametrize('explicit_reply', [False, True])
+@pytest.mark.parametrize('runner_fails', [False, True])
+async def test_processor_outputs_require_explicit_platform_actions(kind, output_kind, explicit_reply, runner_fails):
+    """Draining runner results must not send text, duplicate replies, or stream cards."""
+    from langbot_plugin.api.entities.builtin.platform import entities, events, message
+    from langbot_plugin.api.entities.builtin.provider import message as provider_message
+
+    from langbot.pkg.agent.runner.platform_tools import execute_platform_tool, freeze_platform_context
+
+    bot = TestEventRouteTrace._make_bot(
+        [{'id': 'binding-1', 'event_pattern': 'message.received', 'target_type': kind, 'target_uuid': 'agent-1'}]
+    )
+    adapter = SimpleNamespace(
+        get_supported_apis=lambda: ['send_message'],
+        is_stream_output_supported=AsyncMock(return_value=True),
+        send_message=AsyncMock(return_value='message-2'),
+        create_message_card=AsyncMock(),
+        reply_message_chunk=AsyncMock(),
+    )
+    completed = []
+
+    async def run(envelope, binding, adapter_context):
+        assert envelope.delivery.supports_streaming is False
+        assert binding.delivery_policy.enable_streaming is False
+        assert binding.delivery_policy.enable_reply is False
+        assert adapter_context['_delivery_adapter'] is adapter
+        if explicit_reply:
+            session = {'authorization': {'bot_id': 'bot-1', 'platform_context': freeze_platform_context(envelope)}}
+            await execute_platform_tool(bot.ap, TEST_CONTEXT, session, 'event_reply', {'text': 'Working on it'})
+            # Progress arrives while the runner is still working.
+            adapter.send_message.assert_awaited_once()
+            assert completed == []
+        if output_kind == 'chunks':
+            yield provider_message.MessageChunk(role='assistant', content='Done', all_content='Done')
+            yield provider_message.MessageChunk(role='assistant', content='.', all_content='Done.', is_final=True)
+        elif output_kind == 'tool_rounds':
+            yield provider_message.Message(role='assistant', content='Checking the request')
+            yield provider_message.Message(role='assistant', content='Done.')
+        else:
+            yield provider_message.Message(role='assistant', content='Done.')
+        if runner_fails:
+            raise RuntimeError('Runner failed after producing text')
+        completed.append(True)
+
+    bot.ap = SimpleNamespace(
+        workspace_service=active_workspace_service(),
+        platform_mgr=SimpleNamespace(get_bot_by_uuid=AsyncMock(return_value=SimpleNamespace(adapter=adapter))),
+        agent_service=SimpleNamespace(
+            get_agent=AsyncMock(
+                return_value={
+                    'uuid': 'agent-1',
+                    'kind': kind,
+                    'enabled': True,
+                    'supported_event_patterns': ['message.received'],
+                    'config': {'runner': {'id': 'runner-1'}, 'runner_config': {'runner-1': {}}},
+                }
+            )
+        ),
+        agent_run_orchestrator=SimpleNamespace(run=run),
+    )
+    event = events.MessageReceivedEvent(
+        message_id='message-1',
+        message_chain=message.MessageChain([message.Plain(text='hello')]),
+        sender=entities.User(id='user-1', nickname='QA'),
+        chat_type=entities.ChatType.PRIVATE,
+        chat_id='user-1',
+    )
+    trace = await bot._dispatch_eba_event_to_processor(event, adapter)
+
+    assert trace['status'] == ('failed' if runner_fails else 'delivered')
+    if runner_fails:
+        assert trace['failure_code'] == 'runner_failed'
+    assert completed == ([] if runner_fails else [True])
+    assert adapter.send_message.await_count == int(explicit_reply)
+    if explicit_reply:
+        kwargs = adapter.send_message.await_args.kwargs
+        assert kwargs['target_type'] == 'person'
+        assert kwargs['target_id'] == 'user-1'
+        assert kwargs['message'][0].text == 'Working on it'
+    adapter.create_message_card.assert_not_awaited()
+    adapter.reply_message_chunk.assert_not_awaited()

@@ -1575,9 +1575,7 @@ class TestAgentRunProxyActions:
         query = build_execution_query(event, [])
         app.box_service = SimpleNamespace(
             available=True,
-            get_backend_status=AsyncMock(
-                return_value={'backend': {'available': True}}
-            ),
+            get_backend_status=AsyncMock(return_value={'backend': {'available': True}}),
             execute_tool=AsyncMock(
                 return_value={
                     'ok': True,
@@ -1683,3 +1681,88 @@ class TestAgentRunProxyActions:
         provider.invoke_rerank.assert_awaited_once()
         kwargs = provider.invoke_rerank.await_args.kwargs
         assert kwargs['extra_args'] == {'top_n': 2, 'return_documents': False}
+
+
+@pytest.mark.parametrize(
+    'case',
+    [
+        'valid',
+        'expired',
+        'plugin',
+        'workspace',
+        'permission',
+        'shadowed',
+        'native',
+        'bot_removed',
+        'adapter_replaced',
+        'api_revoked',
+    ],
+)
+@pytest.mark.skipif(not hasattr(PluginToRuntimeAction, 'REPLY_STREAM'), reason='SDK does not support streaming replies')
+async def test_reply_stream_authorization_is_run_and_workspace_scoped(case):
+    from uuid import uuid4
+    from langbot.pkg.agent.runner.session_registry import get_session_registry
+
+    app = SimpleNamespace(logger=Mock(), _test_plugin_identity='test/runner')
+    runtime_handler = make_handler(app)
+    query = SimpleNamespace(
+        **{
+            field: getattr(TEST_EXECUTION_CONTEXT, field)
+            for field in ('instance_uuid', 'workspace_uuid', 'placement_generation')
+        }
+    )
+    if case == 'workspace':
+        query.workspace_uuid = 'another-workspace'
+    streams = SimpleNamespace(mock=True, apply=AsyncMock(return_value={'status': 'completed'}))
+    if case in {'native', 'bot_removed', 'adapter_replaced', 'api_revoked'}:
+        streams.mock = False
+        streams.adapter = SimpleNamespace(get_supported_apis=lambda: [] if case == 'api_revoked' else ['send_message'])
+        bot = (
+            None
+            if case == 'bot_removed'
+            else SimpleNamespace(adapter=object() if case == 'adapter_replaced' else streams.adapter)
+        )
+        app.platform_mgr = SimpleNamespace(get_bot_by_uuid=AsyncMock(return_value=bot))
+    registry = get_session_registry()
+    run_id = str(uuid4())
+    resources = make_agent_resources(
+        tools=[]
+        if case == 'permission'
+        else [
+            {
+                'tool_name': 'event_reply',
+                'operations': ['call'],
+                'source': 'mcp' if case == 'shadowed' else 'platform',
+                'source_id': 'event_reply',
+            }
+        ]
+    )
+    await registry.register(
+        run_id=run_id,
+        runner_id='plugin:test/runner/default',
+        query_id=None,
+        plugin_identity='other/plugin' if case == 'plugin' else 'test/runner',
+        resources=resources,
+        execution_query=query,
+        reply_streams=streams,
+    )
+    try:
+        if case == 'expired':
+            await registry.unregister(run_id)
+        response = await runtime_handler.actions[PluginToRuntimeAction.REPLY_STREAM.value](
+            {
+                'run_id': run_id,
+                'caller_plugin_identity': 'test/runner',
+                'stream_id': str(uuid4()),
+                'operation': 'finish',
+                'text': 'hello',
+            }
+        )
+        if case in {'valid', 'native'}:
+            assert response.code == 0
+            streams.apply.assert_awaited_once()
+        else:
+            assert response.code != 0
+            streams.apply.assert_not_awaited()
+    finally:
+        await registry.unregister(run_id)

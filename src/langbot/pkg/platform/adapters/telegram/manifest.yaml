@@ -39,8 +39,8 @@ spec:
         en_US: Enable Stream Reply Mode
         zh_Hans: 启用电报流式回复模式
       description:
-        en_US: If enabled, the bot will use the stream of telegram reply mode
-        zh_Hans: 如果启用，将使用电报流式方式来回复内容
+        en_US: Used for streaming replies from pipelines or plugins. If enabled, the bot will use the stream of telegram reply mode
+        zh_Hans: 用于流水线和插件主动发起的流式回复。如果启用，将使用电报流式方式来回复内容
       type: boolean
       required: true
       default: false

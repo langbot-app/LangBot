@@ -64,8 +64,8 @@ spec:
         vi_VN: Bật phản hồi luồng
         es_ES: Activar respuesta en streaming
       description:
-        en_US: Update a Mattermost post while LangBot generates a response
-        zh_Hans: 在 LangBot 生成回复时持续更新同一条 Mattermost 消息
+        en_US: Used for streaming replies from pipelines or plugins. Update a Mattermost post while LangBot generates a response
+        zh_Hans: 用于流水线和插件主动发起的流式回复。在 LangBot 生成回复时持续更新同一条 Mattermost 消息
       type: boolean
       required: false
       default: true

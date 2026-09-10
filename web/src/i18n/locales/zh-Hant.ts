@@ -322,6 +322,10 @@ const zhHant = {
       "Uses the Workspace owner's LangBot Account billing and credits.",
   },
   bots: {
+    applyFailed: '設定已儲存，但套用失敗',
+    internalErrorHint: '發生內部錯誤，請透過錯誤編號查看後端日誌。',
+    errorReference: '錯誤編號：{{id}}',
+
     adapterEventDebugAction: '測試監聽',
     title: '機器人',
     description: '建立和管理機器人，這是 LangBot 與各個平台連接的入口',

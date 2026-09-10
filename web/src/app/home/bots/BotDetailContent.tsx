@@ -24,6 +24,7 @@ import { useTranslation } from 'react-i18next';
 import { Settings, FileText, Users, RefreshCw, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { showBotError } from './bot-error';
 import { useCurrentWorkspace } from '@/app/infra/http';
 import { Bot } from '@/app/infra/entities/api';
 import EntityBasicInfoDialog, {
@@ -91,9 +92,9 @@ export default function BotDetailContent({ id }: { id: string }) {
           current ? { ...current, enable: checked } : current,
         );
         refreshBots();
-      } catch {
+      } catch (error) {
         setBotEnabled(prev);
-        toast.error(t('bots.setBotEnableError'));
+        showBotError(error, t('bots.setBotEnableError'), t);
       }
     },
     [id, botEnabled, refreshBots, t],
@@ -129,11 +130,7 @@ export default function BotDetailContent({ id }: { id: string }) {
       await refreshBots();
       toast.success(t('bots.saveSuccess'));
     } catch (error) {
-      const message =
-        typeof error === 'object' && error && 'msg' in error
-          ? String((error as { msg?: string }).msg || '')
-          : '';
-      toast.error(t('bots.saveError') + message);
+      showBotError(error, t('bots.saveError'), t);
       throw error;
     }
   }

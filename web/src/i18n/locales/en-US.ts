@@ -340,6 +340,11 @@ const enUS = {
     },
   },
   bots: {
+    applyFailed: 'Configuration saved, but could not be applied',
+    internalErrorHint:
+      'An unexpected error occurred. Check the backend logs using the reference below.',
+    errorReference: 'Error reference: {{id}}',
+
     title: 'Bots',
     description:
       'Create and manage bots, which are the entry points for LangBot to connect with various platforms',

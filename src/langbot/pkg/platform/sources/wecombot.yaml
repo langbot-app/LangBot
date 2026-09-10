@@ -142,9 +142,9 @@ spec:
         zh_Hans: 启用流式回复
         zh_Hant: 啟用串流回覆
       description:
-        en_US: If enabled, the bot will use streaming mode to reply messages
-        zh_Hans: 如果启用，机器人将使用流式模式回复消息
-        zh_Hant: 如果啟用，機器人將使用串流模式回覆訊息
+        en_US: Used for streaming replies from pipelines or plugins. If enabled, the bot will use streaming mode to reply messages
+        zh_Hans: 用于流水线和插件主动发起的流式回复。如果启用，机器人将使用流式模式回复消息
+        zh_Hant: 用於流水線和插件主動發起的串流回覆。如果啟用，機器人將使用串流模式回覆訊息
       type: boolean
       required: false
       default: true

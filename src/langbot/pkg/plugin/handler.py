@@ -1511,6 +1511,56 @@ class RuntimeConnectionHandler(handler.Handler):
                     },
                 )
 
+        async def reply_stream(data: dict[str, Any]) -> handler.ActionResponse:
+            """Explicit reply delivery authorized by the frozen event_reply permission."""
+            from ..agent.runner.reply_stream import ReplyStreamRequest
+
+            action_context = self._require_runtime_action_context()
+            session, error = await _validate_run_authorization(
+                data.get('run_id'),
+                'tool',
+                'event_reply',
+                self.ap,
+                data.get('caller_plugin_identity'),
+                operation='call',
+            )
+            if error:
+                return error
+            source_ref, error = _validate_frozen_tool_source_identity(session, 'event_reply', self.ap)
+            if error:
+                return error
+            if source_ref is None or source_ref['source'] != 'platform':
+                return handler.ActionResponse.error('event_reply must be a Host platform tool')
+            query = session.get('execution_query')
+            context = self._execution_context(action_context)
+            if query is None or any(
+                getattr(query, field, None) != getattr(context, field, None)
+                for field in ('instance_uuid', 'workspace_uuid', 'placement_generation')
+            ):
+                return handler.ActionResponse.error('Reply stream run belongs to another execution scope')
+            streams = session.get('reply_streams')
+            if streams is None:
+                return handler.ActionResponse.error('Streaming replies are unavailable for this run')
+            try:
+                if not streams.mock:
+                    bot_id = session['authorization'].get('bot_id')
+                    bot = await self.ap.platform_mgr.get_bot_by_uuid(context, bot_id)
+                    if bot is None or bot.adapter is not streams.adapter:
+                        return handler.ActionResponse.error('The reply adapter is no longer active')
+                    if 'send_message' not in bot.adapter.get_supported_apis():
+                        return handler.ActionResponse.error('The reply adapter no longer supports sending messages')
+                request = ReplyStreamRequest.model_validate(
+                    {key: data[key] for key in ('stream_id', 'operation', 'text') if key in data}
+                )
+                result = await streams.apply(request)
+                return handler.ActionResponse.success(data={'result': result})
+            except Exception as exc:
+                return handler.ActionResponse.error(f'Streaming reply failed: {exc}')
+
+        reply_stream_action = getattr(PluginToRuntimeAction, 'REPLY_STREAM', None)
+        if reply_stream_action is not None:
+            self.action(reply_stream_action)(reply_stream)
+
         @self.action(PluginToRuntimeAction.CALL_TOOL)
         async def call_tool(data: dict[str, Any]) -> handler.ActionResponse:
             """Call a tool
