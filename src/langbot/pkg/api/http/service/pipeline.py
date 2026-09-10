@@ -42,30 +42,22 @@ class PipelineService:
     def _get_default_values_from_schema(
         config_schema: list[dict[str, typing.Any]],
     ) -> dict[str, typing.Any]:
-        return {
-            item['name']: item['default']
-            for item in config_schema
-            if item.get('name') and 'default' in item
-        }
+        return {item['name']: item['default'] for item in config_schema if item.get('name') and 'default' in item}
 
     async def get_default_pipeline_config(self, context: TenantContext) -> dict[str, typing.Any]:
         from ....utils import paths as path_utils
 
-        template_path = path_utils.get_resource_path(
-            'templates/default-pipeline-config.json'
-        )
+        template_path = path_utils.get_resource_path('templates/default-pipeline-config.json')
         with open(template_path, 'r', encoding='utf-8') as f:
             config = json.load(f)
 
-        registry = getattr(self.ap, 'agent_runner_registry', None)
+        registry = getattr(self.ap, 'runner_registry', None)
         if registry is None:
             return config
         try:
             runners = await registry.list_runners(context, bound_plugins=None)
         except Exception as exc:
-            self.ap.logger.warning(
-                f'Failed to load AgentRunner defaults for pipeline config: {exc}'
-            )
+            self.ap.logger.warning(f'Failed to load Runner defaults for pipeline config: {exc}')
             return config
         if not runners:
             return config
@@ -75,11 +67,7 @@ class PipelineService:
         runner_config = ai_config.setdefault('runner', {})
         runner_config['id'] = selected.id
         runner_config.setdefault('expire-time', 0)
-        ai_config['runner_config'] = {
-            selected.id: self._get_default_values_from_schema(
-                selected.config_schema
-            )
-        }
+        ai_config['runner_config'] = {selected.id: self._get_default_values_from_schema(selected.config_schema)}
         return config
 
     async def get_pipeline_metadata(self, context: TenantContext) -> list[dict]:
@@ -88,11 +76,7 @@ class PipelineService:
 
         ai_metadata = copy.deepcopy(self.ap.pipeline_config_meta_ai)
         runner_stage = next(
-            (
-                stage
-                for stage in ai_metadata.get('stages', [])
-                if stage.get('name') == 'runner'
-            ),
+            (stage for stage in ai_metadata.get('stages', []) if stage.get('name') == 'runner'),
             None,
         )
         if runner_stage:
@@ -100,25 +84,18 @@ class PipelineService:
                 if config_item.get('name') != 'id':
                     continue
                 try:
-                    runner_options, runner_stages = (
-                        await self.ap.agent_runner_registry.get_runner_metadata_for_pipeline(context)
+                    runner_options, runner_stages = await self.ap.runner_registry.get_runner_metadata_for_pipeline(
+                        context
                     )
                     config_item['options'] = runner_options
                     if runner_options and 'default' not in config_item:
                         config_item['default'] = runner_options[0]['name']
-                    existing = {
-                        stage.get('name')
-                        for stage in ai_metadata.get('stages', [])
-                    }
+                    existing = {stage.get('name') for stage in ai_metadata.get('stages', [])}
                     ai_metadata.setdefault('stages', []).extend(
-                        stage
-                        for stage in runner_stages
-                        if stage.get('name') not in existing
+                        stage for stage in runner_stages if stage.get('name') not in existing
                     )
                 except Exception as exc:
-                    self.ap.logger.warning(
-                        f'Failed to load AgentRunner pipeline metadata: {exc}'
-                    )
+                    self.ap.logger.warning(f'Failed to load Runner pipeline metadata: {exc}')
         return [
             self.ap.pipeline_config_meta_trigger,
             self.ap.pipeline_config_meta_safety,
@@ -187,9 +164,7 @@ class PipelineService:
     async def create_pipeline(self, context: TenantContext, pipeline_data: dict, default: bool = False) -> str:
         workspace_uuid = require_workspace_uuid(context)
         if 'extensions_preferences' in pipeline_data:
-            self._validate_extension_preferences(
-                pipeline_data['extensions_preferences']
-            )
+            self._validate_extension_preferences(pipeline_data['extensions_preferences'])
         if 'config' in pipeline_data:
             RunnerConfigResolver.validate_pipeline_config(pipeline_data['config'])
         # Check limitation
@@ -250,9 +225,7 @@ class PipelineService:
             )
             RunnerConfigResolver.validate_pipeline_config(pipeline_data['config'])
         if 'extensions_preferences' in pipeline_data:
-            self._validate_extension_preferences(
-                pipeline_data['extensions_preferences']
-            )
+            self._validate_extension_preferences(pipeline_data['extensions_preferences'])
 
         result = await self.ap.persistence_mgr.execute_async(
             scope_statement(
@@ -333,9 +306,7 @@ class PipelineService:
             'stages': original_pipeline.stages.copy() if original_pipeline.stages else default_stage_order.copy(),
             'config': original_pipeline.config.copy() if original_pipeline.config else {},
             'is_default': False,
-            'extensions_preferences': normalize_extension_preferences(
-                original_pipeline.extensions_preferences
-            ),
+            'extensions_preferences': normalize_extension_preferences(original_pipeline.extensions_preferences),
         }
 
         # Insert the new pipeline
@@ -377,9 +348,7 @@ class PipelineService:
         if bound_mcp_resources is not None:
             extension_updates['mcp_resources'] = bound_mcp_resources
         if mcp_resource_agent_read_enabled is not None:
-            extension_updates['mcp_resource_agent_read_enabled'] = (
-                mcp_resource_agent_read_enabled
-            )
+            extension_updates['mcp_resource_agent_read_enabled'] = mcp_resource_agent_read_enabled
         self._validate_extension_preferences(
             extension_updates,
             context='Pipeline extension',
@@ -406,9 +375,7 @@ class PipelineService:
             raise WorkspaceNotFoundError(f'Pipeline {pipeline_uuid} not found')
 
         # Update extensions_preferences
-        extensions_preferences = normalize_extension_preferences(
-            pipeline.extensions_preferences
-        )
+        extensions_preferences = normalize_extension_preferences(pipeline.extensions_preferences)
         extensions_preferences['enable_all_plugins'] = enable_all_plugins
         extensions_preferences['enable_all_mcp_servers'] = enable_all_mcp_servers
         extensions_preferences['enable_all_skills'] = enable_all_skills

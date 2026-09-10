@@ -66,7 +66,7 @@ The tools wrap the LangBot service layer. Current tools (v1):
 | `list_bots` / `get_bot` / `create_bot` / `update_bot` / `delete_bot` | Manage messaging-platform bots (secrets redacted on read) |
 | `list_bot_event_route_statuses` | Inspect bot event-route runtime status |
 | `list_processors` / `get_processor` / `create_processor` / `update_processor` / `delete_processor` | Manage the peer Agent, Pipeline and Event processor types |
-| `get_processor_metadata` | Discover installed EventProcessor components, schemas and supported event patterns. |
+| `get_processor_metadata` | Discover installed event-capable Runner components, schemas and supported event patterns. |
 | `list_processor_runs` / `get_processor_run_events` | Read one Event processor instance run history and logs; paginate with `before_id` / `after_sequence`. |
 | `debug_agent` | Execute a synthetic Agent event (`processor_uuid`, `payload`); requires `runtime.operate`. Returns final text and up to 1000 execution events (thinking, text, tool arguments/results). Platform tools use Mock; other configured tools execute normally. Optional `payload.mock`: `errors`/`results` keyed by platform tool name, `unsupported_apis` lists unavailable platform APIs. |
 | `list_pipelines` / `get_pipeline` / `create_pipeline` / `update_pipeline` / `delete_pipeline` | Manage pipelines |

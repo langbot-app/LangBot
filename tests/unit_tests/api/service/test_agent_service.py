@@ -95,7 +95,10 @@ def _make_app():
         delete_pipeline=AsyncMock(),
         _get_default_values_from_schema=Mock(return_value={}),
     )
-    app.agent_runner_registry = None
+    app.runner_registry = SimpleNamespace(
+        get=AsyncMock(return_value=SimpleNamespace(usages=['agent'])),
+        list_runners=AsyncMock(return_value=[]),
+    )
     app.tool_mgr = None
     app.logger = Mock()
     return app
@@ -178,7 +181,7 @@ class TestAgentServiceDebug:
         }
         observer = AsyncMock() if streaming else None
 
-        async def run_agent(event, binding, adapter_context):
+        async def run_runner(event, binding, adapter_context):
             assert binding.delivery_policy.enable_streaming is streaming
             await adapter_context['_result_observer']({**visible_event, 'private_context': 'must not leak'})
             await adapter_context['_result_observer']({'type': 'state.updated', 'data': {'private': True}})
@@ -191,7 +194,7 @@ class TestAgentServiceDebug:
                 all_content=None,
             )
 
-        app.agent_run_orchestrator = SimpleNamespace(run=Mock(side_effect=run_agent))
+        app.agent_run_orchestrator = SimpleNamespace(run=Mock(side_effect=run_runner))
         service = AgentService(app)
         service.get_agent = AsyncMock(
             return_value={
@@ -462,13 +465,16 @@ class TestAgentServiceCreateUpdateDelete:
         app = _make_app()
         runner = SimpleNamespace(
             id='plugin:langbot-team/LocalAgent/default',
+            usages=['agent'],
             config_schema=[
                 {'name': 'model', 'default': 'gpt-4.1'},
                 {'name': 'temperature', 'default': 0.2},
                 {'name': 'no-default'},
             ],
         )
-        app.agent_runner_registry = SimpleNamespace(list_runners=AsyncMock(return_value=[runner]))
+        app.runner_registry = SimpleNamespace(
+            list_runners=AsyncMock(return_value=[runner]), get=AsyncMock(return_value=runner)
+        )
         app.pipeline_service._get_default_values_from_schema = Mock(
             return_value={'model': 'gpt-4.1', 'temperature': 0.2}
         )
@@ -800,13 +806,14 @@ async def test_event_processor_can_be_created_before_selecting_a_plugin():
 
 async def test_event_processor_creation_uses_installed_component_scope():
     app = _make_app()
-    ref = 'event_processor:test/welcome/default'
+    ref = 'plugin:test/welcome/default'
     descriptor = SimpleNamespace(
-        component_kind='EventProcessor',
+        component_kind='Runner',
+        usages=['event'],
         supported_event_patterns=['group.member_joined'],
         config_schema=[{'name': 'greeting', 'required': True}],
     )
-    app.agent_runner_registry = SimpleNamespace(get=AsyncMock(return_value=descriptor))
+    app.runner_registry = SimpleNamespace(get=AsyncMock(return_value=descriptor))
     service = AgentService(app)
     result = await service.create_agent(
         WORKSPACE_UUID,
@@ -830,11 +837,12 @@ async def test_unconfigured_event_processor_can_select_a_plugin_after_creation()
     row = _agent_row(config={})
     row.kind = 'event_processor'
     row.component_ref = None
-    ref = 'event_processor:test/welcome/default'
-    app.agent_runner_registry = SimpleNamespace(
+    ref = 'plugin:test/welcome/default'
+    app.runner_registry = SimpleNamespace(
         get=AsyncMock(
             return_value=SimpleNamespace(
-                component_kind='EventProcessor',
+                component_kind='Runner',
+                usages=['event'],
                 supported_event_patterns=['group.member_joined'],
                 config_schema=[{'name': 'greeting', 'required': True}],
             )
@@ -857,27 +865,26 @@ async def test_event_processor_rejects_invalid_component_and_missing_parameters(
     app = _make_app()
     service = AgentService(app)
     with pytest.raises(ValueError, match='Select an installed'):
-        await service.create_agent(WORKSPACE_UUID, {'kind': 'event_processor', 'component_ref': 'plugin:a/b/c'})
-    app.agent_runner_registry = SimpleNamespace(
+        await service.create_agent(WORKSPACE_UUID, {'kind': 'event_processor', 'component_ref': 'invalid:a/b/c'})
+    app.runner_registry = SimpleNamespace(
         get=AsyncMock(
             return_value=SimpleNamespace(
-                component_kind='EventProcessor',
+                component_kind='Runner',
+                usages=['event'],
                 supported_event_patterns=['*'],
                 config_schema=[{'name': 'greeting', 'required': True}],
             )
         )
     )
     with pytest.raises(ValueError, match='Required processor parameter'):
-        await service.create_agent(
-            WORKSPACE_UUID, {'kind': 'event_processor', 'component_ref': 'event_processor:a/b/c'}
-        )
+        await service.create_agent(WORKSPACE_UUID, {'kind': 'event_processor', 'component_ref': 'plugin:a/b/c'})
 
 
 async def test_unavailable_event_processor_can_still_be_renamed():
     app = _make_app()
-    row = _agent_row(config={'runner': {'id': 'event_processor:a/b/c'}, 'runner_config': {'event_processor:a/b/c': {}}})
+    row = _agent_row(config={'runner': {'id': 'plugin:a/b/c'}, 'runner_config': {'plugin:a/b/c': {}}})
     row.kind = 'event_processor'
-    row.component_ref = 'event_processor:a/b/c'
+    row.component_ref = 'plugin:a/b/c'
     service = AgentService(app)
     service._get_agent_row = AsyncMock(return_value=row)
     await service.update_agent(WORKSPACE_UUID, row.uuid, {'name': 'Renamed'})

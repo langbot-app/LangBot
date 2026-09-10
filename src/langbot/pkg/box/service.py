@@ -2073,7 +2073,7 @@ class BoxService:
         """Return LLM system-prompt guidance for the exec tool.
 
         All execution-specific prompt text is kept here so that callers
-        (e.g. LocalAgentRunner) stay free of box domain knowledge.
+        (e.g. LocalRunner) stay free of box domain knowledge.
 
         ``query`` is the current turn's pipeline query. When provided,
         the guidance ALWAYS advertises the per-query outbox path so the agent

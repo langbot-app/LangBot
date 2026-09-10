@@ -38,7 +38,7 @@ from ...vector import mgr as vectordb_mgr
 from .. import taskmgr
 from ...telemetry import telemetry as telemetry_module
 from ...survey import manager as survey_module
-from ...agent.runner import AgentRunnerRegistry, AgentRunOrchestrator, AgentRunnerDefaultConfigService
+from ...agent.runner import RunnerRegistry, AgentRunOrchestrator, RunnerDefaultConfigService
 from ...workspace import service as workspace_service_module
 from ...workspace import collaboration as workspace_collaboration_module
 from ...workspace import invitation_delivery as invitation_delivery_module
@@ -312,13 +312,13 @@ class BuildAppStage(stage.BootingStage):
         workspace_service_inst.release_startup_execution_bindings()
 
         # Initialize agent runner subsystem
-        agent_runner_registry_inst = AgentRunnerRegistry(ap)
-        ap.agent_runner_registry = agent_runner_registry_inst
+        runner_registry_inst = RunnerRegistry(ap)
+        ap.runner_registry = runner_registry_inst
 
-        agent_runner_default_config_service_inst = AgentRunnerDefaultConfigService(ap)
-        ap.agent_runner_default_config_service = agent_runner_default_config_service_inst
+        runner_default_config_service_inst = RunnerDefaultConfigService(ap)
+        ap.runner_default_config_service = runner_default_config_service_inst
 
-        agent_run_orchestrator_inst = AgentRunOrchestrator(ap, agent_runner_registry_inst)
+        agent_run_orchestrator_inst = AgentRunOrchestrator(ap, runner_registry_inst)
         ap.agent_run_orchestrator = agent_run_orchestrator_inst
 
         ctrl = controller.Controller(ap)

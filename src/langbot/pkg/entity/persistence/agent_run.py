@@ -18,7 +18,7 @@ class AgentRun(Base):
     """Auto-increment ID for pagination."""
 
     run_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=False, unique=True, index=True)
-    """Unique AgentRunner run identifier."""
+    """Unique Runner run identifier."""
 
     event_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True, index=True)
     """Input event that triggered this run."""

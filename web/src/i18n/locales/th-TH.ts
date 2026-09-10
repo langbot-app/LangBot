@@ -615,7 +615,7 @@ const thTH = {
     deleteAgentAction: 'ลบ Agent นี้',
     deleteAgentHint:
       'เมื่อลบแล้ว เหตุการณ์ที่เชื่อมกับมันจะไม่สามารถดำเนินการต่อได้',
-    noRunnerMetadata: 'ขณะนี้ไม่มีข้อมูลเมตา AgentRunner ที่พร้อมใช้งาน',
+    noRunnerMetadata: 'ขณะนี้ไม่มีข้อมูลเมตา Runner ที่พร้อมใช้งาน',
   },
   plugins: {
     title: 'ส่วนขยาย',
@@ -709,8 +709,7 @@ const thTH = {
       KnowledgeEngine: 'เครื่องมือความรู้',
       Parser: 'ตัวแยกวิเคราะห์',
       Page: 'หน้า',
-      AgentRunner: 'Agent Runner',
-      EventProcessor: 'ตัวประมวลผลเหตุการณ์',
+      Runner: 'Runner',
     },
     uploadLocal: 'อัปโหลดจากเครื่อง',
     debugging: 'ดีบัก',
@@ -887,8 +886,7 @@ const thTH = {
       KnowledgeEngine: 'เครื่องมือความรู้',
       Parser: 'ตัวแยกวิเคราะห์',
       Page: 'หน้า',
-      AgentRunner: 'Agent Runner',
-      EventProcessor: 'ตัวประมวลผลเหตุการณ์',
+      Runner: 'Runner',
     },
     filterByType: 'ประเภท',
     allTypes: 'ทุกประเภท',
@@ -1127,14 +1125,14 @@ const thTH = {
       selectSkills: 'เลือกสกิล',
       noSkillsAvailable: 'ไม่มีสกิลที่พร้อมใช้งาน',
       mcpServersScopeTooltip:
-        'ส่วนนี้ใช้ควบคุมว่า Pipeline ผูกกับเซิร์ฟเวอร์ MCP ใดเท่านั้น ส่วนเครื่องมือและทรัพยากร MCP รายตัวให้เลือกใน AI Feature > Agent Runner',
+        'ส่วนนี้ใช้ควบคุมว่า Pipeline ผูกกับเซิร์ฟเวอร์ MCP ใดเท่านั้น ส่วนเครื่องมือและทรัพยากร MCP รายตัวให้เลือกใน AI Feature > Runner',
       enableAllMCPServersTooltip:
         'เมื่อเปิดใช้ เซิร์ฟเวอร์ MCP ที่ตั้งค่าและเปิดใช้งานทั้งหมดจะเป็นตัวเลือกสำหรับเครื่องมือและทรัพยากร MCP ใน AI Feature',
     },
-    agentRunner: {
+    runner: {
       toolsTitle: 'เครื่องมือ',
       toolsDescription:
-        'เลือกเครื่องมือจากปลั๊กอิน MCP และเครื่องมือในตัวสำหรับ Agent Runner นี้',
+        'เลือกเครื่องมือจากปลั๊กอิน MCP และเครื่องมือในตัวสำหรับ Runner นี้',
       toolsScopeTooltip:
         'เครื่องมือ MCP จะแสดงจากเซิร์ฟเวอร์ MCP ที่ผูกไว้ในส่วนขยายเท่านั้น หากต้องการเพิ่มแหล่งเครื่องมือ ให้ไปผูกเซิร์ฟเวอร์ที่นั่นก่อน',
       enableAllTools: 'เปิดใช้เครื่องมือทั้งหมด',
@@ -1151,8 +1149,7 @@ const thTH = {
         'เครื่องมือสกิลจะแสดงเมื่อบริการสกิลของ LangBot และแบ็กเอนด์แซนด์บ็อกซ์ Box พร้อมใช้งาน เพื่อให้ Agent เปิดใช้หรือลงทะเบียนสกิลได้',
       selectTools: 'เลือกเครื่องมือ',
       resourcesTitle: 'ทรัพยากร',
-      resourcesDescription:
-        'เลือกทรัพยากร MCP และคลังความรู้สำหรับ Agent Runner นี้',
+      resourcesDescription: 'เลือกทรัพยากร MCP และคลังความรู้สำหรับ Runner นี้',
       knowledgeBases: 'คลังความรู้',
       mcpResources: 'ทรัพยากร MCP',
       mcpResourcesScopeTooltip:

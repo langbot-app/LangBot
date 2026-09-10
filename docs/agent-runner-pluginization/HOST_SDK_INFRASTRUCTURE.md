@@ -2,24 +2,24 @@
 
 本文档描述 LangBot 作为 agent host 的内部能力与分层架构，以及 Host 内部模型。
 
-- SDK ↔ Host 的协议数据结构（`AgentRunContext`、`AgentRunnerManifest`、`AgentRunResult`、`AgentRunAPIProxy` 等）的**唯一定义在** [PROTOCOL_V1.md](./PROTOCOL_V1.md)；本文只引用，不重抄。
-- 测试执行入口和 smoke 记录见 [AGENT_RUNNER_QA_GUIDE.md](./AGENT_RUNNER_QA_GUIDE.md)；安全发布门槛见 [SECURITY_HARDENING.md](./SECURITY_HARDENING.md)。
-- 本文定义的 Host 内部模型（`AgentEventEnvelope`、`AgentBinding`、`AgentRunnerDescriptor`）不属于 SDK 协议字段。
+- SDK ↔ Host 的协议数据结构（`RunnerContext`、`RunnerManifest`、`RunnerResult`、`RunnerAPIProxy` 等）的**唯一定义在** [PROTOCOL_V1.md](./PROTOCOL_V1.md)；本文只引用，不重抄。
+- 测试执行入口和 smoke 记录见 [RUNNER_QA_GUIDE.md](./RUNNER_QA_GUIDE.md)；安全发布门槛见 [SECURITY_HARDENING.md](./SECURITY_HARDENING.md)。
+- 本文定义的 Host 内部模型（`AgentEventEnvelope`、`AgentBinding`、`RunnerDescriptor`）不属于 SDK 协议字段。
 
 ## 1. 目标
 
 LangBot 要转为 agent host，而不是内置 runner 容器：
 
 - 接收 IM、WebUI、API 和当前 RuntimeBot 事件路由产生的事件。
-- 接收 EBA 选中的 Agent 处理器，并根据事件、bot、workspace、scope 解析 AgentRunner binding。
-- 发现、校验和调用插件提供的 AgentRunner。
+- 接收 EBA 选中的 Agent 处理器，并根据事件、bot、workspace、scope 解析 Runner binding。
+- 发现、校验和调用插件提供的 Runner。
 - 为每次 run 提供受限资源、状态、存储、上下文引用和生命周期控制。
-- 接收 AgentRunner 返回的事件流，投递到 IM、WebUI 或其他 output surface。
+- 接收 Runner 返回的事件流，投递到 IM、WebUI 或其他 output surface。
 
 ## 2. 非目标
 
 - 不定义 Pipeline 的 Stage 编排语义；Pipeline 是 EBA 的同级处理器，其 AI Stage 只在需要 runner 时接入本 Host 边界。
-- 不要求所有 AgentRunner 依赖 LangBot 的上下文管理。
+- 不要求所有 Runner 依赖 LangBot 的上下文管理。
 - 不要求官方 local-agent 的旧行为反向塑造 host 协议。
 - 不在 host 中实现通用 agentic prompt assembler。
 - 不强制 runner 使用 LangBot state / storage；只提供可选、受控的寄宿能力。
@@ -41,17 +41,17 @@ RuntimeBot event_bindings -> one Processor target
                                       |
                                       v
                                AgentRunOrchestrator
-                                      |-- AgentRunnerRegistry
+                                      |-- RunnerRegistry
                                       |-- AgentResourceBuilder
                                       |-- AgentContextBuilder
                                       |-- AgentRunSessionRegistry
                                       |-- PersistentStateStore / EventLogStore / TranscriptStore
                                       |-- Sandbox / workspace file tools
                                       v
-                               Plugin Runtime / AgentRunner
+                               Plugin Runtime / Runner
                                       |
                                       v
-                               AgentRunResult stream
+                               RunnerResult stream
         |
         v
 Delivery / Renderer / Platform API
@@ -91,7 +91,7 @@ class AgentEventEnvelope(BaseModel):
 
 ### 4.2 AgentConfig 与 AgentBinding
 
-`AgentConfig` 是 Host 内部的一次 AgentRunner 调用配置投影（不暴露给 SDK）。独立 Agent 从自己的持久配置生成它；Pipeline 只在 AI Stage 调用 runner 时，由 Query entry adapter 从该 Stage 的当前配置生成它。两种来源随后都由 BindingResolver 结合事件和 scope 解析为 `AgentBinding`。Pipeline 本身不是 `AgentConfig`，该调用投影也不会创建或更新持久 Agent。
+`AgentConfig` 是 Host 内部的一次 Runner 调用配置投影（不暴露给 SDK）。独立 Agent 从自己的持久配置生成它；Pipeline 只在 AI Stage 调用 runner 时，由 Query entry adapter 从该 Stage 的当前配置生成它。两种来源随后都由 BindingResolver 结合事件和 scope 解析为 `AgentBinding`。Pipeline 本身不是 `AgentConfig`，该调用投影也不会创建或更新持久 Agent。
 
 ```python
 class AgentConfig(BaseModel):
@@ -106,7 +106,7 @@ class AgentConfig(BaseModel):
     metadata: dict[str, Any] = {}
 ```
 
-`AgentBinding` 是"什么事件调用哪个 AgentRunner、带什么 Agent 配置"的 Host 内部运行投影（不暴露给 SDK）。它是 EventRouter / 当前 QueryEntryAdapter 在一次运行前解析出的有效绑定。
+`AgentBinding` 是"什么事件调用哪个 Runner、带什么 Agent 配置"的 Host 内部运行投影（不暴露给 SDK）。它是 EventRouter / 当前 QueryEntryAdapter 在一次运行前解析出的有效绑定。
 
 ```python
 class AgentBinding(BaseModel):
@@ -131,12 +131,12 @@ BindingResolver 的基数、fan-out 和冲突处理约束见 PROTOCOL_V1 §13；
 → runner_config、extension preference → resource_policy、output settings →
 delivery_policy，但 Pipeline 仍执行并拥有完整 Stage/config 语义。该适配不会把 Pipeline 持久化为 Agent；独立 Agent 由用户自行新增和绑定。
 
-### 4.3 AgentRunnerRegistry
+### 4.3 RunnerRegistry
 
 Registry 收集 runner descriptor（来自插件 runtime、开发期本地插件）：
 
 ```python
-class AgentRunnerDescriptor(BaseModel):
+class RunnerDescriptor(BaseModel):
     id: str
     source: Literal["plugin"]
     label: I18nObject
@@ -144,17 +144,17 @@ class AgentRunnerDescriptor(BaseModel):
     plugin_author: str
     plugin_name: str
     runner_name: str
-    capabilities: AgentRunnerCapabilities    # 见 PROTOCOL_V1 §4.3
-    permissions: AgentRunnerPermissions      # 见 PROTOCOL_V1 §4.4
+    capabilities: RunnerCapabilities    # 见 PROTOCOL_V1 §4.3
+    permissions: RunnerPermissions      # 见 PROTOCOL_V1 §4.4
     config_schema: list[DynamicFormItemSchema]
     plugin_version: str | None = None
     raw_manifest: dict[str, Any] = {}
 ```
 
-职责：调用 `plugin_connector.list_agent_runners()` 拉取 runner、校验 typed `AgentRunnerManifest`、输出 descriptor、缓存 discovery 结果并提供 `refresh()`。单个插件 manifest 失败只记 warning，不影响其它 runner。`plugin:author/name/runner` 是稳定 id 格式；插件实例边界见 PROTOCOL_V1 §13。
+职责：调用 `plugin_connector.list_runners()` 拉取 runner、校验 typed `RunnerManifest`、输出 descriptor、缓存 discovery 结果并提供 `refresh()`。单个插件 manifest 失败只记 warning，不影响其它 runner。`plugin:author/name/runner` 是稳定 id 格式；插件实例边界见 PROTOCOL_V1 §13。
 
-Host 内置 runner / adapter 不能作为 `AgentRunnerDescriptor.source` 绕过插件
-runtime、`run_id`、`ctx.resources` 和 `AgentRunAPIProxy` 权限链。若需要
+Host 内置 runner / adapter 不能作为 `RunnerDescriptor.source` 绕过插件
+runtime、`run_id`、`ctx.resources` 和 `RunnerAPIProxy` 权限链。若需要
 开发期调试 adapter，应放在 Host 内部测试入口，不进入可选 runner 列表。
 
 刷新触发点：插件安装/卸载/升级/重启后；Pipeline metadata 请求时发现缓存为空；可选 TTL（优先保证正确性）。
@@ -182,15 +182,15 @@ run(event, binding)
 ```text
 QueryEntryAdapter / EventRouter
   -> AgentRunOrchestrator.run(event, binding)
-  -> AgentRunnerRegistry.resolve(runner_id)
+  -> RunnerRegistry.resolve(runner_id)
   -> AgentResourceBuilder.freeze_snapshot(binding, event)
   -> AgentRunSessionRegistry.register(run_id, runner_id, snapshot)
   -> AgentContextBuilder.build(event, binding, snapshot)
-  -> PluginRuntimeConnector.run_agent(ctx)
-       -> AgentRunAPIProxy action
+  -> PluginRuntimeConnector.run_runner(ctx)
+       -> RunnerAPIProxy action
           -> validate active run session + caller identity + snapshot
           -> Host API / Store
-       <- AgentRunResult stream
+       <- RunnerResult stream
   -> apply state.updated to PersistentStateStore
   -> write message.completed to Transcript
   -> keep current-run files and large tool outputs in sandbox/workspace
@@ -237,11 +237,11 @@ LangBot 可提供 host-owned state 让 runner 寄宿状态（conversation / acto
 - `Transcript`: 从 EventLog 投影出的对话视图，用于 UI、审计和按需历史读取。
 - `Sandbox / workspace files`: 当前 run 的上传文件、平台附件、工具大结果和临时产物。Host 负责 staging 与授权边界，runner 通过 read/write/exec 类工具按需访问。
 
-三类数据与 working context 的边界、读取约束见 [AGENT_CONTEXT_PROTOCOL.md](./AGENT_CONTEXT_PROTOCOL.md)。AgentRunner 可读取这些能力，但不被迫使用 LangBot 作为唯一记忆系统。
+三类数据与 working context 的边界、读取约束见 [AGENT_CONTEXT_PROTOCOL.md](./AGENT_CONTEXT_PROTOCOL.md)。Runner 可读取这些能力，但不被迫使用 LangBot 作为唯一记忆系统。
 
 ### 4.8 External harness resource projection
 
-Claude Code、Codex、Kimi Code 等外部 harness runner 可能不直接调用 LangBot 的 model/tool loop，而是把 LangBot 事件和授权资源句柄投影到自己的 harness 执行。Host 侧仍保持统一边界：Host 负责构造 event-first context、资源授权、state/storage、EventLog/Transcript、sandbox/workspace 文件边界和审计；Host 或 binding policy 决定哪些 MCP bridge、skill-backed tool、sandbox path、history/state 句柄可投影给 runner；runner plugin 把 scoped projection 转成目标 harness 可消费形式；所有 LangBot 资源访问必须经 SDK runtime / `AgentRunAPIProxy` / SDK-owned MCP bridge 转发并接受 Host 校验；外部 harness 负责自己的 native session、tool loop、压缩、权限模式和 resume，但不能用 native tools 绕过 Host 授权。
+Claude Code、Codex、Kimi Code 等外部 harness runner 可能不直接调用 LangBot 的 model/tool loop，而是把 LangBot 事件和授权资源句柄投影到自己的 harness 执行。Host 侧仍保持统一边界：Host 负责构造 event-first context、资源授权、state/storage、EventLog/Transcript、sandbox/workspace 文件边界和审计；Host 或 binding policy 决定哪些 MCP bridge、skill-backed tool、sandbox path、history/state 句柄可投影给 runner；runner plugin 把 scoped projection 转成目标 harness 可消费形式；所有 LangBot 资源访问必须经 SDK runtime / `RunnerAPIProxy` / SDK-owned MCP bridge 转发并接受 Host 校验；外部 harness 负责自己的 native session、tool loop、压缩、权限模式和 resume，但不能用 native tools 绕过 Host 授权。
 
 投影的具体形态（context 文件、resource handles、LangBot MCP gateway、state pointers）见 AGENT_CONTEXT_PROTOCOL §4.5；当前 code-agent harness runner 形态见 OFFICIAL_RUNNER_PLUGINS §7。发布级隔离要求见 SECURITY_HARDENING。
 
@@ -250,17 +250,17 @@ Claude Code、Codex、Kimi Code 等外部 harness runner 可能不直接调用 L
 SDK 组件入口如下；所有数据结构定义见 PROTOCOL_V1。
 
 ```python
-class AgentRunner(BaseComponent):
-    __kind__ = "AgentRunner"
+class Runner(BaseComponent):
+    __kind__ = "Runner"
 
     @classmethod
     def get_config_schema(cls) -> list[dict]: ...
 
-    async def run(self, ctx: AgentRunContext) -> AsyncGenerator[AgentRunResult, None]: ...
-    # ctx: PROTOCOL_V1 §5.2 ; AgentRunResult: PROTOCOL_V1 §7
+    async def run(self, ctx: RunnerContext) -> AsyncGenerator[RunnerResult, None]: ...
+    # ctx: PROTOCOL_V1 §5.2 ; RunnerResult: PROTOCOL_V1 §7
 ```
 
 - Manifest / capabilities / effective access：PROTOCOL_V1 §4。Capabilities 来自组件 manifest 的 `spec.capabilities`，不是 SDK 基类 classmethod。
-- `AgentRunContext`：PROTOCOL_V1 §5.2。`messages` / `bootstrap` 不是协议字段。
-- `AgentRunResult`：PROTOCOL_V1 §7。
-- `AgentRunAPIProxy`：PROTOCOL_V1 §8，是 runner 访问 host 能力的唯一入口，所有请求带 `run_id`。
+- `RunnerContext`：PROTOCOL_V1 §5.2。`messages` / `bootstrap` 不是协议字段。
+- `RunnerResult`：PROTOCOL_V1 §7。
+- `RunnerAPIProxy`：PROTOCOL_V1 §8，是 runner 访问 host 能力的唯一入口，所有请求带 `run_id`。

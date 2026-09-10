@@ -28,10 +28,10 @@ import {
 import DynamicFormComponent from '@/app/home/components/dynamic-form/DynamicFormComponent';
 import {
   getErrorMessage,
-  readPendingAgentRunnerInstall,
-  resumePendingAgentRunnerInstall,
-  type InstalledAgentRunner,
-} from '@/app/home/agents/agent-runner-marketplace';
+  readPendingRunnerInstall,
+  resumePendingRunnerInstall,
+  type InstalledRunner,
+} from '@/app/home/agents/runner-marketplace';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
@@ -43,7 +43,7 @@ import {
 } from '@/components/ui/card';
 import { Form, FormField, FormItem, FormMessage } from '@/components/ui/form';
 import AgentEventPatternPicker from './AgentEventPatternPicker';
-import AgentRunnerSelect from './AgentRunnerSelect';
+import RunnerSelect from './RunnerSelect';
 import AgentApiToolPicker from './AgentApiToolPicker';
 
 const OTHER_TOOL_SCOPES = [
@@ -54,7 +54,7 @@ const OTHER_TOOL_SCOPES = [
   'skill',
 ] as const;
 
-export interface AgentRunnerStatus {
+export interface RunnerStatus {
   label: string;
   description?: string;
   tone: 'neutral' | 'success' | 'warning' | 'error';
@@ -66,7 +66,7 @@ interface AgentFormComponentProps {
   onFinish: (agent?: Partial<Agent>) => void;
   onDirtyChange?: (dirty: boolean) => void;
   onSavingChange?: (saving: boolean) => void;
-  onRunnerStatusChange?: (status: AgentRunnerStatus) => void;
+  onRunnerStatusChange?: (status: RunnerStatus) => void;
   onSupportedEventPatternsChange?: (patterns: string[]) => void;
   onPlatformToolsChange?: (tools: AgentPlatformTool[]) => void;
 }
@@ -184,12 +184,9 @@ function AgentFormComponent(
   });
   const runnerInstallScope = `agent:${agentId}`;
 
-  const applyInstalledRunner = useCallback(
-    (installed: InstalledAgentRunner) => {
-      setRunnerConfigSchema(installed.configTab);
-    },
-    [],
-  );
+  const applyInstalledRunner = useCallback((installed: InstalledRunner) => {
+    setRunnerConfigSchema(installed.configTab);
+  }, []);
 
   const savedSnapshotRef = useRef('');
   const initializedStagesRef = useRef<Set<string>>(new Set());
@@ -285,15 +282,12 @@ function AgentFormComponent(
   }, [agentId, form, t]);
 
   useEffect(() => {
-    if (
-      !initialDataLoaded ||
-      !readPendingAgentRunnerInstall(runnerInstallScope)
-    ) {
+    if (!initialDataLoaded || !readPendingRunnerInstall(runnerInstallScope)) {
       return;
     }
     let cancelled = false;
     setRunnerInstallRecovering(true);
-    void resumePendingAgentRunnerInstall(runnerInstallScope)
+    void resumePendingRunnerInstall(runnerInstallScope)
       .then((installed) => {
         if (cancelled || !installed) return;
         applyInstalledRunner(installed);
@@ -395,7 +389,7 @@ function AgentFormComponent(
     },
   ];
 
-  const runnerStatus = useMemo<AgentRunnerStatus>(() => {
+  const runnerStatus = useMemo<RunnerStatus>(() => {
     if (pluginStatusLoading) {
       return {
         label: t('agents.runnerStatusLoading'),
@@ -540,7 +534,7 @@ function AgentFormComponent(
               isRunnerSelector
                 ? ({ config, field }) =>
                     config.name === 'id' ? (
-                      <AgentRunnerSelect
+                      <RunnerSelect
                         options={config.options ?? []}
                         label={extractI18nObject(config.label)}
                         value={String(field.value ?? '')}

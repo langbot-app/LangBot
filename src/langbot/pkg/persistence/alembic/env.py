@@ -19,7 +19,7 @@ from langbot.pkg.entity.persistence import (
     agent,  # noqa: F401
     agent_interaction,  # noqa: F401
     agent_run,  # noqa: F401
-    agent_runner_state,  # noqa: F401
+    runner_state,  # noqa: F401
     apikey,  # noqa: F401
     bot,  # noqa: F401
     bstorage,  # noqa: F401

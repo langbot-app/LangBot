@@ -13,7 +13,7 @@
 ┌──────────────────────────────────────────────────────────────────┐
 │                       LangBot 主进程                              │
 │                                                                   │
-│  AgentRunner ──> SDK call_tool / scoped MCP bridge                │
+│  Runner ──> SDK call_tool / scoped MCP bridge                │
 │       │                    │                                      │
 │       └────────────────> ToolManager ──> NativeToolLoader         │
 │       │                    │              │                       │
@@ -87,8 +87,8 @@
 **核心设计原则**:
 - Box Runtime 作为独立进程运行，通过 Action RPC 与 LangBot 主进程通信，两者复用 SDK 的 IO 层（Handler → Connection → Controller）
 - 一个 session_id 对应一个容器/沙箱实例。同一 session 内可并存多条 mount 与多个 managed process
-- AgentRunner 无权指定 session scope。SDK/Python `call_tool` 与 scoped MCP bridge 都发出同一个 `PluginToRuntimeAction.CALL_TOOL`，最终由 Host 的 ToolManager 执行，并使用当前 run 保存的同一个 execution Query
-- Box 内托管的 stdio MCP server 使用独立的长期 `mcp-shared` session；它不是 AgentRunner 本次事件的 sandbox session（详见 [box-session-scope.md](./box-session-scope.md)）
+- Runner 无权指定 session scope。SDK/Python `call_tool` 与 scoped MCP bridge 都发出同一个 `PluginToRuntimeAction.CALL_TOOL`，最终由 Host 的 ToolManager 执行，并使用当前 run 保存的同一个 execution Query
+- Box 内托管的 stdio MCP server 使用独立的长期 `mcp-shared` session；它不是 Runner 本次事件的 sandbox session（详见 [box-session-scope.md](./box-session-scope.md)）
 
 ---
 
@@ -140,7 +140,7 @@ BoxService
 
 **输出截断**: 默认 4000 字符上限，保留前 60% + 后 40%，中间插入 `[...truncated...]`。
 
-**Session 所有权**: `resolve_box_session_id(query)` 只接受 Host 已确定的私有 scope 或 Query launcher/session identity，并输出 `lb-box-` + 64 位小写 SHA-256 十六进制摘要（固定 71 个 ASCII 字符）。哈希输入是 canonical JSON，包含 instance、workspace、bot、platform adapter、target type/id 与 thread；原始用户、群组、conversation 或 event id 不会出现在 Box session id 中。相同 Host scope 稳定复用，不同 target/thread/workspace/bot/adapter/instance 相互隔离；缺少可用 identity 时 fail closed。Pipeline、Agent 或 AgentRunner 配置都不能覆盖该规则。
+**Session 所有权**: `resolve_box_session_id(query)` 只接受 Host 已确定的私有 scope 或 Query launcher/session identity，并输出 `lb-box-` + 64 位小写 SHA-256 十六进制摘要（固定 71 个 ASCII 字符）。哈希输入是 canonical JSON，包含 instance、workspace、bot、platform adapter、target type/id 与 thread；原始用户、群组、conversation 或 event id 不会出现在 Box session id 中。相同 Host scope 稳定复用，不同 target/thread/workspace/bot/adapter/instance 相互隔离；缺少可用 identity 时 fail closed。Pipeline、Agent 或 Runner 配置都不能覆盖该规则。
 
 **Skill 挂载合并**: `execute_tool()` 调用时，`build_skill_extra_mounts(query)` 会把当前 pipeline-bound 的所有 skill 的 `package_root` 作为 `extra_mounts` 加入 BoxSpec，挂在 `/workspace/.skills/<name>`。LLM 通过 `activate` 工具显式激活某个 skill 后，工具调用才允许引用这个 skill 的虚拟路径。
 
@@ -421,7 +421,7 @@ ToolManager.initialize()
 3. 若 skill 是 Python 项目（有 `requirements.txt` 或 `pyproject.toml`），命令会被 venv bootstrap 包裹（在 skill 挂载点内创建 `.venv`）
 4. 调用 `box_service.execute_tool()` → 走 Host 从当前事件生成的 session_id 与已组装好的 `extra_mounts`，**不再为每 skill 起独立 session**
 
-AgentRunner 可以直接通过 SDK/Python `AgentRunAPIProxy.call_tool` 调用这些工具，也可以让外部 harness 通过 SDK-owned scoped MCP bridge 回调。两条入口都发送 `PluginToRuntimeAction.CALL_TOOL`，共享同一个 run authorization、Host session 中保存的 execution Query、ToolManager 与 `resolve_box_session_id(query)` 规则；Runner 不能提交自定义 Box session id。Pipeline run 保存原 Query；纯 EBA run 由 Host 构造 `pipeline_config=None`、`pipeline_uuid=None` 的最小 Query。
+Runner 可以直接通过 SDK/Python `RunnerAPIProxy.call_tool` 调用这些工具，也可以让外部 harness 通过 SDK-owned scoped MCP bridge 回调。两条入口都发送 `PluginToRuntimeAction.CALL_TOOL`，共享同一个 run authorization、Host session 中保存的 execution Query、ToolManager 与 `resolve_box_session_id(query)` 规则；Runner 不能提交自定义 Box session id。Pipeline run 保存原 Query；纯 EBA run 由 Host 构造 `pipeline_config=None`、`pipeline_uuid=None` 的最小 Query。
 
 ### 4.3 MCP-in-Box (`mcp_stdio.py`, 354 行)
 
@@ -442,7 +442,7 @@ initialize()
 
 每条 MCP server 是同一 session 中的一个 managed process，独立的 `process_id`、独立 attach URL，互不阻塞。
 
-这里的 `mcp-shared` 只承载 LangBot 管理的 stdio MCP server 进程。AgentRunner 的 scoped MCP bridge 是回调 Host 工具的协议入口，不会把事件运行的 exec/read/write 改到 `mcp-shared`。
+这里的 `mcp-shared` 只承载 LangBot 管理的 stdio MCP server 进程。Runner 的 scoped MCP bridge 是回调 Host 工具的协议入口，不会把事件运行的 exec/read/write 改到 `mcp-shared`。
 
 ---
 
@@ -582,7 +582,7 @@ volumes:
 
 ### Session scope
 
-Pipeline 与 AgentRunner 配置不再暴露 sandbox session 模板。Host 将当前平台会话/事件 scope 规范化后哈希成固定长度的 `lb-box-<sha256>`；相同 scope 稳定复用，不同 scope 隔离，缺少 identity 时拒绝执行。SDK/Python 与 scoped MCP bridge 的工具调用遵守同一规则。详见 [box-session-scope.md](./box-session-scope.md)。
+Pipeline 与 Runner 配置不再暴露 sandbox session 模板。Host 将当前平台会话/事件 scope 规范化后哈希成固定长度的 `lb-box-<sha256>`；相同 scope 稳定复用，不同 scope 隔离，缺少 identity 时拒绝执行。SDK/Python 与 scoped MCP bridge 的工具调用遵守同一规则。详见 [box-session-scope.md](./box-session-scope.md)。
 
 ### REST API
 

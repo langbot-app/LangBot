@@ -5,23 +5,23 @@ from __future__ import annotations
 import typing
 import asyncio
 
-from langbot_plugin.api.entities.builtin.agent_runner.manifest import (
-    AgentRunnerManifest,
+from langbot_plugin.api.entities.builtin.runner.manifest import (
+    RunnerManifest,
 )
 
 from ...core import app
 from ...api.http.context import ExecutionContext
 from ...api.http.service.tenant import TenantContext
-from .descriptor import AgentRunnerDescriptor
+from .descriptor import RunnerDescriptor
 from .id import parse_runner_id, format_runner_id
 from .errors import RunnerNotFoundError, RunnerNotAuthorizedError
 
 
-class AgentRunnerRegistry:
+class RunnerRegistry:
     """Registry for discovering and managing agent runners.
 
     Responsibilities:
-    - Discover runners from plugin runtime via LIST_AGENT_RUNNERS
+    - Discover runners from plugin runtime via LIST_RUNNERS
     - Validate runner manifests (kind, metadata, spec)
     - Cache discovered runners for performance
     - Filter runners by bound plugins
@@ -30,7 +30,7 @@ class AgentRunnerRegistry:
 
     ap: app.Application
 
-    _cache: dict[tuple[str, str, int], dict[str, AgentRunnerDescriptor]]
+    _cache: dict[tuple[str, str, int], dict[str, RunnerDescriptor]]
     """Runner descriptors keyed by immutable Workspace execution scope."""
 
     _cache_lock: asyncio.Lock
@@ -52,7 +52,7 @@ class AgentRunnerRegistry:
     async def _resolve_context(self, context: TenantContext) -> ExecutionContext:
         return await self.ap.plugin_connector.require_workspace_context(context)
 
-    async def _discover_runners(self) -> dict[str, AgentRunnerDescriptor]:
+    async def _discover_runners(self) -> dict[str, RunnerDescriptor]:
         """Discover runners from plugin runtime.
 
         Always discovers ALL runners (no bound_plugins filter).
@@ -64,11 +64,11 @@ class AgentRunnerRegistry:
         if not self.ap.plugin_connector.is_enable_plugin:
             return {}
 
-        runners: dict[str, AgentRunnerDescriptor] = {}
+        runners: dict[str, RunnerDescriptor] = {}
 
         try:
             # Always list all runners (bound_plugins=None)
-            plugin_runners = await self.ap.plugin_connector.list_agent_runners(None)
+            plugin_runners = await self.ap.plugin_connector.list_runners(None)
 
             for runner_data in plugin_runners:
                 try:
@@ -90,16 +90,16 @@ class AgentRunnerRegistry:
 
         return runners
 
-    def _validate_and_build_descriptor(self, runner_data: dict[str, typing.Any]) -> AgentRunnerDescriptor | None:
+    def _validate_and_build_descriptor(self, runner_data: dict[str, typing.Any]) -> RunnerDescriptor | None:
         """Validate runner manifest and build descriptor.
 
         Args:
             runner_data: Raw runner data from plugin runtime with fields:
                 - plugin_author, plugin_name, runner_name
-                - manifest (typed AgentRunnerManifest)
+                - manifest (typed RunnerManifest)
 
         Returns:
-            AgentRunnerDescriptor if valid, None if invalid
+            RunnerDescriptor if valid, None if invalid
         """
         plugin_author = runner_data.get('plugin_author', '')
         plugin_name = runner_data.get('plugin_name', '')
@@ -110,18 +110,19 @@ class AgentRunnerRegistry:
 
         manifest = runner_data.get('manifest', {})
         runner_id = format_runner_id(
-            source='event_processor' if manifest.get('component_kind') == 'EventProcessor' else 'plugin',
+            source='plugin',
             plugin_author=plugin_author,
             plugin_name=plugin_name,
             runner_name=runner_name,
         )
 
-        typed_manifest = AgentRunnerManifest.model_validate(manifest)
+        typed_manifest = RunnerManifest.model_validate(manifest)
         config_schema = [item.model_dump(mode='json') for item in typed_manifest.config_schema]
 
-        return AgentRunnerDescriptor(
+        return RunnerDescriptor(
             id=runner_id,
             component_kind=typed_manifest.component_kind,
+            usages=typed_manifest.usages,
             supported_event_patterns=typed_manifest.supported_event_patterns,
             source='plugin',
             label=typed_manifest.label,
@@ -152,8 +153,8 @@ class AgentRunnerRegistry:
         context: TenantContext,
         bound_plugins: list[str] | None = None,
         use_cache: bool = True,
-        component_kind: str = 'AgentRunner',
-    ) -> list[AgentRunnerDescriptor]:
+        usage: typing.Literal['agent', 'event'] | None = 'agent',
+    ) -> list[RunnerDescriptor]:
         """List available runners.
 
         Args:
@@ -173,7 +174,7 @@ class AgentRunnerRegistry:
             return [
                 r
                 for r in self._filter_runners_by_bound_plugins(cached, bound_plugins)
-                if r.component_kind == component_kind
+                if usage is None or usage in r.usages
             ]
 
         # Discover fresh (always full list)
@@ -187,14 +188,14 @@ class AgentRunnerRegistry:
         return [
             r
             for r in self._filter_runners_by_bound_plugins(runners, bound_plugins)
-            if r.component_kind == component_kind
+            if usage is None or usage in r.usages
         ]
 
     def _filter_runners_by_bound_plugins(
         self,
-        runners: dict[str, AgentRunnerDescriptor],
+        runners: dict[str, RunnerDescriptor],
         bound_plugins: list[str] | None,
-    ) -> list[AgentRunnerDescriptor]:
+    ) -> list[RunnerDescriptor]:
         """Filter runners by bound plugins.
 
         Args:
@@ -222,7 +223,7 @@ class AgentRunnerRegistry:
         context: TenantContext,
         runner_id: str,
         bound_plugins: list[str] | None = None,
-    ) -> AgentRunnerDescriptor:
+    ) -> RunnerDescriptor:
         """Get a specific runner descriptor.
 
         Args:
@@ -230,7 +231,7 @@ class AgentRunnerRegistry:
             bound_plugins: Optional bound plugins filter
 
         Returns:
-            AgentRunnerDescriptor
+            RunnerDescriptor
 
         Raises:
             RunnerNotFoundError: If runner not found
@@ -242,8 +243,7 @@ class AgentRunnerRegistry:
         except ValueError as e:
             raise RunnerNotFoundError(runner_id) from e
 
-        component_kind = 'EventProcessor' if runner_id.startswith('event_processor:') else 'AgentRunner'
-        runners = await self.list_runners(context, bound_plugins=None, component_kind=component_kind)
+        runners = await self.list_runners(context, bound_plugins=None, usage=None)
         descriptor = next((item for item in runners if item.id == runner_id), None)
         if descriptor is None:
             # The runtime launches installed plugins asynchronously, so an
@@ -252,7 +252,7 @@ class AgentRunnerRegistry:
                 context,
                 bound_plugins=None,
                 use_cache=False,
-                component_kind=component_kind,
+                usage=None,
             )
             descriptor = next((item for item in runners if item.id == runner_id), None)
         if descriptor is None:

@@ -842,7 +842,7 @@ test.describe('pipeline advanced flows', () => {
 });
 
 test.describe('agent runner resource selectors', () => {
-  test('installs an AgentRunner from the grouped empty selector and refreshes it', async ({
+  test('installs an Runner from the grouped empty selector and refreshes it', async ({
     page,
   }) => {
     await installLangBotApiMocks(page, { authenticated: true });
@@ -1011,7 +1011,7 @@ test.describe('agent runner resource selectors', () => {
                 tags: [],
                 install_count: 12,
                 latest_version: '1.0.0',
-                components: { AgentRunner: 1 },
+                components: { Runner: 1 },
                 status: 'live',
                 type: 'plugin',
                 created_at: '2026-01-01T00:00:00Z',
@@ -1030,11 +1030,11 @@ test.describe('agent runner resource selectors', () => {
     const runnerSelect = page.getByRole('combobox', { name: 'Runner' });
     const triggerBox = await runnerSelect.boundingBox();
     await runnerSelect.click();
-    await expect(page.getByText('Installed AgentRunners')).toBeVisible();
+    await expect(page.getByText('Installed Runners')).toBeVisible();
     await expect(
-      page.getByText('No AgentRunner extension is installed yet.'),
+      page.getByText('No Runner extension is installed yet.'),
     ).toBeVisible();
-    await expect(page.getByText('AgentRunner Marketplace')).toBeVisible();
+    await expect(page.getByText('Runner Marketplace')).toBeVisible();
     const selectorPopup = page.locator('[data-slot="select-content"]');
     await expect(
       selectorPopup.getByText('Runner used by the grouped selector test.', {
@@ -1050,7 +1050,7 @@ test.describe('agent runner resource selectors', () => {
     await expect
       .poll(() => marketplaceSearchBody)
       .toMatchObject({
-        component_filter: 'AgentRunner',
+        component_filter: 'Runner',
         type_filter: 'plugin',
       });
 
@@ -1074,7 +1074,7 @@ test.describe('agent runner resource selectors', () => {
     ).toHaveCount(0);
   });
 
-  test('uses the compact AgentRunner marketplace selector in pipeline AI settings', async ({
+  test('uses the compact Runner marketplace selector in pipeline AI settings', async ({
     page,
   }) => {
     await installLangBotApiMocks(page, { authenticated: true });
@@ -1112,7 +1112,7 @@ test.describe('agent runner resource selectors', () => {
                 tags: [],
                 install_count: 9,
                 latest_version: '1.0.0',
-                components: { AgentRunner: 1 },
+                components: { Runner: 1 },
                 status: 'live',
                 type: 'plugin',
                 created_at: '2026-01-01T00:00:00Z',
@@ -1129,8 +1129,8 @@ test.describe('agent runner resource selectors', () => {
 
     const runnerSelect = page.getByRole('combobox', { name: 'Runner' });
     await runnerSelect.click();
-    await expect(page.getByText('Installed AgentRunners')).toBeVisible();
-    await expect(page.getByText('AgentRunner Marketplace')).toBeVisible();
+    await expect(page.getByText('Installed Runners')).toBeVisible();
+    await expect(page.getByText('Runner Marketplace')).toBeVisible();
     await expect(
       page
         .locator('[data-slot="select-content"]')

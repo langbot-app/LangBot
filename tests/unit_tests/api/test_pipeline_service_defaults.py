@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from langbot.pkg.agent.runner.descriptor import AgentRunnerDescriptor
+from langbot.pkg.agent.runner.descriptor import RunnerDescriptor
 from langbot.pkg.api.http.service.pipeline import PipelineService
 
 
@@ -25,7 +25,7 @@ class FakeRegistry:
 
 def make_runner(runner_id: str, config_schema: list[dict]):
     parts = runner_id.removeprefix('plugin:').split('/')
-    return AgentRunnerDescriptor(
+    return RunnerDescriptor(
         id=runner_id,
         source='plugin',
         label={'en_US': runner_id},
@@ -51,7 +51,7 @@ async def test_default_pipeline_config_uses_first_installed_runner_schema():
     )
     ap = SimpleNamespace(
         logger=FakeLogger(),
-        agent_runner_registry=FakeRegistry([custom_agent, local_agent]),
+        runner_registry=FakeRegistry([custom_agent, local_agent]),
     )
 
     config = await PipelineService(ap).get_default_pipeline_config('workspace-test')
@@ -68,7 +68,7 @@ async def test_default_pipeline_config_uses_first_installed_runner_schema():
 async def test_default_pipeline_config_stays_neutral_without_installed_runners():
     ap = SimpleNamespace(
         logger=FakeLogger(),
-        agent_runner_registry=FakeRegistry([]),
+        runner_registry=FakeRegistry([]),
     )
 
     config = await PipelineService(ap).get_default_pipeline_config('workspace-test')

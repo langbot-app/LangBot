@@ -138,7 +138,7 @@ class ChatMessageHandler(handler.MessageHandler):
                 has_result = False
 
                 # Use AgentRunOrchestrator to run the agent
-                # This replaces direct runner lookup and PluginAgentRunnerWrapper
+                # This replaces direct runner lookup and PluginRunnerWrapper
                 async for result in self.ap.agent_run_orchestrator.run_from_query(query):
                     has_result = True
                     self._check_response_size(result)
@@ -173,12 +173,8 @@ class ChatMessageHandler(handler.MessageHandler):
 
                     if is_stream:
                         chunk_count += 1
-                        if chunk_count > self._response_limit(
-                            'max_stream_chunks', 100_000
-                        ):
-                            raise RuntimeError(
-                                'Provider stream exceeds the configured event limit'
-                            )
+                        if chunk_count > self._response_limit('max_stream_chunks', 100_000):
+                            raise RuntimeError('Provider stream exceeds the configured event limit')
                         # Only log every 10th chunk to reduce excessive logging during streaming.
                         # First chunk uses INFO level to confirm connection establishment.
                         if chunk_count == 1:
@@ -209,7 +205,7 @@ class ChatMessageHandler(handler.MessageHandler):
                     )
 
                 # Keep a conversation object available for downstream legacy
-                # readers, but do not mirror AgentRunner history into
+                # readers, but do not mirror Runner history into
                 # conversation.messages. TranscriptStore is the canonical
                 # history source for this path.
                 await self._ensure_conversation_for_history(query)
@@ -383,7 +379,7 @@ class ChatMessageHandler(handler.MessageHandler):
         if not runner_id:
             return None
 
-        registry = getattr(self.ap, 'agent_runner_registry', None)
+        registry = getattr(self.ap, 'runner_registry', None)
         if registry is None:
             return None
 
@@ -394,5 +390,5 @@ class ChatMessageHandler(handler.MessageHandler):
                 bound_plugins,
             )
         except Exception as e:
-            self.ap.logger.debug(f'Unable to load AgentRunner descriptor for {runner_id}: {e}')
+            self.ap.logger.debug(f'Unable to load Runner descriptor for {runner_id}: {e}')
             return None

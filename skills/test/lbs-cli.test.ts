@@ -51,12 +51,22 @@ import { commandValidate } from "../src/commands/validate.ts";
 import { commandIndex } from "../src/commands/skill.ts";
 import { loadEnv, parseFrontmatter } from "../src/fs.ts";
 
-test('frontmatter preserves metadata and body with LF and CRLF checkouts', () => {
-  for (const newline of ['\n', '\r\n']) {
-    const source = ['---', 'name: example', 'description: "Example skill"', '---', '# Body', ''].join(newline);
+test("frontmatter preserves metadata and body with LF and CRLF checkouts", () => {
+  for (const newline of ["\n", "\r\n"]) {
+    const source = [
+      "---",
+      "name: example",
+      'description: "Example skill"',
+      "---",
+      "# Body",
+      "",
+    ].join(newline);
     const parsed = parseFrontmatter(source);
-    assert.deepEqual(parsed.meta, { name: 'example', description: 'Example skill' });
-    assert.equal(parsed.body, '# Body' + newline);
+    assert.deepEqual(parsed.meta, {
+      name: "example",
+      description: "Example skill",
+    });
+    assert.equal(parsed.body, "# Body" + newline);
   }
 });
 import { repoRoot } from "../src/cli.ts";
@@ -123,19 +133,25 @@ test("clickFirstVisible waits for a later visible DOM match", async () => {
   let clickedIndex = -1;
   const emptyLocator = {
     count: async () => 0,
-    nth: () => { throw new Error("empty locator has no children"); },
+    nth: () => {
+      throw new Error("empty locator has no children");
+    },
   };
   const textLocator = {
     count: async () => 2,
     nth: (index: number) => ({
       isVisible: async () => index === 1 && pollCount >= 1,
-      click: async () => { clickedIndex = index; },
+      click: async () => {
+        clickedIndex = index;
+      },
     }),
   };
   const page = {
     getByRole: () => emptyLocator,
     getByText: () => textLocator,
-    waitForTimeout: async () => { pollCount += 1; },
+    waitForTimeout: async () => {
+      pollCount += 1;
+    },
   };
 
   const clicked = await clickFirstVisible(page, ["Debug Chat"], 1_000);
@@ -349,7 +365,9 @@ test("apiJson bootstraps and sends the selected Workspace for scoped APIs", asyn
         return new Response(
           JSON.stringify({
             code: 0,
-            data: { workspaces: [{ workspace: { uuid: "workspace-api-test" } }] },
+            data: {
+              workspaces: [{ workspace: { uuid: "workspace-api-test" } }],
+            },
           }),
           { status: 200 },
         );
@@ -359,15 +377,16 @@ test("apiJson bootstraps and sends the selected Workspace for scoped APIs", asyn
       });
     }) as typeof fetch;
 
-    const response = await apiJson(
-      "http://127.0.0.1:5300",
-      "/api/v1/tools",
-      { token: "workspace-api-token" },
-    );
+    const response = await apiJson("http://127.0.0.1:5300", "/api/v1/tools", {
+      token: "workspace-api-token",
+    });
 
     assert.equal(response.status, 200);
     assert.equal(requests.length, 2);
-    assert.equal(requests[0].url, "http://127.0.0.1:5300/api/v1/workspaces/bootstrap");
+    assert.equal(
+      requests[0].url,
+      "http://127.0.0.1:5300/api/v1/workspaces/bootstrap",
+    );
     assert.equal(requests[0].headers["X-Workspace-Id"], undefined);
     assert.equal(requests[1].headers["X-Workspace-Id"], "workspace-api-test");
   } finally {
@@ -623,9 +642,7 @@ test("index includes case summaries for agent discovery", () => {
       }) =>
         item.id === "agent-runner-qa-debug-chat" &&
         item.setup_automation.includes("case:agent-runner-live-install") &&
-        item.setup_provides_env.includes(
-          "LANGBOT_QA_AGENT_RUNNER_PIPELINE_URL",
-        ),
+        item.setup_provides_env.includes("LANGBOT_QA_RUNNER_PIPELINE_URL"),
     ),
   );
   assert.ok(
@@ -1908,12 +1925,12 @@ test("fixture check reports missing manifest paths", () => {
   }
 });
 
-test("fixture check verifies QA AgentRunner source shape", () => {
+test("fixture check verifies QA Runner source shape", () => {
   const tmp = mkdtempSync(join(tmpdir(), "lbs-fixture-check-"));
   try {
     const skillDir = join(tmp, "skills", "langbot-testing");
     const fixtureDir = join(skillDir, "fixtures", "plugins", "qa-agent-runner");
-    mkdirSync(join(fixtureDir, "components", "agent_runner"), {
+    mkdirSync(join(fixtureDir, "components", "runner"), {
       recursive: true,
     });
     writeFileSync(
@@ -1925,15 +1942,15 @@ test("fixture check verifies QA AgentRunner source shape", () => {
       JSON.stringify([
         {
           id: "qa-agent-runner-source",
-          title: "QA AgentRunner",
+          title: "QA Runner",
           path: "fixtures/plugins/qa-agent-runner/manifest.yaml",
-          checks: ["exists", "qa_agent_runner_source"],
+          checks: ["exists", "qa_runner_source"],
         },
       ]),
     );
     writeFileSync(
       join(fixtureDir, "manifest.yaml"),
-      "spec:\n  components:\n    AgentRunner: {}\nexecution:\n  python:\n    attr: QAAgentRunnerPlugin\n",
+      "spec:\n  components:\n    Runner: {}\nexecution:\n  python:\n    attr: QARunnerPlugin\n",
     );
 
     const result = capture(() =>
@@ -1949,7 +1966,7 @@ test("fixture check verifies QA AgentRunner source shape", () => {
       report.findings.some(
         (finding: { kind?: string; path?: string }) =>
           finding.kind === "fixture_check_missing_file" &&
-          finding.path?.endsWith("components/agent_runner/default.py"),
+          finding.path?.endsWith("components/runner/default.py"),
       ),
     );
   } finally {
@@ -1957,7 +1974,7 @@ test("fixture check verifies QA AgentRunner source shape", () => {
   }
 });
 
-test("fixture check accepts complete QA AgentRunner source shape", () => {
+test("fixture check accepts complete QA Runner source shape", () => {
   const result = capture(() =>
     commandFixtureCheck(ctx(["fixture", "check", "langbot-testing", "--json"])),
   );
@@ -1967,7 +1984,7 @@ test("fixture check accepts complete QA AgentRunner source shape", () => {
     report.fixtures.some(
       (item: { id: string; checks: string[] }) =>
         item.id === "qa-agent-runner-source" &&
-        item.checks.includes("qa_agent_runner_source"),
+        item.checks.includes("qa_runner_source"),
     ),
   );
 });
@@ -2091,9 +2108,17 @@ test("debug chat classifier distinguishes new failure signals from old history",
 test("debug chat outcome wait can stop on a new failure signal", () => {
   const baselines = [{ signal: "runner.timeout", count: 1 }];
 
-  assert.equal(hasDebugChatOutcome("old runner.timeout", "EXPECTED", 1, baselines), false);
   assert.equal(
-    hasDebugChatOutcome("old runner.timeout\nnew runner.timeout", "EXPECTED", 1, baselines),
+    hasDebugChatOutcome("old runner.timeout", "EXPECTED", 1, baselines),
+    false,
+  );
+  assert.equal(
+    hasDebugChatOutcome(
+      "old runner.timeout\nnew runner.timeout",
+      "EXPECTED",
+      1,
+      baselines,
+    ),
     true,
   );
   assert.equal(hasDebugChatOutcome("EXPECTED", "EXPECTED", 1, baselines), true);
@@ -2215,7 +2240,13 @@ test("debug chat classifier rejects a matching assistant message that is not fin
 });
 
 test("debug chat classifier accepts formatted responses containing every required fragment", () => {
-  const expectedTexts = ["MULTITOOL_COMBO_FINAL", "passcode-6718", "rag-7421", "tool-a", "tool-b"];
+  const expectedTexts = [
+    "MULTITOOL_COMBO_FINAL",
+    "passcode-6718",
+    "rag-7421",
+    "tool-a",
+    "tool-b",
+  ];
   const result = classifyDebugChatResult({
     beforeText: "",
     afterText: "Bot response with formatted details",
@@ -2225,11 +2256,14 @@ test("debug chat classifier accepts formatted responses containing every require
     latestExpectedLeaf: "MULTITOOL_COMBO_FINAL",
     latestFailureLeaf: "",
     beforeMessages: [],
-    afterMessages: [{
-      role: "assistant",
-      text: "MULTITOOL_COMBO_FINAL\n- passcode-6718\n- rag-7421\n- tool-a\n- tool-b",
-    }],
-    latestAssistantText: "MULTITOOL_COMBO_FINAL\n- passcode-6718\n- rag-7421\n- tool-a\n- tool-b",
+    afterMessages: [
+      {
+        role: "assistant",
+        text: "MULTITOOL_COMBO_FINAL\n- passcode-6718\n- rag-7421\n- tool-a\n- tool-b",
+      },
+    ],
+    latestAssistantText:
+      "MULTITOOL_COMBO_FINAL\n- passcode-6718\n- rag-7421\n- tool-a\n- tool-b",
   });
 
   assert.equal(result.status, "pass");
@@ -2246,7 +2280,9 @@ test("debug chat classifier rejects formatted responses missing a required fragm
     latestExpectedLeaf: "MULTITOOL_COMBO_FINAL",
     latestFailureLeaf: "",
     beforeMessages: [],
-    afterMessages: [{ role: "assistant", text: "MULTITOOL_COMBO_FINAL\n- tool-a" }],
+    afterMessages: [
+      { role: "assistant", text: "MULTITOOL_COMBO_FINAL\n- tool-a" },
+    ],
     latestAssistantText: "MULTITOOL_COMBO_FINAL\n- tool-a",
   });
 
@@ -2608,7 +2644,7 @@ test("generic pipeline readiness accepts either URL or name target", () => {
   }
 });
 
-test("test recommend maps AgentRunner ledger changes to focused probes", () => {
+test("test recommend maps Runner ledger changes to focused probes", () => {
   const result = capture(() =>
     commandTestRecommend(
       ctx([
@@ -2642,14 +2678,14 @@ test("test recommend maps AgentRunner ledger changes to focused probes", () => {
   );
 });
 
-test("test recommend maps AgentRunner result changes to fixture contract", () => {
+test("test recommend maps Runner result changes to fixture contract", () => {
   const result = capture(() =>
     commandTestRecommend(
       ctx([
         "test",
         "recommend",
         "--file",
-        "langbot-plugin-sdk/src/langbot_plugin/api/entities/builtin/agent_runner/result.py",
+        "langbot-plugin-sdk/src/langbot_plugin/api/entities/builtin/runner/result.py",
         "--json",
       ]),
     ),
@@ -2662,14 +2698,14 @@ test("test recommend maps AgentRunner result changes to fixture contract", () =>
   assert.ok(!ids.includes("agent-runner-ledger-invariants"));
 });
 
-test("test recommend maps QA AgentRunner fixture changes to live install", () => {
+test("test recommend maps QA Runner fixture changes to live install", () => {
   const result = capture(() =>
     commandTestRecommend(
       ctx([
         "test",
         "recommend",
         "--file",
-        "langbot-skills/skills/langbot-testing/fixtures/plugins/qa-agent-runner/components/agent_runner/default.py",
+        "langbot-skills/skills/langbot-testing/fixtures/plugins/qa-agent-runner/components/runner/default.py",
         "--json",
       ]),
     ),
@@ -2705,7 +2741,7 @@ test("test recommend keeps git status paths intact", () => {
   const originalRepos = {
     LANGBOT_REPO: process.env.LANGBOT_REPO,
     LANGBOT_PLUGIN_SDK_REPO: process.env.LANGBOT_PLUGIN_SDK_REPO,
-    LANGBOT_AGENT_RUNNER_REPO: process.env.LANGBOT_AGENT_RUNNER_REPO,
+    LANGBOT_RUNNER_REPO: process.env.LANGBOT_RUNNER_REPO,
     LANGBOT_LOCAL_AGENT_REPO: process.env.LANGBOT_LOCAL_AGENT_REPO,
   };
   try {
@@ -2752,7 +2788,7 @@ test("test recommend keeps git status paths intact", () => {
 
     process.env.LANGBOT_REPO = repo;
     process.env.LANGBOT_PLUGIN_SDK_REPO = join(tmp, "missing-sdk");
-    process.env.LANGBOT_AGENT_RUNNER_REPO = join(tmp, "missing-runner");
+    process.env.LANGBOT_RUNNER_REPO = join(tmp, "missing-runner");
     process.env.LANGBOT_LOCAL_AGENT_REPO = join(tmp, "missing-local");
     const result = capture(() =>
       commandTestRecommend({ root, args: ["test", "recommend", "--json"] }),
@@ -3763,10 +3799,20 @@ test("fake provider can inject faults for only the selected model", async () => 
     });
     assert.equal(fakeProviderMessage(fallback).content, "OK");
 
-    const state = await fetch(`${rootUrl}/__qa/config`).then((response) => response.json());
+    const state = await fetch(`${rootUrl}/__qa/config`).then((response) =>
+      response.json(),
+    );
     assert.deepEqual(
-      state.recent_requests.map((request: { model: string; status: string }) => [request.model, request.status]),
-      [["qa-primary", "http_fault"], ["qa-fallback", "ok"]],
+      state.recent_requests.map(
+        (request: { model: string; status: string }) => [
+          request.model,
+          request.status,
+        ],
+      ),
+      [
+        ["qa-primary", "http_fault"],
+        ["qa-fallback", "ok"],
+      ],
     );
   } finally {
     await provider.stop();
@@ -3776,38 +3822,64 @@ test("fake provider can inject faults for only the selected model", async () => 
 test("local-agent model failure cases expose fallback fault controls", () => {
   const beforeFirstChunk = capture(() =>
     commandTestRun(
-      ctx(["test", "run", "local-agent-model-fallback-before-first-chunk-debug-chat", "--dry-run", "--json"]),
+      ctx([
+        "test",
+        "run",
+        "local-agent-model-fallback-before-first-chunk-debug-chat",
+        "--dry-run",
+        "--json",
+      ]),
     ),
   );
   assert.equal(beforeFirstChunk.code, 0);
   const fallbackRun = JSON.parse(beforeFirstChunk.output);
-  assert.equal(fallbackRun.automation.env_defaults.LANGBOT_FAKE_PROVIDER_MODEL_NAME, "qa-fallback-primary");
   assert.equal(
-    fallbackRun.automation.env_defaults.LANGBOT_FAKE_PROVIDER_FALLBACK_MODEL_NAMES,
+    fallbackRun.automation.env_defaults.LANGBOT_FAKE_PROVIDER_MODEL_NAME,
+    "qa-fallback-primary",
+  );
+  assert.equal(
+    fallbackRun.automation.env_defaults
+      .LANGBOT_FAKE_PROVIDER_FALLBACK_MODEL_NAMES,
     "qa-fallback-secondary",
   );
-  assert.equal(fallbackRun.automation.env_defaults.LANGBOT_FAKE_PROVIDER_FAIL_MODELS, "qa-fallback-primary");
+  assert.equal(
+    fallbackRun.automation.env_defaults.LANGBOT_FAKE_PROVIDER_FAIL_MODELS,
+    "qa-fallback-primary",
+  );
 
   const postCommit = capture(() =>
     commandTestRun(
-      ctx(["test", "run", "local-agent-streaming-post-commit-failure-debug-chat", "--dry-run", "--json"]),
+      ctx([
+        "test",
+        "run",
+        "local-agent-streaming-post-commit-failure-debug-chat",
+        "--dry-run",
+        "--json",
+      ]),
     ),
   );
   assert.equal(postCommit.code, 0);
   const postCommitRun = JSON.parse(postCommit.output);
   assert.equal(
-    postCommitRun.automation.env_defaults.LANGBOT_FAKE_PROVIDER_FAIL_AFTER_FIRST_CHUNK_MODELS,
+    postCommitRun.automation.env_defaults
+      .LANGBOT_FAKE_PROVIDER_FAIL_AFTER_FIRST_CHUNK_MODELS,
     "qa-post-commit-primary",
   );
   assert.equal(
-    postCommitRun.automation.env_defaults.LANGBOT_FAKE_PROVIDER_FAIL_AFTER_FIRST_CHUNK_DELAY_MS,
+    postCommitRun.automation.env_defaults
+      .LANGBOT_FAKE_PROVIDER_FAIL_AFTER_FIRST_CHUNK_DELAY_MS,
     "1000",
   );
   assert.equal(
-    postCommitRun.automation.env_defaults.LANGBOT_FAKE_PROVIDER_FAIL_AFTER_FIRST_CHUNK_MODE,
+    postCommitRun.automation.env_defaults
+      .LANGBOT_FAKE_PROVIDER_FAIL_AFTER_FIRST_CHUNK_MODE,
     "error_event",
   );
-  assert.equal(postCommitRun.automation.env_defaults.LANGBOT_DEBUG_CHAT_LOAD_REQUIRE_SUCCESS, "false");
+  assert.equal(
+    postCommitRun.automation.env_defaults
+      .LANGBOT_DEBUG_CHAT_LOAD_REQUIRE_SUCCESS,
+    "false",
+  );
 });
 
 test("fake provider requires the effective system prompt before returning its sentinel", async () => {
@@ -3854,10 +3926,13 @@ test("fake provider preserves a unique qa_mcp_echo probe value across the tool l
     const initial = fakeProviderMessage(
       await requestFakeProvider(provider, {
         tools: [tool],
-        messages: [{
-          role: "user",
-          content: "Call qa_mcp_echo with exactly this text: box-recovery-unique-42. Return only the tool result.",
-        }],
+        messages: [
+          {
+            role: "user",
+            content:
+              "Call qa_mcp_echo with exactly this text: box-recovery-unique-42. Return only the tool result.",
+          },
+        ],
       }),
     );
     assert.equal(initial.tool_calls?.[0]?.function?.name, "qa_mcp_echo");
@@ -3872,10 +3947,15 @@ test("fake provider preserves a unique qa_mcp_echo probe value across the tool l
         messages: [
           {
             role: "user",
-            content: "Call qa_mcp_echo with exactly this text: box-recovery-unique-42. Return only the tool result.",
+            content:
+              "Call qa_mcp_echo with exactly this text: box-recovery-unique-42. Return only the tool result.",
           },
           initial,
-          { role: "tool", tool_call_id: initial.tool_calls?.[0]?.id, content: "qa_mcp_echo:box-recovery-unique-42" },
+          {
+            role: "tool",
+            tool_call_id: initial.tool_calls?.[0]?.id,
+            content: "qa_mcp_echo:box-recovery-unique-42",
+          },
         ],
       }),
     );
@@ -4057,7 +4137,7 @@ test("generic pipeline automation can still use the shared pipeline env", () => 
   );
 });
 
-test("AgentRunner live install case exposes package automation defaults", () => {
+test("Runner live install case exposes package automation defaults", () => {
   const result = capture(() =>
     commandTestRun(
       ctx(["test", "run", "agent-runner-live-install", "--dry-run", "--json"]),
@@ -4106,7 +4186,7 @@ test("QA plugin live install checks the fixture package before installed state",
   }
 });
 
-test("AgentRunner QA Debug Chat case uses dedicated pipeline env", () => {
+test("Runner QA Debug Chat case uses dedicated pipeline env", () => {
   const result = capture(() =>
     commandTestRun(
       ctx(["test", "run", "agent-runner-qa-debug-chat", "--dry-run", "--json"]),
@@ -4135,12 +4215,12 @@ test("AgentRunner QA Debug Chat case uses dedicated pipeline env", () => {
     run.automation.env_aliases.some(
       (alias: { target: string; source: string }) =>
         alias.target === "LANGBOT_E2E_PIPELINE_URL" &&
-        alias.source === "LANGBOT_QA_AGENT_RUNNER_PIPELINE_URL",
+        alias.source === "LANGBOT_QA_RUNNER_PIPELINE_URL",
     ),
   );
 });
 
-test("AgentRunner QA Debug Chat setup automation removes manual readiness", () => {
+test("Runner QA Debug Chat setup automation removes manual readiness", () => {
   withEnv(
     {
       LANGBOT_BROWSER_PROFILE: "/tmp/langbot-test-profile",
@@ -4156,8 +4236,8 @@ test("AgentRunner QA Debug Chat setup automation removes manual readiness", () =
       const plan = JSON.parse(planResult.output);
       assert.equal(plan.manual_readiness.status, "not_required");
       assert.deepEqual(plan.setup_provides_env, [
-        "LANGBOT_QA_AGENT_RUNNER_PIPELINE_URL",
-        "LANGBOT_QA_AGENT_RUNNER_PIPELINE_NAME",
+        "LANGBOT_QA_RUNNER_PIPELINE_URL",
+        "LANGBOT_QA_RUNNER_PIPELINE_NAME",
       ]);
       assert.equal(plan.automation_readiness.status, "ready");
 
@@ -4177,7 +4257,7 @@ test("AgentRunner QA Debug Chat setup automation removes manual readiness", () =
   );
 });
 
-test("ACP AgentRunner Debug Chat case setups the ACP pipeline env", () => {
+test("ACP Runner Debug Chat case setups the ACP pipeline env", () => {
   const result = capture(() =>
     commandTestRun(
       ctx([
@@ -4199,7 +4279,7 @@ test("ACP AgentRunner Debug Chat case setups the ACP pipeline env", () => {
     run.automation.env_aliases.some(
       (alias: { target: string; source: string }) =>
         alias.target === "LANGBOT_E2E_PIPELINE_URL" &&
-        alias.source === "LANGBOT_ACP_AGENT_RUNNER_PIPELINE_URL",
+        alias.source === "LANGBOT_ACP_RUNNER_PIPELINE_URL",
     ),
   );
 
@@ -4211,8 +4291,8 @@ test("ACP AgentRunner Debug Chat case setups the ACP pipeline env", () => {
   assert.equal(planResult.code, 0);
   const plan = JSON.parse(planResult.output);
   assert.deepEqual(plan.setup_provides_env, [
-    "LANGBOT_ACP_AGENT_RUNNER_PIPELINE_URL",
-    "LANGBOT_ACP_AGENT_RUNNER_PIPELINE_NAME",
+    "LANGBOT_ACP_RUNNER_PIPELINE_URL",
+    "LANGBOT_ACP_RUNNER_PIPELINE_NAME",
   ]);
   assert.ok(
     !plan.preconditions.some((item: string) =>
@@ -4885,7 +4965,7 @@ test("test report classifies provider quota tracebacks as env_issue", () => {
       logPath,
       [
         "[05-21 10:31:00.000] chat.py (2) - [ERROR] : Request Failed: Traceback (most recent call last):",
-        "  File \"provider.py\", line 1, in invoke",
+        '  File "provider.py", line 1, in invoke',
         "openai.PermissionDeniedError: insufficient user quota",
         "[05-21 10:31:01.000] pipeline.py (3) - [ERROR] : runner.llm_error All models failed during streaming setup: insufficient user quota",
       ].join("\n"),

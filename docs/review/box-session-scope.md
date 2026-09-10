@@ -7,7 +7,7 @@
 ## 1. Decision
 
 The LangBot Host owns the Box session used by an event run. A Pipeline, Agent,
-or AgentRunner cannot choose a global, per-user, per-conversation, or per-query
+or Runner cannot choose a global, per-user, per-conversation, or per-query
 sandbox mode.
 
 `BoxService.resolve_box_session_id(query)` always returns this shape:
@@ -81,7 +81,7 @@ Host scope or launcher/session identity is also rejected. There is no
 
 ## 3. Host execution Query
 
-AgentRunner callbacks need a Host-owned Query view because model/tool loaders
+Runner callbacks need a Host-owned Query view because model/tool loaders
 already consume that type. The Query is internal and is never exposed as a
 Runner-controlled object.
 
@@ -96,11 +96,11 @@ Runner-controlled object.
 This gives Pipeline and pure EBA execution the same Host tool path without
 inventing a fake Pipeline for an independent Agent.
 
-## 4. AgentRunner callback paths
+## 4. Runner callback paths
 
-AgentRunner implementations may use either callback transport:
+Runner implementations may use either callback transport:
 
-1. SDK/Python runners call `AgentRunAPIProxy.call_tool`.
+1. SDK/Python runners call `RunnerAPIProxy.call_tool`.
 2. External harnesses call the SDK-owned scoped MCP bridge.
 
 Both transports emit the same `PluginToRuntimeAction.CALL_TOOL`. The Host then
@@ -108,8 +108,8 @@ validates the same run authorization, restores the same execution Query, and
 dispatches to the same ToolManager and BoxService.
 
 ```text
-AgentRunner
-  +-- AgentRunAPIProxy.call_tool --------+
+Runner
+  +-- RunnerAPIProxy.call_tool --------+
   |                                      |
   +-- SDK-owned scoped MCP bridge -------+--> PluginToRuntimeAction.CALL_TOOL
                                               --> run authorization
@@ -119,7 +119,7 @@ AgentRunner
                                               --> lb-box-<sha256>
 ```
 
-An AgentRunner is not required to use MCP. Local Python runners can use the SDK
+An Runner is not required to use MCP. Local Python runners can use the SDK
 directly; code-agent harnesses can use the bridge. The transports do not define
 different authorization or sandbox semantics.
 
@@ -143,16 +143,16 @@ This is separate from the scoped MCP bridge above:
 
 | Path | Purpose | Session rule |
 | --- | --- | --- |
-| AgentRunner scoped MCP bridge | Call authorized Host tools for one active run | Host-owned `lb-box-<sha256>` from the run execution Query |
+| Runner scoped MCP bridge | Call authorized Host tools for one active run | Host-owned `lb-box-<sha256>` from the run execution Query |
 | MCP-in-Box stdio server | Keep configured MCP server processes running | Dedicated persistent `mcp-shared` session |
 
-Calling a sandbox tool through the AgentRunner bridge never redirects the run
+Calling a sandbox tool through the Runner bridge never redirects the run
 workspace into `mcp-shared`. Conversely, an MCP server's managed-process
 lifecycle does not inherit the current event scope.
 
 ## 7. Configuration and compatibility
 
-There is no Box session scope field in Pipeline metadata, AgentRunner config,
+There is no Box session scope field in Pipeline metadata, Runner config,
 or the public Pipeline/Runner API. Operators configure the Box subsystem itself
 (`box.enabled`, backend/runtime settings, profiles, mount allowlists, quotas,
 and workspace roots), not per-Runner session templates.

@@ -16,7 +16,7 @@ from .agent_run_support import (
     AGENT_RUN_ADMIN_PERMISSION,
     RUNTIME_ADMIN_PERMISSION,
     _plugin_runtime_action,
-    _has_agent_runner_admin_permission,
+    _has_runner_admin_permission,
     _deadline_seconds_from_payload,
     _get_run_authorization,
     _authorize_target_run,
@@ -27,7 +27,7 @@ from .agent_run_support import (
     _run_scope_filters,
     _run_ledger_scope_filters,
     _project_runner_descriptor_for_api,
-    _record_agent_runner_admin_action,
+    _record_runner_admin_action,
 )
 
 
@@ -38,7 +38,7 @@ def register(h):
         run_id = data.get('run_id')
         target_run_id = data.get('target_run_id') or run_id
         caller_plugin_identity = data.get('caller_plugin_identity')
-        is_admin = _has_agent_runner_admin_permission(
+        is_admin = _has_runner_admin_permission(
             h.ap,
             caller_plugin_identity,
             AGENT_RUN_ADMIN_PERMISSION,
@@ -74,7 +74,7 @@ def register(h):
                 if auth_error:
                     return auth_error
             if is_admin:
-                await _record_agent_runner_admin_action(
+                await _record_runner_admin_action(
                     h.ap,
                     store,
                     action='run_get',
@@ -96,7 +96,7 @@ def register(h):
         before_cursor = data.get('before_cursor')
         limit = data.get('limit', 50)
         caller_plugin_identity = data.get('caller_plugin_identity')
-        is_admin = _has_agent_runner_admin_permission(
+        is_admin = _has_runner_admin_permission(
             h.ap,
             caller_plugin_identity,
             AGENT_RUN_ADMIN_PERMISSION,
@@ -159,7 +159,7 @@ def register(h):
                 **scope_filters,
             )
             if is_admin:
-                await _record_agent_runner_admin_action(
+                await _record_runner_admin_action(
                     h.ap,
                     store,
                     action='run_list',
@@ -185,10 +185,10 @@ def register(h):
 
     @h.action(_plugin_runtime_action('RUNNER_LIST', 'runner_list'))
     async def runner_list(data: dict[str, Any]) -> handler.ActionResponse:
-        """List Host-discovered AgentRunner descriptors."""
+        """List Host-discovered Runner descriptors."""
         run_id = data.get('run_id')
         caller_plugin_identity = data.get('caller_plugin_identity')
-        is_admin = _has_agent_runner_admin_permission(
+        is_admin = _has_runner_admin_permission(
             h.ap,
             caller_plugin_identity,
             AGENT_RUN_ADMIN_PERMISSION,
@@ -213,7 +213,7 @@ def register(h):
         if include_plugins is not None and not isinstance(include_plugins, list):
             return handler.ActionResponse.error(message='include_plugins must be a list')
 
-        registry = getattr(h.ap, 'agent_runner_registry', None)
+        registry = getattr(h.ap, 'runner_registry', None)
         if registry is None:
             return handler.ActionResponse.success(data={'items': []})
 
@@ -231,7 +231,7 @@ def register(h):
             )
             items = [_project_runner_descriptor_for_api(item) for item in runners]
             if is_admin:
-                await _record_agent_runner_admin_action(
+                await _record_runner_admin_action(
                     h.ap,
                     None,
                     action='runner_list',
@@ -257,7 +257,7 @@ def register(h):
         limit = data.get('limit', 50)
         direction = data.get('direction', 'forward')
         caller_plugin_identity = data.get('caller_plugin_identity')
-        is_admin = _has_agent_runner_admin_permission(
+        is_admin = _has_runner_admin_permission(
             h.ap,
             caller_plugin_identity,
             AGENT_RUN_ADMIN_PERMISSION,
@@ -307,7 +307,7 @@ def register(h):
                 direction=str(direction or 'forward'),
             )
             if is_admin:
-                await _record_agent_runner_admin_action(
+                await _record_runner_admin_action(
                     h.ap,
                     store,
                     action='run_events_page',
@@ -333,7 +333,7 @@ def register(h):
         run_id = data.get('run_id')
         target_run_id = data.get('target_run_id') or run_id
         caller_plugin_identity = data.get('caller_plugin_identity')
-        is_admin = _has_agent_runner_admin_permission(
+        is_admin = _has_runner_admin_permission(
             h.ap,
             caller_plugin_identity,
             AGENT_RUN_ADMIN_PERMISSION,
@@ -376,7 +376,7 @@ def register(h):
             if not updated:
                 return handler.ActionResponse.error(message=f'Run {target_run_id} not found')
             if is_admin:
-                await _record_agent_runner_admin_action(
+                await _record_runner_admin_action(
                     h.ap,
                     store,
                     action='run_cancel',
@@ -397,7 +397,7 @@ def register(h):
         target_run_id = data.get('target_run_id') or run_id
         caller_plugin_identity = data.get('caller_plugin_identity')
         result = data.get('result') if isinstance(data.get('result'), dict) else {}
-        is_admin = _has_agent_runner_admin_permission(
+        is_admin = _has_runner_admin_permission(
             h.ap,
             caller_plugin_identity,
             AGENT_RUN_ADMIN_PERMISSION,
@@ -479,7 +479,7 @@ def register(h):
                 metadata=metadata,
             )
             if is_admin:
-                await _record_agent_runner_admin_action(
+                await _record_runner_admin_action(
                     h.ap,
                     store,
                     action='run_append_result',
@@ -500,7 +500,7 @@ def register(h):
         target_run_id = data.get('target_run_id') or run_id
         caller_plugin_identity = data.get('caller_plugin_identity')
         status = data.get('status')
-        is_admin = _has_agent_runner_admin_permission(
+        is_admin = _has_runner_admin_permission(
             h.ap,
             caller_plugin_identity,
             AGENT_RUN_ADMIN_PERMISSION,
@@ -558,7 +558,7 @@ def register(h):
             if not updated:
                 return handler.ActionResponse.error(message=f'Run {target_run_id} not found')
             if is_admin:
-                await _record_agent_runner_admin_action(
+                await _record_runner_admin_action(
                     h.ap,
                     store,
                     action='run_finalize',
@@ -578,7 +578,7 @@ def register(h):
         run_id = data.get('run_id')
         runtime_id = data.get('runtime_id')
         caller_plugin_identity = data.get('caller_plugin_identity')
-        is_admin = _has_agent_runner_admin_permission(
+        is_admin = _has_runner_admin_permission(
             h.ap,
             caller_plugin_identity,
             RUNTIME_ADMIN_PERMISSION,
@@ -617,7 +617,7 @@ def register(h):
                 heartbeat_deadline_seconds=_deadline_seconds_from_payload(data),
             )
             if is_admin:
-                await _record_agent_runner_admin_action(
+                await _record_runner_admin_action(
                     h.ap,
                     store,
                     action='runtime_register',
@@ -637,7 +637,7 @@ def register(h):
         run_id = data.get('run_id')
         runtime_id = data.get('runtime_id')
         caller_plugin_identity = data.get('caller_plugin_identity')
-        is_admin = _has_agent_runner_admin_permission(
+        is_admin = _has_runner_admin_permission(
             h.ap,
             caller_plugin_identity,
             RUNTIME_ADMIN_PERMISSION,
@@ -675,7 +675,7 @@ def register(h):
             if runtime is None:
                 return handler.ActionResponse.error(message=f'Runtime {runtime_id} not found')
             if is_admin:
-                await _record_agent_runner_admin_action(
+                await _record_runner_admin_action(
                     h.ap,
                     store,
                     action='runtime_heartbeat',
@@ -694,7 +694,7 @@ def register(h):
         """List Host-owned runtime registry records."""
         run_id = data.get('run_id')
         caller_plugin_identity = data.get('caller_plugin_identity')
-        is_admin = _has_agent_runner_admin_permission(
+        is_admin = _has_runner_admin_permission(
             h.ap,
             caller_plugin_identity,
             RUNTIME_ADMIN_PERMISSION,
@@ -730,7 +730,7 @@ def register(h):
                 limit=data.get('limit', 50),
             )
             if is_admin:
-                await _record_agent_runner_admin_action(
+                await _record_runner_admin_action(
                     h.ap,
                     store,
                     action='runtime_list',
@@ -759,7 +759,7 @@ def register(h):
         """Reconcile stale runtime heartbeats and expired claim leases."""
         run_id = data.get('run_id')
         caller_plugin_identity = data.get('caller_plugin_identity')
-        is_admin = _has_agent_runner_admin_permission(
+        is_admin = _has_runner_admin_permission(
             h.ap,
             caller_plugin_identity,
             RUNTIME_ADMIN_PERMISSION,
@@ -796,7 +796,7 @@ def register(h):
             )
             released_claims = await store.release_expired_claims()
             if is_admin:
-                await _record_agent_runner_admin_action(
+                await _record_runner_admin_action(
                     h.ap,
                     store,
                     action='runtime_reconcile',
@@ -824,7 +824,7 @@ def register(h):
         """Get run statistics within a time window (admin-only)."""
         run_id = data.get('run_id')
         caller_plugin_identity = data.get('caller_plugin_identity')
-        is_admin = _has_agent_runner_admin_permission(
+        is_admin = _has_runner_admin_permission(
             h.ap,
             caller_plugin_identity,
             AGENT_RUN_ADMIN_PERMISSION,
@@ -858,7 +858,7 @@ def register(h):
                 end_time=end_time,
                 runner_id=runner_id,
             )
-            await _record_agent_runner_admin_action(
+            await _record_runner_admin_action(
                 h.ap,
                 store,
                 action='run_stats',
@@ -880,7 +880,7 @@ def register(h):
         """Get runtime registry statistics (admin-only)."""
         run_id = data.get('run_id')
         caller_plugin_identity = data.get('caller_plugin_identity')
-        is_admin = _has_agent_runner_admin_permission(
+        is_admin = _has_runner_admin_permission(
             h.ap,
             caller_plugin_identity,
             RUNTIME_ADMIN_PERMISSION,
@@ -906,7 +906,7 @@ def register(h):
 
         try:
             stats = await store.get_runtime_stats()
-            await _record_agent_runner_admin_action(
+            await _record_runner_admin_action(
                 h.ap,
                 store,
                 action='runtime_stats',
@@ -924,7 +924,7 @@ def register(h):
         """Get runner-aggregated statistics (admin-only)."""
         run_id = data.get('run_id')
         caller_plugin_identity = data.get('caller_plugin_identity')
-        is_admin = _has_agent_runner_admin_permission(
+        is_admin = _has_runner_admin_permission(
             h.ap,
             caller_plugin_identity,
             AGENT_RUN_ADMIN_PERMISSION,
@@ -958,7 +958,7 @@ def register(h):
                 end_time=end_time,
                 limit=limit,
             )
-            await _record_agent_runner_admin_action(
+            await _record_runner_admin_action(
                 h.ap,
                 store,
                 action='runner_stats',
@@ -981,7 +981,7 @@ def register(h):
         run_id = data.get('run_id')
         runtime_id = data.get('runtime_id')
         caller_plugin_identity = data.get('caller_plugin_identity')
-        is_admin = _has_agent_runner_admin_permission(
+        is_admin = _has_runner_admin_permission(
             h.ap,
             caller_plugin_identity,
             RUNTIME_ADMIN_PERMISSION,
@@ -1035,7 +1035,7 @@ def register(h):
             if run is None:
                 return handler.ActionResponse.error(message='No queued run available')
             if is_admin:
-                await _record_agent_runner_admin_action(
+                await _record_runner_admin_action(
                     h.ap,
                     store,
                     action='run_claim',
@@ -1061,7 +1061,7 @@ def register(h):
         runtime_id = data.get('runtime_id')
         claim_token = data.get('claim_token')
         caller_plugin_identity = data.get('caller_plugin_identity')
-        is_admin = _has_agent_runner_admin_permission(
+        is_admin = _has_runner_admin_permission(
             h.ap,
             caller_plugin_identity,
             RUNTIME_ADMIN_PERMISSION,
@@ -1108,7 +1108,7 @@ def register(h):
             if run is None:
                 return handler.ActionResponse.error(message=f'Run claim {target_run_id} not found')
             if is_admin:
-                await _record_agent_runner_admin_action(
+                await _record_runner_admin_action(
                     h.ap,
                     store,
                     action='run_renew_claim',
@@ -1131,7 +1131,7 @@ def register(h):
         runtime_id = data.get('runtime_id')
         claim_token = data.get('claim_token')
         caller_plugin_identity = data.get('caller_plugin_identity')
-        is_admin = _has_agent_runner_admin_permission(
+        is_admin = _has_runner_admin_permission(
             h.ap,
             caller_plugin_identity,
             RUNTIME_ADMIN_PERMISSION,
@@ -1184,7 +1184,7 @@ def register(h):
             if run is None:
                 return handler.ActionResponse.error(message=f'Run claim {target_run_id} not found')
             if is_admin:
-                await _record_agent_runner_admin_action(
+                await _record_runner_admin_action(
                     h.ap,
                     store,
                     action='run_release_claim',

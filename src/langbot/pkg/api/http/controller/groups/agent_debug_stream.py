@@ -9,7 +9,7 @@ import json
 import quart
 
 from .....agent.runner.errors import (
-    AgentRunnerError,
+    RunnerError,
     RunnerExecutionError,
     RunnerNotAuthorizedError,
     RunnerNotFoundError,
@@ -39,7 +39,7 @@ def debug_stream_response(service, context, agent_uuid: str, payload: dict) -> q
                     code, message = 'runner_protocol_error', 'The Agent runner returned an invalid response'
                 elif isinstance(exc, ValueError):
                     code, message = 'invalid_request', str(exc)
-                elif isinstance(exc, AgentRunnerError):
+                elif isinstance(exc, RunnerError):
                     code, message = 'runner_error', 'The Agent runner could not complete this test'
                 else:
                     code, message = 'runner_error', 'The Agent debug execution failed'

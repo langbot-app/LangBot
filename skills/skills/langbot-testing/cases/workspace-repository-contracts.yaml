@@ -16,7 +16,7 @@ skills:
 automation: scripts/e2e/workspace-repository-contracts.mjs
 steps:
   - "Resolve the active LangBot virtualenv and workspace SDK source path."
-  - "Run tests independently for AgentRunner, Control Plane, LongTermMemory, Parser, RAG, Skill Authoring, LocalAgent, LangBot Agent/Provider, the skills CLI, and SDK runtime contracts."
+  - "Run tests independently for Runner, Control Plane, LongTermMemory, Parser, RAG, Skill Authoring, LocalAgent, LangBot Agent/Provider, the skills CLI, and SDK runtime contracts."
   - "Run SDK packaging blackbox separately so an isolated build dependency network failure is classified as env_issue without masking product test failures."
   - "Write per-repository stdout, stderr, status, and duration under repository-contracts/."
 checks:

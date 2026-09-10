@@ -1,4 +1,4 @@
-"""Project AgentRunner configuration into Host resource policy."""
+"""Project Runner configuration into Host resource policy."""
 
 from __future__ import annotations
 

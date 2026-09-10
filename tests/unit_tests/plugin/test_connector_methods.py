@@ -80,7 +80,7 @@ def configure_handler(connector, runtime_handler):
 async def _collect_agent_results(connector, context):
     return [
         result
-        async for result in connector.run_agent(
+        async for result in connector.run_runner(
             'qa',
             'agent-runner',
             'default',
@@ -98,7 +98,7 @@ class TestRunAgent:
         class RuntimeHandler:
             installation_scope = Mock(side_effect=lambda _binding: nullcontext())
 
-            async def run_agent(self, *_args):
+            async def run_runner(self, *_args):
                 yield {'type': 'run.completed'}
 
         configure_handler(connector, RuntimeHandler())

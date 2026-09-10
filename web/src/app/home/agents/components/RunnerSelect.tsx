@@ -7,17 +7,17 @@ import { getCloudServiceClientSync, httpClient } from '@/app/infra/http';
 import type { IDynamicFormItemOption } from '@/app/infra/entities/form/dynamic';
 import type { PluginV4 } from '@/app/infra/entities/plugin';
 import {
-  AgentRunnerMarketplaceError,
+  RunnerMarketplaceError,
   getErrorMessage,
-  installMarketplaceAgentRunner,
-  loadAgentRunnerCatalog,
+  installMarketplaceRunner,
+  loadRunnerCatalog,
   marketplacePluginId,
   runnerPluginPrefix,
-  readPendingAgentRunnerInstall,
-  subscribePendingAgentRunnerInstall,
-  type AgentRunnerCatalog,
-  type InstalledAgentRunner,
-} from '@/app/home/agents/agent-runner-marketplace';
+  readPendingRunnerInstall,
+  subscribePendingRunnerInstall,
+  type RunnerCatalog,
+  type InstalledRunner,
+} from '@/app/home/agents/runner-marketplace';
 import {
   InstallStage,
   usePluginInstallTasks,
@@ -39,7 +39,7 @@ function installErrorMessage(
   error: unknown,
   t: ReturnType<typeof useTranslation>['t'],
 ) {
-  if (error instanceof AgentRunnerMarketplaceError) {
+  if (error instanceof RunnerMarketplaceError) {
     if (error.code === 'version-unavailable') {
       return t('wizard.aiEngine.versionUnavailable');
     }
@@ -123,7 +123,7 @@ function runnerPluginId(optionName: string) {
 function installedRunnerDescription(
   option: IDynamicFormItemOption,
   marketplaceRunners: PluginV4[],
-  installedPluginDescriptions: AgentRunnerCatalog['installedPluginDescriptions'],
+  installedPluginDescriptions: RunnerCatalog['installedPluginDescriptions'],
 ) {
   const pluginId = runnerPluginId(option.name);
   if (!pluginId) return option.name;
@@ -192,7 +192,7 @@ function MarketplaceRunnerContent({
   );
 }
 
-export default function AgentRunnerSelect({
+export default function RunnerSelect({
   options,
   label,
   value,
@@ -205,18 +205,18 @@ export default function AgentRunnerSelect({
   value: string;
   onValueChange: (value: string) => void;
   installScope: string;
-  onInstalled: (installed: InstalledAgentRunner) => void;
+  onInstalled: (installed: InstalledRunner) => void;
 }) {
   const { t } = useTranslation();
   const { addTask, tasks } = usePluginInstallTasks();
   const [marketplaceRunners, setMarketplaceRunners] = useState<PluginV4[]>([]);
   const [installedPluginIds, setInstalledPluginIds] = useState<string[]>([]);
   const [installedPluginDescriptions, setInstalledPluginDescriptions] =
-    useState<AgentRunnerCatalog['installedPluginDescriptions']>({});
+    useState<RunnerCatalog['installedPluginDescriptions']>({});
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogError, setCatalogError] = useState(false);
   const [pendingInstall, setPendingInstall] = useState(() =>
-    readPendingAgentRunnerInstall(installScope),
+    readPendingRunnerInstall(installScope),
   );
   const [installError, setInstallError] = useState<string | null>(null);
   const [installingPluginId, setInstallingPluginId] = useState<string | null>(
@@ -227,12 +227,12 @@ export default function AgentRunnerSelect({
     setCatalogLoading(true);
     setCatalogError(false);
     try {
-      const catalog = await loadAgentRunnerCatalog();
+      const catalog = await loadRunnerCatalog();
       setMarketplaceRunners(catalog.marketplaceRunners);
       setInstalledPluginIds(catalog.installedPluginIds);
       setInstalledPluginDescriptions(catalog.installedPluginDescriptions);
     } catch (error) {
-      console.error('Failed to load AgentRunner catalog', error);
+      console.error('Failed to load Runner catalog', error);
       setCatalogError(true);
     } finally {
       setCatalogLoading(false);
@@ -245,9 +245,9 @@ export default function AgentRunnerSelect({
 
   useEffect(() => {
     const syncPendingInstall = () =>
-      setPendingInstall(readPendingAgentRunnerInstall(installScope));
+      setPendingInstall(readPendingRunnerInstall(installScope));
     syncPendingInstall();
-    return subscribePendingAgentRunnerInstall(installScope, syncPendingInstall);
+    return subscribePendingRunnerInstall(installScope, syncPendingInstall);
   }, [installScope]);
 
   const marketplaceOptions = useMemo(
@@ -291,7 +291,7 @@ export default function AgentRunnerSelect({
       setInstallingPluginId(pluginId);
       setInstallError(null);
       try {
-        const installed = await installMarketplaceAgentRunner(plugin, {
+        const installed = await installMarketplaceRunner(plugin, {
           scope: installScope,
           onTaskCreated: (taskId) =>
             addTask({
@@ -313,7 +313,7 @@ export default function AgentRunnerSelect({
         setInstallError(message);
         toast.error(message);
       } finally {
-        const current = readPendingAgentRunnerInstall(installScope);
+        const current = readPendingRunnerInstall(installScope);
         setPendingInstall(current);
         if (!current) setInstallingPluginId(null);
       }
@@ -392,7 +392,7 @@ export default function AgentRunnerSelect({
                 {t('agents.marketplaceRunners')}
               </span>
               <a
-                href="https://space.langbot.app/market?type=plugin&component=AgentRunner"
+                href="https://space.langbot.app/market?type=plugin&component=Runner"
                 target="_blank"
                 rel="noreferrer"
                 className="inline-flex shrink-0 items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-medium text-foreground hover:bg-accent"

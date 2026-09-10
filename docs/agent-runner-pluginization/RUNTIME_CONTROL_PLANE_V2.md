@@ -1,10 +1,10 @@
 # Agent Platform / Runtime Control Plane Decision Note
 
-本文档记录 AgentRunner 插件化之后，LangBot 如何继续演进成 Agent Platform 基础设施层。这里讨论的是 Host capability layer，不是 `AgentRunner Protocol v2`，也不是把某个具体 Agent Platform 产品写进 LangBot core。
+本文档记录 Runner 插件化之后，LangBot 如何继续演进成 Agent Platform 基础设施层。这里讨论的是 Host capability layer，不是 `Runner Protocol v2`，也不是把某个具体 Agent Platform 产品写进 LangBot core。
 
-> 本文是当前决策版。协议数据结构仍以 [PROTOCOL_V1.md](./PROTOCOL_V1.md) 为准；测试执行入口见 [AGENT_RUNNER_QA_GUIDE.md](./AGENT_RUNNER_QA_GUIDE.md)；扩展边界见 [EXTENSION_SCOPE_MATRIX.md](./EXTENSION_SCOPE_MATRIX.md)。
+> 本文是当前决策版。协议数据结构仍以 [PROTOCOL_V1.md](./PROTOCOL_V1.md) 为准；测试执行入口见 [RUNNER_QA_GUIDE.md](./RUNNER_QA_GUIDE.md)；扩展边界见 [EXTENSION_SCOPE_MATRIX.md](./EXTENSION_SCOPE_MATRIX.md)。
 >
-> 实现状态说明：本文描述的是 Runtime Control Plane v2 的目标能力和分阶段落地建议。当前 AgentRunner 插件化主线已经具备 event-first context、run-scoped authorization、EventLog / Transcript / State / sandbox 文件等 Host capability，并已落地持久 `AgentRun` / `AgentRunEvent` ledger、run control actions、最小 runtime heartbeat/claim lease 和 admin reconcile 原语。完整 Agent Platform 产品形态、daemon supervisor、runtime wakeup channel 和分布式 runtime 管控仍未完成。当前实现状态以 [STATUS.md](./STATUS.md) 为准。
+> 实现状态说明：本文描述的是 Runtime Control Plane v2 的目标能力和分阶段落地建议。当前 Runner 插件化主线已经具备 event-first context、run-scoped authorization、EventLog / Transcript / State / sandbox 文件等 Host capability，并已落地持久 `AgentRun` / `AgentRunEvent` ledger、run control actions、最小 runtime heartbeat/claim lease 和 admin reconcile 原语。完整 Agent Platform 产品形态、daemon supervisor、runtime wakeup channel 和分布式 runtime 管控仍未完成。当前实现状态以 [STATUS.md](./STATUS.md) 为准。
 
 ## 1. 当前决策
 
@@ -14,7 +14,7 @@ LangBot 后续定位应更像 **Agent Host / infrastructure provider / transfer 
 
 - **Agent Platform 产品形态做成插件**。插件负责 agent 管理、策略、业务队列、UI、编排、多 agent 协作和产品体验。
 - **Agent Platform 所需的基础事实源做进 Host**。当前 Host 已保存 event、state、transcript、sandbox 文件边界、active run 权限快照、持久 run/result ledger、审计关联和通用控制状态。
-- **最小 runtime registry / heartbeat / claim lease 已作为 Host 原语落地，但不等于完整 daemon worker 管控**。远程 harness / daemon 的进程托管、wakeup channel、provider 登录态诊断和分布式调度仍可以先由 AgentRunner 插件和 SDK remote layer 自己维护。
+- **最小 runtime registry / heartbeat / claim lease 已作为 Host 原语落地，但不等于完整 daemon worker 管控**。远程 harness / daemon 的进程托管、wakeup channel、provider 登录态诊断和分布式调度仍可以先由 Runner 插件和 SDK remote layer 自己维护。
 - **不把业务调度写进 Host**。Host 提供通用 run/result/control primitives，Platform 插件决定哪些事件触发哪些 agent、如何排队、如何分配、是否 fan-out。
 
 推荐分层：
@@ -30,16 +30,16 @@ Agent Platform plugin
   Agent management UI / project-task model / event routing policy
   Business queue / multi-agent orchestration / runtime selection policy
 
-AgentRunner plugin / external harness runtime
+Runner plugin / external harness runtime
   Connects ACP / remote daemon / local subprocess / HTTP API
-  Executes and converts provider-native events to AgentRunResult
+  Executes and converts provider-native events to RunnerResult
 ```
 
 ## 2. Platform 与非 Platform 的区别
 
 当前 LangBot 已经具备 Agent Host 的核心特征：
 
-- 抹平不同 AgentRunner。
+- 抹平不同 Runner。
 - 从 IM / Pipeline 入口触发 runner。
 - 有 event-first context 方向。
 - 有 Host-owned EventLog / Transcript / State 和 sandbox/workspace 文件边界。
@@ -116,7 +116,7 @@ metadata
 
 ### 3.3 RunEvent / RunResult
 
-RunEvent 是一次 run 过程中产生的结果事件流，对应 runner 返回的 `AgentRunResult`。它不同于 EBA/EventLog 的输入事件：
+RunEvent 是一次 run 过程中产生的结果事件流，对应 runner 返回的 `RunnerResult`。它不同于 EBA/EventLog 的输入事件：
 
 ```text
 message.delta
@@ -151,8 +151,8 @@ Runtime / daemon 表示执行位置或执行能力，例如某台机器上的 Cl
 当前决策：
 
 - Host 不在第一阶段维护完整 runtime registry。
-- AgentRunner 插件可以通过 SDK remote layer 与 daemon 保持连接、心跳和执行通道。
-- 外部 harness / agent 不应直接访问 LangBot Host 或数据库。访问 LangBot 资源必须通过 daemon / AgentRunner plugin / SDK runtime / `AgentRunAPIProxy` / scoped MCP bridge，并接受 run-scoped authorization 校验。
+- Runner 插件可以通过 SDK remote layer 与 daemon 保持连接、心跳和执行通道。
+- 外部 harness / agent 不应直接访问 LangBot Host 或数据库。访问 LangBot 资源必须通过 daemon / Runner plugin / SDK runtime / `RunnerAPIProxy` / scoped MCP bridge，并接受 run-scoped authorization 校验。
 - 如果后续多个插件都需要共享 runtime 状态，再把薄的 `RuntimeLease` / registry 下沉为 Host 通用能力。
 
 ## 4. Host 应新增的最小能力
@@ -222,7 +222,7 @@ metadata_json
 - append 必须幂等，支持远程 daemon / plugin 重试。
 - 未知 result type 可保存但 Host 只对已知类型执行副作用。
 - 大 payload 仍应进入 sandbox/workspace，不直接塞入 result event。
-- `usage_json` 保存 `AgentRunResult.usage` 原样结构；缺失表示 unknown，不等于 0。
+- `usage_json` 保存 `RunnerResult.usage` 原样结构；缺失表示 unknown，不等于 0。
 
 ### 4.3 Run Control API
 
@@ -258,7 +258,7 @@ event -> binding -> context -> runner invocation -> result normalization
 需要补齐：
 
 - run 开始时创建 `AgentRun`。
-- 每个 `AgentRunResult` 进入 `AgentRunEvent`。
+- 每个 `RunnerResult` 进入 `AgentRunEvent`。
 - `run.completed` / 正常 generator 结束时标记 completed。
 - `run.failed` / exception / timeout 标记 failed 或 timeout。
 - terminal result 携带 usage 时，写入 `AgentRunEvent.usage_json` 并汇总到 `AgentRun.usage_json`。
@@ -266,7 +266,7 @@ event -> binding -> context -> runner invocation -> result normalization
 
 ### 4.5 Usage / Cost Accounting
 
-SDK 侧 `AgentRunResult` 已提供可选 `usage` 字段，用于把不同 runner / external harness / provider-native event 的 token usage 归一到同一个 run result envelope。
+SDK 侧 `RunnerResult` 已提供可选 `usage` 字段，用于把不同 runner / external harness / provider-native event 的 token usage 归一到同一个 run result envelope。
 
 语义：
 
@@ -309,7 +309,7 @@ RunCreateRequest / RunCreateResult
 RunAppendResultRequest
 ```
 
-这些是 Host control primitives，不替代 `AgentRunContext` / `AgentRunResult`。
+这些是 Host control primitives，不替代 `RunnerContext` / `RunnerResult`。
 
 ### 5.2 Proxy Methods
 
@@ -327,17 +327,17 @@ finalize_run(run_id, status, error=None)
 
 访问边界：
 
-- 普通 AgentRunner 在同步 `run(ctx)` 内不一定需要直接调用这些 API；Host orchestrator 可自动记录。
+- 普通 Runner 在同步 `run(ctx)` 内不一定需要直接调用这些 API；Host orchestrator 可自动记录。
 - Platform 插件可以创建/查询/取消 run。
-- AgentRunner 插件或 daemon bridge 可以 append/finalize 自己负责的 run。
+- Runner 插件或 daemon bridge 可以 append/finalize 自己负责的 run。
 - 外部 harness 仍不能直接调用 Host；必须经 SDK runtime / proxy / bridge。
 
 ### 5.3 Plugin-Daemon Heartbeat
 
-远程 daemon 的初始心跳可以是 SDK / AgentRunner plugin 私有能力：
+远程 daemon 的初始心跳可以是 SDK / Runner plugin 私有能力：
 
 ```text
-daemon <-> AgentRunner plugin / SDK remote layer <-> LangBot plugin runtime <-> Host
+daemon <-> Runner plugin / SDK remote layer <-> LangBot plugin runtime <-> Host
 ```
 
 Host 第一阶段只需要知道：
@@ -365,7 +365,7 @@ Platform 插件不应负责：
 - 在 Host Run Ledger 落地后，私有保存通用 run/result 事实源。
 - 绕过 Host 直接写 transcript/state 或越权访问 sandbox/workspace 文件。
 - 让外部 harness 直接访问 LangBot DB 或 Host 内部资源。
-- 把某个业务队列语义强塞进 AgentRunner Protocol v1。
+- 把某个业务队列语义强塞进 Runner Protocol v1。
 
 ## 7. 与 EBA 的关系
 
@@ -395,18 +395,18 @@ EventGateway
 
 这两条路径最终应共享 Host run/result/state 事实源和 sandbox/workspace 文件边界。当前阶段可共享的是 event/transcript/state、sandbox 文件和同步执行链路；持久 run/result ledger 需要 Runtime Control Plane v2 Phase 1 补齐。区别在于是否有 Platform 插件参与产品化调度和业务队列。
 
-## 8. 与 AgentRunner Protocol v1 的关系
+## 8. 与 Runner Protocol v1 的关系
 
 本设计不改变 v1 的 runner 可见合同：
 
 ```text
-AgentRunContext -> AgentRunner.run(ctx) -> AgentRunResult stream
+RunnerContext -> Runner.run(ctx) -> RunnerResult stream
 ```
 
 必须保持：
 
-- `AgentRunContext` 不塞入 daemon/worker/pod 细节。
-- `AgentRunResult` 仍是 runner 输出的统一事件流。
+- `RunnerContext` 不塞入 daemon/worker/pod 细节。
+- `RunnerResult` 仍是 runner 输出的统一事件流。
 - 普通 runner 不需要知道 task queue / runtime registry。
 - 远程 harness 可以自管 session、tool loop、MCP、上下文压缩，但访问 LangBot 资源必须通过 SDK proxy / bridge。
 - Runtime-managed execution 是 placement / transport 选择，不是普通 runner 协议的强制概念。
@@ -422,7 +422,7 @@ AgentRunContext -> AgentRunner.run(ctx) -> AgentRunResult stream
 - `AgentRun` 表。
 - `AgentRunEvent` 表。
 - Orchestrator 自动创建/更新 run。
-- Journal 持久化每个 `AgentRunResult`。
+- Journal 持久化每个 `RunnerResult`。
 - Run 查询和事件分页 API。
 - SDK entities + proxy 方法。
 
@@ -517,9 +517,9 @@ Tests: 40+ 个文件
 - Host 不写业务调度策略，但要保存通用状态、结果、权限和审计。
 - EBA event 不是 queue；queue 是执行生命周期问题。
 - 业务 queue 可以先在 Platform 插件里；执行 queue 只有在复用需求明确后再下沉 Host。
-- Daemon registry 不应污染 AgentRunner Protocol v1。
+- Daemon registry 不应污染 Runner Protocol v1。
 - 外部 harness 不直接访问 LangBot Host 或 DB。
-- 所有 LangBot 资源访问必须走 SDK runtime / `AgentRunAPIProxy` / scoped MCP bridge。
+- 所有 LangBot 资源访问必须走 SDK runtime / `RunnerAPIProxy` / scoped MCP bridge。
 - Docker / remote / local subprocess 只是 runtime placement，不是 runner 协议差异。
 
 ## 11. 非目标
@@ -528,8 +528,8 @@ Tests: 40+ 个文件
 
 - 完整 Multica 式 runtime registry。
 - Host 内置项目管理、任务板、agent team、workflow 产品逻辑。
-- 把 daemon heartbeat / worker liveness 放进 `AgentRunContext`。
-- 把业务 queue 定义为 AgentRunner Protocol 字段。
+- 把 daemon heartbeat / worker liveness 放进 `RunnerContext`。
+- 把业务 queue 定义为 Runner Protocol 字段。
 - 让 Platform 插件私有保存 run/result 事实源。
 - 让外部 agent/harness 直连 Host 内部资源。
 

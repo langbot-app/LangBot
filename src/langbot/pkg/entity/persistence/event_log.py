@@ -1,4 +1,5 @@
 """EventLog persistence entity for storing auditable event facts."""
+
 from __future__ import annotations
 
 import sqlalchemy
@@ -8,7 +9,7 @@ from .base import Base
 
 
 class EventLog(Base):
-    """EventLog stores auditable event records for AgentRunner.
+    """EventLog stores auditable event records for Runner.
 
     This is the fact source for events - messages, tool calls, system events, etc.
     Large payloads are stored separately; this table stores references and

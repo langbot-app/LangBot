@@ -1,4 +1,4 @@
-# Local Agent Runner Coverage
+# Local Runner Coverage
 
 Use this matrix when judging whether the external `langbot-team/LocalAgent` plugin still behaves like the old built-in local-agent runner.
 
@@ -10,7 +10,7 @@ The QA target is end-to-end behavior. UI cases prove the host, SDK, plugin runti
 - `LangBot/src/langbot/pkg/agent/runner/pipeline_adapter.py` adapts Pipeline-only fields into `ctx.adapter.extra.prompt`, `ctx.adapter.extra.params`, and optional `ctx.bootstrap.messages`.
 - `LangBot/src/langbot/pkg/agent/runner/resource_builder.py` authorizes models, fallback models, rerank models, tools, and knowledge bases for the current run.
 - `LangBot/src/langbot/pkg/plugin/handler.py` validates run-scoped model/tool/rerank access and calls the host model provider or tool manager with the current query.
-- `langbot-local-agent/components/agent_runner/default.py` selects streaming or non-streaming execution, retrieves RAG context, builds messages, invokes models with fallback, and runs tool loops.
+- `langbot-local-agent/components/runner/default.py` selects streaming or non-streaming execution, retrieves RAG context, builds messages, invokes models with fallback, and runs tool loops.
 - `langbot-local-agent/pkg/messages.py` prefers the host effective prompt from `ctx.adapter.extra.prompt`, uses `ctx.bootstrap.messages` only as a small bootstrap window, and preserves structured/multimodal input while inserting RAG context.
 
 TODO: Treat `ctx.adapter.extra.prompt` as a temporary Pipeline bridge for old

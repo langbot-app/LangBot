@@ -1,5 +1,5 @@
 id: agent-runner-ledger-stress
-title: "AgentRunner ledger lightweight stress probe"
+title: "Runner ledger lightweight stress probe"
 mode: probe
 area: release
 type: regression

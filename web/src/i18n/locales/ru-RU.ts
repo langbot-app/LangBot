@@ -630,7 +630,7 @@ const ruRU = {
     deleteAgentAction: 'Удалить этот Agent',
     deleteAgentHint:
       'После удаления события, привязанные к ней, больше не смогут выполняться.',
-    noRunnerMetadata: 'Метаданные AgentRunner в данный момент недоступны.',
+    noRunnerMetadata: 'Метаданные Runner в данный момент недоступны.',
   },
   plugins: {
     title: 'Расширения',
@@ -727,8 +727,7 @@ const ruRU = {
       KnowledgeEngine: 'Движок знаний',
       Parser: 'Парсер',
       Page: 'Страница',
-      AgentRunner: 'Исполнитель агента',
-      EventProcessor: 'Обработчик событий',
+      Runner: 'Исполнитель агента',
     },
     uploadLocal: 'Загрузить локально',
     debugging: 'Отладка',
@@ -909,8 +908,7 @@ const ruRU = {
       KnowledgeEngine: 'Движок знаний',
       Parser: 'Парсер',
       Page: 'Страница',
-      AgentRunner: 'Исполнитель агента',
-      EventProcessor: 'Обработчик событий',
+      Runner: 'Исполнитель агента',
     },
     filterByType: 'Тип',
     allTypes: 'Все типы',
@@ -1153,14 +1151,14 @@ const ruRU = {
       selectSkills: 'Выбрать навыки',
       noSkillsAvailable: 'Нет доступных навыков',
       mcpServersScopeTooltip:
-        'Здесь задаётся только привязка MCP-серверов к конвейеру. Конкретные MCP-инструменты и ресурсы выбираются в AI Feature > Agent Runner.',
+        'Здесь задаётся только привязка MCP-серверов к конвейеру. Конкретные MCP-инструменты и ресурсы выбираются в AI Feature > Runner.',
       enableAllMCPServersTooltip:
         'Если включено, все настроенные и включённые MCP-серверы станут кандидатами для инструментов и ресурсов MCP в AI Feature.',
     },
-    agentRunner: {
+    runner: {
       toolsTitle: 'Инструменты',
       toolsDescription:
-        'Выберите инструменты плагинов, MCP и встроенные инструменты для этого Agent Runner.',
+        'Выберите инструменты плагинов, MCP и встроенные инструменты для этого Runner.',
       toolsScopeTooltip:
         'MCP-инструменты берутся только из MCP-серверов, привязанных в Расширениях. Чтобы добавить источник, сначала привяжите там сервер.',
       enableAllTools: 'Включить все инструменты',
@@ -1178,7 +1176,7 @@ const ruRU = {
       selectTools: 'Выбрать инструменты',
       resourcesTitle: 'Ресурсы',
       resourcesDescription:
-        'Выберите MCP-ресурсы и базы знаний для этого Agent Runner.',
+        'Выберите MCP-ресурсы и базы знаний для этого Runner.',
       knowledgeBases: 'Базы знаний',
       mcpResources: 'MCP-ресурсы',
       mcpResourcesScopeTooltip:

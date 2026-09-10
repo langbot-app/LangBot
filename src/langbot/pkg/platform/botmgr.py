@@ -43,13 +43,13 @@ import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
-from langbot_plugin.api.entities.builtin.agent_runner.event import (
+from langbot_plugin.api.entities.builtin.runner.event import (
     ActorContext,
     SubjectContext,
     RawEventRef,
 )
-from langbot_plugin.api.entities.builtin.agent_runner.input import AgentInput
-from langbot_plugin.api.entities.builtin.agent_runner.delivery import DeliveryContext
+from langbot_plugin.api.entities.builtin.runner.input import AgentInput
+from langbot_plugin.api.entities.builtin.runner.delivery import DeliveryContext
 
 
 class RuntimeBot:
@@ -802,7 +802,7 @@ class RuntimeBot:
         if config is None:
             return None
 
-        _, runner_id, runner_config = RunnerConfigResolver.resolve_agent_runner_config(config)
+        _, runner_id, runner_config = RunnerConfigResolver.resolve_agent_config(config)
         if not runner_id:
             return None
 
@@ -846,7 +846,7 @@ class RuntimeBot:
             return
 
         # Legacy listeners run inside Pipeline stages. EBA handlers require an
-        # explicitly created and routed EventProcessor instance.
+        # explicitly created and routed plugin processor instance.
         await self._dispatch_eba_event_to_processor(event, adapter)
 
     async def _dispatch_eba_event_to_processor(

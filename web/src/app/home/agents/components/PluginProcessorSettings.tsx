@@ -1,7 +1,7 @@
 import { Puzzle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
-import type { EventProcessorDescriptor } from '@/app/infra/entities/api';
+import type { RunnerDescriptor } from '@/app/infra/entities/api';
 import { httpClient } from '@/app/infra/http';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import {
@@ -18,7 +18,7 @@ function ProcessorComponentContent({
   component,
   option = false,
 }: {
-  component: EventProcessorDescriptor;
+  component: RunnerDescriptor;
   option?: boolean;
 }) {
   const label = extractI18nObject({
@@ -62,13 +62,13 @@ function ProcessorComponentContent({
   );
 }
 
-export default function EventProcessorSettings({
+export default function PluginProcessorSettings({
   components,
   value,
   onChange,
   disabled = false,
 }: {
-  components: EventProcessorDescriptor[];
+  components: RunnerDescriptor[];
   value: string;
   onChange: (value: string) => void;
   disabled?: boolean;

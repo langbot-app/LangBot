@@ -42,7 +42,7 @@ class Controller:
         self,
         query: pipeline_query.Query,
     ) -> bool:
-        """Offer follow-up input to an active AgentRunner before it queues."""
+        """Offer follow-up input to an active Runner before it queues."""
 
         try:
             pipeline_uuid = query.pipeline_uuid

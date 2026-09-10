@@ -60,7 +60,7 @@ from ..cloud import model_catalog as cloud_model_catalog_module
 from ..api.http.context import ExecutionContext, PrincipalContext, PrincipalType
 
 if TYPE_CHECKING:
-    from ..agent.runner import AgentRunnerRegistry, AgentRunOrchestrator, AgentRunnerDefaultConfigService
+    from ..agent.runner import RunnerRegistry, AgentRunOrchestrator, RunnerDefaultConfigService
 
 
 class Application:
@@ -203,9 +203,9 @@ class Application:
     maintenance_service: maintenance_service.MaintenanceService = None
 
     # Agent runner subsystem
-    agent_runner_registry: AgentRunnerRegistry = None
+    runner_registry: RunnerRegistry = None
 
-    agent_runner_default_config_service: AgentRunnerDefaultConfigService = None
+    runner_default_config_service: RunnerDefaultConfigService = None
 
     agent_run_orchestrator: AgentRunOrchestrator = None
 

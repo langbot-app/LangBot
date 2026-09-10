@@ -1,4 +1,4 @@
-"""Test that LangBot context builder output validates against SDK AgentRunContext."""
+"""Test that LangBot context builder output validates against SDK RunnerContext."""
 
 from __future__ import annotations
 
@@ -7,26 +7,26 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, AsyncMock, patch
 
 # SDK imports for validation
-from langbot_plugin.api.entities.builtin.agent_runner.context import AgentRunContext
-from langbot_plugin.api.entities.builtin.agent_runner.event import AgentEventContext
-from langbot_plugin.api.entities.builtin.agent_runner.delivery import DeliveryContext
-from langbot_plugin.api.entities.builtin.agent_runner.context_access import ContextAccess
-from langbot_plugin.api.entities.builtin.agent_runner.input import AgentInput
-from langbot_plugin.api.entities.builtin.agent_runner.resources import AgentResources
-from langbot_plugin.api.entities.builtin.agent_runner.runtime import AgentRuntimeContext
+from langbot_plugin.api.entities.builtin.runner.context import RunnerContext
+from langbot_plugin.api.entities.builtin.runner.event import AgentEventContext
+from langbot_plugin.api.entities.builtin.runner.delivery import DeliveryContext
+from langbot_plugin.api.entities.builtin.runner.context_access import ContextAccess
+from langbot_plugin.api.entities.builtin.runner.input import AgentInput
+from langbot_plugin.api.entities.builtin.runner.resources import AgentResources
+from langbot_plugin.api.entities.builtin.runner.runtime import AgentRuntimeContext
 
 # LangBot imports
 from langbot.pkg.agent.runner.context_builder import (
-    AgentRunContextBuilder,
+    RunnerContextBuilder,
     AgentResources as BuilderResources,
 )
-from langbot.pkg.agent.runner.descriptor import AgentRunnerDescriptor
+from langbot.pkg.agent.runner.descriptor import RunnerDescriptor
 from langbot.pkg.agent.runner.host_models import AgentEventEnvelope, AgentBinding, BindingScope
 from langbot.pkg.core import app
 
 
 class TestContextValidation:
-    """Test that context builder output validates against SDK AgentRunContext."""
+    """Test that context builder output validates against SDK RunnerContext."""
 
     def _make_mock_app(self):
         """Create a mock application."""
@@ -40,9 +40,9 @@ class TestContextValidation:
 
     def _make_event_envelope(self) -> AgentEventEnvelope:
         """Create a test event envelope."""
-        from langbot_plugin.api.entities.builtin.agent_runner.event import ActorContext
-        from langbot_plugin.api.entities.builtin.agent_runner.input import AgentInput as EventInput
-        from langbot_plugin.api.entities.builtin.agent_runner.delivery import DeliveryContext
+        from langbot_plugin.api.entities.builtin.runner.event import ActorContext
+        from langbot_plugin.api.entities.builtin.runner.input import AgentInput as EventInput
+        from langbot_plugin.api.entities.builtin.runner.delivery import DeliveryContext
 
         return AgentEventEnvelope(
             event_id='evt_1',
@@ -90,7 +90,7 @@ class TestContextValidation:
 
     def _make_descriptor(self):
         """Create a mock runner descriptor."""
-        return AgentRunnerDescriptor(
+        return RunnerDescriptor(
             id='plugin:test/plugin/runner',
             source='plugin',
             label={'en_US': 'Test Runner'},
@@ -106,9 +106,9 @@ class TestContextValidation:
 
     @pytest.mark.asyncio
     async def test_build_context_from_event_validates(self):
-        """Test that build_context_from_event output validates against SDK AgentRunContext."""
+        """Test that build_context_from_event output validates against SDK RunnerContext."""
         mock_app = self._make_mock_app()
-        builder = AgentRunContextBuilder(mock_app)
+        builder = RunnerContextBuilder(mock_app)
 
         event = self._make_event_envelope()
         binding = self._make_binding()
@@ -136,9 +136,9 @@ class TestContextValidation:
                 resources=resources,
             )
 
-        # Validate it can be parsed by SDK AgentRunContext
+        # Validate it can be parsed by SDK RunnerContext
         # This will raise ValidationError if invalid
-        validated = AgentRunContext.model_validate(context_dict)
+        validated = RunnerContext.model_validate(context_dict)
 
         # Verify required fields
         assert validated.run_id is not None
@@ -179,13 +179,13 @@ class TestContextValidation:
     @pytest.mark.asyncio
     async def test_build_context_preserves_interaction_protocol_fields(self):
         """Validated submissions and delivery capabilities survive the final context projection."""
-        from langbot_plugin.api.entities.builtin.agent_runner.interaction import (
+        from langbot_plugin.api.entities.builtin.runner.interaction import (
             InteractionDeliveryCapabilities,
             InteractionSubmission,
         )
 
         mock_app = self._make_mock_app()
-        builder = AgentRunContextBuilder(mock_app)
+        builder = RunnerContextBuilder(mock_app)
         event = self._make_event_envelope()
         event.event_type = 'interaction.submitted'
         event.input.interaction = InteractionSubmission(
@@ -211,7 +211,7 @@ class TestContextValidation:
                 resources=self._make_resources(),
             )
 
-        validated = AgentRunContext.model_validate(context_dict)
+        validated = RunnerContext.model_validate(context_dict)
         assert validated.input.interaction is not None
         assert validated.input.interaction.interaction_id == 'form-1'
         assert validated.input.interaction.values == {'comment': 'looks good'}
@@ -228,7 +228,7 @@ class TestContextValidation:
                 model_entity=SimpleNamespace(context_length=128000),
             )
         )
-        builder = AgentRunContextBuilder(mock_app)
+        builder = RunnerContextBuilder(mock_app)
 
         event = self._make_event_envelope()
         binding = self._make_binding()
@@ -281,7 +281,7 @@ class TestContextValidation:
                 model_entity=SimpleNamespace(context_length=None),
             )
         )
-        builder = AgentRunContextBuilder(mock_app)
+        builder = RunnerContextBuilder(mock_app)
         resources = self._make_resources()
         resources['models'] = [
             {
@@ -304,12 +304,12 @@ class TestContextValidation:
     @pytest.mark.asyncio
     async def test_build_context_preserves_subject_data_for_non_message_events(self):
         """Non-message EBA events keep subject.data instead of relying on message text."""
-        from langbot_plugin.api.entities.builtin.agent_runner.event import ActorContext, SubjectContext
-        from langbot_plugin.api.entities.builtin.agent_runner.input import AgentInput as EventInput
-        from langbot_plugin.api.entities.builtin.agent_runner.delivery import DeliveryContext
+        from langbot_plugin.api.entities.builtin.runner.event import ActorContext, SubjectContext
+        from langbot_plugin.api.entities.builtin.runner.input import AgentInput as EventInput
+        from langbot_plugin.api.entities.builtin.runner.delivery import DeliveryContext
 
         mock_app = self._make_mock_app()
-        builder = AgentRunContextBuilder(mock_app)
+        builder = RunnerContextBuilder(mock_app)
         event = AgentEventEnvelope(
             event_id='evt_recall_1',
             event_type='message.recalled',
@@ -353,7 +353,7 @@ class TestContextValidation:
                 resources=resources,
             )
 
-        validated = AgentRunContext.model_validate(context_dict)
+        validated = RunnerContext.model_validate(context_dict)
 
         assert validated.event.event_type == 'message.recalled'
         assert validated.input.text is None
@@ -366,7 +366,7 @@ class TestContextValidation:
     async def test_build_context_from_event_has_no_legacy_top_level_fields(self):
         """Test that build_context_from_event does NOT have top-level messages/prompt/params."""
         mock_app = self._make_mock_app()
-        builder = AgentRunContextBuilder(mock_app)
+        builder = RunnerContextBuilder(mock_app)
 
         event = self._make_event_envelope()
         binding = self._make_binding()
@@ -409,7 +409,7 @@ class TestContextValidation:
     async def test_build_context_from_event_event_is_not_none(self):
         """Test that event field is NOT None in Protocol v1."""
         mock_app = self._make_mock_app()
-        builder = AgentRunContextBuilder(mock_app)
+        builder = RunnerContextBuilder(mock_app)
 
         event = self._make_event_envelope()
         binding = self._make_binding()
@@ -440,14 +440,14 @@ class TestContextValidation:
         assert context_dict.get('event') is not None, 'event is REQUIRED for Protocol v1'
 
         # Validate
-        validated = AgentRunContext.model_validate(context_dict)
+        validated = RunnerContext.model_validate(context_dict)
         assert validated.event is not None
 
     @pytest.mark.asyncio
     async def test_build_context_from_event_delivery_is_not_none(self):
         """Test that delivery field is NOT None in Protocol v1."""
         mock_app = self._make_mock_app()
-        builder = AgentRunContextBuilder(mock_app)
+        builder = RunnerContextBuilder(mock_app)
 
         event = self._make_event_envelope()
         binding = self._make_binding()
@@ -478,5 +478,5 @@ class TestContextValidation:
         assert context_dict.get('delivery') is not None, 'delivery is REQUIRED for Protocol v1'
 
         # Validate
-        validated = AgentRunContext.model_validate(context_dict)
+        validated = RunnerContext.model_validate(context_dict)
         assert validated.delivery is not None

@@ -1,19 +1,19 @@
-# AgentRunner Pluginization Status
+# Runner Pluginization Status
 
-本文档是 `docs/agent-runner-pluginization/` 的状态事实源。协议 schema 仍以 [PROTOCOL_V1.md](./PROTOCOL_V1.md) 为准；测试步骤以 [AGENT_RUNNER_QA_GUIDE.md](./AGENT_RUNNER_QA_GUIDE.md) 为准；安全发布门槛以 [SECURITY_HARDENING.md](./SECURITY_HARDENING.md) 为准。
+本文档是 `docs/agent-runner-pluginization/` 的状态事实源。协议 schema 仍以 [PROTOCOL_V1.md](./PROTOCOL_V1.md) 为准；测试步骤以 [RUNNER_QA_GUIDE.md](./RUNNER_QA_GUIDE.md) 为准；安全发布门槛以 [SECURITY_HARDENING.md](./SECURITY_HARDENING.md) 为准。
 
 状态快照日期：2026-09-05。代码基线为 LangBot `dev/4.11.x` / `a4d36aa2d` 和 SDK `dev/4.11.x` / `f1da058`；本文是本地检视快照，不代表远端最新状态或正式发布批准。
 
 ## 当前版本与验收边界
 
 - Core 声明版本 `4.11.0`，`pyproject.toml` / `uv.lock` 仍依赖 `langbot-plugin==0.5.3`；SDK 源码声明版本 `0.5.5`。本机 Core 实际导入旁边 SDK 的可编辑源码，不能用这个组合的测试通过证明 registry 安装可复现。
-- 检视时 SDK 有四个未提交文件：`api/agent_tools/asset_gateway.py`、`api/agent_tools/external_tools.py`、`api/entities/builtin/agent_runner/resources.py`（均位于 `src/langbot_plugin/`），以及 `tests/api/test_agent_tools_mcp_bridge.py`。这些改动增加 `platform_tools` 分类发现、可选 schema 和 gateway 引导。下面的 SDK 测试包含这些工作区改动；正式配套版本尚需冻结。
+- 检视时 SDK 有四个未提交文件：`api/agent_tools/asset_gateway.py`、`api/agent_tools/external_tools.py`、`api/entities/builtin/runner/resources.py`（均位于 `src/langbot_plugin/`），以及 `tests/api/test_agent_tools_mcp_bridge.py`。这些改动增加 `platform_tools` 分类发现、可选 schema 和 gateway 引导。下面的 SDK 测试包含这些工作区改动；正式配套版本尚需冻结。
 - 本轮仅重新执行下列定向测试与 TypeScript 检查，没有重跑全量 backend、真实平台、provider、浏览器 E2E 或 Cloud 部署门禁。后文旧日期的成功记录仍是历史证据。
 
 | 2026-09-05 验证 | 结果 |
 | --- | --- |
 | Core：`tests/unit_tests/agent`、`tests/unit_tests/api/service/test_agent_service.py`、`tests/unit_tests/platform/test_routing_rules.py`、`tests/unit_tests/api/service/test_maintenance_service.py` | 561 passed，74 warnings |
-| SDK：`tests/api/entities/builtin/agent_runner`、`tests/api/proxies`、`tests/api/test_agent_tools_mcp_bridge.py`、`tests/runtime/plugin/test_mgr_agent_runner.py`、`tests/runtime/plugin/test_dependency_environment.py`、`tests/runtime/plugin/test_restart_coordinator.py` | 362 passed，10 warnings |
+| SDK：`tests/api/entities/builtin/runner`、`tests/api/proxies`、`tests/api/test_agent_tools_mcp_bridge.py`、`tests/runtime/plugin/test_mgr_runner.py`、`tests/runtime/plugin/test_dependency_environment.py`、`tests/runtime/plugin/test_restart_coordinator.py` | 362 passed，10 warnings |
 | Web：`pnpm exec tsc --noEmit` | pass |
 | Web：`pnpm test:unit` | 62 passed，2 failed |
 
@@ -31,7 +31,7 @@
 
 | 领域 | 状态 | 说明 |
 | --- | --- | --- |
-| SDK manifest schema | Done | `AgentRunnerManifest` 包含 typed `capabilities` / `permissions`；未知 capability / permission key 禁止进入 typed model。 |
+| SDK manifest schema | Done | `RunnerManifest` 包含 typed `capabilities` / `permissions`；未知 capability / permission key 禁止进入 typed model。 |
 | Runner discovery | Done | Runtime 返回 typed manifest；Host registry 校验单个 runner，失败 warning + skip，不影响其它 runner。 |
 | Host resource authorization | Done | `ctx.resources` 和 `ctx.context.available_apis` 由 manifest permissions 与 binding policy / run scope 求交后生成。 |
 | Run authorization snapshot | Done | active run session 冻结 run-scoped resources 与 available APIs；runtime handler 按 snapshot 校验 pull API。 |
@@ -61,8 +61,8 @@
 
 | Runner | 状态 | 最近证据 |
 | --- | --- | --- |
-| `plugin:langbot-team/LocalAgent/default` | Unit-pass; Marketplace UI pass; Debug Chat E2E pass | 2026-07-12 隔离 first-run 实例从真实 AgentRunner catalog 安装 `langbot-team/LocalAgent` 0.1.0，Host 注册 `plugin:langbot-team/LocalAgent/default`，Wizard 自动选中并解锁后续操作。2026-07-15 `2026-07-15-08-44-10-770-08-00-sandbox-skill-authoring-edit-existing-e2e` 使用真实 `gpt-5.5` 完成 Skill 创建、注册、同 Query 激活、已激活包编辑与脚本执行；三阶段 UI、浏览器诊断和结构化文件系统检查全部通过，每阶段恰好新增一个 Bot 气泡，p95 14.6 秒、错误率 0。 |
-| `plugin:langbot-team/ACPAgentRunner/default` | Unit-pass; Debug Chat E2E pass | 2026-07-15 从本地 0.1.4 发布包安装并注册 PascalCase runner，remote-ssh Claude ACP 通过反向隧道调用 run-scoped `langbot_get_current_event`，97.8 秒返回可见结果；Host 将增量 delta 和 `message.completed` 聚合为一个完整 Bot 气泡。 |
+| `plugin:langbot-team/LocalAgent/default` | Unit-pass; Marketplace UI pass; Debug Chat E2E pass | 2026-07-12 隔离 first-run 实例从真实 Runner catalog 安装 `langbot-team/LocalAgent` 0.1.0，Host 注册 `plugin:langbot-team/LocalAgent/default`，Wizard 自动选中并解锁后续操作。2026-07-15 `2026-07-15-08-44-10-770-08-00-sandbox-skill-authoring-edit-existing-e2e` 使用真实 `gpt-5.5` 完成 Skill 创建、注册、同 Query 激活、已激活包编辑与脚本执行；三阶段 UI、浏览器诊断和结构化文件系统检查全部通过，每阶段恰好新增一个 Bot 气泡，p95 14.6 秒、错误率 0。 |
+| `plugin:langbot-team/ACPRunner/default` | Unit-pass; Debug Chat E2E pass | 2026-07-15 从本地 0.1.4 发布包安装并注册 PascalCase runner，remote-ssh Claude ACP 通过反向隧道调用 run-scoped `langbot_get_current_event`，97.8 秒返回可见结果；Host 将增量 delta 和 `message.completed` 聚合为一个完整 Bot 气泡。 |
 | `plugin:langbot-team/ClaudeCodeAgent/default` / `plugin:langbot-team/CodexAgent/default` | Unit-pass; E2E pending | 通过 runner 仓库单测覆盖 session、run_id 注入和 LangBot MCP gateway；真实 harness E2E 取决于对应运行环境、CLI/daemon 可用性和 provider 登录态。 |
 | Dify | Human-input unit-pass; credential E2E pending | `langbot-agent-runner/dify-agent` 已实现 `workflow_paused`、原子字段/确认交互、plugin-storage continuation、Dify submit/events 恢复与再次暂停；真实 Dify 凭据 E2E 待执行。 |
 | n8n / Coze / DashScope / Langflow / Tbox / DeerFlow / WeKnora | Unit-pass; credential smoke optional | 2026-06-13 plugin layout / parser tests 通过；真实服务凭据 smoke 非每轮必跑。 |
@@ -71,9 +71,9 @@
 
 | 范围 | 状态 | 最近证据 |
 | --- | --- | --- |
-| LangBot Runtime Control Plane v2 foundation | Unit-pass; EBA release gate 5/5 pass; AgentRunner preflight pass | 2026-07-12 `eba-functional-20260712-release-gate-rerun` 通过 Quick Start 场景筛选、隔离实例 Runner Marketplace 安装、Runner 健康状态、事件路由 dry-run / 合成派发，以及真实 OneBot `group.member_joined` → Agent → `send_group_msg` 链路。2026-07-15 AgentRunner release preflight 16 项通过、0 warning；fixture contract、5 类 behavior matrix、ledger schema / async DB readiness / 100-run stress / 120-run 8-worker contention / claim-lease-auth concurrency、SDK runtime chaos 探针全部通过。 |
+| LangBot Runtime Control Plane v2 foundation | Unit-pass; EBA release gate 5/5 pass; Runner preflight pass | 2026-07-12 `eba-functional-20260712-release-gate-rerun` 通过 Quick Start 场景筛选、隔离实例 Runner Marketplace 安装、Runner 健康状态、事件路由 dry-run / 合成派发，以及真实 OneBot `group.member_joined` → Agent → `send_group_msg` 链路。2026-07-15 Runner release preflight 16 项通过、0 warning；fixture contract、5 类 behavior matrix、ledger schema / async DB readiness / 100-run stress / 120-run 8-worker contention / claim-lease-auth concurrency、SDK runtime chaos 探针全部通过。 |
 | Host Skill / native tool integration | Unit-pass; WebUI E2E pass | 2026-07-15 provider / native / Skill / monitoring 定向测试 67 项通过，Pipeline / Chat / Wrapper 定向测试 61 项通过，Skills CLI 105 项通过；真实 Debug Chat 验证 `register_skill` 后同 Query `activate` 成功，监控工具调用不再把 SQL 行误取为字符串，结构化 JSON 文件检查不依赖格式空格，非流式多阶段 runner 结果只生成一个最终 Bot 气泡。 |
-| SDK AgentRunner control entities / proxy | Unit-pass | 2026-06-23 SDK `tests/api/entities/builtin/agent_runner`、`tests/api/proxies`、`tests/api/test_agent_tools_mcp_bridge.py`、`tests/runtime/plugin/test_mgr_agent_runner.py`、`tests/runtime/test_pull_api_handlers.py`、`tests/runtime/io/handlers/test_plugin_handler.py`、EBA event entities 和 message tests 通过，覆盖 typed entities、AgentRunAPIProxy、MCP bridge、runtime manager 与 pull API handlers。 |
+| SDK Runner control entities / proxy | Unit-pass | 2026-06-23 SDK `tests/api/entities/builtin/runner`、`tests/api/proxies`、`tests/api/test_agent_tools_mcp_bridge.py`、`tests/runtime/plugin/test_mgr_runner.py`、`tests/runtime/test_pull_api_handlers.py`、`tests/runtime/io/handlers/test_plugin_handler.py`、EBA event entities 和 message tests 通过，覆盖 typed entities、RunnerAPIProxy、MCP bridge、runtime manager 与 pull API handlers。 |
 
 ## 历史高价值记录
 

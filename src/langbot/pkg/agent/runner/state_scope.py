@@ -1,11 +1,12 @@
-"""State scope key helpers for AgentRunner host-owned state."""
+"""State scope key helpers for Runner host-owned state."""
+
 from __future__ import annotations
 
 import hashlib
 import json
 import typing
 
-from .descriptor import AgentRunnerDescriptor
+from .descriptor import RunnerDescriptor
 from .host_models import AgentBinding, AgentEventEnvelope
 
 
@@ -47,7 +48,7 @@ def _scope_hash(scope: str, parts: dict[str, typing.Any]) -> str:
 def _base_scope_parts(
     event: AgentEventEnvelope,
     binding: AgentBinding,
-    descriptor: AgentRunnerDescriptor,
+    descriptor: RunnerDescriptor,
 ) -> dict[str, typing.Any]:
     return {
         'runner_id': descriptor.id,
@@ -61,7 +62,7 @@ def build_state_scope_key(
     scope: str,
     event: AgentEventEnvelope,
     binding: AgentBinding,
-    descriptor: AgentRunnerDescriptor,
+    descriptor: RunnerDescriptor,
 ) -> str | None:
     """Build the storage key for one state scope.
 
@@ -72,29 +73,38 @@ def build_state_scope_key(
     if scope == 'conversation':
         if not event.conversation_id:
             return None
-        return _scope_hash(scope, {
-            **base_parts,
-            'conversation_id': event.conversation_id,
-            'thread_id': event.thread_id,
-        })
+        return _scope_hash(
+            scope,
+            {
+                **base_parts,
+                'conversation_id': event.conversation_id,
+                'thread_id': event.thread_id,
+            },
+        )
 
     if scope == 'actor':
         if not event.actor or not event.actor.actor_id:
             return None
-        return _scope_hash(scope, {
-            **base_parts,
-            'actor_type': event.actor.actor_type or 'user',
-            'actor_id': event.actor.actor_id,
-        })
+        return _scope_hash(
+            scope,
+            {
+                **base_parts,
+                'actor_type': event.actor.actor_type or 'user',
+                'actor_id': event.actor.actor_id,
+            },
+        )
 
     if scope == 'subject':
         if not event.subject or not event.subject.subject_id:
             return None
-        return _scope_hash(scope, {
-            **base_parts,
-            'subject_type': event.subject.subject_type or 'unknown',
-            'subject_id': event.subject.subject_id,
-        })
+        return _scope_hash(
+            scope,
+            {
+                **base_parts,
+                'subject_type': event.subject.subject_type or 'unknown',
+                'subject_id': event.subject.subject_id,
+            },
+        )
 
     if scope == 'runner':
         return _scope_hash(scope, base_parts)
@@ -105,7 +115,7 @@ def build_state_scope_key(
 def build_state_scope_keys(
     event: AgentEventEnvelope,
     binding: AgentBinding,
-    descriptor: AgentRunnerDescriptor,
+    descriptor: RunnerDescriptor,
 ) -> dict[str, str]:
     """Build all available scope keys for an event/binding pair."""
     scope_keys: dict[str, str] = {}
@@ -119,7 +129,7 @@ def build_state_scope_keys(
 def build_state_context(
     event: AgentEventEnvelope,
     binding: AgentBinding,
-    descriptor: AgentRunnerDescriptor,
+    descriptor: RunnerDescriptor,
 ) -> dict[str, typing.Any]:
     """Build the State API context stored in the run session."""
     return {

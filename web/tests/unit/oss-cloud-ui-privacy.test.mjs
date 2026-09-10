@@ -40,10 +40,10 @@ test('hides the entire workspace switcher slot for a singleton local workspace',
   );
 });
 
-test('keeps bot cards at the same vertical spacing as knowledge-base cards', () => {
+test('keeps compact bot forms vertically spaced while detail forms support columns', () => {
   assert.match(
     botFormSource,
-    /<fieldset\s+className="[^"]*\bspace-y-6\b[^"]*"\s+disabled=\{isLoading\}/,
+    /<fieldset[\s\S]*?'space-y-6'[\s\S]*?disabled=\{isLoading\}/,
   );
   assert.match(kbFormSource, /<form[\s\S]*?className="space-y-6"/);
 });

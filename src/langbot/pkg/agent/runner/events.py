@@ -1,4 +1,4 @@
-"""Canonical AgentRunner event names reserved for future EBA integration."""
+"""Canonical Runner event names reserved for future EBA integration."""
 
 from __future__ import annotations
 

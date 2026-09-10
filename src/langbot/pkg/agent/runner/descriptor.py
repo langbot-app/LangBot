@@ -5,13 +5,13 @@ from __future__ import annotations
 import typing
 import pydantic
 
-from langbot_plugin.api.entities.builtin.agent_runner.manifest import (
-    AgentRunnerCapabilities,
-    AgentRunnerPermissions,
+from langbot_plugin.api.entities.builtin.runner.manifest import (
+    RunnerCapabilities,
+    RunnerPermissions,
 )
 
 
-class AgentRunnerDescriptor(pydantic.BaseModel):
+class RunnerDescriptor(pydantic.BaseModel):
     """Descriptor for an agent runner.
 
     Represents the discovered metadata for a runner, including
@@ -37,7 +37,7 @@ class AgentRunnerDescriptor(pydantic.BaseModel):
     """Plugin name from manifest"""
 
     runner_name: str
-    """AgentRunner component name from manifest"""
+    """Runner component name from manifest"""
 
     plugin_version: str | None = None
     """Optional plugin version"""
@@ -45,16 +45,17 @@ class AgentRunnerDescriptor(pydantic.BaseModel):
     config_schema: list[dict[str, typing.Any]] = pydantic.Field(default_factory=list)
     """Configuration schema using DynamicForm format"""
 
-    capabilities: AgentRunnerCapabilities = pydantic.Field(default_factory=AgentRunnerCapabilities)
+    capabilities: RunnerCapabilities = pydantic.Field(default_factory=RunnerCapabilities)
     """Runner capabilities: streaming, tool_calling, knowledge_retrieval, etc."""
 
-    permissions: AgentRunnerPermissions = pydantic.Field(default_factory=AgentRunnerPermissions)
+    permissions: RunnerPermissions = pydantic.Field(default_factory=RunnerPermissions)
     """Requested LangBot resource permissions."""
 
     raw_manifest: dict[str, typing.Any] = pydantic.Field(default_factory=dict)
     """Original manifest for reference"""
 
-    component_kind: typing.Literal['AgentRunner', 'EventProcessor'] = 'AgentRunner'
+    component_kind: typing.Literal['Runner'] = 'Runner'
+    usages: list[typing.Literal['agent', 'event']] = pydantic.Field(default_factory=lambda: ['agent'])
     supported_event_patterns: list[str] = pydantic.Field(default_factory=lambda: ['*'])
 
     model_config = pydantic.ConfigDict(

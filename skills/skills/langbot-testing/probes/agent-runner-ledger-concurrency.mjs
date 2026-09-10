@@ -8,7 +8,8 @@ await runPytestProbe({
   defaultRepo: "..",
   pythonPathEnvKeys: ["LANGBOT_PLUGIN_SDK_REPO"],
   defaultPythonPaths: ["../../langbot-plugin-sdk/src"],
-  description: "LangBot AgentRunner run ledger claim, lease, authorization, and runtime-admin pytest probe.",
+  description:
+    "LangBot Runner run ledger claim, lease, authorization, and runtime-admin pytest probe.",
   testTargets: [
     "tests/unit_tests/agent/test_run_ledger_store.py::test_create_queued_run_claim_renew_release",
     "tests/unit_tests/agent/test_run_ledger_store.py::test_expired_claim_can_be_reclaimed",

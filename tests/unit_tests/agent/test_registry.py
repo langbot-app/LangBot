@@ -6,8 +6,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from langbot.pkg.agent.runner.registry import AgentRunnerRegistry
-from langbot.pkg.agent.runner.descriptor import AgentRunnerDescriptor
+from langbot.pkg.agent.runner.registry import RunnerRegistry
+from langbot.pkg.agent.runner.descriptor import RunnerDescriptor
 from langbot.pkg.agent.runner.errors import RunnerNotFoundError, RunnerNotAuthorizedError
 from langbot.pkg.api.http.context import ExecutionContext
 
@@ -44,7 +44,7 @@ class FakeApplication:
             async def require_workspace_context(self, context):
                 return context
 
-            async def list_agent_runners(self, bound_plugins=None):
+            async def list_runners(self, bound_plugins=None):
                 # Return sample runner data
                 return [
                     {
@@ -90,7 +90,7 @@ class FakeApplication:
                         'plugin_name': 'missing-name',
                         'runner_name': 'default',
                         'manifest': {
-                            'kind': 'AgentRunner',
+                            'kind': 'Runner',
                             'metadata': {},  # No name
                             'spec': {},
                         },
@@ -107,7 +107,7 @@ class TestRegistryDiscovery:
     async def test_discover_valid_runners(self):
         """Discover valid runners from plugin runtime."""
         ap = FakeApplication()
-        registry = AgentRunnerRegistry(ap)
+        registry = RunnerRegistry(ap)
 
         runners = await registry.list_runners(TEST_CONTEXT, use_cache=False)
 
@@ -122,7 +122,7 @@ class TestRegistryDiscovery:
     async def test_discover_caches_results(self):
         """Discovery should cache results."""
         ap = FakeApplication()
-        registry = AgentRunnerRegistry(ap)
+        registry = RunnerRegistry(ap)
 
         # First discovery
         runners1 = await registry.list_runners(TEST_CONTEXT, use_cache=True)
@@ -138,7 +138,7 @@ class TestRegistryDiscovery:
         """Discovery returns empty when plugin system disabled."""
         ap = FakeApplication()
         ap.plugin_connector.is_enable_plugin = False
-        registry = AgentRunnerRegistry(ap)
+        registry = RunnerRegistry(ap)
 
         runners = await registry.list_runners(TEST_CONTEXT, use_cache=False)
 
@@ -152,7 +152,7 @@ class TestRegistryDiscovery:
         so subsequent list_runners(bound_plugins=None) should return all runners.
         """
         ap = FakeApplication()
-        registry = AgentRunnerRegistry(ap)
+        registry = RunnerRegistry(ap)
 
         # First: get with bound_plugins filter (should not pollute cache)
         descriptor = await registry.get(
@@ -189,7 +189,7 @@ class TestRegistryGet:
     async def test_get_existing_runner(self):
         """Get existing runner by ID."""
         ap = FakeApplication()
-        registry = AgentRunnerRegistry(ap)
+        registry = RunnerRegistry(ap)
 
         descriptor = await registry.get(
             TEST_CONTEXT,
@@ -205,7 +205,7 @@ class TestRegistryGet:
     async def test_get_nonexistent_runner(self):
         """Get nonexistent runner raises RunnerNotFoundError."""
         ap = FakeApplication()
-        registry = AgentRunnerRegistry(ap)
+        registry = RunnerRegistry(ap)
 
         with pytest.raises(RunnerNotFoundError) as exc_info:
             await registry.get(TEST_CONTEXT, 'plugin:notexist/unknown/default')
@@ -216,10 +216,10 @@ class TestRegistryGet:
     async def test_get_refreshes_partial_startup_cache_on_miss(self):
         """A runner initialized after early discovery should become available."""
         ap = FakeApplication()
-        ap.plugin_connector.list_agent_runners = AsyncMock(
-            side_effect=ap.plugin_connector.list_agent_runners,
+        ap.plugin_connector.list_runners = AsyncMock(
+            side_effect=ap.plugin_connector.list_runners,
         )
-        registry = AgentRunnerRegistry(ap)
+        registry = RunnerRegistry(ap)
 
         await registry.list_runners(TEST_CONTEXT)
         cache = registry._cache[('instance-test', 'workspace-test', 1)]
@@ -231,13 +231,13 @@ class TestRegistryGet:
         )
 
         assert descriptor.id == 'plugin:alice/my-agent/custom'
-        assert ap.plugin_connector.list_agent_runners.await_count == 2
+        assert ap.plugin_connector.list_runners.await_count == 2
 
     @pytest.mark.asyncio
     async def test_get_runner_with_bound_plugins_filter(self):
         """Get runner with bound plugins authorization."""
         ap = FakeApplication()
-        registry = AgentRunnerRegistry(ap)
+        registry = RunnerRegistry(ap)
 
         # Authorized - langbot plugin in bound list
         descriptor = await registry.get(
@@ -263,7 +263,7 @@ class TestRegistryMetadataForPipeline:
     async def test_get_metadata_options_and_stages(self):
         """Get metadata options and stages for pipeline UI."""
         ap = FakeApplication()
-        registry = AgentRunnerRegistry(ap)
+        registry = RunnerRegistry(ap)
 
         options, stages = await registry.get_runner_metadata_for_pipeline(TEST_CONTEXT)
 
@@ -284,10 +284,10 @@ class TestRegistryMetadataForPipeline:
     async def test_metadata_refreshes_partial_startup_cache(self):
         """Pipeline metadata should not preserve an early partial discovery."""
         ap = FakeApplication()
-        ap.plugin_connector.list_agent_runners = AsyncMock(
-            side_effect=ap.plugin_connector.list_agent_runners,
+        ap.plugin_connector.list_runners = AsyncMock(
+            side_effect=ap.plugin_connector.list_runners,
         )
-        registry = AgentRunnerRegistry(ap)
+        registry = RunnerRegistry(ap)
 
         await registry.list_runners(TEST_CONTEXT)
         cache = registry._cache[('instance-test', 'workspace-test', 1)]
@@ -299,7 +299,7 @@ class TestRegistryMetadataForPipeline:
             'plugin:langbot-team/LocalAgent/default',
             'plugin:alice/my-agent/custom',
         }
-        assert ap.plugin_connector.list_agent_runners.await_count == 2
+        assert ap.plugin_connector.list_runners.await_count == 2
 
 
 class TestDescriptorValidation:
@@ -307,7 +307,7 @@ class TestDescriptorValidation:
 
     def test_validate_runner_descriptor(self):
         """Validate correctly built descriptor."""
-        descriptor = AgentRunnerDescriptor(
+        descriptor = RunnerDescriptor(
             id='plugin:test/my-runner/default',
             source='plugin',
             label={'en_US': 'Test Runner'},
@@ -318,11 +318,11 @@ class TestDescriptorValidation:
 
         assert descriptor.id == 'plugin:test/my-runner/default'
         assert descriptor.get_plugin_id() == 'test/my-runner'
-        assert 'protocol_version' not in AgentRunnerDescriptor.model_fields
+        assert 'protocol_version' not in RunnerDescriptor.model_fields
 
     def test_descriptor_capabilities(self):
         """Descriptor capability helper methods."""
-        descriptor = AgentRunnerDescriptor(
+        descriptor = RunnerDescriptor(
             id='plugin:test/my-runner/default',
             source='plugin',
             label={'en_US': 'Test Runner'},
@@ -338,28 +338,30 @@ class TestDescriptorValidation:
 
 
 @pytest.mark.asyncio
-async def test_registry_separates_processor_kinds_with_same_plugin_component_name():
+async def test_registry_filters_usages_without_splitting_component_identity():
     ap = FakeApplication()
     entries = []
-    for kind, prefix in [('AgentRunner', 'plugin'), ('EventProcessor', 'event_processor')]:
+    for name, usages in [('agent', ['agent']), ('events', ['event']), ('both', ['agent', 'event'])]:
         entries.append(
             {
                 'plugin_author': 'test',
-                'plugin_name': 'both',
-                'runner_name': 'default',
+                'plugin_name': 'runners',
+                'runner_name': name,
                 'manifest': {
-                    'id': f'{prefix}:test/both/default',
-                    'name': 'default',
-                    'component_kind': kind,
-                    'label': {'en_US': kind},
+                    'id': f'plugin:test/runners/{name}',
+                    'name': name,
+                    'component_kind': 'Runner',
+                    'usages': usages,
+                    'label': {'en_US': name},
                     'supported_event_patterns': ['group.member_joined'],
                 },
             }
         )
-    ap.plugin_connector.list_agent_runners = AsyncMock(return_value=entries)
-    registry = AgentRunnerRegistry(ap)
+    ap.plugin_connector.list_runners = AsyncMock(return_value=entries)
+    registry = RunnerRegistry(ap)
     agents = await registry.list_runners(TEST_CONTEXT)
-    processors = await registry.list_runners(TEST_CONTEXT, component_kind='EventProcessor')
-    assert [item.id for item in agents] == ['plugin:test/both/default']
-    assert [item.id for item in processors] == ['event_processor:test/both/default']
-    assert (await registry.get(TEST_CONTEXT, processors[0].id)).component_kind == 'EventProcessor'
+    processors = await registry.list_runners(TEST_CONTEXT, usage='event')
+    assert [item.runner_name for item in agents] == ['agent', 'both']
+    assert [item.runner_name for item in processors] == ['events', 'both']
+    assert agents[-1].id == processors[-1].id
+    assert (await registry.get(TEST_CONTEXT, processors[0].id)).usages == ['event']

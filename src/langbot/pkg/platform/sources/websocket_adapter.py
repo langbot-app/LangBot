@@ -453,7 +453,7 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
             # 更新历史记录中的对应消息
             message_list[existing_index] = message_data
 
-        # Keep the index for the lifetime of the history entry. AgentRunner can
+        # Keep the index for the lifetime of the history entry. Runner can
         # emit a final delta followed by message.completed/run.completed; all
         # events with the same Host response id must update one UI message.
 

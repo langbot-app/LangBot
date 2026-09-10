@@ -1,4 +1,4 @@
-"""Plugin-runtime invocation for AgentRunner executions."""
+"""Plugin-runtime invocation for Runner executions."""
 
 from __future__ import annotations
 
@@ -10,13 +10,13 @@ import typing
 from langbot_plugin.entities.io.errors import ActionCallTimeoutError
 
 from ...core import app
-from .context_builder import AgentRunContextPayload
-from .descriptor import AgentRunnerDescriptor
+from .context_builder import RunnerContextPayload
+from .descriptor import RunnerDescriptor
 from .errors import RunnerExecutionError
 
 
-class AgentRunnerInvoker:
-    """Invoke an AgentRunner through the plugin runtime.
+class RunnerInvoker:
+    """Invoke an Runner through the plugin runtime.
 
     This keeps runtime transport, deadline enforcement, and transport error
     mapping out of the orchestration state machine.
@@ -29,8 +29,8 @@ class AgentRunnerInvoker:
 
     async def invoke(
         self,
-        descriptor: AgentRunnerDescriptor,
-        context: AgentRunContextPayload,
+        descriptor: RunnerDescriptor,
+        context: RunnerContextPayload,
     ) -> typing.AsyncGenerator[dict[str, typing.Any], None]:
         """Invoke the runner and yield raw result dictionaries."""
         if not self.ap.plugin_connector.is_enable_plugin:
@@ -41,18 +41,7 @@ class AgentRunnerInvoker:
             )
 
         try:
-            if descriptor.component_kind == 'EventProcessor':
-                context = {
-                    **context,
-                    'runtime': {
-                        **context['runtime'],
-                        'metadata': {
-                            **context['runtime'].get('metadata', {}),
-                            'component_kind': 'EventProcessor',
-                        },
-                    },
-                }
-            gen = self.ap.plugin_connector.run_agent(
+            gen = self.ap.plugin_connector.run_runner(
                 plugin_author=descriptor.plugin_author,
                 plugin_name=descriptor.plugin_name,
                 runner_name=descriptor.runner_name,
@@ -93,8 +82,8 @@ class AgentRunnerInvoker:
     async def _next_with_deadline(
         self,
         gen: typing.AsyncGenerator[dict[str, typing.Any], None],
-        descriptor: AgentRunnerDescriptor,
-        context: AgentRunContextPayload,
+        descriptor: RunnerDescriptor,
+        context: RunnerContextPayload,
     ) -> dict[str, typing.Any]:
         """Read the next runner result while enforcing the run deadline."""
         remaining = self._remaining_deadline_seconds(context)
@@ -116,7 +105,7 @@ class AgentRunnerInvoker:
 
     def _remaining_deadline_seconds(
         self,
-        context: AgentRunContextPayload,
+        context: RunnerContextPayload,
     ) -> float | None:
         runtime = context.get('runtime') or {}
         deadline_at = runtime.get('deadline_at')
@@ -127,14 +116,14 @@ class AgentRunnerInvoker:
         except (TypeError, ValueError):
             return None
 
-    def _is_deadline_exhausted(self, context: AgentRunContextPayload) -> bool:
+    def _is_deadline_exhausted(self, context: RunnerContextPayload) -> bool:
         remaining = self._remaining_deadline_seconds(context)
         return remaining is not None and remaining <= 0
 
     async def _close_generator(
         self,
         gen: typing.AsyncGenerator[dict[str, typing.Any], None],
-        descriptor: AgentRunnerDescriptor,
+        descriptor: RunnerDescriptor,
     ) -> None:
         try:
             await gen.aclose()

@@ -8,7 +8,7 @@ symptoms:
   - "Knowledge sidebar or plugin sidebar loading may hang or time out."
 patterns:
   - "Action list_plugins call timed out"
-  - "Action list_agent_runners call timed out"
+  - "Action list_runners call timed out"
   - "Action invoke_llm_stream call timed out"
   - "All models failed during streaming setup"
   - "Failed to fetch plugins for sidebar"

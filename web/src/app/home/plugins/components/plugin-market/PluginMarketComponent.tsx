@@ -18,7 +18,6 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import {
   Search,
   Puzzle,
-  Zap,
   Server,
   Sparkles,
   Wrench,
@@ -72,8 +71,7 @@ const MARKET_COMPONENT_VALUES = [
   'KnowledgeEngine',
   'Parser',
   'Page',
-  'AgentRunner',
-  'EventProcessor',
+  'Runner',
 ];
 
 function getComponentFilterFromQuery(
@@ -242,14 +240,9 @@ function MarketPageContent({
       icon: AppWindow,
     },
     {
-      value: 'AgentRunner',
-      label: t('market.componentName.AgentRunner'),
+      value: 'Runner',
+      label: t('market.componentName.Runner'),
       icon: Bot,
-    },
-    {
-      value: 'EventProcessor',
-      label: t('market.componentName.EventProcessor'),
-      icon: Zap,
     },
   ];
 

@@ -1,5 +1,5 @@
 id: agent-runner-ledger-concurrency
-title: "AgentRunner run ledger concurrency and auth pytest probe"
+title: "Runner run ledger concurrency and auth pytest probe"
 mode: probe
 area: release
 type: regression

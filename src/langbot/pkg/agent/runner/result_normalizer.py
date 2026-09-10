@@ -1,11 +1,11 @@
-"""Agent result normalizer for converting AgentRunResult to Pipeline messages."""
+"""Agent result normalizer for converting RunnerResult to Pipeline messages."""
 
 from __future__ import annotations
 
 import typing
 
 import pydantic
-from langbot_plugin.api.entities.builtin.agent_runner.result import (
+from langbot_plugin.api.entities.builtin.runner.result import (
     ActionRequestedPayload,
     MessageCompletedPayload,
     MessageDeltaPayload,
@@ -19,7 +19,7 @@ from langbot_plugin.api.entities.builtin.agent_runner.result import (
 from langbot_plugin.api.entities.builtin.provider import message as provider_message
 
 from ...core import app
-from .descriptor import AgentRunnerDescriptor
+from .descriptor import RunnerDescriptor
 from .errors import RunnerExecutionError, RunnerProtocolError
 
 
@@ -40,7 +40,7 @@ STRICT_RESULT_PAYLOADS: dict[str, type[pydantic.BaseModel]] = {
 
 
 class AgentResultNormalizer:
-    """Normalizer for converting AgentRunResult to Pipeline messages.
+    """Normalizer for converting RunnerResult to Pipeline messages.
 
     Responsibilities:
     - Accept only supported result types (message.delta, message.completed, etc.)
@@ -71,9 +71,9 @@ class AgentResultNormalizer:
     async def normalize(
         self,
         result_dict: dict[str, typing.Any],
-        descriptor: AgentRunnerDescriptor,
+        descriptor: RunnerDescriptor,
     ) -> provider_message.Message | provider_message.MessageChunk | None:
-        """Normalize AgentRunResult to Message or MessageChunk.
+        """Normalize RunnerResult to Message or MessageChunk.
 
         Args:
             result_dict: Raw result dict from plugin runtime
@@ -186,7 +186,7 @@ class AgentResultNormalizer:
         self,
         result_type: str,
         data: typing.Any,
-        descriptor: AgentRunnerDescriptor,
+        descriptor: RunnerDescriptor,
     ) -> bool:
         """Validate typed payloads that affect Host state or delivery.
 
@@ -210,7 +210,7 @@ class AgentResultNormalizer:
     def _normalize_message_delta(
         self,
         data: dict[str, typing.Any],
-        descriptor: AgentRunnerDescriptor,
+        descriptor: RunnerDescriptor,
     ) -> provider_message.MessageChunk:
         """Normalize message.delta to MessageChunk."""
         chunk_data = data.get('chunk', {})
@@ -226,7 +226,7 @@ class AgentResultNormalizer:
     def _normalize_message_completed(
         self,
         data: dict[str, typing.Any],
-        descriptor: AgentRunnerDescriptor,
+        descriptor: RunnerDescriptor,
     ) -> provider_message.Message:
         """Normalize message.completed to Message."""
         message_data = data.get('message', {})

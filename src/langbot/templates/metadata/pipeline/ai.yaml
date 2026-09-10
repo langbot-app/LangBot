@@ -17,7 +17,7 @@ stages:
           zh_Hans: 运行器
         type: select
         required: true
-        # Options and default are dynamically populated from AgentRunnerRegistry
+        # Options and default are dynamically populated from RunnerRegistry
       - name: expire-time
         label:
           en_US: Conversation expire time (seconds)
@@ -38,6 +38,6 @@ stages:
         type: integer
         required: true
         default: 0
-  # Runner config stages are dynamically added from AgentRunnerRegistry
+  # Runner config stages are dynamically added from RunnerRegistry
   # Each plugin runner's config schema is added as a separate stage
   # The stage name matches the runner id for frontend matching

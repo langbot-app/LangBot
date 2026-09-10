@@ -1,7 +1,7 @@
 """Unit tests for LiteLLMRequester message/tool conversion.
 
 This includes provider_specific_fields round-trip coverage for GitHub issue
-#1899 and token counting preflight behavior for AgentRunner context budgeting.
+#1899 and token counting preflight behavior for Runner context budgeting.
 """
 
 from types import SimpleNamespace
@@ -73,7 +73,9 @@ async def test_count_tokens_uses_litellm_counter_with_request_messages_and_tools
         func=lambda **kwargs: None,
     )
 
-    with patch('langbot.pkg.provider.modelmgr.requesters.litellmchat.litellm.token_counter', return_value=42) as counter:
+    with patch(
+        'langbot.pkg.provider.modelmgr.requesters.litellmchat.litellm.token_counter', return_value=42
+    ) as counter:
         tokens = await req.count_tokens(
             model=model,
             messages=[

@@ -20,7 +20,10 @@ await loadEnvFiles();
 const paths = evidencePaths(caseId);
 await ensureEvidence(paths);
 const mobileScreenshot = paths.screenshot.replace(/\.png$/, "-mobile.png");
-const installedScreenshot = paths.screenshot.replace(/\.png$/, "-installed.png");
+const installedScreenshot = paths.screenshot.replace(
+  /\.png$/,
+  "-installed.png",
+);
 
 const startedAt = new Date();
 let frontendUrl = "";
@@ -84,7 +87,7 @@ try {
     }
     try {
       const payload = request.postDataJSON();
-      if (payload?.component_filter === "AgentRunner") {
+      if (payload?.component_filter === "Runner") {
         result.marketplace_request = {
           endpoint: new URL(request.url()).pathname,
           component_filter: payload.component_filter,
@@ -98,14 +101,17 @@ try {
   });
   page.on("response", async (response) => {
     const pathname = new URL(response.url()).pathname;
-    if (!/\/api\/v1\/marketplace\/(extensions|plugins)\/search$/.test(pathname)) {
+    if (
+      !/\/api\/v1\/marketplace\/(extensions|plugins)\/search$/.test(pathname)
+    ) {
       return;
     }
     try {
       const payload = await response.json();
       const entries = payload?.data?.extensions || payload?.data?.plugins || [];
       const localAgent = entries.find(
-        (entry) => `${entry.author}/${entry.name}` === "langbot-team/LocalAgent",
+        (entry) =>
+          `${entry.author}/${entry.name}` === "langbot-team/LocalAgent",
       );
       result.marketplace_response = {
         endpoint: pathname,
@@ -228,7 +234,7 @@ try {
   });
   await browseLink.waitFor();
   const href = await browseLink.getAttribute("href");
-  if (href !== "/home/extensions?type=plugin&component=AgentRunner") {
+  if (href !== "/home/extensions?type=plugin&component=Runner") {
     throw new Error(`Unexpected Runner marketplace URL: ${href}`);
   }
   const nextButton = page.getByRole("button", {
@@ -238,9 +244,7 @@ try {
     throw new Error("Wizard allowed continuing without an installed Runner.");
   }
   if (!result.marketplace_request) {
-    throw new Error(
-      "Wizard did not request the AgentRunner Marketplace catalog.",
-    );
+    throw new Error("Wizard did not request the Runner Marketplace catalog.");
   }
   if (
     !result.marketplace_response?.local_agent_present ||
@@ -287,10 +291,14 @@ try {
       .then(() => "failed"),
   ]);
   if (installOutcome === "failed") {
-    throw new Error("LocalAgent installation failed before Runner registration.");
+    throw new Error(
+      "LocalAgent installation failed before Runner registration.",
+    );
   }
   if (await nextButton.isDisabled()) {
-    throw new Error("Create & Deploy remained disabled after LocalAgent installation.");
+    throw new Error(
+      "Create & Deploy remained disabled after LocalAgent installation.",
+    );
   }
 
   const [installedPluginsResponse, installedMetadataResponse] =
@@ -298,8 +306,7 @@ try {
       apiJson(backendUrl, "/api/v1/plugins", { token }),
       apiJson(backendUrl, "/api/v1/pipelines/_/metadata", { token }),
     ]);
-  const postInstallPlugins =
-    installedPluginsResponse.json.data?.plugins || [];
+  const postInstallPlugins = installedPluginsResponse.json.data?.plugins || [];
   const installedRunnerStage = installedMetadataResponse.json.data?.configs
     ?.find((config) => config.name === "ai")
     ?.stages?.find((stage) => stage.name === "runner");
@@ -338,7 +345,7 @@ try {
   }
   result.status = "pass";
   result.reason =
-    "A clean first-run instance discovered LocalAgent in the AgentRunner catalog, installed and registered it, selected it, and enabled Create & Deploy.";
+    "A clean first-run instance discovered LocalAgent in the Runner catalog, installed and registered it, selected it, and enabled Create & Deploy.";
 } catch (error) {
   if (!["blocked", "env_issue"].includes(result.status)) result.status = "fail";
   result.reason = result.reason || error.message;

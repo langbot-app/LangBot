@@ -164,7 +164,7 @@ export interface ApiRespPipelines {
 
 export type AgentKind = 'agent' | 'pipeline' | 'event_processor';
 
-export interface EventProcessorDescriptor {
+export interface RunnerDescriptor {
   id: string;
   label: Record<string, string>;
   plugin_author: string;
@@ -233,7 +233,7 @@ export interface ApiRespAgent {
 }
 
 export interface GetAgentMetadataResponseData {
-  event_processors?: EventProcessorDescriptor[];
+  event_processors?: RunnerDescriptor[];
   runner_config?: PipelineConfigTab;
   platform_tools: AgentPlatformTool[];
   host_tools?: PluginTool[] | null;

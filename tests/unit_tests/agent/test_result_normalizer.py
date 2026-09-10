@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from langbot.pkg.agent.runner.result_normalizer import AgentResultNormalizer
-from langbot.pkg.agent.runner.descriptor import AgentRunnerDescriptor
+from langbot.pkg.agent.runner.descriptor import RunnerDescriptor
 from langbot.pkg.agent.runner.errors import RunnerExecutionError, RunnerProtocolError
 
 from langbot_plugin.api.entities.builtin.provider import message as provider_message
@@ -36,7 +36,7 @@ class FakeApplication:
 
 def make_descriptor():
     """Create a test descriptor."""
-    return AgentRunnerDescriptor(
+    return RunnerDescriptor(
         id='plugin:langbot-team/LocalAgent/default',
         source='plugin',
         label={'en_US': 'Local Agent', 'zh_Hans': '内置 Agent'},

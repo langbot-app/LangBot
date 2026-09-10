@@ -11,13 +11,13 @@ Use this skill when an agent needs to verify LangBot behavior through the WebUI 
 
 - **General WebUI testing**: read `references/web-ui-testing.md`.
 - **Pipeline Debug Chat**: read `references/pipeline-debug-chat.md`.
-- **Dify AgentRunner**: read `references/dify-agent-runner.md`.
+- **Dify Runner**: read `references/dify-agent-runner.md`.
 - **Model provider setup or test button**: read `references/model-provider-testing.md`.
 - **Plugin install/runtime/tool/page smoke**: read `references/plugin-e2e-smoke.md`.
-- **Local Agent Runner**: read `references/local-agent-runner.md`.
-- **Local Agent Runner path coverage**: read `references/local-agent-runner-coverage.md`.
-- **Diff-aware AgentRunner QA after code changes**: read `references/agent-runner-qa-workflow.md`.
-- **Agent Runner release gate**: read `references/agent-runner-release-gate.md`.
+- **Local Runner**: read `references/local-agent-runner.md`.
+- **Local Runner path coverage**: read `references/local-agent-runner-coverage.md`.
+- **Diff-aware Runner QA after code changes**: read `references/agent-runner-qa-workflow.md`.
+- **Runner release gate**: read `references/agent-runner-release-gate.md`.
 - **Sandbox-backed skill authoring**: read `references/sandbox-skill-authoring.md`.
 - **LangRAG knowledge bases**: read `references/langrag-knowledge-base.md`.
 - **MCP stdio tool testing**: read `references/mcp-stdio-testing.md`.

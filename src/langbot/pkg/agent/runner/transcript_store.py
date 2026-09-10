@@ -1,4 +1,5 @@
 """Transcript store for writing and querying conversation history."""
+
 from __future__ import annotations
 
 import json
@@ -46,9 +47,7 @@ class TranscriptStore:
 
     def __init__(self, engine: AsyncEngine):
         self.engine = engine
-        self._session_factory = sessionmaker(
-            engine, class_=AsyncSession, expire_on_commit=False
-        )
+        self._session_factory = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
     async def append_transcript(
         self,
@@ -62,7 +61,7 @@ class TranscriptStore:
         content_json: dict[str, typing.Any] | None = None,
         attachment_refs: list[dict[str, typing.Any]] | None = None,
         thread_id: str | None = None,
-        item_type: str = "message",
+        item_type: str = 'message',
         run_id: str | None = None,
         runner_id: str | None = None,
         metadata: dict[str, typing.Any] | None = None,
@@ -93,7 +92,7 @@ class TranscriptStore:
 
         # Truncate content if too long
         if content and len(content) > self.MAX_CONTENT_LENGTH:
-            content = content[:self.MAX_CONTENT_LENGTH - 3] + "..."
+            content = content[: self.MAX_CONTENT_LENGTH - 3] + '...'
 
         async with self._session_factory() as session:
             item = Transcript(
@@ -127,7 +126,7 @@ class TranscriptStore:
         before_seq: int | None = None,
         after_seq: int | None = None,
         limit: int = 50,
-        direction: str = "backward",
+        direction: str = 'backward',
         include_attachments: bool = False,
         bot_id: str | None = None,
         workspace_id: str | None = None,
@@ -154,15 +153,13 @@ class TranscriptStore:
         limit = min(limit, self.HARD_LIMIT)
 
         async with self._session_factory() as session:
-            query = sqlalchemy.select(Transcript).where(
-                Transcript.conversation_id == conversation_id
-            )
+            query = sqlalchemy.select(Transcript).where(Transcript.conversation_id == conversation_id)
             query = self._apply_scope_filters(query, bot_id, workspace_id, thread_id, strict_thread)
 
-            if direction == "backward" and before_seq is not None:
+            if direction == 'backward' and before_seq is not None:
                 query = query.where(Transcript.seq < before_seq)
                 query = query.order_by(Transcript.seq.desc())
-            elif direction == "forward" and after_seq is not None:
+            elif direction == 'forward' and after_seq is not None:
                 query = query.where(Transcript.seq > after_seq)
                 query = query.order_by(Transcript.seq.asc())
             else:
@@ -181,7 +178,7 @@ class TranscriptStore:
             next_seq = None
             prev_seq = None
 
-            if direction == "backward":
+            if direction == 'backward':
                 # Items are in descending order
                 if items:
                     next_seq = items[-1].get('seq') if has_more else None
@@ -225,7 +222,7 @@ class TranscriptStore:
         async with self._session_factory() as session:
             query = sqlalchemy.select(Transcript).where(
                 Transcript.conversation_id == conversation_id,
-                Transcript.content.ilike(f"%{query_text}%"),
+                Transcript.content.ilike(f'%{query_text}%'),
             )
             query = self._apply_scope_filters(query, bot_id, workspace_id, thread_id, strict_thread)
 
@@ -278,14 +275,14 @@ class TranscriptStore:
     ) -> list[provider_message.Message]:
         """Project Transcript rows into the legacy provider Message view.
 
-        AgentRunner history is canonical in Transcript. This view exists for
+        Runner history is canonical in Transcript. This view exists for
         legacy Pipeline readers such as PromptPreProcessing that still expect
         query.messages.
         """
         items, _, _, _ = await self.page_transcript(
             conversation_id=conversation_id,
             limit=limit,
-            direction="backward",
+            direction='backward',
             bot_id=bot_id,
             workspace_id=workspace_id,
             thread_id=thread_id,
@@ -353,9 +350,7 @@ class TranscriptStore:
     ) -> int:
         """Delete Transcript rows created before the supplied timestamp."""
         async with self._session_factory() as session:
-            result = await session.execute(
-                sqlalchemy.delete(Transcript).where(Transcript.created_at < before)
-            )
+            result = await session.execute(sqlalchemy.delete(Transcript).where(Transcript.created_at < before))
             await session.commit()
             return result.rowcount or 0
 
@@ -363,8 +358,9 @@ class TranscriptStore:
         """Fallback next sequence number for stores that cannot expose autoincrement IDs."""
         async with self._session_factory() as session:
             result = await session.execute(
-                sqlalchemy.select(sqlalchemy.func.max(Transcript.seq))
-                .where(Transcript.conversation_id == conversation_id)
+                sqlalchemy.select(sqlalchemy.func.max(Transcript.seq)).where(
+                    Transcript.conversation_id == conversation_id
+                )
             )
             max_seq = result.scalar()
             return (max_seq or 0) + 1

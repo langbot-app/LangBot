@@ -1,5 +1,5 @@
 id: acp-agent-runner-debug-chat
-title: "ACP AgentRunner can answer through Debug Chat using real remote Claude"
+title: "ACP Runner can answer through Debug Chat using real remote Claude"
 mode: agent-browser
 area: pipeline
 type: regression
@@ -19,42 +19,42 @@ env:
   - LANGBOT_FRONTEND_URL
   - LANGBOT_BACKEND_URL
 env_any:
-  - LANGBOT_ACP_AGENT_RUNNER_PIPELINE_URL|LANGBOT_ACP_AGENT_RUNNER_PIPELINE_NAME
+  - LANGBOT_ACP_RUNNER_PIPELINE_URL|LANGBOT_ACP_RUNNER_PIPELINE_NAME
 automation: scripts/e2e/pipeline-debug-chat.mjs
 automation_env:
   - LANGBOT_FRONTEND_URL
   - LANGBOT_BACKEND_URL
   - LANGBOT_BROWSER_PROFILE
   - LANGBOT_CHROMIUM_EXECUTABLE
-  - LANGBOT_ACP_AGENT_RUNNER_PIPELINE_URL
-  - LANGBOT_ACP_AGENT_RUNNER_PIPELINE_NAME
+  - LANGBOT_ACP_RUNNER_PIPELINE_URL
+  - LANGBOT_ACP_RUNNER_PIPELINE_NAME
   - LANGBOT_E2E_PROMPT
   - LANGBOT_E2E_EXPECTED_TEXT
   - LANGBOT_E2E_EXPECTED_RUNNER_ID
   - LANGBOT_E2E_RESPONSE_TIMEOUT_MS
-automation_pipeline_url_env: LANGBOT_ACP_AGENT_RUNNER_PIPELINE_URL
-automation_pipeline_name_env: LANGBOT_ACP_AGENT_RUNNER_PIPELINE_NAME
-automation_expected_runner_id: "plugin:langbot-team/ACPAgentRunner/default"
-automation_prompt: "Do not launch any background agent, subagent, task, or worker. In this current ACP session, directly call the MCP tool named langbot_get_current_event exactly once and wait for its result. After it returns, reply exactly ACP_AGENT_RUNNER_E2E_OK with no other text."
-automation_expected_text: "ACP_AGENT_RUNNER_E2E_OK"
+automation_pipeline_url_env: LANGBOT_ACP_RUNNER_PIPELINE_URL
+automation_pipeline_name_env: LANGBOT_ACP_RUNNER_PIPELINE_NAME
+automation_expected_runner_id: "plugin:langbot-team/ACPRunner/default"
+automation_prompt: "Do not launch any background agent, subagent, task, or worker. In this current ACP session, directly call the MCP tool named langbot_get_current_event exactly once and wait for its result. After it returns, reply exactly ACP_RUNNER_E2E_OK with no other text."
+automation_expected_text: "ACP_RUNNER_E2E_OK"
 automation_response_timeout_ms: "300000"
 setup_automation:
   - "node:scripts/e2e/ensure-acp-agent-runner-pipeline.mjs --write-env"
 setup_provides_env:
-  - LANGBOT_ACP_AGENT_RUNNER_PIPELINE_URL
-  - LANGBOT_ACP_AGENT_RUNNER_PIPELINE_NAME
+  - LANGBOT_ACP_RUNNER_PIPELINE_URL
+  - LANGBOT_ACP_RUNNER_PIPELINE_NAME
 preconditions:
   - "The remote machine has a working Claude Code login and can run npx -y @agentclientprotocol/claude-agent-acp."
   - "LangBot can non-interactively SSH to the remote machine; the runner opens the MCP reverse tunnel automatically."
 steps:
   - "Open LANGBOT_FRONTEND_URL."
-  - "Open the ACP AgentRunner QA pipeline."
-  - "Confirm the pipeline AI runner is plugin:langbot-team/ACPAgentRunner/default."
+  - "Open the ACP Runner QA pipeline."
+  - "Confirm the pipeline AI runner is plugin:langbot-team/ACPRunner/default."
   - "Open Debug Chat."
-  - "Ask the real remote Claude ACP agent to call langbot_get_current_event and return ACP_AGENT_RUNNER_E2E_OK exactly."
+  - "Ask the real remote Claude ACP agent to call langbot_get_current_event and return ACP_RUNNER_E2E_OK exactly."
 checks:
   - "UI: Debug Chat shows the user prompt."
-  - "UI: Debug Chat shows a Bot response containing ACP_AGENT_RUNNER_E2E_OK."
+  - "UI: Debug Chat shows a Bot response containing ACP_RUNNER_E2E_OK."
   - "Logs: Backend logs include Processing request from person_websocket and Streaming completed for this run."
   - "Logs: No acp runner request error appears for this run."
   - "Console: No unexpected frontend errors appear during Debug Chat."
@@ -66,13 +66,13 @@ diagnostics:
   - "Use scripts/e2e/ensure-acp-agent-runner-pipeline.mjs --write-env to create/update the pipeline."
   - "For remote Claude on 101, verify ssh yhh@101.34.71.12 can run without password prompts; no separate ssh -R process is required."
 success_patterns:
-  - "ACP_AGENT_RUNNER_E2E_OK"
+  - "ACP_RUNNER_E2E_OK"
   - "Processing request from person_websocket"
   - "Streaming completed"
 failure_patterns:
   - "acp.command_not_found"
   - "acp.process_exited"
-  - "Agent runner plugin:langbot-team/ACPAgentRunner/default execution failed"
+  - "Agent runner plugin:langbot-team/ACPRunner/default execution failed"
 troubleshooting:
   - backend-not-listening
   - plugin-runtime-timeout

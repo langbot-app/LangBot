@@ -5,7 +5,6 @@ import {
   Book,
   FileText,
   Hash,
-  Zap,
   Wrench,
   type LucideIcon,
 } from 'lucide-react';
@@ -17,6 +16,5 @@ export const pluginComponentIconMap: Record<string, LucideIcon> = {
   KnowledgeEngine: Book,
   Parser: FileText,
   Page: AppWindow,
-  AgentRunner: Bot,
-  EventProcessor: Zap,
+  Runner: Bot,
 };

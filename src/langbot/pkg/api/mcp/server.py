@@ -209,7 +209,9 @@ class LangBotMCPServer:
             await ap.agent_service.delete_agent(context, processor_uuid)
             return _dump({'ok': True})
 
-        @mcp.tool(description='Get processor kinds and installed EventProcessor components with configuration schemas.')
+        @mcp.tool(
+            description='Get processor kinds and installed event-capable Runner components with configuration schemas.'
+        )
         async def get_processor_metadata() -> str:
             context = _authorized(Permission.RESOURCE_VIEW)
             return _dump(await ap.agent_service.get_agent_metadata(context))

@@ -1,7 +1,8 @@
-"""Persistent state store for AgentRunner protocol state.
+"""Persistent state store for Runner protocol state.
 
 This module provides a database-backed state store for event-first Protocol v1.
 """
+
 from __future__ import annotations
 
 import typing
@@ -16,7 +17,7 @@ from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import IntegrityError
 
-from .descriptor import AgentRunnerDescriptor
+from .descriptor import RunnerDescriptor
 from .host_models import AgentEventEnvelope, AgentBinding
 from .state_scope import (
     VALID_STATE_SCOPES,
@@ -24,7 +25,7 @@ from .state_scope import (
     get_binding_identity,
     normalize_state_key,
 )
-from ...entity.persistence.agent_runner_state import AgentRunnerState
+from ...entity.persistence.runner_state import RunnerState
 
 
 # Maximum value_json size (256KB)
@@ -32,7 +33,7 @@ MAX_VALUE_JSON_BYTES = 256 * 1024
 
 
 class PersistentStateStore:
-    """Database-backed state store for AgentRunner protocol state.
+    """Database-backed state store for Runner protocol state.
 
     IMPORTANT: This is HOST-OWNED protocol state, NOT plugin instance state.
 
@@ -55,7 +56,7 @@ class PersistentStateStore:
         scope: str,
         event: AgentEventEnvelope,
         binding: AgentBinding,
-        descriptor: AgentRunnerDescriptor,
+        descriptor: RunnerDescriptor,
     ) -> str | None:
         """Get scope key for given scope."""
         return build_state_scope_key(scope, event, binding, descriptor)
@@ -104,7 +105,7 @@ class PersistentStateStore:
         dialect_name = self._db_engine.dialect.name
 
         if dialect_name == 'sqlite':
-            stmt = sqlite_insert(AgentRunnerState).values(**values)
+            stmt = sqlite_insert(RunnerState).values(**values)
             await conn.execute(
                 stmt.on_conflict_do_update(
                     index_elements=constraint_columns,
@@ -114,7 +115,7 @@ class PersistentStateStore:
             return
 
         if dialect_name == 'postgresql':
-            stmt = postgresql_insert(AgentRunnerState).values(**values)
+            stmt = postgresql_insert(RunnerState).values(**values)
             await conn.execute(
                 stmt.on_conflict_do_update(
                     index_elements=constraint_columns,
@@ -124,12 +125,12 @@ class PersistentStateStore:
             return
 
         try:
-            await conn.execute(sqlalchemy.insert(AgentRunnerState).values(**values))
+            await conn.execute(sqlalchemy.insert(RunnerState).values(**values))
         except IntegrityError:
             await conn.execute(
-                update(AgentRunnerState)
-                .where(AgentRunnerState.scope_key == values['scope_key'])
-                .where(AgentRunnerState.state_key == values['state_key'])
+                update(RunnerState)
+                .where(RunnerState.scope_key == values['scope_key'])
+                .where(RunnerState.state_key == values['state_key'])
                 .values(**update_values)
             )
 
@@ -139,7 +140,7 @@ class PersistentStateStore:
         self,
         event: AgentEventEnvelope,
         binding: AgentBinding,
-        descriptor: AgentRunnerDescriptor,
+        descriptor: RunnerDescriptor,
     ) -> dict[str, dict[str, typing.Any]]:
         """Build state snapshot for all scopes from event and binding.
 
@@ -174,8 +175,7 @@ class PersistentStateStore:
 
                 # Query all state entries for this scope_key
                 result = await conn.execute(
-                    select(AgentRunnerState.state_key, AgentRunnerState.value_json)
-                    .where(AgentRunnerState.scope_key == scope_key)
+                    select(RunnerState.state_key, RunnerState.value_json).where(RunnerState.scope_key == scope_key)
                 )
                 rows = result.fetchall()
 
@@ -199,7 +199,7 @@ class PersistentStateStore:
         self,
         event: AgentEventEnvelope,
         binding: AgentBinding,
-        descriptor: AgentRunnerDescriptor,
+        descriptor: RunnerDescriptor,
         scope: str,
         key: str,
         value: typing.Any,
@@ -280,9 +280,9 @@ class PersistentStateStore:
 
         async with self._db_engine.connect() as conn:
             result = await conn.execute(
-                select(AgentRunnerState.value_json)
-                .where(AgentRunnerState.scope_key == scope_key)
-                .where(AgentRunnerState.state_key == state_key)
+                select(RunnerState.value_json)
+                .where(RunnerState.scope_key == scope_key)
+                .where(RunnerState.state_key == state_key)
             )
             row = result.first()
 
@@ -358,9 +358,7 @@ class PersistentStateStore:
 
         async with self._db_engine.begin() as conn:
             result = await conn.execute(
-                delete(AgentRunnerState)
-                .where(AgentRunnerState.scope_key == scope_key)
-                .where(AgentRunnerState.state_key == state_key)
+                delete(RunnerState).where(RunnerState.scope_key == scope_key).where(RunnerState.state_key == state_key)
             )
             return (result.rowcount or 0) > 0
 
@@ -379,17 +377,15 @@ class PersistentStateStore:
 
         async with self._db_engine.connect() as conn:
             query = (
-                select(AgentRunnerState.state_key)
-                .where(AgentRunnerState.scope_key == scope_key)
-                .order_by(AgentRunnerState.state_key)
+                select(RunnerState.state_key)
+                .where(RunnerState.scope_key == scope_key)
+                .order_by(RunnerState.state_key)
                 .limit(limit + 1)  # Fetch one extra to check has_more
             )
 
             if prefix:
                 prefix = normalize_state_key(prefix)
-                query = query.where(
-                    AgentRunnerState.state_key.like(f'{prefix}%')
-                )
+                query = query.where(RunnerState.state_key.like(f'{prefix}%'))
 
             result = await conn.execute(query)
             rows = result.fetchall()
@@ -402,7 +398,7 @@ class PersistentStateStore:
     async def clear_all(self) -> None:
         """Clear all state entries (for testing)."""
         async with self._db_engine.begin() as conn:
-            await conn.execute(delete(AgentRunnerState))
+            await conn.execute(delete(RunnerState))
 
 
 # Global singleton persistent state store
@@ -423,7 +419,7 @@ def get_persistent_state_store(db_engine: AsyncEngine | None = None) -> Persiste
     with _persistent_state_store_lock:
         if _persistent_state_store is None:
             if db_engine is None:
-                raise RuntimeError("db_engine required for first call to get_persistent_state_store")
+                raise RuntimeError('db_engine required for first call to get_persistent_state_store')
             _persistent_state_store = PersistentStateStore(db_engine)
         return _persistent_state_store
 

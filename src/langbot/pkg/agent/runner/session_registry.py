@@ -61,7 +61,7 @@ class AgentRunSession(typing.TypedDict):
     Stored in AgentRunSessionRegistry for proxy action permission validation.
 
     Fields:
-        run_id: Unique run identifier (UUID from AgentRunContext)
+        run_id: Unique run identifier (UUID from RunnerContext)
         runner_id: Runner descriptor ID (plugin:author/name/runner)
         query_id: Host entry query ID, only present for query-based adapters
         execution_query: Host-only Query used by providers and tool loaders
@@ -84,10 +84,10 @@ class AgentRunSession(typing.TypedDict):
 class AgentRunSessionRegistry:
     """Registry for active agent run sessions.
 
-    Host-owned registry for tracking active AgentRunner executions.
+    Host-owned registry for tracking active Runner executions.
     Used by proxy actions in handler.py to validate resource access.
 
-    Key: run_id (UUID from AgentRunContext)
+    Key: run_id (UUID from RunnerContext)
     Value: AgentRunSession with authorized resources
 
     Thread-safe via asyncio.Lock.
@@ -130,7 +130,7 @@ class AgentRunSessionRegistry:
             bot_id: Bot UUID for history/event access
             workspace_id: Workspace ID for history/event access
             thread_id: Thread ID for history/event access
-            available_apis: Run-scoped pull APIs exposed in AgentRunContext
+            available_apis: Run-scoped pull APIs exposed in RunnerContext
             state_policy: State policy from binding (enable_state, state_scopes)
             state_context: Context for state API (scope_keys, binding_identity, etc.)
             execution_query: Host-only Query used for provider and tool execution

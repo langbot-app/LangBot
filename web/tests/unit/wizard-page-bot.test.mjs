@@ -12,7 +12,7 @@ const wizardSource = fs.readFileSync(
 const runnerMarketplaceSource = fs.readFileSync(
   path.resolve(
     currentDirectory,
-    '../../src/app/home/agents/agent-runner-marketplace.ts',
+    '../../src/app/home/agents/runner-marketplace.ts',
   ),
   'utf8',
 );
@@ -66,25 +66,25 @@ test('binds every message-reply bot to its provisional pipeline before verificat
   );
 });
 
-test('keeps the 4.11 AgentRunner marketplace installation flow', () => {
-  assert.match(wizardSource, /loadAgentRunnerCatalog\(\)/);
+test('keeps the 4.11 Runner marketplace installation flow', () => {
+  assert.match(wizardSource, /loadRunnerCatalog\(\)/);
   assert.match(
     wizardSource,
-    /installMarketplaceAgentRunner\(plugin, \{[\s\S]*?scope: WIZARD_RUNNER_INSTALL_SCOPE/,
+    /installMarketplaceRunner\(plugin, \{[\s\S]*?scope: WIZARD_RUNNER_INSTALL_SCOPE/,
   );
-  assert.match(wizardSource, /resumePendingAgentRunnerInstall\(/);
+  assert.match(wizardSource, /resumePendingRunnerInstall\(/);
+  assert.match(runnerMarketplaceSource, /RUNNER_COMPONENT_FILTER = 'Runner'/);
+  assert.match(runnerMarketplaceSource, /installPluginFromMarketplace\(/);
   assert.match(
     runnerMarketplaceSource,
-    /RUNNER_COMPONENT_FILTER = 'AgentRunner'/,
+    /const prefix = runnerPluginPrefix\(\{/,
   );
-  assert.match(runnerMarketplaceSource, /installPluginFromMarketplace\(/);
-  assert.match(runnerMarketplaceSource, /const prefix = runnerPluginPrefix\(\{/);
   assert.match(runnerMarketplaceSource, /option\.name\.startsWith\(prefix\)/);
   assert.match(runnerMarketplaceSource, /registrationDeadline/);
   assert.match(runnerMarketplaceSource, /sessionStorage\.setItem\(/);
 });
 
-test('requires the selected AgentRunner mandatory configuration before finishing', () => {
+test('requires the selected Runner mandatory configuration before finishing', () => {
   assert.match(
     wizardSource,
     /isRequiredRunnerConfigComplete\(selectedRunnerConfigItems, runnerConfig\)/,

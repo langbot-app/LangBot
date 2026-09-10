@@ -53,7 +53,7 @@ LangBot/
 │   │   ├── platform/               # IM adapters and runtime bot manager
 │   │   ├── pipeline/               # Message routing and pipeline stages
 │   │   ├── provider/               # Model providers and Host-owned tools
-│   │   ├── agent/                  # Agent/AgentRunner orchestration and run state
+│   │   ├── agent/                  # Agent/Runner orchestration and run state
 │   │   ├── plugin/                 # LangBot-side Plugin Runtime connector/handler
 │   │   ├── box/                    # LangBot-side Box service/connector
 │   │   ├── skill/                  # Skill metadata/activation integration
@@ -81,7 +81,7 @@ Platform adapter
   → Controller
   → RuntimePipeline
   → PipelineStage chain
-  → AgentRunner orchestrator / ToolManager / PluginRuntimeConnector / BoxService
+  → Runner orchestrator / ToolManager / PluginRuntimeConnector / BoxService
   → response via adapter
 ```
 
@@ -108,7 +108,7 @@ Inbound platform messages enter through adapter-specific SDK callbacks. The comm
 3. `MessageAggregator` batches/normalizes messages before adding a `Query` to `QueryPool`.
 4. `Controller` in `pkg/pipeline/controller.py` selects queries subject to global pipeline concurrency and per-session concurrency.
 5. `RuntimePipeline` in `pkg/pipeline/pipelinemgr.py` runs configured pipeline stages using a responsibility-chain style executor that supports generator stages.
-6. The chat stage emits plugin events and projects the current query into the AgentRunner Host orchestrator. The selected plugin AgentRunner returns streaming or final results while the Host owns authorization, tools, telemetry, and conversation history.
+6. The chat stage emits plugin events and projects the current query into the Runner Host orchestrator. The selected plugin Runner returns streaming or final results while the Host owns authorization, tools, telemetry, and conversation history.
 7. Output stages send text, cards, chunks, files, or error notices back through the original platform adapter.
 
 Pipeline components are registered by decorators and package import side effects. When adding a new stage, loader, runner, or adapter, check the corresponding preregistration mechanism instead of inventing a second registry.
@@ -142,7 +142,7 @@ Pipelines are configuration-driven. Prefer adding a stage or extending an existi
 Agent orchestration lives under `pkg/agent/`; model providers and tools live under `pkg/provider/`.
 
 - `modelmgr/` manages configured model providers and requesters.
-- `pkg/agent/runner/` discovers plugin AgentRunner components, resolves bindings, constructs run-scoped context/resources, and records execution state.
+- `pkg/agent/runner/` discovers plugin Runner components, resolves bindings, constructs run-scoped context/resources, and records execution state.
 - `tools/toolmgr.py` aggregates tools from native tools, plugin tools, external MCP servers, and skill-authoring tools.
 - `tools/loaders/mcp.py` is the MCP client side: external MCP servers that LangBot connects to for agent tools.
 - RAG lives across `pkg/rag/`, `pkg/vector/`, model services, and plugin KnowledgeEngine actions.

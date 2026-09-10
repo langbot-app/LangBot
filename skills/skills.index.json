@@ -210,7 +210,7 @@
       "case_summaries": [
         {
           "id": "acp-agent-runner-debug-chat",
-          "title": "ACP AgentRunner can answer through Debug Chat using real remote Claude",
+          "title": "ACP Runner can answer through Debug Chat using real remote Claude",
           "mode": "agent-browser",
           "area": "pipeline",
           "type": "regression",
@@ -229,8 +229,8 @@
             "node:scripts/e2e/ensure-acp-agent-runner-pipeline.mjs --write-env"
           ],
           "setup_provides_env": [
-            "LANGBOT_ACP_AGENT_RUNNER_PIPELINE_URL",
-            "LANGBOT_ACP_AGENT_RUNNER_PIPELINE_NAME"
+            "LANGBOT_ACP_RUNNER_PIPELINE_URL",
+            "LANGBOT_ACP_RUNNER_PIPELINE_NAME"
           ],
           "evidence_required": [
             "ui",
@@ -240,7 +240,7 @@
         },
         {
           "id": "agent-run-ledger-audit",
-          "title": "Persisted AgentRunner run ledger passes end-to-end invariants",
+          "title": "Persisted Runner run ledger passes end-to-end invariants",
           "mode": "probe",
           "area": "agent",
           "type": "regression",
@@ -264,7 +264,7 @@
         },
         {
           "id": "agent-runner-async-db-readiness",
-          "title": "AgentRunner async DB readiness probe",
+          "title": "Runner async DB readiness probe",
           "mode": "probe",
           "area": "release",
           "type": "smoke",
@@ -286,7 +286,7 @@
         },
         {
           "id": "agent-runner-behavior-matrix",
-          "title": "AgentRunner deterministic behavior matrix probe",
+          "title": "Runner deterministic behavior matrix probe",
           "mode": "probe",
           "area": "release",
           "type": "regression",
@@ -308,7 +308,7 @@
         },
         {
           "id": "agent-runner-fixture-contract",
-          "title": "QA AgentRunner fixture contract probe",
+          "title": "QA Runner fixture contract probe",
           "mode": "probe",
           "area": "release",
           "type": "regression",
@@ -355,7 +355,7 @@
         },
         {
           "id": "agent-runner-ledger-concurrency",
-          "title": "AgentRunner run ledger concurrency and auth pytest probe",
+          "title": "Runner run ledger concurrency and auth pytest probe",
           "mode": "probe",
           "area": "release",
           "type": "regression",
@@ -378,7 +378,7 @@
         },
         {
           "id": "agent-runner-ledger-contention",
-          "title": "AgentRunner ledger SQLite contention probe",
+          "title": "Runner ledger SQLite contention probe",
           "mode": "probe",
           "area": "release",
           "type": "regression",
@@ -401,7 +401,7 @@
         },
         {
           "id": "agent-runner-ledger-invariants",
-          "title": "AgentRunner ledger schema and status invariants probe",
+          "title": "Runner ledger schema and status invariants probe",
           "mode": "probe",
           "area": "release",
           "type": "regression",
@@ -423,7 +423,7 @@
         },
         {
           "id": "agent-runner-ledger-stress",
-          "title": "AgentRunner ledger lightweight stress probe",
+          "title": "Runner ledger lightweight stress probe",
           "mode": "probe",
           "area": "release",
           "type": "regression",
@@ -445,7 +445,7 @@
         },
         {
           "id": "agent-runner-live-install",
-          "title": "QA AgentRunner package installs and registers in LangBot",
+          "title": "QA Runner package installs and registers in LangBot",
           "mode": "probe",
           "area": "release",
           "type": "regression",
@@ -468,7 +468,7 @@
         },
         {
           "id": "agent-runner-qa-debug-chat",
-          "title": "QA AgentRunner returns deterministic output through Debug Chat",
+          "title": "QA Runner returns deterministic output through Debug Chat",
           "mode": "agent-browser",
           "area": "pipeline",
           "type": "regression",
@@ -487,8 +487,8 @@
             "node:scripts/e2e/ensure-qa-agent-runner-pipeline.mjs --write-env"
           ],
           "setup_provides_env": [
-            "LANGBOT_QA_AGENT_RUNNER_PIPELINE_URL",
-            "LANGBOT_QA_AGENT_RUNNER_PIPELINE_NAME"
+            "LANGBOT_QA_RUNNER_PIPELINE_URL",
+            "LANGBOT_QA_RUNNER_PIPELINE_NAME"
           ],
           "evidence_required": [
             "ui",
@@ -526,7 +526,7 @@
         },
         {
           "id": "agent-runner-runtime-chaos",
-          "title": "AgentRunner SDK runtime chaos pytest probe",
+          "title": "Runner SDK runtime chaos pytest probe",
           "mode": "probe",
           "area": "release",
           "type": "regression",
@@ -657,7 +657,7 @@
         },
         {
           "id": "dify-agent-debug-chat",
-          "title": "Dify AgentRunner returns a response through Pipeline Debug Chat",
+          "title": "Dify Runner returns a response through Pipeline Debug Chat",
           "mode": "agent-browser",
           "area": "pipeline",
           "type": "provider",
@@ -1937,7 +1937,7 @@
         },
         {
           "id": "wizard-runner-marketplace-catalog",
-          "title": "Quick Start installs a published AgentRunner on a clean instance",
+          "title": "Quick Start installs a published Runner on a clean instance",
           "mode": "agent-browser",
           "area": "wizard",
           "type": "feature",
@@ -2289,7 +2289,7 @@
         {
           "id": "langbot-workspace-release-gate",
           "title": "LangBot workspace top-down release gate",
-          "description": "Broad release gate combining deterministic repository contracts with representative browser workflows, plugin pages, RAG/parser, EBA, external AgentRunner, and one complex LocalAgent task.",
+          "description": "Broad release gate combining deterministic repository contracts with representative browser workflows, plugin pages, RAG/parser, EBA, external Runner, and one complex LocalAgent task.",
           "type": "release_gate",
           "priority": "p0",
           "tags": [
@@ -2352,7 +2352,7 @@
       "fixtures": [
         {
           "id": "qa-agent-runner-behaviors",
-          "title": "Deterministic AgentRunner behavior matrix",
+          "title": "Deterministic Runner behavior matrix",
           "kind": "json",
           "path": "fixtures/agent-runner/qa-runner-behaviors.json",
           "related_cases": [
@@ -2363,7 +2363,7 @@
         },
         {
           "id": "qa-agent-runner-source",
-          "title": "QA deterministic AgentRunner fixture source",
+          "title": "QA deterministic Runner fixture source",
           "kind": "plugin_source",
           "path": "fixtures/plugins/qa-agent-runner/manifest.yaml",
           "related_cases": [
@@ -2375,7 +2375,7 @@
         },
         {
           "id": "qa-agent-runner-package",
-          "title": "QA deterministic AgentRunner prebuilt package",
+          "title": "QA deterministic Runner prebuilt package",
           "kind": "plugin_package",
           "path": "fixtures/plugins/qa-agent-runner/dist/qa-agent-runner-0.1.0.lbpkg",
           "related_cases": [
@@ -2486,7 +2486,7 @@
       "troubleshooting_summaries": [
         {
           "id": "agent-runner-actor-context-fields",
-          "title": "AgentRunner reads old actor.type and actor.id fields",
+          "title": "Runner reads old actor.type and actor.id fields",
           "category": "product",
           "related_cases": [
             "dify-agent-debug-chat",
@@ -2504,7 +2504,7 @@
         },
         {
           "id": "ambiguous-runner-default-label",
-          "title": "AgentRunner selector shows multiple Default or 默认 options",
+          "title": "Runner selector shows multiple Default or 默认 options",
           "category": "product",
           "related_cases": [
             "dify-agent-debug-chat",

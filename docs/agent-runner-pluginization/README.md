@@ -1,23 +1,23 @@
-# Agent Runner 插件化文档入口
+# Runner 插件化文档入口
 
 本文档是 agent-runner 插件化工作的路由页。具体设计拆到独立文档中维护，避免把 LangBot 宿主架构、SDK 协议、上下文管理、EBA 接入边界和官方 runner 迁移混在同一份 README 里。
 
 ## 背景与问题
 
-旧 runner 路径主要围绕 Pipeline / Query 和 `pkg/provider/runners` 内置实现展开，扩展外部 agent runtime 时容易把 runner 选择、上下文裁剪、资源授权和消息投递绑在同一条聊天链路里。这个分支要把 LangBot 收敛成 Agent Host：Host 负责事件、绑定、授权、事实源和结果投递；AgentRunner 作为插件或外部 harness 消费统一协议并自主管理 prompt / history / memory。
+旧 runner 路径主要围绕 Pipeline / Query 和 `pkg/provider/runners` 内置实现展开，扩展外部 agent runtime 时容易把 runner 选择、上下文裁剪、资源授权和消息投递绑在同一条聊天链路里。这个分支要把 LangBot 收敛成 Agent Host：Host 负责事件、绑定、授权、事实源和结果投递；Runner 作为插件或外部 harness 消费统一协议并自主管理 prompt / history / memory。
 
 ## 文档维护原则（单一事实源）
 
 - **协议数据结构（schema）唯一定义在 [PROTOCOL_V1.md](./PROTOCOL_V1.md)。** 其他文档不得重抄 schema，只能引用，例如"见 PROTOCOL_V1 §4.2"。
-- 当前实现状态、spec 差距与 runner 验收状态归 [STATUS.md](./STATUS.md)；测试执行入口归 [AGENT_RUNNER_QA_GUIDE.md](./AGENT_RUNNER_QA_GUIDE.md)，安全发布门槛归 [SECURITY_HARDENING.md](./SECURITY_HARDENING.md)。
+- 当前实现状态、spec 差距与 runner 验收状态归 [STATUS.md](./STATUS.md)；测试执行入口归 [RUNNER_QA_GUIDE.md](./RUNNER_QA_GUIDE.md)，安全发布门槛归 [SECURITY_HARDENING.md](./SECURITY_HARDENING.md)。
 - Host 内部模型（`AgentEventEnvelope`、`AgentBinding`、Descriptor、各 Store）定义在 [HOST_SDK_INFRASTRUCTURE.md](./HOST_SDK_INFRASTRUCTURE.md)，不属于 SDK 协议。
 - 其余专题文档只讲"为什么/边界/怎么用"，避免重复叙述。
 
 ## 本分支目标
 
-**本分支目标：AgentRunner 外化 / 插件化基础设施**
+**本分支目标：Runner 外化 / 插件化基础设施**
 
-本分支只做 LangBot 作为 Agent Host 的基础能力建设，让现有 Pipeline 与用户新建的独立 `Agent` 都能调用插件化 AgentRunner；不负责把两者做持久化迁移：
+本分支只做 LangBot 作为 Agent Host 的基础能力建设，让现有 Pipeline 与用户新建的独立 `Agent` 都能调用插件化 Runner；不负责把两者做持久化迁移：
 
 - LangBot 与 SDK 的稳定协议合同（Protocol v1）
 - Host-side `AgentEventEnvelope` / `AgentBinding` 模型
@@ -30,7 +30,7 @@
 
 ## 当前已集成与后续扩展
 
-截至 2026-09-05，`dev/4.11.x` 已合并 EBA 与 AgentRunner 插件化。下面按当前代码划分实现边界：
+截至 2026-09-05，`dev/4.11.x` 已合并 EBA 与 Runner 插件化。下面按当前代码划分实现边界：
 
 - **已实现的平台事件路由**：`RuntimeBot` 负责事件转换后的 observer 广播、`event_bindings` 匹配和 Pipeline / Agent / discard 单目标分派；EventRouter 是逻辑职责，不是另一个独立服务。
 - **已实现的持久化与 UI**：独立 Agent、Bot 事件绑定、处理器工作台、Runner 市场安装、事件范围与工具权限、路由诊断和调试入口。
@@ -48,22 +48,22 @@
 
 调度基数、Agent 复用、插件实例无状态、Pipeline adapter 和 fan-out 边界的规范来源是 [PROTOCOL_V1.md](./PROTOCOL_V1.md) §13；README 不复写这些约束。
 
-## Pipeline 与 AgentRunner 的关系
+## Pipeline 与 Runner 的关系
 
-**Pipeline 与 Agent 是 EBA 中平级的处理器；`QueryEntryAdapter` 只适配 Pipeline 内部的 AgentRunner 调用。**
+**Pipeline 与 Agent 是 EBA 中平级的处理器；`QueryEntryAdapter` 只适配 Pipeline 内部的 Runner 调用。**
 
-EBA 先根据 `target_type` 选择 Pipeline 或 Agent。Pipeline 目标执行完整 Stage 链；当 Pipeline 的 AI Stage 调用 runner 时，`run_from_query()` 经 `QueryEntryAdapter` 把 `Query` 转换为 `AgentEventEnvelope` + `AgentBinding`，再委托到统一的 `run(event, binding, ...)`。Agent 目标则直接从自己的持久配置构造 binding。两条路径可以复用同一套 AgentRunner Host capabilities，但 Pipeline 本身不会被投影或持久化为 Agent。
+EBA 先根据 `target_type` 选择 Pipeline 或 Agent。Pipeline 目标执行完整 Stage 链；当 Pipeline 的 AI Stage 调用 runner 时，`run_from_query()` 经 `QueryEntryAdapter` 把 `Query` 转换为 `AgentEventEnvelope` + `AgentBinding`，再委托到统一的 `run(event, binding, ...)`。Agent 目标则直接从自己的持久配置构造 binding。两条路径可以复用同一套 Runner Host capabilities，但 Pipeline 本身不会被投影或持久化为 Agent。
 
-下一轮测试路径、状态定义和 smoke 记录见 [AGENT_RUNNER_QA_GUIDE.md](./AGENT_RUNNER_QA_GUIDE.md)。
+下一轮测试路径、状态定义和 smoke 记录见 [RUNNER_QA_GUIDE.md](./RUNNER_QA_GUIDE.md)。
 
 ## 术语表
 
 | 术语 | 含义 |
 | --- | --- |
-| Protocol v1 | Host 调用 AgentRunner 的 runner 可见合同：discovery、`AgentRunContext`、result stream、Host pull API 和错误模型。 |
+| Protocol v1 | Host 调用 Runner 的 runner 可见合同：discovery、`RunnerContext`、result stream、Host pull API 和错误模型。 |
 | Processor | EBA 的处理器上位概念；当前平级类型为 Pipeline 与 Agent。 |
 | Agent | 目标产品层配置对象，保存 runner id、runner config 和资源/状态/投递策略；不等于插件实例。 |
-| AgentConfig | Host 内部的单次 AgentRunner 调用配置投影，可由 Pipeline AI Stage 或持久 Agent 生成；投影本身不会创建 Agent。 |
+| AgentConfig | Host 内部的单次 Runner 调用配置投影，可由 Pipeline AI Stage 或持久 Agent 生成；投影本身不会创建 Agent。 |
 | AgentBinding / binding | Host 在一次事件运行前解析出的有效绑定，决定调用哪个 runner 以及带什么策略。 |
 | envelope | Host 内部事件封装，即 `AgentEventEnvelope`；runner 看到的是由它投影出的 `ctx.event`。 |
 | descriptor / manifest | runner discovery 的能力和配置描述；manifest 来自插件，descriptor 是 Host 校验后的注册表视图。 |
@@ -76,18 +76,18 @@ EBA 先根据 `target_type` 选择 Pipeline 或 Agent。Pipeline 目标执行完
 
 | 文档 | 关注点 |
 | --- | --- |
-| [PROTOCOL_V1.md](./PROTOCOL_V1.md) | **🔒 唯一 schema 事实源**。LangBot Host 与 SDK / Runtime / AgentRunner 的协议合同：版本协商、discovery、run context、result stream、proxy actions、错误和 adapter 边界。 |
+| [PROTOCOL_V1.md](./PROTOCOL_V1.md) | **🔒 唯一 schema 事实源**。LangBot Host 与 SDK / Runtime / Runner 的协议合同：版本协商、discovery、run context、result stream、proxy actions、错误和 adapter 边界。 |
 | [HOST_SDK_INFRASTRUCTURE.md](./HOST_SDK_INFRASTRUCTURE.md) | LangBot 宿主能力与分层架构、Host 内部模型（`AgentEventEnvelope` / `AgentBinding` / Descriptor / 各 Store）、runner 发现、绑定、资源授权、状态、存储、生命周期和调用链。 |
 | [AGENT_CONTEXT_PROTOCOL.md](./AGENT_CONTEXT_PROTOCOL.md) | Agent-owned context 方向：事件到来时 LangBot 传什么，agent 如何按需拉取更多历史 / state、如何访问 sandbox/workspace 文件，以及如何支持 KV cache 友好的上下文管理。 |
-| [EXTENSION_SCOPE_MATRIX.md](./EXTENSION_SCOPE_MATRIX.md) | AgentRunner 外化与外部 EBA / Agent Platform / Runtime Control Plane 的扩展边界矩阵，说明哪些是本分支底座、哪些由外部分支接入。 |
+| [EXTENSION_SCOPE_MATRIX.md](./EXTENSION_SCOPE_MATRIX.md) | Runner 外化与外部 EBA / Agent Platform / Runtime Control Plane 的扩展边界矩阵，说明哪些是本分支底座、哪些由外部分支接入。 |
 | [EVENT_BASED_AGENT.md](./EVENT_BASED_AGENT.md) | 已集成的事件路由、处理器分派、平台工具和结构化交互边界。 |
-| [eba-productization-release.md](./eba-productization-release.md) | EBA 适配器与 AgentRunner 插件化合并后的产品化 / 发布计划，说明非技术用户快速上手差距、Bot 与处理器边界、未来 Solution 分发标的，以及多 namespace SaaS 支持要求。 |
+| [eba-productization-release.md](./eba-productization-release.md) | EBA 适配器与 Runner 插件化合并后的产品化 / 发布计划，说明非技术用户快速上手差距、Bot 与处理器边界、未来 Solution 分发标的，以及多 namespace SaaS 支持要求。 |
 | [RUNTIME_CONTROL_PLANE_V2.md](./RUNTIME_CONTROL_PLANE_V2.md) | Agent Platform v2 / runtime 管控面决策：`AgentRun` / `AgentRunEvent` / run control 已作为 Host 事实源落地，最小 runtime heartbeat/claim lease 已落地；完整 runtime registry / daemon 管控仍是后续可选阶段。 |
 | [OFFICIAL_RUNNER_PLUGINS.md](./OFFICIAL_RUNNER_PLUGINS.md) | 官方 runner 插件迁移，包括 local-agent 和外部 runner。它是下游落地计划，不是 LangBot 基础能力设计的前置约束。 |
 | [RUN_STEERING_AND_CHECKPOINT.md](./RUN_STEERING_AND_CHECKPOINT.md) | 运行中消息注入（steering / follow-up）与压缩摘要持久化（compaction checkpoint）的设计与落地状态记录；schema 仍以 PROTOCOL_V1 为准。 |
 | [STATUS.md](./STATUS.md) | 当前实现状态、spec 与实现已知差距、runner 验收状态和历史高价值记录。 |
 | [PLATFORM_ACTION_TOOLS.md](./PLATFORM_ACTION_TOOLS.md) | 当前事件工具、平台动作和普通工具的配置、投射及执行授权。 |
-| [AGENT_RUNNER_QA_GUIDE.md](./AGENT_RUNNER_QA_GUIDE.md) | Agent Runner QA 指南：保留最高价值测试路径，指导 agent 开展下一轮 WebUI / runner smoke 验证。 |
+| [RUNNER_QA_GUIDE.md](./RUNNER_QA_GUIDE.md) | Runner QA 指南：保留最高价值测试路径，指导 agent 开展下一轮 WebUI / runner smoke 验证。 |
 | [SECURITY_HARDENING.md](./SECURITY_HARDENING.md) | 安全发布级 hardening 的后续发布门槛：路径隔离、权限边界、secret、资源配额、MCP / skill 投影和审计。 |
 
 ## 工作拆分
@@ -103,7 +103,7 @@ EBA 先根据 `target_type` 选择 Pipeline 或 Agent。Pipeline 目标执行完
 - resource authorization 与 `run_id` 级权限校验
 - host-owned state / storage / event log / transcript 能力
 - sandbox/workspace 文件 staging 与 read/write/exec 能力
-- SDK `AgentRunner`、`AgentRunContext`、`AgentRunResult`、`AgentRunAPIProxy`
+- SDK `Runner`、`RunnerContext`、`RunnerResult`、`RunnerAPIProxy`
 
 协议合同详见 [PROTOCOL_V1.md](./PROTOCOL_V1.md)。
 
@@ -141,7 +141,7 @@ EBA dispatch 的基数和 fan-out 边界仍以 PROTOCOL_V1 §13 为准；新增�
 
 ### 5. Runtime Control Plane v2（Foundation Partial）
 
-当前 AgentRunner v1 主线仍以 `event -> binding -> runner.run(ctx) -> result stream` 为 runner 可见合同。Host 侧已经新增持久 `AgentRun` / `AgentRunEvent`、result persistence、cancel/finalize/query 等通用 run control primitives，并提供受权限保护的最小 runtime register/heartbeat/list、claim/renew/release 和 reconcile 原语。
+当前 Runner v1 主线仍以 `event -> binding -> runner.run(ctx) -> result stream` 为 runner 可见合同。Host 侧已经新增持久 `AgentRun` / `AgentRunEvent`、result persistence、cancel/finalize/query 等通用 run control primitives，并提供受权限保护的最小 runtime register/heartbeat/list、claim/renew/release 和 reconcile 原语。
 
 在这些 Host 能力之上，可以构建独立 agent 管控面插件；插件负责 UI、策略和编排体验，runtime/task 的事实源仍由 Host 持有。完整 daemon supervisor、任务唤醒/长轮询/WebSocket、跨 Host 分布式锁、provider 登录态诊断和产品化业务队列仍是后续工作。
 

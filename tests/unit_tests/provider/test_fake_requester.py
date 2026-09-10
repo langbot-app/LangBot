@@ -13,7 +13,7 @@ from langbot_plugin.api.entities.builtin.resource import tool as resource_tool
 
 @pytest.mark.asyncio
 async def test_fake_requester_counts_messages_and_tools(runtime_provider):
-    """Fake requester should support token-free AgentRunner context budgeting."""
+    """Fake requester should support token-free Runner context budgeting."""
     runtime_model = requester.RuntimeLLMModel(
         model_entity=persistence_model.LLMModel(
             uuid='fake-count-model',

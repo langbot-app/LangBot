@@ -1,4 +1,4 @@
-# Agent Runner Security Boundary
+# Runner Security Boundary
 
 本文档记录 agent-runner 插件化后的安全边界和最小护栏。
 
@@ -6,7 +6,7 @@
 
 **当前结论：不采用高强度监管模型。**
 
-LangBot 的目标不是托管一个强隔离、不可信 code runner 平台。AgentRunner 插件，尤其是 ACP / Claude Code / Codex / OpenCode / Kimi Code 这类外部 harness，默认视为 **operator-owned execution**：用户或部署者显式配置并承担其文件系统、进程、网络、workspace、provider 登录态和 native tool 风险。
+LangBot 的目标不是托管一个强隔离、不可信 code runner 平台。Runner 插件，尤其是 ACP / Claude Code / Codex / OpenCode / Kimi Code 这类外部 harness，默认视为 **operator-owned execution**：用户或部署者显式配置并承担其文件系统、进程、网络、workspace、provider 登录态和 native tool 风险。
 
 LangBot 需要负责的是保护 **LangBot 自己持有的资源**，包括模型、知识库、LangBot tools、history、event、state、plugin/workspace storage、sandbox/workspace 文件访问等。只要这些资源访问是 run-scoped、permission-scoped、可校验、可诊断的，当前阶段即可接受。
 
@@ -171,7 +171,7 @@ LangBot 需要提供基本可控性：
 
 截至 2026-06-15，已有实现覆盖：
 
-- SDK typed AgentRunner manifest、capabilities、permissions。
+- SDK typed Runner manifest、capabilities、permissions。
 - Host resource builder 按 manifest permissions 和 binding policy 生成 `ctx.resources`。
 - Active run session snapshot 和 `caller_plugin_identity` 校验。
 - History / event / state / tool / knowledge runtime action 的 run-scoped 校验。
@@ -204,7 +204,7 @@ LangBot 需要提供基本可控性：
 
 可以对外说明：
 
-> AgentRunner 插件通过 run-scoped authorization 和 scoped MCP gateway 保护 LangBot 持有资源。外部 code harness 的执行环境由用户或部署平台负责隔离；LangBot 当前不提供 managed sandbox。
+> Runner 插件通过 run-scoped authorization 和 scoped MCP gateway 保护 LangBot 持有资源。外部 code harness 的执行环境由用户或部署平台负责隔离；LangBot 当前不提供 managed sandbox。
 
 不能对外说明：
 

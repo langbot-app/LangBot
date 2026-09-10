@@ -1,7 +1,7 @@
 [
   {
     "id": "qa-agent-runner-behaviors",
-    "title": "Deterministic AgentRunner behavior matrix",
+    "title": "Deterministic Runner behavior matrix",
     "kind": "json",
     "path": "fixtures/agent-runner/qa-runner-behaviors.json",
     "related_cases": [
@@ -13,7 +13,7 @@
   },
   {
     "id": "qa-agent-runner-source",
-    "title": "QA deterministic AgentRunner fixture source",
+    "title": "QA deterministic Runner fixture source",
     "kind": "plugin_source",
     "path": "fixtures/plugins/qa-agent-runner/manifest.yaml",
     "related_cases": [
@@ -22,11 +22,11 @@
       "agent-runner-live-install",
       "agent-runner-qa-debug-chat"
     ],
-    "checks": ["exists", "qa_agent_runner_source"]
+    "checks": ["exists", "qa_runner_source"]
   },
   {
     "id": "qa-agent-runner-package",
-    "title": "QA deterministic AgentRunner prebuilt package",
+    "title": "QA deterministic Runner prebuilt package",
     "kind": "plugin_package",
     "path": "fixtures/plugins/qa-agent-runner/dist/qa-agent-runner-0.1.0.lbpkg",
     "related_cases": [

@@ -33,7 +33,7 @@ Both external runners receive the same host-generated gateway `AgentMCPServerCon
 
 This is a **runner-plugin transport detail, not a host all-tool-branch issue** — proven by **both** runners discovering skills end-to-end with the unmodified branch (see cases below).
 
-> **Correction (2026-06-22).** An earlier revision of this doc claimed acp was "blocked" on remote-ssh and *required* `langbot-assets-gateway-public-url`, based on a run that returned `PROBEDONE 0 0` / timeout. That was an **environment artifact, not an acp defect**: a duplicate backend instance (a second checkout `LangBot-master/` whose box runtime contended for the same `--ws-control-port 5410`) plus a wedged plugin runtime (host `emit_event` / `list_agent_runners` action calls timing out with `ActionCallTimeoutError`). Re-run on a clean single-instance runtime, **acp passes via the reverse tunnel with no `public-url`** (`PROBEDONE 1 17`, 8–24s).
+> **Correction (2026-06-22).** An earlier revision of this doc claimed acp was "blocked" on remote-ssh and *required* `langbot-assets-gateway-public-url`, based on a run that returned `PROBEDONE 0 0` / timeout. That was an **environment artifact, not an acp defect**: a duplicate backend instance (a second checkout `LangBot-master/` whose box runtime contended for the same `--ws-control-port 5410`) plus a wedged plugin runtime (host `emit_event` / `list_runners` action calls timing out with `ActionCallTimeoutError`). Re-run on a clean single-instance runtime, **acp passes via the reverse tunnel with no `public-url`** (`PROBEDONE 1 17`, 8–24s).
 - **Lifecycle**: discover → activate → operate (native exec under the activated mount path) → register.
 - **Backend**: docker · nsjail · e2b.
 

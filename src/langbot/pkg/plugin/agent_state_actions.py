@@ -71,7 +71,7 @@ def register(h):
                     await store.append_event(
                         event_id=None,
                         event_type='steering.injected',
-                        source='agent_runner',
+                        source='runner',
                         bot_id=conversation.get('bot_id') if isinstance(conversation, dict) else None,
                         workspace_id=conversation.get('workspace_id') if isinstance(conversation, dict) else None,
                         conversation_id=conversation.get('conversation_id') if isinstance(conversation, dict) else None,

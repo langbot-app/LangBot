@@ -28,7 +28,7 @@ from tests.e2e.utils.process_manager import find_project_root
 pytestmark = pytest.mark.e2e
 
 
-LOCAL_AGENT_RUNNER_ID = 'plugin:langbot-team/LocalAgent/default'
+LOCAL_RUNNER_ID = 'plugin:langbot-team/LocalAgent/default'
 FAKE_PROVIDER_UUID = 'e2e-fake-provider'
 FAKE_MODEL_UUID = 'e2e-fake-local-agent-model'
 E2E_TOOL_NAME = 'e2e_lookup'
@@ -112,11 +112,11 @@ def _event(
     text: str,
     thread_id: str = 'e2e-local-agent-thread',
 ):
-    """Build an AgentRunner event envelope for Local Agent E2E probes."""
+    """Build an Runner event envelope for Local Agent E2E probes."""
     from langbot.pkg.agent.runner.host_models import AgentEventEnvelope
-    from langbot_plugin.api.entities.builtin.agent_runner.delivery import DeliveryContext
-    from langbot_plugin.api.entities.builtin.agent_runner.event import ActorContext, SubjectContext
-    from langbot_plugin.api.entities.builtin.agent_runner.input import AgentInput
+    from langbot_plugin.api.entities.builtin.runner.delivery import DeliveryContext
+    from langbot_plugin.api.entities.builtin.runner.event import ActorContext, SubjectContext
+    from langbot_plugin.api.entities.builtin.runner.input import AgentInput
 
     return AgentEventEnvelope(
         event_id=event_id,
@@ -163,7 +163,7 @@ def _binding(
     return AgentBinding(
         binding_id=binding_id,
         scope=BindingScope(scope_type='global'),
-        runner_id=LOCAL_AGENT_RUNNER_ID,
+        runner_id=LOCAL_RUNNER_ID,
         runner_config=config,
         resource_policy=ResourcePolicy(
             allowed_model_uuids=[FAKE_MODEL_UUID],
@@ -205,7 +205,7 @@ class _FakeToolManager:
         del query
         self.calls.append({'name': name, 'parameters': dict(parameters)})
         return {
-            'value': f"tool-result:{parameters.get('query')}",
+            'value': f'tool-result:{parameters.get("query")}',
             'source': 'fake-tool-manager',
         }
 
@@ -402,7 +402,7 @@ async def _inject_fake_llm_model(ap) -> Any:
     return fake_requester
 
 
-async def _run_agent(ap, event, binding) -> list[Any]:
+async def _run_runner(ap, event, binding) -> list[Any]:
     """Execute through the trusted Workspace context used by the real Host."""
     execution_context = await ap.plugin_connector._current_execution_context()
     return [
@@ -463,20 +463,20 @@ async def _boot_local_agent_app(tmpdir: Path):
         )
 
     execution_context = await ap.plugin_connector._current_execution_context()
-    runners = await ap.agent_runner_registry.list_runners(execution_context, use_cache=False)
-    if not any(runner.id == LOCAL_AGENT_RUNNER_ID for runner in runners):
+    runners = await ap.runner_registry.list_runners(execution_context, use_cache=False)
+    if not any(runner.id == LOCAL_RUNNER_ID for runner in runners):
         await ap.plugin_connector.install_plugin(
             PluginInstallSource.LOCAL,
             {'plugin_file': (tmpdir / 'langbot-local-agent.zip').read_bytes()},
         )
 
         for _ in range(60):
-            runners = await ap.agent_runner_registry.list_runners(execution_context, use_cache=False)
-            if any(runner.id == LOCAL_AGENT_RUNNER_ID for runner in runners):
+            runners = await ap.runner_registry.list_runners(execution_context, use_cache=False)
+            if any(runner.id == LOCAL_RUNNER_ID for runner in runners):
                 break
             await asyncio.sleep(1)
         else:
-            raise AssertionError(f'{LOCAL_AGENT_RUNNER_ID} was not discovered after installation')
+            raise AssertionError(f'{LOCAL_RUNNER_ID} was not discovered after installation')
 
     return ap, run_task
 
@@ -521,7 +521,7 @@ def _run_local_agent_probe(tmpdir: Path, probe):
     return asyncio.run(_run())
 
 
-def test_local_agent_runner_uses_host_fake_provider_and_persists_ledger(
+def test_local_runner_uses_host_fake_provider_and_persists_ledger(
     local_agent_e2e_tmpdir,
     local_agent_e2e_config_path,
     local_agent_runtime_process,
@@ -536,7 +536,7 @@ def test_local_agent_runner_uses_host_fake_provider_and_persists_ledger(
             conversation_id='e2e-local-agent-conversation',
             text='Say pong through the fake provider.',
         )
-        messages = await _run_agent(ap, event, _binding())
+        messages = await _run_runner(ap, event, _binding())
         return messages, list(fake_requester._count_tokens_payloads)
 
     messages, token_payloads = _run_local_agent_probe(local_agent_e2e_tmpdir, _run_probe)
@@ -553,13 +553,13 @@ def test_local_agent_runner_uses_host_fake_provider_and_persists_ledger(
     conn = sqlite3.connect(str(db_path))
     try:
         run_row = conn.execute(
-            "SELECT run_id, status, runner_id, status_reason FROM agent_run WHERE event_id = ?",
+            'SELECT run_id, status, runner_id, status_reason FROM agent_run WHERE event_id = ?',
             ('e2e-local-agent-event-001',),
         ).fetchone()
         assert run_row is not None
         run_id, status, runner_id, status_reason = run_row
         assert status == 'completed'
-        assert runner_id == LOCAL_AGENT_RUNNER_ID
+        assert runner_id == LOCAL_RUNNER_ID
         assert status_reason == 'stop'
 
         event_rows = conn.execute(
@@ -578,12 +578,12 @@ def test_local_agent_runner_uses_host_fake_provider_and_persists_ledger(
         assert transcript_rows[0][1] == 'Say pong through the fake provider.'
         assert transcript_rows[1][1] == 'Fake LLM response'
         assert transcript_rows[1][2] == run_id
-        assert transcript_rows[1][3] == LOCAL_AGENT_RUNNER_ID
+        assert transcript_rows[1][3] == LOCAL_RUNNER_ID
     finally:
         conn.close()
 
 
-def test_local_agent_runner_executes_authorized_tool_loop_through_host_action(
+def test_local_runner_executes_authorized_tool_loop_through_host_action(
     local_agent_e2e_tmpdir,
     local_agent_e2e_config_path,
     local_agent_runtime_process,
@@ -613,7 +613,7 @@ def test_local_agent_runner_executes_authorized_tool_loop_through_host_action(
                 'tool-execution-mode': 'serial',
             },
         )
-        messages = await _run_agent(ap, event, binding)
+        messages = await _run_runner(ap, event, binding)
         return messages, tool_mgr.calls, _invoke_payload_texts(fake_requester)
 
     messages, tool_calls, invoke_payload_texts = _run_local_agent_probe(local_agent_e2e_tmpdir, _run_probe)
@@ -627,7 +627,7 @@ def test_local_agent_runner_executes_authorized_tool_loop_through_host_action(
     conn = sqlite3.connect(str(db_path))
     try:
         run_row = conn.execute(
-            "SELECT run_id, status, status_reason FROM agent_run WHERE event_id = ?",
+            'SELECT run_id, status, status_reason FROM agent_run WHERE event_id = ?',
             ('e2e-local-agent-tool-event-001',),
         ).fetchone()
         assert run_row is not None
@@ -652,7 +652,7 @@ def test_local_agent_runner_executes_authorized_tool_loop_through_host_action(
         conn.close()
 
 
-def test_local_agent_runner_retrieves_authorized_rag_context_through_host_action(
+def test_local_runner_retrieves_authorized_rag_context_through_host_action(
     local_agent_e2e_tmpdir,
     local_agent_e2e_config_path,
     local_agent_runtime_process,
@@ -679,7 +679,7 @@ def test_local_agent_runner_retrieves_authorized_rag_context_through_host_action
                 'retrieval-top-k': 1,
             },
         )
-        messages = await _run_agent(ap, event, binding)
+        messages = await _run_runner(ap, event, binding)
         return messages, fake_kb.retrieve_calls, _invoke_payload_texts(fake_requester)
 
     messages, retrieve_calls, invoke_payload_texts = _run_local_agent_probe(local_agent_e2e_tmpdir, _run_probe)
@@ -702,7 +702,7 @@ def test_local_agent_runner_retrieves_authorized_rag_context_through_host_action
     conn = sqlite3.connect(str(db_path))
     try:
         run_row = conn.execute(
-            "SELECT run_id, status FROM agent_run WHERE event_id = ?",
+            'SELECT run_id, status FROM agent_run WHERE event_id = ?',
             ('e2e-local-agent-rag-event-001',),
         ).fetchone()
         assert run_row is not None
@@ -720,7 +720,7 @@ def test_local_agent_runner_retrieves_authorized_rag_context_through_host_action
         conn.close()
 
 
-def test_local_agent_runner_compacts_history_and_persists_checkpoint(
+def test_local_runner_compacts_history_and_persists_checkpoint(
     local_agent_e2e_tmpdir,
     local_agent_e2e_config_path,
     local_agent_runtime_process,
@@ -745,8 +745,7 @@ def test_local_agent_runner_compacts_history_and_persists_checkpoint(
                 conversation_id='e2e-local-agent-compaction-conversation',
                 role='user' if index % 2 == 0 else 'assistant',
                 content=(
-                    f'HIST_SENTINEL-{index} '
-                    'This is intentionally long deterministic history for compaction. ' * 10
+                    f'HIST_SENTINEL-{index} This is intentionally long deterministic history for compaction. ' * 10
                 ),
                 thread_id='e2e-local-agent-thread',
                 item_type='message',
@@ -767,7 +766,7 @@ def test_local_agent_runner_compacts_history_and_persists_checkpoint(
                 'context-history-fetch-limit': 20,
             },
         )
-        messages = await _run_agent(ap, event, binding)
+        messages = await _run_runner(ap, event, binding)
         return messages, _invoke_payload_texts(fake_requester), fake_requester._invoke_count
 
     messages, invoke_payload_texts, invoke_count = _run_local_agent_probe(local_agent_e2e_tmpdir, _run_probe)
@@ -782,7 +781,7 @@ def test_local_agent_runner_compacts_history_and_persists_checkpoint(
     conn = sqlite3.connect(str(db_path))
     try:
         run_row = conn.execute(
-            "SELECT run_id, status FROM agent_run WHERE event_id = ?",
+            'SELECT run_id, status FROM agent_run WHERE event_id = ?',
             ('e2e-local-agent-compaction-event-001',),
         ).fetchone()
         assert run_row is not None
@@ -799,7 +798,7 @@ def test_local_agent_runner_compacts_history_and_persists_checkpoint(
         assert event_types == ['message.completed', 'run.completed']
 
         state_row = conn.execute(
-            "SELECT value_json FROM agent_runner_state WHERE state_key = 'runner.compaction.checkpoint'"
+            "SELECT value_json FROM runner_state WHERE state_key = 'runner.compaction.checkpoint'"
         ).fetchone()
         assert state_row is not None
         checkpoint = json.loads(state_row[0])
@@ -812,7 +811,7 @@ def test_local_agent_runner_compacts_history_and_persists_checkpoint(
         conn.close()
 
 
-def test_local_agent_runner_combines_rag_compaction_and_multi_turn_tool_loop(
+def test_local_runner_combines_rag_compaction_and_multi_turn_tool_loop(
     local_agent_e2e_tmpdir,
     local_agent_e2e_config_path,
     local_agent_runtime_process,
@@ -883,7 +882,7 @@ def test_local_agent_runner_combines_rag_compaction_and_multi_turn_tool_loop(
                 'context-history-fetch-limit': 25,
             },
         )
-        messages = await _run_agent(ap, event, binding)
+        messages = await _run_runner(ap, event, binding)
         return (
             messages,
             tool_mgr.calls,
@@ -926,7 +925,7 @@ def test_local_agent_runner_combines_rag_compaction_and_multi_turn_tool_loop(
     conn = sqlite3.connect(str(db_path))
     try:
         run_row = conn.execute(
-            "SELECT run_id, status, status_reason FROM agent_run WHERE event_id = ?",
+            'SELECT run_id, status, status_reason FROM agent_run WHERE event_id = ?',
             ('e2e-local-agent-combo-event-001',),
         ).fetchone()
         assert run_row is not None
@@ -952,15 +951,11 @@ def test_local_agent_runner_combines_rag_compaction_and_multi_turn_tool_loop(
         assert 'COMBO_FINAL' in event_rows[4][1]
 
         state_rows = conn.execute(
-            "SELECT value_json FROM agent_runner_state WHERE state_key = 'runner.compaction.checkpoint'"
+            "SELECT value_json FROM runner_state WHERE state_key = 'runner.compaction.checkpoint'"
         ).fetchall()
         checkpoints = [json.loads(row[0]) for row in state_rows]
         checkpoint = next(
-            (
-                item
-                for item in checkpoints
-                if item.get('conversation_id') == 'e2e-local-agent-combo-conversation'
-            ),
+            (item for item in checkpoints if item.get('conversation_id') == 'e2e-local-agent-combo-conversation'),
             None,
         )
         assert checkpoint is not None

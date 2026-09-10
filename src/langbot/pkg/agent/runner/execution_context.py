@@ -1,4 +1,4 @@
-"""Host-only Query compatibility views for AgentRunner tool execution."""
+"""Host-only Query compatibility views for Runner tool execution."""
 
 from __future__ import annotations
 

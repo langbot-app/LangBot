@@ -1,9 +1,10 @@
-"""Helpers for interpreting AgentRunner DynamicForm configuration."""
+"""Helpers for interpreting Runner DynamicForm configuration."""
+
 from __future__ import annotations
 
 import typing
 
-from .descriptor import AgentRunnerDescriptor
+from .descriptor import RunnerDescriptor
 
 
 FORM_ITEM_TYPE_ALIASES = {
@@ -24,7 +25,7 @@ def normalize_schema_item_type(item_type: typing.Any) -> typing.Any:
 
 
 def iter_schema_items(
-    descriptor: AgentRunnerDescriptor | None,
+    descriptor: RunnerDescriptor | None,
     field_types: set[str],
 ) -> typing.Iterator[dict[str, typing.Any]]:
     """Yield descriptor config schema items whose type is in field_types."""
@@ -37,22 +38,22 @@ def iter_schema_items(
             yield item
 
 
-def uses_host_models(descriptor: AgentRunnerDescriptor | None) -> bool:
+def uses_host_models(descriptor: RunnerDescriptor | None) -> bool:
     """Return whether LangBot should resolve model resources for this runner."""
     return any(True for _ in iter_schema_items(descriptor, LLM_MODEL_SELECTOR_TYPES))
 
 
-def uses_host_tools(descriptor: AgentRunnerDescriptor | None) -> bool:
+def uses_host_tools(descriptor: RunnerDescriptor | None) -> bool:
     """Return whether LangBot should expose tool resources to this runner."""
     return descriptor is not None and descriptor.supports_tool_calling()
 
 
-def uses_host_knowledge_bases(descriptor: AgentRunnerDescriptor | None) -> bool:
+def uses_host_knowledge_bases(descriptor: RunnerDescriptor | None) -> bool:
     """Return whether LangBot should expose knowledge-base resources to this runner."""
     return descriptor is not None and descriptor.supports_knowledge_retrieval()
 
 
-def supports_skill_authoring(descriptor: AgentRunnerDescriptor | None) -> bool:
+def supports_skill_authoring(descriptor: RunnerDescriptor | None) -> bool:
     """Return whether the runner wants Host skill-authoring tools."""
     if descriptor is None:
         return False
@@ -60,7 +61,7 @@ def supports_skill_authoring(descriptor: AgentRunnerDescriptor | None) -> bool:
 
 
 def extract_prompt_config(
-    descriptor: AgentRunnerDescriptor | None,
+    descriptor: RunnerDescriptor | None,
     runner_config: dict[str, typing.Any],
     default_prompt: list[dict[str, typing.Any]],
 ) -> list[dict[str, typing.Any]]:
@@ -78,7 +79,7 @@ def extract_prompt_config(
 
 
 def extract_model_selection(
-    descriptor: AgentRunnerDescriptor | None,
+    descriptor: RunnerDescriptor | None,
     runner_config: dict[str, typing.Any],
 ) -> tuple[str, list[str]]:
     """Extract primary/fallback LLM selections from schema-defined fields."""
@@ -110,7 +111,7 @@ def extract_model_selection(
 
 
 def extract_knowledge_base_uuids(
-    descriptor: AgentRunnerDescriptor | None,
+    descriptor: RunnerDescriptor | None,
     runner_config: dict[str, typing.Any],
 ) -> list[str]:
     """Extract configured knowledge-base UUIDs from schema-defined fields."""
@@ -124,15 +125,13 @@ def extract_knowledge_base_uuids(
             continue
         value = runner_config.get(field_name, item.get('default', []))
         if isinstance(value, list):
-            kb_uuids.extend(
-                kb_uuid for kb_uuid in value if isinstance(kb_uuid, str) and kb_uuid not in NONE_SENTINELS
-            )
+            kb_uuids.extend(kb_uuid for kb_uuid in value if isinstance(kb_uuid, str) and kb_uuid not in NONE_SENTINELS)
 
     return list(dict.fromkeys(kb_uuids))
 
 
 def iter_config_model_refs(
-    descriptor: AgentRunnerDescriptor,
+    descriptor: RunnerDescriptor,
     runner_config: dict[str, typing.Any],
 ) -> typing.Iterator[tuple[str, str]]:
     """Yield model references declared by schema-defined model selector fields."""
@@ -167,7 +166,7 @@ def iter_config_model_refs(
 
 
 def set_empty_llm_model_selection(
-    descriptor: AgentRunnerDescriptor,
+    descriptor: RunnerDescriptor,
     runner_config: dict[str, typing.Any],
     model_uuid: str,
 ) -> bool:

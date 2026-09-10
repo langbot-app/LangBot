@@ -13,10 +13,10 @@ from langbot_plugin.api.entities.builtin.provider import session as provider_ses
 RUNNER_ID = 'plugin:langbot-team/LocalAgent/default'
 
 
-def _attach_agent_runner_descriptor(app):
-    from langbot.pkg.agent.runner.descriptor import AgentRunnerDescriptor
+def _attach_runner_descriptor(app):
+    from langbot.pkg.agent.runner.descriptor import RunnerDescriptor
 
-    descriptor = AgentRunnerDescriptor(
+    descriptor = RunnerDescriptor(
         id=RUNNER_ID,
         source='plugin',
         label={'en_US': 'Local Agent'},
@@ -29,8 +29,8 @@ def _attach_agent_runner_descriptor(app):
         ],
         capabilities={'tool_calling': True, 'multimodal_input': True},
     )
-    app.agent_runner_registry = Mock()
-    app.agent_runner_registry.get = AsyncMock(return_value=descriptor)
+    app.runner_registry = Mock()
+    app.runner_registry.get = AsyncMock(return_value=descriptor)
 
 
 def _pipeline_config(model_config):
@@ -72,7 +72,7 @@ async def test_preprocessor_keeps_image_placeholder_for_text_only_local_agent(mo
     model.model_entity.abilities = []
 
     mock_app.model_mgr.get_model_by_uuid = AsyncMock(return_value=model)
-    _attach_agent_runner_descriptor(mock_app)
+    _attach_runner_descriptor(mock_app)
     mock_app.sess_mgr.get_session = AsyncMock(
         return_value=provider_session.Session(
             launcher_type=sample_query.launcher_type,

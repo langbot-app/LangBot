@@ -1,5 +1,5 @@
 id: agent-runner-runtime-chaos
-title: "AgentRunner SDK runtime chaos pytest probe"
+title: "Runner SDK runtime chaos pytest probe"
 mode: probe
 area: release
 type: regression
@@ -19,10 +19,10 @@ automation: skills/langbot-testing/probes/agent-runner-runtime-chaos.mjs
 steps:
   - "Run `rtk bin/lbs test run agent-runner-runtime-chaos --dry-run` first; remove `--dry-run` after checking the SDK repo target and evidence directory."
   - "Automation resolves LANGBOT_PLUGIN_SDK_REPO, defaulting to ../../langbot-plugin-sdk when the env var is unset."
-  - "Automation runs the existing SDK pytest files tests/runtime/plugin/test_mgr_agent_runner.py and tests/runtime/test_pull_api_handlers.py."
+  - "Automation runs the existing SDK pytest files tests/runtime/plugin/test_mgr_runner.py and tests/runtime/test_pull_api_handlers.py."
 checks:
   - "automation-result.json status is pass."
-  - "pytest exit status is 0 for the existing AgentRunner runtime and pull API handler tests."
+  - "pytest exit status is 0 for the existing Runner runtime and pull API handler tests."
   - "pytest-stdout.log and pytest-stderr.log are written under LBS_EVIDENCE_DIR."
 evidence_required:
   - filesystem

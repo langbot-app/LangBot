@@ -143,7 +143,7 @@ try {
   }
   if (!runner?.name) {
     result.status = "blocked";
-    throw new Error("No registered AgentRunner is available for the UI check.");
+    throw new Error("No registered Runner is available for the UI check.");
   }
 
   const runnerConfigStage = runnerTab.stages.find(
@@ -155,7 +155,7 @@ try {
     body: {
       kind: "agent",
       name: `Runner Health ${paths.runId.slice(-40)}`,
-      description: "Temporary AgentRunner health visibility fixture",
+      description: "Temporary Runner health visibility fixture",
       emoji: "H",
       component_ref: runner.name,
       config: {
@@ -229,7 +229,7 @@ try {
   }
   result.status = "pass";
   result.reason =
-    "Agent Runner settings visibly distinguished a registered runner from a stale binding.";
+    "Runner settings visibly distinguished a registered runner from a stale binding.";
 } catch (error) {
   if (!["blocked", "env_issue"].includes(result.status)) result.status = "fail";
   result.reason = result.reason || error.message;

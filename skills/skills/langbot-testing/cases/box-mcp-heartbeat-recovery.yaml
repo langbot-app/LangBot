@@ -45,7 +45,7 @@ steps:
   - "Select exactly one Box child whose parent is main.py running from LANGBOT_REPO; abort on zero or multiple matches."
   - "Send SIGTERM to that Box child and poll process, Box status, MCP runtime info, and global tools for up to 30 seconds."
   - "Without running MCP setup or registration, reset Debug Chat and call qa_mcp_echo with a unique per-run value through the browser."
-  - "Audit the matching AgentRunner ledger run and require the exact qa_mcp_echo arguments plus the complete tool result text."
+  - "Audit the matching Runner ledger run and require the exact qa_mcp_echo arguments plus the complete tool result text."
 checks:
   - "The old Box PID exits and a new Box PID appears under the same LangBot parent."
   - "Box returns available=true with at least one active session and managed process."

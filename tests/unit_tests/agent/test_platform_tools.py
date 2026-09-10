@@ -2,7 +2,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-from langbot_plugin.api.entities.builtin.agent_runner import (
+from langbot_plugin.api.entities.builtin.runner import (
     ActorContext,
     AgentInput,
     DeliveryContext,

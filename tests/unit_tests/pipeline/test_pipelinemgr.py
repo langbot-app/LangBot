@@ -395,7 +395,7 @@ async def test_runtime_pipeline_revalidates_after_awaited_stage(
 
 
 def test_runtime_pipeline_prefers_local_agent_mcp_resources(mock_app):
-    """AgentRunner resource selection should override legacy extension prefs."""
+    """Runner resource selection should override legacy extension prefs."""
     pipelinemgr = get_pipelinemgr_module()
     persistence_pipeline = get_persistence_pipeline_module()
 

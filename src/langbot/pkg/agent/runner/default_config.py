@@ -1,4 +1,4 @@
-"""Default AgentRunner binding configuration helpers."""
+"""Default Runner binding configuration helpers."""
 
 from __future__ import annotations
 
@@ -11,8 +11,8 @@ from . import config_schema
 from .config_resolver import RunnerConfigResolver
 
 
-class AgentRunnerDefaultConfigService:
-    """Apply AgentRunner schema-defined defaults to host binding config."""
+class RunnerDefaultConfigService:
+    """Apply Runner schema-defined defaults to host binding config."""
 
     ap: app.Application
 
@@ -20,7 +20,7 @@ class AgentRunnerDefaultConfigService:
         self.ap = ap
 
     async def _get_runner_descriptor(self, context: TenantContext, runner_id: str):
-        registry = getattr(self.ap, 'agent_runner_registry', None)
+        registry = getattr(self.ap, 'runner_registry', None)
         if registry is None:
             return None
         try:
@@ -28,7 +28,7 @@ class AgentRunnerDefaultConfigService:
         except Exception as e:
             logger = getattr(self.ap, 'logger', None)
             if logger:
-                logger.warning(f'Failed to load AgentRunner descriptor while setting default model: {e}')
+                logger.warning(f'Failed to load Runner descriptor while setting default model: {e}')
             return None
 
     async def auto_set_default_pipeline_llm_model(
@@ -39,8 +39,7 @@ class AgentRunnerDefaultConfigService:
         """Set model_uuid into the default pipeline runner config when the selector is empty."""
         result = await self.ap.persistence_mgr.execute_async(
             sqlalchemy.select(persistence_pipeline.LegacyPipeline).where(
-                persistence_pipeline.LegacyPipeline.workspace_uuid
-                == require_workspace_uuid(context),
+                persistence_pipeline.LegacyPipeline.workspace_uuid == require_workspace_uuid(context),
                 persistence_pipeline.LegacyPipeline.is_default == True,
             )
         )

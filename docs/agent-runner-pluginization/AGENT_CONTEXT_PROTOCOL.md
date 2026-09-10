@@ -1,8 +1,8 @@
 # Agent-owned Context 协议设计
 
-本文档描述插件化 AgentRunner 场景下的上下文边界**设计理由**。结论先行：LangBot 不应成为最终 agentic context manager；它提供 context substrate，AgentRunner 或其背后的 runtime 自己决定如何管理历史、压缩、召回和 KV cache。
+本文档描述插件化 Runner 场景下的上下文边界**设计理由**。结论先行：LangBot 不应成为最终 agentic context manager；它提供 context substrate，Runner 或其背后的 runtime 自己决定如何管理历史、压缩、召回和 KV cache。
 
-> 涉及的数据结构（`AgentRunContext`、`ContextAccess`、`AgentRunAPIProxy` 等）唯一定义在 [PROTOCOL_V1.md](./PROTOCOL_V1.md)。本文只讲语义和约束，不重抄 schema。
+> 涉及的数据结构（`RunnerContext`、`ContextAccess`、`RunnerAPIProxy` 等）唯一定义在 [PROTOCOL_V1.md](./PROTOCOL_V1.md)。本文只讲语义和约束，不重抄 schema。
 
 ## 1. 设计原则
 
@@ -18,7 +18,7 @@
 
 ### 1.2 Host 不定义通用历史窗口
 
-历史窗口策略不是 AgentRunner 协议或 Query entry adapter 的核心概念。Host 只提供 history pull API、cursor、hard cap 和权限边界；runner 自己决定是否读取、读取多少、如何截断和压缩。
+历史窗口策略不是 Runner 协议或 Query entry adapter 的核心概念。Host 只提供 history pull API、cursor、hard cap 和权限边界；runner 自己决定是否读取、读取多少、如何截断和压缩。
 
 正确的问题不是"LangBot 每轮裁几轮历史给 agent"，而是：
 
@@ -33,13 +33,13 @@
 
 - `EventLog`: Host 保存原始事件、工具调用、投递结果、错误和系统事件。
 - `Transcript`: Host 从 EventLog 投影出的对话视图，用于 UI、审计和按需历史读取。
-- `Working context`: Agent 本轮实际送进模型或 runtime 的上下文，由 AgentRunner 决定。
+- `Working context`: Agent 本轮实际送进模型或 runtime 的上下文，由 Runner 决定。
 
 LangBot 不提供 host-side inline history window。简单 runner 如果需要历史窗口，应在 runner 内部通过 Host history API 拉取并裁剪。
 
 ## 2. Event 到来时传什么
 
-默认 `AgentRunContext`（PROTOCOL_V1 §5.2）应尽量小且稳定。默认规则：
+默认 `RunnerContext`（PROTOCOL_V1 §5.2）应尽量小且稳定。默认规则：
 
 - Host MUST NOT inline full history by default.
 - Host SHOULD inline only current event / input and context handles.
@@ -57,7 +57,7 @@ LangBot 不提供 host-side inline history window。简单 runner 如果需要�
 
 ### 2.3 不提供 Host Inline History Window
 
-`AgentRunContext` 不包含 `bootstrap` 字段。Host 不下发历史窗口，也不通过 Pipeline 配置决定窗口大小。runner 若需要类似 `recent_tail` 的策略，应在自己的 manifest/config schema 中声明参数，并在 runner 内部通过 history API 读取、裁剪和压缩。Host 只负责权限、分页、hard cap 和事实源。
+`RunnerContext` 不包含 `bootstrap` 字段。Host 不下发历史窗口，也不通过 Pipeline 配置决定窗口大小。runner 若需要类似 `recent_tail` 的策略，应在自己的 manifest/config schema 中声明参数，并在 runner 内部通过 history API 读取、裁剪和压缩。Host 只负责权限、分页、hard cap 和事实源。
 
 ## 3. ContextAccess 的作用
 
@@ -65,7 +65,7 @@ LangBot 不提供 host-side inline history window。简单 runner 如果需要�
 
 ## 4. Agent 如何获取更多上下文
 
-所有 API 都走 `AgentRunAPIProxy`（PROTOCOL_V1 §8），由 host 用 `run_id` 校验。
+所有 API 都走 `RunnerAPIProxy`（PROTOCOL_V1 §8），由 host 用 `run_id` 校验。
 
 外部 harness 不能直接访问 LangBot 资源。无论是 history、event、state、model、tool、knowledge base，还是 LangBot skills，都必须通过 SDK runtime 转发到 Host API，并由 Host 按 active `run_id`、runner identity、binding resource policy 和 caller plugin identity 校验。当前运行文件进入授权 sandbox/workspace 后，再由 runner 用 read/write/exec 类工具按需访问。harness 自己的 native tools 只属于 harness 执行环境，不能绕过 SDK runtime 访问 LangBot 内部资源。
 
@@ -109,7 +109,7 @@ Claude Code、Codex、Kimi Code 这类 runtime 通常已有自己的 session、�
 - `agent-context.json`：结构化 JSON，包含 `run_id`、`event`、`actor`、`subject`、`input`、`delivery`、`resources`、`context`、`state`、`runtime`。
 - `LANGBOT_CONTEXT.md`：人类可读摘要。
 - `resources`：只包含本次 run 授权后的资源句柄和能力摘要，不暴露 Host 内部私有对象、secret 或资源内容。
-- `skills`：LangBot skills 不是直接投影给 harness native tool loop 的文件能力，而是**一组被授权的 tool**。发现走 `list_skills`（或 `langbot_list_assets` 增加 skills 一类），激活/注册走 `activate` / `register_skill`，包内操作走 native exec/read/write，统一通过 `ctx.resources.tools`、`AgentRunAPIProxy` 或 SDK-owned MCP bridge 暴露。Host 不向 prompt 注入 skill 索引（无 progressive-disclosure 注入）；harness 通过调用发现工具主动查询 skill 清单。`agent-context.json` 的 `skills` 字段仅作发现工具的数据来源与可选 `suggested_skill_prompt` 的输入。
+- `skills`：LangBot skills 不是直接投影给 harness native tool loop 的文件能力，而是**一组被授权的 tool**。发现走 `list_skills`（或 `langbot_list_assets` 增加 skills 一类），激活/注册走 `activate` / `register_skill`，包内操作走 native exec/read/write，统一通过 `ctx.resources.tools`、`RunnerAPIProxy` 或 SDK-owned MCP bridge 暴露。Host 不向 prompt 注入 skill 索引（无 progressive-disclosure 注入）；harness 通过调用发现工具主动查询 skill 清单。`agent-context.json` 的 `skills` 字段仅作发现工具的数据来源与可选 `suggested_skill_prompt` 的输入。
 - `MCP config`：只投影 per-run、scoped 的 SDK-owned bridge 或外部 MCP 连接配置；LangBot 资源访问必须回到 SDK runtime / Host API，不允许 harness 通过自带 MCP/native tool 直接读 Host 内部资源。
 - `state pointers`：外部 session id、working directory、checkpoint 等小型 JSON 状态通过 Host state API 保存。
 
@@ -134,7 +134,7 @@ Host 只给当前事件、当前输入和 context handles。Runner 是否能拉�
 
 稳定 session key 的用途是隔离外部 runtime 的 resume/cache/state，不是改变 PROTOCOL_V1 §13 定义的 Agent 复用和 dispatch 边界。只有当某个外部 harness 的同一 native session 不支持并发 turn 时，runner 或 future runtime control plane 才应按 external session key 做 turn-level 串行化。
 
-对长期运行的 external harness / daemon，推荐运行形态是 reader 与 writer 分离：一个 session reader 独占读取 stdout/SSE/native event stream，并把 native event 转成 `AgentRunResult` 或 task progress；用户输入只作为 turn write 进入该 session。当前一次性 CLI subprocess runner 可以继续在单次 `run(ctx)` 内同步收集 stdout，但后续改成长连接时不应让多个 request 同时读取同一 native stream。
+对长期运行的 external harness / daemon，推荐运行形态是 reader 与 writer 分离：一个 session reader 独占读取 stdout/SSE/native event stream，并把 native event 转成 `RunnerResult` 或 task progress；用户输入只作为 turn write 进入该 session。当前一次性 CLI subprocess runner 可以继续在单次 `run(ctx)` 内同步收集 stdout，但后续改成长连接时不应让多个 request 同时读取同一 native stream。
 
 ## 7. Host guardrail
 

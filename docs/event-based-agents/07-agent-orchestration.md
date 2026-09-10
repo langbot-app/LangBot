@@ -1,6 +1,6 @@
 # Agent 与 Pipeline 统一编排（产品最终形态）
 
-> Implementation update (2026-09-08): the EventListener observer-broadcast proposal below is superseded by [Event processors](09-event-processors.md). Legacy EventListener hooks run only inside Pipeline. New EBA handlers use explicitly created and bound EventProcessor instances, a third peer processor type alongside Agent and Pipeline.
+> Implementation update (2026-09-08): the EventListener observer-broadcast proposal below is superseded by [Event processors](09-event-processors.md). Legacy EventListener hooks run only inside Pipeline. New EBA handlers use explicitly created and bound Runner instances, a third peer processor type alongside Agent and Pipeline.
 
 > **状态**：历史方向稿（2026-06-12）；2026-09-05 标记归档用途。本文的示意 schema、5.0 发布火车、SDK 0.5.0aX 配套与多租户“预留”描述不再作为实施合同。当前 4.11 产品形态见 [08-agent-page-and-event-orchestration.md](./08-agent-page-and-event-orchestration.md)，协议见 [PROTOCOL_V1.md](../agent-runner-pluginization/PROTOCOL_V1.md)，已完成与剩余事项见 [STATUS.md](../agent-runner-pluginization/STATUS.md)。保留正文仅用于解释早期设计取舍。
 >
@@ -20,7 +20,7 @@
 EventRouter（事件 → 处理器绑定）
   ├─→ 选中的处理器（响应者，单一仲裁）
   │     ├─ Pipeline：保留现有实体和执行链，仅处理消息事件
-  │     └─ Agent：用户新建并选择 AgentRunner 插件，可接本地、低代码或外部 runtime
+  │     └─ Agent：用户新建并选择 Runner 插件，可接本地、低代码或外部 runtime
   │
   └─→ 插件 EventListener（观察者，N 个广播，可 prevent_default）
 ```
@@ -51,7 +51,7 @@ EventRouter（事件 → 处理器绑定）
 04 文档中的 pipeline / agent / webhook / plugin 四种 handler_type，本质上都是"对事件作出响应的逻辑"，差别只在编写和部署方式。产品层统一展示和绑定这些处理器，但不会把既有 Pipeline 持久化为 Agent：
 
 - **产品**：用户只需理解"给 Bot 的事件绑定处理器"，处理器可以是 Pipeline 或 Agent；
-- **工程**：路由层按 `target_type` 分发到 Pipeline 或 Agent，Agent 的扩展集中到 AgentRunner 抽象；
+- **工程**：路由层按 `target_type` 分发到 Pipeline 或 Agent，Agent 的扩展集中到 Runner 抽象；
 - **生态**：Agent 成为市场上可分发、可复用的一等公民。
 
 ### 2.2 收编映射
@@ -59,7 +59,7 @@ EventRouter（事件 → 处理器绑定）
 | 原 handler_type（04 文档） | 收编后 |
 |---------------------------|--------|
 | `pipeline` | 保留 Pipeline 实体；binding 使用 `target_type=pipeline` 和原 `pipeline_uuid`，进程内直接复用 MessageAggregator → QueryPool → Pipeline 机制 |
-| `agent`（RequestRunner） | 用户新建独立 Agent，并选择对应 AgentRunner 插件；不读取或复制旧 Pipeline 内嵌 runner 配置 |
+| `agent`（RequestRunner） | 用户新建独立 Agent，并选择对应 Runner 插件；不读取或复制旧 Pipeline 内嵌 runner 配置 |
 | `webhook` | 外部 Agent 的一种：事件 POST 出去、响应解析为动作（保留 04 §5.4 的请求/响应格式） |
 | `plugin`（EventListener 分发） | **不收编**——角色不同，见 §2.3 |
 
@@ -76,7 +76,7 @@ EventRouter（事件 → 处理器绑定）
 
 ### 3.1 独立 Agent 与现有 Pipeline
 
-Agent 与 Pipeline 都是一等处理器。用户创建 Agent、选择已安装的 AgentRunner，再把适合的事件绑定到 Agent；Pipeline 继续保存在 Pipeline 表中，以完整 Stage 链处理消息事件。两者可在同一处理器列表中以不同 `kind` 展示和选择；这种聚合展示不会创建额外记录，也不会在两种模型之间复制配置。
+Agent 与 Pipeline 都是一等处理器。用户创建 Agent、选择已安装的 Runner，再把适合的事件绑定到 Agent；Pipeline 继续保存在 Pipeline 表中，以完整 Stage 链处理消息事件。两者可在同一处理器列表中以不同 `kind` 展示和选择；这种聚合展示不会创建额外记录，也不会在两种模型之间复制配置。
 
 ```python
 class Agent(Base):
@@ -84,7 +84,7 @@ class Agent(Base):
     uuid: str                # 主键
     name: str
     kind: str                # 固定为 "agent"；Pipeline 使用自己的持久模型
-    component_ref: str       # AgentRunner id，例如 plugin:<author>/<plugin>/<runner>
+    component_ref: str       # Runner id，例如 plugin:<author>/<plugin>/<runner>
     config: dict             # JSON — runner id、runner config 与资源/状态/投递策略
     # 多租户预留：归属主体字段（tenant/workspace），首版可空
 ```
@@ -156,7 +156,7 @@ class AgentChunk:
 ```
 
 **流式**：复用 SDK 通信协议既有的 `chunk_status: continue/end` 机制，`handle()` 的每次 yield 对应一个 chunk。
-**Pipeline 与 Agent 分流**：Pipeline target 继续走 LangBot 进程内的 Pipeline 执行链；独立 Agent 经 AgentRunner 插件 runtime 分发。路由层通过 binding 的 `target_type` 明确区分二者。
+**Pipeline 与 Agent 分流**：Pipeline target 继续走 LangBot 进程内的 Pipeline 执行链；独立 Agent 经 Runner 插件 runtime 分发。路由层通过 binding 的 `target_type` 明确区分二者。
 
 ### 4.3 执行语义与可靠性
 
@@ -173,7 +173,7 @@ class AgentChunk:
 | 版本 | 内容 | 备注 |
 |------|------|------|
 | 4.11（可选） | 现状成果：12 个 EBA 适配器、插件全事件订阅、`call_platform_api` | 对用户不可见的管道工程 + 插件新能力，不动产品概念 |
-| **5.0** | 产品形态首发：EventRouter + event→处理器绑定 + WebUI 编排 + 旧 Bot 路由迁移 + 独立 Agent / AgentRunner 插件 + SDK Agent 组件契约（可标 experimental） | `use_pipeline_uuid` 仅改写为指向原 Pipeline 的 binding，不生成 Agent；配 SDK 0.5.0 正式版；走 beta 周期 |
+| **5.0** | 产品形态首发：EventRouter + event→处理器绑定 + WebUI 编排 + 旧 Bot 路由迁移 + 独立 Agent / Runner 插件 + SDK Agent 组件契约（可标 experimental） | `use_pipeline_uuid` 仅改写为指向原 Pipeline 的 binding，不生成 Agent；配 SDK 0.5.0 正式版；走 beta 周期 |
 | 5.x | 工作流 Agent（工作流引擎线挂入）、Agent 市场生态、剩余适配器（satori 等）、Agent 插件化收尾 | 验证开放注册机制 |
 | 多租户 | 独立评估：仅数据隔离 → 5.x 部署选项；伴随权限/计费/产品定位变化 → 6.0 | 前置条件是 §4.3 的归属主体预留已落实 |
 

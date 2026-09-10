@@ -816,7 +816,7 @@ class TestHandlerQueryLookup:
 
 
 class TestAgentRunProxyActions:
-    """Tests for AgentRunner proxy actions that need host Query semantics."""
+    """Tests for Runner proxy actions that need host Query semantics."""
 
     @pytest.fixture
     def app(self):
@@ -1556,8 +1556,8 @@ class TestAgentRunProxyActions:
         from langbot.pkg.agent.runner.session_registry import get_session_registry
         from langbot.pkg.provider.tools.loaders.native import NativeToolLoader
         from langbot.pkg.provider.tools.toolmgr import ToolManager
-        from langbot_plugin.api.entities.builtin.agent_runner.delivery import DeliveryContext
-        from langbot_plugin.api.entities.builtin.agent_runner.input import AgentInput
+        from langbot_plugin.api.entities.builtin.runner.delivery import DeliveryContext
+        from langbot_plugin.api.entities.builtin.runner.input import AgentInput
 
         event = AgentEventEnvelope(
             event_id='event-native-exec',

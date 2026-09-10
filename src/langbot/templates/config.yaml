@@ -286,9 +286,9 @@ plugin:
     binary_storage:
         # Max bytes for a single plugin binary storage value
         max_value_bytes: 10485760
-agent_runner:
+runner:
     # Host-level admin permissions for trusted control plugins. These plugins
-    # can use existing plugin action handlers to inspect or manage AgentRunner
+    # can use existing plugin action handlers to inspect or manage Runner
     # infrastructure across runner/plugin boundaries. Keep empty unless you
     # fully trust the plugin identity.
     #

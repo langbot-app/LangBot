@@ -1,7 +1,7 @@
-"""E2E tests for pluginized AgentRunner execution.
+"""E2E tests for pluginized Runner execution.
 
 This module starts the real LangBot backend with the plugin system enabled and
-loads a deterministic AgentRunner plugin through the real SDK Plugin Runtime.
+loads a deterministic Runner plugin through the real SDK Plugin Runtime.
 """
 
 from __future__ import annotations
@@ -29,22 +29,22 @@ QA_RUNNER_ID = 'plugin:e2e/agent-runner-qa/default'
 
 
 @pytest.fixture(scope='session')
-def agent_runner_e2e_port():
-    """Port for the AgentRunner plugin-runtime E2E process."""
+def runner_e2e_port():
+    """Port for the Runner plugin-runtime E2E process."""
     return 15310
 
 
 @pytest.fixture(scope='session')
-def agent_runner_e2e_tmpdir():
-    """Create temporary directory for AgentRunner E2E testing."""
-    tmpdir = Path(tempfile.mkdtemp(prefix='langbot_agent_runner_e2e_'))
+def runner_e2e_tmpdir():
+    """Create temporary directory for Runner E2E testing."""
+    tmpdir = Path(tempfile.mkdtemp(prefix='langbot_runner_e2e_'))
     yield tmpdir
     shutil.rmtree(tmpdir, ignore_errors=True)
 
 
-def _write_qa_agent_runner_plugin(plugin_root: Path) -> None:
-    """Write a deterministic AgentRunner plugin used by this E2E."""
-    runner_dir = plugin_root / 'components' / 'agent_runner'
+def _write_qa_runner_plugin(plugin_root: Path) -> None:
+    """Write a deterministic Runner plugin used by this E2E."""
+    runner_dir = plugin_root / 'components' / 'runner'
     runner_dir.mkdir(parents=True, exist_ok=True)
     (plugin_root / 'assets').mkdir(parents=True, exist_ok=True)
     (plugin_root / 'assets' / 'icon.svg').write_text(
@@ -61,27 +61,24 @@ def _write_qa_agent_runner_plugin(plugin_root: Path) -> None:
               name: agent-runner-qa
               version: 0.1.0
               label:
-                en_US: AgentRunner QA
-                zh_Hans: AgentRunner QA
+                en_US: Runner QA
+                zh_Hans: Runner QA
               description:
-                en_US: Deterministic AgentRunner E2E probe.
-                zh_Hans: 确定性的 AgentRunner E2E 探针。
+                en_US: Deterministic Runner E2E probe.
+                zh_Hans: 确定性的 Runner E2E 探针。
               icon: assets/icon.svg
             spec:
               version: 0.1.0
               config: []
               components:
-                AgentRunner:
+                Runner:
                   fromDirs:
-                    - path: components/agent_runner/
-                EventProcessor:
-                  fromDirs:
-                    - path: components/event_processor/
+                    - path: components/runner/
               pages: []
             execution:
               python:
                 path: main.py
-                attr: AgentRunnerQAPlugin
+                attr: RunnerQAPlugin
             """
         ).strip()
         + '\n',
@@ -95,7 +92,7 @@ def _write_qa_agent_runner_plugin(plugin_root: Path) -> None:
             from langbot_plugin.api.definition.plugin import BasePlugin
 
 
-            class AgentRunnerQAPlugin(BasePlugin):
+            class RunnerQAPlugin(BasePlugin):
                 async def initialize(self) -> None:
                     pass
             """
@@ -107,7 +104,7 @@ def _write_qa_agent_runner_plugin(plugin_root: Path) -> None:
         textwrap.dedent(
             """
             apiVersion: langbot/v1
-            kind: AgentRunner
+            kind: Runner
             metadata:
               name: default
               label:
@@ -124,7 +121,7 @@ def _write_qa_agent_runner_plugin(plugin_root: Path) -> None:
             execution:
               python:
                 path: default.py
-                attr: DefaultAgentRunner
+                attr: DefaultRunner
             """
         ).strip()
         + '\n',
@@ -137,42 +134,42 @@ def _write_qa_agent_runner_plugin(plugin_root: Path) -> None:
 
             from typing import AsyncGenerator
 
-            from langbot_plugin.api.definition.components.agent_runner.runner import AgentRunner
-            from langbot_plugin.api.entities.builtin.agent_runner.context import AgentRunContext
-            from langbot_plugin.api.entities.builtin.agent_runner.result import AgentRunResult
+            from langbot_plugin.api.definition.components.runner.runner import Runner
+            from langbot_plugin.api.entities.builtin.runner.context import RunnerContext
+            from langbot_plugin.api.entities.builtin.runner.result import RunnerResult
             from langbot_plugin.api.entities.builtin.provider.message import Message
 
 
-            class DefaultAgentRunner(AgentRunner):
-                async def run(self, ctx: AgentRunContext) -> AsyncGenerator[AgentRunResult, None]:
+            class DefaultRunner(Runner):
+                async def run(self, ctx: RunnerContext) -> AsyncGenerator[RunnerResult, None]:
                     text = ctx.input.to_text()
-                    yield AgentRunResult.message_completed(
+                    yield RunnerResult.message_completed(
                         ctx.run_id,
                         Message(role='assistant', content=f'e2e echo: {text}'),
                     )
-                    yield AgentRunResult.state_updated(
+                    yield RunnerResult.state_updated(
                         ctx.run_id,
                         'e2e.echo_count',
                         {'count': 1},
                         scope='conversation',
                     )
-                    yield AgentRunResult.run_completed(ctx.run_id, finish_reason='stop')
+                    yield RunnerResult.run_completed(ctx.run_id, finish_reason='stop')
             """
         ).strip()
         + '\n',
         encoding='utf-8',
     )
 
-    processor_dir = plugin_root / 'components' / 'event_processor'
-    processor_dir.mkdir(parents=True)
-    (processor_dir / 'default.yaml').write_text(
+    processor_dir = runner_dir
+    (processor_dir / 'welcome.yaml').write_text(
         textwrap.dedent("""
         apiVersion: langbot/v1
-        kind: EventProcessor
+        kind: Runner
         metadata:
-          name: default
+          name: welcome
           label: {en_US: Welcome processor, zh_Hans: Welcome processor}
         spec:
+          usages: [event]
           events: [group.member_joined]
           config:
             - name: greeting
@@ -184,20 +181,20 @@ def _write_qa_agent_runner_plugin(plugin_root: Path) -> None:
           permissions:
             tools: [detail, call]
         execution:
-          python: {path: default.py, attr: WelcomeProcessor}
+          python: {path: welcome.py, attr: WelcomeProcessor}
     """)
     )
-    (processor_dir / 'default.py').write_text(
+    (processor_dir / 'welcome.py').write_text(
         textwrap.dedent("""
-        from langbot_plugin.api.definition.components.event_processor import EventProcessor, EventProcessorContext
+        from langbot_plugin.api.definition.components.runner import Runner, RunnerContext
         from langbot_plugin.api.entities.builtin.platform.events import MemberJoinedEvent
 
-        class WelcomeProcessor(EventProcessor):
+        class WelcomeProcessor(Runner):
             async def initialize(self):
                 @self.handler(MemberJoinedEvent)
-                async def handle(ctx: EventProcessorContext):
-                    await ctx.log('Handling ' + str(ctx.event.member.id))
-                    result = await ctx.reply(ctx.config['greeting'] + ', ' + (ctx.event.member.nickname or str(ctx.event.member.id)))
+                async def handle(ctx: RunnerContext):
+                    await ctx.log('Handling ' + str(ctx.platform_event.member.id))
+                    result = await ctx.reply(ctx.config['greeting'] + ', ' + (ctx.platform_event.member.nickname or str(ctx.platform_event.member.id)))
                     await ctx.log('Reply simulated: ' + str(result.get('mock')))
     """)
     )
@@ -211,7 +208,7 @@ def _free_port() -> int:
 
 
 @pytest.fixture(scope='session')
-def agent_runner_runtime_ports():
+def runner_runtime_ports():
     """Control/debug ports for the standalone plugin runtime."""
     control_port = _free_port()
     debug_port = _free_port()
@@ -221,17 +218,17 @@ def agent_runner_runtime_ports():
 
 
 @pytest.fixture(scope='session')
-def agent_runner_e2e_config_path(agent_runner_e2e_tmpdir, agent_runner_e2e_port, agent_runner_runtime_ports):
-    """Create a plugin-enabled config and deterministic AgentRunner fixture."""
-    config_path = create_minimal_config(agent_runner_e2e_tmpdir, port=agent_runner_e2e_port)
-    create_test_directories(agent_runner_e2e_tmpdir)
+def runner_e2e_config_path(runner_e2e_tmpdir, runner_e2e_port, runner_runtime_ports):
+    """Create a plugin-enabled config and deterministic Runner fixture."""
+    config_path = create_minimal_config(runner_e2e_tmpdir, port=runner_e2e_port)
+    create_test_directories(runner_e2e_tmpdir)
 
     import yaml
 
     with open(config_path, encoding='utf-8') as f:
         config = yaml.safe_load(f)
     config['api']['global_api_key'] = 'e2e-agent-runner-key'
-    runtime_control_port, _runtime_debug_port = agent_runner_runtime_ports
+    runtime_control_port, _runtime_debug_port = runner_runtime_ports
     config['plugin']['enable'] = True
     config['plugin']['runtime_ws_url'] = f'ws://127.0.0.1:{runtime_control_port}/control/ws'
     config['plugin']['enable_marketplace'] = False
@@ -240,10 +237,10 @@ def agent_runner_e2e_config_path(agent_runner_e2e_tmpdir, agent_runner_e2e_port,
     with open(config_path, 'w', encoding='utf-8') as f:
         yaml.safe_dump(config, f, default_flow_style=False)
 
-    plugin_source = agent_runner_e2e_tmpdir / 'agent-runner-qa-package'
-    _write_qa_agent_runner_plugin(plugin_source)
+    plugin_source = runner_e2e_tmpdir / 'agent-runner-qa-package'
+    _write_qa_runner_plugin(plugin_source)
     shutil.make_archive(
-        str(agent_runner_e2e_tmpdir / 'agent-runner-qa'),
+        str(runner_e2e_tmpdir / 'agent-runner-qa'),
         'zip',
         root_dir=plugin_source,
     )
@@ -251,11 +248,11 @@ def agent_runner_e2e_config_path(agent_runner_e2e_tmpdir, agent_runner_e2e_port,
 
 
 @pytest.fixture(scope='session')
-def agent_runner_runtime_process(agent_runner_e2e_tmpdir, agent_runner_runtime_ports):
+def runner_runtime_process(runner_e2e_tmpdir, runner_runtime_ports):
     """Start the real SDK plugin runtime over WebSocket."""
-    control_port, debug_port = agent_runner_runtime_ports
-    stdout_path = agent_runner_e2e_tmpdir / 'plugin-runtime.stdout.log'
-    stderr_path = agent_runner_e2e_tmpdir / 'plugin-runtime.stderr.log'
+    control_port, debug_port = runner_runtime_ports
+    stdout_path = runner_e2e_tmpdir / 'plugin-runtime.stdout.log'
+    stderr_path = runner_e2e_tmpdir / 'plugin-runtime.stderr.log'
     stdout_file = open(stdout_path, 'wb')
     stderr_file = open(stderr_path, 'wb')
     proc = subprocess.Popen(
@@ -269,7 +266,7 @@ def agent_runner_runtime_process(agent_runner_e2e_tmpdir, agent_runner_runtime_p
             '--ws-debug-port',
             str(debug_port),
         ],
-        cwd=agent_runner_e2e_tmpdir,
+        cwd=runner_e2e_tmpdir,
         stdout=stdout_file,
         stderr=stderr_file,
         start_new_session=True,
@@ -286,18 +283,18 @@ def agent_runner_runtime_process(agent_runner_e2e_tmpdir, agent_runner_runtime_p
 
 
 @pytest.fixture(scope='session')
-def agent_runner_langbot_process(
-    agent_runner_e2e_config_path,
-    agent_runner_e2e_port,
-    agent_runner_e2e_tmpdir,
-    agent_runner_runtime_process,
+def runner_langbot_process(
+    runner_e2e_config_path,
+    runner_e2e_port,
+    runner_e2e_tmpdir,
+    runner_runtime_process,
 ):
     """Start real LangBot with plugin runtime enabled."""
     project_root = find_project_root()
     proc = LangBotProcess(
         project_root=project_root,
-        work_dir=agent_runner_e2e_tmpdir,
-        port=agent_runner_e2e_port,
+        work_dir=runner_e2e_tmpdir,
+        port=runner_e2e_port,
         timeout=180,
         debug=True,
         cli_args=['--standalone-runtime'],
@@ -306,7 +303,7 @@ def agent_runner_langbot_process(
     success = proc.start()
     if not success:
         stdout, stderr = proc.get_logs()
-        pytest.fail(f'LangBot failed to start with AgentRunner plugin runtime:\nstdout: {stdout}\nstderr: {stderr}')
+        pytest.fail(f'LangBot failed to start with Runner plugin runtime:\nstdout: {stdout}\nstderr: {stderr}')
 
     yield proc
 
@@ -314,10 +311,10 @@ def agent_runner_langbot_process(
 
 
 @pytest.fixture
-def agent_runner_client(agent_runner_e2e_port, agent_runner_langbot_process):
-    """HTTP client for the AgentRunner E2E backend."""
+def runner_client(runner_e2e_port, runner_langbot_process):
+    """HTTP client for the Runner E2E backend."""
     with httpx.Client(
-        base_url=f'http://127.0.0.1:{agent_runner_e2e_port}',
+        base_url=f'http://127.0.0.1:{runner_e2e_port}',
         timeout=90.0,
         trust_env=False,
     ) as client:
@@ -396,29 +393,25 @@ def _ensure_qa_plugin(client: httpx.Client, token: str, package_path: Path) -> N
     _install_qa_plugin(client, token, package_path)
 
 
-def test_plugin_runtime_discovers_agent_runner(
-    agent_runner_client,
-    agent_runner_langbot_process,
-    agent_runner_e2e_tmpdir,
+def test_plugin_runtime_discovers_runner(
+    runner_client,
+    runner_langbot_process,
+    runner_e2e_tmpdir,
 ):
     """Pipeline metadata should include the real runtime-discovered QA runner."""
-    token = _init_and_auth(agent_runner_client)
+    token = _init_and_auth(runner_client)
     _ensure_qa_plugin(
-        agent_runner_client,
+        runner_client,
         token,
-        agent_runner_e2e_tmpdir / 'agent-runner-qa.zip',
+        runner_e2e_tmpdir / 'agent-runner-qa.zip',
     )
-    option_names = _wait_for_qa_runner(agent_runner_client, token)
+    option_names = _wait_for_qa_runner(runner_client, token)
     if QA_RUNNER_ID in option_names:
         return
 
-    host_stdout, host_stderr = agent_runner_langbot_process.get_logs()
-    runtime_stdout = (agent_runner_e2e_tmpdir / 'plugin-runtime.stdout.log').read_text(
-        encoding='utf-8', errors='replace'
-    )
-    runtime_stderr = (agent_runner_e2e_tmpdir / 'plugin-runtime.stderr.log').read_text(
-        encoding='utf-8', errors='replace'
-    )
+    host_stdout, host_stderr = runner_langbot_process.get_logs()
+    runtime_stdout = (runner_e2e_tmpdir / 'plugin-runtime.stdout.log').read_text(encoding='utf-8', errors='replace')
+    runtime_stderr = (runner_e2e_tmpdir / 'plugin-runtime.stderr.log').read_text(encoding='utf-8', errors='replace')
     assert QA_RUNNER_ID in option_names, (
         f'{QA_RUNNER_ID} was not discovered\n'
         f'Host stdout (tail):\n{host_stdout[-20_000:]}\nHost stderr (tail):\n{host_stderr[-20_000:]}\n'
@@ -427,26 +420,26 @@ def test_plugin_runtime_discovers_agent_runner(
     )
 
 
-def test_host_orchestrator_runs_agent_runner_and_records_ledger(
-    agent_runner_client,
-    agent_runner_langbot_process,
-    agent_runner_e2e_tmpdir,
+def test_host_orchestrator_runs_runner_and_records_ledger(
+    runner_client,
+    runner_langbot_process,
+    runner_e2e_tmpdir,
 ):
     """Create/configure/debug an Agent through HTTP and persist Runner side effects."""
-    del agent_runner_langbot_process
-    token = _init_and_auth(agent_runner_client)
+    del runner_langbot_process
+    token = _init_and_auth(runner_client)
     _ensure_qa_plugin(
-        agent_runner_client,
+        runner_client,
         token,
-        agent_runner_e2e_tmpdir / 'agent-runner-qa.zip',
+        runner_e2e_tmpdir / 'agent-runner-qa.zip',
     )
     headers = {'Authorization': f'Bearer {token}'}
-    create_response = agent_runner_client.post(
+    create_response = runner_client.post(
         '/api/v1/agents',
         headers=headers,
         json={
             'kind': 'agent',
-            'name': 'AgentRunner E2E Agent',
+            'name': 'Runner E2E Agent',
             'description': 'Exercises the installed QA Runner.',
             'emoji': 'QA',
             'supported_event_patterns': ['message.*'],
@@ -462,7 +455,7 @@ def test_host_orchestrator_runs_agent_runner_and_records_ledger(
     assert create_payload['code'] == 0, create_payload
     agent_uuid = create_payload['data']['uuid']
 
-    get_response = agent_runner_client.get(f'/api/v1/agents/{agent_uuid}', headers=headers)
+    get_response = runner_client.get(f'/api/v1/agents/{agent_uuid}', headers=headers)
     assert get_response.status_code == 200, get_response.text
     stored_agent = get_response.json()['data']['agent']
     assert stored_agent['config']['allowed_platform_tools'] == [
@@ -470,7 +463,7 @@ def test_host_orchestrator_runs_agent_runner_and_records_ledger(
         'platform_get_user_info',
     ]
 
-    debug_response = agent_runner_client.post(
+    debug_response = runner_client.post(
         f'/api/v1/agents/{agent_uuid}/debug',
         headers=headers,
         json={
@@ -486,7 +479,7 @@ def test_host_orchestrator_runs_agent_runner_and_records_ledger(
     assert result['final_text'] == 'e2e echo: hello from orchestrator e2e'
     assert result['outputs'][0]['role'] == 'assistant'
 
-    db_path = agent_runner_e2e_tmpdir / 'data' / 'langbot.db'
+    db_path = runner_e2e_tmpdir / 'data' / 'langbot.db'
     conn = sqlite3.connect(str(db_path))
     try:
         run_row = conn.execute(
@@ -504,9 +497,7 @@ def test_host_orchestrator_runs_agent_runner_and_records_ledger(
         }
         assert {'state.updated', 'message.completed', 'run.completed'}.issubset(event_types)
 
-        state_row = conn.execute(
-            "SELECT value_json FROM agent_runner_state WHERE state_key = 'e2e.echo_count'"
-        ).fetchone()
+        state_row = conn.execute("SELECT value_json FROM runner_state WHERE state_key = 'e2e.echo_count'").fetchone()
         assert state_row is not None
         assert '"count": 1' in state_row[0]
     finally:
@@ -514,17 +505,17 @@ def test_host_orchestrator_runs_agent_runner_and_records_ledger(
 
 
 def test_event_processor_real_runtime_logs_actions_and_instance_isolation(
-    agent_runner_client,
-    agent_runner_e2e_tmpdir,
+    runner_client,
+    runner_e2e_tmpdir,
 ):
-    client = agent_runner_client
+    client = runner_client
     token = _init_and_auth(client)
-    _ensure_qa_plugin(client, token, agent_runner_e2e_tmpdir / 'agent-runner-qa.zip')
+    _ensure_qa_plugin(client, token, runner_e2e_tmpdir / 'agent-runner-qa.zip')
     headers = {'Authorization': f'Bearer {token}'}
     metadata_response = client.get('/api/v1/agents/_/metadata', headers=headers).json()
     assert metadata_response['code'] == 0, metadata_response
     metadata = metadata_response['data']
-    ref = 'event_processor:e2e/agent-runner-qa/default'
+    ref = 'plugin:e2e/agent-runner-qa/welcome'
     assert any(item['id'] == ref for item in metadata['event_processors']), metadata
     assert ref not in _wait_for_qa_runner(client, token)
     created = []

@@ -1,4 +1,4 @@
-"""merge AgentRunner and Cloud Workspace migration heads
+"""merge Runner and Cloud Workspace migration heads
 
 Revision ID: 0020_merge_agent_cloud_heads
 Revises: 0018_merge_workspace_heads, 0019_single_workspace_owner

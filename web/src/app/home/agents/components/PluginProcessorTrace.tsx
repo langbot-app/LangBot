@@ -38,7 +38,7 @@ export function ProcessorPayload({
   );
 }
 
-export default function EventProcessorTrace({
+export default function PluginProcessorTrace({
   events,
   toolLabels = {},
 }: {

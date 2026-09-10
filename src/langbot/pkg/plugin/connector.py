@@ -1094,8 +1094,8 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
     async def initialize_plugins(self):
         pass
 
-    async def _refresh_agent_runner_registry(self) -> None:
-        registry = getattr(self.ap, 'agent_runner_registry', None)
+    async def _refresh_runner_registry(self) -> None:
+        registry = getattr(self.ap, 'runner_registry', None)
         if registry is None:
             return
         try:
@@ -1814,7 +1814,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         if task_context is not None:
             task_context.set_current_action('refreshing plugin components')
             task_context.metadata['progress_percent'] = 95
-        await self._refresh_agent_runner_registry()
+        await self._refresh_runner_registry()
         if task_context is not None:
             operation = task_context.metadata.get('operation')
             task_context.set_current_action('plugin updated' if operation == 'upgrade' else 'plugin installed')
@@ -1903,7 +1903,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                 self._workspace_installations.pop(binding.workspace_uuid, None)
         if task_context is not None:
             task_context.set_current_action('plugin removed')
-        await self._refresh_agent_runner_registry()
+        await self._refresh_runner_registry()
         return {}
 
     async def list_plugins(self, component_kinds: list[str] | None = None) -> list[dict[str, Any]]:
@@ -2245,9 +2245,9 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             async for ret in gen:
                 yield command_context.CommandReturn.model_validate(ret)
 
-    # AgentRunner methods
-    async def list_agent_runners(self, bound_plugins: list[str] | None = None) -> list[dict[str, Any]]:
-        """List all available AgentRunner components.
+    # Runner methods
+    async def list_runners(self, bound_plugins: list[str] | None = None) -> list[dict[str, Any]]:
+        """List all available Runner components.
 
         Returns list of dicts with plugin_author, plugin_name, runner_name, manifest, etc.
         """
@@ -2260,26 +2260,26 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         runners: list[dict[str, Any]] = []
         for binding in await self._operation_bindings(include_plugins=bound_plugins):
             with runtime_handler.installation_scope(binding):
-                runners.extend(await runtime_handler.list_agent_runners(include_plugins=bound_plugins))
+                runners.extend(await runtime_handler.list_runners(include_plugins=bound_plugins))
         return runners
 
-    async def run_agent(
+    async def run_runner(
         self,
         plugin_author: str,
         plugin_name: str,
         runner_name: str,
         context: dict[str, Any],
     ) -> typing.AsyncGenerator[dict[str, Any], None]:
-        """Run an AgentRunner from a plugin.
+        """Run an Runner from a plugin.
 
         Args:
             plugin_author: Plugin author
             plugin_name: Plugin name
-            runner_name: AgentRunner component name
-            context: AgentRunContext as dict
+            runner_name: Runner component name
+            context: RunnerContext as dict
 
         Yields:
-            AgentRunResult dicts
+            RunnerResult dicts
         """
         if not self.is_enable_plugin:
             # Return a protocol-level failure result.
@@ -2297,7 +2297,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             'metadata', {}
         ).get('workspace_id')
         if not isinstance(workspace_id, str) or not workspace_id.strip():
-            raise ValueError('AgentRunner execution requires a Workspace')
+            raise ValueError('Runner execution requires a Workspace')
         execution_context = await self._current_execution_context()
         if workspace_id.strip() != execution_context.workspace_uuid:
             raise WorkspaceNotFoundError('Plugin resource not found')
@@ -2309,7 +2309,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         )
         runtime_handler = self._runtime_handler()
         with runtime_handler.installation_scope(binding):
-            async for ret in runtime_handler.run_agent(
+            async for ret in runtime_handler.run_runner(
                 plugin_author,
                 plugin_name,
                 runner_name,

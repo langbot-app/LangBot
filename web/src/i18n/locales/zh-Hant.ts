@@ -595,7 +595,7 @@ const zhHant = {
     dangerZoneDescription: '不可逆的操作',
     deleteAgentAction: '刪除此 Agent',
     deleteAgentHint: '刪除後，綁定到它的事件將無法繼續執行。',
-    noRunnerMetadata: '目前沒有可用的 AgentRunner 中繼資料。',
+    noRunnerMetadata: '目前沒有可用的 Runner 中繼資料。',
   },
   plugins: {
     title: '外掛擴展',
@@ -686,8 +686,7 @@ const zhHant = {
       KnowledgeEngine: '知識引擎',
       Parser: '解析器',
       Page: '擴展頁',
-      AgentRunner: 'Agent 執行器',
-      EventProcessor: '事件處理器',
+      Runner: 'Agent 執行器',
     },
     uploadLocal: '本地上傳',
     debugging: '調試中',
@@ -861,8 +860,7 @@ const zhHant = {
       KnowledgeEngine: '知識引擎',
       Parser: '解析器',
       Page: '擴展頁',
-      AgentRunner: 'Agent 執行器',
-      EventProcessor: '事件處理器',
+      Runner: 'Agent 執行器',
     },
     filterByType: '類型',
     allTypes: '全部類型',
@@ -1098,7 +1096,7 @@ const zhHant = {
       enableAllMCPServersTooltip:
         '啟用後，所有已配置且啟用的 MCP 伺服器都會進入 AI 能力中的 MCP 工具和資源候選範圍。',
     },
-    agentRunner: {
+    runner: {
       toolsTitle: '工具',
       toolsDescription: '選擇此內建 Agent 可以調用的插件、MCP 和內建工具。',
       toolsScopeTooltip:

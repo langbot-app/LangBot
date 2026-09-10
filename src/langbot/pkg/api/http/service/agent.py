@@ -8,13 +8,13 @@ import uuid
 import typing
 
 import sqlalchemy
-from langbot_plugin.api.entities.builtin.agent_runner.delivery import DeliveryContext
-from langbot_plugin.api.entities.builtin.agent_runner.event import (
+from langbot_plugin.api.entities.builtin.runner.delivery import DeliveryContext
+from langbot_plugin.api.entities.builtin.runner.event import (
     ActorContext,
     RawEventRef,
     SubjectContext,
 )
-from langbot_plugin.api.entities.builtin.agent_runner.input import AgentInput
+from langbot_plugin.api.entities.builtin.runner.input import AgentInput
 
 from ....core import app
 from ....agent.runner.config_resolver import RunnerConfigResolver
@@ -69,13 +69,13 @@ class AgentService:
             except Exception as exc:
                 self.ap.logger.warning(f'Failed to load Agent Host tool catalog: {exc}')
         event_processors = []
-        registry = getattr(self.ap, 'agent_runner_registry', None)
+        registry = getattr(self.ap, 'runner_registry', None)
         if registry is not None:
             event_processors = [
                 item.model_dump(mode='json')
                 for item in await registry.list_runners(
                     context,
-                    component_kind='EventProcessor',
+                    usage='event',
                     use_cache=False,
                 )
             ]
@@ -168,7 +168,7 @@ class AgentService:
         config = agent.get('config')
         if not isinstance(config, dict):
             raise ValueError('Agent configuration is invalid')
-        _, runner_id, runner_config = RunnerConfigResolver.resolve_agent_runner_config(config)
+        _, runner_id, runner_config = RunnerConfigResolver.resolve_agent_config(config)
         if not runner_id:
             raise ValueError('Agent has no configured runner')
 
@@ -405,9 +405,8 @@ class AgentService:
             config, runner_id, patterns = await self._prepare_event_processor(context, agent_data)
         else:
             config = agent_data['config'] if 'config' in agent_data else await self._get_default_agent_config(context)
-            config, runner_id, _ = RunnerConfigResolver.resolve_agent_runner_config(config)
-            if (runner_id or '').startswith('event_processor:'):
-                raise ValueError('EventProcessor components require an event processor instance')
+            config, runner_id, _ = RunnerConfigResolver.resolve_agent_config(config)
+            await self._validate_runner_for_agent(context, runner_id)
             patterns = agent_data.get('supported_event_patterns', AGENT_DEFAULT_EVENT_PATTERNS)
         new_uuid = str(uuid.uuid4())
         values = {
@@ -444,13 +443,13 @@ class AgentService:
             config, runner_id, patterns = await self._prepare_event_processor(context, agent_data, existing_agent)
             update_data.update(config=config, component_ref=runner_id, supported_event_patterns=patterns)
         if 'config' in update_data:
-            config, runner_id, _ = RunnerConfigResolver.resolve_agent_runner_config(update_data['config'])
+            config, runner_id, _ = RunnerConfigResolver.resolve_agent_config(update_data['config'])
             update_data['config'] = config
         else:
-            _, runner_id, _ = RunnerConfigResolver.resolve_agent_runner_config(existing_agent.config)
+            _, runner_id, _ = RunnerConfigResolver.resolve_agent_config(existing_agent.config)
         update_data['component_ref'] = runner_id
-        if existing_agent.kind == AGENT_KIND_AGENT and (runner_id or '').startswith('event_processor:'):
-            raise ValueError('EventProcessor components require an event processor instance')
+        if existing_agent.kind == AGENT_KIND_AGENT:
+            await self._validate_runner_for_agent(context, runner_id)
         result = await self.ap.persistence_mgr.execute_async(
             scope_statement(
                 sqlalchemy.update(persistence_agent.Agent)
@@ -482,6 +481,12 @@ class AgentService:
             raise ValueError(f'Agent {agent_uuid} not found')
         await self.ap.pipeline_service.delete_pipeline(context, agent_uuid)
 
+    async def _validate_runner_for_agent(self, context, runner_id):
+        if runner_id:
+            descriptor = await self.ap.runner_registry.get(context, runner_id)
+            if 'agent' not in descriptor.usages:
+                raise ValueError('The selected Runner does not support agent usage')
+
     async def _prepare_event_processor(self, context, data, existing=None):
         """Resolve an installed component and keep its capability declaration authoritative."""
         config = copy.deepcopy(data.get('config', existing.config if existing is not None else {}))
@@ -491,17 +496,17 @@ class AgentService:
         if component_ref is None and not config and not data.get('parameters'):
             # An unconfigured instance cannot subscribe to or execute any events.
             return {}, None, []
-        if not isinstance(component_ref, str) or not component_ref.startswith('event_processor:'):
-            raise ValueError('Select an installed EventProcessor component')
+        if not isinstance(component_ref, str) or not component_ref.startswith('plugin:'):
+            raise ValueError('Select an installed Runner component')
         try:
-            descriptor = await self.ap.agent_runner_registry.get(context, component_ref)
+            descriptor = await self.ap.runner_registry.get(context, component_ref)
         except Exception as exc:
             from ....agent.runner.errors import RunnerNotFoundError
 
             if isinstance(exc, RunnerNotFoundError):
-                raise ValueError('EventProcessor component is unavailable') from exc
+                raise ValueError('Runner component is unavailable') from exc
             raise
-        if descriptor.component_kind != 'EventProcessor' or not descriptor.supported_event_patterns:
+        if 'event' not in descriptor.usages or not descriptor.supported_event_patterns:
             raise ValueError('The component does not declare supported events')
         config['runner'] = {'id': component_ref}
         parameters = data.get('parameters')
@@ -583,9 +588,9 @@ class AgentService:
 
     async def _get_default_agent_config(self, context: TenantContext) -> dict[str, typing.Any]:
         runners = []
-        if getattr(self.ap, 'agent_runner_registry', None) is not None:
+        if getattr(self.ap, 'runner_registry', None) is not None:
             try:
-                runners = await self.ap.agent_runner_registry.list_runners(context, bound_plugins=None)
+                runners = await self.ap.runner_registry.list_runners(context, bound_plugins=None)
             except Exception as e:
                 if getattr(self.ap, 'logger', None):
                     self.ap.logger.warning(f'Failed to load plugin agent runners for default agent config: {e}')

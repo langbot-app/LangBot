@@ -1,4 +1,4 @@
-"""Run-scoped platform and event action tools exposed to AgentRunners."""
+"""Run-scoped platform and event action tools exposed to Runners."""
 
 from __future__ import annotations
 

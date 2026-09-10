@@ -1,4 +1,4 @@
-# Agent Runner QA 指南
+# Runner QA 指南
 
 本文档是 agent-runner 插件化下一轮测试的唯一 QA 入口。它合并并取代旧的 Phase 1 验收矩阵与 2026-05-18 / 2026-05-29 两份本地 QA 报告。
 
@@ -6,7 +6,7 @@
 
 ## 1. 测试边界
 
-当前主线验证的是 AgentRunner Protocol v1：
+当前主线验证的是 Runner Protocol v1：
 
 ```text
 event -> binding -> runner.run(ctx) -> result stream
@@ -137,7 +137,7 @@ bin/lbs case list
 通过条件：
 
 - 用户可见回复正常。
-- 后端日志显示走 `AgentRunOrchestrator` / `RUN_AGENT`。
+- 后端日志显示走 `AgentRunOrchestrator` / `RUN_RUNNER`。
 - 不走旧内置 local-agent 主执行分支。
 - conversation transcript 写入用户消息和助手消息。
 
@@ -170,7 +170,7 @@ Smoke 前应优先保留一层轻量单测或 fixture 测试：session 创建/�
 步骤：
 
 1. 确认目标 harness（例如 ACP daemon、Claude Code 或 Codex）在对应机器上可执行且已登录。
-2. 绑定目标 runner，例如 `plugin:langbot-team/ACPAgentRunner/default`、`plugin:langbot-team/ClaudeCodeAgent/default` 或 `plugin:langbot-team/CodexAgent/default`。
+2. 绑定目标 runner，例如 `plugin:langbot-team/ACPRunner/default`、`plugin:langbot-team/ClaudeCodeAgent/default` 或 `plugin:langbot-team/CodexAgent/default`。
 3. 配置 runner 必要字段，例如 remote target、workspace、provider、startup timeout、reuse session 等。
 4. 在 Debug Chat 执行一次确定性真实 smoke。
 5. 检查 LangBot MCP gateway、`run_id` 回填和 host-owned state。

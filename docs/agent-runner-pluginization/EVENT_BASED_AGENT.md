@@ -5,13 +5,13 @@
 > 数据结构唯一定义在 [PROTOCOL_V1.md](./PROTOCOL_V1.md)（runner 可见）与 [HOST_SDK_INFRASTRUCTURE.md](./HOST_SDK_INFRASTRUCTURE.md)（Host 内部模型）；本文只讲 EBA 语义，不重抄 schema。
 > 与当前 runner 外化分支、后续 Agent Platform / Runtime Control Plane 的边界见 [EXTENSION_SCOPE_MATRIX.md](./EXTENSION_SCOPE_MATRIX.md)。
 
-本文描述当前事件如何进入 LangBot、如何在平级的 Pipeline / Agent 之间路由，以及 Agent 如何复用插件化 AgentRunner。路由逻辑由 `pkg/platform/botmgr.py::RuntimeBot` 承担；文中的 EventRouter 表示职责，不代表独立进程或同名类。
+本文描述当前事件如何进入 LangBot、如何在平级的 Pipeline / Agent 之间路由，以及 Agent 如何复用插件化 Runner。路由逻辑由 `pkg/platform/botmgr.py::RuntimeBot` 承担；文中的 EventRouter 表示职责，不代表独立进程或同名类。
 
 ## 1. 设计目标
 
 - 消息、撤回、入群、好友申请、定时任务、API 调用都能抽象为 host event。
 - EventRouter 可以根据 event type、bot、workspace、conversation、actor、subject 选择一个 Pipeline 或 Agent 处理器。
-- Pipeline 目标执行完整消息 Stage 链；Agent 目标通过统一 orchestrator 调用 AgentRunner。
+- Pipeline 目标执行完整消息 Stage 链；Agent 目标通过统一 orchestrator 调用 Runner。
 - 非消息事件不伪造成用户文本消息。
 - 平台动作通过已授权的语义工具执行；结构化交互通过 `action.requested` 中的 `interaction.requested` 白名单执行。
 
@@ -44,7 +44,7 @@
 - 入口事件用 `AgentEventEnvelope`（HOST_SDK §4.1）承载；顶层字段使用 LangBot 稳定协议名，平台原始事件名和原始 payload 放 `metadata` / `raw_ref`。
 - EBA 持久路由通过 `event_pattern`、`filters`、`target_type` 和 `target_uuid` 选择处理器。只有 `target_type=agent`，或 Pipeline AI Stage 需要调用 runner 时，才进一步解析 `AgentBinding`（HOST_SDK §4.2）。
 
-EBA 每个事件只选择一个有效处理器；AgentRunner 调用的基数、Agent 复用和 fan-out 边界以 PROTOCOL_V1 §13 为准。
+EBA 每个事件只选择一个有效处理器；Runner 调用的基数、Agent 复用和 fan-out 边界以 PROTOCOL_V1 §13 为准。
 
 路由 scope 示例：workspace 全局、bot 级、platform channel 级、conversation / group / thread 级、user / actor 级。Pipeline 是 `message.*` 场景的一等处理器，适合需要预处理、AI、后处理、扩展和输出控制的消息链路；Agent 是 runner 驱动的一等处理器，可处理其声明支持的消息与非消息事件。二者都不会被转换成对方。
 
@@ -59,12 +59,12 @@ Platform Adapter canonical event
   -> RuntimeBot match saved event_bindings and resolve one Processor target
      -> target_type=pipeline: MessageAggregator -> QueryPool -> Pipeline stages
      -> target_type=agent: resolve AgentBinding -> AgentRunOrchestrator
-        -> AgentRunContextBuilder -> PluginRuntimeConnector.run_agent()
-        -> AgentRunResult stream
+        -> RunnerContextBuilder -> PluginRuntimeConnector.run_runner()
+        -> RunnerResult stream
   -> Host result delivery / authorized platform tool
 ```
 
-约束：Pipeline 和 Agent 是 EventRouter 的平级目标；Pipeline 仅接受消息事件，Agent 受其事件能力声明约束。任何 AgentRunner 调用都必须复用现有 orchestrator，不能为 EBA 单独实现另一套 plugin runner 协议；非消息事件不能绕过 resource authorization；delivery 和 platform action 走统一权限模型；外部 harness runner 也通过同一套 envelope/binding/context/result 协议接入。observer / fan-out / parallel arbitration 的额外语义仍按 PROTOCOL_V1 §13 处理。
+约束：Pipeline 和 Agent 是 EventRouter 的平级目标；Pipeline 仅接受消息事件，Agent 受其事件能力声明约束。任何 Runner 调用都必须复用现有 orchestrator，不能为 EBA 单独实现另一套 plugin runner 协议；非消息事件不能绕过 resource authorization；delivery 和 platform action 走统一权限模型；外部 harness runner 也通过同一套 envelope/binding/context/result 协议接入。observer / fan-out / parallel arbitration 的额外语义仍按 PROTOCOL_V1 §13 处理。
 
 ## 6. 平台动作执行
 
@@ -84,13 +84,13 @@ Platform Adapter canonical event
 
 ## 7. 与 Context 协议的关系
 
-EBA 事件进入 AgentRunner 时仍遵循 [AGENT_CONTEXT_PROTOCOL.md](./AGENT_CONTEXT_PROTOCOL.md)：inline 当前事件、大 payload 用 raw/staged file ref、不默认 inline 完整 history、agent 按需通过 API 拉取、Host 保留 EventLog 和权限 guardrail。非消息事件可以被投影进 Transcript，但不能强制伪装为 user message；AgentRunner 根据 event type 自己决定是否纳入模型上下文。
+EBA 事件进入 Runner 时仍遵循 [AGENT_CONTEXT_PROTOCOL.md](./AGENT_CONTEXT_PROTOCOL.md)：inline 当前事件、大 payload 用 raw/staged file ref、不默认 inline 完整 history、agent 按需通过 API 拉取、Host 保留 EventLog 和权限 guardrail。非消息事件可以被投影进 Transcript，但不能强制伪装为 user message；Runner 根据 event type 自己决定是否纳入模型上下文。
 
 ## 8. 当前集成状态
 
 当前分支已完成 EventRouter、Pipeline / Agent 平级处理器路由、Bot
 `event_bindings` 持久化与 WebUI、AgentBinding 投影、路由 dry-run、合成测试事件、
 运行状态和真实 OneBot 非消息事件到 Agent 的闭环。Pipeline 消息链和独立 Agent
-均复用同一个 AgentRunner orchestrator / context / result 协议。
+均复用同一个 Runner orchestrator / context / result 协议。
 
 平台动作授权和结构化交互已实现，但真实平台/provider 验收不等同于单测通过。SDK 的 `platform_tools` 分类发现于 2026-09-05 检视时仍是未提交工作区改动。剩余发布工作和历史验证边界见 [STATUS.md](./STATUS.md)。通用订阅、Scheduler、Workflow 和多 Agent 串并联仍未作为产品交付。

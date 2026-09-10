@@ -373,7 +373,7 @@ function PipelineDiagram() {
   );
 }
 
-function EventProcessorDiagram() {
+function RunnerDiagram() {
   const { t } = useTranslation();
   const codeLines = [
     <>
@@ -459,6 +459,6 @@ function EventProcessorDiagram() {
 }
 
 export default function ProcessorTypeDiagram({ kind }: { kind: AgentKind }) {
-  if (kind === 'event_processor') return <EventProcessorDiagram />;
+  if (kind === 'event_processor') return <RunnerDiagram />;
   return kind === 'agent' ? <AgentDiagram /> : <PipelineDiagram />;
 }

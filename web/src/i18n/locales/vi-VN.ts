@@ -625,7 +625,7 @@ const viVN = {
     deleteAgentAction: 'Xóa Agent này',
     deleteAgentHint:
       'Sau khi xóa, các sự kiện đã gắn vào nó sẽ không thể thực thi được nữa.',
-    noRunnerMetadata: 'Hiện chưa có siêu dữ liệu AgentRunner khả dụng.',
+    noRunnerMetadata: 'Hiện chưa có siêu dữ liệu Runner khả dụng.',
   },
   plugins: {
     title: 'Tiện ích mở rộng',
@@ -720,8 +720,7 @@ const viVN = {
       KnowledgeEngine: 'Công cụ tri thức',
       Parser: 'Trình phân tích',
       Page: 'Trang',
-      AgentRunner: 'Trình chạy tác tử',
-      EventProcessor: 'Bộ xử lý sự kiện',
+      Runner: 'Trình chạy tác tử',
     },
     uploadLocal: 'Tải lên cục bộ',
     debugging: 'Gỡ lỗi',
@@ -902,8 +901,7 @@ const viVN = {
       KnowledgeEngine: 'Công cụ tri thức',
       Parser: 'Trình phân tích',
       Page: 'Trang',
-      AgentRunner: 'Trình chạy tác tử',
-      EventProcessor: 'Bộ xử lý sự kiện',
+      Runner: 'Trình chạy tác tử',
     },
     filterByType: 'Loại',
     allTypes: 'Tất cả loại',
@@ -1144,14 +1142,14 @@ const viVN = {
       selectSkills: 'Chọn kỹ năng',
       noSkillsAvailable: 'Không có kỹ năng khả dụng',
       mcpServersScopeTooltip:
-        'Tại đây chỉ kiểm soát máy chủ MCP được liên kết với Pipeline. Công cụ và tài nguyên MCP cụ thể được chọn trong AI Feature > Agent Runner.',
+        'Tại đây chỉ kiểm soát máy chủ MCP được liên kết với Pipeline. Công cụ và tài nguyên MCP cụ thể được chọn trong AI Feature > Runner.',
       enableAllMCPServersTooltip:
         'Khi bật, mọi máy chủ MCP đã cấu hình và bật sẽ trở thành ứng viên cho công cụ và tài nguyên MCP trong AI Feature.',
     },
-    agentRunner: {
+    runner: {
       toolsTitle: 'Công cụ',
       toolsDescription:
-        'Chọn công cụ plugin, MCP và công cụ tích hợp sẵn cho Agent Runner này.',
+        'Chọn công cụ plugin, MCP và công cụ tích hợp sẵn cho Runner này.',
       toolsScopeTooltip:
         'Công cụ MCP chỉ đến từ máy chủ MCP đã liên kết trong Tiện ích mở rộng. Hãy liên kết máy chủ tại đó trước nếu muốn chọn thêm tại đây.',
       enableAllTools: 'Bật tất cả công cụ',
@@ -1169,7 +1167,7 @@ const viVN = {
       selectTools: 'Chọn công cụ',
       resourcesTitle: 'Tài nguyên',
       resourcesDescription:
-        'Chọn tài nguyên MCP và kho tri thức cho Agent Runner này.',
+        'Chọn tài nguyên MCP và kho tri thức cho Runner này.',
       knowledgeBases: 'Kho tri thức',
       mcpResources: 'Tài nguyên MCP',
       mcpResourcesScopeTooltip:

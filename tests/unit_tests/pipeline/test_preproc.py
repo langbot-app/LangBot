@@ -17,7 +17,7 @@ from importlib import import_module
 
 from langbot_plugin.api.entities.builtin.provider import session as provider_session
 
-from langbot.pkg.agent.runner.descriptor import AgentRunnerDescriptor
+from langbot.pkg.agent.runner.descriptor import RunnerDescriptor
 from tests.factories import (
     FakeApp,
     text_query,
@@ -30,8 +30,8 @@ from tests.factories import (
 RUNNER_ID = 'plugin:langbot-team/LocalAgent/default'
 
 
-def attach_agent_runner_descriptor(app):
-    descriptor = AgentRunnerDescriptor(
+def attach_runner_descriptor(app):
+    descriptor = RunnerDescriptor(
         id=RUNNER_ID,
         source='plugin',
         label={'en_US': 'Local Agent'},
@@ -44,8 +44,8 @@ def attach_agent_runner_descriptor(app):
         ],
         capabilities={'tool_calling': True, 'multimodal_input': True},
     )
-    app.agent_runner_registry = Mock()
-    app.agent_runner_registry.get = AsyncMock(return_value=descriptor)
+    app.runner_registry = Mock()
+    app.runner_registry.get = AsyncMock(return_value=descriptor)
     app.tool_mgr.get_resolved_tool_catalog = AsyncMock(return_value=[])
 
 
@@ -334,7 +334,7 @@ class TestPreProcessorModelSelection:
         mock_model = Mock()
         mock_model.model_entity = Mock(uuid='primary-model-uuid', abilities=['func_call'])
         app.model_mgr.get_model_by_uuid = AsyncMock(return_value=mock_model)
-        attach_agent_runner_descriptor(app)
+        attach_runner_descriptor(app)
 
         mock_event_ctx = Mock()
         mock_event_ctx.event = Mock(default_prompt=[], prompt=[])
@@ -393,7 +393,7 @@ class TestPreProcessorModelSelection:
             raise ValueError(f'Model {uuid} not found')
 
         app.model_mgr.get_model_by_uuid = AsyncMock(side_effect=mock_get_model)
-        attach_agent_runner_descriptor(app)
+        attach_runner_descriptor(app)
 
         mock_event_ctx = Mock()
         mock_event_ctx.event = Mock(default_prompt=[], prompt=[])
@@ -518,7 +518,7 @@ class TestPreProcessorToolSelection:
         mock_model = Mock()
         mock_model.model_entity = Mock(uuid='primary-model-uuid', abilities=['func_call'])
         app.model_mgr.get_model_by_uuid = AsyncMock(return_value=mock_model)
-        attach_agent_runner_descriptor(app)
+        attach_runner_descriptor(app)
         app.tool_mgr.get_resolved_tool_catalog = AsyncMock(
             return_value=[
                 {'name': 'exec', 'source': 'builtin'},

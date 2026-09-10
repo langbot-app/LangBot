@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock
 import pytest
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncEngine
 
-from langbot.pkg.agent.runner.descriptor import AgentRunnerDescriptor
+from langbot.pkg.agent.runner.descriptor import RunnerDescriptor
 from langbot.pkg.agent.runner.errors import RunnerExecutionError
 from langbot.pkg.agent.runner.orchestrator import AgentRunOrchestrator
 from langbot.pkg.agent.runner.query_entry_adapter import QueryEntryAdapter
@@ -84,7 +84,7 @@ class FakePluginConnector:
         self.contexts: list[dict] = []
         self.sessions_during_run: list[dict | None] = []
 
-    async def run_agent(self, plugin_author, plugin_name, runner_name, context):
+    async def run_runner(self, plugin_author, plugin_name, runner_name, context):
         self.calls.append(
             {
                 'plugin_author': plugin_author,
@@ -105,7 +105,7 @@ class FakePluginConnector:
 
 
 class FakeRegistry:
-    def __init__(self, descriptor: AgentRunnerDescriptor):
+    def __init__(self, descriptor: RunnerDescriptor):
         self.descriptor = descriptor
         self.calls: list[dict] = []
 
@@ -162,8 +162,8 @@ class FakeConversation:
     create_time = datetime.datetime(2026, 5, 15, 12, 0, 0)
 
 
-def make_descriptor() -> AgentRunnerDescriptor:
-    return AgentRunnerDescriptor(
+def make_descriptor() -> RunnerDescriptor:
+    return RunnerDescriptor(
         id=RUNNER_ID,
         source='plugin',
         label={'en_US': 'Local Agent'},
@@ -798,7 +798,7 @@ async def test_unconsumed_steering_audit_does_not_persist_pinned_context(clean_a
             self.started = asyncio.Event()
             self.release = asyncio.Event()
 
-        async def run_agent(self, plugin_author, plugin_name, runner_name, context):
+        async def run_runner(self, plugin_author, plugin_name, runner_name, context):
             self.calls.append(
                 {
                     'plugin_author': plugin_author,
@@ -998,8 +998,8 @@ class TestQueryEntrySessionQueryId:
             DeliveryPolicy,
             ResourcePolicy,
         )
-        from langbot_plugin.api.entities.builtin.agent_runner.input import AgentInput
-        from langbot_plugin.api.entities.builtin.agent_runner.delivery import DeliveryContext
+        from langbot_plugin.api.entities.builtin.runner.input import AgentInput
+        from langbot_plugin.api.entities.builtin.runner.delivery import DeliveryContext
 
         db_engine = clean_agent_state
         descriptor = make_descriptor()

@@ -1,4 +1,5 @@
 """Agent runner state persistence entity for host-owned state."""
+
 from __future__ import annotations
 
 import sqlalchemy
@@ -7,8 +8,8 @@ import datetime
 from .base import Base
 
 
-class AgentRunnerState(Base):
-    """AgentRunnerState stores host-owned state for AgentRunner protocol.
+class RunnerState(Base):
+    """RunnerState stores host-owned state for Runner protocol.
 
     State is:
     - Host-owned: Managed by LangBot, not by plugin instances
@@ -21,10 +22,10 @@ class AgentRunnerState(Base):
     - subject: runner_id + binding_id + subject_type + subject_id
     - runner: runner_id + binding_id
 
-    This table is the production store for AgentRunner state.
+    This table is the production store for Runner state.
     """
 
-    __tablename__ = 'agent_runner_state'
+    __tablename__ = 'runner_state'
 
     id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True, autoincrement=True)
     """Auto-increment ID for sequencing."""
@@ -77,12 +78,14 @@ class AgentRunnerState(Base):
     created_at = sqlalchemy.Column(sqlalchemy.DateTime, nullable=False, default=datetime.datetime.utcnow)
     """When this state entry was created."""
 
-    updated_at = sqlalchemy.Column(sqlalchemy.DateTime, nullable=False, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+    updated_at = sqlalchemy.Column(
+        sqlalchemy.DateTime, nullable=False, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow
+    )
     """When this state entry was last updated."""
 
     # Unique constraint: scope_key + state_key
     __table_args__ = (
-        sqlalchemy.UniqueConstraint('scope_key', 'state_key', name='uq_agent_runner_state_scope_key_state_key'),
-        sqlalchemy.Index('ix_agent_runner_state_runner_binding', 'runner_id', 'binding_identity'),
-        sqlalchemy.Index('ix_agent_runner_state_scope_key_lookup', 'scope_key'),
+        sqlalchemy.UniqueConstraint('scope_key', 'state_key', name='uq_runner_state_scope_key_state_key'),
+        sqlalchemy.Index('ix_runner_state_runner_binding', 'runner_id', 'binding_identity'),
+        sqlalchemy.Index('ix_runner_state_scope_key_lookup', 'scope_key'),
     )

@@ -6,7 +6,7 @@ import typing
 
 from ...core import app
 from ...api.http.context import ExecutionContext
-from .descriptor import AgentRunnerDescriptor
+from .descriptor import RunnerDescriptor
 from .context_builder import (
     AgentResources,
     ModelResource,
@@ -54,7 +54,7 @@ class AgentResourceBuilder:
         execution_context: ExecutionContext,
         event: AgentEventEnvelope,
         binding: AgentBinding,
-        descriptor: AgentRunnerDescriptor,
+        descriptor: RunnerDescriptor,
     ) -> AgentResources:
         """Build AgentResources from event and binding.
 
@@ -127,7 +127,7 @@ class AgentResourceBuilder:
         execution_context: ExecutionContext,
         manifest_perms: typing.Any,
         resource_policy: typing.Any,
-        descriptor: AgentRunnerDescriptor,
+        descriptor: RunnerDescriptor,
         runner_config: dict[str, typing.Any],
     ) -> list[ModelResource]:
         """Build models list from binding."""
@@ -174,7 +174,7 @@ class AgentResourceBuilder:
         execution_context: ExecutionContext,
         manifest_perms: typing.Any,
         resource_policy: typing.Any,
-        descriptor: AgentRunnerDescriptor,
+        descriptor: RunnerDescriptor,
         runner_config: dict[str, typing.Any],
     ) -> list[ToolResource]:
         """Build tools list from binding."""
@@ -274,7 +274,7 @@ class AgentResourceBuilder:
         execution_context: ExecutionContext,
         manifest_perms: typing.Any,
         resource_policy: typing.Any,
-        descriptor: AgentRunnerDescriptor,
+        descriptor: RunnerDescriptor,
         runner_config: dict[str, typing.Any],
     ) -> list[KnowledgeBaseResource]:
         """Build knowledge bases list from binding."""
@@ -321,7 +321,7 @@ class AgentResourceBuilder:
         self,
         execution_context: ExecutionContext,
         resource_policy: typing.Any,
-        descriptor: AgentRunnerDescriptor,
+        descriptor: RunnerDescriptor,
     ) -> list[SkillResource]:
         """Build pipeline-visible skill resource facts.
 
@@ -372,7 +372,7 @@ class AgentResourceBuilder:
         execution_context: ExecutionContext,
         models: list[ModelResource],
         seen_model_ids: set[str],
-        descriptor: AgentRunnerDescriptor,
+        descriptor: RunnerDescriptor,
         runner_config: dict[str, typing.Any],
         include_llm: bool,
         include_rerank: bool,

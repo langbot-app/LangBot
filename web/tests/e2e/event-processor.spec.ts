@@ -5,7 +5,7 @@ test('create first, select a plugin in the header, debug beside scrollable logs'
   page,
 }) => {
   await installLangBotApiMocks(page, { authenticated: true });
-  const ref = 'event_processor:qa/welcome/default';
+  const ref = 'plugin:qa/welcome/default';
   const processor = {
     uuid: 'processor-qa',
     kind: 'event_processor',

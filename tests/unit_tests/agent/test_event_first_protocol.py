@@ -3,7 +3,7 @@
 Tests cover:
 1. Query -> AgentEventEnvelope conversion
 2. Current config -> AgentConfig projection and single-binding resolution
-3. AgentRunContext not inlining full history by default
+3. RunnerContext not inlining full history by default
 4. LangBot Host not defining context-window controls
 5. Event-first run() entry point
 """
@@ -14,14 +14,14 @@ import pytest
 from unittest.mock import Mock
 
 # Import SDK entities
-from langbot_plugin.api.entities.builtin.agent_runner.event import (
+from langbot_plugin.api.entities.builtin.runner.event import (
     AgentEventContext,
 )
-from langbot_plugin.api.entities.builtin.agent_runner.input import AgentInput
-from langbot_plugin.api.entities.builtin.agent_runner.trigger import AgentTrigger
-from langbot_plugin.api.entities.builtin.agent_runner.context import AgentRunContext
-from langbot_plugin.api.entities.builtin.agent_runner.result import (
-    AgentRunResult,
+from langbot_plugin.api.entities.builtin.runner.input import AgentInput
+from langbot_plugin.api.entities.builtin.runner.trigger import AgentTrigger
+from langbot_plugin.api.entities.builtin.runner.context import RunnerContext
+from langbot_plugin.api.entities.builtin.runner.result import (
+    RunnerResult,
 )
 
 # Import LangBot host models
@@ -263,8 +263,8 @@ class TestQueryConfigToAgentConfig:
             AgentBindingResolver().resolve_one(event, [first, second])
 
 
-class TestAgentRunContextProtocolV1:
-    """Test AgentRunContext Protocol v1 behavior."""
+class TestRunnerContextProtocolV1:
+    """Test RunnerContext Protocol v1 behavior."""
 
     def test_sdk_context_event_required(self):
         """Test that event is required in Protocol v1 context."""
@@ -275,11 +275,11 @@ class TestAgentRunContextProtocolV1:
             source='platform',
         )
         input = AgentInput(text='Hello')
-        from langbot_plugin.api.entities.builtin.agent_runner.resources import AgentResources
-        from langbot_plugin.api.entities.builtin.agent_runner.runtime import AgentRuntimeContext
-        from langbot_plugin.api.entities.builtin.agent_runner.delivery import DeliveryContext
+        from langbot_plugin.api.entities.builtin.runner.resources import AgentResources
+        from langbot_plugin.api.entities.builtin.runner.runtime import AgentRuntimeContext
+        from langbot_plugin.api.entities.builtin.runner.delivery import DeliveryContext
 
-        ctx = AgentRunContext(
+        ctx = RunnerContext(
             run_id='run_1',
             trigger=trigger,
             event=event,
@@ -293,7 +293,7 @@ class TestAgentRunContextProtocolV1:
         assert ctx.event.event_type == 'message.received'
 
     def test_sdk_context_has_no_history_message_fields(self):
-        """AgentRunContext should not expose inline history message fields."""
+        """RunnerContext should not expose inline history message fields."""
         trigger = AgentTrigger(type='message.received')
         event = AgentEventContext(
             event_id='evt_1',
@@ -301,11 +301,11 @@ class TestAgentRunContextProtocolV1:
             source='platform',
         )
         input = AgentInput(text='Hello')
-        from langbot_plugin.api.entities.builtin.agent_runner.resources import AgentResources
-        from langbot_plugin.api.entities.builtin.agent_runner.runtime import AgentRuntimeContext
-        from langbot_plugin.api.entities.builtin.agent_runner.delivery import DeliveryContext
+        from langbot_plugin.api.entities.builtin.runner.resources import AgentResources
+        from langbot_plugin.api.entities.builtin.runner.runtime import AgentRuntimeContext
+        from langbot_plugin.api.entities.builtin.runner.delivery import DeliveryContext
 
-        ctx = AgentRunContext(
+        ctx = RunnerContext(
             run_id='run_1',
             trigger=trigger,
             event=event,
@@ -315,8 +315,8 @@ class TestAgentRunContextProtocolV1:
             runtime=AgentRuntimeContext(),
         )
 
-        assert 'messages' not in AgentRunContext.model_fields
-        assert 'bootstrap' not in AgentRunContext.model_fields
+        assert 'messages' not in RunnerContext.model_fields
+        assert 'bootstrap' not in RunnerContext.model_fields
         assert not hasattr(ctx, 'bootstrap')
 
 
@@ -324,20 +324,20 @@ class TestHostManagedHistoryNotInProtocol:
     """Test that Host-managed history payloads are not in Protocol v1."""
 
     def test_messages_not_in_sdk_context_top_level(self):
-        """AgentRunContext should not expose top-level history messages."""
-        ctx_fields = AgentRunContext.model_fields.keys()
+        """RunnerContext should not expose top-level history messages."""
+        ctx_fields = RunnerContext.model_fields.keys()
 
         assert 'messages' not in ctx_fields
 
 
 class TestSDKResultProtocolV1:
-    """Test SDK AgentRunResult for Protocol v1."""
+    """Test SDK RunnerResult for Protocol v1."""
 
     def test_result_requires_run_id(self):
         """Test result requires run_id for Protocol v1."""
         from langbot_plugin.api.entities.builtin.provider.message import Message
 
-        result = AgentRunResult.message_completed(
+        result = RunnerResult.message_completed(
             run_id='run_1',
             message=Message(role='assistant', content='Hello'),
         )

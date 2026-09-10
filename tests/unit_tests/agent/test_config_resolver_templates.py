@@ -1,4 +1,4 @@
-"""Tests for persisted AgentRunner config templates."""
+"""Tests for persisted Runner config templates."""
 
 from __future__ import annotations
 

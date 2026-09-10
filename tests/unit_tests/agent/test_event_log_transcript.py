@@ -17,11 +17,11 @@ from langbot.pkg.agent.runner.host_models import (
 from langbot.pkg.agent.runner.event_log_store import EventLogStore
 from langbot.pkg.agent.runner.transcript_store import TranscriptStore
 from langbot.pkg.agent.runner.session_registry import get_session_registry
-from langbot_plugin.api.entities.builtin.agent_runner.event import (
+from langbot_plugin.api.entities.builtin.runner.event import (
     ActorContext,
 )
-from langbot_plugin.api.entities.builtin.agent_runner.input import AgentInput
-from langbot_plugin.api.entities.builtin.agent_runner.delivery import DeliveryContext
+from langbot_plugin.api.entities.builtin.runner.input import AgentInput
+from langbot_plugin.api.entities.builtin.runner.delivery import DeliveryContext
 
 
 def make_event_envelope(

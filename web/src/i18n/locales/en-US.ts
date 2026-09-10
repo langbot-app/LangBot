@@ -901,20 +901,20 @@ const enUS = {
     deleteAgentAction: 'Delete this Agent',
     deleteAgentHint:
       'Once deleted, events bound to it can no longer be executed.',
-    noRunnerMetadata: 'No AgentRunner metadata is currently available.',
+    noRunnerMetadata: 'No Runner metadata is currently available.',
     runnerStatusLoading: 'Checking runner status',
     runnerStatusCheckFailed: 'Runner status could not be checked',
     runnerStatusCheckFailedDescription:
       'Retry the check. If it still fails, verify the backend and plugin runtime.',
     noRunnersAvailable: 'No runners are available',
     noRunnersAvailableDescription:
-      'Install and enable an AgentRunner extension before configuring this Agent.',
-    installedRunners: 'Installed AgentRunners',
-    marketplaceRunners: 'AgentRunner plugins in Marketplace',
+      'Install and enable an Runner extension before configuring this Agent.',
+    installedRunners: 'Installed Runners',
+    marketplaceRunners: 'Runner plugins in Marketplace',
     viewMarketplace: 'View market',
     restoringRunnerInstall:
-      'Restoring the AgentRunner plugin installation and waiting for the runner…',
-    noInstalledRunners: 'No AgentRunner extension is installed yet.',
+      'Restoring the Runner plugin installation and waiting for the runner…',
+    noInstalledRunners: 'No Runner extension is installed yet.',
     installingRunner: 'Installing {{runner}}...',
     runnerInstallSuccess: '{{runner}} is installed and ready to select',
     selectedRunnerUnavailable: 'Selected runner is unavailable',
@@ -1092,8 +1092,7 @@ const enUS = {
       KnowledgeEngine: 'Knowledge Engine',
       Parser: 'Parser',
       Page: 'Page',
-      AgentRunner: 'Agent Runner',
-      EventProcessor: 'Event Processor',
+      Runner: 'Runner',
     },
     uploadLocal: 'Upload Local',
     debugging: 'Debugging',
@@ -1280,8 +1279,7 @@ const enUS = {
       KnowledgeEngine: 'Knowledge Engine',
       Parser: 'Parser',
       Page: 'Page',
-      AgentRunner: 'Agent Runner',
-      EventProcessor: 'Event Processor',
+      Runner: 'Runner',
     },
     filterByType: 'Type',
     allTypes: 'All Types',
@@ -1525,14 +1523,14 @@ const enUS = {
       selectSkills: 'Select Skills',
       noSkillsAvailable: 'No skills available',
       mcpServersScopeTooltip:
-        'This only controls which MCP servers are bound to the pipeline. Choose exact MCP tools and resources in AI Feature > Agent Runner.',
+        'This only controls which MCP servers are bound to the pipeline. Choose exact MCP tools and resources in AI Feature > Runner.',
       enableAllMCPServersTooltip:
         'When enabled, all configured and enabled MCP servers become candidates for MCP tools and resources in AI Feature.',
     },
-    agentRunner: {
+    runner: {
       toolsTitle: 'Tools',
       toolsDescription:
-        'Select plugin, MCP, skill, and built-in tools available to this Agent Runner.',
+        'Select plugin, MCP, skill, and built-in tools available to this Runner.',
       toolsScopeTooltip:
         'MCP tools only come from MCP servers bound in Extensions. Bind another MCP server there to make its tools selectable here.',
       enableAllTools: 'Enable all tools',
@@ -1550,7 +1548,7 @@ const enUS = {
       selectTools: 'Select tools',
       resourcesTitle: 'Resources',
       resourcesDescription:
-        'Select MCP resources and knowledge bases available to this Agent Runner.',
+        'Select MCP resources and knowledge bases available to this Runner.',
       knowledgeBases: 'Knowledge bases',
       mcpResources: 'MCP resources',
       mcpResourcesScopeTooltip:
@@ -2527,11 +2525,11 @@ const enUS = {
       createExternal: 'Create and Bind',
       finishWithModel: 'Use Selected Model & Finish',
       openWorkbench: 'Open Workbench',
-      loadingCatalog: 'Loading AgentRunner extensions...',
+      loadingCatalog: 'Loading Runner extensions...',
       catalogUnavailable: 'Runner catalog is unavailable',
       catalogUnavailableDescription:
         'Installed runners are still available. Retry the catalog or browse Extensions.',
-      noMarketplaceRunners: 'No AgentRunner extensions are published yet',
+      noMarketplaceRunners: 'No Runner extensions are published yet',
       noMarketplaceRunnersDescription:
         'Retry after runner extensions are published to the configured Marketplace.',
       browseRunners: 'Browse Runner Extensions',

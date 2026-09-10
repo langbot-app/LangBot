@@ -31,7 +31,8 @@ test('agent and pipeline details share the split processor workbench', () => {
     /lg:grid-cols-\[minmax\(20rem,0\.72fr\)_minmax\(0,1\.28fr\)\]/,
   );
   assert.ok(
-    workbench.indexOf('{debugContent}') < workbench.indexOf('{configContent}'),
+    workbench.indexOf('{debugContent}') <
+      workbench.lastIndexOf('{configPanel}'),
   );
   assert.match(agentDetail, /<ProcessorDetailWorkbench/);
   assert.match(agentDetail, /debugContent=/);

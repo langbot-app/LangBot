@@ -5,7 +5,14 @@ import { env as processEnv, execPath } from "node:process";
 import type { CommandContext, StructuredItem } from "../types.ts";
 import { parseOptions, usage } from "../cli.ts";
 import { caseEvidenceValues, testResultStatusValues } from "../constants.ts";
-import { boolValue, findStructuredItem, listValue, loadEnv, loadStructuredItems, scalar } from "../fs.ts";
+import {
+  boolValue,
+  findStructuredItem,
+  listValue,
+  loadEnv,
+  loadStructuredItems,
+  scalar,
+} from "../fs.ts";
 import { splitEnvAnyGroup } from "../env-groups.ts";
 import {
   readAutomationResultEvidence,
@@ -202,7 +209,10 @@ type TestRecommendReport = {
   notes: string[];
 };
 
-function relatedTroubleshooting(root: string, item: StructuredItem): StructuredItem[] {
+function relatedTroubleshooting(
+  root: string,
+  item: StructuredItem,
+): StructuredItem[] {
   return listValue(item.fields, "troubleshooting")
     .map((id) => {
       try {
@@ -222,7 +232,9 @@ function findCase(root: string, args: string[]): StructuredItem {
     : findStructuredItem(root, "cases", args[0], args[1]);
 }
 
-function caseSummary(item: StructuredItem): Record<string, string | boolean | string[]> {
+function caseSummary(
+  item: StructuredItem,
+): Record<string, string | boolean | string[]> {
   return {
     skill: item.skill,
     id: scalar(item.fields, "id"),
@@ -268,10 +280,12 @@ function reportTemplate(mode: string): Record<string, string> {
   if (isProbeMode(mode)) {
     return {
       result: "pass | fail | blocked | env_issue | flaky",
-      target_tested: "Probe target, endpoint, file, command, or service actually checked",
+      target_tested:
+        "Probe target, endpoint, file, command, or service actually checked",
       execution_path: "automation script | shell command | direct API | other",
       probe_result: "What the probe observed",
-      metrics_or_artifacts: "Metrics, logs, filesystem artifacts, traces, or profiles collected",
+      metrics_or_artifacts:
+        "Metrics, logs, filesystem artifacts, traces, or profiles collected",
       diagnostics: "Extra diagnostics used, if any",
       matched_troubleshooting: "Troubleshooting ids matched, if any",
       assets_to_update: "New case/reference/troubleshooting entries to add",
@@ -317,10 +331,13 @@ function manualEvidenceTemplate(mode: string): ManualEvidenceTemplate {
   if (isProbeMode(mode)) {
     return {
       result: "pass | fail | blocked | env_issue | flaky",
-      target_tested: "TODO: probe target, endpoint, file, command, or service actually checked",
-      execution_path: "TODO: automation script | shell command | direct API | other",
+      target_tested:
+        "TODO: probe target, endpoint, file, command, or service actually checked",
+      execution_path:
+        "TODO: automation script | shell command | direct API | other",
       probe_result: "TODO: observed probe result",
-      metrics_or_artifacts: "TODO: metrics, logs, filesystem artifacts, traces, or profiles collected",
+      metrics_or_artifacts:
+        "TODO: metrics, logs, filesystem artifacts, traces, or profiles collected",
       diagnostics: "TODO: additional diagnostics used, if any",
       matched_troubleshooting: "TODO: troubleshooting ids matched, if any",
       assets_to_update: "TODO: case/reference/troubleshooting updates to make",
@@ -335,7 +352,8 @@ function manualEvidenceTemplate(mode: string): ManualEvidenceTemplate {
     console_errors: "TODO: unexpected browser console errors or none",
     network_symptoms: "TODO: failed requests, websocket issues, or none",
     backend_logs: "TODO: relevant backend log lines or skipped reason",
-    frontend_logs: "TODO: relevant frontend dev-server log lines or skipped reason",
+    frontend_logs:
+      "TODO: relevant frontend dev-server log lines or skipped reason",
     screenshots: "TODO: screenshot paths or skipped reason",
     diagnostics: "TODO: API/curl/log diagnostics used, if any",
     matched_troubleshooting: "TODO: troubleshooting ids matched, if any",
@@ -343,7 +361,10 @@ function manualEvidenceTemplate(mode: string): ManualEvidenceTemplate {
   };
 }
 
-function existingEvidencePath(evidence: Record<string, string> | undefined, key: string): string {
+function existingEvidencePath(
+  evidence: Record<string, string> | undefined,
+  key: string,
+): string {
   const path = evidence?.[key];
   return path && existsSync(path) ? path : "";
 }
@@ -360,38 +381,63 @@ function renderAutomationEvidence(
   const consoleLog = existingEvidencePath(automation.evidence, "console_log");
   const networkLog = existingEvidencePath(automation.evidence, "network_log");
   const apiDiagnostics = Object.entries(automation.evidence ?? {})
-    .filter(([key, value]) => key.endsWith("_diagnostic_json") && value && existsSync(value))
+    .filter(
+      ([key, value]) =>
+        key.endsWith("_diagnostic_json") && value && existsSync(value),
+    )
     .map(([, value]) => value);
   const successLines = logGuard.success_signals
-    .map((signal) => signal.excerpt || `${signal.source}:${signal.line ?? ""} ${signal.pattern}`.trim())
+    .map(
+      (signal) =>
+        signal.excerpt ||
+        `${signal.source}:${signal.line ?? ""} ${signal.pattern}`.trim(),
+    )
     .slice(0, 3);
   const findings = logGuard.findings
-    .map((finding) => `${finding.severity}/${finding.kind}${finding.excerpt ? `: ${finding.excerpt}` : ""}`)
+    .map(
+      (finding) =>
+        `${finding.severity}/${finding.kind}${finding.excerpt ? `: ${finding.excerpt}` : ""}`,
+    )
     .slice(0, 3);
   const chatSummary = automation.chat_results?.length
     ? automation.chat_results
-      .map((item) => `#${(item.index ?? 0) + 1} ${item.status ?? "unknown"} ${item.expected_text ?? ""}`.trim())
-      .join("; ")
+        .map((item) =>
+          `#${(item.index ?? 0) + 1} ${item.status ?? "unknown"} ${item.expected_text ?? ""}`.trim(),
+        )
+        .join("; ")
     : automation.reason || "";
-  const diagnostics = [
-    automation.browser_diagnostics?.reason,
-    apiDiagnostics.length ? `api diagnostics: ${apiDiagnostics.join(", ")}` : "",
-  ].filter(Boolean).join("; ") || "No extra diagnostics recorded.";
+  const diagnostics =
+    [
+      automation.browser_diagnostics?.reason,
+      apiDiagnostics.length
+        ? `api diagnostics: ${apiDiagnostics.join(", ")}`
+        : "",
+    ]
+      .filter(Boolean)
+      .join("; ") || "No extra diagnostics recorded.";
 
   if (isProbe) {
     return {
       result: automation.result || "unknown",
-      target_tested: String(automation.url || automation.path || "automation target"),
+      target_tested: String(
+        automation.url || automation.path || "automation target",
+      ),
       execution_path: "automation script",
       probe_result: automation.reason || chatSummary || "Automation completed.",
-      logs_or_artifacts: [
-        consoleLog ? `console=${consoleLog}` : "",
-        networkLog ? `network=${networkLog}` : "",
-        automation.path ? `automation=${automation.path}` : "",
-      ].filter(Boolean).join(", ") || "No log artifacts recorded.",
+      logs_or_artifacts:
+        [
+          consoleLog ? `console=${consoleLog}` : "",
+          networkLog ? `network=${networkLog}` : "",
+          automation.path ? `automation=${automation.path}` : "",
+        ]
+          .filter(Boolean)
+          .join(", ") || "No log artifacts recorded.",
       diagnostics,
       matched_troubleshooting: findings.length ? findings.join(" | ") : "None.",
-      assets_to_update: automation.result === "pass" ? "None." : "Review case/troubleshooting assets if this failure is expected to recur.",
+      assets_to_update:
+        automation.result === "pass"
+          ? "None."
+          : "Review case/troubleshooting assets if this failure is expected to recur.",
     };
   }
 
@@ -400,27 +446,43 @@ function renderAutomationEvidence(
     url_tested: automation.url || "Not recorded.",
     browser_path: "direct Playwright automation",
     ui_result: chatSummary || automation.reason || "Automation completed.",
-    console_errors: automation.browser_diagnostics?.status === "fail"
-      ? automation.browser_diagnostics.reason || "Browser diagnostics failed."
-      : "None found by browser diagnostics.",
-    network_symptoms: networkLog ? `Captured in ${networkLog}` : "No network log artifact recorded.",
+    console_errors:
+      automation.browser_diagnostics?.status === "fail"
+        ? automation.browser_diagnostics.reason || "Browser diagnostics failed."
+        : "None found by browser diagnostics.",
+    network_symptoms: networkLog
+      ? `Captured in ${networkLog}`
+      : "No network log artifact recorded.",
     backend_logs: successLines.length
       ? successLines.join(" | ")
       : `Log Guard status: ${logGuard.status}${findings.length ? `; ${findings.join(" | ")}` : ""}`,
-    frontend_logs: consoleLog ? `Captured in ${consoleLog}` : "No frontend console log artifact recorded.",
+    frontend_logs: consoleLog
+      ? `Captured in ${consoleLog}`
+      : "No frontend console log artifact recorded.",
     screenshots: screenshot || "No screenshot artifact recorded.",
     diagnostics,
     matched_troubleshooting: findings.length ? findings.join(" | ") : "None.",
-    assets_to_update: automation.result === "pass" ? "None." : "Review case/troubleshooting assets if this failure is expected to recur.",
+    assets_to_update:
+      automation.result === "pass"
+        ? "None."
+        : "Review case/troubleshooting assets if this failure is expected to recur.",
   };
 }
 
-function envSummary(item: StructuredItem, env: Record<string, string>): Record<string, string> {
+function envSummary(
+  item: StructuredItem,
+  env: Record<string, string>,
+): Record<string, string> {
   const keys = [
     ...listValue(item.fields, "env"),
     ...listValue(item.fields, "env_any").flatMap(splitEnvAnyGroup),
   ];
-  return Object.fromEntries(Array.from(new Set(keys)).map((key) => [key, redactEnvValue(key, env[key] ?? "")]));
+  return Object.fromEntries(
+    Array.from(new Set(keys)).map((key) => [
+      key,
+      redactEnvValue(key, env[key] ?? ""),
+    ]),
+  );
 }
 
 function buildPlan(root: string, item: StructuredItem): TestPlan {
@@ -480,47 +542,67 @@ export function commandTestPlan(ctx: CommandContext): number {
   console.log(plan.principle);
   console.log("");
   console.log("## Environment");
-  for (const [key, value] of Object.entries(plan.env)) console.log(`- ${key}=${value}`);
-  if (plan.env_readiness.missing.length > 0) console.log(`- missing: ${plan.env_readiness.missing.join(", ")}`);
+  for (const [key, value] of Object.entries(plan.env))
+    console.log(`- ${key}=${value}`);
+  if (plan.env_readiness.missing.length > 0)
+    console.log(`- missing: ${plan.env_readiness.missing.join(", ")}`);
   console.log("");
   console.log("## Automation Readiness");
   console.log(`- status: ${plan.automation_readiness.status}`);
-  if (plan.automation_readiness.script) console.log(`- script: ${plan.automation_readiness.script}`);
-  if (plan.automation_readiness.pipeline_env_required) console.log("- pipeline env: case-specific required");
-  if (plan.automation_readiness.missing.length > 0) console.log(`- missing: ${plan.automation_readiness.missing.join(", ")}`);
-  if (plan.automation_readiness.defaulted.length > 0) console.log(`- case defaults: ${plan.automation_readiness.defaulted.join(", ")}`);
+  if (plan.automation_readiness.script)
+    console.log(`- script: ${plan.automation_readiness.script}`);
+  if (plan.automation_readiness.pipeline_env_required)
+    console.log("- pipeline env: case-specific required");
+  if (plan.automation_readiness.missing.length > 0)
+    console.log(`- missing: ${plan.automation_readiness.missing.join(", ")}`);
+  if (plan.automation_readiness.defaulted.length > 0)
+    console.log(
+      `- case defaults: ${plan.automation_readiness.defaulted.join(", ")}`,
+    );
   for (const alias of plan.automation_readiness.env_aliases) {
-    console.log(`- alias: ${alias.target} <- ${alias.source} (${alias.configured ? "configured" : "missing"})`);
+    console.log(
+      `- alias: ${alias.target} <- ${alias.source} (${alias.configured ? "configured" : "missing"})`,
+    );
   }
   console.log("");
   console.log("## Fixture Readiness");
   console.log(`- status: ${plan.fixture_readiness.status}`);
   for (const fixture of plan.fixture_readiness.required) {
-    console.log(`- ${fixture.id}: ${fixture.exists ? "present" : "missing"} (${fixture.path})`);
+    console.log(
+      `- ${fixture.id}: ${fixture.exists ? "present" : "missing"} (${fixture.path})`,
+    );
   }
   console.log("");
   console.log("## Manual Readiness");
   console.log(`- status: ${plan.manual_readiness.status}`);
-  if (plan.preconditions.length === 0) console.log("- preconditions: none declared");
-  for (const precondition of plan.preconditions) console.log(`- precondition: ${precondition}`);
-  if (plan.setup.length > 0) for (const item of plan.setup) console.log(`- setup: ${item}`);
+  if (plan.preconditions.length === 0)
+    console.log("- preconditions: none declared");
+  for (const precondition of plan.preconditions)
+    console.log(`- precondition: ${precondition}`);
+  if (plan.setup.length > 0)
+    for (const item of plan.setup) console.log(`- setup: ${item}`);
   if (plan.setup_automation.length > 0) {
-    for (const item of plan.setup_automation) console.log(`- setup automation: ${item}`);
+    for (const item of plan.setup_automation)
+      console.log(`- setup automation: ${item}`);
   }
-  if (plan.setup_provides_env.length > 0) console.log(`- setup provides env: ${plan.setup_provides_env.join(", ")}`);
-  if (plan.cleanup.length > 0) for (const item of plan.cleanup) console.log(`- cleanup: ${item}`);
+  if (plan.setup_provides_env.length > 0)
+    console.log(`- setup provides env: ${plan.setup_provides_env.join(", ")}`);
+  if (plan.cleanup.length > 0)
+    for (const item of plan.cleanup) console.log(`- cleanup: ${item}`);
   console.log("");
   console.log("## Required Skills");
   for (const skill of plan.required_skills) console.log(`- ${skill}`);
   console.log("");
   console.log(`## ${stepHeading(plan.mode)}`);
-  for (const [index, step] of plan.steps.entries()) console.log(`${index + 1}. ${step}`);
+  for (const [index, step] of plan.steps.entries())
+    console.log(`${index + 1}. ${step}`);
   console.log("");
   console.log("## Checks");
   for (const check of plan.checks) console.log(`- ${check}`);
   console.log("");
   console.log("## Diagnostics");
-  if (plan.diagnostics.length === 0) console.log("- Optional: use API/curl/logs only to diagnose failures.");
+  if (plan.diagnostics.length === 0)
+    console.log("- Optional: use API/curl/logs only to diagnose failures.");
   for (const diagnostic of plan.diagnostics) console.log(`- ${diagnostic}`);
   console.log("");
   if (plan.visual_checks.length > 0) {
@@ -547,7 +629,8 @@ export function commandTestPlan(ctx: CommandContext): number {
   }
   console.log("");
   console.log("## Report Template");
-  for (const [key, value] of Object.entries(plan.report_template)) console.log(`- ${key}: ${value}`);
+  for (const [key, value] of Object.entries(plan.report_template))
+    console.log(`- ${key}: ${value}`);
   return 0;
 }
 
@@ -556,11 +639,18 @@ function normalizeChangedPath(path: string): string {
 }
 
 function isChangedFilePath(path: string): boolean {
-  return Boolean(path) && !path.endsWith("/") && !path.startsWith("--- ") && !path.startsWith("+++ ");
+  return (
+    Boolean(path) &&
+    !path.endsWith("/") &&
+    !path.startsWith("--- ") &&
+    !path.startsWith("+++ ")
+  );
 }
 
 function existingCaseIds(root: string): Set<string> {
-  return new Set(loadStructuredItems(root, "cases").map((item) => scalar(item.fields, "id")));
+  return new Set(
+    loadStructuredItems(root, "cases").map((item) => scalar(item.fields, "id")),
+  );
 }
 
 function addRecommendation(
@@ -588,21 +678,44 @@ function changedFilesFromGit(repo: string, prefix: string): string[] {
     if (result.status !== 0) continue;
     for (const raw of result.stdout.split(/\r?\n/)) {
       if (!raw.trim()) continue;
-      const file = args[0] === "status"
-        ? raw.slice(3).trim().split(/\s+->\s+/).pop() ?? ""
-        : raw.trim();
-      if (isChangedFilePath(file)) files.push(`${prefix}/${normalizeChangedPath(file)}`);
+      const file =
+        args[0] === "status"
+          ? (raw
+              .slice(3)
+              .trim()
+              .split(/\s+->\s+/)
+              .pop() ?? "")
+          : raw.trim();
+      if (isChangedFilePath(file))
+        files.push(`${prefix}/${normalizeChangedPath(file)}`);
     }
   }
   return files;
 }
 
-function repoCandidates(root: string, env: Record<string, string>): Array<{ path: string; prefix: string }> {
+function repoCandidates(
+  root: string,
+  env: Record<string, string>,
+): Array<{ path: string; prefix: string }> {
   return [
-    { path: env.LANGBOT_REPO || resolve(root, "../LangBot"), prefix: "LangBot" },
-    { path: env.LANGBOT_PLUGIN_SDK_REPO || resolve(root, "../langbot-plugin-sdk"), prefix: "langbot-plugin-sdk" },
-    { path: env.LANGBOT_AGENT_RUNNER_REPO || resolve(root, "../langbot-agent-runner"), prefix: "langbot-agent-runner" },
-    { path: env.LANGBOT_LOCAL_AGENT_REPO || resolve(root, "../langbot-local-agent"), prefix: "langbot-local-agent" },
+    {
+      path: env.LANGBOT_REPO || resolve(root, "../LangBot"),
+      prefix: "LangBot",
+    },
+    {
+      path:
+        env.LANGBOT_PLUGIN_SDK_REPO || resolve(root, "../langbot-plugin-sdk"),
+      prefix: "langbot-plugin-sdk",
+    },
+    {
+      path: env.LANGBOT_RUNNER_REPO || resolve(root, "../langbot-agent-runner"),
+      prefix: "langbot-agent-runner",
+    },
+    {
+      path:
+        env.LANGBOT_LOCAL_AGENT_REPO || resolve(root, "../langbot-local-agent"),
+      prefix: "langbot-local-agent",
+    },
   ];
 }
 
@@ -621,57 +734,175 @@ function changedFiles(root: string, explicitFiles: string[]): string[] {
   if (explicit.length > 0) return Array.from(new Set(explicit));
 
   const env = runtimeEnv(root);
-  const files = repoCandidates(root, env).flatMap((repo) => changedFilesFromGit(repo.path, repo.prefix));
+  const files = repoCandidates(root, env).flatMap((repo) =>
+    changedFilesFromGit(repo.path, repo.prefix),
+  );
   return Array.from(new Set(files)).sort();
 }
 
-function buildRecommendations(root: string, files: string[]): TestRecommendation[] {
+function buildRecommendations(
+  root: string,
+  files: string[],
+): TestRecommendation[] {
   const existing = existingCaseIds(root);
   const recommendations: TestRecommendation[] = [];
   const text = files.map(normalizeChangedPath);
   const has = (pattern: RegExp) => text.some((file) => pattern.test(file));
 
-  if (has(/(^|\/)(result_normalizer|orchestrator|descriptor|errors)\.py$/) || has(/agent_runner\/result\.py$/)) {
-    addRecommendation(recommendations, existing, "agent-runner-fixture-contract", "Deterministic AgentRunner fixture contract should still execute.");
-    addRecommendation(recommendations, existing, "agent-runner-behavior-matrix", "AgentRunner result/orchestration contract changed.");
+  if (
+    has(/(^|\/)(result_normalizer|orchestrator|descriptor|errors)\.py$/) ||
+    has(/runner\/result\.py$/)
+  ) {
+    addRecommendation(
+      recommendations,
+      existing,
+      "agent-runner-fixture-contract",
+      "Deterministic Runner fixture contract should still execute.",
+    );
+    addRecommendation(
+      recommendations,
+      existing,
+      "agent-runner-behavior-matrix",
+      "Runner result/orchestration contract changed.",
+    );
   }
-  if (has(/fixtures\/plugins\/qa-agent-runner|components\/agent_runner|manifest\.ya?ml$/)) {
-    addRecommendation(recommendations, existing, "agent-runner-fixture-contract", "AgentRunner fixture or runner manifest changed.");
-    addRecommendation(recommendations, existing, "agent-runner-live-install", "AgentRunner plugin package should still install and register.");
-    addRecommendation(recommendations, existing, "agent-runner-qa-debug-chat", "Installed QA AgentRunner should still execute through Debug Chat.");
+  if (
+    has(
+      /fixtures\/plugins\/qa-agent-runner|components\/runner|manifest\.ya?ml$/,
+    )
+  ) {
+    addRecommendation(
+      recommendations,
+      existing,
+      "agent-runner-fixture-contract",
+      "Runner fixture or runner manifest changed.",
+    );
+    addRecommendation(
+      recommendations,
+      existing,
+      "agent-runner-live-install",
+      "Runner plugin package should still install and register.",
+    );
+    addRecommendation(
+      recommendations,
+      existing,
+      "agent-runner-qa-debug-chat",
+      "Installed QA Runner should still execute through Debug Chat.",
+    );
   }
   if (has(/fixtures\/plugins\/qa-plugin-smoke|qa_plugin_|qa-plugin-smoke/i)) {
-    addRecommendation(recommendations, existing, "qa-plugin-smoke-live-install", "QA plugin smoke fixture should install and expose tools.");
+    addRecommendation(
+      recommendations,
+      existing,
+      "qa-plugin-smoke-live-install",
+      "QA plugin smoke fixture should install and expose tools.",
+    );
   }
-  if (has(/(run_ledger|agent_run\.py|run_ledger\.py|alembic.*agent_run|test_run_ledger)/i)) {
-    addRecommendation(recommendations, existing, "agent-runner-ledger-invariants", "Run ledger schema/status code changed.");
-    addRecommendation(recommendations, existing, "agent-runner-ledger-stress", "Run ledger queue/claim behavior changed.");
-    addRecommendation(recommendations, existing, "agent-runner-ledger-contention", "Run ledger claim behavior changed; check local write contention.");
-    addRecommendation(recommendations, existing, "agent-runner-async-db-readiness", "Async DB readiness gates ledger concurrency probes.");
-    addRecommendation(recommendations, existing, "agent-runner-ledger-concurrency", "Run ledger concurrency/auth tests are relevant.");
+  if (
+    has(
+      /(run_ledger|agent_run\.py|run_ledger\.py|alembic.*agent_run|test_run_ledger)/i,
+    )
+  ) {
+    addRecommendation(
+      recommendations,
+      existing,
+      "agent-runner-ledger-invariants",
+      "Run ledger schema/status code changed.",
+    );
+    addRecommendation(
+      recommendations,
+      existing,
+      "agent-runner-ledger-stress",
+      "Run ledger queue/claim behavior changed.",
+    );
+    addRecommendation(
+      recommendations,
+      existing,
+      "agent-runner-ledger-contention",
+      "Run ledger claim behavior changed; check local write contention.",
+    );
+    addRecommendation(
+      recommendations,
+      existing,
+      "agent-runner-async-db-readiness",
+      "Async DB readiness gates ledger concurrency probes.",
+    );
+    addRecommendation(
+      recommendations,
+      existing,
+      "agent-runner-ledger-concurrency",
+      "Run ledger concurrency/auth tests are relevant.",
+    );
   }
-  if (has(/(plugin\/handler|agent_run_api|history_event_api|state_api|pull_api|runtime\/plugin|test_mgr_agent_runner|test_pull_api_handlers)/)) {
-    addRecommendation(recommendations, existing, "agent-runner-runtime-chaos", "SDK/runtime or Host action handling changed.");
+  if (
+    has(
+      /(plugin\/handler|agent_run_api|history_event_api|state_api|pull_api|runtime\/plugin|test_mgr_runner|test_pull_api_handlers)/,
+    )
+  ) {
+    addRecommendation(
+      recommendations,
+      existing,
+      "agent-runner-runtime-chaos",
+      "SDK/runtime or Host action handling changed.",
+    );
   }
   if (has(/(LangBot\/web\/|^web\/|control-plane|frontend|\/page|\/pages)/)) {
-    addRecommendation(recommendations, existing, "agent-runner-release-preflight", "UI/control-plane surface changed; preflight catches wrong live target.");
-    addRecommendation(recommendations, existing, "webui-login-state", "Browser session must still reach LangBot WebUI.");
+    addRecommendation(
+      recommendations,
+      existing,
+      "agent-runner-release-preflight",
+      "UI/control-plane surface changed; preflight catches wrong live target.",
+    );
+    addRecommendation(
+      recommendations,
+      existing,
+      "webui-login-state",
+      "Browser session must still reach LangBot WebUI.",
+    );
   }
   if (has(/(local-agent|context|compaction|rag|tool|mcp|multimodal)/i)) {
-    addRecommendation(recommendations, existing, "qa-plugin-smoke-live-install", "Tool-loop checks depend on the QA plugin smoke fixture.");
-    addRecommendation(recommendations, existing, "local-agent-basic-debug-chat", "Local-agent user path may be affected.");
-    addRecommendation(recommendations, existing, "local-agent-plugin-tool-call-debug-chat", "Tool-loop changes need browser evidence.");
+    addRecommendation(
+      recommendations,
+      existing,
+      "qa-plugin-smoke-live-install",
+      "Tool-loop checks depend on the QA plugin smoke fixture.",
+    );
+    addRecommendation(
+      recommendations,
+      existing,
+      "local-agent-basic-debug-chat",
+      "Local-agent user path may be affected.",
+    );
+    addRecommendation(
+      recommendations,
+      existing,
+      "local-agent-plugin-tool-call-debug-chat",
+      "Tool-loop changes need browser evidence.",
+    );
   }
   if (has(/(^|\/)(acp|claude|codex)(\/|-)|langbot-agent-runner\//i)) {
-    addRecommendation(recommendations, existing, "acp-agent-runner-debug-chat", "External AgentRunner path may be affected.");
+    addRecommendation(
+      recommendations,
+      existing,
+      "acp-agent-runner-debug-chat",
+      "External Runner path may be affected.",
+    );
   }
   if (recommendations.length === 0) {
-    addRecommendation(recommendations, existing, "agent-runner-release-preflight", "No narrow AgentRunner rule matched; start with preflight if this branch touches runner behavior.");
+    addRecommendation(
+      recommendations,
+      existing,
+      "agent-runner-release-preflight",
+      "No narrow Runner rule matched; start with preflight if this branch touches runner behavior.",
+    );
   }
   return recommendations;
 }
 
-function buildRecommendReport(root: string, explicitFiles: string[]): TestRecommendReport {
+function buildRecommendReport(
+  root: string,
+  explicitFiles: string[],
+): TestRecommendReport {
   const files = changedFiles(root, explicitFiles);
   const recommendations = buildRecommendations(root, files);
   return {
@@ -698,7 +929,10 @@ function renderRecommendReport(report: TestRecommendReport): string {
   lines.push(`Generated: ${report.generated_at}`);
   lines.push("");
   lines.push("## Changed Files");
-  if (report.changed_files.length === 0) lines.push("- None detected. Pass --file <path> to recommend from explicit paths.");
+  if (report.changed_files.length === 0)
+    lines.push(
+      "- None detected. Pass --file <path> to recommend from explicit paths.",
+    );
   else for (const file of report.changed_files) lines.push(`- ${file}`);
   lines.push("");
   lines.push("## Recommended Cases");
@@ -717,7 +951,10 @@ function renderRecommendReport(report: TestRecommendReport): string {
 
 export function commandTestRecommend(ctx: CommandContext): number {
   const { options } = parseOptions(ctx.args.slice(2));
-  const report = buildRecommendReport(ctx.root, repeatedOptionValues(ctx.args.slice(2), "file"));
+  const report = buildRecommendReport(
+    ctx.root,
+    repeatedOptionValues(ctx.args.slice(2), "file"),
+  );
   if (options.json === true) console.log(JSON.stringify(report, null, 2));
   else console.log(renderRecommendReport(report).trimEnd());
   return 0;
@@ -760,17 +997,25 @@ function automationScript(item: StructuredItem): string {
 }
 
 function setupCaseExists(root: string, target: string): boolean {
-  return loadStructuredItems(root, "cases").some((item) => scalar(item.fields, "id") === target);
+  return loadStructuredItems(root, "cases").some(
+    (item) => scalar(item.fields, "id") === target,
+  );
 }
 
-function setupAutomation(root: string, item: StructuredItem, runId: string, evidenceRoot: string): SetupAutomation[] {
+function setupAutomation(
+  root: string,
+  item: StructuredItem,
+  runId: string,
+  evidenceRoot: string,
+): SetupAutomation[] {
   return setupAutomationEntries(item).map((entry, index) => {
     const spec = parseSetupAutomationEntry(entry);
     const evidenceDir = join("setup", setupAutomationEvidenceName(index, spec));
     const fullEvidenceDir = join(evidenceRoot, evidenceDir);
-    const command = spec.kind === "case"
-      ? `bin/lbs test run ${spec.target} --run-id ${runId}-${spec.target} --output ${fullEvidenceDir}`
-      : `node ${spec.target}${spec.args.length > 0 ? ` ${spec.args.join(" ")}` : ""}`;
+    const command =
+      spec.kind === "case"
+        ? `bin/lbs test run ${spec.target} --run-id ${runId}-${spec.target} --output ${fullEvidenceDir}`
+        : `node ${spec.target}${spec.args.length > 0 ? ` ${spec.args.join(" ")}` : ""}`;
     const dryRunCommand = spec.kind === "case" ? `${command} --dry-run` : "";
     return {
       entry,
@@ -780,7 +1025,10 @@ function setupAutomation(root: string, item: StructuredItem, runId: string, evid
       command,
       dry_run_command: dryRunCommand,
       evidence_dir: fullEvidenceDir,
-      exists: spec.kind === "case" ? setupCaseExists(root, spec.target) : existsSync(setupAutomationScriptPath(root, spec)),
+      exists:
+        spec.kind === "case"
+          ? setupCaseExists(root, spec.target)
+          : existsSync(setupAutomationScriptPath(root, spec)),
     };
   });
 }
@@ -806,16 +1054,27 @@ function buildTestResult(
   const errors: string[] = [];
   const status = typeof options.result === "string" ? options.result : "";
   const reason = typeof options.reason === "string" ? options.reason : "";
-  const evidenceDir = typeof options["evidence-dir"] === "string" ? options["evidence-dir"] : "";
+  const evidenceDir =
+    typeof options["evidence-dir"] === "string" ? options["evidence-dir"] : "";
   const now = new Date();
   const writtenAtLocal = localIsoWithOffset(now);
-  const startedAtLocal = typeof options["started-at"] === "string" ? options["started-at"] : writtenAtLocal;
-  const finishedAtLocal = typeof options["finished-at"] === "string" ? options["finished-at"] : writtenAtLocal;
+  const startedAtLocal =
+    typeof options["started-at"] === "string"
+      ? options["started-at"]
+      : writtenAtLocal;
+  const finishedAtLocal =
+    typeof options["finished-at"] === "string"
+      ? options["finished-at"]
+      : writtenAtLocal;
   const startedAt = isoFromDateInput(startedAtLocal);
   const finishedAt = isoFromDateInput(finishedAtLocal);
-  const evidenceCollected = commaList(typeof options.evidence === "string" ? options.evidence : undefined);
+  const evidenceCollected = commaList(
+    typeof options.evidence === "string" ? options.evidence : undefined,
+  );
   const evidenceRequired = listValue(item.fields, "evidence_required");
-  const evidenceMissing = evidenceRequired.filter((value) => !evidenceCollected.includes(value));
+  const evidenceMissing = evidenceRequired.filter(
+    (value) => !evidenceCollected.includes(value),
+  );
 
   if (!status) errors.push("--result is required");
   else if (!testResultStatusValues.includes(status)) {
@@ -823,15 +1082,20 @@ function buildTestResult(
   }
   if (!reason) errors.push("--reason is required");
   if (!evidenceDir) errors.push("--evidence-dir is required");
-  if (!startedAt) errors.push(`--started-at is not a valid date/time: ${startedAtLocal}`);
-  if (!finishedAt) errors.push(`--finished-at is not a valid date/time: ${finishedAtLocal}`);
+  if (!startedAt)
+    errors.push(`--started-at is not a valid date/time: ${startedAtLocal}`);
+  if (!finishedAt)
+    errors.push(`--finished-at is not a valid date/time: ${finishedAtLocal}`);
 
   const allowedEvidence = new Set(caseEvidenceValues);
   for (const value of evidenceCollected) {
-    if (!allowedEvidence.has(value)) errors.push(`--evidence contains unsupported value '${value}'`);
+    if (!allowedEvidence.has(value))
+      errors.push(`--evidence contains unsupported value '${value}'`);
   }
   if (status === "pass" && evidenceMissing.length > 0) {
-    errors.push(`pass result is missing required evidence: ${evidenceMissing.join(", ")}`);
+    errors.push(
+      `pass result is missing required evidence: ${evidenceMissing.join(", ")}`,
+    );
   }
 
   if (errors.length > 0) return { errors };
@@ -842,7 +1106,10 @@ function buildTestResult(
     result: {
       source: "final",
       case_id: scalar(item.fields, "id"),
-      run_id: typeof options["run-id"] === "string" ? options["run-id"] : resolvedEvidenceDir.split(/[\\/]/).pop() ?? "",
+      run_id:
+        typeof options["run-id"] === "string"
+          ? options["run-id"]
+          : (resolvedEvidenceDir.split(/[\\/]/).pop() ?? ""),
       written_at: now.toISOString(),
       written_at_local: writtenAtLocal,
       started_at: startedAt,
@@ -852,7 +1119,10 @@ function buildTestResult(
       status,
       reason,
       url: typeof options.url === "string" ? options.url : "",
-      browser_path: typeof options["browser-path"] === "string" ? options["browser-path"] : "",
+      browser_path:
+        typeof options["browser-path"] === "string"
+          ? options["browser-path"]
+          : "",
       evidence_dir: evidenceDir,
       evidence_collected: evidenceCollected,
       evidence_required: evidenceRequired,
@@ -873,7 +1143,8 @@ function renderTestResult(result: TestResultRecord): string {
   lines.push(`Reason: ${result.reason}`);
   lines.push(`Evidence dir: ${result.evidence_dir}`);
   lines.push(`Evidence status: ${result.evidence_status}`);
-  if (result.evidence_missing.length > 0) lines.push(`Evidence missing: ${result.evidence_missing.join(", ")}`);
+  if (result.evidence_missing.length > 0)
+    lines.push(`Evidence missing: ${result.evidence_missing.join(", ")}`);
   if (result.url) lines.push(`URL: ${result.url}`);
   if (result.browser_path) lines.push(`Browser path: ${result.browser_path}`);
   if (result.report_path) lines.push(`Report: ${result.report_path}`);
@@ -884,7 +1155,11 @@ function renderTestResult(result: TestResultRecord): string {
   return `${lines.join("\n").trimEnd()}\n`;
 }
 
-function buildStart(root: string, item: StructuredItem, args: string[]): TestStart {
+function buildStart(
+  root: string,
+  item: StructuredItem,
+  args: string[],
+): TestStart {
   const now = new Date();
   const startedAtLocal = localIsoWithOffset(now);
   const id = scalar(item.fields, "id");
@@ -922,10 +1197,10 @@ function buildStart(root: string, item: StructuredItem, args: string[]): TestSta
     failure_patterns: listValue(item.fields, "failure_patterns"),
     automation: script
       ? {
-        script,
-        command: automationCommand ?? "",
-        evidence_dir: evidenceDir,
-      }
+          script,
+          command: automationCommand ?? "",
+          evidence_dir: evidenceDir,
+        }
       : undefined,
     recommended_report_path: recommendedReportPath,
     plan_command: `bin/lbs test plan ${locator}`,
@@ -963,13 +1238,15 @@ function renderMarkdownStart(start: TestStart): string {
   lines.push(...renderLines("Setup Provides Env", start.setup_provides_env));
   lines.push(...renderLines("Cleanup", start.cleanup));
   lines.push(`## ${stepHeading(String(reportCase.mode || "agent-browser"))}`);
-  for (const [index, step] of start.steps.entries()) lines.push(`${index + 1}. ${step}`);
+  for (const [index, step] of start.steps.entries())
+    lines.push(`${index + 1}. ${step}`);
   lines.push("");
   lines.push(...renderLines("Checks", start.checks));
   lines.push(...renderLines("Success Signals", start.success_patterns));
   lines.push(...renderLines("Failure Signals", start.failure_patterns));
   lines.push("## Environment");
-  for (const [key, value] of Object.entries(start.environment)) lines.push(`- ${key}=${value}`);
+  for (const [key, value] of Object.entries(start.environment))
+    lines.push(`- ${key}=${value}`);
   lines.push("");
 
   return `${lines.join("\n").trimEnd()}\n`;
@@ -979,8 +1256,12 @@ export function commandTestStart(ctx: CommandContext): number {
   const { positional: args, options } = parseOptions(ctx.args.slice(2));
   const item = findCase(ctx.root, args);
   const start = buildStart(ctx.root, item, args);
-  const output = typeof options.output === "string" ? options.output : undefined;
-  const content = options.json === true ? `${JSON.stringify(start, null, 2)}\n` : renderMarkdownStart(start);
+  const output =
+    typeof options.output === "string" ? options.output : undefined;
+  const content =
+    options.json === true
+      ? `${JSON.stringify(start, null, 2)}\n`
+      : renderMarkdownStart(start);
 
   writeOrPrint(content, output);
   return 0;
@@ -1014,12 +1295,16 @@ function buildAutomationRun(
   const startedAtLocal = localIsoWithOffset(now);
   const id = scalar(item.fields, "id");
   const sourceEnv = runtimeEnv(root);
-  const runId = typeof options["run-id"] === "string" ? options["run-id"] : `${timestampSlug(startedAtLocal)}-${id}`;
+  const runId =
+    typeof options["run-id"] === "string"
+      ? options["run-id"]
+      : `${timestampSlug(startedAtLocal)}-${id}`;
   const script = automationScript(item);
   const scriptPath = script ? resolve(root, script) : "";
-  const evidenceDir = typeof options.output === "string"
-    ? options.output
-    : join("reports", "evidence", runId);
+  const evidenceDir =
+    typeof options.output === "string"
+      ? options.output
+      : join("reports", "evidence", runId);
   const locator = caseLocator(args);
   const consoleLog = join(evidenceDir, "console.log");
   const reportPath = join("reports", `${runId}.md`);
@@ -1045,7 +1330,10 @@ function buildAutomationRun(
       script,
       script_path: scriptPath,
       exists: scriptPath ? existsSync(scriptPath) : false,
-      required_env: [...listValue(item.fields, "automation_env"), ...listValue(item.fields, "automation_env_any")],
+      required_env: [
+        ...listValue(item.fields, "automation_env"),
+        ...listValue(item.fields, "automation_env_any"),
+      ],
       evidence_dir: evidenceDir,
       console_log: consoleLog,
       network_log: join(evidenceDir, "network.log"),
@@ -1056,7 +1344,8 @@ function buildAutomationRun(
       report_command: reportCommand,
       env_defaults: automationEnvDefaults(item, sourceEnv),
       env_aliases: caseAutomationReadiness(item, sourceEnv).env_aliases,
-      pipeline_env_required: caseAutomationReadiness(item, sourceEnv).pipeline_env_required,
+      pipeline_env_required: caseAutomationReadiness(item, sourceEnv)
+        .pipeline_env_required,
     },
   };
 }
@@ -1076,7 +1365,8 @@ function renderAutomationRun(run: TestAutomationRun): string {
   for (const setup of run.setup_automation) {
     lines.push(`- ${setup.entry}`);
     lines.push(`  command: ${setup.command}`);
-    if (setup.dry_run_command) lines.push(`  dry_run_command: ${setup.dry_run_command}`);
+    if (setup.dry_run_command)
+      lines.push(`  dry_run_command: ${setup.dry_run_command}`);
     lines.push(`  evidence_dir: ${setup.evidence_dir}`);
     lines.push(`  exists: ${setup.exists ? "yes" : "no"}`);
   }
@@ -1089,20 +1379,28 @@ function renderAutomationRun(run: TestAutomationRun): string {
   lines.push(`- console_log: ${run.automation.console_log}`);
   lines.push(`- network_log: ${run.automation.network_log}`);
   lines.push(`- screenshot: ${run.automation.screenshot}`);
-  lines.push(`- automation_result_json: ${run.automation.automation_result_json}`);
+  lines.push(
+    `- automation_result_json: ${run.automation.automation_result_json}`,
+  );
   lines.push(`- result_json: ${run.automation.result_json}`);
   lines.push("");
   lines.push(...renderLines("Required Env", run.automation.required_env));
   lines.push("## Automation Env Defaults");
   const defaults = Object.entries(run.automation.env_defaults);
   if (defaults.length === 0) lines.push("- None declared.");
-  for (const [key, value] of defaults) lines.push(`- ${key}=${redactEnvValue(key, value)}`);
+  for (const [key, value] of defaults)
+    lines.push(`- ${key}=${redactEnvValue(key, value)}`);
   lines.push("## Automation Env Aliases");
   if (run.automation.env_aliases.length === 0) lines.push("- None declared.");
   for (const alias of run.automation.env_aliases) {
-    lines.push(`- ${alias.target} <- ${alias.source} (${alias.configured ? "configured" : "missing"})`);
+    lines.push(
+      `- ${alias.target} <- ${alias.source} (${alias.configured ? "configured" : "missing"})`,
+    );
   }
-  if (run.automation.pipeline_env_required) lines.push("- Pipeline env is case-specific; global LANGBOT_PIPELINE_URL fallback is disabled.");
+  if (run.automation.pipeline_env_required)
+    lines.push(
+      "- Pipeline env is case-specific; global LANGBOT_PIPELINE_URL fallback is disabled.",
+    );
   return `${lines.join("\n").trimEnd()}\n`;
 }
 
@@ -1135,20 +1433,32 @@ function automationEnv(
   };
 }
 
-function readSetupResult(setup: SetupAutomation): { status?: string; reason?: string } {
+function readSetupResult(setup: SetupAutomation): {
+  status?: string;
+  reason?: string;
+} {
   try {
-    return JSON.parse(readFileSync(join(setup.evidence_dir, "automation-result.json"), "utf8"));
+    return JSON.parse(
+      readFileSync(join(setup.evidence_dir, "automation-result.json"), "utf8"),
+    );
   } catch {
     return {};
   }
 }
 
-function writeSetupFailureResult(run: TestAutomationRun, setup: SetupAutomation, exitStatus: number | null): void {
+function writeSetupFailureResult(
+  run: TestAutomationRun,
+  setup: SetupAutomation,
+  exitStatus: number | null,
+): void {
   const now = new Date();
   const setupResult = readSetupResult(setup);
-  const status = setupResult.status && setupResult.status !== "pass"
-    ? setupResult.status
-    : exitStatus === 2 ? "env_issue" : "fail";
+  const status =
+    setupResult.status && setupResult.status !== "pass"
+      ? setupResult.status
+      : exitStatus === 2
+        ? "env_issue"
+        : "fail";
   const result = {
     source: "setup_automation",
     case_id: run.case.id,
@@ -1163,17 +1473,28 @@ function writeSetupFailureResult(run: TestAutomationRun, setup: SetupAutomation,
     finished_at_local: localIsoWithOffset(now),
     evidence_collected: ["api_diagnostic"],
   };
-  writeFileSync(join(run.automation.evidence_dir, "automation-result.json"), `${JSON.stringify(result, null, 2)}\n`, "utf8");
-  writeFileSync(join(run.automation.evidence_dir, "result.json"), `${JSON.stringify(result, null, 2)}\n`, "utf8");
+  writeFileSync(
+    join(run.automation.evidence_dir, "automation-result.json"),
+    `${JSON.stringify(result, null, 2)}\n`,
+    "utf8",
+  );
+  writeFileSync(
+    join(run.automation.evidence_dir, "result.json"),
+    `${JSON.stringify(result, null, 2)}\n`,
+    "utf8",
+  );
 }
 
 function executionTail(value: string | Buffer | null | undefined): string {
-  return String(value ?? "").trim().slice(-4000);
+  return String(value ?? "")
+    .trim()
+    .slice(-4000);
 }
 
 function exitStatusFromResultStatus(status: string): number {
   if (status === "pass") return 0;
-  if (status === "blocked" || status === "env_issue" || status === "flaky") return 2;
+  if (status === "blocked" || status === "env_issue" || status === "flaky")
+    return 2;
   return 1;
 }
 
@@ -1187,17 +1508,34 @@ function executionFromAutomationResultFile(
   evidenceDir: string,
   caseId: string,
   runId: string,
-): { status: string; exit_status: number; reason: string; result_status: string; path: string } | null {
+): {
+  status: string;
+  exit_status: number;
+  reason: string;
+  result_status: string;
+  path: string;
+} | null {
   const resultPath = join(evidenceDir, "automation-result.json");
   if (!existsSync(resultPath)) return null;
   try {
-    const parsed = JSON.parse(readFileSync(resultPath, "utf8")) as Record<string, unknown>;
-    if (parsed.case_id !== caseId || parsed.run_id !== runId || typeof parsed.status !== "string") return null;
+    const parsed = JSON.parse(readFileSync(resultPath, "utf8")) as Record<
+      string,
+      unknown
+    >;
+    if (
+      parsed.case_id !== caseId ||
+      parsed.run_id !== runId ||
+      typeof parsed.status !== "string"
+    )
+      return null;
     const exitStatus = exitStatusFromResultStatus(parsed.status);
     return {
       status: executionStatusFromExitStatus(exitStatus),
       exit_status: exitStatus,
-      reason: typeof parsed.reason === "string" ? parsed.reason : "automation-result.json completed",
+      reason:
+        typeof parsed.reason === "string"
+          ? parsed.reason
+          : "automation-result.json completed",
       result_status: parsed.status,
       path: resultPath,
     };
@@ -1214,11 +1552,17 @@ function runSetupAutomation(
   options: Record<string, string | boolean>,
 ): { status: number; execution: Record<string, unknown> } {
   if (!setup.exists) {
-    if (options.json !== true) console.error(`ERROR: setup automation target not found: ${setup.entry}`);
+    if (options.json !== true)
+      console.error(`ERROR: setup automation target not found: ${setup.entry}`);
     writeSetupFailureResult(run, setup, 1);
     return {
       status: 1,
-      execution: { entry: setup.entry, status: "nonzero", exit_status: 1, reason: "setup automation target not found" },
+      execution: {
+        entry: setup.entry,
+        status: "nonzero",
+        exit_status: 1,
+        reason: "setup automation target not found",
+      },
     };
   }
   mkdirSync(setup.evidence_dir, { recursive: true });
@@ -1227,21 +1571,28 @@ function runSetupAutomation(
     console.log(`Setup evidence: ${setup.evidence_dir}`);
   }
   const env = automationEnv(ctx.root, item, run, setup.evidence_dir, options);
-  const args = setup.kind === "case"
-    ? [
-      lbsScriptPath(),
-      "--root",
-      ctx.root,
-      "test",
-      "run",
-      setup.target,
-      "--run-id",
-      `${run.run_id}-${setup.target}`,
-      "--output",
-      setup.evidence_dir,
-      ...(options.headed === true ? ["--headed"] : []),
-    ]
-    : [setupAutomationScriptPath(ctx.root, parseSetupAutomationEntry(setup.entry)), ...setup.args];
+  const args =
+    setup.kind === "case"
+      ? [
+          lbsScriptPath(),
+          "--root",
+          ctx.root,
+          "test",
+          "run",
+          setup.target,
+          "--run-id",
+          `${run.run_id}-${setup.target}`,
+          "--output",
+          setup.evidence_dir,
+          ...(options.headed === true ? ["--headed"] : []),
+        ]
+      : [
+          setupAutomationScriptPath(
+            ctx.root,
+            parseSetupAutomationEntry(setup.entry),
+          ),
+          ...setup.args,
+        ];
   const result = spawnSync(execPath, args, {
     cwd: ctx.root,
     env,
@@ -1249,7 +1600,10 @@ function runSetupAutomation(
     stdio: options.json === true ? "pipe" : "inherit",
   });
   if (result.error) {
-    if (options.json !== true) console.error(`ERROR: failed to run setup automation: ${result.error.message}`);
+    if (options.json !== true)
+      console.error(
+        `ERROR: failed to run setup automation: ${result.error.message}`,
+      );
     writeSetupFailureResult(run, setup, 1);
     return {
       status: 1,
@@ -1281,10 +1635,14 @@ export function commandTestRun(ctx: CommandContext): number {
   const { positional: args, options } = parseOptions(ctx.args.slice(2));
   const item = findCase(ctx.root, args);
   const run = buildAutomationRun(ctx.root, item, args, options);
-  const output = typeof options.plan_output === "string" ? options.plan_output : undefined;
+  const output =
+    typeof options.plan_output === "string" ? options.plan_output : undefined;
 
   if (options["dry-run"] === true) {
-    const content = options.json === true ? `${JSON.stringify(run, null, 2)}\n` : renderAutomationRun(run);
+    const content =
+      options.json === true
+        ? `${JSON.stringify(run, null, 2)}\n`
+        : renderAutomationRun(run);
     writeOrPrint(content, output);
     return 0;
   }
@@ -1294,7 +1652,9 @@ export function commandTestRun(ctx: CommandContext): number {
     return 1;
   }
   if (!run.automation.exists) {
-    console.error(`ERROR: automation script not found: ${run.automation.script_path}`);
+    console.error(
+      `ERROR: automation script not found: ${run.automation.script_path}`,
+    );
     return 1;
   }
 
@@ -1307,22 +1667,40 @@ export function commandTestRun(ctx: CommandContext): number {
 
   const setupExecutions: Array<Record<string, unknown>> = [];
   for (const setup of run.setup_automation) {
-    const { status, execution } = runSetupAutomation(ctx, item, run, setup, options);
+    const { status, execution } = runSetupAutomation(
+      ctx,
+      item,
+      run,
+      setup,
+      options,
+    );
     setupExecutions.push(execution);
     if (status !== 0) {
       if (options.json === true) {
-        console.log(JSON.stringify({
-          run,
-          setup_executions: setupExecutions,
-          automation_execution: null,
-          exit_status: status,
-        }, null, 2));
+        console.log(
+          JSON.stringify(
+            {
+              run,
+              setup_executions: setupExecutions,
+              automation_execution: null,
+              exit_status: status,
+            },
+            null,
+            2,
+          ),
+        );
       }
       return status;
     }
   }
 
-  const env = automationEnv(ctx.root, item, run, run.automation.evidence_dir, options);
+  const env = automationEnv(
+    ctx.root,
+    item,
+    run,
+    run.automation.evidence_dir,
+    options,
+  );
   const result = spawnSync(execPath, [run.automation.script_path], {
     cwd: ctx.root,
     env,
@@ -1338,59 +1716,83 @@ export function commandTestRun(ctx: CommandContext): number {
     );
     if (fileExecution) {
       if (options.json !== true) {
-        console.error(`WARN: automation spawn reported an error, but ${fileExecution.path} completed: ${result.error.message}`);
+        console.error(
+          `WARN: automation spawn reported an error, but ${fileExecution.path} completed: ${result.error.message}`,
+        );
       }
       if (options.json === true) {
-        console.log(JSON.stringify({
-          run,
-          setup_executions: setupExecutions,
-          automation_execution: {
-            ...fileExecution,
-            spawn_error: result.error.message,
-            stdout: executionTail(result.stdout),
-            stderr: executionTail(result.stderr),
-          },
-          exit_status: fileExecution.exit_status,
-        }, null, 2));
+        console.log(
+          JSON.stringify(
+            {
+              run,
+              setup_executions: setupExecutions,
+              automation_execution: {
+                ...fileExecution,
+                spawn_error: result.error.message,
+                stdout: executionTail(result.stdout),
+                stderr: executionTail(result.stderr),
+              },
+              exit_status: fileExecution.exit_status,
+            },
+            null,
+            2,
+          ),
+        );
       }
       return fileExecution.exit_status;
     }
-    if (options.json !== true) console.error(`ERROR: failed to run automation: ${result.error.message}`);
+    if (options.json !== true)
+      console.error(`ERROR: failed to run automation: ${result.error.message}`);
     if (options.json === true) {
-      console.log(JSON.stringify({
-        run,
-        setup_executions: setupExecutions,
-        automation_execution: {
-          status: "nonzero",
-          exit_status: 1,
-          reason: result.error.message,
-          stdout: executionTail(result.stdout),
-          stderr: executionTail(result.stderr),
-        },
-        exit_status: 1,
-      }, null, 2));
+      console.log(
+        JSON.stringify(
+          {
+            run,
+            setup_executions: setupExecutions,
+            automation_execution: {
+              status: "nonzero",
+              exit_status: 1,
+              reason: result.error.message,
+              stdout: executionTail(result.stdout),
+              stderr: executionTail(result.stderr),
+            },
+            exit_status: 1,
+          },
+          null,
+          2,
+        ),
+      );
     }
     return 1;
   }
   const status = result.status ?? 1;
   if (options.json === true) {
-    console.log(JSON.stringify({
-      run,
-      setup_executions: setupExecutions,
-      automation_execution: {
-        status: executionStatusFromExitStatus(status),
-        exit_status: status,
-        stdout: executionTail(result.stdout),
-        stderr: executionTail(result.stderr),
-      },
-      exit_status: status,
-    }, null, 2));
+    console.log(
+      JSON.stringify(
+        {
+          run,
+          setup_executions: setupExecutions,
+          automation_execution: {
+            status: executionStatusFromExitStatus(status),
+            exit_status: status,
+            stdout: executionTail(result.stdout),
+            stderr: executionTail(result.stderr),
+          },
+          exit_status: status,
+        },
+        null,
+        2,
+      ),
+    );
   }
   return status;
 }
 
-
-function buildReport(root: string, item: StructuredItem, options: Record<string, string | boolean>): TestReport {
+function buildReport(
+  root: string,
+  item: StructuredItem,
+  options: Record<string, string | boolean>,
+): TestReport {
   const env = loadEnv(root);
   const mode = caseMode(item);
   const automationResult = readAutomationResultEvidence(options);
@@ -1462,7 +1864,8 @@ function renderMarkdownReport(report: TestReport): string {
     if (automation.reason) lines.push(`- reason: ${automation.reason}`);
     if (automation.url) lines.push(`- target_tested: ${automation.url}`);
     if (automation.path) lines.push(`- automation_result: ${automation.path}`);
-    if (automation.artifacts) lines.push(`- artifacts: ${JSON.stringify(automation.artifacts)}`);
+    if (automation.artifacts)
+      lines.push(`- artifacts: ${JSON.stringify(automation.artifacts)}`);
   } else {
     lines.push(`- result: ${evidence.result}`);
     for (const [key, value] of Object.entries(evidence)) {
@@ -1475,11 +1878,15 @@ function renderMarkdownReport(report: TestReport): string {
   if (automation.path) lines.push(`- path: ${automation.path}`);
   if (automation.result) lines.push(`- result: ${automation.result}`);
   if (automation.reason) lines.push(`- reason: ${automation.reason}`);
-  if (automation.duration_ms !== undefined) lines.push(`- duration_ms: ${automation.duration_ms}`);
-  if (automation.started_at_local) lines.push(`- started_at_local: ${automation.started_at_local}`);
-  if (automation.finished_at_local) lines.push(`- finished_at_local: ${automation.finished_at_local}`);
+  if (automation.duration_ms !== undefined)
+    lines.push(`- duration_ms: ${automation.duration_ms}`);
+  if (automation.started_at_local)
+    lines.push(`- started_at_local: ${automation.started_at_local}`);
+  if (automation.finished_at_local)
+    lines.push(`- finished_at_local: ${automation.finished_at_local}`);
   if (automation.url) lines.push(`- url: ${automation.url}`);
-  if (automation.expected_text) lines.push(`- expected_text: ${automation.expected_text}`);
+  if (automation.expected_text)
+    lines.push(`- expected_text: ${automation.expected_text}`);
   if (automation.metrics_summary) {
     lines.push("- metrics_summary:");
     lines.push(`  ${JSON.stringify(automation.metrics_summary)}`);
@@ -1494,10 +1901,12 @@ function renderMarkdownReport(report: TestReport): string {
   }
   lines.push("");
   lines.push("## Environment");
-  for (const [key, value] of Object.entries(environment)) lines.push(`- ${key}=${value}`);
+  for (const [key, value] of Object.entries(environment))
+    lines.push(`- ${key}=${value}`);
   lines.push("");
   lines.push(`## ${stepHeading(String(reportCase.mode || "agent-browser"))}`);
-  for (const [index, step] of report.steps.entries()) lines.push(`${index + 1}. ${step}`);
+  for (const [index, step] of report.steps.entries())
+    lines.push(`${index + 1}. ${step}`);
   lines.push("");
   lines.push(...renderLines("Checks", report.checks));
   lines.push(...renderLines("Diagnostics", report.diagnostics));
@@ -1510,47 +1919,70 @@ function renderMarkdownReport(report: TestReport): string {
   lines.push(`- scan_mode: ${logGuard.scan.mode}`);
   if (logGuard.scan.since) lines.push(`- since: ${logGuard.scan.since}`);
   if (logGuard.scan.until) lines.push(`- until: ${logGuard.scan.until}`);
-  if (logGuard.scan.tail_lines !== undefined) lines.push(`- tail_lines: ${logGuard.scan.tail_lines}`);
+  if (logGuard.scan.tail_lines !== undefined)
+    lines.push(`- tail_lines: ${logGuard.scan.tail_lines}`);
   if (logGuard.scan.warnings.length > 0) {
     lines.push("- scan_warnings:");
     for (const warning of logGuard.scan.warnings) lines.push(`  - ${warning}`);
   }
   if (logGuard.sources.length === 0) {
-    lines.push("- sources: no log files provided; run with --backend-log, --frontend-log, or --console-log to scan logs.");
+    lines.push(
+      "- sources: no log files provided; run with --backend-log, --frontend-log, or --console-log to scan logs.",
+    );
   } else {
     lines.push("- sources:");
     for (const source of logGuard.sources) {
       const origin = source.auto_detected ? ", auto" : "";
-      const total = source.total_line_count === undefined ? "" : `/${source.total_line_count}`;
-      const range = source.start_line === undefined || source.end_line === undefined
-        ? ""
-        : `, lines ${source.start_line}-${source.end_line}`;
-      const timestamped = source.timestamped_line_count === undefined ? "" : `, ${source.timestamped_line_count} timestamped`;
-      lines.push(`  - ${source.source}: ${source.path} (${source.status}${origin}, ${source.line_count}${total} lines${range}${timestamped})`);
+      const total =
+        source.total_line_count === undefined
+          ? ""
+          : `/${source.total_line_count}`;
+      const range =
+        source.start_line === undefined || source.end_line === undefined
+          ? ""
+          : `, lines ${source.start_line}-${source.end_line}`;
+      const timestamped =
+        source.timestamped_line_count === undefined
+          ? ""
+          : `, ${source.timestamped_line_count} timestamped`;
+      lines.push(
+        `  - ${source.source}: ${source.path} (${source.status}${origin}, ${source.line_count}${total} lines${range}${timestamped})`,
+      );
     }
   }
   lines.push("- findings:");
   if (logGuard.findings.length === 0) lines.push("  - None.");
-  else for (const finding of logGuard.findings) lines.push(`  ${renderFinding(finding)}`);
+  else
+    for (const finding of logGuard.findings)
+      lines.push(`  ${renderFinding(finding)}`);
   lines.push("- success_signals:");
   if (logGuard.success_signals.length === 0) lines.push("  - None.");
-  else for (const signal of logGuard.success_signals) lines.push(`  ${renderSuccessSignal(signal)}`);
+  else
+    for (const signal of logGuard.success_signals)
+      lines.push(`  ${renderSuccessSignal(signal)}`);
   lines.push("");
   lines.push("## Related Troubleshooting");
   if (troubleshooting.length === 0) lines.push("- None declared.");
   for (const entry of troubleshooting) {
     lines.push(`- ${entry.id}: ${entry.title}`);
-    if (entry.patterns.length > 0) lines.push(`  patterns: ${entry.patterns.join(" | ")}`);
+    if (entry.patterns.length > 0)
+      lines.push(`  patterns: ${entry.patterns.join(" | ")}`);
     if (entry.verification) lines.push(`  verification: ${entry.verification}`);
   }
   lines.push("");
   lines.push("## Decision Notes");
   if (isProbeMode(String(reportCase.mode))) {
-    lines.push("- Probe results should be judged from the declared checks and required evidence for the same run.");
+    lines.push(
+      "- Probe results should be judged from the declared checks and required evidence for the same run.",
+    );
   } else {
-    lines.push("- API/curl diagnostics can explain the run, but cannot make this UI case pass by themselves.");
+    lines.push(
+      "- API/curl diagnostics can explain the run, but cannot make this UI case pass by themselves.",
+    );
   }
-  lines.push("- Do not paste API keys, OAuth secrets, tokens, or localStorage token values into this report.");
+  lines.push(
+    "- Do not paste API keys, OAuth secrets, tokens, or localStorage token values into this report.",
+  );
   lines.push("");
 
   return `${lines.join("\n").trimEnd()}\n`;
@@ -1571,8 +2003,12 @@ export function commandTestReport(ctx: CommandContext): number {
   const { positional: args, options } = parseOptions(ctx.args.slice(2));
   const item = findCase(ctx.root, args);
   const report = buildReport(ctx.root, item, options);
-  const output = typeof options.output === "string" ? options.output : undefined;
-  const content = options.json === true ? `${JSON.stringify(report, null, 2)}\n` : renderMarkdownReport(report);
+  const output =
+    typeof options.output === "string" ? options.output : undefined;
+  const content =
+    options.json === true
+      ? `${JSON.stringify(report, null, 2)}\n`
+      : renderMarkdownReport(report);
 
   writeOrPrint(content, output);
   return 0;

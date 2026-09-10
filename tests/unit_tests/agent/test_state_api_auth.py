@@ -17,6 +17,7 @@ Authorization rules:
 - enable_state must be True
 - scope must be in state_scopes
 """
+
 from __future__ import annotations
 
 import pytest
@@ -34,11 +35,13 @@ from .conftest import bind_runtime_action_context, make_resources
 
 class FakeConnection:
     """Fake connection for testing."""
+
     pass
 
 
 class FakeApplication:
     """Fake Application for testing."""
+
     def __init__(self, db_engine=None):
         self.logger = MagicMock()
         self.logger.debug = MagicMock()
@@ -77,10 +80,10 @@ async def persistent_store(db_engine):
     store = PersistentStateStore(db_engine)
 
     # Create the table
-    from langbot.pkg.entity.persistence.agent_runner_state import AgentRunnerState
+    from langbot.pkg.entity.persistence.runner_state import RunnerState
 
     async with db_engine.begin() as conn:
-        await conn.run_sync(AgentRunnerState.__table__.create, checkfirst=True)
+        await conn.run_sync(RunnerState.__table__.create, checkfirst=True)
 
     yield store
     reset_persistent_state_store()
@@ -124,11 +127,13 @@ class TestStateAPIHandlerAuthorization:
             state_get_handler = handler.actions[PluginToRuntimeAction.STATE_GET.value]
 
             # Call with non-existent run_id
-            result = await state_get_handler({
-                'run_id': 'nonexistent_run',
-                'scope': 'conversation',
-                'key': 'test_key',
-            })
+            result = await state_get_handler(
+                {
+                    'run_id': 'nonexistent_run',
+                    'scope': 'conversation',
+                    'key': 'test_key',
+                }
+            )
 
             assert result.code != 0
             assert 'not found' in result.message.lower()
@@ -164,11 +169,13 @@ class TestStateAPIHandlerAuthorization:
             state_get_handler = handler.actions[PluginToRuntimeAction.STATE_GET.value]
 
             # Call without caller_plugin_identity
-            result = await state_get_handler({
-                'run_id': 'run_test_missing_identity',
-                'scope': 'conversation',
-                'key': 'test_key',
-            })
+            result = await state_get_handler(
+                {
+                    'run_id': 'run_test_missing_identity',
+                    'scope': 'conversation',
+                    'key': 'test_key',
+                }
+            )
 
             assert result.code == 0
             assert result.data == {'value': None}
@@ -176,7 +183,9 @@ class TestStateAPIHandlerAuthorization:
         await session_registry.unregister('run_test_missing_identity')
 
     @pytest.mark.asyncio
-    async def test_state_get_caller_identity_mismatch_returns_error(self, session_registry, db_engine, persistent_store):
+    async def test_state_get_caller_identity_mismatch_returns_error(
+        self, session_registry, db_engine, persistent_store
+    ):
         """STATE_GET: caller_plugin_identity mismatch returns error."""
         fake_app = FakeApplication(db_engine)
         fake_app.persistence_mgr.get_db_engine = MagicMock(return_value=db_engine)
@@ -200,12 +209,14 @@ class TestStateAPIHandlerAuthorization:
             state_get_handler = handler.actions[PluginToRuntimeAction.STATE_GET.value]
 
             # Call with wrong caller_plugin_identity
-            result = await state_get_handler({
-                'run_id': 'run_test_mismatch',
-                'scope': 'conversation',
-                'key': 'test_key',
-                'caller_plugin_identity': 'other/plugin',
-            })
+            result = await state_get_handler(
+                {
+                    'run_id': 'run_test_mismatch',
+                    'scope': 'conversation',
+                    'key': 'test_key',
+                    'caller_plugin_identity': 'other/plugin',
+                }
+            )
 
             assert result.code != 0
             assert 'does not match' in result.message.lower()
@@ -236,12 +247,14 @@ class TestStateAPIHandlerAuthorization:
             handler = RuntimeConnectionHandler(FakeConnection(), fake_disconnect, fake_app)
             state_get_handler = handler.actions[PluginToRuntimeAction.STATE_GET.value]
 
-            result = await state_get_handler({
-                'run_id': 'run_test_disabled',
-                'scope': 'conversation',
-                'key': 'test_key',
-                'caller_plugin_identity': 'test/runner',
-            })
+            result = await state_get_handler(
+                {
+                    'run_id': 'run_test_disabled',
+                    'scope': 'conversation',
+                    'key': 'test_key',
+                    'caller_plugin_identity': 'test/runner',
+                }
+            )
 
             assert result.code != 0
             assert 'disabled' in result.message.lower()
@@ -262,7 +275,10 @@ class TestStateAPIHandlerAuthorization:
             resources=make_resources(),
             available_apis={'state': True},
             state_policy={'enable_state': True, 'state_scopes': ['conversation']},
-            state_context={'scope_keys': {'conversation': 'conv_key', 'actor': 'actor_key'}, 'binding_identity': 'binding_1'},
+            state_context={
+                'scope_keys': {'conversation': 'conv_key', 'actor': 'actor_key'},
+                'binding_identity': 'binding_1',
+            },
         )
 
         async def fake_disconnect():
@@ -273,12 +289,14 @@ class TestStateAPIHandlerAuthorization:
             state_get_handler = handler.actions[PluginToRuntimeAction.STATE_GET.value]
 
             # Request 'actor' scope which is not in state_scopes
-            result = await state_get_handler({
-                'run_id': 'run_test_scope_disabled',
-                'scope': 'actor',
-                'key': 'test_key',
-                'caller_plugin_identity': 'test/runner',
-            })
+            result = await state_get_handler(
+                {
+                    'run_id': 'run_test_scope_disabled',
+                    'scope': 'actor',
+                    'key': 'test_key',
+                    'caller_plugin_identity': 'test/runner',
+                }
+            )
 
             assert result.code != 0
             assert 'not enabled' in result.message.lower() or 'scope' in result.message.lower()
@@ -309,12 +327,14 @@ class TestStateAPIHandlerAuthorization:
             handler = RuntimeConnectionHandler(FakeConnection(), fake_disconnect, fake_app)
             state_get_handler = handler.actions[PluginToRuntimeAction.STATE_GET.value]
 
-            result = await state_get_handler({
-                'run_id': 'run_test_no_scope_key',
-                'scope': 'conversation',
-                'key': 'test_key',
-                'caller_plugin_identity': 'test/runner',
-            })
+            result = await state_get_handler(
+                {
+                    'run_id': 'run_test_no_scope_key',
+                    'scope': 'conversation',
+                    'key': 'test_key',
+                    'caller_plugin_identity': 'test/runner',
+                }
+            )
 
             assert result.code != 0
             assert 'not available' in result.message.lower()
@@ -360,9 +380,11 @@ class TestStateAPIFullFlowWithRealDB:
             session = await session_registry.get('run_full_flow')
             assert session is not None
             state_ctx = session['authorization']['state_context']
-            assert state_ctx is not None, f"state_context is None. Session keys: {list(session.keys())}"
-            assert 'scope_keys' in state_ctx, f"scope_keys not in state_context: {state_ctx}"
-            assert 'conversation' in state_ctx['scope_keys'], f"conversation not in scope_keys: {state_ctx['scope_keys']}"
+            assert state_ctx is not None, f'state_context is None. Session keys: {list(session.keys())}'
+            assert 'scope_keys' in state_ctx, f'scope_keys not in state_context: {state_ctx}'
+            assert 'conversation' in state_ctx['scope_keys'], (
+                f'conversation not in scope_keys: {state_ctx["scope_keys"]}'
+            )
 
             # Get handlers (actions dict is keyed by action value string)
             state_set_handler = handler.actions[PluginToRuntimeAction.STATE_SET.value]
@@ -371,57 +393,67 @@ class TestStateAPIFullFlowWithRealDB:
             state_delete_handler = handler.actions[PluginToRuntimeAction.STATE_DELETE.value]
 
             # 1. STATE_SET
-            set_result = await state_set_handler({
-                'run_id': 'run_full_flow',
-                'scope': 'conversation',
-                'key': 'external.test_key',
-                'value': {'data': 'test_value'},
-                'caller_plugin_identity': 'test/runner',
-            })
+            set_result = await state_set_handler(
+                {
+                    'run_id': 'run_full_flow',
+                    'scope': 'conversation',
+                    'key': 'external.test_key',
+                    'value': {'data': 'test_value'},
+                    'caller_plugin_identity': 'test/runner',
+                }
+            )
 
             assert set_result.code == 0
             assert set_result.data.get('success') is True
 
             # 2. STATE_GET
-            get_result = await state_get_handler({
-                'run_id': 'run_full_flow',
-                'scope': 'conversation',
-                'key': 'external.test_key',
-                'caller_plugin_identity': 'test/runner',
-            })
+            get_result = await state_get_handler(
+                {
+                    'run_id': 'run_full_flow',
+                    'scope': 'conversation',
+                    'key': 'external.test_key',
+                    'caller_plugin_identity': 'test/runner',
+                }
+            )
 
             assert get_result.code == 0
             assert get_result.data.get('value') == {'data': 'test_value'}
 
             # 3. STATE_LIST
-            list_result = await state_list_handler({
-                'run_id': 'run_full_flow',
-                'scope': 'conversation',
-                'prefix': 'external.',
-                'caller_plugin_identity': 'test/runner',
-            })
+            list_result = await state_list_handler(
+                {
+                    'run_id': 'run_full_flow',
+                    'scope': 'conversation',
+                    'prefix': 'external.',
+                    'caller_plugin_identity': 'test/runner',
+                }
+            )
 
             assert list_result.code == 0
             keys = list_result.data.get('keys', [])
             assert 'external.test_key' in keys
 
             # 4. STATE_DELETE
-            delete_result = await state_delete_handler({
-                'run_id': 'run_full_flow',
-                'scope': 'conversation',
-                'key': 'external.test_key',
-                'caller_plugin_identity': 'test/runner',
-            })
+            delete_result = await state_delete_handler(
+                {
+                    'run_id': 'run_full_flow',
+                    'scope': 'conversation',
+                    'key': 'external.test_key',
+                    'caller_plugin_identity': 'test/runner',
+                }
+            )
 
             assert delete_result.code == 0
 
             # 5. Verify deleted
-            get_after_delete = await state_get_handler({
-                'run_id': 'run_full_flow',
-                'scope': 'conversation',
-                'key': 'external.test_key',
-                'caller_plugin_identity': 'test/runner',
-            })
+            get_after_delete = await state_get_handler(
+                {
+                    'run_id': 'run_full_flow',
+                    'scope': 'conversation',
+                    'key': 'external.test_key',
+                    'caller_plugin_identity': 'test/runner',
+                }
+            )
 
             assert get_after_delete.code == 0
             assert get_after_delete.data.get('value') is None
@@ -433,7 +465,9 @@ class TestStateHandlerReadsFromAuthorizationSnapshot:
     """Tests verifying handlers read state_policy/state_context from authorization snapshot."""
 
     @pytest.mark.asyncio
-    async def test_state_handler_reads_state_policy_from_authorization(self, session_registry, db_engine, persistent_store):
+    async def test_state_handler_reads_state_policy_from_authorization(
+        self, session_registry, db_engine, persistent_store
+    ):
         """Handler reads state_policy from session['authorization'], not resources."""
         fake_app = FakeApplication(db_engine)
         fake_app.persistence_mgr.get_db_engine = MagicMock(return_value=db_engine)
@@ -454,7 +488,7 @@ class TestStateHandlerReadsFromAuthorizationSnapshot:
         session = await session_registry.get('run_policy_top_level')
         assert session is not None
         resources = session['authorization']['resources']
-        assert 'state_policy' not in resources, "resources should NOT contain state_policy"
+        assert 'state_policy' not in resources, 'resources should NOT contain state_policy'
 
         async def fake_disconnect():
             return True
@@ -464,12 +498,14 @@ class TestStateHandlerReadsFromAuthorizationSnapshot:
             state_get_handler = handler.actions[PluginToRuntimeAction.STATE_GET.value]
 
             # Should fail because enable_state=False in authorization.state_policy
-            result = await state_get_handler({
-                'run_id': 'run_policy_top_level',
-                'scope': 'conversation',
-                'key': 'test_key',
-                'caller_plugin_identity': 'test/runner',
-            })
+            result = await state_get_handler(
+                {
+                    'run_id': 'run_policy_top_level',
+                    'scope': 'conversation',
+                    'key': 'test_key',
+                    'caller_plugin_identity': 'test/runner',
+                }
+            )
 
             assert result.code != 0
             assert 'disabled' in result.message.lower()
@@ -477,7 +513,9 @@ class TestStateHandlerReadsFromAuthorizationSnapshot:
         await session_registry.unregister('run_policy_top_level')
 
     @pytest.mark.asyncio
-    async def test_state_handler_reads_state_context_from_authorization(self, session_registry, db_engine, persistent_store):
+    async def test_state_handler_reads_state_context_from_authorization(
+        self, session_registry, db_engine, persistent_store
+    ):
         """Handler reads state_context from session['authorization'], not resources."""
         fake_app = FakeApplication(db_engine)
         fake_app.persistence_mgr.get_db_engine = MagicMock(return_value=db_engine)
@@ -498,7 +536,7 @@ class TestStateHandlerReadsFromAuthorizationSnapshot:
         session = await session_registry.get('run_context_top_level')
         assert session is not None
         resources = session['authorization']['resources']
-        assert 'state_context' not in resources, "resources should NOT contain state_context"
+        assert 'state_context' not in resources, 'resources should NOT contain state_context'
 
         async def fake_disconnect():
             return True
@@ -508,13 +546,15 @@ class TestStateHandlerReadsFromAuthorizationSnapshot:
             state_set_handler = handler.actions[PluginToRuntimeAction.STATE_SET.value]
 
             # Should use scope_key from authorization.state_context.scope_keys.conversation
-            result = await state_set_handler({
-                'run_id': 'run_context_top_level',
-                'scope': 'conversation',
-                'key': 'test_key',
-                'value': 'test_value',
-                'caller_plugin_identity': 'test/runner',
-            })
+            result = await state_set_handler(
+                {
+                    'run_id': 'run_context_top_level',
+                    'scope': 'conversation',
+                    'key': 'test_key',
+                    'value': 'test_value',
+                    'caller_plugin_identity': 'test/runner',
+                }
+            )
 
             # Should succeed - scope_key was found in state_context
             assert result.code == 0
@@ -546,10 +586,8 @@ class TestResourcesDoesNotContainStateMetadata:
         # Verify resources is nested under authorization and is clean.
         assert 'resources' not in session
         session_resources = session['authorization']['resources']
-        assert 'state_policy' not in session_resources, \
-            "authorization['resources'] should NOT contain state_policy"
-        assert 'state_context' not in session_resources, \
-            "authorization['resources'] should NOT contain state_context"
+        assert 'state_policy' not in session_resources, "authorization['resources'] should NOT contain state_policy"
+        assert 'state_context' not in session_resources, "authorization['resources'] should NOT contain state_context"
 
         assert 'state_policy' in session['authorization']
         assert 'state_context' in session['authorization']

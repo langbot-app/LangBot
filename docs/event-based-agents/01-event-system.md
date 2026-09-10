@@ -499,7 +499,7 @@ class PlatformSpecificEvent(Event):
       │
 8. 目标处理事件
       │  Pipeline → 进入完整 Pipeline 流水线（仅消息事件）
-      │  Agent    → Host 编排已安装的插件 AgentRunner
+      │  Agent    → Host 编排已安装的插件 Runner
       │  discard  → 不产生响应
       │
 9. 处理器执行完毕，可能通过 Host 授权 API 执行响应动作

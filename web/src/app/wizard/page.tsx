@@ -65,15 +65,15 @@ import { getAdapterDocUrl } from '@/app/infra/entities/adapter-docs';
 import i18n from 'i18next';
 import { PluginV4 } from '@/app/infra/entities/plugin';
 import {
-  AgentRunnerMarketplaceError,
+  RunnerMarketplaceError,
   getErrorMessage,
-  installMarketplaceAgentRunner,
-  loadAgentRunnerCatalog,
+  installMarketplaceRunner,
+  loadRunnerCatalog as fetchRunnerCatalog,
   marketplacePluginId,
-  readPendingAgentRunnerInstall,
-  resumePendingAgentRunnerInstall,
+  readPendingRunnerInstall,
+  resumePendingRunnerInstall,
   runnerPluginPrefix,
-} from '@/app/home/agents/agent-runner-marketplace';
+} from '@/app/home/agents/runner-marketplace';
 import {
   ensureHttpBotSigningSecret,
   isRequiredRunnerConfigComplete,
@@ -225,11 +225,11 @@ export default function WizardPage() {
     setIsRunnerCatalogLoading(true);
     setRunnerCatalogError(false);
     try {
-      const catalog = await loadAgentRunnerCatalog();
+      const catalog = await fetchRunnerCatalog();
       setMarketplaceRunners(catalog.marketplaceRunners);
       setInstalledPluginIds(catalog.installedPluginIds);
     } catch (error) {
-      console.error('Failed to load AgentRunner catalog', error);
+      console.error('Failed to load Runner catalog', error);
       setRunnerCatalogError(true);
     } finally {
       setIsRunnerCatalogLoading(false);
@@ -500,7 +500,7 @@ export default function WizardPage() {
       setRunnerInstallError(null);
 
       try {
-        const installed = await installMarketplaceAgentRunner(plugin, {
+        const installed = await installMarketplaceRunner(plugin, {
           scope: WIZARD_RUNNER_INSTALL_SCOPE,
         });
         setAiConfigTab(installed.configTab);
@@ -515,7 +515,7 @@ export default function WizardPage() {
         );
       } catch (error) {
         let message = getErrorMessage(error);
-        if (error instanceof AgentRunnerMarketplaceError) {
+        if (error instanceof RunnerMarketplaceError) {
           const key =
             error.code === 'version-unavailable'
               ? 'wizard.aiEngine.versionUnavailable'
@@ -536,13 +536,13 @@ export default function WizardPage() {
 
   useEffect(() => {
     if (isLoading) return;
-    const pending = readPendingAgentRunnerInstall(WIZARD_RUNNER_INSTALL_SCOPE);
+    const pending = readPendingRunnerInstall(WIZARD_RUNNER_INSTALL_SCOPE);
     if (!pending) return;
 
     let cancelled = false;
     setInstallingRunnerPluginId(pending.pluginId);
     setRunnerInstallError(null);
-    void resumePendingAgentRunnerInstall(WIZARD_RUNNER_INSTALL_SCOPE)
+    void resumePendingRunnerInstall(WIZARD_RUNNER_INSTALL_SCOPE)
       .then((installed) => {
         if (cancelled || !installed) return;
         setAiConfigTab(installed.configTab);
@@ -2087,7 +2087,7 @@ function StepAIEngine({
 
         <div className="flex justify-center">
           <Button variant="outline" size="sm" asChild>
-            <Link to="/home/extensions?type=plugin&component=AgentRunner">
+            <Link to="/home/extensions?type=plugin&component=Runner">
               {t('wizard.aiEngine.browseRunners')}
               <ExternalLink className="size-4" />
             </Link>

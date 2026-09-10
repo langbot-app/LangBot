@@ -1,4 +1,4 @@
-"""Tests for AgentRunner run ledger pull API authorization."""
+"""Tests for Runner run ledger pull API authorization."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from langbot.pkg.agent.runner.session_registry import AgentRunSessionRegistry
 from langbot.pkg.entity.persistence import agent_run as agent_run_model
 from langbot.pkg.entity.persistence.base import Base
 from langbot.pkg.plugin.handler import RuntimeConnectionHandler
-from langbot_plugin.api.entities.builtin.agent_runner.run_ledger import (
+from langbot_plugin.api.entities.builtin.runner.run_ledger import (
     AgentRun,
     AgentRunEvent,
     RunEventPage,
@@ -37,10 +37,10 @@ class FakeApplication:
         self.logger = MagicMock()
         self.persistence_mgr = MagicMock()
         self.persistence_mgr.get_db_engine = MagicMock(return_value=db_engine)
-        self.agent_runner_registry = runner_registry
+        self.runner_registry = runner_registry
         self.instance_config = SimpleNamespace(
             data={
-                'agent_runner': {
+                'runner': {
                     'admin_plugins': admin_plugins or [],
                 }
             }

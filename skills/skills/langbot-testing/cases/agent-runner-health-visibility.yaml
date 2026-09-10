@@ -25,7 +25,7 @@ automation_env:
   - LANGBOT_BROWSER_PROFILE
   - LANGBOT_CHROMIUM_EXECUTABLE
 preconditions:
-  - "The plugin runtime is enabled and connected, with at least one AgentRunner registered."
+  - "The plugin runtime is enabled and connected, with at least one Runner registered."
   - "The target is a local test instance where a temporary Agent may be created and deleted."
 steps:
   - "Read the live plugin runtime status and select a registered runner from Agent metadata."

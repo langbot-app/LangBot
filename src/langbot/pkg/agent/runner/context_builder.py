@@ -1,4 +1,4 @@
-"""Agent run context builder for provisioning AgentRunContext envelopes."""
+"""Agent run context builder for provisioning RunnerContext envelopes."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import time
 import typing
 
 from ...core import app
-from .descriptor import AgentRunnerDescriptor
+from .descriptor import RunnerDescriptor
 from .persistent_state_store import get_persistent_state_store
 from .host_models import AgentEventEnvelope, AgentBinding
 
@@ -125,10 +125,10 @@ class AgentRuntimeContext(typing.TypedDict):
     metadata: dict[str, typing.Any]
 
 
-class AgentRunContextPayload(typing.TypedDict):
-    """AgentRunContext payload passed to an agent runner.
+class RunnerContextPayload(typing.TypedDict):
+    """RunnerContext payload passed to an agent runner.
 
-    Protocol v1 structure - matches SDK AgentRunContext.
+    Protocol v1 structure - matches SDK RunnerContext.
 
     Note: The 'config' field contains the current Agent/runner config
     from ai.runner_config[runner_id] while the current Query entry remains
@@ -152,8 +152,8 @@ class AgentRunContextPayload(typing.TypedDict):
     metadata: dict[str, typing.Any]  # Additional metadata
 
 
-class AgentRunContextBuilder:
-    """Builder for provisioning AgentRunContext.
+class RunnerContextBuilder:
+    """Builder for provisioning RunnerContext.
 
     Responsibilities:
     - Generate new run_id (UUID, not query id)
@@ -222,10 +222,10 @@ class AgentRunContextBuilder:
         self,
         event: AgentEventEnvelope,
         binding: AgentBinding,
-        descriptor: AgentRunnerDescriptor,
+        descriptor: RunnerDescriptor,
         resources: AgentResources,
-    ) -> AgentRunContextPayload:
-        """Build AgentRunContext from event-first envelope.
+    ) -> RunnerContextPayload:
+        """Build RunnerContext from event-first envelope.
 
         This is the main entry point for Protocol v1.
         Does NOT inline full history by default.
@@ -237,7 +237,7 @@ class AgentRunContextBuilder:
             resources: Built resources
 
         Returns:
-            AgentRunContextPayload for the runner
+            RunnerContextPayload for the runner
         """
         # Generate new run_id
         run_id = str(uuid.uuid4())
@@ -351,7 +351,7 @@ class AgentRunContextBuilder:
         }
 
         # Build full context - Protocol v1 structure
-        context: AgentRunContextPayload = {
+        context: RunnerContextPayload = {
             'run_id': run_id,
             'trigger': trigger,
             'conversation': conversation,
@@ -397,7 +397,7 @@ class AgentRunContextBuilder:
     async def _build_context_access(
         self,
         event: AgentEventEnvelope,
-        descriptor: AgentRunnerDescriptor,
+        descriptor: RunnerDescriptor,
         binding: AgentBinding | None = None,
     ) -> dict[str, typing.Any]:
         """Build ContextAccess with actual values from stores.

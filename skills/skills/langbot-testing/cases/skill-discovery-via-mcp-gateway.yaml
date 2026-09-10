@@ -18,8 +18,8 @@ skills:
 env:
   - LANGBOT_FRONTEND_URL
   - LANGBOT_BACKEND_URL
-  - LANGBOT_ACP_AGENT_RUNNER_PIPELINE_URL
-  - LANGBOT_ACP_AGENT_RUNNER_PIPELINE_NAME
+  - LANGBOT_ACP_RUNNER_PIPELINE_URL
+  - LANGBOT_ACP_RUNNER_PIPELINE_NAME
 preconditions:
   - "An external-harness runner pipeline (e.g. ACP remote claude-code) is configured with langbot-assets-enabled=true so the LangBot MCP gateway is exposed to the harness."
   - "The remote harness (claude-code) is reachable and responsive (claude -p returns within the runner timeout)."
@@ -29,10 +29,10 @@ automation_env:
   - LANGBOT_FRONTEND_URL
   - LANGBOT_BROWSER_PROFILE
   - LANGBOT_CHROMIUM_EXECUTABLE
-  - LANGBOT_ACP_AGENT_RUNNER_PIPELINE_URL
-  - LANGBOT_ACP_AGENT_RUNNER_PIPELINE_NAME
-automation_pipeline_url_env: LANGBOT_ACP_AGENT_RUNNER_PIPELINE_URL
-automation_pipeline_name_env: LANGBOT_ACP_AGENT_RUNNER_PIPELINE_NAME
+  - LANGBOT_ACP_RUNNER_PIPELINE_URL
+  - LANGBOT_ACP_RUNNER_PIPELINE_NAME
+automation_pipeline_url_env: LANGBOT_ACP_RUNNER_PIPELINE_URL
+automation_pipeline_name_env: LANGBOT_ACP_RUNNER_PIPELINE_NAME
 automation_prompt: "You have LangBot tools available via an MCP server (tools prefixed langbot_). Call langbot_list_assets with asset_types = [\"skills\",\"tools\"]. Then reply with one single line: the literal token PROBEDONE, a space, the number of skills you found, a space, and the number of tools you found."
 automation_expected_text: "PROBEDONE"
 automation_response_timeout_ms: "540000"

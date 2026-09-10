@@ -582,10 +582,10 @@ export default function ToolResourceSelectors({
 
   const sourceLabels = useMemo<Record<string, string>>(
     () => ({
-      builtin: t('pipelines.agentRunner.builtinTools'),
-      plugin: t('pipelines.agentRunner.pluginTools'),
-      mcp: t('pipelines.agentRunner.mcpTools'),
-      skill: t('pipelines.agentRunner.skillTools'),
+      builtin: t('pipelines.runner.builtinTools'),
+      plugin: t('pipelines.runner.pluginTools'),
+      mcp: t('pipelines.runner.mcpTools'),
+      skill: t('pipelines.runner.skillTools'),
     }),
     [t],
   );
@@ -653,27 +653,27 @@ export default function ToolResourceSelectors({
             <div>
               <div className="flex items-center gap-1.5">
                 <h3 className="text-sm font-semibold">
-                  {t('pipelines.agentRunner.toolsTitle')}
+                  {t('pipelines.runner.toolsTitle')}
                 </h3>
                 {pipelineId && (
                   <InfoTooltip
-                    label={t('pipelines.agentRunner.toolsScopeTooltip')}
+                    label={t('pipelines.runner.toolsScopeTooltip')}
                   />
                 )}
               </div>
               <p className="mt-1 text-sm text-muted-foreground">
-                {t('pipelines.agentRunner.toolsDescription')}
+                {t('pipelines.runner.toolsDescription')}
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
               <Label
-                htmlFor="agent-runner-enable-all-tools"
+                htmlFor="runner-enable-all-tools"
                 className="cursor-pointer text-sm font-normal"
               >
-                {t('pipelines.agentRunner.enableAllTools')}
+                {t('pipelines.runner.enableAllTools')}
               </Label>
               <Switch
-                id="agent-runner-enable-all-tools"
+                id="runner-enable-all-tools"
                 checked={enableAllTools}
                 onCheckedChange={handleToggleToolMode}
               />
@@ -683,13 +683,13 @@ export default function ToolResourceSelectors({
           {enableAllTools ? (
             <div className="flex h-24 items-center justify-center rounded-lg border-2 border-dashed border-border bg-muted/30">
               <p className="text-sm text-muted-foreground">
-                {t('pipelines.agentRunner.allToolsEnabled')}
+                {t('pipelines.runner.allToolsEnabled')}
               </p>
             </div>
           ) : selectedTools.length === 0 ? (
             <div className="flex h-24 items-center justify-center rounded-lg border-2 border-dashed border-border">
               <p className="text-sm text-muted-foreground">
-                {t('pipelines.agentRunner.noToolsSelected')}
+                {t('pipelines.runner.noToolsSelected')}
               </p>
             </div>
           ) : (
@@ -764,7 +764,7 @@ export default function ToolResourceSelectors({
             }}
           >
             <Plus className="mr-2 h-4 w-4" />
-            {t('pipelines.agentRunner.editTools')}
+            {t('pipelines.runner.editTools')}
           </Button>
         </div>
       )}
@@ -773,10 +773,10 @@ export default function ToolResourceSelectors({
         <div className="space-y-4 rounded-lg border p-4">
           <div>
             <h3 className="text-sm font-semibold">
-              {t('pipelines.agentRunner.resourcesTitle')}
+              {t('pipelines.runner.resourcesTitle')}
             </h3>
             <p className="mt-1 text-sm text-muted-foreground">
-              {t('pipelines.agentRunner.resourcesDescription')}
+              {t('pipelines.runner.resourcesDescription')}
             </p>
           </div>
 
@@ -785,7 +785,7 @@ export default function ToolResourceSelectors({
               <div className="flex items-center gap-2">
                 <Database className="h-4 w-4 text-muted-foreground" />
                 <span className="text-sm font-medium">
-                  {t('pipelines.agentRunner.knowledgeBases')}
+                  {t('pipelines.runner.knowledgeBases')}
                 </span>
               </div>
               <Button
@@ -855,26 +855,26 @@ export default function ToolResourceSelectors({
               <div className="flex items-center gap-2">
                 <Server className="h-4 w-4 text-muted-foreground" />
                 <span className="text-sm font-medium">
-                  {t('pipelines.agentRunner.mcpResources')}
+                  {t('pipelines.runner.mcpResources')}
                 </span>
                 {pipelineId && (
                   <InfoTooltip
-                    label={t('pipelines.agentRunner.mcpResourcesScopeTooltip')}
+                    label={t('pipelines.runner.mcpResourcesScopeTooltip')}
                   />
                 )}
               </div>
               <div className="flex items-center gap-2">
                 <Label
-                  htmlFor="agent-runner-mcp-resource-read"
+                  htmlFor="runner-mcp-resource-read"
                   className="cursor-pointer text-sm font-normal"
                 >
-                  {t('pipelines.agentRunner.enableMCPResourceRead')}
+                  {t('pipelines.runner.enableMCPResourceRead')}
                 </Label>
                 <InfoTooltip
-                  label={t('pipelines.agentRunner.mcpResourceReadTooltip')}
+                  label={t('pipelines.runner.mcpResourceReadTooltip')}
                 />
                 <Switch
-                  id="agent-runner-mcp-resource-read"
+                  id="runner-mcp-resource-read"
                   checked={mcpResourceReadEnabled}
                   onCheckedChange={(checked) =>
                     onChange({ 'mcp-resource-agent-read-enabled': checked })
@@ -886,7 +886,7 @@ export default function ToolResourceSelectors({
             {resourceServers.length === 0 ? (
               <div className="flex h-20 items-center justify-center rounded-lg border-2 border-dashed border-border">
                 <p className="text-sm text-muted-foreground">
-                  {t('pipelines.agentRunner.noMCPResourcesAvailable')}
+                  {t('pipelines.runner.noMCPResourcesAvailable')}
                 </p>
               </div>
             ) : (
@@ -956,9 +956,7 @@ export default function ToolResourceSelectors({
         <Dialog open={toolsDialogOpen} onOpenChange={setToolsDialogOpen}>
           <DialogContent className="flex max-h-[80vh] max-w-2xl flex-col overflow-hidden">
             <DialogHeader>
-              <DialogTitle>
-                {t('pipelines.agentRunner.selectTools')}
-              </DialogTitle>
+              <DialogTitle>{t('pipelines.runner.selectTools')}</DialogTitle>
             </DialogHeader>
             <div className="flex-1 space-y-5 overflow-y-auto pr-2">
               {availableToolGroups.map((sourceGroup) => {
@@ -970,16 +968,12 @@ export default function ToolResourceSelectors({
                       </span>
                       {pipelineId && sourceGroup.key === 'mcp' && (
                         <InfoTooltip
-                          label={t(
-                            'pipelines.agentRunner.mcpToolsScopeTooltip',
-                          )}
+                          label={t('pipelines.runner.mcpToolsScopeTooltip')}
                         />
                       )}
                       {sourceGroup.key === 'skill' && (
                         <InfoTooltip
-                          label={t(
-                            'pipelines.agentRunner.skillToolsScopeTooltip',
-                          )}
+                          label={t('pipelines.runner.skillToolsScopeTooltip')}
                         />
                       )}
                       <Badge variant="outline" className="ml-auto">
@@ -1047,7 +1041,7 @@ export default function ToolResourceSelectors({
               {availableToolGroups.length === 0 && (
                 <div className="flex h-24 items-center justify-center rounded-lg border-2 border-dashed border-border">
                   <p className="text-sm text-muted-foreground">
-                    {t('pipelines.agentRunner.noToolsSelected')}
+                    {t('pipelines.runner.noToolsSelected')}
                   </p>
                 </div>
               )}
@@ -1072,7 +1066,7 @@ export default function ToolResourceSelectors({
           <DialogContent className="flex max-h-[80vh] max-w-2xl flex-col overflow-hidden">
             <DialogHeader>
               <DialogTitle>
-                {t('pipelines.agentRunner.selectKnowledgeBases')}
+                {t('pipelines.runner.selectKnowledgeBases')}
               </DialogTitle>
             </DialogHeader>
             <div className="flex-1 space-y-2 overflow-y-auto pr-2">

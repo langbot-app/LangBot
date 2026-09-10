@@ -12,7 +12,7 @@ Date: 2026-05-16
 
 ### Symptom
 
-The WebUI can send a Debug Chat message, but the bot response is missing or says `Agent runner temporarily unavailable`. Backend logs may include `Action list_plugins call timed out`, `Action list_agent_runners call timed out`, or `Action invoke_llm_stream call timed out`.
+The WebUI can send a Debug Chat message, but the bot response is missing or says `Agent runner temporarily unavailable`. Backend logs may include `Action list_plugins call timed out`, `Action list_runners call timed out`, or `Action invoke_llm_stream call timed out`.
 
 ### Likely Cause
 
@@ -78,7 +78,7 @@ Structured entry: `../troubleshooting/marketplace-network-flaky.yaml`
 
 Marketplace icon/tag/recommendation requests can fail while plugin cards are already visible. Retry first, and use backend component endpoints only to confirm installation results.
 
-## agent-runner-actor-context-fields: AgentRunner reads old actor fields
+## agent-runner-actor-context-fields: Runner reads old actor fields
 
 Structured entry: `../troubleshooting/agent-runner-actor-context-fields.yaml`
 

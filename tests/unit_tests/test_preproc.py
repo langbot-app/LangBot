@@ -16,7 +16,7 @@ from langbot_plugin.api.entities.builtin.provider.message import Message
 from langbot_plugin.api.entities.builtin.provider.prompt import Prompt
 from langbot_plugin.api.entities.builtin.provider.session import Conversation, LauncherTypes, Session
 
-from langbot.pkg.agent.runner.descriptor import AgentRunnerDescriptor
+from langbot.pkg.agent.runner.descriptor import RunnerDescriptor
 from langbot.pkg.api.http.context import ExecutionContext
 
 
@@ -79,7 +79,7 @@ def _make_app(*, skill_service) -> SimpleNamespace:
     conversation = _make_conversation()
     model = SimpleNamespace(model_entity=SimpleNamespace(uuid='model-1', abilities={'func_call'}))
     tool_mgr = SimpleNamespace(get_resolved_tool_catalog=AsyncMock(return_value=[]))
-    descriptor = AgentRunnerDescriptor(
+    descriptor = RunnerDescriptor(
         id=_RUNNER_ID,
         source='plugin',
         label={'en_US': 'Local Agent'},
@@ -105,7 +105,7 @@ def _make_app(*, skill_service) -> SimpleNamespace:
             get_conversation=AsyncMock(return_value=conversation),
         ),
         model_mgr=SimpleNamespace(get_model_by_uuid=AsyncMock(return_value=model)),
-        agent_runner_registry=SimpleNamespace(get=AsyncMock(return_value=descriptor)),
+        runner_registry=SimpleNamespace(get=AsyncMock(return_value=descriptor)),
         tool_mgr=tool_mgr,
         plugin_connector=SimpleNamespace(
             emit_event=AsyncMock(
@@ -207,7 +207,7 @@ async def test_preproc_disables_mcp_resource_tools_when_agent_reading_is_disable
 
 
 @pytest.mark.asyncio
-async def test_preproc_leaves_skill_prompt_projection_to_agent_runner_resources():
+async def test_preproc_leaves_skill_prompt_projection_to_runner_resources():
     preproc_module, entities_module = _import_preproc_modules()
 
     app = _make_app(skill_service=SimpleNamespace())

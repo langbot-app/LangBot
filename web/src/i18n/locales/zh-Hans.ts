@@ -478,7 +478,7 @@ const zhHans = {
       route_not_found: '没有路由命中此事件。',
       processor_incompatible: '所选处理器无法处理此事件。',
       processor_not_found: '所选处理器不可用。',
-      runner_failed: 'Agent Runner 处理事件时失败。',
+      runner_failed: 'Runner 处理事件时失败。',
       delivery_failed: '处理器已完成，但结果投递失败。',
     },
     dryRunTitle: '检查事件路由',
@@ -859,19 +859,19 @@ const zhHans = {
     dangerZoneDescription: '不可逆的操作',
     deleteAgentAction: '删除此 Agent',
     deleteAgentHint: '删除后，绑定到它的事件将无法继续执行。',
-    noRunnerMetadata: '当前没有可用的 AgentRunner 元数据。',
+    noRunnerMetadata: '当前没有可用的 Runner 元数据。',
     runnerStatusLoading: '正在检查运行器状态',
     runnerStatusCheckFailed: '无法检查运行器状态',
     runnerStatusCheckFailedDescription:
       '请重试检查；如果仍然失败，请确认后端和插件运行时正常。',
     noRunnersAvailable: '没有可用的运行器',
     noRunnersAvailableDescription:
-      '请先安装并启用 AgentRunner 扩展，再配置此 Agent。',
-    installedRunners: '已安装的 AgentRunner',
-    marketplaceRunners: '插件市场中的 AgentRunner 插件',
+      '请先安装并启用 Runner 扩展，再配置此 Agent。',
+    installedRunners: '已安装的 Runner',
+    marketplaceRunners: '插件市场中的 Runner 插件',
     viewMarketplace: '查看市场',
-    restoringRunnerInstall: '正在恢复 AgentRunner 插件安装并等待运行器就绪…',
-    noInstalledRunners: '尚未安装任何 AgentRunner 扩展。',
+    restoringRunnerInstall: '正在恢复 Runner 插件安装并等待运行器就绪…',
+    noInstalledRunners: '尚未安装任何 Runner 扩展。',
     installingRunner: '正在安装 {{runner}}...',
     runnerInstallSuccess: '{{runner}} 已安装，可从已安装列表中选择',
     selectedRunnerUnavailable: '所选运行器不可用',
@@ -1034,8 +1034,7 @@ const zhHans = {
       KnowledgeEngine: '知识引擎',
       Parser: '解析器',
       Page: '页面',
-      AgentRunner: 'Agent 运行器',
-      EventProcessor: '事件处理器',
+      Runner: 'Agent 运行器',
     },
     uploadLocal: '本地上传',
     debugging: '调试中',
@@ -1216,8 +1215,7 @@ const zhHans = {
       KnowledgeEngine: '知识引擎',
       Parser: '解析器',
       Page: '页面',
-      AgentRunner: 'Agent 运行器',
-      EventProcessor: '事件处理器',
+      Runner: 'Agent 运行器',
     },
     filterByType: '类型',
     allTypes: '全部类型',
@@ -1455,10 +1453,9 @@ const zhHans = {
       enableAllMCPServersTooltip:
         '开启后，所有已配置且启用的 MCP 服务器都会进入 AI 能力里的 MCP 工具和资源候选范围。',
     },
-    agentRunner: {
+    runner: {
       toolsTitle: '工具',
-      toolsDescription:
-        '选择当前 AgentRunner 可以调用的插件、MCP、技能和内置工具。',
+      toolsDescription: '选择当前 Runner 可以调用的插件、MCP、技能和内置工具。',
       toolsScopeTooltip:
         'MCP 工具只会从扩展集成中已绑定的 MCP 服务器里出现；如需增加 MCP 工具来源，请先到扩展集成绑定对应服务器。',
       enableAllTools: '启用所有工具',
@@ -1475,8 +1472,7 @@ const zhHans = {
         '技能工具会在 LangBot 技能服务和 Box 沙箱后端可用时出现，用于让 Agent 激活或注册技能。',
       selectTools: '选择工具',
       resourcesTitle: '资源',
-      resourcesDescription:
-        '选择当前 AgentRunner 可以读取的 MCP 资源和知识库。',
+      resourcesDescription: '选择当前 Runner 可以读取的 MCP 资源和知识库。',
       knowledgeBases: '知识库',
       mcpResources: 'MCP 资源',
       mcpResourcesScopeTooltip:
@@ -2391,11 +2387,11 @@ const zhHans = {
       createExternal: '创建并绑定',
       finishWithModel: '使用所选模型并完成',
       openWorkbench: '进入工作台',
-      loadingCatalog: '正在加载 AgentRunner 扩展...',
+      loadingCatalog: '正在加载 Runner 扩展...',
       catalogUnavailable: '无法加载运行器目录',
       catalogUnavailableDescription:
         '已安装的运行器仍可使用。你可以重试，或前往扩展页面查看。',
-      noMarketplaceRunners: '市场暂未发布 AgentRunner 扩展',
+      noMarketplaceRunners: '市场暂未发布 Runner 扩展',
       noMarketplaceRunnersDescription:
         '请在运行器扩展发布到当前配置的市场后重试。',
       browseRunners: '浏览运行器扩展',

@@ -1,6 +1,6 @@
 # 插件 SDK 改造
 
-> Implementation update (2026-09-08): the EventListener observer-broadcast proposal below is superseded by [Event processors](09-event-processors.md). Legacy EventListener hooks run only inside Pipeline. New EBA handlers use explicitly created and bound EventProcessor instances, a third peer processor type alongside Agent and Pipeline.
+> Implementation update (2026-09-08): the EventListener observer-broadcast proposal below is superseded by [Event processors](09-event-processors.md). Legacy EventListener hooks run only inside Pipeline. New EBA handlers use explicitly created and bound Runner instances, a third peer processor type alongside Agent and Pipeline.
 
 ## 1. 概述
 

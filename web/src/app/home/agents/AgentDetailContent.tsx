@@ -23,12 +23,12 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import PipelineDetailContent from '@/app/home/pipelines/PipelineDetailContent';
-import EventProcessorDetailContent from './EventProcessorDetailContent';
+import PluginProcessorDetailContent from './PluginProcessorDetailContent';
 import AgentCreateContent from './components/AgentCreateContent';
 import AgentDebugPanel from './components/AgentDebugPanel';
 import AgentFormComponent, {
   AgentFormHandle,
-  AgentRunnerStatus,
+  RunnerStatus,
 } from './components/AgentFormComponent';
 
 export default function AgentDetailContent({ id }: { id: string }) {
@@ -49,9 +49,7 @@ export default function AgentDetailContent({ id }: { id: string }) {
   const [basicInfoOpen, setBasicInfoOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [runnerStatus, setRunnerStatus] = useState<AgentRunnerStatus | null>(
-    null,
-  );
+  const [runnerStatus, setRunnerStatus] = useState<RunnerStatus | null>(null);
   const [availableEventTypes, setAvailableEventTypes] = useState<string[]>([
     'message.received',
   ]);
@@ -169,7 +167,7 @@ export default function AgentDetailContent({ id }: { id: string }) {
   return (
     <>
       {agent.kind === 'event_processor' ? (
-        <EventProcessorDetailContent
+        <PluginProcessorDetailContent
           key={id}
           id={id}
           agent={agent}

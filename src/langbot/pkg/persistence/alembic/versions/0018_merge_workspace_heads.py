@@ -1,4 +1,4 @@
-"""merge AgentRunner and OSS Workspace migration heads
+"""merge Runner and OSS Workspace migration heads
 
 Revision ID: 0018_merge_workspace_heads
 Revises: 0017_local_owner_repair, 0017_oss_workspace_identity

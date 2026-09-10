@@ -356,7 +356,7 @@ async def test_marketplace_upgrade_reports_multistep_progress():
     connector._persist_installation_package = AsyncMock(side_effect=persist)
     connector.handler.apply_plugin_installation = AsyncMock(side_effect=apply)
     connector._wait_for_installed_plugin_ready = AsyncMock(side_effect=wait_until_ready)
-    connector._refresh_agent_runner_registry = AsyncMock(side_effect=refresh_registry)
+    connector._refresh_runner_registry = AsyncMock(side_effect=refresh_registry)
 
     await connector.upgrade_plugin('author', 'plugin', task_context=task_context)
 

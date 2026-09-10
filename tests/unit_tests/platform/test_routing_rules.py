@@ -732,7 +732,7 @@ async def test_bound_event_processor_receives_one_complete_typed_event():
         if False:
             yield None
 
-    ref = 'event_processor:test/welcome/default'
+    ref = 'plugin:test/welcome/default'
     bot.ap = SimpleNamespace(
         workspace_service=active_workspace_service(),
         agent_service=SimpleNamespace(

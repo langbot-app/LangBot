@@ -8,7 +8,7 @@ import { toast } from 'sonner';
 import type {
   Agent,
   AgentPlatformTool,
-  EventProcessorDescriptor,
+  RunnerDescriptor,
   ProcessorRun,
   ProcessorRunEvent,
 } from '@/app/infra/entities/api';
@@ -21,14 +21,14 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import ProcessorDetailWorkbench from '@/app/home/components/processor-detail/ProcessorDetailWorkbench';
 import EntityTitleEditButton from '@/app/home/components/entity-basic-info/EntityTitleEditButton';
 import AgentDebugPanel from './components/AgentDebugPanel';
-import EventProcessorTrace, {
+import PluginProcessorTrace, {
   ProcessorPayload,
-} from './components/EventProcessorTrace';
+} from './components/PluginProcessorTrace';
 import ProcessorRunList from './components/ProcessorRunList';
-import EventProcessorSettings from './components/EventProcessorSettings';
+import PluginProcessorSettings from './components/PluginProcessorSettings';
 import DynamicFormComponent from '@/app/home/components/dynamic-form/DynamicFormComponent';
 
-export default function EventProcessorDetailContent({
+export default function PluginProcessorDetailContent({
   agent,
   id,
   canManage,
@@ -53,7 +53,7 @@ export default function EventProcessorDetailContent({
   const toolLabels = Object.fromEntries(
     platformTools.map((tool) => [tool.name, extractI18nObject(tool.label)]),
   );
-  const [components, setComponents] = useState<EventProcessorDescriptor[]>([]);
+  const [components, setComponents] = useState<RunnerDescriptor[]>([]);
   const [componentRef, setComponentRef] = useState(agent.component_ref ?? '');
   const initialParameters =
     (
@@ -358,7 +358,7 @@ export default function EventProcessorDetailContent({
                   value={selected.metadata.delivery}
                 />
               )}
-              <EventProcessorTrace events={events} toolLabels={toolLabels} />
+              <PluginProcessorTrace events={events} toolLabels={toolLabels} />
               {selected.status === 'failed' && selected.status_reason && (
                 <Alert variant="destructive">
                   <AlertDescription className="break-words">
@@ -389,7 +389,7 @@ export default function EventProcessorDetailContent({
         canManage ? <EntityTitleEditButton onClick={onEdit} /> : undefined
       }
       titleControls={
-        <EventProcessorSettings
+        <PluginProcessorSettings
           components={components}
           value={componentRef}
           disabled={!canManage || saving || loading}

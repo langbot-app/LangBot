@@ -6,38 +6,38 @@ import type { PipelineConfigTab } from '@/app/infra/entities/pipeline';
 import type { PluginV4 } from '@/app/infra/entities/plugin';
 import type { I18nObject } from '@/app/infra/entities/common';
 
-export const RUNNER_COMPONENT_FILTER = 'AgentRunner';
+export const RUNNER_COMPONENT_FILTER = 'Runner';
 
 const RUNNER_CATALOG_PAGE_SIZE = 100;
 const RUNNER_INSTALL_TIMEOUT_MS = 120_000;
 const RUNNER_REGISTRATION_TIMEOUT_MS = 60_000;
-const RUNNER_INSTALL_INTENT_KEY_PREFIX = 'langbot-agent-runner-install';
-const RUNNER_INSTALL_INTENT_EVENT = 'langbot-agent-runner-install-change';
+const RUNNER_INSTALL_INTENT_KEY_PREFIX = 'langbot-runner-install';
+const RUNNER_INSTALL_INTENT_EVENT = 'langbot-runner-install-change';
 
-export type AgentRunnerMarketplaceErrorCode =
+export type RunnerMarketplaceErrorCode =
   | 'version-unavailable'
   | 'install-timeout'
   | 'registration-timeout';
 
-export class AgentRunnerMarketplaceError extends Error {
-  constructor(public readonly code: AgentRunnerMarketplaceErrorCode) {
+export class RunnerMarketplaceError extends Error {
+  constructor(public readonly code: RunnerMarketplaceErrorCode) {
     super(code);
-    this.name = 'AgentRunnerMarketplaceError';
+    this.name = 'RunnerMarketplaceError';
   }
 }
 
-export interface AgentRunnerCatalog {
+export interface RunnerCatalog {
   marketplaceRunners: PluginV4[];
   installedPluginIds: string[];
   installedPluginDescriptions: Record<string, I18nObject>;
 }
 
-export interface InstalledAgentRunner {
+export interface InstalledRunner {
   configTab: PipelineConfigTab;
   runner: IDynamicFormItemOption;
 }
 
-export interface PendingAgentRunnerInstall {
+export interface PendingRunnerInstall {
   taskId: number;
   pluginId: string;
   pluginAuthor: string;
@@ -47,7 +47,7 @@ export interface PendingAgentRunnerInstall {
   startedAt: number;
 }
 
-interface InstallAgentRunnerOptions {
+interface InstallRunnerOptions {
   scope: string;
   onTaskCreated?: (taskId: number) => void;
 }
@@ -83,14 +83,14 @@ function emitInstallIntentChange(scope: string) {
   );
 }
 
-export function readPendingAgentRunnerInstall(
+export function readPendingRunnerInstall(
   scope: string,
-): PendingAgentRunnerInstall | null {
+): PendingRunnerInstall | null {
   if (typeof window === 'undefined') return null;
   try {
     const raw = sessionStorage.getItem(installIntentStorageKey(scope));
     if (!raw) return null;
-    const value = JSON.parse(raw) as Partial<PendingAgentRunnerInstall>;
+    const value = JSON.parse(raw) as Partial<PendingRunnerInstall>;
     if (
       value.scope !== scope ||
       typeof value.taskId !== 'number' ||
@@ -103,13 +103,13 @@ export function readPendingAgentRunnerInstall(
       sessionStorage.removeItem(installIntentStorageKey(scope));
       return null;
     }
-    return value as PendingAgentRunnerInstall;
+    return value as PendingRunnerInstall;
   } catch {
     return null;
   }
 }
 
-function writePendingAgentRunnerInstall(intent: PendingAgentRunnerInstall) {
+function writePendingRunnerInstall(intent: PendingRunnerInstall) {
   if (typeof window === 'undefined') return;
   sessionStorage.setItem(
     installIntentStorageKey(intent.scope),
@@ -118,15 +118,15 @@ function writePendingAgentRunnerInstall(intent: PendingAgentRunnerInstall) {
   emitInstallIntentChange(intent.scope);
 }
 
-export function clearPendingAgentRunnerInstall(scope: string, taskId?: number) {
+export function clearPendingRunnerInstall(scope: string, taskId?: number) {
   if (typeof window === 'undefined') return;
-  const current = readPendingAgentRunnerInstall(scope);
+  const current = readPendingRunnerInstall(scope);
   if (taskId !== undefined && current?.taskId !== taskId) return;
   sessionStorage.removeItem(installIntentStorageKey(scope));
   emitInstallIntentChange(scope);
 }
 
-export function subscribePendingAgentRunnerInstall(
+export function subscribePendingRunnerInstall(
   scope: string,
   listener: () => void,
 ) {
@@ -140,7 +140,7 @@ export function subscribePendingAgentRunnerInstall(
     window.removeEventListener(RUNNER_INSTALL_INTENT_EVENT, handleChange);
 }
 
-export async function loadAgentRunnerCatalog(): Promise<AgentRunnerCatalog> {
+export async function loadRunnerCatalog(): Promise<RunnerCatalog> {
   const cloudClient = await getCloudServiceClient();
   const [firstSearchResult, recommendationResult, installedResult] =
     await Promise.all([
@@ -218,12 +218,12 @@ export async function loadAgentRunnerCatalog(): Promise<AgentRunnerCatalog> {
   };
 }
 
-export async function installMarketplaceAgentRunner(
+export async function installMarketplaceRunner(
   plugin: PluginV4,
-  options: InstallAgentRunnerOptions,
-): Promise<InstalledAgentRunner> {
+  options: InstallRunnerOptions,
+): Promise<InstalledRunner> {
   if (!plugin.latest_version) {
-    throw new AgentRunnerMarketplaceError('version-unavailable');
+    throw new RunnerMarketplaceError('version-unavailable');
   }
 
   const { task_id: taskId } = await httpClient.installPluginFromMarketplace(
@@ -231,7 +231,7 @@ export async function installMarketplaceAgentRunner(
     plugin.name,
     plugin.latest_version,
   );
-  const pending: PendingAgentRunnerInstall = {
+  const pending: PendingRunnerInstall = {
     taskId,
     pluginId: marketplacePluginId(plugin),
     pluginAuthor: plugin.author,
@@ -240,9 +240,9 @@ export async function installMarketplaceAgentRunner(
     scope: options.scope,
     startedAt: Date.now(),
   };
-  writePendingAgentRunnerInstall(pending);
+  writePendingRunnerInstall(pending);
   options.onTaskCreated?.(taskId);
-  return finishAgentRunnerInstall(pending);
+  return finishRunnerInstall(pending);
 }
 
 function extractPluginLabel(plugin: PluginV4) {
@@ -257,9 +257,9 @@ function extractPluginLabel(plugin: PluginV4) {
   return plugin.name;
 }
 
-async function finishAgentRunnerInstall(
-  pending: PendingAgentRunnerInstall,
-): Promise<InstalledAgentRunner> {
+async function finishRunnerInstall(
+  pending: PendingRunnerInstall,
+): Promise<InstalledRunner> {
   // A refreshed page receives a fresh observation window. The backend task is
   // authoritative; `startedAt` is display metadata, not a reason to abandon a
   // still-running installation immediately after recovery.
@@ -269,7 +269,7 @@ async function finishAgentRunnerInstall(
     const task = await httpClient.getAsyncTask(pending.taskId);
     if (task.runtime.done) {
       if (task.runtime.exception) {
-        clearPendingAgentRunnerInstall(pending.scope, pending.taskId);
+        clearPendingRunnerInstall(pending.scope, pending.taskId);
         throw new Error(task.runtime.exception);
       }
       installCompleted = true;
@@ -279,7 +279,7 @@ async function finishAgentRunnerInstall(
     await wait(1000);
   }
   if (!installCompleted) {
-    throw new AgentRunnerMarketplaceError('install-timeout');
+    throw new RunnerMarketplaceError('install-timeout');
   }
 
   const registrationDeadline = Date.now() + RUNNER_REGISTRATION_TIMEOUT_MS;
@@ -303,20 +303,20 @@ async function finishAgentRunnerInstall(
       pluginRunnerOptions[0];
 
     if (configTab && runner) {
-      clearPendingAgentRunnerInstall(pending.scope, pending.taskId);
+      clearPendingRunnerInstall(pending.scope, pending.taskId);
       return { configTab, runner };
     }
     await wait(1000);
   }
 
-  clearPendingAgentRunnerInstall(pending.scope, pending.taskId);
-  throw new AgentRunnerMarketplaceError('registration-timeout');
+  clearPendingRunnerInstall(pending.scope, pending.taskId);
+  throw new RunnerMarketplaceError('registration-timeout');
 }
 
-export async function resumePendingAgentRunnerInstall(
+export async function resumePendingRunnerInstall(
   scope: string,
-): Promise<InstalledAgentRunner | null> {
-  const pending = readPendingAgentRunnerInstall(scope);
+): Promise<InstalledRunner | null> {
+  const pending = readPendingRunnerInstall(scope);
   if (!pending) return null;
-  return finishAgentRunnerInstall(pending);
+  return finishRunnerInstall(pending);
 }

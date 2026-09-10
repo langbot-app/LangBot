@@ -1,4 +1,4 @@
-"""Migrate official AgentRunner IDs to their marketplace identities.
+"""Migrate official Runner IDs to their marketplace identities.
 
 Revision ID: 0015_official_runner_ids
 Revises: 0014_interaction_delivery
@@ -21,7 +21,7 @@ depends_on = None
 
 
 _RUNNER_ID_RENAMES = {
-    'plugin:langbot/acp-agent-runner/default': 'plugin:langbot-team/ACPAgentRunner/default',
+    'plugin:langbot/acp-agent-runner/default': 'plugin:langbot-team/ACPRunner/default',
     'plugin:langbot/claude-code-agent/default': 'plugin:langbot-team/ClaudeCodeAgent/default',
     'plugin:langbot/codex-agent/default': 'plugin:langbot-team/CodexAgent/default',
     'plugin:langbot/coze-agent/default': 'plugin:langbot-team/CozeAgent/default',
@@ -186,17 +186,16 @@ def _rewrite_runner_state(renames: dict[str, str]) -> None:
         scope_key = _state_scope_key(row, runner_id, binding_identity) or row['scope_key']
         collision = bind.execute(
             sa.text(
-                'SELECT id FROM agent_runner_state '
-                'WHERE scope_key = :scope_key AND state_key = :state_key AND id != :id'
+                'SELECT id FROM runner_state WHERE scope_key = :scope_key AND state_key = :state_key AND id != :id'
             ),
             {'scope_key': scope_key, 'state_key': row['state_key'], 'id': row['id']},
         ).scalar_one_or_none()
         if collision is not None:
-            bind.execute(sa.text('DELETE FROM agent_runner_state WHERE id = :id'), {'id': row['id']})
+            bind.execute(sa.text('DELETE FROM runner_state WHERE id = :id'), {'id': row['id']})
             continue
         bind.execute(
             sa.text(
-                'UPDATE agent_runner_state '
+                'UPDATE runner_state '
                 'SET runner_id = :runner_id, binding_identity = :binding_identity, scope_key = :scope_key '
                 'WHERE id = :id'
             ),

@@ -1,5 +1,5 @@
 apiVersion: langbot/v1
-kind: AgentRunner
+kind: Runner
 metadata:
   name: default
   label:
@@ -27,4 +27,4 @@ spec:
 execution:
   python:
     path: default.py
-    attr: DefaultAgentRunner
+    attr: DefaultRunner

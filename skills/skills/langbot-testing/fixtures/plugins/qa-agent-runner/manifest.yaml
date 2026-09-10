@@ -6,20 +6,20 @@ metadata:
   repository: https://example.invalid/langbot/qa-agent-runner
   version: 0.1.0
   description:
-    en_US: Deterministic AgentRunner fixture for LangBot QA.
-    zh_Hans: LangBot QA 使用的确定性 AgentRunner 夹具。
+    en_US: Deterministic Runner fixture for LangBot QA.
+    zh_Hans: LangBot QA 使用的确定性 Runner 夹具。
   label:
-    en_US: QA AgentRunner
-    zh_Hans: QA AgentRunner
+    en_US: QA Runner
+    zh_Hans: QA Runner
   icon: assets/icon.svg
 spec:
   config: []
   components:
-    AgentRunner:
+    Runner:
       fromDirs:
-        - path: components/agent_runner/
+        - path: components/runner/
           maxDepth: 1
 execution:
   python:
     path: main.py
-    attr: QAAgentRunnerPlugin
+    attr: QARunnerPlugin

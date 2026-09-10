@@ -16,7 +16,7 @@ local-agent 已移植 Pi 的事件生命周期、并行工具语义、hook 扩�
 ### 1.1 问题
 
 IM 场景下用户在 agent 运行中追加消息非常常见（补充信息、纠正方向、"算了别查了"）。
-EBA 先按事件选择一个 Pipeline 或 Agent 处理器；进入 AgentRunner 后，当前调用链是 `one AgentBinding -> one run_id -> one runner`
+EBA 先按事件选择一个 Pipeline 或 Agent 处理器；进入 Runner 后，当前调用链是 `one AgentBinding -> one run_id -> one runner`
 （PROTOCOL_V1 §13）：同会话的新消息要么等待当前 run 结束后触发新 run，
 要么并发触发独立 run。两种行为都无法把新消息送进**正在执行的 tool loop**，
 用户体验是"agent 自顾自跑完过期任务，然后才看到新消息"。
@@ -59,7 +59,7 @@ pi-agent-core 区分两个队列，注入时机都在 turn 边界，不打断进
 已落地的协议面（最终定义归 PROTOCOL_V1）：
 
 1. `ContextAccess.available_apis` 增加 steering pull 能力位。
-2. `AgentRunAPIProxy` 增加 steering 拉取 action：默认 `mode=all`，Host 保序返回全部
+2. `RunnerAPIProxy` 增加 steering 拉取 action：默认 `mode=all`，Host 保序返回全部
    pending 输入；`one-at-a-time` 仅作为 runner 主动节流选项。
 3. dispatch 层的"认领"规则：`message.received` 可被同 conversation 的 active run
    吸收，原事件写 EventLog / Transcript，dispatch 行为写入 EventLog metadata。

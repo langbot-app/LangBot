@@ -1,6 +1,6 @@
-# AgentRunner 与产品扩展边界
+# Runner 与产品扩展边界
 
-更新：2026-09-05，适用于 `dev/4.11.x`。EBA、独立 Agent、Bot 事件绑定和处理器 UI 已与 AgentRunner 插件化合并。当前状态和测试证据以 [STATUS.md](./STATUS.md) 为准；runner 可见 schema 与调度基数以 [PROTOCOL_V1.md](./PROTOCOL_V1.md) 为准。
+更新：2026-09-05，适用于 `dev/4.11.x`。EBA、独立 Agent、Bot 事件绑定和处理器 UI 已与 Runner 插件化合并。当前状态和测试证据以 [STATUS.md](./STATUS.md) 为准；runner 可见 schema 与调度基数以 [PROTOCOL_V1.md](./PROTOCOL_V1.md) 为准。
 
 ## 当前职责
 
@@ -9,7 +9,7 @@
 | LangBot 产品层 | 独立 Agent CRUD、Pipeline、处理器工作台、Bot 事件绑定、Runner 安装与调试 | Agent 与 Pipeline 各自持久化；聚合列表不转换实体 |
 | 平台层 | 适配器事件转换、能力声明、observer 广播、路由匹配、平台 API 与回复 | 路由逻辑在 RuntimeBot；不为每个入口重建 runner 协议 |
 | Host Agent 底座 | envelope/binding 投影、统一编排、资源授权、run session、EventLog/Transcript/State、run/result ledger | SDK 不持有 Host 私有 Query 或数据库 |
-| SDK / Plugin Runtime | typed contract、AgentRunner 组件和脚手架、proxy、MCP bridge、结果流转发、installation worker 管理 | 具体 Agent 执行策略由 Runner 插件承担 |
+| SDK / Plugin Runtime | typed contract、Runner 组件和脚手架、proxy、MCP bridge、结果流转发、installation worker 管理 | 具体 Agent 执行策略由 Runner 插件承担 |
 | Box Runtime | 沙盒会话、文件、托管进程、Skill、资源限制与作用域 | 不等于外部 harness 的通用托管承诺；存储统计不等于硬配额 |
 
 ## 已有能力与后续扩展

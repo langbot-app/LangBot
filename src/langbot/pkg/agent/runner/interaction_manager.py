@@ -10,7 +10,7 @@ import pydantic
 
 from langbot_plugin.api.entities.builtin.platform import message as platform_message
 
-from .descriptor import AgentRunnerDescriptor
+from .descriptor import RunnerDescriptor
 from .errors import RunnerProtocolError
 from .host_models import AgentBinding, AgentEventEnvelope
 from .interaction_store import InteractionStore
@@ -97,7 +97,7 @@ class InteractionManager:
         result_dict: dict[str, typing.Any],
         event: AgentEventEnvelope,
         binding: AgentBinding,
-        descriptor: AgentRunnerDescriptor,
+        descriptor: RunnerDescriptor,
         run_id: str,
         adapter_context: dict[str, typing.Any] | None,
     ) -> bool:
@@ -230,7 +230,7 @@ class InteractionManager:
         *,
         event: AgentEventEnvelope,
         binding: AgentBinding,
-        descriptor: AgentRunnerDescriptor,
+        descriptor: RunnerDescriptor,
         processor_id: str,
         conversation_id: str | None,
     ) -> dict[str, typing.Any] | None:
@@ -390,7 +390,7 @@ class InteractionManager:
                 raise ValueError(f'interaction submission option is not present in the request: {field_id}')
 
     @staticmethod
-    def _authorize(descriptor: AgentRunnerDescriptor, binding: AgentBinding) -> None:
+    def _authorize(descriptor: RunnerDescriptor, binding: AgentBinding) -> None:
         supports_interactions = bool(getattr(descriptor.capabilities, 'interactions', False))
         permissions = set(getattr(descriptor.permissions, 'interactions', []) or [])
         if not supports_interactions or 'request' not in permissions:

@@ -7,7 +7,11 @@ import { delimiter, join, resolve } from "node:path";
 import { env } from "node:process";
 
 function timestampSlug(date = new Date()) {
-  return date.toISOString().replace(/\.\d{3}Z$/, "Z").replace(/[^0-9A-Za-z]+/g, "-").replace(/^-|-$/g, "");
+  return date
+    .toISOString()
+    .replace(/\.\d{3}Z$/, "Z")
+    .replace(/[^0-9A-Za-z]+/g, "-")
+    .replace(/^-|-$/g, "");
 }
 
 function localIsoWithOffset(date = new Date()) {
@@ -51,7 +55,14 @@ function run(command, timeoutMs, childEnv) {
     });
     child.on("error", (error) => {
       clearTimeout(timeout);
-      resolveDone({ stdout, stderr, error, timedOut, status: null, signal: null });
+      resolveDone({
+        stdout,
+        stderr,
+        error,
+        timedOut,
+        status: null,
+        signal: null,
+      });
     });
     child.on("close", (status, signal) => {
       clearTimeout(timeout);
@@ -66,7 +77,7 @@ import json
 import sys
 from pathlib import Path
 
-from langbot.pkg.agent.runner.descriptor import AgentRunnerDescriptor
+from langbot.pkg.agent.runner.descriptor import RunnerDescriptor
 from langbot.pkg.agent.runner.errors import RunnerExecutionError, RunnerProtocolError
 from langbot.pkg.agent.runner.result_normalizer import AgentResultNormalizer
 
@@ -80,10 +91,10 @@ class App:
     logger = Logger()
 
 def descriptor():
-    return AgentRunnerDescriptor(
+    return RunnerDescriptor(
         id='plugin:qa/agent-runner/default',
         source='plugin',
-        label={'en_US': 'QA AgentRunner'},
+        label={'en_US': 'QA Runner'},
         plugin_author='qa',
         plugin_name='agent-runner',
         runner_name='default',
@@ -139,18 +150,26 @@ async function main() {
   const root = resolve(env.LBS_ROOT || process.cwd());
   const caseId = "agent-runner-behavior-matrix";
   const runId = env.LBS_RUN_ID || `${timestampSlug()}-${caseId}`;
-  const evidenceDir = resolve(env.LBS_EVIDENCE_DIR || join(root, "reports", "evidence", runId));
+  const evidenceDir = resolve(
+    env.LBS_EVIDENCE_DIR || join(root, "reports", "evidence", runId),
+  );
   await mkdir(evidenceDir, { recursive: true });
   const startedAt = new Date();
   const langbotRepo = resolve(root, env.LANGBOT_REPO || "..");
-  const sdkRepo = resolve(root, env.LANGBOT_PLUGIN_SDK_REPO || "../../langbot-plugin-sdk");
+  const sdkRepo = resolve(
+    root,
+    env.LANGBOT_PLUGIN_SDK_REPO || "../../langbot-plugin-sdk",
+  );
   const sdkSrc = resolve(sdkRepo, "src");
-  const fixturePath = resolve(root, "skills/langbot-testing/fixtures/agent-runner/qa-runner-behaviors.json");
+  const fixturePath = resolve(
+    root,
+    "skills/langbot-testing/fixtures/agent-runner/qa-runner-behaviors.json",
+  );
   const stdoutLog = join(evidenceDir, "probe-stdout.log");
   const stderrLog = join(evidenceDir, "probe-stderr.log");
   const automationResultJson = join(evidenceDir, "automation-result.json");
   const resultJson = join(evidenceDir, "result.json");
-  const timeoutMs = Number(env.LANGBOT_AGENT_RUNNER_PROBE_TIMEOUT_MS || "30000");
+  const timeoutMs = Number(env.LANGBOT_RUNNER_PROBE_TIMEOUT_MS || "30000");
   const command = {
     executable: "rtk",
     args: [resolve(langbotRepo, ".venv/bin/python"), "-c", script, fixturePath],
@@ -175,7 +194,12 @@ async function main() {
     timeout_ms: timeoutMs,
     exit_status: null,
     signal: null,
-    evidence: { stdout_log: stdoutLog, stderr_log: stderrLog, automation_result_json: automationResultJson, result_json: resultJson },
+    evidence: {
+      stdout_log: stdoutLog,
+      stderr_log: stderrLog,
+      automation_result_json: automationResultJson,
+      result_json: resultJson,
+    },
     evidence_collected: ["filesystem"],
   };
   try {
@@ -185,7 +209,9 @@ async function main() {
     } else {
       const proc = await run(command, timeoutMs, {
         ...process.env,
-        PYTHONPATH: [sdkSrc, process.env.PYTHONPATH].filter(Boolean).join(delimiter),
+        PYTHONPATH: [sdkSrc, process.env.PYTHONPATH]
+          .filter(Boolean)
+          .join(delimiter),
         UV_CACHE_DIR: env.UV_CACHE_DIR || join(evidenceDir, ".uv-cache"),
       });
       await writeFile(stdoutLog, proc.stdout, "utf8");
@@ -198,7 +224,10 @@ async function main() {
       } else if (proc.timedOut) {
         result.status = "fail";
         result.reason = `behavior matrix timed out after ${timeoutMs}ms`;
-      } else if (proc.status === 0 && proc.stdout.includes("QA_RUNNER_BEHAVIOR_MATRIX_OK")) {
+      } else if (
+        proc.status === 0 &&
+        proc.stdout.includes("QA_RUNNER_BEHAVIOR_MATRIX_OK")
+      ) {
         result.status = "pass";
         result.reason = "behavior matrix passed";
       } else {
@@ -219,7 +248,9 @@ async function main() {
     await writeFile(resultJson, resultText, "utf8");
     console.log(JSON.stringify(result, null, 2));
   }
-  process.exit(result.status === "pass" ? 0 : result.status === "env_issue" ? 2 : 1);
+  process.exit(
+    result.status === "pass" ? 0 : result.status === "env_issue" ? 2 : 1,
+  );
 }
 
 await main();

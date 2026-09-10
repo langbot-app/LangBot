@@ -1,6 +1,6 @@
 # Event Based Agents 架构设计总览
 
-> Product revision (2026-09-07): [Event processors and Pipeline plugin compatibility](./09-event-processors.md) defines an explicitly bound EventProcessor alongside Pipeline and Agent. It supersedes the automatic EBA observer product model below; the new component and UI are planned, not yet implemented.
+> Product revision (2026-09-07): [Event processors and Pipeline plugin compatibility](./09-event-processors.md) defines an explicitly bound Runner alongside Pipeline and Agent. It supersedes the automatic EBA observer product model below; the new component and UI are planned, not yet implemented.
 
 > 当前状态（2026-09-05）：平台事件、Bot `event_bindings`、独立 Agent、Pipeline / Agent 平级路由及 WebUI 已集成到 `dev/4.11.x`。实现入口为 `pkg/platform/botmgr.py::RuntimeBot` 与 `pkg/agent/runner/`。下文“当前架构的局限性”“现有架构”描述改造前背景；EventBus / EventRouter 图表示职责划分，不表示存在同名独立服务。当前实现和验收以 [STATUS.md](../agent-runner-pluginization/STATUS.md) 为准，平台动作使用[授权工具](../agent-runner-pluginization/PLATFORM_ACTION_TOOLS.md)。
 
@@ -52,9 +52,9 @@ MessageAggregator (消息聚合)
 QueryPool → Controller → Pipeline (固定阶段链)
     │                         │
     │                         ▼
-    │                    AgentRunner Host orchestrator
+    │                    Runner Host orchestrator
     │                         ▼
-    │                    plugin AgentRunner
+    │                    plugin Runner
     │
     ▼
 adapter.reply_message() / adapter.send_message()
@@ -83,7 +83,7 @@ EventBus (统一事件总线)
 EventRouter (读取 Bot 的 event_bindings)
     │
     ├─→ Pipeline target — 完整 Stage 链，仅消息事件
-    ├─→ Agent target    — 独立 Agent，经插件 AgentRunner 执行
+    ├─→ Agent target    — 独立 Agent，经插件 Runner 执行
     └─→ discard         — 明确丢弃
     │
     ▼
@@ -150,9 +150,9 @@ pkg/platform/adapters/
 
 ### 3.4 事件响应目标与观察者
 
-Pipeline 与 Agent 是长期并存、场景不同的同级处理器。Pipeline 保留完整 Stage 链，面向消息处理；Agent 是独立配置对象，选择一个已安装的插件 AgentRunner，并可声明消息或非消息事件能力。Bot 的 `event_bindings` 只负责把事件绑定到既有 Pipeline、独立 Agent 或 `discard`。
+Pipeline 与 Agent 是长期并存、场景不同的同级处理器。Pipeline 保留完整 Stage 链，面向消息处理；Agent 是独立配置对象，选择一个已安装的插件 Runner，并可声明消息或非消息事件能力。Bot 的 `event_bindings` 只负责把事件绑定到既有 Pipeline、独立 Agent 或 `discard`。
 
-插件 EventListener 是观察者：事件先广播给有权限的监听器，随后路由器再选择一个响应目标。Webhook、Dify、n8n 等外部执行方式若需要作为响应者，应由对应 AgentRunner 插件表达，而不是增加另一套 Host Handler 主链。
+插件 EventListener 是观察者：事件先广播给有权限的监听器，随后路由器再选择一个响应目标。Webhook、Dify、n8n 等外部执行方式若需要作为响应者，应由对应 Runner 插件表达，而不是增加另一套 Host Handler 主链。
 
 现有 Pipeline 不会被转换为 Agent，Pipeline 内的 runner 配置也不会复制到独立 Agent。用户需要 Agent 时自行创建并绑定。
 
@@ -174,7 +174,7 @@ Pipeline 与 Agent 是长期并存、场景不同的同级处理器。Pipeline �
 | 2 | 适配器特有 API | 统一抽象 + `call_platform_api` 透传 | 通用 API 覆盖大部分场景，透传机制保证灵活性，避免每个适配器导出独立的类型化 API 包 |
 | 3 | 向后兼容策略 | 兼容层适配 | 保留旧事件类型和 API 作为新系统的 alias/wrapper，现有插件无需修改 |
 | 4 | 处理器配置存储 | Bot 表使用 `event_bindings`，目标引用原始 Pipeline 或独立 Agent UUID | 路由关系不复制处理器配置，Pipeline/Agent 各自保持事实源 |
-| 5 | Agent 处理器定位 | 独立 Agent + 插件 AgentRunner | Host 不再内置具体 runner；不同 AgentRunner 通过统一协议接入 |
+| 5 | Agent 处理器定位 | 独立 Agent + 插件 Runner | Host 不再内置具体 runner；不同 Runner 通过统一协议接入 |
 | 6 | 事件命名方式 | 命名空间式（`message.received`） | 清晰的分类层级，便于通配匹配（`message.*`），与 WebUI 配置天然对应 |
 
 ## 5. 文档索引
@@ -194,7 +194,7 @@ Pipeline 与 Agent 是长期并存、场景不同的同级处理器。Pipeline �
 | 仓库 | 改动范围 |
 |------|----------|
 | **langbot-plugin-sdk** | 事件定义、实体模型、API 接口、适配器基类、通信协议扩展 |
-| **LangBot**（后端） | 适配器实现、事件路由引擎、Bot/Agent 实体、AgentRunner Host 编排 |
+| **LangBot**（后端） | 适配器实现、事件路由引擎、Bot/Agent 实体、Runner Host 编排 |
 | **LangBot**（前端） | Bot 事件处理器编排面板 |
 | **langbot-wiki** | 新架构文档、插件开发指南更新、适配器开发指南 |
 | **langbot-plugin-demo** | 示例更新（使用新事件和 API） |

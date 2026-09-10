@@ -1,4 +1,4 @@
-"""Tests for generic AgentRunner resource-policy projection."""
+"""Tests for generic Runner resource-policy projection."""
 
 from types import SimpleNamespace
 

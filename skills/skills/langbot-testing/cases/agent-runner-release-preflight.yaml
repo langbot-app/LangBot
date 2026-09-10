@@ -19,7 +19,7 @@ env:
   - LANGBOT_BACKEND_URL
 env_any:
   - LANGBOT_LOCAL_AGENT_PIPELINE_URL|LANGBOT_LOCAL_AGENT_PIPELINE_NAME
-  - LANGBOT_ACP_AGENT_RUNNER_PIPELINE_URL|LANGBOT_ACP_AGENT_RUNNER_PIPELINE_NAME
+  - LANGBOT_ACP_RUNNER_PIPELINE_URL|LANGBOT_ACP_RUNNER_PIPELINE_NAME
 automation: scripts/e2e/agent-runner-release-preflight.mjs
 automation_env:
   - LANGBOT_FRONTEND_URL
@@ -28,24 +28,24 @@ automation_env:
   - LANGBOT_CHROMIUM_EXECUTABLE
 automation_env_any:
   - LANGBOT_LOCAL_AGENT_PIPELINE_URL|LANGBOT_LOCAL_AGENT_PIPELINE_NAME
-  - LANGBOT_ACP_AGENT_RUNNER_PIPELINE_URL|LANGBOT_ACP_AGENT_RUNNER_PIPELINE_NAME
+  - LANGBOT_ACP_RUNNER_PIPELINE_URL|LANGBOT_ACP_RUNNER_PIPELINE_NAME
 preconditions:
   - "LANGBOT_LOCAL_AGENT_PIPELINE_URL or LANGBOT_LOCAL_AGENT_PIPELINE_NAME points to the local-agent release pipeline."
-  - "LANGBOT_ACP_AGENT_RUNNER_PIPELINE_URL or LANGBOT_ACP_AGENT_RUNNER_PIPELINE_NAME points to the ACP AgentRunner release pipeline."
+  - "LANGBOT_ACP_RUNNER_PIPELINE_URL or LANGBOT_ACP_RUNNER_PIPELINE_NAME points to the ACP Runner release pipeline."
   - "The active browser profile is authenticated for the same LangBot backend."
   - "By default the preflight performs a cheap model test for the local-agent primary model; set LANGBOT_PREFLIGHT_TEST_MODELS=0 only when deliberately classifying model credentials outside this run."
 steps:
   - "Open LANGBOT_FRONTEND_URL with the configured browser profile."
   - "Use the browser token to call LangBot backend readiness APIs without printing token values."
   - "Check plugin runtime status, Box status, required runner plugins, qa-plugin-smoke, and qa_plugin_echo."
-  - "Resolve the local-agent and ACP AgentRunner QA pipelines from their case-specific env vars."
+  - "Resolve the local-agent and ACP Runner QA pipelines from their case-specific env vars."
   - "Assert each pipeline uses the expected runner id."
   - "Assert the external runner pipeline uses the expected runner id."
   - "Assert the local-agent primary model advertises func_call and vision for the full release gate."
   - "Run the local-agent primary model test endpoint unless LANGBOT_PREFLIGHT_TEST_MODELS=0."
 checks:
   - "API diagnostic: api-diagnostic.json has no blockers and no env_issues."
-  - "API diagnostic: required pipelines resolve to plugin:langbot-team/LocalAgent/default and plugin:langbot-team/ACPAgentRunner/default."
+  - "API diagnostic: required pipelines resolve to plugin:langbot-team/LocalAgent/default and plugin:langbot-team/ACPRunner/default."
   - "API diagnostic: qa_plugin_echo is exposed by /api/v1/tools."
   - "API diagnostic: local-agent model check catches invalid credentials or missing func_call/vision before release E2E starts."
   - "Secret safety: token values, api keys, and provider secrets are not printed."

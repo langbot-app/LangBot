@@ -1,6 +1,6 @@
 # 处理器页面与事件编排产品设计
 
-> Implementation update (2026-09-08): the EventListener observer-broadcast proposal below is superseded by [Event processors](09-event-processors.md). Legacy EventListener hooks run only inside Pipeline. New EBA handlers use explicitly created and bound EventProcessor instances, a third peer processor type alongside Agent and Pipeline.
+> Implementation update (2026-09-08): the EventListener observer-broadcast proposal below is superseded by [Event processors](09-event-processors.md). Legacy EventListener hooks run only inside Pipeline. New EBA handlers use explicitly created and bound Runner instances, a third peer processor type alongside Agent and Pipeline.
 
 > 状态：当前实现说明（2026-09-05），对应 `dev/4.11.x`。P0–P3 已集成；发布验收见 [STATUS.md](../agent-runner-pluginization/STATUS.md)。
 >
@@ -12,7 +12,7 @@ LangBot 的处理逻辑分成两种同级形态：
 
 | 形态 | 定位 | 可处理事件 | 典型用户 |
 | --- | --- | --- | --- |
-| Agent | runner 驱动的事件优先处理器，承载 AgentRunner / 外部 runner | `message.*`、`group.*`、`friend.*`、`bot.*`、`feedback.*`、`platform.*` 等声明范围 | 需要直接处理多类平台事件或接入外部 agent runtime 的用户 |
+| Agent | runner 驱动的事件优先处理器，承载 Runner / 外部 runner | `message.*`、`group.*`、`friend.*`、`bot.*`、`feedback.*`、`platform.*` 等声明范围 | 需要直接处理多类平台事件或接入外部 agent runtime 的用户 |
 | Pipeline | 可视化、可控、可组合的消息处理流水线，执行完整 Stage 链 | 仅 `message.*`，首版等价于 `message.received` | 需要预处理、AI、后处理、扩展和输出控制的消息场景 |
 
 处理器页面负责统一管理这两种处理单元：
@@ -38,7 +38,7 @@ LangBot 的处理逻辑分成两种同级形态：
    - Pipeline：沿用原 Pipeline 配置页，包括 AI、触发、安全、输出、扩展、Debug、Monitoring；
    - Agent：基础信息由详情入口编辑，主配置分为运行器、运行器配置、事件与工具；事件范围、自动事件工具、平台级动作和普通工具白名单在同一配置流程内维护。
 
-处理器详情复用 `ProcessorDetailWorkbench`；Agent 与 Pipeline 保留各自的配置、调试和日志语义。`AgentRunnerSelect` 提供已安装 Runner 和市场安装入口，安装状态可恢复；Runner 配置来自动态 metadata，不按 LocalAgent id 定制 Host 表单。调试事件选择位于输入区域；Bot 的平台事件调试位于机器人配置中，路由 dry-run 只解释匹配结果。
+处理器详情复用 `ProcessorDetailWorkbench`；Agent 与 Pipeline 保留各自的配置、调试和日志语义。`RunnerSelect` 提供已安装 Runner 和市场安装入口，安装状态可恢复；Runner 配置来自动态 metadata，不按 LocalAgent id 定制 Host 表单。调试事件选择位于输入区域；Bot 的平台事件调试位于机器人配置中，路由 dry-run 只解释匹配结果。
 
 `/home/pipelines` 继续提供 Pipeline 直接编辑路径；共享处理器入口当前使用 `/home/agents`。URL 是实现路径，不代表 Agent 包含 Pipeline。
 
@@ -174,8 +174,8 @@ Bot 使用 `event_bindings` JSON 字段持久化路由。当前未引入独立�
 
 - EBA 事件先广播插件 observer。
 - 然后按 `event_bindings` 的事件模式、filters、priority 和顺序选择一个处理器。
-- Pipeline 目标通过 MessageAggregator 进入完整 Pipeline Stage 链；Agent 目标直接进入 AgentRunner 链路。
-- 非消息事件只选择声明支持该事件的 Agent，不调用 Pipeline；AgentRunner 输出有平台 reply target 时会投递回平台。
+- Pipeline 目标通过 MessageAggregator 进入完整 Pipeline Stage 链；Agent 目标直接进入 Runner 链路。
+- 非消息事件只选择声明支持该事件的 Agent，不调用 Pipeline；Runner 输出有平台 reply target 时会投递回平台。
 
 ## 7. 不做的事
 

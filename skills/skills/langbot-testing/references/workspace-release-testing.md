@@ -1,6 +1,6 @@
 # Workspace Release Testing
 
-Use the workspace gates when changes span LangBot core, the plugin SDK, AgentRunner, or multiple first-party plugins.
+Use the workspace gates when changes span LangBot core, the plugin SDK, Runner, or multiple first-party plugins.
 
 ## Cost Ladder
 

@@ -7,9 +7,9 @@ from uuid import uuid4
 
 import pytest
 from langbot_plugin.api.entities.builtin.platform import events, entities, message
-from langbot_plugin.api.entities.builtin.agent_runner.context_access import ContextAPICapabilities
-from langbot_plugin.api.proxies.agent_run import AgentRunAPIProxy
-from langbot_plugin.api.proxies.agent_run.common import PermissionDeniedError
+from langbot_plugin.api.entities.builtin.runner.context_access import ContextAPICapabilities
+from langbot_plugin.api.proxies.runner import RunnerAPIProxy
+from langbot_plugin.api.proxies.runner.common import PermissionDeniedError
 from langbot_plugin.entities.io.actions.enums import PluginToRuntimeAction
 
 from langbot.pkg.agent.runner.reply_stream import ReplyStreamRequest, ReplyStreamSession
@@ -50,7 +50,7 @@ def request(key, operation='update', text='hello'):
 
 
 def proxy_for(session, *, allowed=True, advertised=True):
-    if not hasattr(AgentRunAPIProxy, 'reply_stream'):
+    if not hasattr(RunnerAPIProxy, 'reply_stream'):
         pytest.skip('SDK does not provide the optional streaming reply API')
     context = SimpleNamespace(
         run_id='run-1',
@@ -73,7 +73,7 @@ def proxy_for(session, *, allowed=True, advertised=True):
         }
 
     transport = SimpleNamespace(call_action=AsyncMock(side_effect=action))
-    return AgentRunAPIProxy(context, transport), transport
+    return RunnerAPIProxy(context, transport), transport
 
 
 @pytest.mark.parametrize(
@@ -211,11 +211,11 @@ async def test_streams_are_isolated_by_run_and_bounded():
 
 async def test_event_processor_uses_shared_sdk_api_and_emits_one_trace_for_the_stream():
     from unittest.mock import Mock
-    from langbot_plugin.api.definition.components.event_processor import EventProcessor
+    from langbot_plugin.api.definition.components.runner import Runner, RunnerContext
 
     session, adapter, incoming = make_session()
     api, _ = proxy_for(session)
-    processor = EventProcessor()
+    processor = Runner()
     processor.get_run_api = Mock(return_value=api)
 
     @processor.handler(events.MessageReceivedEvent)
@@ -224,14 +224,23 @@ async def test_event_processor_uses_shared_sdk_api_and_emits_one_trace_for_the_s
             await stream.update('one')
             await stream.update('one two')
 
-    context = SimpleNamespace(
-        run_id='run-1',
-        config={},
-        event=SimpleNamespace(
-            data=incoming.model_dump(mode='json', exclude={'source_platform_object', 'legacy_event'})
-        ),
+    context = RunnerContext.model_validate(
+        {
+            'run_id': 'run-1',
+            'trigger': {'type': incoming.type},
+            'event': {
+                'event_id': 'one',
+                'event_type': incoming.type,
+                'source': 'test',
+                'data': incoming.model_dump(mode='json', exclude={'source_platform_object', 'legacy_event'}),
+            },
+            'input': {},
+            'delivery': {'surface': 'test'},
+            'resources': {},
+            'runtime': {},
+        }
     )
-    results = [result async for result in processor.run(context)]
+    results = [result async for result in processor.invoke(context)]
     assert [r.type for r in results] == ['tool.call.started', 'tool.call.completed', 'run.completed']
     assert results[1].data['result']['text'] == 'one two'
     assert adapter.reply_message_chunk.await_count == 3

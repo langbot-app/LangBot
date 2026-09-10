@@ -1,8 +1,8 @@
-# LangBot AgentRunner Protocol v1
+# LangBot Runner Protocol v1
 
-本文档是 LangBot Host 与插件 SDK / Runtime / AgentRunner 之间协议合同的**唯一规范来源（single source of truth）**。
+本文档是 LangBot Host 与插件 SDK / Runtime / Runner 之间协议合同的**唯一规范来源（single source of truth）**。
 
-- 本文件描述当前 Protocol v1 稳定合同，不混入验收流水。当前实现状态见 [STATUS.md](./STATUS.md)，测试执行入口见 [AGENT_RUNNER_QA_GUIDE.md](./AGENT_RUNNER_QA_GUIDE.md)，安全发布门槛见 [SECURITY_HARDENING.md](./SECURITY_HARDENING.md)。
+- 本文件描述当前 Protocol v1 稳定合同，不混入验收流水。当前实现状态见 [STATUS.md](./STATUS.md)，测试执行入口见 [RUNNER_QA_GUIDE.md](./RUNNER_QA_GUIDE.md)，安全发布门槛见 [SECURITY_HARDENING.md](./SECURITY_HARDENING.md)。
 - 本文件之外的任何文档**不得重新定义这里的数据结构**，只能引用，例如"见 PROTOCOL_V1 §4.2"。
 - Host 内部模型（`AgentEventEnvelope`、`AgentBinding`、Descriptor、各 Store）不属于 SDK 协议，定义在 [HOST_SDK_INFRASTRUCTURE.md](./HOST_SDK_INFRASTRUCTURE.md)。
 
@@ -10,15 +10,15 @@
 
 Protocol v1 只解决四件事：
 
-- LangBot 如何发现插件提供的 AgentRunner。
-- LangBot 如何把一次事件调用封装成 `AgentRunContext`。
-- AgentRunner 如何以事件流形式返回运行结果。
-- AgentRunner 如何通过受限 API 访问 LangBot host 能力。
+- LangBot 如何发现插件提供的 Runner。
+- LangBot 如何把一次事件调用封装成 `RunnerContext`。
+- Runner 如何以事件流形式返回运行结果。
+- Runner 如何通过受限 API 访问 LangBot host 能力。
 
 Protocol v1 **不定义**：
 
 - LangBot 内部如何持久化 `AgentBinding`（见 HOST_SDK）。
-- AgentRunner 内部如何组装 prompt、压缩历史、管理 memory（见 [AGENT_CONTEXT_PROTOCOL.md](./AGENT_CONTEXT_PROTOCOL.md)）。
+- Runner 内部如何组装 prompt、压缩历史、管理 memory（见 [AGENT_CONTEXT_PROTOCOL.md](./AGENT_CONTEXT_PROTOCOL.md)）。
 - 官方 runner 的具体实现（见 [OFFICIAL_RUNNER_PLUGINS.md](./OFFICIAL_RUNNER_PLUGINS.md)）。
 - Pipeline 的长期配置模型。
 - 发布级安全 hardening 的完整实现（见 [SECURITY_HARDENING.md](./SECURITY_HARDENING.md)）。
@@ -29,8 +29,8 @@ Protocol v1 **不定义**：
 | --- | --- |
 | LangBot Host | 事件入口、绑定解析、权限、资源、存储、生命周期、结果投递。 |
 | Plugin Runtime | 加载插件，响应 Host 的 runner discovery 和 run 调用。 |
-| AgentRunner | 插件提供的 agent 执行组件。 |
-| AgentRunAPIProxy | AgentRunner 访问 Host 能力的受限 API。 |
+| Runner | 插件提供的 agent 执行组件。 |
+| RunnerAPIProxy | Runner 访问 Host 能力的受限 API。 |
 | AgentBinding | Host 内部的事件到 runner 绑定配置，不直接暴露给 SDK（见 HOST_SDK §4.2）。 |
 
 产品层同时保留 Pipeline 与独立 `Agent`：现有 Pipeline 不迁移为 Agent；
@@ -39,11 +39,11 @@ Protocol v1 **不定义**：
 `ctx.config`、`ctx.resources`、`ctx.context` 和 `ctx.delivery`。SDK 不需要知道
 Agent / binding 的持久化形态。
 
-外部 harness runner（Claude Code、Codex、Kimi Code 等）也是 `AgentRunner`：它们消费 event-first `AgentRunContext`、返回 `AgentRunResult`，并通过 Host 授权的 state/storage API 保存跨轮次指针；当前运行文件和工具大结果进入 sandbox/workspace。它们内部可以继续使用自己的 session、tool loop、MCP、上下文压缩和权限模型。
+外部 harness runner（Claude Code、Codex、Kimi Code 等）也是 `Runner`：它们消费 event-first `RunnerContext`、返回 `RunnerResult`，并通过 Host 授权的 state/storage API 保存跨轮次指针；当前运行文件和工具大结果进入 sandbox/workspace。它们内部可以继续使用自己的 session、tool loop、MCP、上下文压缩和权限模型。
 
 ## 3. 协议演进
 
-当前 AgentRunner 合同不暴露显式 `protocol_version` 字段。协议演进先按字段级兼容规则处理：
+当前 Runner 合同不暴露显式 `protocol_version` 字段。协议演进先按字段级兼容规则处理：
 
 - 新增可选字段保持向后兼容。
 - 删除字段或改变既有字段语义，需要在 SDK 发布前完成；发布后应走新的显式兼容方案。
@@ -52,35 +52,35 @@ Agent / binding 的持久化形态。
 
 ## 4. Discovery 协议
 
-### 4.1 LIST_AGENT_RUNNERS
+### 4.1 LIST_RUNNERS
 
 Host 调用 Plugin Runtime 获取当前插件暴露的 runner 列表，请求无额外 payload。返回：
 
 ```python
-class ListAgentRunnersResponse(BaseModel):
-    runners: list[AgentRunnerDiscovery]
+class ListRunnersResponse(BaseModel):
+    runners: list[RunnerDiscovery]
 
-class AgentRunnerDiscovery(BaseModel):
+class RunnerDiscovery(BaseModel):
     plugin_author: str
     plugin_name: str
     runner_name: str
-    manifest: AgentRunnerManifest
+    manifest: RunnerManifest
 ```
 
-`manifest` 是 SDK typed `AgentRunnerManifest`，由 Runtime 从插件组件 manifest 解析并校验后返回。`plugin_author` / `plugin_name` / `runner_name` 保留为 transport 寻址字段；Host 以它们生成稳定 runner id，并把 `manifest.id` 校验为 `plugin:author/name/runner`。单个 runner manifest 解析失败时 Runtime/Host 记录 warning 并跳过该 runner，不影响同一插件或其它插件的 runner discovery。
+`manifest` 是 SDK typed `RunnerManifest`，由 Runtime 从插件组件 manifest 解析并校验后返回。`plugin_author` / `plugin_name` / `runner_name` 保留为 transport 寻址字段；Host 以它们生成稳定 runner id，并把 `manifest.id` 校验为 `plugin:author/name/runner`。单个 runner manifest 解析失败时 Runtime/Host 记录 warning 并跳过该 runner，不影响同一插件或其它插件的 runner discovery。
 
-### 4.2 AgentRunnerManifest
+### 4.2 RunnerManifest
 
 这里的 manifest 指 Runtime 返回给 Host 的 typed runner manifest：
 
 ```python
-class AgentRunnerManifest(BaseModel):
+class RunnerManifest(BaseModel):
     id: str
     name: str
     label: I18nObject
     description: I18nObject | None = None
-    capabilities: AgentRunnerCapabilities = AgentRunnerCapabilities()
-    permissions: AgentRunnerPermissions = AgentRunnerPermissions()
+    capabilities: RunnerCapabilities = RunnerCapabilities()
+    permissions: RunnerPermissions = RunnerPermissions()
     config_schema: list[DynamicFormItemSchema] = []
     metadata: dict[str, Any] = {}
 ```
@@ -95,7 +95,7 @@ class AgentRunnerManifest(BaseModel):
 ### 4.3 Capabilities
 
 ```python
-class AgentRunnerCapabilities(BaseModel):
+class RunnerCapabilities(BaseModel):
     streaming: bool = False
     tool_calling: bool = False
     knowledge_retrieval: bool = False
@@ -122,7 +122,7 @@ Capabilities 字段全部是 `bool`，未知 key 禁止进入 typed manifest。�
 ### 4.4 Permissions 与 Effective Access
 
 ```python
-class AgentRunnerPermissions(BaseModel):
+class RunnerPermissions(BaseModel):
     models: list[Literal["invoke", "stream", "rerank"]] = []
     tools: list[Literal["detail", "call"]] = []
     knowledge_bases: list[Literal["list", "retrieve"]] = []
@@ -151,7 +151,7 @@ effective_access = manifest.permissions ∩ binding.resource_policy ∩ current 
 1. `AgentResourceBuilder` 先用 manifest permissions 与 binding resource policy / runner config 求交，生成 `ctx.resources`。
 2. `AgentContextBuilder` 用 manifest permissions 与 binding state/storage policy 求交，生成 `ctx.context.available_apis`。
 3. `AgentRunSessionRegistry` 冻结 run-scoped resources 与 available APIs。
-4. Runtime handler / `AgentRunAPIProxy` 按 active `run_id`、runner identity、caller plugin identity、resource id、scope、payload size、rate limit 和 deadline 校验每次调用。
+4. Runtime handler / `RunnerAPIProxy` 按 active `run_id`、runner identity、caller plugin identity、resource id、scope、payload size、rate limit 和 deadline 校验每次调用。
 
 反承诺：manifest permissions **只约束 LangBot 持有的资源访问**。它不承诺限制外部 harness 的 native shell、文件系统、CLI、MCP、网络或本机权限；这些能力由 operator/runtime/sandbox 另行约束，见 HOST_SDK §4.8 与 SECURITY_HARDENING。
 
@@ -167,7 +167,7 @@ context 边界的设计理由见 [AGENT_CONTEXT_PROTOCOL.md](./AGENT_CONTEXT_PRO
 
 ## 5. Run 协议
 
-### 5.1 RUN_AGENT
+### 5.1 RUN_RUNNER
 
 Host 调用 Runtime：
 
@@ -175,17 +175,17 @@ Host 调用 Runtime：
 class AgentRunRequest(BaseModel):
     runner_id: str
     runner_name: str
-    context: AgentRunContext
+    context: RunnerContext
 ```
 
-Runtime 返回 `AgentRunResult` 异步流。底层 transport 可继续用 `plugin_author` / `plugin_name` / `runner_name` 定位组件，但协议语义以 `runner_id` 和 `context` 为准。
+Runtime 返回 `RunnerResult` 异步流。底层 transport 可继续用 `plugin_author` / `plugin_name` / `runner_name` 定位组件，但协议语义以 `runner_id` 和 `context` 为准。
 
-### 5.2 AgentRunContext
+### 5.2 RunnerContext
 
 这是 SDK 看到的**唯一权威 context 定义**。
 
 ```python
-class AgentRunContext(BaseModel):
+class RunnerContext(BaseModel):
     run_id: str
     trigger: AgentTrigger
     event: AgentEventContext
@@ -361,7 +361,7 @@ class InteractionDeliveryCapabilities(BaseModel):
     max_fields: int | None = None
 ```
 
-Runner 使用 `AgentRunResult.interaction_requested()` 生成
+Runner 使用 `RunnerResult.interaction_requested()` 生成
 `action.requested(action="interaction.requested")`。Host 只能把请求投递到当前 run 冻结的
 delivery target，Runner 不得通过 `target` 改写 bot、conversation 或用户。Host 为请求保存
 `interaction_id -> processor/binding/conversation/expiry` 关联；平台 callback 必须先经过签名、
@@ -455,11 +455,11 @@ class AgentResources(BaseModel):
 
 `skills` 是本次 run 中 pipeline-visible 的 skill facts（`skill_name`、`display_name`、`description`）。**skill 通过统一 tool 形式消费，不是独立资源类别**：发现走 `list_skills` tool（或 `langbot_list_assets` 增加 skills 一类），激活走 `activate`，操作走 native exec/read/write。Host **不**把 skill 索引注入 system prompt，也不做 progressive-disclosure 注入；LLM 通过调用发现工具主动查询 skill 清单。Host **可选**在 ctx 提供预渲染的 `suggested_skill_prompt`（首轮延迟优化，runner 可忽略 / override），但它不是访问前提。`skills` 字段本身仅作为发现工具的数据来源与该可选预渲染的输入。
 
-资源列表是本次 run 的授权结果。History / Event / State / Storage 访问通过 `ctx.context.available_apis` 和 Host 侧 run session 校验控制，不作为可枚举 resource list 暴露。Runner 只能通过 `AgentRunAPIProxy` 访问这些能力。当前事件的文件和工具大结果优先进入授权 sandbox/workspace，由 runner 通过 read/write/exec 类工具按需读取。
+资源列表是本次 run 的授权结果。History / Event / State / Storage 访问通过 `ctx.context.available_apis` 和 Host 侧 run session 校验控制，不作为可枚举 resource list 暴露。Runner 只能通过 `RunnerAPIProxy` 访问这些能力。当前事件的文件和工具大结果优先进入授权 sandbox/workspace，由 runner 通过 read/write/exec 类工具按需读取。
 
 ## 7. Result Stream
 
-### 7.1 AgentRunResult envelope
+### 7.1 RunnerResult envelope
 
 ```python
 JSONValue = str | int | float | bool | None | list["JSONValue"] | dict[str, "JSONValue"]
@@ -475,9 +475,9 @@ ResultType = Literal[
     "run.failed",
 ]
 
-class AgentRunResult(BaseModel):
+class RunnerResult(BaseModel):
     run_id: str
-    type: AgentRunResultType | str
+    type: RunnerResultType | str
     data: dict[str, Any] = {}
     usage: LLMTokenUsage | None = None
     sequence: int | None = None
@@ -568,7 +568,7 @@ Host 必须校验 `state.updated` 的 scope、key、value 大小和 JSON 可序�
 { "type": "action.requested",  "data": { "action": "interaction.requested", "payload": { "interaction_id": "form_1", "kind": "choice", "title": "Approve?", "actions": [{"id": "approve", "label": "Approve", "style": "primary"}], "fallback_text": "Reply approve or reject." } } }
 ```
 
-## 8. AgentRunAPIProxy
+## 8. RunnerAPIProxy
 
 所有 proxy action 必须携带 `run_id`。Host 必须校验：active run session 存在、caller plugin identity 匹配、resource 在本次 `ctx.resources` 中授权、scope 不越界、payload size / rate limit / deadline 合法。
 
@@ -777,7 +777,7 @@ Protocol v1 的安全边界在 Host：
 - 大 payload 不应塞进 result event；当前 run 的文件和工具大结果应进入授权 sandbox/workspace，由 read/write/exec 类工具按需访问。
 - Host 必须记录 run_id、runner_id、action、resource、scope、result。
 
-Host 不负责业务编排：不拼接全量历史、不替 runner 做 prompt assembly、不内置 agent memory / tool loop / 上下文压缩策略。这些由官方或第三方 AgentRunner 插件实现。
+Host 不负责业务编排：不拼接全量历史、不替 runner 做 prompt assembly、不内置 agent memory / tool loop / 上下文压缩策略。这些由官方或第三方 Runner 插件实现。
 
 外部 harness runner 的边界统一见 HOST_SDK §4.8。简言之：harness native permission mode、allowed/disallowed tools、shell/MCP 权限只是额外执行约束，不能替代 Host 对 LangBot 资源的授权。
 
@@ -786,7 +786,7 @@ Host 不负责业务编排：不拼接全量历史、不替 runner 做 prompt as
 ## 12. Pipeline AI Stage Adapter 边界
 
 Pipeline 与 Agent 是 EBA 中平级的处理器：Pipeline 处理消息事件并执行完整
-Stage 链，Agent 处理其声明支持的消息或非消息事件。本协议只约束 AgentRunner
+Stage 链，Agent 处理其声明支持的消息或非消息事件。本协议只约束 Runner
 调用，因此 Pipeline 仅在 AI Stage 调用 runner 时进入 Query entry adapter；
 该适配不会把 Pipeline 变成 Agent，也不会创建或更新持久 Agent。adapter 负责：
 
@@ -804,12 +804,12 @@ Stage 链，Agent 处理其声明支持的消息或非消息事件。本协议�
 ## 13. 已确认约束
 
 - EBA 路由层是 `one event -> one Processor target (Pipeline | Agent)`；同一 bot / channel 可以让不同事件绑定不同类型的处理器。
-- 进入 AgentRunner Protocol 后，调用基数是 `one AgentBinding -> one run_id -> one runner`。这既适用于独立 Agent，也适用于 Pipeline AI Stage 的单次 runner 调用。
+- 进入 Runner Protocol 后，调用基数是 `one AgentBinding -> one run_id -> one runner`。这既适用于独立 Agent，也适用于 Pipeline AI Stage 的单次 runner 调用。
 - 一个 Agent 可以被多个 bot / channel 复用。如果 Agent 分支出现多个匹配 binding，BindingResolver 必须按明确规则选出一个或拒绝配置，不应默认 fan-out。
 - observer agent、多 runner fan-out、并行裁决、result 合并等能力需要单独设计 delivery、state、platform action 和 audit 语义，不属于当前 v1 契约。
-- `AgentRunnerDescriptor.source` 只允许 `plugin`；Host 内置 adapter 不能作为 runner source 绕过插件/runtime/proxy 权限链。
+- `RunnerDescriptor.source` 只允许 `plugin`；Host 内置 adapter 不能作为 runner source 绕过插件/runtime/proxy 权限链。
 - `ctx.resources` 与 proxy action 校验必须来自同一个 run authorization snapshot；runtime handler 不应重新执行资源裁剪。
-- v1 不要求 Agent、AgentRunner 插件实例或 runner id 全局串行。多个 bot / channel 可复用同一个 Agent；并发隔离依赖 `run_id`、binding、conversation / thread scope 和 Host authorization snapshot。
+- v1 不要求 Agent、Runner 插件实例或 runner id 全局串行。多个 bot / channel 可复用同一个 Agent；并发隔离依赖 `run_id`、binding、conversation / thread scope 和 Host authorization snapshot。
 - 外部 harness runner 当前是 MVP / dev path，证明协议可接入，不代表发布级安全边界或 Docker 生产可用性完成。
 
 ## 14. 开放问题

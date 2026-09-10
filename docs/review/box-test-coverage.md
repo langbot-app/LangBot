@@ -62,7 +62,7 @@
 | Backend selection | 良好 | 显式 backend 优先级、local 探测顺序、配置变更触发 reselect |
 | MCP Box 集成 | 良好 | config model、路径重写、payload、shared-session 多 process |
 | Native tool loader | 良好 | 6 工具（exec/read/write/edit/glob/grep）、路径穿越拦截 |
-| AgentRunner 工具入口 | 良好 | SDK proxy 与 MCP bridge 都映射到 `PluginToRuntimeAction.CALL_TOOL`；Host action 测试覆盖 run-scoped execution Query 与纯 EBA native exec |
+| Runner 工具入口 | 良好 | SDK proxy 与 MCP bridge 都映射到 `PluginToRuntimeAction.CALL_TOOL`；Host action 测试覆盖 run-scoped execution Query 与纯 EBA native exec |
 | Skill 系统 | 良好 | 加载、Tool Call 激活、marker、路径解析、authoring CRUD、HTTP service |
 
 ---

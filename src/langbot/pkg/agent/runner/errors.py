@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 
-class AgentRunnerError(Exception):
+class RunnerError(Exception):
     """Base error for agent runner operations."""
 
     pass
 
 
-class RunnerNotFoundError(AgentRunnerError):
+class RunnerNotFoundError(RunnerError):
     """Runner not found in registry."""
 
     def __init__(self, runner_id: str):
@@ -17,7 +17,7 @@ class RunnerNotFoundError(AgentRunnerError):
         super().__init__(f'Agent runner not found: {runner_id}')
 
 
-class RunnerNotAuthorizedError(AgentRunnerError):
+class RunnerNotAuthorizedError(RunnerError):
     """Runner not authorized for this binding."""
 
     def __init__(self, runner_id: str, bound_plugins: list[str] | None):
@@ -26,7 +26,7 @@ class RunnerNotAuthorizedError(AgentRunnerError):
         super().__init__(f'Agent runner {runner_id} not authorized for bound_plugins={bound_plugins}')
 
 
-class RunnerProtocolError(AgentRunnerError):
+class RunnerProtocolError(RunnerError):
     """Runner protocol version mismatch or invalid manifest."""
 
     def __init__(self, runner_id: str, message: str):
@@ -34,7 +34,7 @@ class RunnerProtocolError(AgentRunnerError):
         super().__init__(f'Agent runner protocol error for {runner_id}: {message}')
 
 
-class RunnerExecutionError(AgentRunnerError):
+class RunnerExecutionError(RunnerError):
     """Runner execution failed."""
 
     def __init__(

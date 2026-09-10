@@ -3,7 +3,7 @@ from __future__ import annotations
 import quart
 
 from .....agent.runner.errors import (
-    AgentRunnerError,
+    RunnerError,
     RunnerExecutionError,
     RunnerNotAuthorizedError,
     RunnerNotFoundError,
@@ -144,7 +144,7 @@ class AgentsRouterGroup(group.RouterGroup):
                     'runner_protocol_error',
                     'The Agent runner returned an invalid response',
                 )
-            except AgentRunnerError:
+            except RunnerError:
                 return self.http_status(
                     502,
                     'runner_error',

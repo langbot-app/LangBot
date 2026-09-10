@@ -1,10 +1,10 @@
-# Local Agent Runner
+# Local Runner
 
 Use this reference when validating the pluginized `langbot-team/LocalAgent` runner through the WebUI.
 
 The goal is behavior parity with the old built-in local-agent runner. The code does not need to be identical, but the visible behavior should match: effective prompt, current input, history, model selection and fallback, tool calling, knowledge retrieval, multimodal input, streaming and non-streaming output all have to reach the runner through the host and SDK.
 
-For path-by-path coverage, read [Local Agent Runner Coverage](local-agent-runner-coverage.md).
+For path-by-path coverage, read [Local Runner Coverage](local-agent-runner-coverage.md).
 
 ## Main Surface
 

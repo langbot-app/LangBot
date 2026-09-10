@@ -1,4 +1,4 @@
-"""Resolve the current AgentRunner configuration shape."""
+"""Resolve the current Runner configuration shape."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ HOST_SECURITY_BOOLEAN_FIELDS = (
 
 
 class RunnerConfigResolver:
-    """Configuration helpers for the current AgentRunner shape.
+    """Configuration helpers for the current Runner shape.
 
     Responsibilities:
     - Resolve runner ID from ai.runner.id
@@ -131,20 +131,20 @@ class RunnerConfigResolver:
         return config
 
     @staticmethod
-    def resolve_agent_runner_id(config: dict[str, typing.Any]) -> str | None:
+    def resolve_agent_id(config: dict[str, typing.Any]) -> str | None:
         """Resolve a runner ID from a validated persisted Agent config."""
         runner = config.get('runner', {})
         runner_id = runner.get('id') if isinstance(runner, dict) else None
         return runner_id if isinstance(runner_id, str) and runner_id else None
 
     @classmethod
-    def resolve_agent_runner_config(
+    def resolve_agent_config(
         cls,
         config: typing.Any,
     ) -> tuple[dict[str, typing.Any], str | None, dict[str, typing.Any]]:
         """Validate an Agent config and return its selected runner configuration."""
         validated = cls.validate_agent_config(config)
-        runner_id = cls.resolve_agent_runner_id(validated)
+        runner_id = cls.resolve_agent_id(validated)
         runner_configs = typing.cast(dict[str, typing.Any], validated['runner_config'])
         runner_config = runner_configs.get(runner_id, {}) if runner_id else {}
         return validated, runner_id, typing.cast(dict[str, typing.Any], runner_config)

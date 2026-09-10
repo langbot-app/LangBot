@@ -1,5 +1,5 @@
 id: ambiguous-runner-default-label
-title: "AgentRunner selector shows multiple Default or 默认 options"
+title: "Runner selector shows multiple Default or 默认 options"
 date: 2026-05-17
 symptoms:
   - "The Pipeline AI runner selector shows multiple options named Default or 默认."
@@ -9,7 +9,7 @@ patterns:
   - "label.zh_Hans: 默认"
   - "label.en_US: Default"
 likely_causes:
-  - "AgentRunner component ids are commonly named default, but the user-facing metadata.label was also left generic."
+  - "Runner component ids are commonly named default, but the user-facing metadata.label was also left generic."
   - "The frontend displays metadata.label as the primary option label."
 fix_steps:
   - "Keep metadata.name as default if the plugin component id is intended to remain stable."

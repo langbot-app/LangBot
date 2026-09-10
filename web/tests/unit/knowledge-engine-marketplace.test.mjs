@@ -17,8 +17,8 @@ const kbFormSource = readSource(
 const selectSource = readSource(
   'src/app/home/knowledge/components/kb-form/KnowledgeEngineSelect.tsx',
 );
-const agentRunnerSelectSource = readSource(
-  'src/app/home/agents/components/AgentRunnerSelect.tsx',
+const runnerSelectSource = readSource(
+  'src/app/home/agents/components/RunnerSelect.tsx',
 );
 const agentFormSource = readSource(
   'src/app/home/agents/components/AgentFormComponent.tsx',
@@ -26,8 +26,8 @@ const agentFormSource = readSource(
 const pipelineFormSource = readSource(
   'src/app/home/pipelines/components/pipeline-form/PipelineFormComponent.tsx',
 );
-const agentRunnerMarketplaceSource = readSource(
-  'src/app/home/agents/agent-runner-marketplace.ts',
+const runnerMarketplaceSource = readSource(
+  'src/app/home/agents/runner-marketplace.ts',
 );
 const marketplaceInstallButtonSource = readSource(
   'src/app/home/components/MarketplaceInstallButton.tsx',
@@ -89,7 +89,7 @@ test('tracks plugin upgrades as recoverable multistep async tasks', () => {
 });
 
 test('keeps marketplace install actions on one fixed vertical column', () => {
-  for (const source of [selectSource, agentRunnerSelectSource]) {
+  for (const source of [selectSource, runnerSelectSource]) {
     assert.match(source, /grid-cols-\[1\.75rem_minmax\(0,1fr\)_4rem\]/);
     assert.match(source, /<MarketplaceInstallButton/);
   }
@@ -112,7 +112,7 @@ test('uses a compact selected engine layout and clears stale required errors', (
 });
 
 test('installs marketplace components from inline progress buttons without selecting them', () => {
-  for (const source of [selectSource, agentRunnerSelectSource]) {
+  for (const source of [selectSource, runnerSelectSource]) {
     assert.match(source, /const handleInstall = useCallback/);
     assert.match(source, /installing=\{activePluginId === pluginId\}/);
     assert.match(source, /progress=\{installProgress\}/);
@@ -134,18 +134,12 @@ test('installs marketplace components from inline progress buttons without selec
   }
 });
 
-test('shows plugin descriptions for installed AgentRunner entries', () => {
-  assert.match(agentRunnerMarketplaceSource, /installedPluginDescriptions/);
-  assert.match(agentRunnerMarketplaceSource, /metadata\.description/);
-  assert.match(agentRunnerSelectSource, /installedRunnerDescription\(/);
-  assert.match(
-    agentRunnerSelectSource,
-    /function InstalledRunnerOptionContent/,
-  );
-  assert.match(agentRunnerSelectSource, /marketplacePlugin\?\.description/);
-  assert.match(
-    agentRunnerSelectSource,
-    /grid-cols-\[1\.75rem_minmax\(0,1fr\)\]/,
-  );
-  assert.doesNotMatch(agentRunnerSelectSource, /description=\{option\.name\}/);
+test('shows plugin descriptions for installed Runner entries', () => {
+  assert.match(runnerMarketplaceSource, /installedPluginDescriptions/);
+  assert.match(runnerMarketplaceSource, /metadata\.description/);
+  assert.match(runnerSelectSource, /installedRunnerDescription\(/);
+  assert.match(runnerSelectSource, /function InstalledRunnerOptionContent/);
+  assert.match(runnerSelectSource, /marketplacePlugin\?\.description/);
+  assert.match(runnerSelectSource, /grid-cols-\[1\.75rem_minmax\(0,1fr\)\]/);
+  assert.doesNotMatch(runnerSelectSource, /description=\{option\.name\}/);
 });

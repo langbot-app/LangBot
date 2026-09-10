@@ -344,7 +344,7 @@ test.describe('wizard and QR platform regressions', () => {
     await expect.poll(() => inboundTestCount).toBe(1);
   });
 
-  test('blocks deployment until required AgentRunner configuration is real', async ({
+  test('blocks deployment until required Runner configuration is real', async ({
     page,
   }) => {
     await installLangBotApiMocks(page, {

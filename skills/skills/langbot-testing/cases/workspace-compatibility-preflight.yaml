@@ -18,7 +18,7 @@ steps:
   - "Discover the active LangBot checkout and sibling workspace repositories, with LANGBOT_WORKSPACE_ROOT and repository-specific env overrides available for non-default layouts."
   - "Verify every checkout is on main or dev/4.11.x and record dirty worktrees as warnings only."
   - "Validate plugin manifest identities for LocalAgent, Control Plane, LongTermMemory, GeneralParsers, LangRAG, and Skill Authoring."
-  - "Use the LangBot virtualenv to import langbot_plugin and AgentRunner Protocol entities from the workspace SDK source tree."
+  - "Use the LangBot virtualenv to import langbot_plugin and Runner Protocol entities from the workspace SDK source tree."
 checks:
   - "workspace-preflight.json contains no failed checks."
   - "The langbot_plugin import path is inside the discovered langbot-plugin-sdk/src directory."

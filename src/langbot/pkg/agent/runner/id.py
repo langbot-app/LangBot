@@ -31,7 +31,7 @@ def parse_runner_id(runner_id: str) -> RunnerIdParts:
     Raises:
         ValueError: If runner_id format is invalid
     """
-    if runner_id.startswith(('plugin:', 'event_processor:')):
+    if runner_id.startswith('plugin:'):
         source, value = runner_id.split(':', 1)
         parts = value.split('/')
         if len(parts) != 3:
@@ -71,7 +71,7 @@ def format_runner_id(
     Returns:
         Runner ID string
     """
-    if source in {'plugin', 'event_processor'}:
+    if source == 'plugin':
         return f'{source}:{plugin_author}/{plugin_name}/{runner_name}'
     else:
         raise ValueError(f'Invalid runner source: {source}')
@@ -86,4 +86,4 @@ def is_plugin_runner_id(runner_id: str) -> bool:
     Returns:
         True if runner ID starts with 'plugin:'
     """
-    return runner_id.startswith(('plugin:', 'event_processor:'))
+    return runner_id.startswith('plugin:')

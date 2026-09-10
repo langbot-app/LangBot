@@ -3,24 +3,24 @@
 > 更新日期: 2026-06-29
 > 分支: `mcp_resources`
 > PR: langbot-app/LangBot#2215
-> 主题: MCP Resources 在 LangBot 中的产品价值、AgentRunner 集成方式与后续架构方向
+> 主题: MCP Resources 在 LangBot 中的产品价值、Runner 集成方式与后续架构方向
 
 ## 结论
 
 PR #2215 对 LangBot 有明确价值：它补齐了 MCP 协议中 Resources 这一重要能力，让 MCP server 不再只暴露 tools，也可以暴露文档、代码片段、配置、日志、图片等上下文资源。管理端可以发现和预览资源，Agent 也可以通过当前实现按需列出和读取资源。
 
-但当前 AgentRunner 层的接入方式更接近一个可用的第一阶段方案，而不是最终架构。现在 MCP Resources 被包装成两个 synthetic tools：
+但当前 Runner 层的接入方式更接近一个可用的第一阶段方案，而不是最终架构。现在 MCP Resources 被包装成两个 synthetic tools：
 
 - `langbot_mcp_list_resources`
 - `langbot_mcp_read_resource`
 
-这让模型可以通过 function calling 主动探索资源，落地成本低，也复用了已有 `ToolManager` / `LocalAgentRunner` 的工具调用链路。不过从 MCP 规范和主流实现来看，Resources 更适合作为一种一等上下文来源，而不是长期隐藏在工具列表里。
+这让模型可以通过 function calling 主动探索资源，落地成本低，也复用了已有 `ToolManager` / `LocalRunner` 的工具调用链路。不过从 MCP 规范和主流实现来看，Resources 更适合作为一种一等上下文来源，而不是长期隐藏在工具列表里。
 
 建议保留当前 synthetic tools 作为探索能力，同时把后续主线设计调整为：MCP Resources 是 pipeline / conversation / message 级别可选择、可固定、可审计的上下文输入。
 
 ## 当前实现判断
 
-当前 AgentRunner 集成路径如下：
+当前 Runner 集成路径如下：
 
 ```text
 Pipeline 绑定 MCP server
@@ -28,7 +28,7 @@ Pipeline 绑定 MCP server
   -> Preproc 为 local-agent 加载工具
   -> ToolManager.get_all_tools()
   -> MCPLoader 注入 synthetic resource tools
-  -> LocalAgentRunner 将工具 schema 传给模型
+  -> LocalRunner 将工具 schema 传给模型
   -> 模型发起 list/read tool call
   -> ToolManager.execute_func_call()
   -> MCPLoader 调 MCP session.list_resources/read_resource
@@ -178,7 +178,7 @@ LangBot 后续应支持模板发现、参数填写、实例化和绑定。否则
 - 支持 resource templates。
 - 支持资源订阅更新。
 - 支持 chunk、summary、RAG 化接入。
-- 为 DifyAgentRunner、LocalAgentRunner 等不同 runner 定义统一资源上下文接口。
+- 为 DifyRunner、LocalRunner 等不同 runner 定义统一资源上下文接口。
 
 ## 最终建议
 

@@ -1,4 +1,4 @@
-"""Merge AgentRunner and Workspace heads and scope Agents to a Workspace.
+"""Merge Runner and Workspace heads and scope Agents to a Workspace.
 
 Revision ID: 0016_agent_workspace
 Revises: 0015_official_runner_ids, 0015_cloud_core_collab
@@ -27,10 +27,7 @@ def _inspector(conn: sa.Connection) -> sa.Inspector:
 
 
 def _columns(conn: sa.Connection) -> dict[str, dict]:
-    return {
-        column['name']: column
-        for column in _inspector(conn).get_columns(_TABLE)
-    }
+    return {column['name']: column for column in _inspector(conn).get_columns(_TABLE)}
 
 
 def _default_workspace_uuid(conn: sa.Connection) -> str | None:
@@ -59,8 +56,7 @@ def _default_workspace_uuid(conn: sa.Connection) -> str | None:
 
 def _foreign_key_exists(conn: sa.Connection) -> bool:
     return any(
-        tuple(foreign_key.get('constrained_columns') or ())
-        == ('workspace_uuid',)
+        tuple(foreign_key.get('constrained_columns') or ()) == ('workspace_uuid',)
         and foreign_key.get('referred_table') == 'workspaces'
         and tuple(foreign_key.get('referred_columns') or ()) == ('uuid',)
         for foreign_key in _inspector(conn).get_foreign_keys(_TABLE)
@@ -75,10 +71,7 @@ def _enable_postgres_rls(conn: sa.Connection) -> None:
     op.execute(sa.text(f'DROP POLICY IF EXISTS {policy} ON {table}'))
     op.execute(sa.text(f'ALTER TABLE {table} ENABLE ROW LEVEL SECURITY'))
     op.execute(sa.text(f'ALTER TABLE {table} FORCE ROW LEVEL SECURITY'))
-    expression = (
-        "workspace_uuid::text = "
-        f"NULLIF(current_setting('{_TENANT_SETTING}', true), '')"
-    )
+    expression = f"workspace_uuid::text = NULLIF(current_setting('{_TENANT_SETTING}', true), '')"
     op.execute(
         sa.text(
             f'CREATE POLICY {policy} ON {table} AS PERMISSIVE FOR ALL TO PUBLIC '
@@ -104,22 +97,12 @@ def upgrade() -> None:
         _TABLE,
         sa.column('workspace_uuid', sa.String(36)),
     )
-    null_count = conn.scalar(
-        sa.select(sa.func.count())
-        .select_from(agents)
-        .where(agents.c.workspace_uuid.is_(None))
-    )
+    null_count = conn.scalar(sa.select(sa.func.count()).select_from(agents).where(agents.c.workspace_uuid.is_(None)))
     if null_count:
         workspace_uuid = _default_workspace_uuid(conn)
         if workspace_uuid is None:
-            raise RuntimeError(
-                'Cannot backfill Agents: the instance has no unique local Workspace'
-            )
-        conn.execute(
-            agents.update()
-            .where(agents.c.workspace_uuid.is_(None))
-            .values(workspace_uuid=workspace_uuid)
-        )
+            raise RuntimeError('Cannot backfill Agents: the instance has no unique local Workspace')
+        conn.execute(agents.update().where(agents.c.workspace_uuid.is_(None)).values(workspace_uuid=workspace_uuid))
 
     columns = _columns(conn)
     needs_contract = columns['workspace_uuid']['nullable'] or not _foreign_key_exists(conn)
@@ -140,9 +123,7 @@ def upgrade() -> None:
                     ondelete='CASCADE',
                 )
 
-    index_names = {
-        index['name'] for index in _inspector(conn).get_indexes(_TABLE)
-    }
+    index_names = {index['name'] for index in _inspector(conn).get_indexes(_TABLE)}
     if 'ix_agents_workspace_name' not in index_names:
         op.create_index(
             'ix_agents_workspace_name',
@@ -172,9 +153,7 @@ def downgrade() -> None:
         op.execute(sa.text(f'ALTER TABLE {table} NO FORCE ROW LEVEL SECURITY'))
         op.execute(sa.text(f'ALTER TABLE {table} DISABLE ROW LEVEL SECURITY'))
 
-    index_names = {
-        index['name'] for index in _inspector(conn).get_indexes(_TABLE)
-    }
+    index_names = {index['name'] for index in _inspector(conn).get_indexes(_TABLE)}
     for index_name in ('ix_agents_workspace_updated', 'ix_agents_workspace_name'):
         if index_name in index_names:
             op.drop_index(index_name, table_name=_TABLE)
@@ -184,8 +163,7 @@ def downgrade() -> None:
         (
             foreign_key
             for foreign_key in foreign_keys
-            if tuple(foreign_key.get('constrained_columns') or ())
-            == ('workspace_uuid',)
+            if tuple(foreign_key.get('constrained_columns') or ()) == ('workspace_uuid',)
             and foreign_key.get('referred_table') == 'workspaces'
         ),
         None,

@@ -46,7 +46,7 @@ import {
   groupEventPatterns,
 } from '@/app/home/components/event-patterns/event-pattern-groups';
 import EventSelectOptionContent from '@/app/home/components/event-patterns/EventSelectOptionContent';
-import EventProcessorTrace from './EventProcessorTrace';
+import PluginProcessorTrace from './PluginProcessorTrace';
 import AgentExecutionTrace from './AgentExecutionTrace';
 import AgentEventDataEditor from './AgentEventDataEditor';
 import {
@@ -455,7 +455,7 @@ export default function AgentDebugPanel({
                     </div>
                     {entry.events &&
                       (processor ? (
-                        <EventProcessorTrace
+                        <PluginProcessorTrace
                           events={entry.events}
                           toolLabels={toolLabels}
                         />

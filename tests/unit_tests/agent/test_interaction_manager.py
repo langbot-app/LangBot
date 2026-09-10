@@ -8,10 +8,10 @@ import time
 import pytest
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from langbot_plugin.api.entities.builtin.agent_runner.delivery import DeliveryContext
-from langbot_plugin.api.entities.builtin.agent_runner.event import ActorContext
-from langbot_plugin.api.entities.builtin.agent_runner.input import AgentInput
-from langbot_plugin.api.entities.builtin.agent_runner.interaction import (
+from langbot_plugin.api.entities.builtin.runner.delivery import DeliveryContext
+from langbot_plugin.api.entities.builtin.runner.event import ActorContext
+from langbot_plugin.api.entities.builtin.runner.input import AgentInput
+from langbot_plugin.api.entities.builtin.runner.interaction import (
     InteractionDeliveryCapabilities,
     InteractionSubmission,
 )

@@ -635,8 +635,7 @@ const esES = {
     deleteAgentAction: 'Eliminar este Agent',
     deleteAgentHint:
       'Una vez eliminado, los eventos vinculados a él ya no podrán ejecutarse.',
-    noRunnerMetadata:
-      'No hay metadatos de AgentRunner disponibles actualmente.',
+    noRunnerMetadata: 'No hay metadatos de Runner disponibles actualmente.',
   },
   plugins: {
     title: 'Extensiones',
@@ -734,8 +733,7 @@ const esES = {
       KnowledgeEngine: 'Motor de conocimiento',
       Parser: 'Analizador',
       Page: 'Página',
-      AgentRunner: 'Ejecutor de agentes',
-      EventProcessor: 'Procesador de eventos',
+      Runner: 'Ejecutor de agentes',
     },
     uploadLocal: 'Subir local',
     debugging: 'Depuración',
@@ -917,8 +915,7 @@ const esES = {
       KnowledgeEngine: 'Motor de conocimiento',
       Parser: 'Analizador',
       Page: 'Página',
-      AgentRunner: 'Ejecutor de agentes',
-      EventProcessor: 'Procesador de eventos',
+      Runner: 'Ejecutor de agentes',
     },
     filterByType: 'Tipo',
     allTypes: 'Todos los tipos',
@@ -1166,14 +1163,14 @@ const esES = {
       selectSkills: 'Seleccionar skills',
       noSkillsAvailable: 'No hay skills disponibles',
       mcpServersScopeTooltip:
-        'Aquí solo se controla qué servidores MCP se vinculan al Pipeline. Las herramientas y recursos MCP concretos se eligen en AI Feature > Agent Runner.',
+        'Aquí solo se controla qué servidores MCP se vinculan al Pipeline. Las herramientas y recursos MCP concretos se eligen en AI Feature > Runner.',
       enableAllMCPServersTooltip:
         'Al activarlo, todos los servidores MCP configurados y habilitados serán candidatos para herramientas y recursos MCP en AI Feature.',
     },
-    agentRunner: {
+    runner: {
       toolsTitle: 'Herramientas',
       toolsDescription:
-        'Selecciona las herramientas de plugins, MCP e integradas disponibles para este Agent Runner.',
+        'Selecciona las herramientas de plugins, MCP e integradas disponibles para este Runner.',
       toolsScopeTooltip:
         'Las herramientas MCP solo provienen de servidores MCP vinculados en Extensiones. Vincula allí otro servidor para poder seleccionarlo aquí.',
       enableAllTools: 'Activar todas las herramientas',
@@ -1191,7 +1188,7 @@ const esES = {
       selectTools: 'Seleccionar herramientas',
       resourcesTitle: 'Recursos',
       resourcesDescription:
-        'Selecciona los recursos MCP y bases de conocimiento disponibles para este Agent Runner.',
+        'Selecciona los recursos MCP y bases de conocimiento disponibles para este Runner.',
       knowledgeBases: 'Bases de conocimiento',
       mcpResources: 'Recursos MCP',
       mcpResourcesScopeTooltip:

@@ -26,7 +26,7 @@ class _RuntimeActionName:
 
 AGENT_RUN_ADMIN_PERMISSION = 'agent_run:admin'
 RUNTIME_ADMIN_PERMISSION = 'runtime:admin'
-AGENT_RUNNER_ADMIN_PERMISSION = 'agent_runner:admin'
+RUNNER_ADMIN_PERMISSION = 'runner:admin'
 LEDGER_ONLY_SIDE_EFFECTING_RESULT_TYPES = {
     'message.delta',
     'message.completed',
@@ -50,15 +50,15 @@ def _normalize_permission_set(value: Any) -> set[str]:
     return set()
 
 
-def _iter_agent_runner_admin_plugin_configs(ap: app.Application) -> list[dict[str, Any]]:
+def _iter_runner_admin_plugin_configs(ap: app.Application) -> list[dict[str, Any]]:
     instance_config = getattr(ap, 'instance_config', None)
     config_data = getattr(instance_config, 'data', {}) if instance_config is not None else {}
     if not isinstance(config_data, dict):
         return []
-    agent_runner_config = config_data.get('agent_runner', {})
-    if not isinstance(agent_runner_config, dict):
+    runner_config = config_data.get('runner', {})
+    if not isinstance(runner_config, dict):
         return []
-    raw_admin_plugins = agent_runner_config.get('admin_plugins', [])
+    raw_admin_plugins = runner_config.get('admin_plugins', [])
     if isinstance(raw_admin_plugins, dict):
         items: list[dict[str, Any]] = []
         for identity, entry in raw_admin_plugins.items():
@@ -74,12 +74,12 @@ def _iter_agent_runner_admin_plugin_configs(ap: app.Application) -> list[dict[st
     return []
 
 
-def _agent_runner_admin_permissions(ap: app.Application, plugin_identity: str | None) -> set[str]:
+def _runner_admin_permissions(ap: app.Application, plugin_identity: str | None) -> set[str]:
     if not isinstance(plugin_identity, str) or not plugin_identity.strip():
         return set()
     normalized_identity = plugin_identity.strip()
     permissions: set[str] = set()
-    for entry in _iter_agent_runner_admin_plugin_configs(ap):
+    for entry in _iter_runner_admin_plugin_configs(ap):
         if entry.get('enabled', True) is False:
             continue
         identity = entry.get('identity') or entry.get('plugin_identity') or entry.get('plugin') or entry.get('id')
@@ -90,19 +90,19 @@ def _agent_runner_admin_permissions(ap: app.Application, plugin_identity: str | 
     return permissions
 
 
-def _has_agent_runner_admin_permission(
+def _has_runner_admin_permission(
     ap: app.Application,
     plugin_identity: str | None,
     permission: str,
 ) -> bool:
-    permissions = _agent_runner_admin_permissions(ap, plugin_identity)
+    permissions = _runner_admin_permissions(ap, plugin_identity)
     if not permissions:
         return False
     domain = permission.split(':', 1)[0]
     return bool(
         permission in permissions
         or f'{domain}:*' in permissions
-        or AGENT_RUNNER_ADMIN_PERMISSION in permissions
+        or RUNNER_ADMIN_PERMISSION in permissions
         or '*' in permissions
     )
 
@@ -251,11 +251,11 @@ async def _validate_agent_run_session(
     allow_persistent_authorization: bool = False,
     admin_permission: str | None = None,
 ) -> Union[tuple[None, handler.ActionResponse], tuple[Any, None]]:
-    """Validate an AgentRunner pull API run session and run-scoped API access."""
+    """Validate an Runner pull API run session and run-scoped API access."""
     if (
         not run_id
         and admin_permission
-        and _has_agent_runner_admin_permission(
+        and _has_runner_admin_permission(
             ap,
             caller_plugin_identity,
             admin_permission,
@@ -294,7 +294,7 @@ async def _validate_agent_run_session(
 
     if api_capability:
         available_apis = _get_run_authorization(session).get('available_apis', {})
-        has_admin_permission = bool(admin_permission) and _has_agent_runner_admin_permission(
+        has_admin_permission = bool(admin_permission) and _has_runner_admin_permission(
             ap,
             caller_plugin_identity,
             admin_permission,
@@ -428,7 +428,7 @@ def _project_event_record_for_api(event: dict[str, Any]) -> dict[str, Any]:
 
 
 def _project_runner_descriptor_for_api(descriptor: Any) -> dict[str, Any]:
-    """Project an AgentRunnerDescriptor-like object onto a JSON dict."""
+    """Project an RunnerDescriptor-like object onto a JSON dict."""
     if isinstance(descriptor, dict):
         return dict(descriptor)
     if hasattr(descriptor, 'model_dump'):
@@ -449,7 +449,7 @@ def _project_runner_descriptor_for_api(descriptor: Any) -> dict[str, Any]:
     }
 
 
-async def _record_agent_runner_admin_action(
+async def _record_runner_admin_action(
     ap: app.Application,
     store: Any,
     *,
@@ -460,7 +460,7 @@ async def _record_agent_runner_admin_action(
     target_runtime_id: str | None = None,
     detail: dict[str, Any] | None = None,
 ) -> None:
-    """Record a small audit trail for privileged AgentRunner operations."""
+    """Record a small audit trail for privileged Runner operations."""
     audit_data: dict[str, Any] = {
         'action': action,
         'caller_plugin_identity': caller_plugin_identity,
@@ -485,4 +485,4 @@ async def _record_agent_runner_admin_action(
             metadata={'permission': permission},
         )
     except Exception as exc:
-        ap.logger.warning(f'Failed to record AgentRunner admin audit event: {exc}', exc_info=True)
+        ap.logger.warning(f'Failed to record Runner admin audit event: {exc}', exc_info=True)

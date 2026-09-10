@@ -7,7 +7,7 @@ Tests focus on:
 - RETRIEVE_KNOWLEDGE_BASE authorization
 
 Authorization paths:
-1. AgentRunner calls: has run_id, validates against session_registry
+1. Runner calls: has run_id, validates against session_registry
 2. Regular plugin calls: no run_id, unscoped plugin action path
 """
 
@@ -16,7 +16,7 @@ from __future__ import annotations
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from langbot.pkg.agent.runner.descriptor import AgentRunnerDescriptor
+from langbot.pkg.agent.runner.descriptor import RunnerDescriptor
 from langbot.pkg.agent.runner.session_registry import AgentRunSessionRegistry
 from langbot.pkg.plugin.handler import _get_pipeline_knowledge_base_uuids
 from langbot.pkg.api.http.context import ExecutionContext
@@ -122,9 +122,9 @@ class MockApplication:
         self.persistence_mgr.execute_async = AsyncMock(return_value=MagicMock(first=lambda: None))
 
 
-class FakeAgentRunnerRegistry:
+class FakeRunnerRegistry:
     async def get(self, context, runner_id, bound_plugins=None):
-        return AgentRunnerDescriptor(
+        return RunnerDescriptor(
             id=runner_id,
             source='plugin',
             label={'en_US': 'Test Runner'},
@@ -161,7 +161,7 @@ class TestPipelineKnowledgeBaseScope:
     @pytest.mark.asyncio
     async def test_uses_runner_schema_when_query_scope_not_preprocessed(self):
         app = MockApplication()
-        app.agent_runner_registry = FakeAgentRunnerRegistry()
+        app.runner_registry = FakeRunnerRegistry()
         query = MockQuery()
         query.variables = {}
 
@@ -458,15 +458,15 @@ class TestRetrieveKnowledgeBaseAuthorization:
 
 
 class TestAuthorizationPathDifferentiation:
-    """Tests that verify AgentRunner vs regular plugin call differentiation."""
+    """Tests that verify Runner vs regular plugin call differentiation."""
 
     @pytest.mark.asyncio
-    async def test_agent_runner_path_with_run_id(self):
-        """AgentRunner calls provide run_id and use session_registry."""
+    async def test_runner_path_with_run_id(self):
+        """Runner calls provide run_id and use session_registry."""
         registry = AgentRunSessionRegistry()
 
-        # AgentRunner call has run_id
-        run_id = 'run_agent_123'
+        # Runner call has run_id
+        run_id = 'run_runner_123'
 
         # Register session with resources
         await registry.register(
@@ -548,7 +548,7 @@ class TestRETRIEVEKNOWLEDGEBASEBugFix:
     Fix: Now uses RunnerConfigResolver.resolve_runner_id first, then resolve_runner_config.
     """
 
-    def test_retrieve_kb_fix_local_agent_runner(self):
+    def test_retrieve_kb_fix_local_runner(self):
         """Fix should work for local-agent runner."""
         from langbot.pkg.agent.runner.config_resolver import RunnerConfigResolver
 
@@ -830,8 +830,8 @@ class TestHandlerActionAuthorization:
         await registry.unregister(run_id)
 
 
-class TestSDKAgentRunAPIProxyFieldConsistency:
-    """Tests for SDK AgentRunAPIProxy field name consistency with Host handler.
+class TestSDKRunnerAPIProxyFieldConsistency:
+    """Tests for SDK RunnerAPIProxy field name consistency with Host handler.
 
     These tests verify that SDK sends field names that match what Host handler reads.
     """
@@ -901,7 +901,7 @@ class TestSDKAgentRunAPIProxyFieldConsistency:
 class TestNoRunIdBackwardCompatPath:
     """Tests for unscoped plugin action path when no run_id is provided.
 
-    Regular plugins (non-AgentRunner) don't have run_id and should
+    Regular plugins (non-Runner) don't have run_id and should
     have unrestricted access to certain APIs.
     """
 
@@ -1182,14 +1182,14 @@ class TestResourceTypeValidation:
 
 
 class TestBypassPrevention:
-    """Tests to ensure AgentRunAPIProxy cannot bypass authorization."""
+    """Tests to ensure RunnerAPIProxy cannot bypass authorization."""
 
     @pytest.mark.asyncio
     async def test_cannot_bypass_via_unrestricted_retrieve_knowledge(self):
         """Cannot bypass KB authorization via unrestricted RETRIEVE_KNOWLEDGE action."""
-        # AgentRunAPIProxy uses RETRIEVE_KNOWLEDGE_BASE (with run_id)
+        # RunnerAPIProxy uses RETRIEVE_KNOWLEDGE_BASE (with run_id)
         # RETRIEVE_KNOWLEDGE is unrestricted and separate
-        # AgentRunner should NOT use RETRIEVE_KNOWLEDGE to bypass authorization
+        # Runner should NOT use RETRIEVE_KNOWLEDGE to bypass authorization
 
         registry = AgentRunSessionRegistry()
         resources = make_resources(knowledge_bases=[{'kb_id': 'kb_001'}])
@@ -1207,8 +1207,8 @@ class TestBypassPrevention:
         # kb_002 is not authorized
         assert registry.is_resource_allowed(session, 'knowledge_base', 'kb_002') is False
 
-        # If AgentRunner tried to use RETRIEVE_KNOWLEDGE (unrestricted),
-        # it would bypass authorization - but AgentRunAPIProxy correctly uses
+        # If Runner tried to use RETRIEVE_KNOWLEDGE (unrestricted),
+        # it would bypass authorization - but RunnerAPIProxy correctly uses
         # RETRIE_KNOWLEDGE_BASE which requires authorization
 
         from langbot_plugin.entities.io.actions.enums import PluginToRuntimeAction
@@ -2006,7 +2006,7 @@ class TestCallerPluginIdentityValidation:
 class TestBackwardCompatStorageNoRunId:
     """Tests for unscoped storage actions without run_id.
 
-    Regular plugins (non-AgentRunner) don't have run_id and should
+    Regular plugins (non-Runner) don't have run_id and should
     have unrestricted access to storage APIs.
     """
 

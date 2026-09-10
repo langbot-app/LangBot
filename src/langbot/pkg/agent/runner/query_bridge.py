@@ -1,4 +1,4 @@
-"""Pipeline Query bridge for AgentRunner execution."""
+"""Pipeline Query bridge for Runner execution."""
 
 from __future__ import annotations
 

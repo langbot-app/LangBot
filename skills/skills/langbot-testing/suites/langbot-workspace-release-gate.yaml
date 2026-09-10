@@ -1,6 +1,6 @@
 id: langbot-workspace-release-gate
 title: "LangBot workspace top-down release gate"
-description: "Broad release gate combining deterministic repository contracts with representative browser workflows, plugin pages, RAG/parser, EBA, external AgentRunner, and one complex LocalAgent task."
+description: "Broad release gate combining deterministic repository contracts with representative browser workflows, plugin pages, RAG/parser, EBA, external Runner, and one complex LocalAgent task."
 type: release_gate
 priority: p0
 tags:

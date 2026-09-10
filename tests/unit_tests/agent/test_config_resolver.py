@@ -1,4 +1,4 @@
-"""Tests for current AgentRunner config resolution."""
+"""Tests for current Runner config resolution."""
 
 from __future__ import annotations
 

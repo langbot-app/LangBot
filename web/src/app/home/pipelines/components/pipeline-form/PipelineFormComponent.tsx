@@ -58,13 +58,13 @@ import {
   Copy,
 } from 'lucide-react';
 import PipelineExtension from '@/app/home/pipelines/components/pipeline-extensions/PipelineExtension';
-import AgentRunnerSelect from '@/app/home/agents/components/AgentRunnerSelect';
+import RunnerSelect from '@/app/home/agents/components/RunnerSelect';
 import {
   getErrorMessage,
-  readPendingAgentRunnerInstall,
-  resumePendingAgentRunnerInstall,
-  type InstalledAgentRunner,
-} from '@/app/home/agents/agent-runner-marketplace';
+  readPendingRunnerInstall,
+  resumePendingRunnerInstall,
+  type InstalledRunner,
+} from '@/app/home/agents/runner-marketplace';
 
 interface PipelineFormComponentProps {
   pipelineId?: string;
@@ -229,12 +229,9 @@ const PipelineFormComponent = forwardRef<
     },
   });
   const runnerInstallScope = `pipeline:${pipelineId || 'new'}`;
-  const applyInstalledRunner = useCallback(
-    (installed: InstalledAgentRunner) => {
-      setAIConfigTabSchema(installed.configTab);
-    },
-    [],
-  );
+  const applyInstalledRunner = useCallback((installed: InstalledRunner) => {
+    setAIConfigTabSchema(installed.configTab);
+  }, []);
   const dynamicFormSystemContext = useMemo(
     () => ({ pipeline_id: pipelineId }),
     [pipelineId],
@@ -307,12 +304,12 @@ const PipelineFormComponent = forwardRef<
     if (
       !metadataLoaded ||
       !pipelineLoaded ||
-      !readPendingAgentRunnerInstall(runnerInstallScope)
+      !readPendingRunnerInstall(runnerInstallScope)
     ) {
       return;
     }
     let cancelled = false;
-    void resumePendingAgentRunnerInstall(runnerInstallScope)
+    void resumePendingRunnerInstall(runnerInstallScope)
       .then((installed) => {
         if (cancelled || !installed) return;
         applyInstalledRunner(installed);
@@ -575,7 +572,7 @@ const PipelineFormComponent = forwardRef<
                 systemContext={dynamicFormSystemContext}
                 renderItem={({ config, field }) =>
                   config.name === 'id' ? (
-                    <AgentRunnerSelect
+                    <RunnerSelect
                       options={config.options ?? []}
                       label={extractI18nObject(config.label)}
                       value={String(field.value ?? '')}

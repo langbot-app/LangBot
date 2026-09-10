@@ -11,7 +11,7 @@ import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
 from ...pipeline.pool import get_query_execution_context
 
-from ...agent.runner.descriptor import AgentRunnerDescriptor
+from ...agent.runner.descriptor import RunnerDescriptor
 from ...agent.runner.config_resolver import RunnerConfigResolver
 from ...agent.runner import config_schema
 from ...agent.runner.resource_policy import ResourcePolicyProjector
@@ -44,11 +44,11 @@ class PreProcessor(stage.PipelineStage):
         query: pipeline_query.Query,
         runner_id: str | None,
         bound_plugins: list[str] | None,
-    ) -> AgentRunnerDescriptor | None:
+    ) -> RunnerDescriptor | None:
         if not runner_id:
             return None
 
-        registry = getattr(self.ap, 'agent_runner_registry', None)
+        registry = getattr(self.ap, 'runner_registry', None)
         if registry is None:
             return None
 
@@ -59,7 +59,7 @@ class PreProcessor(stage.PipelineStage):
                 bound_plugins,
             )
         except Exception as e:
-            self.ap.logger.debug(f'Unable to load AgentRunner descriptor for {runner_id}: {e}')
+            self.ap.logger.debug(f'Unable to load Runner descriptor for {runner_id}: {e}')
             return None
 
     async def _resolve_llm_model(
@@ -110,7 +110,7 @@ class PreProcessor(stage.PipelineStage):
         ToolManager.bind_query_tool_sources(query, catalog)
         return ToolManager.tools_from_catalog(catalog)
 
-    def _runner_accepts_multimodal_input(self, descriptor: AgentRunnerDescriptor | None) -> bool:
+    def _runner_accepts_multimodal_input(self, descriptor: RunnerDescriptor | None) -> bool:
         if descriptor is None:
             return True
         return descriptor.capabilities.multimodal_input
@@ -123,7 +123,7 @@ class PreProcessor(stage.PipelineStage):
 
     def _should_keep_image_inputs(
         self,
-        descriptor: AgentRunnerDescriptor | None,
+        descriptor: RunnerDescriptor | None,
         uses_host_models: bool,
         llm_model: typing.Any | None,
     ) -> bool:
@@ -146,7 +146,7 @@ class PreProcessor(stage.PipelineStage):
             return True
         return hasattr(type(persistence_mgr), 'get_db_engine')
 
-    async def _load_agent_runner_history_messages(
+    async def _load_runner_history_messages(
         self,
         runner_id: str | None,
         conversation_uuid: str | None,
@@ -181,7 +181,7 @@ class PreProcessor(stage.PipelineStage):
         bot_id: str | None = None,
         workspace_id: str | None = None,
     ) -> list[provider_message.Message]:
-        transcript_messages = await self._load_agent_runner_history_messages(
+        transcript_messages = await self._load_runner_history_messages(
             runner_id,
             getattr(conversation, 'uuid', None),
             bot_id=bot_id,
@@ -388,7 +388,7 @@ class PreProcessor(stage.PipelineStage):
         query.user_message = provider_message.Message(role='user', content=content_list)
 
         # Extract configured KB UUIDs into query variables so PromptPreProcessing
-        # plugins can still adjust the authorized retrieval set before run_agent.
+        # plugins can still adjust the authorized retrieval set before run_runner.
         query.variables['_knowledge_base_uuids'] = config_schema.extract_knowledge_base_uuids(
             descriptor,
             runner_config,

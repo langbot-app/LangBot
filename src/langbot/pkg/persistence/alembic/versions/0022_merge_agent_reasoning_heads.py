@@ -1,4 +1,4 @@
-"""merge AgentRunner and model reasoning migration heads
+"""merge Runner and model reasoning migration heads
 
 Revision ID: 0022_merge_agent_reasoning_heads
 Revises: 0020_merge_agent_cloud_heads, 0021_merge_reasoning_config

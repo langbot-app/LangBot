@@ -12,15 +12,15 @@ import typing
 
 from langbot_plugin.api.entities.builtin.pipeline import query as pipeline_query
 from langbot_plugin.api.entities.builtin.platform import message as platform_message
-from langbot_plugin.api.entities.builtin.agent_runner.event import (
+from langbot_plugin.api.entities.builtin.runner.event import (
     AgentEventContext,
     ConversationContext,
     ActorContext,
     SubjectContext,
     RawEventRef,
 )
-from langbot_plugin.api.entities.builtin.agent_runner.input import AgentInput
-from langbot_plugin.api.entities.builtin.agent_runner.delivery import DeliveryContext
+from langbot_plugin.api.entities.builtin.runner.input import AgentInput
+from langbot_plugin.api.entities.builtin.runner.delivery import DeliveryContext
 
 from .host_models import (
     AgentConfig,

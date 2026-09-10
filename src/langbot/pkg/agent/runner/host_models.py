@@ -8,13 +8,13 @@ from __future__ import annotations
 import typing
 import pydantic
 
-from langbot_plugin.api.entities.builtin.agent_runner.event import (
+from langbot_plugin.api.entities.builtin.runner.event import (
     ActorContext,
     SubjectContext,
     RawEventRef,
 )
-from langbot_plugin.api.entities.builtin.agent_runner.input import AgentInput
-from langbot_plugin.api.entities.builtin.agent_runner.delivery import DeliveryContext
+from langbot_plugin.api.entities.builtin.runner.input import AgentInput
+from langbot_plugin.api.entities.builtin.runner.delivery import DeliveryContext
 
 
 class AgentEventEnvelope(pydantic.BaseModel):

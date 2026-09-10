@@ -1,6 +1,6 @@
 # EBA 分阶段实施计划
 
-> Implementation update (2026-09-08): the EventListener observer-broadcast proposal below is superseded by [Event processors](09-event-processors.md). Legacy EventListener hooks run only inside Pipeline. New EBA handlers use explicitly created and bound EventProcessor instances, a third peer processor type alongside Agent and Pipeline.
+> Implementation update (2026-09-08): the EventListener observer-broadcast proposal below is superseded by [Event processors](09-event-processors.md). Legacy EventListener hooks run only inside Pipeline. New EBA handlers use explicitly created and bound Runner instances, a third peer processor type alongside Agent and Pipeline.
 
 > 更新：2026-09-05。P0–P4 的主要实现已落入 `dev/4.11.x`，P5 仍需按当前版本验收；下文工作项用于维护实现边界，不表示全部待开发。文件名沿用早期设计，但这里的“迁移”仅指代码架构逐步接入 EBA，不代表 LangBot 3.x 数据库或配置升级。当前提交、定向测试及发布缺口见 [STATUS.md](../agent-runner-pluginization/STATUS.md)。
 
@@ -11,15 +11,15 @@ EBA 跨越 SDK、平台适配器、LangBot Host、WebUI 与插件生态，按可
 - LangBot 4.x 不支持从 3.x 数据库或配置升级；不保留 legacy migration chain、旧 JSON 模板或旧 Runner 字段读取。
 - Pipeline 与 Agent 平级且长期并存，分别保留持久化模型与执行链。
 - 现有 Pipeline 不迁移为 Agent，Pipeline 内的 runner config 不复制到 Agent。
-- 用户需要 Agent 时新建独立 Agent并选择已安装的 AgentRunner。
+- 用户需要 Agent 时新建独立 Agent并选择已安装的 Runner。
 - Host 不按 LocalAgent id 做运行时、Box 或 WebUI 特判。
-- AgentRunner 的 SDK/Python 与 scoped MCP bridge 回调共享 Host 授权与事件 session 规则。
+- Runner 的 SDK/Python 与 scoped MCP bridge 回调共享 Host 授权与事件 session 规则。
 
 ## 2. 阶段总览
 
 | 阶段 | 目标 | 主要仓库 | 完成条件 |
 | --- | --- | --- | --- |
-| P0 | SDK 事件、能力与 AgentRunner 协议 | `langbot-plugin-sdk` | typed entities、manifest、proxy、runtime action 通过测试 |
+| P0 | SDK 事件、能力与 Runner 协议 | `langbot-plugin-sdk` | typed entities、manifest、proxy、runtime action 通过测试 |
 | P1 | 平台适配器 EBA 化 | LangBot + SDK | 事件转换、能力声明、通用/透传 API 通过 adapter checklist |
 | P2 | Host 观察者与响应者路由 | LangBot backend | observer 广播 + Pipeline/Agent/discard 单目标仲裁可运行 |
 | P3 | 独立 Agent 与 Runner 注册 | LangBot backend + plugins | Agent CRUD、registry、run authorization、delivery 可运行 |
@@ -32,8 +32,8 @@ EBA 跨越 SDK、平台适配器、LangBot Host、WebUI 与插件生态，按可
 
 - 定义规范化平台事件、actor/subject/conversation/delivery context。
 - 定义 adapter `supported_events`、`supported_apis` 与平台透传 API。
-- 定义 AgentRunner manifest、run context/result、resource handles 和 pull/callback API。
-- 提供 `AgentRunAPIProxy` 与 SDK-owned scoped MCP bridge。
+- 定义 Runner manifest、run context/result、resource handles 和 pull/callback API。
+- 提供 `RunnerAPIProxy` 与 SDK-owned scoped MCP bridge。
 - 保持协议传输与权限校验可测试，不把 Host 私有 Query 对象暴露给插件。
 
 ### 验收
@@ -76,7 +76,7 @@ adapter event
 
 - Plugin EventListener 是 observer，不作为 priority fallback。
 - Pipeline 只处理消息事件并复用完整 Stage 链。
-- Agent 使用独立 Agent 配置和 AgentRunner Host orchestrator。
+- Agent 使用独立 Agent 配置和 Runner Host orchestrator。
 - edit/reaction 等事件的 observer 副作用能力按事件和 adapter 能力过滤。
 - dry-run 与合成派发必须使用同一匹配器，避免 UI 预览与真实路由漂移。
 
@@ -86,13 +86,13 @@ adapter event
 - 同一事件最多一个响应目标，但 observer 仍能收到事件。
 - Pipeline 与 Agent 可以在同一个 Bot 的不同 binding 中同时生效。
 
-## 6. P3：独立 Agent 与 AgentRunner
+## 6. P3：独立 Agent 与 Runner
 
 ### 工作项
 
 - `agents` 只保存 Agent；Pipeline 继续使用自己的表和 API。
 - Agent config 使用 `runner.id` 与 `runner_config[runner_id]`。
-- registry 只展示已安装、有效的插件 AgentRunner。
+- registry 只展示已安装、有效的插件 Runner。
 - Host 构造 run-scoped resources、state、delivery 与 event log/transcript。
 - SDK/Python `call_tool` 和 scoped MCP bridge 都回到同一个 Host ToolManager。
 - Box session 由 Host 将 instance/workspace/bot/adapter/target/thread scope 规范化并哈希为固定长度 `lb-box-<sha256>`；同 scope 稳定、不同 scope 隔离、缺少 identity 时 fail closed。
@@ -117,7 +117,7 @@ adapter event
 ### 验收
 
 - 页面不出现 LocalAgent 专属 banner、变量隐藏或 Box/Pipeline 注入逻辑。
-- 空 Runner 市场状态给出可安装 AgentRunner 的正常路径。
+- 空 Runner 市场状态给出可安装 Runner 的正常路径。
 - Pipeline Debug Chat/Monitoring 与 Agent 运行日志分别可用。
 
 ## 8. P5：发布门禁
@@ -125,7 +125,7 @@ adapter event
 ### 自动化
 
 - LangBot backend unit/integration tests 与 Ruff。
-- SDK AgentRunner/proxy/MCP bridge tests。
+- SDK Runner/proxy/MCP bridge tests。
 - Web lint/build 与关键 Playwright cases。
 - `skills/bin/lbs validate`、`skills/bin/lbs index --check`。
 - LocalAgent 与其他官方 Runner plugin package/test gate。

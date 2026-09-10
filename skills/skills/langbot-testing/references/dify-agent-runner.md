@@ -1,4 +1,4 @@
-# Dify AgentRunner
+# Dify Runner
 
 Use this reference when validating `langbot-team/DifyAgent` through LangBot WebUI.
 

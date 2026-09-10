@@ -1,4 +1,5 @@
-"""Tests for persistent AgentRunner state store."""
+"""Tests for persistent Runner state store."""
+
 from __future__ import annotations
 
 import asyncio
@@ -8,7 +9,7 @@ import tempfile
 import pytest
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from langbot.pkg.agent.runner.descriptor import AgentRunnerDescriptor
+from langbot.pkg.agent.runner.descriptor import RunnerDescriptor
 from langbot.pkg.agent.runner.host_models import BindingScope, StatePolicy
 from langbot.pkg.agent.runner.persistent_state_store import PersistentStateStore
 from langbot.pkg.agent.runner.state_scope import (
@@ -21,9 +22,9 @@ from langbot.pkg.agent.runner.state_scope import (
 )
 
 
-def make_descriptor(runner_id: str = 'plugin:test/my-runner/default') -> AgentRunnerDescriptor:
+def make_descriptor(runner_id: str = 'plugin:test/my-runner/default') -> RunnerDescriptor:
     """Create a test descriptor."""
-    return AgentRunnerDescriptor(
+    return RunnerDescriptor(
         id=runner_id,
         source='plugin',
         label={'en_US': 'Test Runner'},
@@ -36,6 +37,7 @@ def make_descriptor(runner_id: str = 'plugin:test/my-runner/default') -> AgentRu
 
 class FakeActorContext:
     """Fake actor context for event testing."""
+
     def __init__(self, actor_type: str = 'user', actor_id: str = 'user_123', actor_name: str = 'Test User'):
         self.actor_type = actor_type
         self.actor_id = actor_id
@@ -44,6 +46,7 @@ class FakeActorContext:
 
 class FakeSubjectContext:
     """Fake subject context for event testing."""
+
     def __init__(self, subject_type: str = 'message', subject_id: str = 'msg_001', data: dict | None = None):
         self.subject_type = subject_type
         self.subject_id = subject_id
@@ -52,6 +55,7 @@ class FakeSubjectContext:
 
 class FakeEventEnvelope:
     """Fake event envelope for testing event-first state."""
+
     def __init__(
         self,
         event_id: str = 'evt_001',
@@ -78,6 +82,7 @@ class FakeEventEnvelope:
 
 class FakeBinding:
     """Fake binding for testing state."""
+
     def __init__(
         self,
         binding_id: str = 'binding_001',
@@ -119,10 +124,7 @@ class TestStateScopeHelpers:
             thread_id='thread_001',
         )
 
-        keys = {
-            scope: build_state_scope_key(scope, event, binding, descriptor)
-            for scope in VALID_STATE_SCOPES
-        }
+        keys = {scope: build_state_scope_key(scope, event, binding, descriptor) for scope in VALID_STATE_SCOPES}
 
         assert keys['conversation'].startswith('conversation:v2:')
         assert keys['actor'].startswith('actor:v2:')
@@ -168,6 +170,7 @@ class TestPersistentStateStore:
         engine = create_async_engine(f'sqlite+aiosqlite:///{db_path}', echo=False)
 
         from langbot.pkg.entity.persistence.base import Base
+
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
 
@@ -366,9 +369,7 @@ class TestPersistentStateStore:
         event = FakeEventEnvelope(conversation_id='conv_001')
         binding = FakeBinding()
 
-        await persistent_store.apply_update_from_event(
-            event, binding, descriptor, 'conversation', 'key', 'value', None
-        )
+        await persistent_store.apply_update_from_event(event, binding, descriptor, 'conversation', 'key', 'value', None)
         snapshot = await persistent_store.build_snapshot_from_event(event, binding, descriptor)
         assert snapshot['conversation']['key'] == 'value'
 

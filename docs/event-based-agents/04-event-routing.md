@@ -1,6 +1,6 @@
 # 事件路由与编排
 
-> Implementation update (2026-09-08): the EventListener observer-broadcast proposal below is superseded by [Event processors](09-event-processors.md). Legacy EventListener hooks run only inside Pipeline. New EBA handlers use explicitly created and bound EventProcessor instances, a third peer processor type alongside Agent and Pipeline.
+> Implementation update (2026-09-08): the EventListener observer-broadcast proposal below is superseded by [Event processors](09-event-processors.md). Legacy EventListener hooks run only inside Pipeline. New EBA handlers use explicitly created and bound Runner instances, a third peer processor type alongside Agent and Pipeline.
 
 > 状态：当前实施模型（2026-07-12）。本文以 Pipeline / Agent 平级并存为准，不再保留早期 `pipeline / agent / webhook / plugin` 四种 Handler 草案。
 
@@ -16,10 +16,10 @@ Pipeline 与 Agent 是平级处理器：
 | 处理器 | 配置事实源 | 执行路径 | 事件范围 |
 | --- | --- | --- | --- |
 | Pipeline | Pipeline 表与完整 Stage 配置 | MessageAggregator -> QueryPool -> RuntimePipeline | 消息事件，首版为 `message.received` |
-| Agent | Agent 表中的 runner 与 runner config | AgentRunner Host orchestrator -> plugin AgentRunner | Agent/Runner 声明支持的消息或非消息事件 |
+| Agent | Agent 表中的 runner 与 runner config | Runner Host orchestrator -> plugin Runner | Agent/Runner 声明支持的消息或非消息事件 |
 | discard | 无处理器配置 | 明确结束路由 | 任意事件 |
 
-插件 EventListener 不是第三种响应目标。Webhook、Dify、n8n、Coze 等外部系统需要响应事件时，由对应 AgentRunner 插件承接。
+插件 EventListener 不是第三种响应目标。Webhook、Dify、n8n、Coze 等外部系统需要响应事件时，由对应 Runner 插件承接。
 
 ## 2. 数据模型
 
@@ -34,7 +34,7 @@ class Agent(Base):
     description: str
     emoji: str
     kind: str                         # 固定为 "agent"
-    component_ref: str                # AgentRunner id
+    component_ref: str                # Runner id
     config: dict                      # runner + runner_config
     supported_event_patterns: list[str]
 ```
@@ -57,7 +57,7 @@ class Agent(Base):
 }
 ```
 
-Runner id 来自已安装插件的 AgentRunner manifest。Host 不维护 LocalAgent、Dify 或其他具体实现的内置分支。
+Runner id 来自已安装插件的 Runner manifest。Host 不维护 LocalAgent、Dify 或其他具体实现的内置分支。
 
 ### 2.2 EventBinding
 
@@ -129,20 +129,20 @@ Platform adapter
        -> authorized Plugin EventListener observers
   -> EventRouter
        -> Pipeline target -> full Pipeline stage chain
-       -> Agent target    -> AgentRunner Host orchestrator
+       -> Agent target    -> Runner Host orchestrator
        -> discard         -> stop
   -> Host delivery/platform API
 ```
 
 ### 4.1 Pipeline target
 
-消息事件按原有方式构造 Query，经 MessageAggregator、QueryPool 和完整 Pipeline Stage 链执行。Pipeline 可以继续使用 AgentRunner 作为 AI stage 的实现，但 Pipeline 本身不会因此变成 Agent。
+消息事件按原有方式构造 Query，经 MessageAggregator、QueryPool 和完整 Pipeline Stage 链执行。Pipeline 可以继续使用 Runner 作为 AI stage 的实现，但 Pipeline 本身不会因此变成 Agent。
 
 ### 4.2 Agent target
 
-Host 读取独立 Agent 的 Runner id/config，构造 event-first context、run-scoped resources 与 delivery policy，再调用插件 AgentRunner。Runner 输出由 Host 统一归一化、记录和投递。
+Host 读取独立 Agent 的 Runner id/config，构造 event-first context、run-scoped resources 与 delivery policy，再调用插件 Runner。Runner 输出由 Host 统一归一化、记录和投递。
 
-AgentRunner 可通过 SDK/Python `AgentRunAPIProxy.call_tool` 或 SDK-owned scoped MCP bridge 回调 Host 能力。两条路径都映射到 `PluginToRuntimeAction.CALL_TOOL`，使用相同的 run authorization、Host execution Query、ToolManager 和 Box session 规则。Box session 是 Host canonical scope 的固定长度安全哈希；同一平台会话稳定、不同 scope 隔离、缺少 identity 时 fail closed，Runner 不配置 sandbox scope。
+Runner 可通过 SDK/Python `RunnerAPIProxy.call_tool` 或 SDK-owned scoped MCP bridge 回调 Host 能力。两条路径都映射到 `PluginToRuntimeAction.CALL_TOOL`，使用相同的 run authorization、Host execution Query、ToolManager 和 Box session 规则。Box session 是 Host canonical scope 的固定长度安全哈希；同一平台会话稳定、不同 scope 隔离、缺少 identity 时 fail closed，Runner 不配置 sandbox scope。
 
 ### 4.3 Observer side effects
 
@@ -153,7 +153,7 @@ AgentRunner 可通过 SDK/Python `AgentRunAPIProxy.call_tool` 或 SDK-owned scop
 1. Pipeline 与 Agent 保留各自的持久化、编辑和执行语义。
 2. 处理器聚合页面可以统一展示二者，但不会创建第三份处理器记录。
 3. 旧 Pipeline 仍是 Pipeline；其 runner config 不迁移、不复制为独立 Agent。
-4. 需要 Agent 的用户新建 Agent、选择已安装 AgentRunner，再建立 event binding。
+4. 需要 Agent 的用户新建 Agent、选择已安装 Runner，再建立 event binding。
 5. 一个 Bot 可按不同事件同时绑定 Pipeline 与 Agent。
 
 ## 6. WebUI 约束

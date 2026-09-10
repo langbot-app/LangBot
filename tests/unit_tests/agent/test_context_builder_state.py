@@ -1,25 +1,27 @@
-"""Tests for ContextAccess.state determination in AgentRunContextBuilder.
+"""Tests for ContextAccess.state determination in RunnerContextBuilder.
 
 Tests focus on:
 - Event-first mode: state=True when enable_state=True and state_scopes non-empty
 - Event-first mode: state=False when enable_state=False
 - Legacy Query mode: state=False (no persistent state API)
 """
+
 from __future__ import annotations
 
 import pytest
 from unittest.mock import MagicMock
 
-from langbot.pkg.agent.runner.context_builder import AgentRunContextBuilder
-from langbot.pkg.agent.runner.descriptor import AgentRunnerDescriptor
+from langbot.pkg.agent.runner.context_builder import RunnerContextBuilder
+from langbot.pkg.agent.runner.descriptor import RunnerDescriptor
 from langbot.pkg.agent.runner.host_models import AgentEventEnvelope, AgentBinding, BindingScope, StatePolicy
-from langbot_plugin.api.entities.builtin.agent_runner.event import ActorContext
-from langbot_plugin.api.entities.builtin.agent_runner.input import AgentInput
-from langbot_plugin.api.entities.builtin.agent_runner.delivery import DeliveryContext
+from langbot_plugin.api.entities.builtin.runner.event import ActorContext
+from langbot_plugin.api.entities.builtin.runner.input import AgentInput
+from langbot_plugin.api.entities.builtin.runner.delivery import DeliveryContext
 
 
 class MockApplication:
     """Mock Application for testing."""
+
     def __init__(self):
         self.logger = MagicMock()
         self.persistence_mgr = MagicMock()
@@ -28,8 +30,8 @@ class MockApplication:
 
 def make_descriptor(
     permissions: dict | None = None,
-) -> AgentRunnerDescriptor:
-    return AgentRunnerDescriptor(
+) -> RunnerDescriptor:
+    return RunnerDescriptor(
         id='plugin:test/runner/default',
         source='plugin',
         label={'en_US': 'Test Runner'},
@@ -91,7 +93,7 @@ class TestContextAccessStateDetermination:
             ),
         )
 
-        builder = AgentRunContextBuilder(mock_app)
+        builder = RunnerContextBuilder(mock_app)
 
         # Real call to _build_context_access
         context_access = await builder._build_context_access(mock_event, mock_descriptor, binding)
@@ -112,7 +114,7 @@ class TestContextAccessStateDetermination:
             ),
         )
 
-        builder = AgentRunContextBuilder(mock_app)
+        builder = RunnerContextBuilder(mock_app)
 
         # Real call
         context_access = await builder._build_context_access(mock_event, mock_descriptor, binding)
@@ -133,7 +135,7 @@ class TestContextAccessStateDetermination:
             ),
         )
 
-        builder = AgentRunContextBuilder(mock_app)
+        builder = RunnerContextBuilder(mock_app)
 
         # Real call
         context_access = await builder._build_context_access(mock_event, mock_descriptor, binding)
@@ -144,7 +146,7 @@ class TestContextAccessStateDetermination:
     @pytest.mark.asyncio
     async def test_no_binding_sets_state_false(self, mock_app, mock_event, mock_descriptor):
         """ContextAccess.state=False when no binding is provided."""
-        builder = AgentRunContextBuilder(mock_app)
+        builder = RunnerContextBuilder(mock_app)
 
         # Real call without binding
         context_access = await builder._build_context_access(mock_event, mock_descriptor, binding=None)
@@ -180,7 +182,7 @@ class TestContextAccessStateDetermination:
             ),
         )
 
-        builder = AgentRunContextBuilder(mock_app)
+        builder = RunnerContextBuilder(mock_app)
 
         # Real call
         context_access = await builder._build_context_access(mock_event, mock_descriptor, binding)
@@ -201,7 +203,7 @@ class TestContextAccessStateDetermination:
             ),
         )
 
-        builder = AgentRunContextBuilder(mock_app)
+        builder = RunnerContextBuilder(mock_app)
 
         # Real call
         context_access = await builder._build_context_access(mock_event, mock_descriptor, binding)
@@ -277,7 +279,7 @@ class TestContextAccessOtherAPIs:
             state_policy=StatePolicy(enable_state=False, state_scopes=[]),
         )
 
-        builder = AgentRunContextBuilder(mock_app)
+        builder = RunnerContextBuilder(mock_app)
 
         # Real call
         context_access = await builder._build_context_access(mock_event, mock_descriptor, binding)
@@ -301,7 +303,7 @@ class TestContextAccessOtherAPIs:
             state_policy=StatePolicy(enable_state=False, state_scopes=[]),
         )
 
-        builder = AgentRunContextBuilder(mock_app)
+        builder = RunnerContextBuilder(mock_app)
 
         # Real call
         context_access = await builder._build_context_access(mock_event, mock_descriptor, binding)
@@ -324,7 +326,7 @@ class TestContextAccessOtherAPIs:
             state_policy=StatePolicy(enable_state=False, state_scopes=[]),
         )
 
-        builder = AgentRunContextBuilder(mock_app)
+        builder = RunnerContextBuilder(mock_app)
 
         # Real call
         context_access = await builder._build_context_access(mock_event, mock_descriptor, binding)
@@ -350,7 +352,7 @@ class TestContextAccessOtherAPIs:
             state_policy=StatePolicy(enable_state=False, state_scopes=[]),
         )
 
-        builder = AgentRunContextBuilder(mock_app)
+        builder = RunnerContextBuilder(mock_app)
 
         context_access = await builder._build_context_access(mock_event, mock_descriptor, binding)
 

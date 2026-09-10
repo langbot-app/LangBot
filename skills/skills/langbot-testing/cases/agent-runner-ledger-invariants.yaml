@@ -1,5 +1,5 @@
 id: agent-runner-ledger-invariants
-title: "AgentRunner ledger schema and status invariants probe"
+title: "Runner ledger schema and status invariants probe"
 mode: probe
 area: release
 type: regression

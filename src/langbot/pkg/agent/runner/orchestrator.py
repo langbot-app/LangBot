@@ -15,8 +15,8 @@ from ...core import app
 from ...api.http.context import ExecutionContext
 from ...pipeline.pool import get_query_execution_context
 from .binding_resolver import AgentBindingResolver
-from .context_builder import AgentRunContextBuilder, AgentRunContextPayload
-from .descriptor import AgentRunnerDescriptor
+from .context_builder import RunnerContextBuilder, RunnerContextPayload
+from .descriptor import RunnerDescriptor
 from .execution_context import (
     append_mcp_resource_context_to_event,
     build_mcp_resource_context_addition,
@@ -26,10 +26,10 @@ from .execution_context import (
     project_mcp_resource_config,
 )
 from .host_models import AgentBinding, AgentEventEnvelope
-from .invoker import AgentRunnerInvoker
+from .invoker import RunnerInvoker
 from .interaction_manager import InteractionManager
 from .query_bridge import QueryRunBridge
-from .registry import AgentRunnerRegistry
+from .registry import RunnerRegistry
 from .resource_builder import AgentResourceBuilder
 from .platform_tools import freeze_platform_context
 from .result_normalizer import AgentResultNormalizer
@@ -43,7 +43,7 @@ ACTIVATED_SKILL_NAMES_STATE_KEY = 'host.activated_skills'
 
 
 class AgentRunOrchestrator:
-    """Coordinate one AgentRunner execution.
+    """Coordinate one Runner execution.
 
     The orchestrator keeps the run state machine readable and delegates
     transport, Query bridging, and persistence side effects to narrower
@@ -51,13 +51,13 @@ class AgentRunOrchestrator:
     """
 
     ap: app.Application
-    registry: AgentRunnerRegistry
-    context_builder: AgentRunContextBuilder
+    registry: RunnerRegistry
+    context_builder: RunnerContextBuilder
     resource_builder: AgentResourceBuilder
     result_normalizer: AgentResultNormalizer
     binding_resolver: AgentBindingResolver
     query_bridge: QueryRunBridge
-    invoker: AgentRunnerInvoker
+    invoker: RunnerInvoker
     interaction_manager: InteractionManager
     journal: AgentRunJournal
     _session_registry: AgentRunSessionRegistry
@@ -65,16 +65,16 @@ class AgentRunOrchestrator:
     def __init__(
         self,
         ap: app.Application,
-        registry: AgentRunnerRegistry,
+        registry: RunnerRegistry,
     ):
         self.ap = ap
         self.registry = registry
-        self.context_builder = AgentRunContextBuilder(ap)
+        self.context_builder = RunnerContextBuilder(ap)
         self.resource_builder = AgentResourceBuilder(ap)
         self.result_normalizer = AgentResultNormalizer(ap)
         self.binding_resolver = AgentBindingResolver()
         self.query_bridge = QueryRunBridge(self.binding_resolver)
-        self.invoker = AgentRunnerInvoker(ap)
+        self.invoker = RunnerInvoker(ap)
         self.interaction_manager = InteractionManager(ap)
         self.journal = AgentRunJournal(ap)
         self._session_registry = get_session_registry()
@@ -86,7 +86,7 @@ class AgentRunOrchestrator:
         bound_plugins: list[str] | None = None,
         adapter_context: dict[str, typing.Any] | None = None,
     ) -> typing.AsyncGenerator[provider_message.Message | provider_message.MessageChunk, None]:
-        """Run an AgentRunner from an event-first envelope."""
+        """Run an Runner from an event-first envelope."""
         runner_id = binding.runner_id
         execution_query = adapter_context.get('_query') if adapter_context else None
         execution_context = adapter_context.get('_execution_context') if adapter_context else None
@@ -105,9 +105,9 @@ class AgentRunOrchestrator:
             bound_plugins,
         )
 
-        expected_kind = 'EventProcessor' if binding.processor_type == 'event_processor' else 'AgentRunner'
-        if descriptor.component_kind != expected_kind:
-            raise ValueError('Processor kind does not match the selected plugin component')
+        usage = 'event' if binding.processor_type == 'event_processor' else 'agent'
+        if usage not in descriptor.usages:
+            raise ValueError(f'The selected Runner does not support {usage} usage')
 
         if execution_query is None:
             execution_query = build_execution_query(event, [])
@@ -391,7 +391,7 @@ class AgentRunOrchestrator:
         self,
         query: pipeline_query.Query,
     ) -> typing.AsyncGenerator[provider_message.Message | provider_message.MessageChunk, None]:
-        """Run an AgentRunner from the current Pipeline Query entry point."""
+        """Run an Runner from the current Pipeline Query entry point."""
         plan = self.query_bridge.build_plan(query)
         adapter_context = dict(plan.adapter_context)
         adapter_context['_query'] = query
@@ -566,8 +566,8 @@ class AgentRunOrchestrator:
 
     async def _invoke_runner(
         self,
-        descriptor: AgentRunnerDescriptor,
-        context: AgentRunContextPayload,
+        descriptor: RunnerDescriptor,
+        context: RunnerContextPayload,
     ) -> typing.AsyncGenerator[dict[str, typing.Any], None]:
         """Compatibility delegate for older tests and internal callers."""
         async for result in self.invoker.invoke(descriptor, context):
@@ -576,24 +576,24 @@ class AgentRunOrchestrator:
     async def _next_with_deadline(
         self,
         gen: typing.AsyncGenerator[dict[str, typing.Any], None],
-        descriptor: AgentRunnerDescriptor,
-        context: AgentRunContextPayload,
+        descriptor: RunnerDescriptor,
+        context: RunnerContextPayload,
     ) -> dict[str, typing.Any]:
         return await self.invoker._next_with_deadline(gen, descriptor, context)
 
     def _remaining_deadline_seconds(
         self,
-        context: AgentRunContextPayload,
+        context: RunnerContextPayload,
     ) -> float | None:
         return self.invoker._remaining_deadline_seconds(context)
 
-    def _is_deadline_exhausted(self, context: AgentRunContextPayload) -> bool:
+    def _is_deadline_exhausted(self, context: RunnerContextPayload) -> bool:
         return self.invoker._is_deadline_exhausted(context)
 
     async def _close_generator(
         self,
         gen: typing.AsyncGenerator[dict[str, typing.Any], None],
-        descriptor: AgentRunnerDescriptor,
+        descriptor: RunnerDescriptor,
     ) -> None:
         await self.invoker._close_generator(gen, descriptor)
 
@@ -602,7 +602,7 @@ class AgentRunOrchestrator:
         result_dict: dict[str, typing.Any],
         event: AgentEventEnvelope,
         binding: AgentBinding,
-        descriptor: AgentRunnerDescriptor,
+        descriptor: RunnerDescriptor,
     ) -> None:
         await self.journal.handle_state_updated_event(result_dict, event, binding, descriptor)
 

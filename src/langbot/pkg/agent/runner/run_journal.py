@@ -1,11 +1,11 @@
-"""Run-side effects for AgentRunner executions."""
+"""Run-side effects for Runner executions."""
 
 from __future__ import annotations
 
 import typing
 
 from ...core import app
-from .descriptor import AgentRunnerDescriptor
+from .descriptor import RunnerDescriptor
 from .errors import RunnerProtocolError
 from .host_models import AgentBinding, AgentEventEnvelope
 from .persistent_state_store import PersistentStateStore, get_persistent_state_store
@@ -73,7 +73,7 @@ class AgentRunJournal:
         *,
         event: AgentEventEnvelope,
         binding: AgentBinding,
-        descriptor: AgentRunnerDescriptor,
+        descriptor: RunnerDescriptor,
         context: dict[str, typing.Any],
         authorization: dict[str, typing.Any],
     ) -> dict[str, typing.Any]:
@@ -112,7 +112,7 @@ class AgentRunJournal:
         source: str = 'runner',
         metadata: dict[str, typing.Any] | None = None,
     ) -> dict[str, typing.Any]:
-        """Persist one AgentRunResult in the run ledger."""
+        """Persist one RunnerResult in the run ledger."""
         usage = result_dict.get('usage')
         if hasattr(usage, 'model_dump'):
             usage = usage.model_dump(mode='json')
@@ -153,7 +153,7 @@ class AgentRunJournal:
         result_dict: dict[str, typing.Any],
         event: AgentEventEnvelope,
         binding: AgentBinding,
-        descriptor: AgentRunnerDescriptor,
+        descriptor: RunnerDescriptor,
         run_id: str | None = None,
     ) -> None:
         """Handle state.updated result in event-first mode."""

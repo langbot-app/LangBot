@@ -1,11 +1,11 @@
-"""Tests for Host-only AgentRunner tool execution context."""
+"""Tests for Host-only Runner tool execution context."""
 
 from __future__ import annotations
 
 import json
 
-from langbot_plugin.api.entities.builtin.agent_runner.delivery import DeliveryContext
-from langbot_plugin.api.entities.builtin.agent_runner.input import AgentInput
+from langbot_plugin.api.entities.builtin.runner.delivery import DeliveryContext
+from langbot_plugin.api.entities.builtin.runner.input import AgentInput
 from langbot_plugin.api.entities.builtin.pipeline import query as pipeline_query
 from langbot_plugin.api.entities.builtin.provider.message import ContentElement
 
@@ -129,7 +129,7 @@ def test_prepare_box_scope_overwrites_untrusted_existing_scope():
     assert json.loads(variables['_host_box_scope'])['target_id'] == 'user-1'
 
 
-def test_project_mcp_resource_config_uses_independent_agent_runner_settings():
+def test_project_mcp_resource_config_uses_independent_runner_settings():
     query = pipeline_query.Query.model_construct(variables={})
     attachments = [
         {

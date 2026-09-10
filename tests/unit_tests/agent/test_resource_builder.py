@@ -6,9 +6,9 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
-from langbot_plugin.api.entities.builtin.agent_runner import AgentInput, DeliveryContext
+from langbot_plugin.api.entities.builtin.runner import AgentInput, DeliveryContext
 
-from langbot.pkg.agent.runner.descriptor import AgentRunnerDescriptor
+from langbot.pkg.agent.runner.descriptor import RunnerDescriptor
 from langbot.pkg.agent.runner.binding_resolver import AgentBindingResolver
 from langbot.pkg.agent.runner.query_entry_adapter import QueryEntryAdapter
 from langbot.pkg.agent.runner.resource_builder import AgentResourceBuilder
@@ -37,8 +37,8 @@ def make_descriptor(
     config_schema: list[dict] | None = None,
     capabilities: dict | None = None,
     permissions: dict | None = None,
-) -> AgentRunnerDescriptor:
-    return AgentRunnerDescriptor(
+) -> RunnerDescriptor:
+    return RunnerDescriptor(
         id=RUNNER_ID,
         source='plugin',
         label={'en_US': 'Test Runner'},

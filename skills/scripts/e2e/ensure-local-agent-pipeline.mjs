@@ -102,14 +102,16 @@ try {
     backend_token_check: auth.check,
   };
 
-  const pluginSetup = await ensureLocalAgentRunner({
+  const pluginSetup = await ensureLocalRunner({
     backendUrl,
     token: auth.token,
   });
   result.plugin_setup = pluginSetup;
   if (pluginSetup.status !== "pass") {
     result.status = pluginSetup.status === "env_issue" ? "env_issue" : "fail";
-    throw new Error(pluginSetup.reason || "Failed to prepare the LocalAgent runner plugin.");
+    throw new Error(
+      pluginSetup.reason || "Failed to prepare the LocalAgent runner plugin.",
+    );
   }
 
   const wizard = await skipWizard({ backendUrl, token: auth.token });
@@ -205,7 +207,7 @@ async function skipWizard({ backendUrl, token }) {
   };
 }
 
-async function ensureLocalAgentRunner({ backendUrl, token }) {
+async function ensureLocalRunner({ backendUrl, token }) {
   const [author, name] = RUNNER_ID.replace(/^plugin:/, "").split("/");
   const existingRunnerIds = await listRunnerIds(backendUrl, token);
   if (existingRunnerIds.includes(RUNNER_ID)) {
@@ -264,10 +266,9 @@ async function ensureLocalAgentRunner({ backendUrl, token }) {
         };
   }
 
-  const spaceUrl = String(env.LANGBOT_SPACE_URL || "https://space.langbot.app").replace(
-    /\/$/,
-    "",
-  );
+  const spaceUrl = String(
+    env.LANGBOT_SPACE_URL || "https://space.langbot.app",
+  ).replace(/\/$/, "");
   let detailResponse;
   try {
     detailResponse = await fetch(
@@ -376,7 +377,8 @@ async function waitForRunnerRegistration({
 }) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    if ((await listRunnerIds(backendUrl, token)).includes(runnerId)) return true;
+    if ((await listRunnerIds(backendUrl, token)).includes(runnerId))
+      return true;
     await sleep(1000);
   }
   return false;
@@ -501,8 +503,7 @@ async function ensureLocalAgentPipeline({
       token,
       body: {
         name: pipelineName,
-        description:
-          "Local QA pipeline for AgentRunner Debug Chat smoke tests.",
+        description: "Local QA pipeline for Runner Debug Chat smoke tests.",
         emoji: "QA",
       },
     });
@@ -640,8 +641,7 @@ async function ensureLocalAgentPipeline({
       token,
       body: {
         name: pipelineName,
-        description:
-          "Local QA pipeline for AgentRunner Debug Chat smoke tests.",
+        description: "Local QA pipeline for Runner Debug Chat smoke tests.",
         emoji: "QA",
         config: updatedConfig,
       },

@@ -5,7 +5,10 @@ import { basename, delimiter, join, resolve } from "node:path";
 import { env } from "node:process";
 
 function loadEnvDefaults(root) {
-  for (const path of [join(root, "skills/.env"), join(root, "skills/.env.local")]) {
+  for (const path of [
+    join(root, "skills/.env"),
+    join(root, "skills/.env.local"),
+  ]) {
     if (!existsSync(path)) continue;
     for (const rawLine of readFileSync(path, "utf8").split(/\r?\n/)) {
       const line = rawLine.trim();
@@ -14,13 +17,20 @@ function loadEnvDefaults(root) {
       if (sep === -1) continue;
       const key = line.slice(0, sep).trim();
       if (env[key]) continue;
-      env[key] = line.slice(sep + 1).trim().replace(/^["']|["']$/g, "");
+      env[key] = line
+        .slice(sep + 1)
+        .trim()
+        .replace(/^["']|["']$/g, "");
     }
   }
 }
 
 function timestampSlug(date = new Date()) {
-  return date.toISOString().replace(/\.\d{3}Z$/, "Z").replace(/[^0-9A-Za-z]+/g, "-").replace(/^-|-$/g, "");
+  return date
+    .toISOString()
+    .replace(/\.\d{3}Z$/, "Z")
+    .replace(/[^0-9A-Za-z]+/g, "-")
+    .replace(/^-|-$/g, "");
 }
 
 function localIsoWithOffset(date = new Date()) {
@@ -88,7 +98,14 @@ async function runProcess(command, timeoutMs, childEnv) {
     });
     child.on("error", (error) => {
       clearTimeout(timeout);
-      resolveDone({ stdout, stderr, error, timedOut, status: null, signal: null });
+      resolveDone({
+        stdout,
+        stderr,
+        error,
+        timedOut,
+        status: null,
+        signal: null,
+      });
     });
     child.on("close", (status, signal) => {
       clearTimeout(timeout);
@@ -109,10 +126,14 @@ export async function runPytestProbe({
 }) {
   const root = resolve(env.LBS_ROOT || process.cwd());
   loadEnvDefaults(root);
-  const resolvedTimeoutMs = Number(timeoutMs || env.LANGBOT_AGENT_RUNNER_PROBE_TIMEOUT_MS || "180000");
+  const resolvedTimeoutMs = Number(
+    timeoutMs || env.LANGBOT_RUNNER_PROBE_TIMEOUT_MS || "180000",
+  );
 
   const runId = env.LBS_RUN_ID || `${timestampSlug()}-${caseId}`;
-  const evidenceDir = resolve(env.LBS_EVIDENCE_DIR || join(root, "reports", "evidence", runId));
+  const evidenceDir = resolve(
+    env.LBS_EVIDENCE_DIR || join(root, "reports", "evidence", runId),
+  );
   await mkdir(evidenceDir, { recursive: true });
   const uvCacheDir = env.UV_CACHE_DIR || join(evidenceDir, ".uv-cache");
   await mkdir(uvCacheDir, { recursive: true });
@@ -171,14 +192,21 @@ export async function runPytestProbe({
       result.status = "env_issue";
       result.reason = `${repoEnvKey || "repo"} did not resolve to an existing directory: ${repoPath}`;
     } else {
-      const missingTargets = testTargets.filter((target) => !existsSync(join(repoPath, target.split("::")[0])));
+      const missingTargets = testTargets.filter(
+        (target) => !existsSync(join(repoPath, target.split("::")[0])),
+      );
       if (missingTargets.length > 0) {
         result.status = "env_issue";
         result.reason = `pytest target file(s) not found in ${basename(repoPath)}: ${missingTargets.join(", ")}`;
       } else {
         const childEnv = { ...process.env, UV_CACHE_DIR: uvCacheDir };
         if (pythonPaths.length > 0) {
-          childEnv.PYTHONPATH = [pythonPaths.join(delimiter), childEnv.PYTHONPATH].filter(Boolean).join(delimiter);
+          childEnv.PYTHONPATH = [
+            pythonPaths.join(delimiter),
+            childEnv.PYTHONPATH,
+          ]
+            .filter(Boolean)
+            .join(delimiter);
         }
         const proc = await runProcess(command, resolvedTimeoutMs, childEnv);
         result.exit_status = proc.status;
@@ -195,7 +223,11 @@ export async function runPytestProbe({
         } else if (proc.status === 0) {
           result.status = "pass";
           result.reason = `pytest passed for ${testTargets.join(", ")}.`;
-        } else if (/command not found|no such file or directory|executable file not found/i.test(`${proc.stdout}\n${proc.stderr}`)) {
+        } else if (
+          /command not found|no such file or directory|executable file not found/i.test(
+            `${proc.stdout}\n${proc.stderr}`,
+          )
+        ) {
           result.status = "env_issue";
           result.reason = `pytest command could not run in ${repoPath}. See ${stdoutLog} and ${stderrLog}.`;
         } else {

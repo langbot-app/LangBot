@@ -1,4 +1,5 @@
-"""Tests for AgentRunner history/event pull API authorization."""
+"""Tests for Runner history/event pull API authorization."""
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock
@@ -11,7 +12,7 @@ from langbot.pkg.agent.runner.session_registry import AgentRunSessionRegistry
 from langbot.pkg.entity.persistence import event_log as event_log_model
 from langbot.pkg.entity.persistence.base import Base
 from langbot.pkg.plugin.handler import RuntimeConnectionHandler
-from langbot_plugin.api.entities.builtin.agent_runner.page_results import (
+from langbot_plugin.api.entities.builtin.runner.page_results import (
     AgentEventRecord,
     EventPage,
 )
@@ -92,10 +93,12 @@ async def test_history_page_requires_runtime_capability(session_registry, db_eng
     handler = _handler(db_engine, session_registry)
     history_page = handler.actions[PluginToRuntimeAction.HISTORY_PAGE.value]
 
-    result = await history_page({
-        'run_id': 'run_1',
-        'caller_plugin_identity': 'test/runner',
-    })
+    result = await history_page(
+        {
+            'run_id': 'run_1',
+            'caller_plugin_identity': 'test/runner',
+        }
+    )
 
     assert result.code != 0
     assert 'not authorized' in result.message.lower()
@@ -107,11 +110,13 @@ async def test_history_page_rejects_cross_conversation(session_registry, db_engi
     handler = _handler(db_engine, session_registry)
     history_page = handler.actions[PluginToRuntimeAction.HISTORY_PAGE.value]
 
-    result = await history_page({
-        'run_id': 'run_1',
-        'conversation_id': 'conv_other',
-        'caller_plugin_identity': 'test/runner',
-    })
+    result = await history_page(
+        {
+            'run_id': 'run_1',
+            'conversation_id': 'conv_other',
+            'caller_plugin_identity': 'test/runner',
+        }
+    )
 
     assert result.code != 0
     assert 'not accessible' in result.message.lower()
@@ -123,12 +128,14 @@ async def test_history_search_rejects_filter_conversation_override(session_regis
     handler = _handler(db_engine, session_registry)
     history_search = handler.actions[PluginToRuntimeAction.HISTORY_SEARCH.value]
 
-    result = await history_search({
-        'run_id': 'run_1',
-        'query': 'hello',
-        'filters': {'conversation_id': 'conv_other'},
-        'caller_plugin_identity': 'test/runner',
-    })
+    result = await history_search(
+        {
+            'run_id': 'run_1',
+            'query': 'hello',
+            'filters': {'conversation_id': 'conv_other'},
+            'caller_plugin_identity': 'test/runner',
+        }
+    )
 
     assert result.code != 0
     assert 'not accessible' in result.message.lower()
@@ -140,10 +147,12 @@ async def test_event_page_requires_runtime_capability(session_registry, db_engin
     handler = _handler(db_engine, session_registry)
     event_page = handler.actions[PluginToRuntimeAction.EVENT_PAGE.value]
 
-    result = await event_page({
-        'run_id': 'run_1',
-        'caller_plugin_identity': 'test/runner',
-    })
+    result = await event_page(
+        {
+            'run_id': 'run_1',
+            'caller_plugin_identity': 'test/runner',
+        }
+    )
 
     assert result.code != 0
     assert 'not authorized' in result.message.lower()
@@ -155,11 +164,13 @@ async def test_event_page_rejects_cross_conversation(session_registry, db_engine
     handler = _handler(db_engine, session_registry)
     event_page = handler.actions[PluginToRuntimeAction.EVENT_PAGE.value]
 
-    result = await event_page({
-        'run_id': 'run_1',
-        'conversation_id': 'conv_other',
-        'caller_plugin_identity': 'test/runner',
-    })
+    result = await event_page(
+        {
+            'run_id': 'run_1',
+            'conversation_id': 'conv_other',
+            'caller_plugin_identity': 'test/runner',
+        }
+    )
 
     assert result.code != 0
     assert 'not accessible' in result.message.lower()
@@ -184,11 +195,13 @@ async def test_event_get_returns_sdk_record_projection(session_registry, db_engi
     handler = _handler(db_engine, session_registry)
     event_get = handler.actions[PluginToRuntimeAction.EVENT_GET.value]
 
-    result = await event_get({
-        'run_id': 'run_1',
-        'event_id': event_id,
-        'caller_plugin_identity': 'test/runner',
-    })
+    result = await event_get(
+        {
+            'run_id': 'run_1',
+            'event_id': event_id,
+            'caller_plugin_identity': 'test/runner',
+        }
+    )
 
     assert result.code == 0
     AgentEventRecord.model_validate(result.data)
@@ -216,10 +229,12 @@ async def test_event_page_returns_sdk_page_projection(session_registry, db_engin
     handler = _handler(db_engine, session_registry)
     event_page = handler.actions[PluginToRuntimeAction.EVENT_PAGE.value]
 
-    result = await event_page({
-        'run_id': 'run_1',
-        'caller_plugin_identity': 'test/runner',
-    })
+    result = await event_page(
+        {
+            'run_id': 'run_1',
+            'caller_plugin_identity': 'test/runner',
+        }
+    )
 
     assert result.code == 0
     page = EventPage.model_validate(result.data)
@@ -272,10 +287,12 @@ async def test_history_page_filters_run_scope_thread_and_bot(session_registry, d
     handler = _handler(db_engine, session_registry)
     history_page = handler.actions[PluginToRuntimeAction.HISTORY_PAGE.value]
 
-    result = await history_page({
-        'run_id': 'run_1',
-        'caller_plugin_identity': 'test/runner',
-    })
+    result = await history_page(
+        {
+            'run_id': 'run_1',
+            'caller_plugin_identity': 'test/runner',
+        }
+    )
 
     assert result.code == 0
     assert [item['content'] for item in result.data['items']] == ['visible']
@@ -317,10 +334,12 @@ async def test_event_page_filters_run_scope_thread_and_bot(session_registry, db_
     handler = _handler(db_engine, session_registry)
     event_page = handler.actions[PluginToRuntimeAction.EVENT_PAGE.value]
 
-    result = await event_page({
-        'run_id': 'run_1',
-        'caller_plugin_identity': 'test/runner',
-    })
+    result = await event_page(
+        {
+            'run_id': 'run_1',
+            'caller_plugin_identity': 'test/runner',
+        }
+    )
 
     assert result.code == 0
     assert [item['event_id'] for item in result.data['items']] == ['evt_visible']

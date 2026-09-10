@@ -512,7 +512,7 @@ const jaJP = {
       processor_incompatible:
         '選択したプロセッサーはこのイベントを処理できません。',
       processor_not_found: '選択したプロセッサーを利用できません。',
-      runner_failed: 'Agent Runner がイベント処理中に失敗しました。',
+      runner_failed: 'Runner がイベント処理中に失敗しました。',
       delivery_failed: '処理は完了しましたが、結果の配信に失敗しました。',
     },
     dryRunTitle: 'イベントルートを確認',
@@ -892,21 +892,20 @@ const jaJP = {
     dangerZoneDescription: '元に戻せない操作',
     deleteAgentAction: 'この Agent を削除',
     deleteAgentHint: '削除すると、紐付けられたイベントは実行できなくなります。',
-    noRunnerMetadata: '現在利用可能な AgentRunner メタデータはありません。',
+    noRunnerMetadata: '現在利用可能な Runner メタデータはありません。',
     runnerStatusLoading: 'Runner の状態を確認しています',
     runnerStatusCheckFailed: 'Runner の状態を確認できませんでした',
     runnerStatusCheckFailedDescription:
       '再試行してください。失敗が続く場合は、バックエンドとプラグインランタイムを確認してください。',
     noRunnersAvailable: '利用可能な Runner がありません',
     noRunnersAvailableDescription:
-      'この Agent を設定する前に AgentRunner 拡張機能をインストールして有効にしてください。',
-    installedRunners: 'インストール済み AgentRunner',
-    marketplaceRunners: 'マーケットプレイスの AgentRunner プラグイン',
+      'この Agent を設定する前に Runner 拡張機能をインストールして有効にしてください。',
+    installedRunners: 'インストール済み Runner',
+    marketplaceRunners: 'マーケットプレイスの Runner プラグイン',
     viewMarketplace: '市場を見る',
     restoringRunnerInstall:
-      'AgentRunner プラグインのインストールを復元し、ランナーを待機しています…',
-    noInstalledRunners:
-      'AgentRunner 拡張機能はまだインストールされていません。',
+      'Runner プラグインのインストールを復元し、ランナーを待機しています…',
+    noInstalledRunners: 'Runner 拡張機能はまだインストールされていません。',
     installingRunner: '{{runner}} をインストールしています...',
     runnerInstallSuccess:
       '{{runner}} をインストールしました。インストール済み一覧から選択できます',
@@ -1012,8 +1011,7 @@ const jaJP = {
       KnowledgeEngine: '知識エンジン',
       Parser: 'パーサー',
       Page: 'ページ',
-      AgentRunner: 'Agent Runner',
-      EventProcessor: 'イベントプロセッサー',
+      Runner: 'Runner',
     },
     uploadLocal: 'ローカルアップロード',
     debugging: 'デバッグ中',
@@ -1201,8 +1199,7 @@ const jaJP = {
       KnowledgeEngine: '知識エンジン',
       Parser: 'パーサー',
       Page: 'ページ',
-      AgentRunner: 'Agent Runner',
-      EventProcessor: 'イベントプロセッサー',
+      Runner: 'Runner',
     },
     filterByType: 'タイプ',
     allTypes: '全部',
@@ -1444,14 +1441,14 @@ const jaJP = {
       selectSkills: 'スキルを選択',
       noSkillsAvailable: '利用可能なスキルがありません',
       mcpServersScopeTooltip:
-        'ここでは、このパイプラインに紐付ける MCP サーバーだけを管理します。個別の MCP ツールとリソースは AI 機能の Agent Runner で選択します。',
+        'ここでは、このパイプラインに紐付ける MCP サーバーだけを管理します。個別の MCP ツールとリソースは AI 機能の Runner で選択します。',
       enableAllMCPServersTooltip:
         '有効にすると、設定済みで有効なすべての MCP サーバーが AI 機能の MCP ツールとリソース候補になります。',
     },
-    agentRunner: {
+    runner: {
       toolsTitle: 'ツール',
       toolsDescription:
-        'この Agent Runner が使用できるプラグイン、MCP、組み込みツールを選択します。',
+        'この Runner が使用できるプラグイン、MCP、組み込みツールを選択します。',
       toolsScopeTooltip:
         'MCP ツールは拡張機能で紐付けられた MCP サーバーからのみ表示されます。追加するには先に拡張機能でサーバーを紐付けてください。',
       enableAllTools: 'すべてのツールを有効化',
@@ -1469,7 +1466,7 @@ const jaJP = {
       selectTools: 'ツールを選択',
       resourcesTitle: 'リソース',
       resourcesDescription:
-        'この Agent Runner が読み取れる MCP リソースとナレッジベースを選択します。',
+        'この Runner が読み取れる MCP リソースとナレッジベースを選択します。',
       knowledgeBases: 'ナレッジベース',
       mcpResources: 'MCP リソース',
       mcpResourcesScopeTooltip:
@@ -2308,11 +2305,11 @@ const jaJP = {
       createExternal: '作成して関連付ける',
       finishWithModel: '選択したモデルを使用して完了',
       openWorkbench: 'ワークベンチを開く',
-      loadingCatalog: 'AgentRunner 拡張機能を読み込んでいます...',
+      loadingCatalog: 'Runner 拡張機能を読み込んでいます...',
       catalogUnavailable: 'Runner カタログを読み込めません',
       catalogUnavailableDescription:
         'インストール済みの Runner は引き続き使用できます。再試行するか、拡張機能を確認してください。',
-      noMarketplaceRunners: 'AgentRunner 拡張機能はまだ公開されていません',
+      noMarketplaceRunners: 'Runner 拡張機能はまだ公開されていません',
       noMarketplaceRunnersDescription:
         '設定済みのマーケットプレイスに Runner 拡張機能が公開された後、再試行してください。',
       browseRunners: 'Runner 拡張機能を見る',

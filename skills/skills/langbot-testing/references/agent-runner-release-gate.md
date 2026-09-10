@@ -1,4 +1,4 @@
-# Agent Runner Release Gate
+# Runner Release Gate
 
 Use this reference when judging whether runner externalization is release-ready. The goal is not to enumerate every possible prompt. The gate covers product abilities and trust boundaries with deterministic normal-path cases, then leaves rare negative branches to unit and contract tests.
 
@@ -35,7 +35,7 @@ For a quick early blocker check, run:
 rtk bin/lbs test run agent-runner-release-preflight --dry-run
 ```
 
-For the code-level AgentRunner probes, run:
+For the code-level Runner probes, run:
 
 ```bash
 rtk bin/lbs test run agent-runner-behavior-matrix --dry-run
@@ -70,7 +70,7 @@ API integration gate, not a Debug Chat execution proof.
 
 `agent-runner-qa-debug-chat` is the deterministic live execution proof. It uses
 a pipeline created by `scripts/e2e/ensure-qa-agent-runner-pipeline.mjs` and
-expects Debug Chat to return `QA_AGENT_RUNNER_OK:<input>` through
+expects Debug Chat to return `QA_RUNNER_OK:<input>` through
 `plugin:qa/agent-runner/default`.
 
 `agent-runner-ledger-invariants` is the fast Host ledger probe. It uses
@@ -97,7 +97,7 @@ If it times out before any test result and a direct `aiosqlite.connect()` script
 also hangs, classify the run with troubleshooting id
 `aiosqlite-connect-hangs` instead of treating it as a browser E2E failure.
 
-`agent-runner-runtime-chaos` runs SDK AgentRunner runtime and pull API handler
+`agent-runner-runtime-chaos` runs SDK Runner runtime and pull API handler
 tests from `LANGBOT_PLUGIN_SDK_REPO` or `../langbot-plugin-sdk`.
 Each probe writes `automation-result.json` and probe logs under
 `LBS_EVIDENCE_DIR`.
@@ -108,9 +108,9 @@ Each probe writes `automation-result.json` and probe logs under
 | --- | --- | --- |
 | Authenticated WebUI session | `webui-login-state`, `agent-runner-release-preflight` | The browser profile can operate the same backend that later cases use. |
 | Generic Pipeline Debug Chat | `pipeline-debug-chat` | The WebUI Debug Chat path itself works before runner-specific failures are diagnosed. |
-| Deterministic QA runner install | `agent-runner-live-install` | A local `.lbpkg` AgentRunner package can install and register a runner. |
+| Deterministic QA runner install | `agent-runner-live-install` | A local `.lbpkg` Runner package can install and register a runner. |
 | Deterministic QA runner Debug Chat | `agent-runner-qa-debug-chat` | The installed QA runner executes through WebUI Debug Chat without a model provider. |
-| Required runner plugins | `agent-runner-release-preflight` | `langbot-team/LocalAgent` and `langbot-team/ACPAgentRunner` are visible to the host. |
+| Required runner plugins | `agent-runner-release-preflight` | `langbot-team/LocalAgent` and `langbot-team/ACPRunner` are visible to the host. |
 | Required QA plugin tools | `plugin-e2e-smoke`, `agent-runner-release-preflight`, `qa-plugin-smoke-live-install` | The deterministic `qa_plugin_echo` and `qa_plugin_fail` tools are exposed before tool-loop and tool-error cases start. |
 | Knowledge base fixture | `langrag-kb-retrieve`, `local-agent-rag-debug-chat` | LangRAG data is queryable and the runner inserts retrieved context. |
 | Effective prompt bridge | `local-agent-effective-prompt-debug-chat` | Host prompt preprocessing reaches the runner. |
@@ -149,7 +149,7 @@ rtk uv run pytest -q
 # langbot-plugin-sdk
 rtk uv run pytest -q
 
-# langbot-skills saved AgentRunner probes
+# langbot-skills saved Runner probes
 rtk bin/lbs test run agent-runner-behavior-matrix --dry-run
 rtk bin/lbs test run agent-runner-ledger-invariants --dry-run
 rtk bin/lbs test run agent-runner-ledger-stress --dry-run
