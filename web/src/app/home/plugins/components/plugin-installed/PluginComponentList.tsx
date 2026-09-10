@@ -7,7 +7,7 @@ import {
   FileText,
   PanelTop,
   Bot,
-  Puzzle,
+  Zap,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 
@@ -34,7 +34,7 @@ export default function PluginComponentList({
     Parser: <FileText className="w-5 h-5" />,
     Page: <PanelTop className="w-5 h-5" />,
     AgentRunner: <Bot className="w-5 h-5" />,
-    EventProcessor: <Puzzle className="w-5 h-5" />,
+    EventProcessor: <Zap className="w-5 h-5" />,
   };
 
   const componentKindList = Object.keys(components || {});

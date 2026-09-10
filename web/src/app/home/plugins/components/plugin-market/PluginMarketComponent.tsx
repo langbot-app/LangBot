@@ -18,6 +18,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import {
   Search,
   Puzzle,
+  Zap,
   Server,
   Sparkles,
   Wrench,
@@ -248,7 +249,7 @@ function MarketPageContent({
     {
       value: 'EventProcessor',
       label: t('market.componentName.EventProcessor'),
-      icon: Puzzle,
+      icon: Zap,
     },
   ];
 
