@@ -19,7 +19,9 @@ class WecomBotEventConverter(abstract_platform_adapter.AbstractEventConverter):
     async def yiri2target(event: platform_events.Event) -> typing.Any:
         return getattr(event, 'source_platform_object', None)
 
-    async def target2legacy(self, event: WecomBotEvent) -> platform_events.FriendMessage | platform_events.GroupMessage | None:
+    async def target2legacy(
+        self, event: WecomBotEvent
+    ) -> platform_events.FriendMessage | platform_events.GroupMessage | None:
         eba_event = await self.target2yiri(event)
         if not isinstance(eba_event, platform_events.MessageReceivedEvent):
             return None
@@ -50,7 +52,9 @@ class WecomBotEventConverter(abstract_platform_adapter.AbstractEventConverter):
     async def target2yiri(self, event: WecomBotEvent) -> platform_events.Event:
         if event.type in {'single', 'group'} and event.msgtype != 'event':
             return await self.message_to_eba(event)
-        return self.platform_specific(event, f'wecombot.{event.get("eventtype") or event.msgtype or event.type or "unknown"}')
+        return self.platform_specific(
+            event, f'wecombot.{event.get("eventtype") or event.msgtype or event.type or "unknown"}'
+        )
 
     async def message_to_eba(self, event: WecomBotEvent) -> platform_events.MessageReceivedEvent:
         sender = platform_entities.User(id=event.userid, nickname=event.username or event.userid)

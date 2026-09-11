@@ -71,17 +71,8 @@ class EmbedRouterGroup(group.RouterGroup):
         ``web_page_bot``, is disabled, or has no Pipeline target for messages.
         """
         bot = await self.ap.platform_mgr.resolve_public_bot(bot_uuid)
-        pipeline_uuid = (
-            bot.get_pipeline_target_for_event_type('message.received')
-            if bot is not None
-            else None
-        )
-        if (
-            bot is not None
-            and bot.bot_entity.adapter == 'web_page_bot'
-            and bot.bot_entity.enable
-            and pipeline_uuid
-        ):
+        pipeline_uuid = bot.get_pipeline_target_for_event_type('message.received') if bot is not None else None
+        if bot is not None and bot.bot_entity.adapter == 'web_page_bot' and bot.bot_entity.enable and pipeline_uuid:
             return bot, pipeline_uuid
         return None, None
 

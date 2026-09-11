@@ -3,4 +3,3 @@
 from langbot.pkg.platform.adapters.qqofficial.adapter import QQOfficialAdapter
 
 __all__ = ['QQOfficialAdapter']
-

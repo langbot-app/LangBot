@@ -1,4 +1,5 @@
 """EventLog store for writing and querying event records."""
+
 from __future__ import annotations
 
 import json
@@ -44,9 +45,7 @@ class EventLogStore:
 
     def __init__(self, engine: AsyncEngine):
         self.engine = engine
-        self._session_factory = sessionmaker(
-            engine, class_=AsyncSession, expire_on_commit=False
-        )
+        self._session_factory = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
     async def append_event(
         self,
@@ -101,7 +100,7 @@ class EventLogStore:
 
         # Truncate input summary if too long
         if input_summary and len(input_summary) > self.MAX_INPUT_SUMMARY_LENGTH:
-            input_summary = input_summary[:self.MAX_INPUT_SUMMARY_LENGTH - 3] + "..."
+            input_summary = input_summary[: self.MAX_INPUT_SUMMARY_LENGTH - 3] + '...'
 
         async with self._session_factory() as session:
             event = EventLog(
@@ -144,9 +143,7 @@ class EventLogStore:
             Event record as dict, or None if not found
         """
         async with self._session_factory() as session:
-            result = await session.execute(
-                sqlalchemy.select(EventLog).where(EventLog.event_id == event_id)
-            )
+            result = await session.execute(sqlalchemy.select(EventLog).where(EventLog.event_id == event_id))
             row = result.scalars().first()
             if row is None:
                 return None
@@ -282,9 +279,7 @@ class EventLogStore:
     ) -> int:
         """Delete EventLog rows created before the supplied timestamp."""
         async with self._session_factory() as session:
-            result = await session.execute(
-                sqlalchemy.delete(EventLog).where(EventLog.created_at < before)
-            )
+            result = await session.execute(sqlalchemy.delete(EventLog).where(EventLog.created_at < before))
             await session.commit()
             return result.rowcount or 0
 

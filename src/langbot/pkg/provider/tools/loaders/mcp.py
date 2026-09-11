@@ -2327,15 +2327,9 @@ class MCPLoader(loader.ToolLoader):
 
         return items
 
-    def _session_by_source_id(
-        self, context: TenantContext, source_id: str
-    ) -> RuntimeMCPSession | None:
+    def _session_by_source_id(self, context: TenantContext, source_id: str) -> RuntimeMCPSession | None:
         return next(
-            (
-                session
-                for session in self._sessions_for_context(context)
-                if session.server_uuid == source_id
-            ),
+            (session for session in self._sessions_for_context(context) if session.server_uuid == source_id),
             None,
         )
 
@@ -2397,9 +2391,7 @@ class MCPLoader(loader.ToolLoader):
         source_id: str | None = None,
     ) -> typing.Any:
         """执行工具调用"""
-        execution_context = await self._assert_execution_active(
-            _execution_context_from_query(query)
-        )
+        execution_context = await self._assert_execution_active(_execution_context_from_query(query))
         if source_id is None and name == MCP_TOOL_LIST_RESOURCES:
             if getattr(query, 'variables', {}).get('_pipeline_mcp_resource_agent_read_enabled', True) is not True:
                 raise ToolExecutionDeniedError(name, 'MCP resource agent reads are disabled')

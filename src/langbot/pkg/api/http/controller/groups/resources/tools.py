@@ -14,9 +14,7 @@ class ToolsRouterGroup(group.RouterGroup):
         self,
         request_context: RequestContext,
     ) -> list[dict] | None:
-        pipeline_uuid = quart.request.args.get(
-            'pipeline_uuid'
-        ) or quart.request.args.get('pipeline_id')
+        pipeline_uuid = quart.request.args.get('pipeline_uuid') or quart.request.args.get('pipeline_id')
         bound_plugins: list[str] | None = None
         bound_mcp_servers: list[str] | None = None
 
@@ -28,14 +26,9 @@ class ToolsRouterGroup(group.RouterGroup):
             if pipeline is None:
                 return None
 
-            extensions_prefs = normalize_extension_preferences(
-                pipeline.get('extensions_preferences')
-            )
+            extensions_prefs = normalize_extension_preferences(pipeline.get('extensions_preferences'))
             if not extensions_prefs['enable_all_plugins']:
-                bound_plugins = [
-                    f'{plugin["author"]}/{plugin["name"]}'
-                    for plugin in extensions_prefs['plugins']
-                ]
+                bound_plugins = [f'{plugin["author"]}/{plugin["name"]}' for plugin in extensions_prefs['plugins']]
             if not extensions_prefs['enable_all_mcp_servers']:
                 bound_mcp_servers = extensions_prefs['mcp_servers']
 

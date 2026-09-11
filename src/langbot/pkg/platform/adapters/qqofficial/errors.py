@@ -8,4 +8,3 @@ except ModuleNotFoundError:
         def __init__(self, api_name: str, *args):
             super().__init__(f"API '{api_name}' is not supported by this adapter", *args)
             self.api_name = api_name
-

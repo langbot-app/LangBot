@@ -17,7 +17,9 @@ class WecomCSEventConverter(abstract_platform_adapter.AbstractEventConverter):
         return getattr(event, 'source_platform_object', None)
 
     @staticmethod
-    async def target2legacy(event: WecomCSEvent, bot: WecomCSClient | None = None) -> platform_events.FriendMessage | None:
+    async def target2legacy(
+        event: WecomCSEvent, bot: WecomCSClient | None = None
+    ) -> platform_events.FriendMessage | None:
         eba_event = await WecomCSEventConverter.target2yiri(event, bot)
         if hasattr(eba_event, 'to_legacy_event'):
             return eba_event.to_legacy_event()
@@ -30,7 +32,9 @@ class WecomCSEventConverter(abstract_platform_adapter.AbstractEventConverter):
         return WecomCSEventConverter.platform_specific(event, f'wecomcs.{event.type or "unknown"}')
 
     @staticmethod
-    async def message_to_eba(event: WecomCSEvent, bot: WecomCSClient | None = None) -> platform_events.MessageReceivedEvent:
+    async def message_to_eba(
+        event: WecomCSEvent, bot: WecomCSClient | None = None
+    ) -> platform_events.MessageReceivedEvent:
         message_chain = await WecomCSMessageConverter.target2yiri(event)
         sender = await WecomCSEventConverter.user_from_event(event, bot)
         return platform_events.MessageReceivedEvent(

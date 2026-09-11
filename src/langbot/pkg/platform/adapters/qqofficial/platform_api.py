@@ -34,4 +34,3 @@ PLATFORM_API_MAP: dict[str, typing.Callable[[typing.Any, dict], typing.Awaitable
     'get_gateway_url': get_gateway_url,
     'get_mode': get_mode,
 }
-

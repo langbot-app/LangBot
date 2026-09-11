@@ -19,7 +19,9 @@ class SlackEventConverter(abstract_platform_adapter.AbstractEventConverter):
     async def yiri2target(event: platform_events.Event) -> typing.Any:
         return getattr(event, 'source_platform_object', None)
 
-    async def target2legacy(self, event: SlackEvent) -> platform_events.FriendMessage | platform_events.GroupMessage | None:
+    async def target2legacy(
+        self, event: SlackEvent
+    ) -> platform_events.FriendMessage | platform_events.GroupMessage | None:
         eba_event = await self.target2yiri(event)
         if not isinstance(eba_event, platform_events.MessageReceivedEvent):
             return None

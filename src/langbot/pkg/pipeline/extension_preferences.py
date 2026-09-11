@@ -50,22 +50,16 @@ def normalize_extension_preferences(value: typing.Any) -> dict[str, typing.Any]:
     normalized['enable_all_plugins'] = value.get('enable_all_plugins', True) is True
     normalized['enable_all_mcp_servers'] = value.get('enable_all_mcp_servers', True) is True
     normalized['enable_all_skills'] = value.get('enable_all_skills', True) is True
-    normalized['mcp_resource_agent_read_enabled'] = (
-        value.get('mcp_resource_agent_read_enabled', True) is True
-    )
+    normalized['mcp_resource_agent_read_enabled'] = value.get('mcp_resource_agent_read_enabled', True) is True
 
     plugins = value.get('plugins', [])
-    plugins_are_valid = isinstance(plugins, list) and all(
-        _valid_plugin_binding(plugin) for plugin in plugins
-    )
+    plugins_are_valid = isinstance(plugins, list) and all(_valid_plugin_binding(plugin) for plugin in plugins)
     normalized['plugins'] = list(plugins) if plugins_are_valid else []
     if not plugins_are_valid:
         normalized['enable_all_plugins'] = False
 
     mcp_servers = value.get('mcp_servers', [])
-    mcp_servers_are_valid = isinstance(mcp_servers, list) and all(
-        _valid_name(server) for server in mcp_servers
-    )
+    mcp_servers_are_valid = isinstance(mcp_servers, list) and all(_valid_name(server) for server in mcp_servers)
     normalized['mcp_servers'] = list(mcp_servers) if mcp_servers_are_valid else []
     if not mcp_servers_are_valid:
         normalized['enable_all_mcp_servers'] = False
@@ -151,6 +145,4 @@ def _validate_list_field(
         raise ValueError(f"{context} field '{field_label}' must be a list")
     for index, item in enumerate(items):
         if not item_validator(item):
-            raise ValueError(
-                f"{context} field '{field_label}[{index}]' must be {item_description}"
-            )
+            raise ValueError(f"{context} field '{field_label}[{index}]' must be {item_description}")
