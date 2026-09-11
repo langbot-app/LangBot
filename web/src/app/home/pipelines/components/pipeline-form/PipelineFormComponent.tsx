@@ -8,6 +8,7 @@ import {
 import DynamicFormComponent from '@/app/home/components/dynamic-form/DynamicFormComponent';
 import N8nAuthFormComponent from '@/app/home/components/dynamic-form/N8nAuthFormComponent';
 import { useBoxStatus } from '@/app/infra/hooks/useBoxStatus';
+import { getBoxScopeContext } from './BoxScopeContext';
 import { systemInfo } from '@/app/infra/http';
 import { Button } from '@/components/ui/button';
 import { useForm } from 'react-hook-form';
@@ -425,13 +426,12 @@ export default function PipelineFormComponent({
     //   2. the deployment pins all pipelines to a fixed scope via
     //      ``system.limitation.force_box_session_id_template`` (SaaS).
     const forcedBoxTemplate =
-      systemInfo.limitation?.force_box_session_id_template || '';
+      systemInfo.limitation?.force_box_session_id_template?.trim() || '';
     const boxScopeForced = !!forcedBoxTemplate;
     const isLocalAgentStage = formName === 'ai' && stage.name === 'local-agent';
     const stageSystemContext = isLocalAgentStage
       ? {
-          box_available: boxAvailable,
-          box_scope_editable: boxAvailable && !boxScopeForced,
+          ...getBoxScopeContext(boxAvailable, forcedBoxTemplate),
           pipeline_id: pipelineId,
         }
       : undefined;
