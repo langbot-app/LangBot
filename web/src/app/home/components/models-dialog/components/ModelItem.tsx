@@ -225,9 +225,12 @@ export default function ModelItem({
                 </Badge>
               )}
             {supportsReasoning && (
-              <Badge variant="outline" className="text-xs gap-1">
+              <Badge
+                variant="outline"
+                className="text-xs gap-1"
+                aria-label={t('models.reasoningAbility')}
+              >
                 <BrainCircuit className="h-3 w-3" />
-                {t('models.reasoningAbility')}
               </Badge>
             )}
           </div>
