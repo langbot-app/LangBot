@@ -17,6 +17,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from langbot.pkg.entity.persistence.base import Base
+from langbot.pkg.persistence import mgr as persistence_mgr  # noqa: F401 -- register all ORM tables
 from langbot.pkg.persistence.alembic_runner import (
     run_alembic_downgrade,
     run_alembic_upgrade,
@@ -108,7 +109,6 @@ class TestSQLiteMigrationUpgrade:
         await run_alembic_upgrade(sqlite_engine, 'head')
 
         assert await get_alembic_current(sqlite_engine) == _get_script_head()
-        assert _get_script_head() == '0022_codex_credentials'
 
     @pytest.mark.asyncio
     async def test_upgrade_from_reasoning_config_head_to_merged_head(self, sqlite_engine):
@@ -119,7 +119,7 @@ class TestSQLiteMigrationUpgrade:
         await run_alembic_stamp(sqlite_engine, '0018_llm_reasoning_config')
         await run_alembic_upgrade(sqlite_engine, 'head')
 
-        assert await get_alembic_current(sqlite_engine) == '0022_codex_credentials'
+        assert await get_alembic_current(sqlite_engine) == _get_script_head()
 
     @pytest.mark.asyncio
     async def test_upgrade_from_baseline_to_head(self, sqlite_engine):
@@ -279,6 +279,15 @@ class TestSQLiteMigrationUpgrade:
 
 class TestSQLiteMigrationFreshDatabase:
     """Tests for fresh database workflow."""
+
+    @pytest.mark.asyncio
+    async def test_bot_scoped_sessions_skips_absent_table(self, sqlite_engine):
+        """A partial schema needs no session key migration in either direction."""
+        await run_alembic_stamp(sqlite_engine, '0022_codex_credentials')
+        await run_alembic_upgrade(sqlite_engine, '0023_bot_scoped_sessions')
+        assert await get_alembic_current(sqlite_engine) == '0023_bot_scoped_sessions'
+        await run_alembic_downgrade(sqlite_engine, '0022_codex_credentials')
+        assert await get_alembic_current(sqlite_engine) == '0022_codex_credentials'
 
     @pytest.mark.asyncio
     async def test_fresh_db_upgrade_from_scratch(self, tmp_path):

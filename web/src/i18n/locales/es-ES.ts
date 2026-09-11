@@ -1602,7 +1602,17 @@ const esES = {
     queryVariables: {
       title: 'Variables de consulta',
     },
+    loadError: 'No se pudieron cargar los datos de monitoreo',
+    partialMessages:
+      'Se muestran {{shown}} de {{total}} mensajes. Las trazas de conversación pueden estar incompletas.',
+    partialModelCalls: 'Se muestran {{shown}} de {{total}} llamadas al modelo.',
+    partialToolCalls:
+      'Se muestran {{shown}} de {{total}} llamadas a herramientas. Las trazas de conversación pueden estar incompletas.',
+    partialErrors: 'Se muestran {{shown}} de {{total}} errores.',
     trafficChart: {
+      unavailable: 'Agregación de tráfico no disponible',
+      truncated:
+        'Rango de tráfico truncado. Selecciona un intervalo más corto.',
       title: 'Resumen de tráfico',
       messages: 'Mensajes',
       llmCalls: 'Llamadas LLM',

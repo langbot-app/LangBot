@@ -1574,7 +1574,16 @@ const ruRU = {
     queryVariables: {
       title: 'Переменные запроса',
     },
+    loadError: 'Не удалось загрузить данные мониторинга',
+    partialMessages:
+      'Показано {{shown}} из {{total}} сообщений. Трассировки диалогов могут быть неполными.',
+    partialModelCalls: 'Показано {{shown}} из {{total}} вызовов модели.',
+    partialToolCalls:
+      'Показано {{shown}} из {{total}} вызовов инструментов. Трассировки диалогов могут быть неполными.',
+    partialErrors: 'Показано {{shown}} из {{total}} ошибок.',
     trafficChart: {
+      unavailable: 'Агрегированные данные трафика недоступны',
+      truncated: 'Диапазон трафика обрезан. Выберите более короткий период.',
       title: 'Обзор трафика',
       messages: 'Сообщения',
       llmCalls: 'Вызовы LLM',

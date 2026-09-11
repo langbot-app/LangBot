@@ -111,8 +111,8 @@ class MonitoringSession(Base):
         sqlalchemy.ForeignKey('workspaces.uuid', ondelete='CASCADE'),
         primary_key=True,
     )
+    bot_id = sqlalchemy.Column(sqlalchemy.String(255), primary_key=True, index=True)
     session_id = sqlalchemy.Column(sqlalchemy.String(255), primary_key=True)
-    bot_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=False, index=True)
     bot_name = sqlalchemy.Column(sqlalchemy.String(255), nullable=False)
     pipeline_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=False, index=True)
     pipeline_name = sqlalchemy.Column(sqlalchemy.String(255), nullable=False)

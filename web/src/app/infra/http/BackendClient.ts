@@ -563,10 +563,24 @@ export class BackendClient extends BaseHttpClient {
     return this.get(`/api/v1/monitoring/sessions?${queryParams.toString()}`);
   }
 
+  public getSessionAnalysis<T>(
+    sessionId: string,
+    botId: string,
+    options: { startTime?: string; endTime?: string } = {},
+  ): Promise<T> {
+    const queryParams = new URLSearchParams({ botId });
+    if (options.startTime) queryParams.set('startTime', options.startTime);
+    if (options.endTime) queryParams.set('endTime', options.endTime);
+    return this.get(
+      `/api/v1/monitoring/sessions/${encodeURIComponent(sessionId)}/analysis?${queryParams.toString()}`,
+    );
+  }
+
   public getSessionMessages(
     sessionId: string,
     limit: number = 200,
     offset: number = 0,
+    botId?: string,
   ): Promise<{
     messages: Array<{
       id: string;
@@ -590,6 +604,7 @@ export class BackendClient extends BaseHttpClient {
   }> {
     const queryParams = new URLSearchParams();
     queryParams.append('sessionId', sessionId);
+    if (botId) queryParams.append('botId', botId);
     queryParams.append('limit', limit.toString());
     queryParams.append('offset', offset.toString());
     return this.get(`/api/v1/monitoring/messages?${queryParams.toString()}`);
@@ -1496,6 +1511,11 @@ export class BackendClient extends BaseHttpClient {
     endTime?: string;
     limit?: number;
   }): Promise<{
+    traffic?: {
+      bucket: 'hour' | 'day';
+      points: Array<{ timestamp: string; messages: number; llm_calls: number }>;
+      truncated: boolean;
+    };
     overview: {
       total_messages: number;
       llm_calls: number;

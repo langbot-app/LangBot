@@ -1572,7 +1572,16 @@ const zhHans = {
     queryVariables: {
       title: '查询变量',
     },
+    loadError: '监控数据加载失败',
+    partialMessages:
+      '显示 {{total}} 条消息中的 {{shown}} 条，对话轨迹可能不完整。',
+    partialModelCalls: '显示 {{total}} 次模型调用中的 {{shown}} 次。',
+    partialToolCalls:
+      '显示 {{total}} 次工具调用中的 {{shown}} 次，对话轨迹可能不完整。',
+    partialErrors: '显示 {{total}} 条错误中的 {{shown}} 条。',
     trafficChart: {
+      unavailable: '流量聚合数据不可用',
+      truncated: '流量时间范围已截断，请选择更短的时间范围。',
       title: '流量概览',
       messages: '消息数',
       llmCalls: 'LLM调用',

@@ -142,7 +142,7 @@ async def test_legacy_sqlite_resources_are_backfilled_and_contracted(tmp_path):
         assert pk_columns == {
             'binary_storages': ('workspace_uuid', 'unique_key'),
             'plugin_settings': ('workspace_uuid', 'plugin_author', 'plugin_name'),
-            'monitoring_sessions': ('workspace_uuid', 'session_id'),
+            'monitoring_sessions': ('workspace_uuid', 'bot_id', 'session_id'),
         }
 
         pipeline_run_foreign_keys = await _inspect(
@@ -237,8 +237,10 @@ async def test_sqlite_scoped_keys_allow_cross_workspace_but_reject_same_workspac
             await conn.execute(
                 sa.text(
                     'INSERT INTO monitoring_sessions '
-                    '(workspace_uuid, session_id, bot_id, last_activity, is_active) '
-                    "VALUES (:workspace_uuid, 'session-1', 'bot-2', CURRENT_TIMESTAMP, 1)"
+                    '(workspace_uuid, session_id, bot_id, bot_name, pipeline_id, pipeline_name, '
+                    'start_time, last_activity, message_count, is_active) '
+                    "VALUES (:workspace_uuid, 'session-1', 'bot-2', 'bot', 'pipeline-2', 'pipeline', "
+                    'CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 1, 1)'
                 ),
                 {'workspace_uuid': second_workspace_uuid},
             )
