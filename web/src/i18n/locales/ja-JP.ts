@@ -315,6 +315,14 @@ const jaJP = {
       notChecked: 'チェック結果なし',
       lastChecked: '{{time}} にチェック',
     },
+    pricing: {
+      compact: '{{input}} / {{output}}',
+      inline: '入力 {{input}} · 出力 {{output}}',
+      title: '100万トークンあたりのクレジット',
+      input: '入力：{{credits}} クレジット',
+      output: '出力：{{credits}} クレジット',
+      unavailable: '現在の価格なし',
+    },
     langbotModels: 'LangBot モデル',
     spaceTrialTooltip:
       '無料トライアルクレジットが利用可能！LangBot アカウントでログインして、設定不要でクラウドモデルを使用できます。',

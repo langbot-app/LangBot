@@ -312,6 +312,14 @@ const esES = {
       notChecked: 'Sin resultado de comprobación',
       lastChecked: 'Comprobado {{time}}',
     },
+    pricing: {
+      compact: '{{input}} / {{output}}',
+      inline: 'Entrada {{input}} · salida {{output}}',
+      title: 'Créditos por 1 M de tokens',
+      input: 'Entrada: {{credits}} créditos',
+      output: 'Salida: {{credits}} créditos',
+      unavailable: 'Sin precio actual',
+    },
     langbotModels: 'Modelos LangBot',
     spaceTrialTooltip:
       '¡Créditos de prueba gratuitos disponibles! Inicia sesión con una cuenta de LangBot para acceder a modelos en la nube sin configuración.',

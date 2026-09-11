@@ -14,7 +14,7 @@ import { useTranslation } from 'react-i18next';
 import {
   LLMModel,
   EmbeddingModel,
-  LangBotModelAvailability,
+  LangBotModelAvailabilityItem,
   ReasoningConfig,
 } from '@/app/infra/entities/api';
 import {
@@ -25,14 +25,14 @@ import {
 } from '../types';
 import ExtraArgsEditor from './ExtraArgsEditor';
 import { userInfo } from '@/app/infra/http';
-import ModelAvailabilityIndicator from '../../model-availability/ModelAvailabilityIndicator';
+import LangBotModelMetadata from '../../model-availability/LangBotModelMetadata';
 
 interface ModelItemProps {
   model: LLMModel | EmbeddingModel;
   canManage: boolean;
   modelType: ModelType;
   isLangBotModels: boolean;
-  availability?: LangBotModelAvailability;
+  metadata?: LangBotModelAvailabilityItem;
   availabilityLoaded: boolean;
   editModelPopoverOpen: string | null;
   deleteConfirmOpen: string | null;
@@ -90,7 +90,7 @@ export default function ModelItem({
   canManage,
   modelType,
   isLangBotModels,
-  availability,
+  metadata,
   availabilityLoaded,
   editModelPopoverOpen,
   deleteConfirmOpen,
@@ -203,14 +203,8 @@ export default function ModelItem({
               : 'hover:bg-accent cursor-pointer'
           }`}
         >
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex min-w-0 items-center gap-2 flex-wrap">
             <span className="text-sm font-medium">{model.name}</span>
-            {isLangBotModels && (
-              <ModelAvailabilityIndicator
-                availability={availability}
-                show={availabilityLoaded}
-              />
-            )}
             <Badge variant="secondary" className="text-xs">
               {modelType === 'llm'
                 ? t('models.chat')
@@ -237,6 +231,12 @@ export default function ModelItem({
               </Badge>
             )}
           </div>
+          {isLangBotModels && (
+            <LangBotModelMetadata
+              metadata={metadata}
+              loaded={availabilityLoaded}
+            />
+          )}
           {canManage && !isLangBotModels && (
             <Popover
               open={isDeleteOpen}

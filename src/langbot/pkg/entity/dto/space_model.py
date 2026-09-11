@@ -59,9 +59,11 @@ class SpaceModelAvailability(pydantic.BaseModel):
 
 
 class SpaceModelSelection(pydantic.BaseModel):
-    """Model identity and the latest persisted probe from Space."""
+    """Model identity, pricing, and latest persisted probe from Space."""
 
     uuid: str
     model_id: str
     category: str | None = None
+    input_credits: float | None = None
+    output_credits: float | None = None
     availability: SpaceModelAvailability = pydantic.Field(default_factory=SpaceModelAvailability)

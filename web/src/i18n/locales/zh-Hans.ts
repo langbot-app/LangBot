@@ -296,6 +296,14 @@ const zhHans = {
       notChecked: '暂无检测结果',
       lastChecked: '检测于 {{time}}',
     },
+    pricing: {
+      compact: '{{input}} / {{output}}',
+      inline: '输入 {{input}} · 输出 {{output}}',
+      title: '每 1M tokens 消耗积分',
+      input: '输入：{{credits}} 积分',
+      output: '输出：{{credits}} 积分',
+      unavailable: '暂无价格',
+    },
     langbotModels: 'LangBot 模型',
     spaceTrialTooltip:
       '免费试用积分已就绪！通过 LangBot 账号登录即可零配置使用云端模型。',

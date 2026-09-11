@@ -169,6 +169,8 @@ export interface LangBotModelAvailabilityItem {
   uuid: string;
   model_id: string;
   category: string | null;
+  input_credits: number | null;
+  output_credits: number | null;
   availability: LangBotModelAvailability;
 }
 

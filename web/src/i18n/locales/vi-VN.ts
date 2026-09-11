@@ -306,6 +306,14 @@ const viVN = {
       notChecked: 'Chưa có kết quả kiểm tra',
       lastChecked: 'Đã kiểm tra {{time}}',
     },
+    pricing: {
+      compact: '{{input}} / {{output}}',
+      inline: 'Đầu vào {{input}} · đầu ra {{output}}',
+      title: 'Tín dụng trên 1 triệu token',
+      input: 'Đầu vào: {{credits}} tín dụng',
+      output: 'Đầu ra: {{credits}} tín dụng',
+      unavailable: 'Chưa có giá hiện tại',
+    },
     langbotModels: 'Mô hình LangBot',
     spaceTrialTooltip:
       'Có tín dụng dùng thử miễn phí! Đăng nhập bằng tài khoản LangBot để truy cập mô hình đám mây không cần cấu hình.',

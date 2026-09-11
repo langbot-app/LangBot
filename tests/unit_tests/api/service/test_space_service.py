@@ -899,6 +899,8 @@ class TestSpaceServiceGetModelSelection:
                             'uuid': 'embedding-model',
                             'model_id': 'text-embedding',
                             'category': 'embedding',
+                            'input_credits': 20,
+                            'output_credits': 40,
                         },
                         'availability': {'up': None, 'last_probed_at': None},
                     }
@@ -922,6 +924,8 @@ class TestSpaceServiceGetModelSelection:
             result = await service.get_model_selection()
 
         assert result[0].category == 'embedding'
+        assert result[0].input_credits == 20
+        assert result[0].output_credits == 40
         assert result[0].availability.up is None
         session.get.assert_called_once_with(
             'https://space.langbot.app/api/v1/models/selection',

@@ -309,6 +309,14 @@ const ruRU = {
       notChecked: 'Нет результата проверки',
       lastChecked: 'Проверено {{time}}',
     },
+    pricing: {
+      compact: '{{input}} / {{output}}',
+      inline: 'Ввод {{input}} · вывод {{output}}',
+      title: 'Кредиты за 1 млн токенов',
+      input: 'Ввод: {{credits}} кредитов',
+      output: 'Вывод: {{credits}} кредитов',
+      unavailable: 'Нет актуальной цены',
+    },
     langbotModels: 'Модели LangBot',
     spaceTrialTooltip:
       'Доступны бесплатные пробные кредиты! Войдите с аккаунтом LangBot, чтобы получить доступ к облачным моделям без настройки.',

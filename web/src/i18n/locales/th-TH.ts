@@ -298,6 +298,14 @@ const thTH = {
       notChecked: 'ไม่มีผลการตรวจสอบ',
       lastChecked: 'ตรวจสอบเมื่อ {{time}}',
     },
+    pricing: {
+      compact: '{{input}} / {{output}}',
+      inline: 'อินพุต {{input}} · เอาต์พุต {{output}}',
+      title: 'เครดิตต่อ 1 ล้านโทเค็น',
+      input: 'อินพุต: {{credits}} เครดิต',
+      output: 'เอาต์พุต: {{credits}} เครดิต',
+      unavailable: 'ไม่มีราคาปัจจุบัน',
+    },
     langbotModels: 'โมเดล LangBot',
     spaceTrialTooltip:
       'มีเครดิตทดลองใช้งานฟรี! เข้าสู่ระบบด้วยบัญชี LangBot เพื่อเข้าถึงโมเดลคลาวด์โดยไม่ต้องตั้งค่า',

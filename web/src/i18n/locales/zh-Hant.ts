@@ -287,6 +287,14 @@ const zhHant = {
       notChecked: '暫無檢測結果',
       lastChecked: '檢測於 {{time}}',
     },
+    pricing: {
+      compact: '{{input}} / {{output}}',
+      inline: '輸入 {{input}} · 輸出 {{output}}',
+      title: '每 1M tokens 消耗積分',
+      input: '輸入：{{credits}} 積分',
+      output: '輸出：{{credits}} 積分',
+      unavailable: '暫無價格',
+    },
     langbotModels: 'LangBot 模型',
     spaceTrialTooltip:
       '免費試用積分已就緒！使用 LangBot 帳號登入即可零設定使用雲端模型。',

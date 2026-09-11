@@ -310,6 +310,14 @@ const enUS = {
       notChecked: 'No check result',
       lastChecked: 'Checked {{time}}',
     },
+    pricing: {
+      compact: '{{input}} / {{output}}',
+      inline: '{{input}} input · {{output}} output',
+      title: 'Credits per 1M tokens',
+      input: 'Input: {{credits}} credits',
+      output: 'Output: {{credits}} credits',
+      unavailable: 'No current price',
+    },
     langbotModels: 'LangBot Models',
     spaceTrialTooltip:
       'Free trial credits available! Login with LangBot Account to access cloud models with zero configuration.',

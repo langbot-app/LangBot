@@ -91,7 +91,7 @@ export default function ModelsPanel({
   const canManage =
     currentWorkspace?.permissions.includes('provider_secret.manage') ?? false;
   const {
-    availability: langbotModelAvailability,
+    metadata: langbotModelMetadata,
     loaded: langbotModelAvailabilityLoaded,
   } = useLangBotModelAvailability(active && !systemInfo.disable_models_service);
 
@@ -559,7 +559,7 @@ export default function ModelsPanel({
         isWorkspaceOwner={currentWorkspace?.membership.role === 'owner'}
         ownerSpaceBound={spaceBilling?.owner_space_bound ?? false}
         spaceCredits={spaceBilling?.credits ?? null}
-        modelAvailability={langbotModelAvailability}
+        modelMetadata={langbotModelMetadata}
         modelAvailabilityLoaded={langbotModelAvailabilityLoaded}
         addModelPopoverOpen={addModelPopoverOpen}
         editModelPopoverOpen={editModelPopoverOpen}

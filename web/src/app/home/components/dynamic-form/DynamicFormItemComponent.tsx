@@ -71,7 +71,7 @@ import { LANGBOT_MODELS_PROVIDER_REQUESTER } from '@/app/home/components/models-
 import ReasoningLevelPicker, {
   REASONING_LEVELS,
 } from '@/app/home/components/reasoning/ReasoningLevelPicker';
-import ModelAvailabilityIndicator from '@/app/home/components/model-availability/ModelAvailabilityIndicator';
+import LangBotModelMetadata from '@/app/home/components/model-availability/LangBotModelMetadata';
 import { useLangBotModelAvailability } from '@/app/home/components/model-availability/useLangBotModelAvailability';
 
 function hasUsableUuid<T extends { uuid?: string | null }>(
@@ -162,26 +162,39 @@ export default function DynamicFormItemComponent({
     DynamicFormItemType.MODEL_FALLBACK_SELECTOR,
   ].includes(config.type);
   const {
-    availability: langbotModelAvailability,
+    metadata: langbotModelMetadata,
     loaded: langbotModelAvailabilityLoaded,
   } = useLangBotModelAvailability(
     isModelSelector && !systemInfo.disable_models_service,
   );
 
-  const renderModelAvailability = (model: {
+  const renderModelOption = (model: {
     uuid: string;
     name: string;
+    abilities?: string[];
     provider?: { requester?: string };
-  }) =>
-    model.provider?.requester === LANGBOT_MODELS_PROVIDER_REQUESTER ? (
-      <ModelAvailabilityIndicator
-        availability={
-          langbotModelAvailability[model.uuid] ??
-          langbotModelAvailability[model.name]
-        }
-        show={langbotModelAvailabilityLoaded}
-      />
-    ) : null;
+  }) => (
+    <span className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
+      <span className="inline-flex min-w-0 items-center gap-1">
+        <span className="truncate">{model.name}</span>
+        {model.abilities?.includes('vision') && (
+          <Eye className="h-3 w-3 text-muted-foreground" />
+        )}
+        {model.abilities?.includes('func_call') && (
+          <Wrench className="h-3 w-3 text-muted-foreground" />
+        )}
+      </span>
+      {model.provider?.requester === LANGBOT_MODELS_PROVIDER_REQUESTER && (
+        <LangBotModelMetadata
+          metadata={
+            langbotModelMetadata[model.uuid] ?? langbotModelMetadata[model.name]
+          }
+          loaded={langbotModelAvailabilityLoaded}
+          compact
+        />
+      )}
+    </span>
+  );
 
   const fetchLlmModels = () => {
     httpClient
@@ -611,16 +624,7 @@ export default function DynamicFormItemComponent({
                     <SelectLabel>{providerName}</SelectLabel>
                     {models.map((model) => (
                       <SelectItem key={model.uuid} value={model.uuid}>
-                        <span className="inline-flex items-center gap-1">
-                          {model.name}
-                          {renderModelAvailability(model)}
-                          {model.abilities?.includes('vision') && (
-                            <Eye className="h-3 w-3 text-muted-foreground" />
-                          )}
-                          {model.abilities?.includes('func_call') && (
-                            <Wrench className="h-3 w-3 text-muted-foreground" />
-                          )}
-                        </span>
+                        {renderModelOption(model)}
                       </SelectItem>
                     ))}
                   </SelectGroup>
@@ -716,16 +720,7 @@ export default function DynamicFormItemComponent({
                         </SelectLabel>
                         {models.map((model) => (
                           <SelectItem key={model.uuid} value={model.uuid}>
-                            <span className="inline-flex items-center gap-1">
-                              {model.name}
-                              {renderModelAvailability(model)}
-                              {model.abilities?.includes('vision') && (
-                                <Eye className="h-3 w-3 text-muted-foreground" />
-                              )}
-                              {model.abilities?.includes('func_call') && (
-                                <Wrench className="h-3 w-3 text-muted-foreground" />
-                              )}
-                            </span>
+                            {renderModelOption(model)}
                           </SelectItem>
                         ))}
                       </SelectGroup>
@@ -814,8 +809,7 @@ export default function DynamicFormItemComponent({
                       <SelectLabel>{providerName}</SelectLabel>
                       {models.map((model) => (
                         <SelectItem key={model.uuid} value={model.uuid}>
-                          {model.name}
-                          {renderModelAvailability(model)}
+                          {renderModelOption(model)}
                         </SelectItem>
                       ))}
                     </SelectGroup>
@@ -907,8 +901,7 @@ export default function DynamicFormItemComponent({
                         </SelectLabel>
                         {models.map((model) => (
                           <SelectItem key={model.uuid} value={model.uuid}>
-                            {model.name}
-                            {renderModelAvailability(model)}
+                            {renderModelOption(model)}
                           </SelectItem>
                         ))}
                       </SelectGroup>
@@ -973,8 +966,7 @@ export default function DynamicFormItemComponent({
                     <SelectLabel>{providerName}</SelectLabel>
                     {models.map((model) => (
                       <SelectItem key={model.uuid} value={model.uuid}>
-                        {model.name}
-                        {renderModelAvailability(model)}
+                        {renderModelOption(model)}
                       </SelectItem>
                     ))}
                   </SelectGroup>
@@ -1092,16 +1084,7 @@ export default function DynamicFormItemComponent({
                   <SelectLabel>{providerName}</SelectLabel>
                   {models.map((model) => (
                     <SelectItem key={model.uuid} value={model.uuid}>
-                      <span className="inline-flex items-center gap-1">
-                        {model.name}
-                        {renderModelAvailability(model)}
-                        {model.abilities?.includes('vision') && (
-                          <Eye className="h-3 w-3 text-muted-foreground" />
-                        )}
-                        {model.abilities?.includes('func_call') && (
-                          <Wrench className="h-3 w-3 text-muted-foreground" />
-                        )}
-                      </span>
+                      {renderModelOption(model)}
                     </SelectItem>
                   ))}
                 </SelectGroup>
@@ -1198,16 +1181,7 @@ export default function DynamicFormItemComponent({
                     </SelectLabel>
                     {models.map((model) => (
                       <SelectItem key={model.uuid} value={model.uuid}>
-                        <span className="inline-flex items-center gap-1">
-                          {model.name}
-                          {renderModelAvailability(model)}
-                          {model.abilities?.includes('vision') && (
-                            <Eye className="h-3 w-3 text-muted-foreground" />
-                          )}
-                          {model.abilities?.includes('func_call') && (
-                            <Wrench className="h-3 w-3 text-muted-foreground" />
-                          )}
-                        </span>
+                        {renderModelOption(model)}
                       </SelectItem>
                     ))}
                   </SelectGroup>

@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { httpClient, systemInfo } from '@/app/infra/http/HttpClient';
 import {
-  LangBotModelAvailability,
+  LangBotModelAvailabilityItem,
   ModelProvider,
   ReasoningConfig,
 } from '@/app/infra/entities/api';
@@ -51,7 +51,7 @@ interface ProviderCardProps {
   isWorkspaceOwner: boolean;
   ownerSpaceBound: boolean;
   spaceCredits: number | null;
-  modelAvailability: Record<string, LangBotModelAvailability>;
+  modelMetadata: Record<string, LangBotModelAvailabilityItem>;
   modelAvailabilityLoaded: boolean;
   // Popover states
   addModelPopoverOpen: string | null;
@@ -121,7 +121,7 @@ export default function ProviderCard({
   isWorkspaceOwner,
   ownerSpaceBound,
   spaceCredits,
-  modelAvailability,
+  modelMetadata,
   modelAvailabilityLoaded,
   addModelPopoverOpen,
   editModelPopoverOpen,
@@ -432,9 +432,8 @@ export default function ProviderCard({
                     canManage={canManage}
                     modelType="llm"
                     isLangBotModels={isLangBotModels}
-                    availability={
-                      modelAvailability[model.uuid] ??
-                      modelAvailability[model.name]
+                    metadata={
+                      modelMetadata[model.uuid] ?? modelMetadata[model.name]
                     }
                     availabilityLoaded={modelAvailabilityLoaded}
                     editModelPopoverOpen={editModelPopoverOpen}
@@ -488,9 +487,8 @@ export default function ProviderCard({
                     canManage={canManage}
                     modelType="embedding"
                     isLangBotModels={isLangBotModels}
-                    availability={
-                      modelAvailability[model.uuid] ??
-                      modelAvailability[model.name]
+                    metadata={
+                      modelMetadata[model.uuid] ?? modelMetadata[model.name]
                     }
                     availabilityLoaded={modelAvailabilityLoaded}
                     editModelPopoverOpen={editModelPopoverOpen}
@@ -542,9 +540,8 @@ export default function ProviderCard({
                     canManage={canManage}
                     modelType="rerank"
                     isLangBotModels={isLangBotModels}
-                    availability={
-                      modelAvailability[model.uuid] ??
-                      modelAvailability[model.name]
+                    metadata={
+                      modelMetadata[model.uuid] ?? modelMetadata[model.name]
                     }
                     availabilityLoaded={modelAvailabilityLoaded}
                     editModelPopoverOpen={editModelPopoverOpen}
