@@ -157,6 +157,9 @@ const BotSessionMonitor = forwardRef<
   const [messagePage, setMessagePage] = useState(0);
   const [loadingSessions, setLoadingSessions] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(false);
+  const [sessionError, setSessionError] = useState(false);
+  const [messageError, setMessageError] = useState(false);
+  const [analysisError, setAnalysisError] = useState(false);
   const [copiedUserId, setCopiedUserId] = useState(false);
   const [feedbackMap, setFeedbackMap] = useState<
     Record<string, SessionFeedback>
@@ -236,6 +239,8 @@ const BotSessionMonitor = forwardRef<
   const loadSessions = useCallback(async () => {
     const requestId = ++sessionRequestIdRef.current;
     setLoadingSessions(true);
+    setSessionError(false);
+    setSessions([]);
     try {
       const response = await httpClient.getBotSessions(botId, {
         limit: SESSION_PAGE_SIZE,
@@ -254,6 +259,7 @@ const BotSessionMonitor = forwardRef<
     } catch (error) {
       if (requestId === sessionRequestIdRef.current) {
         console.error('Failed to load sessions:', error);
+        setSessionError(true);
       }
     } finally {
       if (requestId === sessionRequestIdRef.current) {
@@ -274,12 +280,18 @@ const BotSessionMonitor = forwardRef<
     async (sessionId: string, page: number) => {
       const requestId = ++messageRequestIdRef.current;
       setLoadingMessages(true);
+      setMessageError(false);
+      setAnalysisError(false);
+      setMessages([]);
+      setToolCalls([]);
+      setFeedbackMap({});
       setExpandedToolCallIds({});
       try {
         const messagesRes = await httpClient.getSessionMessages(
           sessionId,
           MESSAGE_PAGE_SIZE,
           page * MESSAGE_PAGE_SIZE,
+          botId,
         );
         if (requestId !== messageRequestIdRef.current) return;
         const sorted = (messagesRes.messages ?? []).sort(
@@ -290,22 +302,19 @@ const BotSessionMonitor = forwardRef<
         setMessageTotal(messagesRes.total ?? 0);
 
         try {
-          const analysisParams = new URLSearchParams();
-          if (sorted.length > 0) {
-            analysisParams.set('startTime', sorted[0].timestamp);
-            analysisParams.set('endTime', sorted[sorted.length - 1].timestamp);
-          }
-          const analysisRes = await httpClient.get<{
+          const analysisRes = await httpClient.getSessionAnalysis<{
             tool_calls?: SessionToolCall[];
-          }>(
-            `/api/v1/monitoring/sessions/${encodeURIComponent(sessionId)}/analysis?${analysisParams.toString()}`,
-          );
+          }>(sessionId, botId, {
+            startTime: sorted[0]?.timestamp,
+            endTime: sorted[sorted.length - 1]?.timestamp,
+          });
           if (requestId !== messageRequestIdRef.current) return;
           setToolCalls(analysisRes?.tool_calls ?? []);
         } catch (analysisError) {
           if (requestId !== messageRequestIdRef.current) return;
           console.error('Failed to load session tool calls:', analysisError);
           setToolCalls([]);
+          setAnalysisError(true);
         }
 
         // Collect user message IDs for feedback matching
@@ -337,6 +346,7 @@ const BotSessionMonitor = forwardRef<
       } catch (error) {
         if (requestId === messageRequestIdRef.current) {
           console.error('Failed to load session messages:', error);
+          setMessageError(true);
         }
       } finally {
         if (requestId === messageRequestIdRef.current) {
@@ -349,6 +359,9 @@ const BotSessionMonitor = forwardRef<
 
   useEffect(() => {
     loadSessions();
+    return () => {
+      sessionRequestIdRef.current += 1;
+    };
   }, [loadSessions]);
 
   useEffect(() => {
@@ -362,12 +375,17 @@ const BotSessionMonitor = forwardRef<
     } else {
       messageRequestIdRef.current += 1;
       setLoadingMessages(false);
+      setMessageError(false);
+      setAnalysisError(false);
       setMessages([]);
       setMessageTotal(0);
       setToolCalls([]);
       setExpandedToolCallIds({});
       setFeedbackMap({});
     }
+    return () => {
+      messageRequestIdRef.current += 1;
+    };
   }, [selectedSessionId, messagePage, loadMessages]);
 
   useEffect(() => {
@@ -728,6 +746,20 @@ const BotSessionMonitor = forwardRef<
               <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
                 {t('bots.sessionMonitor.loading')}
               </div>
+            ) : sessionError ? (
+              <div
+                role="alert"
+                className="p-3 space-y-2 text-sm text-destructive"
+              >
+                <p>{t('monitoring.loadError')}</p>
+                <button
+                  type="button"
+                  onClick={loadSessions}
+                  className="rounded border px-2 py-1 text-foreground"
+                >
+                  {t('common.retry')}
+                </button>
+              </div>
             ) : sessions.length === 0 ? (
               <div className="text-center text-muted-foreground py-12 text-sm">
                 {t('bots.sessionMonitor.noSessions')}
@@ -898,9 +930,45 @@ const BotSessionMonitor = forwardRef<
                 className="flex-1 px-4 py-4 overflow-y-auto min-h-0"
               >
                 <div className="space-y-4">
+                  {analysisError && !loadingMessages && (
+                    <div
+                      role="alert"
+                      className="text-sm text-destructive space-y-2"
+                    >
+                      <p>
+                        {t('monitoring.toolCalls.title')}:{' '}
+                        {t('monitoring.loadError')}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          loadMessages(selectedSessionId, messagePage)
+                        }
+                        className="rounded border px-2 py-1 text-foreground"
+                      >
+                        {t('common.retry')}
+                      </button>
+                    </div>
+                  )}
                   {loadingMessages ? (
                     <div className="text-center text-muted-foreground py-12 text-sm">
                       {t('bots.sessionMonitor.loading')}
+                    </div>
+                  ) : messageError ? (
+                    <div
+                      role="alert"
+                      className="text-sm text-destructive space-y-2"
+                    >
+                      <p>{t('monitoring.loadError')}</p>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          loadMessages(selectedSessionId, messagePage)
+                        }
+                        className="rounded border px-2 py-1 text-foreground"
+                      >
+                        {t('common.retry')}
+                      </button>
                     </div>
                   ) : timelineItems.length === 0 ? (
                     <div className="text-center text-muted-foreground py-12 text-sm">

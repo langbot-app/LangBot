@@ -1543,7 +1543,17 @@ const thTH = {
     queryVariables: {
       title: 'ตัวแปรคำค้นหา',
     },
+    loadError: 'โหลดข้อมูลการตรวจสอบไม่สำเร็จ',
+    partialMessages:
+      'แสดง {{shown}} จาก {{total}} ข้อความ ประวัติการสนทนาอาจไม่ครบถ้วน',
+    partialModelCalls: 'แสดง {{shown}} จาก {{total}} การเรียกโมเดล',
+    partialToolCalls:
+      'แสดง {{shown}} จาก {{total}} การเรียกเครื่องมือ ประวัติการสนทนาอาจไม่ครบถ้วน',
+    partialErrors: 'แสดง {{shown}} จาก {{total}} ข้อผิดพลาด',
     trafficChart: {
+      unavailable: 'ไม่มีข้อมูลสรุปปริมาณการใช้งาน',
+      truncated:
+        'ช่วงข้อมูลปริมาณการใช้งานถูกตัดทอน โปรดเลือกช่วงเวลาที่สั้นลง',
       title: 'ภาพรวมปริมาณการใช้งาน',
       messages: 'ข้อความ',
       llmCalls: 'การเรียก LLM',

@@ -4,24 +4,18 @@ import { MessageSquare, Sparkles, Check, Users } from 'lucide-react';
 import MetricCard from './MetricCard';
 import SystemStatusCard from './SystemStatusCards';
 import TrafficChart from './TrafficChart';
-import {
-  OverviewMetrics,
-  MonitoringMessage,
-  LLMCall,
-} from '../../types/monitoring';
+import { OverviewMetrics, MonitoringData } from '../../types/monitoring';
 
 interface OverviewCardsProps {
   metrics: OverviewMetrics | null;
-  messages?: MonitoringMessage[];
-  llmCalls?: LLMCall[];
+  traffic?: MonitoringData['traffic'];
   loading?: boolean;
   refreshKey?: number;
 }
 
 export default function OverviewCards({
   metrics,
-  messages = [],
-  llmCalls = [],
+  traffic,
   loading,
   refreshKey,
 }: OverviewCardsProps) {
@@ -100,7 +94,7 @@ export default function OverviewCards({
       </div>
 
       {/* Traffic Chart */}
-      <TrafficChart messages={messages} llmCalls={llmCalls} loading={loading} />
+      <TrafficChart traffic={traffic} loading={loading} />
     </div>
   );
 }

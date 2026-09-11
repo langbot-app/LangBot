@@ -1644,7 +1644,16 @@ const enUS = {
     queryVariables: {
       title: 'Query Variables',
     },
+    loadError: 'Failed to load monitoring data',
+    partialMessages:
+      'Showing {{shown}} of {{total}} messages. Conversation traces may be incomplete.',
+    partialModelCalls: 'Showing {{shown}} of {{total}} model calls.',
+    partialToolCalls:
+      'Showing {{shown}} of {{total}} tool calls. Conversation traces may be incomplete.',
+    partialErrors: 'Showing {{shown}} of {{total}} errors.',
     trafficChart: {
+      unavailable: 'Traffic aggregation unavailable',
+      truncated: 'Traffic range truncated. Choose a shorter time range.',
       title: 'Traffic Overview',
       messages: 'Messages',
       llmCalls: 'LLM Calls',

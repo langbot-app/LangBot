@@ -1495,7 +1495,16 @@ const zhHant = {
     queryVariables: {
       title: '查詢變數',
     },
+    loadError: '監控資料載入失敗',
+    partialMessages:
+      '顯示 {{total}} 則訊息中的 {{shown}} 則，對話軌跡可能不完整。',
+    partialModelCalls: '顯示 {{total}} 次模型呼叫中的 {{shown}} 次。',
+    partialToolCalls:
+      '顯示 {{total}} 次工具呼叫中的 {{shown}} 次，對話軌跡可能不完整。',
+    partialErrors: '顯示 {{total}} 筆錯誤中的 {{shown}} 筆。',
     trafficChart: {
+      unavailable: '流量彙總資料無法使用',
+      truncated: '流量時間範圍已截斷，請選擇較短的時間範圍。',
       title: '流量概覽',
       messages: '訊息',
       llmCalls: 'LLM呼叫',

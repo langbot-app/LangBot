@@ -11,119 +11,33 @@ import {
   ResponsiveContainer,
   Legend,
 } from 'recharts';
-import { MonitoringMessage, LLMCall } from '../../types/monitoring';
+import { MonitoringData } from '../../types/monitoring';
 
 interface TrafficChartProps {
-  messages: MonitoringMessage[];
-  llmCalls: LLMCall[];
+  traffic?: MonitoringData['traffic'];
   loading?: boolean;
 }
 
-interface ChartDataPoint {
-  time: string;
-  timestamp: number;
-  messages: number;
-  llmCalls: number;
-}
-
-export default function TrafficChart({
-  messages,
-  llmCalls,
-  loading,
-}: TrafficChartProps) {
+export default function TrafficChart({ traffic, loading }: TrafficChartProps) {
   const { t } = useTranslation();
-
-  const chartData = useMemo(() => {
-    const safeMessages = Array.isArray(messages) ? messages : [];
-    const safeLlmCalls = Array.isArray(llmCalls) ? llmCalls : [];
-    if (!safeMessages.length && !safeLlmCalls.length) {
-      return [];
-    }
-
-    // Combine all timestamps and find the range
-    const allTimestamps = [
-      ...safeMessages.map((m) => m.timestamp.getTime()),
-      ...safeLlmCalls.map((c) => c.timestamp.getTime()),
-    ];
-
-    if (allTimestamps.length === 0) return [];
-
-    const minTime = Math.min(...allTimestamps);
-    const maxTime = Math.max(...allTimestamps);
-    const timeRange = maxTime - minTime;
-
-    // Determine bucket size based on time range
-    let bucketSize: number;
-    let formatTime: (date: Date) => string;
-
-    if (timeRange <= 60 * 60 * 1000) {
-      // <= 1 hour: 5-minute buckets
-      bucketSize = 5 * 60 * 1000;
-      formatTime = (date) =>
-        date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    } else if (timeRange <= 6 * 60 * 60 * 1000) {
-      // <= 6 hours: 15-minute buckets
-      bucketSize = 15 * 60 * 1000;
-      formatTime = (date) =>
-        date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    } else if (timeRange <= 24 * 60 * 60 * 1000) {
-      // <= 24 hours: 1-hour buckets
-      bucketSize = 60 * 60 * 1000;
-      formatTime = (date) =>
-        date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    } else if (timeRange <= 7 * 24 * 60 * 60 * 1000) {
-      // <= 7 days: 4-hour buckets
-      bucketSize = 4 * 60 * 60 * 1000;
-      formatTime = (date) =>
-        `${date.toLocaleDateString([], {
-          month: 'short',
-          day: 'numeric',
-        })} ${date.toLocaleTimeString([], { hour: '2-digit' })}`;
-    } else {
-      // > 7 days: 1-day buckets
-      bucketSize = 24 * 60 * 60 * 1000;
-      formatTime = (date) =>
-        date.toLocaleDateString([], { month: 'short', day: 'numeric' });
-    }
-
-    // Create buckets
-    const buckets: Map<number, ChartDataPoint> = new Map();
-    const startBucket = Math.floor(minTime / bucketSize) * bucketSize;
-    const endBucket = Math.ceil(maxTime / bucketSize) * bucketSize;
-
-    for (let bucket = startBucket; bucket <= endBucket; bucket += bucketSize) {
-      buckets.set(bucket, {
-        time: formatTime(new Date(bucket)),
-        timestamp: bucket,
-        messages: 0,
-        llmCalls: 0,
-      });
-    }
-
-    // Count messages per bucket
-    safeMessages.forEach((msg) => {
-      const bucket =
-        Math.floor(msg.timestamp.getTime() / bucketSize) * bucketSize;
-      const point = buckets.get(bucket);
-      if (point) {
-        point.messages++;
-      }
-    });
-
-    // Count LLM calls per bucket
-    safeLlmCalls.forEach((call) => {
-      const bucket =
-        Math.floor(call.timestamp.getTime() / bucketSize) * bucketSize;
-      const point = buckets.get(bucket);
-      if (point) {
-        point.llmCalls++;
-      }
-    });
-
-    return Array.from(buckets.values()).sort(
-      (a, b) => a.timestamp - b.timestamp,
-    );
-  }, [messages, llmCalls]);
+  const chartData = useMemo(
+    () =>
+      (traffic?.points ?? []).map((point) => ({
+        ...point,
+        time: point.timestamp.toLocaleString(
+          [],
+          traffic?.bucket === 'day'
+            ? { month: 'short', day: 'numeric' }
+            : {
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+              },
+        ),
+      })),
+    [traffic],
+  );
 
   if (loading) {
     return (
@@ -150,7 +64,13 @@ export default function TrafficChart({
         </h3>
         <div className="h-[300px] flex flex-col items-center justify-center text-muted-foreground gap-2">
           <BarChart3 className="h-[3rem] w-[3rem]" />
-          <div className="text-sm">{t('monitoring.trafficChart.noData')}</div>
+          <div className="text-sm">
+            {t(
+              traffic
+                ? 'monitoring.trafficChart.noData'
+                : 'monitoring.trafficChart.unavailable',
+            )}
+          </div>
         </div>
       </div>
     );
@@ -161,6 +81,11 @@ export default function TrafficChart({
       <h3 className="text-base font-semibold text-foreground mb-6">
         {t('monitoring.trafficChart.title')}
       </h3>
+      {traffic?.truncated && (
+        <p role="status" className="text-sm text-muted-foreground mb-3">
+          {t('monitoring.trafficChart.truncated')}
+        </p>
+      )}
       <div className="h-[300px]">
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart

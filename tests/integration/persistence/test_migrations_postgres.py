@@ -589,6 +589,31 @@ class TestPostgreSQLResourceTenancyMigration:
             instance_uuid='postgres-resource-migration-test',
         )
         async with postgres_engine.begin() as conn:
+            # The shared tenancy fixture is intentionally lean. Restore the
+            # monitoring columns present since 5d9f6ec7 (user_name: 89064a9d)
+            # before exercising later migrations that read their contents.
+            for table_name in ('monitoring_messages', 'monitoring_sessions'):
+                columns = {
+                    'bot_name': "VARCHAR(255) NOT NULL DEFAULT 'bot'",
+                    'pipeline_id': "VARCHAR(255) NOT NULL DEFAULT 'pipeline-1'",
+                    'pipeline_name': "VARCHAR(255) NOT NULL DEFAULT 'pipeline'",
+                    'platform': 'VARCHAR(255)',
+                    'user_id': 'VARCHAR(255)',
+                    'user_name': 'VARCHAR(255)',
+                }
+                if table_name == 'monitoring_messages':
+                    columns.update(
+                        bot_id="VARCHAR(255) NOT NULL DEFAULT 'bot-1'",
+                        role='VARCHAR(50)',
+                    )
+                else:
+                    columns.update(
+                        message_count='INTEGER NOT NULL DEFAULT 1',
+                        start_time="TIMESTAMP NOT NULL DEFAULT '2026-01-01'",
+                    )
+                for column_name, definition in columns.items():
+                    await conn.execute(text(f'ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}'))
+                    await conn.execute(text(f'ALTER TABLE {table_name} ALTER COLUMN {column_name} DROP DEFAULT'))
             await conn.execute(text('UPDATE users SET "user" = \'Straße@Example.COM\''))
             await conn.execute(
                 text('INSERT INTO users ("user", password) VALUES (:email, :password)'),

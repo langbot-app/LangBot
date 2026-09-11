@@ -17,6 +17,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from langbot.pkg.entity.persistence.base import Base
+from langbot.pkg.entity.persistence.monitoring import MonitoringMessage, MonitoringSession
+from langbot.pkg.persistence import mgr as persistence_mgr  # noqa: F401 -- register all ORM tables
 from langbot.pkg.persistence.alembic_runner import (
     run_alembic_downgrade,
     run_alembic_upgrade,
@@ -98,6 +100,17 @@ class TestSQLiteMigrationBaseline:
 class TestSQLiteMigrationUpgrade:
     """Tests for upgrade to head workflow."""
 
+    @pytest.fixture(autouse=True)
+    async def existing_monitoring_tables(self, sqlite_engine):
+        # Historical instances already have monitoring tables. Partial fixtures
+        # below omit unrelated tables, but later session migrations require these.
+        async with sqlite_engine.begin() as conn:
+            await conn.run_sync(
+                lambda sync: Base.metadata.create_all(
+                    sync, tables=[MonitoringMessage.__table__, MonitoringSession.__table__]
+                )
+            )
+
     @pytest.mark.asyncio
     async def test_upgrade_from_published_space_launch_head_to_merged_head(self, sqlite_engine):
         """A database released at the production-only 0016 head must remain upgradable."""
@@ -108,7 +121,6 @@ class TestSQLiteMigrationUpgrade:
         await run_alembic_upgrade(sqlite_engine, 'head')
 
         assert await get_alembic_current(sqlite_engine) == _get_script_head()
-        assert _get_script_head() == '0022_codex_credentials'
 
     @pytest.mark.asyncio
     async def test_upgrade_from_reasoning_config_head_to_merged_head(self, sqlite_engine):
@@ -119,7 +131,7 @@ class TestSQLiteMigrationUpgrade:
         await run_alembic_stamp(sqlite_engine, '0018_llm_reasoning_config')
         await run_alembic_upgrade(sqlite_engine, 'head')
 
-        assert await get_alembic_current(sqlite_engine) == '0022_codex_credentials'
+        assert await get_alembic_current(sqlite_engine) == _get_script_head()
 
     @pytest.mark.asyncio
     async def test_upgrade_from_baseline_to_head(self, sqlite_engine):

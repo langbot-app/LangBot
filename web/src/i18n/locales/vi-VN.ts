@@ -1567,7 +1567,17 @@ const viVN = {
     queryVariables: {
       title: 'Biến truy vấn',
     },
+    loadError: 'Không thể tải dữ liệu giám sát',
+    partialMessages:
+      'Hiển thị {{shown}} trên {{total}} tin nhắn. Dấu vết hội thoại có thể không đầy đủ.',
+    partialModelCalls: 'Hiển thị {{shown}} trên {{total}} lượt gọi mô hình.',
+    partialToolCalls:
+      'Hiển thị {{shown}} trên {{total}} lượt gọi công cụ. Dấu vết hội thoại có thể không đầy đủ.',
+    partialErrors: 'Hiển thị {{shown}} trên {{total}} lỗi.',
     trafficChart: {
+      unavailable: 'Không có dữ liệu tổng hợp lưu lượng',
+      truncated:
+        'Phạm vi lưu lượng bị cắt ngắn. Hãy chọn khoảng thời gian ngắn hơn.',
       title: 'Tổng quan lưu lượng',
       messages: 'Tin nhắn',
       llmCalls: 'Cuộc gọi LLM',

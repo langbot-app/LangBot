@@ -134,6 +134,22 @@ test('session tool calls are bounded to the visible message page', () => {
   const monitor = read(
     'src/app/home/bots/components/bot-session/BotSessionMonitor.tsx',
   );
-  includes(monitor, "analysisParams.set('startTime'", 'analysis page start');
-  includes(monitor, "analysisParams.set('endTime'", 'analysis page end');
+  includes(monitor, 'startTime: sorted[0]?.timestamp', 'analysis page start');
+  includes(
+    monitor,
+    'endTime: sorted[sorted.length - 1]?.timestamp',
+    'analysis page end',
+  );
+  includes(monitor, 'sessionId, botId, {', 'bot-scoped analysis');
+  const client = read('src/app/infra/http/BackendClient.ts');
+  includes(
+    client,
+    "queryParams.set('startTime', options.startTime)",
+    'analysis start query',
+  );
+  includes(
+    client,
+    "queryParams.set('endTime', options.endTime)",
+    'analysis end query',
+  );
 });

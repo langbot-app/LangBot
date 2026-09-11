@@ -5,6 +5,7 @@ import quart
 
 from ...authz import Permission
 from ...context import RequestContext
+from ...service.monitoring_traffic import get_traffic_series
 from .. import group
 
 
@@ -377,6 +378,14 @@ class MonitoringRouterGroup(group.RouterGroup):
 
             return self.success(
                 data={
+                    'traffic': await get_traffic_series(
+                        self.ap,
+                        request_context,
+                        bot_ids=bot_ids or None,
+                        pipeline_ids=pipeline_ids or None,
+                        start_time=start_time,
+                        end_time=end_time,
+                    ),
                     'overview': overview,
                     'messages': messages,
                     'llmCalls': llm_calls,
@@ -405,6 +414,7 @@ class MonitoringRouterGroup(group.RouterGroup):
                 session_id,
                 start_time=start_time,
                 end_time=end_time,
+                bot_id=quart.request.args.get('botId'),
             )
 
             # Always return success with the analysis data

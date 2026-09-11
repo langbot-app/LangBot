@@ -1653,7 +1653,17 @@ const jaJP = {
     queryVariables: {
       title: 'クエリ変数',
     },
+    loadError: 'モニタリングデータを読み込めませんでした',
+    partialMessages:
+      '全 {{total}} 件中 {{shown}} 件のメッセージを表示。会話トレースは不完全な場合があります。',
+    partialModelCalls: '全 {{total}} 件中 {{shown}} 件のモデル呼び出しを表示。',
+    partialToolCalls:
+      '全 {{total}} 件中 {{shown}} 件のツール呼び出しを表示。会話トレースは不完全な場合があります。',
+    partialErrors: '全 {{total}} 件中 {{shown}} 件のエラーを表示。',
     trafficChart: {
+      unavailable: 'トラフィック集計を利用できません',
+      truncated:
+        'トラフィック範囲が切り詰められています。短い期間を選択してください。',
       title: 'トラフィック概要',
       messages: 'メッセージ',
       llmCalls: 'LLM呼び出し',

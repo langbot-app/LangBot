@@ -155,17 +155,18 @@ function findTurnBySessionTime(
   sessionTurns: Map<string, ConversationTurn[]>,
   sessionId: string | undefined,
   timestamp: Date,
+  botId: string,
 ): ConversationTurn | undefined {
   if (!sessionId) {
     return undefined;
   }
 
-  const turns = sessionTurns.get(sessionId);
+  const turns = sessionTurns.get(JSON.stringify([botId, sessionId]));
   if (!turns?.length) {
     return undefined;
   }
 
-  let nearest = turns[0];
+  let nearest: ConversationTurn | undefined;
   const targetTime = timestamp.getTime();
 
   for (const turn of turns) {
@@ -203,15 +204,16 @@ export function buildConversationTurns(
 
   for (const message of visibleMessages) {
     const role = normalizeRole(message, activityMessageIds);
-    const previousTurn = lastTurnBySession.get(message.sessionId);
+    const sessionKey = JSON.stringify([message.botId, message.sessionId]);
+    const previousTurn = lastTurnBySession.get(sessionKey);
     const shouldStartTurn = role === 'user' || !previousTurn;
     const turn = shouldStartTurn ? createTurn(message) : previousTurn;
 
     if (shouldStartTurn) {
-      const turns = sessionTurns.get(message.sessionId) ?? [];
+      const turns = sessionTurns.get(sessionKey) ?? [];
       turns.push(turn);
-      sessionTurns.set(message.sessionId, turns);
-      lastTurnBySession.set(message.sessionId, turn);
+      sessionTurns.set(sessionKey, turns);
+      lastTurnBySession.set(sessionKey, turn);
     }
 
     addMessageToTurn(turn, message, role);
@@ -221,9 +223,14 @@ export function buildConversationTurns(
   const allTurns = Array.from(sessionTurns.values()).flat();
 
   for (const call of llmCalls) {
-    const turn =
-      (call.messageId ? messageIdToTurn.get(call.messageId) : undefined) ??
-      findTurnBySessionTime(sessionTurns, call.sessionId, call.timestamp);
+    const turn = call.messageId
+      ? messageIdToTurn.get(call.messageId)
+      : findTurnBySessionTime(
+          sessionTurns,
+          call.sessionId,
+          call.timestamp,
+          call.botId,
+        );
 
     if (!turn) {
       continue;
@@ -243,9 +250,14 @@ export function buildConversationTurns(
   }
 
   for (const call of toolCalls) {
-    const turn =
-      (call.messageId ? messageIdToTurn.get(call.messageId) : undefined) ??
-      findTurnBySessionTime(sessionTurns, call.sessionId, call.timestamp);
+    const turn = call.messageId
+      ? messageIdToTurn.get(call.messageId)
+      : findTurnBySessionTime(
+          sessionTurns,
+          call.sessionId,
+          call.timestamp,
+          call.botId,
+        );
 
     if (!turn) {
       continue;
@@ -262,9 +274,14 @@ export function buildConversationTurns(
   }
 
   for (const error of errors) {
-    const turn =
-      (error.messageId ? messageIdToTurn.get(error.messageId) : undefined) ??
-      findTurnBySessionTime(sessionTurns, error.sessionId, error.timestamp);
+    const turn = error.messageId
+      ? messageIdToTurn.get(error.messageId)
+      : findTurnBySessionTime(
+          sessionTurns,
+          error.sessionId,
+          error.timestamp,
+          error.botId,
+        );
 
     if (!turn) {
       continue;
