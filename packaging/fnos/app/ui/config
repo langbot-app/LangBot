@@ -1,6 +1,6 @@
 {
     ".url": {
-        "ai.langbot.main": {
+        "langbot.main": {
             "title": "LangBot",
             "icon": "images/icon-{0}.png",
             "type": "url",

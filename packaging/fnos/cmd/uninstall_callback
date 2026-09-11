@@ -11,7 +11,7 @@ if [ "${wizard_keep_data:-yes}" = "no" ]; then
                "${TRIM_PKGVAR:?}"/bin 2>/dev/null || true
     fi
 
-    # 共享数据目录（ai.langbot/data）
+    # 共享数据目录（langbot/data）
     DATA_DIR="${TRIM_DATA_SHARE_PATHS%%:*}"
     if [ -n "${DATA_DIR}" ]; then
         rm -rf "${DATA_DIR:?}" 2>/dev/null || true

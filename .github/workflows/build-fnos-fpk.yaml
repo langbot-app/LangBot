@@ -55,13 +55,13 @@ jobs:
           FPK_VERSION: ${{ steps.check_version.outputs.version }}
         run: |
           bash packaging/fnos/build.sh
-          test -f packaging/fnos/ai.langbot.fpk
+          test -f packaging/fnos/langbot.fpk
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: langbot-${{ steps.check_version.outputs.version }}-fnos
-          path: packaging/fnos/ai.langbot.fpk
+          path: packaging/fnos/langbot.fpk
 
       - name: Upload To Release
         # 仅 release 触发时执行；手动/workflow_dispatch 触发时没有 release，
@@ -74,5 +74,5 @@ jobs:
           # langbot-<基础版本>-fnos.fpk，避免出现 -fnos-fnos
           VER="${{ steps.check_version.outputs.version }}"
           BASE="${VER#v}"; BASE="${BASE%-fnos}"
-          cp packaging/fnos/ai.langbot.fpk "langbot-${BASE}-fnos.fpk"
+          cp packaging/fnos/langbot.fpk "langbot-${BASE}-fnos.fpk"
           gh release upload ${{ github.event.release.tag_name }} "langbot-${BASE}-fnos.fpk"

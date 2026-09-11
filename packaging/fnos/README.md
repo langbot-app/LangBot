@@ -11,7 +11,7 @@ packaging/fnos/
 ├── LICENSE
 ├── config/
 │   ├── privilege               # Privilege config (run-as: root)
-│   └── resource                # Persistent data share declaration (ai.langbot/data)
+│   └── resource                # Persistent data share declaration (langbot/data)
 ├── cmd/                        # Lifecycle scripts (fnOS invokes them with TRIM_* env vars)
 │   ├── main                    # Service start/stop manager (start/stop/status, owns PID/log)
 │   ├── install_init            # Pre-install hook
@@ -28,11 +28,11 @@ packaging/fnos/
 │   └── uninstall               # On uninstall: whether to keep data
 ├── app/
 │   ├── ui/config               # Desktop entry declaration (${wizard_port} placeholder, substituted by fnOS at install)
-│   ├── desktop/ai.langbot.main.url
+│   ├── desktop/langbot.main.url
 │   ├── langbot/                # [generated] repo source synced via rsync (includes web/dist)
 │   └── bin/                    # [generated] offline uv binaries (x86_64/aarch64)
 ├── ICON.PNG / ICON_256.PNG     # [generated] derived from res/logo-blue.png
-└── ai.langbot.fpk              # [generated] final artifact
+└── langbot.fpk                 # [generated] final artifact
 ```
 
 Paths marked `[generated]` are produced by `build.sh`, ignored via `.gitignore`; everything else is a git-tracked source file.
@@ -62,7 +62,7 @@ Version sources (consistent with the other release workflows):
 
 ## Final Artifact
 
-`ai.langbot.fpk` (gzip + tar archive), containing:
+`langbot.fpk` (gzip + tar archive), containing:
 
 - `manifest` — realigned and appended with a `checksum` field by fnpack
 - `app.tgz` — app payload (source, web/dist, uv binaries, entry configs)
