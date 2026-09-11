@@ -318,7 +318,8 @@ const esES = {
       title: 'Créditos por 1 M de tokens',
       input: 'Entrada: {{credits}} créditos',
       output: 'Salida: {{credits}} créditos',
-      unavailable: 'Sin precio actual',
+      unavailable:
+        'No se encontró el precio. Es posible que el modelo haya sido retirado.',
     },
     langbotModels: 'Modelos LangBot',
     spaceTrialTooltip:

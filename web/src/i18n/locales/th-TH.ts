@@ -304,7 +304,7 @@ const thTH = {
       title: 'เครดิตต่อ 1 ล้านโทเค็น',
       input: 'อินพุต: {{credits}} เครดิต',
       output: 'เอาต์พุต: {{credits}} เครดิต',
-      unavailable: 'ไม่มีราคาปัจจุบัน',
+      unavailable: 'ไม่พบราคา โมเดลอาจถูกนำออกแล้ว',
     },
     langbotModels: 'โมเดล LangBot',
     spaceTrialTooltip:

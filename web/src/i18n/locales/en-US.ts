@@ -316,7 +316,7 @@ const enUS = {
       title: 'Credits per 1M tokens',
       input: 'Input: {{credits}} credits',
       output: 'Output: {{credits}} credits',
-      unavailable: 'No current price',
+      unavailable: 'No price found. The model may have been removed.',
     },
     langbotModels: 'LangBot Models',
     spaceTrialTooltip:

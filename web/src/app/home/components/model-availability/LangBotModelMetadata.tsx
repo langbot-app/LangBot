@@ -4,7 +4,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { Coins } from 'lucide-react';
+import { Coins, TriangleAlert } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import ModelAvailabilityIndicator from './ModelAvailabilityIndicator';
 
@@ -42,46 +42,57 @@ export default function LangBotModelMetadata({
 
   return (
     <span className="ml-auto inline-flex shrink-0 items-center gap-2 pl-3">
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span
-            className="inline-flex items-center gap-1 text-xs tabular-nums text-muted-foreground"
-            onMouseDown={(event) => event.preventDefault()}
-          >
-            <Coins className="size-3" />
-            {hasPricing
-              ? compact
-                ? t('models.pricing.compact', { input, output })
-                : t('models.pricing.inline', { input, output })
-              : compact
-                ? '—'
-                : t('models.pricing.unavailable')}
-          </span>
-        </TooltipTrigger>
-        <TooltipContent side="top" className="max-w-64">
-          {hasPricing ? (
-            <div className="space-y-0.5">
-              <p>{t('models.pricing.title')}</p>
-              <p className="text-xs text-muted-foreground">
-                {t('models.pricing.input', {
-                  credits: input,
-                })}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {t('models.pricing.output', {
-                  credits: output,
-                })}
-              </p>
-            </div>
-          ) : (
+      {hasPricing ? (
+        <>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span
+                className="inline-flex items-center gap-1 text-xs tabular-nums text-muted-foreground"
+                onMouseDown={(event) => event.preventDefault()}
+              >
+                <Coins className="size-3" />
+                {compact
+                  ? t('models.pricing.compact', { input, output })
+                  : t('models.pricing.inline', { input, output })}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="max-w-64">
+              <div className="space-y-0.5">
+                <p>{t('models.pricing.title')}</p>
+                <p className="text-xs text-muted-foreground">
+                  {t('models.pricing.input', {
+                    credits: input,
+                  })}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {t('models.pricing.output', {
+                    credits: output,
+                  })}
+                </p>
+              </div>
+            </TooltipContent>
+          </Tooltip>
+          <ModelAvailabilityIndicator
+            availability={metadata?.availability}
+            show={loaded}
+          />
+        </>
+      ) : (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span
+              className="inline-flex size-4 shrink-0 items-center justify-center"
+              aria-label={t('models.pricing.unavailable')}
+              onMouseDown={(event) => event.preventDefault()}
+            >
+              <TriangleAlert className="size-3.5 text-amber-500" />
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="top" className="max-w-64">
             <p>{t('models.pricing.unavailable')}</p>
-          )}
-        </TooltipContent>
-      </Tooltip>
-      <ModelAvailabilityIndicator
-        availability={metadata?.availability}
-        show={loaded}
-      />
+          </TooltipContent>
+        </Tooltip>
+      )}
     </span>
   );
 }

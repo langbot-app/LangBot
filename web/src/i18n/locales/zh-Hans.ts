@@ -302,7 +302,7 @@ const zhHans = {
       title: '每 1M tokens 消耗积分',
       input: '输入：{{credits}} 积分',
       output: '输出：{{credits}} 积分',
-      unavailable: '暂无价格',
+      unavailable: '未查询到价格，模型可能已被下架',
     },
     langbotModels: 'LangBot 模型',
     spaceTrialTooltip:

@@ -315,7 +315,7 @@ const ruRU = {
       title: 'Кредиты за 1 млн токенов',
       input: 'Ввод: {{credits}} кредитов',
       output: 'Вывод: {{credits}} кредитов',
-      unavailable: 'Нет актуальной цены',
+      unavailable: 'Цена не найдена. Возможно, модель была удалена.',
     },
     langbotModels: 'Модели LangBot',
     spaceTrialTooltip:

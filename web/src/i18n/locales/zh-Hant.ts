@@ -293,7 +293,7 @@ const zhHant = {
       title: '每 1M tokens 消耗積分',
       input: '輸入：{{credits}} 積分',
       output: '輸出：{{credits}} 積分',
-      unavailable: '暫無價格',
+      unavailable: '未查詢到價格，模型可能已被下架',
     },
     langbotModels: 'LangBot 模型',
     spaceTrialTooltip:

@@ -321,7 +321,7 @@ const jaJP = {
       title: '100万トークンあたりのクレジット',
       input: '入力：{{credits}} クレジット',
       output: '出力：{{credits}} クレジット',
-      unavailable: '現在の価格なし',
+      unavailable: '価格が見つかりません。モデルが削除された可能性があります。',
     },
     langbotModels: 'LangBot モデル',
     spaceTrialTooltip:

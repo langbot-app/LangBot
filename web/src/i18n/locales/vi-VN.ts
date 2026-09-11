@@ -312,7 +312,7 @@ const viVN = {
       title: 'Tín dụng trên 1 triệu token',
       input: 'Đầu vào: {{credits}} tín dụng',
       output: 'Đầu ra: {{credits}} tín dụng',
-      unavailable: 'Chưa có giá hiện tại',
+      unavailable: 'Không tìm thấy giá. Mô hình có thể đã bị gỡ.',
     },
     langbotModels: 'Mô hình LangBot',
     spaceTrialTooltip:
