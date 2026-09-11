@@ -57,7 +57,7 @@ def _package_local_agent_plugin(tmpdir: Path) -> Path:
     package_source = tmpdir / 'local-agent-package'
     ignore = shutil.ignore_patterns(
         '.git',
-        '.venv',
+        '.venv*',
         '__pycache__',
         '.pytest_cache',
         '.ruff_cache',
@@ -181,7 +181,20 @@ class _FakeToolManager:
     def __init__(self):
         self.calls: list[dict[str, Any]] = []
 
-    async def get_tool_schema(self, tool_name: str):
+    async def get_resolved_tool_catalog(
+        self,
+        context,
+        bound_plugins=None,
+        bound_mcp_servers=None,
+        include_skill_authoring=True,
+        include_mcp_resource_tools=False,
+    ):
+        assert context.workspace_uuid
+        return [{'name': E2E_TOOL_NAME, 'source': 'native', 'source_id': None}]
+
+    async def get_tool_schema(self, context, tool_name: str, source_ref=None):
+        assert context.workspace_uuid
+        assert source_ref == {'source': 'native', 'source_id': None}
         if tool_name != E2E_TOOL_NAME:
             return None, None
         return (
@@ -195,14 +208,15 @@ class _FakeToolManager:
             },
         )
 
-    async def get_tool_detail(self, tool_name: str):
-        description, parameters = await self.get_tool_schema(tool_name)
+    async def get_tool_detail(self, context, tool_name: str, source_ref=None):
+        description, parameters = await self.get_tool_schema(context, tool_name, source_ref=source_ref)
         if parameters is None:
             return None
         return {'name': tool_name, 'description': description, 'parameters': parameters}
 
-    async def execute_func_call(self, name: str, parameters: dict[str, Any], query: Any = None):
-        del query
+    async def execute_func_call(self, name: str, parameters: dict[str, Any], query: Any = None, source_ref=None):
+        assert query.workspace_uuid
+        assert source_ref == {'source': 'native', 'source_id': None}
         self.calls.append({'name': name, 'parameters': dict(parameters)})
         return {
             'value': f'tool-result:{parameters.get("query")}',
@@ -223,7 +237,8 @@ class _FakeKnowledgeBase:
     def get_name(self) -> str:
         return 'E2E Fake KB'
 
-    async def retrieve(self, query_text: str, settings: dict[str, Any]):
+    async def retrieve(self, context, query_text: str, settings: dict[str, Any]):
+        assert context.workspace_uuid
         self.retrieve_calls.append({'query_text': query_text, 'settings': settings})
         return [
             SimpleNamespace(
@@ -248,7 +263,8 @@ class _FakeRagManager:
         self.kb = kb
         self.knowledge_bases = {E2E_KB_UUID: kb}
 
-    async def get_knowledge_base_by_uuid(self, kb_uuid: str):
+    async def get_knowledge_base_by_uuid(self, context, kb_uuid: str):
+        assert context.workspace_uuid
         if kb_uuid == E2E_KB_UUID:
             return self.kb
         return None
@@ -443,10 +459,27 @@ def _scripted_tool_call(
 async def _boot_local_agent_app(tmpdir: Path):
     """Boot LangBot and wait until the Local Agent runner is discoverable."""
     from langbot.pkg.core import boot
-    from langbot_plugin.runtime.plugin.mgr import PluginInstallSource
 
     ap = await boot.make_app(asyncio.get_running_loop())
     run_task = asyncio.create_task(ap.run(), name='local-agent-e2e-app')
+    try:
+        await _wait_for_local_agent_runner(ap, tmpdir)
+    except BaseException:
+        # The caller has not received ap yet. Close it here so a boot failure
+        # cannot reconnect after the probe restores the global transport mode.
+        try:
+            await ap.shutdown()
+        finally:
+            run_task.cancel()
+            await asyncio.gather(run_task, return_exceptions=True)
+        raise
+    return ap, run_task
+
+
+async def _wait_for_local_agent_runner(ap, tmpdir: Path):
+    """Install and discover the runner on the application-owned connection."""
+    from langbot_plugin.runtime.plugin.mgr import PluginInstallSource
+
     for _ in range(60):
         handler = getattr(ap.plugin_connector, 'handler', None)
         if handler is not None:
@@ -477,8 +510,6 @@ async def _boot_local_agent_app(tmpdir: Path):
             await asyncio.sleep(1)
         else:
             raise AssertionError(f'{LOCAL_RUNNER_ID} was not discovered after installation')
-
-    return ap, run_task
 
 
 def _run_local_agent_probe(tmpdir: Path, probe):
@@ -689,7 +720,13 @@ def test_local_runner_retrieves_authorized_rag_context_through_host_action(
     assert retrieve_calls == [
         {
             'query_text': 'Answer with the retrieved RAG sentinel.',
-            'settings': {'top_k': 1, 'filters': {}},
+            'settings': {
+                'top_k': 1,
+                'filters': {},
+                'session_name': 'person_e2e-local-agent-rag-conversation',
+                'bot_uuid': '',
+                'sender_id': 'user-001',
+            },
         }
     ]
     assert any(
@@ -738,11 +775,13 @@ def test_local_runner_compacts_history_and_persists_checkpoint(
         )
 
         store = TranscriptStore(ap.persistence_mgr.get_db_engine())
+        execution_context = await ap.plugin_connector._current_execution_context()
         for index in range(12):
             await store.append_transcript(
                 transcript_id=None,
                 event_id=f'e2e-local-agent-history-{index}',
                 conversation_id='e2e-local-agent-compaction-conversation',
+                workspace_id=execution_context.workspace_uuid,
                 role='user' if index % 2 == 0 else 'assistant',
                 content=(
                     f'HIST_SENTINEL-{index} This is intentionally long deterministic history for compaction. ' * 10
@@ -847,11 +886,13 @@ def test_local_runner_combines_rag_compaction_and_multi_turn_tool_loop(
         ap.rag_mgr = _FakeRagManager(fake_kb)
 
         store = TranscriptStore(ap.persistence_mgr.get_db_engine())
+        execution_context = await ap.plugin_connector._current_execution_context()
         for index in range(16):
             await store.append_transcript(
                 transcript_id=None,
                 event_id=f'e2e-local-agent-combo-history-{index}',
                 conversation_id='e2e-local-agent-combo-conversation',
+                workspace_id=execution_context.workspace_uuid,
                 role='user' if index % 2 == 0 else 'assistant',
                 content=(
                     f'HIST_COMBO_SENTINEL-{index} RAG_TOOL_COMBO_GOAL '
@@ -907,7 +948,13 @@ def test_local_runner_combines_rag_compaction_and_multi_turn_tool_loop(
     assert retrieve_calls == [
         {
             'query_text': 'current combo request must survive; use RAG and tools before answering.',
-            'settings': {'top_k': 1, 'filters': {}},
+            'settings': {
+                'top_k': 1,
+                'filters': {},
+                'session_name': 'person_e2e-local-agent-combo-conversation',
+                'bot_uuid': '',
+                'sender_id': 'user-001',
+            },
         }
     ]
     assert invoke_count >= 4
