@@ -304,6 +304,12 @@ const enUS = {
     usesOwnerSpaceBilling:
       "Uses the Workspace owner's LangBot Account billing and credits.",
     noModels: 'No models configured',
+    availability: {
+      available: 'Available at last check',
+      unavailable: 'Unavailable at last check',
+      notChecked: 'No check result',
+      lastChecked: 'Checked {{time}}',
+    },
     langbotModels: 'LangBot Models',
     spaceTrialTooltip:
       'Free trial credits available! Login with LangBot Account to access cloud models with zero configuration.',

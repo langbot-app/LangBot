@@ -290,6 +290,12 @@ const zhHans = {
       '工作区所有者需要绑定 LangBot 账号才能使用 LangBot 模型。',
     usesOwnerSpaceBilling: '使用工作区所有者的 LangBot 账号计费与积分。',
     noModels: '暂无模型',
+    availability: {
+      available: '上次检测可用',
+      unavailable: '上次检测不可用',
+      notChecked: '暂无检测结果',
+      lastChecked: '检测于 {{time}}',
+    },
     langbotModels: 'LangBot 模型',
     spaceTrialTooltip:
       '免费试用积分已就绪！通过 LangBot 账号登录即可零配置使用云端模型。',

@@ -71,6 +71,8 @@ import { LANGBOT_MODELS_PROVIDER_REQUESTER } from '@/app/home/components/models-
 import ReasoningLevelPicker, {
   REASONING_LEVELS,
 } from '@/app/home/components/reasoning/ReasoningLevelPicker';
+import ModelAvailabilityIndicator from '@/app/home/components/model-availability/ModelAvailabilityIndicator';
+import { useLangBotModelAvailability } from '@/app/home/components/model-availability/useLangBotModelAvailability';
 
 function hasUsableUuid<T extends { uuid?: string | null }>(
   item: T,
@@ -153,6 +155,33 @@ export default function DynamicFormItemComponent({
   const [modelsDialogOpen, setModelsDialogOpen] = useState(false);
   const [settingsSection, setSettingsSection] =
     useState<SettingsSection>('models');
+  const isModelSelector = [
+    DynamicFormItemType.LLM_MODEL_SELECTOR,
+    DynamicFormItemType.EMBEDDING_MODEL_SELECTOR,
+    DynamicFormItemType.RERANK_MODEL_SELECTOR,
+    DynamicFormItemType.MODEL_FALLBACK_SELECTOR,
+  ].includes(config.type);
+  const {
+    availability: langbotModelAvailability,
+    loaded: langbotModelAvailabilityLoaded,
+  } = useLangBotModelAvailability(
+    isModelSelector && !systemInfo.disable_models_service,
+  );
+
+  const renderModelAvailability = (model: {
+    uuid: string;
+    name: string;
+    provider?: { requester?: string };
+  }) =>
+    model.provider?.requester === LANGBOT_MODELS_PROVIDER_REQUESTER ? (
+      <ModelAvailabilityIndicator
+        availability={
+          langbotModelAvailability[model.uuid] ??
+          langbotModelAvailability[model.name]
+        }
+        show={langbotModelAvailabilityLoaded}
+      />
+    ) : null;
 
   const fetchLlmModels = () => {
     httpClient
@@ -584,6 +613,7 @@ export default function DynamicFormItemComponent({
                       <SelectItem key={model.uuid} value={model.uuid}>
                         <span className="inline-flex items-center gap-1">
                           {model.name}
+                          {renderModelAvailability(model)}
                           {model.abilities?.includes('vision') && (
                             <Eye className="h-3 w-3 text-muted-foreground" />
                           )}
@@ -688,6 +718,7 @@ export default function DynamicFormItemComponent({
                           <SelectItem key={model.uuid} value={model.uuid}>
                             <span className="inline-flex items-center gap-1">
                               {model.name}
+                              {renderModelAvailability(model)}
                               {model.abilities?.includes('vision') && (
                                 <Eye className="h-3 w-3 text-muted-foreground" />
                               )}
@@ -784,6 +815,7 @@ export default function DynamicFormItemComponent({
                       {models.map((model) => (
                         <SelectItem key={model.uuid} value={model.uuid}>
                           {model.name}
+                          {renderModelAvailability(model)}
                         </SelectItem>
                       ))}
                     </SelectGroup>
@@ -876,6 +908,7 @@ export default function DynamicFormItemComponent({
                         {models.map((model) => (
                           <SelectItem key={model.uuid} value={model.uuid}>
                             {model.name}
+                            {renderModelAvailability(model)}
                           </SelectItem>
                         ))}
                       </SelectGroup>
@@ -941,6 +974,7 @@ export default function DynamicFormItemComponent({
                     {models.map((model) => (
                       <SelectItem key={model.uuid} value={model.uuid}>
                         {model.name}
+                        {renderModelAvailability(model)}
                       </SelectItem>
                     ))}
                   </SelectGroup>
@@ -1060,6 +1094,7 @@ export default function DynamicFormItemComponent({
                     <SelectItem key={model.uuid} value={model.uuid}>
                       <span className="inline-flex items-center gap-1">
                         {model.name}
+                        {renderModelAvailability(model)}
                         {model.abilities?.includes('vision') && (
                           <Eye className="h-3 w-3 text-muted-foreground" />
                         )}
@@ -1165,6 +1200,7 @@ export default function DynamicFormItemComponent({
                       <SelectItem key={model.uuid} value={model.uuid}>
                         <span className="inline-flex items-center gap-1">
                           {model.name}
+                          {renderModelAvailability(model)}
                           {model.abilities?.includes('vision') && (
                             <Eye className="h-3 w-3 text-muted-foreground" />
                           )}

@@ -14,6 +14,7 @@ import { useTranslation } from 'react-i18next';
 import {
   LLMModel,
   EmbeddingModel,
+  LangBotModelAvailability,
   ReasoningConfig,
 } from '@/app/infra/entities/api';
 import {
@@ -24,12 +25,15 @@ import {
 } from '../types';
 import ExtraArgsEditor from './ExtraArgsEditor';
 import { userInfo } from '@/app/infra/http';
+import ModelAvailabilityIndicator from '../../model-availability/ModelAvailabilityIndicator';
 
 interface ModelItemProps {
   model: LLMModel | EmbeddingModel;
   canManage: boolean;
   modelType: ModelType;
   isLangBotModels: boolean;
+  availability?: LangBotModelAvailability;
+  availabilityLoaded: boolean;
   editModelPopoverOpen: string | null;
   deleteConfirmOpen: string | null;
   onOpenEditModel: (modelId: string) => void;
@@ -86,6 +90,8 @@ export default function ModelItem({
   canManage,
   modelType,
   isLangBotModels,
+  availability,
+  availabilityLoaded,
   editModelPopoverOpen,
   deleteConfirmOpen,
   onOpenEditModel,
@@ -199,6 +205,12 @@ export default function ModelItem({
         >
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-sm font-medium">{model.name}</span>
+            {isLangBotModels && (
+              <ModelAvailabilityIndicator
+                availability={availability}
+                show={availabilityLoaded}
+              />
+            )}
             <Badge variant="secondary" className="text-xs">
               {modelType === 'llm'
                 ? t('models.chat')

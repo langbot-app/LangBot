@@ -281,6 +281,12 @@ const zhHant = {
     loginWithSpace: '使用 LangBot 帳號登入',
     loginToUseModels: '使用 LangBot 帳號登入以使用雲端模型',
     noModels: '暫無模型',
+    availability: {
+      available: '上次檢測可用',
+      unavailable: '上次檢測不可用',
+      notChecked: '暫無檢測結果',
+      lastChecked: '檢測於 {{time}}',
+    },
     langbotModels: 'LangBot 模型',
     spaceTrialTooltip:
       '免費試用積分已就緒！使用 LangBot 帳號登入即可零設定使用雲端模型。',

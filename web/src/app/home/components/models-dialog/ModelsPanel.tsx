@@ -27,6 +27,7 @@ import { CustomApiError } from '@/app/infra/entities/common';
 import { PanelBody } from '../settings-dialog/panel-layout';
 import { useCurrentWorkspace } from '@/app/infra/http';
 import type { WorkspaceSpaceBilling } from '@/app/infra/entities/workspace';
+import { useLangBotModelAvailability } from '../model-availability/useLangBotModelAvailability';
 
 interface ModelsPanelProps {
   // True when this panel is the active section and the dialog is open.
@@ -89,6 +90,10 @@ export default function ModelsPanel({
   const currentWorkspace = useCurrentWorkspace();
   const canManage =
     currentWorkspace?.permissions.includes('provider_secret.manage') ?? false;
+  const {
+    availability: langbotModelAvailability,
+    loaded: langbotModelAvailabilityLoaded,
+  } = useLangBotModelAvailability(active && !systemInfo.disable_models_service);
 
   const [providers, setProviders] = useState<ModelProvider[]>([]);
   const [spaceBilling, setSpaceBilling] =
@@ -554,6 +559,8 @@ export default function ModelsPanel({
         isWorkspaceOwner={currentWorkspace?.membership.role === 'owner'}
         ownerSpaceBound={spaceBilling?.owner_space_bound ?? false}
         spaceCredits={spaceBilling?.credits ?? null}
+        modelAvailability={langbotModelAvailability}
+        modelAvailabilityLoaded={langbotModelAvailabilityLoaded}
         addModelPopoverOpen={addModelPopoverOpen}
         editModelPopoverOpen={editModelPopoverOpen}
         deleteConfirmOpen={deleteConfirmOpen}

@@ -300,6 +300,12 @@ const viVN = {
     loginToUseModels:
       'Đăng nhập bằng tài khoản LangBot để sử dụng mô hình đám mây',
     noModels: 'Chưa cấu hình mô hình nào',
+    availability: {
+      available: 'Khả dụng ở lần kiểm tra gần nhất',
+      unavailable: 'Không khả dụng ở lần kiểm tra gần nhất',
+      notChecked: 'Chưa có kết quả kiểm tra',
+      lastChecked: 'Đã kiểm tra {{time}}',
+    },
     langbotModels: 'Mô hình LangBot',
     spaceTrialTooltip:
       'Có tín dụng dùng thử miễn phí! Đăng nhập bằng tài khoản LangBot để truy cập mô hình đám mây không cần cấu hình.',

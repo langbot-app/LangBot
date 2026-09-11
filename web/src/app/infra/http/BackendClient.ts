@@ -63,6 +63,7 @@ import {
   BotRouteDryRunRequest,
   BotRouteDryRunResult,
   BotEventRouteStatusResponse,
+  ApiRespLangBotModelAvailability,
 } from '@/app/infra/entities/api';
 import { Plugin } from '@/app/infra/entities/plugin';
 import type { PluginLogEntry } from '@/app/infra/entities/plugin';
@@ -1248,6 +1249,10 @@ export class BackendClient extends BaseHttpClient {
     name: string;
   }> {
     return this.get('/api/v1/system/wizard/recommended-model');
+  }
+
+  public getLangBotModelAvailability(): Promise<ApiRespLangBotModelAvailability> {
+    return this.get('/api/v1/system/model-availability');
   }
 
   public getAsyncTasks(params?: {

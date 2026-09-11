@@ -303,6 +303,12 @@ const ruRU = {
     loginToUseModels:
       'Войдите с аккаунтом LangBot, чтобы использовать облачные модели',
     noModels: 'Модели не настроены',
+    availability: {
+      available: 'Доступна при последней проверке',
+      unavailable: 'Недоступна при последней проверке',
+      notChecked: 'Нет результата проверки',
+      lastChecked: 'Проверено {{time}}',
+    },
     langbotModels: 'Модели LangBot',
     spaceTrialTooltip:
       'Доступны бесплатные пробные кредиты! Войдите с аккаунтом LangBot, чтобы получить доступ к облачным моделям без настройки.',

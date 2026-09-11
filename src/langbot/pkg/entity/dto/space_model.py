@@ -49,8 +49,19 @@ class SpaceModel(pydantic.BaseModel):
     updated_at: str | None = None
 
 
+class SpaceModelAvailability(pydantic.BaseModel):
+    """Latest availability probe. ``up`` is None when no probe exists."""
+
+    up: bool | None = None
+    last_probed_at: str | None = None
+    latency_ms: int = 0
+    http_code: int = 0
+
+
 class SpaceModelSelection(pydantic.BaseModel):
-    """Minimal model identity returned by the ranked selection endpoint."""
+    """Model identity and the latest persisted probe from Space."""
 
     uuid: str
     model_id: str
+    category: str | None = None
+    availability: SpaceModelAvailability = pydantic.Field(default_factory=SpaceModelAvailability)

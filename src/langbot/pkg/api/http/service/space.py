@@ -242,13 +242,14 @@ class SpaceService:
             models_data = data.get('data', {}).get('models', [])
             return [SpaceModel.model_validate(model_dict) for model_dict in models_data]
 
-    async def get_model_selection(self, category: str) -> typing.List[SpaceModelSelection]:
+    async def get_model_selection(self, category: str | None = None) -> typing.List[SpaceModelSelection]:
         """Return Space models in the availability-ranked selection order."""
         space_url = self._get_space_config()['url']
         session = httpclient.get_session()
+        params = {'category': category} if category else None
         async with session.get(
             f'{space_url}/api/v1/models/selection',
-            params={'category': category},
+            params=params,
         ) as response:
             if response.status != 200:
                 error = await httpclient.read_text_limited(response)
@@ -266,7 +267,17 @@ class SpaceService:
             models = []
             for selection in data:
                 if isinstance(selection, dict) and isinstance(selection.get('model'), dict):
-                    models.append(selection['model'])
+                    model = dict(selection['model'])
+                    availability = selection.get('availability')
+                    if not isinstance(availability, dict):
+                        # Accept the short-lived pre-release response shape.
+                        availability = {
+                            key: selection[key]
+                            for key in ('up', 'last_probed_at', 'latency_ms', 'http_code')
+                            if key in selection
+                        }
+                    model['availability'] = availability
+                    models.append(model)
                 else:
                     models.append(selection)
             return [SpaceModelSelection.model_validate(model) for model in models]

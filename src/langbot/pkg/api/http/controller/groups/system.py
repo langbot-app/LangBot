@@ -221,6 +221,21 @@ class SystemRouterGroup(group.RouterGroup):
             return self.success(data=model)
 
         @self.route(
+            '/model-availability',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN,
+            permission=Permission.RESOURCE_VIEW,
+        )
+        async def _(request_context: RequestContext) -> str:
+            """Expose Space's latest persisted model probes to the WebUI."""
+            try:
+                models = await self.ap.space_service.get_model_selection()
+            except Exception as exc:
+                self.ap.logger.warning(f'Failed to load LangBot Models availability: {exc}')
+                return self.http_status(503, -1, 'Model availability is unavailable')
+            return self.success(data={'models': [model.model_dump(mode='json') for model in models]})
+
+        @self.route(
             '/tasks',
             methods=['GET'],
             auth_type=group.AuthType.USER_TOKEN,

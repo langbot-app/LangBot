@@ -9,7 +9,11 @@ import {
   Radar,
 } from 'lucide-react';
 import { httpClient, systemInfo } from '@/app/infra/http/HttpClient';
-import { ModelProvider, ReasoningConfig } from '@/app/infra/entities/api';
+import {
+  LangBotModelAvailability,
+  ModelProvider,
+  ReasoningConfig,
+} from '@/app/infra/entities/api';
 import { Button } from '@/components/ui/button';
 import {
   Collapsible,
@@ -47,6 +51,8 @@ interface ProviderCardProps {
   isWorkspaceOwner: boolean;
   ownerSpaceBound: boolean;
   spaceCredits: number | null;
+  modelAvailability: Record<string, LangBotModelAvailability>;
+  modelAvailabilityLoaded: boolean;
   // Popover states
   addModelPopoverOpen: string | null;
   editModelPopoverOpen: string | null;
@@ -115,6 +121,8 @@ export default function ProviderCard({
   isWorkspaceOwner,
   ownerSpaceBound,
   spaceCredits,
+  modelAvailability,
+  modelAvailabilityLoaded,
   addModelPopoverOpen,
   editModelPopoverOpen,
   deleteConfirmOpen,
@@ -424,6 +432,11 @@ export default function ProviderCard({
                     canManage={canManage}
                     modelType="llm"
                     isLangBotModels={isLangBotModels}
+                    availability={
+                      modelAvailability[model.uuid] ??
+                      modelAvailability[model.name]
+                    }
+                    availabilityLoaded={modelAvailabilityLoaded}
                     editModelPopoverOpen={editModelPopoverOpen}
                     deleteConfirmOpen={deleteConfirmOpen}
                     onOpenEditModel={onOpenEditModel}
@@ -475,6 +488,11 @@ export default function ProviderCard({
                     canManage={canManage}
                     modelType="embedding"
                     isLangBotModels={isLangBotModels}
+                    availability={
+                      modelAvailability[model.uuid] ??
+                      modelAvailability[model.name]
+                    }
+                    availabilityLoaded={modelAvailabilityLoaded}
                     editModelPopoverOpen={editModelPopoverOpen}
                     deleteConfirmOpen={deleteConfirmOpen}
                     onOpenEditModel={onOpenEditModel}
@@ -524,6 +542,11 @@ export default function ProviderCard({
                     canManage={canManage}
                     modelType="rerank"
                     isLangBotModels={isLangBotModels}
+                    availability={
+                      modelAvailability[model.uuid] ??
+                      modelAvailability[model.name]
+                    }
+                    availabilityLoaded={modelAvailabilityLoaded}
                     editModelPopoverOpen={editModelPopoverOpen}
                     deleteConfirmOpen={deleteConfirmOpen}
                     onOpenEditModel={onOpenEditModel}

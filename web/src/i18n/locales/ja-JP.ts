@@ -309,6 +309,12 @@ const jaJP = {
     usesOwnerSpaceBilling:
       'ワークスペース所有者の LangBot アカウント課金とクレジットを使用します。',
     noModels: 'モデルがありません',
+    availability: {
+      available: '前回のチェックで利用可能',
+      unavailable: '前回のチェックで利用不可',
+      notChecked: 'チェック結果なし',
+      lastChecked: '{{time}} にチェック',
+    },
     langbotModels: 'LangBot モデル',
     spaceTrialTooltip:
       '無料トライアルクレジットが利用可能！LangBot アカウントでログインして、設定不要でクラウドモデルを使用できます。',

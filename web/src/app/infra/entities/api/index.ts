@@ -158,6 +158,24 @@ export interface RerankModel {
   extra_args?: object;
 }
 
+export interface LangBotModelAvailability {
+  up: boolean | null;
+  last_probed_at: string | null;
+  latency_ms: number;
+  http_code: number;
+}
+
+export interface LangBotModelAvailabilityItem {
+  uuid: string;
+  model_id: string;
+  category: string | null;
+  availability: LangBotModelAvailability;
+}
+
+export interface ApiRespLangBotModelAvailability {
+  models: LangBotModelAvailabilityItem[];
+}
+
 export interface ApiRespPipelines {
   pipelines: Pipeline[];
 }

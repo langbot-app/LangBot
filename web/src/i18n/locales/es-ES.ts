@@ -306,6 +306,12 @@ const esES = {
     loginToUseModels:
       'Inicia sesión con una cuenta de LangBot para usar modelos en la nube',
     noModels: 'No hay modelos configurados',
+    availability: {
+      available: 'Disponible en la última comprobación',
+      unavailable: 'No disponible en la última comprobación',
+      notChecked: 'Sin resultado de comprobación',
+      lastChecked: 'Comprobado {{time}}',
+    },
     langbotModels: 'Modelos LangBot',
     spaceTrialTooltip:
       '¡Créditos de prueba gratuitos disponibles! Inicia sesión con una cuenta de LangBot para acceder a modelos en la nube sin configuración.',

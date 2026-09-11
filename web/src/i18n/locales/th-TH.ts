@@ -292,6 +292,12 @@ const thTH = {
     loginWithSpace: 'เข้าสู่ระบบด้วยบัญชี LangBot',
     loginToUseModels: 'เข้าสู่ระบบด้วยบัญชี LangBot เพื่อใช้โมเดลคลาวด์',
     noModels: 'ยังไม่มีโมเดลที่กำหนดค่า',
+    availability: {
+      available: 'พร้อมใช้งานในการตรวจสอบล่าสุด',
+      unavailable: 'ไม่พร้อมใช้งานในการตรวจสอบล่าสุด',
+      notChecked: 'ไม่มีผลการตรวจสอบ',
+      lastChecked: 'ตรวจสอบเมื่อ {{time}}',
+    },
     langbotModels: 'โมเดล LangBot',
     spaceTrialTooltip:
       'มีเครดิตทดลองใช้งานฟรี! เข้าสู่ระบบด้วยบัญชี LangBot เพื่อเข้าถึงโมเดลคลาวด์โดยไม่ต้องตั้งค่า',
