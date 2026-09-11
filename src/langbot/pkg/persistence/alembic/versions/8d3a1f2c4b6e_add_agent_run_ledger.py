@@ -90,9 +90,7 @@ def upgrade() -> None:
         )
     else:
         _add_column_if_missing('agent_run', sa.Column('queue_name', sa.String(255), nullable=True))
-        _add_column_if_missing(
-            'agent_run', sa.Column('priority', sa.Integer(), nullable=False, server_default='0')
-        )
+        _add_column_if_missing('agent_run', sa.Column('priority', sa.Integer(), nullable=False, server_default='0'))
         _add_column_if_missing('agent_run', sa.Column('requested_runtime_id', sa.String(255), nullable=True))
         _add_column_if_missing('agent_run', sa.Column('claimed_by_runtime_id', sa.String(255), nullable=True))
         _add_column_if_missing('agent_run', sa.Column('claim_token', sa.String(255), nullable=True))

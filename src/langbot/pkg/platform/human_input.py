@@ -89,10 +89,12 @@ def format_human_input_text(
     if actions:
         lines.append('')
         if input_defs:
-            lines.extend([
-                'Reply with action plus field values to continue:',
-                '  action: <number or title>',
-            ])
+            lines.extend(
+                [
+                    'Reply with action plus field values to continue:',
+                    '  action: <number or title>',
+                ]
+            )
         else:
             lines.append('Reply with the number or title to continue:')
         for idx, action in enumerate(actions, start=1):

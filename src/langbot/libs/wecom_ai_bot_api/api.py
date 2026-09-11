@@ -17,6 +17,7 @@ from quart import Quart, request, Response, jsonify
 
 from langbot.libs.wecom_ai_bot_api import wecombotevent
 from langbot.libs.wecom_ai_bot_api.WXBizMsgCrypt3 import WXBizMsgCrypt
+
 if TYPE_CHECKING:
     from langbot.pkg.platform.logger import EventLogger
 from langbot.pkg.utils import httpclient

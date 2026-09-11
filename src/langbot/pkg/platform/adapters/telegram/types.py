@@ -7,7 +7,8 @@ from enum import Enum
 
 class TelegramChatType(str, Enum):
     """Telegram chat type."""
-    PRIVATE = "private"
-    GROUP = "group"
-    SUPERGROUP = "supergroup"
-    CHANNEL = "channel"
+
+    PRIVATE = 'private'
+    GROUP = 'group'
+    SUPERGROUP = 'supergroup'
+    CHANNEL = 'channel'

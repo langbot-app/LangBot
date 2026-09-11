@@ -856,7 +856,7 @@ class TestPostgreSQLTenantRuntime:
                                 adapter='capacity-probe',
                                 adapter_config={},
                                 enable=False,
-                                pipeline_routing_rules=[],
+                                event_bindings=[],
                             ),
                             persistence_pipeline.LegacyPipeline(
                                 uuid=f'capacity-pipeline-{suffix}',

@@ -16,7 +16,9 @@ import sqlalchemy
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
+from langbot.pkg.entity import persistence
 from langbot.pkg.entity.persistence.base import Base
+from langbot.pkg.utils import importutil
 from langbot.pkg.persistence.alembic_runner import (
     run_alembic_downgrade,
     run_alembic_upgrade,
@@ -26,6 +28,11 @@ from langbot.pkg.persistence.alembic_runner import (
 )
 from alembic.config import Config
 from alembic.script import ScriptDirectory
+
+
+# Match PersistenceManager's model registration before create_all, including
+# workspace foreign-key targets, without relying on other tests being collected.
+importutil.import_modules_in_pkg(persistence)
 
 
 def _get_script_head() -> str:
@@ -108,7 +115,6 @@ class TestSQLiteMigrationUpgrade:
         await run_alembic_upgrade(sqlite_engine, 'head')
 
         assert await get_alembic_current(sqlite_engine) == _get_script_head()
-        assert _get_script_head() == '0023_drop_agent_enabled'
 
     @pytest.mark.asyncio
     async def test_upgrade_from_development_workspace_head_to_merged_head(self, sqlite_engine):
@@ -120,7 +126,6 @@ class TestSQLiteMigrationUpgrade:
         await run_alembic_upgrade(sqlite_engine, 'head')
 
         assert await get_alembic_current(sqlite_engine) == _get_script_head()
-        assert _get_script_head() == '0023_drop_agent_enabled'
 
     @pytest.mark.asyncio
     async def test_upgrade_from_reasoning_config_head_to_merged_head(self, sqlite_engine):
@@ -131,7 +136,7 @@ class TestSQLiteMigrationUpgrade:
         await run_alembic_stamp(sqlite_engine, '0018_llm_reasoning_config')
         await run_alembic_upgrade(sqlite_engine, 'head')
 
-        assert await get_alembic_current(sqlite_engine) == '0023_drop_agent_enabled'
+        assert await get_alembic_current(sqlite_engine) == _get_script_head()
 
     @pytest.mark.asyncio
     async def test_upgrade_removes_agent_enabled_column(self, sqlite_engine):

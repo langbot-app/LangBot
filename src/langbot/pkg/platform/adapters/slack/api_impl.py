@@ -47,7 +47,9 @@ class SlackAPIMixin:
         self,
         group_id: typing.Union[int, str],
     ) -> list[platform_entities.UserGroupMember]:
-        return [member for (cached_group_id, _), member in self._member_cache.items() if cached_group_id == str(group_id)]
+        return [
+            member for (cached_group_id, _), member in self._member_cache.items() if cached_group_id == str(group_id)
+        ]
 
     async def get_group_member_info(
         self,

@@ -1,4 +1,5 @@
 """Transcript persistence entity for conversation history projection."""
+
 from __future__ import annotations
 
 import sqlalchemy

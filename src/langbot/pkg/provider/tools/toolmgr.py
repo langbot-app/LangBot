@@ -368,9 +368,7 @@ class ToolManager:
                 return None
             return await self.plugin_tool_loader.get_tool(name, source_id=source_id)
         if source == 'mcp':
-            return await self.mcp_tool_loader.get_tool(
-                context, name, source_id=source_id
-            )
+            return await self.mcp_tool_loader.get_tool(context, name, source_id=source_id)
         return None
 
     async def generate_tools_for_openai(self, use_funcs: list[resource_tool.LLMTool]) -> list:
@@ -488,9 +486,7 @@ class ToolManager:
         if source_ref is not None:
             execution_context = get_query_execution_context(query)
             await self._bind_plugin_workspace(execution_context)
-            sandbox_available = await self._workspace_sandbox_available(
-                execution_context
-            )
+            sandbox_available = await self._workspace_sandbox_available(execution_context)
             source = source_ref['source']
             source_id = source_ref.get('source_id')
             uses_source_id = False

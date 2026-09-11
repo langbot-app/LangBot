@@ -725,10 +725,12 @@ async function handleBackendApi(route: Route, state: LangBotApiMockState) {
     return fulfillJson(route, { agents: state.pipelines });
   }
 
-  const agentDebugMatch = path.match(/^\/api\/v1\/agents\/([^/]+)\/debug$/);
+  const agentDebugMatch = path.match(
+    /^\/api\/v1\/agents\/([^/]+)\/debug(?:\/stream)?$/,
+  );
   if (agentDebugMatch) {
     const payload = parseJsonBody(route);
-    return fulfillJson(route, {
+    const result = {
       event_id: nextId(state, 'event'),
       event_type: String(payload.event_type || 'message.received'),
       conversation_id: String(payload.conversation_id || 'debug-session'),
@@ -740,7 +742,15 @@ async function handleBackendApi(route: Route, state: LangBotApiMockState) {
           text: 'Mock Agent response',
         },
       ],
-    });
+    };
+    if (path.endsWith('/stream')) {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/x-ndjson',
+        body: JSON.stringify({ kind: 'completed', data: result }) + '\n',
+      });
+    }
+    return fulfillJson(route, result);
   }
 
   const agentMatch = path.match(/^\/api\/v1\/agents\/([^/]+)$/);

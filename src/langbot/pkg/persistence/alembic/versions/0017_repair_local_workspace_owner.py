@@ -48,12 +48,16 @@ def upgrade() -> None:
         sa.column('source', sa.String(32)),
         sa.column('created_by_account_uuid', sa.String(36)),
     )
-    workspace_uuids = conn.execute(
-        sa.select(workspaces.c.uuid).where(
-            workspaces.c.instance_uuid == instance_uuid.strip(),
-            workspaces.c.source == 'local',
+    workspace_uuids = (
+        conn.execute(
+            sa.select(workspaces.c.uuid).where(
+                workspaces.c.instance_uuid == instance_uuid.strip(),
+                workspaces.c.source == 'local',
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     if not workspace_uuids:
         return
     if len(workspace_uuids) > 1:
@@ -99,10 +103,7 @@ def upgrade() -> None:
         sa.column('status', sa.String(32)),
     )
     owner_account_uuid = conn.execute(
-        sa.select(users.c.uuid)
-        .where(users.c.status == 'active')
-        .order_by(users.c.id)
-        .limit(1)
+        sa.select(users.c.uuid).where(users.c.status == 'active').order_by(users.c.id).limit(1)
     ).scalar_one_or_none()
     if owner_account_uuid is None:
         return

@@ -65,8 +65,12 @@ class OfficialAccountMessageConverter(abstract_platform_adapter.AbstractMessageC
             else:
                 components.append(platform_message.Unknown(text='[officialaccount voice message without media id]'))
         elif event.type == 'event':
-            components.append(platform_message.Unknown(text=f'[officialaccount event: {event.detail_type or "unknown"}]'))
+            components.append(
+                platform_message.Unknown(text=f'[officialaccount event: {event.detail_type or "unknown"}]')
+            )
         else:
-            components.append(platform_message.Unknown(text=f'[unsupported officialaccount msgtype: {event.type or "unknown"}]'))
+            components.append(
+                platform_message.Unknown(text=f'[unsupported officialaccount msgtype: {event.type or "unknown"}]')
+            )
 
         return platform_message.MessageChain(components)
