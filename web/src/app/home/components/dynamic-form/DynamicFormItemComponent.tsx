@@ -73,6 +73,7 @@ import ReasoningLevelPicker, {
   REASONING_LEVELS,
 } from '@/app/home/components/reasoning/ReasoningLevelPicker';
 import LangBotModelMetadata from '@/app/home/components/model-availability/LangBotModelMetadata';
+import { sortModelsByCatalog } from '@/app/home/components/model-availability/sort-models';
 import { useLangBotModelAvailability } from '@/app/home/components/model-availability/useLangBotModelAvailability';
 
 const MODEL_SELECT_TRIGGER_CLASS =
@@ -584,8 +585,11 @@ export default function DynamicFormItemComponent({
 
     case DynamicFormItemType.LLM_MODEL_SELECTOR:
       // Separate space models from regular models
-      const spaceModels = llmModels.filter(
-        (m) => m.provider?.requester === LANGBOT_MODELS_PROVIDER_REQUESTER,
+      const spaceModels = sortModelsByCatalog(
+        llmModels.filter(
+          (m) => m.provider?.requester === LANGBOT_MODELS_PROVIDER_REQUESTER,
+        ),
+        langbotModelMetadata,
       );
       const regularModels = llmModels.filter(
         (m) => m.provider?.requester !== LANGBOT_MODELS_PROVIDER_REQUESTER,
@@ -778,8 +782,11 @@ export default function DynamicFormItemComponent({
       );
 
     case DynamicFormItemType.EMBEDDING_MODEL_SELECTOR: {
-      const spaceEmbeddingModels = embeddingModels.filter(
-        (m) => m.provider?.requester === LANGBOT_MODELS_PROVIDER_REQUESTER,
+      const spaceEmbeddingModels = sortModelsByCatalog(
+        embeddingModels.filter(
+          (m) => m.provider?.requester === LANGBOT_MODELS_PROVIDER_REQUESTER,
+        ),
+        langbotModelMetadata,
       );
       const regularEmbeddingModels = embeddingModels.filter(
         (m) => m.provider?.requester !== LANGBOT_MODELS_PROVIDER_REQUESTER,
@@ -977,6 +984,18 @@ export default function DynamicFormItemComponent({
         },
         {} as Record<string, RerankModel[]>,
       );
+      for (const [providerName, models] of Object.entries(
+        groupedRerankModels,
+      )) {
+        if (
+          models[0]?.provider?.requester === LANGBOT_MODELS_PROVIDER_REQUESTER
+        ) {
+          groupedRerankModels[providerName] = sortModelsByCatalog(
+            models,
+            langbotModelMetadata,
+          );
+        }
+      }
 
       return (
         <div className="w-full max-w-md min-w-0">
@@ -1012,8 +1031,11 @@ export default function DynamicFormItemComponent({
 
     case DynamicFormItemType.MODEL_FALLBACK_SELECTOR: {
       // Separate space models from regular models
-      const fbSpaceModels = llmModels.filter(
-        (m) => m.provider?.requester === LANGBOT_MODELS_PROVIDER_REQUESTER,
+      const fbSpaceModels = sortModelsByCatalog(
+        llmModels.filter(
+          (m) => m.provider?.requester === LANGBOT_MODELS_PROVIDER_REQUESTER,
+        ),
+        langbotModelMetadata,
       );
       const fbRegularModels = llmModels.filter(
         (m) => m.provider?.requester !== LANGBOT_MODELS_PROVIDER_REQUESTER,

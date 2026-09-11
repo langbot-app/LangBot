@@ -38,6 +38,7 @@ import {
   ProviderModels,
 } from '../types';
 import ModelItem from './ModelItem';
+import { sortModelsByCatalog } from '../../model-availability/sort-models';
 import AddModelPopover from './AddModelPopover';
 
 interface ProviderCardProps {
@@ -425,7 +426,10 @@ export default function ProviderCard({
               </p>
             ) : models ? (
               <div className="space-y-2">
-                {models.llm.map((model) => (
+                {(isLangBotModels
+                  ? sortModelsByCatalog(models.llm, modelMetadata)
+                  : models.llm
+                ).map((model) => (
                   <ModelItem
                     key={model.uuid}
                     model={model}
@@ -480,7 +484,10 @@ export default function ProviderCard({
                     onResetTestResult={onResetTestResult}
                   />
                 ))}
-                {models.embedding.map((model) => (
+                {(isLangBotModels
+                  ? sortModelsByCatalog(models.embedding, modelMetadata)
+                  : models.embedding
+                ).map((model) => (
                   <ModelItem
                     key={model.uuid}
                     model={model}
@@ -533,7 +540,10 @@ export default function ProviderCard({
                     onResetTestResult={onResetTestResult}
                   />
                 ))}
-                {models.rerank.map((model) => (
+                {(isLangBotModels
+                  ? sortModelsByCatalog(models.rerank, modelMetadata)
+                  : models.rerank
+                ).map((model) => (
                   <ModelItem
                     key={model.uuid}
                     model={model}

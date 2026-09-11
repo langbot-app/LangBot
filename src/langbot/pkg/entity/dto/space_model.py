@@ -45,6 +45,7 @@ class SpaceModel(pydantic.BaseModel):
     is_featured: bool = False
     featured_order: int = 0
     status: str
+    listed_at: str | None = None
     created_at: str | None = None
     updated_at: str | None = None
 
@@ -64,6 +65,7 @@ class SpaceModelSelection(pydantic.BaseModel):
     uuid: str
     model_id: str
     category: str | None = None
+    listed_at: str | None = None
     input_credits: float | None = None
     output_credits: float | None = None
     availability: SpaceModelAvailability = pydantic.Field(default_factory=SpaceModelAvailability)

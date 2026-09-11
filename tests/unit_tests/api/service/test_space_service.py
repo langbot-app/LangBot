@@ -831,6 +831,7 @@ class TestSpaceServiceGetModelSelection:
             {
                 'uuid': 'best-model',
                 'model_id': 'best-chat-model',
+                'listed_at': '2026-09-09T19:00:00.000929Z',
                 'provider': 'provider-1',
                 'category': 'chat',
                 'status': 'active',
@@ -878,6 +879,8 @@ class TestSpaceServiceGetModelSelection:
             result = await service.get_model_selection('chat')
 
         assert [model.uuid for model in result] == ['best-model', 'fallback-model']
+        assert result[0].model_dump()['listed_at'] == '2026-09-09T19:00:00.000929Z'
+        assert result[1].listed_at is None
         if response_shape == 'availability-wrapper':
             assert result[0].availability.up is True
             assert result[0].availability.last_probed_at == '2026-09-11T12:01:18Z'
