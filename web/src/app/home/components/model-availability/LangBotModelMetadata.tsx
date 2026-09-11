@@ -64,12 +64,12 @@ export default function LangBotModelMetadata({
               <p>{t('models.pricing.title')}</p>
               <p className="text-xs text-muted-foreground">
                 {t('models.pricing.input', {
-                  credits: inputCredits,
+                  credits: input,
                 })}
               </p>
               <p className="text-xs text-muted-foreground">
                 {t('models.pricing.output', {
-                  credits: outputCredits,
+                  credits: output,
                 })}
               </p>
             </div>

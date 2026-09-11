@@ -74,6 +74,10 @@ import ReasoningLevelPicker, {
 import LangBotModelMetadata from '@/app/home/components/model-availability/LangBotModelMetadata';
 import { useLangBotModelAvailability } from '@/app/home/components/model-availability/useLangBotModelAvailability';
 
+const MODEL_SELECT_TRIGGER_CLASS =
+  'w-full min-w-0 bg-[#ffffff] dark:bg-[#2a2a2e] *:data-[slot=select-value]:min-w-0 *:data-[slot=select-value]:flex-1';
+const MODEL_SELECT_ITEM_CLASS = '*:[span]:last:min-w-0 *:[span]:last:flex-1';
+
 function hasUsableUuid<T extends { uuid?: string | null }>(
   item: T,
 ): item is T & { uuid: string } {
@@ -615,7 +619,7 @@ export default function DynamicFormItemComponent({
         <div className="flex w-full max-w-md min-w-0 items-center gap-1.5">
           <div className="min-w-0 flex-1">
             <Select value={field.value} onValueChange={field.onChange}>
-              <SelectTrigger className="min-w-0 bg-[#ffffff] dark:bg-[#2a2a2e]">
+              <SelectTrigger className={MODEL_SELECT_TRIGGER_CLASS}>
                 <SelectValue placeholder={t('models.selectModel')} />
               </SelectTrigger>
               <SelectContent>
@@ -623,7 +627,11 @@ export default function DynamicFormItemComponent({
                   <SelectGroup key={providerName}>
                     <SelectLabel>{providerName}</SelectLabel>
                     {models.map((model) => (
-                      <SelectItem key={model.uuid} value={model.uuid}>
+                      <SelectItem
+                        key={model.uuid}
+                        value={model.uuid}
+                        className={MODEL_SELECT_ITEM_CLASS}
+                      >
                         {renderModelOption(model)}
                       </SelectItem>
                     ))}
@@ -719,7 +727,11 @@ export default function DynamicFormItemComponent({
                           </span>
                         </SelectLabel>
                         {models.map((model) => (
-                          <SelectItem key={model.uuid} value={model.uuid}>
+                          <SelectItem
+                            key={model.uuid}
+                            value={model.uuid}
+                            className={MODEL_SELECT_ITEM_CLASS}
+                          >
                             {renderModelOption(model)}
                           </SelectItem>
                         ))}
@@ -797,7 +809,7 @@ export default function DynamicFormItemComponent({
         <div className="flex w-full max-w-md min-w-0 items-center gap-1.5">
           <div className="min-w-0 flex-1">
             <Select value={field.value} onValueChange={field.onChange}>
-              <SelectTrigger className="min-w-0 bg-[#ffffff] dark:bg-[#2a2a2e]">
+              <SelectTrigger className={MODEL_SELECT_TRIGGER_CLASS}>
                 <SelectValue
                   placeholder={t('knowledge.selectEmbeddingModel')}
                 />
@@ -808,7 +820,11 @@ export default function DynamicFormItemComponent({
                     <SelectGroup key={providerName}>
                       <SelectLabel>{providerName}</SelectLabel>
                       {models.map((model) => (
-                        <SelectItem key={model.uuid} value={model.uuid}>
+                        <SelectItem
+                          key={model.uuid}
+                          value={model.uuid}
+                          className={MODEL_SELECT_ITEM_CLASS}
+                        >
                           {renderModelOption(model)}
                         </SelectItem>
                       ))}
@@ -900,7 +916,11 @@ export default function DynamicFormItemComponent({
                           </span>
                         </SelectLabel>
                         {models.map((model) => (
-                          <SelectItem key={model.uuid} value={model.uuid}>
+                          <SelectItem
+                            key={model.uuid}
+                            value={model.uuid}
+                            className={MODEL_SELECT_ITEM_CLASS}
+                          >
                             {renderModelOption(model)}
                           </SelectItem>
                         ))}
@@ -955,7 +975,7 @@ export default function DynamicFormItemComponent({
             value={field.value || '__none__'}
             onValueChange={(v) => field.onChange(v === '__none__' ? '' : v)}
           >
-            <SelectTrigger className="min-w-0 bg-[#ffffff] dark:bg-[#2a2a2e]">
+            <SelectTrigger className={MODEL_SELECT_TRIGGER_CLASS}>
               <SelectValue placeholder={t('models.rerank')} />
             </SelectTrigger>
             <SelectContent>
@@ -965,7 +985,11 @@ export default function DynamicFormItemComponent({
                   <SelectGroup key={providerName}>
                     <SelectLabel>{providerName}</SelectLabel>
                     {models.map((model) => (
-                      <SelectItem key={model.uuid} value={model.uuid}>
+                      <SelectItem
+                        key={model.uuid}
+                        value={model.uuid}
+                        className={MODEL_SELECT_ITEM_CLASS}
+                      >
                         {renderModelOption(model)}
                       </SelectItem>
                     ))}
@@ -1074,7 +1098,7 @@ export default function DynamicFormItemComponent({
         placeholder: string,
       ) => (
         <Select value={value} onValueChange={onChange}>
-          <SelectTrigger className="min-w-0 bg-[#ffffff] dark:bg-[#2a2a2e]">
+          <SelectTrigger className={MODEL_SELECT_TRIGGER_CLASS}>
             <SelectValue placeholder={placeholder} />
           </SelectTrigger>
           <SelectContent>
@@ -1083,7 +1107,11 @@ export default function DynamicFormItemComponent({
                 <SelectGroup key={providerName}>
                   <SelectLabel>{providerName}</SelectLabel>
                   {models.map((model) => (
-                    <SelectItem key={model.uuid} value={model.uuid}>
+                    <SelectItem
+                      key={model.uuid}
+                      value={model.uuid}
+                      className={MODEL_SELECT_ITEM_CLASS}
+                    >
                       {renderModelOption(model)}
                     </SelectItem>
                   ))}
@@ -1180,7 +1208,11 @@ export default function DynamicFormItemComponent({
                       </span>
                     </SelectLabel>
                     {models.map((model) => (
-                      <SelectItem key={model.uuid} value={model.uuid}>
+                      <SelectItem
+                        key={model.uuid}
+                        value={model.uuid}
+                        className={MODEL_SELECT_ITEM_CLASS}
+                      >
                         {renderModelOption(model)}
                       </SelectItem>
                     ))}
