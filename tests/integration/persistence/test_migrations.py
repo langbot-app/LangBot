@@ -16,7 +16,9 @@ import sqlalchemy
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
+from langbot.pkg.entity import persistence
 from langbot.pkg.entity.persistence.base import Base
+from langbot.pkg.utils import importutil
 from langbot.pkg.persistence.alembic_runner import (
     run_alembic_downgrade,
     run_alembic_upgrade,
@@ -26,6 +28,11 @@ from langbot.pkg.persistence.alembic_runner import (
 )
 from alembic.config import Config
 from alembic.script import ScriptDirectory
+
+
+# Match PersistenceManager's model registration before create_all, including
+# workspace foreign-key targets, without relying on other tests being collected.
+importutil.import_modules_in_pkg(persistence)
 
 
 def _get_script_head() -> str:
