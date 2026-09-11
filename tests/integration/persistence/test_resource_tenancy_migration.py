@@ -142,7 +142,7 @@ async def test_legacy_sqlite_resources_are_backfilled_and_contracted(tmp_path):
         assert pk_columns == {
             'binary_storages': ('workspace_uuid', 'unique_key'),
             'plugin_settings': ('workspace_uuid', 'plugin_author', 'plugin_name'),
-            'monitoring_sessions': ('workspace_uuid', 'session_id'),
+            'monitoring_sessions': ('workspace_uuid', 'bot_id', 'session_id'),
         }
 
         pipeline_run_foreign_keys = await _inspect(

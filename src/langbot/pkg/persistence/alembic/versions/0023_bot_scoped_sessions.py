@@ -20,6 +20,8 @@ _KEY = ['workspace_uuid', 'bot_id', 'session_id']
 def upgrade() -> None:
     conn = op.get_bind()
     inspector = sa.inspect(conn)
+    if _TABLE not in inspector.get_table_names():
+        return
     pk = inspector.get_pk_constraint(_TABLE)
     if pk['constrained_columns'] == _KEY:
         return
@@ -89,6 +91,8 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     conn = op.get_bind()
+    if _TABLE not in sa.inspect(conn).get_table_names():
+        return
     collisions = conn.execute(
         sa.text('SELECT 1 FROM monitoring_sessions GROUP BY workspace_uuid, session_id HAVING COUNT(*) > 1 LIMIT 1')
     ).first()
