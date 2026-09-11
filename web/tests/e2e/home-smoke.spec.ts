@@ -11,7 +11,7 @@ const appRoutes = [
   {
     path: '/home/agents',
     heading: 'Processors',
-    bodyText: 'Select an Agent or Pipeline from the sidebar',
+    bodyText: 'Select a processor from the sidebar',
   },
   {
     path: '/home/extensions',

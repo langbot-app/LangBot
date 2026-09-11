@@ -89,7 +89,7 @@ test.describe('frontend CRUD smoke flows', () => {
     await expect(
       page.locator('[data-processor-kind="pipeline"]'),
     ).toContainText(
-      '流水线即为经典的“收到消息、请求AI、回复用户”流程，并辅以常用的配置功能。仅处理消息事件，适合步骤明确、需要稳定控制处理过程的场景。',
+      '流水线按“接收消息、调用 AI、回复用户”的固定流程运行，可配置知识库和插件扩展。仅处理消息事件，适合步骤明确、需要控制处理过程的场景。',
     );
   });
 
@@ -1034,7 +1034,7 @@ test.describe('agent runner resource selectors', () => {
     await expect(
       page.getByText('No Runner extension is installed yet.'),
     ).toBeVisible();
-    await expect(page.getByText('Runner Marketplace')).toBeVisible();
+    await expect(page.getByText('Runner plugins in Marketplace')).toBeVisible();
     const selectorPopup = page.locator('[data-slot="select-content"]');
     await expect(
       selectorPopup.getByText('Runner used by the grouped selector test.', {
@@ -1055,20 +1055,35 @@ test.describe('agent runner resource selectors', () => {
       });
 
     await page
-      .getByRole('option')
-      .filter({ hasText: 'Marketplace Runner' })
+      .getByRole('button', { name: 'Install Marketplace Runner', exact: true })
       .click();
 
     await expect.poll(() => installRequests).toBe(1);
     await expect.poll(() => taskPolls).toBeGreaterThan(0);
+    await expect(
+      page.getByRole('option', {
+        name: 'Marketplace Runner Runner used by the grouped selector test.',
+        exact: true,
+      }),
+    ).toBeVisible();
+    await page
+      .getByRole('option', {
+        name: 'Marketplace Runner Runner used by the grouped selector test.',
+        exact: true,
+      })
+      .click();
     await expect(runnerSelect).toContainText('Marketplace Runner');
 
     await runnerSelect.click();
     await expect(
-      page.getByRole('option').filter({ hasText: runnerId }),
+      page.getByRole('option', {
+        name: 'Marketplace Runner Runner used by the grouped selector test.',
+        exact: true,
+      }),
     ).toBeVisible();
     await expect(
-      page.getByText('Runner used by the grouped selector test.', {
+      page.getByRole('button', {
+        name: 'Install Marketplace Runner',
         exact: true,
       }),
     ).toHaveCount(0);
@@ -1130,7 +1145,7 @@ test.describe('agent runner resource selectors', () => {
     const runnerSelect = page.getByRole('combobox', { name: 'Runner' });
     await runnerSelect.click();
     await expect(page.getByText('Installed Runners')).toBeVisible();
-    await expect(page.getByText('Runner Marketplace')).toBeVisible();
+    await expect(page.getByText('Runner plugins in Marketplace')).toBeVisible();
     await expect(
       page
         .locator('[data-slot="select-content"]')
@@ -1139,9 +1154,10 @@ test.describe('agent runner resource selectors', () => {
         }),
     ).toBeVisible();
     await expect(
-      page
-        .getByRole('option')
-        .filter({ hasText: 'Pipeline Marketplace Runner' }),
+      page.getByRole('button', {
+        name: 'Install Pipeline Marketplace Runner',
+        exact: true,
+      }),
     ).toBeVisible();
   });
 
@@ -1214,8 +1230,11 @@ test.describe('agent and pipeline save concurrency', () => {
 
     await page.goto('/home/agents?id=agent-save-race');
     const saveButton = page.getByRole('button', { name: /^Save$/ });
-    await page.getByRole('tab', { name: 'Bindable Event Range' }).click();
-    const eventPatterns = page.getByLabel('Event Range');
+    await page.getByRole('tab', { name: 'Events & tools' }).click();
+    const eventPatterns = page.getByRole('button', {
+      name: 'Add event',
+      exact: true,
+    });
     await expect(eventPatterns).toBeVisible();
 
     await eventPatterns.click();
@@ -1231,8 +1250,8 @@ test.describe('agent and pipeline save concurrency', () => {
     await eventPatterns.click();
     await page.getByRole('option').filter({ hasText: 'group.*' }).click();
     await page
-      .getByRole('option')
-      .filter({ hasText: 'message.received' })
+      .getByRole('button', { name: 'Remove event', exact: true })
+      .first()
       .click();
     await page.keyboard.press('Escape');
     await forceFormSubmit(page, '#agent-form');

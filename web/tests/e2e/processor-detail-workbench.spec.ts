@@ -60,8 +60,8 @@ test.describe('processor detail workbench', () => {
 
     const appShell = page.locator('[class*="group/sidebar-wrapper"]');
     const sidebarInset = page.locator('[data-slot="sidebar-inset"]');
-    await expect(appShell).toHaveCSS('overflow', 'clip');
-    await expect(sidebarInset).toHaveCSS('overflow', 'clip');
+    await expect(appShell).toHaveCSS('overflow', 'hidden');
+    await expect(sidebarInset).toHaveCSS('overflow', 'hidden');
     await appShell.evaluate((element) => {
       element.scrollTop = 300;
     });
@@ -79,9 +79,7 @@ test.describe('processor detail workbench', () => {
     const flow = configPanel.getByRole('tablist');
     await expect(flow.getByRole('tab').nth(0)).toContainText('Runner');
     await expect(flow.getByRole('tab').nth(1)).toContainText('Local Agent');
-    await expect(flow.getByRole('tab').nth(2)).toContainText(
-      'Bindable Event Range',
-    );
+    await expect(flow.getByRole('tab').nth(2)).toContainText('Events & tools');
     await expect(flow.getByRole('tab')).toHaveCount(3);
     await expect(flow.getByText('Management')).toHaveCount(0);
 
@@ -126,19 +124,32 @@ test.describe('processor detail workbench', () => {
 
     await flow.getByRole('tab').nth(2).click();
     await expect(
-      configPanel.getByText('Bindable Event Range', { exact: true }).last(),
+      configPanel.getByText('Events & tools', { exact: true }).last(),
     ).toBeVisible();
-    const eventPicker = configPanel.getByRole('combobox', {
-      name: 'Event Range',
+    const eventPicker = configPanel.getByRole('button', {
+      name: 'Add event',
+      exact: true,
     });
     await expect(eventPicker).toBeVisible();
-    await expect(configPanel.getByRole('textbox')).toHaveCount(0);
+    await expect(configPanel.getByRole('textbox')).toHaveCount(1);
+    await expect(
+      configPanel.getByRole('textbox', { name: 'Search tools…' }),
+    ).toBeVisible();
     await eventPicker.click();
     await expect(
       page.getByRole('option').filter({ hasText: 'message.received' }),
     ).toBeVisible();
-    await expect(page.getByRole('group', { name: 'Messages' })).toHaveCount(1);
-    await expect(page.getByRole('group', { name: 'Groups' })).toHaveCount(1);
+    await expect(
+      page.getByRole('option').filter({ hasText: 'group.*' }),
+    ).toBeVisible();
+    await expect(
+      page
+        .locator('[cmdk-group-heading]')
+        .getByText('Messages', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.locator('[cmdk-group-heading]').getByText('Groups', { exact: true }),
+    ).toBeVisible();
     await page
       .getByRole('option')
       .filter({ hasText: 'message.*' })
@@ -189,7 +200,7 @@ test.describe('processor detail workbench', () => {
       }
       if (
         request.method() === 'POST' &&
-        path === '/api/v1/agents/agent-workbench/debug'
+        path === '/api/v1/agents/agent-workbench/debug/stream'
       ) {
         requests.push('debug');
       }
@@ -237,15 +248,17 @@ test.describe('processor detail workbench', () => {
   }) => {
     await installLangBotApiMocks(page, { authenticated: true });
     await page.route(
-      '**/api/v1/agents/agent-workbench/debug',
+      '**/api/v1/agents/agent-workbench/debug/stream',
       async (route) => {
         await route.fulfill({
-          status: 422,
-          contentType: 'application/json',
-          body: JSON.stringify({
-            code: 'dify.config_invalid',
-            msg: 'api-key is required',
-          }),
+          status: 200,
+          contentType: 'application/x-ndjson',
+          body:
+            JSON.stringify({
+              kind: 'error',
+              code: 'dify.config_invalid',
+              msg: 'api-key is required',
+            }) + '\n',
         });
       },
     );
@@ -454,8 +467,8 @@ test.describe('processor detail workbench', () => {
 
     const appShell = page.locator('[class*="group/sidebar-wrapper"]');
     const sidebarInset = page.locator('[data-slot="sidebar-inset"]');
-    await expect(appShell).toHaveCSS('overflow', 'clip');
-    await expect(sidebarInset).toHaveCSS('overflow', 'clip');
+    await expect(appShell).toHaveCSS('overflow', 'hidden');
+    await expect(sidebarInset).toHaveCSS('overflow', 'hidden');
     await expect
       .poll(() => appShell.evaluate((element) => element.scrollTop))
       .toBe(0);
