@@ -46,6 +46,7 @@ import {
   Eye,
   EyeOff,
   Wrench,
+  BrainCircuit,
   Trash2,
   Sparkles,
   Info,
@@ -176,6 +177,7 @@ export default function DynamicFormItemComponent({
     uuid: string;
     name: string;
     abilities?: string[];
+    reasoning_capabilities?: { supported?: boolean };
     provider?: { requester?: string };
   }) => (
     <span className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
@@ -186,6 +188,13 @@ export default function DynamicFormItemComponent({
         )}
         {model.abilities?.includes('func_call') && (
           <Wrench className="h-3 w-3 text-muted-foreground" />
+        )}
+        {(model.reasoning_capabilities?.supported === true ||
+          model.abilities?.includes('reasoning')) && (
+          <BrainCircuit
+            className="h-3 w-3 shrink-0 text-muted-foreground"
+            aria-label={t('models.reasoningAbility')}
+          />
         )}
       </span>
       {model.provider?.requester === LANGBOT_MODELS_PROVIDER_REQUESTER && (
