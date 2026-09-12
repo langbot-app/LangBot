@@ -87,6 +87,10 @@ const viVN = {
       'Khuyến nghị: Sử dụng API mô hình ổn định chính thức và dịch vụ đám mây',
     loginLocal: 'Đăng nhập với tài khoản cục bộ',
     loginWithPassword: 'Đăng nhập bằng mật khẩu',
+    loginWithPasskey: 'Đăng nhập bằng Passkey',
+    passkeyLoginSuccess: 'Xác thực Passkey thành công, đang đăng nhập...',
+    passkeyLoginFailed: 'Đăng nhập bằng Passkey thất bại',
+    passkeyNotSupported: 'Trình duyệt hoặc thiết bị này không hỗ trợ Passkey',
     spaceLoginTitle: 'Đăng nhập bằng tài khoản LangBot',
     spaceLoginDescription:
       'Quét mã QR hoặc truy cập liên kết bên dưới để ủy quyền',
@@ -1344,6 +1348,20 @@ const viVN = {
     bindSpaceWarning:
       'Sau khi liên kết, email đăng nhập của bạn sẽ được đổi từ {{localEmail}} sang email tài khoản LangBot.',
     bindSpaceSuccess: 'Liên kết tài khoản LangBot thành công',
+    passkeySectionTitle: 'Mã khóa truy cập (Passkey)',
+    passkeySectionDesc:
+      'Đăng nhập an toàn không cần mật khẩu bằng sinh trắc học hoặc khóa bảo mật',
+    addPasskey: 'Thêm mã khóa truy cập',
+    passkeyName: 'Tên khóa',
+    passkeyNamePlaceholder: 'ví dụ: MacBook Touch ID, YubiKey',
+    passkeyCreated: 'Được tạo vào {{date}}',
+    passkeyLastUsed: 'Sử dụng lần cuối: {{date}}',
+    noPasskeys: 'Chưa có mã khóa truy cập nào được đăng ký',
+    deletePasskeyConfirm:
+      'Bạn có chắc chắn muốn xóa mã khóa truy cập này? Bạn sẽ không thể sử dụng nó để đăng nhập nữa.',
+    passkeyAddedSuccess: 'Đã thêm mã khóa truy cập thành công',
+    passkeyDeleteSuccess: 'Đã xóa mã khóa truy cập',
+    passkeyRenameSuccess: 'Đã đổi tên mã khóa truy cập thành công',
     bindSpaceFailed: 'Liên kết tài khoản LangBot thất bại',
     bindSpaceInvalidState:
       'Yêu cầu liên kết không hợp lệ. Vui lòng thử lại từ cài đặt tài khoản.',

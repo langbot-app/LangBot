@@ -86,6 +86,11 @@ const ruRU = {
       'Рекомендуется: Используйте официальные стабильные API моделей и облачные сервисы',
     loginLocal: 'Войти с локальной учётной записью',
     loginWithPassword: 'Войти с паролем',
+    loginWithPasskey: 'Войти с помощью Passkey',
+    passkeyLoginSuccess: 'Passkey успешно подтверждён, вход...',
+    passkeyLoginFailed: 'Не удалось войти с помощью Passkey',
+    passkeyNotSupported:
+      'Passkey не поддерживается в этом браузере или на устройстве',
     spaceLoginTitle: 'Войти с аккаунтом LangBot',
     spaceLoginDescription:
       'Отсканируйте QR-код или перейдите по ссылке ниже для авторизации',
@@ -1350,6 +1355,20 @@ const ruRU = {
     bindSpaceWarning:
       'После привязки ваш email для входа будет изменён с {{localEmail}} на email аккаунта LangBot.',
     bindSpaceSuccess: 'Аккаунт LangBot успешно привязан',
+    passkeySectionTitle: 'Ключи доступа (Passkey)',
+    passkeySectionDesc:
+      'Безопасный вход без пароля с помощью биометрии или аппаратного ключа',
+    addPasskey: 'Добавить ключ доступа',
+    passkeyName: 'Название ключа',
+    passkeyNamePlaceholder: 'например, MacBook Touch ID, YubiKey',
+    passkeyCreated: 'Создан {{date}}',
+    passkeyLastUsed: 'Последнее использование: {{date}}',
+    noPasskeys: 'Нет зарегистрированных ключей доступа',
+    deletePasskeyConfirm:
+      'Вы уверены, что хотите удалить этот ключ доступа? Вы больше не сможете использовать его для входа.',
+    passkeyAddedSuccess: 'Ключ доступа успешно добавлен',
+    passkeyDeleteSuccess: 'Ключ доступа удален',
+    passkeyRenameSuccess: 'Ключ доступа успешно переименован',
     bindSpaceFailed: 'Не удалось привязать аккаунт LangBot',
     bindSpaceInvalidState:
       'Недействительный запрос привязки. Повторите попытку из настроек аккаунта.',

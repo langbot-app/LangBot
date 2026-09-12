@@ -86,6 +86,10 @@ const thTH = {
       'แนะนำ: ใช้ API โมเดลที่เสถียรอย่างเป็นทางการและบริการคลาวด์',
     loginLocal: 'เข้าสู่ระบบด้วยบัญชีท้องถิ่น',
     loginWithPassword: 'เข้าสู่ระบบด้วยรหัสผ่าน',
+    loginWithPasskey: 'เข้าสู่ระบบด้วย Passkey',
+    passkeyLoginSuccess: 'ยืนยัน Passkey สำเร็จ กำลังเข้าสู่ระบบ...',
+    passkeyLoginFailed: 'เข้าสู่ระบบด้วย Passkey ล้มเหลว',
+    passkeyNotSupported: 'เบราว์เซอร์หรืออุปกรณ์นี้ไม่รองรับ Passkey',
     spaceLoginTitle: 'เข้าสู่ระบบด้วยบัญชี LangBot',
     spaceLoginDescription:
       'สแกน QR code หรือเข้าชมลิงก์ด้านล่างเพื่อยืนยันสิทธิ์',
@@ -1321,6 +1325,20 @@ const thTH = {
     bindSpaceWarning:
       'หลังจากผูกแล้ว อีเมลเข้าสู่ระบบของคุณจะเปลี่ยนจาก {{localEmail}} เป็นอีเมลบัญชี LangBot',
     bindSpaceSuccess: 'ผูกบัญชี LangBot สำเร็จ',
+    passkeySectionTitle: 'พาสคีย์ (Passkey)',
+    passkeySectionDesc:
+      'เข้าสู่ระบบอย่างปลอดภัยโดยไม่ต้องใช้รหัสผ่านด้วยไบโอเมตริกซ์หรือคีย์ความปลอดภัย',
+    addPasskey: 'เพิ่มพาสคีย์',
+    passkeyName: 'ชื่อคีย์',
+    passkeyNamePlaceholder: 'เช่น MacBook Touch ID, YubiKey',
+    passkeyCreated: 'สร้างเมื่อ {{date}}',
+    passkeyLastUsed: 'ใช้งานล่าสุด: {{date}}',
+    noPasskeys: 'ยังไม่มีพาสคีย์ที่ลงทะเบียน',
+    deletePasskeyConfirm:
+      'คุณแน่ใจหรือไม่ว่าต้องการลบพาสคีย์นี้? คุณจะไม่สามารถใช้คีย์นี้เข้าสู่ระบบได้อีก',
+    passkeyAddedSuccess: 'เพิ่มพาสคีย์สำเร็จ',
+    passkeyDeleteSuccess: 'ลบพาสคีย์แล้ว',
+    passkeyRenameSuccess: 'เปลี่ยนชื่อพาสคีย์สำเร็จ',
     bindSpaceFailed: 'ผูกบัญชี LangBot ล้มเหลว',
     bindSpaceInvalidState: 'คำขอผูกไม่ถูกต้อง กรุณาลองใหม่จากการตั้งค่าบัญชี',
     setPasswordHint: 'ตั้งรหัสผ่านเพื่อเข้าสู่ระบบด้วยอีเมลและรหัสผ่าน',
