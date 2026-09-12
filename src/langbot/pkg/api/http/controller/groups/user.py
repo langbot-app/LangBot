@@ -1,9 +1,12 @@
+from __future__ import annotations
+
 import quart
 import argon2
 import asyncio
 import datetime
 import hmac
 import time
+import typing
 import uuid
 from urllib.parse import parse_qs, urlsplit
 
@@ -63,6 +66,22 @@ class UserRouterGroup(group.RouterGroup):
             raise ValueError('Invalid LangBot Account login redirect_uri')
 
         return redirect_uri
+
+    def _extract_origin_and_rp_id(self, json_data: dict[str, typing.Any] | None = None) -> tuple[str, str]:
+        origin = ''
+        if json_data and isinstance(json_data, dict):
+            origin = json_data.get('origin', '')
+        if not origin:
+            origin = quart.request.headers.get('Origin', '')
+        if not origin:
+            origin = quart.request.headers.get('Referer', '')
+        if not origin:
+            origin = quart.request.url_root.rstrip('/')
+
+        parsed = urlsplit(origin)
+        rp_id = parsed.hostname or 'localhost'
+        clean_origin = f'{parsed.scheme}://{parsed.netloc}' if parsed.scheme and parsed.netloc else origin.rstrip('/')
+        return clean_origin, rp_id
 
     async def initialize(self) -> None:
         @self.route('/init', methods=['GET', 'POST'], auth_type=group.AuthType.NONE)
@@ -387,6 +406,8 @@ class UserRouterGroup(group.RouterGroup):
                 capabilities['password_login_enabled'] = False
             capabilities['authenticated_invitation_acceptance_enabled'] = cloud_mode
             capabilities['invitation_registration_enabled'] = not cloud_mode
+            capabilities['passkey_login_enabled'] = True
+            capabilities['passkey_supported'] = True
             return self.success(data={'initialized': True, **capabilities})
 
         @self.route('/set-password', methods=['POST'], auth_type=group.AuthType.USER_TOKEN)
@@ -476,6 +497,182 @@ class UserRouterGroup(group.RouterGroup):
                 return self.http_status(400, -1, 'LangBot Account binding failed')
             except Exception:
                 raise
+
+        @self.route('/passkey/register/options', methods=['POST'], auth_type=group.AuthType.USER_TOKEN)
+        async def _(user_email: str) -> str:
+            """Generate WebAuthn registration options for current account."""
+            allow_modify_login_info = self.ap.instance_config.data.get('system', {}).get(
+                'allow_modify_login_info', True
+            )
+            if not allow_modify_login_info:
+                return self.http_status(403, -1, 'Modifying login info is disabled')
+
+            user_obj = await self.ap.user_service.get_user_by_email(user_email)
+            if user_obj is None:
+                return self.http_status(404, -1, 'User not found')
+
+            json_data = (await quart.request.json) or {}
+            origin, rp_id = self._extract_origin_and_rp_id(json_data)
+
+            try:
+                options, challenge_token = await self.ap.user_service.generate_passkey_registration_options(
+                    account_uuid=user_obj.uuid,
+                    rp_id=rp_id,
+                    origin=origin,
+                    rp_name='LangBot',
+                )
+                return self.success(data={'options': options, 'challenge_token': challenge_token})
+            except Exception as e:
+                return self.fail(1, str(e))
+
+        @self.route('/passkey/register/verify', methods=['POST'], auth_type=group.AuthType.USER_TOKEN)
+        async def _(user_email: str) -> str:
+            """Verify WebAuthn registration response and save credential."""
+            allow_modify_login_info = self.ap.instance_config.data.get('system', {}).get(
+                'allow_modify_login_info', True
+            )
+            if not allow_modify_login_info:
+                return self.http_status(403, -1, 'Modifying login info is disabled')
+
+            user_obj = await self.ap.user_service.get_user_by_email(user_email)
+            if user_obj is None:
+                return self.http_status(404, -1, 'User not found')
+
+            json_data = await quart.request.json
+            challenge_token = json_data.get('challenge_token')
+            credential = json_data.get('credential') or json_data.get('response')
+            name = json_data.get('name')
+
+            if not challenge_token or not credential:
+                return self.fail(1, 'Missing challenge_token or credential')
+
+            try:
+                cred = await self.ap.user_service.verify_and_save_passkey_registration(
+                    challenge_token=challenge_token,
+                    credential_data=credential,
+                    name=name,
+                )
+                return self.success(
+                    data={
+                        'uuid': cred.uuid,
+                        'name': cred.name,
+                        'created_at': cred.created_at.isoformat() if cred.created_at else None,
+                    }
+                )
+            except Exception as e:
+                return self.fail(1, str(e))
+
+        @self.route('/passkey/auth/options', methods=['POST'], auth_type=group.AuthType.NONE)
+        async def _() -> str:
+            """Generate WebAuthn authentication options for passkey login."""
+            json_data = (await quart.request.json) or {}
+            email = json_data.get('email')
+            origin, rp_id = self._extract_origin_and_rp_id(json_data)
+
+            try:
+                options, challenge_token = await self.ap.user_service.generate_passkey_authentication_options(
+                    rp_id=rp_id,
+                    origin=origin,
+                    email=email,
+                )
+                return self.success(data={'options': options, 'challenge_token': challenge_token})
+            except Exception as e:
+                return self.fail(1, str(e))
+
+        @self.route('/passkey/auth/verify', methods=['POST'], auth_type=group.AuthType.NONE)
+        async def _() -> str:
+            """Verify WebAuthn authentication response and log in."""
+            json_data = await quart.request.json
+            challenge_token = json_data.get('challenge_token')
+            credential = json_data.get('credential') or json_data.get('response')
+
+            if not challenge_token or not credential:
+                return self.fail(1, 'Missing challenge_token or credential')
+
+            try:
+                token, user_obj = await self.ap.user_service.verify_passkey_authentication(
+                    challenge_token=challenge_token,
+                    credential_data=credential,
+                )
+                return self.success(
+                    data={
+                        'token': token,
+                        'user': user_obj.user,
+                    }
+                )
+            except Exception as e:
+                return self.fail(1, str(e))
+
+        @self.route('/passkeys', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
+        async def _(user_email: str) -> str:
+            """List registered passkeys for the current user."""
+            user_obj = await self.ap.user_service.get_user_by_email(user_email)
+            if user_obj is None:
+                return self.http_status(404, -1, 'User not found')
+
+            passkeys = await self.ap.user_service.get_user_passkeys(user_obj.uuid)
+            return self.success(
+                data=[
+                    {
+                        'uuid': pk.uuid,
+                        'name': pk.name,
+                        'aaguid': pk.aaguid,
+                        'transports': pk.transports,
+                        'backed_up': pk.backed_up,
+                        'created_at': pk.created_at.isoformat() if pk.created_at else None,
+                        'last_used_at': pk.last_used_at.isoformat() if pk.last_used_at else None,
+                    }
+                    for pk in passkeys
+                ]
+            )
+
+        @self.route('/passkey/<passkey_uuid>', methods=['PATCH'], auth_type=group.AuthType.USER_TOKEN)
+        async def _(user_email: str, passkey_uuid: str) -> str:
+            """Rename a registered passkey."""
+            allow_modify_login_info = self.ap.instance_config.data.get('system', {}).get(
+                'allow_modify_login_info', True
+            )
+            if not allow_modify_login_info:
+                return self.http_status(403, -1, 'Modifying login info is disabled')
+
+            user_obj = await self.ap.user_service.get_user_by_email(user_email)
+            if user_obj is None:
+                return self.http_status(404, -1, 'User not found')
+
+            json_data = await quart.request.json
+            name = (json_data.get('name') or '').strip()
+            if not name:
+                return self.fail(1, 'Passkey name cannot be empty')
+
+            updated = await self.ap.user_service.rename_user_passkey(
+                account_uuid=user_obj.uuid,
+                passkey_uuid=passkey_uuid,
+                new_name=name,
+            )
+            if not updated:
+                return self.http_status(404, -1, 'Passkey not found')
+            return self.success(data={'uuid': updated.uuid, 'name': updated.name})
+
+        @self.route('/passkey/<passkey_uuid>', methods=['DELETE'], auth_type=group.AuthType.USER_TOKEN)
+        async def _(user_email: str, passkey_uuid: str) -> str:
+            """Delete/revoke a registered passkey."""
+            allow_modify_login_info = self.ap.instance_config.data.get('system', {}).get(
+                'allow_modify_login_info', True
+            )
+            if not allow_modify_login_info:
+                return self.http_status(403, -1, 'Modifying login info is disabled')
+
+            user_obj = await self.ap.user_service.get_user_by_email(user_email)
+            if user_obj is None:
+                return self.http_status(404, -1, 'User not found')
+
+            deleted = await self.ap.user_service.delete_user_passkey(
+                account_uuid=user_obj.uuid,
+                passkey_uuid=passkey_uuid,
+            )
+            if not deleted:
+                return self.http_status(404, -1, 'Passkey not found')
+            return self.success()
 
     async def _handle_space_direct_launch(
         self,

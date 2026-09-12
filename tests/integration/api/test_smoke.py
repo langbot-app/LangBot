@@ -310,6 +310,8 @@ class TestUserInitEndpoint:
             'invitation_registration_enabled': True,
             'password_login_enabled': True,
             'space_login_enabled': False,
+            'passkey_login_enabled': True,
+            'passkey_supported': True,
         }
         fake_api_app.user_service.get_login_capabilities.assert_awaited_once_with()
         fake_api_app.user_service.get_first_user.assert_not_awaited()
@@ -334,6 +336,8 @@ class TestUserInitEndpoint:
             'invitation_registration_enabled': False,
             'password_login_enabled': False,
             'space_login_enabled': True,
+            'passkey_login_enabled': True,
+            'passkey_supported': True,
         }
 
     @pytest.mark.asyncio
@@ -355,6 +359,8 @@ class TestUserInitEndpoint:
             'invitation_registration_enabled': True,
             'password_login_enabled': False,
             'space_login_enabled': True,
+            'passkey_login_enabled': True,
+            'passkey_supported': True,
         }
 
     @pytest.mark.asyncio
