@@ -1149,6 +1149,11 @@ const jaJP = {
     uploadPluginOnly: '.lbpkg プラグインパッケージのみ対応しています',
   },
   market: {
+    runnerUsage: 'ランナーの用途',
+    runnerUsageAll: 'すべて',
+    runnerUsageAgent: 'Agent / パイプライン',
+    runnerUsageEvent: 'プラグインプロセッサー',
+
     searchPlaceholder: 'プラグインを検索...',
     searchPlaceholderCount:
       '{{count}} 個の拡張機能・機能・ユースケースを検索...',
@@ -2323,9 +2328,9 @@ const jaJP = {
       catalogUnavailable: 'Runner カタログを読み込めません',
       catalogUnavailableDescription:
         'インストール済みの Runner は引き続き使用できます。再試行するか、拡張機能を確認してください。',
-      noMarketplaceRunners: 'Runner 拡張機能はまだ公開されていません',
+      noMarketplaceRunners: 'この用途に対応するランナープラグインはありません',
       noMarketplaceRunnersDescription:
-        '設定済みのマーケットプレイスに Runner 拡張機能が公開された後、再試行してください。',
+        'インストール済みのランナーを使うか、後でもう一度お試しください。',
       browseRunners: 'Runner 拡張機能を見る',
       installAndContinue: 'インストールして続行',
       installing: 'インストール中...',

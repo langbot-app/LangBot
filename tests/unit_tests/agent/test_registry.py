@@ -55,6 +55,7 @@ class FakeApplication:
                             'id': 'plugin:langbot-team/LocalAgent/default',
                             'name': 'default',
                             'label': {'en_US': 'Local Agent'},
+                            'usages': ['agent'],
                             'capabilities': {'streaming': True},
                             'permissions': {},
                             'config_schema': [],
@@ -68,6 +69,7 @@ class FakeApplication:
                             'id': 'plugin:alice/my-agent/custom',
                             'name': 'custom',
                             'label': {'en_US': 'Custom Agent'},
+                            'usages': ['agent'],
                             'capabilities': {},
                             'permissions': {},
                             'config_schema': [{'name': 'param1', 'type': 'string'}],
@@ -308,6 +310,7 @@ class TestDescriptorValidation:
     def test_validate_runner_descriptor(self):
         """Validate correctly built descriptor."""
         descriptor = RunnerDescriptor(
+            usages=['agent'],
             id='plugin:test/my-runner/default',
             source='plugin',
             label={'en_US': 'Test Runner'},
@@ -323,6 +326,7 @@ class TestDescriptorValidation:
     def test_descriptor_capabilities(self):
         """Descriptor capability helper methods."""
         descriptor = RunnerDescriptor(
+            usages=['agent'],
             id='plugin:test/my-runner/default',
             source='plugin',
             label={'en_US': 'Test Runner'},
@@ -365,3 +369,18 @@ async def test_registry_filters_usages_without_splitting_component_identity():
     assert [item.runner_name for item in processors] == ['events', 'both']
     assert agents[-1].id == processors[-1].id
     assert (await registry.get(TEST_CONTEXT, processors[0].id)).usages == ['event']
+
+
+@pytest.mark.asyncio
+async def test_discovery_rejects_runner_without_usage_declaration():
+    ap = FakeApplication()
+    original = ap.plugin_connector.list_runners
+
+    async def missing_usage(bound_plugins=None):
+        runners = await original(bound_plugins)
+        runners[0]['manifest'].pop('usages')
+        return runners
+
+    ap.plugin_connector.list_runners = missing_usage
+    runners = await RunnerRegistry(ap).list_runners(TEST_CONTEXT, use_cache=False)
+    assert [runner.id for runner in runners] == ['plugin:alice/my-agent/custom']

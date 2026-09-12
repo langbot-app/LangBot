@@ -164,6 +164,7 @@ class FakeConversation:
 
 def make_descriptor() -> RunnerDescriptor:
     return RunnerDescriptor(
+        usages=['agent'],
         id=RUNNER_ID,
         source='plugin',
         label={'en_US': 'Local Agent'},

@@ -55,7 +55,7 @@ class RunnerDescriptor(pydantic.BaseModel):
     """Original manifest for reference"""
 
     component_kind: typing.Literal['Runner'] = 'Runner'
-    usages: list[typing.Literal['agent', 'event']] = pydantic.Field(default_factory=lambda: ['agent'])
+    usages: list[typing.Literal['agent', 'event']] = pydantic.Field(min_length=1)
     supported_event_patterns: list[str] = pydantic.Field(default_factory=lambda: ['*'])
 
     model_config = pydantic.ConfigDict(

@@ -126,6 +126,14 @@ function MarketPageContent({
       loadMarketFilters().componentFilter ??
       'all',
   );
+  const [runnerUsage, setRunnerUsage] = useState(() => {
+    const value = searchParams.get('runner_usage');
+    return value === 'agent' || value === 'event' ? value : 'all';
+  });
+  const activeRunnerUsage =
+    componentFilter === 'Runner' && runnerUsage !== 'all'
+      ? (runnerUsage as 'agent' | 'event')
+      : undefined;
   const [typeFilter, setTypeFilter] = useState<string>(() => {
     if (getComponentFilterFromQuery(searchParams)) {
       return 'plugin';
@@ -138,7 +146,9 @@ function MarketPageContent({
     return saved && MARKET_TYPE_VALUES.includes(saved) ? saved : 'all';
   });
   const activeAdvancedFilters =
-    (typeFilter === 'all' ? 0 : 1) + (componentFilter === 'all' ? 0 : 1);
+    (typeFilter === 'all' ? 0 : 1) +
+    (componentFilter === 'all' ? 0 : 1) +
+    (activeRunnerUsage ? 1 : 0);
   const [selectedTags, setSelectedTags] = useState<string[]>(
     () => loadMarketFilters().selectedTags ?? [],
   );
@@ -313,6 +323,7 @@ function MarketPageContent({
             type_filter: typeFilter === 'all' ? undefined : typeFilter,
             component_filter:
               componentFilter === 'all' ? undefined : componentFilter,
+            runner_usage: activeRunnerUsage,
             tags_filter: selectedTags.length > 0 ? selectedTags : undefined,
           });
 
@@ -344,6 +355,7 @@ function MarketPageContent({
     [
       searchQuery,
       componentFilter,
+      activeRunnerUsage,
       selectedTags,
       pageSize,
       transformToVO,
@@ -502,6 +514,10 @@ function MarketPageContent({
       setPlugins([]);
 
       const params = new URLSearchParams(searchParams);
+      if (value !== 'Runner') {
+        setRunnerUsage('all');
+        params.delete('runner_usage');
+      }
       if (value === 'all') {
         params.delete('component');
       } else {
@@ -517,7 +533,7 @@ function MarketPageContent({
   // 当排序选项或组件筛选或类型筛选变化时重新加载数据
   useEffect(() => {
     fetchPlugins(1, !!searchQuery.trim(), true);
-  }, [sortOption, componentFilter, typeFilter]);
+  }, [sortOption, componentFilter, typeFilter, activeRunnerUsage]);
 
   // Tags 筛选变化时重新搜索
   useEffect(() => {
@@ -826,6 +842,38 @@ function MarketPageContent({
                     })}
                   </ToggleGroup>
                 </div>
+                {componentFilter === 'Runner' && (
+                  <div className="space-y-2">
+                    <div className="text-xs font-medium text-muted-foreground">
+                      {t('market.runnerUsage')}
+                    </div>
+                    <ToggleGroup
+                      type="single"
+                      size="sm"
+                      value={runnerUsage}
+                      onValueChange={(value) => {
+                        if (!value) return;
+                        setRunnerUsage(value);
+                        setCurrentPage(1);
+                        setPlugins([]);
+                        const params = new URLSearchParams(searchParams);
+                        if (value === 'all') params.delete('runner_usage');
+                        else params.set('runner_usage', value);
+                        setSearchParams(params, { replace: true });
+                      }}
+                    >
+                      <ToggleGroupItem value="all">
+                        {t('market.runnerUsageAll')}
+                      </ToggleGroupItem>
+                      <ToggleGroupItem value="agent">
+                        {t('market.runnerUsageAgent')}
+                      </ToggleGroupItem>
+                      <ToggleGroupItem value="event">
+                        {t('market.runnerUsageEvent')}
+                      </ToggleGroupItem>
+                    </ToggleGroup>
+                  </div>
+                )}
               </PopoverContent>
             </Popover>
 

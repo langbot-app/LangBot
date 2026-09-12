@@ -23,6 +23,7 @@ SOURCE = {'source': 'native', 'source_id': None}
 
 async def _resources(tool_mgr, rag_mgr, binding):
     descriptor = RunnerDescriptor(
+        usages=['agent'],
         id=LOCAL_RUNNER_ID,
         source='plugin',
         label={'en_US': 'Local Agent'},

@@ -9,6 +9,7 @@ metadata:
     en_US: Deterministic runner fixture that returns stable QA sentinel output.
     zh_Hans: 返回稳定 QA 哨兵输出的确定性 runner 夹具。
 spec:
+  usages: [agent]
   capabilities:
     streaming: true
     tool_calling: false

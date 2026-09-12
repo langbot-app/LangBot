@@ -26,6 +26,7 @@ class FakeRegistry:
 def make_runner(runner_id: str, config_schema: list[dict]):
     parts = runner_id.removeprefix('plugin:').split('/')
     return RunnerDescriptor(
+        usages=['agent'],
         id=runner_id,
         source='plugin',
         label={'en_US': runner_id},

@@ -227,7 +227,7 @@ export default function RunnerSelect({
     setCatalogLoading(true);
     setCatalogError(false);
     try {
-      const catalog = await loadRunnerCatalog();
+      const catalog = await loadRunnerCatalog('agent');
       setMarketplaceRunners(catalog.marketplaceRunners);
       setInstalledPluginIds(catalog.installedPluginIds);
       setInstalledPluginDescriptions(catalog.installedPluginDescriptions);
@@ -392,7 +392,7 @@ export default function RunnerSelect({
                 {t('agents.marketplaceRunners')}
               </span>
               <a
-                href="https://space.langbot.app/market?type=plugin&component=Runner"
+                href="https://space.langbot.app/market?type=plugin&component=Runner&runner_usage=agent"
                 target="_blank"
                 rel="noreferrer"
                 className="inline-flex shrink-0 items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-medium text-foreground hover:bg-accent"

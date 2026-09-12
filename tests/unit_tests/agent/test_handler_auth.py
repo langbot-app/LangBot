@@ -125,6 +125,7 @@ class MockApplication:
 class FakeRunnerRegistry:
     async def get(self, context, runner_id, bound_plugins=None):
         return RunnerDescriptor(
+            usages=['agent'],
             id=runner_id,
             source='plugin',
             label={'en_US': 'Test Runner'},

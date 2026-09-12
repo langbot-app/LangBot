@@ -225,7 +225,7 @@ export default function WizardPage() {
     setIsRunnerCatalogLoading(true);
     setRunnerCatalogError(false);
     try {
-      const catalog = await fetchRunnerCatalog();
+      const catalog = await fetchRunnerCatalog('agent');
       setMarketplaceRunners(catalog.marketplaceRunners);
       setInstalledPluginIds(catalog.installedPluginIds);
     } catch (error) {
@@ -2087,7 +2087,7 @@ function StepAIEngine({
 
         <div className="flex justify-center">
           <Button variant="outline" size="sm" asChild>
-            <Link to="/home/extensions?type=plugin&component=Runner">
+            <Link to="/home/extensions?type=plugin&component=Runner&runner_usage=agent">
               {t('wizard.aiEngine.browseRunners')}
               <ExternalLink className="size-4" />
             </Link>

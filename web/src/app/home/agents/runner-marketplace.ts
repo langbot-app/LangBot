@@ -3,7 +3,11 @@ import { getCloudServiceClient } from '@/app/infra/http';
 import { getActiveWorkspaceUuid } from '@/app/infra/http/workspaceContext';
 import type { IDynamicFormItemOption } from '@/app/infra/entities/form/dynamic';
 import type { PipelineConfigTab } from '@/app/infra/entities/pipeline';
-import type { PluginV4 } from '@/app/infra/entities/plugin';
+import {
+  supportsRunnerUsage,
+  type PluginV4,
+  type RunnerUsage,
+} from '@/app/infra/entities/plugin';
 import type { I18nObject } from '@/app/infra/entities/common';
 
 export const RUNNER_COMPONENT_FILTER = 'Runner';
@@ -140,7 +144,9 @@ export function subscribePendingRunnerInstall(
     window.removeEventListener(RUNNER_INSTALL_INTENT_EVENT, handleChange);
 }
 
-export async function loadRunnerCatalog(): Promise<RunnerCatalog> {
+export async function loadRunnerCatalog(
+  usage: RunnerUsage,
+): Promise<RunnerCatalog> {
   const cloudClient = await getCloudServiceClient();
   const [firstSearchResult, recommendationResult, installedResult] =
     await Promise.all([
@@ -150,6 +156,7 @@ export async function loadRunnerCatalog(): Promise<RunnerCatalog> {
         page_size: RUNNER_CATALOG_PAGE_SIZE,
         type_filter: 'plugin',
         component_filter: RUNNER_COMPONENT_FILTER,
+        runner_usage: usage,
       }),
       cloudClient.getRecommendationLists().catch(() => ({ lists: [] })),
       httpClient.getPlugins().catch(() => ({ plugins: [] })),
@@ -167,6 +174,7 @@ export async function loadRunnerCatalog(): Promise<RunnerCatalog> {
         page_size: RUNNER_CATALOG_PAGE_SIZE,
         type_filter: 'plugin',
         component_filter: RUNNER_COMPONENT_FILTER,
+        runner_usage: usage,
       }),
     ),
   );
@@ -189,7 +197,7 @@ export async function loadRunnerCatalog(): Promise<RunnerCatalog> {
   }
 
   const marketplaceRunners = catalogPlugins
-    .filter((plugin) => plugin.components?.[RUNNER_COMPONENT_FILTER])
+    .filter((plugin) => supportsRunnerUsage(plugin, usage))
     .sort((left, right) => {
       const leftOrder = recommendationOrder.get(marketplacePluginId(left));
       const rightOrder = recommendationOrder.get(marketplacePluginId(right));

@@ -37,6 +37,7 @@ class FakeApplication:
 def make_descriptor():
     """Create a test descriptor."""
     return RunnerDescriptor(
+        usages=['agent'],
         id='plugin:langbot-team/LocalAgent/default',
         source='plugin',
         label={'en_US': 'Local Agent', 'zh_Hans': '内置 Agent'},

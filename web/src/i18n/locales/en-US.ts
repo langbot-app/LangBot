@@ -1229,6 +1229,11 @@ const enUS = {
     },
   },
   market: {
+    runnerUsage: 'Runner usage',
+    runnerUsageAll: 'All',
+    runnerUsageAgent: 'Agent / Pipeline',
+    runnerUsageEvent: 'Plugin processor',
+
     searchPlaceholder: 'Search plugins...',
     searchPlaceholderCount:
       'Search {{count}} extensions, capabilities, or use cases...',
@@ -2543,9 +2548,9 @@ const enUS = {
       catalogUnavailable: 'Runner catalog is unavailable',
       catalogUnavailableDescription:
         'Installed runners are still available. Retry the catalog or browse Extensions.',
-      noMarketplaceRunners: 'No Runner extensions are published yet',
+      noMarketplaceRunners: 'No Runner plugins match this usage',
       noMarketplaceRunnersDescription:
-        'Retry after runner extensions are published to the configured Marketplace.',
+        'Use an installed Runner or try again later.',
       browseRunners: 'Browse Runner Extensions',
       installAndContinue: 'Install & Continue',
       installing: 'Installing...',

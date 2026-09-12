@@ -115,7 +115,7 @@ export default function PluginProcessorSettings({
             <div className="p-2 text-sm text-muted-foreground">
               {t('agents.eventProcessor.noComponents')}
               <Button asChild variant="link" className="h-auto px-0">
-                <Link to="/home/plugins">
+                <Link to="/home/add-extension?type=plugin&component=Runner&runner_usage=event">
                   {t('agents.eventProcessor.installPlugin')}
                 </Link>
               </Button>

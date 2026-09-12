@@ -80,6 +80,7 @@ def _make_app(*, skill_service) -> SimpleNamespace:
     model = SimpleNamespace(model_entity=SimpleNamespace(uuid='model-1', abilities={'func_call'}))
     tool_mgr = SimpleNamespace(get_resolved_tool_catalog=AsyncMock(return_value=[]))
     descriptor = RunnerDescriptor(
+        usages=['agent'],
         id=_RUNNER_ID,
         source='plugin',
         label={'en_US': 'Local Agent'},

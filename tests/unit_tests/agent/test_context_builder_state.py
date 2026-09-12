@@ -32,6 +32,7 @@ def make_descriptor(
     permissions: dict | None = None,
 ) -> RunnerDescriptor:
     return RunnerDescriptor(
+        usages=['agent'],
         id='plugin:test/runner/default',
         source='plugin',
         label={'en_US': 'Test Runner'},

@@ -25,6 +25,7 @@ from langbot.pkg.agent.runner.state_scope import (
 def make_descriptor(runner_id: str = 'plugin:test/my-runner/default') -> RunnerDescriptor:
     """Create a test descriptor."""
     return RunnerDescriptor(
+        usages=['agent'],
         id=runner_id,
         source='plugin',
         label={'en_US': 'Test Runner'},

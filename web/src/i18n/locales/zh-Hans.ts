@@ -1166,6 +1166,11 @@ const zhHans = {
     },
   },
   market: {
+    runnerUsage: '运行器用途',
+    runnerUsageAll: '全部',
+    runnerUsageAgent: 'Agent / 流水线',
+    runnerUsageEvent: '插件处理器',
+
     searchPlaceholder: '搜索插件...',
     searchPlaceholderCount: '搜索 {{count}} 个扩展、能力或场景...',
     searchResults: '搜索到 {{count}} 个扩展',
@@ -2404,9 +2409,8 @@ const zhHans = {
       catalogUnavailable: '无法加载运行器目录',
       catalogUnavailableDescription:
         '已安装的运行器仍可使用。你可以重试，或前往扩展页面查看。',
-      noMarketplaceRunners: '市场暂未发布运行器扩展',
-      noMarketplaceRunnersDescription:
-        '请在运行器扩展发布到当前配置的市场后重试。',
+      noMarketplaceRunners: '暂无适用于此用途的运行器插件',
+      noMarketplaceRunnersDescription: '可以使用已安装的运行器，或稍后重试。',
       browseRunners: '浏览运行器扩展',
       installAndContinue: '安装并继续',
       installing: '正在安装...',

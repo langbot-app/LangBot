@@ -17,6 +17,7 @@ def _attach_runner_descriptor(app):
     from langbot.pkg.agent.runner.descriptor import RunnerDescriptor
 
     descriptor = RunnerDescriptor(
+        usages=['agent'],
         id=RUNNER_ID,
         source='plugin',
         label={'en_US': 'Local Agent'},

@@ -32,6 +32,7 @@ RUNNER_ID = 'plugin:langbot-team/LocalAgent/default'
 
 def attach_runner_descriptor(app):
     descriptor = RunnerDescriptor(
+        usages=['agent'],
         id=RUNNER_ID,
         source='plugin',
         label={'en_US': 'Local Agent'},

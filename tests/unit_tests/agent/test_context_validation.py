@@ -91,6 +91,7 @@ class TestContextValidation:
     def _make_descriptor(self):
         """Create a mock runner descriptor."""
         return RunnerDescriptor(
+            usages=['agent'],
             id='plugin:test/plugin/runner',
             source='plugin',
             label={'en_US': 'Test Runner'},
