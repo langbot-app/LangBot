@@ -89,6 +89,11 @@ const esES = {
       'Recomendado: Usa API de modelos oficiales estables y servicios en la nube',
     loginLocal: 'Iniciar sesión con cuenta local',
     loginWithPassword: 'Iniciar sesión con contraseña',
+    loginWithPasskey: 'Iniciar sesión con Passkey',
+    passkeyLoginSuccess: 'Passkey verificada con éxito, iniciando sesión...',
+    passkeyLoginFailed: 'Error al iniciar sesión con Passkey',
+    passkeyNotSupported:
+      'Passkey no es compatible en este navegador o dispositivo',
     spaceLoginTitle: 'Iniciar sesión con una cuenta de LangBot',
     spaceLoginDescription:
       'Escanea el código QR o visita el enlace para autorizar',
@@ -1376,6 +1381,20 @@ const esES = {
     bindSpaceWarning:
       'Después de vincular, tu correo de inicio de sesión se cambiará de {{localEmail}} al correo de la cuenta de LangBot.',
     bindSpaceSuccess: 'Cuenta de LangBot vinculada correctamente',
+    passkeySectionTitle: 'Llaves de acceso (Passkeys)',
+    passkeySectionDesc:
+      'Inicia sesión de forma segura sin contraseñas usando biometría o llaves de seguridad',
+    addPasskey: 'Añadir llave de acceso',
+    passkeyName: 'Nombre de la llave',
+    passkeyNamePlaceholder: 'p. ej., MacBook Touch ID, YubiKey',
+    passkeyCreated: 'Creada el {{date}}',
+    passkeyLastUsed: 'Último uso: {{date}}',
+    noPasskeys: 'No hay llaves de acceso registradas',
+    deletePasskeyConfirm:
+      '¿Seguro que deseas eliminar esta llave de acceso? Ya no podrás usarla para iniciar sesión.',
+    passkeyAddedSuccess: 'Llave de acceso añadida con éxito',
+    passkeyDeleteSuccess: 'Llave de acceso eliminada',
+    passkeyRenameSuccess: 'Nombre de llave de acceso modificado con éxito',
     bindSpaceFailed: 'Error al vincular la cuenta de LangBot',
     bindSpaceInvalidState:
       'Solicitud de vinculación no válida. Por favor, inténtalo de nuevo desde la configuración de la cuenta.',
