@@ -4,7 +4,6 @@ Unit tests for Passkey WebAuthn service operations in UserService.
 
 from __future__ import annotations
 
-import time
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
