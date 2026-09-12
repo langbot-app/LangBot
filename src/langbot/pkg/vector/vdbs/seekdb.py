@@ -101,18 +101,6 @@ class SeekDBVectorDatabase(VectorDatabase):
         self._collection_configs: Dict[str, HNSWConfiguration] = {}
         self._runtime_cache_limit = runtime_cache_limit(ap)
 
-        self._escape_table = str.maketrans(
-            {
-                '\x00': '',
-                '\\': '\\\\',
-                "'": "''",  # Standard SQL escaping (OceanBase NO_BACKSLASH_ESCAPES)
-                '"': '\\"',
-                '\n': '\\n',
-                '\r': '\\r',
-                '\t': '\\t',
-            }
-        )
-
     async def close(self) -> None:
         self._collections.clear()
         self._collection_configs.clear()
@@ -192,16 +180,22 @@ class SeekDBVectorDatabase(VectorDatabase):
         return coll
 
     def _clean_metadata(self, meta: Dict[str, Any]) -> Dict[str, Any]:
-        """SeekDB metadata doesn't support \\ and ", insert will error 3104"""
-        return {
-            k: v.translate(self._escape_table)
-            if isinstance(v, str)
-            else v
-            if v is None or isinstance(v, (int, float, bool))
-            else str(v)
-            for k, v in meta.items()
-            if v is not None
-        }
+        """Keep supported scalar metadata values without altering strings."""
+        return {k: v if isinstance(v, (str, int, float, bool)) else str(v) for k, v in meta.items() if v is not None}
+
+    @staticmethod
+    def _relevance_scores_to_distances(results: Dict[str, Any]) -> None:
+        """Convert SeekDB hybrid relevance scores to lower-is-better distances."""
+        distances = results.get('distances')
+        if not isinstance(distances, list):
+            return
+
+        results['distances'] = [
+            [1.0 - float(score) if isinstance(score, (int, float)) else score for score in batch]
+            if isinstance(batch, list)
+            else batch
+            for batch in distances
+        ]
 
     async def get_or_create_collection(self, collection: str):
         """Get or create collection (without vector size - will use default)."""
@@ -236,10 +230,10 @@ class SeekDBVectorDatabase(VectorDatabase):
 
         kwargs: Dict[str, Any] = dict(ids=ids, embeddings=embeddings_list, metadatas=cleaned_metadatas)
         if documents is not None:
-            kwargs['documents'] = [doc.translate(self._escape_table) for doc in documents]
-        await asyncio.to_thread(coll.add, **kwargs)
+            kwargs['documents'] = documents
+        await asyncio.to_thread(coll.upsert, **kwargs)
 
-        self.ap.logger.info(f"Added {len(ids)} embeddings to SeekDB collection '{collection}'")
+        self.ap.logger.info(f"Upserted {len(ids)} embeddings into SeekDB collection '{collection}'")
 
     async def search(
         self,
@@ -287,7 +281,8 @@ class SeekDBVectorDatabase(VectorDatabase):
         # Route by search type.
         # pyseekdb's query() always requires embeddings, so full-text and
         # hybrid modes use hybrid_search() which supports text-only queries
-        # and returns the same nested-list format with distances.
+        # and returns relevance scores in the nested ``distances`` field.
+        returns_relevance_scores = False
         if search_type == SearchType.FULL_TEXT:
             if not query_text:
                 return {'ids': [[]], 'metadatas': [[]], 'distances': [[]]}
@@ -309,6 +304,7 @@ class SeekDBVectorDatabase(VectorDatabase):
                 n_results=k,
                 include=['documents', 'metadatas'],
             )
+            returns_relevance_scores = True
 
         elif search_type == SearchType.HYBRID:
             if not query_text:
@@ -352,6 +348,7 @@ class SeekDBVectorDatabase(VectorDatabase):
                     n_results=k,
                     include=['documents', 'metadatas'],
                 )
+                returns_relevance_scores = True
                 self.ap.logger.info(
                     f"SeekDB hybrid search in '{collection}' returned {len(results.get('ids', [[]])[0])} results."
                 )
@@ -363,6 +360,8 @@ class SeekDBVectorDatabase(VectorDatabase):
             results = await asyncio.to_thread(coll.query, **query_kwargs)
 
         results = self._json_safe(results)
+        if returns_relevance_scores:
+            self._relevance_scores_to_distances(results)
         self.ap.logger.info(
             f"SeekDB {search_type} search in '{collection}' returned {len(results.get('ids', [[]])[0])} results"
         )
