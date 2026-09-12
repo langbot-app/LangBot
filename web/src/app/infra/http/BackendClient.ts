@@ -1241,10 +1241,21 @@ export class BackendClient extends BaseHttpClient {
     );
   }
 
-  public authUser(user: string, password: string): Promise<ApiRespUserToken> {
+  public authUser(
+    user: string,
+    password: string,
+    secondFactor?: { totpCode?: string; recoveryCode?: string },
+  ): Promise<ApiRespUserToken> {
     return this.post(
       '/api/v1/user/auth',
-      { user, password },
+      {
+        user,
+        password,
+        ...(secondFactor?.totpCode ? { totp_code: secondFactor.totpCode } : {}),
+        ...(secondFactor?.recoveryCode
+          ? { recovery_code: secondFactor.recoveryCode }
+          : {}),
+      },
       { skipWorkspace: true },
     );
   }
@@ -1257,15 +1268,25 @@ export class BackendClient extends BaseHttpClient {
 
   public resetPassword(
     user: string,
-    recoveryKey: string,
     newPassword: string,
+    factor:
+      | { recoveryKey: string }
+      | { totpCode: string }
+      | { recoveryCode: string },
   ): Promise<{ user: string }> {
     return this.post(
       '/api/v1/user/reset-password',
       {
         user,
-        recovery_key: recoveryKey,
         new_password: newPassword,
+        // Exactly one proof-of-ownership factor is accepted by the backend.
+        ...('recoveryKey' in factor
+          ? { recovery_key: factor.recoveryKey }
+          : {}),
+        ...('totpCode' in factor ? { totp_code: factor.totpCode } : {}),
+        ...('recoveryCode' in factor
+          ? { recovery_code: factor.recoveryCode }
+          : {}),
       },
       { skipWorkspace: true },
     );
@@ -1290,6 +1311,7 @@ export class BackendClient extends BaseHttpClient {
     user: string;
     account_type: 'local' | 'space';
     has_password: boolean;
+    totp_enabled?: boolean;
   }> {
     return this.get('/api/v1/user/info', undefined, { skipWorkspace: true });
   }
@@ -1306,10 +1328,26 @@ export class BackendClient extends BaseHttpClient {
     space_login_enabled?: boolean;
     passkey_login_enabled?: boolean;
     passkey_supported?: boolean;
+    totp_supported?: boolean;
   }> {
     return this.get('/api/v1/user/account-info', undefined, {
       skipWorkspace: true,
     });
+  }
+
+  /**
+   * Whether the account identified by the given email has TOTP enabled.
+   *
+   * This endpoint is unauthenticated so the password-recovery page can decide
+   * whether to offer the TOTP / recovery-code verification methods. The
+   * response only exposes the boolean capability.
+   */
+  public checkTotpForEmail(user: string): Promise<{ totp_enabled: boolean }> {
+    return this.post(
+      '/api/v1/user/totp/check',
+      { user },
+      { skipWorkspace: true },
+    );
   }
 
   // ============ Passkey (WebAuthn) API ============
@@ -1388,6 +1426,51 @@ export class BackendClient extends BaseHttpClient {
     return this.delete(`/api/v1/user/passkey/${encodeURIComponent(uuid)}`, {
       skipWorkspace: true,
     });
+  }
+
+  // ============ TOTP (2FA) API ============
+  public getTotpStatus(): Promise<{
+    enabled: boolean;
+    remaining_recovery_codes: number;
+  }> {
+    return this.get('/api/v1/user/totp/status', undefined, {
+      skipWorkspace: true,
+    });
+  }
+
+  public beginTotpEnrollment(): Promise<{
+    secret: string;
+    otpauth_uri: string;
+    qr_svg: string;
+    recovery_codes: string[];
+  }> {
+    return this.post('/api/v1/user/totp/enroll', {}, { skipWorkspace: true });
+  }
+
+  public verifyTotpEnrollment(code: string): Promise<{ enabled: boolean }> {
+    return this.post(
+      '/api/v1/user/totp/enroll/verify',
+      { code },
+      { skipWorkspace: true },
+    );
+  }
+
+  public regenerateTotpRecoveryCodes(
+    code: string,
+  ): Promise<{ recovery_codes: string[] }> {
+    return this.post(
+      '/api/v1/user/totp/recovery-codes',
+      { code },
+      { skipWorkspace: true },
+    );
+  }
+
+  public disableTotp(code: string): Promise<{ success: boolean }> {
+    return this.post(
+      '/api/v1/user/totp/disable',
+      { code },
+      { skipWorkspace: true },
+    );
   }
 
   // ============ Workspace API ============

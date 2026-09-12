@@ -1306,6 +1306,8 @@ const ruRU = {
     newPasswordRequired: 'Новый пароль не может быть пустым',
     resetPassword: 'Сбросить пароль',
     resetting: 'Сброс...',
+    totpMethodsUnavailable:
+      'TOTP не включён для этой учётной записи; доступен только ключ восстановления.',
     resetSuccess: 'Пароль успешно сброшен, пожалуйста, войдите',
     resetFailed: 'Ошибка сброса пароля, проверьте email и ключ восстановления',
     backToLogin: 'Вернуться к входу',

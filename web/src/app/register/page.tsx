@@ -22,7 +22,7 @@ import {
 import { useEffect, useState } from 'react';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { useNavigate } from 'react-router-dom';
-import { Mail, Lock, Loader2, Info, Layers } from 'lucide-react';
+import { Mail, Lock, Loader2, Info, Layers, ShieldCheck } from 'lucide-react';
 import {
   Popover,
   PopoverContent,
@@ -236,6 +236,11 @@ export default function Register() {
                   >
                     {t('register.registerWithPassword')}
                   </Button>
+                  {/* Recommend enabling TOTP once the account exists */}
+                  <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                    <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+                    <span>{t('register.totpHint')}</span>
+                  </p>
                 </form>
               </Form>
             </>

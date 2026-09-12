@@ -1298,6 +1298,8 @@ const viVN = {
     newPasswordRequired: 'Mật khẩu mới không được để trống',
     resetPassword: 'Đặt lại mật khẩu',
     resetting: 'Đang đặt lại...',
+    totpMethodsUnavailable:
+      'TOTP chưa được bật cho tài khoản này; chỉ có thể dùng khóa khôi phục.',
     resetSuccess: 'Đặt lại mật khẩu thành công, vui lòng đăng nhập',
     resetFailed:
       'Đặt lại mật khẩu thất bại, vui lòng kiểm tra email và khóa khôi phục',

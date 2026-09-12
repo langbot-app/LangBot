@@ -92,6 +92,13 @@ const jaJP = {
     passkeyLoginFailed: 'パスキーでのログインに失敗しました',
     passkeyNotSupported:
       'お使いのブラウザまたはデバイスはパスキーをサポートしていません',
+    loginTotpTitle: '二要素認証',
+    loginTotpDesc:
+      '認証アプリの6桁のコード、またはリカバリーコードを入力してください',
+    loginTotpPlaceholder: '認証コードまたはリカバリーコード',
+    loginTotpVerify: '確認',
+    loginTotpVerifying: '確認中...',
+    loginTotpInvalid: 'コードが無効です。もう一度お試しください',
     spaceLoginTitle: 'LangBot アカウントでログイン',
     spaceLoginDescription:
       'QRコードをスキャンするか、下のリンクにアクセスして認証してください',
@@ -1286,6 +1293,8 @@ const jaJP = {
     registerWithPassword: 'メールアドレスとパスワードで登録',
     initSuccess: '初期化に成功しました。ログインしてください',
     initFailed: '初期化に失敗しました：',
+    totpHint:
+      '推奨：ログイン後、アカウント設定で二要素認証（TOTP）を有効にしてアカウントを保護してください。',
   },
   resetPassword: {
     title: 'パスワードをリセット 🔐',
@@ -1305,6 +1314,21 @@ const jaJP = {
     resetFailed:
       'パスワードのリセットに失敗しました。メールアドレスと復旧キーを確認してください',
     backToLogin: 'ログインに戻る',
+    totpMethod: 'TOTP 認証アプリ',
+    recoveryCodeMethod: 'リカバリーコード',
+    verifyMethod: '確認方法',
+    totpMethodsUnavailable:
+      'このアカウントでは TOTP が有効になっていません。リカバリーキーのみ使用できます。',
+    totpCode: '認証コード',
+    enterTotpCode: '認証アプリに表示される6桁のコードを入力',
+    recoveryCode: 'リカバリーコード',
+    enterRecoveryCode: 'リカバリーコードのいずれかを入力',
+    totpCodeRequired: '認証コードは必須です',
+    recoveryCodeRequired: 'リカバリーコードは必須です',
+    totpNotEnabled:
+      'このアカウントでは TOTP が有効になっていません。復旧キーを使用してください',
+    invalidTotpCode: '認証コードが無効です。もう一度お試しください',
+    totpMethodDescription: 'TOTP 認証アプリまたはリカバリーコードで確認します',
   },
   embedding: {
     description: 'テキストのベクトル化に使用する埋め込みモデルを管理します',
@@ -1364,6 +1388,37 @@ const jaJP = {
     passkeyAddedSuccess: 'パスキーが正常に追加されました',
     passkeyDeleteSuccess: 'パスキーを削除しました',
     passkeyRenameSuccess: 'パスキー名を変更しました',
+    totpSectionTitle: '二要素認証 (TOTP)',
+    totpSectionDesc:
+      'QR コードをスキャンして TOTP 認証アプリを追加し、ログインの安全性を高めます',
+    totpEnabled: '有効',
+    totpDisabled: '無効',
+    enableTotp: 'TOTP を有効化',
+    disableTotp: 'TOTP を無効化',
+    totpEnabledSuccess: '二要素認証を有効にしました',
+    totpDisabledSuccess: '二要素認証を無効にしました',
+    totpEnrollTitle: 'TOTP 認証アプリを追加',
+    totpEnrollDesc:
+      '認証アプリで QR コードをスキャンし、6桁のコードを入力して確認します',
+    totpScanHint: '認証アプリでこの QR コードをスキャンしてください',
+    totpManualSecret: 'またはこのキーを手動で入力',
+    totpCodeLabel: '認証コード',
+    totpCodePlaceholder: '6桁のコード',
+    totpVerify: '確認して有効化',
+    totpVerifying: '確認中...',
+    totpRecoveryCodesTitle: 'リカバリーコード',
+    totpRecoveryCodesDesc:
+      'これらのコードは安全な場所に保管してください。認証アプリが使えない場合、各コードは一度だけ使用できます。',
+    totpRecoveryCodesRemaining: '残り {{count}} 個のリカバリーコード',
+    totpRegenerateRecoveryCodes: 'リカバリーコードを再生成',
+    totpRecoveryCodesRegenerated: 'リカバリーコードを再生成しました',
+    totpDisableTitle: '二要素認証を無効化',
+    totpDisableDesc: '有効な認証コードを入力して二要素認証を無効化します',
+    totpConfirmDisable: '無効化',
+    totpInvalidCode: 'コードが無効です。もう一度お試しください',
+    totpLoadFailed: '二要素認証の状態の読み込みに失敗しました',
+    totpCopySecret: 'キーをコピー',
+    totpCopied: 'クリップボードにコピーしました',
     bindSpaceFailed: 'LangBot アカウントの連携に失敗しました',
     bindSpaceInvalidState:
       '無効な連携リクエストです。アカウント設定から再度お試しください。',

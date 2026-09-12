@@ -1234,6 +1234,7 @@ const zhHant = {
     newPasswordRequired: '新密碼不能為空',
     resetPassword: '重設密碼',
     resetting: '重設中...',
+    totpMethodsUnavailable: '此帳戶未開啟 TOTP 驗證，僅可使用恢復金鑰重設密碼',
     resetSuccess: '密碼重設成功，請登入',
     resetFailed: '密碼重設失敗，請檢查電子郵件和恢復金鑰是否正確',
     backToLogin: '返回登入',
