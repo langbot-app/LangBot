@@ -2008,7 +2008,7 @@ wheels = [
 
 [[package]]
 name = "langbot"
-version = "4.10.10"
+version = "4.10.11"
 source = { editable = "." }
 dependencies = [
     { name = "aiocqhttp" },
