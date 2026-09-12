@@ -250,6 +250,29 @@ stages:
           field: knowledge-bases
           operator: neq
           value: []
+      - name: knowledge-retrieval-error-policy
+        label:
+          en_US: Knowledge Retrieval Errors
+          zh_Hans: 知识库检索错误
+        description:
+          en_US: Choose whether a Local Agent request should fail or continue without knowledge context when retrieval fails.
+          zh_Hans: 选择知识库检索失败时，内置 Agent 请求是直接失败，还是跳过知识库上下文继续回答。
+        type: select
+        required: false
+        default: fail
+        options:
+          - name: fail
+            label:
+              en_US: Fail the request
+              zh_Hans: 请求失败
+          - name: continue
+            label:
+              en_US: Continue without knowledge context
+              zh_Hans: 跳过知识库继续回答
+        show_if:
+          field: knowledge-bases
+          operator: neq
+          value: []
       - name: rerank-top-k
         label:
           en_US: Rerank Top K
