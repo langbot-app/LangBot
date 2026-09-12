@@ -3,7 +3,14 @@ import { useRef, useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import PluginComponentList from '../PluginComponentList';
 import { Badge } from '@/components/ui/badge';
-import { Info, Package, ExternalLink, Heart, Loader2 } from 'lucide-react';
+import {
+  CheckCircle2,
+  Info,
+  Package,
+  ExternalLink,
+  Heart,
+  Loader2,
+} from 'lucide-react';
 import {
   Tooltip,
   TooltipContent,
@@ -47,6 +54,10 @@ export default function PluginMarketCardComponent({
     const keys = Object.keys(cardVO.components);
     return keys.length > 0 && keys.every((k) => k === 'KnowledgeRetriever');
   })();
+
+  // Already installed → swap the download count for an "installed" marker.
+  // Click behaviour stays identical to a normal card.
+  const isInstalled = cardVO.installed === true;
 
   const showTypeBadge = cardVO.type;
   const typeLabel =
@@ -320,23 +331,34 @@ export default function PluginMarketCardComponent({
           className="w-full flex flex-row items-center justify-between gap-2 px-0 sm:px-[0.4rem] flex-shrink-0 overflow-hidden"
         >
           <div className="flex flex-row items-center justify-start gap-2 min-w-0 overflow-hidden">
-            <div className="flex flex-row items-center gap-[0.3rem] sm:gap-[0.4rem] flex-shrink-0">
-              <svg
-                className="w-4 h-4 sm:w-[1.2rem] sm:h-[1.2rem] text-[#2563eb] dark:text-[#5b8def] flex-shrink-0"
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-              >
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="7,10 12,15 17,10" />
-                <line x1="12" y1="15" x2="12" y2="3" />
-              </svg>
-              <div className="text-xs sm:text-sm text-[#2563eb] dark:text-[#5b8def] font-medium whitespace-nowrap">
-                {cardVO.installCount?.toLocaleString() ?? '0'}
+            {/* Installed extensions replace the download count with an
+                "installed" marker so the card reflects local state. */}
+            {isInstalled ? (
+              <div className="flex flex-row items-center gap-[0.3rem] sm:gap-[0.4rem] flex-shrink-0">
+                <CheckCircle2 className="w-4 h-4 sm:w-[1.2rem] sm:h-[1.2rem] text-green-600 dark:text-green-400 flex-shrink-0" />
+                <div className="text-xs sm:text-sm text-green-600 dark:text-green-400 font-medium whitespace-nowrap">
+                  {t('market.installed')}
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="flex flex-row items-center gap-[0.3rem] sm:gap-[0.4rem] flex-shrink-0">
+                <svg
+                  className="w-4 h-4 sm:w-[1.2rem] sm:h-[1.2rem] text-[#2563eb] dark:text-[#5b8def] flex-shrink-0"
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="7,10 12,15 17,10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
+                <div className="text-xs sm:text-sm text-[#2563eb] dark:text-[#5b8def] font-medium whitespace-nowrap">
+                  {cardVO.installCount?.toLocaleString() ?? '0'}
+                </div>
+              </div>
+            )}
 
             {cardVO.tags && cardVO.tags.length > 0 && visibleTags > 0 && (
               <div className="flex flex-row items-center gap-1.5 overflow-hidden flex-shrink min-w-0">

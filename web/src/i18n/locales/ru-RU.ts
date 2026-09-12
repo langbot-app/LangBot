@@ -763,6 +763,9 @@ const ruRU = {
     downloadComplete: 'Плагин "{{name}}" загружен',
     installFailed: 'Ошибка установки, попробуйте позже',
     loadFailed: 'Не удалось получить список плагинов, попробуйте позже',
+    installed: 'Установлено',
+    updateAvailable: 'Доступно обновление',
+    alreadyInstalled: '{{name}} уже установлен',
     noDescription: 'Описание отсутствует',
     recommendation: {
       pause: 'Приостановить авто-прокрутку',

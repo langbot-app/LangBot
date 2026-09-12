@@ -1,4 +1,11 @@
-import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
+import {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+  Suspense,
+} from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Input } from '@/components/ui/input';
 import {
@@ -51,6 +58,10 @@ import { ApiRespMarketplacePlugins } from '@/app/infra/entities/api';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { Button } from '@/components/ui/button';
 import { PluginTag } from '@/app/infra/http/CloudServiceClient';
+import {
+  resolveInstalledState,
+  useMarketplaceInstalledIndex,
+} from './marketplace-installed';
 
 interface SortOption {
   value: string;
@@ -90,6 +101,20 @@ function MarketPageContent({
 }) {
   const { t } = useTranslation();
   const [searchParams] = useSearchParams();
+
+  // Installed-extension lookup, recomputed whenever the sidebar lists change
+  // (e.g. right after an install completes).
+  const installedIndex = useMarketplaceInstalledIndex();
+
+  const decorateInstalled = useCallback(
+    (vo: PluginMarketCardVO): PluginMarketCardVO => {
+      const state = resolveInstalledState(installedIndex, vo);
+      vo.installed = state.installed;
+      vo.hasUpdate = state.hasUpdate;
+      return vo;
+    },
+    [installedIndex],
+  );
 
   const validTypes = ['plugin', 'mcp', 'skill'];
 
@@ -571,7 +596,12 @@ function MarketPageContent({
     };
   }, []);
 
-  const visiblePlugins = plugins;
+  // Decorate with installed state at render time so the badge updates the
+  // moment the sidebar lists refresh (e.g. after an install completes).
+  const visiblePlugins = useMemo(
+    () => plugins.map((plugin) => decorateInstalled(plugin)),
+    [plugins, decorateInstalled],
+  );
 
   // 加载更多
   const loadMore = useCallback(() => {

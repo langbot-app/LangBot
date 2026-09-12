@@ -758,6 +758,9 @@ const jaJP = {
     installFailed: 'インストールに失敗しました。後でもう一度お試しください',
     loadFailed:
       'プラグインリストの取得に失敗しました。後でもう一度お試しください',
+    installed: 'インストール済み',
+    updateAvailable: '更新あり',
+    alreadyInstalled: '{{name}} はインストール済みです',
     noDescription: '説明がありません',
     recommendation: {
       pause: '自動ローテーションを一時停止',

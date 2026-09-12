@@ -715,6 +715,9 @@ const zhHans = {
     installConfirm: '确定要安装插件 "{{name}}" ({{version}}) 吗？',
     downloadComplete: '插件 "{{name}}" 下载完成',
     installFailed: '安装失败，请稍后重试',
+    installed: '已安装',
+    updateAvailable: '有更新',
+    alreadyInstalled: '{{name}} 已安装',
     loadFailed: '获取插件列表失败，请稍后重试',
     noDescription: '暂无描述',
     recommendation: {

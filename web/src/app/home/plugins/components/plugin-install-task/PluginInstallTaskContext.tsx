@@ -27,6 +27,9 @@ export interface PluginInstallTask {
   pluginName: string; // display name
   source: 'github' | 'marketplace' | 'local';
   stage: InstallStage;
+  /** Furthest non-terminal stage reached — kept when the task fails so the
+   *  UI can still show which phase failed. */
+  lastStage?: InstallStage;
   overallProgress: number; // 0-100
   extensionType: 'plugin' | 'mcp' | 'skill'; // type of extension being installed
   fileSize?: number; // bytes, if known
@@ -43,6 +46,8 @@ export interface PluginInstallTask {
   depsSpeed?: number; // deps download speed bytes/s
   error?: string;
   startedAt: number; // timestamp
+  /** Timestamp when the current stage began; used for smooth creeping. */
+  stageStartedAt?: number;
   currentAction: string; // raw backend action string
 }
 
@@ -84,42 +89,158 @@ export function usePluginInstallTasks() {
 }
 
 /**
- * Map backend `current_action` to our InstallStage.
+ * Ordered lifecycle stages. Used to enforce forward-only transitions so the
+ * progress bar never moves backwards while a task is running.
  */
-function mapActionToStage(action: string): InstallStage {
-  if (!action) return InstallStage.DOWNLOADING;
-  const lower = action.toLowerCase();
-  if (lower.includes('download')) return InstallStage.DOWNLOADING;
-  if (lower.includes('dependencies') || lower.includes('requirements'))
-    return InstallStage.INSTALLING_DEPS;
-  if (lower.includes('initializ') || lower.includes('setting'))
-    return InstallStage.INSTALLING_DEPS;
-  if (lower.includes('launch')) return InstallStage.INSTALLING_DEPS;
-  if (lower.includes('installed') || lower.includes('complete'))
-    return InstallStage.DONE;
-  return InstallStage.DOWNLOADING;
+const STAGE_ORDER: InstallStage[] = [
+  InstallStage.DOWNLOADING,
+  InstallStage.INSTALLING_DEPS,
+  InstallStage.INITIALIZING,
+  InstallStage.LAUNCHING,
+  InstallStage.DONE,
+];
+
+/**
+ * Lower bound (%) for each stage. A task's progress is never allowed to drop
+ * below the floor of the furthest stage it has already reached.
+ */
+const STAGE_FLOOR: Record<InstallStage, number> = {
+  [InstallStage.DOWNLOADING]: 2,
+  [InstallStage.INSTALLING_DEPS]: 55,
+  [InstallStage.INITIALIZING]: 85,
+  [InstallStage.LAUNCHING]: 94,
+  [InstallStage.DONE]: 100,
+  [InstallStage.ERROR]: 0,
+};
+
+/** Get the lower-bound percentage for a stage. */
+function stageFloor(stage: InstallStage): number {
+  return STAGE_FLOOR[stage] ?? 0;
+}
+
+/** Get the lower bound of the stage that follows the given one. */
+function nextStageFloor(stage: InstallStage): number {
+  const idx = STAGE_ORDER.indexOf(stage);
+  const next = idx >= 0 ? STAGE_ORDER[idx + 1] : undefined;
+  return next ? stageFloor(next) : 100;
+}
+
+/** Return whichever stage is further along in the lifecycle. */
+function maxStage(current: InstallStage, incoming: InstallStage): InstallStage {
+  const currentIdx = STAGE_ORDER.indexOf(current);
+  const incomingIdx = STAGE_ORDER.indexOf(incoming);
+  if (currentIdx === -1) return incoming;
+  if (incomingIdx === -1) return current;
+  return incomingIdx >= currentIdx ? incoming : current;
 }
 
 /**
- * Get overall progress percentage from a stage.
+ * Map backend `current_action` to our InstallStage.
+ *
+ * Unknown / transitional actions must NOT map back to an earlier stage,
+ * otherwise the bar would jump backwards mid-install.
  */
-function stageToProgress(stage: InstallStage): number {
-  switch (stage) {
-    case InstallStage.DOWNLOADING:
-      return 10;
-    case InstallStage.INSTALLING_DEPS:
-      return 70;
-    case InstallStage.INITIALIZING:
-      return 70;
-    case InstallStage.LAUNCHING:
-      return 85;
-    case InstallStage.DONE:
-      return 100;
-    case InstallStage.ERROR:
-      return 0;
-    default:
-      return 0;
+function mapActionToStage(action: string): InstallStage {
+  const lower = (action || '').toLowerCase();
+  if (!lower) return InstallStage.DOWNLOADING;
+
+  // "preparing"/"resolving" happen before any bytes land on disk.
+  if (lower.includes('prepar') || lower.includes('resolv'))
+    return InstallStage.DOWNLOADING;
+
+  if (lower.includes('download') && !lower.includes('dependenc'))
+    return InstallStage.DOWNLOADING;
+
+  // Activation / readiness tail phase — its own slice of the bar.
+  if (
+    lower.includes('launch') ||
+    lower.includes('start') ||
+    lower.includes('wait') ||
+    lower.includes('ready') ||
+    lower.includes('initializ')
+  ) {
+    return InstallStage.LAUNCHING;
   }
+
+  // Dependency installation and package finalization.
+  if (
+    lower.includes('dependenc') ||
+    lower.includes('requirements') ||
+    lower.includes('parsing') ||
+    lower.includes('extract') ||
+    lower.includes('inspect') ||
+    lower.includes('persist') ||
+    lower.includes('stor') ||
+    lower.includes('install') ||
+    lower.includes('setting')
+  ) {
+    return InstallStage.INSTALLING_DEPS;
+  }
+
+  // Unknown transitional actions belong to the busy middle of the install.
+  return InstallStage.INSTALLING_DEPS;
+}
+
+/**
+ * Time-based creep so the bar keeps moving when no counters exist.
+ *
+ * Uses an asymptote so the increment decelerates as it approaches the stage
+ * ceiling — the bar always feels alive but never overshoots into the next
+ * stage's range.
+ */
+function creep(stageStartedAt: number, span: number): number {
+  if (span <= 0) return 0;
+  const elapsed = (Date.now() - stageStartedAt) / 1000;
+  // Approaching `span` asymptotically: after ~60s we are ~86% of the span.
+  const ratio = 1 - Math.exp(-elapsed / 30);
+  return span * ratio;
+}
+
+/**
+ * Compute a progress value for the current stage.
+ *
+ * Real byte / dependency counters drive the value when available; otherwise
+ * the value creeps forward slowly based on elapsed time. Callers are expected
+ * to combine the result with the previous value via `Math.max` so it is
+ * monotonic.
+ */
+function computeStageProgress(
+  task: PluginInstallTask,
+  stage: InstallStage,
+): number {
+  const floor = stageFloor(stage);
+  const ceiling = Math.max(floor, nextStageFloor(stage) - 1);
+  // Creep from when this stage began so a stage change restarts the ramp
+  // instead of inheriting the previous stage's elapsed time.
+  const stageStartedAt = task.stageStartedAt ?? task.startedAt;
+  const creepValue = Math.min(
+    ceiling,
+    floor + creep(stageStartedAt, ceiling - floor),
+  );
+
+  if (stage === InstallStage.DOWNLOADING) {
+    const total = task.downloadTotal ?? task.fileSize;
+    const current = task.downloadCurrent;
+    if (total && total > 0 && current != null && current > 0) {
+      const ratio = Math.min(1, current / total);
+      // Never let a stale counter pull the value below the creep baseline.
+      return Math.max(creepValue, floor + (ceiling - floor) * ratio);
+    }
+    return creepValue;
+  }
+
+  if (stage === InstallStage.INSTALLING_DEPS) {
+    const total = task.depsTotal;
+    const installed = task.depsInstalled;
+    if (total && total > 0 && installed != null && installed > 0) {
+      const ratio = Math.min(1, installed / total);
+      // Leave headroom for the finalize/launch phase that has no counters.
+      return Math.max(creepValue, floor + (ceiling - floor) * ratio * 0.9);
+    }
+    return creepValue;
+  }
+
+  return creepValue;
 }
 
 /**
@@ -146,8 +267,14 @@ function isPluginInstallTask(name: string): boolean {
 
 /**
  * Convert a backend AsyncTask to our PluginInstallTask.
+ *
+ * `previous` (when provided) carries monotonic state forward so re-syncing
+ * after a refresh or a poll cannot make the progress bar move backwards.
  */
-function asyncTaskToPluginInstallTask(task: AsyncTask): PluginInstallTask {
+function asyncTaskToPluginInstallTask(
+  task: AsyncTask,
+  previous?: PluginInstallTask,
+): PluginInstallTask {
   const source = extractSourceFromName(task.name);
   const md = (task.task_context?.metadata ?? {}) as Record<string, unknown>;
   const action = task.task_context?.current_action || '';
@@ -156,24 +283,6 @@ function asyncTaskToPluginInstallTask(task: AsyncTask): PluginInstallTask {
 
   const num = (v: unknown) => (typeof v === 'number' ? v : undefined);
   const str = (v: unknown) => (typeof v === 'string' ? v : undefined);
-
-  let stage: InstallStage;
-  let overallProgress: number;
-  let error: string | undefined;
-
-  if (done) {
-    if (exception) {
-      stage = InstallStage.ERROR;
-      overallProgress = 0;
-      error = exception;
-    } else {
-      stage = InstallStage.DONE;
-      overallProgress = 100;
-    }
-  } else {
-    stage = mapActionToStage(action);
-    overallProgress = Math.min(95, stageToProgress(stage));
-  }
 
   const pluginName = str(md.plugin_name) || task.label || `${source} extension`;
 
@@ -184,6 +293,75 @@ function asyncTaskToPluginInstallTask(task: AsyncTask): PluginInstallTask {
     extensionType = 'skill';
   }
 
+  // Prefer the task's real creation time so a refresh (or first sync) restores
+  // the correct elapsed baseline instead of restarting the ramp from zero.
+  const backendStartedAt =
+    typeof task.created_at === 'number' && task.created_at > 0
+      ? task.created_at * 1000
+      : undefined;
+  const startedAt = previous?.startedAt ?? backendStartedAt ?? Date.now();
+  let stageStartedAt =
+    previous?.stageStartedAt ??
+    previous?.startedAt ??
+    backendStartedAt ??
+    startedAt;
+
+  let stage: InstallStage;
+  let overallProgress: number;
+  let error: string | undefined;
+
+  // Furthest non-terminal stage reached, kept across failures.
+  let lastStage = previous?.lastStage ?? previous?.stage;
+
+  if (done) {
+    if (exception) {
+      // Preserve how far the task got before failing, so the bar shows the
+      // failure point instead of jumping back to zero.
+      stage = InstallStage.ERROR;
+      overallProgress = previous?.overallProgress ?? 0;
+      error = exception;
+    } else {
+      stage = InstallStage.DONE;
+      overallProgress = 100;
+    }
+  } else {
+    const incoming = mapActionToStage(action);
+    // Forward-only: never move back to an earlier stage than we already reached.
+    stage = previous ? maxStage(previous.stage, incoming) : incoming;
+    if (!previous || previous.stage !== stage) {
+      stageStartedAt = Date.now();
+    }
+    lastStage = stage;
+
+    const counters: PluginInstallTask = {
+      id: `${source}-${task.id}`,
+      taskId: task.id,
+      pluginName,
+      source,
+      extensionType,
+      stage,
+      overallProgress: 0,
+      downloadCurrent: num(md.download_current) ?? previous?.downloadCurrent,
+      downloadTotal: num(md.download_total) ?? previous?.downloadTotal,
+      downloadSpeed: num(md.download_speed) ?? previous?.downloadSpeed,
+      depsTotal: num(md.deps_total) ?? previous?.depsTotal,
+      depsInstalled: num(md.deps_installed) ?? previous?.depsInstalled,
+      depsRemaining: num(md.deps_remaining) ?? previous?.depsRemaining,
+      currentDep: str(md.current_dep) ?? previous?.currentDep,
+      depsDownloadedSize:
+        num(md.deps_downloaded_size) ?? previous?.depsDownloadedSize,
+      depsSpeed: num(md.deps_speed) ?? previous?.depsSpeed,
+      startedAt,
+      stageStartedAt,
+      currentAction: action,
+    };
+
+    const computed = computeStageProgress(counters, stage);
+    overallProgress = Math.max(previous?.overallProgress ?? 0, computed);
+    // Keep the bar strictly below 100 until the backend confirms completion.
+    overallProgress = Math.round(Math.min(99, overallProgress));
+  }
+
   return {
     id: `${source}-${task.id}`,
     taskId: task.id,
@@ -191,18 +369,21 @@ function asyncTaskToPluginInstallTask(task: AsyncTask): PluginInstallTask {
     source,
     extensionType,
     stage,
+    lastStage,
     overallProgress,
-    downloadCurrent: num(md.download_current),
-    downloadTotal: num(md.download_total),
-    downloadSpeed: num(md.download_speed),
-    depsTotal: num(md.deps_total),
-    depsInstalled: num(md.deps_installed),
-    depsRemaining: num(md.deps_remaining),
-    currentDep: str(md.current_dep),
-    depsDownloadedSize: num(md.deps_downloaded_size),
-    depsSpeed: num(md.deps_speed),
+    downloadCurrent: num(md.download_current) ?? previous?.downloadCurrent,
+    downloadTotal: num(md.download_total) ?? previous?.downloadTotal,
+    downloadSpeed: num(md.download_speed) ?? previous?.downloadSpeed,
+    depsTotal: num(md.deps_total) ?? previous?.depsTotal,
+    depsInstalled: num(md.deps_installed) ?? previous?.depsInstalled,
+    depsRemaining: num(md.deps_remaining) ?? previous?.depsRemaining,
+    currentDep: str(md.current_dep) ?? previous?.currentDep,
+    depsDownloadedSize:
+      num(md.deps_downloaded_size) ?? previous?.depsDownloadedSize,
+    depsSpeed: num(md.deps_speed) ?? previous?.depsSpeed,
     error,
-    startedAt: Date.now(),
+    startedAt,
+    stageStartedAt,
     currentAction: action,
   };
 }
@@ -315,8 +496,11 @@ export function PluginInstallTaskProvider({
                     return {
                       ...t,
                       stage: InstallStage.ERROR,
+                      // Keep the phase that failed for the UI to display.
+                      lastStage: t.lastStage ?? t.stage,
                       error: exception,
-                      overallProgress: 0,
+                      // Show where it failed instead of resetting to 0.
+                      overallProgress: t.overallProgress,
                       currentAction: action,
                       ...progressFields,
                     };
@@ -332,26 +516,28 @@ export function PluginInstallTaskProvider({
                   };
                 }
 
-                const stage = mapActionToStage(action);
-                const baseProgress = stageToProgress(stage);
-                // Add small time-based increment within stage
-                const elapsed = (Date.now() - t.startedAt) / 1000;
-                const withinStageIncrement = Math.min(
-                  15,
-                  Math.floor(elapsed / 2),
-                );
-                const progress = Math.min(
-                  95,
-                  baseProgress + withinStageIncrement,
-                );
+                // Forward-only stage transition.
+                const incoming = mapActionToStage(action);
+                const stage = maxStage(t.stage, incoming);
+                // Reset the per-stage ramp whenever we enter a new stage.
+                const stageAdvanced = stage !== t.stage;
 
-                return {
+                const next: PluginInstallTask = {
                   ...t,
                   stage,
-                  overallProgress: progress,
+                  lastStage: stage,
+                  stageStartedAt: stageAdvanced
+                    ? Date.now()
+                    : (t.stageStartedAt ?? t.startedAt),
                   currentAction: action,
                   ...progressFields,
                 };
+                const computed = computeStageProgress(next, stage);
+                // Progress must never move backwards while the task runs.
+                const overallProgress = Math.round(
+                  Math.min(99, Math.max(t.overallProgress, computed)),
+                );
+                return { ...next, overallProgress };
               }),
             );
           })
@@ -377,45 +563,60 @@ export function PluginInstallTaskProvider({
       );
 
       setTasks((prevTasks) => {
-        const existingTaskIds = new Set(prevTasks.map((t) => t.taskId));
         const updatedTasks = [...prevTasks];
+        // Collect tasks that need polling started after state is committed.
+        const toPoll: Array<{ key: string; taskId: number }> = [];
 
         for (const bt of backendTasks) {
           // Skip tasks that the user has dismissed
           if (dismissedTaskIds.current.has(bt.id)) continue;
 
-          if (!existingTaskIds.has(bt.id)) {
+          const idx = updatedTasks.findIndex((t) => t.taskId === bt.id);
+
+          if (idx === -1) {
             // New task from backend (e.g. after page refresh) — add it
             const newTask = asyncTaskToPluginInstallTask(bt);
             updatedTasks.push(newTask);
 
-            // If not done, start polling for progress
             if (!bt.runtime.done) {
-              pollTask(newTask.id, bt.id);
+              toPoll.push({ key: newTask.id, taskId: bt.id });
             } else {
               // Mark as already notified so we don't re-trigger toasts for old completed tasks
               notifiedTaskIds.current.add(bt.id);
             }
-          } else {
-            // Already tracking — if it's done in backend but still active locally, update it
-            const idx = updatedTasks.findIndex((t) => t.taskId === bt.id);
-            if (idx !== -1) {
-              const existing = updatedTasks[idx];
-              if (
-                bt.runtime.done &&
-                existing.stage !== InstallStage.DONE &&
-                existing.stage !== InstallStage.ERROR
-              ) {
-                const converted = asyncTaskToPluginInstallTask(bt);
-                converted.startedAt = existing.startedAt;
-                converted.pluginName = existing.pluginName;
-                converted.fileSize = existing.fileSize;
-                converted.extensionType = existing.extensionType;
-                updatedTasks[idx] = converted;
-              }
-            }
+            continue;
+          }
+
+          // Already tracking — merge the backend snapshot into the existing
+          // task. Passing `existing` keeps `startedAt`, `pluginName` and
+          // progress monotonic so re-syncing never rewinds the bar.
+          const existing = updatedTasks[idx];
+          const converted = asyncTaskToPluginInstallTask(bt, existing);
+          converted.pluginName = existing.pluginName;
+          converted.fileSize = existing.fileSize;
+          converted.extensionType = existing.extensionType;
+
+          // Never downgrade a terminal task that is already done/failed locally,
+          // unless the backend reports it finished as well.
+          if (
+            (existing.stage === InstallStage.DONE ||
+              existing.stage === InstallStage.ERROR) &&
+            !bt.runtime.done
+          ) {
+            continue;
+          }
+
+          updatedTasks[idx] = converted;
+
+          if (!bt.runtime.done) {
+            toPoll.push({ key: converted.id, taskId: bt.id });
           }
         }
+
+        // Schedule polling outside the state updater.
+        queueMicrotask(() => {
+          toPoll.forEach(({ key, taskId }) => pollTask(key, taskId));
+        });
 
         return updatedTasks;
       });
@@ -464,6 +665,7 @@ export function PluginInstallTaskProvider({
       // Remove from dismissed set if re-added
       dismissedTaskIds.current.delete(params.taskId);
 
+      const startedAt = Date.now();
       const newTask: PluginInstallTask = {
         id: taskKey,
         taskId: params.taskId,
@@ -471,9 +673,11 @@ export function PluginInstallTaskProvider({
         source: params.source,
         extensionType: params.extensionType,
         stage: InstallStage.DOWNLOADING,
-        overallProgress: 5,
+        // Start at the downloading floor and creep up from real counters.
+        overallProgress: stageFloor(InstallStage.DOWNLOADING),
         fileSize: params.fileSize,
-        startedAt: Date.now(),
+        downloadTotal: params.fileSize,
+        startedAt,
         currentAction: '',
       };
 
