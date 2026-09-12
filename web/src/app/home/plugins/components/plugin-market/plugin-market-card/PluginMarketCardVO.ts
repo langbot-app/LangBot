@@ -12,6 +12,10 @@ export interface IPluginMarketCardVO {
   components?: Record<string, number>;
   tags?: string[];
   type?: 'plugin' | 'mcp' | 'skill';
+  /** Whether this extension is already installed in the current workspace. */
+  installed?: boolean;
+  /** Whether an installed extension has a newer marketplace version. */
+  hasUpdate?: boolean;
 }
 
 export class PluginMarketCardVO implements IPluginMarketCardVO {
@@ -28,6 +32,8 @@ export class PluginMarketCardVO implements IPluginMarketCardVO {
   components?: Record<string, number>;
   tags?: string[];
   type?: 'plugin' | 'mcp' | 'skill';
+  installed?: boolean;
+  hasUpdate?: boolean;
 
   constructor(prop: IPluginMarketCardVO) {
     this.description = prop.description;
@@ -43,5 +49,7 @@ export class PluginMarketCardVO implements IPluginMarketCardVO {
     this.components = prop.components;
     this.tags = prop.tags;
     this.type = prop.type;
+    this.installed = prop.installed ?? false;
+    this.hasUpdate = prop.hasUpdate ?? false;
   }
 }

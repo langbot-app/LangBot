@@ -769,6 +769,9 @@ const esES = {
     installFailed: 'Error en la instalación, por favor inténtalo más tarde',
     loadFailed:
       'Error al obtener la lista de plugins, por favor inténtalo más tarde',
+    installed: 'Instalado',
+    updateAvailable: 'Actualización disponible',
+    alreadyInstalled: '{{name}} ya está instalado',
     noDescription: 'No hay descripción disponible',
     recommendation: {
       pause: 'Pausar rotación automática',

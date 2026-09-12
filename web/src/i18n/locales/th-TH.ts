@@ -741,6 +741,9 @@ const thTH = {
     downloadComplete: 'ดาวน์โหลดปลั๊กอิน "{{name}}" เสร็จสมบูรณ์',
     installFailed: 'ติดตั้งล้มเหลว กรุณาลองใหม่ภายหลัง',
     loadFailed: 'ไม่สามารถดึงรายการปลั๊กอินได้ กรุณาลองใหม่ภายหลัง',
+    installed: 'ติดตั้งแล้ว',
+    updateAvailable: 'มีอัปเดต',
+    alreadyInstalled: '{{name}} ติดตั้งแล้ว',
     noDescription: 'ไม่มีคำอธิบาย',
     recommendation: {
       pause: 'หยุดการหมุนอัตโนมัติชั่วคราว',

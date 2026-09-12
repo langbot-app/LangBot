@@ -460,6 +460,8 @@ export interface AsyncTask {
   name: string;
   label: string;
   task_type: string; // system or user
+  /** Unix epoch seconds (float) when the task was created. */
+  created_at?: number;
   runtime: AsyncTaskRuntimeInfo;
   task_context: AsyncTaskTaskContext;
 }

@@ -719,6 +719,9 @@ const zhHant = {
     downloadComplete: '插件 "{{name}}" 下載完成',
     installFailed: '安裝失敗，請稍後重試',
     loadFailed: '取得插件列表失敗，請稍後重試',
+    installed: '已安裝',
+    updateAvailable: '有更新',
+    alreadyInstalled: '{{name}} 已安裝',
     noDescription: '暫無描述',
     recommendation: {
       pause: '暫停自動輪播',

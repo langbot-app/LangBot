@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import {
   Download,
   Package,
+  Rocket,
   Server,
   Sparkles,
   CheckCircle2,
@@ -39,11 +40,27 @@ const STAGES: {
     icon: Package,
     i18nKey: 'plugins.installProgress.installingDeps',
   },
+  {
+    key: InstallStage.LAUNCHING,
+    icon: Rocket,
+    i18nKey: 'plugins.installProgress.launching',
+  },
 ];
 
+/**
+ * Find the row that should be highlighted for a given stage.
+ * LAUNCHING/INITIALIZING/DONE collapse onto the launching row.
+ */
 function getStageIndex(stage: InstallStage): number {
+  if (
+    stage === InstallStage.LAUNCHING ||
+    stage === InstallStage.INITIALIZING ||
+    stage === InstallStage.DONE
+  ) {
+    return STAGES.length - 1;
+  }
   const idx = STAGES.findIndex((s) => s.key === stage);
-  return idx >= 0 ? idx : -1;
+  return idx >= 0 ? idx : 0;
 }
 
 function formatFileSize(bytes: number): string {
@@ -169,9 +186,12 @@ function formatSpeed(bytesPerSec: number): string {
 function TaskProgressContent({ task }: { task: PluginInstallTask }) {
   const { t } = useTranslation();
 
-  const currentStageIndex = getStageIndex(task.stage);
   const isDone = task.stage === InstallStage.DONE;
   const isError = task.stage === InstallStage.ERROR;
+  // When a task fails, `stage` becomes ERROR — fall back to the furthest
+  // stage it actually reached so the failed phase is still displayed.
+  const displayStage = isError && task.lastStage ? task.lastStage : task.stage;
+  const currentStageIndex = getStageIndex(displayStage);
 
   // MCP / Skill don't have the plugin's download + dependency-install stages;
   // show a single "installing → done/failed" row instead of plugin steps.

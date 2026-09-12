@@ -8,6 +8,10 @@ import { I18nObject } from '@/app/infra/entities/common';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import { getCloudServiceClientSync } from '@/app/infra/http';
 import { useTranslation } from 'react-i18next';
+import {
+  resolveInstalledState,
+  useMarketplaceInstalledIndex,
+} from './marketplace-installed';
 
 export interface RecommendationList {
   uuid: string;
@@ -66,6 +70,7 @@ function RecommendationListRow({
   isLast: boolean;
 }) {
   const { t } = useTranslation();
+  const installedIndex = useMarketplaceInstalledIndex();
   const [page, setPage] = useState(0);
   const [perPage, setPerPage] = useState(4);
   // Countdown progress to the next auto-advance, 0 → 1 over AUTO_ADVANCE_MS.
@@ -261,16 +266,22 @@ function RecommendationListRow({
         ref={gridRef}
         className="grid gap-6 [grid-template-columns:repeat(auto-fill,minmax(min(100%,24rem),1fr))]"
       >
-        {visiblePlugins.map((plugin) => (
-          <PluginMarketCardComponent
-            key={plugin.author + ' / ' + plugin.name}
-            cardVO={pluginToVO(plugin, t)}
-            tagNames={tagNames}
-            onInstall={onInstall}
-            installDisabled={installDisabled}
-            installDisabledTooltip={installDisabledTooltip}
-          />
-        ))}
+        {visiblePlugins.map((plugin) => {
+          const cardVO = pluginToVO(plugin, t);
+          const state = resolveInstalledState(installedIndex, cardVO);
+          cardVO.installed = state.installed;
+          cardVO.hasUpdate = state.hasUpdate;
+          return (
+            <PluginMarketCardComponent
+              key={plugin.author + ' / ' + plugin.name}
+              cardVO={cardVO}
+              tagNames={tagNames}
+              onInstall={onInstall}
+              installDisabled={installDisabled}
+              installDisabledTooltip={installDisabledTooltip}
+            />
+          );
+        })}
       </div>
       {totalPages > 1 && !isLast && (
         <div className="border-b border-border mt-6" />

@@ -756,6 +756,9 @@ const viVN = {
     downloadComplete: 'Tải plugin "{{name}}" hoàn tất',
     installFailed: 'Cài đặt thất bại, vui lòng thử lại sau',
     loadFailed: 'Lấy danh sách plugin thất bại, vui lòng thử lại sau',
+    installed: 'Đã cài đặt',
+    updateAvailable: 'Có bản cập nhật',
+    alreadyInstalled: '{{name}} đã được cài đặt',
     noDescription: 'Không có mô tả',
     recommendation: {
       pause: 'Tạm dừng tự động xoay',

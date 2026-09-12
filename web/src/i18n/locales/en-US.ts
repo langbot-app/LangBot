@@ -748,6 +748,9 @@ const enUS = {
       'Are you sure you want to install plugin "{{name}}" ({{version}})?',
     downloadComplete: 'Plugin "{{name}}" download completed',
     installFailed: 'Installation failed, please try again later',
+    installed: 'Installed',
+    updateAvailable: 'Update available',
+    alreadyInstalled: '{{name}} is already installed',
     loadFailed: 'Failed to get plugin list, please try again later',
     noDescription: 'No description available',
     recommendation: {
