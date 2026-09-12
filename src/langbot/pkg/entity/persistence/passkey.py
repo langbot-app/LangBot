@@ -28,9 +28,7 @@ class PasskeyCredential(Base):
     aaguid = sqlalchemy.Column(sqlalchemy.String(64), nullable=True)
     transports = sqlalchemy.Column(sqlalchemy.String(255), nullable=True)
     backed_up = sqlalchemy.Column(sqlalchemy.Boolean, nullable=False, default=False)
-    created_at = sqlalchemy.Column(
-        sqlalchemy.DateTime, nullable=False, server_default=sqlalchemy.func.now()
-    )
+    created_at = sqlalchemy.Column(sqlalchemy.DateTime, nullable=False, server_default=sqlalchemy.func.now())
     last_used_at = sqlalchemy.Column(sqlalchemy.DateTime, nullable=True)
 
     __table_args__ = (

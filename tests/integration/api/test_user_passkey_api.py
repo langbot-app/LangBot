@@ -8,14 +8,10 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from tests.integration.api.test_smoke import (
-    fake_api_app,
-    mock_circular_import_chain,
-    quart_test_client,
-)
+pytest_plugins = ['tests.integration.api.test_smoke']
 
 
-pytestmark = [pytest.mark.integration, pytest.mark.usefixtures('mock_circular_import_chain')]
+pytestmark = pytest.mark.integration
 
 
 class TestPasskeyPublicEndpoints:

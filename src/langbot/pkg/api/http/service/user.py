@@ -963,18 +963,14 @@ class UserService:
             return list(result.all())
 
     async def get_passkey_by_credential_id(self, credential_id: str) -> passkey.PasskeyCredential | None:
-        statement = (
-            sqlalchemy.select(passkey.PasskeyCredential)
-            .where(passkey.PasskeyCredential.credential_id == credential_id)
+        statement = sqlalchemy.select(passkey.PasskeyCredential).where(
+            passkey.PasskeyCredential.credential_id == credential_id
         )
         async with self._session_factory()() as session:
             return await session.scalar(statement)
 
     async def get_passkey_by_uuid(self, passkey_uuid: str) -> passkey.PasskeyCredential | None:
-        statement = (
-            sqlalchemy.select(passkey.PasskeyCredential)
-            .where(passkey.PasskeyCredential.uuid == passkey_uuid)
-        )
+        statement = sqlalchemy.select(passkey.PasskeyCredential).where(passkey.PasskeyCredential.uuid == passkey_uuid)
         async with self._session_factory()() as session:
             return await session.scalar(statement)
 
@@ -1000,8 +996,7 @@ class UserService:
 
         existing_passkeys = await self.get_user_passkeys(account_uuid)
         exclude_credentials = [
-            PublicKeyCredentialDescriptor(id=base64url_to_bytes(pk.credential_id))
-            for pk in existing_passkeys
+            PublicKeyCredentialDescriptor(id=base64url_to_bytes(pk.credential_id)) for pk in existing_passkeys
         ]
 
         options = webauthn.generate_registration_options(
@@ -1051,7 +1046,7 @@ class UserService:
 
         credential_name = (name or '').strip()
         if not credential_name:
-            credential_name = f"Passkey ({datetime.datetime.now().strftime('%Y-%m-%d %H:%M')})"
+            credential_name = f'Passkey ({datetime.datetime.now().strftime("%Y-%m-%d %H:%M")})'
 
         record = passkey.PasskeyCredential(
             uuid=str(uuid.uuid4()),
@@ -1092,8 +1087,7 @@ class UserService:
                 user_passkeys = await self.get_user_passkeys(user_obj.uuid)
                 if user_passkeys:
                     allow_credentials = [
-                        PublicKeyCredentialDescriptor(id=base64url_to_bytes(pk.credential_id))
-                        for pk in user_passkeys
+                        PublicKeyCredentialDescriptor(id=base64url_to_bytes(pk.credential_id)) for pk in user_passkeys
                     ]
 
         options = webauthn.generate_authentication_options(

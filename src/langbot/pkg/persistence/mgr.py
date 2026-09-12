@@ -63,6 +63,7 @@ _ALEMBIC_TENANT_TABLES = {
     'mcp_servers',
     'model_providers',
     'codex_credentials',
+    'passkey_credentials',
     'llm_models',
     'embedding_models',
     'rerank_models',
