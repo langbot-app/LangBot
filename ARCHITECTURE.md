@@ -178,7 +178,7 @@ In this repo:
 - `pkg/provider/tools/loaders/native.py` is the Core orchestration seam: the
   Skill loader supplies generic read-only mounts to Box execution. `mcp_stdio.py`
   and execution-backed tools depend on Box availability.
-- `pkg/skill/repository.py` is the thin async/Workspace adapter over the Plugin SDK's execution-independent `SkillStore`; `skills.root` owns its location independently of Box.
+- `pkg/skill/repository.py` is the thin async/Workspace adapter over the Plugin SDK's execution-independent `SkillStore`; `skills.root` owns its location independently of Box. Core's registry points to immutable content-addressed publications, and every update carries `base_revision` so concurrent writers fail instead of overwriting each other.
 - `pkg/skill/manager.py` caches the Core repository catalog for progressive disclosure. Activation and read-only resource tools do not require Box; script execution and Workspace mutation still do.
 
 Durable Box Workspace storage is shared across placement generations, but
@@ -192,9 +192,14 @@ In `langbot-plugin-sdk`:
 - `src/langbot_plugin/box/server.py` implements `lbp box` and the WebSocket endpoints on `:5410`.
 - `src/langbot_plugin/box/runtime.py` owns sandbox sessions, generic read-only mounts, and managed processes.
 - `backend.py`, `nsjail_backend.py`, and `e2b_backend.py` implement sandbox backends.
-- `src/langbot_plugin/skill_store.py` is consumed by Core, not Box. Core turns
-  selected package roots into generic read-only mounts; Box does not understand
-  Skill names, metadata, revisions, files, or CRUD.
+- `src/langbot_plugin/skill_store.py` is consumed by Core, not Box. Activation
+  pins the first revision for a run; instructions, resource reads, restart
+  recovery, execution mounts, and revision-scoped dependency state all use that
+  exact publication. Core mounts only activated and authorized Skills. Published
+  trees are never agent write targets: authoring happens in Workspace drafts and
+  an explicit registration/update atomically publishes the next revision. Core
+  turns those package roots and content digests into generic read-only mounts;
+  Box does not understand Skill names, metadata, revisions, files, or CRUD.
 
 Skill storage uses `skills.root`. Box execution config lives under `box:`:
 `box.enabled`, `box.backend`, `box.runtime.endpoint`, and `box.local.*`. The old

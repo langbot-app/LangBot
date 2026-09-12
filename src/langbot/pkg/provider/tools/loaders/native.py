@@ -336,11 +336,14 @@ class NativeToolLoader(loader.ToolLoader):
             if 'python_project' not in selected_skill:
                 python_project = skill_loader.should_prepare_skill_python_env(package_root)
             if python_project:
+                revision_key = str(selected_skill.get('revision', '') or '').removeprefix('sha256:')
+                if not revision_key:
+                    raise ValueError(f'Activated skill "{selected_skill_name}" has no pinned revision.')
                 parameters = dict(parameters)
                 parameters['command'] = skill_loader.wrap_skill_command_with_python_env(
                     command,
                     mount_path=skill_mount,
-                    state_path=f'/workspace/.skill-envs/{selected_skill_name}',
+                    state_path=f'/workspace/.skill-envs/{selected_skill_name}/{revision_key}',
                 )
 
         # All exec calls (with or without skills) go through the same container
@@ -1107,25 +1110,27 @@ else:
         skill_request = self._resolve_skill_relative_path(
             query,
             path,
-            include_visible=True,
+            include_visible=False,
             include_activated=True,
         )
         skill_repository = getattr(self.ap, 'skill_repository', None)
         if skill_request is not None and skill_repository is not None:
             selected_skill, relative = skill_request
             try:
-                result = await skill_repository.read_skill_file(
+                result = await skill_repository.read_skill_resource(
                     self._execution_context(query),
                     selected_skill['name'],
                     relative,
+                    expected_revision=selected_skill.get('revision'),
                 )
                 return self._build_read_result_from_text(str(result.get('content', '')), parameters)
             except Exception:
                 try:
-                    result = await skill_repository.list_skill_files(
+                    result = await skill_repository.list_skill_resources(
                         self._execution_context(query),
                         selected_skill['name'],
                         relative,
+                        expected_revision=selected_skill.get('revision'),
                     )
                     entries = [entry['name'] for entry in result.get('entries', [])]
                     return self._build_directory_result(entries)
@@ -1135,7 +1140,7 @@ else:
         host_location = self._resolve_host_location(
             query,
             path,
-            include_visible=True,
+            include_visible=False,
             include_activated=True,
         )
         if self._should_use_box_workspace_files(host_location.selected_skill):
@@ -1149,22 +1154,22 @@ else:
         path = parameters['path']
         content = parameters['content']
         self.ap.logger.info(f'write tool invoked: query_id={query.query_id} path={path} length={len(content)}')
-        encoding, _mode = self._write_options(parameters)
+        self._write_options(parameters)
         skill_request = self._resolve_skill_relative_path(
             query,
             path,
             include_visible=False,
             include_activated=True,
         )
-        skill_repository = getattr(self.ap, 'skill_repository', None)
-        if skill_request is not None and skill_repository is not None:
-            if encoding != 'text':
-                return {'ok': False, 'error': 'base64 writes to skill packages are not supported.'}
-            selected_skill, relative = skill_request
-            execution_context = self._execution_context(query)
-            await skill_repository.write_skill_file(execution_context, selected_skill['name'], relative, content)
-            await self.ap.skill_mgr.reload_skills(execution_context)
-            return {'ok': True, 'path': path}
+        if skill_request is not None:
+            return {
+                'ok': False,
+                'error': (
+                    'Published Skill revisions are immutable. Copy the package to a writable '
+                    'directory under /workspace/skill-drafts, edit it there, then call register_skill '
+                    'with the activated revision as base_revision.'
+                ),
+            }
 
         host_location = self._resolve_host_location(
             query,
@@ -1195,32 +1200,15 @@ else:
             include_visible=False,
             include_activated=True,
         )
-        if skill_request is not None and getattr(self.ap, 'skill_repository', None) is not None:
-            selected_skill, relative = skill_request
-            try:
-                result = await self.ap.skill_repository.read_skill_file(
-                    self._execution_context(query),
-                    selected_skill['name'],
-                    relative,
-                )
-            except Exception:
-                return {'ok': False, 'error': f'File not found: {path}'}
-            content = result.get('content', '')
-            count = content.count(old_string)
-            if count == 0:
-                return {'ok': False, 'error': 'old_string not found in file.'}
-            if count > 1:
-                return {'ok': False, 'error': f'old_string matches {count} locations; provide a more unique string.'}
-            new_content = content.replace(old_string, new_string, 1)
-            execution_context = self._execution_context(query)
-            await self.ap.skill_repository.write_skill_file(
-                execution_context,
-                selected_skill['name'],
-                relative,
-                new_content,
-            )
-            await self.ap.skill_mgr.reload_skills(execution_context)
-            return {'ok': True, 'path': path}
+        if skill_request is not None:
+            return {
+                'ok': False,
+                'error': (
+                    'Published Skill revisions are immutable. Copy the package to a writable '
+                    'directory under /workspace/skill-drafts, edit it there, then call register_skill '
+                    'with the activated revision as base_revision.'
+                ),
+            }
 
         host_location = self._resolve_host_location(
             query,
@@ -1503,7 +1491,7 @@ else:
         host_location = self._resolve_host_location(
             query,
             path,
-            include_visible=True,
+            include_visible=False,
             include_activated=True,
         )
         if self._should_use_box_workspace_files(host_location.selected_skill):
@@ -1525,7 +1513,7 @@ else:
         host_location = self._resolve_host_location(
             query,
             path,
-            include_visible=True,
+            include_visible=False,
             include_activated=True,
         )
         if self._should_use_box_workspace_files(host_location.selected_skill):

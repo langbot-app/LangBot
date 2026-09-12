@@ -1939,29 +1939,36 @@ def test_disconnect_callback_does_not_schedule_without_running_event_loop():
 
 
 class TestBuildSkillExecutionMounts:
-    """Robustness of skill mount construction against a stale skill cache.
-
-    The three sandbox backends behave inconsistently when a skill's
-    package_root no longer exists on disk (nsjail aborts the whole sandbox
-    start, Docker silently auto-creates a root-owned empty directory, E2B
-    silently skips). Mount construction must filter these out up front so
-    the backend never sees a bad mount.
-    """
+    """Execution materializes only revisions pinned by this run."""
 
     def _make_app(self, logger, skills):
         app = make_app(logger)
         app.skill_mgr = SimpleNamespace(skills=skills, get_skills=Mock(return_value=skills))
         return app
 
-    def test_skips_skill_with_missing_package_root(self):
+    def test_mounts_only_activated_revision(self):
         logger = Mock()
         with tempfile.TemporaryDirectory() as live_dir:
+            manifest_path = os.path.join(live_dir, 'manifest.json')
+            with open(manifest_path, 'w', encoding='utf-8') as file:
+                file.write('{}')
             skills = {
-                'alive': {'name': 'alive', 'package_root': live_dir},
-                'ghost': {'name': 'ghost', 'package_root': '/nonexistent/path/should/never/exist'},
+                'alive': {
+                    'name': 'alive',
+                    'package_root': live_dir,
+                    'manifest_path': manifest_path,
+                    'revision': 'sha256:' + '1' * 64,
+                },
+                'visible-not-activated': {
+                    'name': 'visible-not-activated',
+                    'package_root': live_dir,
+                    'manifest_path': manifest_path,
+                    'revision': 'sha256:' + '2' * 64,
+                },
             }
             app = self._make_app(logger, skills)
             query = make_query()
+            skill_loader.register_activated_skill(query, skills['alive'])
 
             mounts = skill_loader.build_execution_mounts(app, query)
 
@@ -1970,42 +1977,56 @@ class TestBuildSkillExecutionMounts:
                     'host_path': live_dir,
                     'mount_path': '/workspace/.skills/alive',
                     'mode': 'ro',
+                    'content_digest': 'sha256:' + '1' * 64,
+                    'manifest_path': manifest_path,
                 }
             ]
-            # Warning logged so operators can see what was dropped
-            assert any(
-                'ghost' in str(call.args[0]) and 'package_root missing' in str(call.args[0])
-                for call in logger.warning.call_args_list
-            )
 
-    def test_rejects_missing_core_paths_when_filesystem_not_shared(self):
-        """Core owns package paths even when Box is a separate process."""
+    def test_missing_pinned_revision_fails_instead_of_being_skipped(self):
         logger = Mock()
         skills = {
-            'a': {'name': 'a', 'package_root': '/box/skills/a'},
-            'b': {'name': 'b', 'package_root': '/box/skills/b'},
+            'a': {
+                'name': 'a',
+                'package_root': '/box/skills/a',
+                'manifest_path': '/box/skills/manifest.json',
+                'revision': 'sha256:' + '1' * 64,
+            }
         }
         app = self._make_app(logger, skills)
+        query = make_query()
+        skill_loader.register_activated_skill(query, skills['a'])
 
-        mounts = skill_loader.build_execution_mounts(app, make_query())
+        with pytest.raises(ValueError, match='cannot be recovered safely'):
+            skill_loader.build_execution_mounts(app, query)
 
-        assert mounts == []
-        assert len(logger.warning.call_args_list) == 2
-
-    def test_skips_skill_with_empty_package_root(self):
+    def test_rejects_activated_skill_with_empty_package_root(self):
         logger = Mock()
         skills = {
-            'no_root': {'name': 'no_root', 'package_root': ''},
-            'whitespace': {'name': 'whitespace', 'package_root': '   '},
+            'no_root': {
+                'name': 'no_root',
+                'package_root': '',
+                'manifest_path': '',
+                'revision': 'sha256:' + '1' * 64,
+            }
         }
         app = self._make_app(logger, skills)
+        query = make_query()
+        skill_loader.register_activated_skill(query, skills['no_root'])
 
-        assert skill_loader.build_execution_mounts(app, make_query()) == []
+        with pytest.raises(ValueError, match='no immutable package root'):
+            skill_loader.build_execution_mounts(app, query)
 
     def test_empty_package_root_skipped_even_when_not_shared(self):
         """An empty package_root is always invalid regardless of topology."""
         logger = Mock()
-        skills = {'no_root': {'name': 'no_root', 'package_root': ''}}
+        skills = {
+            'no_root': {
+                'name': 'no_root',
+                'package_root': '',
+                'manifest_path': '',
+                'revision': 'sha256:' + '1' * 64,
+            }
+        }
         app = self._make_app(logger, skills)
 
         assert skill_loader.build_execution_mounts(app, make_query()) == []

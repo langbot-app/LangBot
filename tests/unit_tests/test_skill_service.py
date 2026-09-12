@@ -31,11 +31,11 @@ class TestSkillRepositoryBoundary:
         repository = SimpleNamespace(
             list_skills=AsyncMock(return_value=[{'name': 'x', 'instructions': 'Do work'}]),
             get_skill=AsyncMock(return_value={'name': 'x', 'instructions': 'Do work', 'revision': 'sha256:x'}),
-            create_skill=AsyncMock(return_value={'name': 'x', 'instructions': 'Do work'}),
-            update_skill=AsyncMock(return_value={'name': 'x', 'instructions': 'Updated'}),
+            create_skill=AsyncMock(return_value={'name': 'x', 'instructions': 'Do work', 'revision': 'sha256:v1'}),
+            update_skill=AsyncMock(return_value={'name': 'x', 'instructions': 'Updated', 'revision': 'sha256:v2'}),
             delete_skill=AsyncMock(),
             read_skill_file=AsyncMock(return_value={'path': 'a.txt', 'content': 'hello'}),
-            write_skill_file=AsyncMock(return_value={'path': 'a.txt'}),
+            write_skill_file=AsyncMock(return_value={'path': 'a.txt', 'revision': 'sha256:v3'}),
         )
         return SimpleNamespace(
             skill_mgr=SimpleNamespace(reload_skills=AsyncMock()),
@@ -62,12 +62,33 @@ class TestSkillRepositoryBoundary:
         service = SkillService(ap)
 
         await service.create_skill(_CONTEXT, {'name': 'x'})
-        await service.update_skill(_CONTEXT, 'x', {'instructions': 'Updated'})
-        await service.write_skill_file(_CONTEXT, 'x', 'a.txt', 'hello')
+        await service.update_skill(
+            _CONTEXT,
+            'x',
+            {'instructions': 'Updated', 'base_revision': 'sha256:v1'},
+        )
+        await service.write_skill_file(
+            _CONTEXT,
+            'x',
+            'a.txt',
+            'hello',
+            base_revision='sha256:v2',
+        )
 
         ap.skill_repository.create_skill.assert_awaited_once_with(_CONTEXT, {'name': 'x'})
-        ap.skill_repository.update_skill.assert_awaited_once_with(_CONTEXT, 'x', {'instructions': 'Updated'})
-        ap.skill_repository.write_skill_file.assert_awaited_once_with(_CONTEXT, 'x', 'a.txt', 'hello')
+        ap.skill_repository.update_skill.assert_awaited_once_with(
+            _CONTEXT,
+            'x',
+            {'instructions': 'Updated'},
+            base_revision='sha256:v1',
+        )
+        ap.skill_repository.write_skill_file.assert_awaited_once_with(
+            _CONTEXT,
+            'x',
+            'a.txt',
+            'hello',
+            base_revision='sha256:v2',
+        )
 
     @pytest.mark.asyncio
     async def test_get_skill_returns_repository_revision(self):

@@ -4,6 +4,7 @@ import quart
 
 from ...authz import Permission
 from ...context import RequestContext
+from .....skill.repository import SkillRevisionConflictError
 from .. import group
 
 
@@ -69,6 +70,8 @@ class SkillsRouterGroup(group.RouterGroup):
                 try:
                     skill = await self.ap.skill_service.update_skill(request_context, skill_name, data)
                     return self.success(data={'skill': skill})
+                except SkillRevisionConflictError as exc:
+                    return self.http_status(409, -1, str(exc))
                 except ValueError as exc:
                     return self.http_status(400, -1, str(exc))
 
@@ -97,6 +100,8 @@ class SkillsRouterGroup(group.RouterGroup):
                     include_hidden=include_hidden,
                 )
                 return self.success(data=result)
+            except SkillRevisionConflictError as exc:
+                return self.http_status(409, -1, str(exc))
             except ValueError as exc:
                 return self.http_status(400, -1, str(exc))
 
@@ -122,11 +127,18 @@ class SkillsRouterGroup(group.RouterGroup):
         async def write_skill_file(skill_name: str, path: str, request_context: RequestContext) -> quart.Response:
             data = await quart.request.json
             content = data.get('content', '')
+            base_revision = str(data.get('base_revision', '') or '').strip() or None
             if content is None:
                 return self.http_status(400, -1, 'Missing required field: content')
 
             try:
-                result = await self.ap.skill_service.write_skill_file(request_context, skill_name, path, content)
+                result = await self.ap.skill_service.write_skill_file(
+                    request_context,
+                    skill_name,
+                    path,
+                    content,
+                    base_revision=base_revision,
+                )
                 return self.success(data=result)
             except ValueError as exc:
                 return self.http_status(400, -1, str(exc))

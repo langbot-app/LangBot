@@ -351,13 +351,26 @@ async def test_cloud_core_skills_mount_generically_and_do_not_require_box_entitl
                 'instructions': 'Run scripts/main.py',
             },
         )
-        await repository.write_skill_file(first, 'runner', 'scripts/main.py', "print('ok')")
-        await repository.write_skill_file(first, 'runner', 'requirements.txt', 'requests==2.32.0\n')
+        script_revision = await repository.write_skill_file(
+            first,
+            'runner',
+            'scripts/main.py',
+            "print('ok')",
+            base_revision=own_skill['revision'],
+        )
+        await repository.write_skill_file(
+            first,
+            'runner',
+            'requirements.txt',
+            'requests==2.32.0\n',
+            base_revision=script_revision['revision'],
+        )
         refreshed_skill = await repository.get_skill(first, 'runner')
         assert refreshed_skill is not None
         assert refreshed_skill['python_project'] is True
         await service.ap.skill_mgr.reload_skills(first)
         query = _query(first, 91)
+        skill_loader.register_activated_skill(query, refreshed_skill)
         await service.execute_tool(
             {
                 'command': 'python /workspace/.skills/runner/scripts/main.py',
@@ -369,9 +382,10 @@ async def test_cloud_core_skills_mount_generically_and_do_not_require_box_entitl
 
         mounted_spec = backend.started_specs[-1]
         assert len(mounted_spec.extra_mounts) == 1
-        assert mounted_spec.extra_mounts[0].host_path == own_skill['package_root']
+        assert mounted_spec.extra_mounts[0].host_path == refreshed_skill['package_root']
         assert mounted_spec.extra_mounts[0].mount_path == '/workspace/.skills/runner'
         assert mounted_spec.extra_mounts[0].mode.value == 'ro'
+        assert mounted_spec.extra_mounts[0].content_digest == refreshed_skill['revision']
 
         assert await repository.get_skill(first, 'private') is None
         await repository.create_skill(
