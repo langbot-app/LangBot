@@ -741,7 +741,7 @@ const enUS = {
       create: 'Create plugin processor',
       type: 'Plugin processor',
       description:
-        'Handle events with code and processing logic provided by a plugin.',
+        'Handle specific, declared event types through logic programmed in a plugin.',
       component: 'Plugin processor',
       selectComponent: 'Select a plugin processor',
       unavailable: 'Component unavailable',
@@ -806,14 +806,14 @@ const enUS = {
     selectFromSidebar: 'Select a processor from the sidebar',
     agentType: 'Agent',
     agentTypeDescription:
-      'Use a runner to handle messages, group members, friends, feedback, and other platform events. Best for scenarios that need autonomous decisions, tool use, or non-message events.',
+      'Describe how to handle different events in natural language and let AI act, or connect an external Agent platform to process them.',
     pipelineType: 'Pipeline',
     kindBadgeAgent: 'Agent',
     kindBadgePipeline: 'Pipeline',
     groupByKind: 'Group by type',
     groupByKindShort: 'Group',
     pipelineTypeDescription:
-      'Follow a fixed flow: receive a message, call AI, and reply to the user, with configurable knowledge bases and plugins. Handles message events only, for tasks with clear steps and control over processing.',
+      'Handle message events only, with AI generating replies directly and practical features such as knowledge bases and plugins.',
     allEvents: 'Supports all events',
     messageEventsOnly: 'Message events only',
     chooseType: 'Choose how it works',

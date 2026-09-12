@@ -89,7 +89,7 @@ test.describe('frontend CRUD smoke flows', () => {
     await expect(
       page.locator('[data-processor-kind="pipeline"]'),
     ).toContainText(
-      '流水线按“接收消息、调用 AI、回复用户”的固定流程运行，可配置知识库和插件扩展。仅处理消息事件，适合步骤明确、需要控制处理过程的场景。',
+      '流水线只处理消息事件，由 AI 直接生成回复，并提供知识库、插件等实用功能。',
     );
   });
 

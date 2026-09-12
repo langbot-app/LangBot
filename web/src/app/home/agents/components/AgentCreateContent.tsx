@@ -91,16 +91,16 @@ export default function AgentCreateContent({
 
   const typeOptions = [
     {
-      kind: 'agent' as const,
-      icon: Bot,
-      title: t('agents.agentType'),
-      description: t('agents.agentTypeDescription'),
-    },
-    {
       kind: 'pipeline' as const,
       icon: Workflow,
       title: t('agents.pipelineType'),
       description: t('agents.pipelineTypeDescription'),
+    },
+    {
+      kind: 'agent' as const,
+      icon: Bot,
+      title: t('agents.agentType'),
+      description: t('agents.agentTypeDescription'),
     },
     {
       kind: 'event_processor' as const,

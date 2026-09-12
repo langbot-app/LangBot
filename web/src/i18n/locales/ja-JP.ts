@@ -754,7 +754,7 @@ const jaJP = {
       create: 'プラグインプロセッサーを作成',
       type: 'プラグインプロセッサー',
       description:
-        'プラグインが提供するコードと処理ロジックでイベントを処理します。',
+        '事前に宣言された特定のイベントを、プラグインに実装されたロジックに従って処理します。',
       component: 'プラグインプロセッサー',
       selectComponent: 'プラグインプロセッサーを選択',
       unavailable: 'コンポーネントを利用できません',
@@ -846,14 +846,14 @@ const jaJP = {
     selectFromSidebar: 'サイドバーからプロセッサーを選択',
     agentType: 'Agent',
     agentTypeDescription:
-      'Runner を使ってメッセージ、グループメンバー、友だち、フィードバックなどのプラットフォームイベントを処理します。自律的な判断、ツール利用、メッセージ以外のイベント対応が必要な場合に適しています。',
+      'さまざまなイベントの処理方法を自然言語で指定して AI に実行させるか、外部の Agent プラットフォームに接続して処理します。',
     pipelineType: 'パイプライン',
     kindBadgeAgent: 'Agent',
     kindBadgePipeline: 'パイプライン',
     groupByKind: 'タイプ別にグループ化',
     groupByKindShort: 'グループ',
     pipelineTypeDescription:
-      '「メッセージ受信、AI呼び出し、ユーザーへの返信」の固定フローで動作し、ナレッジベースやプラグインを設定できます。メッセージイベントのみを処理し、手順が明確で処理の制御が必要な用途に適しています。',
+      'メッセージイベントのみを処理し、AI が直接返信を生成します。ナレッジベースやプラグインなどの便利な機能も利用できます。',
     allEvents: 'すべてのイベントに対応',
     messageEventsOnly: 'メッセージイベントのみ',
     chooseType: '処理方法を選択',

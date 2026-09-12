@@ -703,7 +703,7 @@ const zhHans = {
 
       create: '创建插件处理器',
       type: '插件处理器',
-      description: '由插件中的代码处理事件，处理逻辑由插件实现。',
+      description: '由插件代码处理预先声明的特定事件，按插件编写的逻辑执行。',
       component: '插件处理器',
       selectComponent: '选择插件处理器',
       unavailable: '组件不可用',
@@ -768,14 +768,14 @@ const zhHans = {
     selectFromSidebar: '从侧边栏选择一个处理器',
     agentType: 'Agent',
     agentTypeDescription:
-      '通过运行器处理消息、群成员、好友、反馈等平台事件。适合需要自主判断、调用工具或响应非消息事件的场景。',
+      '用自然语言描述多种事件的处理方式，让 AI 执行；也可接入外部 Agent 平台处理事件。',
     pipelineType: '流水线',
     kindBadgeAgent: 'Agent',
     kindBadgePipeline: '流水线',
     groupByKind: '按类型分组',
     groupByKindShort: '分组',
     pipelineTypeDescription:
-      '按“接收消息、调用 AI、回复用户”的固定流程运行，可配置知识库和插件扩展。仅处理消息事件，适合步骤明确、需要控制处理过程的场景。',
+      '只处理消息事件，由 AI 直接生成回复，并提供知识库、插件等实用功能。',
     allEvents: '支持全部事件',
     messageEventsOnly: '仅支持消息事件',
     chooseType: '选择处理方式',
