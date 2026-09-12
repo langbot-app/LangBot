@@ -86,6 +86,10 @@ const enUS = {
       'Recommended: Use official stable model APIs and cloud services',
     loginLocal: 'Login with local account',
     loginWithPassword: 'Login with password',
+    loginWithPasskey: 'Sign in with Passkey',
+    passkeyLoginSuccess: 'Passkey verified successfully, signing in...',
+    passkeyLoginFailed: 'Failed to sign in with Passkey',
+    passkeyNotSupported: 'Passkey is not supported on this browser or device',
     spaceLoginTitle: 'Login with LangBot Account',
     spaceLoginDescription:
       'Scan the QR code or visit the link below to authorize',
@@ -1339,6 +1343,20 @@ const enUS = {
     bindSpaceWarning:
       'After binding, your login email will be changed from {{localEmail}} to the LangBot Account email.',
     bindSpaceSuccess: 'LangBot Account bound successfully',
+    passkeySectionTitle: 'Passkeys',
+    passkeySectionDesc:
+      'Sign in securely without passwords using biometrics or security keys',
+    addPasskey: 'Add Passkey',
+    passkeyName: 'Key Name',
+    passkeyNamePlaceholder: 'e.g., MacBook Touch ID, YubiKey',
+    passkeyCreated: 'Created on {{date}}',
+    passkeyLastUsed: 'Last used: {{date}}',
+    noPasskeys: 'No passkeys registered yet',
+    deletePasskeyConfirm:
+      'Are you sure you want to delete this passkey? You will no longer be able to use it to sign in.',
+    passkeyAddedSuccess: 'Passkey added successfully',
+    passkeyDeleteSuccess: 'Passkey deleted',
+    passkeyRenameSuccess: 'Passkey renamed successfully',
     bindSpaceFailed: 'Failed to bind LangBot Account',
     bindSpaceInvalidState:
       'Invalid bind request. Please try again from account settings.',

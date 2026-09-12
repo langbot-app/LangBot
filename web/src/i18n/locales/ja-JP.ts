@@ -87,6 +87,11 @@ const jaJP = {
       'おすすめ：公式の安定したモデル API とクラウドサービスを利用',
     loginLocal: 'ローカルアカウントでログイン',
     loginWithPassword: 'パスワードでログイン',
+    loginWithPasskey: 'パスキーでログイン',
+    passkeyLoginSuccess: 'パスキーの認証に成功しました。ログイン中...',
+    passkeyLoginFailed: 'パスキーでのログインに失敗しました',
+    passkeyNotSupported:
+      'お使いのブラウザまたはデバイスはパスキーをサポートしていません',
     spaceLoginTitle: 'LangBot アカウントでログイン',
     spaceLoginDescription:
       'QRコードをスキャンするか、下のリンクにアクセスして認証してください',
@@ -1345,6 +1350,20 @@ const jaJP = {
     bindSpaceWarning:
       '連携後、ログインメールアドレスは {{localEmail}} から LangBot アカウントのメールアドレスに変更されます。',
     bindSpaceSuccess: 'LangBot アカウントの連携に成功しました',
+    passkeySectionTitle: 'パスキー (Passkey)',
+    passkeySectionDesc:
+      '生体認証やセキュリティキーを使って、パスワード不要で安全にログインします',
+    addPasskey: 'パスキーを追加',
+    passkeyName: 'キー名',
+    passkeyNamePlaceholder: '例: MacBook Touch ID、YubiKey',
+    passkeyCreated: '作成日: {{date}}',
+    passkeyLastUsed: '最終使用: {{date}}',
+    noPasskeys: '登録されているパスキーはありません',
+    deletePasskeyConfirm:
+      'このパスキーを削除してもよろしいですか？削除後はこのキーでのログインができなくなります。',
+    passkeyAddedSuccess: 'パスキーが正常に追加されました',
+    passkeyDeleteSuccess: 'パスキーを削除しました',
+    passkeyRenameSuccess: 'パスキー名を変更しました',
     bindSpaceFailed: 'LangBot アカウントの連携に失敗しました',
     bindSpaceInvalidState:
       '無効な連携リクエストです。アカウント設定から再度お試しください。',

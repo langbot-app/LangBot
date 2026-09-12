@@ -12,7 +12,17 @@ import {
 } from '@/components/ui/item';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { systemInfo } from '@/app/infra/http';
-import { Loader2, ExternalLink, KeyRound, Layers } from 'lucide-react';
+import {
+  Loader2,
+  ExternalLink,
+  KeyRound,
+  Layers,
+  Fingerprint,
+  Plus,
+  Trash2,
+  Pencil,
+} from 'lucide-react';
+import { startRegistration } from '@simplewebauthn/browser';
 import PasswordChangeDialog from '../password-change-dialog/PasswordChangeDialog';
 import { PanelBody } from '../settings-dialog/panel-layout';
 
@@ -20,6 +30,16 @@ interface AccountSettingsPanelProps {
   // True when this panel is the active section and the dialog is open.
   active: boolean;
   onEmailResolved?: (email: string) => void;
+}
+
+interface PasskeyItem {
+  uuid: string;
+  name: string;
+  aaguid?: string;
+  transports?: string;
+  backed_up?: boolean;
+  created_at?: string;
+  last_used_at?: string;
 }
 
 export default function AccountSettingsPanel({
@@ -33,10 +53,14 @@ export default function AccountSettingsPanel({
   const [loading, setLoading] = useState(true);
   const [spaceBindLoading, setSpaceBindLoading] = useState(false);
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
+  const [passkeys, setPasskeys] = useState<PasskeyItem[]>([]);
+  const [passkeyLoading, setPasskeyLoading] = useState(false);
+  const [registeringPasskey, setRegisteringPasskey] = useState(false);
 
   useEffect(() => {
     if (active) {
       loadUserInfo();
+      loadPasskeys();
     }
   }, [active]);
 
@@ -54,6 +78,67 @@ export default function AccountSettingsPanel({
       setLoading(false);
     }
   }
+
+  async function loadPasskeys() {
+    setPasskeyLoading(true);
+    try {
+      const list = await httpClient.getPasskeys();
+      setPasskeys(list);
+    } catch {
+      // ignore
+    } finally {
+      setPasskeyLoading(false);
+    }
+  }
+
+  const handleAddPasskey = async () => {
+    setRegisteringPasskey(true);
+    try {
+      const { options, challenge_token } =
+        await httpClient.getPasskeyRegisterOptions(window.location.origin);
+      const regResp = await startRegistration({ optionsJSON: options });
+      const defaultName =
+        prompt(t('account.passkeyNamePlaceholder')) || undefined;
+      await httpClient.verifyPasskeyRegister(
+        challenge_token,
+        regResp,
+        defaultName,
+      );
+      toast.success(t('account.passkeyAddedSuccess'));
+      await loadPasskeys();
+    } catch (error: any) {
+      if (error?.name === 'NotAllowedError') {
+        // User cancelled
+      } else {
+        toast.error(error?.message || t('common.error'));
+      }
+    } finally {
+      setRegisteringPasskey(false);
+    }
+  };
+
+  const handleDeletePasskey = async (uuid: string) => {
+    if (!confirm(t('account.deletePasskeyConfirm'))) return;
+    try {
+      await httpClient.deletePasskey(uuid);
+      toast.success(t('account.passkeyDeleteSuccess'));
+      await loadPasskeys();
+    } catch (error: any) {
+      toast.error(error?.message || t('common.error'));
+    }
+  };
+
+  const handleRenamePasskey = async (uuid: string, currentName: string) => {
+    const newName = prompt(t('account.passkeyName'), currentName);
+    if (!newName || !newName.trim() || newName === currentName) return;
+    try {
+      await httpClient.renamePasskey(uuid, newName.trim());
+      toast.success(t('account.passkeyRenameSuccess'));
+      await loadPasskeys();
+    } catch (error: any) {
+      toast.error(error?.message || t('common.error'));
+    }
+  };
 
   const handleBindSpace = async () => {
     setSpaceBindLoading(true);
@@ -148,6 +233,105 @@ export default function AccountSettingsPanel({
               </ItemActions>
             )}
           </Item>
+
+          {/* Passkey Section */}
+          <div className="pt-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="text-sm font-medium">
+                  {t('account.passkeySectionTitle')}
+                </h4>
+                <p className="text-xs text-muted-foreground">
+                  {t('account.passkeySectionDesc')}
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleAddPasskey}
+                disabled={
+                  registeringPasskey || !systemInfo.allow_modify_login_info
+                }
+                className="cursor-pointer"
+              >
+                {registeringPasskey ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Plus className="mr-2 h-4 w-4" />
+                )}
+                {t('account.addPasskey')}
+              </Button>
+            </div>
+
+            {passkeyLoading ? (
+              <div className="flex justify-center py-4">
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              </div>
+            ) : passkeys.length === 0 ? (
+              <div className="rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">
+                {t('account.noPasskeys')}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {passkeys.map((pk) => (
+                  <Item
+                    key={pk.uuid}
+                    size="sm"
+                    variant="muted"
+                    className="rounded-lg"
+                  >
+                    <ItemMedia variant="icon">
+                      <Fingerprint className="h-4 w-4" />
+                    </ItemMedia>
+                    <ItemContent>
+                      <ItemTitle>{pk.name}</ItemTitle>
+                      <ItemDescription>
+                        {pk.created_at && (
+                          <span>
+                            {t('account.passkeyCreated', {
+                              date: new Date(
+                                pk.created_at,
+                              ).toLocaleDateString(),
+                            })}
+                          </span>
+                        )}
+                        {pk.last_used_at && (
+                          <span className="ml-2">
+                            ·{' '}
+                            {t('account.passkeyLastUsed', {
+                              date: new Date(
+                                pk.last_used_at,
+                              ).toLocaleDateString(),
+                            })}
+                          </span>
+                        )}
+                      </ItemDescription>
+                    </ItemContent>
+                    <ItemActions>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 cursor-pointer"
+                        onClick={() => handleRenamePasskey(pk.uuid, pk.name)}
+                        disabled={!systemInfo.allow_modify_login_info}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-destructive cursor-pointer hover:text-destructive"
+                        onClick={() => handleDeletePasskey(pk.uuid)}
+                        disabled={!systemInfo.allow_modify_login_info}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </ItemActions>
+                  </Item>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 

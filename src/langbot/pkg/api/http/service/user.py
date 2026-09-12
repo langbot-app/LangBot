@@ -4,6 +4,7 @@ import sqlalchemy
 import argon2
 import jwt
 import datetime
+import json
 import typing
 import asyncio
 import dataclasses
@@ -12,10 +13,19 @@ import hashlib
 import secrets
 import time
 import uuid
+import webauthn
+from webauthn.helpers import bytes_to_base64url, base64url_to_bytes
+from webauthn.helpers.structs import (
+    AuthenticatorSelectionCriteria,
+    PublicKeyCredentialDescriptor,
+    ResidentKeyRequirement,
+    UserVerificationRequirement,
+)
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from ....entity.persistence import user
+from ....entity.persistence import passkey
 from ....entity.persistence.workspace import MembershipRole, MembershipStatus, WorkspaceMembership
 from ....utils import constants
 from ....entity.errors import account as account_errors
@@ -29,6 +39,9 @@ if typing.TYPE_CHECKING:
 _SPACE_OAUTH_STATE_MAX_ENTRIES = 4096
 _SPACE_OAUTH_STATE_HEAP_COMPACT_FLOOR = 64
 _SPACE_OAUTH_STATE_HEAP_MAX_MULTIPLIER = 4
+_PASSKEY_CHALLENGE_MAX_ENTRIES = 4096
+_PASSKEY_CHALLENGE_HEAP_COMPACT_FLOOR = 64
+_PASSKEY_CHALLENGE_HEAP_MAX_MULTIPLIER = 4
 
 
 class AccountExistsLoginRequiredError(ValueError):
@@ -54,6 +67,17 @@ class SpaceOAuthStateConsumption:
     launch_workspace_uuid: str | None = None
 
 
+@dataclasses.dataclass(frozen=True, slots=True)
+class PasskeyChallengeData:
+    challenge: bytes
+    purpose: typing.Literal['register', 'auth']
+    rp_id: str
+    origin: str
+    expires_at: float
+    account_uuid: str | None = None
+    user_email: str | None = None
+
+
 class UserService:
     ap: Application
     _create_user_lock: asyncio.Lock
@@ -65,6 +89,9 @@ class UserService:
         self._space_oauth_state_lock = asyncio.Lock()
         self._space_oauth_states: dict[str, tuple[str, str | None, float, str | None]] = {}
         self._space_oauth_state_expiry_heap: list[tuple[float, str]] = []
+        self._passkey_challenge_lock = asyncio.Lock()
+        self._passkey_challenges: dict[str, PasskeyChallengeData] = {}
+        self._passkey_challenge_expiry_heap: list[tuple[float, str]] = []
 
     @staticmethod
     def _space_oauth_state_digest(state: str) -> str:
@@ -850,3 +877,315 @@ class UserService:
         await self._update_space_provider_for_account(local_account, api_key)
 
         return await self.get_user_by_email(space_email)
+
+    def _prune_passkey_challenges(self, now: float) -> None:
+        while self._passkey_challenge_expiry_heap:
+            expires_at, token = self._passkey_challenge_expiry_heap[0]
+            entry = self._passkey_challenges.get(token)
+            if entry is None or entry.expires_at != expires_at:
+                heapq.heappop(self._passkey_challenge_expiry_heap)
+                continue
+            if expires_at > now:
+                break
+            heapq.heappop(self._passkey_challenge_expiry_heap)
+            self._passkey_challenges.pop(token, None)
+
+        max_heap_entries = max(
+            _PASSKEY_CHALLENGE_HEAP_COMPACT_FLOOR,
+            len(self._passkey_challenges) * _PASSKEY_CHALLENGE_HEAP_MAX_MULTIPLIER,
+        )
+        if len(self._passkey_challenge_expiry_heap) > max_heap_entries:
+            self._passkey_challenge_expiry_heap[:] = [
+                (entry.expires_at, token) for token, entry in self._passkey_challenges.items()
+            ]
+            heapq.heapify(self._passkey_challenge_expiry_heap)
+
+    async def issue_passkey_challenge(
+        self,
+        purpose: typing.Literal['register', 'auth'],
+        rp_id: str,
+        origin: str,
+        *,
+        account_uuid: str | None = None,
+        user_email: str | None = None,
+        ttl_seconds: int = 300,
+    ) -> tuple[str, bytes]:
+        now = time.monotonic()
+        challenge_bytes = secrets.token_bytes(32)
+        challenge_token = secrets.token_urlsafe(32)
+        expires_at = now + ttl_seconds
+
+        async with self._passkey_challenge_lock:
+            self._prune_passkey_challenges(now)
+            while len(self._passkey_challenges) >= _PASSKEY_CHALLENGE_MAX_ENTRIES:
+                if not self._passkey_challenge_expiry_heap:
+                    break
+                _, oldest_token = heapq.heappop(self._passkey_challenge_expiry_heap)
+                self._passkey_challenges.pop(oldest_token, None)
+
+            self._passkey_challenges[challenge_token] = PasskeyChallengeData(
+                challenge=challenge_bytes,
+                purpose=purpose,
+                rp_id=rp_id,
+                origin=origin,
+                expires_at=expires_at,
+                account_uuid=account_uuid,
+                user_email=user_email,
+            )
+            heapq.heappush(self._passkey_challenge_expiry_heap, (expires_at, challenge_token))
+
+        return challenge_token, challenge_bytes
+
+    async def consume_passkey_challenge(
+        self,
+        challenge_token: str,
+        purpose: typing.Literal['register', 'auth'],
+    ) -> PasskeyChallengeData:
+        now = time.monotonic()
+        async with self._passkey_challenge_lock:
+            self._prune_passkey_challenges(now)
+            data = self._passkey_challenges.pop(challenge_token, None)
+
+        if data is None or data.expires_at < now:
+            raise ValueError('Invalid or expired passkey challenge')
+        if data.purpose != purpose:
+            raise ValueError('Passkey challenge purpose mismatch')
+        return data
+
+    async def get_user_passkeys(self, account_uuid: str) -> list[passkey.PasskeyCredential]:
+        statement = (
+            sqlalchemy.select(passkey.PasskeyCredential)
+            .where(passkey.PasskeyCredential.account_uuid == account_uuid)
+            .order_by(passkey.PasskeyCredential.created_at.desc())
+        )
+        async with self._session_factory()() as session:
+            result = await session.scalars(statement)
+            return list(result.all())
+
+    async def get_passkey_by_credential_id(self, credential_id: str) -> passkey.PasskeyCredential | None:
+        statement = (
+            sqlalchemy.select(passkey.PasskeyCredential)
+            .where(passkey.PasskeyCredential.credential_id == credential_id)
+        )
+        async with self._session_factory()() as session:
+            return await session.scalar(statement)
+
+    async def get_passkey_by_uuid(self, passkey_uuid: str) -> passkey.PasskeyCredential | None:
+        statement = (
+            sqlalchemy.select(passkey.PasskeyCredential)
+            .where(passkey.PasskeyCredential.uuid == passkey_uuid)
+        )
+        async with self._session_factory()() as session:
+            return await session.scalar(statement)
+
+    async def generate_passkey_registration_options(
+        self,
+        account_uuid: str,
+        rp_id: str,
+        origin: str,
+        rp_name: str = 'LangBot',
+    ) -> tuple[dict[str, typing.Any], str]:
+        account = await self.get_user_by_uuid(account_uuid)
+        if account is None:
+            raise ValueError('User not found')
+        self._require_active_account(account)
+
+        challenge_token, challenge_bytes = await self.issue_passkey_challenge(
+            purpose='register',
+            rp_id=rp_id,
+            origin=origin,
+            account_uuid=account_uuid,
+            user_email=account.user,
+        )
+
+        existing_passkeys = await self.get_user_passkeys(account_uuid)
+        exclude_credentials = [
+            PublicKeyCredentialDescriptor(id=base64url_to_bytes(pk.credential_id))
+            for pk in existing_passkeys
+        ]
+
+        options = webauthn.generate_registration_options(
+            rp_id=rp_id,
+            rp_name=rp_name,
+            user_name=account.user,
+            user_id=account.uuid.encode('utf-8'),
+            user_display_name=account.user,
+            challenge=challenge_bytes,
+            exclude_credentials=exclude_credentials or None,
+            authenticator_selection=AuthenticatorSelectionCriteria(
+                resident_key=ResidentKeyRequirement.PREFERRED,
+            ),
+        )
+
+        options_dict = json.loads(webauthn.options_to_json(options))
+        return options_dict, challenge_token
+
+    async def verify_and_save_passkey_registration(
+        self,
+        challenge_token: str,
+        credential_data: dict[str, typing.Any] | str,
+        name: str | None = None,
+    ) -> passkey.PasskeyCredential:
+        challenge_data = await self.consume_passkey_challenge(challenge_token, 'register')
+        if not challenge_data.account_uuid:
+            raise ValueError('Registration challenge must be bound to an account')
+
+        verification = webauthn.verify_registration_response(
+            credential=credential_data,
+            expected_challenge=challenge_data.challenge,
+            expected_rp_id=challenge_data.rp_id,
+            expected_origin=challenge_data.origin,
+            require_user_verification=False,
+        )
+
+        cred_id_str = bytes_to_base64url(verification.credential_id)
+        pub_key_str = bytes_to_base64url(verification.credential_public_key)
+
+        transports = None
+        if isinstance(credential_data, dict):
+            resp = credential_data.get('response', {})
+            if isinstance(resp, dict) and 'transports' in resp:
+                t_list = resp.get('transports')
+                if isinstance(t_list, list):
+                    transports = ','.join(str(x) for x in t_list)
+
+        credential_name = (name or '').strip()
+        if not credential_name:
+            credential_name = f"Passkey ({datetime.datetime.now().strftime('%Y-%m-%d %H:%M')})"
+
+        record = passkey.PasskeyCredential(
+            uuid=str(uuid.uuid4()),
+            account_uuid=challenge_data.account_uuid,
+            name=credential_name,
+            credential_id=cred_id_str,
+            public_key=pub_key_str,
+            sign_count=verification.sign_count,
+            aaguid=verification.aaguid,
+            transports=transports,
+            backed_up=verification.credential_backed_up,
+        )
+
+        async with self._session_factory()() as session:
+            async with session.begin():
+                session.add(record)
+                await session.flush()
+                await session.refresh(record)
+                return record
+
+    async def generate_passkey_authentication_options(
+        self,
+        rp_id: str,
+        origin: str,
+        email: str | None = None,
+    ) -> tuple[dict[str, typing.Any], str]:
+        challenge_token, challenge_bytes = await self.issue_passkey_challenge(
+            purpose='auth',
+            rp_id=rp_id,
+            origin=origin,
+            user_email=email,
+        )
+
+        allow_credentials: list[PublicKeyCredentialDescriptor] | None = None
+        if email:
+            user_obj = await self.get_user_by_email(email)
+            if user_obj:
+                user_passkeys = await self.get_user_passkeys(user_obj.uuid)
+                if user_passkeys:
+                    allow_credentials = [
+                        PublicKeyCredentialDescriptor(id=base64url_to_bytes(pk.credential_id))
+                        for pk in user_passkeys
+                    ]
+
+        options = webauthn.generate_authentication_options(
+            rp_id=rp_id,
+            challenge=challenge_bytes,
+            allow_credentials=allow_credentials or None,
+            user_verification=UserVerificationRequirement.PREFERRED,
+        )
+
+        options_dict = json.loads(webauthn.options_to_json(options))
+        return options_dict, challenge_token
+
+    async def verify_passkey_authentication(
+        self,
+        challenge_token: str,
+        credential_data: dict[str, typing.Any] | str,
+    ) -> tuple[str, user.User]:
+        challenge_data = await self.consume_passkey_challenge(challenge_token, 'auth')
+
+        raw_id = credential_data.get('id') if isinstance(credential_data, dict) else None
+        if not raw_id:
+            raise ValueError('Missing credential id')
+
+        stored_credential = await self.get_passkey_by_credential_id(raw_id)
+        if stored_credential is None:
+            raise ValueError('Passkey credential not recognized')
+
+        user_obj = await self.get_user_by_uuid(stored_credential.account_uuid)
+        if user_obj is None:
+            raise ValueError('Associated user not found')
+        self._require_active_account(user_obj)
+
+        verification = webauthn.verify_authentication_response(
+            credential=credential_data,
+            expected_challenge=challenge_data.challenge,
+            expected_rp_id=challenge_data.rp_id,
+            expected_origin=challenge_data.origin,
+            credential_public_key=base64url_to_bytes(stored_credential.public_key),
+            credential_current_sign_count=stored_credential.sign_count,
+            require_user_verification=False,
+        )
+
+        async with self._session_factory()() as session:
+            async with session.begin():
+                record = await session.scalar(
+                    sqlalchemy.select(passkey.PasskeyCredential).where(
+                        passkey.PasskeyCredential.id == stored_credential.id
+                    )
+                )
+                if record:
+                    record.sign_count = verification.new_sign_count
+                    record.last_used_at = datetime.datetime.now()
+                    record.backed_up = verification.credential_backed_up
+
+        token = await self.generate_jwt_token(user_obj)
+        return token, user_obj
+
+    async def rename_user_passkey(
+        self,
+        account_uuid: str,
+        passkey_uuid: str,
+        new_name: str,
+    ) -> passkey.PasskeyCredential | None:
+        async with self._session_factory()() as session:
+            async with session.begin():
+                record = await session.scalar(
+                    sqlalchemy.select(passkey.PasskeyCredential).where(
+                        passkey.PasskeyCredential.uuid == passkey_uuid,
+                        passkey.PasskeyCredential.account_uuid == account_uuid,
+                    )
+                )
+                if record is None:
+                    return None
+                record.name = new_name
+                await session.flush()
+                await session.refresh(record)
+                return record
+
+    async def delete_user_passkey(
+        self,
+        account_uuid: str,
+        passkey_uuid: str,
+    ) -> bool:
+        async with self._session_factory()() as session:
+            async with session.begin():
+                record = await session.scalar(
+                    sqlalchemy.select(passkey.PasskeyCredential).where(
+                        passkey.PasskeyCredential.uuid == passkey_uuid,
+                        passkey.PasskeyCredential.account_uuid == account_uuid,
+                    )
+                )
+                if record is None:
+                    return False
+                await session.delete(record)
+                return True

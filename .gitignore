@@ -57,3 +57,6 @@ testsdk/
 
 # Next.js build cache (legacy)
 web/.next/
+web/.pnpm-home
+.tmp
+Caddyfile
