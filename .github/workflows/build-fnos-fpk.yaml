@@ -1,0 +1,78 @@
+name: Build fnOS FPK
+
+on:
+  workflow_dispatch:
+  ## 发布release的时候会自动构建
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build-fnos-fpk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          persist-credentials: false
+
+      - name: Check version
+        id: check_version
+        run: |
+          echo $GITHUB_REF
+          # 如果是tag，则去掉refs/tags/前缀（与其他 release workflow 一致，版本号取 tag 名）
+          if [[ $GITHUB_REF == refs/tags/* ]]; then
+            echo "It's a tag"
+            echo "version=$(echo $GITHUB_REF | awk -F '/' '{print $3}')" >> $GITHUB_OUTPUT
+          else
+            # 手动触发（workflow_dispatch）：读不到 tag，使用 manifest 内维护的版本
+            echo "It's not a tag"
+            echo "version=$(grep '^version=' packaging/fnos/manifest | cut -d= -f2)" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Setup Node
+        uses: actions/setup-node@v2
+        with:
+          node-version: '22'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install build tools
+        run: |
+          pip install pillow
+          # fnpack：飞牛官方打包 CLI（静态二进制）
+          curl -fsSL -o /usr/local/bin/fnpack \
+            https://static2.fnnas.com/fnpack/fnpack-1.2.3-linux-amd64
+          chmod +x /usr/local/bin/fnpack
+
+      - name: Build FPK
+        env:
+          FPK_VERSION: ${{ steps.check_version.outputs.version }}
+        run: |
+          bash packaging/fnos/build.sh
+          test -f packaging/fnos/langbot.fpk
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: langbot-${{ steps.check_version.outputs.version }}-fnos
+          path: packaging/fnos/langbot.fpk
+
+      - name: Upload To Release
+        # 仅 release 触发时执行；手动/workflow_dispatch 触发时没有 release，
+        # 且 github.event.release.tag_name 为空（否则 gh release upload 缺参数报错）
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # tag 可能已带 -fnos 后缀（如 v4.10.9-fnos），产物名统一为
+          # langbot-<基础版本>-fnos.fpk，避免出现 -fnos-fnos
+          VER="${{ steps.check_version.outputs.version }}"
+          BASE="${VER#v}"; BASE="${BASE%-fnos}"
+          cp packaging/fnos/langbot.fpk "langbot-${BASE}-fnos.fpk"
+          gh release upload ${{ github.event.release.tag_name }} "langbot-${BASE}-fnos.fpk"

@@ -1,0 +1,149 @@
+#!/bin/bash
+# cmd/install_callback - post-install hook
+# Prefers bundled uv binary, creates Python venv, syncs deps, verifies dist.
+# Also validates the user-selected Node.js version is actually installed.
+
+APP_DIR="${TRIM_APPDEST}/langbot"
+
+# --- Resolve data directory ---
+# LangBot loads config CWD-relative (data/config.yaml); cmd/main replaces
+# APP_DIR/data with a symlink to this persistent dir on every start.
+DATA_DIR="${TRIM_DATA_SHARE_PATHS%%:*}"
+if [ -z "${DATA_DIR}" ]; then
+    DATA_DIR="${TRIM_PKGVAR}/data"
+fi
+
+cd "${APP_DIR}" || {
+    echo "App directory missing after install" > "${TRIM_TEMP_LOGFILE}"
+    exit 1
+}
+
+# --- Ensure data directory exists ---
+mkdir -p "${DATA_DIR}/plugins" "${DATA_DIR}/box" "${DATA_DIR}/logs" 2>/dev/null || true
+
+# --- Pre-seed config.yaml with the user-selected web port ---
+# Data root points at the persistent share (LANGBOT_DATA_ROOT is exported by
+# cmd/main at start), so this config survives app upgrades.
+# LangBot copies templates/config.yaml there on first boot only if missing,
+# so we seed it ourselves with the chosen port.
+PORT="${wizard_port:-5300}"
+case "${PORT}" in
+    ''|*[!0-9]*) PORT="5300" ;;
+esac
+TEMPLATE_FILE="${APP_DIR}/src/langbot/templates/config.yaml"
+
+_patch_config() {
+    local cfg_dir="$1"
+    local cfg_file="${cfg_dir}/config.yaml"
+    mkdir -p "${cfg_dir}" 2>/dev/null || true
+    if [ ! -f "${cfg_file}" ] && [ -f "${TEMPLATE_FILE}" ]; then
+        cp "${TEMPLATE_FILE}" "${cfg_file}"
+    fi
+    if [ -f "${cfg_file}" ]; then
+        sed -i -E "/^api:/,/^[a-z_]+:/ s/^([[:space:]]*port:).*/\1 ${PORT}/" "${cfg_file}"
+        sed -i "s#webhook_prefix: 'http://127\.0\.0\.1:[0-9]*'#webhook_prefix: 'http://127.0.0.1:${PORT}'#" "${cfg_file}"
+    fi
+}
+
+# Seed the persistent dir AND the CWD-relative APP_DIR/data (cmd/main merges
+# the latter into the persistent dir via symlink on first start, so the port
+# survives regardless of which path ends up being read).
+_patch_config "${DATA_DIR}"
+if [ "${APP_DIR}/data" != "${DATA_DIR}" ]; then
+    _patch_config "${APP_DIR}/data"
+fi
+
+# --- Fallback patch for desktop entry port ---
+# fnOS natively substitutes ${wizard_port} in ui/config at install time.
+# This only kicks in if the placeholder somehow survived (e.g. CLI install).
+UI_CONFIG="${TRIM_APPDEST}/ui/config"
+if [ -f "${UI_CONFIG}" ] && grep -q 'wizard_port\|{port}' "${UI_CONFIG}"; then
+    sed -i "s/\${wizard_port}/${PORT}/g; s/{port}/${PORT}/g" "${UI_CONFIG}"
+fi
+
+# --- Validate user-selected Node.js version is installed ---
+NODE_VERSION="${wizard_node_version:-22}"
+if [ ! -d "/var/apps/nodejs_v${NODE_VERSION}" ]; then
+    echo "Node.js v${NODE_VERSION} 未安装：请先在应用中心安装 nodejs_v${NODE_VERSION}，再重新安装本应用。" > "${TRIM_TEMP_LOGFILE}"
+    exit 1
+fi
+
+# --- Python check ---
+PYTHON_BIN="python3"
+if ! command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
+    PYTHON_BIN="python"
+fi
+if ! command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
+    echo "Python not found on this system" > "${TRIM_TEMP_LOGFILE}"
+    exit 1
+fi
+
+PY_VER=$("${PYTHON_BIN}" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null)
+if [ -z "${PY_VER}" ]; then
+    echo "Python 3.11+ required but not found on this system" > "${TRIM_TEMP_LOGFILE}"
+    exit 1
+fi
+PY_MAJOR=$(echo "${PY_VER}" | cut -d. -f1)
+PY_MINOR=$(echo "${PY_VER}" | cut -d. -f2)
+if [ "${PY_MAJOR}" -lt 3 ] || { [ "${PY_MAJOR}" -eq 3 ] && [ "${PY_MINOR}" -lt 11 ]; }; then
+    echo "Python 3.11+ required, found ${PY_VER}" > "${TRIM_TEMP_LOGFILE}"
+    exit 1
+fi
+
+# --- Resolve uv: bundled binary first, then online fallbacks ---
+UV_BIN=""
+ARCH=$(uname -m)
+case "${ARCH}" in
+    x86_64)  BUNDLED_UV="${TRIM_APPDEST}/bin/uv-x86_64" ;;
+    aarch64) BUNDLED_UV="${TRIM_APPDEST}/bin/uv-aarch64" ;;
+    *)       BUNDLED_UV="" ;;
+esac
+
+if [ -n "${BUNDLED_UV}" ] && [ -x "${BUNDLED_UV}" ]; then
+    mkdir -p "${TRIM_PKGVAR}/bin"
+    cp "${BUNDLED_UV}" "${TRIM_PKGVAR}/bin/uv" && chmod +x "${TRIM_PKGVAR}/bin/uv"
+    UV_BIN="${TRIM_PKGVAR}/bin/uv"
+fi
+
+if [ -z "${UV_BIN}" ] && command -v uv >/dev/null 2>&1; then
+    UV_BIN="uv"
+fi
+
+if [ -z "${UV_BIN}" ]; then
+    "${PYTHON_BIN}" -m pip install --user --no-cache-dir uv 2>/dev/null || \
+    "${PYTHON_BIN}" -m pip install --no-cache-dir uv 2>/dev/null || \
+    curl -LsSf https://astral.sh/uv/install.sh | sh 2>/dev/null || true
+    export PATH="${HOME}/.local/bin:${PATH}"
+    if command -v uv >/dev/null 2>&1; then
+        UV_BIN="uv"
+    elif [ -x "${HOME}/.local/bin/uv" ]; then
+        UV_BIN="${HOME}/.local/bin/uv"
+    fi
+fi
+
+if [ -z "${UV_BIN}" ]; then
+    echo "无法获取 uv：内置二进制缺失且在线安装失败。请检查网络后重新安装。" > "${TRIM_TEMP_LOGFILE}"
+    exit 1
+fi
+
+# --- Create venv via uv ---
+if [ ! -d ".venv" ]; then
+    "${UV_BIN}" venv .venv --python "${PYTHON_BIN}" || {
+        echo "Failed to create Python virtual environment via uv" > "${TRIM_TEMP_LOGFILE}"
+        exit 1
+    }
+fi
+
+# --- Sync dependencies ---
+"${UV_BIN}" sync --extra seekdb || {
+    echo "Dependency sync failed. Check network connectivity." > "${TRIM_TEMP_LOGFILE}"
+    exit 1
+}
+
+# --- Verify frontend dist ---
+if [ ! -d "web/dist" ] || [ -z "$(ls -A web/dist 2>/dev/null)" ]; then
+    echo "Frontend dist missing! Web UI will not be available." > "${TRIM_TEMP_LOGFILE}"
+    exit 1
+fi
+
+exit 0

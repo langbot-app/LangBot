@@ -1,0 +1,9 @@
+{
+    "title": "LangBot",
+    "icon": "images/icon-256.png",
+    "type": "url",
+    "protocol": "http",
+    "port": "${wizard_port}",
+    "url": "/",
+    "allUsers": true
+}
