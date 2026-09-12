@@ -110,7 +110,8 @@ classifiers = [
 
 [project.optional-dependencies]
 seekdb = [
-    "pyseekdb==1.1.0.post3",
+    "pyseekdb==1.4.0.post1",
+    "pylibseekdb==1.4.0; sys_platform == 'linux' or (sys_platform == 'darwin' and platform_machine == 'arm64')",
 ]
 
 [project.urls]
