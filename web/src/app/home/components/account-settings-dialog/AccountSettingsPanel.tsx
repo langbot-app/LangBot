@@ -21,9 +21,11 @@ import {
   Plus,
   Trash2,
   Pencil,
+  ShieldCheck,
 } from 'lucide-react';
 import { startRegistration } from '@simplewebauthn/browser';
 import PasswordChangeDialog from '../password-change-dialog/PasswordChangeDialog';
+import TotpEnrollDialog from './TotpEnrollDialog';
 import { PanelBody } from '../settings-dialog/panel-layout';
 
 interface AccountSettingsPanelProps {
@@ -56,11 +58,16 @@ export default function AccountSettingsPanel({
   const [passkeys, setPasskeys] = useState<PasskeyItem[]>([]);
   const [passkeyLoading, setPasskeyLoading] = useState(false);
   const [registeringPasskey, setRegisteringPasskey] = useState(false);
+  const [totpEnabled, setTotpEnabled] = useState(false);
+  const [remainingRecoveryCodes, setRemainingRecoveryCodes] = useState(0);
+  const [totpLoading, setTotpLoading] = useState(false);
+  const [totpDialogOpen, setTotpDialogOpen] = useState(false);
 
   useEffect(() => {
     if (active) {
       loadUserInfo();
       loadPasskeys();
+      loadTotpStatus();
     }
   }, [active]);
 
@@ -88,6 +95,19 @@ export default function AccountSettingsPanel({
       // ignore
     } finally {
       setPasskeyLoading(false);
+    }
+  }
+
+  async function loadTotpStatus() {
+    setTotpLoading(true);
+    try {
+      const status = await httpClient.getTotpStatus();
+      setTotpEnabled(status.enabled);
+      setRemainingRecoveryCodes(status.remaining_recovery_codes);
+    } catch {
+      // ignore
+    } finally {
+      setTotpLoading(false);
     }
   }
 
@@ -332,6 +352,56 @@ export default function AccountSettingsPanel({
               </div>
             )}
           </div>
+
+          {/* TOTP (2FA) Section */}
+          <div className="pt-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="text-sm font-medium">
+                  {t('account.totpSectionTitle')}
+                </h4>
+                <p className="text-xs text-muted-foreground">
+                  {t('account.totpSectionDesc')}
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setTotpDialogOpen(true)}
+                disabled={totpLoading || !systemInfo.allow_modify_login_info}
+                className="cursor-pointer"
+              >
+                {totpLoading ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <ShieldCheck className="mr-2 h-4 w-4" />
+                )}
+                {totpEnabled
+                  ? t('account.disableTotp')
+                  : t('account.enableTotp')}
+              </Button>
+            </div>
+
+            <Item size="sm" variant="muted" className="rounded-lg">
+              <ItemMedia variant="icon">
+                <ShieldCheck className="h-4 w-4" />
+              </ItemMedia>
+              <ItemContent>
+                <ItemTitle>
+                  {totpEnabled
+                    ? t('account.totpEnabled')
+                    : t('account.totpDisabled')}
+                </ItemTitle>
+                <ItemDescription>
+                  {totpEnabled
+                    ? t('account.totpRecoveryCodesRemaining', {
+                        count: remainingRecoveryCodes,
+                      })
+                    : t('account.totpSectionDesc')}
+                </ItemDescription>
+              </ItemContent>
+            </Item>
+          </div>
         </div>
       )}
 
@@ -339,6 +409,13 @@ export default function AccountSettingsPanel({
         open={passwordDialogOpen}
         onOpenChange={handlePasswordDialogClose}
         hasPassword={hasPassword}
+      />
+
+      <TotpEnrollDialog
+        open={totpDialogOpen}
+        onOpenChange={setTotpDialogOpen}
+        enabled={totpEnabled}
+        onChanged={loadTotpStatus}
       />
     </PanelBody>
   );

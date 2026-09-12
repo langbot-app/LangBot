@@ -28,6 +28,7 @@ from ...api.http.service import apikey as apikey_service
 from ...api.http.service import webhook as webhook_service
 from ...api.http.service import monitoring as monitoring_service
 from ...api.http.service import skill as skill_service
+from ...api.http.service import totp as totp_service
 from ...skill import manager as skill_mgr
 from ...api.http.service import maintenance as maintenance_service
 from ...discover import engine as discover_engine
@@ -197,6 +198,9 @@ class BuildAppStage(stage.BootingStage):
 
         user_service_inst = user_service.UserService(ap)
         ap.user_service = user_service_inst
+
+        totp_service_inst = totp_service.TotpService(ap)
+        ap.totp_service = totp_service_inst
 
         async def resolve_singleton_execution_context() -> ExecutionContext:
             if workspace_policy.multi_workspace_enabled:

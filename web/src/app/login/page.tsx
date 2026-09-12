@@ -36,6 +36,7 @@ import {
   RefreshCw,
   Layers,
   Fingerprint,
+  ShieldCheck,
 } from 'lucide-react';
 import { startAuthentication } from '@simplewebauthn/browser';
 import langbotIcon from '@/app/assets/langbot-logo.webp';
@@ -71,6 +72,15 @@ export default function Login() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [retrying, setRetrying] = useState(false);
   const autoSpaceLoginStarted = useRef(false);
+  // Second-factor state: when /auth replies with totp_required we keep the
+  // credentials and ask for a TOTP or recovery code instead of a password.
+  const [totpRequired, setTotpRequired] = useState(false);
+  const [totpCode, setTotpCode] = useState('');
+  const [totpSubmitting, setTotpSubmitting] = useState(false);
+  const [pendingCredentials, setPendingCredentials] = useState<{
+    username: string;
+    password: string;
+  } | null>(null);
 
   const form = useForm<z.infer<ReturnType<typeof formSchema>>>({
     resolver: zodResolver(formSchema(t)),
@@ -223,9 +233,47 @@ export default function Login() {
           toast.success(t('common.loginSuccess'));
         }
       })
-      .catch(() => {
+      .catch((error: unknown) => {
+        const apiError = error as { code?: string };
+        if (apiError?.code === 'totp_required') {
+          // Password was accepted; the account additionally requires TOTP.
+          setPendingCredentials({ username, password });
+          setTotpCode('');
+          setTotpRequired(true);
+          return;
+        }
         toast.error(t('common.loginFailed'));
       });
+  }
+
+  async function handleTotpSubmit() {
+    if (!pendingCredentials || !totpCode.trim()) {
+      return;
+    }
+    setTotpSubmitting(true);
+    try {
+      const code = totpCode.trim();
+      // A recovery code is longer than six digits; treat it as such so users
+      // can sign in even when the authenticator is unavailable.
+      const isRecoveryCode = code.replace(/\s/g, '').length !== 6;
+      const res = await httpClient.authUser(
+        pendingCredentials.username,
+        pendingCredentials.password,
+        isRecoveryCode ? { recoveryCode: code } : { totpCode: code },
+      );
+      setTotpRequired(false);
+      setPendingCredentials(null);
+      if (await finishLogin(res.token, pendingCredentials.username)) {
+        toast.success(t('common.loginSuccess'));
+      }
+    } catch (error: unknown) {
+      const apiError = error as { code?: string; message?: string };
+      // Keep the second-factor step open so the user can retry; surface the
+      // server message when available.
+      toast.error(apiError?.message || t('common.loginTotpInvalid'));
+    } finally {
+      setTotpSubmitting(false);
+    }
   }
 
   const handleSpaceLoginClick = useCallback(async () => {
@@ -336,8 +384,67 @@ export default function Login() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
+          {/* TOTP second-factor step: shown after the password is accepted. */}
+          {totpRequired && (
+            <div className="space-y-4">
+              <div className="flex flex-col items-center gap-1 text-center">
+                <ShieldCheck className="h-8 w-8 text-primary" />
+                <p className="text-sm font-medium">
+                  {t('common.loginTotpTitle')}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {t('common.loginTotpDesc')}
+                </p>
+              </div>
+              <div className="relative">
+                <ShieldCheck className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                <Input
+                  value={totpCode}
+                  onChange={(e) => setTotpCode(e.target.value)}
+                  placeholder={t('common.loginTotpPlaceholder')}
+                  className="pl-10 font-mono tracking-widest"
+                  inputMode="text"
+                  autoComplete="one-time-code"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      void handleTotpSubmit();
+                    }
+                  }}
+                />
+              </div>
+              <Button
+                type="button"
+                className="w-full cursor-pointer"
+                onClick={handleTotpSubmit}
+                disabled={totpSubmitting || !totpCode.trim()}
+              >
+                {totpSubmitting ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <ShieldCheck className="mr-2 h-4 w-4" />
+                )}
+                {totpSubmitting
+                  ? t('common.loginTotpVerifying')
+                  : t('common.loginTotpVerify')}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                className="w-full cursor-pointer"
+                onClick={() => {
+                  setTotpRequired(false);
+                  setPendingCredentials(null);
+                  setTotpCode('');
+                }}
+              >
+                {t('common.backToLogin')}
+              </Button>
+            </div>
+          )}
+
           {/* Space and password login are per-account capabilities. */}
-          {showSpaceLogin && (
+          {!totpRequired && showSpaceLogin && (
             <div className="space-y-3">
               <Button
                 type="button"
@@ -355,7 +462,7 @@ export default function Login() {
             </div>
           )}
 
-          {showPasskeyLogin && (
+          {!totpRequired && showPasskeyLogin && (
             <div className="space-y-3">
               <Button
                 type="button"
@@ -375,21 +482,23 @@ export default function Login() {
           )}
 
           {/* Divider - only show if both login methods are available */}
-          {(showSpaceLogin || showPasskeyLogin) && showLocalLogin && (
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <span className="w-full border-t" />
+          {!totpRequired &&
+            (showSpaceLogin || showPasskeyLogin) &&
+            showLocalLogin && (
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-white dark:bg-card px-2 text-muted-foreground">
+                    {t('common.or')}
+                  </span>
+                </div>
               </div>
-              <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-white dark:bg-card px-2 text-muted-foreground">
-                  {t('common.or')}
-                </span>
-              </div>
-            </div>
-          )}
+            )}
 
           {/* Password login remains available to every account with a password. */}
-          {showLocalLogin && (
+          {!totpRequired && showLocalLogin && (
             <Form {...form}>
               <form
                 onSubmit={form.handleSubmit(onSubmit)}

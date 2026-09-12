@@ -1330,6 +1330,8 @@ const esES = {
     newPasswordRequired: 'La nueva contraseña no puede estar vacía',
     resetPassword: 'Restablecer contraseña',
     resetting: 'Restableciendo...',
+    totpMethodsUnavailable:
+      'TOTP no está habilitado para esta cuenta; solo se puede usar la clave de recuperación.',
     resetSuccess:
       'Contraseña restablecida correctamente, por favor inicia sesión',
     resetFailed:

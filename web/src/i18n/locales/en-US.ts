@@ -90,6 +90,13 @@ const enUS = {
     passkeyLoginSuccess: 'Passkey verified successfully, signing in...',
     passkeyLoginFailed: 'Failed to sign in with Passkey',
     passkeyNotSupported: 'Passkey is not supported on this browser or device',
+    loginTotpTitle: 'Two-Factor Verification',
+    loginTotpDesc:
+      'Enter the 6-digit code from your authenticator app, or a recovery code',
+    loginTotpPlaceholder: 'Authenticator or recovery code',
+    loginTotpVerify: 'Verify',
+    loginTotpVerifying: 'Verifying...',
+    loginTotpInvalid: 'Invalid code, please try again',
     spaceLoginTitle: 'Login with LangBot Account',
     spaceLoginDescription:
       'Scan the QR code or visit the link below to authorize',
@@ -1279,6 +1286,8 @@ const enUS = {
     registerWithPassword: 'Register with email and password',
     initSuccess: 'Initialization successful, please login',
     initFailed: 'Initialization failed: ',
+    totpHint:
+      'Recommended: enable two-factor authentication (TOTP) after signing in to secure your account.',
   },
   resetPassword: {
     title: 'Reset Password 🔐',
@@ -1298,6 +1307,22 @@ const enUS = {
     resetFailed:
       'Password reset failed, please check your email and recovery key',
     backToLogin: 'Back to Login',
+    totpMethod: 'TOTP Authenticator',
+    recoveryCodeMethod: 'Recovery Code',
+    verifyMethod: 'Verification Method',
+    totpMethodsUnavailable:
+      'TOTP is not enabled for this account; only the recovery key can be used.',
+    totpCode: 'Authenticator Code',
+    enterTotpCode: 'Enter the 6-digit code from your authenticator app',
+    recoveryCode: 'Recovery Code',
+    enterRecoveryCode: 'Enter one of your recovery codes',
+    totpCodeRequired: 'Authenticator code cannot be empty',
+    recoveryCodeRequired: 'Recovery code cannot be empty',
+    totpNotEnabled:
+      'TOTP is not enabled for this account, use the recovery key instead',
+    invalidTotpCode: 'Invalid verification code, please try again',
+    totpMethodDescription:
+      'Verify with a TOTP authenticator app or one of your recovery codes',
   },
   embedding: {
     description: 'Manage Embedding models for text vectorization',
@@ -1357,6 +1382,38 @@ const enUS = {
     passkeyAddedSuccess: 'Passkey added successfully',
     passkeyDeleteSuccess: 'Passkey deleted',
     passkeyRenameSuccess: 'Passkey renamed successfully',
+    totpSectionTitle: 'Two-Factor Authentication (TOTP)',
+    totpSectionDesc:
+      'Scan a QR code to add a TOTP authenticator for extra login security',
+    totpEnabled: 'Enabled',
+    totpDisabled: 'Disabled',
+    enableTotp: 'Enable TOTP',
+    disableTotp: 'Disable TOTP',
+    totpEnabledSuccess: 'Two-factor authentication enabled',
+    totpDisabledSuccess: 'Two-factor authentication disabled',
+    totpEnrollTitle: 'Add TOTP Authenticator',
+    totpEnrollDesc:
+      'Scan the QR code with your authenticator app, then enter the 6-digit code to confirm',
+    totpScanHint: 'Scan this QR code with your authenticator app',
+    totpManualSecret: 'Or enter this key manually',
+    totpCodeLabel: 'Authenticator Code',
+    totpCodePlaceholder: '6-digit code',
+    totpVerify: 'Verify and Enable',
+    totpVerifying: 'Verifying...',
+    totpRecoveryCodesTitle: 'Recovery Codes',
+    totpRecoveryCodesDesc:
+      'Store these codes somewhere safe. Each code can be used once if you lose access to your authenticator.',
+    totpRecoveryCodesRemaining: '{{count}} recovery codes remaining',
+    totpRegenerateRecoveryCodes: 'Regenerate Recovery Codes',
+    totpRecoveryCodesRegenerated: 'Recovery codes regenerated',
+    totpDisableTitle: 'Disable Two-Factor Authentication',
+    totpDisableDesc:
+      'Enter a valid authenticator code to disable two-factor authentication',
+    totpConfirmDisable: 'Disable',
+    totpInvalidCode: 'Invalid code, please try again',
+    totpLoadFailed: 'Failed to load two-factor authentication status',
+    totpCopySecret: 'Copy key',
+    totpCopied: 'Copied to clipboard',
     bindSpaceFailed: 'Failed to bind LangBot Account',
     bindSpaceInvalidState:
       'Invalid bind request. Please try again from account settings.',

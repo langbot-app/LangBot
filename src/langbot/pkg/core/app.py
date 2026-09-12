@@ -34,6 +34,7 @@ from ..api.http.service import apikey as apikey_service
 from ..api.http.service import webhook as webhook_service
 from ..api.http.service import monitoring as monitoring_service
 from ..api.http.service import skill as skill_service
+from ..api.http.service import totp as totp_service
 from ..api.http.service import maintenance as maintenance_service
 from ..discover import engine as discover_engine
 from ..storage import mgr as storagemgr
@@ -160,6 +161,8 @@ class Application:
     # ========= HTTP Services =========
 
     user_service: user_service.UserService = None
+
+    totp_service: totp_service.TotpService = None
 
     space_service: space_service.SpaceService = None
 
