@@ -25,7 +25,10 @@ CLI uses. Create one in your Space account (Profile → Personal Access Tokens),
 then send it as a Bearer token:
 
 ```
-Authorization: Bearer lbpat_...uests without a valid PAT get `401 Unauthorized`.
+Authorization: Bearer <your-pat>
+```
+
+Requests without a valid PAT get `401 Unauthorized`.
 
 ## Client configuration
 
@@ -65,6 +68,36 @@ All tools are read-only.
    `category`) and choose the first compatible item. Ordering is latest probe
    state (available, unprobed, unavailable), then Space recommendation. Each
    item includes `availability.up`, `last_probed_at`, latency, and HTTP status.
+
+## Runner usage recommendations
+
+Use `search_plugins` with `runner_usage: "agent"` for Agent, pipeline, and
+setup-wizard recommendations, or `runner_usage: "event"` for event processors.
+The component kind remains `Runner`. Only these two exact values are accepted;
+omit the optional field to preserve unfiltered browsing.
+
+```json
+{"query":"", "runner_usage":"agent", "page":1, "page_size":100}
+```
+
+Plugin results include `latest_version` and `runner_usages: string[]`, the
+explicit union of usages in that latest installable version. Only recommend a
+plugin when this array explicitly contains the target usage. Missing, empty,
+malformed, or unknown usages must never mean agent-compatible. Event-only
+plugins must never enter Agent recommendations. Empty filtered results are
+valid while legacy packages await corrected releases; never remove the filter
+to fill a recommendation list.
+
+REST callers use `runner_usage` on both
+`POST /api/v1/marketplace/extensions/search` and the compatibility
+`POST /api/v1/marketplace/plugins/search`; preserve it during fallback. Add
+`"type_filter":"plugin", "component_filter":"Runner"` on the unified endpoint.
+Usage is ANDed with other filters before pagination and `total`; MCP/Skill items
+do not match. Invalid REST values return HTTP 400.
+
+Open the same filter in the webpage:
+`https://space.langbot.app/market?type=plugin&component=Runner&runner_usage=agent`
+(or `runner_usage=event`). Switch All / Agent / Event in the Runner usage row.
 
 ## Implementation & maintenance (for Space developers)
 
