@@ -8,10 +8,66 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-pytest_plugins = ['tests.integration.api.test_smoke']
+from tests.factories import FakeApp
+from tests.utils.import_isolation import isolated_sys_modules, MockLifecycleControlScope
 
 
-pytestmark = pytest.mark.integration
+pytestmark = [pytest.mark.integration, pytest.mark.usefixtures('mock_circular_import_chain')]
+
+
+@pytest.fixture(scope='module')
+def mock_circular_import_chain():
+    class FakeMinimalApplication:
+        pass
+
+    mock_app = Mock()
+    mock_app.Application = FakeMinimalApplication
+
+    mock_entities = Mock()
+    mock_entities.LifecycleControlScope = MockLifecycleControlScope
+
+    clear = [
+        'langbot.pkg.api.http.controller.group',
+        'langbot.pkg.api.http.controller.groups',
+        'langbot.pkg.api.http.controller.groups.system',
+        'langbot.pkg.api.http.controller.groups.user',
+        'langbot.pkg.api.http.controller.main',
+    ]
+
+    with isolated_sys_modules(
+        mocks={
+            'langbot.pkg.core.app': mock_app,
+            'langbot.pkg.core.entities': mock_entities,
+        },
+        clear=clear,
+    ):
+        import langbot.pkg.api.http.controller.groups.user as _user_group  # noqa: E402, F401
+
+        yield
+
+
+@pytest.fixture
+def fake_api_app():
+    app = FakeApp()
+    app.instance_config.data.update(
+        {
+            'api': {'port': 5300},
+            'system': {'allow_modify_login_info': True},
+        }
+    )
+    app.user_service = Mock()
+    app.user_service.verify_jwt_token = AsyncMock(side_effect=ValueError('Invalid token'))
+    app.user_service.get_user_by_email = AsyncMock(return_value=Mock())
+    return app
+
+
+@pytest.fixture
+async def quart_test_client(fake_api_app, http_controller_cls):
+    controller = http_controller_cls(fake_api_app)
+    await controller.initialize()
+
+    client = controller.quart_app.test_client()
+    yield client
 
 
 class TestPasskeyPublicEndpoints:
