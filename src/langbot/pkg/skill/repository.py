@@ -5,7 +5,9 @@ import os
 import weakref
 
 from langbot_plugin.skill_store import (
+    SkillRevisionConflictError,
     SkillRevisionMismatchError,
+    SkillRevisionNotFoundError,
     SkillStore,
     skill_namespace,
 )
@@ -116,13 +118,29 @@ class SkillRepository:
     async def list_skills(self, context: TenantContext) -> list[dict]:
         return await self._call(context, 'list_skills')
 
-    async def get_skill(self, context: TenantContext, name: str, *, snapshot: bool = False) -> dict | None:
+    async def get_skill(
+        self,
+        context: TenantContext,
+        name: str,
+        *,
+        snapshot: bool = False,
+        revision: str | None = None,
+    ) -> dict | None:
+        if revision is not None:
+            return await self._call(context, 'get_skill_snapshot', name, revision)
         return await self._call(context, 'get_skill_snapshot' if snapshot else 'get_skill', name)
 
     async def create_skill(self, context: TenantContext, skill: dict) -> dict:
         return await self._call(context, 'create_skill', skill)
 
-    async def import_skill_directory(self, context: TenantContext, path: str, skill: dict) -> dict:
+    async def import_skill_directory(
+        self,
+        context: TenantContext,
+        path: str,
+        skill: dict,
+        *,
+        base_revision: str | None = None,
+    ) -> dict:
         namespace = self._namespace(context)
         return await self._call(
             context,
@@ -130,10 +148,24 @@ class SkillRepository:
             path,
             skill,
             source_root=self._workspace_root(namespace),
+            base_revision=base_revision,
         )
 
-    async def update_skill(self, context: TenantContext, name: str, skill: dict) -> dict:
-        return await self._call(context, 'update_skill', name, skill)
+    async def update_skill(
+        self,
+        context: TenantContext,
+        name: str,
+        skill: dict,
+        *,
+        base_revision: str | None,
+    ) -> dict:
+        return await self._call(
+            context,
+            'update_skill',
+            name,
+            skill,
+            base_revision=base_revision,
+        )
 
     async def delete_skill(self, context: TenantContext, name: str) -> None:
         await self._call(context, 'delete_skill', name)
@@ -194,8 +226,23 @@ class SkillRepository:
             expected_revision=expected_revision,
         )
 
-    async def write_skill_file(self, context: TenantContext, name: str, path: str, content: str) -> dict:
-        return await self._call(context, 'write_skill_file', name, path, content)
+    async def write_skill_file(
+        self,
+        context: TenantContext,
+        name: str,
+        path: str,
+        content: str,
+        *,
+        base_revision: str | None,
+    ) -> dict:
+        return await self._call(
+            context,
+            'write_skill_file',
+            name,
+            path,
+            content,
+            base_revision=base_revision,
+        )
 
     async def preview_skill_zip(self, context: TenantContext, file_bytes: bytes, filename: str, **kwargs) -> list[dict]:
         return await self._call(context, 'preview_zip_upload', file_bytes=file_bytes, filename=filename, **kwargs)
@@ -204,4 +251,9 @@ class SkillRepository:
         return await self._call(context, 'install_zip_upload', file_bytes=file_bytes, filename=filename, **kwargs)
 
 
-__all__ = ['SkillRepository', 'SkillRevisionMismatchError']
+__all__ = [
+    'SkillRepository',
+    'SkillRevisionConflictError',
+    'SkillRevisionMismatchError',
+    'SkillRevisionNotFoundError',
+]

@@ -172,7 +172,8 @@ class SkillToolLoader(loader.ToolLoader):
         if skill_data is None:
             raise ValueError(f'Skill "{skill_name}" is no longer available; reload the skill catalog.')
 
-        skill_loader.register_activated_skill(query, skill_data)
+        # Keep the first revision pinned if the Skill is activated again in this run.
+        skill_data = skill_loader.register_activated_skill(query, skill_data)
         await skill_loader.persist_activated_skill(self.ap, query, skill_name)
 
         instructions = skill_data.get('instructions', '')
@@ -289,8 +290,8 @@ class SkillToolLoader(loader.ToolLoader):
         if not skill_name:
             raise ValueError('skill name is required')
 
-        # Create the skill
-        created = await skill_service.import_skill_directory(
+        base_revision = str(parameters.get('base_revision', '') or '').strip() or None
+        published = await skill_service.import_skill_directory(
             execution_context,
             host_path,
             {
@@ -299,6 +300,7 @@ class SkillToolLoader(loader.ToolLoader):
                 'description': str(parameters.get('description') or scanned.get('description', '')).strip(),
                 'instructions': str(parameters.get('instructions') or scanned.get('instructions', '')),
             },
+            base_revision=base_revision,
         )
         skill_loader.register_created_skill_visibility(query, skill_name)
 
@@ -306,7 +308,8 @@ class SkillToolLoader(loader.ToolLoader):
             'registered': True,
             'skill_name': skill_name,
             'source_path': sandbox_path,
-            'skill': created,
+            'revision': published.get('revision'),
+            'skill': published,
         }
 
     def _resolve_workspace_directory(
@@ -405,9 +408,10 @@ class SkillToolLoader(loader.ToolLoader):
             name=REGISTER_SKILL_TOOL_NAME,
             human_desc='Register a skill from sandbox',
             description=(
-                "Register a skill package from a directory under /workspace into LangBot's skill store. "
-                'Use this after creating or preparing a skill in the sandbox with exec/read/write/edit. '
+                "Publish a skill draft from a directory under /workspace into LangBot's skill store. "
+                'Use this after creating or preparing the draft with exec/read/write/edit. '
                 'The directory must contain a SKILL.md file. '
+                'Updating an existing Skill requires its current base_revision; conflicting updates are rejected. '
                 'After registration, the skill can be activated with the activate tool.'
             ),
             parameters={
@@ -432,6 +436,10 @@ class SkillToolLoader(loader.ToolLoader):
                     'instructions': {
                         'type': 'string',
                         'description': 'Optional instructions override.',
+                    },
+                    'base_revision': {
+                        'type': 'string',
+                        'description': 'Required current revision when publishing an update; omit for a new Skill.',
                     },
                 },
                 'required': ['path'],

@@ -1,9 +1,10 @@
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 
 from langbot.pkg.api.http.context import ExecutionContext
-from langbot.pkg.skill.repository import SkillRepository, SkillRevisionMismatchError
+from langbot.pkg.skill.repository import SkillRepository, SkillRevisionConflictError
 
 
 _CONTEXT = ExecutionContext(
@@ -79,7 +80,7 @@ def test_repository_keeps_old_box_root_only_for_online_upgrade(tmp_path):
 async def test_repository_crud_and_reads_do_not_require_box(tmp_path):
     repository = _repository(tmp_path)
 
-    await repository.create_skill(
+    created = await repository.create_skill(
         _CONTEXT,
         {
             'name': 'docs-only',
@@ -93,11 +94,12 @@ async def test_repository_crud_and_reads_do_not_require_box(tmp_path):
         'docs-only',
         'references/guide.md',
         '# Guide\n\nNo execution needed.',
+        base_revision=created['revision'],
     )
 
     skill = await repository.get_skill(_CONTEXT, 'docs-only', snapshot=True)
     assert skill is not None
-    assert skill['revision'].startswith('stat-v1:')
+    assert skill['revision'].startswith('sha256:')
     assert [item['name'] for item in await repository.list_skills(_CONTEXT)] == ['docs-only']
 
     listed = await repository.list_skill_resources(
@@ -120,27 +122,47 @@ async def test_repository_crud_and_reads_do_not_require_box(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_repository_rejects_traversal_and_stale_revision(tmp_path):
+async def test_repository_rejects_traversal_and_conflicting_update(tmp_path):
     repository = _repository(tmp_path)
-    await repository.create_skill(
+    created = await repository.create_skill(
         _CONTEXT,
         {'name': 'safe', 'description': 'Safe', 'instructions': 'Use the reference.'},
     )
-    await repository.write_skill_file(_CONTEXT, 'safe', 'reference.md', 'first')
+    first = await repository.write_skill_file(
+        _CONTEXT,
+        'safe',
+        'reference.md',
+        'first',
+        base_revision=created['revision'],
+    )
     skill = await repository.get_skill(_CONTEXT, 'safe', snapshot=True)
     assert skill is not None
 
     with pytest.raises(ValueError, match='stay within'):
         await repository.read_skill_resource(_CONTEXT, 'safe', '../secret.txt')
 
-    await repository.write_skill_file(_CONTEXT, 'safe', 'reference.md', 'second')
-    with pytest.raises(SkillRevisionMismatchError, match='reactivate'):
-        await repository.read_skill_resource(
+    second = await repository.write_skill_file(
+        _CONTEXT,
+        'safe',
+        'reference.md',
+        'second',
+        base_revision=first['revision'],
+    )
+    pinned = await repository.read_skill_resource(
+        _CONTEXT,
+        'safe',
+        'reference.md',
+        expected_revision=skill['revision'],
+    )
+    assert pinned['content'] == 'first'
+    with pytest.raises(SkillRevisionConflictError, match='changed since'):
+        await repository.update_skill(
             _CONTEXT,
             'safe',
-            'reference.md',
-            expected_revision=skill['revision'],
+            {'instructions': 'stale'},
+            base_revision=first['revision'],
         )
+    assert second['revision'] != first['revision']
 
 
 @pytest.mark.asyncio
@@ -207,3 +229,89 @@ async def test_repository_imports_only_from_the_fenced_workspace(tmp_path):
     (outside / 'SKILL.md').write_text('Outside', encoding='utf-8')
     with pytest.raises(ValueError, match='trusted source root'):
         await repository.scan_skill_directory(_CONTEXT, str(outside))
+
+
+@pytest.mark.asyncio
+async def test_existing_run_keeps_v1_while_new_run_resolves_v2(tmp_path):
+    from langbot.pkg.provider.tools.loaders import skill as skill_loader
+
+    repository = _repository(tmp_path)
+    created = await repository.create_skill(
+        _CONTEXT,
+        {'name': 'runner', 'instructions': 'Run scripts/main.py'},
+    )
+    v1_write = await repository.write_skill_file(
+        _CONTEXT,
+        'runner',
+        'scripts/main.py',
+        "print('v1')",
+        base_revision=created['revision'],
+    )
+    v1 = await repository.get_skill(_CONTEXT, 'runner', snapshot=True)
+    old_run = SimpleNamespace(variables={})
+    skill_loader.register_activated_skill(old_run, v1)
+
+    await repository.write_skill_file(
+        _CONTEXT,
+        'runner',
+        'scripts/main.py',
+        "print('v2')",
+        base_revision=v1_write['revision'],
+    )
+    v2 = await repository.get_skill(_CONTEXT, 'runner', snapshot=True)
+    new_run = SimpleNamespace(variables={})
+    skill_loader.register_activated_skill(new_run, v2)
+
+    old_resource = await repository.read_skill_resource(
+        _CONTEXT,
+        'runner',
+        'scripts/main.py',
+        expected_revision=v1['revision'],
+    )
+    new_resource = await repository.read_skill_resource(
+        _CONTEXT,
+        'runner',
+        'scripts/main.py',
+        expected_revision=v2['revision'],
+    )
+    app = SimpleNamespace(logger=Mock())
+    old_mount = skill_loader.build_execution_mounts(app, old_run)[0]
+    new_mount = skill_loader.build_execution_mounts(app, new_run)[0]
+
+    assert old_resource['content'] == "print('v1')"
+    assert new_resource['content'] == "print('v2')"
+    assert old_mount['host_path'] == v1['package_root']
+    assert new_mount['host_path'] == v2['package_root']
+    assert old_mount['content_digest'] == v1['revision']
+    assert new_mount['content_digest'] == v2['revision']
+
+
+@pytest.mark.asyncio
+async def test_deleted_skill_can_restore_exact_recoverable_run_revision(tmp_path):
+    from langbot.pkg.provider.tools.loaders import skill as skill_loader
+
+    repository = _repository(tmp_path)
+    published = await repository.create_skill(
+        _CONTEXT,
+        {'name': 'recoverable', 'instructions': 'Pinned instructions'},
+    )
+    await repository.delete_skill(_CONTEXT, 'recoverable')
+    app = SimpleNamespace(skill_repository=repository)
+    query = SimpleNamespace(
+        variables={skill_loader.PIPELINE_BOUND_SKILLS_KEY: ['recoverable']},
+        instance_uuid=_CONTEXT.instance_uuid,
+        workspace_uuid=_CONTEXT.workspace_uuid,
+        placement_generation=_CONTEXT.placement_generation,
+        bot_uuid=None,
+        pipeline_uuid=None,
+        query_uuid='recovered-query',
+    )
+
+    restored = await skill_loader.restore_activated_skills(
+        app,
+        query,
+        [{'name': 'recoverable', 'revision': published['revision']}],
+    )
+
+    assert restored == ['recoverable']
+    assert skill_loader.get_activated_skill(query, 'recoverable')['revision'] == published['revision']

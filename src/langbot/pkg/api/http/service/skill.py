@@ -103,15 +103,34 @@ class SkillService:
         await self._reload_skills(execution_context)
         return self._serialize_skill(created)
 
-    async def import_skill_directory(self, context: TenantContext, path: str, data: dict) -> dict:
+    async def import_skill_directory(
+        self,
+        context: TenantContext,
+        path: str,
+        data: dict,
+        *,
+        base_revision: str | None = None,
+    ) -> dict:
         execution_context = await self._execution_context(context)
-        created = await self._repository().import_skill_directory(execution_context, path, data)
+        created = await self._repository().import_skill_directory(
+            execution_context,
+            path,
+            data,
+            base_revision=base_revision,
+        )
         await self._reload_skills(execution_context)
         return self._serialize_skill(created)
 
     async def update_skill(self, context: TenantContext, skill_name: str, data: dict) -> dict:
         execution_context = await self._execution_context(context)
-        updated = await self._repository().update_skill(execution_context, skill_name, data)
+        payload = dict(data)
+        base_revision = str(payload.pop('base_revision', '') or '').strip() or None
+        updated = await self._repository().update_skill(
+            execution_context,
+            skill_name,
+            payload,
+            base_revision=base_revision,
+        )
         await self._reload_skills(execution_context)
         return self._serialize_skill(updated)
 
@@ -142,9 +161,23 @@ class SkillService:
         execution_context = await self._execution_context(context)
         return await self._repository().read_skill_file(execution_context, skill_name, path)
 
-    async def write_skill_file(self, context: TenantContext, skill_name: str, path: str, content: str) -> dict:
+    async def write_skill_file(
+        self,
+        context: TenantContext,
+        skill_name: str,
+        path: str,
+        content: str,
+        *,
+        base_revision: str | None,
+    ) -> dict:
         execution_context = await self._execution_context(context)
-        result = await self._repository().write_skill_file(execution_context, skill_name, path, content)
+        result = await self._repository().write_skill_file(
+            execution_context,
+            skill_name,
+            path,
+            content,
+            base_revision=base_revision,
+        )
         await self._reload_skills(execution_context)
         return result
 
