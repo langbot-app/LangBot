@@ -1795,7 +1795,7 @@ export class BackendClient extends BaseHttpClient {
 
   public updateSkill(
     name: string,
-    skill: Partial<Skill>,
+    skill: Partial<Skill> & { base_revision: string },
   ): Promise<ApiRespSkill> {
     return this.put(`/api/v1/skills/${name}`, skill);
   }
@@ -1859,6 +1859,7 @@ export class BackendClient extends BaseHttpClient {
     skillName: string,
     filePath: string,
     content: string,
+    baseRevision: string,
   ): Promise<{
     skill: { name: string };
     path: string;
@@ -1866,6 +1867,7 @@ export class BackendClient extends BaseHttpClient {
   }> {
     return this.put(`/api/v1/skills/${skillName}/files/${filePath}`, {
       content,
+      base_revision: baseRevision,
     });
   }
 }

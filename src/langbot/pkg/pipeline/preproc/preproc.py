@@ -328,6 +328,8 @@ class PreProcessor(stage.PipelineStage):
         #      relied on this injection; without it the LLM never discovers
         #      the skills are there and just calls native tools instead.
         if selected_runner == 'local-agent' and self.ap.skill_mgr:
+            available_tool_names = {tool.name for tool in query.use_funcs}
+            query.variables['_skill_execution_available'] = 'exec' in available_tool_names
             skill_execution_context = get_query_execution_context(query)
             await self.ap.skill_mgr.ensure_loaded(skill_execution_context)
             pipeline_data = await self.ap.pipeline_service.get_pipeline(
@@ -349,7 +351,7 @@ class PreProcessor(stage.PipelineStage):
                 skill_execution_context,
                 bound_skills=bound_skills,
             )
-            if skill_addition:
+            if skill_addition and 'activate' in available_tool_names:
                 self._append_to_system_prompt(query.prompt.messages, skill_addition)
                 self.ap.logger.debug(
                     f'Skill index injected into system prompt: '
@@ -357,7 +359,7 @@ class PreProcessor(stage.PipelineStage):
                     f'bound_skills={bound_skills or "all"} '
                     f'loaded_skills={len(self.ap.skill_mgr.get_skills(skill_execution_context))}'
                 )
-            else:
+            elif 'activate' in available_tool_names:
                 self.ap.logger.debug(
                     f'No skills available for prompt injection: '
                     f'pipeline={query.pipeline_uuid} '

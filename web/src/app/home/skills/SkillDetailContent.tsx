@@ -21,8 +21,6 @@ import {
 import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import SkillForm from '@/app/home/skills/components/skill-form/SkillForm';
-import { BoxUnavailableNotice } from '@/app/home/components/BoxUnavailableNotice';
-import { useBoxStatus } from '@/app/infra/hooks/useBoxStatus';
 import { Sparkles, Trash2 } from 'lucide-react';
 import { useCurrentWorkspace } from '@/app/infra/http';
 
@@ -36,12 +34,6 @@ export default function SkillDetailContent({ id }: { id: string }) {
   const { refreshSkills, skills, setDetailEntityName } = useSidebarData();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const skill = skills.find((item) => item.id === id);
-  const {
-    available: boxAvailable,
-    hint: boxHint,
-    reason: boxReason,
-  } = useBoxStatus();
-
   useEffect(() => {
     if (isCreateMode) {
       setDetailEntityName(t('skills.createSkill'));
@@ -93,22 +85,11 @@ export default function SkillDetailContent({ id }: { id: string }) {
             </div>
           </div>
           {canManage && (
-            <Button
-              type="submit"
-              form="skill-form"
-              className="shrink-0"
-              disabled={!boxAvailable}
-            >
+            <Button type="submit" form="skill-form" className="shrink-0">
               {t('common.save')}
             </Button>
           )}
         </div>
-
-        {!boxAvailable && (
-          <div className="pb-4 shrink-0">
-            <BoxUnavailableNotice hint={boxHint} reason={boxReason} />
-          </div>
-        )}
 
         <div className="min-h-0 flex-1">
           <fieldset className="contents" disabled={!canManage}>
@@ -184,17 +165,11 @@ export default function SkillDetailContent({ id }: { id: string }) {
             type="submit"
             form="skill-form"
             className="shrink-0"
-            disabled={!boxAvailable}
+            disabled={!canManage}
           >
             {t('common.save')}
           </Button>
         </div>
-
-        {!boxAvailable && (
-          <div className="pb-4 shrink-0">
-            <BoxUnavailableNotice hint={boxHint} reason={boxReason} />
-          </div>
-        )}
 
         <div className="min-h-0 flex-1">
           <fieldset className="contents" disabled={!canManage}>

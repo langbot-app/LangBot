@@ -190,6 +190,7 @@ async def test_preproc_injects_skill_index_into_system_prompt():
     preproc_module, entities_module = _import_preproc_modules()
 
     app = _make_app(skill_service=SimpleNamespace())
+    app.tool_mgr.get_all_tools.return_value = [SimpleNamespace(name='activate')]
     addendum = '\n\nAvailable Skills:\n- demo (demo): Demo skill.\n\nCall activate ...'
     app.skill_mgr.build_skill_aware_prompt_addition = Mock(return_value=addendum)
 
@@ -204,6 +205,22 @@ async def test_preproc_injects_skill_index_into_system_prompt():
     head = query.prompt.messages[0]
     assert head.role == 'system'
     assert head.content.endswith(addendum)
+    assert query.variables['_skill_execution_available'] is False
+
+
+@pytest.mark.asyncio
+async def test_preproc_does_not_advertise_activation_when_tool_is_filtered_out():
+    preproc_module, entities_module = _import_preproc_modules()
+
+    app = _make_app(skill_service=SimpleNamespace())
+    addendum = '\n\nAvailable Skills:\n- demo (demo): Demo skill.\n\nCall activate ...'
+    app.skill_mgr.build_skill_aware_prompt_addition = Mock(return_value=addendum)
+
+    query = _make_query()
+    result = await stage_process_capture(preproc_module, app, query)
+
+    assert result.result_type == entities_module.ResultType.CONTINUE
+    assert addendum not in query.prompt.messages[0].content
 
 
 @pytest.mark.asyncio

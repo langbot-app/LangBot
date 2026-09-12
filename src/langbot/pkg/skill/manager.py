@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-import os
-
 from ..api.http.context import ExecutionContext
 from ..api.http.service.tenant import TenantContext, require_workspace_uuid
 from ..core import app
 
 
 class SkillManager:
-    """Workspace-scoped in-memory view of Box-managed skill packages."""
+    """Workspace-scoped in-memory view of Core-managed skill packages."""
 
     ap: app.Application
 
@@ -63,33 +61,20 @@ class SkillManager:
                 self._skills_by_scope.pop(existing_key, None)
         self._skills_by_scope[key] = {}
 
-        box_service = getattr(self.ap, 'box_service', None)
-        if box_service is None or not getattr(box_service, 'available', False):
-            self.ap.logger.info(
-                f'Box runtime unavailable; skill cache is empty for Workspace {execution_context.workspace_uuid}.'
-            )
+        repository = getattr(self.ap, 'skill_repository', None)
+        if repository is None:
+            self.ap.logger.info('Skill repository unavailable; skill cache will remain empty.')
             return
 
-        validate_locally = bool(getattr(box_service, 'shares_filesystem_with_box', False))
         try:
-            dropped = 0
             skills: dict[str, dict] = {}
-            for skill_data in await box_service.list_skills(execution_context):
+            for skill_data in await repository.list_skills(execution_context):
                 skill_name = skill_data.get('name')
                 if not skill_name:
                     continue
-                package_root = str(skill_data.get('package_root', '') or '').strip()
-                if validate_locally and package_root and not os.path.isdir(package_root):
-                    self.ap.logger.warning(
-                        f'Skill "{skill_name}" reported by Box runtime but package_root '
-                        f'missing on LangBot filesystem ({package_root}); dropping from cache.'
-                    )
-                    dropped += 1
-                    continue
                 skills[skill_name] = skill_data
             self._skills_by_scope[key] = skills
-            suffix = f' ({dropped} dropped due to missing package_root)' if dropped else ''
-            self.ap.logger.info(f'Loaded {len(skills)} skills for Workspace {execution_context.workspace_uuid}{suffix}')
+            self.ap.logger.info(f'Loaded {len(skills)} skills for Workspace {execution_context.workspace_uuid}')
         except Exception as exc:
             self.ap.logger.warning(f'Failed to load skills for Workspace {execution_context.workspace_uuid}: {exc}')
 

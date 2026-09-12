@@ -52,8 +52,8 @@
 ### S5. 挂载校验缺口 — Med-High
 
 - **位置**: SDK `box/security.py` `_BLOCKED_HOST_PATHS_POSIX`；`box/backend.py` 的 `extra_mounts` 处理
-- **现状**: ① SDK 黑名单仍不含 `/`（前缀匹配，`host_path="/"` 可通过，挂载整个宿主 fs）；用户 home、`/usr`、`/opt`、`/tmp` 也未拦截。② `validate_sandbox_security` 只校验 `spec.host_path`，**从不遍历 `spec.extra_mounts`**——LangBot 侧 `allowed_mount_roots` 也只校验 `host_path`。当前 `extra_mounts` 仅由 `build_skill_extra_mounts` 内部填充（agent 不可达），但缺乏纵深防御：一旦 S1 的无认证 RPC 被触达，extra_mounts 可挂任意宿主路径，两层都不拦。
-- **要求**: SDK 黑名单加入 `/`（或改白名单）；`extra_mounts` 在 SDK 与 LangBot 两侧都纳入挂载校验。
+- **现状**: grant-enforced 模式已经由 Core 与 Runtime 双重校验通用只读 mount（绝对路径 allow-list、存在性、只读模式、规范化且位于 `/workspace` 下的目标）；它不再有 Skill 特例。遗留风险仅在 admission-disabled 的低信任直连场景：通用 `extra_mounts` 仍未统一套用 grant-enforced 白名单。
+- **要求**: admission-disabled 的外部控制面也复用同一套通用 mount 校验；SDK 黑名单加入 `/`（或全面改白名单）。
 
 ### S6. 容器加固缺失 — Med
 

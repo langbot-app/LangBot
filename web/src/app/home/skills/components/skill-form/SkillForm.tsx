@@ -805,7 +805,10 @@ export default function SkillForm({
 
     try {
       if (initSkillName) {
-        const resp = await httpClient.updateSkill(initSkillName, baseSkillData);
+        const resp = await httpClient.updateSkill(initSkillName, {
+          ...baseSkillData,
+          base_revision: skill.revision || '',
+        });
         toast.success(t('skills.saveSuccess'));
         onSkillUpdated(resp.skill.name);
       } else {

@@ -41,6 +41,7 @@ from langbot_plugin.box.security import (
 from langbot_plugin.entities.io.context import ActionContext
 from langbot.pkg.api.http.context import ExecutionContext
 from langbot.pkg.box.service import BoxService
+from langbot.pkg.provider.tools.loaders import skill as skill_loader
 
 _UTC = dt.timezone.utc
 _CONTEXT = ExecutionContext(
@@ -301,7 +302,7 @@ class TestSharesFilesystemWithBox:
     - stdio (local child process) → shared filesystem → True
     - WebSocket (Docker / sidecar / --standalone-box / remote) → separated → False
 
-    This drives whether LangBot validates Box-reported skill paths locally.
+    This drives whether LangBot can safely perform local workspace operations.
     Getting it wrong silently drops every skill in separated deployments.
     """
 
@@ -338,7 +339,7 @@ class TestSharesFilesystemWithBox:
 
     def test_false_when_client_injected_without_connector(self):
         # Injected client (no connector) → unknown topology → conservative False
-        # so LangBot never wrongly drops Box-reported skills.
+        # so LangBot does not assume a shared local filesystem.
         service = BoxService(make_app(Mock()), client=Mock(spec=BoxRuntimeClient))
 
         assert service._runtime_connector is None
@@ -552,7 +553,6 @@ async def test_box_service_reconnect_restores_workspace_and_runs_cleanup(
     monkeypatch: pytest.MonkeyPatch,
 ):
     app = make_app(Mock())
-    app.skill_mgr = SimpleNamespace(reload_skills=AsyncMock())
     service = BoxService(app, client=Mock(spec=BoxRuntimeClient))
     connector = Mock()
     connector.reconnect = AsyncMock()
@@ -565,16 +565,14 @@ async def test_box_service_reconnect_restores_workspace_and_runs_cleanup(
     connector.reconnect.assert_awaited_once()
     service._ensure_default_workspace.assert_called_once()
     service._purge_attachment_dirs.assert_awaited_once()
-    app.skill_mgr.reload_skills.assert_awaited_once()
     assert service.available is True
 
 
 @pytest.mark.asyncio
-async def test_cloud_box_service_reconnect_does_not_reload_unscoped_skills(
+async def test_cloud_box_service_reconnect_restores_runtime_only(
     monkeypatch: pytest.MonkeyPatch,
 ):
     app = make_app(Mock())
-    app.skill_mgr = SimpleNamespace(reload_skills=AsyncMock())
     service = BoxService(app, client=Mock(spec=BoxRuntimeClient))
     service._cloud_managed = True
     connector = Mock()
@@ -587,7 +585,6 @@ async def test_cloud_box_service_reconnect_does_not_reload_unscoped_skills(
 
     connector.reconnect.assert_awaited_once()
     service._verify_cloud_runtime.assert_awaited_once()
-    app.skill_mgr.reload_skills.assert_not_awaited()
     assert service.available is True
 
 
@@ -1941,99 +1938,104 @@ def test_disconnect_callback_does_not_schedule_without_running_event_loop():
     assert service._reconnecting is False
 
 
-class TestBuildSkillExtraMounts:
-    """Robustness of skill mount construction against a stale skill cache.
+class TestBuildSkillExecutionMounts:
+    """Execution materializes only revisions pinned by this run."""
 
-    The three sandbox backends behave inconsistently when a skill's
-    package_root no longer exists on disk (nsjail aborts the whole sandbox
-    start, Docker silently auto-creates a root-owned empty directory, E2B
-    silently skips). Mount construction must filter these out up front so
-    the backend never sees a bad mount.
-    """
-
-    def _make_service(self, logger, skills, *, shares_filesystem=True):
+    def _make_app(self, logger, skills):
         app = make_app(logger)
         app.skill_mgr = SimpleNamespace(skills=skills, get_skills=Mock(return_value=skills))
-        client = Mock(spec=BoxRuntimeClient)
-        service = BoxService(app, client=client)
-        # Tests construct BoxService with an injected client (no connector), so
-        # set the topology explicitly. Most cases exercise the shared-fs (local
-        # stdio) path where local package_root validation applies.
-        service._shares_filesystem_with_box_override = shares_filesystem
-        return service
+        return app
 
-    def test_skips_skill_with_missing_package_root(self):
+    def test_mounts_only_activated_revision(self):
         logger = Mock()
         with tempfile.TemporaryDirectory() as live_dir:
+            manifest_path = os.path.join(live_dir, 'manifest.json')
+            with open(manifest_path, 'w', encoding='utf-8') as file:
+                file.write('{}')
             skills = {
-                'alive': {'name': 'alive', 'package_root': live_dir},
-                'ghost': {'name': 'ghost', 'package_root': '/nonexistent/path/should/never/exist'},
+                'alive': {
+                    'name': 'alive',
+                    'package_root': live_dir,
+                    'manifest_path': manifest_path,
+                    'revision': 'sha256:' + '1' * 64,
+                },
+                'visible-not-activated': {
+                    'name': 'visible-not-activated',
+                    'package_root': live_dir,
+                    'manifest_path': manifest_path,
+                    'revision': 'sha256:' + '2' * 64,
+                },
             }
-            service = self._make_service(logger, skills)
+            app = self._make_app(logger, skills)
             query = make_query()
+            skill_loader.register_activated_skill(query, skills['alive'])
 
-            mounts = service.build_skill_extra_mounts(query)
+            mounts = skill_loader.build_execution_mounts(app, query)
 
             assert mounts == [
                 {
                     'host_path': live_dir,
                     'mount_path': '/workspace/.skills/alive',
-                    'mode': 'rw',
+                    'mode': 'ro',
+                    'content_digest': 'sha256:' + '1' * 64,
+                    'manifest_path': manifest_path,
                 }
             ]
-            # Warning logged so operators can see what was dropped
-            assert any(
-                'ghost' in str(call.args[0]) and 'package_root missing' in str(call.args[0])
-                for call in logger.warning.call_args_list
-            )
 
-    def test_trusts_box_paths_when_filesystem_not_shared(self):
-        """In separated deployments (Docker Compose, k8s sidecar,
-        --standalone-box, remote endpoint) the Box runtime owns its own
-        filesystem. package_root values it reports are NOT resolvable on the
-        LangBot side, so LangBot must trust them rather than dropping every
-        skill via a local isdir() check."""
+    def test_missing_pinned_revision_fails_instead_of_being_skipped(self):
         logger = Mock()
         skills = {
-            'a': {'name': 'a', 'package_root': '/box/skills/a'},
-            'b': {'name': 'b', 'package_root': '/box/skills/b'},
+            'a': {
+                'name': 'a',
+                'package_root': '/box/skills/a',
+                'manifest_path': '/box/skills/manifest.json',
+                'revision': 'sha256:' + '1' * 64,
+            }
         }
-        service = self._make_service(logger, skills, shares_filesystem=False)
+        app = self._make_app(logger, skills)
+        query = make_query()
+        skill_loader.register_activated_skill(query, skills['a'])
 
-        mounts = service.build_skill_extra_mounts(make_query())
+        with pytest.raises(ValueError, match='cannot be recovered safely'):
+            skill_loader.build_execution_mounts(app, query)
 
-        assert mounts == [
-            {'host_path': '/box/skills/a', 'mount_path': '/workspace/.skills/a', 'mode': 'rw'},
-            {'host_path': '/box/skills/b', 'mount_path': '/workspace/.skills/b', 'mode': 'rw'},
-        ]
-        # No skill is dropped, so no "missing" warning should be logged.
-        assert not any('package_root missing' in str(call.args[0]) for call in logger.warning.call_args_list)
-
-    def test_skips_skill_with_empty_package_root(self):
+    def test_rejects_activated_skill_with_empty_package_root(self):
         logger = Mock()
         skills = {
-            'no_root': {'name': 'no_root', 'package_root': ''},
-            'whitespace': {'name': 'whitespace', 'package_root': '   '},
+            'no_root': {
+                'name': 'no_root',
+                'package_root': '',
+                'manifest_path': '',
+                'revision': 'sha256:' + '1' * 64,
+            }
         }
-        service = self._make_service(logger, skills)
+        app = self._make_app(logger, skills)
+        query = make_query()
+        skill_loader.register_activated_skill(query, skills['no_root'])
 
-        assert service.build_skill_extra_mounts(make_query()) == []
+        with pytest.raises(ValueError, match='no immutable package root'):
+            skill_loader.build_execution_mounts(app, query)
 
     def test_empty_package_root_skipped_even_when_not_shared(self):
         """An empty package_root is always invalid regardless of topology."""
         logger = Mock()
-        skills = {'no_root': {'name': 'no_root', 'package_root': ''}}
-        service = self._make_service(logger, skills, shares_filesystem=False)
+        skills = {
+            'no_root': {
+                'name': 'no_root',
+                'package_root': '',
+                'manifest_path': '',
+                'revision': 'sha256:' + '1' * 64,
+            }
+        }
+        app = self._make_app(logger, skills)
 
-        assert service.build_skill_extra_mounts(make_query()) == []
+        assert skill_loader.build_execution_mounts(app, make_query()) == []
 
     def test_returns_empty_when_no_skill_manager(self):
         logger = Mock()
         app = make_app(logger)
         # no skill_mgr attribute
-        service = BoxService(app, client=Mock(spec=BoxRuntimeClient))
-
-        assert service.build_skill_extra_mounts(make_query()) == []
+        assert skill_loader.build_execution_mounts(app, make_query()) == []
 
 
 # ── Attachment passthrough (inbound / outbound) ─────────────────────────────

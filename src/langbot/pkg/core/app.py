@@ -43,6 +43,7 @@ from . import entities as core_entities
 from ..rag.knowledge import kbmgr as rag_mgr
 from ..rag.service import RAGRuntimeService
 from ..vector import mgr as vectordb_mgr
+from ..skill import repository as skill_repository
 from ..telemetry import telemetry as telemetry_module
 from ..survey import manager as survey_module
 from ..skill import manager as skill_mgr
@@ -84,6 +85,7 @@ class Application:
     # TODO move to pipeline
     tool_mgr: llm_tool_mgr.ToolManager = None
     box_service: box_service_module.BoxService = None
+    skill_repository: skill_repository.SkillRepository = None
 
     # ======= Config manager =======
 
