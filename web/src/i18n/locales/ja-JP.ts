@@ -87,6 +87,11 @@ const jaJP = {
       'おすすめ：公式の安定したモデル API とクラウドサービスを利用',
     loginLocal: 'ローカルアカウントでログイン',
     loginWithPassword: 'パスワードでログイン',
+    loginWithPasskey: 'パスキーでログイン',
+    passkeyLoginSuccess: 'パスキーの認証に成功しました。ログイン中...',
+    passkeyLoginFailed: 'パスキーでのログインに失敗しました',
+    passkeyNotSupported:
+      'お使いのブラウザまたはデバイスはパスキーをサポートしていません',
     spaceLoginTitle: 'LangBot アカウントでログイン',
     spaceLoginDescription:
       'QRコードをスキャンするか、下のリンクにアクセスして認証してください',
@@ -1345,6 +1350,20 @@ const jaJP = {
     bindSpaceWarning:
       '連携後、ログインメールアドレスは {{localEmail}} から LangBot アカウントのメールアドレスに変更されます。',
     bindSpaceSuccess: 'LangBot アカウントの連携に成功しました',
+    passkeySectionTitle: 'パスキー (Passkey)',
+    passkeySectionDesc:
+      '生体認証やセキュリティキーを使って、パスワード不要で安全にログインします',
+    addPasskey: 'パスキーを追加',
+    passkeyName: 'キー名',
+    passkeyNamePlaceholder: '例: MacBook Touch ID、YubiKey',
+    passkeyCreated: '作成日: {{date}}',
+    passkeyLastUsed: '最終使用: {{date}}',
+    noPasskeys: '登録されているパスキーはありません',
+    deletePasskeyConfirm:
+      'このパスキーを削除してもよろしいですか？削除後はこのキーでのログインができなくなります。',
+    passkeyAddedSuccess: 'パスキーが正常に追加されました',
+    passkeyDeleteSuccess: 'パスキーを削除しました',
+    passkeyRenameSuccess: 'パスキー名を変更しました',
     bindSpaceFailed: 'LangBot アカウントの連携に失敗しました',
     bindSpaceInvalidState:
       '無効な連携リクエストです。アカウント設定から再度お試しください。',
@@ -1653,7 +1672,17 @@ const jaJP = {
     queryVariables: {
       title: 'クエリ変数',
     },
+    loadError: 'モニタリングデータを読み込めませんでした',
+    partialMessages:
+      '全 {{total}} 件中 {{shown}} 件のメッセージを表示。会話トレースは不完全な場合があります。',
+    partialModelCalls: '全 {{total}} 件中 {{shown}} 件のモデル呼び出しを表示。',
+    partialToolCalls:
+      '全 {{total}} 件中 {{shown}} 件のツール呼び出しを表示。会話トレースは不完全な場合があります。',
+    partialErrors: '全 {{total}} 件中 {{shown}} 件のエラーを表示。',
     trafficChart: {
+      unavailable: 'トラフィック集計を利用できません',
+      truncated:
+        'トラフィック範囲が切り詰められています。短い期間を選択してください。',
       title: 'トラフィック概要',
       messages: 'メッセージ',
       llmCalls: 'LLM呼び出し',

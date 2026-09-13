@@ -46,30 +46,10 @@ import {
 } from '@/components/ui/tooltip';
 import { systemInfo } from '@/app/infra/http';
 import { getAdapterDocUrl } from '@/app/infra/entities/adapter-docs';
-
-/**
- * Resolve the value referenced by a `show_if.field` string.
- *
- * Fields prefixed with `__system.` are looked up in the caller-supplied
- * `systemContext` dictionary (e.g. `__system.is_wizard` → `systemContext.is_wizard`).
- * All other field names are resolved from the live form values first, then
- * fall back to `externalDependentValues`.
- */
-function resolveShowIfValue(
-  field: string,
-  watchedValues: Record<string, unknown>,
-  externalDependentValues?: Record<string, unknown>,
-  systemContext?: Record<string, unknown>,
-): unknown {
-  if (field.startsWith(SYSTEM_FIELD_PREFIX)) {
-    const key = field.slice(SYSTEM_FIELD_PREFIX.length);
-    return systemContext?.[key];
-  }
-  if (watchedValues[field] !== undefined) {
-    return watchedValues[field];
-  }
-  return externalDependentValues?.[field];
-}
+import {
+  resolveDisabledState,
+  resolveShowIfValue,
+} from './DynamicFormConditions';
 
 type DynamicFormValueSpec = Pick<
   IDynamicFormItemSchema,
@@ -675,40 +655,19 @@ export default function DynamicFormComponent({
             }
           }
 
-          // ``disable_if`` mirrors ``show_if``'s evaluator but instead of
-          // hiding the field, leaves it visible and inert. Use it when the
-          // operator needs to see that the field exists yet cannot edit it
-          // under the current runtime state (e.g. sandbox-bound fields when
-          // Box is disabled).
-          let isDisabledByCondition = false;
-          if (config.disable_if) {
-            const dependValue = resolveShowIfValue(
-              config.disable_if.field,
+          // Keep locked fields visible and resolve only the applicable reason.
+          const { isDisabledByCondition, disabledTooltip: tooltip } =
+            resolveDisabledState(
+              config,
               watchedValues as Record<string, unknown>,
               externalDependentValues,
               systemContext,
             );
-            const cond = config.disable_if;
-            if (cond.operator === 'eq' && dependValue === cond.value) {
-              isDisabledByCondition = true;
-            } else if (cond.operator === 'neq' && dependValue !== cond.value) {
-              isDisabledByCondition = true;
-            } else if (
-              cond.operator === 'in' &&
-              Array.isArray(cond.value) &&
-              cond.value.includes(dependValue)
-            ) {
-              isDisabledByCondition = true;
-            }
-          }
 
           // All fields are disabled when editing (creation_settings are
           // immutable) or when ``disable_if`` matches.
           const isFieldDisabled = !!isEditing || isDisabledByCondition;
-          const disabledTooltip =
-            isDisabledByCondition && config.disabled_tooltip
-              ? extractI18nObject(config.disabled_tooltip)
-              : '';
+          const disabledTooltip = tooltip ? extractI18nObject(tooltip) : '';
           const renderDisabledTooltipIcon = () =>
             disabledTooltip ? (
               <DisabledTooltipIcon text={disabledTooltip} />

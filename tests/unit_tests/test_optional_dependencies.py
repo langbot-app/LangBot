@@ -12,4 +12,7 @@ def test_seekdb_is_only_declared_as_an_optional_dependency() -> None:
     project = pyproject['project']
     base_dependencies = project['dependencies']
     assert not any(dependency.lower().startswith('pyseekdb') for dependency in base_dependencies)
-    assert project['optional-dependencies']['seekdb'] == ['pyseekdb==1.1.0.post3']
+    assert project['optional-dependencies']['seekdb'] == [
+        'pyseekdb==1.4.0.post1',
+        "pylibseekdb==1.4.0; sys_platform == 'linux' or (sys_platform == 'darwin' and platform_machine == 'arm64')",
+    ]

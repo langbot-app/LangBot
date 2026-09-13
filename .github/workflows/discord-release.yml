@@ -1,0 +1,64 @@
+name: Discord Release Announcement
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/discord-release.yml'
+      - '.github/discord-release/**'
+  pull_request:
+    paths:
+      - '.github/workflows/discord-release.yml'
+      - '.github/discord-release/**'
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Offline announcement tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Test helper without secrets or network
+        run: python3 -m unittest discover -s .github/discord-release -p 'test_*.py' -v
+
+  validate:
+    name: Validate webhook (GET only, no message)
+    if: github.repository == 'langbot-app/LangBot' && github.event_name == 'workflow_dispatch'
+    needs: tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Validate incoming webhook and report guild/channel IDs
+        env:
+          DISCORD_RELEASE_WEBHOOK_URL: ${{ secrets.DISCORD_RELEASE_WEBHOOK_URL }}
+        run: python3 .github/discord-release/announce.py
+
+  announce:
+    name: Announce published stable release
+    if: >-
+      github.repository == 'langbot-app/LangBot' &&
+      github.event_name == 'release' && github.event.action == 'published' &&
+      github.event.release.draft == false && github.event.release.prerelease == false
+    needs: tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      # The helper refuses GITHUB_RUN_ATTEMPT != 1 with recovery guidance.
+      # Never interpolate release data into a shell command.
+      - name: Send once and verify the exact Discord message
+        env:
+          DISCORD_RELEASE_WEBHOOK_URL: ${{ secrets.DISCORD_RELEASE_WEBHOOK_URL }}
+        run: python3 .github/discord-release/announce.py

@@ -217,6 +217,11 @@ export interface FeedbackStats {
 }
 
 export interface MonitoringData {
+  traffic?: {
+    bucket: 'hour' | 'day';
+    points: Array<{ timestamp: Date; messages: number; llmCalls: number }>;
+    truncated: boolean;
+  };
   overview: OverviewMetrics;
   messages: MonitoringMessage[];
   llmCalls: LLMCall[];

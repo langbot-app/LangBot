@@ -10,12 +10,16 @@ on:
       - 'src/langbot/pkg/persistence/**'
       - 'src/langbot/pkg/entity/persistence/**'
       - 'tests/integration/persistence/**'
+      - 'tests/unit_tests/api/service/test_monitoring_sessions.py'
+      - '.github/workflows/test-migrations.yml'
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - 'src/langbot/pkg/persistence/**'
       - 'src/langbot/pkg/entity/persistence/**'
       - 'tests/integration/persistence/**'
+      - 'tests/unit_tests/api/service/test_monitoring_sessions.py'
+      - '.github/workflows/test-migrations.yml'
 
 jobs:
   test-migrations-sqlite:
@@ -80,6 +84,8 @@ jobs:
         run: >-
           uv run pytest
           tests/integration/persistence/test_migrations_postgres.py
+          tests/integration/persistence/test_monitoring_postgres.py
+          tests/unit_tests/api/service/test_monitoring_sessions.py::test_postgres_upgrade_rls_and_concurrent_bot_counts
           tests/integration/persistence/test_pgvector_postgres.py
           tests/integration/persistence/test_release_migration_postgres.py
           tests/integration/persistence/test_plugin_identity_migration.py

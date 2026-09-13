@@ -79,6 +79,7 @@ class MonitoringHelper:
             session_updated = await ap.monitoring_service.update_session_activity(
                 get_query_execution_context(query),
                 session_id,
+                bot_id=bot_id,
                 pipeline_id=pipeline_id,
                 pipeline_name=pipeline_name,
             )

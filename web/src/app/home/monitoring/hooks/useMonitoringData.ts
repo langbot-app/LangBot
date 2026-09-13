@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   FilterState,
   MonitoringData,
@@ -6,7 +6,8 @@ import {
   LLMCall,
   EmbeddingCall,
 } from '../types/monitoring';
-import { backendClient } from '@/app/infra/http';
+import { backendClient, useCurrentWorkspace } from '@/app/infra/http';
+import { getCurrentWorkspaceSnapshot } from '@/app/infra/http/currentWorkspaceStore';
 import { parseUTCTimestamp } from '../utils/dateUtils';
 
 /**
@@ -16,6 +17,10 @@ export function useMonitoringData(filterState: FilterState) {
   const [data, setData] = useState<MonitoringData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
+  const workspaceUuid = useCurrentWorkspace()?.workspace.uuid;
+  const requestIdRef = useRef(0);
+  const scope = JSON.stringify([workspaceUuid, filterState]);
+  const [requestScope, setRequestScope] = useState<string | null>(null);
 
   // Memoize filter parameters to prevent unnecessary re-renders
   const selectedBotsStr = useMemo(
@@ -72,6 +77,12 @@ export function useMonitoringData(filterState: FilterState) {
 
   // Fetch data based on filters
   const fetchData = useCallback(async () => {
+    const requestId = ++requestIdRef.current;
+    const isCurrent = () =>
+      requestId === requestIdRef.current &&
+      getCurrentWorkspaceSnapshot()?.workspace.uuid === workspaceUuid;
+    setRequestScope(scope);
+    setData(null);
     setLoading(true);
     setError(null);
 
@@ -91,6 +102,7 @@ export function useMonitoringData(filterState: FilterState) {
         endTime,
         limit: 50,
       });
+      if (!isCurrent()) return;
 
       const overview = response?.overview ?? {
         total_messages: 0,
@@ -127,6 +139,17 @@ export function useMonitoringData(filterState: FilterState) {
 
       // Transform the response to match MonitoringData interface
       const transformedData: MonitoringData = {
+        traffic: response.traffic
+          ? {
+              bucket: response.traffic.bucket,
+              truncated: response.traffic.truncated,
+              points: response.traffic.points.map((point) => ({
+                timestamp: parseUTCTimestamp(point.timestamp),
+                messages: point.messages,
+                llmCalls: point.llm_calls,
+              })),
+            }
+          : undefined,
         overview: {
           totalMessages: overview.total_messages,
           llmCalls: overview.llm_calls,
@@ -396,22 +419,33 @@ export function useMonitoringData(filterState: FilterState) {
 
       setData(transformedData);
     } catch (err) {
+      if (!isCurrent()) return;
       setError(err as Error);
       console.error('Failed to fetch monitoring data:', err);
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
-  }, [getTimeRange, filterState.selectedBots, filterState.selectedPipelines]);
+  }, [
+    getTimeRange,
+    filterState.selectedBots,
+    filterState.selectedPipelines,
+    scope,
+    workspaceUuid,
+  ]);
 
   // Fetch data when filter state changes
   useEffect(() => {
     fetchData();
+    return () => {
+      requestIdRef.current += 1;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     selectedBotsStr,
     selectedPipelinesStr,
     filterState.timeRange,
     customDateRangeStr,
+    workspaceUuid,
   ]);
 
   // Manual refetch function
@@ -420,9 +454,9 @@ export function useMonitoringData(filterState: FilterState) {
   };
 
   return {
-    data,
-    loading,
-    error,
+    data: requestScope === scope ? data : null,
+    loading: requestScope !== scope || loading,
+    error: requestScope === scope ? error : null,
     refetch,
   };
 }

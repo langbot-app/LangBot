@@ -563,10 +563,24 @@ export class BackendClient extends BaseHttpClient {
     return this.get(`/api/v1/monitoring/sessions?${queryParams.toString()}`);
   }
 
+  public getSessionAnalysis<T>(
+    sessionId: string,
+    botId: string,
+    options: { startTime?: string; endTime?: string } = {},
+  ): Promise<T> {
+    const queryParams = new URLSearchParams({ botId });
+    if (options.startTime) queryParams.set('startTime', options.startTime);
+    if (options.endTime) queryParams.set('endTime', options.endTime);
+    return this.get(
+      `/api/v1/monitoring/sessions/${encodeURIComponent(sessionId)}/analysis?${queryParams.toString()}`,
+    );
+  }
+
   public getSessionMessages(
     sessionId: string,
     limit: number = 200,
     offset: number = 0,
+    botId?: string,
   ): Promise<{
     messages: Array<{
       id: string;
@@ -590,6 +604,7 @@ export class BackendClient extends BaseHttpClient {
   }> {
     const queryParams = new URLSearchParams();
     queryParams.append('sessionId', sessionId);
+    if (botId) queryParams.append('botId', botId);
     queryParams.append('limit', limit.toString());
     queryParams.append('offset', offset.toString());
     return this.get(`/api/v1/monitoring/messages?${queryParams.toString()}`);
@@ -1289,8 +1304,88 @@ export class BackendClient extends BaseHttpClient {
     invitation_registration_enabled?: boolean;
     password_login_enabled?: boolean;
     space_login_enabled?: boolean;
+    passkey_login_enabled?: boolean;
+    passkey_supported?: boolean;
   }> {
     return this.get('/api/v1/user/account-info', undefined, {
+      skipWorkspace: true,
+    });
+  }
+
+  // ============ Passkey (WebAuthn) API ============
+  public getPasskeyAuthOptions(
+    email?: string,
+    origin?: string,
+  ): Promise<{ options: any; challenge_token: string }> {
+    return this.post(
+      '/api/v1/user/passkey/auth/options',
+      { email, origin },
+      { skipWorkspace: true },
+    );
+  }
+
+  public verifyPasskeyAuth(
+    challenge_token: string,
+    credential: any,
+  ): Promise<{ token: string; user: string }> {
+    return this.post(
+      '/api/v1/user/passkey/auth/verify',
+      { challenge_token, credential },
+      { skipWorkspace: true },
+    );
+  }
+
+  public getPasskeyRegisterOptions(
+    origin?: string,
+  ): Promise<{ options: any; challenge_token: string }> {
+    return this.post(
+      '/api/v1/user/passkey/register/options',
+      { origin },
+      { skipWorkspace: true },
+    );
+  }
+
+  public verifyPasskeyRegister(
+    challenge_token: string,
+    credential: any,
+    name?: string,
+  ): Promise<{ uuid: string; name: string; created_at?: string }> {
+    return this.post(
+      '/api/v1/user/passkey/register/verify',
+      { challenge_token, credential, name },
+      { skipWorkspace: true },
+    );
+  }
+
+  public getPasskeys(): Promise<
+    Array<{
+      uuid: string;
+      name: string;
+      aaguid?: string;
+      transports?: string;
+      backed_up?: boolean;
+      created_at?: string;
+      last_used_at?: string;
+    }>
+  > {
+    return this.get('/api/v1/user/passkeys', undefined, {
+      skipWorkspace: true,
+    });
+  }
+
+  public renamePasskey(
+    uuid: string,
+    name: string,
+  ): Promise<{ uuid: string; name: string }> {
+    return this.patch(
+      `/api/v1/user/passkey/${encodeURIComponent(uuid)}`,
+      { name },
+      { skipWorkspace: true },
+    );
+  }
+
+  public deletePasskey(uuid: string): Promise<void> {
+    return this.delete(`/api/v1/user/passkey/${encodeURIComponent(uuid)}`, {
       skipWorkspace: true,
     });
   }
@@ -1496,6 +1591,11 @@ export class BackendClient extends BaseHttpClient {
     endTime?: string;
     limit?: number;
   }): Promise<{
+    traffic?: {
+      bucket: 'hour' | 'day';
+      points: Array<{ timestamp: string; messages: number; llm_calls: number }>;
+      truncated: boolean;
+    };
     overview: {
       total_messages: number;
       llm_calls: number;

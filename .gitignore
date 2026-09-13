@@ -57,6 +57,9 @@ testsdk/
 
 # Next.js build cache (legacy)
 web/.next/
+web/.pnpm-home
+.tmp
+Caddyfile
 
 # fnOS packaging build artifacts (packaging/fnos/build.sh)
 packaging/fnos/app/langbot/

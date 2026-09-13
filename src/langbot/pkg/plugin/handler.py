@@ -48,6 +48,7 @@ from ..utils import constants
 
 _DEFAULT_BINARY_STORAGE_VALUE_BYTES = 10 * 1024 * 1024
 _HARD_MAX_BINARY_STORAGE_VALUE_BYTES = 64 * 1024 * 1024
+_UNSET_INSTALLATION_SCOPE = object()
 
 
 def _binary_storage_value_limit(ap: Any) -> int:
@@ -479,7 +480,6 @@ class RuntimeConnectionHandler(handler.Handler):
         self._outbound_installation_context: contextvars.ContextVar[InstallationBinding | None] = (
             contextvars.ContextVar(
                 f'{self.__class__.__name__}_{id(self)}_outbound_installation',
-                default=None,
             )
         )
         self._installation_bindings: dict[
@@ -1631,13 +1631,15 @@ class RuntimeConnectionHandler(handler.Handler):
     ) -> InstallationBinding | ActionContext | None:
         if action_context is not None:
             return super().resolve_outbound_action_context(action_context)
-        inbound_context = self.current_action_context
-        if inbound_context is not None:
-            return inbound_context
-        return self._outbound_installation_context.get()
+        # An explicit scope targets the nested call, not its inbound caller.
+        # None deliberately clears the context for runtime-scoped actions.
+        scoped_context = self._outbound_installation_context.get(_UNSET_INSTALLATION_SCOPE)
+        if scoped_context is not _UNSET_INSTALLATION_SCOPE:
+            return typing.cast(InstallationBinding | None, scoped_context)
+        return self.current_action_context
 
     def require_outbound_installation_context(self) -> InstallationBinding:
-        binding = self._outbound_installation_context.get()
+        binding = self._outbound_installation_context.get(None)
         if not isinstance(binding, InstallationBinding):
             raise ValueError('Host plugin action requires an InstallationBinding scope')
         return binding

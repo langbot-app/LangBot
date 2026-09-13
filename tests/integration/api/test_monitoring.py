@@ -9,7 +9,7 @@ Run: uv run pytest tests/integration/api/test_monitoring.py -q
 from __future__ import annotations
 
 import pytest
-from unittest.mock import MagicMock, AsyncMock, Mock
+from unittest.mock import MagicMock, AsyncMock, Mock, patch
 from types import SimpleNamespace
 
 from tests.factories import FakeApp
@@ -280,13 +280,20 @@ class TestMonitoringAllDataEndpoint:
     @pytest.mark.asyncio
     async def test_get_all_data_success(self, quart_test_client):
         """GET /api/v1/monitoring/data returns all data."""
-        response = await quart_test_client.get(
-            '/api/v1/monitoring/data', headers={'Authorization': 'Bearer test_token'}
-        )
+        traffic = {'series': [], 'truncated': False}
+        with patch(
+            'langbot.pkg.api.http.controller.groups.monitoring.get_traffic_series',
+            new=AsyncMock(return_value=traffic),
+        ) as get_traffic:
+            response = await quart_test_client.get(
+                '/api/v1/monitoring/data', headers={'Authorization': 'Bearer test_token'}
+            )
+        get_traffic.assert_awaited_once()
 
         assert response.status_code == 200
         data = await response.get_json()
         assert 'overview' in data['data']
+        assert data['data']['traffic'] == traffic
 
 
 @pytest.mark.usefixtures('mock_circular_import_chain')

@@ -143,18 +143,41 @@ stages:
           operator: eq
           value: false
         disabled_tooltip:
-          en_US: >-
-            Sandbox scope can't be changed: either the Box sandbox is disabled
-            or unavailable (enable it in config.yaml with box.enabled = true and
-            ensure the runtime is reachable), or this deployment pins all
-            pipelines to a fixed scope.
-          zh_Hans: "无法修改沙箱作用域：Box 沙箱已禁用或不可用（请在配置中启用 box.enabled = true 并确认运行时连接正常），或本部署已将所有流水线固定为统一作用域。"
-          zh_Hant: "無法修改沙箱作用域：Box 沙箱已停用或無法使用（請在設定中啟用 box.enabled = true 並確認執行時連線正常），或本部署已將所有流水線固定為統一作用域。"
-          ja_JP: "サンドボックススコープを変更できません：Box サンドボックスが無効/利用不可（設定で box.enabled = true にしてランタイム接続を確認）、またはこのデプロイがすべてのパイプラインを固定スコープに制限しています。"
-          vi_VN: "Không thể thay đổi phạm vi sandbox：Box sandbox bị tắt hoặc không khả dụng (bật box.enabled = true và đảm bảo runtime hoạt động), hoặc bản triển khai này cố định mọi pipeline về một phạm vi."
-          th_TH: "ไม่สามารถเปลี่ยนขอบเขต Sandbox：Box sandbox ถูกปิดหรือไม่พร้อมใช้งาน (เปิด box.enabled = true และตรวจสอบรันไทม์) หรือการ deploy นี้ล็อกทุก pipeline ไว้ที่ขอบเขตเดียว"
-          es_ES: "No se puede cambiar el alcance del sandbox: el sandbox de Box está desactivado o no disponible (actívelo con box.enabled = true y verifique el runtime), o este despliegue fija todas las pipelines a un alcance único."
-          ru_RU: "Невозможно изменить область песочницы: песочница Box отключена или недоступна (включите box.enabled = true и проверьте среду выполнения), либо это развёртывание фиксирует единую область для всех конвейеров."
+          en_US: "Sandbox is unavailable. Enable Box and check its connection before changing the scope."
+          zh_Hans: "沙箱未启用，请启用 Box 并确认连接正常后再修改作用域。"
+          zh_Hant: "沙箱未啟用，請啟用 Box 並確認連線正常後再修改作用域。"
+          ja_JP: "サンドボックスは利用できません。Box を有効にし、接続を確認してからスコープを変更してください。"
+          vi_VN: "Sandbox không khả dụng. Hãy bật Box và kiểm tra kết nối trước khi thay đổi phạm vi."
+          th_TH: "Sandbox ไม่พร้อมใช้งาน โปรดเปิดใช้งาน Box และตรวจสอบการเชื่อมต่อก่อนเปลี่ยนขอบเขต"
+          es_ES: "El sandbox no está disponible. Active Box y compruebe su conexión antes de cambiar el alcance."
+          ru_RU: "Песочница недоступна. Включите Box и проверьте подключение, прежде чем менять область."
+        disabled_tooltip_overrides:
+          - when:
+              field: __system.box_scope_forced_global
+              operator: eq
+              value: true
+            tooltip:
+              en_US: "A global sandbox is enforced; the scope cannot be changed."
+              zh_Hans: "已强制使用全局沙箱，无法修改作用域。"
+              zh_Hant: "已強制使用全域沙箱，無法修改作用域。"
+              ja_JP: "グローバルサンドボックスの使用が強制されているため、スコープを変更できません。"
+              vi_VN: "Bắt buộc sử dụng sandbox toàn cục; không thể thay đổi phạm vi."
+              th_TH: "ระบบบังคับใช้ Sandbox ส่วนกลาง จึงไม่สามารถเปลี่ยนขอบเขตได้"
+              es_ES: "Se impone un sandbox global; no se puede cambiar el alcance."
+              ru_RU: "Принудительно используется глобальная песочница; изменить область нельзя."
+          - when:
+              field: __system.box_scope_forced
+              operator: eq
+              value: true
+            tooltip:
+              en_US: "A fixed sandbox scope is enforced; the scope cannot be changed."
+              zh_Hans: "已强制使用固定沙箱作用域，无法修改作用域。"
+              zh_Hant: "已強制使用固定沙箱作用域，無法修改作用域。"
+              ja_JP: "固定のサンドボックススコープが強制されているため、スコープを変更できません。"
+              vi_VN: "Phạm vi sandbox đã được cố định bắt buộc; không thể thay đổi phạm vi."
+              th_TH: "ระบบบังคับใช้ขอบเขต Sandbox แบบตายตัว จึงไม่สามารถเปลี่ยนขอบเขตได้"
+              es_ES: "Se impone un alcance fijo del sandbox; no se puede cambiar el alcance."
+              ru_RU: "Принудительно задана фиксированная область песочницы; изменить её нельзя."
         type: select
         required: false
         default: "{launcher_type}_{launcher_id}"

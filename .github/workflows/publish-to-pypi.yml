@@ -2,6 +2,11 @@ name: Build and Publish to PyPI
 
 on:
   workflow_dispatch:
+    inputs:
+      source_ref:
+        description: 'Existing release tag to publish (for example v4.10.11)'
+        required: true
+        type: string
   release:
     types: [published]
 
@@ -11,12 +16,38 @@ jobs:
     permissions:
       contents: read
       id-token: write  # Required for trusted publishing to PyPI
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.source_ref || github.sha }}
+          fetch-depth: 0
           persist-credentials: false
+
+      - name: Validate release source and version
+        env:
+          RELEASE_TAG: ${{ inputs.source_ref || github.event.release.tag_name }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+          import subprocess
+          import tomllib
+          from pathlib import Path
+
+          tag = os.environ['RELEASE_TAG']
+          if not re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+', tag):
+              raise SystemExit('source_ref must be an existing release tag: vX.Y.Z')
+          def revision(ref):
+              return subprocess.check_output(['git', 'rev-parse', '--verify', ref], text=True).strip()
+          if revision('HEAD') != revision(f'refs/tags/{tag}^{{}}'):
+              raise SystemExit('Checked-out commit does not match the release tag')
+          version = tomllib.loads(Path('pyproject.toml').read_text())['project']['version']
+          if version != tag[1:]:
+              raise SystemExit(f'Package version {version} does not match tag {tag}')
+          print(f'Validated {tag} at {revision("HEAD")} (package {version})')
+          PY
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -26,9 +57,9 @@ jobs:
       - name: Build frontend
         run: |
           cd web
-          npm install -g pnpm
-          pnpm install
-          pnpm build
+          # Match the archive/Docker npm path; npm ci rejects older tags' stale npm lockfiles.
+          npm install --include=optional
+          npm run build
           mkdir -p ../src/langbot/web/dist
           cp -r dist ../src/langbot/web/
 

@@ -39,6 +39,13 @@ export interface IDynamicFormItemSchema {
   disable_if?: IShowIfCondition;
   /** Tooltip shown next to the field label when ``disable_if`` is active. */
   disabled_tooltip?: I18nObject;
+  /** Optional overrides evaluated in order when ``disable_if`` matches.
+   *  The first matching ``when`` wins; otherwise use ``disabled_tooltip``.
+   *  Conditions use the same operators and value lookup as ``disable_if``. */
+  disabled_tooltip_overrides?: {
+    when: IShowIfCondition;
+    tooltip: I18nObject;
+  }[];
 
   /** when type is PLUGIN_SELECTOR, the scopes is the scopes of components(plugin contains), the default is all */
   scopes?: string[];

@@ -35,7 +35,9 @@ import {
   AlertCircle,
   RefreshCw,
   Layers,
+  Fingerprint,
 } from 'lucide-react';
+import { startAuthentication } from '@simplewebauthn/browser';
 import langbotIcon from '@/app/assets/langbot-logo.webp';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
@@ -63,6 +65,8 @@ export default function Login() {
   const [spaceLoading, setSpaceLoading] = useState(false);
   const [showLocalLogin, setShowLocalLogin] = useState(false);
   const [showSpaceLogin, setShowSpaceLogin] = useState(false);
+  const [showPasskeyLogin, setShowPasskeyLogin] = useState(false);
+  const [passkeyLoading, setPasskeyLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [retrying, setRetrying] = useState(false);
@@ -90,6 +94,9 @@ export default function Login() {
       }
       setShowLocalLogin(res.password_login_enabled !== false);
       setShowSpaceLogin(res.space_login_enabled !== false);
+      setShowPasskeyLogin(
+        res.passkey_login_enabled !== false || Boolean(res.passkey_supported),
+      );
       setLoading(false);
 
       // Also check if already logged in
@@ -182,6 +189,30 @@ export default function Login() {
 
   function onSubmit(values: z.infer<ReturnType<typeof formSchema>>) {
     handleLogin(values.email, values.password);
+  }
+
+  async function handlePasskeyLogin() {
+    setPasskeyLoading(true);
+    try {
+      const { options, challenge_token } =
+        await httpClient.getPasskeyAuthOptions(
+          undefined,
+          window.location.origin,
+        );
+      const authResp = await startAuthentication({ optionsJSON: options });
+      const res = await httpClient.verifyPasskeyAuth(challenge_token, authResp);
+      if (await finishLogin(res.token, res.user)) {
+        toast.success(t('common.passkeyLoginSuccess'));
+      }
+    } catch (error: any) {
+      if (error?.name === 'NotAllowedError') {
+        // User cancelled the biometric prompt
+      } else {
+        toast.error(error?.message || t('common.passkeyLoginFailed'));
+      }
+    } finally {
+      setPasskeyLoading(false);
+    }
   }
 
   function handleLogin(username: string, password: string) {
@@ -324,8 +355,27 @@ export default function Login() {
             </div>
           )}
 
+          {showPasskeyLogin && (
+            <div className="space-y-3">
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full cursor-pointer"
+                onClick={handlePasskeyLogin}
+                disabled={passkeyLoading}
+              >
+                {passkeyLoading ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Fingerprint className="mr-2 h-4 w-4" />
+                )}
+                {t('common.loginWithPasskey')}
+              </Button>
+            </div>
+          )}
+
           {/* Divider - only show if both login methods are available */}
-          {showSpaceLogin && showLocalLogin && (
+          {(showSpaceLogin || showPasskeyLogin) && showLocalLogin && (
             <div className="relative">
               <div className="absolute inset-0 flex items-center">
                 <span className="w-full border-t" />

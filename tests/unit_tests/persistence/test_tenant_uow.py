@@ -958,6 +958,8 @@ async def test_scoped_session_rejects_raw_or_unapproved_sql(
     [
         sa.select(sa.literal('set_config(')),
         sa.select(sa.func.count()),
+        sa.select(sa.func.min(sa.column('timestamp'))),
+        sa.select(sa.func.max(sa.column('timestamp'))),
         sa.select(sa.func.coalesce(sa.func.sum(sa.literal(1)), sa.literal(0))),
         sa.select(
             sa.func.now(),

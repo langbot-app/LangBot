@@ -193,6 +193,22 @@ async def create_legacy_resource_schema(engine, *, instance_uuid: str) -> None:
         sa.Column('message_id', sa.String(255), nullable=True),
     )
 
+    # Include historical monitoring columns consumed by later migrations.
+    for table_name in ('monitoring_messages', 'monitoring_sessions'):
+        table = monitoring_tables[table_name]
+        for name, value in (('bot_name', 'bot'), ('pipeline_id', 'pipeline-1'), ('pipeline_name', 'pipeline')):
+            table.append_column(sa.Column(name, sa.String(255), nullable=False, default=value))
+        for name in ('platform', 'user_id', 'user_name'):
+            table.append_column(sa.Column(name, sa.String(255)))
+        if table_name == 'monitoring_messages':
+            table.append_column(sa.Column('bot_id', sa.String(255), nullable=False, default='bot-1'))
+            table.append_column(sa.Column('role', sa.String(50)))
+        else:
+            table.append_column(sa.Column('message_count', sa.Integer, nullable=False, default=1))
+            table.append_column(
+                sa.Column('start_time', sa.DateTime, nullable=False, default=datetime.datetime(2026, 1, 1))
+            )
+
     now = datetime.datetime(2026, 1, 1)
     async with engine.begin() as conn:
         await conn.run_sync(metadata.create_all)

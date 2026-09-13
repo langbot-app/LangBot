@@ -1,5 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="TokenLab">
-  <rect width="64" height="64" rx="14" fill="#111827"/>
-  <path fill="#38bdf8" d="M17 14h30v8H36v28h-8V22H17z"/>
-  <path fill="#a7f3d0" d="M40 30h8v20H28v-8h12z"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-labelledby="tokenlab-symbol-title tokenlab-symbol-desc">
+  <title id="tokenlab-symbol-title">TokenLab</title>
+  <desc id="tokenlab-symbol-desc">Specimen Split symbol, positive master for sizes from 32 to 96 pixels.</desc>
+  <g fill="#151714">
+    <path d="M5 13h14.25L35 43H5V13Z"/>
+    <path d="M20.7 5H43v30H35.6L20.7 5Z"/>
+  </g>
 </svg>
