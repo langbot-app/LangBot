@@ -136,6 +136,7 @@ _Note: Public demo environment. Do not enter sensitive information._
 | [Moonshot](https://www.moonshot.cn/)                                                                              | LLM          | ✅     |
 | [Zhipu AI](https://open.bigmodel.cn/)                                                                             | LLM          | ✅     |
 | [Ollama](https://ollama.com/)                                                                                     | Local LLM    | ✅     |
+| [llmman](https://github.com/llmmanorg/llmman)                                                                     | Local LLM    | ✅     |
 | [LM Studio](https://lmstudio.ai/)                                                                                 | Local LLM    | ✅     |
 | [Dify](https://dify.ai)                                                                                           | LLMOps       | ✅     |
 | [MCP](https://modelcontextprotocol.io/)                                                                           | Protocol     | ✅     |
