@@ -94,16 +94,6 @@ docker compose --profile all up -d
 
 ---
 
-## 線上演示
-
-**立即體驗：** https://demo.langbot.dev/
-- 信箱：`demo@langbot.app`
-- 密碼：`langbot123456`
-
-*注意：公開演示環境，請不要在其中填入任何敏感資訊。*
-
----
-
 ## 支援的平台
 
 | 平台 | 狀態 | 備註 |

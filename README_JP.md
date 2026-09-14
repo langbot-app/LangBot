@@ -92,16 +92,6 @@ docker compose --profile all up -d
 
 ---
 
-## ライブデモ
-
-**今すぐ試す:** https://demo.langbot.dev/
-- メール: `demo@langbot.app`
-- パスワード: `langbot123456`
-
-*注意: 公開デモ環境です。機密情報を入力しないでください。*
-
----
-
 ## 対応プラットフォーム
 
 | プラットフォーム | ステータス | 備考 |

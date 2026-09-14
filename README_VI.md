@@ -92,16 +92,6 @@ docker compose --profile all up -d
 
 ---
 
-## Demo trực tuyến
-
-**Thử ngay:** https://demo.langbot.dev/
-- Email: `demo@langbot.app`
-- Mật khẩu: `langbot123456`
-
-*Lưu ý: Môi trường demo công khai. Không nhập thông tin nhạy cảm.*
-
----
-
 ## Nền tảng được hỗ trợ
 
 | Nền tảng | Trạng thái | Ghi chú |
