@@ -124,6 +124,7 @@ class BoxService:
         self.profile = self._load_profile()
         self.custom_image = self._load_custom_image()
         self.workspace_quota_mb = self._load_workspace_quota_mb()
+        self.default_env = self._load_default_env()
         self._admission_policy = (
             require_cloud_admission_policy(_get_box_config(ap).get('admission')) if self._cloud_managed else None
         )
@@ -1394,6 +1395,10 @@ class BoxService:
     def build_spec(self, spec_payload: dict, skip_host_mount_validation: bool = False) -> BoxSpec:
         spec_payload = dict(spec_payload)
         spec_payload.setdefault('env', {})
+        if self.default_env:
+            merged_env = dict(self.default_env)
+            merged_env.update(spec_payload.get('env') or {})
+            spec_payload['env'] = merged_env
         if spec_payload.get('host_path') in (None, '') and self.default_workspace is not None:
             spec_payload['host_path'] = self.default_workspace
         if spec_payload.get('workspace_quota_mb') in (None, '') and self.workspace_quota_mb is not None:
@@ -1830,6 +1835,28 @@ class BoxService:
         if value < 0:
             raise BoxValidationError('workspace_quota_mb must be greater than or equal to 0')
         return value
+
+    def _load_default_env(self) -> dict[str, str]:
+        """Return ``box.local.env`` as operator-provided sandbox defaults.
+
+        These values are merged into every Box exec payload so sandbox commands
+        can read settings such as a service base URL. A per-call ``env`` supplied
+        by the agent or caller overrides the matching defaults. Non-dict configs
+        and non-string keys or values are ignored.
+        """
+        raw_env = self._local_config().get('env')
+        if not isinstance(raw_env, dict):
+            return {}
+
+        env: dict[str, str] = {}
+        for key, value in raw_env.items():
+            if not isinstance(key, str) or not isinstance(value, str):
+                continue
+            normalized_key = key.strip()
+            if not normalized_key:
+                continue
+            env[normalized_key] = value
+        return env
 
     def _ensure_default_workspace(self):
         if self.default_workspace is None:
