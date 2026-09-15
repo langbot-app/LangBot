@@ -12,6 +12,7 @@ import {
   Package,
   Server,
   Sparkles,
+  Rocket,
   CheckCircle2,
   XCircle,
   Loader2,
@@ -38,6 +39,11 @@ const STAGES: {
     key: InstallStage.INSTALLING_DEPS,
     icon: Package,
     i18nKey: 'plugins.installProgress.installingDeps',
+  },
+  {
+    key: InstallStage.LAUNCHING,
+    icon: Rocket,
+    i18nKey: 'plugins.installProgress.launching',
   },
 ];
 

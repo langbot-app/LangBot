@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import PluginDetailContent from './PluginDetailContent';
 import styles from './plugins.module.css';
 import { Button } from '@/components/ui/button';
-import { Power, Code, Copy, Check, Bug, Unlink } from 'lucide-react';
+import { Power, Code, Copy, Check, Bug, Unlink, Search, X } from 'lucide-react';
 import { copyToClipboard } from '@/app/utils/clipboard';
 import {
   Popover,
@@ -63,6 +63,7 @@ function PluginListView() {
   const [copiedDebugUrl, setCopiedDebugUrl] = useState(false);
   const [copiedDebugKey, setCopiedDebugKey] = useState(false);
   const [filterType, setFilterType] = useState<FilterType>('all');
+  const [installedSearchQuery, setInstalledSearchQuery] = useState('');
   const pluginInstalledRef = useRef<PluginInstalledComponentRef>(null);
 
   useEffect(() => {
@@ -179,6 +180,27 @@ function PluginListView() {
           </Tabs>
         </div>
         <div className="flex flex-row items-center gap-2 flex-wrap">
+          {/* Search installed extensions by label / name / author / description */}
+          <div className="relative w-full sm:w-56">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={installedSearchQuery}
+              onChange={(e) => setInstalledSearchQuery(e.target.value)}
+              placeholder={t('plugins.searchInstalled')}
+              aria-label={t('plugins.searchInstalled')}
+              className="pl-9 pr-8 text-sm"
+            />
+            {installedSearchQuery && (
+              <button
+                type="button"
+                aria-label={t('common.clear')}
+                onClick={() => setInstalledSearchQuery('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
           <div className="flex items-center gap-2 px-1 sm:px-2">
             <Switch
               id="group-by-type"
@@ -300,6 +322,8 @@ function PluginListView() {
           ref={pluginInstalledRef}
           filterType={filterType}
           groupByType={groupByType}
+          searchQuery={installedSearchQuery}
+          onClearSearch={() => setInstalledSearchQuery('')}
         />
       </div>
     </div>
