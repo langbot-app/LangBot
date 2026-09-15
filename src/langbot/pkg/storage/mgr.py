@@ -34,6 +34,9 @@ class StorageMgr:
 
     def __init__(self, ap: app.Application):
         self.ap = ap
+        from . import media
+
+        self.media_cache = media.MediaCache(ap, self)
 
     def _object_read_limit(self) -> int:
         config = getattr(getattr(self.ap, 'instance_config', None), 'data', {})

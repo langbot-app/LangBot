@@ -1,0 +1,4 @@
+#!/bin/bash
+# cmd/config_init - pre-config hook
+
+exit 0

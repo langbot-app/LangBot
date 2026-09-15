@@ -1,0 +1,194 @@
+#!/bin/bash
+# cmd/main - LangBot lifecycle manager for fnOS
+# Handles start / stop / status via standalone-runtime Python process.
+# Node.js path is injected into PATH so Box sandbox npx MCP servers can run.
+
+PID_FILE="${TRIM_PKGVAR}/langbot.pid"
+APP_DIR="${TRIM_APPDEST}/langbot"
+LOG_FILE="${TRIM_PKGVAR}/langbot.log"
+
+# --- Locate fnOS Node.js bin path ---
+# fnOS appname-based path: /var/apps/nodejs_vXX/target/bin
+# This is a stable symlink regardless of which volume the app is on.
+NODE_VERSION="${wizard_node_version:-22}"
+NODE_BIN_DIR="/var/apps/nodejs_v${NODE_VERSION}/target/bin"
+
+if [ -d "${NODE_BIN_DIR}" ]; then
+    export PATH="${NODE_BIN_DIR}:${PATH}"
+fi
+
+# --- Persistent data root ---
+# LangBot loads data/config.yaml CWD-RELATIVE (see core/stages/load_config.py:
+# load_yaml_config('data/config.yaml', ...)) and resolves its data root to
+# <CWD>/data in source-install mode — it does NOT honour LANGBOT_DATA_ROOT for
+# config.yaml. So the real fix is the symlink below: APP_DIR/data -> DATA_DIR.
+DATA_DIR="${TRIM_DATA_SHARE_PATHS%%:*}"
+if [ -z "${DATA_DIR}" ]; then
+    DATA_DIR="${TRIM_PKGVAR}/data"
+fi
+export LANGBOT_DATA_ROOT="${DATA_DIR}"
+mkdir -p "${DATA_DIR}" 2>/dev/null || true
+
+# --- Locate Python ---
+PYTHON_BIN="python3"
+! command -v "${PYTHON_BIN}" >/dev/null 2>&1 && PYTHON_BIN="python"
+
+# --- Locate uv ---
+# install_callback puts the bundled uv binary at ${TRIM_PKGVAR}/bin/uv
+UV_BIN="${TRIM_PKGVAR}/bin/uv"
+if [ ! -x "${UV_BIN}" ]; then
+    UV_BIN="uv"
+fi
+if ! command -v "${UV_BIN}" >/dev/null 2>&1; then
+    UV_BIN="${HOME}/.local/bin/uv"
+fi
+if ! command -v "${UV_BIN}" >/dev/null 2>&1 && [ ! -x "${UV_BIN}" ]; then
+    UV_BIN="${HOME}/.cargo/bin/uv"
+fi
+if ! command -v "${UV_BIN}" >/dev/null 2>&1 && [ ! -x "${UV_BIN}" ]; then
+    UV_BIN="${APP_DIR}/.venv/bin/uv"
+fi
+
+case $1 in
+  start)
+    if [ -f "${PID_FILE}" ]; then
+        PID=$(cat "${PID_FILE}" | tr -d '[:space:]')
+        if [ -n "${PID}" ] && kill -0 "${PID}" 2>/dev/null; then
+            exit 0
+        fi
+        rm -f "${PID_FILE}"
+    fi
+
+    if [ ! -d "${APP_DIR}" ]; then
+        echo "LangBot app directory missing: ${APP_DIR}" > "${TRIM_TEMP_LOGFILE}"
+        exit 1
+    fi
+
+    cd "${APP_DIR}" || {
+        echo "Cannot enter app directory: ${APP_DIR}" > "${TRIM_TEMP_LOGFILE}"
+        exit 1
+    }
+
+    if [ ! -d ".venv" ]; then
+        echo "Python virtual environment not found. Please reinstall LangBot." > "${TRIM_TEMP_LOGFILE}"
+        exit 1
+    fi
+
+    # --- Unify data location: APP_DIR/data -> symlink to persistent DATA_DIR ---
+    # LangBot reads config CWD-relative (data/config.yaml), so without this a
+    # fresh data/ with a default 5300 config gets recreated inside target/ on
+    # every install/upgrade. The symlink keeps everything on the persistent
+    # share; it is recreated here on each start (upgrades wipe target/).
+    APP_DATA="${APP_DIR}/data"
+    if [ -L "${APP_DATA}" ]; then
+        # already a symlink; re-point if the persistent dir changed
+        [ "$(readlink "${APP_DATA}")" != "${DATA_DIR}" ] && ln -sfn "${DATA_DIR}" "${APP_DATA}"
+    elif [ -d "${APP_DATA}" ]; then
+        # legacy real dir (created by LangBot before this fix): merge into the
+        # persistent dir without overwriting newer files already there
+        mkdir -p "${DATA_DIR}"
+        cp -an "${APP_DATA}/." "${DATA_DIR}/" 2>/dev/null || cp -a "${APP_DATA}/." "${DATA_DIR}/"
+        rm -rf "${APP_DATA}"
+        ln -s "${DATA_DIR}" "${APP_DATA}"
+    else
+        ln -s "${DATA_DIR}" "${APP_DATA}"
+    fi
+
+    # Ensure LangBot's actual listen port always matches what fnOS shows in
+    # "应用设置 → 访问端口" (which is the single source of truth from the user's
+    # POV). Two sources, checked in priority order:
+    #   1. ${wizard_port} — only set during install/upgrade callbacks (not on
+    #      normal `start`; kept for completeness).
+    #   2. target/ui/config — read the "port" field written by fnOS after
+    #      ${wizard_port} substitution AND any later edit the user made via
+    #      "应用设置 → 自定义 URL" pencil button.
+    # Without this: user picks 5303 in wizard, LangBot still listens on its
+    # default 5300, desktop shortcut hits 5303 → connection refused.
+    CONFIG_FILE="${DATA_DIR}/config.yaml"
+    _patch_port() {
+        local _port="$1"
+        case "${_port}" in
+            ''|*[!0-9]*) return ;;
+        esac
+        if [ ! -f "${CONFIG_FILE}" ]; then
+            local _tmpl="${APP_DIR}/src/langbot/templates/config.yaml"
+            [ -f "${_tmpl}" ] && cp "${_tmpl}" "${CONFIG_FILE}"
+        fi
+        if [ -f "${CONFIG_FILE}" ]; then
+            sed -i -E "/^api:/,/^[a-z_]+:/ s/^([[:space:]]*port:).*/\1 ${_port}/" "${CONFIG_FILE}"
+            sed -i "s#webhook_prefix: 'http://127\.0\.0\.1:[0-9]*'#webhook_prefix: 'http://127.0.0.1:${_port}'#" "${CONFIG_FILE}"
+        fi
+    }
+    if [ -n "${wizard_port:-}" ]; then
+        _patch_port "${wizard_port}"
+    fi
+    if [ -f "${TRIM_APPDEST}/ui/config" ]; then
+        _port_from_ui=$(python3 -c 'import json,sys
+try:
+    d = json.load(open(sys.argv[1]))
+    for _name, _entry in (d.get(".url") or {}).items():
+        p = _entry.get("port")
+        if isinstance(p, (int, float)):
+            print(int(p))
+        elif isinstance(p, str) and p.isdigit():
+            print(int(p))
+        break
+except Exception:
+    pass
+' "${TRIM_APPDEST}/ui/config" 2>/dev/null)
+        if [ -n "${_port_from_ui}" ]; then
+            _patch_port "${_port_from_ui}"
+        fi
+    fi
+
+    # Native deployment: no --standalone-runtime flag, LangBot spawns the
+    # plugin runtime as a stdio subprocess (same as official `uv run main.py`).
+    # (--standalone-runtime would require an external runtime at
+    #  ws://langbot_plugin_runtime:5400, which only exists in Docker Compose.)
+    # --standalone-box omitted: Box sandbox defaults off, users enable via Web UI
+    nohup "${UV_BIN}" run --no-sync main.py \
+        > "${LOG_FILE}" 2>&1 &
+    echo $! > "${PID_FILE}"
+
+    sleep 3
+    if [ -f "${PID_FILE}" ]; then
+        PID=$(cat "${PID_FILE}" | tr -d '[:space:]')
+        if [ -n "${PID}" ] && kill -0 "${PID}" 2>/dev/null; then
+            exit 0
+        fi
+    fi
+    echo "LangBot failed to start. Check ${LOG_FILE}" > "${TRIM_TEMP_LOGFILE}"
+    exit 1
+    ;;
+
+  stop)
+    if [ -f "${PID_FILE}" ]; then
+        PID=$(cat "${PID_FILE}" | tr -d '[:space:]')
+        if [ -n "${PID}" ]; then
+            kill "${PID}" 2>/dev/null
+            for _ in 1 2 3 4 5 6 7 8 9 10; do
+                kill -0 "${PID}" 2>/dev/null || break
+                sleep 1
+            done
+            kill -9 "${PID}" 2>/dev/null
+        fi
+        rm -f "${PID_FILE}"
+    fi
+    exit 0
+    ;;
+
+  status)
+    if [ -f "${PID_FILE}" ]; then
+        PID=$(cat "${PID_FILE}" | tr -d '[:space:]')
+        if [ -n "${PID}" ] && kill -0 "${PID}" 2>/dev/null; then
+            exit 0
+        fi
+        rm -f "${PID_FILE}"
+    fi
+    exit 3
+    ;;
+
+  *)
+    exit 1
+    ;;
+esac

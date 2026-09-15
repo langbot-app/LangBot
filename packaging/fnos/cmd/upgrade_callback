@@ -1,0 +1,77 @@
+#!/bin/bash
+# cmd/upgrade_callback - post-upgrade hook
+# Re-sync dependencies after code replacement using uv.
+
+APP_DIR="${TRIM_APPDEST}/langbot"
+
+# Persistent data root (must match cmd/main)
+DATA_DIR="${TRIM_DATA_SHARE_PATHS%%:*}"
+[ -z "${DATA_DIR}" ] && DATA_DIR="${TRIM_PKGVAR}/data"
+
+# Apply port from upgrade wizard (config persists across upgrades; this
+# only rewrites it when the user changed the value in the upgrade wizard)
+CONFIG_FILE="${DATA_DIR}/config.yaml"
+if [ -n "${wizard_port:-}" ] && [ -f "${CONFIG_FILE}" ]; then
+    case "${wizard_port}" in
+        ''|*[!0-9]*) ;;
+        *)
+            sed -i -E "/^api:/,/^[a-z_]+:/ s/^([[:space:]]*port:).*/\1 ${wizard_port}/" "${CONFIG_FILE}"
+            sed -i "s#webhook_prefix: 'http://127\.0\.0\.1:[0-9]*'#webhook_prefix: 'http://127.0.0.1:${wizard_port}'#" "${CONFIG_FILE}"
+            ;;
+    esac
+fi
+
+cd "${APP_DIR}" || {
+    echo "App directory missing after upgrade" > "${TRIM_TEMP_LOGFILE}"
+    exit 1
+}
+
+# Find uv (bundled first, then PATH / ~/.local/bin / ~/.cargo/bin)
+UV_BIN="${TRIM_PKGVAR}/bin/uv"
+if [ ! -x "${UV_BIN}" ]; then
+    UV_BIN="uv"
+fi
+if ! command -v "${UV_BIN}" >/dev/null 2>&1; then
+    UV_BIN="${HOME}/.local/bin/uv"
+fi
+if ! command -v "${UV_BIN}" >/dev/null 2>&1 && [ ! -x "${UV_BIN}" ]; then
+    UV_BIN="${HOME}/.cargo/bin/uv"
+fi
+
+PYTHON_BIN="python3"
+! command -v "${PYTHON_BIN}" >/dev/null 2>&1 && PYTHON_BIN="python"
+
+# Re-sync deps
+if [ -d ".venv" ]; then
+    "${UV_BIN}" sync --extra seekdb 2>/dev/null || {
+        echo "Dependency sync failed after upgrade" > "${TRIM_TEMP_LOGFILE}"
+        exit 1
+    }
+else
+    # Venv was lost, recreate via uv
+    if ! command -v "${UV_BIN}" >/dev/null 2>&1 && [ ! -x "${UV_BIN}" ]; then
+        "${PYTHON_BIN}" -m pip install --user --no-cache-dir uv 2>/dev/null || \
+        "${PYTHON_BIN}" -m pip install --no-cache-dir uv 2>/dev/null || {
+            echo "Failed to install uv" > "${TRIM_TEMP_LOGFILE}"
+            exit 1
+        }
+        export PATH="${HOME}/.local/bin:${PATH}"
+        UV_BIN="uv"
+    fi
+    "${UV_BIN}" venv .venv --python "${PYTHON_BIN}" || {
+        echo "Failed to recreate virtual environment" > "${TRIM_TEMP_LOGFILE}"
+        exit 1
+    }
+    "${UV_BIN}" sync --extra seekdb || {
+        echo "Dependency sync failed" > "${TRIM_TEMP_LOGFILE}"
+        exit 1
+    }
+fi
+
+# Verify frontend dist still present
+if [ ! -d "web/dist" ] || [ -z "$(ls -A web/dist 2>/dev/null)" ]; then
+    echo "Frontend dist missing after upgrade! Web UI will not be available." > "${TRIM_TEMP_LOGFILE}"
+    exit 1
+fi
+
+exit 0

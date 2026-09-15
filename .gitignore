@@ -60,3 +60,14 @@ web/.next/
 web/.pnpm-home
 .tmp
 Caddyfile
+
+# fnOS packaging build artifacts (packaging/fnos/build.sh)
+packaging/fnos/app/langbot/
+packaging/fnos/app/bin/
+packaging/fnos/ICON.PNG
+packaging/fnos/ICON_256.PNG
+packaging/fnos/app/ui/images/
+packaging/fnos/app/desktop/images/
+packaging/fnos/*.fpk
+
+r.ps1

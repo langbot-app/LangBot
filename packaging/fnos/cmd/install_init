@@ -1,0 +1,5 @@
+#!/bin/bash
+# cmd/install_init - pre-install hook
+# Nothing special to do before extraction.
+
+exit 0

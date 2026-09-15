@@ -1,0 +1,20 @@
+#!/bin/bash
+# cmd/upgrade_init - pre-upgrade hook
+# Stop the running LangBot process before files are replaced.
+
+PID_FILE="${TRIM_PKGVAR}/langbot.pid"
+
+if [ -f "${PID_FILE}" ]; then
+    PID=$(cat "${PID_FILE}" | tr -d '[:space:]')
+    if [ -n "${PID}" ] && kill -0 "${PID}" 2>/dev/null; then
+        kill "${PID}" 2>/dev/null
+        for _ in 1 2 3 4 5 6 7 8 9 10; do
+            kill -0 "${PID}" 2>/dev/null || break
+            sleep 1
+        done
+        kill -9 "${PID}" 2>/dev/null
+    fi
+    rm -f "${PID_FILE}"
+fi
+
+exit 0

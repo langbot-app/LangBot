@@ -48,6 +48,21 @@ class FilesRouterGroup(group.RouterGroup):
             return quart.Response(image_bytes, mimetype=mime_type)
 
         @self.route(
+            '/media/<filename>',
+            methods=['GET'],
+            auth_type=group.AuthType.NONE,
+        )
+        async def get_media_file(filename: str) -> quart.Response:
+            media = await self.ap.storage_mgr.media_cache.get_media(filename)
+            if media is None:
+                return quart.Response('Media not found or expired', status=404)
+            media_bytes, mime_type = media
+            headers = {
+                'Cache-Control': 'public, max-age=2592000, immutable',
+            }
+            return quart.Response(media_bytes, mimetype=mime_type, headers=headers)
+
+        @self.route(
             '/images',
             methods=['POST'],
             auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
