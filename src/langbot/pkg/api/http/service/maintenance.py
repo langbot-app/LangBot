@@ -80,16 +80,40 @@ class MaintenanceService:
             DEFAULT_LOG_RETENTION_DAYS,
             'storage.cleanup.log_retention_days',
         )
+        media_cfg = self.ap.instance_config.data.get('storage', {}).get('media_cache', {})
+        media_retention_days = self._positive_int(
+            media_cfg.get('retention_days'),
+            30,
+            'storage.media_cache.retention_days',
+        )
+        media_max_size_mb = self._non_negative_int(
+            media_cfg.get('max_size_mb'),
+            0,
+            'storage.media_cache.max_size_mb',
+        )
+        media_cache = getattr(getattr(self.ap, 'storage_mgr', None), 'media_cache', None)
+        is_singleton = await self._is_oss_singleton(context)
+        media_cleanup = (
+            await media_cache.cleanup(
+                media_retention_days,
+                media_max_size_mb,
+            )
+            if media_cache is not None and is_singleton
+            else {}
+        )
 
-        return {
+        result = {
             'uploaded_files': await self._cleanup_expired_uploaded_files(context, upload_retention_days),
             'log_files': await asyncio.to_thread(
                 self._cleanup_expired_log_files,
                 log_retention_days,
             )
-            if await self._is_oss_singleton(context)
+            if is_singleton
             else 0,
         }
+        if media_cache is not None and is_singleton:
+            result['media_files'] = media_cleanup.get('expired_deleted', 0) + media_cleanup.get('size_deleted', 0)
+        return result
 
     async def get_storage_analysis(self, context: TenantContext) -> dict[str, Any]:
         require_workspace_uuid(context)
@@ -465,6 +489,17 @@ class MaintenanceService:
         for _, _, files in os.walk(path):
             count += len(files)
         return count
+
+    def _non_negative_int(self, value: Any, default: int, name: str) -> int:
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            self.ap.logger.warning(f'Invalid {name}: {value!r}, using {default}')
+            return default
+        if parsed < 0:
+            self.ap.logger.warning(f'{name} must be non-negative: {value!r}, using {default}')
+            return default
+        return parsed
 
     def _positive_int(self, value: Any, default: int, name: str) -> int:
         try:

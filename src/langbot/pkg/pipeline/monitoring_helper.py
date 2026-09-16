@@ -48,7 +48,10 @@ class MonitoringHelper:
             # Try to record message
             # Use JSON serialization to preserve message chain structure (including image URLs, etc.)
             if hasattr(query, 'message_chain') and hasattr(query.message_chain, 'model_dump'):
-                message_content = json.dumps(query.message_chain.model_dump(), ensure_ascii=False)
+                chain_dump = query.message_chain.model_dump()
+                if hasattr(ap, 'storage_mgr') and hasattr(ap.storage_mgr, 'media_cache'):
+                    chain_dump = await ap.storage_mgr.media_cache.externalize_chain_dump(chain_dump)
+                message_content = json.dumps(chain_dump, ensure_ascii=False)
             else:
                 message_content = str(query)
 
@@ -168,7 +171,10 @@ class MonitoringHelper:
                 if hasattr(last_resp, 'get_content_platform_message_chain'):
                     chain = last_resp.get_content_platform_message_chain()
                     if hasattr(chain, 'model_dump'):
-                        message_content = json.dumps(chain.model_dump(), ensure_ascii=False)
+                        chain_dump = chain.model_dump()
+                        if hasattr(ap, 'storage_mgr') and hasattr(ap.storage_mgr, 'media_cache'):
+                            chain_dump = await ap.storage_mgr.media_cache.externalize_chain_dump(chain_dump)
+                        message_content = json.dumps(chain_dump, ensure_ascii=False)
                     else:
                         message_content = str(chain)
                 else:

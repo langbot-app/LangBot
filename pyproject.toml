@@ -58,6 +58,7 @@ dependencies = [
     "python-docx>=1.1.0",
     "pandas>=2.2.2",
     "chardet>=5.2.0",
+    "xxhash>=3.5.0",
     "markdown>=3.6",
     "beautifulsoup4>=4.12.3",
     "ebooklib>=0.18",

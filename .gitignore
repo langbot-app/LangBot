@@ -69,3 +69,5 @@ packaging/fnos/ICON_256.PNG
 packaging/fnos/app/ui/images/
 packaging/fnos/app/desktop/images/
 packaging/fnos/*.fpk
+
+r.ps1

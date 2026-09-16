@@ -227,6 +227,12 @@ storage:
     # Bound every object materialized into Core memory. Built-in Local/S3
     # providers enforce this while reading (hard cap: 64 MiB).
     max_object_read_bytes: 10485760
+    # Media content cache (images & attachments externalized from monitoring and pipelines)
+    media_cache:
+        # Retention period in days for cached media (defaults to 30 days)
+        retention_days: 30
+        # Maximum disk storage for cached media in MB (0 means unlimited, defaults to 0)
+        max_size_mb: 0
     cleanup:
         # Enable periodic cleanup of local/S3 uploaded files and old log files
         enabled: true

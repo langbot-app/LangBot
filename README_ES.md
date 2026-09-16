@@ -92,16 +92,6 @@ docker compose --profile all up -d
 
 ---
 
-## Demo en Vivo
-
-**Pruébelo ahora:** https://demo.langbot.dev/
-- Correo electrónico: `demo@langbot.app`
-- Contraseña: `langbot123456`
-
-*Nota: Entorno de demostración público. No ingrese información confidencial.*
-
----
-
 ## Plataformas Soportadas
 
 | Plataforma | Estado | Notas |

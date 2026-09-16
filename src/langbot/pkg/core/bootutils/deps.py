@@ -43,6 +43,7 @@ required_deps = {
     'slack_sdk': 'slack_sdk',
     'asyncpg': 'asyncpg',
     'litellm': 'litellm',
+    'xxhash': 'xxhash',
 }
 
 

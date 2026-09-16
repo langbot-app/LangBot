@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import uuid
 import datetime
 import functools
@@ -417,6 +418,32 @@ class MonitoringService:
 
     # ========== Recording Methods ==========
 
+    def _sanitize_message_content(self, content: str) -> str:
+        """Strip raw base64 data to protect database storage from unbounded bloating."""
+        if not content or len(content) < 10000 or (';base64,' not in content and 'data:image/' not in content):
+            return content
+        try:
+            data = json.loads(content)
+
+            def _strip_node(node):
+                if isinstance(node, list):
+                    return [_strip_node(x) for x in node]
+                if isinstance(node, dict):
+                    res = dict(node)
+                    if res.get('type') == 'Image' and res.get('base64'):
+                        res['base64'] = None
+                    for k, v in list(res.items()):
+                        if isinstance(v, (list, dict)):
+                            res[k] = _strip_node(v)
+                    return res
+                return node
+
+            return json.dumps(_strip_node(data), ensure_ascii=False)
+        except Exception:
+            return re.sub(
+                r'data:image/[a-zA-Z0-9.+_-]+;base64,[\sA-Za-z0-9+/=]{1000,}', '[base64 image omitted]', content
+            )
+
     @_workspace_transaction
     async def record_message(
         self,
@@ -439,6 +466,7 @@ class MonitoringService:
         """Record a message"""
         workspace_uuid = self._require_write_context(context)
         message_id = str(uuid.uuid4())
+        message_content = self._sanitize_message_content(message_content)
         message_data = {
             'id': message_id,
             'workspace_uuid': workspace_uuid,
