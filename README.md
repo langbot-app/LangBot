@@ -22,7 +22,7 @@ English / [简体中文](README_CN.md) / [繁體中文](README_TW.md) / [日本�
 <a href="https://langbot.app/docs/en/insight/features">Features</a> ｜
 <a href="https://langbot.app/docs/en/insight/guide">Docs</a> ｜
 <a href="https://langbot.app/docs/en/tags/readme">API</a> ｜
-<a href="https://space.langbot.app/cloud">Cloud</a> ｜
+<a href="https://cloud.langbot.app">Cloud</a> ｜
 <a href="https://space.langbot.app">Plugin Market</a> ｜
 <a href="https://langbot.featurebase.app/roadmap">Roadmap</a>
 
@@ -65,7 +65,9 @@ Click the Star and Watch buttons in the top-right corner of the repository to ge
 
 ### ☁️ LangBot Cloud (Recommended)
 
-**[LangBot Cloud](https://space.langbot.app/cloud)** — Zero deployment, ready to use.
+[![Deploy on LangBot Cloud](res/langbot-cloud.svg)](https://cloud.langbot.app)
+
+Zero deployment, ready to use.
 
 ### One-Line Launch
 

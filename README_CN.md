@@ -24,7 +24,7 @@
 <a href="https://langbot.app/docs/zh/insight/features">特性</a> ｜
 <a href="https://langbot.app/docs/zh/insight/guide">文档</a> ｜
 <a href="https://langbot.app/docs/zh/tags/readme">API</a> ｜
-<a href="https://space.langbot.app/cloud">Cloud</a> ｜
+<a href="https://cloud.langbot.app">Cloud</a> ｜
 <a href="https://space.langbot.app">扩展市场</a> ｜
 <a href="https://langbot.featurebase.app/roadmap">路线图</a>
 
@@ -65,7 +65,9 @@ LangBot 是一个**开源的生产级平台**，用于构建 AI 驱动的即时�
 
 ### ☁️ LangBot Cloud（推荐）
 
-**[LangBot Cloud](https://space.langbot.app/cloud)** — 免部署，开箱即用。
+[![Deploy on LangBot Cloud](res/langbot-cloud.svg)](https://cloud.langbot.app)
+
+免部署，开箱即用。
 
 ### 一键启动
 

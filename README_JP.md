@@ -64,7 +64,9 @@ LangBot は、AI搭載のインスタントメッセージングボットを構�
 
 ### ☁️ LangBot Cloud（推奨）
 
-**[LangBot Cloud](https://space.langbot.app/cloud)** — デプロイ不要、すぐに使えます。
+[![Deploy on LangBot Cloud](res/langbot-cloud.svg)](https://cloud.langbot.app)
+
+デプロイ不要、すぐに使えます。
 
 ### ワンライン起動
 

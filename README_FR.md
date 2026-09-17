@@ -64,7 +64,9 @@ Cliquez sur les boutons Star et Watch dans le coin supérieur droit du dépôt p
 
 ### ☁️ LangBot Cloud (Recommandé)
 
-**[LangBot Cloud](https://space.langbot.app/cloud)** — Sans déploiement, prêt à utiliser.
+[![Deploy on LangBot Cloud](res/langbot-cloud.svg)](https://cloud.langbot.app)
+
+Sans déploiement, prêt à utiliser.
 
 ### Lancement en une ligne
 

@@ -64,7 +64,9 @@ LangBot — это **платформа с открытым исходным к�
 
 ### ☁️ LangBot Cloud (Рекомендуется)
 
-**[LangBot Cloud](https://space.langbot.app/cloud)** — Без развёртывания, готово к использованию.
+[![Deploy on LangBot Cloud](res/langbot-cloud.svg)](https://cloud.langbot.app)
+
+Без развёртывания, готово к использованию.
 
 ### Запуск одной командой
 
