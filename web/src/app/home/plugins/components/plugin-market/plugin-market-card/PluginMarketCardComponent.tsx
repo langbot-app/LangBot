@@ -3,7 +3,14 @@ import { useRef, useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import PluginComponentList from '../PluginComponentList';
 import { Badge } from '@/components/ui/badge';
-import { Info, Package, ExternalLink, Heart, Loader2 } from 'lucide-react';
+import {
+  Info,
+  Package,
+  ExternalLink,
+  Heart,
+  Loader2,
+  Check,
+} from 'lucide-react';
 import {
   Tooltip,
   TooltipContent,
@@ -47,6 +54,9 @@ export default function PluginMarketCardComponent({
     const keys = Object.keys(cardVO.components);
     return keys.length > 0 && keys.every((k) => k === 'KnowledgeRetriever');
   })();
+
+  const isInstalled = !!cardVO.installed;
+  const hasUpdate = !!cardVO.hasUpdate;
 
   const showTypeBadge = cardVO.type;
   const typeLabel =
@@ -158,12 +168,33 @@ export default function PluginMarketCardComponent({
     }
   };
 
+  // An already-installed extension turns its download affordance into a filled
+  // green circle-check, so the card reads as "installed" in place instead of
+  // offering another install.
+  const showInstalledMark = isInstalled && !hasUpdate;
+
+  // Bottom-right slot: the component list.
+  const bottomTrailing =
+    cardVO.components && Object.keys(cardVO.components).length > 0 ? (
+      <PluginComponentList
+        components={cardVO.components}
+        showComponentName={false}
+        showTitle={false}
+        useBadge={true}
+        t={t}
+        responsive={false}
+      />
+    ) : null;
   const cardContent = (
     <div
       role={installDisabled ? 'group' : 'button'}
       tabIndex={0}
       aria-disabled={installDisabled}
-      aria-label={t('market.installCard', { name: cardVO.label })}
+      aria-label={
+        isInstalled
+          ? t('market.installedCard', { name: cardVO.label })
+          : t('market.installCard', { name: cardVO.label })
+      }
       className={`w-[100%] h-[10rem] bg-white rounded-[10px] border border-border shadow-[0px_1px_2px_0_rgba(0,0,0,0.06)] p-3 sm:p-[1rem] transition-shadow duration-200 outline-none dark:bg-[#1f1f22] dark:shadow-[0px_1px_2px_0_rgba(255,255,255,0.04)] relative ${
         installDisabled
           ? 'cursor-not-allowed opacity-60'
@@ -321,20 +352,50 @@ export default function PluginMarketCardComponent({
         >
           <div className="flex flex-row items-center justify-start gap-2 min-w-0 overflow-hidden">
             <div className="flex flex-row items-center gap-[0.3rem] sm:gap-[0.4rem] flex-shrink-0">
-              <svg
-                className="w-4 h-4 sm:w-[1.2rem] sm:h-[1.2rem] text-[#2563eb] dark:text-[#5b8def] flex-shrink-0"
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
+              {showInstalledMark ? (
+                // Hollow green ring enclosing a green check: the download
+                // affordance becomes an "installed" mark in place.
+                <span
+                  title={t('market.installed')}
+                  aria-label={t('market.installed')}
+                  className="flex h-4 w-4 sm:h-[1.2rem] sm:w-[1.2rem] flex-shrink-0 items-center justify-center rounded-full border-2 border-green-500 dark:border-green-400"
+                >
+                  <Check
+                    className="h-2 w-2 text-green-500 dark:text-green-400 sm:h-2.5 sm:w-2.5"
+                    strokeWidth={3.5}
+                  />
+                </span>
+              ) : (
+                <svg
+                  className={`w-4 h-4 sm:w-[1.2rem] sm:h-[1.2rem] flex-shrink-0 ${
+                    hasUpdate
+                      ? 'text-amber-500 dark:text-amber-400'
+                      : 'text-[#2563eb] dark:text-[#5b8def]'
+                  }`}
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="7,10 12,15 17,10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
+              )}
+              <div
+                title={hasUpdate ? t('market.updateAvailable') : undefined}
+                className={`text-xs sm:text-sm font-medium whitespace-nowrap ${
+                  showInstalledMark
+                    ? 'text-green-600 dark:text-green-400'
+                    : hasUpdate
+                      ? 'text-amber-600 dark:text-amber-400'
+                      : 'text-[#2563eb] dark:text-[#5b8def]'
+                }`}
               >
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="7,10 12,15 17,10" />
-                <line x1="12" y1="15" x2="12" y2="3" />
-              </svg>
-              <div className="text-xs sm:text-sm text-[#2563eb] dark:text-[#5b8def] font-medium whitespace-nowrap">
-                {cardVO.installCount?.toLocaleString() ?? '0'}
+                {showInstalledMark
+                  ? t('market.installed')
+                  : (cardVO.installCount?.toLocaleString() ?? '0')}
               </div>
             </div>
 
@@ -376,18 +437,11 @@ export default function PluginMarketCardComponent({
             )}
           </div>
 
-          {cardVO.components && Object.keys(cardVO.components).length > 0 && (
+          {bottomTrailing ? (
             <div className="flex flex-row items-center gap-1 flex-shrink-0">
-              <PluginComponentList
-                components={cardVO.components}
-                showComponentName={false}
-                showTitle={false}
-                useBadge={true}
-                t={t}
-                responsive={false}
-              />
+              {bottomTrailing}
             </div>
-          )}
+          ) : null}
         </div>
       </div>
     </div>

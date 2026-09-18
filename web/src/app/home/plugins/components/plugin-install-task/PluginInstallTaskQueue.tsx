@@ -4,6 +4,7 @@ import { Progress } from '@/components/ui/progress';
 import {
   Download,
   Package,
+  Rocket,
   CheckCircle2,
   XCircle,
   Loader2,
@@ -30,6 +31,7 @@ import { cn } from '@/lib/utils';
 const STAGE_ICONS: Record<string, React.ElementType> = {
   [InstallStage.DOWNLOADING]: Download,
   [InstallStage.INSTALLING_DEPS]: Package,
+  [InstallStage.LAUNCHING]: Rocket,
   [InstallStage.DONE]: CheckCircle2,
   [InstallStage.ERROR]: XCircle,
 };
@@ -95,6 +97,8 @@ function TaskQueueItem({
         return t('plugins.installProgress.downloading');
       case InstallStage.INSTALLING_DEPS:
         return t('plugins.installProgress.installingDeps');
+      case InstallStage.LAUNCHING:
+        return t('plugins.installProgress.launching');
       case InstallStage.DONE:
         return isDone
           ? getInstallCompleteMessage()

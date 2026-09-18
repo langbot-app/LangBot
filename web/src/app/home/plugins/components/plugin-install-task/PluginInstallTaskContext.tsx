@@ -84,42 +84,84 @@ export function usePluginInstallTasks() {
 }
 
 /**
- * Map backend `current_action` to our InstallStage.
+ * Map the backend `current_action` string to an InstallStage.
+ *
+ * The runtime connector emits human-readable stage strings; each branch here
+ * matches the wording produced by the connector so newly added stages show up
+ * in the UI without a protocol change.
  */
 function mapActionToStage(action: string): InstallStage {
-  if (!action) return InstallStage.DOWNLOADING;
-  const lower = action.toLowerCase();
-  if (lower.includes('download')) return InstallStage.DOWNLOADING;
-  if (lower.includes('dependencies') || lower.includes('requirements'))
-    return InstallStage.INSTALLING_DEPS;
-  if (lower.includes('initializ') || lower.includes('setting'))
-    return InstallStage.INSTALLING_DEPS;
-  if (lower.includes('launch')) return InstallStage.INSTALLING_DEPS;
-  if (lower.includes('installed') || lower.includes('complete'))
+  const lower = (action || '').toLowerCase();
+
+  if (
+    lower.includes('installed') ||
+    lower.includes('complete') ||
+    lower.includes('ready')
+  ) {
+    // "waiting for plugin to become ready" is still an active stage.
+    if (lower.includes('waiting')) return InstallStage.LAUNCHING;
     return InstallStage.DONE;
+  }
+  if (lower.includes('launch') || lower.includes('start')) {
+    return InstallStage.LAUNCHING;
+  }
+  // Check the pre-download stages before the generic "install" match below,
+  // because "preparing plugin install" also contains "install".
+  if (lower.includes('prepar')) return InstallStage.DOWNLOADING;
+  if (lower.includes('download')) return InstallStage.DOWNLOADING;
+
+  if (
+    lower.includes('dependenc') ||
+    lower.includes('requirements') ||
+    lower.includes('install')
+  ) {
+    return InstallStage.INSTALLING_DEPS;
+  }
+  if (lower.includes('initializ') || lower.includes('configur')) {
+    return InstallStage.INITIALIZING;
+  }
+  if (lower.includes('inspect') || lower.includes('storing')) {
+    return InstallStage.INSTALLING_DEPS;
+  }
+
   return InstallStage.DOWNLOADING;
 }
 
 /**
- * Get overall progress percentage from a stage.
+ * Progress range (start → end) attributed to each stage, used to build a
+ * smooth determinate bar that never goes backwards.
  */
-function stageToProgress(stage: InstallStage): number {
-  switch (stage) {
-    case InstallStage.DOWNLOADING:
-      return 10;
-    case InstallStage.INSTALLING_DEPS:
-      return 70;
-    case InstallStage.INITIALIZING:
-      return 70;
-    case InstallStage.LAUNCHING:
-      return 85;
-    case InstallStage.DONE:
-      return 100;
-    case InstallStage.ERROR:
-      return 0;
-    default:
-      return 0;
+const STAGE_PROGRESS_RANGE: Record<InstallStage, [number, number]> = {
+  [InstallStage.DOWNLOADING]: [5, 45],
+  [InstallStage.INSTALLING_DEPS]: [45, 85],
+  [InstallStage.INITIALIZING]: [85, 88],
+  [InstallStage.LAUNCHING]: [88, 97],
+  [InstallStage.DONE]: [100, 100],
+  [InstallStage.ERROR]: [0, 0],
+};
+
+/**
+ * Compute overall progress, preferring real byte counts over the stage range
+ * when the backend has reported a download size.
+ */
+function computeOverallProgress(task: {
+  stage: InstallStage;
+  downloadCurrent?: number;
+  downloadTotal?: number;
+}): number {
+  const [start, end] = STAGE_PROGRESS_RANGE[task.stage] ?? [0, 0];
+
+  if (
+    task.stage === InstallStage.DOWNLOADING &&
+    task.downloadTotal &&
+    task.downloadTotal > 0 &&
+    task.downloadCurrent != null
+  ) {
+    const ratio = Math.min(1, task.downloadCurrent / task.downloadTotal);
+    return Math.round(start + (end - start) * ratio);
   }
+
+  return start;
 }
 
 /**
@@ -172,7 +214,14 @@ function asyncTaskToPluginInstallTask(task: AsyncTask): PluginInstallTask {
     }
   } else {
     stage = mapActionToStage(action);
-    overallProgress = Math.min(95, stageToProgress(stage));
+    overallProgress = Math.min(
+      99,
+      computeOverallProgress({
+        stage,
+        downloadCurrent: num(md.download_current),
+        downloadTotal: num(md.download_total),
+      }),
+    );
   }
 
   const pluginName = str(md.plugin_name) || task.label || `${source} extension`;
@@ -333,16 +382,26 @@ export function PluginInstallTaskProvider({
                 }
 
                 const stage = mapActionToStage(action);
-                const baseProgress = stageToProgress(stage);
-                // Add small time-based increment within stage
+                const [rangeStart, rangeEnd] = STAGE_PROGRESS_RANGE[stage] ?? [
+                  0, 0,
+                ];
+                // Prefer real byte counts where available; otherwise drift
+                // slowly inside the current stage so the bar still moves.
                 const elapsed = (Date.now() - t.startedAt) / 1000;
-                const withinStageIncrement = Math.min(
-                  15,
+                const drift = Math.min(
+                  Math.max(0, rangeEnd - rangeStart - 1),
                   Math.floor(elapsed / 2),
                 );
                 const progress = Math.min(
-                  95,
-                  baseProgress + withinStageIncrement,
+                  99,
+                  Math.max(
+                    t.overallProgress,
+                    computeOverallProgress({
+                      stage,
+                      downloadCurrent,
+                      downloadTotal,
+                    }) + drift,
+                  ),
                 );
 
                 return {

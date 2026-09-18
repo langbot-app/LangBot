@@ -84,10 +84,10 @@ test.describe('authenticated app shell', () => {
     await page.getByRole('button', { name: 'Debug Info' }).click();
 
     await expect(page.getByText('Plugin Debug Information')).toBeVisible();
-    await expect(page.getByRole('textbox').nth(0)).toHaveValue(
+    await expect(page.getByRole('textbox', { name: 'Debug URL' })).toHaveValue(
       'ws://127.0.0.1:5300/plugin/debug',
     );
-    await expect(page.getByRole('textbox').nth(1)).toHaveValue(
+    await expect(page.getByRole('textbox', { name: 'Debug Key' })).toHaveValue(
       'test-debug-key',
     );
   });

@@ -21,7 +21,8 @@ import { extractI18nObject } from '@/i18n/I18nProvider';
 import { toast } from 'sonner';
 import { useAsyncTask, AsyncTaskStatus } from '@/hooks/useAsyncTask';
 import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
-import { Loader2, Puzzle, Server, Sparkles } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Loader2, Puzzle, Search, Server, Sparkles, X } from 'lucide-react';
 
 export interface PluginInstalledComponentRef {
   refreshPluginList: () => void;
@@ -60,12 +61,16 @@ export const FilterOptions = [
 interface PluginInstalledComponentProps {
   filterType: FilterType;
   groupByType: boolean;
+  /** Free-text filter over label / name / author / description. */
+  searchQuery?: string;
+  /** Invoked when the user clears the search from the empty state. */
+  onClearSearch?: () => void;
 }
 
 const PluginInstalledComponent = forwardRef<
   PluginInstalledComponentRef,
   PluginInstalledComponentProps
->(({ filterType, groupByType }, ref) => {
+>(({ filterType, groupByType, searchQuery = '', onClearSearch }, ref) => {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { refreshPlugins, refreshMCPServers, refreshSkills } = useSidebarData();
@@ -307,10 +312,20 @@ const PluginInstalledComponent = forwardRef<
       });
   }
 
+  // Match the query against the fields a user can actually see on the card
+  // (label / name / author) plus the description, case-insensitively.
+  const normalizedQuery = searchQuery.trim().toLowerCase();
   const filteredExtensions = extensionList.filter((ext) => {
-    if (filterType === 'all') return true;
-    return ext.type === filterType;
+    if (filterType !== 'all' && ext.type !== filterType) return false;
+    if (!normalizedQuery) return true;
+    return [ext.label, ext.name, ext.author, ext.description].some((field) =>
+      (field || '').toLowerCase().includes(normalizedQuery),
+    );
   });
+
+  const clearSearch = () => {
+    onClearSearch?.();
+  };
 
   const showGrouped = groupByType && filterType === 'all';
   const groupOrder: ExtensionType[] = ['plugin', 'mcp', 'skill'];
@@ -461,10 +476,26 @@ const PluginInstalledComponent = forwardRef<
         </div>
       ) : filteredExtensions.length === 0 ? (
         <div className="flex flex-col items-center justify-center text-muted-foreground min-h-[60vh] w-full gap-2">
-          <Puzzle className="h-[3rem] w-[3rem]" />
-          <div className="text-lg mb-2">
-            {t('plugins.noExtensionInstalled')}
-          </div>
+          {normalizedQuery ? (
+            <>
+              <Search className="h-[3rem] w-[3rem]" />
+              <div className="text-lg mb-2">
+                {t('plugins.noMatchingExtensions', {
+                  query: searchQuery.trim(),
+                })}
+              </div>
+              <Button variant="outline" size="sm" onClick={clearSearch}>
+                {t('common.clear')}
+              </Button>
+            </>
+          ) : (
+            <>
+              <Puzzle className="h-[3rem] w-[3rem]" />
+              <div className="text-lg mb-2">
+                {t('plugins.noExtensionInstalled')}
+              </div>
+            </>
+          )}
         </div>
       ) : showGrouped ? (
         <div className="flex flex-col gap-4 pb-4">

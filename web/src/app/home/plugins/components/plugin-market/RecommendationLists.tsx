@@ -8,6 +8,10 @@ import { I18nObject } from '@/app/infra/entities/common';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import { getCloudServiceClientSync } from '@/app/infra/http';
 import { useTranslation } from 'react-i18next';
+import {
+  InstalledExtensionEntry,
+  resolveInstalledState,
+} from './marketplace-installed';
 
 export interface RecommendationList {
   uuid: string;
@@ -21,6 +25,7 @@ export interface RecommendationList {
 function pluginToVO(
   plugin: PluginV4,
   t: (key: string) => string,
+  installedIndex?: Map<string, InstalledExtensionEntry>,
 ): PluginMarketCardVO {
   const cloudClient = getCloudServiceClientSync();
   // Recommendation lists are mixed-type; resolve the icon per extension type,
@@ -31,6 +36,14 @@ function pluginToVO(
     plugin.name,
     plugin.icon,
   );
+
+  const installedState = installedIndex
+    ? resolveInstalledState(installedIndex, {
+        type: plugin.type,
+        author: plugin.author,
+        pluginName: plugin.name,
+      })
+    : undefined;
 
   return new PluginMarketCardVO({
     pluginId: plugin.author + ' / ' + plugin.name,
@@ -47,6 +60,8 @@ function pluginToVO(
     components: plugin.components,
     tags: plugin.tags || [],
     type: plugin.type,
+    installed: installedState?.installed,
+    hasUpdate: installedState?.hasUpdate,
   });
 }
 
@@ -57,6 +72,7 @@ function RecommendationListRow({
   installDisabled,
   installDisabledTooltip,
   isLast,
+  installedIndex,
 }: {
   list: RecommendationList;
   tagNames: Record<string, string>;
@@ -64,6 +80,7 @@ function RecommendationListRow({
   installDisabled?: boolean;
   installDisabledTooltip?: string;
   isLast: boolean;
+  installedIndex?: Map<string, InstalledExtensionEntry>;
 }) {
   const { t } = useTranslation();
   const [page, setPage] = useState(0);
@@ -264,7 +281,7 @@ function RecommendationListRow({
         {visiblePlugins.map((plugin) => (
           <PluginMarketCardComponent
             key={plugin.author + ' / ' + plugin.name}
-            cardVO={pluginToVO(plugin, t)}
+            cardVO={pluginToVO(plugin, t, installedIndex)}
             tagNames={tagNames}
             onInstall={onInstall}
             installDisabled={installDisabled}
@@ -285,12 +302,14 @@ export function RecommendationLists({
   onInstall,
   installDisabled,
   installDisabledTooltip,
+  installedIndex,
 }: {
   lists: RecommendationList[];
   tagNames: Record<string, string>;
   onInstall: (cardVO: PluginMarketCardVO) => void;
   installDisabled?: boolean;
   installDisabledTooltip?: string;
+  installedIndex?: Map<string, InstalledExtensionEntry>;
 }) {
   if (!lists || lists.length === 0) return null;
 
@@ -305,6 +324,7 @@ export function RecommendationLists({
           installDisabled={installDisabled}
           installDisabledTooltip={installDisabledTooltip}
           isLast={index === lists.length - 1}
+          installedIndex={installedIndex}
         />
       ))}
       <div className="border-b border-border mb-6" />
