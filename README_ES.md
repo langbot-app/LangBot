@@ -66,6 +66,8 @@ Haga clic en los botones Star y Watch en la esquina superior derecha del reposit
 
 [![Deploy on LangBot Cloud](res/langbot-cloud.svg)](https://cloud.langbot.app)
 
+[cloud.langbot.app](https://cloud.langbot.app)
+
 Sin despliegue, listo para usar.
 
 ### Lanzamiento en una línea

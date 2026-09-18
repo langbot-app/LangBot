@@ -66,6 +66,8 @@ Nhấp vào các nút Star và Watch ở góc trên bên phải của kho lưu t
 
 [![Deploy on LangBot Cloud](res/langbot-cloud.svg)](https://cloud.langbot.app)
 
+[cloud.langbot.app](https://cloud.langbot.app)
+
 Không cần triển khai, sẵn sàng sử dụng.
 
 ### Khởi chạy một dòng

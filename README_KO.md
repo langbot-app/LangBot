@@ -66,6 +66,8 @@ LangBot은 AI 기반 인스턴트 메시징 봇을 구축하기 위한 **오픈�
 
 [![Deploy on LangBot Cloud](res/langbot-cloud.svg)](https://cloud.langbot.app)
 
+[cloud.langbot.app](https://cloud.langbot.app)
+
 배포 없이 바로 사용.
 
 ### 원라인 실행

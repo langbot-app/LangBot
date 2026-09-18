@@ -67,6 +67,8 @@ LangBot 是一个**开源的生产级平台**，用于构建 AI 驱动的即时�
 
 [![Deploy on LangBot Cloud](res/langbot-cloud.svg)](https://cloud.langbot.app)
 
+[cloud.langbot.app](https://cloud.langbot.app)
+
 免部署，开箱即用。
 
 ### 一键启动

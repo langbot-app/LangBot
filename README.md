@@ -67,6 +67,8 @@ Click the Star and Watch buttons in the top-right corner of the repository to ge
 
 [![Deploy on LangBot Cloud](res/langbot-cloud.svg)](https://cloud.langbot.app)
 
+[cloud.langbot.app](https://cloud.langbot.app)
+
 Zero deployment, ready to use.
 
 ### One-Line Launch
