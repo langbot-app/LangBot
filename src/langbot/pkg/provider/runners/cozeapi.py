@@ -288,6 +288,15 @@ class CozeAPIRunner(runner.RequestRunner):
                     if full_content:
                         yield provider_message.MessageChunk(role='assistant', content=full_content, is_final=is_final)
 
+            # Self-hosted Coze never emits the terminating 'done' event (see the
+            # event check above), so is_final stays False for the whole stream and
+            # only the message_idx % 8 boundary flushes are sent. Emit what is left
+            # -- the tail, or on a stream ending exactly on a boundary the missing
+            # terminal signal -- as a final chunk. Error and cancellation paths
+            # return or raise above, so they never reach this point.
+            if full_content and not is_final:
+                yield provider_message.MessageChunk(role='assistant', content=full_content, is_final=True)
+
         except Exception as e:
             self.ap.logger.error(f'Coze API流式调用错误: {str(e)}')
             yield provider_message.MessageChunk(
