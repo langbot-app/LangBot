@@ -389,6 +389,9 @@ box:
             - './data/box'
             - '/tmp'
         workspace_quota_mb: null  # Optional disk quota override (>= 0). null = profile default.
+        # Extra environment variables injected into every Box exec payload.
+        # The agent-supplied per-call env overrides matching keys. Values must be strings.
+        env: {}
     # Default nsjail cgroup memory limit for each MCP stdio server process, in MB.
     # Node.js MCP servers (npx/bunx) need more memory than Python ones because V8
     # and WebAssembly modules (e.g. undici llhttp) reserve large virtual address
