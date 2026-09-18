@@ -1,4 +1,55 @@
 const enUS = {
+  assistant: {
+    modelHint: 'Switch assistant model for your next message',
+    details: 'View raw data',
+    found: 'Found {{count}} items',
+    completed: 'Completed',
+    failed: 'Failed',
+    denied: 'Not executed',
+    partial: 'Partial result',
+    operationFailed:
+      'Operation failed. Check the details and resource state before retrying a change.',
+    operationDenied: 'Declined. Nothing in this batch was executed.',
+    openResource: 'Open resource',
+    sendUnconfirmed:
+      'Delivery is unconfirmed. Check your connection and reopen the conversation.',
+    draftPlaceholder: 'Draft your next message while waiting…',
+    operations: {
+      create_pipeline: 'Create Pipeline',
+      configure_pipeline: 'Configure Pipeline',
+      create_knowledge_base: 'Create knowledge base',
+      get_pipeline: 'Read Pipeline',
+      get_knowledge_schema: 'Read knowledge engine schema',
+    },
+    resources: {
+      models: 'Find chat models',
+      embedding_models: 'Find embedding models',
+      pipelines: 'Find Pipelines',
+      knowledge_bases: 'Find knowledge bases',
+      knowledge_engines: 'Find knowledge engines',
+    },
+    title: 'Workspace assistant',
+    subtitle: 'Build and manage your apps',
+    newChat: 'New conversation',
+    close: 'Close',
+    welcome:
+      'Tell me what you want to build. I can inspect this Workspace and propose knowledge-base and Pipeline changes for you to confirm.',
+    discover: 'What models, knowledge bases and Pipelines are available?',
+    build: 'Help me create a knowledge-base question-answering application.',
+    toolResult: 'Operation result',
+    review: 'Review the exact operations before executing',
+    confirm: 'Confirm and execute',
+    decline: 'Decline',
+    working: 'Working…',
+    modelUnavailable:
+      'Model unavailable. Check its configuration and access, then start a new conversation.',
+    error:
+      'This turn did not complete. Check the resource results before starting a new conversation; changes are not retried automatically.',
+    running:
+      'This turn is running, or was interrupted before its result was saved. Reopen the assistant to refresh; check resources before starting over.',
+    placeholder: 'Describe your application…',
+    send: 'Send',
+  },
   sidebar: {
     home: 'Home',
     extensions: 'Extensions',

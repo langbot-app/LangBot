@@ -1,4 +1,55 @@
 const jaJP = {
+  assistant: {
+    modelHint: '次のメッセージからモデルを切り替え',
+    details: '元のデータを見る',
+    found: '{{count}} 件見つかりました',
+    completed: '完了',
+    failed: '失敗',
+    denied: '未実行',
+    partial: '結果が不完全です',
+    operationFailed:
+      '操作に失敗しました。変更を再試行する前に詳細とリソースを確認してください。',
+    operationDenied: '拒否されました。この操作は実行されていません。',
+    openResource: 'リソースを開く',
+    sendUnconfirmed:
+      '送信を確認できません。接続を確認して会話を開き直してください。',
+    draftPlaceholder: '待機中に次のメッセージを入力できます…',
+    operations: {
+      create_pipeline: 'Pipeline 作成',
+      configure_pipeline: 'Pipeline 設定',
+      create_knowledge_base: 'ナレッジベース作成',
+      get_pipeline: 'Pipeline 参照',
+      get_knowledge_schema: 'エンジン設定の参照',
+    },
+    resources: {
+      models: 'チャットモデル検索',
+      embedding_models: '埋め込みモデル検索',
+      pipelines: 'Pipeline 検索',
+      knowledge_bases: 'ナレッジベース検索',
+      knowledge_engines: 'エンジン検索',
+    },
+    title: 'ワークスペースアシスタント',
+    subtitle: 'アプリを構築・管理',
+    newChat: '新しい会話',
+    close: '閉じる',
+    welcome:
+      '作りたいアプリを教えてください。現在のリソースを確認し、承認後にナレッジベースや Pipeline を設定します。',
+    discover: '利用できるモデル、ナレッジベース、Pipeline は？',
+    build: 'ナレッジベースを使う質問応答アプリを作りたい。',
+    toolResult: '操作結果',
+    review: '実行する操作とパラメータを確認してください',
+    confirm: '承認して実行',
+    decline: '拒否',
+    working: '処理中…',
+    modelUnavailable:
+      'モデルを利用できません。設定と権限を確認して、新しい会話を開始してください。',
+    error:
+      '処理が完了しませんでした。新しい会話の前にリソースを確認してください。変更は自動で再試行されません。',
+    running:
+      '処理中、または結果の保存前に中断されました。アシスタントを開き直して更新してください。',
+    placeholder: '作りたいアプリを説明…',
+    send: '送信',
+  },
   sidebar: {
     home: 'ホーム',
     extensions: '拡張機能',

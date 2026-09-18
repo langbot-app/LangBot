@@ -1,4 +1,53 @@
 const zhHans = {
+  assistant: {
+    modelHint: '切换助手模型，从下一条消息生效',
+    details: '查看原始数据',
+    found: '找到 {{count}} 项',
+    completed: '已完成',
+    failed: '失败',
+    denied: '未执行',
+    partial: '结果不完整',
+    operationFailed: '操作失败，请查看详情；涉及变更时先检查资源状态。',
+    operationDenied: '已拒绝，本批操作没有执行。',
+    openResource: '打开资源',
+    sendUnconfirmed: '发送状态未确认，请检查连接后重新打开会话。',
+    draftPlaceholder: '可以先写下一条，回复完成后发送…',
+    operations: {
+      create_pipeline: '创建 Pipeline',
+      configure_pipeline: '配置 Pipeline',
+      create_knowledge_base: '创建知识库',
+      get_pipeline: '查看 Pipeline',
+      get_knowledge_schema: '查看知识引擎配置',
+    },
+    resources: {
+      models: '查询聊天模型',
+      embedding_models: '查询嵌入模型',
+      pipelines: '查询 Pipeline',
+      knowledge_bases: '查询知识库',
+      knowledge_engines: '查询知识引擎',
+    },
+    title: '工作区助手',
+    subtitle: '构建和管理你的应用',
+    newChat: '新对话',
+    close: '关闭',
+    welcome:
+      '告诉我你想构建什么应用。我可以查看当前工作区，并提出知识库和 Pipeline 配置方案，由你确认后执行。',
+    discover: '当前有哪些可用的模型、知识库和 Pipeline？',
+    build: '帮我创建一个知识库问答应用。',
+    toolResult: '操作结果',
+    review: '请检查具体操作及参数，确认后执行',
+    confirm: '确认执行',
+    decline: '拒绝',
+    working: '正在处理…',
+    modelUnavailable:
+      '模型暂不可用。请检查模型配置和访问权限，然后开启新对话。',
+    error:
+      '本轮未完成。请先检查资源和操作结果，再开启新对话；系统不会自动重试变更。',
+    running:
+      '本轮仍在执行，或执行结果尚未保存时发生了中断。重新打开助手可刷新；重新开始前请检查资源。',
+    placeholder: '描述你想构建的应用…',
+    send: '发送',
+  },
   sidebar: {
     home: '首页',
     extensions: '扩展',

@@ -56,6 +56,7 @@ _ALEMBIC_TENANT_TABLES = {
     'workspace_execution_states',
     'support_admin_temporary_sessions',
     'workspace_metadata',
+    'assistant_conversations',
     'api_keys',
     'bots',
     'bot_admins',

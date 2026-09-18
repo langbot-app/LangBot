@@ -1,5 +1,6 @@
 import HomeSidebar from '@/app/home/components/home-sidebar/HomeSidebar';
 import SurveyWidget from '@/app/home/components/survey/SurveyWidget';
+import WorkspaceAssistant from '@/app/home/components/WorkspaceAssistant';
 import React, {
   useState,
   useCallback,
@@ -277,6 +278,7 @@ function HomeLayoutInner({ children }: { children: React.ReactNode }) {
         </main>
 
         <SurveyWidget />
+        <WorkspaceAssistant />
       </SidebarInset>
     </SidebarProvider>
   );

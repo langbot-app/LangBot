@@ -111,7 +111,7 @@ class HTTPController:
 
             self.ap.task_mgr.create_task(
                 exception_handler(
-                    host='0.0.0.0',
+                    host=self.ap.instance_config.data['api'].get('host', '0.0.0.0'),
                     port=self.ap.instance_config.data['api']['port'],
                     shutdown_trigger=shutdown_trigger_placeholder,
                 ),
